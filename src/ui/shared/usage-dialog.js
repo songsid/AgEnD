@@ -214,18 +214,27 @@ export function compactPools(p) {
   return [...pools.values()].map((x) => ({ ...x, worst: x.metrics.reduce((a, b) => ((b.used ?? 0) > (a.used ?? 0) ? b : a)) }));
 }
 const pctOf = (m) => Math.min(100, Math.max(0, m.used ?? 0));
+/** When a window resets, at the clock ("14:05", "10/19 14:05"), for a tooltip; "" when unknown or already past. */
+function resetClock(m, now = Date.now()) {
+  const at = new Date((m && m.resetsAt) || "").getTime();
+  return Number.isFinite(at) && at > now ? `↻ ${usageClock(m.resetsAt, now)}` : "";
+}
 /**
- * One window on its own line: its few characters ("5h"), a full-width bar and the percent, coloured as the full card.
- * A pool's line (#2240): the pool's name in place of the window, its every window in the tooltip.
+ * One window on its own line: its few characters ("5h"), a full-width bar, the percent coloured as the full card, and
+ * when this window resets ("↻ 8m"; the user's ask, 2026-10-23: a week's reset was hidden behind the 5 h one's). A pool's
+ * line (#2240): the pool's name in place of the window, the reset of the window its percent is, every window (with its
+ * reset time) in the tooltip.
  */
 function CompactMeter({ m, tag, title }) {
   const bar = useRef(null);
   const pct = Math.min(100, Math.max(0, m.used ?? 0)), cls = level(pct);
   useLayoutEffect(() => { if (bar.current) bar.current.style.width = `${pct}%`; }, [pct]);   // CSSOM (#1300)
   const word = cls === "crit" ? tn("usageNear") : cls === "warn" ? tn("usageHigh") : "";
-  return html`<span class="u-cm" title=${title || `${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
+  const reset = soonestReset([m]), clock = resetClock(m);
+  return html`<span class="u-cm" title=${title || `${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}${clock ? ` · ${clock}` : ""}`}>
     <span class="u-cm-tag">${tag || windowTag(m)}</span><span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span>
-    <span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span></span>`;
+    <span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span>
+    <span class="u-cm-reset">${reset ? html`${reset.short}<span class="sr-only"> (${reset.full})</span>` : null}</span></span>`;
 }
 /** What a login says instead of numbers (not logged in, an error), or "" when it has numbers. */
 function rowNote(p) {
@@ -234,26 +243,27 @@ function rowNote(p) {
   return "";
 }
 /**
- * A login in three short lines, under its provider's name (the user's pick, 2026-10-22): its name and plan with the
- * soonest reset on the right; then its short window and its long one, each a labelled full-width bar and the percent.
+ * A login in three short lines, under its provider's name (the user's pick, 2026-10-22): its name and plan; then its
+ * short window and its long one, each a labelled full-width bar, the percent and that window's own reset.
  * Numbers not current, a failed read or no login: one muted line in place of the bars, what is wrong as its tooltip.
  * Pressed, it opens its full card.
  */
 export function CompactRow({ p, onExpand }) {
   const title = providerTitle(p), failed = p.status === "error" || p.status === "no-credentials";
-  const pools = failed || p.stale ? null : compactPools(p);
-  const metrics = failed || p.stale ? [] : pools ? pools.flatMap((x) => x.metrics) : compactMetrics(p);
+  // Last known numbers (stale, e.g. an expired token) show as the others do (the user, 2026-10-23; the full card has since
+  // #2386), with a small "cached at 07:47" on the name line; a window that reset since is left out (compactSlots).
+  const pools = failed ? null : compactPools(p);
+  const metrics = failed ? [] : pools ? pools.flatMap((x) => x.metrics) : compactMetrics(p);
   const note = rowNote(p), stale = p.stale ? staleNote(p) : null;
   const say = stale ? stale.mark : note || tn("usage.no_data");
   const detail = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : say;
-  const reset = soonestReset(metrics);
   const name = title.profile || title.base;
   return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
     <span class="u-crow-head"><span class="u-crow-name">${name}</span>
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
-      ${reset ? html`<span class="u-crow-reset" title=${reset.full}>${reset.short}<span class="sr-only"> (${reset.full})</span></span>` : null}</span>
+      ${stale && metrics.length ? html`<span class="u-crow-stale" title=${detail}>${p.cachedAt ? tn("usageCachedAt", { at: usageClock(p.cachedAt) }) : stale.mark}<span class="sr-only"> (${detail})</span></span>` : null}</span>
     ${pools ? pools.map((x) => html`<${CompactMeter} key=${x.pool.label} m=${x.worst} tag=${usageText(x.pool.label, x.pool.labelI18n)}
-        title=${x.metrics.map((m) => `${usageText(m.label, m.labelI18n)}: ${pctOf(m).toFixed(0)}%`).join(" · ")} />`)
+        title=${x.metrics.map((m) => { const c = resetClock(m); return `${usageText(m.label, m.labelI18n)}: ${pctOf(m).toFixed(0)}%${c ? ` (${c})` : ""}`; }).join(" · ")} />`)
       : metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} />`)
       : html`<span class=${`u-crow-note${(stale || (p.status === "error" && !p.transient)) ? " is-alert" : ""}`} title=${detail}>${say}</span>`}
   </button>`;

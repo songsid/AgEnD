@@ -65,7 +65,9 @@ describe("both views show Gemini 4 Argon", () => {
     const [agy, claude] = pg!.root.querySelectorAll(".u-crow");
     const bars = (r: any) => r.querySelectorAll(".u-cm").map((m: any) => `${text(m.querySelector(".u-cm-tag"))} ${text(m.querySelector(".u-cm-pct"))}`);
     expect(bars(agy)).toEqual(["Gemini 21%", "Claude & others 2%", "Gemini 4 Argon 0%"]);   // each pool's tighter window
-    expect(agy.querySelectorAll(".u-cm")[0].getAttribute("title")).toBe("Gemini (session): 0% · Gemini (weekly): 21%");
+    // Each window of the pool with its reset time (the tooltip keeps the clock); the line's own reset is its % window's.
+    expect(agy.querySelectorAll(".u-cm")[0].getAttribute("title")).toMatch(/^Gemini \(session\): 0% · Gemini \(weekly\): 21% \(↻ (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d\)$/);   // the fixture's session reset is past: no time
+    expect(agy.querySelectorAll(".u-cm-reset").length, "a reset cell on every pool line").toBe(3);
     expect(bars(claude)).toEqual(["5h 40%", "7d 70%"]);
   });
   // #2460 review (Fable): a pooled view only when every percent window has a pool, and more than one pool.

@@ -5,9 +5,11 @@
 // near-limit levels, long plan names (#2412), one with last known numbers (expired), one failing, one not logged in.
 // Per case (desk light en, desk dark zh-TW, phone light zh-TW, phone dark en; reduced motion on the phone):
 // - full cards first (they overflow); the header's switch (beside the title) → the logins grouped by provider (its name
-//   once), each in three short lines (the user's pick: name, plan and reset; a labelled bar per window): each account
+//   once), each in three short lines (the user's pick: name and plan; a labelled bar per window, with that window's own
+//   reset after its % — 2.3.1, the user: the week's reset was hidden behind the 5 h one's): each account
 //   at most 76 px; whether all ten fit without scrolling is reported; no name clipped; both windows' % coloured as the
-//   full card; a stale or failed account's one muted line;
+//   full card; last known numbers (Kiro, expired) as a muted bar with "cached at …" on the name line (2.3.1); a failed
+//   account's one muted line;
 // - remembered: the host holds "usage.compact" for this person, and a reload shows the lines again;
 // - a line pressed opens its full card in place; its − folds it back; the switch goes back to the full cards;
 // - no console error, no CSP violation, no horizontal overflow; no real fleet name in any visible text.
@@ -93,7 +95,17 @@ const measure = (p: FreshPage, c: MatrixCase) => p.page.evaluate(`(() => {
     barW: Math.round(r.querySelector(".u-cm-bar")?.getBoundingClientRect().width ?? 0),
     pcts: [...r.querySelectorAll(".u-cm-pct")].map((x) => x.textContent.replace(/\\s+/g, "") + (x.classList.contains("crit") ? "!" : x.classList.contains("warn") ? "~" : "")),
     mark: r.querySelector(".u-crow-note.is-alert")?.getAttribute("title") ?? null, h: Math.round(r.getBoundingClientRect().height),
-    out: Math.max(0, ...[...r.querySelectorAll("*")].map((el) => Math.round(el.getBoundingClientRect().right - r.getBoundingClientRect().right))),
+    // 2.3.1 (the user, 2026-10-23): each window's own reset on its bar row, none on the name line; whole, never clipped.
+    resets: [...r.querySelectorAll(".u-cm")].map((m) => { const x = m.querySelector(".u-cm-reset"); if (!x) return null;
+      const range = document.createRange(); range.selectNodeContents(x.firstChild || x);
+      return { text: (x.firstChild && x.firstChild.nodeType === 3 ? x.firstChild.textContent : x.textContent.split(" (")[0]).trim(),
+        clipped: x.firstChild ? range.getBoundingClientRect().width > x.getBoundingClientRect().width + 0.5 : false }; }),
+    nameLineReset: !!r.querySelector(".u-crow-reset"),
+    staleMark: r.querySelector(".u-crow-stale")?.getAttribute("title") ?? null,
+    staleText: (() => { const x = r.querySelector(".u-crow-stale"); return x && x.firstChild ? x.firstChild.textContent : null; })(),
+    // What sticks out of the row and shows: a box inside one that clips (overflow hidden: the plan pill's text) does not.
+    out: Math.max(0, ...[...r.querySelectorAll("*")].filter((el) => { for (let a = el.parentElement; a && a !== r; a = a.parentElement) if (getComputedStyle(a).overflow !== "visible") return false; return true; })
+      .map((el) => Math.round(el.getBoundingClientRect().right - r.getBoundingClientRect().right))),
   }));
   return { fits: s.scrollHeight <= s.clientHeight + 1, scrollH: s.scrollHeight, clientH: s.clientHeight, cards: root.querySelectorAll(".u-provider").length, rows, groups,
     pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
@@ -125,15 +137,23 @@ for (const c of CASES) {
   ck.oneLinePerLogin = compact.rows.length === LOGINS && compact.cards === 0;
   ck.grouped = compact.groups.map((g: any) => `${g.name}:${g.lines}`).join(",") === "Claude:4,Codex:3,Kiro:1,Grok:1,Meta Muse Code:1" && compact.groups.length === GROUPS;
   ck.dense = compact.rows.every((r: any) => r.h <= 76);
-  ck.barsWide = compact.rows.filter((r: any) => r.pcts.length).every((r: any) => r.barW >= 150);   // the user: "too small to see"
+  // The user: "too small to see". 2.3.1: each window's own reset takes a column, so the 320 px rail's bar is ~124 px
+  // (was ~167); a phone keeps 150+.
+  ck.barsWide = compact.rows.filter((r: any) => r.pcts.length).every((r: any) => r.barW >= (c.device === "desk" ? 120 : 150));
   ck.namesWhole = compact.groups.every((g: any) => g.clipped === false);
   // A profile names its login: it keeps room to be read (whole, or at least 56 px of it before its ellipsis).
   ck.profilesReadable = compact.rows.every((r: any) => !r.profile || r.profileClipped === false || r.profileW >= 120);
   ck.nothingOut = compact.rows.every((r: any) => r.out <= 0);
+  ck.eachWindowItsReset = compact.rows.filter((r: any) => r.pcts.length).every((r: any) => r.resets.length === r.pcts.length && r.resets.every((x: any) => x && /^↻ \S+$/.test(x.text) && !x.clipped))
+    && compact.rows.every((r: any) => !r.nameLineReset);
+  ck.weekResetShown = (() => { const r = compact.rows[0]; return !!r && r.resets.length === 2 && !!r.resets[0]?.text && r.resets[0]?.text !== r.resets[1]?.text; })();
   const by = (profile: string) => compact.rows.find((r: any) => r.profile === profile);
   ck.colours = compact.rows[0]?.pcts.join(",") === "42%,75%~" && by("research-team")?.pcts.join(",") === "93%!,20%" && by("release-notes-and-changelog-drafting")?.pcts.join(",") === "71%~,91%!";
   const of = (group: string) => compact.rows.find((r: any) => r.group === group);
-  ck.marks = !!of("Kiro")?.mark && !!of("Grok")?.mark && of("Meta Muse Code")?.mark === null;
+  // 2.3.1 (the user): Kiro's last known numbers show as a bar with its reset, muted, and "cached at …" on its name line
+  // (why, in the tooltip); a failed read keeps its one line.
+  ck.marks = of("Kiro")?.mark === null && of("Kiro")?.pcts.length === 1 && /^(cached at|快取於) /.test(of("Kiro")?.staleText ?? "") && /kiro-cli login/.test(of("Kiro")?.staleMark ?? "")
+    && !!of("Grok")?.mark && of("Meta Muse Code")?.mark === null;
   ck.toggleSaysFull = (await toggle.innerText()).trim() === W.full(c) && (await toggle.getAttribute("aria-pressed")) === "true";
   ck.noPageOverflow = !compact.pageOverflow;
   await p.page.screenshot({ path: shotPath(SMOKE, name, "2-compact") });
@@ -195,7 +215,7 @@ for (const c of CASES) {
   ck.demoNamesOnly = real.length === 0;
   ck.noErrors = p.errors.slice(navEnd).length === 0;
   ck.noCsp = (await csp(p.page)).length === 0;
-  record(name, ck, { full: { scrollH: full.scrollH, clientH: full.clientH }, compact: { fits: compact.fits, scrollH: compact.scrollH, clientH: compact.clientH, heights: compact.rows.map((r: any) => r.h), nameW: compact.rows.map((r: any) => r.profileW), barW: compact.rows.map((r: any) => r.barW) },
+  record(name, ck, { full: { scrollH: full.scrollH, clientH: full.clientH }, compact: { fits: compact.fits, scrollH: compact.scrollH, clientH: compact.clientH, heights: compact.rows.map((r: any) => r.h), resets: compact.rows.map((r: any) => r.resets.map((x: any) => x?.text).join("|")), nameW: compact.rows.map((r: any) => r.profileW), barW: compact.rows.map((r: any) => r.barW) },
     rows: compact.rows.map((r: any) => `${r.group}/${r.profile}: ${r.pcts.join(" ")}${r.mark ? " [mark]" : ""}`), errors: p.errors.slice(navEnd), real: real.slice(0, 5) });
   await p.ctx.close();
   // The next case starts from defaults: switching back to the full cards cleared the value (the default is not stored).

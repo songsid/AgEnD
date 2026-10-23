@@ -63,6 +63,8 @@ const read = (p: FreshPage, c: MatrixCase) => p.page.evaluate(`(() => {
   return {
     full: card ? [...card.querySelectorAll(".u-label")].map((l) => l.textContent) : null,
     compact: agy ? [...agy.querySelectorAll(".u-cm")].map((m) => ({ tag: m.querySelector(".u-cm-tag").textContent, pct: m.querySelector(".u-cm-pct").textContent,
+      barW: Math.round(m.querySelector(".u-cm-bar").getBoundingClientRect().width),
+      reset: (() => { const x = m.querySelector(".u-cm-reset"); return x ? ((x.firstChild && x.firstChild.nodeType === 3) ? x.firstChild.textContent : "").trim() : null; })(),
       tagW: Math.round(m.querySelector(".u-cm-tag").getBoundingClientRect().width), clipped: clipped(m.querySelector(".u-cm-tag")) })) : null,
     claude: rows.filter((r) => r.closest(".u-cgroup")?.querySelector(".u-cg-name")?.textContent === "Claude").map((r) => [...r.querySelectorAll(".u-cm-tag")].map((t) => t.textContent)),
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth, csp: window.__smokeCsp || [],
@@ -89,6 +91,9 @@ for (const c of CASES) {
   const compact = await read(p, c);
   ck.compactPoolLines = !!compact.compact && compact.compact.length === 3 && compact.compact[2].tag === ARGON[c.lang];
   ck.poolLabelsReadable = !!compact.compact && compact.compact.every((m: any) => m.tagW >= 50);
+  // 2.3.1: each pool's line its own reset (the window its % is); none on the name line.
+  ck.poolLabelsWhole = !!compact.compact && compact.compact.every((m: any) => m.clipped === false);
+  ck.eachPoolItsReset = !!compact.compact && compact.compact.every((m: any) => typeof m.reset === "string" && /^↻ \S+$/.test(m.reset));
   ck.claudeWindows = JSON.stringify(compact.claude) === JSON.stringify([c.lang === "zh-TW" ? ["5小時", "7天"] : ["5h", "7d"]]);
   ck.noOverflow = !compact.overflow;
   ck.noErrors = p.errors.slice(navEnd).length === 0 && compact.csp.length === 0;
