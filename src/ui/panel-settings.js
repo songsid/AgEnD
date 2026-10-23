@@ -927,7 +927,9 @@ function generalForm(d, c, fleet = {}) {
     backend: d.backend || "claude-code", model: d.model || "", locale: d.locale || "", auto: String(d.auto_pause_after ?? 0),
     agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : "", tool_progress: d.tool_progress ?? "off",
     visibility: visibilityDefault(d), reply: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
-    dash: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, dashboardDefault(d, k)])),
+    // #2495 review: one field per dashboard feature, so a draft keeps only the features edited (a whole-object field
+    // would bring back a feature another admin changed meanwhile).
+    ...Object.fromEntries(DASHBOARD_FEATURES.map((k) => [`dash_${k}`, dashboardDefault(d, k)])),
     hangOn: hang.enabled !== false, hang: String(hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES),
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
@@ -978,8 +980,9 @@ function General({ ctx, part = "all" }) {
       backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
       agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
       reply_completion_guard: f.reply, log_level: f.log_level,
-      // The dashboard features every agent may use unless its own setting says otherwise (all three, as shown).
-      dashboard: f.dash,
+      // The dashboard features every agent may use unless its own setting says otherwise. All three go, because the write
+      // to the fleet's defaults merges top-level keys only (`dashboard` is replaced whole): the untouched ones as saved.
+      dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, f[`dash_${k}`]])),
       hang_detector: { enabled: f.hangOn, timeout_minutes: num(f.hang) },
       startup: { ...(f.concurrency.trim() === "" ? {} : { concurrency: num(f.concurrency) }), stagger_delay_ms: num(f.stagger) },
     }, {
@@ -1045,10 +1048,10 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span>${dm("reply")}<${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
       </div>
-      <fieldset class=${fc("field dash-perms", "dash")}><legend>${L(tn("dashboardAccess"), "defaults.dashboard")}</legend>
+      <fieldset class=${fc("field dash-perms", ...DASHBOARD_FEATURES.map((k) => `dash_${k}`))}><legend>${L(tn("dashboardAccess"), "defaults.dashboard")}</legend>
         <p class="note">${tn("dashboardDefaultsHint")}</p>
-        ${DASHBOARD_FEATURES.map((k) => html`<label key=${k} class="check"><input type="checkbox" checked=${f.dash[k]}
-          onChange=${(e) => setF((x) => ({ ...x, dash: { ...x.dash, [k]: e.target.checked } }))} /><span>${tn(`dashboard_${k}`)}</span></label>`)}
+        ${DASHBOARD_FEATURES.map((k) => html`<label key=${k} class="check"><input type="checkbox" checked=${f[`dash_${k}`]}
+          onChange=${(e) => set(`dash_${k}`)(e.target.checked)} /><span>${tn(`dashboard_${k}`)}</span></label>`)}
       </fieldset>
     </section>` : null}
     ${classicPart ? html`<section class="card"><h3>${tn("classicDefaultsTitle")}</h3>
@@ -1149,7 +1152,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   const savedForm = useMemo(() => ({ echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public,
     ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
-    termTtl: text(original.terminal.ttl_minutes) }), []);
+    termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
   const [f, setF] = useDraft(ctx, "web", () => savedForm, () => {
     // Settings sections share one draft. Reopening Web must show it as well as preserve it in the Apply bar, so a
     // subsequent field edit keeps earlier edits. The original disk values remain the diff/confirmation baseline.
