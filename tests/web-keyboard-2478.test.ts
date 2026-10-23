@@ -148,3 +148,38 @@ describe("#2478: the shell on a phone (real Shell, fake visualViewport)", () => 
     expect(phoneBlock).toMatch(/\.kb-open \.composer-row\s*\{\s*display:\s*none/);
   });
 });
+
+// The user's report (beta.27, iOS Safari, Zhuyin): the IME's candidate bar moves the view by tens of px on every
+// keystroke. The keyboard state is hysteretic — up once, it stays up while the field keeps focus, unless the view grows
+// back by more than a keyboard — and nothing changes while an IME composes (applied at compositionend).
+describe("IME: a candidate bar never takes the tabs out and back", () => {
+  it("a compact keyboard (120 px) whose candidate bar (44 px) crosses the threshold: up once, it stays up on every keystroke; blur takes it down", async () => {
+    const c = await phone();
+    await c.focus("#box");
+    await c.resize({ height: 844 - 120 });
+    expect(c.kb(), "120 px: no keyboard yet").toBe(false);
+    await c.resize({ height: 844 - 164 });
+    expect(c.kb(), "the bar: past the threshold").toBe(true);
+    for (const h of [844 - 120, 844 - 164, 844 - 120, 844 - 164]) { await c.resize({ height: h }); expect(c.kb(), `at ${h}`).toBe(true); }
+    await c.blur("#box");
+    expect(c.kb()).toBe(false);
+  });
+  it("put away while focused (the view back by more than a keyboard from its lowest): down", async () => {
+    const c = await phone();
+    await c.focus("#box");
+    await c.resize({ height: 500 });
+    expect(c.kb()).toBe(true);
+    await c.resize({ height: 844 });
+    expect(c.kb()).toBe(false);
+  });
+  it("while an IME composes nothing changes; compositionend applies what the view says", async () => {
+    const c = await phone();
+    await c.focus("#box");
+    const box = c.pg.root.querySelector("#box") as any;
+    fire(box, "compositionstart", { data: "" });
+    await c.resize({ height: 500 });
+    expect(c.kb(), "composing: held").toBe(false);
+    fire(box, "compositionend", { data: "寶" }); await settle();
+    expect(c.kb(), "after compositionend").toBe(true);
+  });
+});
