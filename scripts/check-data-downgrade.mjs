@@ -8,8 +8,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const [oldPackageArg, oldNodeArg] = process.argv.slice(2);
-assert.ok(oldPackageArg && oldNodeArg, 'Supply an isolated installed baseline package (2.1.12 or 2.2.6) and the Node it runs on');
+const [oldPackageArg, oldNodeArg, expectedBaseline] = process.argv.slice(2);
+assert.ok(oldPackageArg && oldNodeArg && expectedBaseline, 'Supply an isolated installed baseline package (2.1.12 or 2.2.6), the Node it runs on, and the baseline version it must be');
 const oldPackage = realpathSync(resolve(oldPackageArg));
 const oldNode = realpathSync(resolve(oldNodeArg));
 // The published baselines and what each runs on: 2.1.12 on Node 20 with better-sqlite3 12; 2.2.6 — what #2483's Mac
@@ -17,6 +17,8 @@ const oldNode = realpathSync(resolve(oldNodeArg));
 const BASELINES = { '2.1.12': { node: '20', sqlite: /^12\./ }, '2.2.6': { node: '22', sqlite: /^13\./ } };
 const baseline = JSON.parse(readFileSync(join(oldPackage, 'package.json'), 'utf8')).version;
 assert.ok(Object.hasOwn(BASELINES, baseline), `no data-downgrade expectations for baseline ${baseline}`);
+// Each step names the baseline it tests: a step pointed at the other install fails instead of testing it twice.
+assert.equal(baseline, expectedBaseline, `the package at ${oldPackage} is ${baseline}, this step tests ${expectedBaseline}`);
 const currentPackage = resolve(here, '..');
 // Only this runner chooses the data directory: callers cannot supply live AGEND_HOME.
 const scratch = mkdtempSync(join(tmpdir(), 'agend-downgrade-'));
