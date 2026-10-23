@@ -200,7 +200,7 @@ describe("#1490 row14: forum-root authority must not depend on the dedup race", 
   it("ordinary root text retains receiving-General routing", async () => {
     const r = rig(true);
     await r.copy(B, "ordinary conversation", ADMIN_B);
-    expect(r.any.deliverToInstance).toHaveBeenCalledWith("general_b", expect.anything());
+    expect(r.any.deliverToInstance).toHaveBeenCalledWith("general_b", expect.anything(), expect.objectContaining({ onStartRetryHold: expect.any(Function) })); // #2484: a person's message waits for a start retry
     expect(r.restart).not.toHaveBeenCalled();
   });
   it("non-root scopes keep their own selection path", () => {

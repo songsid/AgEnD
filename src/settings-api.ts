@@ -113,7 +113,7 @@ export interface SettingsApiContext extends AppShellContext {
    *  and team places dropped, its fleet.yaml entry removed. Absent in unit contexts that only exercise CRUD. */
   removeInstance?(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
-  explicitWake?(name: string, timeoutMs?: number): Promise<void>;
+  explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
   captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
@@ -695,7 +695,7 @@ export function handleSettingsRequest(
     const operation = withSpawnHoldReply(async message => { held = true; json(res, 202, { ok: true, held: true, message, name }); },
       () => action === "pause"
         ? ctx.lifecycle.pause(name)
-        : ctx.explicitWake ? ctx.explicitWake(name, 30_000) : ctx.lifecycle.wake(name, 30_000));
+        : ctx.explicitWake ? ctx.explicitWake(name, 30_000, true) : ctx.lifecycle.wake(name, 30_000));
     operation.then(() => { if (!held) json(res, 200, { ok: true, name, status: action === "pause" ? "paused" : "running" }); })
       .catch(err => { if (!held) json(res, 409, { error: (err as Error).message }); else ctx.logger.error({ err, name }, "Held wake failed"); });
     return true;

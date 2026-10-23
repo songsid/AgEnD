@@ -20,6 +20,17 @@ roles: [general]
   The **general** instance is never auto-paused.
 - You don't need to wake before sending work: delivery wakes a paused instance first.
 
+## Session-OOM stop
+
+A repeated, confirmed same-session OOM is a terminal stop, not an idle pause.
+The stop survives fleet restarts; incoming messages and queued work cannot lift it.
+Free memory and investigate before choosing an explicit per-instance Start, Restart
+or Wake (including the authorized lifecycle tools) to retry. This preserves the
+session and transcript. A fleet-wide restart is not that choice. If another restart
+is already finishing, wait and retry the per-instance action. Unknown or damaged
+stop evidence also holds automatic launches. A save-failure notice means storage
+must be repaired before restarting the fleet; do not promise the stop is durable.
+
 ## Monitoring state
 
 - `describe_instance("<name>")` / `list_instances` — status + `instance_state` (idle / working /

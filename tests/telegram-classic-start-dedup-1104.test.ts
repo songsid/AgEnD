@@ -207,7 +207,7 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
     await h.primary.feed("hello", 10, PRIMARY_GROUP, 30);
     await h.target.feed("hello", 10, PRIMARY_GROUP, 30);
     expect(h.deliver).toHaveBeenCalledTimes(1);
-    expect(h.deliver).toHaveBeenCalledWith("worker", expect.anything());
+    expect(h.deliver).toHaveBeenCalledWith("worker", expect.anything(), expect.objectContaining({ onStartRetryHold: expect.any(Function) })); // #2484
     expect(h.start).not.toHaveBeenCalled();
   });
 
@@ -221,7 +221,7 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
     await h.primary.feed("hello", 10, PRIMARY_GROUP);
     await h.target.feed("hello", 10, PRIMARY_GROUP);
     expect(h.deliver).toHaveBeenCalledTimes(1);
-    expect(h.deliver).toHaveBeenCalledWith("general", expect.anything());
+    expect(h.deliver).toHaveBeenCalledWith("general", expect.anything(), expect.objectContaining({ onStartRetryHold: expect.any(Function) })); // #2484
     expect([...h.state.recentMessageIds]).toEqual([`telegram:${PRIMARY_GROUP}:10`]);
   });
 });

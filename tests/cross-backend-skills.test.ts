@@ -86,7 +86,7 @@ describe("cross-backend skill publishing", () => {
     expect(existsSync(join(workDir, ".claude", "skills", "delegation-playbook", "SKILL.md"))).toBe(true);
   });
 
-  it("warns once per collided skill across repeated syncs and multiple instance destinations", () => {
+  it("#2482: one line per destination listing its collided skills, once across repeated syncs and restarts; again on a change", () => {
     const warn = vi.spyOn(fm.logger, "warn").mockImplementation(() => {});
     const source = join(workDir, "source");
     const names = ["user-collision-a", "user-collision-b"];
@@ -104,11 +104,50 @@ describe("cross-backend skill publishing", () => {
       for (const name of names) expect(readFileSync(join(dest, name, "SKILL.md"), "utf8")).toBe(`user ${instance}\n`);
       expect(JSON.parse(readFileSync(join(dest, ".agend-managed-skills.json"), "utf8"))).toEqual([]);
     }
-    expect(warn).toHaveBeenCalledTimes(2);
-    expect(warn.mock.calls.map(call => (call[0] as { skill: string }).skill)).toEqual(names);
-    expect(warn.mock.calls.every(call => String(call[1]).startsWith("Skipping bundled skill"))).toBe(true);
+    // One line per destination (not one per name), each listing its names.
+    expect(warn.mock.calls.map(call => call[0])).toEqual(["one", "two"].map(i => ({ skills: names, destSkills: join(workDir, i, "skills") })));
+    expect(warn.mock.calls.every(call => String(call[1]).startsWith("Skipping bundled skills"))).toBe(true);
+    // A restart (a new FleetManager, same AgEnD home): unchanged — not said again.
+    const again = new FleetManager(dataDir);
+    const warnAgain = vi.spyOn(again.logger, "warn").mockImplementation(() => {});
+    const debugAgain = vi.spyOn(again.logger, "debug").mockImplementation(() => {});
+    for (let i = 0; i < 3; i++) (again as any).syncManagedSkills(join(workDir, "one", "skills"), source, "worker");
+    expect(warnAgain).not.toHaveBeenCalled();
+    // Read from the record once per process, then known: not a line per sync even at debug.
+    expect(debugAgain.mock.calls.filter(c => String(c[1]).startsWith("Skipping bundled skills — unchanged"))).toHaveLength(1);
+    debugAgain.mockRestore();
+    // The user edits one of them: said again, once.
+    writeFileSync(join(workDir, "one", "skills", names[0]!, "SKILL.md"), "user one, edited\n");
+    (again as any).syncManagedSkills(join(workDir, "one", "skills"), source, "worker");
+    (again as any).syncManagedSkills(join(workDir, "one", "skills"), source, "worker");
+    expect(warnAgain).toHaveBeenCalledTimes(1);
+    warnAgain.mockRestore();
     warn.mockRestore();
   });
+
+  it.each([["null", "null"], ["false", "false"], ["a JSON string", '"text"'], ["an array", "[1,2]"], ["a number", "7"], ["non-string entries", '{"x":1,"y":null}'], ["corrupt JSON", "{"]])(
+    "#2493 review: a skipped-skills.json holding %s never stops the sync — the user's skill wins, the manifest is written, the warning is said",
+    (_what, body) => {
+      writeFileSync(join(dataDir, "skipped-skills.json"), body);
+      const warn = vi.spyOn(fm.logger, "warn").mockImplementation(() => {});
+      const source = join(workDir, "source-bad"), dest = join(workDir, "bad", "skills");
+      mkdirSync(join(source, "collide"), { recursive: true });
+      writeFileSync(join(source, "collide", "SKILL.md"), "---\nroles: [worker]\n---\nbundled\n");
+      mkdirSync(join(source, "plain"), { recursive: true });
+      writeFileSync(join(source, "plain", "SKILL.md"), "---\nroles: [worker]\n---\nplain\n");
+      mkdirSync(join(dest, "collide"), { recursive: true });
+      writeFileSync(join(dest, "collide", "SKILL.md"), "mine\n");
+      expect(() => (fm as any).syncManagedSkills(dest, source, "worker")).not.toThrow();
+      expect(readFileSync(join(dest, "collide", "SKILL.md"), "utf8")).toBe("mine\n");
+      expect(JSON.parse(readFileSync(join(dest, ".agend-managed-skills.json"), "utf8"))).toEqual(["plain"]);
+      expect(warn.mock.calls.filter(c => String(c[1]).startsWith("Skipping bundled skills"))).toHaveLength(1);
+      // The record written back is well-formed: only string entries, this destination's among them.
+      const written = JSON.parse(readFileSync(join(dataDir, "skipped-skills.json"), "utf8")) as Record<string, unknown>;
+      expect(Object.values(written).every(v => typeof v === "string")).toBe(true);
+      expect(typeof written[dest]).toBe("string");
+      warn.mockRestore();
+    },
+  );
 
   it("adopts and refreshes pre-manifest Kiro General skills on upgrade", () => {
     const skills = join(workDir, ".kiro", "skills");

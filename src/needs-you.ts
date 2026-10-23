@@ -124,6 +124,7 @@ export interface NeedsYouInputs {
 const PROMPT_REASON: Record<string, NeedsYouReason> = {
   "hang:": "hang",
   "exit-restart:": "exited",
+  "oom-retry:": "exited",
   "interactive-assist:": "assist",
 };
 

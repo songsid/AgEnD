@@ -3,6 +3,7 @@ import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
+import { assertNoSessionOomStop } from "./session-oom-stop.js";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
@@ -234,6 +235,7 @@ export interface LifecycleContext {
   credentialProfileOf?(name: string, backend: string): string | null;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
+  notifySessionOomStop?(name: string, unclear?: boolean): Promise<void>;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -904,7 +906,7 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "snapshot_failed", t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
-    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" | "session_oom" }) => {
+    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" | "session_oom" | "oom_unclear" }) => {
       // The instance is dead and nothing will restart it. Say so where the operator
       // is looking, and mark the topic — otherwise messages routed here just queue
       // or fail with a bare ❌ and the dashboard still looks normal.
@@ -918,6 +920,11 @@ export class InstanceLifecycle {
         }
         this.ctx.setTopicIcon(name, "red");
         return;
+      }
+      if (data.cause === "session_oom" || data.cause === "oom_unclear") {
+        if (this.daemons.get(name) !== daemon) return;
+        if (!this.ctx.isPlannedRestart()) await this.ctx.notifySessionOomStop?.(name, data.cause === "oom_unclear");
+        if (this.daemons.get(name) !== daemon) return;
       }
       this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");
       this.notifyIncident(
@@ -1602,6 +1609,7 @@ export class InstanceLifecycle {
     const epoch = this.epochOf(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
     check();
+    assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const seedNow = this.activitySeedNow.delete(name);
     if (this.daemons.has(name)) {
       this.ctx.logger.info({ name }, "Instance already running, skipping");
@@ -1875,6 +1883,7 @@ export class InstanceLifecycle {
   }
 
   private async wakeInTransition(name: string, timeoutMs: number, transition: TransitionHandle): Promise<void> {
+    assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const epoch = this.epochOf(name);
     const daemon = this.daemons.get(name);
     if (daemon) {

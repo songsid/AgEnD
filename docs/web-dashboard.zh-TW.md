@@ -311,8 +311,8 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
 - **輸入：** 打字時（稍停一下）就會出現結果，依 agent 分組、最新的在前，每筆標著**聊天**、**訊息**（agent 之間的，顯示為發送者 → 接收者）或**任務**，並標出你輸入的詞。1–2 個字的短詞也可以（包含中文）；只有短詞時會搜尋最新的 5,000 筆，對話框會說明。什麼都沒輸入時，會列出你最近的搜尋（只存在這個瀏覽器）。
 - **按鍵：** ↑↓ 移動、**Enter** 開啟、**Esc** 或點外面關閉。**篩選**可展開：agent、團隊、時間（24 小時、7 天、30 天）、種類，以及**只看我的**（你寫的訊息）。
 - **開啟結果：** 聊天訊息會開啟該 agent 的聊天，跳到那則訊息並閃一下。聊天已不保留的訊息、agent 之間的訊息與任務，會顯示搜尋保留的副本（聊天訊息會連同前後幾則），並提供可前往的聊天或 Task Board。
-- **保留什麼：** 搜尋有自己的索引（AgEnD home 中的 `search.db`）：第一次會用 fleet 已有的資料補齊，之後隨事件更新，保留 `web.search.retention_days`（預設 90 天）。存入前會先遮蔽密鑰；訊息的驗證 id、工作目錄與分支一律不保留。`cross_instance_visibility` 為 `hidden` 的 agent，其往來訊息不會被找到。
-- **誰能用：** 直接連到 dashboard 並登入的 fleet 管理員。訪客與公開連結一律不能用：那裡沒有搜尋列、按鈕或快捷鍵，Ctrl+F 仍是瀏覽器的尋找。`web.search.enabled: false` 可關閉（[設定](configuration.zh-TW.md)）。
+- **保留什麼：** 搜尋有自己的索引（AgEnD home 中的 `search.db`）：第一次會用 fleet 已有的資料補齊，之後隨事件更新，從 2.3.1 起預設不限天數（每日清理仍會把上限維持在 30 萬筆，先刪最舊的；2.3.0 仍保留 90 天）。把 `web.search.retention_days` 設成正整數（1–3650）就依天數清理，設 `0` 則與預設相同、不限天數。存入前會先遮蔽密鑰；訊息的驗證 id、工作目錄與分支一律不保留。`cross_instance_visibility` 為 `hidden` 的 agent，其往來訊息不會被找到。
+- **誰能用：** 登入 dashboard 的 fleet 管理員，不論是在這台電腦上，還是透過臨時公開連結；手機上也能用（選單裡的**搜尋**，或 🔍 按鈕）。訪客一律不能用：訪客頁面沒有搜尋列、按鈕或快捷鍵，Ctrl+F 仍是瀏覽器的尋找。`web.search.public_link: false` 只在公開連結上關閉搜尋，`web.search.enabled: false` 則全部關閉（[設定](configuration.zh-TW.md)）。
 
 ## 文字欄位的復原與重做
 
@@ -327,6 +327,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
 
 逐步顯示 agent 做了什麼：它收到的要求、它的回覆（絕不顯示思考過程）、每次工具呼叫（Read、Edit、Search、Run、Web、MCP、Sub-agent……，可按 **Show output**）、錯誤、每回合結束、壓縮，以及 fleet 事件（例如當掉後重新啟動）。
 - 用 **All / Tools / Errors** 篩選；更新中會顯示 **Live**。
+- **工作狀態紀錄**顯示觀察到的執行狀態變化，以及任務與待回覆事項的筆數。這些項目列在 **All**，不列在 **Errors**。目前只記錄觀察結果，不會補送繼續工作的提示，也不改變重啟後的恢復行為。
 - 一開始載入最新 200 步；**Load older steps** 每次多載入 100 步，頁面最多保留 1000 步。
 - 預設關閉，要由 fleet admin 開啟：`web.log_tab`（**設定 → 網頁 → Log tab: each agent's steps**），或在分頁上按 **Turn on the Log**，需等 fleet admin 確認。
 - Claude Code 全部顯示，instance 停止後也看得到；Codex 在執行中時顯示；kiro 只顯示 fleet 事件。其他 CLI 會說明沒有 AgEnD 能讀的 transcript。秘密值會被遮蔽。

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// #2481: first — counts a `fleet start` attempt before anything below can fail (start-failure.ts).
+import "./start-attempt.js";
 import "./node-warnings.js";
 import { installFleetProcessHandlers } from "./fleet-process-handlers.js";
 import { applyNetworkReliabilityDefaults } from "./network-family.js";
@@ -138,6 +140,25 @@ try { configForLocale = loadRawFleetConfig(FLEET_CONFIG_PATH); } catch { /* malf
 setLocale(detectLocale(configForLocale));
 
 const program = new Command();
+
+/**
+ * #2481: an installed version whose fleet keeps failing to start is said on every command, with what to run to go back.
+ * Not for the fleet process itself (its own `fleet start`/`stop`, whose output is the service's log), completion, or
+ * machine output (--json); free once the installed version has started here (start-failure.ts).
+ */
+const NO_START_BANNER = new Set(["fleet", "completion", "web-token", "health"]);
+program.hook("preAction", async (_hooked, action) => {
+  let top = action;
+  while (top.parent && top.parent !== program) top = top.parent;
+  if (NO_START_BANNER.has(top.name()) || (action.opts() as { json?: unknown }).json) return;
+  try {
+    const { checkStartFailure } = await import("./start-failure.js");
+    const failure = checkStartFailure(DATA_DIR);
+    if (!failure.failing) return;
+    const { startFailureLines } = await import("./start-failure-notice.js");
+    console.error(["", ...startFailureLines(failure, DATA_DIR), ""].join("\n"));
+  } catch { /* the banner never stands in a command's way */ }
+});
 
 function claimFleetSingleton(): boolean {
   try {
@@ -1892,7 +1913,9 @@ program
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (opts: { yes?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "stop", { yes: opts.yes })) process.exit(1);
-    const { getServicePath, getSystemServicePath, stopService, stopSystemService } = await import("./service-installer.js");
+    // #2481: a deliberate stop — the start attempts so far are not a crash loop.
+    { const { clearStartAttempts } = await import("./start-failure.js"); clearStartAttempts(DATA_DIR); }
+    const { getServicePath, getSystemServicePath, stopService, stopSystemService, serviceStopReport } = await import("./service-installer.js");
     // #2356: the system unit first, as `agend start` and `agend restart` choose it; a SIGTERM would only stop the process.
     if (getSystemServicePath()) {
       if (stopSystemService()) { console.log(t("cli.system_service_stopped")); return; }
@@ -1911,8 +1934,10 @@ program
       }
       return;
     }
-    if (stopService()) {
-      console.log("Service stopped.");
+    const report = serviceStopReport(stopService());   // #2505: "unloading" is not stopped
+    if (report.kind !== "fallback") {
+      console.log(report.line);
+      if (report.exitCode) process.exitCode = report.exitCode;
     } else {
       // systemd/launchd failed (e.g. no D-Bus user session) — fallback to PID kill
       const pidPath = join(DATA_DIR, "fleet.pid");
