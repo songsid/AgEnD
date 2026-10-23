@@ -52,9 +52,10 @@ def sibling_reply(label):
     http('/control/reset', {})
     http('/control/send-message', {'text': label, 'chat_id': -1001234567890, 'thread_id': 87, 'user_id': 111222333})
     def replied():
-        return any(c.get('method') == 'sendMessage' and str(c.get('params', {}).get('message_thread_id')) == '87'
-            and 'Mock sibling survived' in str(c.get('params', {}).get('text', '')) for c in calls())
-    check(label, bool(wait(label, replied)))
+        return next((c for c in calls() if c.get('method') == 'sendMessage' and str(c.get('params', {}).get('message_thread_id')) == '87'
+            and 'Mock sibling survived' in str(c.get('params', {}).get('text', ''))), None)
+    reply = wait(label, replied)
+    check(label, bool(reply), reply)
 
 def lines(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line] if path.exists() else []
@@ -205,12 +206,15 @@ try:
 
     seed_or_update(); begin('ambiguous'); count = len(inputs()); (ROOT/'kill-after-input').write_text('1'); sd('restart', UNIT)
     wait('one observed input then process death', lambda: any(t['event'] == 'kill-after-observed-input' for t in timeline()), timeout=210)
-    restarted = wait('ambiguous replacement READY', ready)
+    killed = next(t['pid'] for t in reversed(timeline()) if t['event'] == 'kill-after-observed-input')
+    restarted = wait('ambiguous replacement READY', lambda: s if (s := ready()) and int(s['MainPID']) != killed else None)
     ready_at = next(t['at'] for t in reversed(timeline()) if t['event'] == 'final-ready' and t['pid'] == int(restarted['MainPID']))
     wait('replacement stability window elapsed', lambda: time.time()*1000-ready_at > 130_000, timeout=150)
     check('ambiguous input is never pasted twice', len(inputs()) == count+1, inputs()[count:])
     rows = query('delivery-outbox.db', "SELECT state FROM deliveries WHERE kind='working_recovery' ORDER BY created_seq DESC LIMIT 1")
     check('ambiguous row remains held after replacement', rows[0]['state'] in ['uncertain', 'submission_started'], rows)
+    receipt['legs']['ambiguous'] = {'unit': restarted, 'ready_at': ready_at, 'killed_pid': killed,
+        'observed_at': int(time.time()*1000), 'physical_inputs': len(inputs())-count, 'rows': rows}
     capture('ambiguous'); sibling_reply('ambiguous sibling current route')
 finally:
     if active_leg:

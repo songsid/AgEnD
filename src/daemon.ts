@@ -12249,7 +12249,13 @@ export class Daemon extends EventEmitter {
     try {
       const sid = this.backend?.getSessionId();
       if (!sid) return;
-      if ((this.config.backend ?? "claude-code") === "claude-code" && sid.length <= 256) this.ownedWorkingSession = sid;
+      if ((this.config.backend ?? "claude-code") === "claude-code" && Buffer.byteLength(sid) <= 256
+        && !/[\u0000-\u001f\u007f]/.test(sid) && this.ownedWorkingSession !== sid) {
+        this.ownedWorkingSession = sid;
+        // Reuse this existing owned checkpoint. An idle instance may have no
+        // later state edge before an OOM; its journal must not stay unknown.
+        this.publishWorkingState("process");
+      }
       const path = join(this.instanceDir, "session-id");
       // Idle observations happen after turns. Avoid needless writes (and mtime
       // churn) while still updating the marker when /new changes the session.

@@ -69,6 +69,15 @@ function fixture() {
   return { fm, d, card, board, paste, enter, stable, dispatch, pressure: (v: string) => { level = v; } };
 }
 describe("#2473 manager recovery wiring", () => {
+  it("publishes newly owned session metadata from the existing checkpoint without waiting for a state edge", () => {
+    const f = fixture(), outbox = f.fm.deliveryOutbox;
+    f.d.ownedWorkingSession = null; f.fm.observeWorkingState("worker", "process");
+    expect(outbox.getWorkingState("worker").current.observation.sessionId).toBeNull();
+    f.d.saveSessionId();
+    expect(outbox.getWorkingState("worker").current.observation.sessionId).toBe("owned-session");
+    const revision = outbox.getWorkingState("worker").revision;
+    f.d.saveSessionId(); expect(outbox.getWorkingState("worker").revision).toBe(revision);
+  });
   it("captures the task boundary before full shutdown closes the scheduler", async () => {
     const f = fixture(), outbox = f.fm.deliveryOutbox;
     // This scenario starts with current work, without a prior interruption.
