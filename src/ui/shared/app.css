@@ -520,6 +520,13 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings .dlg-head { padding-top: max(var(--s-3), env(safe-area-inset-top)); border-bottom: 1px solid var(--border); }
   .p-settings .dlg-body { flex: 1; padding-top: var(--s-4); }
   .p-settings .dlg-actions { border-top: 1px solid var(--border); padding-top: var(--s-3); }
+  /* Effect tags wrap under the label (§7): whole, on their own line, where the label's text starts — beside a long label
+     on a narrow screen they were squeezed or broken mid-tag. */
+  .p-settings .field > label:not(.check) .impact, .p-settings .field > legend .impact { display: block; margin: 2px 0 0; white-space: nowrap; }
+  /* A checkbox row: the box, the text (and its "default" mark), then the tag on a line of its own under the text. */
+  .p-settings .check:has(> .impact) { flex-wrap: wrap; row-gap: 2px; }
+  .p-settings .check:has(> .impact) > input { flex: none; width: 16px; height: 16px; margin: 0; }
+  .p-settings .check > .impact { flex: 1 0 calc(100% - 16px - var(--s-2)); margin-left: calc(16px + var(--s-2)); white-space: nowrap; }
   .p-settings[data-view="index"] > .s-nav .seg-item.active::before { display: none; }
 }
 @media (min-width: 1100px) {
