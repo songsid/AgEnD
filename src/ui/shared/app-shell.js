@@ -682,11 +682,13 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // Once up, the keyboard stays up while the field keeps focus: an IME's candidate bar (or the predictive row) coming and
     // going moves the view by tens of px on every keystroke, and must never take the tabs out and back. Only leaving the
     // field, or the view growing from its lowest by more than a keyboard (put away), takes it down. While an IME composes
-    // nothing changes at all; what the view says then is applied at compositionend.
-    let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = false;
+    // nothing changes at all; what the view says then is applied at compositionend — or as soon as the field it composes
+    // in has lost focus or left the page (a composition can end without its compositionend: #2517 review).
+    let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null;
     const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     const check = () => {
-      if (composing) return;
+      if (composing && composing.isConnected !== false && document.activeElement === composing) return;
+      composing = null;
       const w = Math.round(vv.width), h = vv.height;
       const typing = coarse() && isTextEntry(document.activeElement);
       if (w !== width) {                                              // turned, or a new width: measured again
@@ -704,8 +706,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       upLowest = up ? (was ? Math.min(upLowest, h) : h) : 0;
       if (up !== was) shellStore.set({ keyboard: up });
     };
-    const start = () => { composing = true; };
-    const end = () => { composing = false; check(); };
+    const start = (e) => { composing = (e && e.target) || document.activeElement || null; };
+    const end = () => { composing = null; check(); };
     check();
     vv.addEventListener("resize", check);
     document.addEventListener("focusin", check);

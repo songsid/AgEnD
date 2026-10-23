@@ -182,4 +182,28 @@ describe("IME: a candidate bar never takes the tabs out and back", () => {
     fire(box, "compositionend", { data: "寶" }); await settle();
     expect(c.kb(), "after compositionend").toBe(true);
   });
+  it("#2517 review: a composition that ends without compositionend (the field left) holds nothing after — focus and the view are heard again", async () => {
+    const c = await phone();
+    await c.focus("#box");
+    const box = c.pg.root.querySelector("#box") as any;
+    await c.resize({ height: 500 });
+    expect(c.kb()).toBe(true);
+    fire(box, "compositionstart", { data: "" });
+    await c.blur("#box");                                                          // no compositionend
+    await c.resize({ height: 844 });
+    expect(c.kb(), "left the field: down").toBe(false);
+    await c.focus("#box");
+    await c.resize({ height: 500 });
+    expect(c.kb(), "back in it: up again").toBe(true);
+  });
+  it("#2517 review: the composing field removed from the page holds nothing after", async () => {
+    const c = await phone();
+    await c.focus("#box");
+    const box = c.pg.root.querySelector("#box") as any;
+    fire(box, "compositionstart", { data: "" });
+    box.remove();
+    await c.focus("#tick");
+    await c.resize({ height: 500 });
+    expect(c.kb(), "a checkbox focused, the composing box gone: not typing").toBe(false);
+  });
 });
