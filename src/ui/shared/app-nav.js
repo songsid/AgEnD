@@ -5,7 +5,7 @@
 // can no longer land.
 // A panel with work that leaving would lose (Settings' staged changes, §5) sets a leave guard: every navigation of
 // the app asks it first, Back/Forward included (the address bar is put back when it says no).
-import { parseRoute, legacyHashTarget } from "./app-route.js";
+import { parseRoute, legacyHashTarget, legacySettingsTarget } from "./app-route.js";
 import { createStore } from "./app-store.js";
 
 export const navStore = createStore({ route: null, seq: 0 });
@@ -28,7 +28,9 @@ const mayLeave = (route, path) => !guard || guard(route, path) !== false;
 /** Start following the address bar. An old /ui#instance=<name> link becomes /ui/chat/<name> before the first render. */
 export function startRouter(w = window) {
   win = w;
-  const legacy = legacyHashTarget(w.location.pathname, w.location.hash);
+  let legacy = legacyHashTarget(w.location.pathname, w.location.hash) || legacySettingsTarget(w.location.pathname);
+  // An old Settings address with a place of its own (/settings/web#guests) keeps it when its new one names none.
+  if (legacy && w.location.hash && !legacy.includes("#") && legacySettingsTarget(w.location.pathname)) legacy += w.location.hash;
   if (legacy) w.history.replaceState(null, "", legacy);
   here = w.location.pathname + w.location.search;
   navStore.set({ route: parseRoute(w.location.pathname), seq: 1 });
@@ -44,12 +46,15 @@ export function startRouter(w = window) {
 
 /** Go to `path`. A path that is not a route of the app is a full load. `force` skips the leave guard (it said yes). */
 export function navigate(path, opts = {}) {
-  const url = new URL(path, win.location.href);
+  let url = new URL(path, win.location.href);
+  // #2347: an old Settings address goes to its section's new one.
+  const moved = url.origin === win.location.origin ? legacySettingsTarget(url.pathname) : null;
+  if (moved) { const hash = url.hash; url = new URL(moved, win.location.href); if (!url.hash && hash) url.hash = hash; }
   const route = parseRoute(url.pathname);
   if (!route || url.origin !== win.location.origin) { win.location.assign(url.href); return; }
   if (!opts.force && !mayLeave(route, url.pathname + url.search)) return;
-  if (url.pathname + url.search !== win.location.pathname + win.location.search) {
-    win.history[opts.replace ? "replaceState" : "pushState"](null, "", url.pathname + url.search);
+  if (url.pathname + url.search !== win.location.pathname + win.location.search || (url.hash && url.hash !== win.location.hash)) {
+    win.history[opts.replace ? "replaceState" : "pushState"](null, "", url.pathname + url.search + url.hash);
   }
   here = url.pathname + url.search;
   navStore.set(s => ({ route, seq: s.seq + 1 }));

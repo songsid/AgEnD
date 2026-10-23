@@ -76,8 +76,8 @@ describe("#1629 actual Effects component", () => {
   it("shows the plain custom CSS reason and the actual Appearance destination inside the protected Dialog", async () => {
     const h = await fixture(); await h.publish(); await h.open();
     expect(pg!.root.textContent).toContain("Agent foreground effects are paused while your custom CSS is on or cannot be verified.");
-    const settings = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Web appearance settings")!;
-    expect(settings.closest("[data-trust=dialog]")).not.toBeNull(); settings.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/appearance"); h.cleanup();
+    const settings = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Settings → Look")!;
+    expect(settings.closest("[data-trust=dialog]")).not.toBeNull(); settings.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/look"); h.cleanup();
   });
 
   // #2055: the dialog names why an effect is not playing.
@@ -183,7 +183,7 @@ describe("#2115 persistent named block notices", () => {
   it("stays visible outside the dialog, changes false→different-false, and links to the current viewer switch", async () => {
     const h = await fixture(); await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "disabled" }]);
     expect(pg!.root.querySelector("dialog")).toBeNull(); expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("switched off");
-    [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Web appearance settings")!.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/appearance");
+    [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Settings → Look")!.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/look");
     await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "reduced_motion" }]);
     expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("reduced motion"); expect(pg!.root.textContent).not.toContain("older playback information");
     await h.publish(); expect(pg!.root.querySelector(".chat-fx-notice")).toBeNull(); h.cleanup();

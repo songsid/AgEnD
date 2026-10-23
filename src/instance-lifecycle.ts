@@ -235,6 +235,7 @@ export interface LifecycleContext {
   credentialProfileOf?(name: string, backend: string): string | null;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
+  notifySessionOomStop?(name: string, unclear?: boolean): Promise<void>;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -326,6 +327,7 @@ export interface IncidentEventSource {
   /** `nudge_continue`: arm / drop the daemon's "tell the agent to keep going" for the error just reported. */
   armCapacityNudge?(pattern: RegExp, delayMs: number): boolean;
   cancelCapacityNudge?(reason: string): void;
+  markCapacityNudgePromised?(target: string): void;
   prepareCapacityNudgePause?(): Promise<CapacityNudgePauseGuard | null>;
   /** Real daemons buffer `pty_error` raised by the startup scan until the lifecycle can handle it. */
   holdStartupIncidents?(): void;
@@ -825,6 +827,19 @@ export class InstanceLifecycle {
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
+    daemon.on("capacity_nudge_cancelled", safeHandler((data: { reason: string; target: string }) => {
+      const reason = data.reason === "the user cancelled" ? t("inst.codex_retry_cancel_reason_user")
+        : data.reason === "the instance was stopped, paused or respawned" || data.reason === "the instance is not running" ? t("inst.codex_retry_cancel_reason_stopped")
+        : data.reason === "the instance has work of its own" ? t("inst.codex_retry_cancel_reason_work")
+        : data.reason === "the failed turn is no longer idle with an empty input" ? t("inst.codex_retry_cancel_reason_pane")
+        : t("inst.codex_retry_cancel_reason_unsent");
+      this.ctx.eventLog?.insert(name, "capacity_nudge_cancelled", { reason: data.reason });
+      // Settle an already-dispatched promise in its original channel, including
+      // during a planned stop. This is not a new restart/storm incident alarm.
+      if (this.ctx.notifyInstanceTopic(data.target, t("inst.codex_retry_cancelled", name, reason)) === false) {
+        this.ctx.logger.warn({ name }, "Could not dispatch retry cancellation notice");
+      }
+    }, this.ctx.logger, `daemon.capacity_nudge_cancelled[${name}]`));
     const hangDetector = daemon.getHangDetector?.();
     if (hangDetector) {
       hangDetector.on("hang", safeHandler(async (data?: { unchangedForMs?: number }) => {
@@ -905,7 +920,7 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "snapshot_failed", t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
-    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" | "session_oom" }) => {
+    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" | "session_oom" | "oom_unclear" }) => {
       // The instance is dead and nothing will restart it. Say so where the operator
       // is looking, and mark the topic — otherwise messages routed here just queue
       // or fail with a bare ❌ and the dashboard still looks normal.
@@ -919,6 +934,11 @@ export class InstanceLifecycle {
         }
         this.ctx.setTopicIcon(name, "red");
         return;
+      }
+      if (data.cause === "session_oom" || data.cause === "oom_unclear") {
+        if (this.daemons.get(name) !== daemon) return;
+        if (!this.ctx.isPlannedRestart()) await this.ctx.notifySessionOomStop?.(name, data.cause === "oom_unclear");
+        if (this.daemons.get(name) !== daemon) return;
       }
       this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");
       this.notifyIncident(
@@ -1491,8 +1511,9 @@ export class InstanceLifecycle {
     budget.set(name, { count: attempts + 1, lastAt: now });
     this.ctx.logger.info({ name, attempt: attempts + 1 }, "Model at capacity — will tell it to keep going");
     if (notificationTarget) {
-      this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_scheduled" : "inst.codex_capacity_nudge_scheduled", name,
+      const promised = this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_scheduled" : "inst.codex_capacity_nudge_scheduled", name,
         String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(delayMs / 1000))));
+      if (promised) daemon.markCapacityNudgePromised?.(notificationTarget);
     }
   }
 

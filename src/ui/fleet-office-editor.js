@@ -2,8 +2,10 @@
 // editor). An admin session adds an office, renames it, chooses its style (Desks / Studio), picks who is in it (whole
 // teams, or one instance at a time; none: everyone) and deletes one — then saves the whole list with the rev it read
 // (PUT /ui/offices; a change made meanwhile is a 409: read again, nothing overwritten). A stored office's layout (seats,
-// paths) is kept as it is; drawing one is for a later editor. Never offered to a guest, the public link or a read-only
-// session (the host refuses them too).
+// paths) and its layout overrides (Edit layout, fleet-office-layout.js) are kept as they are. Skin packs (#2513): the
+// packs the host keeps are styles to choose; an admin uploads one here (its manifest.json and its PNGs, picked together
+// or as a folder — sent at once, checked by the host, which keeps it whole) or deletes one. Never offered to a guest,
+// the public link or a read-only session (the host refuses them too).
 import { html, useMemo, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -22,6 +24,10 @@ register("orge", {
     rateLimited: "Too many saves. Try again in a minute.",
     failed: "The offices were not saved ({0}).", layoutKept: "Its seats and paths are kept.",
     styleUnknown: "{0} (not available here: drawn as Desks)",
+    packs: "Skin packs", packsLead: "Styles drawn from an artist's pictures. Pick a pack's manifest.json and all its PNG files together (or its folder).",
+    packsNone: "No skin packs yet.", upload: "Upload a skin pack", uploadFolder: "Upload a folder", uploading: "Uploading…", uploaded: "Skin pack “{0}” uploaded.",
+    uploadFailed: "The skin pack was not uploaded: {0}", noManifest: "no manifest.json among the files", badManifest: "manifest.json is not JSON",
+    removePack: "Delete {0}", removedPack: "Skin pack “{0}” deleted.", removeFailed: "The skin pack was not deleted ({0}).",
   },
   "zh-TW": {
     edit: "編輯辦公室", title: "辦公室", lead: "這個 fleet 的每個人在辦公室檢視中都會看到這些辦公室。沒有選任何成員的辦公室會顯示全部。",
@@ -34,11 +40,78 @@ register("orge", {
     rateLimited: "儲存太頻繁，請一分鐘後再試。",
     failed: "辦公室沒有儲存（{0}）。", layoutKept: "它的座位與路徑會保留。",
     styleUnknown: "{0}（這裡沒有：以辦公桌顯示）",
+    packs: "外觀包", packsLead: "用畫師的圖片畫出的風格。請把外觀包的 manifest.json 和所有 PNG 檔一起選取（或選整個資料夾）。",
+    packsNone: "還沒有外觀包。", upload: "上傳外觀包", uploadFolder: "上傳資料夾", uploading: "上傳中…", uploaded: "已上傳外觀包「{0}」。",
+    uploadFailed: "外觀包沒有上傳：{0}", noManifest: "檔案中沒有 manifest.json", badManifest: "manifest.json 不是 JSON",
+    removePack: "刪除 {0}", removedPack: "已刪除外觀包「{0}」。", removeFailed: "外觀包沒有刪除（{0}）。",
   },
 });
 const te = (k, ...v) => t(`orge.${k}`, ...v);
 export const MAX_OFFICES = 20;
 const STYLES = ["pixel", "studio"];
+
+/** A file's bytes as base64 (in slices: a large picture never goes through one huge string call). */
+export function base64Of(bytes) {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(out);
+}
+/**
+ * What an upload sends, from the files a person picked: { body } or { error }. A folder's files keep their path inside
+ * it (its first part, the folder's own name, dropped), so a manifest naming "sprites/idle.png" finds it.
+ */
+export async function packUpload(files) {
+  const named = [];
+  for (const f of files) {
+    const rel = typeof f.webkitRelativePath === "string" && f.webkitRelativePath ? f.webkitRelativePath.split("/").slice(1).join("/") : f.name;
+    named.push({ name: rel || f.name, file: f });
+  }
+  const man = named.find((x) => x.name === "manifest.json") || named.find((x) => x.name.endsWith("/manifest.json") || x.file.name === "manifest.json");
+  if (!man) return { error: te("noManifest") };
+  let manifest;
+  try { manifest = JSON.parse(await man.file.text()); } catch { return { error: te("badManifest") }; }
+  const out = {};
+  for (const x of named) {
+    if (x === man || !/\.png$/i.test(x.name)) continue;
+    out[x.name] = base64Of(new Uint8Array(await x.file.arrayBuffer()));
+  }
+  return { body: { manifest, files: out } };
+}
+
+function Packs({ packs, store }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const send = async (e) => {
+    const input = e.target, files = [...(input.files || [])];
+    if (!files.length) return;
+    setBusy(true); setMsg(te("uploading"));
+    try {
+      const up = await packUpload(files);
+      if (up.error) { setMsg(te("uploadFailed", up.error)); return; }
+      const r = await store.uploadSkin(up.body);
+      if (r.ok) { setMsg(""); toast(te("uploaded", (r.pack && r.pack.name) || up.body.manifest.id)); }
+      else setMsg(te("uploadFailed", r.detail ? `${r.error} — ${r.detail}` : r.error));
+    } finally { setBusy(false); try { input.value = ""; } catch { /* a read-only value */ } }
+  };
+  const remove = async (pk) => {
+    setBusy(true); setMsg("");
+    try {
+      const r = await store.deleteSkin(pk.id);
+      if (r.ok) toast(te("removedPack", pk.name)); else setMsg(te("removeFailed", r.error || r.status));
+    } finally { setBusy(false); }
+  };
+  return html`<fieldset class="oe-packs oe-form" disabled=${busy}>
+    <legend class="oe-label">${te("packs")}</legend>
+    <p class="note">${te("packsLead")}</p>
+    ${packs.length ? html`<ul class="oe-pack-list">${packs.map((pk) => html`<li key=${pk.id} class="oe-pack" data-pack=${pk.id}>
+      <span>${pk.name}</span>${pk.name !== pk.id ? html` <span class="muted mono">${pk.id}</span>` : null}
+      <button type="button" class="btn btn-sm btn-danger oe-pack-remove" onClick=${() => remove(pk)} aria-label=${te("removePack", pk.name)}>${te("remove")}</button></li>`)}</ul>`
+      : html`<p class="note" id="oePacksNone">${te("packsNone")}</p>`}
+    <label class="btn btn-sm oe-upload">${te("upload")}<input type="file" class="sr-only oe-upload-files" multiple accept=".json,.png,application/json,image/png" onChange=${send} /></label>
+    <label class="btn btn-sm oe-upload">${te("uploadFolder")}<input type="file" class="sr-only oe-upload-dir" webkitdirectory="" multiple onChange=${send} /></label>
+    ${msg ? html`<p class="note oe-pack-msg" role="status">${msg}</p>` : null}
+  </fieldset>`;
+}
 
 /** A new office's id: unique among `taken`, the store's pattern ([A-Za-z0-9_-], never "auto"). */
 export function newOfficeId(taken, rand = Math.random) {
@@ -49,7 +122,7 @@ export function newOfficeId(taken, rand = Math.random) {
 }
 /** What is sent: the office as the host stores it (no empty layout key). */
 export function officeForSave(o) {
-  return { id: o.id, name: o.name.trim(), skin: o.skin, members: [...o.members], ...(o.layout ? { layout: o.layout } : {}) };
+  return { id: o.id, name: o.name.trim(), skin: o.skin, members: [...o.members], ...(o.layout ? { layout: o.layout } : {}), ...(o.overrides ? { overrides: o.overrides } : {}) };
 }
 
 function Members({ office, view, everyone, onChange }) {
@@ -69,7 +142,7 @@ function Members({ office, view, everyone, onChange }) {
  * the snapshot in force (the page keeps a newer one it already shows: #2431 review); `current()` that snapshot now (null:
  * not known), read when the person chooses after a 409 (#2449 review); `onClose`.
  */
-export function OfficeEditor({ offices, rev, view, store, ask = () => 0, current = () => null, onSaved, onClose }) {
+export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () => 0, current = () => null, onSaved, onClose }) {
   // The draft and the rev it was read at go together (#2424 review): a list the stream re-reads meanwhile never moves
   // the rev under an older draft (a save would then overwrite what it never showed). After a 409 the person chooses
   // (#2431): keep their edits (on the newer rev: Save then replaces what was saved meanwhile, knowingly) or load the
@@ -129,7 +202,8 @@ export function OfficeEditor({ offices, rev, view, store, ask = () => 0, current
         <label class="oe-field"><span class="oe-label">${te("styleLabel")}</span>
           <select class="tb-select oe-style" value=${o.skin} onChange=${(e) => set(o.id, { skin: e.target.value })}>
             ${STYLES.map((s) => html`<option key=${s} value=${s}>${t(`orgo.style_${s}`)}</option>`)}
-            ${STYLES.includes(o.skin) ? null : html`<option key=${o.skin} value=${o.skin}>${te("styleUnknown", o.skin)}</option>`}</select></label>
+            ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
+            ${STYLES.includes(o.skin) || packs.some((pk) => pk.id === o.skin) ? null : html`<option key=${o.skin} value=${o.skin}>${te("styleUnknown", o.skin)}</option>`}</select></label>
         <button type="button" class="btn btn-sm oe-members-btn" aria-expanded=${open === o.id ? "true" : "false"} onClick=${() => setOpen(open === o.id ? null : o.id)}>
           ${te("members")}: ${o.members.length ? te("membersN", o.members.length) : te("everyone")}</button>
         <button type="button" class="btn btn-sm btn-danger oe-remove" onClick=${() => { setDraft((d) => d.filter((x) => x.id !== o.id)); if (open === o.id) setOpen(null); }}>${te("remove")}</button>
@@ -141,6 +215,7 @@ export function OfficeEditor({ offices, rev, view, store, ask = () => 0, current
     ${draft.length >= MAX_OFFICES ? html`<span class="note">${te("tooMany", MAX_OFFICES)}</span>` : null}
     </fieldset>
     ${msg ? html`<p class="note oe-msg" role="status">${msg}</p>` : null}
+    ${store.uploadSkin ? html`<${Packs} packs=${packs} store=${store} />` : null}
     ${conflict ? html`<div class="oe-conflict">
       <button type="button" class="btn btn-sm" id="oeKeepMine" onClick=${keepMine} disabled=${busy}>${te("keepMine")}</button>
       <button type="button" class="btn btn-sm" id="oeLoadTheirs" onClick=${loadTheirs} disabled=${busy}>${te("loadTheirs")}</button>

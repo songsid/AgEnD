@@ -116,7 +116,7 @@ const untilIdle = async () => {
   expect(busy(), "the Apply finished").toBe(false);
 };
 /** The staged-change bar's Apply; the test waits for the operation it starts to finish. */
-const applyStaged = async () => { await click(button("Apply changes", pending())); await untilIdle(); };
+const applyStaged = async () => { await click(button("Save", pending())); await untilIdle(); };
 const writes = () => sent.filter(s => s.method !== "GET");
 
 describe("Settings P0 redesign shell", () => {
@@ -149,13 +149,13 @@ describe("Settings P0 redesign shell", () => {
     expect(pending()).toBeNull();
     // An instance-level default (model): the bar names the costliest kind staged.
     await typeModel("#g-model", "claude-opus-4-8");
-    await click(button("Review changes"));
+    await settle(4);
     const bar = pending()!;
     expect(bar).not.toBeNull();
-    expect(bar.textContent).toContain("1 change(s) not applied");
+    expect(bar.textContent).toContain("1 unsaved change(s)");      // #2347: the section's Save
     expect(bar.textContent).toContain("Restart this Agent");
     expect(bar.textContent).not.toContain("Restart AgEnD");
-    expect(button("Apply changes", bar)).toBeTruthy();
+    expect(button("Save", bar)).toBeTruthy();
     expect(button("Discard", bar)).toBeTruthy();
   });
 
@@ -171,7 +171,7 @@ describe("Settings P0 redesign shell", () => {
     expect(select.value).toBe("standard");
     expect(select.disabled).toBe(false);
     await choose(select, "verbose");
-    await click(button("Stage change"));
+    await click(button("Done"));
     await applyStaged();
     expect(writes().filter(s => s.path === "/api/settings/fleet/instances/alpha-t1")).toEqual([
       expect.objectContaining({ method: "PATCH", body: { tool_progress: "verbose" } }),
@@ -182,7 +182,7 @@ describe("Settings P0 redesign shell", () => {
     const defaults = p.root.querySelector("#g-tp")!;
     expect(defaults.value).toBe("off");
     await choose(defaults, "standard");
-    await click(button("Review changes"));
+    await settle(4);
     expect(pending()!.textContent).toContain("Immediately");       // tool progress is a hot setting
     await applyStaged();
     const put = writes().find(s => s.path === "/api/settings/fleet/defaults")!;
@@ -206,7 +206,7 @@ describe("Settings P0 redesign shell", () => {
     const inherit = field.querySelector("input[type=checkbox]")!;
     await check(inherit);
     expect(p.root.querySelector("#ag-tool_progress")!.disabled).toBe(true);
-    await click(button("Stage change"));
+    await click(button("Done"));
     await applyStaged();
     expect(writes().filter(s => s.path.startsWith("/api/settings/fleet/instances/"))).toEqual([
       expect.objectContaining({ method: "PATCH", path: "/api/settings/fleet/instances/alpha-t1", body: { tool_progress: null } }),
@@ -246,7 +246,7 @@ describe("Settings P0 redesign shell", () => {
     w = world({ classic: { channels: { "c1": { name: "ops", instanceName: "ops-t9", backend: "claude-code", model: "claude-opus-5-5", channelId: "1" } }, defaults: {} },
       instances: { "ops-t9": { status: "running", classic: true } } });
     answer = succeed;
-    await mountSettings("general");
+    await mountSettings("chat");                    // #2347: ClassicBot's defaults are in Chat & connections
     const general = p.root.querySelector(".s-general")!;
     expect(general.textContent).toContain("Who can use ClassicBot");
     expect(general.textContent).toContain("ClassicBot default backend");
@@ -254,7 +254,7 @@ describe("Settings P0 redesign shell", () => {
     await mountSettings("classic");
     await click(button("Settings"));
     await typeModel("#cl-model", "claude-haiku-5-5");
-    await click(button("Stage change"));
+    await click(button("Done"));
     await applyStaged();
     expect(writes().find(s => s.method === "PATCH")).toMatchObject({ path: "/api/settings/classic/channels/c1", body: { model: "claude-haiku-5-5" } });
   });
@@ -267,7 +267,7 @@ describe("Settings P0 redesign shell", () => {
     await click(button("Settings"));
     // Opening a locked connection: staged at once; the question is asked only when Apply runs.
     await choose(p.root.querySelector("#bot-mode")!, "open");
-    await click(button("Stage change"));
+    await click(button("Done"));
     expect(confirmed).toEqual([]);
     expect(writes()).toEqual([]);
     await applyStaged();
@@ -281,9 +281,10 @@ describe("Settings P0 redesign shell", () => {
     await mountSettings("bots");
     await click(button("Settings"));
     await choose(p.root.querySelector("#bot-mode")!, "locked");
-    await click(p.root.querySelector(".chips-box")!.querySelector("button.chip-x"));
+    // The dialog's own list (#2347: the page behind it, Chat & connections, has ClassicBot's lists too).
+    await click(p.root.querySelector("dialog .chips-box")!.querySelector("button.chip-x"));
     expect(p.root.querySelector("dialog")!.textContent).toContain("Locked mode has no allowed users; add at least one administrator to avoid lockout.");
-    await click(button("Stage change"));
+    await click(button("Done"));
     await applyStaged();
     expect(confirmed).toEqual(["Locked access has no allowed users. This may leave nobody able to administer the bot. Continue?"]);
     expect(writes()).toEqual([]);             // refused: nothing written, the change is not applied
@@ -315,9 +316,9 @@ describe("Settings P0 redesign shell", () => {
     w = world({ fleet: { defaults: { backend: "claude-code", locale: "en", tool_progress: "off", auto_pause_after: 0 }, instances: { "alpha-t1": { backend: "claude-code" } }, channels: [{ id: "dc", type: "discord", bot_token_env: "T", access: { mode: "locked", allowed_users: [] } }] },
       instances: { "alpha-t1": { status: "running" } } });
     await mountSettings("agents");
-    await type(p.root.querySelector(".s-search input"), "zzz");
+    await type(p.root.querySelector(".s-toolbar .s-search input"), "zzz");
     expect(p.root.textContent).toContain("沒有符合「zzz」的 Agent。");
-    await type(p.root.querySelector(".s-search input"), "");
+    await type(p.root.querySelector(".s-toolbar .s-search input"), "");
     await mountSettings("general");
     await type(p.root.querySelector("#g-auto"), "-1");
     expect(p.root.querySelector(".s-general")!.textContent).toContain("必須為 0 或更大的數值");
@@ -342,7 +343,7 @@ describe("Settings P0 redesign shell", () => {
         { id: "vendor-b", display_name: "Vendor B", verifier: "available", token_present: true },
       ],
     });
-    await mountSettings("bots");
+    await mountSettings("agents");                  // #2347: provider API keys are with the agents' sign-ins
     const cards = [...p.root.querySelectorAll("section.card")].filter((s: any) => s.textContent.includes("Provider API keys"));
     expect(cards).toHaveLength(1);
     const [a, b] = [...cards[0]!.querySelectorAll(".s-key")];

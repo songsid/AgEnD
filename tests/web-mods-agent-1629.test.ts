@@ -137,7 +137,7 @@ describe("propose_web_mod", () => {
     const r = propose(s, bundle());
     expect(r).toMatchObject({ proposed: { name: "proposed", version: "1.0.0", title: "Proposed look" } });
     expect(s.mods.proposals()).toMatchObject([{ instance: "alpha", name: "proposed", title: "Proposed look" }]);
-    expect(s.notices).toEqual([["alpha", "Proposed a mod: Proposed look (proposed 1.0.0). A person can review it in Settings → Web appearance → Mods."]]);
+    expect(s.notices).toEqual([["alpha", "Proposed a mod: Proposed look (proposed 1.0.0). A person can review it in Settings → Look → Mods."]]);
     // The user's decision (2026-10-18): a proposal is not counted (no upload budget); nor is it a change.
     expect([s.limiter.remaining("alpha"), s.changed(), s.themes.get("alpha").theme]).toEqual([{ changes: 10, retry_after_s: 0, widget_data: 180, widget_data_retry_after_s: 0 }, 1, { v: 1 }]);
   });

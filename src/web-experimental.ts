@@ -4,7 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import yaml from "js-yaml";
 import type { WebConfig } from "./types.js";
 
-export const CANVAS_WORKER_EXPERIMENTAL_MESSAGE = "Canvas Worker effects are an experimental feature; enable it in Settings → Web appearance";
+export const CANVAS_WORKER_EXPERIMENTAL_MESSAGE = "Canvas Worker effects are an experimental feature; enable it in Settings → Web dashboard";
 export function canvasWorkerEnabled(web?: Pick<WebConfig, "experimental"> | null): boolean {
   return web?.experimental?.canvas_worker === true;
 }

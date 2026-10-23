@@ -366,18 +366,18 @@ describe("the connection editor stages its status emojis into PUT /fleet/channel
     await mountSection("bots");
     await click(byText("Settings"));
     // Unchanged → nothing staged.
-    await click(byText("Stage change"));
+    await click(byText("Done"));
     expect(p.root.querySelector("[role=region]")).toBeNull();
     await mountSection("bots");
     await click(byText("Settings"));
     await type(input("delivered"), "🦊");
-    await click(byText("Stage change"));
+    await click(byText("Done"));
     const bar = p.root.querySelector("[role=region]")!;
     // #1056: a connection's status emojis apply at the next stamp — no AgEnD restart for an emoji-only edit.
     expect(bar.textContent).toContain("Immediately");
     expect(bar.textContent).not.toContain("Restart AgEnD");
     calls = [];
-    await click(byText("Apply changes", bar));
+    await click(byText("Save", bar));
     const put = writes().find(c => c.path === "/api/settings/fleet/channels")!;
     expect(put.method).toBe("PUT");
     expect(put.body).toEqual([expect.objectContaining({
@@ -398,7 +398,7 @@ describe("the connection editor stages its status emojis into PUT /fleet/channel
       expect(mode.value, "the fixture starts open").toBe("open");
       mode.value = "locked"; fire(mode, "change"); await settle();
       if (withEmojis) await type(input("delivered"), "🦊");
-      await click(byText("Stage change"));
+      await click(byText("Done"));
       const bar = p.root.querySelector("[role=region]")!;
       expect(bar.textContent, withEmojis ? "access + emojis" : "access only").toContain("Restart AgEnD");
     }
@@ -415,9 +415,9 @@ describe("the agent editor stages its status emojis into the instance PATCH (#10
     await mountSection("agents");
     await click(byText("Settings"));
     await type(input("delivered"), "<:done:333333333333333333>");
-    await click(byText("Stage change"));
+    await click(byText("Done"));
     calls = [];
-    await click(byText("Apply changes", p.root.querySelector("[role=region]")));
+    await click(byText("Save", p.root.querySelector("[role=region]")));
     expect(writes().find(c => c.path === "/api/settings/fleet/instances/worker")).toEqual({
       method: "PATCH", path: "/api/settings/fleet/instances/worker",
       body: { status_emojis: { delivered: "<:done:333333333333333333>", failed: "🦊" } },
@@ -426,9 +426,9 @@ describe("the agent editor stages its status emojis into the instance PATCH (#10
     await mountSection("agents");
     await click(byText("Settings"));
     await click(byAria("Use the default", row("failed")));
-    await click(byText("Stage change"));
+    await click(byText("Done"));
     calls = [];
-    await click(byText("Apply changes", p.root.querySelector("[role=region]")));
+    await click(byText("Save", p.root.querySelector("[role=region]")));
     expect(writes().find(c => c.path === "/api/settings/fleet/instances/worker")!.body).toEqual({ status_emojis: null });
   });
 });

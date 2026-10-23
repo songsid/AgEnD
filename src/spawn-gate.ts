@@ -8,6 +8,8 @@ export interface SpawnTask {
   reason: "startup" | "wake" | "recovery" | "restart";
   /** Outer fleet operations reserve a slot before their Daemon.trySpawn call. */
   stage?: "lifecycle";
+  /** Confirmed OOM without self proof: do not replace it into ongoing host pressure. */
+  requireNormalMemory?: boolean;
 }
 
 interface QueuedTask<T = unknown> {
@@ -116,7 +118,8 @@ export class SpawnGate {
     this.pumping = true;
     try {
       while (!this.stopped) {
-        const index = this.queue.findIndex(item => !this.activeDirectories.has(item.task.workingDirectory));
+        let index = this.queue.findIndex(item => !this.activeDirectories.has(item.task.workingDirectory));
+        let nestedIndex = this.nestedQueue.length ? 0 : -1;
         if (this.nestedQueue.length === 0 && index < 0) return;
         // Explicit zero preserves the existing deterministic test/embedding opt-out.
         // Darwin reads cached kernel pressure or joins the periodic sampler, without starting a probe here.
@@ -131,6 +134,18 @@ export class SpawnGate {
         }
         let pressure = sample === null || this.memoryPressure.advisoryOnly() ? "normal" : sample.level;
         if (this.stopped) return;
+        if (sample !== null && sample.level !== "normal") {
+          // A collateral OOM needs normal memory, but cannot hold unrelated
+          // eligible work behind itself at elevated/unknown pressure.
+          index = this.queue.findIndex(item => !item.task.requireNormalMemory && !this.activeDirectories.has(item.task.workingDirectory));
+          nestedIndex = this.nestedQueue.findIndex(item => !item.task.requireNormalMemory);
+          if (index < 0 && nestedIndex < 0) {
+            // This is recovery-only waiting, not proof that startup is memory
+            // blocked. Never extend its service deadline for an unrelated wait.
+            this.wait(5_000);
+            return;
+          }
+        }
         if (pressure === "critical") {
           this.pressureHeld = true;
           for (const item of [...this.queue, ...this.nestedQueue]) item.heldReply?.();
@@ -145,8 +160,8 @@ export class SpawnGate {
         const configured = Math.max(1, Math.min(20, this.options.concurrency()));
         const normalLimit = Math.min(configured, this.options.storm.isActive() ? 4 : configured);
         const limit = pressure === "normal" ? normalLimit : 1;
-        const nested = this.nestedQueue.length > 0;
-        const physical = (nested ? this.nestedQueue[0] : this.queue[index]).task.stage !== "lifecycle";
+        const nested = nestedIndex >= 0;
+        const physical = (nested ? this.nestedQueue[nestedIndex] : this.queue[index]).task.stage !== "lifecycle";
         if (pressure !== "normal" && physical && this.physicalActive > 0) {
           this.wait(5_000, true, nested || this.active < normalLimit);
           return;
@@ -168,7 +183,7 @@ export class SpawnGate {
         const delay = nested && pressure === "normal" ? 0 : Math.max(0, lastAdmission + stagger + jitter - Date.now());
         const normalDelay = nested ? 0 : Math.max(0, this.lastStartedAt + configuredStagger + jitter - Date.now());
         if (delay > 0) { this.wait(delay, false, pressure !== "normal" && delay > normalDelay); return; }
-        const [item] = nested ? this.nestedQueue.splice(0, 1) : this.queue.splice(index, 1);
+        const [item] = nested ? this.nestedQueue.splice(nestedIndex, 1) : this.queue.splice(index, 1);
         if (this.pressureHeld) {
           this.memoryPressure.startRecoveryWindow();
           this.pressureHeld = false;

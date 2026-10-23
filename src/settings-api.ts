@@ -1,7 +1,7 @@
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
+import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -90,6 +90,14 @@ export interface SettingsApiContext extends AppShellContext {
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
+  /** #2348 delta §5: one audit entry per person whose granted agents changed with a save (event log, the Log tab). */
+  noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void;
+  /** #2348: the people AgEnD has seen in chat (the Guests picker), never a fleet admin or a bot. */
+  guestPeople?(): unknown;
+  /** #2348: why an account may not be granted (not seen in chat, a fleet admin, an unknown connection), or null. */
+  guestGrantRefusal?(adapterId: string, userId: string): string | null;
+  /** #2348: an admin's "Send sign-in code": DM only; the outcome as the Settings card shows it. */
+  sendGuestCodeByAdmin?(owner: { adapterId: string; userId: string }, by: string, current?: () => boolean): Promise<{ status: number; body: Record<string, unknown> }>;
   /** #1939 S2a: Settings → Web → Web authority — what is in force, the actions to pick from, and the revocation. */
   webAuthorityOverview?(): unknown;
   revokeWebAuthority?(): { epoch: number; durable: boolean };
@@ -123,6 +131,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
   fleetSignatureMismatchKeys?(): string[] | null;
+  /** #2347: saved changes waiting for an AgEnD restart, and the apply job a restart can be asked for. */
+  settingsRestartPending?(): { keys: string[]; job_id: string | null } | null;
   /** #2346: whether a connection added now starts at once (another one is running), or needs AgEnD restarted. */
   connectionsStartLive?(): boolean;
   /** #1005/#1021: a Discord connection's server emojis, from each server its
@@ -339,6 +349,12 @@ export function handleSettingsRequest(
       // #2346: a new connection starts without a restart while another one runs (#1519 P6); the first one needs one.
       connections_start_live: ctx.connectionsStartLive?.() === true,
     });
+    return true;
+  }
+  // #2347: what the app-wide "Restart now" banner reads — small, so every page can ask after a Save settles.
+  if (method === "GET" && path === "/api/settings/restart-pending") {
+    const pending = ctx.settingsRestartPending?.() ?? null;
+    json(res, 200, pending ? { pending: true, keys: pending.keys, job_id: pending.job_id } : { pending: false });
     return true;
   }
   if (method === "GET" && path === "/api/settings/fleet") {
@@ -710,6 +726,34 @@ export function handleSettingsRequest(
     json(res, 200, ctx.guestOverview());
     return true;
   }
+  // #2348: the picker's people (GET) and an admin's "Send sign-in code" (POST: a DM to an applied grant's account, once
+  // a minute per account — a code is not a settings change: the grant it needs was already confirmed). Never over the
+  // public link; the caller asked again after the body, as the sign-out below.
+  if (path === "/api/settings/guests/people" && method === "GET") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
+    if (!ctx.guestPeople) { json(res, 404, { error: "not available" }); return true; }
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 401, { error: "not authorized" }); return true; }
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, ctx.guestPeople());
+    return true;
+  }
+  if (path === "/api/settings/guests/send-code" && method === "POST") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
+    if (!ctx.sendGuestCodeByAdmin) { json(res, 404, { error: "not available" }); return true; }
+    const caller = guestSettingsCaller(req, url, ctx);
+    if (!caller) { json(res, 401, { error: "not authorized" }); return true; }
+    readBody(req, 4096).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (guestSettingsCaller(req, url, ctx) !== caller) return json(res, 401, { error: "no longer authorized" });
+      let body: { adapterId?: unknown; userId?: unknown };
+      try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (typeof body?.adapterId !== "string" || !body.adapterId || typeof body.userId !== "string" || !body.userId) return json(res, 400, { error: "adapterId and userId required" });
+      // #2365 review: the initiating admin's session, asked again after every wait inside the issuance.
+      const out = await ctx.sendGuestCodeByAdmin!({ adapterId: body.adapterId, userId: body.userId }, caller, () => guestSettingsCaller(req, url, ctx) === caller);
+      json(res, out.status, out.body);
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
   if (path === "/api/settings/guests/revoke" && method === "POST") {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.revokeGuestWebSessions) { json(res, 404, { error: "not available" }); return true; }
@@ -773,6 +817,9 @@ export function handleSettingsRequest(
         }
       }
       const { session: sessionPatch, terminal: terminalPatch } = parsed;
+      // #2499 review: who is saving, asked now, before the save — a session policy saved with it can end this very session
+      // (a shorter sign-in time), and the audit must still name who did it. A confirmation's replay is no one's: null.
+      const auditBy = parsed.guests?.grants !== undefined && !isSettingsReplay(req) ? guestSettingsCaller(req, url, ctx) : null;
       const changes: RawConfigPatch[] = [];
       const web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
@@ -805,6 +852,14 @@ export function handleSettingsRequest(
       }
       // #1920 phase 3: guest sign-in (Settings → Web sign-ins → Guests); widening it is confirmed (settings-change.ts).
       if (parsed.guests) {
+        // #2348: a new grant names someone AgEnD has seen in chat, on a connection of this fleet, who is not a fleet admin
+        // (admins sign in as admins). One already granted may be edited or removed whatever the list says now.
+        for (const [key, grant] of Object.entries(parsed.guests.grants ?? {})) {
+          if (grant === null || (cfg.web?.guests?.grants && Object.hasOwn(cfg.web.guests.grants, key))) continue;
+          const at = key.indexOf(":");
+          const refused = ctx.guestGrantRefusal ? ctx.guestGrantRefusal(key.slice(0, at), key.slice(at + 1)) : "guest grants are not available";
+          if (refused) return json(res, 400, { error: refused, key: "guest_grant_refused", account: key });
+        }
         const applied = applyGuestsPatch(cfg.web?.guests, parsed.guests);
         if (applied.next) web.guests = applied.next; else delete web.guests;
         changes.push(...applied.changes);
@@ -832,6 +887,29 @@ export function handleSettingsRequest(
       }
       if (parsed.canvasWorker !== undefined && (previous.web?.experimental?.canvas_worker === true) !== parsed.canvasWorker) {
         ctx.canvasWorkerSettingChanged?.();
+      }
+      // #2348: a grant taken away (or emptied) ends that person's guest access now — sessions, an outstanding code, and
+      // remembered browsers — not at their next request. A narrowed grant keeps its sessions; they see less from now on.
+      const ended = new Map<string, number>();
+      for (const [key, grant] of Object.entries(parsed.guests?.grants ?? {})) {
+        if (grant !== null && grant.instances.length) continue;
+        const at = key.indexOf(":");
+        try { ended.set(key, ctx.revokeGuestWebSessions?.({ adapterId: key.slice(0, at), userId: key.slice(at + 1) })?.count ?? 0); }
+        catch (err) { ctx.logger.warn({ err }, "settings: could not end a removed guest's sessions"); }
+      }
+      // #2348 delta §5: every grant change is audited, widening (confirmed in General, replayed here) or narrowing (at
+      // once) alike: who, how, the agents added and taken away. Agent names only; never message content. Shown under
+      // Recent changes in Settings → Guests (guestOverview), never to a guest or over the public link.
+      if (parsed.guests?.grants !== undefined && ctx.noteGuestGrantChange) {
+        const was = previous.web?.guests?.grants ?? {}, now = cfg.web?.guests?.grants ?? {};
+        const by = auditBy, via = isSettingsReplay(req) ? "confirmed" as const : "direct" as const;
+        for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+          const a = new Set(Object.hasOwn(was, key) ? was[key]!.instances : []), b = new Set(Object.hasOwn(now, key) ? now[key]!.instances : []);
+          const added = [...b].filter((n) => !a.has(n)), removed = [...a].filter((n) => !b.has(n));
+          if (!added.length && !removed.length) continue;
+          try { ctx.noteGuestGrantChange({ by, via, account: key, added, removed, endedSessions: ended.get(key) ?? 0 }); }
+          catch (err) { ctx.logger.warn({ err }, "settings: could not audit a guest grant change"); }
+        }
       }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));

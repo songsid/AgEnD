@@ -11,8 +11,8 @@
 // - phone (phone dark zh-TW, LAN origin, reduced motion): the tab bar's Fleet, then the ◔ dialog's "依 agent →"; rows as cards; no
 //   horizontal overflow.
 // - public (phone light en): the public link without the key: "Not offered over the public link", why, and a link to
-//   this computer's Settings → Web (shot); following it — sign in there, tick "Usage report over the public link",
-//   Review → Apply (at once) — and back on the public link: the rows. Only the usage read's own 403 is an accepted error.
+//   this computer's Settings → Web dashboard (shot); following it — sign in there, tick "Usage report over the public
+//   link", Save (at once) — and back on the public link: the rows. Only the usage read's own 403 is an accepted error.
 // Every page logs no error. Guests are covered by the unit tests (no Fleet route, no dialog link).
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2122-usage.mts        (PW_ENGINE=webkit: the same in WebKit)
@@ -262,10 +262,10 @@ if (process.env.DEBUG) {
   await p.page.waitForSelector(".p-fleet .empty", { timeout: 10000 });
   const title = await text(p.page, ".p-fleet .empty-title"), hint = await text(p.page, ".p-fleet .empty-hint");
   check(title === "Not offered over the public link", `public: blocked: "${title}"`);
-  check(hint.startsWith("Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web"), `public: why, and where: "${hint}"`);
+  check(hint.startsWith("Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web dashboard"), `public: why, and where: "${hint}"`);
   const fixHref = await p.page.$eval(".us-fix", (a: any) => a.getAttribute("href")).catch(() => "");
   const port = new URL(fx.base).port;
-  check(fixHref === `http://localhost:${port}/settings/web`, `public: the fix link is this computer's Settings → Web: ${fixHref}`);
+  check(fixHref === `http://localhost:${port}/settings/web-dashboard`, `public: the fix link is this computer's Settings → Web dashboard: ${fixHref}`);
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-blocked"), fullPage: true });
   // Follow it. The dashboard reached directly asks this browser to sign in there (its own origin), as it would.
   const beforeNav = p.errors.length;
@@ -278,15 +278,15 @@ if (process.env.DEBUG) {
   await p.page.fill("#code", code);
   await p.page.click("#go");
   await p.page.waitForURL(/\/(ui|settings)/, { timeout: 15000 });
-  if (!p.page.url().endsWith("/settings/web")) await p.page.click(`a[href="/settings/web"], .seg a[href="/settings/web"]`).catch(async () => { await p.page.goto(fixHref); });
+  if (!p.page.url().endsWith("/settings/web-dashboard")) await p.page.click(`a[href="/settings/web-dashboard"]`).catch(async () => { await p.page.goto(fixHref); });
   await p.page.waitForSelector("#webUsagePublic", { timeout: 15000 });
-  check(!(await p.page.$eval("#webUsagePublic", (e: any) => e.checked)), "public: Settings → Web shows the switch off (the default)");
+  check(!(await p.page.$eval("#webUsagePublic", (e: any) => e.checked)), "public: Settings → Web dashboard shows the switch off (the default)");
   await p.page.check("#webUsagePublic");
-  await p.page.click('button:has-text("Review changes")');
-  await p.page.click('[role=region] button:has-text("Apply changes")');
+  // #2347: an edit is unsaved at once; the bar's Save writes it.
+  await p.page.click('.s-pending button:has-text("Save")');
   await p.page.waitForFunction(() => document.body.textContent?.includes("Applied") || document.body.textContent?.includes("applied"), null, { timeout: 15000 }).catch(() => {});
   for (let k = 0; k < 40 && fm.fleetConfig.web?.usage_report_on_public_link !== true; k++) await new Promise(r => setTimeout(r, 250));
-  check(fm.fleetConfig.web?.usage_report_on_public_link === true, "public: the switch was applied from Settings → Web (at once, nothing to confirm)");
+  check(fm.fleetConfig.web?.usage_report_on_public_link === true, "public: the switch was applied from Settings → Web dashboard (at once, nothing to confirm)");
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-fix-settings"), fullPage: true });
   // Back on the public link: the rows. (WebKit: leaving Settings cancels its own fetch in flight — "Load failed".)
   const beforeBack = p.errors.length;
@@ -302,7 +302,7 @@ if (process.env.DEBUG) {
   const local = `http://localhost:${port}`;
   const navCancelled = cancelledIn(p.errors, windows);
   const unexpected = pageErrors(p.errors.filter((_, i) => !navCancelled.has(i))).filter(e => !((/status of 403/.test(e) && /\/ui\/usage-report\?/.test(e))
-    || (/status of 401/.test(e) && (e.endsWith(`@ ${local}/settings/web`) || e.endsWith(`@ ${local}/auth/session`)))));
+    || (/status of 401/.test(e) && (e.endsWith(`@ ${local}/settings/web-dashboard`) || e.endsWith(`@ ${local}/auth/session`)))));
   for (const i of navCancelled) known.push(p.errors[i]!);
   check(unexpected.length === 0, `public: no page errors besides the refused usage read (${unexpected.join(" | ")})`);
   await p.ctx.close();

@@ -1608,9 +1608,9 @@ foreach ($b in @($skippedLogins)) {
 }
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
 $connections = Get-FleetConnections $UBUNTU_DISTRO
-if ($connections -eq 'web') { Write-Info "  [OK] 只用網頁儀表板（沒有串接通訊軟體；之後可在 設定 → 連線 加上 Discord 或 Telegram）" }
+if ($connections -eq 'web') { Write-Info "  [OK] 只用網頁儀表板（沒有串接通訊軟體；之後可在 設定 → 聊天與連線 加上 Discord 或 Telegram）" }
 elseif ($connections -eq 'chat') { Write-Info "  [OK] 通訊軟體已串接" }
-else { Write-Warn "  [!!] 無法確認通訊軟體是否已串接：在網頁儀表板的 設定 → 連線 可以看到" }
+else { Write-Warn "  [!!] 無法確認通訊軟體是否已串接：在網頁儀表板的 設定 → 聊天與連線 可以看到" }
 Write-Info "  [OK] 開機自動啟動已設定"
 # 這次安裝選定的 Linux（例如另外裝的 AgEnD 專用 Linux）和捷徑原本指的不同：明說改指向哪裡。
 $priorTarget = Get-InstallRecordConflict $UBUNTU_DISTRO $AGEND_USER

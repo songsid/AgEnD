@@ -1,3 +1,4 @@
+import { selfEvidence, selfOomJournal, collateralOomJournal } from "./helpers/self-oom-evidence.js";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, unlinkSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +22,7 @@ vi.mock("node:child_process", async original => ({
     if (file !== "journalctl") return io.forbidden();
     io.reads++;
     expect(args).toContain("--boot=0");
-    expect(opts).toMatchObject({ timeout: 1000, maxBuffer: 262144, killSignal: "SIGKILL" });
+    expect(opts).toMatchObject({ timeout: 1000, maxBuffer: 8 * 1024 * 1024, killSignal: "SIGKILL" });
     const done = () => callback(io.failure ? new Error("journal unavailable") : null, io.journal, "");
     if (io.hold) io.release = done; else queueMicrotask(done);
     return new EventEmitter();
@@ -127,7 +128,7 @@ describe("definitive evidence rather than pressure or an arbitrary SIGKILL", () 
 });
 
 
-function harness() {
+function harness(maxRetries = 10) {
   const instance = join(dir, "instance"); mkdirSync(instance);
   const transcript = join(dir, "original-transcript.jsonl"); writeFileSync(transcript, "original conversation\n");
   const session: { id: string | null } = { id: "old-session" };
@@ -138,7 +139,7 @@ function harness() {
   const backend: any = { binaryName: "claude", getSessionId: () => session.id, getContextUsage: () => 0,
     buildCommand: (config: any) => config.skipResume ? "inert --fresh" : `inert --resume ${session.id}` };
   const daemon: any = new Daemon("worker", { working_directory: dir, backend: "claude-code", workflow: false,
-    restart_policy: { max_retries: 10, backoff: "linear", reset_after: 0, health_check_interval_ms: 1000 },
+    restart_policy: { max_retries: maxRetries, backoff: "linear", reset_after: 0, health_check_interval_ms: 1000 },
     context_guardian: { grace_period_ms: 600000, max_age_hours: 0 }, hang_detector: { enabled: false }, log_level: "silent" } as any,
   instance, false, backend, undefined, logger);
   daemon.tmux = { getPaneStatus: vi.fn(async () => ({ alive: child.alive, ...(child.alive ? { pid: 100 } : { exitCode: child.exitCode }) })),
@@ -154,10 +155,10 @@ function harness() {
     return true;
   });
   const notices: any[] = []; daemon.on("supervision_ended", (notice: any) => notices.push(notice));
-  const die = async (oom = true, code = 137) => {
+  const die = async (oom: boolean | "collateral" | "unknown" = true, code = 137) => {
     child.alive = false; child.exitCode = code;
     unlinkSync(join(io.root, String(child.pid), "stat"));
-    io.journal = oom ? record(child.pid) : record(999);
+    io.journal = oom === "unknown" ? record(child.pid) : oom === "collateral" ? collateralOomJournal(child.pid, "claude", Date.now()) : oom ? selfOomJournal(child.pid, "claude", Date.now()) : record(999);
     await vi.advanceTimersByTimeAsync(4000);
   };
   daemon.startHealthCheck();
@@ -173,7 +174,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
     await expect(h.daemon.wake()).rejects.toThrow("could not be read safely");
     unlinkSync(path);
     writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "confirmed-stop",
-      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 999, at: Date.now() } });
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 999, at: Date.now() }, evidence: selfEvidence() });
     expect(h.daemon.notAcceptingReason()).toContain("session-OOM stop evidence");
     await expect(h.daemon.wake()).rejects.toThrow("session-OOM stop evidence");
   });
@@ -187,7 +188,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
     const preparing = h.daemon.trySpawnInsideGate();
     await vi.waitFor(() => expect(preparingTmux).toHaveBeenCalled());
     writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "owned-session",
-      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 101, at: Date.now() } });
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 101, at: Date.now() }, evidence: selfEvidence() });
     const rejected = preparing.catch((error: unknown) => error); release(); const error = await rejected;
     expect(create).not.toHaveBeenCalled();
     expect(error).toMatchObject({ code: "SESSION_OOM_STOPPED" });
@@ -199,7 +200,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
     h.daemon.backend.writeConfig = vi.fn(); h.daemon.backend.preTrust = vi.fn();
     const preparing = h.daemon.trySpawnInsideGate(); expect(entered).toBe(true);
     writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "owned-session",
-      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 101, at: Date.now() } });
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 101, at: Date.now() }, evidence: selfEvidence() });
     const rejected = preparing.catch((error: unknown) => error); release(); const error = await rejected;
     expect(h.daemon.backend.writeConfig).not.toHaveBeenCalled(); expect(h.daemon.backend.preTrust).not.toHaveBeenCalled();
     expect(h.launches).toHaveLength(0);
@@ -208,7 +209,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
   it("a persistence failure keeps the current daemon held and reports the missing durability", async () => {
     const h = harness();
     writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "prior-stop",
-      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 999, at: Date.now() } });
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 999, at: Date.now() }, evidence: selfEvidence() });
     clearSessionOomStopForRetry(h.instance, captureSessionOomRetry(h.instance));
     vi.spyOn(atomicWrites, "atomicWriteFileSync").mockImplementation(() => { throw Error("injected disk full"); });
     await vi.advanceTimersByTimeAsync(1000); await h.die(); await vi.advanceTimersByTimeAsync(2000); await h.die();
@@ -246,7 +247,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
     expect(h.daemon.processStatus).toBe("crashed");
     expect(h.daemon.isPaused).toBe(false); // queued work cannot auto-wake this stopped supervisor
     expect(h.notices).toEqual([expect.objectContaining({ cause: "session_oom", exitCode: 137,
-      reason: expect.stringContaining("confirmed OOM-killed twice"), remedy: expect.stringContaining("explicitly restart") })]);
+      reason: expect.stringContaining("two positively attributed OOMs"), remedy: expect.stringContaining("explicitly restart") })]);
     expect(readFileSync(join(h.instance, "session-id"), "utf8")).toBe("old-session");
     expect(readFileSync(h.transcript, "utf8")).toBe("original conversation\n");
     expect(existsSync(join(h.instance, "crash-state.json"))).toBe(false);
@@ -309,7 +310,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
   });
   it.each(["stop", "replacement"])("a %s while the journal is pending revokes the old decision", async change => {
     const h = harness(); await vi.advanceTimersByTimeAsync(1000); await h.die();
-    io.hold = true; h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = record(h.child.pid);
+    io.hold = true; h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = selfOomJournal(h.child.pid, "claude", Date.now());
     await vi.advanceTimersByTimeAsync(1000); expect(io.release).not.toBeNull();
     if (change === "stop") h.daemon.healthCheckPaused = true;
     else { h.daemon.beginSpawn(); h.daemon.endSpawn(); }
@@ -319,7 +320,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
   });
   it("a session change during the journal read cannot stop the new session", async () => {
     const h = harness(); await vi.advanceTimersByTimeAsync(1000); await h.die();
-    io.hold = true; h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = record(h.child.pid);
+    io.hold = true; h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = selfOomJournal(h.child.pid, "claude", Date.now());
     await vi.advanceTimersByTimeAsync(1000); expect(io.release).not.toBeNull();
     h.session.id = "replacement-session";
     io.hold = false; io.release!(); await vi.advanceTimersByTimeAsync(4000);
@@ -329,7 +330,7 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
   });
   it("a replacement during backoff cannot be followed by the old crash's resume", async () => {
     const h = harness(); await vi.advanceTimersByTimeAsync(1000);
-    h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = record(h.child.pid);
+    h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = selfOomJournal(h.child.pid, "claude", Date.now());
     await vi.advanceTimersByTimeAsync(1000); // classified; one second backoff is pending
     h.daemon.beginSpawn(); h.daemon.endSpawn();
     await vi.advanceTimersByTimeAsync(1000);
@@ -355,4 +356,85 @@ it("unreadable procfs is not proof the observed PID disappeared", async () => {
 it("does not walk through an unknown primary to find a tool named like the backend", async () => {
   proc(100, "bash", "101"); proc(101, "node", "102"); proc(102, "claude", "", "123", 101);
   expect(await observeCliOomIdentity(100, "claude")).toBeNull();
+});
+
+
+describe("#2446 collateral OOM recovery", () => {
+  it.each([1, 10])("unknown cause retains the ordinary bounded budget (max_retries=%i) without a self-OOM stop", async max => {
+    const h = harness(max);
+    await vi.advanceTimersByTimeAsync(1000);
+    for (let i = 0; i < 4; i++) {
+      if (h.daemon.healthCheckPaused) break;
+      await h.die("unknown");
+    }
+    expect(h.launches).toHaveLength(max === 1 ? 1 : 2);
+    expect(h.notices).toEqual([expect.objectContaining({ cause: "oom_unclear", reason: "crashed repeatedly (out of memory, cause unclear)" })]);
+    expect(h.daemon.isUnclearOomStopped()).toBe(true);
+    expect(h.daemon.isSessionOomStopped()).toBe(false);
+    expect(h.daemon.consecutiveOoms).toBeNull();
+    expect(existsSync(join(h.instance, "session-oom-stop.json"))).toBe(false);
+    expect(existsSync(join(h.instance, "crash-state.json"))).toBe(false);
+    expect(readFileSync(join(h.instance, "session-id"), "utf8")).toBe("old-session");
+    h.daemon.beginSpawn(); h.daemon.endSpawn();
+    expect(h.daemon.isUnclearOomStopped()).toBe(false);
+  });
+  it("a collateral victim does not abandon the session because of old conflict text", async () => {
+    const h = harness(); await vi.advanceTimersByTimeAsync(1000);
+    h.daemon.tmux.capturePaneWithHistory.mockResolvedValue("Session is currently running: background agent");
+    await h.die("collateral");
+    expect(h.launches).toEqual(["inert --resume old-session"]);
+    expect(h.daemon.backgroundSessionRecoveryAttempted).toBe(false);
+    expect(readFileSync(join(h.instance, "session-id"), "utf8")).toBe("old-session");
+  });
+  it("a first confirmed victim without self proof is not counted", async () => {
+    const h = harness(); await vi.advanceTimersByTimeAsync(1000); await h.die("collateral");
+    expect(h.daemon.consecutiveOoms).toBeNull(); expect(h.launches).toHaveLength(1);
+    expect(h.daemon.crashTimestamps).toEqual([]);
+  });
+  it("does not stop or exhaust ordinary crash budgets after repeated collateral deaths", async () => {
+    const h = harness(1); await vi.advanceTimersByTimeAsync(1000);
+    h.daemon.trySpawn.mockImplementation(async () => {
+      expect(h.daemon.collateralOomRecovery).toBe(true);
+      h.launches.push("collateral recovery"); h.child.alive = true; h.child.pid++;
+      proc(100, "bash", String(h.child.pid)); proc(h.child.pid, "claude"); return true;
+    });
+    for (let i = 0; i < 4; i++) await h.die("collateral");
+    expect(h.launches).toHaveLength(4); expect(h.notices).toEqual([]);
+    expect(h.daemon.consecutiveOoms).toBeNull(); expect(h.daemon.crashCount).toBe(0);
+    expect(h.daemon.crashTimestamps).toEqual([]);
+    expect(h.daemon.isSessionOomStopped()).toBe(false);
+  });
+  it("collateral separates two self-caused deaths instead of accumulating them", async () => {
+    const h = harness(); await vi.advanceTimersByTimeAsync(1000); await h.die(); await h.die("collateral"); await h.die();
+    expect(h.daemon.consecutiveOoms?.count).toBe(1);
+    expect(h.notices).toEqual([]); expect(h.daemon.isSessionOomStopped()).toBe(false);
+  });
+  it("the actual daemon physical admission forwards its memory-recovery requirement", async () => {
+    const h = harness(); const run = vi.fn(async (_task, operation) => operation());
+    h.daemon.spawnGate = { run };
+    h.daemon.trySpawnInsideGate = vi.fn(async () => true);
+    h.daemon.ensureBackendAgent = vi.fn(async () => {});
+    h.daemon.collateralOomRecovery = true;
+    await (Daemon.prototype as any).trySpawn.call(h.daemon);
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ requireNormalMemory: true }), expect.any(Function));
+  });
+});
+
+it("a stop or replacement during pressure admission cannot start the old recovery", async () => {
+  const h = harness();
+  let enter!: () => Promise<boolean>;
+  const held = new Promise<boolean>((resolve, reject) => {
+    h.daemon.spawnGate = { run: (_task: unknown, operation: () => Promise<boolean>) => {
+      enter = async () => { try { const value = await operation(); resolve(value); return value; } catch (error) { reject(error); throw error; } };
+      return held;
+    } };
+  });
+  h.daemon.trySpawnInsideGate = vi.fn(async () => true);
+  h.daemon.ensureBackendAgent = vi.fn(async () => {});
+  h.daemon.collateralOomRecovery = true;
+  const pending = (Daemon.prototype as any).trySpawn.call(h.daemon);
+  const failed = expect(pending).rejects.toThrow("OOM recovery cancelled");
+  h.daemon.beginSpawn(); h.daemon.endSpawn();
+  await expect(enter()).rejects.toThrow("OOM recovery cancelled"); await failed;
+  expect(h.daemon.trySpawnInsideGate).not.toHaveBeenCalled();
 });

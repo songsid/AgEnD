@@ -2,9 +2,42 @@
 import { execFile } from "./child-process.js";
 import { readFile, readlink } from "node:fs/promises";
 import { basename } from "node:path";
+import { t } from "./locale.js";
 
 export interface CliOomIdentity { pid: number; start: string; comm: string; observedAt: number }
-export interface KernelOom { pid: number; comm: string; at: number }
+export interface SelfOomEvidence {
+  policy: 2;
+  scope: "global";
+  ramPages: number;
+  victimRssPages: number;
+  victimAnonKiB: number;
+  victimTotalRssKiB: number;
+  largestOtherRssPages: number;
+}
+export interface KernelOom { pid: number; comm: string; at: number; attribution: "self" | "collateral" | "unknown"; evidence?: SelfOomEvidence }
+/** Positive dominance proof only. A selected victim is not necessarily the allocator. */
+function validOomEvidence(value: unknown): value is SelfOomEvidence {
+  const e = value as SelfOomEvidence | null;
+  if (!e || e.policy !== 2 || e.scope !== "global"
+    || ![e.ramPages, e.victimRssPages, e.victimAnonKiB, e.victimTotalRssKiB, e.largestOtherRssPages]
+      .every(n => Number.isSafeInteger(n) && n >= 0)
+    || !e.ramPages || !e.victimRssPages || !e.victimTotalRssKiB
+    || e.victimRssPages > e.ramPages || e.victimAnonKiB > e.victimTotalRssKiB) return false;
+  const pageKiB = e.victimTotalRssKiB / e.victimRssPages;
+  return [4, 16, 64].some(unit => Math.abs(pageKiB - unit) <= unit * 0.05);
+}
+export function selfOomEvidence(value: unknown): value is SelfOomEvidence {
+  if (!validOomEvidence(value)) return false;
+  const e = value;
+  // Both table and RAM use pages. Scaling by the kill-line anonymous fraction
+  // avoids assuming 4-KiB pages on arm64, or mistaking file RSS for anon RSS.
+  const anonPages = e.victimRssPages * (e.victimAnonKiB / e.victimTotalRssKiB);
+  return anonPages >= e.ramPages / 2 && anonPages >= 2 * e.largestOtherRssPages;
+}
+export function describeSelfOom(e: SelfOomEvidence): string {
+  const anonPages = e.victimRssPages * (e.victimAnonKiB / e.victimTotalRssKiB);
+  return t("inst.session_oom_proof", Math.floor(100 * anonPages / e.ramPages), e.largestOtherRssPages ? (anonPages / e.largestOtherRssPages).toFixed(1) : "∞");
+}
 const MAX_PROC_BYTES = 16_384;
 const LAUNCHERS = new Set(["bash", "dash", "sh", "zsh", "fish", "env", "busybox"]);
 async function text(path: string): Promise<string | null> {
@@ -55,15 +88,64 @@ export async function observeCliOomIdentity(panePid: number, binaryName: string,
 
 export function parseKernelOoms(output: string): KernelOom[] {
   const records: KernelOom[] = [];
+  let beganAt = 0, ramPages = 0, table = false, header: "legacy" | "rss-columns" | null = null, invalid = false;
+  let tasks = new Map<number, { comm: string; rss: number }>();
+  let context = "";
+  const reset = () => { beganAt = ramPages = 0; table = invalid = false; header = null; tasks = new Map(); context = ""; };
   for (const line of output.split("\n")) {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line);
-      if (row._TRANSPORT !== "kernel" || typeof row.MESSAGE !== "string") continue;
-      const victim = /(?:Out of memory|Memory cgroup out of memory): Killed process (\d+) \(([^)]+)\)/.exec(row.MESSAGE);
+      if (row._TRANSPORT !== "kernel") continue;
+      if (typeof row.MESSAGE !== "string") { invalid = true; continue; }
       const at = Number(row.__REALTIME_TIMESTAMP) / 1000;
-      if (victim && Number.isFinite(at) && at > 0) records.push({ pid: Number(victim[1]), comm: victim[2]!, at });
-    } catch { /* unreadable or incomplete evidence is not proof */ }
+      if (!Number.isFinite(at) || at <= 0) { reset(); continue; }
+      const msg: string = row.MESSAGE;
+      if (msg.includes("invoked oom-killer:")) { reset(); beganAt = at; }
+      const ram = /^\s*(\d+) pages RAM\s*$/.exec(msg);
+      if (ram) { if (ramPages && ramPages !== Number(ram[1])) invalid = true; ramPages = Number(ram[1]); }
+      if (msg === "Tasks state (memory values in pages):") { if (table) invalid = true; table = true; }
+      // Linux 6.8 added per-kind RSS columns. Match the declared layout before
+      // reading rows; unknown/reordered columns must not hide a larger task.
+      if (/^\[\s*pid\s*\]/.test(msg)) {
+        const columns = /^\[\s*pid\s*\]\s+uid\s+tgid\s+total_vm\s+rss\s+(rss_anon\s+rss_file\s+rss_shmem\s+)?pgtables_bytes\s+swapents\s+oom_score_adj\s+name\s*$/.exec(msg);
+        if (!table || header || !columns) invalid = true;
+        else header = columns[1] ? "rss-columns" : "legacy";
+      }
+      if (table && /^\[\s*\d/.test(msg)) {
+        // comm is the rest of the line, not a word (e.g. "tmux: server").
+        const task = (header === "rss-columns"
+          ? /^\[\s*(\d+)\]\s+\d+\s+\d+\s+\d+\s+(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+-?\d+\s+(.+?)\s*$/
+          : /^\[\s*(\d+)\]\s+\d+\s+\d+\s+\d+\s+(\d+)\s+\d+\s+\d+\s+-?\d+\s+(.+?)\s*$/).exec(msg);
+        if (!header || !task) invalid = true;
+        else {
+          const pid = Number(task[1]), rss = Number(task[2]), comm = task[3]!;
+          const old = tasks.get(pid);
+          if (old && (old.rss !== rss || old.comm !== comm)) invalid = true;
+          if (!Number.isSafeInteger(rss) || (!old && tasks.size >= 4096)) invalid = true;
+          else tasks.set(pid, { rss, comm });
+        }
+      }
+      if (msg.startsWith("oom-kill:")) { if (context) invalid = true; context = msg; }
+      const victim = /^(Out of memory|Memory cgroup out of memory): Killed process (\d+) \(([^)]+)\)/.exec(msg);
+      if (!victim) continue;
+      const pid = Number(victim[2]), comm = victim[3]!;
+      const record: KernelOom = { pid, comm, at, attribution: "unknown" };
+      const own = tasks.get(pid);
+      const rss = /anon-rss:(\d+)kB, file-rss:(\d+)kB, shmem-rss:(\d+)kB/.exec(msg);
+      // Only one complete, unconstrained report. Shared fleet/container memcg
+      // exhaustion cannot identify an individual instance as the cause.
+      if (beganAt && at >= beganAt && at - beganAt <= 10_000 && !invalid && ramPages && table && header && own?.comm === comm && rss
+        && context.startsWith("oom-kill:constraint=CONSTRAINT_NONE,") && context.includes(",global_oom,")
+        && context.includes(`,task=${comm},pid=${pid},`) && victim[1] === "Out of memory") {
+        const evidence: SelfOomEvidence = { policy: 2, scope: "global", ramPages, victimRssPages: own.rss,
+          victimAnonKiB: Number(rss[1]), victimTotalRssKiB: Number(rss[1]) + Number(rss[2]) + Number(rss[3]),
+          largestOtherRssPages: Math.max(0, ...[...tasks].filter(([other]) => other !== pid).map(([, task]) => task.rss)) };
+        if (validOomEvidence(evidence) && evidence.largestOtherRssPages >= 2 * own.rss) record.attribution = "collateral";
+        if (selfOomEvidence(evidence)) { record.attribution = "self"; record.evidence = evidence; }
+      }
+      records.push(record); reset();
+    } catch { invalid = true; /* a lost task row may hide the actual hog */ }
   }
   return records;
 }
@@ -73,9 +155,12 @@ let pending: Promise<KernelOom[] | null> | null = null;
 function recentKernelOoms(): Promise<KernelOom[] | null> {
   if (pending) return pending;
   pending = new Promise<KernelOom[] | null>(resolve => {
-    try { execFile("journalctl", ["--kernel", "--boot=0", "--since=-5min", "--no-pager", "--output=json", "--lines=256",
-      "--grep=(Out of memory|Memory cgroup out of memory): Killed process"],
-    { encoding: "utf8", timeout: 1000, maxBuffer: 256 * 1024, killSignal: "SIGKILL" },
+    // Project away optional machine/host metadata (journal cursors stay).
+    // Leave room for all 4096 task rows
+    // plus the report's stack/Mem-Info and other recent kernel messages.
+    try { execFile("journalctl", ["--kernel", "--boot=0", "--since=-5min", "--no-pager", "--output=json",
+      "--output-fields=MESSAGE,_TRANSPORT,__REALTIME_TIMESTAMP", "--lines=8192"],
+    { encoding: "utf8", timeout: 1000, maxBuffer: 8 * 1024 * 1024, killSignal: "SIGKILL" },
     (error, stdout) => resolve(error ? null : parseKernelOoms(stdout))); }
     catch { resolve(null); }
   }).finally(() => { pending = null; });

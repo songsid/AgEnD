@@ -41,7 +41,7 @@ async function mount(state: { custom: boolean; version: string }, canWrite: bool
   g.window.AgendAuth = { canWrite: async () => canWrite };
   (await import("/assets/app-i18n.js")).setLang("en", { store: false });
   const { AppearanceSection } = await import("/ui/js/settings-appearance.js");
-  await pg.mount(h(AppearanceSection, {}));
+  await pg.mount(h(AppearanceSection, { part: "dashboard" }));          // #2347: the app icon is in Web dashboard
   await settle(4);
   return pg.root.querySelector(".s-app-icon") as any;
 }

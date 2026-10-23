@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts && npm run build
@@ -33,7 +33,7 @@ jobs:
         env:
           AGEND_DISPOSABLE_CGROUP_PROBE: '1'
         run: node scripts/ci/cgroup-updater-1490.mjs "$RUNNER_TEMP/cgroup-receipt.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: cgroup1490-${{ github.sha }}

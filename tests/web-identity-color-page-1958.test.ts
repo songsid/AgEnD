@@ -246,9 +246,9 @@ describe("Settings → Web appearance", () => {
       expect(posts.some((p) => p.url === "/ui/owner-css/restore")).toBe(true);
     } finally { delete g.confirm; }
   });
-  it("the tab is called Web appearance (網頁外觀)", async () => {
+  it("the tab is called Look (外觀) since #2347 (it was Web appearance)", async () => {
     const i18n = await import("/assets/app-i18n.js");
     await import("/ui/js/settings-strings.js");
-    expect(i18n.t("settings.sec_appearance")).toBe("Web appearance");
+    expect(i18n.t("settings.sec_look")).toBe("Look");
   });
 });

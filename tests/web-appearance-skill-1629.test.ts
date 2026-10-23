@@ -123,7 +123,7 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
       // web-appearance
       "`get_web_appearance`", "`preview_web_appearance` (`modes`", "`.agend/appearance/<mode>.svg`",
       // web-mod
-      "`export_web_mod { name, version, title? }`", "`propose_web_mod { file }`", "Settings → Web appearance → Mods", "**You never import**", "**A mod carrying custom CSS is refused**",
+      "`export_web_mod { name, version, title? }`", "`propose_web_mod { file }`", "Settings → Look → Mods", "**You never import**", "**A mod carrying custom CSS is refused**",
       // web-widget
       "`set_web_widget { slot, spec?, data? }`", "`chat_header`", "`details`", "`context_pct`", "`cost_usd`", "at least **10 s** apart", "`remove_web_widget { slot? }`",
       // new in beta.2: identity colour and effects

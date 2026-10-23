@@ -16,7 +16,8 @@ import { followsReducedMotion, onMotionChange, setFollowsReducedMotion } from "/
 import { CARD_SIZES, cardSizeDefault, cardSizeStore, setCardSizeDefault } from "/assets/identity-card.js";
 import { AgentWidget, checkWidget, fleetBinds, setSidebarWidget, sidebarWidgetRaw, sidebarWidgetStore, widgetProblem } from "/assets/agent-widget.js";
 import { confirmedWrite } from "./settings-confirm.js";
-import { savePref } from "/assets/app-prefs.js";
+import { savePref, withoutHold } from "/assets/app-prefs.js";
+import { DEFAULT_SCHEMA, impactOf, ownChoiceImpact } from "./settings-model.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { colorsOff, defaultPlaces, identityClasses, identityOf, PLACEMENTS, paintIdentity, setColorsOff, setDefaultPlaces, useIdentityColors } from "/assets/identity-color.js";
 import { CardTitle } from "./settings-learn.js";
@@ -52,26 +53,67 @@ function refusal(body) {
   return known.includes(problem) ? tn(`cssError_${problem}`, detail || "") : tn("cssError_other", problem || "?");
 }
 
-export function AppearanceSection() {
+/**
+ * #2347: in Settings, a change here is saved by the bar's Save like every Settings change. The synced preferences are
+ * held by app-prefs while Settings is open (the panel stages them); `stage`/`unstage`/`staged` (the panel's) carry the
+ * rest: this device's own switches and the fleet's Canvas Worker switch. Without them (shown on its own) each control
+ * saves at once, as before.
+ */
+export function AppearanceSection(props = {}) {
+  const part = props.part || "look";
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
-  if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
+  // #2347 regrouping: Look (the person's own), this device's switches (in Preferences) and the host-wide cards (in Web
+  // dashboard) are drawn where each belongs. None of it is offered over the public link (Look says so).
+  if (publicLink) return part === "look" ? html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>` : null;
+  if (part === "device") return html`<${MotionCard} ...${props} /><${DeviceCard} ...${props} />`;
+  if (part === "dashboard") return html`<${AppIconCard} /><${CardLimitsCard} /><${ExperimentalEffectsCard} ...${props} />`;
   const group = (key) => html`<h2 class="s-ap-group">${tn(key)}</h2>`;
-  return html`${group("groupLook")}<${ThemesCard} /><${IdentityColorCard} /><${CardSizeCard} /><${AppIconCard} />
+  return html`${group("groupLook")}<${ThemesCard} ...${props} /><${IdentityColorCard} /><${CardSizeCard} />
     ${group("groupLayout")}<${SidebarWidgetCard} />
-    ${group("groupCss")}<${OwnerCssCard} /><${DeviceCard} />
+    ${group("groupCss")}<${OwnerCssCard} />
     ${group("groupMods")}<${ModsCard} /><${EffectsCard} />
-    ${group("groupAdvanced")}<${ExperimentalEffectsCard} /><${CardLimitsCard} /><${RestoreDefaultsCard} />`;
+    <${RestoreDefaultsCard} ...${props} />`;
+}
+
+/** #2347: the staged keys of this device's own switches (Restore defaults sets them, so their staged change goes). */
+const DEVICE_CHOICES = ["device:fx-follow-motion", "device:owner-css-off"];
+/**
+ * #2347: a switch kept on this device only — shown at once; in Settings staged under `key` with what it was before, so
+ * Discard (or leaving Settings) puts that back. Back to that value: no change.
+ */
+function deviceChoice(props, key, label, read, write) {
+  return (value) => {
+    const prev = props.staged && props.staged.get(key);
+    const from = prev ? prev.from : read();
+    write(value);
+    if (!props.stage) return;
+    if (value === from) props.unstage(key);
+    else props.stage(key, { label: tn("youDeviceChoice", label), impact: ownChoiceImpact(props.schema), from, local: { commit: () => {}, revert: () => write(from) } }, true);
+  };
 }
 
 register("experimentalEffects", {
   en: { title: "Experimental: Canvas Worker effects", help: "Enable uploaded Canvas Worker effects. Ambient effects are always available. Saved effects stay intact when this is off.", failed: "Could not change this setting. Try again." },
   "zh-TW": { title: "實驗功能：Canvas Worker 特效", help: "啟用上傳的 Canvas Worker 特效。氛圍特效不受影響；關閉時保留已儲存的特效。", failed: "無法變更此設定，請重試。" },
 });
-function ExperimentalEffectsCard() {
+const CANVAS_WORKER = "fleet:experimental.canvas_worker";
+function ExperimentalEffectsCard(props = {}) {
   const enabled = useCanvasWorker(), [writable, setWritable] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   useEffect(() => { let live = true; Promise.resolve(globalThis.AgendAuth?.trialSession?.()).then(value => { if (live) setWritable(value?.localAdmin === true); }, () => {}); return () => { live = false; }; }, []);
   if (!writable) return null;
+  // #2347: in Settings it is a fleet change like any other — staged here, written by the bar's Save (this page's switch
+  // follows once it applied).
+  const pending = props.staged && props.staged.get(CANVAS_WORKER);
+  const shown = pending ? pending.draft : enabled;
+  const stageIt = (value) => {
+    setFailed(false);
+    if (value === enabled) { props.unstage(CANVAS_WORKER); return; }
+    props.stage(CANVAS_WORKER, { label: t("experimentalEffects.title"), impact: impactOf(props.schema || DEFAULT_SCHEMA, "web.experimental.canvas_worker"), draft: value,
+      request: { method: "PUT", url: "/api/settings/fleet/web", body: { experimental: { canvas_worker: value } } },
+      onResult: (outcome) => { if (outcome && outcome.status === "applied") appStore.set({ canvasWorker: value }); else if (outcome && outcome.status === "failed") setFailed(true); } }, true);
+  };
   const change = async value => {
+    if (props.stage) { stageIt(value); return; }
     setBusy(true); setFailed(false);
     try {
       const result = await confirmedWrite("/api/settings/fleet/web", { method: "PUT", body: { experimental: { canvas_worker: value } }, label: t("experimentalEffects.title") });
@@ -79,7 +121,7 @@ function ExperimentalEffectsCard() {
     } catch { setFailed(true); }
     finally { setBusy(false); }
   };
-  return html`<section class="card s-appearance s-experimental-effects"><label class="check"><input type="checkbox" checked=${enabled} disabled=${busy} onChange=${event => change(event.target.checked)} /><span>${t("experimentalEffects.title")}</span></label><p class="sub">${t("experimentalEffects.help")}</p>${failed ? html`<p role="alert">${t("experimentalEffects.failed")}</p>` : null}</section>`;
+  return html`<section class="card s-appearance s-experimental-effects"><label class="check"><input type="checkbox" checked=${shown} disabled=${busy} onChange=${event => change(event.target.checked)} /><span>${t("experimentalEffects.title")}</span></label><p class="sub">${t("experimentalEffects.help")}</p>${failed ? html`<p role="alert">${t("experimentalEffects.failed")}</p>` : null}</section>`;
 }
 
 /** #2056 B: a sample sidebar row in the host's default colour places, so the choice is seen rather than described. */
@@ -118,23 +160,27 @@ function IdentityColorCard() {
  * fleet's card limits.
  */
 export async function restoreAppearanceDefaults() {
-  setThemesShown(true);
-  setFollowsReducedMotion(false);
-  setCardSizeDefault("m");
-  savePref("card.sizeByInstance", null);
-  setSidebarWidget(null);
-  setDefaultPlaces(null);
-  setColorsOff(false);
-  setOwnerCssOffHere(false);
+  // #2347: a confirmed action — it saves at once, Settings open or not (nothing it sets stays held).
+  withoutHold(() => {
+    setThemesShown(true);
+    setFollowsReducedMotion(false);
+    setCardSizeDefault("m");
+    savePref("card.sizeByInstance", null);
+    setSidebarWidget(null);
+    setDefaultPlaces(null);
+    setColorsOff(false);
+    setOwnerCssOffHere(false);
+  });
   const r = await postJson("/ui/owner-css/restore", { sha: null });
   return r && r.error ? { ok: false, error: r.error } : { ok: true };
 }
-function RestoreDefaultsCard() {
+function RestoreDefaultsCard(props = {}) {
   const [busy, setBusy] = useState(false);
   async function go() {
     if (!(await confirmDialog({ title: tn("restoreTitle"), message: tn("restoreConfirm"), confirmLabel: tn("restoreGo"), danger: true }))) return;
     setBusy(true);
     const r = await restoreAppearanceDefaults();
+    if (props.unstage) for (const key of DEVICE_CHOICES) props.unstage(key);      // saved by the restore itself
     setBusy(false);
     if (r.ok) toast(tn("restoreDone")); else toast(tn("restoreCssFailed", r.error), false);
   }
@@ -148,7 +194,7 @@ function RestoreDefaultsCard() {
 function CardSizeCard() {
   useStore(cardSizeStore);
   const size = cardSizeDefault();
-  return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("cardSizeTitle")} topic="cards" />
+  return html`<section class="card s-appearance s-synced s-card-size"><${CardTitle} title=${tn("cardSizeTitle")} topic="cards" />
     <div class="card-size" role="group" aria-label=${tn("cardSizeTitle")}>
       ${CARD_SIZES.map((s) => html`<button key=${s} type="button" class=${`seg-item${s === size ? " active" : ""}`} aria-pressed=${s === size ? "true" : "false"}
         onClick=${() => setCardSizeDefault(s)}>${t(`card.size${s.toUpperCase()}Name`)}</button>`)}
@@ -306,7 +352,7 @@ function CardLimitsCard() {
   };
   useEffect(() => { load(); }, []);
   if (!view) return null;
-  if (view.error) return html`<section class="card s-appearance"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" /><p class="sub">${tn("cardLimitsUnavailable")}</p></section>`;
+  if (view.error) return html`<section class="card s-appearance s-card-limits"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" /><p class="sub">${tn("cardLimitsUnavailable")}</p></section>`;
   const configured = (g, k) => (view.configured && view.configured[g] && typeof view.configured[g][k] === "number" ? view.configured[g][k] : null);
   const save = async () => {
     const body = {};
@@ -345,16 +391,10 @@ function CardLimitsCard() {
 /** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
 function ThemesCard() {
   const s = useStore(themesStore);
-  // #2117: this device's own switch (not synced): effects play unless it follows the system's reduced-motion setting.
-  const [follow, setFollow] = useState(followsReducedMotion);
-  useEffect(() => onMotionChange(() => setFollow(followsReducedMotion())), []);
-  return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
-    <label class="check"><input type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
+  return html`<section class="card s-appearance s-synced s-themes"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
+    <label class="check"><input id="fx-show-themes" type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
       <span>${tn("themesShow")}</span></label>
     <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p>
-    <label class="check"><input type="checkbox" id="fx-follow-reduced-motion" checked=${follow} onChange=${(e) => setFollowsReducedMotion(e.target.checked)} />
-      <span>${tn("themesFollowMotion")}</span></label>
-    <p class="sub">${tn("themesFollowMotionLead")}</p>
   </section>`;
 }
 
@@ -499,10 +539,23 @@ function OwnerCssCard() {
   </section>`;
 }
 
-function DeviceCard() {
+/** #2117: this device's own switch (not synced): effects play unless it follows the system's reduced-motion setting. */
+function MotionCard(props = {}) {
+  const [follow, setFollow] = useState(followsReducedMotion);
+  useEffect(() => onMotionChange(() => setFollow(followsReducedMotion())), []);
+  const setFollowHere = deviceChoice(props, DEVICE_CHOICES[0], tn("themesFollowMotion"), followsReducedMotion, setFollowsReducedMotion);
+  return html`<section class="card s-appearance s-local s-motion"><h3>${tn("motionTitle")}</h3>
+    <label class="check"><input type="checkbox" id="fx-follow-reduced-motion" checked=${follow} onChange=${(e) => setFollowHere(e.target.checked)} />
+      <span>${tn("themesFollowMotion")}</span></label>
+    <p class="sub">${tn("themesFollowMotionLead")}</p>
+  </section>`;
+}
+
+function DeviceCard(props = {}) {
   const [off, setOff] = useState(ownerCssOffHere());
+  const setOffHere = deviceChoice(props, DEVICE_CHOICES[1], tn("cssDeviceOff"), ownerCssOffHere, (v) => { setOwnerCssOffHere(v); setOff(ownerCssOffHere()); });
   return html`<section class="card s-appearance s-local"><h3>${tn("cssDeviceTitle")}</h3>
-    <label class="check"><input type="checkbox" checked=${off} onChange=${(e) => { setOwnerCssOffHere(e.target.checked); setOff(ownerCssOffHere()); }} />
+    <label class="check"><input id="css-off-here" type="checkbox" checked=${off} onChange=${(e) => setOffHere(e.target.checked)} />
       <span>${tn("cssDeviceOff")}</span></label>
     <p class="sub">${tn("cssSafe")}</p>
   </section>`;

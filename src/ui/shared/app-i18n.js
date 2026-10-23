@@ -51,6 +51,12 @@ export function setLang(next, opts = {}) {
 }
 export function onLang(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
+/** #2347: a string in a given language (settings search matches the labels of both), English when it has none. */
+export function tIn(language, key) {
+  const table = tables[language] || tables.en;
+  return table[key] ?? tables.en[key] ?? key;
+}
+
 /** "{0} is working…" with its values filled in. Text only: callers render it as text, never as markup. */
 export function t(key, ...values) {
   let s = tables[current][key] ?? tables.en[key] ?? key;
@@ -87,6 +93,10 @@ register("app", {
     opWriting: "Applying settings… {0}/{1}", opWaiting: "Settings: waiting for confirmation in chat", opApplying: "Applying settings…",
     opDone: "Settings applied", opRestart: "Settings saved — AgEnD needs a restart to use them", opPartial: "Some settings were not applied",
     opFailed: "Settings were not applied", openSettings: "Open Settings",
+    restartWaiting: "{0} saved change(s) take effect after AgEnD restarts", restartNow: "Restart now", restartLater: "Later",
+    restartConfirm: "Restart AgEnD now?\n\nEvery agent stops and starts again, work in progress is interrupted, and the panel is unreachable for up to a minute. A notice is posted to your chat channel.",
+    restartOnHost: "Run agend restart on the host to use them.",
+    restartRefused: "Restart refused: {0}",
     pendingSent: "Sent for confirmation — a fleet admin confirms it in chat.",
     pendingSelfSent: "Confirmed by your account (this browser is web-verified) — applying.",
     needsNav: "Needs you", needsTab: "Needs you", needsCount: "{0} waiting",
@@ -124,6 +134,10 @@ register("app", {
     opWriting: "正在套用設定… {0}/{1}", opWaiting: "設定：等待在聊天中確認", opApplying: "正在套用設定…",
     opDone: "設定已套用", opRestart: "設定已儲存——需要重新啟動 AgEnD 才會生效", opPartial: "部分設定沒有套用",
     opFailed: "設定沒有套用", openSettings: "開啟設定",
+    restartWaiting: "{0} 項已儲存的變更要在 AgEnD 重新啟動後才會生效", restartNow: "立即重新啟動", restartLater: "稍後",
+    restartConfirm: "現在重新啟動 AgEnD？\n\n所有 agent 都會停止再啟動，進行中的工作會被中斷，面板會有最多約一分鐘無法連線。聊天頻道會收到一則通知。",
+    restartOnHost: "請在主機上執行 agend restart 讓它們生效。",
+    restartRefused: "重新啟動被拒絕：{0}",
     pendingSent: "已送出確認——由 fleet 管理員在聊天中確認。",
     pendingSelfSent: "已由你的帳號確認（這個瀏覽器已通過網頁驗證）——套用中。",
     needsNav: "等你處理", needsTab: "待處理", needsCount: "{0} 件待處理",

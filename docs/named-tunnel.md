@@ -58,15 +58,14 @@ and [run parameters](https://developers.cloudflare.com/tunnel/reference/run-para
 ## Configure AgEnD
 
 On the direct, signed-in dashboard (not through the public link), open
-**Settings → Web**:
+**Settings → Access & security**:
 
 1. Enter `agend.example.com` in **Fixed public hostname**. An HTTPS root URL
    such as `https://agend.example.com/` also works. No wildcard, IP address,
    port, path, query, user information or fragment is accepted.
 2. Set **Named tunnel origin port** to 19282, or the port used above. Valid
-   edits immediately appear in the sticky **changes not applied** bar. Select
-   **Apply changes**, then confirm the requested change when prompted. You
-   do not need to select **Review changes** first.
+   edits immediately appear in the sticky **unsaved changes** bar. Select
+   **Save**, then confirm the requested change when prompted.
 3. Paste the token into the masked **Cloudflare connector token** field and
    select **Set token**. Confirm the change when prompted. It is checked for
    format locally; validity and routing are checked when opening the link.
@@ -138,7 +137,7 @@ opening, so it keeps 1–480 minutes and is never opened automatically):
   minutes, for a network still coming up). If it still fails, that admin gets
   one DM showing the failed step, as `/web` would; run `/web` to try again.
 
-In Settings → Web, the minutes field allows 0–10080 and the **Reopen the
+In Settings → Access & security, the minutes field allows 0–10080 and the **Reopen the
 public link when AgEnD starts** box appears once a hostname is filled in.
 Blanking the hostname with more than 480 minutes, `0` or `auto_open` set is
 refused until those fit a quick tunnel.
@@ -154,7 +153,8 @@ hostname use **Authorize this browser** (see web-dashboard: Who the agent
 sees).
 - **It is off by default.** Turning it on is confirmed in a General or on this
   computer.
-- **Only this exact hostname counts.** A quick tunnel never qualifies.
+- **Only this exact hostname counts.** A quick tunnel has its own option,
+  `quick_link` (see web-dashboard).
 - **The authority ends with the link:** Close, `/web revoke`, expiry, a
   restart (an `auto_open` reopening is a new link), or turning the option off.
 

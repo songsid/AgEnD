@@ -51,9 +51,9 @@ for (const c of matrix()) {
   r.dialog = await page.evaluate(`!!document.querySelector("dialog[open] .idc-swatches")`);
   await page.screenshot({ path: shotPath(SMOKE, c, "dialog") });
   await page.keyboard.press("Escape"); await page.waitForTimeout(300);
-  // Settings → Appearance: the colour card and its two actions.
-  await page.goto(`${fx.base}/settings/appearance`); await page.waitForTimeout(1500);
-  r.tab = await page.evaluate(`[...document.querySelectorAll(".s-nav a, nav a")].map((a) => a.textContent.trim()).find((t) => /appearance|外觀/i.test(t)) || null`);
+  // Settings → Look (#2347; was Appearance): the colour card and its two actions.
+  await page.goto(`${fx.base}/settings/look`); await page.waitForTimeout(1500);
+  r.tab = await page.evaluate(`[...document.querySelectorAll(".s-nav a, nav a")].map((a) => a.textContent.trim()).find((t) => /^(Look|外觀)$/.test(t)) || null`);
   r.colorCard = await page.evaluate(`!!document.querySelector(".s-colors") && !!document.querySelector(".s-restore")`);
   await page.evaluate(`document.querySelector(".s-colors")?.scrollIntoView()`);
   await page.waitForTimeout(300);

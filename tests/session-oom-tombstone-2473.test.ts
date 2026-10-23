@@ -1,4 +1,5 @@
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { selfEvidence, selfOomJournal } from "./helpers/self-oom-evidence.js";
+import { readdirSync, appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,10 +10,10 @@ let root: string;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "oom-tombstone-2473-")); setLocale("en"); });
 afterEach(() => { vi.restoreAllMocks(); rmSync(root, { recursive: true, force: true }); });
 const evidence = () => ({ owner: { bootId: "boot-a", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
-  sessionKey: JSON.stringify(["claude-code", "owned-session"]), configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 } });
+  sessionKey: JSON.stringify(["claude-code", "owned-session"]), configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 }, evidence: selfEvidence() });
 
 describe("#2473 stage2: authoritative OOM stop independent of pause and journal", () => {
-  const legacy = (reason?: string) => JSON.stringify({ instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", exitCode: 137, reason });
+  const legacy = (reason?: string) => JSON.stringify({ instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", exitCode: 137, reason, oomEvidence: selfEvidence() });
   it("holds an old structured OOM stop with unknown session owner until explicit retry, without erasing history", () => {
     const path = join(root, "crash-history.jsonl"), text = `${legacy("session_oom")}\n`; writeFileSync(path, text);
     expect(readSessionOomStop(root)).toMatchObject({ blocked: true, record: null, revision: expect.stringMatching(/^legacy:/) });
@@ -36,7 +37,7 @@ describe("#2473 stage2: authoritative OOM stop independent of pause and journal"
     writeFileSync(path, `${legacy("session_oom")}\n${JSON.stringify(record)}\n`);
     expect(readSessionOomStop(root)).toEqual({ blocked: false });
     expect(() => assertNoSessionOomStop(root)).not.toThrow();
-    appendFileSync(path, `${JSON.stringify({ ...record, reason: "session_oom", exitCode: 137 })}\n`);
+    appendFileSync(path, `${JSON.stringify({ ...record, reason: "session_oom", exitCode: 137, oomEvidence: selfEvidence() })}\n`);
     expect(readSessionOomStop(root).blocked).toBe(true);
     expect(() => assertNoSessionOomStop(root)).toThrow("session-OOM stop evidence");
   });
@@ -154,5 +155,40 @@ describe("#2473 stage2: authoritative OOM stop independent of pause and journal"
     expect(writeSessionOomStop(root, { ...evidence(), sessionKey: "different" })).toEqual(original);
     expect(existsSync(join(root, "paused"))).toBe(false);
     expect(existsSync(join(root, "crash-state.json"))).toBe(false);
+  });
+});
+
+describe("#2446 upgrade re-evaluates old victim-only stops", () => {
+  it("releases a valid v1 stop once, archives evidence privately and preserves session", () => {
+    const old = { ...evidence(), version: 1, id: "old-stop", reason: "session_oom" } as any; delete old.evidence;
+    writeFileSync(join(root, SESSION_OOM_STOP_FILE), JSON.stringify(old));
+    writeFileSync(join(root, "session-id"), "preserved-session");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(readSessionOomStop(root)).toEqual({ blocked: false });
+    expect(readSessionOomStop(root)).toEqual({ blocked: false });
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining("without self-caused memory evidence"));
+    expect(readFileSync(join(root, "session-id"), "utf8")).toBe("preserved-session");
+    const files = readdirSync(root).filter(name => name.startsWith("session-oom-stop-pre-policy2-"));
+    expect(files).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(root, files[0]!), "utf8"))).toEqual(old);
+    expect(lstatSync(join(root, files[0]!)).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(readFileSync(join(root, SESSION_OOM_STOP_FILE), "utf8"))).toMatchObject({ migration: "no_self_oom_evidence" });
+  });
+  it("releases old legacy session_oom history but retains a newly proven legacy stop", () => {
+    const path = join(root, "crash-history.jsonl");
+    const old = { instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", reason: "session_oom" };
+    const text = JSON.stringify(old) + "\n"; writeFileSync(path, text);
+    expect(readSessionOomStop(root)).toEqual({ blocked: false });
+    expect(readFileSync(path, "utf8")).toBe(text);
+    appendFileSync(path, JSON.stringify({ ...old, oomEvidence: selfEvidence() }) + "\n");
+    expect(readSessionOomStop(root)).toMatchObject({ blocked: true, confirmedOom: true });
+  });
+  it("re-evaluates numeric evidence rather than trusting the stored policy label", () => {
+    writeSessionOomStop(root, evidence());
+    const path = join(root, SESSION_OOM_STOP_FILE), record = JSON.parse(readFileSync(path, "utf8"));
+    record.evidence.largestOtherRssPages = 10000;
+    writeFileSync(path, JSON.stringify(record));
+    expect(readSessionOomStop(root)).toEqual({ blocked: false });
   });
 });

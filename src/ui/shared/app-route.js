@@ -1,8 +1,17 @@
 // #1408 §3: the app's routes on the client. The same table as the server's classifier (src/web-shell-routes.ts;
 // a test runs both over one list of cases). Pure: no DOM, no history.
 
-export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "config"];
-export const SETTINGS_SECTIONS = ["device", "appearance", "agents", "bots", "classic", "general", "web", "advanced"];   // #1604: device first
+// #2347 §10: Config is gone from Fleet — each of its settings has one home in Settings (/ui/fleet/config leads there).
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage"];
+// #2347: two groups — "You" changes only you or this browser; "Fleet" changes AgEnD for everyone.
+export const SETTINGS_GROUPS = Object.freeze([
+  Object.freeze({ id: "you", sections: Object.freeze(["preferences", "look"]) }),
+  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]) }),
+]);
+export const SETTINGS_SECTIONS = Object.freeze(SETTINGS_GROUPS.flatMap((g) => g.sections));
+/** #2347: the sections' names before the regrouping (links and bookmarks keep working) and where each one went. */
+export const LEGACY_SETTINGS = Object.freeze({ device: "preferences", appearance: "look", general: "agent-defaults", bots: "chat", classic: "chat#classicbot", web: "access" });
+const legacySection = (name) => (Object.prototype.hasOwnProperty.call(LEGACY_SETTINGS, name) ? LEGACY_SETTINGS[name] : null);
 const MAX_INSTANCE_NAME = 128;
 const PATH_SEPARATOR_OR_CONTROL = /[/\\\u0000-\u001f\u007f]/;
 
@@ -25,7 +34,7 @@ export function parseRoute(pathname) {
   let m = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(pathname);
   if (m) return named("details", m[1]);
   m = /^\/ui\/fleet\/([^/]+)$/.exec(pathname);
-  if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : null;
+  if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : m[1] === "config" ? { panel: "settings", section: "agent-defaults" } : null;
   m = /^\/ui\/chat\/([^/]+)$/.exec(pathname);
   if (m) return named("chat", m[1]);
   // #1218: one instance's Log.
@@ -36,7 +45,11 @@ export function parseRoute(pathname) {
   if (m) return named("view", m[1]);
   if (pathname === "/settings") return { panel: "settings", section: "agents" };
   m = /^\/settings\/([^/]+)$/.exec(pathname);
-  if (m) return SETTINGS_SECTIONS.includes(m[1]) ? { panel: "settings", section: m[1] } : null;
+  if (m) {
+    if (SETTINGS_SECTIONS.includes(m[1])) return { panel: "settings", section: m[1] };
+    const moved = legacySection(m[1]);
+    return moved ? { panel: "settings", section: moved.split("#")[0] } : null;
+  }
   return null;
 }
 function named(panel, segment) {
@@ -69,7 +82,28 @@ export function rememberFleetTab(tab) {
   try { localStorage.setItem(LAST_FLEET_TAB_KEY, tab); } catch { /* this page only */ }
 }
 export const NEEDS_PATH = "/ui/needs";
-export function settingsPath(section) { return section && section !== "agents" ? `/settings/${section}` : "/settings"; }
+/** A section's address; an old name gives its new one (and the place in it: `chat#classicbot`). */
+export function settingsPath(name) {
+  const section = (name && legacySection(name)) || name;
+  return section && section !== "agents" ? `/settings/${section}` : "/settings";
+}
+/**
+ * #2347 §7: a section's own address, always with its name (`/settings/agents` too). On a phone `/settings` is the list of
+ * sections, so going *to a section* (the nav, search, a field to fix, "Edit in Settings") uses this; `settingsPath()` is
+ * Settings itself (the app's menu and tabs).
+ */
+export function sectionPath(name) {
+  const path = settingsPath(name);
+  return path === "/settings" ? "/settings/agents" : path;
+}
+/** #2347: an old /settings/<name> address as its new one (with the place in it), or null. */
+export function legacySettingsTarget(pathname) {
+  // #2347 §10: Fleet → Config's settings live in Settings now; its project folders are in Agent defaults.
+  if (pathname === "/ui/fleet/config") return "/settings/agent-defaults#project-roots";
+  const m = /^\/settings\/([^/]+)$/.exec(pathname || "");
+  const moved = m && legacySection(m[1]);
+  return moved ? settingsPath(moved) : null;
+}
 export function routePath(route) {
   if (!route) return "/ui";
   if (route.panel === "fleet") return fleetPath(route.tab);

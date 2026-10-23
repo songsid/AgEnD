@@ -14,6 +14,9 @@ import { api, confirmedWrite, newKey } from "./settings-confirm.js";
 import { adminUserIdError, adminUserIdPattern, botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
 import { DiscordServerPicker } from "./settings-discord.js";
 import { startOperation } from "./settings-apply.js";
+import { goToTarget } from "./settings-registry.js";
+import { sectionPath } from "/assets/app-route.js";
+import { backendLabel } from "/assets/instance-nav.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalog } from "./settings-catalog.js";
 import {
@@ -69,18 +72,45 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
       value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}</div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
-export function Label({ text, schema, field, htmlFor }) {
-  return html`<label for=${htmlFor}>${text}${field ? html` <${Impact} schema=${schema} field=${field} />` : null}</label>`;
+export function Label({ text, schema, field, htmlFor, mark }) {
+  return html`<label for=${htmlFor}>${text}${mark ? html` ${mark}` : null}${field ? html` <${Impact} schema=${schema} field=${field} />` : null}</label>`;
 }
+/** #2347 §10: the mark of a value nobody set — what is in effect is the built-in default. */
+export function DefaultMark() {
+  return html`<span class="tag s-default">${tn("defaultMark")}</span>`;
+}
+/** #2347 §10: what an empty field means — the value in effect, in plain text, and where it comes from (the mark, or why). */
+export function InEffect({ text, why }) {
+  return html`<p class="s-effect">${tn("inEffect", text)} ${why ? html`<span class="tag">${why}</span>` : html`<${DefaultMark} />`}</p>`;
+}
+/**
+ * #2347 §10: what an inherited field inherits — its value, marked "default" when nobody set it there either — and a
+ * link to where it is set (Agent defaults; ClassicBot defaults for a room). `from`: { section, target, label }.
+ */
+export function Inherited({ text, builtin, from }) {
+  const go = (e) => { e.preventDefault(); goToTarget(from.section, from.target); };
+  return html`<p class="s-inherited">${tn("inheritedValue", text)}${builtin ? html` <${DefaultMark} />` : null}${from
+    ? html` · <a href=${`${sectionPath(from.section)}${from.target || ""}`} onClick=${go}>${tn(from.label)}</a>` : null}</p>`;
+}
+/** A value as the inherited line says it: on/off, minutes (0 = off), a backend's name; anything else as it is. */
+export function valueText(v, kind) {
+  if (typeof v === "boolean") return tn(v ? "valueOn" : "valueOff");
+  if (kind === "minutes") return Number(v) === 0 ? tn("valueOff") : tn("minutesValue", v);
+  if (kind === "backend") return backendLabel(v);
+  return String(v);
+}
+/** Where an agent's inherited setting is set: Agent defaults, at its field. */
+export const inAgentDefaults = (target) => ({ section: "agent-defaults", target, label: "changeInDefaults" });
 export function Feedback({ error, warning }) {
   if (!error && !warning) return null;
   return html`<p class=${`feedback${error ? " error" : " warning"}`} role=${error ? "alert" : undefined}>${error ? tn(error) : tn(warning)}</p>`;
 }
 /** An override of a default: the control, and "Inherit from defaults" beside it (on: the control shows the default). */
-export function Override({ inherit, onInherit, schema, field, children }) {
+export function Override({ inherit, onInherit, schema, field, inherited, children }) {
   return html`<div class="override">${children}
     <label class="check inherit-row"><input type="checkbox" checked=${inherit} onChange=${(e) => onInherit(e.target.checked)} /><span>${tn("inheritDefault")}</span>
-      ${field ? html`<${Impact} schema=${schema} field=${field} />` : null}</label></div>`;
+      ${field ? html`<${Impact} schema=${schema} field=${field} />` : null}</label>
+    ${inherit && inherited ? html`<${Inherited} ...${inherited} />` : null}</div>`;
 }
 export function Drawer({ title, children, open = false }) {
   return html`<details class="drawer" open=${open}><summary>${title}</summary><div class="drawer-body">${children}</div></details>`;
@@ -253,20 +283,25 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
   };
   // What an override shows while it inherits: the default.
   const shown = (k, own, dflt) => (f.inherit[k] ? dflt : own);
+  // #2347 §10: …and says so — the value, "default" when Agent defaults do not set it either, and where it is set.
+  const dh = defaults.hang_detector || {};
+  const inh = (k, value, target, kind, set = hasOwn(defaults, k)) => ({ text: valueText(value, kind), builtin: !set, from: target ? inAgentDefaults(target) : null });
+  const inheritedBackend = !inst.backend && f.backend === (defaults.backend || "claude-code");
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${tn("idLine", name)} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `instance.${k}`)} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("displayName"), "instance.display_name", "ag-dn")}
-        <${Override} inherit=${f.inherit.display_name} onInherit=${setInherit("display_name")}>
+        <${Override} inherit=${f.inherit.display_name} onInherit=${setInherit("display_name")} inherited=${inh("display_name", defaults.display_name || name, null, "", !!defaults.display_name)}>
           <input id="ag-dn" type="text" placeholder=${name} disabled=${f.inherit.display_name} value=${shown("display_name", f.display_name, defaults.display_name || "")} onInput=${(e) => set("display_name")(e.target.value)} /></${Override}></div>
       <div class="field">${L(tn("description"), "instance.description", "ag-desc")}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} /></div>
-      <div class="field">${L(tn("backend"), "instance.backend", "ag-be")}<${BackendSelect} id="ag-be" value=${f.backend} onChange=${set("backend")} /></div>
+      <div class="field">${L(tn("backend"), "instance.backend", "ag-be")}<${BackendSelect} id="ag-be" value=${f.backend} onChange=${set("backend")} />
+        ${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null}</div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritPlaceholder")} /></div>
+        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
     </div>
     <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd")}<input id="ag-wd" type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
     <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "instance.auto_pause_after", "ag-auto")}
-      <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")}>
+      <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${inh("auto_pause_after", defaults.auto_pause_after ?? 0, "#g-auto", "minutes")}>
         <input id="ag-auto" type="number" min="0" step="1" placeholder=${tn("zeroDisabled")} class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}
           value=${shown("auto_pause_after", f.auto_pause_after, String(defaults.auto_pause_after ?? 0))} onInput=${(e) => set("auto_pause_after")(e.target.value)} /></${Override}>
       <${Feedback} error=${errors.auto} /></div>
@@ -274,16 +309,18 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
       <div class="grid2">
         <div class="field">${L(tn("channelBinding"), "instance.topic_id", "ag-ch")}<${Select} id="ag-ch" value=${f.channel_id} onChange=${set("channel_id")} options=${["", ...ids]} /></div>
         <div class="field">${L(`${tn("hangTimeout")} (${tn("minutes")})`, "instance.hang_detector", "ag-hang")}
-          <${Override} inherit=${f.inherit.hang} onInherit=${setInherit("hang")}>
+          <${Override} inherit=${f.inherit.hang} onInherit=${setInherit("hang")}
+            inherited=${inh("hang", dh.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES, "#g-hang", "minutes", hasOwn(dh, "timeout_minutes"))}>
             <input id="ag-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} disabled=${f.inherit.hang}
               value=${shown("hang", f.hang, String((defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? HANG_TIMEOUT_DEFAULT_MINUTES))} onInput=${(e) => set("hang")(e.target.value)} /></${Override}>
           <${Feedback} error=${errors.hang} /></div>
-        ${[["agent_mode", "agentMode", AGENT_MODES, defaults.agent_mode || "mcp"], ["tool_set", "toolSet", TOOL_SETS, toolSetDefault(defaults, inst, name)],
-          ["tool_progress", "toolProgress", TOOL_PROGRESS, defaults.tool_progress ?? "off"],
-          ["cross_instance_visibility", "crossInstanceVisibility", VISIBILITY_MODES, visibilityDefault(defaults)],
-          ["log_level", "logLevel", LOG_LEVELS, defaults.log_level || "info"]].map(([k, label, opts, dflt]) => html`<div key=${k} class="field">
+        ${[["agent_mode", "agentMode", AGENT_MODES, defaults.agent_mode || "mcp", "#g-am"], ["tool_set", "toolSet", TOOL_SETS, toolSetDefault(defaults, inst, name), "#g-ts"],
+          ["tool_progress", "toolProgress", TOOL_PROGRESS, defaults.tool_progress ?? "off", "#g-tp"],
+          ["cross_instance_visibility", "crossInstanceVisibility", VISIBILITY_MODES, visibilityDefault(defaults), "#g-vis"],
+          ["log_level", "logLevel", LOG_LEVELS, defaults.log_level || "info", "#g-ll"]].map(([k, label, opts, dflt, target]) => html`<div key=${k} class="field">
           ${L(tn(label), `instance.${k}`, `ag-${k}`)}
-          <${Override} inherit=${f.inherit[k]} onInherit=${setInherit(k)}>
+          <${Override} inherit=${f.inherit[k]} onInherit=${setInherit(k)}
+            inherited=${inh(k, dflt, target, "", k === "cross_instance_visibility" ? VISIBILITY_MODES.includes(defaults[k]) : hasOwn(defaults, k))}>
             <${Select} id=${`ag-${k}`} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
               options=${opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts]} /></${Override}>
           ${k === "cross_instance_visibility" ? html`<p class="note">${tn("crossInstanceVisibilityHint")}</p>` : null}</div>`)}
@@ -297,16 +334,17 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
             </select></div>`)}
         </fieldset>
         <div class="field">${L(tn("replyCompletionGuard"), "instance.reply_completion_guard")}
-          <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")}>
+          <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${inh("reply_completion_guard", defaults.reply_completion_guard ?? true, "#g-reply")}>
             <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${shown("reply_completion_guard", f.reply_completion_guard, defaults.reply_completion_guard ?? true)}
               onChange=${(e) => set("reply_completion_guard")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
           <p class="note">${replyHint(f.backend, f.inherit.agent_mode ? defaults.agent_mode || "mcp" : f.agent_mode, kiroUi)}</p></div>
         <div class="field">${L(tn("lightweight"), "instance.lightweight")}
-          <${Override} inherit=${f.inherit.lightweight} onInherit=${setInherit("lightweight")}>
+          <${Override} inherit=${f.inherit.lightweight} onInherit=${setInherit("lightweight")} inherited=${inh("lightweight", defaults.lightweight ?? false, null)}>
             <label class="check"><input type="checkbox" disabled=${f.inherit.lightweight} checked=${shown("lightweight", f.lightweight, defaults.lightweight ?? false)}
               onChange=${(e) => set("lightweight")(e.target.checked)} /><span>${tn("lightweight")}</span></label></${Override}></div>
         <div class="field">${L(tn("modelFailover"), "instance.model_failover", "ag-fo")}
-          <${Override} inherit=${f.inherit.model_failover} onInherit=${setInherit("model_failover")}>
+          <${Override} inherit=${f.inherit.model_failover} onInherit=${setInherit("model_failover")}
+            inherited=${inh("model_failover", (defaults.model_failover && defaults.model_failover[0]) || tn("modelNone"), null, "", !!(defaults.model_failover && defaults.model_failover.length))}>
             <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("modelNone")}
               value=${shown("model_failover", f.model_failover, (defaults.model_failover && defaults.model_failover[0]) || "")} onChange=${set("model_failover")} /></${Override}>
           <${Feedback} warning=${failoverWarn} /></div>
@@ -642,22 +680,30 @@ export function ClassicDialog({ room, ctx, onClose }) {
     ctx.stageClassic(c, patch);
     onClose();
   };
+  // #2347 §10: what a room inherits, from where — ClassicBot defaults when they set it, else Agent defaults ("default"
+  // when neither does) — with a link there.
+  const roomInh = (k, kind, classicTarget, agentTarget) => {
+    const own = hasOwn(cd, k);
+    return { text: valueText(inherited[k], kind), builtin: !own && !hasOwn(fd, k),
+      from: own ? { section: "chat", target: classicTarget, label: "changeInClassic" } : inAgentDefaults(agentTarget) };
+  };
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   return html`<${EditDialog} title=${c.name || c.instanceName} subtitle=${`${tn("idLine", c.instanceName)} · ${tn(`exec_${runtime.execution}`)}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `classic.${k}`)} schema=${schema}>
     <div class="grid2">
-      <div class="field">${L(tn("backend"), "classic.backend", "cl-be")}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} /></div>
+      <div class="field">${L(tn("backend"), "classic.backend", "cl-be")}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} />
+        ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}</div>
       <div class="field">${L(tn("model"), "classic.model", "cl-model")}<${ModelSelect} id="cl-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend} instance=${c.instanceName} inherit=${inherited.model ? tn("inheritValue", inherited.model) : tn("inheritPlaceholder")} /></div>
+        backend=${f.backend} instance=${c.instanceName} inherit=${tn("inheritValue", inherited.model || tn("modelCliDefault"))} /></div>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "classic.auto_pause_after", "cl-auto")}
-        <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")}>
+        <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${roomInh("auto_pause_after", "minutes", "#classicbot", "#g-auto")}>
           <input id="cl-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}
             value=${f.inherit.auto_pause_after ? String(inherited.auto_pause_after) : f.auto_pause_after} onInput=${(e) => set("auto_pause_after")(e.target.value)} /></${Override}>
         <${Feedback} error=${errors.auto} /></div>
       <div class="field">${L(tn("toolProgress"), "classic.tool_progress", "cl-tp")}
-        <${Override} inherit=${f.inherit.tool_progress} onInherit=${setInherit("tool_progress")}>
+        <${Override} inherit=${f.inherit.tool_progress} onInherit=${setInherit("tool_progress")} inherited=${roomInh("tool_progress", "", "#g-ctp", "#g-tp")}>
           <${Select} id="cl-tp" disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></${Override}></div>
       <div class="field">${L(tn("replyCompletionGuard"), "classic.reply_completion_guard")}
-        <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")}>
+        <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${roomInh("reply_completion_guard", "", "#g-creply", "#g-reply")}>
           <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${f.inherit.reply_completion_guard ? inherited.reply_completion_guard : f.reply_completion_guard}
             onChange=${(e) => set("reply_completion_guard")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
         <p class="note">${replyHint(f.backend, classicMode, fd.kiro_ui)}</p></div>

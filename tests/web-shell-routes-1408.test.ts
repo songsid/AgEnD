@@ -47,7 +47,7 @@ const CASES: Array<[string, string]> = [
   ["/ui/fleet/teams", "fleet:teams"],
   ["/ui/fleet/org", "fleet:org"],
   ["/ui/fleet/cache", "fleet:cache"],
-  ["/ui/fleet/config", "fleet:config"],
+  ["/ui/fleet/config", "settings:agent-defaults"],   // #2347 §10: Config moved to Settings; its old address leads there
   ["/ui/fleet/bogus", "none"],
   // #1523 N2: one instance's Details.
   ["/ui/fleet/agent/web-dev", "details:web-dev"],
@@ -76,11 +76,21 @@ const CASES: Array<[string, string]> = [
   ["/ui/needs/x", "none"],
   ["/settings", "settings:agents"],
   ["/settings/agents", "settings:agents"],
-  ["/settings/bots", "settings:bots"],
-  ["/settings/classic", "settings:classic"],
-  ["/settings/general", "settings:general"],
-  ["/settings/web", "settings:web"],          // #1620
+  // #2347: the sections in two groups…
+  ["/settings/preferences", "settings:preferences"],
+  ["/settings/look", "settings:look"],
+  ["/settings/agent-defaults", "settings:agent-defaults"],
+  ["/settings/chat", "settings:chat"],
+  ["/settings/web-dashboard", "settings:web-dashboard"],
+  ["/settings/access", "settings:access"],
   ["/settings/advanced", "settings:advanced"],
+  // …and their names before it: still pages, of the section each went to.
+  ["/settings/device", "settings:preferences"],
+  ["/settings/appearance", "settings:look"],
+  ["/settings/bots", "settings:chat"],
+  ["/settings/classic", "settings:chat"],
+  ["/settings/general", "settings:agent-defaults"],
+  ["/settings/web", "settings:access"],          // #1620
   ["/settings/bogus", "none"],
   ["/settings/", "none"],
   ["/settings/general/x", "none"],

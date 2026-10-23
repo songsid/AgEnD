@@ -139,7 +139,7 @@ describe("stock trust/paint prerequisite", () => {
   });
   it("stock root/content order admits a bounded plain rect list and distinguishes CSS from modal restrictions", async () => {
     const f = await fixture(); expect(f.snapshot()).toMatchObject({ ok: true, front: true, agentFront: true, reason: "stock" });
-    for (const ownerCss of ["on", "loading", "unknown", undefined]) expect(f.m.stockEffectTrust(f.host, { ownerCss })).toMatchObject({ ok: true, front: true, agentFront: false, agentReason: "owner_css", settingsHref: "/settings/appearance" });
+    for (const ownerCss of ["on", "loading", "unknown", undefined]) expect(f.m.stockEffectTrust(f.host, { ownerCss })).toMatchObject({ ok: true, front: true, agentFront: false, agentReason: "owner_css", settingsHref: "/settings/look" });
     expect(f.snapshot().rects).toEqual([{ x: 10, y: 20, width: 100, height: 50 }, { x: 10, y: 20, width: 100, height: 50 }]);
   });
   it.each(["html", "body", "#app", "#app > .shell", ".shell > .main", ".main > .p-chat", ".p-chat > .chat-split", ".chat-split > .chat-main"])("refuses structural stacking mismatch at %s", async key => {

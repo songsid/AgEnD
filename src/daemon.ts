@@ -15,7 +15,7 @@ import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
 import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
-import { observeCliOomIdentity, confirmedCliOom, consecutiveSessionOoms, type CliOomIdentity, type SessionOomCount } from "./session-oom.js";
+import { observeCliOomIdentity, confirmedCliOom, consecutiveSessionOoms, describeSelfOom, type SelfOomEvidence, type CliOomIdentity, type SessionOomCount } from "./session-oom.js";
 import { assertNoSessionOomStop, readSessionOomStop, writeSessionOomStop, SessionOomStoppedError, sessionOomStopHint } from "./session-oom-stop.js";
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
@@ -89,6 +89,7 @@ import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
 import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { MuseBackend } from "./backend/muse.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
@@ -1408,6 +1409,8 @@ export class Daemon extends EventEmitter {
   private crashCount = 0;
   private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: TmuxManager } | null = null;
   private consecutiveOoms: SessionOomCount | null = null;
+  private collateralOomRecovery = false;
+  private unclearOomStopped = false;
   private sessionOomStopUnpersisted = false;
 
   private assertSessionOomAdmission(): void {
@@ -1418,6 +1421,16 @@ export class Daemon extends EventEmitter {
 
   isSessionOomStopped(): boolean {
     return this.sessionOomStopUnpersisted || readSessionOomStop(this.instanceDir).blocked;
+  }
+
+  isUnclearOomStopped(): boolean {
+    return this.unclearOomStopped && this.healthCheckPaused && this.processStatus === "crashed";
+  }
+
+  private stopUnclearOom(exitCode?: number): void {
+    this.unclearOomStopped = true;
+    this.healthCheckPaused = true;
+    this.emitSupervisionEnded(t("inst.oom_unclear_stopped"), t("inst.session_oom_remedy"), exitCode, "oom_unclear");
   }
 
   private oomSessionKey(): string | null {
@@ -1545,7 +1558,10 @@ export class Daemon extends EventEmitter {
    * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
    */
   private nudgeBaselines: Map<string, number> | null = null;
-  private capacityNudge: { pane: string; pattern: RegExp; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
+  private capacityNudge: {
+    pane: string; pattern: RegExp; spawn: number; fence: number; epoch: number; dueAt: number;
+    episode: NonNullable<Daemon["lastErrorEpisode"]>; promiseTarget: string | null;
+  } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   private readonly interactionObservation = new InteractionObservation();
@@ -2082,6 +2098,12 @@ export class Daemon extends EventEmitter {
       model: config.model ?? "default",
     };
     this.logger = rootLogger.child({ instance: name }, { level: config.log_level });
+    if (backend instanceof MuseBackend) {
+      const log = this.logger;
+      backend.setPlaceholderDebug((rec) => {
+        log.debug(rec, "muse empty-composer placeholder classified as empty");
+      });
+    }
     this.tmuxSessionName = getTmuxSession();
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
@@ -3375,7 +3397,9 @@ export class Daemon extends EventEmitter {
           this.cliOomObservation = null;
           const decisionKey = this.oomSessionKey();
           this.consecutiveOoms = consecutiveSessionOoms(this.consecutiveOoms, decisionKey,
-            decisionKey === key && oom !== null);
+            decisionKey === key && oom?.attribution === "self");
+          const collateralOom = oom?.attribution === "collateral";
+          if (collateralOom) this.logger.warn({ attribution: oom.attribution, pid: oom.pid }, "OOM victim without self-caused proof — preserving session; waiting for memory recovery");
           if (this.consecutiveOoms && this.consecutiveOoms.count >= 2) {
             // Stop supervision, not an idle pause: queued work must not auto-wake
             // the same session. An explicit restart is the person's retry choice.
@@ -3384,7 +3408,7 @@ export class Daemon extends EventEmitter {
             try {
               writeSessionOomStop(this.instanceDir, { owner: healthOwner, sessionKey: decisionKey!,
                 configuration: this.getWorkingStateObservation().configuration, stoppedAt: Date.now(),
-                count: this.consecutiveOoms.count, victim: { pid: oom!.pid, at: oom!.at } });
+                count: this.consecutiveOoms.count, victim: { pid: oom!.pid, at: oom!.at }, evidence: oom!.evidence! });
             } catch {
               // Storage failure cannot revive this CLI in the current process.
               // Say explicitly that a fleet restart cannot yet rely on durability.
@@ -3392,10 +3416,10 @@ export class Daemon extends EventEmitter {
               this.logger.error("Could not persist session OOM stop; fix storage before restarting the fleet");
             }
             this.healthCheckPaused = true;
-            try { this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: "session_oom" }); }
+            try { this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: "session_oom", oomEvidence: oom!.evidence! }); }
             catch (error) { this.logger.warn({ error }, "Could not append session OOM history"); }
             this.logger.error({ pid: oom!.pid, count: this.consecutiveOoms.count }, "Repeated confirmed CLI OOM — automatic resume stopped; session preserved");
-            this.emitSupervisionEnded(t("inst.session_oom_stopped"), t("inst.session_oom_remedy")
+            this.emitSupervisionEnded(`${t("inst.session_oom_stopped")} (${describeSelfOom(oom!.evidence!)})`, t("inst.session_oom_remedy")
               + (this.sessionOomStopUnpersisted ? ` ${t("inst.session_oom_save_failed")}` : ""), exitCode, "session_oom");
             return;
           }
@@ -3407,7 +3431,7 @@ export class Daemon extends EventEmitter {
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
-          if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+          if (!oom && lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
             if (!this.backgroundSessionRecoveryAttempted) {
               this.backgroundSessionRecoveryAttempted = true;
               this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
@@ -3444,7 +3468,7 @@ export class Daemon extends EventEmitter {
           // --continue again and crash in the same way → loop. Clear the session id
           // and skip resume so the next spawn starts fresh. (skipResume also stops
           // saveSessionId below from resurrecting the id from statusline.json.)
-          if (this.paneSaysNoConversation(lastOutput)) {
+          if (!oom && this.paneSaysNoConversation(lastOutput)) {
             this.setSessionAside("cli_reported_no_conversation");
             this.skipResume = true;
           }
@@ -3472,7 +3496,8 @@ export class Daemon extends EventEmitter {
           }
 
           // Detect rapid crash: sliding window — 3+ crashes in 5 minutes
-          this.crashTimestamps.push(Date.now());
+          if (!collateralOom) this.crashTimestamps.push(Date.now());
+          else this.crashTimestamps = [];
           const crashWindowMs = 5 * 60_000;
           this.crashTimestamps = this.crashTimestamps.filter(t => t > Date.now() - crashWindowMs);
 
@@ -3482,6 +3507,9 @@ export class Daemon extends EventEmitter {
               { crashesInWindow: this.crashTimestamps.length, lastExitCode: exitCode ?? null, lastOutput: paneTail(lastOutput) ?? null },
               "3+ crashes in 5 minutes — pausing respawn",
             );
+            // Unknown cause is bounded like an ordinary crash, never a
+            // self-OOM verdict. Preserve the session for the person's choice.
+            if (oom?.attribution === "unknown") { this.stopUnclearOom(exitCode); return; }
             // P1: Persist crash state so next process restart skips resume
             try {
               writeFileSync(join(this.instanceDir, "crash-state.json"), JSON.stringify({
@@ -3499,15 +3527,16 @@ export class Daemon extends EventEmitter {
             this.crashCount = 0;
           }
 
-          this.crashCount++;
+          if (!collateralOom) this.crashCount++;
           this.lastCrashAt = Date.now();
 
-          if (this.crashCount > max_retries) {
+          if (!collateralOom && this.crashCount > max_retries) {
             this.logger.error(
               { crashCount: this.crashCount, maxRetries: max_retries, lastExitCode: exitCode ?? null, lastOutput: paneTail(lastOutput) ?? null },
               "Max crash retries exceeded — not respawning",
             );
             this.healthCheckPaused = true;
+            if (oom?.attribution === "unknown") { this.stopUnclearOom(exitCode); return; }
             this.emitSupervisionEnded(
               `it crashed ${this.crashCount} times, exceeding restart_policy.max_retries (${max_retries})`,
               "Check the logs for the cause, then restart it.",
@@ -3517,8 +3546,8 @@ export class Daemon extends EventEmitter {
 
           // Calculate backoff delay
           const delay = backoff === "exponential"
-            ? Math.min(1000 * Math.pow(2, this.crashCount - 1), 60_000)
-            : 1000 * this.crashCount;
+            ? Math.min(1000 * Math.pow(2, Math.max(1, this.crashCount) - 1), 60_000)
+            : 1000 * Math.max(1, this.crashCount);
 
           this.logger.warn({ crashCount: this.crashCount, delay }, `${cliLabel} window died — respawning after backoff`);
 
@@ -3560,7 +3589,10 @@ export class Daemon extends EventEmitter {
             // Write snapshot before spawn — consumed only if resume fails
             this.writeRotationSnapshot("crash");
             // Try --resume first; spawnClaudeWindow falls back to fresh session if resume fails
-            const resumed = await this.spawnClaudeWindow();
+            this.collateralOomRecovery = collateralOom;
+            let resumed: boolean;
+            try { resumed = await this.spawnClaudeWindow(); }
+            finally { this.collateralOomRecovery = false; }
             if (!resumed) {
               // Resume failed → fresh session → inject snapshot for context
               await this.injectSnapshotMessage();
@@ -3649,7 +3681,7 @@ export class Daemon extends EventEmitter {
    * `crash_loop` already had this treatment; this is the same bridge for the other
    * four, carrying a human-readable cause and the operator's next step.
    */
-  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom"): void {
+  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom" | "oom_unclear"): void {
     this.publishWorkingState("supervision_ended");
     this.emit("supervision_ended", {
       name: this.name,
@@ -4202,6 +4234,7 @@ export class Daemon extends EventEmitter {
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
+    this.cancelCapacityNudge("the user cancelled");
     this.publishWorkingState("cancelled");
     this.logger.info({ deliveryEpoch: this.deliveryEpoch }, "Pending delivery queue cleared by user cancel");
   }
@@ -6692,6 +6725,7 @@ export class Daemon extends EventEmitter {
 
   /** Stop every runtime poller/watcher while preserving IPC and daemon state. */
   private freezeRuntimeMonitors(): void {
+    this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.runtimeMonitorsFrozen = true;
     this.launchFenceEpoch++;
     this.interactionObservation.reset(this.interactionOwner());
@@ -8023,7 +8057,8 @@ export class Daemon extends EventEmitter {
   /**
    * Arm the "keep going" nudge for the error occurrence just reported (`pattern` must be the one the lifecycle was
    * handed). The nudge is sent once, `delayMs` from now on the MONOTONIC clock (a wall-clock step changes nothing),
-   * and only if nothing has changed by then — see {@link tickCapacityNudge}. Returns false when there is nothing to arm.
+   * and only if the failed turn still owns an empty idle composer — see {@link tickCapacityNudge}.
+   * Cosmetic footer redraws are not new work. Returns false when there is nothing to arm.
    */
   armCapacityNudge(pattern: RegExp, delayMs: number): boolean {
     const episode = this.lastErrorEpisode;
@@ -8037,9 +8072,12 @@ export class Daemon extends EventEmitter {
     // And only when the row is the live item, not a quotation or scrollback above a newer turn. (Never a regex
     // lookahead on the counting pattern: whole-pane dedup would max at 1 and miss later hits. See #1215.)
     if (!codexLiveRowMatches(episode.pane, pattern)) return false;
+    this.cancelCapacityNudge("the instance has work of its own");
     this.capacityNudge = {
       pane: episode.pane, pattern, spawn: episode.spawn, fence: episode.fence,
       epoch: this.deliveryEpoch, dueAt: performance.now() + delayMs,
+      episode,
+      promiseTarget: null,
     };
     this.logger.info({ delayMs }, "Model-capacity nudge armed");
     return true;
@@ -8055,16 +8093,14 @@ export class Daemon extends EventEmitter {
     const nudge = this.capacityNudge, episode = this.lastErrorEpisode;
     const tmux = this.tmux, attempt = this.launchAttempt, boot = this.bootId;
     this.cancelCapacityNudge("retries exhausted");
-    if (!nudge || !episode || !tmux) return null;
+    if (!nudge || !episode || nudge.episode !== episode || !tmux) return null;
     const window = tmux.getWindowId?.();
     const current = (): boolean => this.tmux === tmux && tmux.getWindowId?.() === window
       && boot === this.bootId && nudge.spawn === this.spawnGeneration && attempt === this.launchAttempt
       && episode === this.lastErrorEpisode && this.isDeliveryEpochCurrent(nudge.epoch)
       && !this.startupAborted && !this.spawning && !this.isPaused
       && this.getProcessStatus() === "running" && this.instanceState === "idle" && this.pasteQueueDepth === 0;
-    const accepts = (pane: string): boolean => pane === nudge.pane && this.paneAuthoritativelyIdle(pane)
-      && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
-      && codexLiveRowMatches(pane, nudge.pattern) && !this.backend?.backgroundWorkRunning?.(pane);
+    const accepts = (pane: string): boolean => this.capacityNudgePaneCurrent(nudge, pane);
     const revalidate = (): Promise<boolean> => this.paneWriteLock.run(async () => {
       if (!current()) return false;
       try {
@@ -8081,9 +8117,35 @@ export class Daemon extends EventEmitter {
 
   /** Drop an armed nudge (the user stopped / paused the instance, or the lifecycle gave up on it). */
   cancelCapacityNudge(reason: string): void {
-    if (!this.capacityNudge) return;
+    const nudge = this.capacityNudge;
+    if (!nudge) return;
     this.capacityNudge = null;
     this.logger.info({ reason }, "Model-capacity nudge cancelled");
+    this.reportCapacityNudgeCancelled(nudge, reason);
+  }
+
+  /** Only a dispatched channel promise needs a later cancellation notice. */
+  markCapacityNudgePromised(target: string): void {
+    if (this.capacityNudge) this.capacityNudge.promiseTarget = target;
+  }
+
+  private reportCapacityNudgeCancelled(nudge: NonNullable<Daemon["capacityNudge"]>, reason: string): void {
+    const target = nudge.promiseTarget;
+    if (!target) return;
+    nudge.promiseTarget = null;
+    this.emit("capacity_nudge_cancelled", { name: this.name, reason, target });
+  }
+
+  /**
+   * A failed turn must still be the last live transcript item, with no new
+   * error occurrence, draft, queue, busy status or background work. Codex's
+   * own periodic-redraw idle classifier recognises its empty composer/footer;
+   * never infer inactivity from byte equality or a cached idle state alone.
+   */
+  private capacityNudgePaneCurrent(nudge: NonNullable<Daemon["capacityNudge"]>, pane: string): boolean {
+    return this.paneAuthoritativelyIdle(pane) && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
+      && !this.backend?.backgroundWorkRunning?.(pane) && codexLiveRowMatches(pane, nudge.pattern)
+      && Daemon.countOccurrences(nudge.pattern, pane) === Daemon.countOccurrences(nudge.pattern, nudge.pane);
   }
 
   /** The first live composer of a spawn fixes what is history (see {@link nudgeBaselines}). */
@@ -8107,8 +8169,8 @@ export class Daemon extends EventEmitter {
 
   /**
    * One monitor poll's look at an armed nudge. It is CANCELLED — never postponed — when anything about the instance
-   * moved: a stop / pause / respawn (spawn generation or monitor epoch), a user cancel (delivery epoch), the pane no
-   * longer being exactly the one the error was seen on (it moved on by itself, a person typed, another dialog), the
+   * moved: a stop / pause / respawn (spawn generation or monitor epoch), a user cancel (delivery epoch), the pane
+   * no longer belonging to the failed turn (new output, a draft, another dialog), the
    * agent working, or a message waiting for delivery. Only when it is due and still untouched is it fired — once — and
    * the injection re-verifies everything under the pane-write lock.
    */
@@ -8117,14 +8179,18 @@ export class Daemon extends EventEmitter {
     if (!nudge) return;
     const gone = nudge.spawn !== this.spawnGeneration || nudge.fence !== this.launchFenceEpoch ? "the instance was stopped, paused or respawned"
       : !this.isDeliveryEpochCurrent(nudge.epoch) ? "the user cancelled"
+      : nudge.episode !== this.lastErrorEpisode ? "the instance has work of its own"
       : this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped" ? "the instance is not running"
-      : pane !== nudge.pane ? "the screen changed"
       : this.instanceState === "working" || this.pasteQueueDepth > 0 ? "the instance has work of its own"
+      : !this.capacityNudgePaneCurrent(nudge, pane) ? "the failed turn is no longer idle with an empty input"
       : null;
     if (gone) { this.cancelCapacityNudge(gone); return; }
     if (performance.now() < nudge.dueAt) return;
     this.capacityNudge = null;                                    // fired: once per episode
-    void this.sendCapacityNudge(nudge).catch(err => this.logger.warn({ err: (err as Error).message }, "Model-capacity nudge failed"));
+    void this.sendCapacityNudge(nudge).catch(err => {
+      this.logger.warn({ err: (err as Error).message }, "Model-capacity nudge failed");
+      this.reportCapacityNudgeCancelled(nudge, "the retry could not be submitted");
+    });
   }
 
   private async sendCapacityNudge(nudge: NonNullable<Daemon["capacityNudge"]>): Promise<void> {
@@ -8132,21 +8198,25 @@ export class Daemon extends EventEmitter {
     // primitive too (its capture, its paste, its pause, its Enter, its retry): once any of it is false nothing more is
     // written. A message queued behind the lock, or the agent starting a turn, is "work of its own" like at the poll.
     const current = (): boolean => nudge.spawn === this.spawnGeneration && nudge.fence === this.launchFenceEpoch
+      && nudge.episode === this.lastErrorEpisode
       && this.isDeliveryEpochCurrent(nudge.epoch) && !this.isPaused && !this.healthCheckPaused
       && !this.startupAborted && this.getProcessStatus() !== "stopped"
       && this.pasteQueueDepth === 0 && this.instanceState !== "working";
     // Exclusive with every delivery: nothing can paste a turn between the verdict below and the nudge.
-    await this.paneWriteLock.run(async () => {
-      if (!this.tmux) return;
-      // ONE capture decides: it must be exactly the screen the error was seen on AND an idle composer. (A second picture
-      // vouching for the first — "same screen" here, "idle" there — would let a half-typed draft through.)
-      const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
-        current,
-        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane)
-          && codexLiveRowMatches(pane, nudge.pattern),
+    let sent = false;
+    try {
+      await this.paneWriteLock.run(async () => {
+        if (!this.tmux) return;
+        // ONE capture decides failed-turn ownership and empty/idle input.
+        sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
+          current,
+          accept: pane => this.capacityNudgePaneCurrent(nudge, pane),
+        });
+        this.logger.info({ sent }, "Model-capacity nudge attempted");
       });
-      this.logger.info({ sent }, "Model-capacity nudge attempted");
-    });
+    } finally {
+      if (!sent) this.reportCapacityNudgeCancelled(nudge, "the retry could not be submitted");
+    }
   }
 
   /** What identifies the request on screen: the backend's own identity when it has one, else the whole screen verbatim. */
@@ -10890,6 +10960,7 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    this.unclearOomStopped = false;
     this.publishWorkingState("before_spawn");
     this.workingBackgroundObservation = null;
     this.ownedWorkingSession = null;
@@ -10897,7 +10968,7 @@ export class Daemon extends EventEmitter {
     this.recoveryNativeWork = false;
     this.recoveryCancelled = false;
     this.dialogAnswers = null;
-    this.capacityNudge = null;
+    this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.lastErrorEpisode = null;
     this.nudgeBaselines = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
@@ -11443,11 +11514,20 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
-    const ready = !this.spawnGate ? await this.trySpawnInsideGate(reuseWindow, startupTimeoutMs) : await this.spawnGate.run({
+    const recoveryOwner = this.collateralOomRecovery ? this.interactionOwner() : null;
+    const enter = () => {
+      if (recoveryOwner && (!sameInteractionOwner(recoveryOwner, this.interactionOwner())
+        || this.startupAborted || this.deliveryWritesStopping || this.runtimeMonitorsFrozen || this.healthCheckPaused)) {
+        throw new Error("OOM recovery cancelled: the instance was stopped, paused or replaced while memory was unavailable");
+      }
+      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
+    };
+    const ready = !this.spawnGate ? await enter() : await this.spawnGate.run({
       instanceName: this.name,
       workingDirectory: this.config.working_directory,
       reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
-    }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+      requireNormalMemory: this.collateralOomRecovery,
+    }, enter);
     // #906: a resumed kiro conversation comes back as the agent it was saved under. Every launch path that reaches a
     // ready CLI (start, recovery, wake) switches it to this instance's own agent here, while the spawn still holds
     // deliveries — and outside the spawn gate, which it does not need.
@@ -12438,7 +12518,7 @@ export class Daemon extends EventEmitter {
     return lines.join("\n").slice(0, 4000);
   }
 
-  private appendCrashHistory(data: { exitCode?: number; lastOutput?: string; crashType: "server" | "window"; reason?: string }): void {
+  private appendCrashHistory(data: { exitCode?: number; lastOutput?: string; crashType: "server" | "window"; reason?: string; oomEvidence?: SelfOomEvidence }): void {
     try {
       const historyPath = join(this.instanceDir, "crash-history.jsonl");
       const entry = {
@@ -12447,6 +12527,7 @@ export class Daemon extends EventEmitter {
         crashType: data.crashType,
         exitCode: data.exitCode,
         reason: data.reason,
+        ...(data.oomEvidence ? { oomEvidence: data.oomEvidence } : {}),
         lastOutput: data.lastOutput,
         crashCount: this.crashCount + 1,
         crashesInWindow: this.crashTimestamps.length,

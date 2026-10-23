@@ -135,6 +135,19 @@ export class EventLog {
     }));
   }
 
+  /**
+   * #2499 review: the newest events of these types for one instance, in a total order — by row id (insertion order),
+   * not by created_at, which is to the second: rows written in the same second never trade places at the cap.
+   */
+  latestOfTypes(instance: string, types: readonly string[], limit = 50): EventRow[] {
+    if (!types.length) return [];
+    return measureSyncWork("eventLog.latestOfTypes", () => {
+      const rows = this.db.prepare(`SELECT * FROM events WHERE instance_name = ? AND event_type IN (${types.map(() => "?").join(", ")}) ORDER BY id DESC LIMIT ?`)
+        .all(instance, ...types, limit) as EventRowRaw[];
+      return rows.map((r) => ({ ...r, payload: r.payload != null ? safeParseJson(r.payload) : null }));
+    });
+  }
+
   // ── Activity Log ──────────────────────────────────────────────
 
   logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void {

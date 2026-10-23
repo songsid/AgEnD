@@ -1,7 +1,7 @@
 // #1939 S2a: Settings → Web → Web authority — whether a signed-in admin's web messages carry their account's authority
 // in delivery receipts (docs/design/1939-verified-web-sessions.md §0, §0.1, §3, §10): the server switch (on by default),
 // "Only this computer can authorize", how long a session's authorization lasts, the sessions authorized now, and "Revoke
-// web authority". Changes go through Review changes → Apply like every Settings edit, and apply at once (§0.1: none of
+// web authority". #2347: an edit is unsaved at once and saved by the Settings bar's Save like every Settings edit, and applies at once (§0.1: none of
 // them grants anything by itself — a session still needs its account's Confirm in Discord or Telegram).
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
@@ -9,8 +9,9 @@ import { useTypedText } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
-import { Feedback } from "./settings-dialogs.js";
-import { DEFAULT_SCHEMA, impactOf } from "./settings-model.js";
+import { Feedback, InEffect } from "./settings-dialogs.js";
+import { DEFAULT_SCHEMA, impactOf, sameValue } from "./settings-model.js";
+import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 
@@ -24,12 +25,14 @@ export function verifiedAuthorityBody(original, f) {
   if (f.hours !== original.hours) out.max_session_hours = f.hours === null ? null : f.hours;
   // #2453 (§0.2): off by default; turning it on is confirmed in a General or on the host.
   if (f.namedLink !== original.namedLink) out.named_link = f.namedLink ? true : null;
+  // §0.3: off by default (the user's decision); turning it on is confirmed in a General or on the host.
+  if (f.quickLink !== original.quickLink) out.quick_link = f.quickLink ? true : null;
   return Object.keys(out).length ? out : null;
 }
 
 export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const [overview, setOverview] = useState(null), [failed, setFailed] = useState(false);
-  const [original, setOriginal] = useState(null), [f, setF] = useState(null), [msg, setMsg] = useState(null);
+  const [original, setOriginal] = useState(null), [f, setF] = useState(null);
   // #2342: the hours box keeps what was typed ("01", "1.50"; its undo history); the form gets the number.
   const [hoursText, onHoursText] = useTypedText(f ? f.hours : null, (v) => (v.trim() === "" ? null : Number(v)));
   const load = async () => {
@@ -42,12 +45,24 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     if (!o || typeof o !== "object" || !o.state || !o.hours || !Array.isArray(o.lanHosts) || !Array.isArray(o.authorized)) { setFailed(true); return; }
     const c = o.configured || {};
     const orig = { enabled: c.enabled !== false, loopbackOnly: c.loopback_only === true, hours: typeof c.max_session_hours === "number" ? c.max_session_hours : null,
-      namedLink: c.named_link === true };
+      namedLink: c.named_link === true, quickLink: c.quick_link === true };
     setOverview(o); setFailed(false);
     setOriginal((prev) => prev || orig);
-    setF((prev) => prev || { ...orig });
+    // #2347: a draft kept from before this card was last shown (still unsaved) comes back over what is saved now — only
+    // its edited fields (#2367 review: a field never touched follows the configuration, another admin's change too).
+    setF((prev) => prev || { ...orig, ...((ctx.drafts && ctx.drafts.get("verified_authority")) || {}) });
   };
   useEffect(() => { load(); }, []);
+  // #2347: every edit is unsaved at once — kept as the draft and staged (an invalid hours box: Save waits for it).
+  useEffect(() => {
+    if (!f || !original || !overview || disabled) return;
+    keepDraft(ctx, "verified_authority", editsOf(f, original), f);
+    const bad = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max);
+    if (bad) { syncStage(ctx, "verified_authority", { label: tn("vaTitle"), invalid: tn("vaHoursRange"), section: "access", target: "#vaHours" }); return; }
+    const body = verifiedAuthorityBody(original, f);
+    syncStage(ctx, "verified_authority", body ? { label: tn("vaTitle"), count: Object.keys(body).length,
+      impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.verified_authority"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } } : null);
+  }, [f, original, overview]);
   const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note">${tn("vaHint")}</p>${body}</section>`;
   if (failed) return card(html`<p class="note" role="status">${tn("vaLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`);
   if (!overview || !f) return card(html`<p class="note">${t("app.loading")}</p>`);
@@ -58,13 +73,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const warnHosts = !f.loopbackOnly && overview.lanHosts.length > 0;
   const when = (ms) => new Date(ms).toLocaleString();
 
-  const review = () => {
-    if (hoursError) return;
-    const body = verifiedAuthorityBody(original, f);
-    if (body) ctx.stage("verified_authority", { label: tn("vaTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.verified_authority"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } });
-    else if (staged.has("verified_authority")) ctx.unstage("verified_authority");
-    setMsg(tn("readyApply"));
-  };
+  const fc = (cls, key) => `${cls}${!sameValue(f[key], original[key]) ? " s-dirty" : ""}`;
   const revoke = async () => {
     const yes = await confirmDialog({ title: tn("vaRevokeTitle"), message: tn("vaRevokeConfirm"), confirmLabel: tn("vaRevoke"), danger: true });
     if (!yes) return;
@@ -76,24 +85,26 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
 
   return card(html`<fieldset class="s-va-fields" disabled=${disabled}>
       ${stuckOff ? html`<p class="note s-va-warn" role="status" id="vaStuckOff">${tn("vaStuckOff")}</p>` : null}
-      <label class="check"><input id="vaEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${tn("vaEnabled")}</span></label>
+      <label class=${fc("check", "enabled")}><input id="vaEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${tn("vaEnabled")}</span></label>
       <p class="note">${tn("vaEnabledHint")}</p>
-      <label class="check"><input id="vaLoopbackOnly" type="checkbox" checked=${f.loopbackOnly} onChange=${(e) => set({ loopbackOnly: e.target.checked })} /><span>${tn("vaLoopbackOnly")}</span></label>
+      <label class=${fc("check", "loopbackOnly")}><input id="vaLoopbackOnly" type="checkbox" checked=${f.loopbackOnly} onChange=${(e) => set({ loopbackOnly: e.target.checked })} /><span>${tn("vaLoopbackOnly")}</span></label>
       <p class="note">${tn("vaLoopbackOnlyHint")}</p>
       ${warnHosts ? html`<p class="note s-va-warn" role="status" id="vaLanWarning">${tn("vaLanWarning", overview.lanHosts.join(", "))}</p>` : null}
-      ${overview.namedHost || original.namedLink ? html`<label class="check"><input id="vaNamedLink" type="checkbox" checked=${f.namedLink} onChange=${(e) => set({ namedLink: e.target.checked })} /><span>${tn("vaNamedLink", overview.namedHost || "—")}</span></label>
+      ${overview.namedHost || original.namedLink ? html`<label class=${fc("check", "namedLink")}><input id="vaNamedLink" type="checkbox" checked=${f.namedLink} onChange=${(e) => set({ namedLink: e.target.checked })} /><span>${tn("vaNamedLink", overview.namedHost || "—")}</span></label>
       <p class="note">${tn("vaNamedLinkHint")}</p>` : null}
-      <div class="field"><label for="vaHours">${tn("vaHours", overview.hours.min, overview.hours.max)}</label>
-        <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any" placeholder=${tn("defaultHours", overview.hours.default)}
+      ${/* §0.3: always shown — any fleet can open the temporary public link with /web. */ ""}
+      <label class=${fc("check", "quickLink")}><input id="vaQuickLink" type="checkbox" checked=${f.quickLink} onChange=${(e) => set({ quickLink: e.target.checked })} /><span>${tn("vaQuickLink")}</span></label>
+      <p class="note">${tn("vaQuickLinkHint")}</p>
+      <div class=${fc("field", "hours")}><label for="vaHours">${tn("vaHours", overview.hours.min, overview.hours.max)}</label>
+        <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any"
           class=${hoursError ? "invalid" : ""} value=${hoursText} onInput=${(e) => set({ hours: onHoursText(e.target.value) })} />
-        <${Feedback} error=${hoursError} /></div>
+        <${Feedback} error=${hoursError} />
+        ${hoursText.trim() === "" ? html`<${InEffect} text=${tn("hoursValue", overview.hours.default)} />` : null}</div>
       <h4>${tn("vaSessionsTitle")}</h4>
       ${overview.authorized.length
         ? html`<ul class="s-va-sessions" id="vaSessions">${overview.authorized.map((a) => html`<li key=${a.handle} data-handle=${a.handle}>
-            <strong>${a.label}</strong> <span class="note">${a.account}</span>${a.named ? html` <span class="note s-va-named">${tn("vaSessionNamed")}</span>` : null}<br /><span class="note">${tn("vaSessionUntil", when(a.authorizedAt), when(a.until))}</span></li>`)}</ul>`
+            <strong>${a.label}</strong> <span class="note">${a.account}</span>${a.named ? html` <span class="note s-va-named">${tn("vaSessionNamed")}</span>` : null}${a.quick ? html` <span class="note s-va-named s-va-quick">${tn("vaSessionQuick")}</span>` : null}<br /><span class="note">${tn("vaSessionUntil", when(a.authorizedAt), when(a.until))}</span></li>`)}</ul>`
         : html`<p class="note" id="vaSessionsNone">${tn("vaSessionsNone")}</p>`}
     </fieldset>
-    <div class="save-row"><button type="button" class="btn btn-primary" id="vaReview" disabled=${disabled || !!hoursError} onClick=${review}>${tn("vaReview")}</button>
-      <button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled} onClick=${revoke}>${tn("vaRevoke")}</button>
-      ${msg ? html`<span class="note" role="status">${msg}</span>` : null}</div>`);
+    <div class="save-row"><button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled} onClick=${revoke}>${tn("vaRevoke")}</button></div>`);
 }

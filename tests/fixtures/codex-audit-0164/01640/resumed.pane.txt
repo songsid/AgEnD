@@ -1,0 +1,45 @@
+  >_ OpenAI Codex (v0.164.0)
+     /tmp/codex-audit/run-01640/work
+  permissions: YOLO mode
+
+  Tip: Use /init to create an AGENTS.md with project-specific guidance.
+
+
+› audit slow
+
+
+• ok
+
+  Worked for 8s • 12:00
+
+
+› audit near
+
+
+• ok
+
+  Worked for <1s • 12:00
+
+
+› audit usage
+
+
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or
+try again at 12:00.
+
+
+› audit rate
+
+
+■ exceeded retry limit, last status: 429 Too Many Requests
+
+
+› audit quota
+
+
+■ Quota exceeded. Check your plan and billing details.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                          ⚠ 1 warning · f2 to view

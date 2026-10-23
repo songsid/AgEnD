@@ -1,0 +1,34 @@
+{
+  "0.163.0": {
+    "binary_sha256": "399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215",
+    "literals": {
+      "rate limit reset consume timed out": true,
+      "Press Ctrl+C to return to the main thread first.": true,
+      "Press R to refresh Analytics.": true,
+      "Press R to retry Analytics.": true,
+      "Press R to retry.": true,
+      "Resume the task to continue, or retry the action.": true,
+      "Usage limit reached": true,
+      "press R to continue here.": true,
+      "rate limit exceeded; sleeping.": true,
+      "rate limit reset credit detail request timed out": true,
+      "Continue with Luna Reserve": true
+    }
+  },
+  "0.164.0": {
+    "binary_sha256": "b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306",
+    "literals": {
+      "rate limit reset consume timed out": true,
+      "Press Ctrl+C to return to the main thread first.": true,
+      "Press R to refresh Analytics.": true,
+      "Press R to retry Analytics.": true,
+      "Press R to retry.": true,
+      "Resume the task to continue, or retry the action.": true,
+      "Usage limit reached": true,
+      "press R to continue here.": true,
+      "rate limit exceeded; sleeping.": true,
+      "rate limit reset credit detail request timed out": true,
+      "Continue with Luna Reserve": true
+    }
+  }
+}

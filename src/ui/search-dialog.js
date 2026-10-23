@@ -11,9 +11,12 @@ import { navigate } from "/assets/app-nav.js";
 import { chatPath, fleetPath } from "/assets/app-route.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Icon } from "/assets/ui-icons.js";
+import { goToSetting, searchSettings, settingLabel } from "./settings-registry.js";
+import "./settings-strings.js";
 
 register("search", {
   en: {
+    settingsGroup: "Settings", settingsWhere: "Settings › {0}",
     label: "Search", placeholder: "Search chats, messages and tasks…", close: "Close", filters: "Filters", filtersOn: "Filters ({0})",
     hint: "Find who you asked about something: a word or two from the chat, a message between agents or a task. Short words (1–2 characters) work too.",
     recent: "Recent searches", clearRecent: "Clear",
@@ -32,6 +35,7 @@ register("search", {
     notFound: "No longer found — it may have been removed.", from: "{0} → {1}", groupCount: "{0} results",
   },
   "zh-TW": {
+    settingsGroup: "設定", settingsWhere: "設定 › {0}",
     label: "搜尋", placeholder: "搜尋聊天、訊息與任務…", close: "關閉", filters: "篩選", filtersOn: "篩選（{0}）",
     hint: "找回某件事當初交給誰：輸入聊天、agent 之間訊息或任務裡的一兩個詞。1–2 個字的短詞也可以。",
     recent: "最近的搜尋", clearRecent: "清除",
@@ -142,6 +146,9 @@ export function jumpToMessage(instance, key, w = window) {
 
 const errorText = (status) => (status === 404 ? t("search.unavailable") : status === 503 ? t("search.busy") : status === 401 ? t("search.signedOut") : t("search.failed"));
 
+/** #2347 §6: how many settings the dialog lists above the messages (the Settings page's own search lists them all). */
+const SETTINGS_SHOWN = 5;
+
 export function SearchDialog({ preset = {}, onClose }) {
   const ref = useRef(null), input = useRef(null), list = useRef(null);
   const app = useStore(appStore);
@@ -211,7 +218,9 @@ export function SearchDialog({ preset = {}, onClose }) {
   const label = (name) => (byName.has(name) ? namesOf(byName.get(name), names.primary).primary : name);
   // While a new query runs, the last answer stays (dimmed) rather than flashing empty.
   const groups = useMemo(() => groupHits(res.hits || []), [res]);
-  const flat = useMemo(() => flatHits(groups), [groups]);
+  // #2347 §6: the settings matching the query, from the page's own registry (no request), above the messages.
+  const settings = useMemo(() => (q.trim() ? searchSettings(q).slice(0, SETTINGS_SHOWN) : []), [q]);
+  const flat = useMemo(() => [...settings.map((entry) => ({ setting: entry })), ...flatHits(groups)], [settings, groups]);
   const activeFilters = (f.instance ? 1 : 0) + (f.team ? 1 : 0) + (f.since !== "any" ? 1 : 0) + (f.sources.length < SOURCES.length ? 1 : 0) + (f.mine ? 1 : 0);
 
   // The active row stays in view.
@@ -222,6 +231,7 @@ export function SearchDialog({ preset = {}, onClose }) {
 
   const open = (hit) => {
     if (!hit) return;
+    if (hit.setting) { rememberSearch(q); onClose(); goToSetting(hit.setting); return; }
     rememberSearch(q); setRecent(readRecent());
     const key = hit.source === "chat" ? messageKeyOf(hit) : null;
     if (key && hit.live) { onClose(); jumpToMessage(hit.instance, key); return; }
@@ -286,31 +296,40 @@ export function SearchDialog({ preset = {}, onClose }) {
       </div>` : null}
       <div class="search-body" ref=${list}>
         ${detail ? html`<${Detail} detail=${detail} q=${q} label=${label} onBack=${() => { setDetail(null); input.current && input.current.focus(); }} onClose=${onClose} />`
-          : html`<${Results} q=${q} res=${res} groups=${groups} active=${active} setActive=${setActive} open=${open} label=${label} filtered=${activeFilters > 0}
+          : html`<${Results} q=${q} res=${res} groups=${groups} settings=${settings} active=${active} setActive=${setActive} open=${open} label=${label} filtered=${activeFilters > 0}
               recent=${recent} pick=${(s) => { recordEdit(input.current); setQ(s); input.current && input.current.focus(); }} clearRecent=${() => { forgetRecent(); setRecent([]); }} />`}
       </div>
       <div class="search-foot" aria-hidden="true">${t("search.keys")}</div>
     </div></dialog>`;
 }
 
-function Results({ q, res, groups, active, setActive, open, label, filtered, recent, pick, clearRecent }) {
+function Results({ q, res, groups, settings = [], active, setActive, open, label, filtered, recent, pick, clearRecent }) {
   if (!q.trim()) {
     return html`<div class="search-empty"><p class="search-hint">${t("search.hint")}</p>
       ${recent.length ? html`<div class="search-recent"><div class="search-recent-head"><span>${t("search.recent")}</span>
         <button type="button" class="chip-btn" onClick=${clearRecent}>${t("search.clearRecent")}</button></div>
         <ul>${recent.map(s => html`<li><button type="button" class="search-recent-item" onClick=${() => pick(s)}><${Icon} name="clock" size=${14} /><span>${s}</span></button></li>`)}</ul></div>` : null}</div>`;
   }
-  if (res.status === "error") return html`<p class="search-status bad" role="alert">${res.error}</p>`;
-  const hits = res.hits || [];
+  // #2383 review: the settings are this page's own — shown (and reachable) whatever the message search answered.
+  const failed = res.status === "error";
+  const hits = failed ? [] : res.hits || [];
   return html`
     ${res.building ? html`<p class="search-note" role="status">${t("search.building")}</p>` : null}
     ${res.limited ? html`<p class="search-note" role="status">${t("search.limited")}</p>` : null}
     ${res.status === "loading" && !hits.length ? html`<p class="search-status" role="status">${t("search.searching")}</p>` : null}
-    ${res.status === "ok" && !hits.length ? html`<p class="search-status" role="status">${filtered ? t("search.noneFiltered") : t("search.none")}</p>` : null}
+    ${failed ? html`<p class="search-status bad" role="alert">${res.error}</p>` : null}
+    ${res.status === "ok" && !hits.length && !settings.length ? html`<p class="search-status" role="status">${filtered ? t("search.noneFiltered") : t("search.none")}</p>` : null}
     <div id="search-results" role="listbox" aria-label=${t("search.results")} class=${`search-results${res.status === "loading" ? " stale" : ""}`}>
+      ${settings.length ? html`<div role="group" class="search-group search-settings" aria-label=${t("search.settingsGroup")}>
+        <div class="search-group-head" aria-hidden="true"><span>${t("search.settingsGroup")}</span><span class="search-count">${t("search.groupCount", settings.length)}</span></div>
+        ${settings.map((entry, i) => html`<div id=${`search-opt-${i}`} role="option" aria-selected=${i === active ? "true" : "false"} class=${`search-row${i === active ? " on" : ""}`}
+          onMouseMove=${i === active ? undefined : () => setActive(i)} onClick=${() => open({ setting: entry })}>
+          <div class="search-row-top"><span class="search-badge setting">${t("search.settingsGroup")}</span><span class="search-who">${t("search.settingsWhere", t(`settings.sec_${entry.section}`))}</span></div>
+          <div class="search-snippet">${settingLabel(entry)}${entry.key ? html` <code class="s-find-key">${entry.key}</code>` : null}</div></div>`)}
+      </div>` : null}
       ${groups.map(g => html`<div role="group" class="search-group" aria-label=${label(g.instance)}>
         <div class="search-group-head" aria-hidden="true"><span>${label(g.instance)}</span><span class="search-count">${t("search.groupCount", g.hits.length)}</span></div>
-        ${g.hits.map(({ hit, index }) => html`<${Row} hit=${hit} index=${index} on=${index === active} label=${label} onHover=${() => setActive(index)} onOpen=${() => open(hit)} />`)}
+        ${g.hits.map(({ hit, index }) => html`<${Row} hit=${hit} index=${index + settings.length} on=${index + settings.length === active} label=${label} onHover=${() => setActive(index + settings.length)} onOpen=${() => open(hit)} />`)}
       </div>`)}
     </div>`;
 }

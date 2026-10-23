@@ -264,6 +264,7 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
   it("publish-runtime.yml: NPM_TOKEN (when the secret exists) is npm's fallback; provenance and OIDC stay", () => {
     const yml = readFileSync(join(process.cwd(), ".github", "workflows", "publish-runtime.yml"), "utf8");
     expect(yml).toContain("id-token: write");
+    expect(yml).toMatch(/dry_run:[\s\S]*?default: true/);
     expect(yml).toMatch(/- name: Publish \(or dry run\)[\s\S]*NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
     expect(readFileSync(script, "utf8")).toContain("npm publish --access public --provenance --tag latest");
   });

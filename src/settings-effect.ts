@@ -9,6 +9,7 @@ import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, 
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
+import { quickLinkEffective } from "./authority/web-authority.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -37,9 +38,11 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   const operation = `${method} ${path}`;
   // #2453 (§0.2): the trusted effect — the named-link option off before, on after — makes the change one its asker can't
   // confirm (#2170 self-confirmation).
-  const opensNamedLink = () => before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true;
+  // §0.3: likewise the quick-link option, on its value as in force (explicit, else the release default) before and after.
+  const opensPublicLink = () => (before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true)
+    || (!quickLinkEffective(before.fleet?.web?.verified_authority) && quickLinkEffective(after.fleet?.web?.verified_authority));
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
-    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensNamedLink() ? { noSelfConfirm: true as const } : {}) } : null;
+    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (secret || connection) {

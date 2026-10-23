@@ -27,7 +27,7 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets and a
 | subscription meters, plan badges, profiles, keep-warm, prompt cache | [Usage and the cache report](#usage-and-the-cache-report) |
 | what an agent did step by step | [The Log tab](#the-log-tab) |
 | any Settings control | [Settings](#settings) |
-| themes, cards, widgets, ambient effects (petals, click stars) | [Web appearance](#web-appearance) |
+| themes, cards, widgets, ambient effects (petals, click stars) | [Look](#look) |
 | blank page, preview refused, link fails, signed out, "live" missing | [Troubleshooting](#troubleshooting) |
 
 Addresses: the dashboard is served on the host at `http://localhost:<health_port>` (default 19280), on 127.0.0.1
@@ -59,7 +59,7 @@ hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, 
 `web.public_link.auto_open` reopens the link after AgEnD starts for the admin who last opened it (nothing posted; sign-in
 still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
-A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Web, appearance,
+A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Access & security, Look,
 schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 
@@ -78,14 +78,24 @@ the local address sees every instance's live terminal and the roster (status, co
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
-**Guests (#1920).** Off by default: `web.guests.enabled` (or Settings → Web → Guests). Then someone who is
-not a fleet admin sends `/web` and gets a code privately, signing in as their own Discord or Telegram account. A guest
-sees only the agents they can already use in chat: their connection's fleet topics and General (an `open` connection:
-only `web.guests.open_instances`), their own Telegram private ClassicBot room, and ClassicBot group rooms while their
-membership is verified, minus any `web.guests.narrow`. They can chat there unless `web.guests.chat` is false, never send
-a command (text starting with `/` is refused), and the agent sees them as `via web (guest)`. A guest's app has no Fleet,
-View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`. The Guests card is not in
-Settings over the public link.
+**Guests (#1920, #2348).** Off by default: `web.guests.enabled` (or Settings → Access & security → Guests). Then someone
+who is not a fleet admin gets a code privately, by sending `/web` or from an admin's **Send sign-in code**, and signs in
+as their own Discord or Telegram account. What a guest sees:
+- **With explicit grants** (`web.guests.grants`, set in Settings → Access & security → Guests): exactly the agents an
+  admin granted that person, nothing else (default deny once the key exists). The admin picks the person from people
+  AgEnD has seen writing to an agent, ticks their agents, saves (giving access or more agents waits for a fleet admin in
+  General; taking away applies at once and ends their sessions), then presses **Send sign-in code**, a DM, never a post.
+  Each code sent and each change to someone's access is in the event log (`guest_code_sent`, `guest_grant_changed`),
+  shown to admins under **Recent changes** in that section (no agent's Log tab shows them).
+- **Without grants** (before an admin saves the first one): the agents they can already use in chat: their connection's
+  fleet topics and General (an `open` connection: only `web.guests.open_instances`), their own Telegram private
+  ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
+  **Start from today's guests** turns that into grants.
+
+They can chat there unless `web.guests.chat` is false, never send a command (text starting with `/` is refused), and the
+agent sees them as `via web (guest)`. A guest's app has no Fleet, View, Settings or Needs you. To invite someone: turn it
+on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
+send `/web`). The Guests section is not in Settings over the public link.
 
 **Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
 account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
@@ -96,14 +106,14 @@ again. Confirm within 5 minutes and the session menu says **Verified · speaks a
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
-per account. Never for a guest or on a quick-tunnel public link. Over the admin's own named link (#2453) only with
-**Also over my named link** (`named_link`, off by default). That authority ends with the link, and the card says "over
-your named link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
-this computer" or the named-link option is the reason). Settings → Web → **Web authority** (`web.verified_authority`, on
+per account. Never for a guest. Over the admin's own named link (#2453) only with **Also over my named link**
+(`named_link`, off by default); over the temporary public link `/web` opens only with **Also over the temporary public
+link** (`quick_link`, off by default, §0.3). That authority ends with the link, and the card says "over your named link"
+or "over the temporary public link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
+this computer" or the named-link option is the reason). Settings → Access & security → **Web authority** (`web.verified_authority`, on
 by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown
-with a fixed hostname), the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
-there applies at once, except turning the named-link option on: a General or the host confirms that, never the browser
-asking.
+with a fixed hostname), **Also over the temporary public link**, the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
+there applies at once, except turning a link's option on: a General or the host confirms that, never the browser asking.
 Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
 
 ## Chat
@@ -163,8 +173,8 @@ restored; files that can't be served again show as unavailable.
 
 **Copies in Discord/Telegram (web echo).** For a fleet topic instance, each web message is also posted to its topic as
 `🌐 web · <name>: …` (the first 500 characters plus attachment names; longer text says "(full text in web chat)").
-Turn it off with Settings → Web → **Web echo** (`web.echo_to_channel`). ClassicBot rooms: per room,
-`classicBot.yaml` `channels.<key>.web_echo` (Settings → ClassicBot → the room → **Web echo**). Since 2.2.5
+Turn it off with Settings → Chat & connections → **Web echo** (`web.echo_to_channel`). ClassicBot rooms: per room,
+`classicBot.yaml` `channels.<key>.web_echo` (Settings → Chat & connections → ClassicBot → the room → **Web echo**). Since 2.2.5
 (#2054) a room echoes by default: an unset room follows `web.echo_to_channel`, `web_echo: false` keeps it off and
 `web_echo: true` keeps it on. Before 2.2.5, a room echoed only with `web_echo: true`.
 
@@ -195,7 +205,7 @@ first, badged Chat / Message / Task; 1–2 character words work (alone: the newe
 ↑↓ / Enter / Esc / click outside; **Filters**: agent, team, time, kinds, **Only mine**; recent searches when empty.
 A chat result opens the chat at the message (flashed); a message between agents, a task or a chat row the history no
 longer keeps opens as the index's copy. Admins only, over the temporary public link and on a phone too (no guests). Config: `web.search.enabled`
-(default on, off everywhere), `web.search.public_link` (default on; false keeps it off the public link), `web.search.retention_days` (default 90). Secrets are masked; a hidden `cross_instance_visibility`
+(default on, off everywhere), `web.search.public_link` (default on; false keeps it off the public link), `web.search.retention_days` (unset and 0 = no age limit; 1–3650 days; daily prune still caps at 300,000). Secrets are masked; a hidden `cross_instance_visibility`
 agent's messages are not found. "Search is off or not available": `web.search.enabled: false`, or the index could not
 open (the fleet log says why); "Still indexing": the first fill after an upgrade.
 
@@ -211,7 +221,8 @@ values reloaded after Save. Password fields keep the browser's behaviour.
 
 ## Fleet
 
-`/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, **Config**, plus a **Docs** link.
+`/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, plus a **Docs** link
+(`/ui/fleet/config` leads to Settings → Agent defaults: each of its settings lives in Settings, #2347).
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
@@ -231,8 +242,6 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
 - **Teams** — **New team**, **Edit** (members, description; no rename), **Delete**. Read only on a public link.
 - **Org chart** — see below.
 - **Cache** — see [the cache report](#usage-and-the-cache-report).
-- **Config** — the main channel, access (Locked/Open, allowed users), default backend and project roots; **Save
-  changes** rewrites fleet.yaml (its comments are lost).
 
 **Org chart (#1918).** **Canvas** or **List** (remembered per device). The canvas: General at the top, then teams in
 fleet.yaml order, then "Not in a team". Drag to pan, wheel or pinch to zoom (0.2–2.5), **Zoom in / Zoom out / Fit to
@@ -248,11 +257,42 @@ blinking light (needs you, crashed, looks stuck). With **Live** on, each message
 desk to desk along the corridors in the Key's colours; a delegation in progress is a purple folder on the worker's
 desk. Hover (or tap once) a desk for its name, state and backend; click (or tap again) opens the chat. **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
-**Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`; changing them takes
-an admin session, never the public link — v1 has no editor). **Style** (per browser): **Desks** (the default) or
-**Studio** — one scene (Work, Lounge, Help desk, Nap corner) where each instance walks to the area for its state.
-Now and then someone says a short line for their state in a bubble (never message content). Reduced motion: still
-poses, nothing in the air, bubbles shown whole.
+**Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
+(never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
+in each (whole teams or single instances; none = everyone) and its style, and upload or delete **skin packs** (an
+artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
+checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
+pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four
+ways with `walkDown`, `walkUp` and `walkSide`, the side one mirrored for left). **Style** (per browser for the whole fleet, per office for a stored one): **Desks** (the default),
+**Studio** — one scene (Work, Lounge, Help desk, Nap corner) where each instance walks to the area for its state —
+or an uploaded pack; one the page cannot load is drawn as Desks with a note. On a stored office in Studio or a pack,
+**Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door and
+waypoints (or Tab to one and use the arrow keys, Shift for 10), add or remove waypoints and join or unjoin
+corridors; **Save layout** keeps the moves as that office's overrides (the pack stays as uploaded), **Reset** goes
+back to the pack's own. While it is open the office picker and Edit offices wait (**Cancel** closes it); if someone
+saved the offices meanwhile, Save says so and keeps your layout — Save again puts it on the current list. A crowded area packs extra people into a tighter grid, then shows "+N" in its corner; there
+only calls and work get bubbles (a few at most) and name tags show on hover or focus. **Hide paused and stopped**
+(per browser, off by default) leaves the sleepers out. Now and then someone says a short line for their state in a
+bubble (never message content). Reduced motion: still poses, nothing in the air, bubbles shown whole.
+The Office fills the Fleet panel and moves like the Canvas (#2540): drag to pan, the wheel or a pinch to zoom,
+**+** / **−** / **Fit** / **Fill** at the top right (the zoom shown as a percentage above them) or the `+ - 0` keys
+(with the office focused), an overview at the bottom right to jump (not on a phone). It takes the whole panel: the
+Fleet area's full width, down to the window's foot. **Fit** shows the whole scene as large as the panel allows
+(any scale, so it fills the panel's width or height); **Fill** (a toggle, kept per office) fills the panel instead,
+cropping what overflows — drag to see it. **+** / **−** step in pixel levels (each logical unit a whole number of
+screen pixels); drawing is always unsmoothed. A resize fits a fitted view again; the scene can never be dragged off
+the panel. The zoom, centre and Fit/Fill are kept per device for each office and style. Around the 16:9 scene the
+whole panel is a matte: a pack's own `matte` (`#rrggbb`), else its background's edge colour, else the skin's own
+(Studio's hall floor; Desks: the dashboard's background). Hover, click, name tags and Edit layout all work at any zoom: a drag on a handle moves it,
+anywhere else pans; zoom and pan are never animated.
+**Fullscreen** (the button under **Fit**, or `f`; Esc leaves) shows the office alone: the dashboard's header, tabs
+and bars go, and the zoom buttons, the overview (not on a phone), a small office switcher and Exit float over it. It
+uses the browser's fullscreen; where a page cannot have it (an iPhone) or the browser refuses, the office covers the
+window instead. Opening a chat leaves it, and it is never remembered.
+A pack may add a `foreground` (a 16:9 PNG over the whole scene, zones packs only): drawn above the people, furniture
+and items in the air, below name tags, bubbles and "+N" — door frames, pillars, table fronts that hide whoever walks
+behind them. A furniture item's `depth` may be `"y"`: drawn among the people by base y (whoever stands lower is in
+front). Numeric depths keep their meaning (under 1000 under the people, 1000 and up over them).
 
 **Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams
@@ -345,7 +385,7 @@ they are never a $0 row, and what such an instance measured before still shows. 
 by backend they go under its backend now. Coverage only says "read" for a catch-up that listed and read every source
 (an unreadable directory or transcript is not covered, never a 0). Scope as
 `get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`
-(Settings → Web → **Usage report over the public link**, applies at once; otherwise the page says "Not offered over
+(Settings → Web dashboard → **Usage report over the public link**, applies at once; otherwise the page says "Not offered over
 the public link" and links to that switch on the dashboard reached directly); guests never. The page adds a daily trend (top 5 and
 others), a heatmap that tells a day read with nothing used from a day not collected, and **Download CSV** (the shown
 answer's daily rows, with the basis). Claude subagent (sidechain) turns aren't counted yet. A long range whose daily rows
@@ -362,38 +402,45 @@ still being designed). If the report says **Switch to 1-hour cache**, the remedy
 What an agent was asked, its replies (never its thinking), each tool call (Read, Edit, Search, Run, Web, MCP,
 Sub-agent…, with **Show output**), errors, turn ends, compactions and fleet events, on one timeline. Filters **All /
 Tools / Errors**; **Live** while it updates. Opens with the newest 200 steps; **Load older steps** adds 100 at a time
-(the page keeps 1000). Off by default: `web.log_tab` (Settings → Web → **Log tab: each agent's steps**; turning it on
+(the page keeps 1000). Off by default: `web.log_tab` (Settings → Web dashboard → **Log tab: each agent's steps**; turning it on
 from the tab itself needs a fleet admin's confirmation). Full for Claude Code (also after it stopped) and Codex while
 running; kiro shows fleet events only; other backends say they have no readable transcript. Secrets are masked.
 
 ## Settings
 
-**Connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
+**Chat & connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
 
-Tabs (`/settings/<tab>`): **Preferences**, **Web appearance**, **Agents**, **Connections**, **ClassicBot**,
-**General**, **Web**, **Developer**. Header: version, **Setup wizard**, **Help**.
+Sections (`/settings/<section>`, #2347), in two groups. **You**: **Preferences**, **Look**. **Fleet**: **Agents**,
+**Agent defaults**, **Chat & connections**, **Web dashboard**, **Access & security**, **Advanced**. Old addresses (`device`,
+`appearance`, `general`, `bots`, `classic`, `web`) lead to the new sections. **Search settings** (top of the sections, **/**;
+also Ctrl K → Settings) finds a setting by name, `fleet.yaml` key or synonym in either language and goes to the field.
+Header: version, **Setup wizard**, **Help**.
 
-**How changes apply.** Agents, Connections, ClassicBot, General, Web and Developer edits are *staged*: a dialog's
-**Stage change** (General/Web: **Review changes**) adds it to the bar **Changes not applied yet**, which shows the
-cost — **Immediately**, **Restart this Agent** or **Restart AgEnD** — then **Apply changes** or **Discard**.
+**How changes apply (#2347).** Every Fleet section's edits are unsaved until
+**Save**: a field edit (Agent defaults, Chat & connections, Web dashboard, Access & security) is unsaved at once (a straight bar on its left); a dialog's **Done**
+adds its changes. The bar **N unsaved change(s)** shows the cost — **Immediately**, **Restart this Agent** or **Restart
+AgEnD** — then **Save** or **Discard**; an invalid field keeps Save waiting (**Fix 1 field(s) to save**). Over a public
+link an admin can change the fleet's settings too (not the dashboard's own web settings, Guests or Web authority).
 Confirmations (e.g. opening access) are asked at Apply. A change that loosens access waits for a fleet admin to confirm
 in the General chat ("Waiting for confirmation", **Withdraw**) — unless the browser is web-verified (#2170): an
 account that is a fleet admin of every connection the change affects, on their platform, confirms it by its own Apply
 ("Confirmed by your account"; General gets a notice; every check runs again at execution). Not for a guest, the public
 link, an unverified browser or a change that needs the host CLI. After a failure, unapplied changes are staged again
-(secrets must be re-entered). **Restart AgEnD** restarts every agent. Preferences and Web appearance save directly.
+(secrets must be re-entered). **Restart AgEnD** restarts every agent
+(never automatic); until then every page shows **N saved change(s) take effect after AgEnD restarts** · **Restart now** ·
+**Later**. Preferences and Look save with the same bar (**Your preferences**; device-only switches count on their own; Restore defaults saves at once).
 
 **Preferences** — follows you across devices unless marked:
 | Control | What it does | Stored |
 |---|---|---|
 | Your name (**Save**, **Use web-user** / **Use <account>**) | the name agents see on your web messages | your profile |
 | Theme: System / Light / Dark | page theme | host prefs `theme` |
-| Language: English / 中文 | page language (not the bots' replies — that is General → Language) | host prefs `lang` |
+| Language: English / 中文 | page language (not the bots' replies — that is Agent defaults → Language) | host prefs `lang` |
 | Names: Nickname first / Real name first | sidebar names | host prefs `names.primary` |
 | Allow HTML previews | the preview opt-in | host prefs `preview.optIn` |
 | Chat tour (this device) | replays the chat tour | browser |
 
-**Web appearance** — see [Web appearance](#web-appearance) for the cards and what they mean.
+**Look** — see [Look](#look) for the cards and what they mean.
 
 **Signing a backend in (#2233)** — local admin sessions only (never a guest or the public link): Settings → Agents →
 **Sign-ins** (each backend's login and each credential profile an agent uses: state, **Sign in** / **Sign in again**,
@@ -407,7 +454,8 @@ opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`).
 
 **Agents** — **New agent**; per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
 (staged; on Apply it waits for a fleet admin's confirmation in General, then the agent is stopped and removed, as
-`delete_instance` does — no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key):
+`delete_instance` does — no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key, and the field then says what it inherits:
+"Inherited: 30 min · change in Agent defaults"; a value nobody set anywhere is marked "default"):
 | Label | Key | Applies |
 |---|---|---|
 | Display name, Description | `display_name`, `description` | now |
@@ -424,7 +472,7 @@ opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`).
 | General topic (fleet dispatcher) | `general_topic` | AgEnD |
 | Status emojis (Received, Queued, Processing, Delivered, Failed, …) | `status_emojis` | agent |
 
-**Connections** (the bots) — **New connection**: type, bot token (**Verify**), Discord server or Telegram group,
+**Chat & connections** — connections (the bots): **New connection**: type, bot token (**Verify**), Discord server or Telegram group,
 your user ID. It starts without a restart when AgEnD already runs another connection and nothing else at fleet level
 changed; a fleet's first connection (or a change to an existing one) offers **Restart AgEnD**. Per bot: **Access mode** (locked / open / pairing) and **Allowed users** —
 `channels[i].access.*`, staged, restarts AgEnD, asks before opening access; **Guild/Group id** and General channel /
@@ -432,17 +480,18 @@ forum topic with **Verify the new binding** (applies directly after a confirmati
 **Replace** the token (saved to `~/.agend/.env`); **Delete this bot** (the token stays in `.env`). **Provider API keys**:
 **Verify & apply**, used by new processes.
 
-**ClassicBot** — per room **Settings**, **Pause / Wake**. The room dialog writes `classicBot.yaml`
+ClassicBot (in **Chat & connections**, `/settings/chat#classicbot`) — per room **Settings**, **Pause / Wake**. The room dialog writes `classicBot.yaml`
 `channels.<key>.*`: Backend, Model, Auto-pause after, **Collaboration mode** (`collab`), **Web echo** (`web_echo`),
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
-**General** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
+**Agent defaults** — **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
+changing it waits for a fleet admin's OK) and the fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard; Advanced: tool set, agent mode, log
 level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
-**Stagger delay** (`startup.*`, restart AgEnD). ClassicBot card (`classicBot.yaml defaults.*`): default backend, tool
+**Stagger delay** (`startup.*`, restart AgEnD). ClassicBot defaults (in Chat & connections; `classicBot.yaml defaults.*`): default backend, tool
 progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 
-**Web** — all apply at once; loosening waits for an admin; disabled over a public link.
+**Access & security** (sessions, browser terminal, public link and fixed address, guests, web authority; web echo is in Chat & connections, the Log tab and usage over the link in **Web dashboard**) — all apply at once; loosening waits for an admin; disabled over a public link.
 | Label | Key |
 |---|---|
 | Session length, hours (1–720) | `web.session.local.absolute_hours` |
@@ -456,23 +505,23 @@ progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 | Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
 Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `notify_login`, `preview`, `preview_port`,
-`preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,
+`preview_origin`, `preview_on_public_link`, `usage_panel`, `search` (`retention_days`: unset and 0 = no age limit,
+300,000-row cap), `provider_secrets`, `upload_max_file_mb`,
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.
 
-**Developer** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply & save**
-(edit mode) applies at once, without the bar.
+**Advanced** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**
+(edit mode) adds the edit to the bar, and Save writes it. While it waits, Agents, Agent defaults and the
+connections are off (and the setup wizard); while those have unsaved changes, the editor only reads.
 
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
 **Create and start**.
 
-## Web appearance
+## Look
 
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in
-Settings → **Web appearance**, card by card:
+Settings → **Look**, card by card (the app icon and card upload limits are in **Web dashboard**; following reduced motion and custom CSS off here are in **Preferences**):
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
-  ring colours fall back to the bots' own (all devices). **Effects: follow the system's reduced-motion setting** (this
-  device only, off by default): on, ambient effects stay still while the system asks for reduced
-  motion. Otherwise they play, with one shared one-time chat note and a local action to follow the system.
+  ring colours fall back to the bots' own (all devices).
 - **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
   its chat by the dashboard (data only, no consent needed). They show by default, the public link too; the chat's ⋯
   menu says why one is not showing (choosing the line fixes it there) and offers **Clear the ambient effect** /
@@ -488,10 +537,13 @@ Settings → **Web appearance**, card by card:
   can't load from the internet (put pictures and fonts under Assets: PNG, WebP, JPEG, GIF, WOFF2, 1 MiB in total).
   **Save and try**, then **Keep** within 15 s or it reverts; **Turn off (all devices)**; earlier versions **Use
   this**. If something is hidden or broken, open the page with `?safe=1`, or tick **Turn off custom CSS on this
-  device**.
-- **Identity card upload limits** — portrait and banner size limits and per-agent picture quota
-  (`web.appearance.*`); lowering applies at once, raising waits for an admin.
+  device** (in Preferences).
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
+
+Moved out of Look in 2.3.2 (#2347). **Preferences** (this device only): **Effects: follow the system's reduced-motion
+setting** (off by default): on, ambient effects stay still while the system asks for reduced motion. Otherwise they play, with one shared one-time chat note and a local action to follow the system. And **Turn off custom CSS on this device**. **Web dashboard**: the **App icon**;
+**Identity card upload limits** — portrait and banner size limits and per-agent picture quota (`web.appearance.*`);
+lowering applies at once, raising waits for an admin.
 
 **What an agent can change for the user.** A worker changes only its own look (the `web-appearance` tools); before
 #2064 everything on this page was the person's. Since #2064 (2.2.5) General, coordinators and
@@ -550,4 +602,4 @@ no instance uses that provider.
 
 **Settings won't change something.** Over a public link, Web settings and appearance are read only; a loosening
 change waits for an admin's confirmation in General chat; a value in the "Set in fleet.yaml" list must be edited in
-fleet.yaml (Developer tab, or the file) and `agend reload`.
+fleet.yaml (Advanced, or the file) and `agend reload`.

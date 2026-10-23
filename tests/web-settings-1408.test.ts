@@ -94,7 +94,7 @@ async function stageDescription(name: string, text: string) {
   btn(row, "Settings").click(); await settle(4);
   const input = p.root.querySelector("#ag-desc");
   input.value = text; fire(input, "input"); await settle(2);
-  btn(p.root.querySelector("dialog"), "Stage change").click(); await settle(4);
+  btn(p.root.querySelector("dialog"), "Done").click(); await settle(4);
 }
 const op = () => app.appStore.get().settingsOp;
 /** An event on the window itself (beforeunload, popstate): mini-dom's window is a bare event target. */
@@ -116,7 +116,7 @@ describe("Apply belongs to the app before the first write (§5)", () => {
       await stageDescription("beta", "B2");
       expect(p.root.querySelector(".s-pending")?.textContent).toContain("2");
       if (hold === "the first write accepted") routes.push(r => (r.method === "PATCH" && r.url.endsWith("/alpha") ? (async () => { await p.unmount(); return { body: { ok: true } }; })() : undefined));
-      btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+      btn(p.root.querySelector(".s-pending"), "Save").click();
       await settle(2);
       expect(op()).not.toBeNull();                              // handed over: the operation exists before any answer
       if (hold !== "the first write accepted") {
@@ -146,13 +146,13 @@ describe("Apply belongs to the app before the first write (§5)", () => {
     routes.push(r => (r.url === "/api/settings/apply/job1" ? g.p : undefined));
     await mount(); await settle(6);
     await stageDescription("alpha", "A2");
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("watching"));
     await p.unmount();
     await mount(); await settle(6);
     expect(p.root.querySelector(".s-op")?.textContent).toContain("Applying");
     await stageDescription("beta", "B2");
-    const applyBtn = btn(p.root.querySelector(".s-pending"), "Apply changes");
+    const applyBtn = btn(p.root.querySelector(".s-pending"), "Save");
     expect(applyBtn.disabled).toBe(true);
     applyBtn.click(); await settle(4);
     expect(apply.startOperation([{ label: "x", impact: "now", request: { method: "PATCH", url: "/x", body: {} } }])).toBe(false);
@@ -206,6 +206,181 @@ describe("#2346: a dialog's footer says what its changes cost — only the field
   });
 });
 
+describe("#2347: one save model — an edit is unsaved at once, the bar's Save writes it", () => {
+  const bar = () => p.root.querySelector(".s-pending");
+  const save = () => (bar() ? btn(bar(), "Save") : null);
+  const pick = async (sel: string, value: string) => { const el = p.root.querySelector(sel); el.value = value; fire(el, "change"); await settle(4); };
+  const type = async (sel: string, value: string) => { const el = p.root.querySelector(sel); el.value = value; fire(el, "input"); await settle(4); };
+  /** The class of the nearest row (`.field` or `label.check`) holding `sel`. */
+  const rowClass = (sel: string) => { let n = p.root.querySelector(sel); while (n && !/\b(field|check)\b/.test(n.getAttribute?.("class") || "")) n = n.parentElement; return n ? n.getAttribute("class") : null; };
+  const general = async () => { await mount("general", "settings:general|1|en"); await settle(6); };
+  it("General: no Review step — a change is staged as it is made, its row carries the straight bar, the bar's Save sends it", async () => {
+    await general();
+    const before = [!!bar(), btn(p.root, "Review changes"), rowClass("#g-ll")];
+    await pick("#g-ll", "warn");
+    expect([before, bar()?.textContent.includes("1 unsaved change(s)"), rowClass("#g-ll"), rowClass("#g-am"), writes()])
+      .toEqual([[false, undefined, "field"], true, "field s-dirty", "field", []]);
+    save().click(); await settle(10);
+    expect(writes().filter((r) => r.url === "/api/settings/fleet/defaults").map((r) => r.body)).toEqual([{ log_level: "warn" }]);
+  });
+  it("an invalid value keeps the change unsaved with Save waiting (\"Fix 1 field(s) to save\"); fixing it lets Save go", async () => {
+    await general();
+    await type("#g-auto", "-3");
+    const bad = [!!bar(), save()?.disabled, bar()?.querySelector(".s-fix")?.textContent];
+    save()?.click(); await settle(6);
+    const none = writes().length;
+    await type("#g-auto", "15");
+    expect([bad, none, save()?.disabled, !!bar()?.querySelector(".s-fix")]).toEqual([[true, true, "Fix 1 field(s) to save"], 0, false, false]);
+  });
+  it("a draft survives going to another section and back (still staged, still shown); Discard drops it and the bar", async () => {
+    await general();
+    await pick("#g-ll", "warn");
+    await mount("web", "settings:web|1|en"); await settle(6);
+    const away = !!bar();
+    await mount("general", "settings:general|2|en"); await settle(6);
+    const back = [p.root.querySelector("#g-ll").value, rowClass("#g-ll"), !!bar()];
+    btn(bar(), "Discard").click(); await settle(8);
+    expect([away, back, p.root.querySelector("#g-ll").value, rowClass("#g-ll"), !!bar(), writes()])
+      .toEqual([true, ["warn", "field s-dirty", true], "info", "field", false, []]);
+  });
+  it("#2495 review: a dashboard draft keeps only the feature edited — another admin's change to the others is not undone", async () => {
+    // A Save that fails keeps the drafts and reads the configuration again, remounting the sections: meanwhile another
+    // admin turned web_settings off. The draft must put back only appearance (edited), over what is saved now.
+    let remote = false, failOnce = true;
+    const fleet = (webSettings: boolean) => ({ ...structuredClone(FLEET), defaults: { backend: "claude-code", dashboard: { appearance: true, task_board: false, web_settings: webSettings } } });
+    routes.push((r) => (r.method === "GET" && r.url === "/api/settings/fleet/raw" ? { body: fleet(!remote) } : undefined));
+    routes.push((r) => {
+      if (r.method !== "PUT" || r.url !== "/api/settings/fleet/defaults") return undefined;
+      if (failOnce) { failOnce = false; remote = true; return { status: 500, body: { error: "busy" } }; }
+      return { body: { ok: true } };
+    });
+    await general();
+    const boxes = () => p.root.querySelectorAll(".dash-perms input[type=checkbox]");
+    const before = boxes().map((b: any) => b.checked);
+    fire(Object.assign(boxes()[0], { checked: false }), "change"); await settle(4);     // appearance off
+    save().click(); await settle(2);
+    await vi.waitFor(() => expect(op()?.phase === "running").toBe(false), { timeout: 6000 });
+    await settle(20);
+    const back = boxes().map((b: any) => b.checked);
+    const puts = () => writes().filter((r) => r.url === "/api/settings/fleet/defaults").map((r) => r.body);
+    const first = puts().length;
+    save().click(); await settle(2);
+    await vi.waitFor(() => expect(puts().length).toBe(first + 1), { timeout: 6000 });
+    // All three go (the defaults write replaces `dashboard` whole): the edited one as edited, the others as now saved.
+    expect([before, back, puts().at(-1)]).toEqual([[true, false, true], [false, false, false], { dashboard: { appearance: false, task_board: false, web_settings: false } }]);
+  });
+  it("after a Save that went through, the drafts go: the form shows what is saved, unmarked", async () => {
+    let saved = false;
+    routes.push((r) => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" ? (saved = true, { body: { ok: true } }) : undefined));
+    routes.push((r) => (saved && r.method === "GET" && r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), defaults: { backend: "claude-code", log_level: "warn" } } } : undefined));
+    await general();
+    await pick("#g-ll", "warn");
+    save().click(); await settle(2);
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
+    await settle(10);
+    expect([saved, p.root.querySelector("#g-ll").value, rowClass("#g-ll"), !!bar()]).toEqual([true, "warn", "field", false]);
+  });
+  it("#2367 review: edits made while a Save runs (this section's and another's) outlive it — it writes what it had", async () => {
+    const g = gate<{ body: unknown }>();
+    let sent: any = null;
+    routes.push((r) => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" && !sent ? (sent = r.body, g.p) : undefined));
+    routes.push((r) => (sent && r.method === "GET" && r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), defaults: { backend: "claude-code", auto_pause_after: 1, model: "other-admins-model" } } } : undefined));
+    await general();
+    await type("#g-auto", "1");
+    save().click(); await settle(4);
+    await type("#g-auto", "2");                                   // the form stays editable while the write is held
+    await mount("web-dashboard", "settings:web-dashboard|1|en"); await settle(6);
+    const log = p.root.querySelector("#webLogTab"); const logWas = log.checked; log.checked = !logWas; fire(log, "change"); await settle(4);
+    await mount("general", "settings:general|2|en"); await settle(6);
+    g.open({ body: { ok: true } });
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
+    await settle(12);
+    const after = [sent, p.root.querySelector("#g-auto").value, rowClass("#g-auto"), bar()?.textContent.includes("2 unsaved change(s)")];
+    await mount("web-dashboard", "settings:web-dashboard|2|en"); await settle(6);
+    expect([...after, p.root.querySelector("#webLogTab").checked === !logWas]).toEqual([{ auto_pause_after: 1 }, "2", "field s-dirty", true, true]);
+    // A kept draft is only its edits: a field never touched shows what is saved now (here another admin's model), and
+    // the next Save sends only the edit.
+    await mount("general", "settings:general|3|en"); await settle(6);
+    const model = p.root.querySelector("#g-model").value;
+    save().click(); await settle(4);
+    await vi.waitFor(() => expect(writes().filter((r) => r.url === "/api/settings/fleet/defaults")).toHaveLength(2), { timeout: 6000 });
+    expect([model, writes().filter((r) => r.url === "/api/settings/fleet/defaults")[1].body]).toEqual(["other-admins-model", { auto_pause_after: 2 }]);
+  });
+  it("#2367 r2: an edit made while a Save runs that puts a field back to its old value is an edit too", async () => {
+    const g = gate<{ body: unknown }>(), slow = gate<void>();
+    let sent: any = null;
+    const after_ = { body: { ...structuredClone(FLEET), defaults: { backend: "claude-code", auto_pause_after: 1 } } };
+    routes.push((r) => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" && !sent ? (sent = r.body, g.p) : undefined));
+    // The configuration is read back slowly (a slow link): nothing may be decided on the old one meanwhile.
+    routes.push((r) => (sent && r.method === "GET" && r.url === "/api/settings/fleet/raw" ? slow.p.then(() => after_) as any : undefined));
+    await general();
+    const was = p.root.querySelector("#g-auto").value;
+    await type("#g-auto", "1");
+    save().click(); await settle(4);
+    await type("#g-auto", was);                                   // back to what was saved before
+    g.open({ body: { ok: true } });
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
+    await settle(12);
+    slow.open();
+    await settle(12);
+    const after = [was, sent, p.root.querySelector("#g-auto").value, rowClass("#g-auto"), bar()?.textContent.includes("1 unsaved change(s)")];
+    save().click(); await settle(4);
+    await vi.waitFor(() => expect(writes().filter((r) => r.url === "/api/settings/fleet/defaults")).toHaveLength(2), { timeout: 6000 });
+    expect([...after, writes().filter((r) => r.url === "/api/settings/fleet/defaults")[1].body])
+      .toEqual(["0", { auto_pause_after: 1 }, "0", "field s-dirty", true, { auto_pause_after: 0 }]);
+  });
+  // The user's decision (2026-10-22): an admin signed in over the temporary public link may change the fleet's settings
+  // — the page keeps no policy of its own there; the server judges each write (it refuses Web, Guests and Web authority).
+  it("over the public link the page refuses no write itself: New agent, Fleet's config, a delete, a fleet write all reach the server", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      for (const [url, method] of [["/ui/instances", "POST"], ["/ui/config", "POST"], ["/ui/instances/alpha/delete", "POST"], ["/api/settings/fleet/channels", "PUT"]] as const) {
+        await confirmMod.api(url, { method, body: "{}" });
+      }
+      expect(writes().map((r) => r.url)).toEqual(["/ui/instances", "/ui/config", "/ui/instances/alpha/delete", "/api/settings/fleet/channels"]);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
+  it("over the public link Advanced offers the JSON edit, and a fleet change made there is handed to the runner", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      await mount("advanced", "settings:advanced|1|en"); await settle(6);
+      const handed = apply.startOperation([{ label: "x", impact: "fleet", request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { model: "m" } } }]);
+      await vi.waitFor(() => expect(writes().some((r) => r.url === "/api/settings/fleet/defaults")).toBe(true));
+      expect([!!btn(p.root, "Edit"), handed, !!p.root.querySelector(".s-readonly")]).toEqual([true, true, false]);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
+  it("#2367 review control: on the dashboard itself Advanced's JSON edit is there and saves", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    expect(!!btn(p.root, "Edit")).toBe(true);
+  });
+  it("over the temporary public link an admin changes Agent defaults as anywhere: the bar offers Save, and Save writes it", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      await general();
+      await pick("#g-ll", "warn");
+      const shown = [!!bar(), !!p.root.querySelector(".s-readonly"), writes()];
+      save().click(); await settle(10);
+      expect([shown, writes().filter((r) => r.url === "/api/settings/fleet/defaults").map((r) => r.body)]).toEqual([[true, false, []], [{ log_level: "warn" }]]);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
+  it("over the public link an agent's dialog Done stages its change and the bar offers Save", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      await mount(); await settle(6);
+      await stageDescription("alpha", "A2");
+      expect([!!bar(), !!p.root.querySelector(".s-readonly"), writes()]).toEqual([true, false, []]);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
+  it("the edited-field marker is the shared straight bar (.lbar's rule), never a border", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync("src/ui/shared/app.css", "utf8");
+    const rule = css.match(/\n([^{}]*\.s-dirty::before[^{}]*)\{([^}]*)\}/);
+    expect([!!rule, /width: 3px/.test(rule?.[2] ?? ""), /\.lbar::before/.test(rule?.[1] ?? ""), /\.s-dirty\s*\{[^}]*border-left/.test(css),
+      // its tint is square too: no rounded coloured left edge behind the bar
+      /\.s-dirty\s*\{[^}]*border-radius: 0;/.test(css)]).toEqual([true, true, true, false, true]);
+  });
+});
+
 describe("staged changes and leaving", () => {
   it("a section change is the same panel: no reload, nothing asked, the staged change stays", async () => {
     await mount("agents", "settings:agents|1|en"); await settle(6);
@@ -215,7 +390,7 @@ describe("staged changes and leaving", () => {
     (globalThis as any).confirm = () => { asked++; return false; };
     nav.navigate("/settings/general");
     await mount("general", "settings:general|2|en"); await settle(6);
-    expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "general" });
+    expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "agent-defaults" });
     expect(asked).toBe(0);
     expect(reads().filter(u => u === "/api/settings/fleet/raw").length).toBe(loads);
     expect(p.root.querySelector(".s-pending")?.textContent).toContain("1");
@@ -230,7 +405,7 @@ describe("staged changes and leaving", () => {
     // Asked in the app's dialog (#1408 step 5): the navigation waits for the answer.
     expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "agents" });
     await settle(4);
-    expect(messages).toEqual(["Discard 1 pending changes?"]);
+    expect(messages).toEqual(["Discard 1 unsaved change(s)?"]);
     expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "agents" });
     expect(p.window.location.pathname).toBe("/settings");
     // Back/Forward too: the address is put back.
@@ -360,7 +535,7 @@ describe("#1423: a change an admin must confirm", () => {
     btn(p.root.querySelector(".s-row"), "Settings").click(); await settle(4);
     const input = p.root.querySelector("dialog .chips-box input");
     input.value = "9"; fire(input, "input"); await settle(2); fire(input, "keydown", { key: "Enter" }); await settle(2);
-    btn(p.root.querySelector("dialog"), "Stage change").click(); await settle(4);
+    btn(p.root.querySelector("dialog"), "Done").click(); await settle(4);
     if (!p.root.querySelector(".s-pending")) throw new Error("not staged: " + (p.root.querySelector("dialog")?.textContent ?? p.root.textContent).slice(0, 400));
   }
 
@@ -370,7 +545,7 @@ describe("#1423: a change an admin must confirm", () => {
     routes.push(r => (r.url === `/api/settings/pending/${"d".repeat(32)}` ? { body: decided ? VIEW("applied", { outcome: { state: "applied", result: { ok: true } } }) : VIEW("pending") } : undefined));
     await stageAccess();
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.advanceTimersByTimeAsync(50);
     expect(op().steps[0].status).toBe("waiting");
     expect(app.appStore.get().pendingChanges.map((x: any) => x.state)).toEqual(["pending"]);
@@ -396,7 +571,7 @@ describe("#1423: a change an admin must confirm", () => {
     routes.push(r => (r.url === `/api/settings/pending/${"d".repeat(32)}` ? { body: decided ? VIEW("applied", { confirmation: { kind: "web" }, outcome: { state: "applied", result: { ok: true } } }) : self } : undefined));
     await stageAccess();
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.advanceTimersByTimeAsync(50);
     expect(op().steps[0].status).toBe("running");
     await vi.advanceTimersByTimeAsync(50);
@@ -412,7 +587,7 @@ describe("#1423: a change an admin must confirm", () => {
     routes.push(r => (r.method === "PUT" && r.url === "/api/settings/fleet/channels" ? pendingAnswer : undefined));
     routes.push(r => (r.url.startsWith("/api/settings/pending/") ? { body: VIEW("rejected", { outcome: { state: "rejected", reason_code: "rejected", message: "Rejected in chat." } }) } : undefined));
     await stageAccess();
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 6000 });
     expect(writes().filter(r => r.url === "/api/settings/apply")).toEqual([]);
     await settle(6);
@@ -424,7 +599,7 @@ describe("#1423: a change an admin must confirm", () => {
     routes.push(r => (r.method === "PUT" && r.url === "/api/settings/fleet/channels" ? pendingAnswer : undefined));
     routes.push(r => (r.method === "DELETE" ? { body: VIEW("rejected", { outcome: { state: "rejected", reason_code: "withdrawn", message: "Change withdrawn." } }) } : undefined));
     await stageAccess();
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(app.appStore.get().pendingChanges).toHaveLength(1));
     const card = app.appStore.get().pendingChanges[0];
     expect(typeof card.withdraw).toBe("function");
@@ -535,22 +710,147 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     expect(p.root.querySelector("textarea.s-yaml").getAttribute("wrap")).toBe("off");
   });
 
-  it("Developer: an edited model is one operation — its writes in order, then one apply", async () => {
-    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+  /** Advanced → Developer: the model as JSON, edited by `change`, then the editor's Apply. */
+  async function applyModel(change: (m: any) => void) {
     btn(p.root.querySelector(".s-dev"), "JSON").click(); await settle(2);
-    btn(p.root.querySelector(".s-dev"), "Edit").click(); await settle(2);
+    if (!p.root.querySelector("textarea.s-yaml")) { btn(p.root.querySelector(".s-dev"), "Edit").click(); await settle(2); }
     const ta = p.root.querySelector("textarea.s-yaml");
     const model = JSON.parse(ta.value);
-    model.instances.alpha.description = "A3";
-    delete model.instances.beta;
-    model.instances.gamma = { working_directory: "/w/g" };
+    change(model);
     ta.value = JSON.stringify(model); fire(ta, "input"); await settle(2);
-    btn(p.root.querySelector(".s-dev"), "Apply & save").click();
+    btn(p.root.querySelector(".s-dev"), "Apply").click(); await settle(4);
+  }
+  const editAgents = (m: any) => { m.instances.alpha.description = "A3"; delete m.instances.beta; m.instances.gamma = { working_directory: "/w/g" }; };
+
+  it("Developer (#2347): Apply stages the edit in the Save bar — nothing written; Save writes it in order, then one apply", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    expect(writes()).toEqual([]);
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("3 unsaved change(s)");
+    // The editor keeps the edit while it waits, and says where it went.
+    expect(JSON.parse(p.root.querySelector("textarea.s-yaml").value).instances.gamma).toEqual({ working_directory: "/w/g" });
+    expect(p.root.querySelector(".s-dev .feedback")?.textContent).toContain("In the Save bar: 3 change(s) to fleet.yaml");
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
-    const order = writes().map(r => `${r.method} ${r.url}`);
     // #1408 step 5: only what the edit changed — the untouched defaults and channels are not written again.
-    expect(order).toEqual(["PATCH /api/settings/fleet/instances/alpha",
+    expect(writes().map(r => `${r.method} ${r.url}`)).toEqual(["PATCH /api/settings/fleet/instances/alpha",
       "POST /api/settings/fleet/instances/gamma", "DELETE /api/settings/fleet/instances/beta", "POST /api/settings/apply"]);
+    await settle(6);
+    expect(p.root.querySelector(".s-pending")).toBeNull();
+    expect(p.root.querySelector("textarea.s-yaml"), "a Save that went through leaves the editor on what is in force").toBeNull();
+  }, 10_000);
+
+  it("Developer (#2347): Apply again replaces the staged edit; an edit back to what is in force stages nothing", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("3 unsaved change(s)");
+    await applyModel((m) => { m.instances.gamma = undefined; delete m.instances.gamma; m.instances.beta = { working_directory: "/w/b", description: "B" }; });
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("1 unsaved change(s)");
+    await applyModel((m) => { m.instances.alpha.description = "A"; });
+    expect(p.root.querySelector(".s-pending")).toBeNull();
+    expect(p.root.querySelector(".s-dev .feedback")?.textContent).toContain("Nothing to change.");
+    expect(writes()).toEqual([]);
+  });
+
+  it("Developer (#2347): while the edit waits, the forms that write the same settings are off; Discard drops it and they are back", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    nav.navigate("/settings/agents");
+    await mount("agents", "settings:agents|2|en"); await settle(6);
+    const lock = p.root.querySelector(".s-yaml-lock");
+    expect(lock.disabled).toBe(true);
+    expect(lock.querySelector(".s-yaml-lock-note")?.textContent).toContain("An unsaved fleet.yaml edit (Advanced) writes these settings");
+    expect(lock.querySelector(".s-yaml-lock-note a")?.getAttribute("href")).toBe("/settings/advanced");
+    expect(btn(p.root.querySelector(".panel-actions"), "Setup wizard").disabled, "the wizard writes a connection and an agent").toBe(true);
+    for (const [section, nk] of [["agent-defaults", "settings:agent-defaults|3|en"], ["chat", "settings:chat|4|en"]] as const) {
+      nav.navigate(`/settings/${section}`);
+      await mount(section, nk); await settle(6);
+      expect(p.root.querySelector(".s-yaml-lock")?.disabled, section).toBe(true);
+    }
+    // Web settings are not in the editor's model: they stay editable beside it.
+    expect(p.root.querySelectorAll(".s-yaml-lock").length).toBe(1);
+    btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+    expect(p.root.querySelector(".s-yaml-lock")?.disabled).toBe(false);
+    expect(p.root.querySelector(".s-yaml-lock-note")).toBeNull();
+    nav.navigate("/settings/advanced");
+    await mount("advanced", "settings:advanced|5|en"); await settle(6);
+    expect(p.root.querySelector("textarea.s-yaml"), "Discard leaves the editor on what is in force").toBeNull();
+    expect(p.root.querySelector(".s-dev pre.s-yaml")?.textContent).toContain("beta");
+    expect(writes()).toEqual([]);
+  });
+
+  it("Developer (#2347): \"Edit in Settings\" from Details opens no agent dialog while the edit waits — after Discard it does", async () => {
+    const req = await import("/ui/js/settings-request.js");
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    req.requestAgentSettings("alpha", "agent");
+    nav.navigate("/settings/agents");
+    await mount("agents", "settings:agents|2|en"); await settle(6);
+    expect(p.root.querySelector("dialog")).toBeNull();
+    btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+    req.requestAgentSettings("alpha", "agent");
+    await mount("agents", "settings:agents|3|en"); await settle(6);
+    expect(p.root.querySelector("dialog #ag-desc"), "the control: the same request opens the dialog").toBeTruthy();
+  });
+
+  it("Developer (#2347, Fable r1): no setup wizard while the edit waits — not from a request elsewhere, not from Settings' own first-run card; after Discard it opens", async () => {
+    const T = await import("/assets/ui-toast.js");
+    const FR = await import("/ui/js/first-run.js");
+    FR.resetFirstRun();
+    const was = app.appStore.get();
+    app.appStore.set({ ready: true, connections: 0 });                          // a web-only fleet: the card is shown
+    const tree = (section: string, key: string, withCard: boolean) =>
+      h("div", {}, h(S.SettingsPanel, { route: { panel: "settings", section }, navKey: key }), withCard ? h(FR.FirstRunCard, {}) : null, h(T.Toasts, {}));
+    try {
+      await p.mount(tree("advanced", "settings:advanced|1|en", true)); await settle(6);
+      await applyModel(editAgents);
+      // The toast store outlives a test: count this one's own.
+      const said = () => p.root.querySelectorAll(".toast").filter((x: any) => x.textContent.includes("An unsaved fleet.yaml edit")).length;
+      const before = said();
+      // "Connect a chat app" on another page: a wizard request, taken when Settings is shown again.
+      btn(p.root.querySelector(".first-run"), "Connect a chat app").click(); await settle(2);
+      await p.mount(tree("chat", "settings:chat|2|en", false)); await settle(6);
+      expect(p.root.querySelector("dialog"), "the request is refused").toBeNull();
+      expect(said() - before, "and says why").toBe(1);
+      // Settings' own first-run card sits outside the lock: its Connect is refused too.
+      btn(p.root.querySelector(".p-settings .first-run"), "Connect a chat app").click(); await settle(4);
+      expect(p.root.querySelector("dialog")).toBeNull();
+      expect(said() - before).toBe(2);
+      btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+      btn(p.root.querySelector(".p-settings .first-run"), "Connect a chat app").click(); await settle(6);
+      expect(p.root.querySelector("dialog"), "the control: the wizard opens once the edit is gone").toBeTruthy();
+    } finally {
+      app.appStore.set({ ready: was.ready, connections: was.connections });
+      FR.resetFirstRun();
+    }
+  });
+
+  it("Developer (#2347): the forms' unsaved changes to the same settings come first — Edit and Apply wait for their Save", async () => {
+    await mount("agents", "settings:agents|1|en"); await settle(6);
+    await stageDescription("alpha", "A2");
+    nav.navigate("/settings/advanced");
+    await mount("advanced", "settings:advanced|2|en"); await settle(6);
+    const edit = btn(p.root.querySelector(".s-dev"), "Edit");
+    expect(edit.disabled).toBe(true);
+    expect(p.root.querySelector(".s-dev-blocked")?.textContent).toContain("Save or discard the unsaved changes to agents, agent defaults or connections first");
+    // A form's change that writes something else (You, Web) does not hold the editor.
+    btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+    expect(btn(p.root.querySelector(".s-dev"), "Edit").disabled).toBe(false);
+    expect(p.root.querySelector(".s-dev-blocked")).toBeNull();
+    expect(writes()).toEqual([]);
+  });
+
+  it("Developer (#2347): a Save that does not land all of the edit brings the rest back to the bar, and the editor back to the edit", async () => {
+    routes.push(r => (r.method === "DELETE" && r.url.endsWith("/beta") ? { status: 409, body: { error: "settings_changed" } } : undefined));
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    btn(p.root.querySelector(".s-pending"), "Save").click();
+    await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 6000 });
+    await settle(8);
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("1 unsaved change(s)");
+    const ta = p.root.querySelector("textarea.s-yaml");
+    expect(ta, "the editor shows the edit again").toBeTruthy();
+    expect(JSON.parse(ta.value).instances.beta).toBeUndefined();
   }, 10_000);
 
   it("the wizard: the commit (a write an admin may confirm), then the ordinary apply — one, owned by the app — and the token only in the commit", async () => {
@@ -610,7 +910,7 @@ describe("#1453 review", () => {
     expect(p.root.querySelector("dialog")?.textContent).toContain("main");
     btn(p.root.querySelector("dialog"), "Stage the new token").click(); await settle(2);
     p.root.querySelector("dialog .dlg-x").click(); await settle(4);
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(reqs.some(r => r.url.endsWith("/secret/verify"))).toBe(true));
     expect(reqs.filter(r => r.url.endsWith("/secret/verify")).map(r => r.url)).toEqual(["/api/settings/connections/main/secret/verify"]);
     // And when the connection is gone, its dialog (and the draft in it) goes too.
@@ -677,7 +977,7 @@ describe("#1453 review", () => {
     expect(apply.operationActive()).toBe(true);
     expect(apply.startOperation([])).toBe(false);
     await stageDescription("alpha", "A9");
-    expect(btn(p.root.querySelector(".s-pending"), "Apply changes").disabled).toBe(true);
+    expect(btn(p.root.querySelector(".s-pending"), "Save").disabled).toBe(true);
     routes.unshift(r => (r.url === "/api/settings/apply/job1" ? { body: JOB_DONE } : undefined));
     restart.open({ status: 202, body: { job_id: "job1", restarting: true } });
     await vi.waitFor(() => expect(apply.operationActive()).toBe(false), { timeout: 6000 });
@@ -719,10 +1019,10 @@ describe("#1453 review", () => {
     routes.push(r => (r.method === "PATCH" && r.url.endsWith("/alpha") && n++ === 0 ? Promise.reject(new TypeError("Failed to fetch")) as never : undefined));
     await mount(); await settle(6);
     await stageDescription("alpha", "A2");
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
     await settle(6);
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
     const patches = writes().filter(r => r.method === "PATCH");
     expect(patches).toHaveLength(2);
@@ -733,10 +1033,10 @@ describe("#1453 review", () => {
     let m = 0;
     routes.unshift(r => (r.method === "PATCH" && r.url.endsWith("/beta") && m++ === 0 ? { status: 400, body: { error: "invalid" } } : undefined));
     await stageDescription("beta", "B2");
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
     await settle(6);
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
     const b = writes().filter(r => r.method === "PATCH");
     expect(b).toHaveLength(2);
@@ -748,7 +1048,7 @@ describe("#1453 review", () => {
     await mount(); await settle(6);
     await stageDescription("alpha", "A2");
     await stageDescription("beta", "B2");
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
     expect(writes().map(r => `${r.method} ${r.url}`)).toEqual(["PATCH /api/settings/fleet/instances/alpha"]);
     expect(op().steps.map((s: any) => s.status)).toEqual(["failed", "skipped"]);
@@ -756,7 +1056,7 @@ describe("#1453 review", () => {
     const first = writes()[0]!.key;
     await settle(6);
     routes.length = 0;
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
     expect(writes().filter(r => r.method === "PATCH" && r.url.endsWith("/alpha")).map(r => r.key)).toEqual([first, first]);
   }, 15_000);
@@ -785,7 +1085,7 @@ describe("#1453 review", () => {
       if (r.url === "/api/settings/secrets/p2/verify") return { status: 400, body: { error: "bad key" } };
       return undefined;
     });
-    await mount("bots", "settings:bots|1|en"); await settle(6);
+    await mount("agents", "settings:agents|1|en"); await settle(6);
     const keyRow = (name: string) => p.root.querySelectorAll(".s-key").find((k: any) => k.textContent.includes(name));
     const enter = async (name: string, v: string) => { const i = keyRow(name).querySelector("input"); i.value = v; fire(i, "input"); await settle(2); btn(keyRow(name), "Verify & apply").click(); await settle(4); };
     await enter("One", "fake-one");
@@ -814,13 +1114,13 @@ describe("#1453 review r2", () => {
     await mount(); await settle(6);
     await stageDescription("alpha", "A2");
     await stageDescription("beta", "B2");
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
     expect(writes().map(r => `${r.method} ${r.url}`)).toEqual(["PATCH /api/settings/fleet/instances/alpha"]);
     expect(app.appStore.get().pendingChanges ?? []).toEqual([]);
     const first = writes()[0]!.key;
     await settle(6); routes.length = 0;
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
     expect(writes().filter(r => r.method === "PATCH" && r.url.endsWith("/alpha")).map(r => r.key)).toEqual([first, first]);
   }, 15_000);
@@ -846,7 +1146,7 @@ describe("#1453 review r2", () => {
     expect(app.appStore.get().pendingChanges.map((x: any) => x.id)).toEqual(["b".repeat(32)]);
   });
 
-  it("3. a provider key verified after its card was unmounted (Bots → General → Bots) is never applied over the key entered since", async () => {
+  it("3. a provider key verified after its card was unmounted (Agents → Agent defaults → Agents; #2347: the keys are in Agents) is never applied over the key entered since", async () => {
     const verifyA = gate<{ body: unknown }>();
     let verifies = 0;
     routes.push(r => {
@@ -855,15 +1155,15 @@ describe("#1453 review r2", () => {
       if (r.url === "/api/settings/secrets/p1/apply") return { body: { result: "reloaded" } };
       return undefined;
     });
-    await mount("bots", "settings:bots|1|en"); await settle(6);
+    await mount("agents", "settings:agents|1|en"); await settle(6);
     const enter = async (v: string) => {
       const row = p.root.querySelector(".s-key");
       const i = row.querySelector("input"); i.value = v; fire(i, "input"); await settle(2);
       btn(row, "Verify & apply").click(); await settle(4);
     };
     await enter("fake-key-a");
-    await mount("general", "settings:general|2|en"); await settle(4);
-    await mount("bots", "settings:bots|3|en"); await settle(6);
+    await mount("agent-defaults", "settings:agent-defaults|2|en"); await settle(4);
+    await mount("agents", "settings:agents|3|en"); await settle(6);
     await enter("fake-key-b");
     await vi.waitFor(() => expect(writes().filter(r => r.url === "/api/settings/secrets/p1/apply")).toHaveLength(1));
     verifyA.open({ body: { verification_id: "vA" } });
@@ -985,11 +1285,11 @@ describe("#1465 review: confirmations that outlive their view", () => {
     for (const id of ["main", "persona"]) {
       btn(p.root.querySelectorAll(".s-row").find((r: any) => r.textContent.includes(id)), "Settings").click(); await settle(4);
       for (const x of [...p.root.querySelectorAll("dialog .chip-x")]) { x.click(); await settle(1); }
-      btn(p.root.querySelector("dialog"), "Stage change").click(); await settle(4);
+      btn(p.root.querySelector("dialog"), "Done").click(); await settle(4);
     }
     expect(p.root.querySelector(".s-pending")?.textContent).toContain("2");
     const C = await confirmMod();
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click(); await settle(2);
+    btn(p.root.querySelector(".s-pending"), "Save").click(); await settle(2);
     expect(C.confirmStore.get().queue).toHaveLength(1);
     await p.unmount();
     await yes(); await settle(6);
@@ -1404,7 +1704,7 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     btn(p.root.querySelector("dialog .token-field"), "Verify").click(); await settle(4);
     btn(p.root.querySelector("dialog"), "Stage the new token").click(); await settle(2);
     p.root.querySelector("dialog .dlg-x").click(); await settle(4);
-    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op()?.phase).not.toBe("writing"), { timeout: 5000 }); await settle(4);
     await vi.waitFor(() => expect(p.root.textContent).toContain("starts with the new token when AgEnD restarts"), { timeout: 5000 });
     expect(op().phase, "stored, not failed").not.toBe("failed");

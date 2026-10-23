@@ -9,10 +9,16 @@
  * nothing. An unreadable file means no offices and every write refused (503), never overwritten. Memory changes only
  * once a write is on disk. A write is checked strictly (checkOffices: unknown keys, sizes, counts, ranges); what is read
  * back is checked again, one office at a time (an office a tightened rule refuses is dropped, the rest stay).
+ *
+ * #2513: an office on a zones skin may keep `overrides` (the Office view's Edit layout: seats, furniture, the door and
+ * the walkable graph moved on the pack, which itself never changes) — their shape checked by the page's own module
+ * (fleet-office-pack.js checkLayoutOverrides), and, for a pack the host keeps, put on it (applyOverrides: a seat inside
+ * its area, as many seats as the pack's, furniture the pack has) before a write is accepted.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { applyOverrides, checkLayoutOverrides, type CheckedPack, type LayoutOverrides } from "./ui/fleet-office-pack.js";
 
 export const OFFICE_LIMITS = {
   offices: 20, members: 500, seats: 500, waypoints: 2000, edges: 8000,
@@ -25,7 +31,9 @@ export interface OfficePoint { id: string; x: number; y: number }
 export interface OfficeSeat extends OfficePoint { instance?: string }
 export interface OfficeLayout { seats: OfficeSeat[]; waypoints: OfficePoint[]; edges: Array<[string, string]> }
 /** `members`: instance names, or `team:<name>` for a team's members; none means everyone. */
-export interface Office { id: string; name: string; skin: string; members: string[]; layout?: OfficeLayout }
+export interface Office { id: string; name: string; skin: string; members: string[]; layout?: OfficeLayout; overrides?: LayoutOverrides }
+/** The checked pack an office's overrides are put on (a pack the host keeps), or null (a built-in style: shape only). */
+export type OverridePack = (id: string) => CheckedPack | null;
 export type OfficeCheck = { ok: true; offices: Office[] } | { ok: false; status: 400 | 413; error: string; detail?: string };
 export type OfficeWrite = { ok: true; rev: number; offices: Office[] } | { ok: false; status: 400 | 409 | 413 | 503; error: string; detail?: string };
 
@@ -83,24 +91,38 @@ function layout(v: unknown, at: string): OfficeLayout {
   });
   return { seats, waypoints, edges };
 }
-function office(v: unknown, at: string): Office {
+/** A refusal from fleet-office-pack.js ("overrides.<where>: <why>"), placed under `at`. */
+function placed(at: string, error: string): Refused {
+  const k = error.indexOf(": ");
+  const where = k < 0 ? "" : error.slice(0, k).replace(/^overrides/, "");
+  return new Refused(`${at}${where}`, k < 0 ? error : error.slice(k + 2));
+}
+function overrides(v: unknown, at: string, packOf?: OverridePack): LayoutOverrides {
+  const c = checkLayoutOverrides(v);
+  if (!c.ok) throw placed(at, c.error);
+  const pack = packOf?.(c.overrides.pack);
+  if (pack) { const a = applyOverrides(pack, c.overrides); if (!a.ok) throw placed(at, a.error); }
+  return c.overrides;
+}
+function office(v: unknown, at: string, packOf?: OverridePack): Office {
   if (!isObj(v)) throw new Refused(at, "an object");
-  keysIn(v, ["id", "name", "skin", "members", "layout"], at);
+  keysIn(v, ["id", "name", "skin", "members", "layout", "overrides"], at);
   if (typeof v.id !== "string" || !ID.test(v.id)) throw new Refused(`${at}.id`, "1–40 letters, digits, _ or -");
   if (v.id === AUTO_OFFICE_ID) throw new Refused(`${at}.id`, `"${AUTO_OFFICE_ID}" is the page's own office`);
   const skin = v.skin === undefined ? "pixel" : typeof v.skin === "string" && ID.test(v.skin) ? v.skin : null;
   if (skin === null) throw new Refused(`${at}.skin`, "1–40 letters, digits, _ or -");
   const members = list(v.members ?? [], OFFICE_LIMITS.members, `${at}.members`).map((m, i) => text(m, OFFICE_LIMITS.member, `${at}.members[${i}]`));
   if (new Set(members).size !== members.length) throw new Refused(`${at}.members`, "a name twice");
-  return { id: v.id, name: text(v.name, OFFICE_LIMITS.name, `${at}.name`), skin, members, ...(v.layout === undefined ? {} : { layout: layout(v.layout, `${at}.layout`) }) };
+  return { id: v.id, name: text(v.name, OFFICE_LIMITS.name, `${at}.name`), skin, members, ...(v.layout === undefined ? {} : { layout: layout(v.layout, `${at}.layout`) }),
+    ...(v.overrides === undefined ? {} : { overrides: overrides(v.overrides, `${at}.overrides`, packOf) }) };
 }
 
 /** A whole list of offices, as a person sends it: every rule, or a refusal naming where it broke. */
-export function checkOffices(raw: unknown): OfficeCheck {
+export function checkOffices(raw: unknown, packOf?: OverridePack): OfficeCheck {
   try {
     const ids = new Set<string>();
     const offices = list(raw, OFFICE_LIMITS.offices, "offices").map((o, i) => {
-      const checked = office(o, `offices[${i}]`);
+      const checked = office(o, `offices[${i}]`, packOf);
       if (ids.has(checked.id)) throw new Refused(`offices[${i}].id`, "used twice");
       ids.add(checked.id);
       return checked;
@@ -119,7 +141,8 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 export class OfficeStore {
   private state: State | null = null;
   readonly path: string;
-  constructor(dataDir: string) { this.path = join(dataDir, "web-offices.json"); }
+  /** `packOf`: the packs the host keeps (web-office-skins.ts), for checking an office's overrides on a write. */
+  constructor(dataDir: string, private readonly packOf?: OverridePack) { this.path = join(dataDir, "web-offices.json"); }
 
   private load(): State {
     if (this.state) return this.state;
@@ -153,7 +176,7 @@ export class OfficeStore {
     const s = this.load();
     if (s === "unreadable") return { ok: false, status: 503, error: "offices_unreadable" };
     if (expectedRev !== undefined && expectedRev !== s.rev) return { ok: false, status: 409, error: "offices_changed", detail: `now at rev ${s.rev}` };
-    const checked = checkOffices(raw);
+    const checked = checkOffices(raw, this.packOf);
     if (!checked.ok) return checked;
     const rev = s.rev + 1;
     try { atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, offices: checked.offices }, null, 2) + "\n", { mode: 0o600 }); }

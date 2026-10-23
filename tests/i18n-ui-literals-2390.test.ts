@@ -28,7 +28,7 @@ const ALLOWED = new Map<string, string>([
   ["panel-settings.js\ttext\tcollab", "the config mode's name (channel collab)"],
   ["panel-settings.js\ttext\tClassicBot", "a product name"],
   ["panel-settings.js\tplaceholder\tagend.example.com", "an example hostname"],
-  ["panel-fleet.js\tplaceholder\t/path/to/projects", "an example path"],
+  ["panel-settings.js\tplaceholder\t/path/to/projects", "an example path (Agent defaults → Project folders, moved from Fleet → Config by #2347 §10)"],
   ["backend-signin.js\tlabel\tURL", "an acronym, the same in both languages"],
 ]);
 

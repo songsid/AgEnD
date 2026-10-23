@@ -63,11 +63,10 @@ async function general(defaults: Record<string, unknown>) {
   /** Review, then Apply: what the panel sends for the defaults (null when nothing differs). */
   const review = async () => {
     sent = [];
-    fire(p.root.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Review changes")!, "click");
     await settle();
     const region = p.root.querySelector("[role=region]");
     if (!region) return null;
-    fire(region.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Apply changes")!, "click");
+    fire(region.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Save")!, "click");
     await settle();
     return sent.find(s => s.path === "/api/settings/fleet/defaults") ?? null;
   };

@@ -1,0 +1,201 @@
+{
+ "format": 1,
+ "id": "clinic-sample",
+ "scale": 2,
+ "background": "office_bg.png",
+ "areas": {
+  "desks": {
+   "rect": [
+    124,
+    140,
+    382,
+    226
+   ],
+   "seats": [
+    [
+     212,
+     240
+    ],
+    [
+     430,
+     240
+    ],
+    [
+     208,
+     360
+    ],
+    [
+     428,
+     360
+    ]
+   ]
+  },
+  "lounge": {
+   "rect": [
+    808,
+    116,
+    386,
+    236
+   ],
+   "seats": [
+    [
+     918,
+     208
+    ],
+    [
+     984,
+     208
+    ],
+    [
+     1050,
+     208
+    ],
+    [
+     1116,
+     208
+    ]
+   ]
+  },
+  "alert": {
+   "rect": [
+    140,
+    496,
+    296,
+    160
+   ],
+   "seats": [
+    [
+     230,
+     616
+    ],
+    [
+     340,
+     616
+    ]
+   ]
+  },
+  "nap": {
+   "rect": [
+    832,
+    482,
+    370,
+    168
+   ],
+   "seats": [
+    [
+     936,
+     572
+    ],
+    [
+     1018,
+     572
+    ],
+    [
+     1100,
+     572
+    ]
+   ]
+  }
+ },
+ "stateZones": {
+  "working": "desks",
+  "idle": "lounge",
+  "paused": "nap",
+  "stopped": "nap",
+  "needs": "alert",
+  "crashed": "alert",
+  "stuck": "alert",
+  "default": "lounge"
+ },
+ "door": [
+  640,
+  690
+ ],
+ "waypoints": [
+  {
+   "id": "hall_c",
+   "x": 640,
+   "y": 424
+  },
+  {
+   "id": "desk_in",
+   "x": 314,
+   "y": 396
+  },
+  {
+   "id": "lounge_in",
+   "x": 1000,
+   "y": 380
+  },
+  {
+   "id": "alert_in",
+   "x": 476,
+   "y": 632
+  },
+  {
+   "id": "nap_in",
+   "x": 800,
+   "y": 564
+  },
+  {
+   "id": "door_in",
+   "x": 640,
+   "y": 644
+  },
+  {
+   "id": "door",
+   "x": 640,
+   "y": 690
+  }
+ ],
+ "edges": [
+  [
+   "hall_c",
+   "desk_in"
+  ],
+  [
+   "hall_c",
+   "lounge_in"
+  ],
+  [
+   "hall_c",
+   "alert_in"
+  ],
+  [
+   "hall_c",
+   "nap_in"
+  ],
+  [
+   "hall_c",
+   "door_in"
+  ],
+  [
+   "door_in",
+   "door"
+  ]
+ ],
+ "characters": {
+  "default": {
+   "idle": {
+    "src": "fox_idle.png",
+    "frames": 4,
+    "w": 32,
+    "h": 48,
+    "fps": 4,
+    "ax": 16,
+    "ay": 44
+   }
+  },
+  "fox": {
+   "idle": {
+    "src": "fox_idle.png",
+    "frames": 4,
+    "w": 32,
+    "h": 48,
+    "fps": 4,
+    "ax": 16,
+    "ay": 44
+   }
+  }
+ }
+}

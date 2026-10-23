@@ -85,7 +85,7 @@ Typing a removed command prints the new one.
   <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/usage-compact.webp" width="300" alt="The usage panel in compact mode, with made-up demo data: five accounts across Claude, Codex and Kiro.">
 </p>
 
-- **Global search** (Ctrl+K, or ⌘K): finds chat messages, messages between agents and tasks, grouped by agent. Click a result to jump to the message. In a chat, Ctrl+F searches only that agent. You can filter by agent or team, time and source, or show only what you said. Fleet admins can search, on this machine or over the public link (`web.search.public_link: false` keeps it off the link); guests cannot (#2486). The index keeps 90 days by default (`web.search.retention_days`).
+- **Global search** (Ctrl+K, or ⌘K): finds chat messages, messages between agents and tasks, grouped by agent. Click a result to jump to the message. In a chat, Ctrl+F searches only that agent. You can filter by agent or team, time and source, or show only what you said. Fleet admins can search, on this machine or over the public link (`web.search.public_link: false` keeps it off the link); guests cannot (#2486). From 2.3.1 the index has no age limit by default (`web.search.retention_days` unset or 0; 300,000-row cap); 2.3.0 keeps 90 days.
 - **Chat:**
   - **Reply to a message:** hover and press ↩, right-click, swipe left on a phone, long-press, or press R. A reply sent from the web is a native reply on Discord and Telegram too (#2281).
   - **Reactions:** an agent can react to a web message with an emoji, for example when a message needs only an acknowledgement (#2305).

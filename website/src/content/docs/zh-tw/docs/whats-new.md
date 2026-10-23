@@ -85,7 +85,7 @@ AgEnD 2.3 是正式版。這一頁寫給從 2.2.x（尤其是 2.2.5 與 2.2.6）
   <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/usage-compact.webp" width="300" alt="精簡模式的用量面板（示範資料）：Claude、Codex、Kiro 共五個帳號。">
 </p>
 
-- **全域搜尋**（Ctrl+K，或 ⌘K）：搜尋聊天訊息、agent 之間的訊息和任務，依 agent 分組。點一下結果就會跳到原訊息。在聊天裡按 Ctrl+F，只搜那一個 agent。可以依 agent 或 team、時間、來源篩選，也可以只看自己說的。fleet 管理者可以搜尋，在本機或透過公開連結都行（`web.search.public_link: false` 會在公開連結上關閉）；訪客不能用（#2486）。索引預設保留 90 天（`web.search.retention_days`）。
+- **全域搜尋**（Ctrl+K，或 ⌘K）：搜尋聊天訊息、agent 之間的訊息和任務，依 agent 分組。點一下結果就會跳到原訊息。在聊天裡按 Ctrl+F，只搜那一個 agent。可以依 agent 或 team、時間、來源篩選，也可以只看自己說的。fleet 管理者可以搜尋，在本機或透過公開連結都行（`web.search.public_link: false` 會在公開連結上關閉）；訪客不能用（#2486）。從 2.3.1 起索引預設不限天數（`web.search.retention_days` 未設定或 0；上限 30 萬筆）；2.3.0 仍保留 90 天。
 - **聊天：**
   - **回覆指定訊息：** 滑鼠移上去按 ↩、按右鍵、手機左滑、長按，或按 R。從網頁送出的回覆，在 Discord 和 Telegram 上也會是原生回覆（#2281）。
   - **reaction：** agent 可以對網頁上的訊息加一個 emoji，例如只需要確認或道謝時（#2305）。

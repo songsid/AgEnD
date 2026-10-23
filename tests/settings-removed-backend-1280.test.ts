@@ -98,7 +98,7 @@ describe("the backend picker keeps a value it does not offer", () => {
     expect(picker.querySelectorAll("option")[0]!.textContent).toBe("gemini-cli (removed — choose another backend)");
     expect(picker.querySelectorAll("option").slice(1).some((o: any) => o.textContent.includes("removed"))).toBe(false);
     // Offered ones: the list is exactly the backends, with no extra entry.
-    await click(button("Stage change"));
+    await click(button("Done"));
     sent = [];
     w.fleet.instances.worker.backend = "codex";
     await mountSettings("agents");
@@ -113,8 +113,8 @@ describe("the backend picker keeps a value it does not offer", () => {
     expect(p.root.querySelector("#g-be")!.value).toBe("gemini-cli");
     expect(optionValues(p.root.querySelector("#g-be"))[0]).toBe("gemini-cli");
     await choose(p.root.querySelector("#g-ll")!, "warn");
-    await click(button("Review changes"));
-    await click(button("Apply changes", p.root.querySelector("[role=region]")));
+    await settle(4);
+    await click(button("Save", p.root.querySelector("[role=region]")));
     const put = writes().find(s => s.path === "/api/settings/fleet/defaults")!;
     expect(put.body).toEqual({ log_level: "warn" });
     expect(put.body).not.toHaveProperty("backend");
@@ -131,8 +131,8 @@ describe("the agent editor (#1280 review): editing only the description of a gem
     const desc = p.root.querySelector("#ag-desc")!;
     expect(desc.value).toBe("old desc");
     await type(desc, "new desc");
-    await click(button("Stage change"));
-    await click(button("Apply changes", p.root.querySelector("[role=region]")));
+    await click(button("Done"));
+    await click(button("Save", p.root.querySelector("[role=region]")));
     expect(writes().filter(s => s.path.startsWith("/api/settings/fleet/instances/"))).toEqual([
       expect.objectContaining({ method: "PATCH", path: "/api/settings/fleet/instances/worker", body: { description: "new desc" } }),
     ]);

@@ -13,6 +13,12 @@ import { toast } from "/assets/ui-toast.js";
 import "./settings-strings.js";
 import { api, confirmedWrite, newKey, selfConfirmed } from "./settings-confirm.js";
 
+/**
+ * #2347 (leader's default, for the user to confirm): a Save that needs AgEnD restarted offers Restart now (its card, and
+ * the app-wide banner) and never restarts on its own. true restarts once such a Save settles cleanly.
+ */
+export const AUTO_RESTART_AFTER_SAVE = false;
+
 const WATCH_LIMIT_MS = 10 * 60_000;
 const POST_RETRIES = [1000, 2000, 4000];
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -26,7 +32,8 @@ function view() {
   if (!op) return null;
   return {
     id: op.id, phase: op.phase, error: op.error, job: op.job, lostJob: op.lostJob, restart: op.restart,
-    steps: op.steps.map(({ label, impact, status, error, pendingId, note }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}) })),
+    // stageKey: which staged change a step is (#2367 review: the panel tells that change's section how it went).
+    steps: op.steps.map(({ label, impact, status, error, pendingId, note, stageKey }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}), ...(stageKey ? { stageKey } : {}) })),
     leftover: op.leftover,
   };
 }
@@ -199,24 +206,29 @@ async function watch(o, id) {
   const rows = (current && current.targets) || [];
   const failed = rows.some((r) => r.status === "failed"), restart = rows.some((r) => r.status === "restart-required");
   if (!o.lostJob) toast(t(failed ? "settings.applyPartial" : restart ? "settings.applyRestartNeeded" : "settings.changesApplied"), !(failed || restart));
+  if (AUTO_RESTART_AFTER_SAVE && restart && !failed && !o.lostJob && o.restart === "idle") restartFleet();
 }
 
 /**
  * A full AgEnD restart for a job that needs one: its own confirmation (the caller's), its own key, one at a time. The
  * job's fleet row moves to "running" on the server; that job is watched again.
  */
+/** POST /api/settings/restart-fleet for `jobId`, with its own key: { ok, status, body } (a lost answer: status 0). */
+async function postRestart(jobId) {
+  const key = newKey("restart");
+  try {
+    return await api("/api/settings/restart-fleet", { method: "POST", headers: { "Idempotency-Key": key },
+      body: JSON.stringify({ job_id: jobId, confirm: "restart-agend", idempotency_key: key }) });
+  } catch { return { ok: false, status: 0, body: null }; }
+}
+
 export async function restartFleet(forJob) {
   const o = op;
   if (!o || !o.job || o.restart === "busy" || ACTIVE.has(o.phase)) return { ok: false };
   // A confirmation given for one job never restarts for another (the operation was replaced meanwhile).
   if (forJob && (forJob.opId !== o.id || forJob.jobId !== o.job.id)) return { ok: false, stale: true };
   o.restart = "busy"; publish();
-  const key = newKey("restart");
-  let res;
-  try {
-    res = await api("/api/settings/restart-fleet", { method: "POST", headers: { "Idempotency-Key": key },
-      body: JSON.stringify({ job_id: o.job.id, confirm: "restart-agend", idempotency_key: key }) });
-  } catch { res = { ok: false, status: 0, body: null }; }
+  const res = await postRestart(o.job.id);
   if (!mine(o)) return res;
   if (!res.ok) { o.restart = "idle"; publish(); return res; }
   toast(t("settings.restartFleetStarted"));          // when it is accepted; how it ends is said when it settles
@@ -226,6 +238,29 @@ export async function restartFleet(forJob) {
     : { ...o.job, status: "running", targets: o.job.targets.map((row) => (row.target === "fleet" ? { ...row, status: "running" } : row)) };
   o.phase = "watching"; publish();
   try { await watch(o, o.job.id); } finally { if (mine(o)) { o.restart = "idle"; publish(); } }
+  return res;
+}
+
+/**
+ * #2347: Restart now from the app-wide banner, for the newest Save that needs it (`jobId`, the server's pick). The Save
+ * in hand when it is that job. Otherwise the restart is asked for first, and only once it is accepted does that job
+ * become the operation, so its card and line follow the restart as they follow any other (a refusal leaves the banner
+ * as it was). The caller asked first.
+ */
+export async function restartPendingChanges(jobId) {
+  if (operationActive()) return { ok: false, busy: true };
+  if (op && op.job && op.job.id === jobId) return restartFleet({ opId: op.id, jobId });
+  const res = await postRestart(jobId);
+  if (!res.ok || operationActive()) return res;
+  toast(t("settings.restartFleetStarted"));
+  let fresh = null;
+  try { fresh = await api(`/api/settings/apply/${encodeURIComponent(jobId)}`); } catch { fresh = null; }
+  if (operationActive()) return res;
+  const job = fresh && fresh.ok && fresh.body && fresh.body.id ? fresh.body
+    : { id: jobId, status: "running", targets: [{ target: "fleet", kind: "restart", status: "running" }] };
+  const o = op = { id: ++seq, phase: "watching", error: null, job, lostJob: false, restart: "busy", leftover: [], steps: [] };
+  publish();
+  try { await watch(o, jobId); } finally { if (mine(o)) { o.restart = "idle"; publish(); } }
   return res;
 }
 

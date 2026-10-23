@@ -63,8 +63,8 @@ async function open(configured: Record<string, any> = {}, extra: Record<string, 
   const check = async (el: any, on: boolean) => { el.checked = on; fire(el, "change"); await settle(); };
   const type = async (el: any, v: string) => { el.value = v; fire(el, "input"); await settle(); };
   const button = (label: string, root: any = p.root) => root.querySelectorAll("button").find((b: any) => b.textContent.trim() === label);
-  const review = async () => { await click($("#vaReview")); };
-  const apply = async () => { const region = p.root.querySelector("[role=region]"); if (region) await click(button("Apply changes", region)); };
+  const review = async () => { await settle(2); };          // #2347: an edit is staged as it is made
+  const apply = async () => { const region = p.root.querySelector("[role=region]"); if (region) await click(button("Save", region)); };
   const writes = () => sent.filter((s) => s.method !== "GET" && s.path === "/api/settings/fleet/web");
   return { $, click, check, type, button, review, apply, writes };
 }
@@ -73,6 +73,12 @@ describe("Settings → Web → Web authority, as rendered", () => {
   it("shows what is in force: the switch on by default (§0.1), only-this-computer off, the hours; no session authorized yet", async () => {
     const w = await open();
     expect([w.$("#vaEnabled").checked, w.$("#vaLoopbackOnly").checked, w.$("#vaHours").value]).toEqual([true, false, ""]);
+    // #2347 §10: the hours left empty say what is in effect, in plain text with a "default" mark (no grey placeholder).
+    const effect = w.$("#vaHours").parentNode.querySelector(".s-effect");
+    expect([effect?.textContent.replace(/\s+/g, " ").trim(), w.$("#vaHours").getAttribute("placeholder")]).toEqual(["In effect: 48 h default", null]);
+    await w.type(w.$("#vaHours"), "12");
+    expect(w.$("#vaHours").parentNode.querySelector(".s-effect")).toBeNull();
+    await w.type(w.$("#vaHours"), "");
     expect(w.$("#vaSessionsNone").textContent).toBe("No session is authorized now.");
     expect(w.$("#vaEnforce"), "§0: no step-up list").toBeNull();
     expect(w.$("#vaLanWarning")).toBeNull();
@@ -85,7 +91,7 @@ describe("Settings → Web → Web authority, as rendered", () => {
     expect(row.textContent).toContain("owner:admin");
     expect(row.textContent).toMatch(/Authorized .+ · until .+/);
   });
-  it("one PUT with only what changed: off, only-this-computer, 12 h — through Review and Apply", async () => {
+  it("one PUT with only what changed: off, only-this-computer, 12 h — staged as edited, then Save", async () => {
     const w = await open();
     await w.check(w.$("#vaEnabled"), false);
     await w.check(w.$("#vaLoopbackOnly"), true);
@@ -101,10 +107,27 @@ describe("Settings → Web → Web authority, as rendered", () => {
     await w.review(); await w.apply();
     expect(w.writes().map((s) => s.body)).toEqual([{ verified_authority: { enabled: null, loopback_only: null, max_session_hours: null } }]);
   });
+  // §0.3: the temporary public link's option — always shown (any fleet can open one), off by default, its risk said.
+  it("the quick-link row: always shown, off by default, its risk said; on is staged as quick_link: true, back off as null", async () => {
+    const w = await open();
+    expect([!!w.$("#vaQuickLink"), w.$("#vaQuickLink").checked, w.$("#vaNamedLink"), w.$(".s-web-authority").textContent.includes("Cloudflare's quick-tunnel service")]).toEqual([true, false, null, true]);
+    await w.check(w.$("#vaQuickLink"), true);
+    await w.review(); await w.apply();
+    const on = await open({ quick_link: true });
+    expect(on.$("#vaQuickLink").checked).toBe(true);
+    await on.check(on.$("#vaQuickLink"), false);
+    await on.review(); await on.apply();
+    expect(on.writes().map((x: any) => x.body)).toEqual([{ verified_authority: { quick_link: true } }, { verified_authority: { quick_link: null } }]);
+  });
+  it("a session authorized over the temporary public link is marked so", async () => {
+    const w = await open({ quick_link: true }, { authorized: [{ handle: "a1b2c3d4e5f60718", label: "Safari on iPhone", account: "owner:admin", authorizedAt: Date.UTC(2026, 9, 18, 9, 0), until: Date.UTC(2026, 9, 18, 13, 0), quick: true }] });
+    expect(w.$('#vaSessions li[data-handle="a1b2c3d4e5f60718"] .s-va-quick')?.textContent).toBe("over the temporary public link");
+  });
   it("hours out of 1–48 are refused on the page", async () => {
     const w = await open();
     await w.type(w.$("#vaHours"), "72");
-    expect(w.$("#vaReview").disabled).toBe(true);
+    const save = (p.root.querySelector("[role=region]")?.querySelectorAll("button") ?? []).find((b: any) => b.textContent.trim() === "Save");
+    expect([save?.disabled, !!p.root.querySelector(".s-pending .s-fix")]).toEqual([true, true]);     // #2347: Save waits
     expect(w.$(".s-web-authority .feedback.error").textContent).toBe("Must be a number from 1 to 48");
   });
   it("warns about hosts that reach the dashboard from elsewhere while only-this-computer is off; not once it is on", async () => {
@@ -160,6 +183,26 @@ describe("Settings → Web → Web authority, as rendered", () => {
     await open({ enabled: true });
     await line();
     expect(reads(), "read again after Settings → Web").toBe(2);
+  });
+  const away = async (configured: Record<string, any>) => {
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: "settings:device" })); await settle(8);
+    overview = overviewFor(configured); fleet.web.verified_authority = configured;       // another admin's change meanwhile
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web" }, navKey: "settings:web|2" })); await settle(12);
+  };
+  it("#2367 review: a card never edited follows the overview when shown again — nothing staged, nothing written", async () => {
+    const w = await open({ max_session_hours: 12 });
+    await away({ max_session_hours: 6 });
+    await w.apply();
+    expect([w.$("#vaHours").value, !!p.root.querySelector("[role=region]"), w.writes()]).toEqual(["6", false, []]);
+  });
+  it("#2367 review control: an edited field comes back over the fresh overview, and Save sends only it", async () => {
+    const w = await open({ max_session_hours: 12 });
+    await w.check(w.$("#vaLoopbackOnly"), true);
+    await away({ max_session_hours: 6 });
+    const back = [w.$("#vaHours").value, w.$("#vaLoopbackOnly").checked];
+    await w.apply();
+    expect([back, w.writes().map((s) => s.body)]).toEqual([["6", true], [{ verified_authority: { loopback_only: true } }]]);
   });
   it("over the public link the card is not offered", async () => {
     p.document.body.setAttribute("data-public-link", "1");

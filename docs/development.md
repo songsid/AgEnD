@@ -106,12 +106,14 @@ Regular checks and publishing workflows live in `.github/workflows/`.
 
 | Workflow | Runs on | Does |
 |---|---|---|
-| `ci.yml` | PR to `main`, `release/**` or a `feat/**` feature branch; branch push to `main` or `release/**`; `v*` tag; manual; weekly | CHANGELOG fragments, typecheck/build, four unit shards and integration (Node 22), install smoke and Node 20 rollback. PR/branch runs use Linux; tag/manual/weekly also test macOS. |
+| `ci.yml` | PR to `main`, `release/**` or a `feat/**` feature branch; branch push to `main` or `release/**`; `v*` tag; manual; weekly | CHANGELOG fragments, SHA-pin guard for `uses:`, typecheck/build, four unit shards and integration (Node 22), install smoke and Node 20 rollback. PR/branch runs use Linux; tag/manual/weekly also test macOS. |
 | `gitleaks.yml` | PR to `main`, `release/**` or `feat/**`; branch push to `main` or `release/**` | Secret scan of the full history |
+| `npm-audit-signatures.yml` | PR to `main`, `release/**` or `feat/**`; branch push to `main` or `release/**` | `npm audit signatures --json` on root and `website/` after `npm ci --ignore-scripts` (invalid fail; missing-only reported) |
+| `dependency-review.yml` | PR to `main` or `release/**` | High/critical advisories and licences outside the allow-list |
 | `data-downgrade.yml` | push and pull request to `main` | Linux scratch-store current → published 2.1.12 → current roundtrip |
 | `npm-rollback-proof.yml` | relevant PRs; branch push; `v*` tag; manual; weekly | npm 9/10/11 refused-install rollback proof on Linux; deferred events also test macOS |
 | `deploy-website.yml` | push to `main` touching `website/**`, `src/tips.ts`, the tips generator or the package files; manual | Builds and deploys the GitHub Pages site |
-| `publish.yml` | push of a tag matching `v*` | Publishes `@songsid/agend` to npm |
+| `publish.yml` | push of a tag matching `v*`; manual is validation-only | Publishes `@songsid/agend` to npm on a tag; `workflow_dispatch` never publishes |
 
 See [CI coverage and scheduling](ci.md) ([繁體中文](ci.zh-TW.md)) for runner
 selection, PR cancellation and the gate's absent-versus-skipped distinction.

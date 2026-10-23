@@ -10,7 +10,7 @@ import { setLocale } from "../src/locale.js";
 
 /**
  * Codex "Selected model is at capacity" (#905): the user is told, and about a minute later the daemon tells the agent to
- * bounded continuation — once per episode, only into a screen that has not changed, never into a stopped / paused / busy instance.
+ * bounded continuation — once per episode, only into the same idle failed turn, never into a stopped / paused / busy instance.
  * The tmux is a stub serving a scripted pane; the daemon's own pane write is a spy. Nothing here starts Codex, a fleet or
  * a tmux server.
  */
@@ -75,6 +75,27 @@ function rig(opts: { baselineTaken?: boolean; start?: string } = {}) {
 }
 
 describe("the daemon's continue nudge", () => {
+  it("#2543 ignores periodic empty-composer/footer redraws through the final write", async () => {
+    const r = rig(); await r.poll(5_100);
+    r.screen.text = PANE.replace("Context 100% left", "Context 99% left").replace("› Ask", "› ⋆Ask");
+    await r.poll(5_000);
+    expect(r.d.capacityNudge).not.toBeNull();
+    await r.poll(60_000);
+    expect(r.sent).toHaveLength(1); expect(r.enters.count).toBe(1);
+    r.stop();
+  });
+
+  it.each([
+    ["draft", PANE.replace("› Ask Codex to do anything", "› my unsent request")],
+    ["new output", PANE.replace("\n\n› Ask", "\nNew response without a status glyph\n\n› Ask")],
+    ["busy backend", PANE.replace("\n\n› Ask", "\n• Working (1s • esc to interrupt)\n\n› Ask")],
+  ])("#2543 still cancels for meaningful %s even while cached state is idle", async (_name, pane) => {
+    const r = rig(); await r.poll(5_100);
+    r.d.instanceState = "idle"; r.screen.text = pane;
+    await r.poll(70_000);
+    expect(r.sent).toEqual([]); expect(r.d.capacityNudge).toBeNull(); r.stop();
+  });
+
   it("is sent once, about a minute after the capacity error, and the user-facing event is still emitted", async () => {
     const { errors, sent, poll, stop } = rig();
     await poll(5_100);
@@ -142,10 +163,10 @@ describe("the daemon's continue nudge", () => {
   });
 
   describe("is cancelled — not postponed — when anything moved (decided by the poll: the injection is not even attempted)", () => {
-    it("the screen changed within the minute (even if it later looks the same again)", async () => {
+    it("a draft appeared within the minute (even if it later looks the same again)", async () => {
       const { d, screen, sent, poll, stop } = rig();
       await poll(5_100);
-      screen.text = `${PANE}  typing…\n`;
+      screen.text = PANE.replace("› Ask Codex to do anything", "› typing…");
       await poll(10_000);
       screen.text = PANE;
       await poll(120_000);
@@ -271,11 +292,27 @@ describe("the daemon's continue nudge", () => {
       return { release: () => { release(); return hold; } };
     }
 
+    it("#2543 permits cosmetic redraw after the due poll while waiting for the write lock", async () => {
+      const r = rig(); await r.poll(5_100);
+      const lock = await waitingForLock(r);
+      r.screen.text = PANE.replace("100% left", "99% left");
+      await lock.release(); await r.poll(1_000);
+      expect(r.sent).toHaveLength(1); expect(r.enters.count).toBe(1); r.stop();
+    });
+
+    it("#2543 refuses a replacement error episode under the same launch while waiting for the lock", async () => {
+      const r = rig(); await r.poll(5_100);
+      const lock = await waitingForLock(r);
+      r.d.lastErrorEpisode = { ...r.d.lastErrorEpisode };
+      await lock.release(); await r.poll(1_000);
+      expect(r.sent).toEqual([]); expect(r.enters.count).toBe(0); r.stop();
+    });
+
     it("a screen that changed while it waited for the lock", async () => {
       const r = rig();
       await r.poll(5_100);
       const lock = await waitingForLock(r);
-      r.screen.text = `${PANE}  a person typed here\n`;
+      r.screen.text = PANE.replace("› Ask Codex to do anything", "› a person typed here");
       await lock.release(); await r.poll(1_000);
       expect(r.sent).toEqual([]);
       r.stop();

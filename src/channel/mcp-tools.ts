@@ -144,9 +144,9 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["set_persona_emoji", schemas.SetPersonaEmojiArgs,
     "Set your persona emoji: the status stamp (default: delivered) your bot puts on messages it handles, so people can tell you apart from other bots. Other statuses: received, queued, processing, failed, progress_prefix, and photo / attachment (the stamp on a photo / file your bot saved). Validated the way Settings validates it; takes effect on your next stamp."],
   ["get_web_settings", schemas.GetWebSettingsArgs,
-    "Settings → Web appearance as it is now, for the user: every setting the page shows in plain words (summary) and as values — the host's (themes shown, identity colours, card sizes, sidebar widget), each agent's own colour, effects and ambient effect, one person's custom CSS and effect slots — the installed and proposed mods, the people whose own settings you may name, and what only the person can do on the page. General, coordinators and full profiles."],
+    "Settings → Look as it is now, for the user: every setting the page shows in plain words (summary) and as values — the host's (themes shown, identity colours, card sizes, sidebar widget), each agent's own colour, effects and ambient effect, one person's custom CSS and effect slots — the installed and proposed mods, the people whose own settings you may name, and what only the person can do on the page. General, coordinators and full profiles."],
   ["set_web_settings", schemas.SetWebSettingsArgs,
-    "Change one Web appearance setting for the user, exactly as the page changes it (the same checks; custom CSS keeps its safe rules): host settings, an agent's colour, an agent's card banner focus, custom CSS (save on trial, keep or revert the trial, use an earlier version, off), a proposed mod (review, install with the parts to apply, cancel, dismiss, uninstall), an effect on a chat, an agent's ambient effect (falling petals, click stars — set or clear), an effect slot, or Restore defaults. Returns { ok, ... } or { ok: false, error, detail }. See the web-appearance skill. General, coordinators and full profiles."],
+    "Change one Look setting for the user, exactly as the page changes it (the same checks; custom CSS keeps its safe rules): host settings, an agent's colour, an agent's card banner focus, custom CSS (save on trial, keep or revert the trial, use an earlier version, off), a proposed mod (review, install with the parts to apply, cancel, dismiss, uninstall), an effect on a chat, an agent's ambient effect (falling petals, click stars — set or clear), an effect slot, or Restore defaults. Returns { ok, ... } or { ok: false, error, detail }. See the web-appearance skill. General, coordinators and full profiles."],
   ["get_web_theme", schemas.GetWebThemeArgs,
     "Your own web theme (how your chat looks in the web dashboard): the current theme, the token defaults it is drawn over, your uploaded pictures, and your limits (changes left, each picture slot's size limits and your picture quota; uploads are not counted). No target: always yours."],
   ["set_web_theme", schemas.SetWebThemeArgs,
@@ -168,7 +168,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["export_web_mod", schemas.ExportWebModArgs,
     "Export your own look on the web dashboard as a mod file — your theme with its pictures, your card text and the widgets you placed (never custom CSS) — written to .agend/mods/<name>-<version>.agendmod.json in your working directory. Returns { path, bytes }."],
   ["propose_web_mod", schemas.ProposeWebModArgs,
-    "Propose a mod file from your working directory for a person to review in Settings → Web appearance → Mods. It is checked whole; one carrying custom CSS is refused. Nothing changes until a person installs it."],
+    "Propose a mod file from your working directory for a person to review in Settings → Look → Mods. It is checked whole; one carrying custom CSS is refused. Nothing changes until a person installs it."],
   ["reset_web_theme", schemas.ResetWebThemeArgs,
     "Reset your own web theme to the default (counts as a change for the rate limit)."],
   ["upload_web_effect", schemas.UploadWebEffectArgs,
@@ -231,8 +231,8 @@ export const TOOLS: ToolDef[] = DEFS.map(([name, schema, description]) => ({
 export function toolsWithCanvasWorker(enabled: boolean, definitions: readonly ToolDef[] = TOOLS): ToolDef[] {
   if (enabled) return [...definitions];
   const descriptions: Readonly<Record<string, string>> = {
-    get_web_settings: "Read Settings → Web appearance: themes, colours, cards, widgets, custom CSS and ambient presets. General, coordinators and full profiles.",
-    set_web_settings: "Change Settings → Web appearance: host settings, colours, cards, custom CSS, ambient presets, or Restore defaults. General, coordinators and full profiles.",
+    get_web_settings: "Read Settings → Look: themes, colours, cards, widgets, custom CSS and ambient presets. General, coordinators and full profiles.",
+    set_web_settings: "Change Settings → Look: host settings, colours, cards, custom CSS, ambient presets, or Restore defaults. General, coordinators and full profiles.",
     get_web_appearance: "Read your own appearance on the dashboard: face, ring colour, identity card, theme, widgets, ambient presets and limits.",
     set_web_ambient: "Set your own ambient preset (fall, rise, twinkle, burst-on-click) with glyphs, colours and numbers. Declarative data only; no code or preview is needed. Shares the theme-change limit and respects a person's lock.",
   };

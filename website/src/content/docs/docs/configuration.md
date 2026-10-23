@@ -49,7 +49,7 @@ The most used keys. The [full reference](https://github.com/songsid/AgEnD/blob/m
 | `web.public_link.hostname` | — | Your own domain for a named Cloudflare tunnel. The link keeps the same address each time. The tunnel token is set in Settings and never shown back |
 | `web.public_link.auto_open` | `false` | With your own domain: reopen the public link after a fleet restart, for the admin who opened it last |
 | `web.verified_authority.named_link` | `false` | Lets a browser you have verified act with your account, through your own domain only. A quick tunnel never qualifies |
-| `web.search.retention_days` | `90` | How many days the global search (Ctrl+K) keeps its index of messages and tasks (1–3650) |
+| `web.search.retention_days` | `90` in 2.3.0; unset (`0`) from 2.3.1 | From 2.3.1, unset and `0` = no age limit (300,000-row cap still applies); 1–3650 age-prunes. 2.3.0 default is 90 days |
 | `web.experimental.canvas_worker` | `false` | Turns on Canvas Worker effects (uploaded effects that run in an isolated worker). Experimental; the built-in ambient effects are not affected |
 | `web.echo_to_channel` | `true` | `false` stops copying web chat messages into the instance's Telegram or Discord topic |
 

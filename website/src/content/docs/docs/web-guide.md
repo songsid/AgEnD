@@ -38,7 +38,7 @@ The button is missing when public links are turned off (`web.public_link.allow_p
 
 ## Sessions and signing out
 
-- A sign-in on the AgEnD computer lasts **48 hours**, or until it is unused for 48 hours. **Settings → Web** can change both.
+- A sign-in on the AgEnD computer lasts **48 hours**, or until it is unused for 48 hours. **Settings → Access & security** can change both.
 - A sign-in through the public link lasts 4 hours (30 minutes unused), and ends when the link closes.
 - A browser that signed in with a `/web` code gets **Send me a new code** on the sign-in page next time, so you do not have to go back to chat.
 - The **Session** menu at the bottom of the sidebar lists the fleet's signed-in devices, each with **Sign out**, and **Sign out everywhere**.

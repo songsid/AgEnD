@@ -87,6 +87,9 @@ if (mode === "full") {
   if (!guest) {
     panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
     panels.set("settings", { load: () => loadSettings().then((m) => m.SettingsPanel) });
+    // #2347: the restart banner's Restart now, in any panel — the Settings runner (behind the session) does it.
+    const loadApply = retryable((a) => import(retryUrl("/ui/js/settings-apply.js", a)));
+    appStore.set({ restartRunner: (jobId) => loadApply().then((m) => m.restartPendingChanges(jobId)) });
     panels.set("needs", { load: () => loadNeeds().then((m) => m.NeedsPanel) });
     // #1523 N2: one instance's Details (/ui/fleet/agent/<name>).
     panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });

@@ -70,9 +70,9 @@ const toggle = async (box: any) => { box.checked = !box.checked; box.dispatchEve
 const button = (root: any, label: RegExp) => root.querySelectorAll("button").find((b: any) => label.test(b.textContent.trim()));
 /** Stage the dialog, then Apply: the room's PATCH, as sent (null when none went out). */
 async function stageAndApply(pg: AppPage, dlg: any) {
-  button(dlg, /^Stage change$/).click(); await settle(6);
+  button(dlg, /^Done$/).click(); await settle(6);
   const queued = confirm.confirmStore.get().queue.length + asked.length;
-  const apply = button(pg.root, /^Apply changes$/);
+  const apply = button(pg.root, /^Save$/);
   if (apply) { apply.click(); await settle(10); }
   const patch = calls.find(c => c.startsWith(`PATCH /api/settings/classic/channels/${encodeURIComponent(KEY)} `));
   return { queued, body: patch ? JSON.parse(patch.slice(patch.indexOf(" {") + 1)) : null };

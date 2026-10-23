@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Web guests: an admin grants each person the agents they may see, and can send their sign-in code (#2348).** **Settings → Access & security → Guests** lists the people with access and lets you add someone AgEnD has seen writing to an agent. Their agents are pre-ticked by where they wrote, and any change is unsaved until **Save**. Adding a person, or an agent to someone, waits for a fleet admin's OK in General. Taking access away applies at once and ends that person's sessions. **Send sign-in code** DMs a saved grant's account its code (once a minute per person, never posted anywhere); if the DM fails, the row says why. Once `web.guests.grants` exists it is the whole guest scope (default deny), and the server enforces it on every read a guest can make. **Start from today's guests** turns the current derived access into grants.

@@ -49,7 +49,7 @@ agend validate
 | `web.public_link.hostname` | — | 具名 Cloudflare tunnel 用的自己的網域。每次的網址都相同。tunnel token 在設定頁填入，填入後不會再顯示 |
 | `web.public_link.auto_open` | `false` | 用自己的網域時，fleet 重啟後替最後開啟連結的管理員重新打開公開連結 |
 | `web.verified_authority.named_link` | `false` | 讓你已驗證的瀏覽器以你的帳號行事，但只限於自己的網域。快速 tunnel 永遠不符合 |
-| `web.search.retention_days` | `90` | 全域搜尋（Ctrl+K）保留訊息與任務索引的天數（1–3650） |
+| `web.search.retention_days` | 2.3.0 為 `90`；從 2.3.1 起未設定（`0`） | 從 2.3.1 起，未設定與 `0` 都不限天數（仍上限 30 萬筆）；1–3650 依天數清理。2.3.0 預設仍是 90 天 |
 | `web.experimental.canvas_worker` | `false` | 開啟 Canvas Worker 特效（上傳的特效在隔離的 worker 裡執行）。實驗功能；內建的環境效果不受影響 |
 | `web.echo_to_channel` | `true` | `false` 就不會把網頁聊天的訊息複製到該 instance 的 Telegram 或 Discord topic |
 

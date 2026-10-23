@@ -1,3 +1,23 @@
+# Current self-caused OOM policy (2.3.1)
+
+Victim identity is not cause. The prior policy below is historical and superseded by [the approved attribution design](https://github.com/songsid/AgEnD/pull/2446#issuecomment-6358887558).
+
+Only a complete unconstrained global report can add to the same-session streak: anonymous RSS >=50% RAM and >=2 times the next task's total RSS. Both table and RAM are in pages; scale the victim's table RSS by its kill-line anonymous/total-RSS fraction, with consistent 4/16/64-KiB page units. This conservatively avoids blaming a small victim when another process dominates. Shared memcg, constrained, truncated, malformed, unreadable or unowned reports do not count. Exact PID/comm/start/boot/time/health ownership checks remain. These are deliberate conservative thresholds, not general allocator causation analysis.
+
+Only a complete global report showing another task with at least twice the victim’s total RSS proves collateral attribution. Confirmed collateral victims reset the streak, do not enter the rapid-crash/retry terminal budget, and wait through backoff plus the shared MemoryPressure normal state before the physical spawn. Unknown attribution (including shared memcg, missing, truncated or unsupported reports) resets the self-OOM streak but retains the ordinary bounded rapid-crash/retry budget. Its terminal notice says “crashed repeatedly (out of memory, cause unclear)” and offers Resume/Fresh without a self-OOM tombstone or an automatic fresh-session marker. The action is bound to that stopped launch; a replacement invalidates it. Session and transcript stay intact. Other deaths keep their prior policy; max_retries=0 still disables recovery.
+
+Version2 private tombstones retain numeric proof and revalidate it on every read. Valid prior victim-only records are archived privately and replaced by a revision-bound release receipt; old structured history stays intact and is acknowledged only at that revision. A later positive stop still wins. Migration logs one non-sensitive line. Foreign/symlinked/malformed evidence is not silently trusted or chmodded. Storage failure still leaves the current process stopped and names the missing durability.
+
+General/Needs you offer nonce-bound admin Resume/Fresh actions with numeric evidence. The offered stop revision travels through async button retirement into the serialized stopped gap; a later stop cannot be acknowledged by an old button. Fresh uses the existing fresh marker and retains the old transcript. An unpersisted stop cannot safely offer a receipt and retains the manual/storage remedy.
+
+Collection projects journal JSON to MESSAGE, _TRANSPORT and __REALTIME_TIMESTAMP, capped at 8192 entries, 8 MiB and one second. This accommodates the 4096-task parser cap without full journal metadata exhausting the old 256-KiB buffer. Both [Linux 6.6](https://github.com/torvalds/linux/blob/v6.6/mm/oom_kill.c) and [6.8+](https://github.com/torvalds/linux/blob/v6.8/mm/oom_kill.c) task-table layouts are recognized, with comm read as the rest of the line (including spaces). Unknown/reordered columns or an overflowing table never prove attribution. A null memory sample occurs only with the existing explicit lowMemoryBytes=0 opt-out; sampler errors/unknown snapshots continue to hold recovery.
+
+Fixtures include the real 10-23 apache2 global report (duplicate Mem-Info retained), the real capped tsc memcg report, an explicitly reconstructed collateral CLI and generated positive proof. No live host OOM or fleet is needed. Reverting this patch restores victim-only policy; #2506-era readers hold new version2 stops conservatively, while versions before #2506 ignore durable stops entirely. Migration receipts and archived originals stay on disk. Prefer fixing forward. A rollback does not replay input or delete transcripts.
+
+---
+
+## Historical #2446 design (superseded where different)
+
 # Bounded OOM recovery (#2015 / #2035, 2.4)
 
 ## Root cause and scope

@@ -65,7 +65,7 @@ An explicit owner-adapter General admin action may open the managed public link 
 Public cookies are Secure `__Host-` cookies and bind one exposure. The gateway rejects local header tokens, cookies and codes; public codes and sessions are exposure scoped. Public sessions have a four-hour absolute and 30-minute idle limit, also bounded by earlier link closure. Every public login needs a confirmed 🔐 public notice in the owning General within five seconds, regardless of `notify_login`; the candidate is neither usable nor persisted before confirmation. Code leakage can still grant full web-admin access. Cloudflare terminates TLS; forwarding a link alone does not sign in, but reveals the endpoint to guessing and shared-breaker denial of service. Exact Origin plus CSRF protects browser writes; Host checks are not authentication. Expiry, disable, private close, revoke, owner/binding loss and shutdown close access and withdraw public credentials before child cleanup. An unconfirmed child stop blocks another tunnel.
 
 **Web authority over the admin's named link (#2453), opt-in, off by default.** `web.verified_authority.named_link: true` lets a session on the admin's own named-tunnel hostname be authorized with the account's Confirm card (#1939 §0.2).
-- **Which requests count.** The gateway marks a request as named only when its pinned host is exactly the configured hostname. No header can set or change that, and a quick tunnel never qualifies.
+- **Which requests count.** The gateway marks a request as named only when its pinned host is exactly the configured hostname. No header can set or change that. A quick-tunnel request is governed by the quick-link option below.
 - **Turning it on** is a confirmed Settings change: a General's card or the host CLI. It is never self-confirmed by a web-verified session (#2170), and it can't be changed over the public link.
 - **Turning it off** applies at once. Every receipt from a named-link session then reads as none (`downgraded: named_link_off`). Turning it back on moves the revocation epoch, so those receipts never come back.
 - **`loopback_only`** still wins.
@@ -76,6 +76,20 @@ Public cookies are Secure `__Host-` cookies and bind one exposure. The gateway r
   - `/web revoke`;
   - the option turned off.
 - **A named-link session is never the authority that confirms a held Settings change itself.**
+
+**Web authority over the temporary public link (#1939 §0.3), opt-in, off by default.** `web.verified_authority.quick_link: true` lets a session on the temporary public link that `/web` opens (a quick tunnel, `*.trycloudflare.com`) be authorized with the account's Confirm card too.
+- **Which requests count.** Every gateway request that is not named, known from the listener alone; no header can set or change it. The session must belong to the current exposure, and every quick URL is a new one.
+- **Turning it on** is a confirmed Settings change: a General's card or the host CLI. It is never self-confirmed by a web-verified session (#2170), and it can't be changed over the public link. It is judged on the value in force (the key unset means the default, off). Every time it is turned on, the first time too, the revocation epoch moves in the same write: every authorization given so far ends, and browsers confirm again.
+- **Turning it off** applies at once. Every receipt from a quick-link session then reads as none (`downgraded: quick_link_off`), and those sessions' authorizations are dropped. Turning it back on moves the revocation epoch, so those receipts never come back.
+- **`loopback_only`** still wins.
+- **Risk accepted by turning it on.** The quick URL is a public internet address: anyone who has it reaches the sign-in page. The barrier is the same as the named link's: a sign-in code sent privately to an allowed account, then that account's Confirm for the session. Cloudflare's quick-tunnel service terminates TLS and sees the traffic, including the session cookie; AgEnD starts the quick tunnel with no front authentication. A stolen cookie of an authorized quick-link session can be replayed from anywhere until one of these ends it:
+  - the 30-minute idle or 4-hour absolute public-session limit;
+  - `max_session_hours`;
+  - **Not me** on the notice card;
+  - `/web revoke`;
+  - Close, or the link's expiry;
+  - the option turned off.
+- **A quick-link session is never the authority that confirms a held Settings change itself.**
 
 **Signing in does not protect all local HTTP reads.** `/view` and its GET APIs, including `/api/pane/<instance>`, profiles, avatars and sort order, are public to anyone who can reach the listener with an allowed `Host`. The listener binds `127.0.0.1`, but that still includes:
 - other local users and processes;
@@ -104,8 +118,23 @@ Minimal `agend export` includes `.env` when present; a full export can also incl
 
 A browser session (local or public) can propose changes to access/F/C lists, credentials, connection destinations/order, public exposure and control-bearing instance settings. It cannot commit those changes by itself. The server keeps an immutable, memory-only request for at most five minutes, tied to the live session and configuration snapshot. General shows the complete bounded diff and Confirm / Reject buttons; only a fleet admin on its owning adapter can confirm. Secret values are replaced by key names and fingerprints. Ordinary model/display changes remain immediate, with a snapshot check before writing.
 
-**One exception (#2170): a web-verified account confirms by its own Apply.** A local session that is web-verified (#1939: its account confirmed this browser in a Discord or Telegram DM) is the second confirmation itself when its account is on the change's platform and a fleet admin of every effect owner (the chat card's rule), the scope is known, and an unaffected, connected General exists on that platform. The server claims the request before the chat prompt would be posted, so no card appears; at execution it asks again whether the session is still web-verified with the same account (not expired, revoked, signed out or switched off) and still those owners' admin, and otherwise ends the change as stale. That General receives a plain-text notice (no mentions). It also asks again that a General the chat card could go to is still there. The boundary this moves: the second confirmation becomes the account's **one** authorization of that session (#1939), held until it is revoked, expires or the session ends — not a per-Apply proof that the account holder is present. Anyone driving that verified session (an unattended signed-in browser, or someone holding its session cookie) confirms the same way; signing out or revoking the authorization (Settings → Web → **Revoke web authority**, or **Not me** on the DM card) ends it. The public link, guests, unverified sessions and the host's ownerless `agend web` session never qualify, and a change that needs host CLI confirmation still does.
+**One exception (#2170): a web-verified account confirms by its own Apply.** A local session that is web-verified (#1939: its account confirmed this browser in a Discord or Telegram DM) is the second confirmation itself when its account is on the change's platform and a fleet admin of every effect owner (the chat card's rule), the scope is known, and an unaffected, connected General exists on that platform. The server claims the request before the chat prompt would be posted, so no card appears; at execution it asks again whether the session is still web-verified with the same account (not expired, revoked, signed out or switched off) and still those owners' admin, and otherwise ends the change as stale. That General receives a plain-text notice (no mentions). It also asks again that a General the chat card could go to is still there. The boundary this moves: the second confirmation becomes the account's **one** authorization of that session (#1939), held until it is revoked, expires or the session ends — not a per-Apply proof that the account holder is present. Anyone driving that verified session (an unattended signed-in browser, or someone holding its session cookie) confirms the same way; signing out or revoking the authorization (Settings → Access & security → **Revoke web authority**, or **Not me** on the DM card) ends it. The public link, guests, unverified sessions and the host's ownerless `agend web` session never qualify, and a change that needs host CLI confirmation still does.
 
 If the affected connection cannot safely receive the prompt, AgEnD tries another world's General, then requires local `agend settings confirm <id>`. That command uses a separate same-user Unix socket (0700 parent, 0600 socket); agent environments are refused. It prints the authoritative source, requester and diff before an interactive confirmation or explicit `--yes`. There is no HTTP/MCP confirm route. Setup before a fleet exists uses the same host confirmation; a pending response never starts the fleet.
 
 Revocation, expiry, shutdown or a changed baseline prevents new effects. An admitted operation retains its resource leases through actual settlement and conditional cleanup; it may remain `applying` while native work settles. Rollback restores only still-owned fields, preserving later edits. Intentional final session revocation can return a completion receipt but cannot authorize further effects. Pending requests disappear on restart, so submit again. This boundary does not defend against another process running as the host user; independent filesystem edits are detected where possible, rather than claimed to be atomic.
+
+## CI supply chain (#2528)
+
+GitHub Actions used by this repository are pinned to full commit SHAs, so a
+moved tag cannot change what CI or the npm publish workflows run. A CI job
+fails the merge gate if any remote `uses:` is still a tag. See
+[CI coverage — GitHub Actions pins](ci.md#github-actions-pins-2528).
+
+CI verifies npm registry signatures of the root and `website/` install trees
+(`npm audit signatures --json`). Invalid signatures fail the job; missing-only
+findings are reported. See [CI coverage](ci.md#npm-registry-signatures-2528).
+
+Pull requests into `main` and `release/**` run GitHub's dependency review:
+high or critical advisories, and licences outside the allow-list, fail the
+check. See [CI coverage](ci.md#dependency-review-on-prs-2528).

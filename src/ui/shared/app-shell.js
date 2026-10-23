@@ -4,7 +4,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
-import { ConfirmHost } from "./ui-confirm.js";
+import { ConfirmHost, confirmDialog } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
@@ -415,13 +415,13 @@ export function DevicePrefs({ labels = false } = {}) {
   useEffect(() => onLang(setL), []);
   return html`<div class=${`prefs${labels ? " labelled" : ""}`}>
     <label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
-      <select value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>
+      <select id=${labels ? "pref-theme" : undefined} value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>
         <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option></select></label>
     <label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
-      <select value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
+      <select id=${labels ? "pref-lang" : undefined} value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
         <option value="en">English</option><option value="zh-TW">中文</option></select></label>
     <label class="pref"><${Icon} name="user" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.names")}</span>
-      <select value=${names.primary} aria-label=${t("app.names")} onChange=${(e) => setNamesPrimary(e.target.value)}>
+      <select id=${labels ? "pref-names" : undefined} value=${names.primary} aria-label=${t("app.names")} onChange=${(e) => setNamesPrimary(e.target.value)}>
         <option value="nickname">${t("app.namesNickname")}</option><option value="instance">${t("app.namesInstance")}</option></select></label>
   </div>`;
 }
@@ -587,6 +587,60 @@ function OperationLine({ route }) {
 }
 
 /**
+ * #2347: saved changes that wait for an AgEnD restart, as the server says (GET /api/settings/restart-pending), into
+ * appStore.restartPending ({ keys, jobId } or null). A failed read keeps what was known.
+ */
+export async function refreshRestartPending() {
+  let body;
+  try {
+    const r = await fetch("/api/settings/restart-pending");
+    if (!r.ok) return;
+    body = await r.json();
+  } catch { return; }
+  const keys = body && Array.isArray(body.keys) ? body.keys.filter((k) => typeof k === "string") : [];
+  appStore.set({ restartPending: body && body.pending === true
+    ? { keys, jobId: typeof body.job_id === "string" && body.job_id ? body.job_id : null } : null });
+}
+
+/**
+ * #2347: the app-wide line for saved changes that wait for an AgEnD restart — in every panel, until AgEnD restarts.
+ * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
+ * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
+ * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
+ * offers nothing; with no Settings job to carry the restart (a hand edit), it says how to restart on the host.
+ */
+function RestartLine() {
+  const { restartPending: pending, settingsOp: op, restartRunner } = useStore(appStore);
+  const [later, setLater] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const settled = !op || (!["writing", "posting", "watching"].includes(op.phase) && op.restart !== "busy");
+  useEffect(() => { if (settled) refreshRestartPending(); }, [op ? `${op.id}:${op.phase}:${op.restart}` : "none"]);
+  if (!pending || !settled) return null;
+  if (op && op.job && op.job.targets && op.job.targets.some((r) => r.target === "fleet" && r.status === "restart-required")) return null;
+  const seen = `${pending.jobId}|${pending.keys.join(",")}`;
+  if (later === seen) return null;
+  const canRestart = !!pending.jobId && typeof restartRunner === "function";
+  const restart = async () => {
+    if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
+    setBusy(true);
+    let res;
+    try { res = await restartRunner(pending.jobId); } catch { res = { ok: false }; }
+    setBusy(false);
+    if (res && !res.ok && !res.stale && !res.busy) {
+      toast(t("app.restartRefused", (res.body && res.body.error) || t("app.failed")), false);
+      // #2378 review: a refusal may mean it is done already (restarted from another tab or the host): ask again.
+      refreshRestartPending();
+    }
+  };
+  return html`<div data-trust="status" class="conn restart-line lbar" role="status">
+    <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
+    ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
+    ${!pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
+    <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
+}
+
+/**
  * A module loader that can be tried again: a failed attempt is forgotten (the next call loads afresh) and `attempt`
  * counts, so a retry can ask for a new URL — a browser may keep a failed module import cached under the old one.
  */
@@ -679,9 +733,16 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // Only a touch screen (a coarse pointer) has an on-screen keyboard: a narrow desk window made shorter is not one.
     // Turned with the keyboard up and the field still focused, the new width has no height without it yet: the keyboard
     // stays up until the field is left, or the view grows from its lowest by more than a keyboard (put away).
-    let width = -1, tallest = 0, held = false, lowest = 0;
+    // Once up, the keyboard stays up while the field keeps focus: an IME's candidate bar (or the predictive row) coming and
+    // going moves the view by tens of px on every keystroke, and must never take the tabs out and back. Only leaving the
+    // field, or the view growing from its lowest by more than a keyboard (put away), takes it down. While an IME composes
+    // nothing changes at all; what the view says then is applied at compositionend — or as soon as the field it composes
+    // in has lost focus or left the page (a composition can end without its compositionend: #2517 review).
+    let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null;
     const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     const check = () => {
+      if (composing && composing.isConnected !== false && document.activeElement === composing) return;
+      composing = null;
       const w = Math.round(vv.width), h = vv.height;
       const typing = coarse() && isTextEntry(document.activeElement);
       if (w !== width) {                                              // turned, or a new width: measured again
@@ -693,14 +754,24 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
         if (!typing || h - lowest > KEYBOARD_MIN_PX) held = false;    // left the field, or the keyboard was put away
       }
       if (!held) tallest = Math.max(tallest, window.innerHeight || 0, typing ? 0 : h);   // the view itself only when not typing
-      const up = held || keyboardUp(h, tallest, typing);
-      if (up !== shellStore.get().keyboard) shellStore.set({ keyboard: up });
+      const was = shellStore.get().keyboard;
+      let up = held || keyboardUp(h, tallest, typing);
+      if (!up && was && typing && h - upLowest <= KEYBOARD_MIN_PX) up = true;          // a bar's height, not the keyboard
+      upLowest = up ? (was ? Math.min(upLowest, h) : h) : 0;
+      if (up !== was) shellStore.set({ keyboard: up });
     };
+    const start = (e) => { composing = (e && e.target) || document.activeElement || null; };
+    const end = () => { composing = null; check(); };
     check();
     vv.addEventListener("resize", check);
     document.addEventListener("focusin", check);
     document.addEventListener("focusout", check);
-    return () => { vv.removeEventListener("resize", check); document.removeEventListener("focusin", check); document.removeEventListener("focusout", check); };
+    document.addEventListener("compositionstart", start, true);
+    document.addEventListener("compositionend", end, true);
+    return () => {
+      vv.removeEventListener("resize", check); document.removeEventListener("focusin", check); document.removeEventListener("focusout", check);
+      document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
+    };
   }, []);
   const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
@@ -712,6 +783,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       <${ConnectionLine} />
       <${StartupLine} />
       ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
+      ${viewOnly || guest ? null : html`<${RestartLine} />`}
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>

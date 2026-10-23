@@ -167,6 +167,21 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
   throw new Error(`Unable to acquire fleet lock at ${lockPath}`);
 }
 
+/**
+ * #2490: would `acquireFleetLock` refuse this process now — a live fleet (or setup host) other than it holds the lock?
+ * The same reading of the record and its owner as the acquisition; anything it would treat as stale is "no". Never
+ * throws.
+ */
+export function fleetLockHeldByAnother(dataDir: string, probe: Pick<FleetLockProbe, "pid" | "isProcessAlive" | "readCommandLine"> = {}): boolean {
+  try {
+    const owner = parseRecord(readFileSync(join(dataDir, "fleet.lock"), "utf8"));
+    if (!owner || owner.pid === (probe.pid ?? process.pid) || !(probe.isProcessAlive ?? processAlive)(owner.pid)) return false;
+    const commandLine = (probe.readCommandLine ?? readProcessCommandLine)(owner.pid);
+    if (!commandLine) return true;                                   // an unreadable live owner is never assumed absent
+    return owner.role === "setup-host" ? isSetupHostCommandLine(commandLine) : isFleetStartCommandLine(commandLine);
+  } catch { return false; }
+}
+
 /** Delete only the exact lock record acquired by this process. */
 export function releaseFleetLock(handle: FleetLockHandle | undefined): boolean {
   if (!handle || !existsSync(handle.path)) return false;

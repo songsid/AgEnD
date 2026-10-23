@@ -3,6 +3,7 @@ import { t } from "./locale.js";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
 import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
+import { quickLinkEffective } from "./authority/web-authority.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
@@ -120,7 +121,7 @@ const GUESTS = ["fleet", "web", "guests"] as const;
 /** At the gate's root (fleet.web.guests) and at the fleet's (web.guests — settings-authority.ts walks a fleet alone). */
 const atGuests = (path: readonly string[]): boolean => (path.length === 3 && GUESTS.every((k, i) => path[i] === k))
   || (path.length === 2 && path[0] === "web" && path[1] === "guests");
-const GUEST_JUDGED: readonly string[] = ["enabled", "chat", "open_instances", "narrow"];
+const GUEST_JUDGED: readonly string[] = ["enabled", "chat", "open_instances", "narrow", "grants"];
 /**
  * #1920 phase 3: guest sign-in is judged by what it lets guests reach. Confirmed: turning it on, letting guests chat,
  * naming more agents for an open connection, and widening or lifting one guest's narrowing. Applied directly: the
@@ -156,6 +157,25 @@ function guestsChange(old: unknown, next: unknown): Array<[string, unknown, unkn
       if (looser) out.push([`${key}.${entry}`, before, after]);
     }
   }
+  // #2348: grants. Adding one, or an agent to one, widens; removing one, an agent from one, or renaming applies at once.
+  // Taking the key away altogether brings the derived scope back: a widening. Adding the key (even empty) is default
+  // deny for everyone it does not name.
+  if (changed.includes("grants")) {
+    const ga = a.grants, gb = b.grants;
+    if ((ga !== undefined && !object(ga)) || (gb !== undefined && !object(gb))) out.push(["grants", ga, gb]);
+    else if (ga !== undefined && gb === undefined) out.push(["grants", ga, gb]);
+    else {
+      const x = lists(ga), y = lists(gb);
+      const grantNames = (v: unknown): string[] | null => (object(v) ? names(v.instances) : null);
+      for (const entry of new Set([...Object.keys(x), ...Object.keys(y)])) {
+        const before = Object.hasOwn(x, entry) ? x[entry] : undefined, after = Object.hasOwn(y, entry) ? y[entry] : undefined;
+        if (same(before, after) || after === undefined) continue;                     // unchanged, or removed: narrows
+        const bn = before === undefined ? [] : grantNames(before), an = grantNames(after);
+        if (bn === null || an === null) { out.push([`grants.${entry}`, before, after]); continue; }   // not of its kind: never quietly
+        if (an.some(n => !bn.includes(n))) out.push([`grants.${entry}`, before, after]);
+      }
+    }
+  }
   return out;
 }
 const VERIFIED = ["fleet", "web", "verified_authority"] as const;
@@ -169,13 +189,18 @@ const atVerified = (path: readonly string[]): boolean => (path.length === 3 && V
  * walked key by key, as everything else).
  * #2453 (§0.2): except `named_link` turned on — the one switch that lets a session reached from the internet qualify. It
  * is confirmed (a stolen session must not open the internet path by itself); off applies at once, as every narrowing.
+ * §0.3: likewise `quick_link`, judged on its value as in force (explicit, else the release default): a key removed to
+ * inherit is a change of value too.
  */
 function verifiedAuthorityChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {
   if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
   const a: Record<string, any> = object(old) ? old : {}, b: Record<string, any> = object(next) ? next : {};
   const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
-  if (changed.some(k => !["enabled", "loopback_only", "max_session_hours", "named_link"].includes(k))) return null;
-  return a.named_link !== true && b.named_link === true ? [["named_link", a.named_link, b.named_link]] : [];
+  if (changed.some(k => !["enabled", "loopback_only", "max_session_hours", "named_link", "quick_link"].includes(k))) return null;
+  const held: Array<[string, unknown, unknown]> = [];
+  if (a.named_link !== true && b.named_link === true) held.push(["named_link", a.named_link, b.named_link]);
+  if (!quickLinkEffective(a) && quickLinkEffective(b)) held.push(["quick_link", a.quick_link, b.quick_link]);
+  return held;
 }
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");

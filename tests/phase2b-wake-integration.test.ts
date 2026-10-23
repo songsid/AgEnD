@@ -1,3 +1,4 @@
+import { selfEvidence, selfOomJournal } from "./helpers/self-oom-evidence.js";
 /**
  * Phase 2b end to end inside one FleetManager: a real SQLite outbox, the real
  * pump and wake coordinator, and a controllable fake Daemon (as in the 2a
@@ -132,7 +133,7 @@ describe("Bug1: a marker-only paused target is woken and its queued work deliver
     expect((fm as any).deliveryWaitingReason("worker")).toContain("could not be read safely");
     fm.scheduleStartupRetry("worker", 0);
     expect(warn).toHaveBeenLastCalledWith({ name: "worker" }, expect.stringContaining("could not be read safely"));
-    writeFileSync(join(dir, "crash-history.jsonl"), JSON.stringify({ instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", reason: "session_oom" }) + "\n");
+    writeFileSync(join(dir, "crash-history.jsonl"), JSON.stringify({ instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", reason: "session_oom", oomEvidence: selfEvidence() }) + "\n");
     expect((fm as any).deliveryWaitingReason("worker")).toContain("session-OOM stop evidence");
     fm.scheduleStartupRetry("worker", 0);
     expect(warn).toHaveBeenLastCalledWith({ name: "worker" }, expect.stringContaining("session-OOM stop evidence"));
@@ -140,7 +141,7 @@ describe("Bug1: a marker-only paused target is woken and its queued work deliver
   it("#2473 keeps stopped-session work queued at attempt zero until an explicit per-instance retry", async () => {
     const { fm, dir, outbox, admit, delivered } = fleet("wake_only");
     writeSessionOomStop(dir, { owner: { bootId: "old", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
-      sessionKey: '["claude-code","old-session"]', configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 } });
+      sessionKey: '["claude-code","old-session"]', configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 }, evidence: selfEvidence() });
     writePausedMarker(dir, 123);
     const automaticWake = vi.spyOn(fm.lifecycle, "wake");
     const row = admit(); fm.wakeCoordinator!.scan(); await new Promise(resolve => setTimeout(resolve, 100));

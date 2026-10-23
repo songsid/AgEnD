@@ -19,6 +19,11 @@ export function Dialog({ title, onClose, actions, children, busy = false, wide =
     const d = ref.current;
     opener.current = typeof document !== "undefined" ? document.activeElement : null;
     if (d && typeof d.showModal === "function" && !d.open) d.showModal();
+    // The browser's own first stop is the × (WebKit paints its focus ring at once): the dialog's box takes that focus
+    // instead, so opening shows no ring; Tab then reaches the × and every field with the keyboard's ring. A field a
+    // dialog focuses itself (autofocus) keeps it.
+    const x = d && d.querySelector ? d.querySelector(".dlg-x") : null, box = d && d.querySelector ? d.querySelector(".dlg-box") : null;
+    if (box && x && typeof document !== "undefined" && document.activeElement === x && typeof box.focus === "function") box.focus({ preventScroll: true });
     return () => {
       if (d && d.open && typeof d.close === "function") d.close();
       const back = opener.current;
@@ -37,7 +42,7 @@ export function Dialog({ title, onClose, actions, children, busy = false, wide =
     return () => { d.removeEventListener("cancel", onCancel); d.removeEventListener("click", onClick); };
   }, [onClose]);
   return html`<dialog data-trust="dialog" ref=${ref} class=${`dlg${wide ? " dlg-wide" : ""}${drawer ? " dlg-drawer" : ""}`} aria-label=${label || title}>
-    <div class="dlg-box">
+    <div class="dlg-box" tabindex="-1">
       <div class="dlg-head"><h2 class="dlg-title">${title}</h2>${tools ? html`<span class="dlg-tools">${tools}</span>` : null}
         <button type="button" class="icon-btn dlg-x" aria-label=${t("app.close")} title=${t("app.close")} onClick=${() => { if (!busyRef.current) onClose(); }}><${Icon} name="close" /></button></div>
       <div class="dlg-body">${children}</div>

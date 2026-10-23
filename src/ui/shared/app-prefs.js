@@ -81,6 +81,16 @@ const inflight = new Map();    // key → writes sent and not answered yet
 let flushTimer = null;
 let writes = Promise.resolve();   // one write at a time, in the order they were made
 const listeners = new Set();
+// #2347: the "You" group's preferences (Settings → Preferences, Look) are saved by the Settings bar's Save like
+// every Settings change. While Settings is open (holdPrefs), a choice there is shown on this page at once (cached, and
+// this page's own in prefInForce) but not sent: `held` keeps it until savePrefsHeld sends them all, or discardHeldPrefs
+// puts back what the host has (the same path as another device's change: apply and onPrefsChanged).
+// Only keys Settings itself changes (a card's own size, card.sizeByInstance, is set from the card, outside Settings).
+export const HELD_KEYS = Object.freeze(new Set(["theme", "lang", "names.primary", "preview.optIn", "fx.show", "color.show", "color.off", "card.size"]));
+let holding = 0;
+const held = new Map();        // key → value chosen in Settings, shown here, not saved yet
+const heldFrom = new Map();    // key → its cached form before it was held (a choice back to it is no change)
+const heldListeners = new Set();
 // #2193: whether the signed-in person has a personal effect slot chosen (their fx.* keys: in the page's data-prefs and
 // in every host read, never in this host cache). The effects runtime is loaded only when there is something to play.
 const ownerEffectsIn = (values) => !!values && OWNER_EFFECT_PREF_KEYS.some((k) => own(values, k) && values[k] != null && values[k] !== "");
@@ -141,12 +151,79 @@ function take(body) {
  */
 export function savePref(key, value) {
   if (!hostKey(key)) return;
+  if (holding && HELD_KEYS.has(key)) { hold(key, value); return; }
   cache(key, value);
   if (!prefsWritable()) return;
   pending.set(key, value);
   mine.set(key, value);
   clearTimeout(flushTimer);
   flushTimer = setTimeout(flush, 400);
+}
+
+function hold(key, value) {
+  const k = SYNCED[key];
+  // What was in force before, as cached: never read back from this browser's copy, which the caller may have written
+  // already (theme.js stores the theme as it sets it).
+  if (!heldFrom.has(key)) { const f = prefInForce(key); heldFrom.set(key, f ? (f.value == null ? null : k.toLocal(f.value)) : readLocal(k.ls)); }
+  cache(key, value);
+  if ((value == null ? null : k.toLocal(value)) === heldFrom.get(key)) {          // back to what it was: no change
+    held.delete(key); heldFrom.delete(key);
+    if (!pending.has(key) && !inflight.has(key)) mine.delete(key);
+  } else { held.set(key, value); mine.set(key, value); }
+  notifyHeld();
+}
+function notifyHeld() { for (const fn of [...heldListeners]) { try { fn(held.size); } catch { /* the rest still hear */ } } }
+
+/**
+ * #2347: Settings is open — a "You" preference chosen now is held (shown, not saved) until savePrefsHeld or
+ * discardHeldPrefs. Returns the release; held choices left when the last hold goes (Settings closed without either) are
+ * put back.
+ */
+export function holdPrefs() {
+  holding++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holding--;
+    // A panel shown again at once (a language switch remounts it) holds again before this runs.
+    setTimeout(() => { if (!holding && held.size) discardHeldPrefs(); }, 0);
+  };
+}
+/** How many "You" preferences are chosen and not saved yet. */
+export function heldPrefsCount() { return held.size; }
+/** Called with that count whenever it changes. Returns the unsubscribe. */
+export function onHeldPrefs(fn) { heldListeners.add(fn); return () => heldListeners.delete(fn); }
+/**
+ * Save every held choice (one write). Resolves when it has been answered; rejects when the host did not take it (what
+ * the host has is shown again). Not writable (the public link): this browser only, as before.
+ */
+export async function savePrefsHeld() {
+  const keys = [...held.keys()];
+  for (const key of keys) { if (prefsWritable()) pending.set(key, held.get(key)); else mine.delete(key); }
+  held.clear(); heldFrom.clear();
+  notifyHeld();
+  if (!keys.length || !prefsWritable()) return;
+  clearTimeout(flushTimer);
+  if ((await flush()) === false) throw new Error("preferences not saved");
+}
+/** Put back what the host has for every held choice, on this page (theme, language, … and every onPrefsChanged reader). */
+export function discardHeldPrefs() {
+  const keys = [...held.keys()];
+  held.clear(); heldFrom.clear();
+  for (const key of keys) if (!pending.has(key) && !inflight.has(key)) mine.delete(key);
+  notifyHeld();
+  if (keys.length) align(keys, { force: true });
+}
+/** Run `fn` with nothing held (a confirmed action, such as Restore defaults, saves at once); its keys are held no more. */
+export function withoutHold(fn) {
+  const h = holding;
+  holding = 0;
+  try { return fn(); } finally {
+    holding = h;
+    for (const key of [...held.keys()]) if (pending.has(key)) { held.delete(key); heldFrom.delete(key); }
+    notifyHeld();
+  }
 }
 
 /** One write. ok: the host took it (its answer is a view; an older one than this page has is not taken). */
@@ -173,7 +250,7 @@ function flush() {
     for (const k of keys) {
       const n = (inflight.get(k) || 1) - 1;
       if (n) inflight.set(k, n); else inflight.delete(k);
-      if (!n && !pending.has(k)) { mine.delete(k); released.add(k); }
+      if (!n && !pending.has(k) && !held.has(k)) { mine.delete(k); released.add(k); }
     }
     // Each key whose last write this was, and not changed here again since, now shows the newest host view this page
     // has — usually its own value; another device's newer one if that arrived while the write was out (held back then,
@@ -182,6 +259,7 @@ function flush() {
     // the host (a storage that refused the choice) says nothing about the screen.
     if (!ok) await refresh();
     align(released, { force: true });
+    return ok;
   });
   return writes;
 }
@@ -214,7 +292,7 @@ function align(keys, opts = {}) {
   const changed = new Set();
   for (const key of keys) {
     if (!hostKey(key)) continue;
-    if (pending.has(key) || inflight.has(key)) continue;
+    if (pending.has(key) || inflight.has(key) || held.has(key)) continue;
     const k = SYNCED[key];
     const want = own(host, key) ? k.toLocal(host[key]) : null;
     const copyDiffers = readLocal(k.ls) !== want;

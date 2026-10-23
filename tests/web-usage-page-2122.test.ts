@@ -196,9 +196,9 @@ describe("states it explains", () => {
     answer = { status: 403, body: { error: "usage_report_not_over_public_link", settings: "http://localhost:19280/settings/web" } };
     await mount();
     expect(p.root.querySelector(".empty-title").textContent).toBe("Not offered over the public link");
-    expect(p.root.querySelector(".empty-hint").textContent).toBe("Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web — on the dashboard reached directly, on the computer running AgEnD.");
+    expect(p.root.querySelector(".empty-hint").textContent).toBe("Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web dashboard — on the dashboard reached directly, on the computer running AgEnD.");
     const fix = p.root.querySelector(".us-fix");
-    expect([fix.textContent, fix.getAttribute("href")]).toEqual(["Open Settings → Web on that computer", "http://localhost:19280/settings/web"]);
+    expect([fix.textContent, fix.getAttribute("href")]).toEqual(["Open Settings → Web dashboard on that computer", "http://localhost:19280/settings/web"]);
     // Anything else in that field is not followed: no link rather than a wrong one.
     await p.unmount();
     answer = { status: 403, body: { error: "usage_report_not_over_public_link", settings: "https://elsewhere.example/settings/web" } };

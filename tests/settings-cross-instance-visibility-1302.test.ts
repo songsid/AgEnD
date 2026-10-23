@@ -95,8 +95,8 @@ async function openAgent(inst: Record<string, unknown>, defaults: Record<string,
 /** Stage the agent dialog, then Apply; the PATCH it sent for the agent. */
 async function saveAgent() {
   sent = [];
-  await click(button("Stage change"));
-  await click(button("Apply changes", p.root.querySelector("[role=region]")));
+  await click(button("Done"));
+  await click(button("Save", p.root.querySelector("[role=region]")));
   return writes().find(s => s.path === "/api/settings/fleet/instances/worker") ?? null;
 }
 async function openGeneral(defaults: Record<string, unknown>) {
@@ -107,10 +107,10 @@ async function openGeneral(defaults: Record<string, unknown>) {
   /** Review, then Apply: the defaults PUT it sends (null when nothing differs). */
   const review = async () => {
     sent = [];
-    await click(button("Review changes"));
+    await settle(4);
     const region = p.root.querySelector("[role=region]");
     if (!region) return null;
-    await click(button("Apply changes", region));
+    await click(button("Save", region));
     return sent.find(s => s.path === "/api/settings/fleet/defaults") ?? null;
   };
   return { picker, review };

@@ -28,16 +28,17 @@ const fetchFake = async (url: string, init: any = {}) => {
 const g = globalThis as any;
 let pg: AppPage | null = null;
 afterEach(async () => { if (pg) { await pg.unmount(); pg.restore(); pg = null; } });
-async function mount(lang: "en" | "zh-TW") {
+/** #2347: Look (the person's own cards), or Web dashboard's part (the app icon, card upload limits) — "dashboard". */
+async function mount(lang: "en" | "zh-TW", part: "look" | "dashboard" = "look") {
   pg = page({ url: "http://127.0.0.1:19280/settings/appearance", storage: { agend_tour_done: "1" } });
   pg.document.body.dataset.mode = "full";
   (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
   g.fetch = fetchFake;
   (await import("/assets/app-i18n.js")).setLang(lang, { store: false });
   const { AppearanceSection } = await import("/ui/js/settings-appearance.js");
-  await pg.mount(h(AppearanceSection, {}));
+  await pg.mount(h(AppearanceSection, { part }));
   await settle(3);
-  await vi.waitFor(() => expect(pg!.root.querySelector(".s-effects")).not.toBeNull());
+  if (part === "look") await vi.waitFor(() => expect(pg!.root.querySelector(".s-effects")).not.toBeNull());
   return pg.root;
 }
 const titles = (root: any) => [...root.querySelectorAll("h2.s-ap-group, h3.s-ap-title > span")].map((e: any) => `${e.tagName === "H2" ? "# " : ""}${e.textContent}`);
@@ -57,12 +58,14 @@ function slugs(md: string) {
 }
 
 describe("Settings → Web appearance in plain words", () => {
-  it("five plain headings, each over its cards, in both languages", async () => {
-    expect(titles(await mount("en"))).toEqual(["# Look", "Agents' themes", "Identity colours", "Identity cards", "App icon", "# Your layout", "Your sidebar widget",
-      "# Styles you write", "Custom CSS (yours only)", "# Add-ons", "Mods", "Effects", "# Advanced", "Identity card upload limits", "Restore defaults"]);
+  it("four plain headings in Look, each over its cards, in both languages; the host-wide cards in Web dashboard (#2347)", async () => {
+    expect(titles(await mount("en"))).toEqual(["# Look", "Agents' themes", "Identity colours", "Identity cards", "# Your layout", "Your sidebar widget",
+      "# Styles you write", "Custom CSS (yours only)", "# Add-ons", "Mods", "Effects", "Restore defaults"]);
     await pg!.unmount(); pg!.restore(); pg = null;
     const zh = titles(await mount("zh-TW"));
-    expect(zh.filter((t) => t.startsWith("# "))).toEqual(["# 外觀", "# 你的版面", "# 自己寫的樣式", "# 擴充", "# 進階"]);
+    expect(zh.filter((t) => t.startsWith("# "))).toEqual(["# 外觀", "# 你的版面", "# 自己寫的樣式", "# 擴充"]);
+    await pg!.unmount(); pg!.restore(); pg = null;
+    expect(titles(await mount("en", "dashboard"))).toEqual(["App icon", "Identity card upload limits"]);
   });
 
   it("every card's \"?\" opens its own section of the docs, in the page's language", async () => {
@@ -74,10 +77,10 @@ describe("Settings → Web appearance in plain words", () => {
       expect(learnHref(topic, "en")).toBe(`https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md#${encodeURIComponent(a)}`);
       expect(learnHref(topic, "zh-TW")).toBe(`https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md#${encodeURIComponent(b)}`);
     }
-    for (const lang of ["en", "zh-TW"] as const) {
-      const root = await mount(lang);
+    for (const [lang, part, count] of [["en", "look", 8], ["zh-TW", "look", 8], ["en", "dashboard", 2], ["zh-TW", "dashboard", 2]] as const) {
+      const root = await mount(lang, part);
       const links = [...root.querySelectorAll("a.s-learn")] as any[];
-      expect(links.length, `${lang}: one per card but "On this device" (#2308: the app icon's too)`).toBe(10);
+      expect(links.length, `${lang} ${part}: one per card (#2308: the app icon's too)`).toBe(count);
       for (const a of links) {
         expect(a.getAttribute("href")).toMatch(lang === "en" ? /^https:\/\/github\.com\/songsid\/AgEnD\/blob\/main\/docs\/web-dashboard\.md#/
           : /^https:\/\/github\.com\/songsid\/AgEnD\/blob\/main\/docs\/web-dashboard\.zh-TW\.md#/);
@@ -91,9 +94,12 @@ describe("Settings → Web appearance in plain words", () => {
   it("no hint on the page runs long (was up to 306 characters in English, 150 in Chinese), for an admin or not", async () => {
     for (const [lang, max, admin] of [["en", 70, true], ["zh-TW", 40, true], ["en", 70, false], ["zh-TW", 40, false]] as const) {
       limitsOk = admin;
+      const dash = await mount(lang, "dashboard");
+      expect(!!dash.querySelector(".s-appearance input[type=number]"), `${lang} admin=${admin}: the limits form`).toBe(admin);
+      const dashHints = [...dash.querySelectorAll("p.sub, p.note")].map((p: any) => p.textContent.trim()).filter(Boolean);
+      await pg!.unmount(); pg!.restore(); pg = null;
       const root = await mount(lang);
-      expect(!!root.querySelector(".s-appearance input[type=number]"), `${lang} admin=${admin}: the limits form`).toBe(admin);
-      const hints = [...root.querySelectorAll("p.sub, p.note")].map((p: any) => p.textContent.trim()).filter(Boolean);
+      const hints = [...dashHints, ...[...root.querySelectorAll("p.sub, p.note")].map((p: any) => p.textContent.trim()).filter(Boolean)];
       expect(hints.length, lang).toBeGreaterThan(5);
       for (const text of hints) expect(text.length, `${lang}: ${text}`).toBeLessThanOrEqual(max);
       await pg!.unmount(); pg!.restore(); pg = null;

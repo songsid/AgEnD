@@ -88,6 +88,8 @@ export const chLabel = (i) => (i === 0 ? "primary" : "persona");
 // ── Impacts: the server's (/api/settings/schema, derived from HOT_INSTANCE_CONFIG_KEYS); this page never decides one ──
 export const DEFAULT_SCHEMA = { impacts: {}, order: ["now", "instance", "fleet"] };
 export const impactOf = (schema, field) => (schema.impacts && schema.impacts[field]) || "instance";
+/** #2347: what a change costs that touches nothing in fleet.yaml (this person's or this device's own): the cheapest kind. */
+export const ownChoiceImpact = (schema) => (schema && Array.isArray(schema.order) && schema.order.length ? schema : DEFAULT_SCHEMA).order[0];
 /** #2346: a new connection starts at once while another one runs (the schema says so); the first one needs AgEnD restarted. */
 export const newConnectionImpact = (schema) => (schema && schema.connections_start_live === true ? "now" : impactOf(schema || DEFAULT_SCHEMA, "fleet.channels"));
 /** A batch costs as much as its worst member, in the order the server ships. */

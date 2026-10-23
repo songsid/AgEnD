@@ -396,8 +396,9 @@ export interface WebConfig {
   log_tab?: boolean;
   /**
    * #2293: the dashboard's global search (Ctrl+K) over chat messages, cross-instance messages and Task Board tasks — an
-   * index of its own (search.db, kept `retention_days`, default 90; search/search-index.ts). `enabled: false`: no index
-   * from the next fleet start (the file is left as it is), and searches are refused at once.
+   * index of its own (search.db; `retention_days` unset or 0 = no age limit, ROW_CAP 300,000 still applies;
+   * search/search-index.ts). `enabled: false`: no index from the next fleet start (the file is left as it is), and
+   * searches are refused at once.
    */
   /** #2293 global search. #2478: `public_link` (default true) — false keeps it off the temporary public link. */
   search?: { enabled?: boolean; retention_days?: number; public_link?: boolean };
@@ -478,9 +479,15 @@ export interface WebVerifiedAuthorityConfig {
   /**
    * #2453 (§0.2): sessions over the admin's own named tunnel (`web.public_link.hostname`) may be authorized too — off by
    * default. Turning it on is confirmed in a General or on the host (never by the asking session); off applies at once
-   * and every receipt from a named-link session reads as none. A quick tunnel never qualifies.
+   * and every receipt from a named-link session reads as none. A quick tunnel is `quick_link`'s (§0.3).
    */
   named_link?: boolean;
+  /**
+   * #1939 §0.3: sessions over the temporary public link (the quick tunnel `/web` opens) may be authorized too — off by
+   * default (the user's decision, 2026-10-23). Turning it on is confirmed in a General or on the host (never by the
+   * asking session); off applies at once and every receipt from a quick-link session reads as none.
+   */
+  quick_link?: boolean;
 }
 
 /** #1920: fleet.yaml `web.guests`. */
@@ -496,6 +503,12 @@ export interface WebGuestsConfig {
   open_instances?: Record<string, string[]>;
   /** An admin's narrowing, per `<connection id>:<user id>`: intersected with the derived scope, never widening it. */
   narrow?: Record<string, string[]>;
+  /**
+   * #2348: an admin's explicit grants, per `<connection id>:<user id>` — the agents that person may see as a guest. Once
+   * this key exists it is the only scope there is (default deny): the derived scope above (connection access, rooms,
+   * open_instances, narrow) no longer gives anything. `name` is display only (who it was when granted).
+   */
+  grants?: Record<string, { name?: string; instances: string[] }>;
   /** A guest session's limits: absolute 1–24 h (default 12), idle 15–720 min (default 120). */
   session?: { absolute_hours?: number; idle_minutes?: number };
 }

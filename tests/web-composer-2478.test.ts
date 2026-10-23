@@ -54,21 +54,60 @@ describe("#2478: the chat composer (the real page modules)", () => {
   it("1: the placeholder names the display name — its id when there is none (or only spaces)", async () => {
     const named = await chatPage({ over: { display_name: "Release captain" } });
     // Drawn beside the box (a textarea's own placeholder is clipped, never ellipsized); the box keeps the words as its name.
+    // The box's own placeholder is one space (never seen, never sizing it): :placeholder-shown hides the drawn one (IME).
     expect([ph(named)?.textContent, ph(named)?.getAttribute("aria-hidden"), named.box().getAttribute("aria-label"), named.box().getAttribute("placeholder")])
-      .toEqual(["Message Release captain…", "true", "Message Release captain…", null]);
+      .toEqual(["Message Release captain…", "true", "Message Release captain…", " "]);
     for (const over of [{}, { display_name: "   " }]) {
       const c = await chatPage({ over });
       expect([ph(c)?.textContent, c.box().getAttribute("aria-label")], JSON.stringify(over)).toEqual(["Message agend-leader-t1503382358143799511…", "Message agend-leader-t1503382358143799511…"]);
     }
   });
 
-  it("1: the drawn placeholder is there only while the box is empty", async () => {
+  it("1: the drawn placeholder shows only while the box is empty — by CSS (:placeholder-shown), never by changing the page", async () => {
     const c = await chatPage();
     expect(!!ph(c)).toBe(true);
     await c.type("hi");
-    expect(ph(c), "typed: gone").toBeNull();
-    await c.type("");
-    expect(!!ph(c), "empty again: back").toBe(true);
+    expect(!!ph(c), "typed: still in the page (hidden by the rule below)").toBe(true);
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    expect(css).toMatch(/\.composer-field textarea:not\(:placeholder-shown\) \+ \.composer-ph\s*\{\s*display:\s*none/);
+  });
+
+  // The user's report (beta.27, iOS Safari, Zhuyin): the candidate bar flickered on every keystroke. While an IME
+  // composes, the composer leaves the box alone — no draft update, no re-render, no height written — and takes what it
+  // holds once, at compositionend.
+  it("IME: while composing nothing is written to the box or the composer; compositionend takes the text once", async () => {
+    const c = await chatPage({ touch: true });
+    const send = () => c.p.root.querySelector("#sendBtn") as any;
+    const before = { height: c.box().style.height, send: send().disabled, ph: !!ph(c) };
+    fire(c.box(), "compositionstart", { data: "" });
+    for (const t of ["ㄅ", "ㄅㄠ", "ㄅㄠˇ"]) { c.box().value = t; fire(c.box(), "input", { isComposing: true, inputType: "insertCompositionText", data: t }); await settle(); }
+    expect({ height: c.box().style.height, send: send().disabled, ph: !!ph(c), value: c.box().value }, "composing: untouched").toEqual({ ...before, value: "ㄅㄠˇ" });
+    c.box().value = "寶";
+    fire(c.box(), "compositionend", { data: "寶" }); await settle();
+    expect([send().disabled, c.box().value, c.box().style.height]).toEqual([false, "寶", expect.stringMatching(/^\d+px$/)]);
+  });
+
+  it("IME: a render while composing (another part of the chat changed) never writes the box back to the old draft", async () => {
+    const c = await chatPage({ touch: true });
+    await c.type("今天");
+    fire(c.box(), "compositionstart", { data: "" });
+    c.box().value = "今天ㄓ"; fire(c.box(), "input", { isComposing: true, data: "ㄓ" }); await settle();
+    const app = await import("/assets/app-store.js" as string);
+    app.applyStatus({ uptime: 2, instances: [inst("agend-leader-t1503382358143799511", { state: "working" })] }); await settle();
+    expect(c.box().value).toBe("今天ㄓ");
+    c.box().value = "今天找"; fire(c.box(), "compositionend", { data: "找" }); await settle();
+    await c.key("Enter", { ctrlKey: false });
+    expect(c.box().value).toBe("今天找");
+  });
+
+  it("IME: a blur ends a composition that never ended — its text is the draft", async () => {
+    const c = await chatPage({ touch: true });
+    const send = () => c.p.root.querySelector("#sendBtn") as any;
+    fire(c.box(), "compositionstart", { data: "" });
+    c.box().value = "ㄅ"; fire(c.box(), "input", { isComposing: true, data: "ㄅ" }); await settle();
+    expect(send().disabled).toBe(true);
+    fire(c.box(), "blur", { bubbles: false }); await settle();
+    expect(send().disabled).toBe(false);
   });
 
   it("1: empty, the box is one line — its placeholder never sizes it; typed text still grows it", async () => {
