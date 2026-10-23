@@ -8146,6 +8146,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const { ownPackage, recordStarted } = await import("./start-failure.js");
       const version = ownPackage().version;
       if (version) recordStarted(this.dataDir, version, process.pid, Date.now());
+      // #2481: a start completed — the failed tree an automatic restore kept for a report can go.
+      const prefix = ownPackage().prefix;
+      if (prefix) void (await import("./mac-auto-restore.js")).pruneFailedTrees(prefix).catch(() => { /* next start */ });
     } catch (err) { this.logger.debug({ err }, "fleet-started record not written"); }
     const health = this.getFleetHealth();
     if (health.status !== "ok") {

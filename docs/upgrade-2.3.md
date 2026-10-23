@@ -56,7 +56,15 @@ You do not have to find this out yourself: 2.3 checks it. When the installed ver
   The error is at the end of ~/.agend/fleet.log. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new
 ```
 
-On a Mac there is also one notification. The same notice is also posted once in chat, for whoever uses AgEnD only from Discord or Telegram (#2490). It goes to General's topic, or to the first admin's DM when there is no General. It is sent on the third failed start of that version, by the failing start itself, through the platform's API. It is best effort: it is not sent if `fleet.yaml`, `.env` or the network can't be reached. The version to go back to is the last one that ran on this host, or the one whose copy 2.2.x's updater kept. Nothing is restored for you. A normal slow start, a fresh install still starting, and a fleet you stopped yourself are never reported.
+On a Mac there is also one notification. The same notice is also posted once in chat, for whoever uses AgEnD only from Discord or Telegram (#2490). It goes to General's topic, or to the first admin's DM when there is no General. It is sent on the third failed start of that version, by the failing start itself, through the platform's API. It is best effort: it is not sent if `fleet.yaml`, `.env` or the network can't be reached. The version to go back to is the last one that ran on this host, or the one whose copy 2.2.x's updater kept. A normal slow start, a fresh install still starting, and a fleet you stopped yourself are never reported.
+
+**From 2.3.2, a Mac restores 2.2.x by itself (#2481).** When the 2.3.x that 2.2.x's updater installed fails to start 3 times within 10 minutes under launchd and has never run on this host, it puts back the 2.2.x copy that the updater kept (`<npm prefix>/.agend-rollback/2.2.x-<time>/agend`) and launchd starts that. It happens once per version and is logged in `fleet.log` and `~/.agend/fleet-auto-restore.json`. If the restore itself fails, a second notice says so, with the command to go back by hand. `agend doctor` shows it, and the chat notice and the Mac notification say it was rolled back. It never happens:
+- for a fleet you started by hand, or stopped yourself;
+- for a slow start;
+- for a version that has run here before, or once any 2.3.x has run here (it only undoes the hop out of 2.2.x);
+- when the kept copy isn't a 2.2.x that runs and reports its own version.
+
+The launchd plist is not changed. One caveat: 2.3.x may already have changed AgEnD's data before it failed. 2.2.6 reads data that 2.3 wrote (the Data downgrade compatibility CI job checks it), but if anything looks wrong after a restore, please say so in your report.
 
 ### If something gets in the way
 

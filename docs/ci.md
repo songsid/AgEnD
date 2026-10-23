@@ -113,3 +113,12 @@ third-party action at the pinned commit; the only one today is
 build; it never runs `npm publish`. `publish-runtime.yml` defaults
 `dry_run: true` and runs `npm publish --dry-run`. Leave `dry_run` true except
 for a real runtime-package publish.
+
+## Dependency review on PRs (#2528)
+
+`dependency-review.yml` runs `actions/dependency-review-action` on pull
+requests into `main` and `release/**`. It fails on high or critical
+advisories in the PR diff, and on a newly introduced licence that is not
+on the allow-list in `.github/dependency-review-config.yml` (the licences
+in the root and website trees today). An undetectable licence is reported
+and does not fail.

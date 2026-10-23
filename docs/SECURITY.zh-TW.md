@@ -127,3 +127,6 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 這個儲存庫使用的 GitHub Actions 都釘在完整 commit SHA，移動 tag 不會改到
 CI 或 npm 發布 workflow 實際執行的程式。任何遠端 `uses:` 仍是 tag 時，CI
 會讓 merge gate 失敗。見[CI 覆蓋 — GitHub Actions 釘選](ci.zh-TW.md#github-actions-釘選2528)。
+
+進 `main` 與 `release/**` 的 pull request 會跑 GitHub dependency review：
+high 或 critical 諮詢，以及不在允許名單的授權，會讓檢查失敗。見[CI 覆蓋](ci.zh-TW.md#pr-的-dependency-review2528)。

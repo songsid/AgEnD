@@ -86,3 +86,10 @@ group）會同時更新 SHA 與註解。
 不會跑 `npm publish`。`publish-runtime.yml` 預設 `dry_run: true`，執行
 `npm publish --dry-run`。除了真正發布 runtime 套件，不要把 `dry_run` 設成
 false。
+
+## PR 的 dependency review（#2528）
+
+`dependency-review.yml` 在進 `main` 與 `release/**` 的 pull request 跑
+`actions/dependency-review-action`。PR diff 出現 high 或 critical 諮詢、
+或新套件的授權不在 `.github/dependency-review-config.yml` 允許名單（目前
+根目錄與 website 樹裡的授權）時失敗。偵測不到的授權只會被報告，不失敗。

@@ -130,3 +130,7 @@ GitHub Actions used by this repository are pinned to full commit SHAs, so a
 moved tag cannot change what CI or the npm publish workflows run. A CI job
 fails the merge gate if any remote `uses:` is still a tag. See
 [CI coverage — GitHub Actions pins](ci.md#github-actions-pins-2528).
+
+Pull requests into `main` and `release/**` run GitHub's dependency review:
+high or critical advisories, and licences outside the allow-list, fail the
+check. See [CI coverage](ci.md#dependency-review-on-prs-2528).
