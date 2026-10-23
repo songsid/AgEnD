@@ -74,12 +74,27 @@ describe("assert-actions-pinned (#2528)", () => {
     };
     const steps = ci.jobs["actions-pinned"].steps;
     expect(steps.map(s => s.uses ?? s.run)).toEqual([
-      "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
-      "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+      expect.stringMatching(/^actions\/checkout@[0-9a-f]{40}$/),
+      expect.stringMatching(/^actions\/setup-node@[0-9a-f]{40}$/),
       "npm ci --ignore-scripts",
       "node scripts/ci/assert-actions-pinned.mjs",
     ]);
     expect(String(steps[1]!.with?.["node-version"])).toBe("22");
+  });
+
+  it("groups github-actions patch and minor; majors stay ungrouped (#2528)", () => {
+    const cfg = yaml.load(readFileSync(join(process.cwd(), ".github/dependabot.yml"), "utf8")) as {
+      updates: Array<{
+        "package-ecosystem"?: string;
+        groups?: Record<string, { "update-types"?: string[]; "applies-to"?: string; patterns?: string[] }>;
+      }>;
+    };
+    const ga = cfg.updates.find(u => u["package-ecosystem"] === "github-actions");
+    expect(ga?.groups).toBeTruthy();
+    const types = Object.values(ga!.groups!).flatMap(g => g["update-types"] ?? []);
+    expect(new Set(types)).toEqual(new Set(["minor", "patch"]));
+    expect(types).not.toContain("major");
+    expect(Object.values(ga!.groups!).every(g => (g.patterns ?? []).includes("*"))).toBe(true);
   });
 
   it("accepts a 40-char SHA with a tag comment", () => {

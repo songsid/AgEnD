@@ -93,7 +93,9 @@ Every remote `uses:` in `.github/workflows` and `.github/actions` is a
 
 A local composite stays `./.github/actions/…`; its own remote `uses:` are
 pinned too. Dependabot's `github-actions` ecosystem (`.github/dependabot.yml`,
-weekly, one group) updates the SHA and the comment together.
+weekly) updates the SHA and the comment together: patch and minor share one
+PR; each major is its own PR so a Node-runtime or artifact-protocol bump is
+reviewed alone.
 
 The `actions-pinned` job in `ci.yml` runs `npm ci --ignore-scripts` then
 `scripts/ci/assert-actions-pinned.mjs` on every event, including a docs-only

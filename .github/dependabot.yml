@@ -1,5 +1,10 @@
 # #2528: keep SHA-pinned GitHub Actions current. Dependabot updates the
 # commit SHA and the trailing tag comment together.
+#
+# Patch and minor share one PR. Each major is its own PR so a checkout
+# v4→v7 (Node 24, persist-credentials file, fork-PR block) is not mixed
+# with an artifact protocol bump or a third-party gitleaks major. Majors
+# are not ignored: Node 20 actions stop on hosted runners after 2026-09-16.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -7,6 +12,17 @@ updates:
     schedule:
       interval: weekly
     groups:
-      github-actions:
+      github-actions-patch-minor:
+        applies-to: version-updates
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
+      github-actions-security-patch-minor:
+        applies-to: security-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

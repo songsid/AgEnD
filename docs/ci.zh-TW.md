@@ -66,8 +66,9 @@ commit SHA，版本 tag 寫在後面的註解：
 ```
 
 本機 composite 維持 `./.github/actions/…`；它自己的遠端 `uses:` 一樣要釘。
-Dependabot 的 `github-actions` 生態（`.github/dependabot.yml`，每週、一個
-group）會同時更新 SHA 與註解。
+Dependabot 的 `github-actions` 生態（`.github/dependabot.yml`，每週）會同時
+更新 SHA 與註解：patch 與 minor 合在一個 PR；每個 major 單獨開 PR，讓
+Node runtime 或 artifact 協定的破壞性變更可以分開審查。
 
 `ci.yml` 的 `actions-pinned` job 每次事件都先 `npm ci --ignore-scripts`，再跑
 `scripts/ci/assert-actions-pinned.mjs`，包含只改 changelog 片段的 PR。guard
