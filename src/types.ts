@@ -394,8 +394,9 @@ export interface WebConfig {
   log_tab?: boolean;
   /**
    * #2293: the dashboard's global search (Ctrl+K) over chat messages, cross-instance messages and Task Board tasks — an
-   * index of its own (search.db, kept `retention_days`, default 90; search/search-index.ts). `enabled: false`: no index
-   * from the next fleet start (the file is left as it is), and searches are refused at once.
+   * index of its own (search.db; `retention_days` unset or 0 = no age limit, ROW_CAP 300,000 still applies;
+   * search/search-index.ts). `enabled: false`: no index from the next fleet start (the file is left as it is), and
+   * searches are refused at once.
    */
   /** #2293 global search. #2478: `public_link` (default true) — false keeps it off the temporary public link. */
   search?: { enabled?: boolean; retention_days?: number; public_link?: boolean };

@@ -201,10 +201,10 @@ class FakeWorker extends EventEmitter {
   ops() { return this.sent.map(m => m.op); }
   ack(batch: number) { this.emit("message", { op: "added", batch }); }
 }
-function lane(chatDocs: () => Iterable<SearchDoc> = () => []) {
+function lane(chatDocs: () => Iterable<SearchDoc> = () => [], retentionDays = 90) {
   const workers: FakeWorker[] = [];
   const logs: string[] = [];
-  const index = new SearchIndex({ path: "/x/search.db", retentionDays: 90, outboxPath: "/x/o.db", schedulerPath: "/x/s.db", chatDocs,
+  const index = new SearchIndex({ path: "/x/search.db", retentionDays, outboxPath: "/x/o.db", schedulerPath: "/x/s.db", chatDocs,
     factory: () => { const w = new FakeWorker(); workers.push(w); return w; }, log: (l, m) => logs.push(`${l}:${m}`), now: () => T0 + 100 * 86400_000 });
   return { index, workers, logs, w: () => workers[workers.length - 1]! };
 }
@@ -270,6 +270,20 @@ describe("SearchIndex (the fleet's lane)", () => {
     expect(index.status()).toBe("ready");
     expect(logs.some(l => /index built \(201 chat, 2 cross-instance, 1 task docs/.test(l))).toBe(true);
     expect(w().ops()).toContain("prune");
+  });
+  it("retentionDays 0: old chat is backfilled and prune/backfill cutoff is 0 (no age prune)", async () => {
+    const chats = [doc({ text: "too old", ts: T0 }), doc({ text: "kept", ts: T0 + 99 * 86400_000 })];
+    const { index, w } = lane(() => chats, 0);
+    index.start();
+    w().emit("message", { op: "ready", built: false });
+    await tick(); await tick();
+    const added = w().sent.filter(m => m.op === "add").flatMap(m => m.docs.map((d: SearchDoc) => d.text));
+    expect(added).toEqual(["too old", "kept"]);
+    const bf = w().sent.find(m => m.op === "backfill");
+    expect(bf.cutoff).toBe(0);
+    w().emit("message", { op: "reply", id: bf.id, ok: true, value: { xmsg: 0, tasks: 0 } });
+    await tick();
+    expect(w().sent.find(m => m.op === "prune").cutoff).toBe(0);
   });
   it("a query past QUERY_BUDGET_MS: answered timeout, but it holds its place until the worker is done with it", async () => {
     vi.useFakeTimers();

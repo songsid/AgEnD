@@ -811,7 +811,7 @@ function General({ ctx }) {
  */
 export const WEB_READ_ONLY = [
   "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
-  "web.usage_panel", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
+  "web.usage_panel", "web.search", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
 ];
 function WebSection({ ctx, staged }) {
   const { schema } = ctx;
@@ -907,6 +907,12 @@ function WebSection({ ctx, staged }) {
   useEffect(() => { if (!formMounted.current) { formMounted.current = true; return; } review(true); }, [f]);
   const shown = (path) => {
     const [top, key] = path.split(".");
+    if (top === "web" && key === "search") {
+      const days = web.search && typeof web.search === "object" ? web.search.retention_days : undefined;
+      if (days === undefined || days === null) return tn("searchRetentionUnset");
+      if (days === 0) return tn("searchRetentionZero");
+      return String(days);
+    }
     const v = (top === "web" ? web : term)[key];
     return v === undefined ? tn("notSet") : typeof v === "object" ? JSON.stringify(v) : String(v);
   };
@@ -958,6 +964,7 @@ function WebSection({ ctx, staged }) {
     <section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>
+      <p class="note">${tn("webSearchHint")}</p>
     </section>
     <div class="save-row"><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${() => review()}>${tn("reviewChanges")}</button>
       ${msg ? html`<span class="note" role="status">${msg}</span>` : null}</div>

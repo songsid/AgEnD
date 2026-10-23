@@ -11,7 +11,8 @@
  *   outbox and the Task Board; then marked built. Search answers meanwhile and says it is still building.
  * - A worker that exits is started again after a backoff (1 s doubling to a minute); one that cannot open the file at
  *   all ("failed") leaves search unavailable until the next fleet start. The fleet runs on either way.
- * - Retention: docs older than retention_days, and the oldest past ROW_CAP, are pruned after the backfill and daily.
+ * - Retention: when retention_days is a positive integer, docs older than that many days go; unset and 0 mean no
+ *   age limit. The oldest past ROW_CAP are pruned either way, after the backfill and daily.
  */
 import { Worker } from "node:worker_threads";
 import type { SearchDoc, SearchFilters, SearchHit, SearchResult } from "./search-store.js";
@@ -27,8 +28,20 @@ export const STALL_MS = 30_000;
 export const CLOSE_WAIT_MS = 3_000;
 export const PRUNE_EVERY_MS = 24 * 3600_000;
 export const BACKFILL_CHUNK = 200;
-/** web.search.retention_days when unset. */
-export const SEARCH_RETENTION_DAYS = 90;
+/**
+ * web.search.retention_days when unset. 0 = no age-based prune (the daily prune still enforces ROW_CAP).
+ * An explicit 0 in fleet.yaml means the same.
+ */
+export const SEARCH_RETENTION_DAYS = 0;
+
+/**
+ * Epoch-ms cutoff for age prune and backfill. Unset, 0, and any non-finite or non-positive days mean no age
+ * limit (cutoff 0): naive `now - 0 * day` would be `now` and would wipe the index.
+ */
+export function searchAgeCutoff(now: number, retentionDays: number): number {
+  if (!Number.isFinite(retentionDays) || retentionDays <= 0) return 0;
+  return now - retentionDays * 24 * 3600_000;
+}
 const RESTART_MIN_MS = 1_000, RESTART_MAX_MS = 60_000;
 
 export type SearchState = "starting" | "building" | "ready" | "unavailable";
@@ -301,7 +314,7 @@ export class SearchIndex {
     this.restartTimer = setTimeout(() => { this.restartTimer = null; this.start(); }, delay);
     this.restartTimer.unref?.();
   }
-  private cutoff(): number { return this.now() - this.opts.retentionDays * 24 * 3600_000; }
+  private cutoff(): number { return searchAgeCutoff(this.now(), this.opts.retentionDays); }
   private async backfill(epoch: number): Promise<void> {
     this.state = "building";
     this.flush();
