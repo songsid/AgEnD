@@ -235,7 +235,7 @@ export interface LifecycleContext {
   credentialProfileOf?(name: string, backend: string): string | null;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
-  notifySessionOomStop?(name: string): Promise<void>;
+  notifySessionOomStop?(name: string, unclear?: boolean): Promise<void>;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -906,7 +906,7 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "snapshot_failed", t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
-    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" | "session_oom" }) => {
+    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" | "session_oom" | "oom_unclear" }) => {
       // The instance is dead and nothing will restart it. Say so where the operator
       // is looking, and mark the topic — otherwise messages routed here just queue
       // or fail with a bare ❌ and the dashboard still looks normal.
@@ -921,9 +921,9 @@ export class InstanceLifecycle {
         this.ctx.setTopicIcon(name, "red");
         return;
       }
-      if (data.cause === "session_oom") {
+      if (data.cause === "session_oom" || data.cause === "oom_unclear") {
         if (this.daemons.get(name) !== daemon) return;
-        if (!this.ctx.isPlannedRestart()) await this.ctx.notifySessionOomStop?.(name);
+        if (!this.ctx.isPlannedRestart()) await this.ctx.notifySessionOomStop?.(name, data.cause === "oom_unclear");
         if (this.daemons.get(name) !== daemon) return;
       }
       this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");

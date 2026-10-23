@@ -71,3 +71,50 @@ it("a current real lifecycle OOM stop publishes actions, while a replaced owner 
   await Promise.resolve();
   expect(h.notifyAlert).toHaveBeenCalledTimes(1);
 });
+
+it.each([0, 1])("unknown-cause breaker offers honest admin Resume/Fresh (%i), bound to the stopped launch", async action => {
+  const h = setup(); unlinkSync(join(h.dir, "session-oom-stop.json"));
+  const owner = { bootId: "unknown-boot", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 };
+  const daemon = Object.assign(new EventEmitter(), { isUnclearOomStopped: () => true, getInteractionSnapshot: () => ({ owner }) });
+  fm.lifecycle.daemons.set("worker", daemon as any);
+  fm.lifecycle.attachIncidentHandlers("worker", daemon as any);
+  const restart = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue();
+  daemon.emit("supervision_ended", { name: "worker", cause: "oom_unclear", reason: "out of memory, cause unclear", remedy: "retry", exitCode: 137 });
+  await vi.waitFor(() => expect(h.notifyAlert).toHaveBeenCalledTimes(1));
+  const alert = (h.notifyAlert.mock.calls[0] as any)[1];
+  expect(alert.message).toContain("out of memory, cause unclear"); expect(alert.message).not.toContain("self-caused");
+  expect(alert.choices.map((c: any) => c.label)).toEqual(["Resume", "Fresh session"]);
+  const items = deriveNeedsYou({ prompts: (fm as any).needsYouPrompts(), instances: [], deliveries: [], ownerOf: () => "telegram" });
+  expect(items[0]?.detail).toContain("cause unclear"); expect(items[0]?.actions).toHaveLength(2);
+  await h.click(alert.choices[action].id, "stranger"); expect(restart).not.toHaveBeenCalled();
+  await h.click(alert.choices[action].id); await h.click(alert.choices[action].id);
+  expect(restart).toHaveBeenCalledTimes(1);
+  const opts = restart.mock.calls[0]![1]!;
+  expect(opts).toMatchObject({ explicit: true, freshStart: action === 1 });
+  expect(opts.recoveryCurrent?.()).toBe(true);
+  owner.spawnGeneration++;
+  expect(opts.recoveryCurrent?.()).toBe(false);
+});
+it("an unknown-cause action cannot invalidate a replacement launch during asynchronous button retirement", async () => {
+  const h = setup(); unlinkSync(join(h.dir, "session-oom-stop.json"));
+  const owner = { bootId: "unknown-boot", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 };
+  const daemon = { isUnclearOomStopped: () => true, getInteractionSnapshot: () => ({ owner: { ...owner } }) };
+  fm.lifecycle.daemons.set("worker", daemon as any);
+  await fm.notifySessionOomStop("worker", true);
+  const invalidated = vi.spyOn(fm.lifecycle, "invalidate").mockImplementation(() => {});
+  vi.spyOn(fm.lifecycle, "runTransition").mockRejectedValue(Error("forbidden transition"));
+  h.editMessageRemoveButtons.mockImplementation(async () => { owner.spawnGeneration++; });
+  await h.click((h.notifyAlert.mock.calls[0] as any)[1].choices[0].id);
+  expect(invalidated).not.toHaveBeenCalled();
+});
+it("a current unknown-cause action without a tombstone reaches the real serialized restart admission", async () => {
+  const h = setup(); unlinkSync(join(h.dir, "session-oom-stop.json"));
+  const owner = { bootId: "unknown-boot", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 };
+  fm.lifecycle.daemons.set("worker", { isUnclearOomStopped: () => true, getInteractionSnapshot: () => ({ owner: { ...owner } }) } as any);
+  await fm.notifySessionOomStop("worker", true);
+  const invalidated = vi.spyOn(fm.lifecycle, "invalidate").mockImplementation(() => {});
+  // Admission is real; the serialized external stop/start boundary stays inert.
+  const transition = vi.spyOn(fm.lifecycle, "runTransition").mockRejectedValue(Error("inert transition boundary"));
+  await h.click((h.notifyAlert.mock.calls[0] as any)[1].choices[0].id);
+  expect(invalidated).toHaveBeenCalledWith("worker"); expect(transition).toHaveBeenCalledTimes(1);
+});

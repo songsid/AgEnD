@@ -11,3 +11,7 @@ export function selfOomJournal(pid: number, comm: string, at: number): string {
     `Out of memory: Killed process ${pid} (${comm}) total-vm:9999kB, anon-rss:2400kB, file-rss:0kB, shmem-rss:0kB`,
   ].map(MESSAGE => JSON.stringify({ _TRANSPORT: "kernel", __REALTIME_TIMESTAMP: String(at * 1000), MESSAGE })).join("\n");
 }
+export function collateralOomJournal(pid: number, comm: string, at: number): string {
+  return selfOomJournal(pid, comm, at).replace(`9999 600 1000 0 0 ${comm}`, `9999 60 1000 0 0 ${comm}`)
+    .replace("9999 100 1000 0 0 sibling", "9999 600 1000 0 0 sibling").replace("anon-rss:2400kB", "anon-rss:240kB");
+}

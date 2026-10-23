@@ -4,6 +4,15 @@ import { StormWindow } from "../src/storm-window.js";
 import { MemoryPressure } from "../src/memory-pressure.js";
 afterEach(() => vi.useRealTimers());
 describe("collateral OOM uses the shared pressure policy", () => {
+  it("only the explicit zero-threshold opt-out bypasses sampling and a pressure-held recovery", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(100_000);
+    const sampleForAdmission = vi.fn(() => ({ level: "critical", sampledAt: Date.now(), recovering: false }));
+    const memory = { sampleForAdmission, snapshot: sampleForAdmission, advisoryOnly: () => false, onUpdate: () => () => {} } as unknown as MemoryPressure;
+    const gate = new SpawnGate({ memoryPressure: memory, storm: new StormWindow(), concurrency: () => 6, staggerMs: () => 0, lowMemoryBytes: 0 });
+    const spawn = vi.fn(async () => 42);
+    await expect(gate.run({ instanceName: "opted-out", workingDirectory: "/scratch", reason: "recovery", requireNormalMemory: true }, spawn)).resolves.toBe(42);
+    expect(sampleForAdmission).not.toHaveBeenCalled(); expect(spawn).toHaveBeenCalledTimes(1); gate.shutdown();
+  });
   it("waits through elevated/critical/unknown then starts once normal; ordinary pacing remains", async () => {
     vi.useFakeTimers(); vi.setSystemTime(100_000);
     let level = "elevated";

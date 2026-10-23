@@ -524,6 +524,8 @@ export interface RestartOpts {
   explicit?: boolean;
   /** Internal receipt captured when an OOM action was offered. */
   sessionOomRetry?: SessionOomRetry;
+  /** Internal pre-invalidation owner fence for an unclear-OOM action. */
+  recoveryCurrent?: () => boolean;
   carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null };
 }
 /** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
@@ -6049,10 +6051,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
+    if (opts?.recoveryCurrent && !opts.recoveryCurrent()) throw new Error(t("exit.expired", name));
     const retry = opts?.explicit ? opts.sessionOomRetry ?? captureSessionOomRetry(this.getInstanceDir(name)) : undefined;
     if (opts?.sessionOomRetry) {
       const current = captureSessionOomRetry(this.getInstanceDir(name));
-      if (!retry?.revision || current.revision !== retry.revision || current.legacyRevision !== retry.legacyRevision) throw new SessionOomStoppedError(true);
+      // An unclear-cause stop intentionally has no tombstone. Only its live
+      // launch fence can authorize an absent-marker receipt; positive stops
+      // still require the offered durable revision.
+      if ((!retry?.revision && !opts.recoveryCurrent) || current.revision !== retry?.revision || current.legacyRevision !== retry?.legacyRevision) throw new SessionOomStoppedError(true);
     }
     if (!opts?.explicit && this.sessionOomStopped(name)) throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
     // One restart at a time per instance. Multiple sources can ask concurrently
@@ -15284,25 +15290,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** A clean exit is intentional from the CLI's perspective, but often not from
    * the operator's. Keep the instance notice passive and put the action in the
    * same-world General topic where an administrator can make the choice. */
-  async notifySessionOomStop(instanceName: string): Promise<void> {
-    await this.notifyNormalExit(instanceName, true);
+  async notifySessionOomStop(instanceName: string, unclear = false): Promise<void> {
+    await this.notifyNormalExit(instanceName, unclear ? "unclear" : true);
   }
 
-  async notifyNormalExit(instanceName: string, oom = false): Promise<void> {
+  async notifyNormalExit(instanceName: string, oom: boolean | "unclear" = false): Promise<void> {
+    const daemon = oom === "unclear" ? this.daemons.get(instanceName) : undefined;
+    const owner = daemon ? { ...daemon.getInteractionSnapshot().owner } : undefined;
+    const current = daemon && owner ? () => this.daemons.get(instanceName) === daemon
+      && daemon.isUnclearOomStopped() && sameInteractionOwner(owner, daemon.getInteractionSnapshot().owner) : undefined;
+    if (oom === "unclear" && !current?.()) return;
     const state = oom ? readSessionOomStop(this.getInstanceDir(instanceName)) : null;
+    if (oom === "unclear" && state?.blocked) return;
     const proof = state?.blocked ? state.record?.evidence ?? state.evidence : undefined;
-    if (oom && !proof) return;
+    if (oom === true && !proof) return;
     const sessionOomRetry = oom ? captureSessionOomRetry(this.getInstanceDir(instanceName)) : undefined;
     if (oom && [...this.pendingNonceButtons.values()].some(p => p.prefix === OOM_RETRY_CALLBACK_PREFIX
-      && p.instanceName === instanceName && p.sessionOomRetry?.revision === sessionOomRetry?.revision)) return;
+      && p.instanceName === instanceName && p.sessionOomRetry?.revision === sessionOomRetry?.revision
+      && (oom !== "unclear" || p.confirmationCurrent?.() === true))) return;
     const prefix = oom ? OOM_RETRY_CALLBACK_PREFIX : EXIT_RESTART_CALLBACK_PREFIX;
-    const message = oom && proof
+    const message = oom === "unclear" ? t("inst.oom_unclear_choice", instanceName) : oom && proof
       ? t("inst.session_oom_choice", instanceName, describeSelfOom(proof))
       : t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName));
     const choices = oom
       ? [{ action: "resume", label: t("inst.session_oom_resume") }, { action: "fresh", label: t("inst.session_oom_fresh") }]
       : [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }];
-    const extra = sessionOomRetry ? { sessionOomRetry } : undefined;
+    const extra = sessionOomRetry ? { sessionOomRetry, ...(current ? { confirmationCurrent: current } : {}) } : undefined;
     this.notifyInstanceTopic(instanceName, (oom ? message : t("exit.instance_notice", instanceName)) + placeSuffix({ kind: "general" }, "General"));
 
     const web = this.webOnlyPromptPlace();
@@ -15380,7 +15393,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       t("exit.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry } : {}) });
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
+        ...(pending.confirmationCurrent ? { recoveryCurrent: pending.confirmationCurrent } : {}) } : {}) });
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,

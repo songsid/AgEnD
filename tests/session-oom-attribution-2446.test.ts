@@ -63,4 +63,48 @@ it("another report or malformed task row cannot supply a missing hog", () => {
   expect(parseKernelOoms(self.replace('"MESSAGE":"oom-kill:', '"MESSAGE":"another invoked oom-killer:')).at(-1)?.attribution).toBe("unknown");
   const lines = self.split("\n"); lines.splice(5, 0, "damaged json");
   expect(parseKernelOoms(lines.join("\n"))[0]?.attribution).toBe("unknown");
+  lines[5] = JSON.stringify({ _TRANSPORT: "kernel", __REALTIME_TIMESTAMP: "1000000", MESSAGE: [255, 254] });
+  expect(parseKernelOoms(lines.join("\n"))[0]?.attribution).toBe("unknown");
+});
+
+// Linux mm/oom_kill.c v6.6 and v6.8: v6.8 adds three RSS columns.
+function modernTable(output: string): string {
+  return output.split("\n").map(line => {
+    const row = JSON.parse(line);
+    row.MESSAGE = row.MESSAGE.replace("rss pgtables_bytes", "rss rss_anon rss_file rss_shmem pgtables_bytes")
+      .replace(/^(\[\s*\d+\]\s+\d+\s+\d+\s+\d+\s+)(\d+)(\s+)/, "$1$2 $2 0 0$3");
+    return JSON.stringify(row);
+  }).join("\n");
+}
+it.each(["6.6", "6.8+"])("parses Linux %s tables with spaced task names", version => {
+  let output = selfOomJournal(123, "claude", 1000);
+  const lines = output.split("\n");
+  lines.splice(5, 0, JSON.stringify({ _TRANSPORT: "kernel", __REALTIME_TIMESTAMP: "1000000",
+    MESSAGE: "[  4242] 1000 4242 9999 10 1000 0 0 tmux: server" }));
+  output = lines.join("\n");
+  if (version === "6.8+") output = modernTable(output);
+  expect(parseKernelOoms(output)[0]).toMatchObject({ attribution: "self", evidence: selfEvidence() });
+  // The remaining name, including spaces, still participates in exact victim matching.
+  expect(parseKernelOoms(output.replaceAll("claude", "CLI with spaces"))[0]?.attribution).toBe("self");
+  expect(parseKernelOoms(output.replace("600", "60 broken"))[0]?.attribution).toBe("unknown");
+});
+it("does not interpret a newer or mismatched task-table layout as collateral proof", () => {
+  const modern = modernTable(selfOomJournal(123, "claude", 1000));
+  expect(parseKernelOoms(modern.replace("rss_anon rss_file", "rss_file rss_anon"))[0]?.attribution).toBe("unknown");
+  expect(parseKernelOoms(modern.replace("rss_anon rss_file rss_shmem ", ""))[0]?.attribution).toBe("unknown");
+});
+it("only a complete report with a much larger other task proves collateral; otherwise cause stays unknown", () => {
+  const self = selfOomJournal(123, "claude", 1000);
+  expect(parseKernelOoms(self.replace("1000 pages RAM", "4000 pages RAM"))[0]?.attribution).toBe("unknown");
+  expect(parseKernelOoms(self.replace("9999 100 1000", "9999 1200 1000").replace("1000 pages RAM", "4000 pages RAM"))[0]?.attribution).toBe("collateral");
+  expect(parseKernelOoms(self.replace("anon-rss:2400kB", "anon-rss:2400000kB"))[0]?.attribution).toBe("unknown");
+});
+it("accepts all 4096 task rows, but an overflowing table cannot hide an unseen hog", () => {
+  const rows = selfOomJournal(123, "claude", 1000).split("\n");
+  const added = Array.from({ length: 4094 }, (_, i) => JSON.stringify({ _TRANSPORT: "kernel", __REALTIME_TIMESTAMP: "1000000",
+    MESSAGE: `[${200000 + i}] 1000 ${200000 + i} 9999 1 1000 0 0 ordinary task` }));
+  rows.splice(5, 0, ...added);
+  expect(parseKernelOoms(rows.join("\n"))[0]?.attribution).toBe("self");
+  rows.splice(5, 0, JSON.stringify({ _TRANSPORT: "kernel", __REALTIME_TIMESTAMP: "1000000", MESSAGE: "[300000] 1000 300000 9999 10 1000 0 0 extra task" }));
+  expect(parseKernelOoms(rows.join("\n"))[0]?.attribution).toBe("unknown");
 });

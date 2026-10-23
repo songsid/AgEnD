@@ -1,4 +1,4 @@
-import { selfEvidence, selfOomJournal } from "./helpers/self-oom-evidence.js";
+import { selfEvidence, selfOomJournal, collateralOomJournal } from "./helpers/self-oom-evidence.js";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, unlinkSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ vi.mock("node:child_process", async original => ({
     if (file !== "journalctl") return io.forbidden();
     io.reads++;
     expect(args).toContain("--boot=0");
-    expect(opts).toMatchObject({ timeout: 1000, maxBuffer: 262144, killSignal: "SIGKILL" });
+    expect(opts).toMatchObject({ timeout: 1000, maxBuffer: 8 * 1024 * 1024, killSignal: "SIGKILL" });
     const done = () => callback(io.failure ? new Error("journal unavailable") : null, io.journal, "");
     if (io.hold) io.release = done; else queueMicrotask(done);
     return new EventEmitter();
@@ -128,7 +128,7 @@ describe("definitive evidence rather than pressure or an arbitrary SIGKILL", () 
 });
 
 
-function harness() {
+function harness(maxRetries = 10) {
   const instance = join(dir, "instance"); mkdirSync(instance);
   const transcript = join(dir, "original-transcript.jsonl"); writeFileSync(transcript, "original conversation\n");
   const session: { id: string | null } = { id: "old-session" };
@@ -139,7 +139,7 @@ function harness() {
   const backend: any = { binaryName: "claude", getSessionId: () => session.id, getContextUsage: () => 0,
     buildCommand: (config: any) => config.skipResume ? "inert --fresh" : `inert --resume ${session.id}` };
   const daemon: any = new Daemon("worker", { working_directory: dir, backend: "claude-code", workflow: false,
-    restart_policy: { max_retries: 10, backoff: "linear", reset_after: 0, health_check_interval_ms: 1000 },
+    restart_policy: { max_retries: maxRetries, backoff: "linear", reset_after: 0, health_check_interval_ms: 1000 },
     context_guardian: { grace_period_ms: 600000, max_age_hours: 0 }, hang_detector: { enabled: false }, log_level: "silent" } as any,
   instance, false, backend, undefined, logger);
   daemon.tmux = { getPaneStatus: vi.fn(async () => ({ alive: child.alive, ...(child.alive ? { pid: 100 } : { exitCode: child.exitCode }) })),
@@ -155,10 +155,10 @@ function harness() {
     return true;
   });
   const notices: any[] = []; daemon.on("supervision_ended", (notice: any) => notices.push(notice));
-  const die = async (oom: boolean | "collateral" = true, code = 137) => {
+  const die = async (oom: boolean | "collateral" | "unknown" = true, code = 137) => {
     child.alive = false; child.exitCode = code;
     unlinkSync(join(io.root, String(child.pid), "stat"));
-    io.journal = oom === "collateral" ? record(child.pid) : oom ? selfOomJournal(child.pid, "claude", Date.now()) : record(999);
+    io.journal = oom === "unknown" ? record(child.pid) : oom === "collateral" ? collateralOomJournal(child.pid, "claude", Date.now()) : oom ? selfOomJournal(child.pid, "claude", Date.now()) : record(999);
     await vi.advanceTimersByTimeAsync(4000);
   };
   daemon.startHealthCheck();
@@ -360,6 +360,24 @@ it("does not walk through an unknown primary to find a tool named like the backe
 
 
 describe("#2446 collateral OOM recovery", () => {
+  it.each([1, 10])("unknown cause retains the ordinary bounded budget (max_retries=%i) without a self-OOM stop", async max => {
+    const h = harness(max);
+    await vi.advanceTimersByTimeAsync(1000);
+    for (let i = 0; i < 4; i++) {
+      if (h.daemon.healthCheckPaused) break;
+      await h.die("unknown");
+    }
+    expect(h.launches).toHaveLength(max === 1 ? 1 : 2);
+    expect(h.notices).toEqual([expect.objectContaining({ cause: "oom_unclear", reason: "crashed repeatedly (out of memory, cause unclear)" })]);
+    expect(h.daemon.isUnclearOomStopped()).toBe(true);
+    expect(h.daemon.isSessionOomStopped()).toBe(false);
+    expect(h.daemon.consecutiveOoms).toBeNull();
+    expect(existsSync(join(h.instance, "session-oom-stop.json"))).toBe(false);
+    expect(existsSync(join(h.instance, "crash-state.json"))).toBe(false);
+    expect(readFileSync(join(h.instance, "session-id"), "utf8")).toBe("old-session");
+    h.daemon.beginSpawn(); h.daemon.endSpawn();
+    expect(h.daemon.isUnclearOomStopped()).toBe(false);
+  });
   it("a collateral victim does not abandon the session because of old conflict text", async () => {
     const h = harness(); await vi.advanceTimersByTimeAsync(1000);
     h.daemon.tmux.capturePaneWithHistory.mockResolvedValue("Session is currently running: background agent");
@@ -374,7 +392,7 @@ describe("#2446 collateral OOM recovery", () => {
     expect(h.daemon.crashTimestamps).toEqual([]);
   });
   it("does not stop or exhaust ordinary crash budgets after repeated collateral deaths", async () => {
-    const h = harness(); await vi.advanceTimersByTimeAsync(1000); h.daemon.config.restart_policy.max_retries = 1;
+    const h = harness(1); await vi.advanceTimersByTimeAsync(1000);
     h.daemon.trySpawn.mockImplementation(async () => {
       expect(h.daemon.collateralOomRecovery).toBe(true);
       h.launches.push("collateral recovery"); h.child.alive = true; h.child.pid++;

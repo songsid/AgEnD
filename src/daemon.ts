@@ -1408,6 +1408,7 @@ export class Daemon extends EventEmitter {
   private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: TmuxManager } | null = null;
   private consecutiveOoms: SessionOomCount | null = null;
   private collateralOomRecovery = false;
+  private unclearOomStopped = false;
   private sessionOomStopUnpersisted = false;
 
   private assertSessionOomAdmission(): void {
@@ -1418,6 +1419,16 @@ export class Daemon extends EventEmitter {
 
   isSessionOomStopped(): boolean {
     return this.sessionOomStopUnpersisted || readSessionOomStop(this.instanceDir).blocked;
+  }
+
+  isUnclearOomStopped(): boolean {
+    return this.unclearOomStopped && this.healthCheckPaused && this.processStatus === "crashed";
+  }
+
+  private stopUnclearOom(exitCode?: number): void {
+    this.unclearOomStopped = true;
+    this.healthCheckPaused = true;
+    this.emitSupervisionEnded(t("inst.oom_unclear_stopped"), t("inst.session_oom_remedy"), exitCode, "oom_unclear");
   }
 
   private oomSessionKey(): string | null {
@@ -3363,7 +3374,7 @@ export class Daemon extends EventEmitter {
           const decisionKey = this.oomSessionKey();
           this.consecutiveOoms = consecutiveSessionOoms(this.consecutiveOoms, decisionKey,
             decisionKey === key && oom?.attribution === "self");
-          const collateralOom = !!oom && oom.attribution !== "self";
+          const collateralOom = oom?.attribution === "collateral";
           if (collateralOom) this.logger.warn({ attribution: oom.attribution, pid: oom.pid }, "OOM victim without self-caused proof — preserving session; waiting for memory recovery");
           if (this.consecutiveOoms && this.consecutiveOoms.count >= 2) {
             // Stop supervision, not an idle pause: queued work must not auto-wake
@@ -3396,7 +3407,7 @@ export class Daemon extends EventEmitter {
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
-          if (!collateralOom && lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+          if (!oom && lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
             if (!this.backgroundSessionRecoveryAttempted) {
               this.backgroundSessionRecoveryAttempted = true;
               this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
@@ -3433,7 +3444,7 @@ export class Daemon extends EventEmitter {
           // --continue again and crash in the same way → loop. Clear the session id
           // and skip resume so the next spawn starts fresh. (skipResume also stops
           // saveSessionId below from resurrecting the id from statusline.json.)
-          if (!collateralOom && this.paneSaysNoConversation(lastOutput)) {
+          if (!oom && this.paneSaysNoConversation(lastOutput)) {
             this.setSessionAside("cli_reported_no_conversation");
             this.skipResume = true;
           }
@@ -3472,6 +3483,9 @@ export class Daemon extends EventEmitter {
               { crashesInWindow: this.crashTimestamps.length, lastExitCode: exitCode ?? null, lastOutput: paneTail(lastOutput) ?? null },
               "3+ crashes in 5 minutes — pausing respawn",
             );
+            // Unknown cause is bounded like an ordinary crash, never a
+            // self-OOM verdict. Preserve the session for the person's choice.
+            if (oom?.attribution === "unknown") { this.stopUnclearOom(exitCode); return; }
             // P1: Persist crash state so next process restart skips resume
             try {
               writeFileSync(join(this.instanceDir, "crash-state.json"), JSON.stringify({
@@ -3498,6 +3512,7 @@ export class Daemon extends EventEmitter {
               "Max crash retries exceeded — not respawning",
             );
             this.healthCheckPaused = true;
+            if (oom?.attribution === "unknown") { this.stopUnclearOom(exitCode); return; }
             this.emitSupervisionEnded(
               `it crashed ${this.crashCount} times, exceeding restart_policy.max_retries (${max_retries})`,
               "Check the logs for the cause, then restart it.",
@@ -3642,7 +3657,7 @@ export class Daemon extends EventEmitter {
    * `crash_loop` already had this treatment; this is the same bridge for the other
    * four, carrying a human-readable cause and the operator's next step.
    */
-  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom"): void {
+  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom" | "oom_unclear"): void {
     this.publishWorkingState("supervision_ended");
     this.emit("supervision_ended", {
       name: this.name,
@@ -10806,6 +10821,7 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    this.unclearOomStopped = false;
     this.publishWorkingState("before_spawn");
     this.workingBackgroundObservation = null;
     this.dialogAnswers = null;
