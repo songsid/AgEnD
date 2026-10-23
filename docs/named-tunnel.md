@@ -58,7 +58,7 @@ and [run parameters](https://developers.cloudflare.com/tunnel/reference/run-para
 ## Configure AgEnD
 
 On the direct, signed-in dashboard (not through the public link), open
-**Settings → Web**:
+**Settings → Access & security**:
 
 1. Enter `agend.example.com` in **Fixed public hostname**. An HTTPS root URL
    such as `https://agend.example.com/` also works. No wildcard, IP address,
@@ -137,7 +137,7 @@ opening, so it keeps 1–480 minutes and is never opened automatically):
   minutes, for a network still coming up). If it still fails, that admin gets
   one DM showing the failed step, as `/web` would; run `/web` to try again.
 
-In Settings → Web, the minutes field allows 0–10080 and the **Reopen the
+In Settings → Access & security, the minutes field allows 0–10080 and the **Reopen the
 public link when AgEnD starts** box appears once a hostname is filled in.
 Blanking the hostname with more than 480 minutes, `0` or `auto_open` set is
 refused until those fit a quick tunnel.

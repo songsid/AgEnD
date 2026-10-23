@@ -389,7 +389,7 @@ Header: version, **Setup wizard**, **Help**.
 **Save**: a field edit (Agent defaults, Chat & connections, Web dashboard, Access & security) is unsaved at once (a straight bar on its left); a dialog's **Done**
 adds its changes. The bar **N unsaved change(s)** shows the cost — **Immediately**, **Restart this Agent** or **Restart
 AgEnD** — then **Save** or **Discard**; an invalid field keeps Save waiting (**Fix 1 field(s) to save**). Over a public
-link an admin can change the fleet's settings too (not Web, Guests or Web authority).
+link an admin can change the fleet's settings too (not the dashboard's own web settings, Guests or Web authority).
 Confirmations (e.g. opening access) are asked at Apply. A change that loosens access waits for a fleet admin to confirm
 in the General chat ("Waiting for confirmation", **Withdraw**) — unless the browser is web-verified (#2170): an
 account that is a fleet admin of every connection the change affects, on their platform, confirms it by its own Apply
@@ -404,7 +404,7 @@ link, an unverified browser or a change that needs the host CLI. After a failure
 |---|---|---|
 | Your name (**Save**, **Use web-user** / **Use <account>**) | the name agents see on your web messages | your profile |
 | Theme: System / Light / Dark | page theme | host prefs `theme` |
-| Language: English / 中文 | page language (not the bots' replies — that is General → Language) | host prefs `lang` |
+| Language: English / 中文 | page language (not the bots' replies — that is Agent defaults → Language) | host prefs `lang` |
 | Names: Nickname first / Real name first | sidebar names | host prefs `names.primary` |
 | Allow HTML previews | the preview opt-in | host prefs `preview.optIn` |
 | Chat tour (this device) | replays the chat tour | browser |
@@ -585,7 +585,7 @@ no instance uses that provider.
 
 **Settings won't change something.** Over a public link, Web settings and appearance are read only; a loosening
 change waits for an admin's confirmation in General chat; a value in the "Set in fleet.yaml" list must be edited in
-fleet.yaml (Developer tab, or the file) and `agend reload`.
+fleet.yaml (Advanced, or the file) and `agend reload`.
 
 ### Canvas Worker playback diagnostics
 
