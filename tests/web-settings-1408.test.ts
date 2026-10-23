@@ -779,6 +779,20 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     expect(writes()).toEqual([]);
   });
 
+  it("Developer (#2347): \"Edit in Settings\" from Details opens no agent dialog while the edit waits — after Discard it does", async () => {
+    const req = await import("/ui/js/settings-request.js");
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    req.requestAgentSettings("alpha", "agent");
+    nav.navigate("/settings/agents");
+    await mount("agents", "settings:agents|2|en"); await settle(6);
+    expect(p.root.querySelector("dialog")).toBeNull();
+    btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+    req.requestAgentSettings("alpha", "agent");
+    await mount("agents", "settings:agents|3|en"); await settle(6);
+    expect(p.root.querySelector("dialog #ag-desc"), "the control: the same request opens the dialog").toBeTruthy();
+  });
+
   it("Developer (#2347): the forms' unsaved changes to the same settings come first — Edit and Apply wait for their Save", async () => {
     await mount("agents", "settings:agents|1|en"); await settle(6);
     await stageDescription("alpha", "A2");
