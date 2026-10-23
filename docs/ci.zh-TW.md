@@ -55,3 +55,11 @@ npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.
 - **Mac**：launchd。更新分別從 Agent 的工作階段、操作者的終端機，以及 `/update` 執行。
 
 每個 leg 都要記錄更新前後 fleet 的 pid 與執行的程式。
+
+## npm registry 簽章（#2528）
+
+`npm-audit-signatures.yml` 在 `npm ci --ignore-scripts` 之後，對根目錄與
+`website/` 跑 `npm audit signatures`。簽章無效會讓 job 失敗；缺少簽章只會
+印出來，不失敗。這個 job 不跑套件 lifecycle scripts：`esbuild` /
+`lightningcss` 的 postinstall，以及測試 job 裡的 native `install`（例如
+`better-sqlite3`）仍由 `ci.yml` 與 `deploy-website.yml` 的完整 `npm ci` 執行。

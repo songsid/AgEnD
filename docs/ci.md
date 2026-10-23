@@ -80,3 +80,12 @@ A rehearsal of a change to the upgrade path runs these legs. Each one starts fro
 - **Mac**: launchd, with the update run from an agent's session, from an operator's terminal, and through `/update`.
 
 Each leg records the fleet's pid and program before and after the update.
+
+## npm registry signatures (#2528)
+
+`npm-audit-signatures.yml` runs `npm audit signatures` on the root tree and on
+`website/` after `npm ci --ignore-scripts`. Invalid signatures fail the job.
+Missing signatures are printed and do not fail. The job does not run package
+lifecycle scripts: `esbuild` / `lightningcss` postinstall and any native
+`install` (for example `better-sqlite3` in the test jobs) stay in `ci.yml` and
+`deploy-website.yml`, which still run a full `npm ci`.
