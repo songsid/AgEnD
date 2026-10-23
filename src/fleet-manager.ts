@@ -834,6 +834,12 @@ export interface DeliveryOptions {
    * IPC hand-off itself. False drops the delivery unsent (a schedule retry past its deadline).
    */
   stillCurrent?: () => boolean;
+  /**
+   * #2484: a person's message to an instance that is in its own start-retry backoff (a retry scheduled or running, not
+   * stopped or paused by a person) waits for that retry instead of failing after the IPC grace. Called once when the
+   * wait starts, so the message can show it is queued; the delivery fails only once the retries give up.
+   */
+  onStartRetryHold?: () => void;
 }
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
@@ -1184,6 +1190,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * backend outage during a post-update herd). instanceName → pending retry.
    */
   private startupRetries = new Map<string, { attempt: number; timer: NodeJS.Timeout }>();
+  /** #2484: instances whose automatic startup retry is running now (between its timer and its outcome). */
+  private startupRetriesRunning = new Set<string>();
   /** Bumped by every explicit stop (incl. the stop half of a restart); fences the outage hand-off. */
   private explicitStopGeneration = new Map<string, number>();
   /** instanceName → outage hand-off currently executing; a repeat joins it. */
@@ -2121,7 +2129,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...(web && by.guest ? { web_guest: "1" } : {}),        // #1920: "[user:… via web (guest), id:…]", as /ui/send
           ...reactions.meta,
         },
-      }, by.humanOrigin, button.label)) !== false;
+      }, by.humanOrigin, button.label, this.startRetryHoldFor(set.instance, inbound))) !== false;
     } finally {
       // Both false and throw reopen the choice in the controller. Finish the
       // receipt through the same reconciler as typed input, rather than leaving
@@ -4052,6 +4060,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     deliveryEpoch: number,
     noInlineWake = false,
     stillCurrent?: () => boolean,
+    onStartRetryHold?: () => void,
   ): Promise<boolean> {
     if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
@@ -4093,7 +4102,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const log = idleGateTimeoutLog(instanceName, timeoutMs, this.instanceStateCache.get(instanceName), Date.now());
       this.logger[log.level](log.fields, log.message);
     }
-    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent);
+    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold);
     if (!sent) return false;
     if (this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.lastDeliveryAt.set(instanceName, Date.now());
@@ -4122,12 +4131,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Ordering is preserved by serialising behind any waiter already queued for this
    * instance, *including* when the socket happens to be up: otherwise a message
    * arriving after the reconnect could overtake one that has been waiting for it.
+   *
+   * `onStartRetryHold` (#2484, a person's message): an instance in its own start-retry backoff is waited for until that
+   * retry brings it up, however long the backoff, and fails only once the retries give up.
    */
   private async sendWhenConnected(
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
     stillCurrent?: () => boolean,
+    onStartRetryHold?: () => void,
   ): Promise<boolean> {
     if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
@@ -4140,7 +4153,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .catch(() => { /* a previous waiter's failure must not cancel this one */ })
       .then(() => {
         if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
-        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent);
+        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold);
       });
     // The chain stores a settled-either-way promise so one failed delivery cannot
     // wedge every later one, and so `queued` above is safe to await unguarded.
@@ -4163,15 +4176,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
     stillCurrent?: () => boolean,
+    onStartRetryHold?: () => void,
   ): Promise<boolean> {
-    const deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
+    let deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
     let warned = false;
+    let held = false;
     for (;;) {
       if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+      // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
+      // delivered once a retry brings it up, and fails only after the retries stop (they gave up, or a person stopped
+      // or paused it) and a last grace passes without it.
+      if (onStartRetryHold && this.inStartRetryBackoff(instanceName)) {
+        deadline = Math.max(deadline, Date.now() + IPC_RECONNECT_GRACE_MS);
+        if (!held) {
+          held = true;
+          this.logger.info({ instanceName, retry: this.startupRetries.get(instanceName)?.attempt }, "Instance is waiting for its start retry — holding the message until it is up");
+          try { onStartRetryHold(); } catch (err) { this.logger.debug({ err, instanceName }, "Start-retry hold notice failed"); }
+        }
+      }
       if (Date.now() >= deadline) {
         throw new Error(`Instance '${instanceName}' IPC is unavailable`);
       }
@@ -4514,6 +4540,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
   }
 
+  /**
+   * #2484: a person's message waits for its instance's own start retry (DeliveryOptions.onStartRetryHold), shown as
+   * queued on the message meanwhile. A ClassicBot room message (no `msg`) has no delivery-status reactions: it only waits.
+   */
+  private startRetryHoldFor(instanceName: string, msg?: { chatId?: string; messageId?: string; threadId?: string }): DeliveryOptions {
+    return {
+      onStartRetryHold: () => {
+        if (msg?.chatId && msg.messageId) this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "queued", msg.threadId || undefined);
+      },
+    };
+  }
+
   /** Synchronous steer/btw handoff, using the same evidence and owner binding. */
   sendHumanControl(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): boolean {
     const ipc = this.instanceIpcClients.get(instanceName);
@@ -4549,7 +4587,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent);
+      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent, options.onStartRetryHold);
       if (!sent) return false;
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
@@ -4567,6 +4605,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       deliveryEpoch,
       options.noInlineWake === true,
       options.stillCurrent,
+      options.onStartRetryHold,
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
@@ -5487,6 +5526,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ name }, "Pending automatic startup retry cancelled");
   }
 
+  /** #2484: the instance's own start retry is scheduled or running, and no person paused it (a stop cancels the retry). */
+  private inStartRetryBackoff(name: string): boolean {
+    if (this.shuttingDown || this.lifecycle.isPaused(name)) return false;
+    return this.startupRetries.has(name) || this.startupRetriesRunning.has(name);
+  }
+
   /** Pending automatic retry, if any (status display / tests). */
   pendingStartupRetry(name: string): { attempt: number } | null {
     const pending = this.startupRetries.get(name);
@@ -5546,6 +5591,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const topicMode = this.fleetConfig?.channel?.mode === "topic"
       || !!this.fleetConfig?.channels?.some(channel => channel.mode === "topic");
+    this.startupRetriesRunning.add(name);
     try {
       await this.spawnGate.run({
         instanceName: name,
@@ -5563,6 +5609,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.stopOnUnsupportedCli(name, err, "instance")) return;
       this.logger.error({ err, name, attempt: attempt + 1 }, "Automatic startup retry failed");
       this.scheduleStartupRetry(name, attempt + 1);
+    } finally {
+      this.startupRetriesRunning.delete(name);
     }
   }
 
@@ -9812,7 +9860,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               ...generalReactions.meta,
               ...extraMeta,
             },
-          }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text);
+          }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text, this.startRetryHoldFor(generalInstance, msg));
           generalReactions.consume();
           this.afterUserInboundDelivered(generalInstance, msg);
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
@@ -9917,7 +9965,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...reactions.meta,
           ...extraMeta,
         },
-      }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text);
+      }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text, this.startRetryHoldFor(instanceName, msg));
       // Only after the message actually went out. A failed delivery keeps the
       // reactions queued for the retry / the next message.
       reactions.consume();
@@ -18062,7 +18110,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         content: fullText,
         targetSession: instanceName,
         meta,
-      }, msg.humanOrigin, msg.humanOriginalBody ?? text);
+      }, msg.humanOrigin, msg.humanOriginalBody ?? text, this.startRetryHoldFor(instanceName));
       reactions.consume();
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Classic wake/delivery failed");
