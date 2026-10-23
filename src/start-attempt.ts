@@ -4,14 +4,16 @@
  * Every other command, and any failure here, does nothing: recording an attempt must never stop a start.
  */
 import { getAgendHome } from "./paths.js";
-import { notifyOnce, ownPackage, recordStartAttempt } from "./start-failure.js";
+import { notifyChatOnce, notifyOnce, ownPackage, recordStartAttempt } from "./start-failure.js";
 
 if (process.argv[2] === "fleet" && process.argv[3] === "start") {
   try {
     const version = ownPackage().version;
     if (version) {
       const home = getAgendHome();
-      notifyOnce(home, recordStartAttempt(home, version, Date.now()));
+      const now = Date.now();
+      notifyOnce(home, recordStartAttempt(home, version, now));
+      notifyChatOnce(home, version, now); // #2490: the same failure in General or the admin's DM, once per version
     }
   } catch { /* never in the way of a start */ }
 }

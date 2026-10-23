@@ -56,7 +56,7 @@ You do not have to find this out yourself: 2.3 checks it. When the installed ver
   The error is at the end of ~/.agend/fleet.log. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new
 ```
 
-On a Mac there is also one notification. The version to go back to is the last one that ran on this host, or the one whose copy 2.2.x's updater kept. Nothing is restored for you. A normal slow start, a fresh install still starting, and a fleet you stopped yourself are never reported.
+On a Mac there is also one notification. The same notice is also posted once in chat, for whoever uses AgEnD only from Discord or Telegram (#2490). It goes to General's topic, or to the first admin's DM when there is no General. It is sent on the third failed start of that version, by the failing start itself, through the platform's API. It is best effort: it is not sent if `fleet.yaml`, `.env` or the network can't be reached. The version to go back to is the last one that ran on this host, or the one whose copy 2.2.x's updater kept. Nothing is restored for you. A normal slow start, a fresh install still starting, and a fleet you stopped yourself are never reported.
 
 ### If something gets in the way
 

@@ -16,6 +16,9 @@
  * read. It never fires for a slow start (one attempt, the job running), a deliberate stop (the job not loaded, or
  * systemd inactive with Result=success), or a package installed less than 90 s ago.
  *
+ * #2490: the same notice in chat (General, else the admin's DM): notifyChatOnce, from start-attempt.ts, runs
+ * start-failure-chat.js once per version, on its third failed start.
+ *
  * Only node built-ins (and child-process.ts, itself only built-ins): start-attempt.ts imports this before the rest of the CLI.
  */
 import { spawnSync, type SpawnOptions } from "node:child_process";
@@ -36,12 +39,13 @@ const KEEP_ATTEMPTS = 20;
 const KEEP_HISTORY = 5;
 
 export interface StartedRecord { version: string; at: string; pid: number; history: string[] }
-export interface AttemptsRecord { version: string; attempts: string[]; notified?: boolean }
+/** `notified`: the macOS notification went; `chatNotified` (#2490): the chat notice was claimed. Both once per version. */
+export interface AttemptsRecord { version: string; attempts: string[]; notified?: boolean; chatNotified?: boolean }
 
 function readJson<T>(file: string): T | null {
   try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return null; }
 }
-function writeJson(file: string, value: unknown): void {
+export function writeJson(file: string, value: unknown): void {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(value) + "\n", { mode: 0o600 });
@@ -65,6 +69,7 @@ export function recordStartAttempt(home: string, version: string, now: number): 
     version,
     attempts: [...(same ? prior!.attempts : []), new Date(now).toISOString()].slice(-KEEP_ATTEMPTS),
     ...(same && prior!.notified ? { notified: true } : {}),
+    ...(same && prior!.chatNotified ? { chatNotified: true } : {}),
   };
   writeJson(join(home, ATTEMPTS_FILE), record);
   return record;
@@ -265,6 +270,60 @@ export function notifyOnce(home: string, record: AttemptsRecord, platform: NodeJ
     const child = launch("osascript", ["-e", `display notification ${JSON.stringify(text)} with title "AgEnD"`], { detached: true, stdio: "ignore" });
     child.on?.("error", () => { /* no osascript: the banner and doctor remain */ });
     child.unref?.();
+    return true;
+  } catch { return false; }
+}
+
+// ── #2490: the chat notice (posted by start-failure-chat.ts) ────────────────────────────────────────────────────
+
+/** How long a failing `fleet start` waits, once per version, for the notice to go out. */
+export const CHAT_NOTICE_TIMEOUT_MS = 10_000;
+
+/** Is this attempt the one that sends the chat notice? This version's third start in the window, none completed. */
+export function chatNoticeDue(record: AttemptsRecord, started: StartedRecord | null, now: number): boolean {
+  if (record.chatNotified || started?.version === record.version) return false;
+  const recent = record.attempts.filter(a => { const at = Date.parse(a); return Number.isFinite(at) && at <= now && now - at <= ATTEMPT_WINDOW_MS; });
+  return recent.length >= LOOP_ATTEMPTS;
+}
+
+/**
+ * Claim the notice for this version (re-read: another writer — the macOS notification — may have marked the record).
+ * False when it is already claimed or the record moved to another version.
+ */
+export function claimChatNotice(home: string, version: string): boolean {
+  const current = readAttempts(home);
+  if (!current || current.version !== version || current.chatNotified) return false;
+  writeJson(join(home, ATTEMPTS_FILE), { ...current, chatNotified: true });
+  return true;
+}
+
+/** fleet.pid names a live process other than this one (a crashed attempt's pid is dead). */
+function anotherFleetRuns(home: string): boolean {
+  try {
+    const pid = Number(readFileSync(join(home, "fleet.pid"), "utf8").trim());
+    if (!Number.isSafeInteger(pid) || pid <= 1 || pid === process.pid) return false;
+    process.kill(pid, 0);
+    return true;
+  } catch (err) { return (err as NodeJS.ErrnoException)?.code === "EPERM"; }
+}
+
+export type RunChild = (cmd: string, args: string[], opts: { timeout: number }) => void;
+const defaultRunChild: RunChild = (cmd, args, opts) => {
+  // stderr is the service's log (fleet.log): the child's one line goes there. Its exit is not waited past the timeout.
+  spawnSync(cmd, args, { timeout: opts.timeout, stdio: ["ignore", "ignore", "inherit"], killSignal: "SIGKILL" });
+};
+
+/**
+ * #2490, from start-attempt.ts: when this attempt is the one (chatNoticeDue), claim the chat notice and run
+ * start-failure-chat.js, which posts it; wait for it at most CHAT_NOTICE_TIMEOUT_MS. Never throws. True when it ran.
+ */
+export function notifyChatOnce(home: string, version: string, now: number, run: RunChild = defaultRunChild): boolean {
+  try {
+    const record = readAttempts(home);
+    if (!record || record.version !== version || !chatNoticeDue(record, readStarted(home), now)) return false;
+    if (anotherFleetRuns(home)) return false;   // a `fleet start` refused beside a running fleet is no failed start
+    if (!claimChatNotice(home, version)) return false;
+    run(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "start-failure-chat.js"), home], { timeout: CHAT_NOTICE_TIMEOUT_MS });
     return true;
   } catch { return false; }
 }
