@@ -272,6 +272,7 @@ import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
+import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
@@ -4087,7 +4088,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
     if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     if (!idle) {
-      this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
+      // #2482: a busy target is the normal case (its CLI queues the message): INFO; a WARN only for a likely anomaly.
+      const log = idleGateTimeoutLog(instanceName, timeoutMs, this.instanceStateCache.get(instanceName), Date.now());
+      this.logger[log.level](log.fields, log.message);
     }
     const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent);
     if (!sent) return false;

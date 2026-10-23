@@ -141,7 +141,9 @@ describe("fleet's Context-less idle gate (#1035)", () => {
     expect(h.handoff).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await expect(delivery).resolves.toBe(true);
-    expect(h.logger.warn).toHaveBeenCalledWith(expect.anything(), "Idle gate timed out; forcing delivery");
+    // #2482: a busy target is the normal case — an INFO with how long it has been busy, never the WARN.
+    expect(h.logger.info).toHaveBeenCalledWith(expect.objectContaining({ instanceName: "worker", timeoutMs: 60_000 }), "Delivered while the target is busy; its CLI reads it after the current turn");
+    expect(h.logger.warn).not.toHaveBeenCalledWith(expect.anything(), "Idle gate timed out; forcing delivery");
   });
 
   it.each(["busy", "dialog", "transient", "cooked", "capture failure", "mode failure", "pane change", "spawn", "retry"])(
