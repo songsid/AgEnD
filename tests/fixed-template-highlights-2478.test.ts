@@ -51,6 +51,8 @@ describe("#2478: the fixed template — the straight bar and a flat background, 
   it("#2347: Settings' sections are square at every width (the wide column's 8 px radius too)", () => {
     const wide = css.slice(css.indexOf("@media (min-width: 1100px)"));
     expect(wide).toMatch(/\.p-settings > \.s-nav \.seg-item\s*\{\s*border-radius:\s*0;/);
+    // Fable r1: the narrow (phone) rule itself — without it the base `.seg-item` radius (r-full) is the pill again.
+    expect(decl(".p-settings .s-nav .seg-item", "border-radius")).toBe("0");
     expect(decl(".p-settings .s-nav .seg-item.active", "background")).toBe("var(--surface-2)");
   });
   it("search's selected row: a flat background, no inset accent edge (it curved into the corners)", () => {
