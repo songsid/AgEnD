@@ -169,7 +169,7 @@ graph LR
 
 **Or install from chat with `/login <backend>`** (fleet admins only), without SSH-ing into the host: when the CLI is not installed yet, `/login` runs the command above in a fleet window, finds the CLI where its installer put it, adds that directory to the fleet's PATH, and offers sign-in where supported. OpenCode and Muse are install-only; Antigravity can be installed but has no isolated remote sign-in. A bare `/login` offers the available sign-in and missing-CLI installation actions.
 
-**Tested CLI versions (AgEnD 2.3.0).** Claude Code 2.1.308, Grok CLI 1.0.67 and Muse 1.4.11-R6667.1 were audited against AgEnD end to end. Kiro CLI up to 2.33.0: a newer kiro-cli still starts, with a warning that it is untested. Codex 0.163.0, checked for its package, recovery and quota handling. Antigravity (agy) 1.3.6. OpenCode 1.18.34. New CLI releases are audited daily, so a newer version may already work. A new release can change its screens, though, so AgEnD only claims a version once it has been tested against it.
+**Tested CLI versions (AgEnD 2.3.0).** Claude Code 2.1.308 and Grok CLI 1.0.67 were audited against AgEnD end to end. Muse 1.4.12-R6909.1 was checked isolated (echo/mock) for composer, prompt and trust, plus reconstructed empty-composer placeholder fixtures. Kiro CLI up to 2.33.0: a newer kiro-cli still starts, with a warning that it is untested. Codex 0.163.0, checked for its package, recovery and quota handling. Antigravity (agy) 1.3.6. OpenCode 1.18.34. New CLI releases are audited daily, so a newer version may already work. A new release can change its screens, though, so AgEnD only claims a version once it has been tested against it.
 
 ## Requirements
 
