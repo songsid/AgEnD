@@ -9,7 +9,9 @@ function stageLabel(stage: UpdateProgressStage | undefined): string {
   return t(`update.stage.${stage ?? "preparing"}`);
 }
 
-/** Render the persisted CLI-side stage while the old fleet is still alive. */
+/** Render the persisted CLI-side stage while the old fleet is still alive.
+ * Stage `starting` is owned by RestartProgress in the new process (#2476); the
+ * monitor must not post this text then. */
 export function formatUpdateProgress(marker: UpdateMarker & { progress: NonNullable<UpdateMarker["progress"]> }, now = Date.now()): string {
   const elapsed = updateElapsedSeconds(marker.startedAt, now);
   const progress = marker.progress;

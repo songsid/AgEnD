@@ -357,7 +357,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean } };
+    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -2587,11 +2587,12 @@ export function handleWebRequest(
     return true;
   }
 
-  // #2293: global search — an admin's only: the header token or an admin session. Never over the public link (the gateway
-  // does not list it either), never a guest (not in GUEST_ROUTES). Asked on arrival and again before the answer is sent.
+  // #2293: global search — an admin's only: the header token or an admin session. Never a guest (not in GUEST_ROUTES).
+  // #2478 (the user's request): over the public link too, unless web.search.public_link is false. Asked on arrival and
+  // again before the answer is sent.
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) {
     const refusal = (): [number, string] | null => {
-      if (gatewayRequestContext(req)) return [404, "search_not_over_public_link"];
+      if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false) return [404, "search_not_over_public_link"];
       if (guestRequestOf(req)) return [403, "guest_forbidden"];
       if (ctx.fleetConfig?.web?.search?.enabled === false || !ctx.searchIndex || ctx.searchIndex.status() === "unavailable") return [404, "search_unavailable"];
       return null;
@@ -3209,7 +3210,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean } } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean }; search?: { public_link?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -3369,6 +3370,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-owner-css-state="${ownerCssState}"${ownerCss ? ` data-owner-css="${attr(ownerCss)}"` : ""}`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
     + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}`
+    // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
+    + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
     // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
     + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
 }

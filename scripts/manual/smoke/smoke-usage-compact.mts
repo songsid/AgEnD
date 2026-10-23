@@ -11,7 +11,8 @@
 // - remembered: the host holds "usage.compact" for this person, and a reload shows the lines again;
 // - a line pressed opens its full card in place; its − folds it back; the switch goes back to the full cards;
 // - no console error, no CSP violation, no horizontal overflow; no real fleet name in any visible text.
-// Pictures: <case>-1-full, -2-compact, -2b-compact-all (taller, every account), -3-expanded, -4-after-reload.
+// - #2478: the last line keyboard-focused: its straight bar clear of the group's rounded corner, no underline to round.
+// Pictures: <case>-1-full, -2-compact, -2b-compact-all (taller, every account), -2c-last-focus, -3-expanded, -4-after-reload.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [ONLY=desk-light-en,…] \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-usage-compact.mts
 import { writeFileSync } from "node:fs";
@@ -146,6 +147,26 @@ for (const c of CASES) {
   // Remembered as the person's synced preference.
   await p.page.waitForTimeout(1200);                                  // the pref write's debounce
   ck.hostRemembers = fm.webPrefs.readForViewer(p.personKey).values?.["usage.compact"] === true;
+
+  // #2478 (Prism r1): the last line keyboard-focused — its straight bar stays clear of the group's rounded, clipping
+  // corner (no taper), and nothing full-width is drawn along its bottom for the corner to round.
+  await p.page.evaluate(`(() => { const gs = document.querySelectorAll(${JSON.stringify(`${SCOPE[c.device]} .u-cgroup`)}); const rows = gs.length ? gs[gs.length - 1].querySelectorAll(".u-crow") : [];
+    document.querySelectorAll("[data-smoke-last]").forEach((e) => e.removeAttribute("data-smoke-last")); if (rows.length) rows[rows.length - 1].setAttribute("data-smoke-last", "1"); })()`);
+  const lastSel = `${SCOPE[c.device]} .u-crow[data-smoke-last]`;
+  await p.page.locator(lastSel).first().focus();
+  await p.page.keyboard.press("Shift+Tab"); await p.page.keyboard.press("Tab");     // keyboard focus: :focus-visible
+  await p.page.waitForTimeout(200);
+  const lastFocus = await p.page.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(lastSel)}); if (!row) return null;
+    const g = row.closest(".u-cgroup"), rr = row.getBoundingClientRect(), gr = g.getBoundingClientRect(), b = getComputedStyle(row, "::before");
+    const rad = parseFloat(getComputedStyle(g).borderBottomLeftRadius) || 0, left = rr.left + parseFloat(b.left), bottom = rr.bottom - parseFloat(b.bottom), top = rr.top + parseFloat(b.top);
+    // Inside the rounded clip: a point within rad of the corner must lie in the corner's circle.
+    const inClip = (x, y) => { const dx = Math.max(0, gr.left + rad - x), dy = Math.max(0, y - (gr.bottom - rad)); return dx * dx + dy * dy <= rad * rad + 0.5; };
+    return { focused: document.activeElement === row && row.matches(":focus-visible"), bar: b.content !== "none" && b.width === "3px", radius: rad,
+      corners: [inClip(left, bottom), inClip(left + 3, bottom), inClip(left, top)], shadow: getComputedStyle(row).boxShadow, lastInGroup: Math.abs(rr.bottom - gr.bottom) < 2 }; })()`) as any;
+  ck.lastFocusBarClear = !!lastFocus && lastFocus.focused && lastFocus.bar && lastFocus.lastInGroup && lastFocus.corners.every(Boolean) && lastFocus.shadow === "none";
+  if (!ck.lastFocusBarClear) console.error("lastFocus", JSON.stringify(lastFocus));
+  await p.page.locator(lastSel).first().screenshot({ path: shotPath(SMOKE, name, "2c-last-focus") }).catch(() => {});
+  await p.page.evaluate(`document.activeElement && document.activeElement.blur(); document.querySelectorAll("[data-smoke-last]").forEach((e) => e.removeAttribute("data-smoke-last"))`);
 
   // A line pressed: its full card, in place; its − folds it back.
   await p.page.locator(`${SCOPE[c.device]} .u-crow`).first().click();
