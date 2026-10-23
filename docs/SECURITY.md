@@ -127,5 +127,5 @@ Revocation, expiry, shutdown or a changed baseline prevents new effects. An admi
 ## CI supply chain (#2528)
 
 CI verifies npm registry signatures of the root and `website/` install trees
-(`npm audit signatures`). Invalid signatures fail the job; missing signatures
-are reported. See [CI coverage](ci.md#npm-registry-signatures-2528).
+(`npm audit signatures --json`). Invalid signatures fail the job; missing-only
+findings are reported. See [CI coverage](ci.md#npm-registry-signatures-2528).

@@ -125,4 +125,4 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 ## CI 供應鏈（#2528）
 
 CI 會驗證根目錄與 `website/` 安裝樹的 npm registry 簽章（`npm audit
-signatures`）。簽章無效會讓 job 失敗；缺少簽章會被報告。見[CI 覆蓋](ci.zh-TW.md#npm-registry-簽章2528)。
+signatures --json`）。簽章無效會讓 job 失敗；只有缺少簽章時會被報告。見[CI 覆蓋](ci.zh-TW.md#npm-registry-簽章2528)。
