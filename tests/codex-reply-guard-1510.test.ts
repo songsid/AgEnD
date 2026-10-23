@@ -245,6 +245,44 @@ describe("the real Daemon with the real CodexBackend: recovery only when the rol
     expect(h.recovery()).toEqual([]);
   });
 
+  it("#2544: a reply adapter-confirmed before paste proof / task_complete does not recover", async () => {
+    // Reported shape: Discord already had the reply (22:22:25) while Codex paste
+    // proof had not armed the guard; task_complete then ended the turn (~60s later)
+    // and recovery fired as a false positive.
+    const h = harness();
+    let releasePaste!: () => void;
+    h.daemon.deliverMessage.mockImplementationOnce(async (text: string) => {
+      await new Promise<void>(resolve => { releasePaste = resolve; });
+      h.writes.push(text);
+      return true;
+    });
+    h.daemon.pushChannelMessage("do the task", {
+      chat_id: "guild-1", thread_id: "channel-1", adapter_id: "discord",
+      message_id: "m-1", correlation_id: "cid-1",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    h.daemon.applyInstanceStateSnapshot({
+      state: "working", unchangedForMs: 0, observedAt: Date.now(), stateChangedAt: Date.now(),
+    }, frame("tool-mid"));
+    const socket = new EventEmitter() as any;
+    h.daemon.socketSessionNames.set(socket, "worker");
+    h.daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 1 }, socket);
+    const pending = [...h.daemon.pendingIpcRequests.entries()].find(([key]: any) => key.endsWith("_1"));
+    pending![1]({ result: { ok: true } });
+    expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
+    releasePaste();
+    await h.daemon.pasteLock;
+    expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({
+      completionDelivered: true, replyDelivered: true,
+    });
+    h.transcript(h.ourTurn("complete"));
+    await h.capture(frame("tool-idle"));
+    await h.confirmIdle();
+    expect(h.recovery()).toEqual([]);
+    expect(h.detected).not.toHaveBeenCalled();
+    expect(h.daemon.deliverDaemonReply).not.toHaveBeenCalled();
+  });
+
   it("the launch's monitor (buildTranscriptMonitor, which start() uses) feeds the ledger: unknown → ended", async () => {
     const h = harness();
     await h.inbound();

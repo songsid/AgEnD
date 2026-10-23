@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { daemonBudgetMs } from "../src/channel/ipc-timeouts.js";
 import { Daemon, PaneStateMachine, PendingWorkTracker } from "../src/daemon.js";
-import { TurnReplyGuard } from "../src/turn-reply-guard.js";
+import { setLocale, t, type Locale } from "../src/locale.js";
+import { formatReplyDropDetection, turnExpectsPersonReply, TurnReplyGuard } from "../src/turn-reply-guard.js";
 import type { Logger } from "../src/logger.js";
 
 // Backend capability checks need no installed CLI or host PATH lookup.
@@ -80,6 +81,7 @@ async function elapseConfirmWindow(daemon: AnyDaemon, pane = "work finished\n❯
 
 afterEach(() => {
   vi.useRealTimers();
+  setLocale("en");
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -167,6 +169,57 @@ describe("TurnReplyGuard", () => {
     guard.complete(generation);
     guard.arm({ chatId: "c" });
     expect(guard.snapshot()).toMatchObject({ busyObserved: false, lastBusyAt: 0 });
+  });
+
+  it("carries a pre-arm adapter-confirmed reply onto the forthcoming arm (#2544)", () => {
+    const guard = new TurnReplyGuard();
+    const attempt = guard.beginToolAttempt(true);
+    expect(guard.snapshot()).toBeNull();
+    guard.settleToolAttempt(attempt, true);
+    expect(guard.snapshot()).toBeNull();
+
+    guard.arm({ chatId: "c", threadId: "t" }, Date.now() - 1);
+    expect(guard.snapshot()).toMatchObject({
+      replyAttempted: true,
+      replyDelivered: true,
+      completionDelivered: true,
+      outboundDelivered: true,
+    });
+  });
+
+  it("applies a pre-arm token that settles after the arm (#2544)", () => {
+    const guard = new TurnReplyGuard();
+    const attempt = guard.beginToolAttempt(true);
+    guard.arm({ chatId: "c" }, Date.now() - 1);
+    expect(guard.snapshot()).toMatchObject({ replyAttempted: true, completionDelivered: false });
+    guard.settleToolAttempt(attempt, true);
+    expect(guard.snapshot()).toMatchObject({ replyDelivered: true, completionDelivered: true });
+  });
+
+  it("does not inherit a pre-arm reply that predates the delivery's ingress (#2544)", () => {
+    const guard = new TurnReplyGuard();
+    const attempt = guard.beginToolAttempt(true);
+    guard.settleToolAttempt(attempt, true);
+    guard.arm({ chatId: "c" }, Date.now() + 1_000);
+    expect(guard.snapshot()).toMatchObject({
+      replyAttempted: false,
+      completionDelivered: false,
+    });
+  });
+});
+
+describe("turnExpectsPersonReply (#2544)", () => {
+  it("arms for a person on a channel or on web without a platform chat", () => {
+    expect(turnExpectsPersonReply({ chat_id: "guild", user: "han" })).toBe(true);
+    expect(turnExpectsPersonReply({ chat_id: "", source: "web", user: "han" })).toBe(true);
+  });
+
+  it("skips schedules, system notices, and cross-instance traffic", () => {
+    expect(turnExpectsPersonReply({ chat_id: "guild", user: "scheduler" })).toBe(false);
+    expect(turnExpectsPersonReply({ chat_id: "guild", user: "han", source: "schedule" })).toBe(false);
+    expect(turnExpectsPersonReply({ chat_id: "guild", source: "agend-system", user: "AgEnD" })).toBe(false);
+    expect(turnExpectsPersonReply({ from_instance: "leader", chat_id: "guild" })).toBe(false);
+    expect(turnExpectsPersonReply({ chat_id: "" })).toBe(false);
   });
 });
 
@@ -426,6 +479,53 @@ describe("Claude human-turn reply completion harness", () => {
 
     daemon.markTurnStarted({ ...meta(), from_instance: "worker-2", chat_id: "" }, "handoff");
     expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("#2544: a scheduled no-reply turn does not warn the channel", async () => {
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    const unrecovered = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.on("reply_drop_unrecovered", unrecovered);
+    daemon.pushChannelMessage("整理完不用回報", { ...meta(), user: "scheduler", source: "schedule" });
+    await daemon.pasteLock;
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+
+    busyThenIdleEdge(daemon);
+    await elapseConfirmWindow(daemon);
+    expect(detected).not.toHaveBeenCalled();
+    expect(unrecovered).not.toHaveBeenCalled();
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("#2544: a system notice does not arm the person-reply guard", () => {
+    const daemon = makeDaemon();
+    daemon.markTurnStarted({ ...meta(), source: "agend-system", user: "AgEnD" }, "[system] poll closed");
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it.each(["en", "zh-TW"] as Locale[])("#2544 %s notices name a possible false positive, show detection, never /clear", locale => {
+    setLocale(locale);
+    const detected = formatReplyDropDetection({
+      replyAttempted: false, replyDelivered: false, completionDelivered: false,
+      target: { chatId: "guild-1", threadId: "channel-1" },
+    }, "no_valid_call");
+    for (const key of ["inst.reply_drop_retrying", "inst.reply_drop_unknown", "inst.reply_drop_unrecovered"] as const) {
+      const text = t(key, detected);
+      expect(text, key).toContain(detected);
+      expect(text.toLowerCase(), key).not.toContain("/clear");
+      expect(text, key).not.toContain("soul.md");
+      if (locale === "en") {
+        expect(text, key).toMatch(/false positive/i);
+        expect(text, key).toMatch(/continue|resend/i);
+      } else {
+        expect(text, key).toContain("誤報");
+        expect(text, key).toMatch(/繼續|重送/);
+      }
+    }
+    setLocale("en");
   });
 
   it("leaves non-opted-in backends byte-for-byte on the no-recovery path", () => {
