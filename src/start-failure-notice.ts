@@ -17,3 +17,8 @@ export function startFailureLines(failure: Extract<StartFailure, { failing: true
   lines.push(t("startfail.report", join(home, "fleet.log")));
   return lines;
 }
+
+/** #2481 auto-restore: the words for a version the fleet is rolling back from by itself (chat notice). */
+export function restoredLines(from: string, to: string, detail: string, preimage: string, home: string): string[] {
+  return [t("startfail.restored_banner", from, detail, to, preimage), t("startfail.restored_data", from, to), t("startfail.report", join(home, "fleet.log"))];
+}

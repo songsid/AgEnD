@@ -44,7 +44,7 @@ describe("#2490 when the chat notice is due", () => {
 describe("#2490 once per version, from start-attempt", () => {
   const seed = (home: string, attempts: string[], extra: Record<string, unknown> = {}) =>
     writeFileSync(join(home, ATTEMPTS_FILE), JSON.stringify(rec(attempts, extra)));
-  const free = { lockHeld: () => false, notify: () => false };
+  const free = { lockHeld: () => false, notify: () => false, restore: () => ({ kind: "not-due" as const }) };
 
   it("runs the notifier once, claimed first; every later attempt of that crash loop does nothing", () => {
     const home = scratch();
@@ -106,10 +106,10 @@ describe("#2490 once per version, from start-attempt", () => {
     const home = scratch();
     const run = vi.fn();
     const chat = (h: string, v: string, n: number) => notifyChatOnce(h, v, n, run);
-    expect(recordFleetStartAttempt(home, "2.3.1", NOW - 20_000, { lockHeld: () => true, notify: () => false, notifyChat: chat })).toBe(false);
-    expect(recordFleetStartAttempt(home, "2.3.1", NOW - 10_000, { lockHeld: () => true, notify: () => false, notifyChat: chat })).toBe(false);
+    expect(recordFleetStartAttempt(home, "2.3.1", NOW - 20_000, { lockHeld: () => true, notify: () => false, notifyChat: chat })).toBeNull();
+    expect(recordFleetStartAttempt(home, "2.3.1", NOW - 10_000, { lockHeld: () => true, notify: () => false, notifyChat: chat })).toBeNull();
     expect(readAttempts(home)).toBeNull();
-    expect(recordFleetStartAttempt(home, "2.3.1", NOW, { ...free, notifyChat: chat })).toBe(true);
+    expect(recordFleetStartAttempt(home, "2.3.1", NOW, { ...free, notifyChat: chat })).toEqual({ kind: "not-due" });
     expect(readAttempts(home)!.attempts).toHaveLength(1);
     expect(run).not.toHaveBeenCalled();
     // control: two more genuine failed starts → the third sends, once
