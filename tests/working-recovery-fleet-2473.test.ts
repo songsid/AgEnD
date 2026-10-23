@@ -69,6 +69,17 @@ function fixture() {
   return { fm, d, card, board, paste, enter, stable, dispatch, pressure: (v: string) => { level = v; } };
 }
 describe("#2473 manager recovery wiring", () => {
+  it("records a prior restart request separately from the unknown observed interruption cause", async () => {
+    const f = fixture(); f.fm.workingRecoveryCause = "manual_restart";
+    const info = vi.spyOn(f.fm.logger, "info").mockImplementation(() => {});
+    await f.stable();
+    const entry = f.fm.eventLog.query({ instance: "worker", type: "working_state" })
+      .find((e: any) => e.payload.reason === "advisory_background_unknown");
+    expect(entry.payload).toMatchObject({ observedCause: "unknown_interruption", requestedAction: "manual_restart" });
+    expect(entry.payload.message).toContain("observed cause unknown_interruption; prior requested action manual_restart");
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ observedCause: "unknown_interruption", requestedAction: "manual_restart" }),
+      "Interrupted work recovery decision");
+  });
   it("the General summary waits for General's own continuation instead of superseding it", async () => {
     const f = fixture();
     f.fm.fleetConfig.instances.worker.general_topic = true;

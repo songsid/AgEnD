@@ -1072,8 +1072,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           `[system:working-recovery-summary] Observed cause: unknown interruption${this.workingRecoveryCause === "unknown_interruption" ? "" : `; prior requested action: ${this.workingRecoveryCause}`}. ${rows.length} interrupted instances; continuation queued ${rows.filter(r => r.outcome === "admitted").length}, excluded ${rows.filter(r => r.outcome === "excluded").length}, still deferred ${rows.filter(r => r.outcome === "deferred").length}. ${rows.filter(r => r.reason === "advisory_background_unknown").length ? `Advisory, background unknown: ${rows.filter(r => r.reason === "advisory_background_unknown").map(r => r.instance).join(", ")}. ` : ""}${deferredAdvisories.length ? `Deferred advisory candidates (background unknown; all other gates still apply): ${deferredAdvisories.join(", ")}. ` : ""}Details are in the Log. Deferred work remains eligible; no action or confirmation is requested.`));
       },
       log: (episode, outcome, reason) => {
-        this.logger.info({ name: episode.instance, episode: episode.key, outcome, reason, cause: this.workingRecoveryCause }, "Interrupted work recovery decision");
-        this.eventLog?.insert(episode.instance, "working_state", { message: `Interrupted work: ${outcome} (${reason}); cause ${this.workingRecoveryCause}.`, reason, outcome });
+        const requestedAction = this.workingRecoveryCause === "unknown_interruption" ? null : this.workingRecoveryCause;
+        this.logger.info({ name: episode.instance, episode: episode.key, outcome, reason,
+          observedCause: "unknown_interruption", requestedAction }, "Interrupted work recovery decision");
+        this.eventLog?.insert(episode.instance, "working_state", {
+          message: `Interrupted work: ${outcome} (${reason}); observed cause unknown_interruption${requestedAction ? `; prior requested action ${requestedAction}` : ""}.`,
+          reason, outcome, observedCause: "unknown_interruption", requestedAction });
       },
     });
     if (this.workingRecoveryTimer) clearInterval(this.workingRecoveryTimer);
