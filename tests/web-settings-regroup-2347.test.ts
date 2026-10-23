@@ -212,6 +212,8 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     expect(css).toMatch(/\.p-settings \.check:has\(> \.impact\)\s*\{\s*flex-wrap:\s*wrap/);
     // The tag's own line, starting where the row's text does (the 16 px box and the gap).
     expect(css).toMatch(/\.p-settings \.check > \.impact\s*\{\s*flex:\s*1 0 calc\(100% - 16px - var\(--s-2\)\);\s*margin-left:\s*calc\(16px \+ var\(--s-2\)\);\s*white-space:\s*nowrap/);
+    // #2512 review (Fable P3): a tag inside a note wraps whole.
+    expect(css).toMatch(/\.p-settings \.note > \.impact\s*\{\s*display:\s*inline-block;\s*white-space:\s*nowrap/);
   });
 });
 

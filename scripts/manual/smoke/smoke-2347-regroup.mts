@@ -3,6 +3,8 @@
 // every section draws without a page error. It is THE smoke that visits the old addresses on purpose (the others use the
 // new ones): each of the six lands on its section, loaded from scratch as a bookmark would be — /settings/device →
 // preferences, appearance → look, general → agent-defaults, bots → chat, classic → chat#classicbot, web → access.
+// On a phone (§7) /settings is the list of sections and a section is shown on its own with "‹ Settings": the nav checks
+// are the desk's; the phone's are which view is shown.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-2347-regroup.mts
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48853), instances: 2 });
@@ -16,7 +18,8 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   const errors: string[] = [];
   p.page.on("pageerror", (e: any) => errors.push(String(e).slice(0, 160)));
   await mounted(p.page, 30000);
-  const go = async (path: string) => { await p.page.goto(new URL(path, p.page.url()).href); await p.page.locator(".s-nav").waitFor({ timeout: 15000 }); await p.page.waitForTimeout(500); };
+  const go = async (path: string) => { await p.page.goto(new URL(path, p.page.url()).href); await p.page.locator(".p-settings .panel-body .col").waitFor({ state: "attached", timeout: 15000 }); await p.page.waitForTimeout(500); };
+  const view = () => p.page.evaluate(`(() => ({ view: document.querySelector(".p-settings").getAttribute("data-view"), back: (() => { const b = document.querySelector(".p-settings .s-back"); return !!b && getComputedStyle(b).display !== "none"; })() }))()`) as Promise<any>;
   await go("/settings");
   const nav = await p.page.evaluate(`(() => { const n = document.querySelector(".s-nav"), b = document.querySelector(".p-settings > .panel-body");
     const nr = n.getBoundingClientRect(), br = b.getBoundingClientRect();
@@ -25,16 +28,18 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   ok("twoGroups", JSON.stringify(nav.groups) === "[2,6]");
   ok("groupNamesShown", nav.heads.every((d: string) => d !== "none"));
   if (c.device === "desk") ok("leftColumn", nav.left);
+  else ok("phone:listAtSettings", (await view()).view === "index");
   ok("noSideScroll", !nav.overflowX);
   await p.page.screenshot({ path: shotPath("2347g", c as any, "1-agents") });
   for (const s of SECTIONS) {
     await go(`/settings/${s}`);
     ok(`drawn:${s}`, (await p.page.locator(".p-settings .panel-body .col").count()) === 1);
-    // The section shown is in view in the nav (on a phone, a row that scrolls sideways).
+    if (c.device === "phone") { const v = await view(); ok(`phone:alone:${s}`, v.view === "section" && v.back); continue; }
+    // The section shown is in view in the nav.
     const seen = await p.page.evaluate(`(() => { const a = document.querySelector(".s-nav .seg-item.active"), n = document.querySelector(".s-nav");
       const ar = a.getBoundingClientRect(), nr = n.getBoundingClientRect(); return ar.left >= nr.left - 1 && ar.right <= nr.right + 1; })()`);
     ok(`activeInView:${s}`, seen === true);
-    // …without moving the page or the nav column sideways (only the phone's row of sections scrolls).
+    // …without moving the page or the nav column sideways.
     const still = await p.page.evaluate(`(() => [document.querySelector(".main").scrollLeft, document.querySelector(".s-nav").scrollLeft])()`) as number[];
     ok(`pageStill:${s}`, still[0] === 0 && still[1] === 0);
   }

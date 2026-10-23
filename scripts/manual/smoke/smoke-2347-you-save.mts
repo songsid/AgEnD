@@ -15,6 +15,13 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   const prefWrites: string[] = [];
   p.page.on("request", (r: any) => { if (r.method() === "POST" && /\/ui\/prefs$/.test(r.url())) prefWrites.push(r.postData() ?? ""); });
   await mounted(p.page, 30000);
+  // In-app to a section (a reload would put a held choice back): on a phone (§7) a section is shown alone, so "‹ Settings"
+  // goes back to the list of sections first.
+  const section = async (href: string) => {
+    const back = p.page.locator(".p-settings .s-back");
+    if (await back.isVisible().catch(() => false)) { await back.click(); await p.page.waitForTimeout(400); }
+    await p.page.locator(`.s-nav a[href="${href}"]`).click();
+  };
   await p.page.goto(new URL("/settings/preferences", p.page.url()).href);
   const sel = p.page.locator(".s-synced select").first();
   await sel.waitFor({ timeout: 15000 });
@@ -39,7 +46,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   await p.page.locator(".s-colors-off").waitFor({ timeout: 15000 });
   await p.page.locator(".s-colors-off").check();
   // In-app to Preferences (a reload would put a held choice back): the motion switch lives there since #2382.
-  await p.page.locator('.s-nav a[href="/settings/preferences"]').click();
+  await section("/settings/preferences");
   const motion = p.page.locator("#fx-follow-reduced-motion");
   await motion.waitFor({ timeout: 15000 });
   const motionBefore = await motion.isChecked();
@@ -49,7 +56,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   await bar.locator("button", { hasText: /^(Discard|捨棄)$/ }).click();
   await p.page.waitForTimeout(600);
   const motionBack = (await motion.isChecked()) === motionBefore && (await p.page.locator(".s-pending").count()) === 0;
-  await p.page.locator('.s-nav a[href="/settings/look"]').click();
+  await section("/settings/look");
   await p.page.locator(".s-colors-off").waitFor({ timeout: 15000 });
   ok("bothDiscarded", motionBack && !(await p.page.locator(".s-colors-off").isChecked()));
   results.push({ name, failed });
