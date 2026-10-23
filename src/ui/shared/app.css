@@ -132,13 +132,14 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    tests/web-left-bar-2330.test.ts keeps a coloured border-left off rounded boxes. */
 .lbar, .reply-bar, .msg-quote, .p-log .log-item.k-error, .p-log .log-item.s-failed, .org-node, .us-basis, .us-partial, .cmd-card.bad, .tb-tile, .s-dirty,
 .search-row.on, .search-recent-item:hover, .search-recent-item:focus-visible, .search-ctx-line.here, .tw-line:hover, .tw-line:focus-visible,
-.u-crow:focus-visible { position: relative; }
+.u-crow:focus-visible, .p-settings .s-nav .seg-item.active, .s-find-item.on { position: relative; }
 .lbar::before, .reply-bar::before, .msg-quote::before, .p-log .log-item.k-error::before, .p-log .log-item.s-failed::before, .org-node::before,
 .us-basis::before, .us-partial::before, .cmd-card.bad::before, .tb-tile::before, .s-dirty::before,
 /* #2478 item 7 (the user's fixed template): a selected, hovered or keyboard-focused row is the straight bar and a flat
    background at most — never a rounded fill, a curved inset edge or a rounded ring. */
 .search-row.on::before, .search-recent-item:hover::before, .search-recent-item:focus-visible::before, .search-ctx-line.here::before,
-.tw-line:hover::before, .tw-line:focus-visible::before, .u-crow:focus-visible::before {
+.tw-line:hover::before, .tw-line:focus-visible::before, .u-crow:focus-visible::before,
+.p-settings .s-nav .seg-item.active::before, .s-find-item.on::before {
   content: ""; position: absolute; left: var(--lbar-left, 0); top: var(--lbar-inset, var(--s-2)); bottom: var(--lbar-inset, var(--s-2)); width: 3px;
   background: var(--lbar-color, var(--accent)); pointer-events: none; }
 /* #2347: a Settings field edited and not saved yet — the shared straight bar (above), a light tint, and the 3px the bar
@@ -446,6 +447,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .p-settings .seg { flex-wrap: wrap; row-gap: var(--s-1); overflow-x: visible; }
 /* #2347: the sections in two groups, "You" and "Fleet", each with its name; a column on the left on a wide screen. */
 .s-nav { align-items: center; column-gap: var(--s-3); }
+/* #2347, the fixed template (#2330): Settings' sections are square; the one shown is the shared straight bar and a flat
+   background (no rounded pill). `.seg` elsewhere (Fleet's tabs, the chat header) is not changed here. */
+.p-settings .s-nav .seg-item { border-radius: 0; }
+.p-settings .s-nav .seg-item.active { background: var(--surface-2); }
 .s-nav-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
 .s-nav-head { font-size: var(--fs-xs); color: var(--text-3, var(--text-2)); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 var(--s-2); }
 .s-anchor { scroll-margin-top: var(--s-4); }
@@ -486,7 +491,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings > .s-nav .s-nav-groups { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: var(--s-3); }
   .p-settings > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
   .p-settings > .s-nav .s-nav-head { padding: var(--s-1) var(--s-3); }
-  .p-settings > .s-nav .seg-item { border-radius: var(--r-sm); }
+  .p-settings > .s-nav .seg-item { border-radius: 0; }
   .p-settings > .panel-body { grid-column: 2; grid-row: 2; }
   .p-settings > .s-pending { grid-column: 1 / -1; grid-row: 3; }
 }
