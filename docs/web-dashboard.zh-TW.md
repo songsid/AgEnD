@@ -599,6 +599,37 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 
 不論誰連到這個網址，都還是要用你給的登入碼才能登入，而且每次登入都會通知 General。
 
+## 三種連線方式比較
+
+**A** 是直接連到儀表板：這台機器、區網、tailnet 或你自己的 proxy。**B** 是臨時公開連結（Cloudflare quick tunnel）。**C** 是你自己的固定網址（named tunnel，見 [Named tunnel](named-tunnel.zh-TW.md)）。B 和 C 走同一個公開閘道，除了表中特別寫出的地方，行為都相同。
+
+| | A. 直接連線 | B. 臨時公開連結 | C. 固定網址 |
+|---|---|---|---|
+| 登入 | ✅ 一次性 8 碼，5 分鐘內有效：在 General 傳 `/web`，或在主機執行 `agend web` | ✅ `/web` → 其他裝置：連結和登入碼私下傳給你 | ✅ 同 B；`auto_open` 在重新啟動後重開連結時不會寄登入碼，請傳 `/web` 要一組 |
+| Session 時效 | ✅ 預設 48 小時、閒置 48 小時（`web.session.local.*`，1–720 小時） | ✅ 固定：4 小時、閒置 30 分鐘 | ✅ 同 B |
+| 連結時效 | — | ✅ 1–480 分鐘（預設 120）；不會自己重開 | ✅ 1–10080 分鐘，或 0 表示不過期；`web.public_link.auto_open: true` 會在重新啟動後重開（預設關閉） |
+| 聊天 | ✅ 即時更新 | ✅ 以輪詢更新；`/raw` 和 `/save` 會被拒絕 | ✅ 同 B |
+| 上傳 | ✅ 預設每個檔案 50 MB、每則訊息 100 MB（`web.upload_max_file_mb`、`web.upload_max_total_mb`，1–500） | ✅ 每個檔案最多 95 MB，不論設定為何 | ✅ 同 B：每個檔案最多 95 MB |
+| 檔案預覽（Markdown、CSV、JSON、程式碼、文字） | ✅ **顯示** 卡片 | ❌ 只有圖片會直接顯示 | ❌ 同 B |
+| HTML 預覽 | ✅ 這台裝置同意後 | ✅ 這台裝置同意後，透過另一條 quick tunnel（`web.preview_on_public_link`，預設開啟） | ✅ 同 B：預覽仍走另一條 quick tunnel，除非設定了 `web.preview_origin` |
+| 回覆與 reaction | ✅ | ✅ | ✅ |
+| 全域搜尋 | ✅ | ✅ 預設開啟；`web.search.public_link: false` 會在這裡關閉 | ✅ 同 B |
+| `/view` | ✅ 預設不用登入（`web.view_access: open`） | ✅ 一律要登入 | ✅ 同 B |
+| 紀錄分頁 | ✅ 設定 `web.log_tab: true`（預設關閉） | ✅ 同一個設定 | ✅ 同一個設定 |
+| 用量面板 | ✅ | ✅ | ✅ |
+| 用量報表 | ✅ | ✅ 設定 `web.usage_report_on_public_link: true`（預設關閉） | ✅ 同 B |
+| 設定：agent、預設值、連線、ClassicBot 聊天室、套用與重新啟動 | ✅ 敏感的變更要等確認；已驗證的瀏覽器按套用就算確認 | ✅ 敏感的變更一律要等 fleet 管理員在 General 確認，按套用不算 | ✅ 同 B |
+| 設定：網頁、外觀、訪客、網頁授權、密鑰與 token | ✅ | ❌ 會被拒絕 | ❌ 同 B |
+| Office 編輯 | ✅ | ❌ 只能看 | ❌ 同 B |
+| 任務看板、排程、團隊 | ✅ | ❌ 唯讀 | ❌ 同 B |
+| 外觀：主題、自訂 CSS、小工具、App 圖示 | ✅ | ❌（自己的個人資料、圖片、身分卡和識別色仍可修改） | ❌ 同 B |
+| Mod 與特效 | ✅ | ❌ 不能用 mod；這個聊天裡的特效只能播放 | ❌ 同 B |
+| 授權這個瀏覽器（網頁授權） | ✅ | ✅ 設定 `web.verified_authority.quick_link: true`（預設關閉） | ✅ 設定 `web.verified_authority.named_link: true`（預設關閉） |
+| 訪客 | ✅ 設定 `web.guests.enabled: true`（預設關閉） | ✅ 只在管理員開著連結時 | ✅ 同 B |
+| `/login` 的瀏覽器終端 | ✅ | ❌ 這個連結開著時不行：兩者共用同一條 tunnel | ❌ 同 B |
+| 在 General 的登入通知 | ✅ `web.notify_login`（預設開啟） | ✅ 一律通知；通知送不出去時，登入會被拒絕 | ✅ 同 B |
+| 結束 | 登出、`/web revoke`（所有瀏覽器）、`agend web-token rotate` | **關閉**、`/web revoke`、到期或 fleet 停止，會讓這個連結的登入碼和 session 全部失效 | 同 B；**關閉** 或 `/web revoke` 也會停止 `auto_open`，直到下次 `/web` |
+
 ## 設定
 
 | 設定 | 預設 | 說明 |

@@ -600,6 +600,37 @@ The server answers on `127.0.0.1` only. To use the dashboard from another device
 
 Whoever reaches the address still has to sign in with a code from you, and each sign-in is announced in General.
 
+## The three ways in, compared
+
+**A** is the dashboard reached directly: this machine, the LAN, a tailnet or your own proxy. **B** is the temporary public link (a Cloudflare quick tunnel). **C** is a fixed address of your own (a named tunnel, see [Named tunnel](named-tunnel.md)). B and C go through the same public gateway and behave the same except where a row says otherwise.
+
+| | A. Direct | B. Temporary public link | C. Fixed address |
+|---|---|---|---|
+| Signing in | ✅ a one-time 8-character code, valid 5 minutes: `/web` in General, or `agend web` on the host | ✅ `/web` → other device: the link and the code come to you privately | ✅ as B; when `auto_open` reopens the link after a restart no code is sent, so ask `/web` for one |
+| Session length | ✅ 48 h, and 48 h unused, by default (`web.session.local.*`, 1–720 h) | ✅ fixed: 4 h, 30 minutes unused | ✅ as B |
+| Link lifetime | — | ✅ 1–480 minutes (default 120); it never reopens by itself | ✅ 1–10080 minutes, or 0 for no expiry; `web.public_link.auto_open: true` reopens it after a restart (off by default) |
+| Chat | ✅ live updates | ✅ updates by polling; `/raw` and `/save` are refused | ✅ as B |
+| Uploads | ✅ 50 MB a file, 100 MB a message by default (`web.upload_max_file_mb`, `web.upload_max_total_mb`, 1–500) | ✅ at most 95 MB a file, whatever the config says | ✅ as B: at most 95 MB a file |
+| File previews (Markdown, CSV, JSON, code, text) | ✅ the **Show** card | ❌ only images show inline | ❌ as B |
+| HTML previews | ✅ after this device opts in | ✅ after this device opts in, through a second quick tunnel (`web.preview_on_public_link`, on by default) | ✅ as B: the preview still runs on a second quick tunnel, unless `web.preview_origin` is set |
+| Replies and reactions | ✅ | ✅ | ✅ |
+| Global search | ✅ | ✅ on by default; `web.search.public_link: false` turns it off here | ✅ as B |
+| `/view` | ✅ open without signing in by default (`web.view_access: open`) | ✅ signing in is always required | ✅ as B |
+| Log tab | ✅ with `web.log_tab: true` (off by default) | ✅ the same setting | ✅ the same setting |
+| Usage panel | ✅ | ✅ | ✅ |
+| Usage report | ✅ | ✅ with `web.usage_report_on_public_link: true` (off by default) | ✅ as B |
+| Settings: agents, defaults, connections, ClassicBot rooms, apply and restart | ✅ a sensitive change waits for confirmation; a web-verified browser confirms it by applying | ✅ a sensitive change always waits for a fleet admin's confirmation in General, never by applying | ✅ as B |
+| Settings: Web, Appearance, Guests, Web authority, secrets and tokens | ✅ | ❌ refused | ❌ as B |
+| Office editing | ✅ | ❌ view only | ❌ as B |
+| Task board, schedules, teams | ✅ | ❌ read only | ❌ as B |
+| Look: themes, custom CSS, widgets, app icon | ✅ | ❌ (your profile, picture, card and identity colour can still be changed) | ❌ as B |
+| Mods and effects | ✅ | ❌ mods; the effects in this chat only play | ❌ as B |
+| Authorize this browser (web authority) | ✅ | ✅ with `web.verified_authority.quick_link: true` (off by default) | ✅ with `web.verified_authority.named_link: true` (off by default) |
+| Guests | ✅ with `web.guests.enabled: true` (off by default) | ✅ only while an admin has the link open | ✅ as B |
+| `/login`'s browser terminal | ✅ | ❌ not while this link is open: they share the one tunnel | ❌ as B |
+| Sign-in notice in General | ✅ `web.notify_login` (on by default) | ✅ always; if it can't be posted, the sign-in is refused | ✅ as B |
+| Ending it | Sign out, `/web revoke` (every browser), `agend web-token rotate` | **Close**, `/web revoke`, expiry or a fleet stop ends the link's codes and sessions | As B; **Close** or `/web revoke` also stops `auto_open` until the next `/web` |
+
 ## Settings
 
 | Setting | Default | Meaning |

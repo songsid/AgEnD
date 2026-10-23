@@ -5,6 +5,8 @@ the dashboard public link. Its hostname stays the same when you reopen the
 link, so a phone's Add to Home Screen shortcut keeps its address. Leaving the
 hostname unset retains the existing random quick tunnel.
 
+How this compares with the dashboard reached directly and with the temporary public link, feature by feature: [The three ways in, compared](web-dashboard.md#the-three-ways-in-compared).
+
 Open the public link from AgEnD's dashboard menu as usual. Close, sign-in
 verification and session revocation still apply. With a fixed hostname the
 lifetime may be longer than a quick tunnel's 1–480 minutes: up to 10080
