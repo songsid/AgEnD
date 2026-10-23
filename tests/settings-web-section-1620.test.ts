@@ -365,7 +365,8 @@ describe("#named-link-ttl: the public link's minutes and auto_open follow the mo
     expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
     expect(w.text()).toContain("A quick tunnel allows 1–480 minutes");
     await w.type(w.$("publicWebTtl"), "0"); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
-    expect(pending()).toBeNull(); await w.apply(); expect(w.webWrites()).toEqual([]);
+    // #2347's save model: an invalid edit is unsaved and Save waits ("Fix 1 field"); nothing is written.
+    expect([!!pending()?.querySelector(".s-fix"), saveButton()?.disabled]).toEqual([true, true]); await w.apply(); expect(w.webWrites()).toEqual([]);
   });
   it("fixed hostname: 0–10080 with the 'no expiry' hint; 0 and auto_open stage as one write", async () => {
     const w = await open(NAMED);
@@ -377,7 +378,7 @@ describe("#named-link-ttl: the public link's minutes and auto_open follow the mo
     await w.type(w.$("publicWebTtl"), "10081"); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
     await w.type(w.$("publicWebTtl"), ""); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
     await w.type(w.$("publicWebTtl"), "0"); await w.check(w.$("publicAutoOpen"), true);
-    expect(pending()?.textContent).toContain("Apply changes"); await w.apply();
+    expect(pending()?.textContent).toContain("Save"); await w.apply();
     expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 0, auto_open: true } }]);
   });
   it("blanking the hostname with 600 minutes and auto_open set: both flagged, nothing staged until they fit a quick tunnel", async () => {
@@ -386,7 +387,7 @@ describe("#named-link-ttl: the public link's minutes and auto_open follow the mo
     expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
     expect(w.$("publicAutoOpen").checked).toBe(true);                       // still shown, so it can be unticked
     expect(w.text()).toContain("Needs a fixed hostname");
-    expect(pending()).toBeNull();
+    expect([!!pending()?.querySelector(".s-fix"), saveButton()?.disabled]).toEqual([true, true]);   // #2347: Save waits
     await w.type(w.$("publicWebTtl"), "480"); await w.check(w.$("publicAutoOpen"), false);
     expect(w.$("publicAutoOpen")).toBeNull();
     await w.apply();
