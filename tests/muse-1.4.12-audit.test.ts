@@ -1,8 +1,8 @@
 /** Isolated 1.4.12-R6909.1 captures; see fixture SOURCES.md for scope. */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { MuseBackend, museInputBox } from "../src/backend/muse.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { MuseBackend, museInputBox, setMusePlaceholderDebug } from "../src/backend/muse.js";
 
 const dir = join(process.cwd(), "tests/fixtures/muse-1.4.12");
 const pane = (name: string) => readFileSync(join(dir, name), "utf8");
@@ -112,5 +112,38 @@ describe("Muse 1.4.12 empty-composer placeholder is not a draft (#2520)", () => 
   it("1.4.11 echo-idle is still empty", () => {
     const p = readFileSync(join(process.cwd(), "tests/fixtures/muse-1.4.11/echo-idle.pane.txt"), "utf8");
     expect(verdict(p)).toEqual({ busy: false, idle: true, draft: [] });
+  });
+});
+
+describe("Muse 1.4.12 faint-placeholder debug log (#2520)", () => {
+  afterEach(() => setMusePlaceholderDebug());
+
+  it("logs the text and SGR once when a faint placeholder is classified as empty", () => {
+    const seen: Array<{ text: string; sgr: string }> = [];
+    setMusePlaceholderDebug(rec => { seen.push(rec); });
+    const p = pane("echo-placeholder.ansi.txt");
+    expect(museInputBox(p)?.rows).toEqual([]);
+    expect(museInputBox(p)?.rows).toEqual([]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.text).toBe(HINT);
+    expect(seen[0]!.sgr).toContain("\x1b[2m");
+    expect(seen[0]!.sgr).toContain(HINT);
+  });
+
+  it("does not log a catalog match without SGR (production capture-pane -p)", () => {
+    const seen: Array<{ text: string; sgr: string }> = [];
+    setMusePlaceholderDebug(rec => { seen.push(rec); });
+    expect(museInputBox(pane("echo-placeholder.pane.txt"))?.rows).toEqual([]);
+    expect(seen).toEqual([]);
+  });
+
+  it("logs a faint non-catalog placeholder so a live occurrence leaves a fixture", () => {
+    const seen: Array<{ text: string; sgr: string }> = [];
+    setMusePlaceholderDebug(rec => { seen.push(rec); });
+    const p = pane("echo-idle.ansi.txt").replace("\x1b[0m❯", "\x1b[0m❯ \x1b[2mnot a catalog hint");
+    expect(museInputBox(p)?.rows).toEqual([]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.text).toBe("not a catalog hint");
+    expect(seen[0]!.sgr).toContain("\x1b[2mnot a catalog hint");
   });
 });

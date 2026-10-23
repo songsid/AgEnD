@@ -19,6 +19,13 @@ text with `museDraftShows` against the binary catalog, and also treats an `-e`
 capture whose composer text is entirely faint as empty. A prefix of a hint, extra
 characters, or ordinary typed text remains a draft.
 
+The detector logs once at debug (`muse empty-composer placeholder classified as
+empty`) with the composer `text` and raw `sgr` whenever it classifies a faint
+placeholder as empty. Production `capture-pane -p` has no SGR, so that path is
+silent until an `-e` capture sees a real hint. Leader's 2026-10-23 live
+`capture-pane -e` of agend-dev-muse was a bare `❯ ` (quota exhausted until
+2026-10-26); reconstructed fixtures remain labelled as such.
+
 Mark audited only after this PR passes parity review and is merged.
 
 ## Composer / prompt / dialog vs 1.4.11

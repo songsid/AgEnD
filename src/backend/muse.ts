@@ -137,6 +137,31 @@ const MUSE_EMPTY_COMPOSER_HINTS: ReadonlySet<string> = new Set([
   "Press Ctrl+O to expand collapsed tool output",
 ]);
 
+export type MusePlaceholderDebugRec = { text: string; sgr: string };
+
+let musePlaceholderDebug: ((rec: MusePlaceholderDebugRec) => void) | undefined;
+const musePlaceholderLogged = new Set<string>();
+
+/**
+ * Production wires the daemon logger; tests inject a spy. Passing nothing
+ * clears the hook and the once-set. "Once" is per unique (text, sgr) so pane
+ * polls do not flood.
+ */
+export function setMusePlaceholderDebug(log?: (rec: MusePlaceholderDebugRec) => void): void {
+  musePlaceholderDebug = log;
+  musePlaceholderLogged.clear();
+}
+
+function logFaintPlaceholderOnce(text: string, sgr: string): void {
+  if (!musePlaceholderDebug) return;
+  const key = `${text}\0${sgr}`;
+  if (musePlaceholderLogged.has(key)) return;
+  musePlaceholderLogged.add(key);
+  try {
+    musePlaceholderDebug({ text, sgr });
+  } catch { /* Detector must not throw. */ }
+}
+
 /** Visible characters of `raw` paired with whether SGR 2 (faint) is on. */
 function faintMap(raw: string): Array<{ ch: string; faint: boolean }> {
   const out: Array<{ ch: string; faint: boolean }> = [];
@@ -188,10 +213,19 @@ function museComposerTextAllFaint(rawBoxRows: readonly string[]): boolean {
 
 function museComposerIsPlaceholder(textRows: readonly string[], rawBoxRows: readonly string[], width: number): boolean {
   if (textRows.length === 0 || textRows.every(r => r === "")) return false;
+  let catalog = false;
   for (const hint of MUSE_EMPTY_COMPOSER_HINTS) {
-    if (museDraftShows(textRows, width, hint)) return true;
+    if (museDraftShows(textRows, width, hint)) {
+      catalog = true;
+      break;
+    }
   }
-  return museComposerTextAllFaint(rawBoxRows);
+  const faint = museComposerTextAllFaint(rawBoxRows);
+  if (faint) {
+    logFaintPlaceholderOnce(textRows.join("\n"), rawBoxRows.join("\n"));
+    return true;
+  }
+  return catalog;
 }
 
 /**
