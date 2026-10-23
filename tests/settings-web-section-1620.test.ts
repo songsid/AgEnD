@@ -158,9 +158,21 @@ describe("Settings → Web, as rendered", () => {
       ["web.allowed_hosts", "[\"box.lan\"]"], ["web.view_access", "session"], ["web.notify_login", "not set (default)"], ["web.preview", "false"],
       ["web.preview_port", "not set (default)"], ["web.preview_origin", "not set (default)"], ["web.preview_on_public_link", "not set (default)"],
       ["web.usage_panel", "not set (default)"],
+      ["web.search", "not set (no age limit; 300,000-row cap)"],
       ["web.provider_secrets", "not set (default)"], ["web.upload_max_file_mb", "not set (default)"], ["web.upload_max_total_mb", "not set (default)"], ["web_terminal.bind", "0.0.0.0"], ["web_terminal.tunnel", "not set (default)"],
     ]);
     expect(p.root.querySelectorAll(".s-web-ro input, .s-web-ro select, .s-web-ro textarea").length).toBe(0);
+  });
+
+  it("web.search read-only: unset and 0 are no age limit; a positive day count is the number (#2516)", async () => {
+    const value = () => [...p.root.querySelectorAll(".s-web-ro > div")]
+      .find((d: any) => d.querySelector("dt")?.textContent === "web.search")?.querySelector("dd")?.textContent;
+    await open();
+    expect(value()).toBe("not set (no age limit; 300,000-row cap)");
+    await open({ web: { search: { retention_days: 0 } } });
+    expect(value()).toBe("0 (no age limit; 300,000-row cap)");
+    await open({ web: { search: { retention_days: 90 } } });
+    expect(value()).toBe("90");
   });
 
   it("over the temporary public link: the form is disabled and says why; nothing can be staged", async () => {
