@@ -33,8 +33,11 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
     const body = path === "/api/settings/apply" || path === "/api/settings/apply/job-smoke" ? { id: "job-smoke", status: "done", targets: [] } : { ok: true };
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
-  // Through the nav (a reload would drop what is staged). Agents is /settings, or /settings/agents once §7 lands.
+  // Through the nav (a reload would drop what is staged). On a phone a section is shown on its own (§7): "‹ Settings"
+  // goes back to the list of sections first.
   const go = async (section: string) => {
+    const back = page.locator(".p-settings .s-back");
+    if (await back.isVisible().catch(() => false)) { await back.click(); await page.waitForTimeout(500); }
     const sel = section === "agents" ? ".seg-item[href='/settings'], .seg-item[href='/settings/agents']" : `.seg-item[href='/settings/${section}']`;
     await page.locator(".p-settings > .s-nav").locator(sel).first().click();
     await page.waitForTimeout(900);

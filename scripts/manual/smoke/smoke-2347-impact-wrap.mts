@@ -26,7 +26,9 @@ const TAGS = `(() => { const vw = document.documentElement.clientWidth, seen = (
     return { tag: el.textContent.trim(), label: host ? host.textContent.trim().slice(0, 40) : null, below: !!text && b.top >= text.b - 1, atStart: !!text && Math.abs(b.left - text.l) <= 2,
       oneLine: el.getClientRects().length === 1 && b.height <= lh * 1.5, inside: b.right <= vw + 1 }; }); })()`;
 const SECTIONS = ["agent-defaults", "chat", "web-dashboard", "access"];
-for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "phone", theme: "light", lang: "en", small: true }, { device: "desk", theme: "light", lang: "en" }] as const) {
+// Cases: …and small (320×568) dark zh-TW, where the dialog's status-emoji tag broke mid-tag (#2512 review).
+for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "phone", theme: "light", lang: "en", small: true },
+  { device: "phone", theme: "dark", lang: "zh-TW", small: true }, { device: "desk", theme: "light", lang: "en" }] as const) {
   const tag = `${"small" in c ? "small" : c.device}-${c.theme}-${c.lang}`, res: any = (r.cases[tag] = { measured: {} });
   const p = await freshPage(fx, c as any, { path: "/settings/agent-defaults" }).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
@@ -47,6 +49,18 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
       if (c.device === "desk") ok(res, `${section}:besideOnDesk`, res.measured[section].off.length === 0, res.measured[section].off.slice(0, 4));
       else ok(res, `${section}:underTheLabel`, res.measured[section].off.length === 0, res.measured[section].off.slice(0, 4));
     }
+    // An agent's dialog (#2512 review): its label tags under their labels; every tag, the status-emoji note's too, whole.
+    await page.goto(new URL("/settings/agents", page.url()).href);
+    await page.locator(".p-settings .s-row").first().waitFor({ timeout: 15000 });
+    await page.locator(".p-settings .s-row").first().locator("button", { hasText: c.lang === "en" ? /^Settings$/ : /^設定$/ }).click();
+    await page.locator(".p-settings dialog[open]").waitFor({ timeout: 8000 }); await page.waitForTimeout(500);
+    await page.evaluate(`document.querySelectorAll(".p-settings dialog details").forEach((d) => { d.open = true; })`); await page.waitForTimeout(300);
+    const dlg = await page.evaluate(`(() => { const vw = document.documentElement.clientWidth;
+      return [...document.querySelectorAll(".p-settings dialog[open] .impact")].filter((e) => e.getBoundingClientRect().width > 0).map((el) => { const b = el.getBoundingClientRect(), lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.4;
+        return { tag: el.textContent.trim(), inNote: !!el.closest(".note"), oneLine: el.getClientRects().length === 1 && b.height <= lh * 1.5, inside: b.right <= vw + 1 }; }); })()`) as any[];
+    res.measured.dialog = { n: dlg.length, off: dlg.filter((t) => !(t.oneLine && t.inside)) };
+    await page.screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-agent-dialog`) });
+    ok(res, "dialog:tagsWhole", dlg.length > 0 && res.measured.dialog.off.length === 0, res.measured.dialog);
     ok(res, "noOverflow", !(await page.evaluate(`document.documentElement.scrollWidth > document.documentElement.clientWidth`)));
     ok(res, "noPageErrors", pageErrors(p.errors).length === 0, pageErrors(p.errors));
   } catch (err) {

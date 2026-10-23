@@ -17,7 +17,8 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   const errors: string[] = [];
   p.page.on("pageerror", (e: any) => errors.push(String(e).slice(0, 160)));
   await mounted(p.page, 30000);
-  const go = async (path: string) => { await p.page.goto(new URL(path, p.page.url()).href); await p.page.locator(".s-nav").waitFor({ timeout: 15000 }); await p.page.waitForTimeout(600); };
+  // The section's own page (on a phone, §7, /settings is the list of sections and a section is shown alone).
+  const go = async (path: string) => { await p.page.goto(new URL(path, p.page.url()).href); await p.page.locator(".p-settings .panel-body .col").waitFor({ state: "attached", timeout: 15000 }); await p.page.waitForTimeout(600); };
   const sideScroll = () => p.page.evaluate(`document.documentElement.scrollWidth > innerWidth`) as Promise<boolean>;
 
   await go("/settings/agent-defaults");
@@ -37,10 +38,11 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   await p.page.screenshot({ path: shotPath("2347ie", c as any, "2-access") });
 
   await go("/settings/advanced");
+  await p.page.locator(".s-web-ro > div").first().waitFor({ timeout: 15000 });          // drawn once the configuration is in
   const ro = await p.page.evaluate(`[...document.querySelectorAll(".s-web-ro > div")].map((d) => !!d.querySelector(".s-default"))`) as boolean[];
   ok("readOnlyDefaults", ro.length === 13 && ro.filter(Boolean).length >= 10);
 
-  await go("/settings");
+  await go("/settings/agents");
   await p.page.locator(".s-row .s-actions button", { hasText: w.settings }).first().click();
   await p.page.locator("dialog #ag-auto").waitFor({ timeout: 10000 });
   await p.page.locator("dialog details.drawer summary").first().click();
