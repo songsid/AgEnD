@@ -160,6 +160,24 @@ describe("through the gate and the real handler", () => {
   });
 });
 
+describe("§0.3: the quick-link option through the gate (off by default)", () => {
+  it("on — explicitly, or from an explicit false: held for a confirmation, not self-confirmable; nothing written yet", async () => {
+    for (const before of [undefined, { quick_link: false }]) {
+      const h = harness(before ? { web: { verified_authority: before } } : undefined);
+      const r = await h.request("PUT", WEB, { verified_authority: { quick_link: true } });
+      expect([r.status, r.body.result, h.store.selfConfirmable(r.body.pending_change.id), h.save.mock.calls.length], JSON.stringify(before)).toEqual([202, "pending_confirmation", false, 0]);
+    }
+  });
+  it("off, or removing an explicit false (it inherits false): written at once; and never over the public link", async () => {
+    const on = harness({ web: { verified_authority: { quick_link: true } } });
+    expect((await on.request("PUT", WEB, { verified_authority: { quick_link: true } }, { publicLink: true })).status).toBe(403);
+    expect((await on.request("PUT", WEB, { verified_authority: { quick_link: null } })).status).toBe(200);
+    expect(on.raw().web.verified_authority).toBeUndefined();
+    const offExplicit = harness({ web: { verified_authority: { quick_link: false } } });
+    expect((await offExplicit.request("PUT", WEB, { verified_authority: { quick_link: null } })).status).toBe(200);
+  });
+});
+
 describe("#2453 (§0.2): the named-link option through the gate", () => {
   it("on: held for a confirmation, the held change marked not self-confirmable; nothing written yet", async () => {
     const h = harness();
@@ -194,7 +212,7 @@ describe("the overview (a real FleetManager)", () => {
     const firefox = h.session("Firefox on Mac"), phone = h.session("Safari on iPhone");
     expect(h.s.authorizeWebSession(firefox, "loopback", false)).toMatchObject({ ok: true });
     const o = h.s.webAuthorityOverview();
-    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 1 });
+    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1 });
     expect(o.configured).toEqual({ enabled: true, max_session_hours: 6 });
     expect(o.hours).toEqual({ min: 1, max: 48, default: 48 });
     expect(o.lanHosts).toEqual(["agend.example.com", "192.168.1.5:19280"]);

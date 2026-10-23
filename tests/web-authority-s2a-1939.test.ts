@@ -42,25 +42,25 @@ const log = () => ({ warn: vi.fn() });
 describe("§10 the revocation epoch: moved by the switch, by loopback_only going off, and by an explicit revocation", () => {
   it("a fresh fleet: on by default (§0.1) — the first read records it and moves the epoch past 0", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
-    expect(s.current(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 1 });
+    expect(s.current(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1 });
     expect(m.stored()).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false });
-    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, epoch: 2 });
+    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
   });
   it("on, off, on: each moves the epoch, and the positions are written", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 1 });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1 });
     expect(m.stored()).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false });
     expect(s.current({ enabled: true }).epoch).toBe(1);                                    // unchanged: no move, no write
     expect(m.io.writes).toBe(1);
-    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, epoch: 2 });
+    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
     expect(s.current({ enabled: true }).epoch).toBe(3);
   });
   it("loopback_only on: no move (lan receipts read as none meanwhile); off again: a move", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
     s.current({ enabled: true });
-    expect(s.current({ enabled: true, loopback_only: true })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, epoch: 1 });
+    expect(s.current({ enabled: true, loopback_only: true })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 1 });
     expect(m.stored().loopback_only).toBe(true);
-    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 2 });
+    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
   });
   it("a change made while the fleet was stopped still moves it (the last positions are on disk)", () => {
     const m = memIo(JSON.stringify({ v: 1, epoch: 4, enabled: true, loopback_only: true }));
@@ -75,12 +75,12 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     s.current({ enabled: true });
     expect(s.revoke()).toEqual({ epoch: 2, durable: true });
     expect(m.stored().epoch).toBe(2);
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 2 });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
   });
   it("unreadable: every earlier authority is revoked (the epoch jumps past any counter), and it is said once", () => {
     const l = log(); const m = memIo("{broken");
     const s = new AuthorityStateStore("/s.json", l, m.io, () => 1_792_000_000_123);
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 1_792_000_001 });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1_792_000_001 });
     expect(l.warn).toHaveBeenCalledTimes(1);
     const m2 = memIo(JSON.stringify({ v: 2, epoch: 1, enabled: true, loopback_only: false }));
     expect(new AuthorityStateStore("/s.json", log(), m2.io, () => 5_000).current({ enabled: false }).epoch).toBe(5);
@@ -89,11 +89,11 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     const l = log(); const m = memIo(JSON.stringify({ v: 1, epoch: 1, enabled: true, loopback_only: true }));
     const s = new AuthorityStateStore("/s.json", l, m.io);
     m.io.fail = true;
-    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: false, loopbackOnly: true, namedLink: false, epoch: 2 });
-    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: false, loopbackOnly: true, namedLink: false, epoch: 2 });
+    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 2 });
+    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 2 });
     expect(l.warn).toHaveBeenCalledTimes(1);
     m.io.fail = false;
-    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 2 });
+    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
     expect(m.stored()).toEqual({ v: 1, epoch: 2, enabled: true, loopback_only: false });
   });
   it("a revocation that cannot be written: not durable, and the switch counts as off until it is", () => {
@@ -103,12 +103,12 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     expect(s.revoke()).toEqual({ epoch: 2, durable: false });
     expect(s.current({ enabled: true }).enabled).toBe(false);
     m.io.fail = false;
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 2 });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
   });
   it("#2112 review: a file missing, or behind the receipts (deleted, restored from an older copy), is never trusted", () => {
     const l = log();
     // Missing, with receipts at epoch 4: past them and the clock's seconds, and off.
-    expect(new AuthorityStateStore("/s.json", l, memIo().io, () => 9_000, () => 4).current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 10 });
+    expect(new AuthorityStateStore("/s.json", l, memIo().io, () => 9_000, () => 4).current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 10 });
     expect(l.warn).toHaveBeenCalledTimes(1);
     expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 40).current({ enabled: false }).epoch).toBe(41);
     // A file at epoch 2 while a receipt carries 5.
@@ -133,7 +133,7 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
 });
 
 describe("§10 a receipt's authority, read now", () => {
-  const on = { enabled: true, loopbackOnly: false, namedLink: false, epoch: 3 };
+  const on = { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 3 };
   it("web-verified stays while on, at the current epoch", () => {
     expect(authorityNow(webSession(3), on)).toEqual(webSession(3));
     expect(authorityNow(webSession(3, "lan"), on)).toEqual(webSession(3, "lan"));
@@ -149,7 +149,7 @@ describe("§10 a receipt's authority, read now", () => {
   it("loopback under loopback_only stays; platform and none never change", () => {
     expect(authorityNow(webSession(3), { ...on, loopbackOnly: true }).kind).toBe("web-verified");
     const platform: HumanAuthority = { kind: "platform", actor: { adapter_id: "owner", user_id: "7" }, authority_epoch: 0 };
-    expect(authorityNow(platform, { enabled: false, loopbackOnly: true, namedLink: false, epoch: 9 })).toBe(platform);
+    expect(authorityNow(platform, { enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 9 })).toBe(platform);
     const none: HumanAuthority = { kind: "none", actor: null, authority_epoch: 0 };
     expect(authorityNow(none, on)).toBe(none);
   });
@@ -160,7 +160,7 @@ describe("§10 a receipt's authority, read now", () => {
   });
   it("admission: the switch off refuses first", () => {
     const r = evaluateWebAuthority({ session: null, gateway: true, peer: "lan", tokenEpoch: null, isAdmin: () => true, authorization: null,
-      policy: { enabled: false, loopbackOnly: false, namedLink: false, maxSessionMs: 1 }, epoch: 4, now: 0 });
+      policy: { enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, maxSessionMs: 1 }, epoch: 4, now: 0 });
     expect(r).toEqual({ authority: { kind: "none", actor: null, authority_epoch: 4 }, refusal: "disabled" });
   });
 });
@@ -181,7 +181,7 @@ describe("the FleetManager: admission and delivery_status use the state in force
     const h = fm({ verified_authority: { enabled: false } });
     expect(h.s.webAuthority({ session: null, gateway: false, peer: "loopback" }).refusal).toBe("disabled");
     h.s.fleetConfig.web = { verified_authority: { enabled: true } };
-    expect(h.s.webAuthorityState()).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 1 });
+    expect(h.s.webAuthorityState()).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1 });
     expect(h.s.webAuthority({ session: null, gateway: false, peer: "loopback" }).refusal).toBe("not_session");
     const id = h.receive(webHumanOrigin(false, webSession(1)));
     const item = h.status(id);
@@ -251,7 +251,7 @@ describe("the FleetManager: admission and delivery_status use the state in force
   });
   it("no data directory: off", () => {
     const s: any = Object.assign(Object.create(FleetManager.prototype), { fleetConfig: { instances: {}, web: { verified_authority: { enabled: true } } } });
-    expect(s.webAuthorityState()).toEqual({ enabled: false, loopbackOnly: true, namedLink: false, epoch: 0 });
+    expect(s.webAuthorityState()).toEqual({ enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 0 });
   });
 });
 

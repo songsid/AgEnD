@@ -14840,7 +14840,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
-      policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now: Date.now(),
+      policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now: Date.now(),
     });
   }
 
@@ -14865,12 +14865,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       session, gateway, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
-      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
     });
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
     store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
-    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs) };
+    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
@@ -14879,13 +14879,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * it is now (a change since last seen moves the epoch first; authority-state.ts). No data directory: off.
    */
   webAuthorityState(): AuthorityState {
-    if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, epoch: 0 };
+    if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 0 };
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
     const state = this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
-    // #2453 (§0.2): the named-link option seen going off — the authority of every session over the link ends now, for
-    // good: their authorizations go (a later "on" can never bring one back without its account's Confirm).
-    if (state.namedLinkClosed) this.sessionAuthorizationStore()?.prune(a => this.webSessions?.findByHandle(a.handle)?.surface === "local");
+    // #2453 (§0.2) / §0.3: a link's option seen going off — the authority of every session over that link ends now, for
+    // good: their authorizations go (a later "on" can never bring one back without its account's Confirm). A record from
+    // before §0.3 has no peer: over the gateway, only a named-link session could have been authorized then.
+    if (state.namedLinkClosed || state.quickLinkClosed) {
+      const ended = (a: SessionAuthorization): boolean => {
+        const session = this.webSessions?.findByHandle(a.handle);
+        if (!session) return true;
+        if (session.surface === "local") return false;
+        const peer = a.peer ?? "named_link";
+        return (!!state.namedLinkClosed && peer === "named_link") || (!!state.quickLinkClosed && peer === "quick_link");
+      };
+      this.sessionAuthorizationStore()?.prune(a => !ended(a));
+    }
     return state;
   }
 
@@ -14908,7 +14918,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   webAuthorityOverview(): {
     state: AuthorityState; configured: WebVerifiedAuthorityConfig; hours: typeof VERIFIED_SESSION_HOURS; lanHosts: string[];
-    authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true }>;
+    authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true; quick?: true }>;
     /** #2453 (§0.2): the admin's named-tunnel hostname, while one is configured (the named-link row shows only then). */
     namedHost: string | null;
   } {
@@ -14920,7 +14930,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .filter(a => a.epoch === state.epoch && sessions.has(a.handle) && now <= Math.min(a.until, a.authorizedAt + maxMs))
       .map(a => ({ handle: a.handle, label: sessions.get(a.handle)!.label, account: `${a.owner.adapterId}:${a.owner.userId}`, authorizedAt: a.authorizedAt,
         until: Math.min(a.until, a.authorizedAt + maxMs, sessions.get(a.handle)!.absoluteExpiry),
-        ...(sessions.get(a.handle)!.surface === "gateway" ? { named: true as const } : {}) })) : [];
+        // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
+        ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
     const host = this.fleetConfig?.web?.public_link?.hostname;
     return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null };
   }
@@ -14935,8 +14946,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
     // The host's clock, with its zone: the person may read the DM on a phone in another one.
     const when = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
+    const quickHost = (): string => { try { const u = this.publicWebLink?.openSignin()?.url; return u ? new URL(u).host : "?"; } catch { return "?"; } };
     const where = (peer: WebPeer) => peer === "named_link"
       ? t("web_auth.peer_named_link", String(this.fleetConfig?.web?.public_link?.hostname ?? "?"))   // §0.2: the internet
+      : peer === "quick_link" ? t("web_auth.peer_quick_link", quickHost())                          // §0.3: the internet
       : t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
     return this.authorizationRequests = new SessionAuthorizationRequests({
       now: () => performance.now(), wallNow: () => Date.now(),
@@ -14963,8 +14976,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       authorize: (handle, peer) => {
         const record = this.webSessions?.findByHandle(handle);
         if (!record) return { ok: false, refusal: "session_gone" };
-        // §0.2: a named-link session is judged as the gateway request it is (its exposure still the current one).
-        const r = this.authorizeWebSession(record, peer, peer === "named_link");
+        // §0.2 / §0.3: a session over a link is judged as the gateway request it is (its exposure still the current one).
+        const r = this.authorizeWebSession(record, peer, peer === "named_link" || peer === "quick_link");
         // What the card says: the end of the authorization, or the session's own end when that comes first.
         return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
@@ -15008,7 +15021,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       session: s, gateway: input.gateway, peer: input.peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
-      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
     });
     return r.refusal;
   }

@@ -36,7 +36,7 @@ const record = (over: Partial<SessionRecord> = {}): SessionRecord => ({ handle: 
 /** §0: this session authorized by its account half an hour after sign-in, under epoch 0. */
 const AUTH = { handle: "a1b2c3d4e5f60718", owner: { adapterId: "owner", userId: "admin" }, authorizedAt: T0 + HOUR / 2, until: T0 + HOUR / 2 + 48 * HOUR, epoch: 0 };
 const input = (over: Partial<WebAuthorityInput> = {}): WebAuthorityInput => ({ session: record(), gateway: false, peer: "loopback", tokenEpoch: EPOCH,
-  isAdmin: (u, a) => a === "owner" && u === "admin", authorization: AUTH, policy: { enabled: true, loopbackOnly: false, namedLink: false, maxSessionMs: 48 * HOUR }, epoch: 0, now: T0 + HOUR, ...over });
+  isAdmin: (u, a) => a === "owner" && u === "admin", authorization: AUTH, policy: { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, maxSessionMs: 48 * HOUR }, epoch: 0, now: T0 + HOUR, ...over });
 const req = (remoteAddress: string | undefined, headers: Record<string, string>) => ({ socket: { remoteAddress }, headers });
 
 describe("§3.4 where one request comes from: loopback only when the peer, the Host and the headers all say so", () => {
@@ -72,9 +72,9 @@ describe("§3 every check, in order, for one request", () => {
     ["an account no longer in allowed_users", { isAdmin: () => false }, "not_admin"],
     ["an instance of another adapter", { target: { adapterId: "two" } }, "other_namespace"],
     ["an instance with no adapter", { target: { adapterId: undefined } }, "other_namespace"],
-    ["a LAN request under loopback_only", { peer: "lan", policy: { enabled: true, loopbackOnly: true, namedLink: false, maxSessionMs: 48 * HOUR } }, "loopback_only"],
-    ["the server switch off", { policy: { enabled: false, loopbackOnly: false, namedLink: false, maxSessionMs: 48 * HOUR } }, "disabled"],
-    ["the switch off, even on the public link", { gateway: true, policy: { enabled: false, loopbackOnly: false, namedLink: false, maxSessionMs: 48 * HOUR } }, "disabled"],
+    ["a LAN request under loopback_only", { peer: "lan", policy: { enabled: true, loopbackOnly: true, namedLink: false, quickLink: false, maxSessionMs: 48 * HOUR } }, "loopback_only"],
+    ["the server switch off", { policy: { enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, maxSessionMs: 48 * HOUR } }, "disabled"],
+    ["the switch off, even on the public link", { gateway: true, policy: { enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, maxSessionMs: 48 * HOUR } }, "disabled"],
     ["a session its account has not authorized", { authorization: null }, "not_authorized"],
     ["another session's authorization", { authorization: { ...AUTH, handle: "ffffffffffffffff" } }, "not_authorized"],
     ["an authorization by another account", { authorization: { ...AUTH, owner: { adapterId: "owner", userId: "admin2" } } }, "not_authorized"],
@@ -92,10 +92,10 @@ describe("§3 every check, in order, for one request", () => {
     expect(isAdmin).toHaveBeenCalledWith("admin", "owner");
   });
   it("loopback_only lets a loopback request through; the age limit counts from the authorization, inclusive, the policy's", () => {
-    expect(evaluateWebAuthority(input({ policy: { enabled: true, loopbackOnly: true, namedLink: false, maxSessionMs: 48 * HOUR } })).refusal).toBeNull();
+    expect(evaluateWebAuthority(input({ policy: { enabled: true, loopbackOnly: true, namedLink: false, quickLink: false, maxSessionMs: 48 * HOUR } })).refusal).toBeNull();
     expect(evaluateWebAuthority(input({ now: AUTH.authorizedAt + 48 * HOUR })).refusal).toBeNull();
     expect(evaluateWebAuthority(input({ now: T0 + 48 * HOUR + 1 })).refusal, "48 h after sign-in, but not after authorizing").toBeNull();
-    expect(evaluateWebAuthority(input({ policy: { enabled: true, loopbackOnly: false, namedLink: false, maxSessionMs: HOUR }, now: AUTH.authorizedAt + HOUR + 1 })).refusal).toBe("authorization_expired");
+    expect(evaluateWebAuthority(input({ policy: { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, maxSessionMs: HOUR }, now: AUTH.authorizedAt + HOUR + 1 })).refusal).toBe("authorization_expired");
   });
   it("on arrival and after the body: both must pass, under the same session", () => {
     const ok = evaluateWebAuthority(input()), lan = evaluateWebAuthority(input({ peer: "lan" }));
@@ -107,8 +107,8 @@ describe("§3 every check, in order, for one request", () => {
       .toEqual({ authority: { kind: "none", actor: null, authority_epoch: 0 }, refusal: "session_changed" });
   });
   it("the policy: 48 h and LAN by default; a bad value never loosens it", () => {
-    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, maxSessionMs: 48 * HOUR });         // §0.1: on by default
-    expect(webAuthorityPolicy({ verified_authority: { enabled: true, loopback_only: true, max_session_hours: 6 } })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, maxSessionMs: 6 * HOUR });
+    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, maxSessionMs: 48 * HOUR });         // §0.1: on by default
+    expect(webAuthorityPolicy({ verified_authority: { enabled: true, loopback_only: true, max_session_hours: 6 } })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, quickLink: false, maxSessionMs: 6 * HOUR });
     expect(webAuthorityPolicy({ verified_authority: { enabled: false } }).enabled).toBe(false);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 500 } }).maxSessionMs).toBe(48 * HOUR);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 0 } }).maxSessionMs).toBe(HOUR);

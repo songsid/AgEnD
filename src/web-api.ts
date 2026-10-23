@@ -1133,11 +1133,13 @@ function webAuthorityOf(req: IncomingMessage, url: URL, ctx: WebApiContext, inst
     peer: webPeerOf(req), ...(instance !== undefined ? { instance } : {}) });
 }
 /**
- * #1939 §3.4 / #2453 §0.2: where this request came from — the admin's named link by the gateway's own provenance (its
- * exact hostname), else what the TCP peer and Host say (a quick tunnel's request is `lan`, and refused as public_link).
+ * #1939 §3.4 / #2453 §0.2 / §0.3: where this request came from — over the public gateway, the link itself by the
+ * gateway's own provenance (never a header): the admin's named tunnel on its exact hostname, else the temporary
+ * quick-tunnel link. Off the gateway, what the TCP peer and Host say.
  */
 export function webPeerOf(req: IncomingMessage): WebPeer {
-  return gatewayRequestContext(req)?.named === true ? "named_link" : classifyWebPeer(req);
+  const gateway = gatewayRequestContext(req);
+  return gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
 }
 /**
  * #2122: what let this request in, asked now — its session (by handle, under the token it was signed in with) or the

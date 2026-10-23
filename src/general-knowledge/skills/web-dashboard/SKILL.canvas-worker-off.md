@@ -96,14 +96,14 @@ again. Confirm within 5 minutes and the session menu says **Verified · speaks a
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
-per account. Never for a guest or on a quick-tunnel public link. Over the admin's own named link (#2453) only with
-**Also over my named link** (`named_link`, off by default). That authority ends with the link, and the card says "over
-your named link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
+per account. Never for a guest. Over the admin's own named link (#2453) only with **Also over my named link**
+(`named_link`, off by default); over the temporary public link `/web` opens only with **Also over the temporary public
+link** (`quick_link`, off by default, §0.3). That authority ends with the link, and the card says "over your named link"
+or "over the temporary public link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
 this computer" or the named-link option is the reason). Settings → Web → **Web authority** (`web.verified_authority`, on
 by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown
-with a fixed hostname), the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
-there applies at once, except turning the named-link option on: a General or the host confirms that, never the browser
-asking.
+with a fixed hostname), **Also over the temporary public link**, the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
+there applies at once, except turning a link's option on: a General or the host confirms that, never the browser asking.
 Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
 
 ## Chat

@@ -130,7 +130,8 @@ Port 被占用、token 錯誤、路由錯誤或取得其他頁面的 marker 時�
 `web.verified_authority.named_link: true` 讓透過你的網域登入的瀏覽器也能使用
 **授權此瀏覽器**（見 web-dashboard：agent 看到的是誰）。
 - **預設關閉。** 開啟時需在 General 或這台電腦上確認。
-- **只認這個確切的網域。** Quick tunnel 一律不行。
+- **只認這個確切的網域。** Quick tunnel 另有自己的選項 `quick_link`
+  （見 web-dashboard）。
 - **授權隨連結結束：** 按「關閉」、`/web revoke`、到期、重新啟動
   （`auto_open` 重新開啟算新的連結），或關閉這個選項。
 
