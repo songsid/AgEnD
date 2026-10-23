@@ -1,0 +1,22 @@
+# #2528 PR 3: licences in the root and website trees today (package.json
+# license fields). A PR that introduces a high/critical advisory, or a
+# licence not on this list, fails. Unknown licences are reported and do
+# not fail (the action's rule).
+fail-on-severity: high
+fail-on-scopes:
+  - runtime
+  - development
+allow-licenses:
+  - "0BSD"
+  - Apache-2.0
+  - "Apache-2.0 AND LGPL-3.0-or-later AND MIT"
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - BlueOak-1.0.0
+  - CC0-1.0
+  - ISC
+  - LGPL-2.1-or-later
+  - LGPL-3.0-or-later
+  - MIT
+  - MPL-2.0
+  - Python-2.0

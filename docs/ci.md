@@ -92,3 +92,12 @@ The job does not run package
 lifecycle scripts: `esbuild` / `lightningcss` postinstall and any native
 `install` (for example `better-sqlite3` in the test jobs) stay in `ci.yml` and
 `deploy-website.yml`, which still run a full `npm ci`.
+
+## Dependency review on PRs (#2528)
+
+`dependency-review.yml` runs `actions/dependency-review-action` on pull
+requests into `main` and `release/**`. It fails on high or critical
+advisories in the PR diff, and on a newly introduced licence that is not
+on the allow-list in `.github/dependency-review-config.yml` (the licences
+in the root and website trees today). An undetectable licence is reported
+and does not fail.

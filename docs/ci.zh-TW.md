@@ -64,3 +64,10 @@ npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.
 （這是我們的政策：npm 10 對缺少與無效都會 exit 1）。這個 job 不跑套件 lifecycle scripts：`esbuild` /
 `lightningcss` 的 postinstall，以及測試 job 裡的 native `install`（例如
 `better-sqlite3`）仍由 `ci.yml` 與 `deploy-website.yml` 的完整 `npm ci` 執行。
+
+## PR 的 dependency review（#2528）
+
+`dependency-review.yml` 在進 `main` 與 `release/**` 的 pull request 跑
+`actions/dependency-review-action`。PR diff 出現 high 或 critical 諮詢、
+或新套件的授權不在 `.github/dependency-review-config.yml` 允許名單（目前
+根目錄與 website 樹裡的授權）時失敗。偵測不到的授權只會被報告，不失敗。

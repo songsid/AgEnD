@@ -129,3 +129,7 @@ Revocation, expiry, shutdown or a changed baseline prevents new effects. An admi
 CI verifies npm registry signatures of the root and `website/` install trees
 (`npm audit signatures --json`). Invalid signatures fail the job; missing-only
 findings are reported. See [CI coverage](ci.md#npm-registry-signatures-2528).
+
+Pull requests into `main` and `release/**` run GitHub's dependency review:
+high or critical advisories, and licences outside the allow-list, fail the
+check. See [CI coverage](ci.md#dependency-review-on-prs-2528).
