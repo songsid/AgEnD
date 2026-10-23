@@ -5,10 +5,12 @@
  * A fleet that fails to start has no adapter to post with, and a child left behind dies with it (systemd's KillMode=mixed
  * kills the unit's leftovers). So `fleet start` itself sends it, from start-attempt.ts — before the rest of AgEnD loads —
  * on the third attempt of a version within ATTEMPT_WINDOW_MS with no start completed (systemd gives up after 4 quick
- * starts, launchd retries every 10 s): it claims the notice in fleet-start-attempts.json (`chatNotified`, once per
- * version, never again in that crash loop, whatever came of it), then runs this module as a child and waits for it, at
- * most CHAT_NOTICE_TIMEOUT_MS (notifyChatOnce in start-failure.ts). The child posts one message with the platform's REST API — General's topic, else a DM to
- * the channel's first admin — and the attempt carries on starting.
+ * starts, launchd retries every 10 s): it claims the notice for that version with an O_EXCL file
+ * (`fleet-start-chat-notified-<version>`: once per version, whatever came of it, and no writer of the attempts record
+ * can undo it), then runs this module as a child and waits for it, at most CHAT_NOTICE_TIMEOUT_MS (notifyChatOnce in
+ * start-failure.ts). A `fleet start` the lock will refuse (another live fleet) is not an attempt at all (start-attempt.ts).
+ * The child posts one message with the platform's REST API — General's topic, else a DM to the channel's first admin —
+ * and the attempt carries on starting.
  *
  * Best effort: a fleet.yaml, .env or package too broken to read, or no network, means no message. Never a token in a
  * log or on stderr: only the platform and an HTTP status.

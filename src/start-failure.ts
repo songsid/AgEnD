@@ -39,8 +39,8 @@ const KEEP_ATTEMPTS = 20;
 const KEEP_HISTORY = 5;
 
 export interface StartedRecord { version: string; at: string; pid: number; history: string[] }
-/** `notified`: the macOS notification went; `chatNotified` (#2490): the chat notice was claimed. Both once per version. */
-export interface AttemptsRecord { version: string; attempts: string[]; notified?: boolean; chatNotified?: boolean }
+/** `notified`: the macOS notification went (once per version). The chat notice's claim is a file of its own (#2490). */
+export interface AttemptsRecord { version: string; attempts: string[]; notified?: boolean }
 
 function readJson<T>(file: string): T | null {
   try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return null; }
@@ -69,7 +69,6 @@ export function recordStartAttempt(home: string, version: string, now: number): 
     version,
     attempts: [...(same ? prior!.attempts : []), new Date(now).toISOString()].slice(-KEEP_ATTEMPTS),
     ...(same && prior!.notified ? { notified: true } : {}),
-    ...(same && prior!.chatNotified ? { chatNotified: true } : {}),
   };
   writeJson(join(home, ATTEMPTS_FILE), record);
   return record;
@@ -281,30 +280,32 @@ export const CHAT_NOTICE_TIMEOUT_MS = 10_000;
 
 /** Is this attempt the one that sends the chat notice? This version's third start in the window, none completed. */
 export function chatNoticeDue(record: AttemptsRecord, started: StartedRecord | null, now: number): boolean {
-  if (record.chatNotified || started?.version === record.version) return false;
+  if (started?.version === record.version) return false;
   const recent = record.attempts.filter(a => { const at = Date.parse(a); return Number.isFinite(at) && at <= now && now - at <= ATTEMPT_WINDOW_MS; });
   return recent.length >= LOOP_ATTEMPTS;
 }
 
+/** The chat notice's claim for a version: created once, O_EXCL — no rewrite of the attempts record can undo it. */
+export function chatClaimFile(home: string, version: string): string | null {
+  return /^[0-9A-Za-z.+-]{1,64}$/.test(version) ? join(home, `${CHAT_CLAIM_PREFIX}${version}`) : null;
+}
+const CHAT_CLAIM_PREFIX = "fleet-start-chat-notified-";
+
 /**
- * Claim the notice for this version (re-read: another writer — the macOS notification — may have marked the record).
- * False when it is already claimed or the record moved to another version.
+ * Claim the chat notice for this version, atomically across processes (an O_EXCL create): true for exactly one caller,
+ * ever. The other versions' claims go (best effort): a later version gets its own notice, and a reinstalled one again.
  */
 export function claimChatNotice(home: string, version: string): boolean {
-  const current = readAttempts(home);
-  if (!current || current.version !== version || current.chatNotified) return false;
-  writeJson(join(home, ATTEMPTS_FILE), { ...current, chatNotified: true });
-  return true;
-}
-
-/** fleet.pid names a live process other than this one (a crashed attempt's pid is dead). */
-function anotherFleetRuns(home: string): boolean {
+  const file = chatClaimFile(home, version);
+  if (!file) return false;
+  try { writeFileSync(file, new Date().toISOString() + "\n", { flag: "wx", mode: 0o600 }); }
+  catch { return false; }
   try {
-    const pid = Number(readFileSync(join(home, "fleet.pid"), "utf8").trim());
-    if (!Number.isSafeInteger(pid) || pid <= 1 || pid === process.pid) return false;
-    process.kill(pid, 0);
-    return true;
-  } catch (err) { return (err as NodeJS.ErrnoException)?.code === "EPERM"; }
+    for (const name of readdirSync(home)) {
+      if (name.startsWith(CHAT_CLAIM_PREFIX) && join(home, name) !== file) { try { unlinkSync(join(home, name)); } catch { /* gone */ } }
+    }
+  } catch { /* the claim stands */ }
+  return true;
 }
 
 export type RunChild = (cmd: string, args: string[], opts: { timeout: number }) => void;
@@ -321,7 +322,6 @@ export function notifyChatOnce(home: string, version: string, now: number, run: 
   try {
     const record = readAttempts(home);
     if (!record || record.version !== version || !chatNoticeDue(record, readStarted(home), now)) return false;
-    if (anotherFleetRuns(home)) return false;   // a `fleet start` refused beside a running fleet is no failed start
     if (!claimChatNotice(home, version)) return false;
     run(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "start-failure-chat.js"), home], { timeout: CHAT_NOTICE_TIMEOUT_MS });
     return true;

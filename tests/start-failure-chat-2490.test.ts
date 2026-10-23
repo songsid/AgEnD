@@ -2,13 +2,16 @@
  * #2490: #2481's "installed, but the fleet fails to start" notice in chat — General's topic, else the admin's DM — sent
  * by `fleet start` itself (start-attempt.ts) on the third attempt of a version within the window, once per version.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  ATTEMPTS_FILE, STARTED_FILE, chatNoticeDue, claimChatNotice, notifyChatOnce, notifyOnce, readAttempts, recordStartAttempt,
+  ATTEMPTS_FILE, STARTED_FILE, chatClaimFile, chatNoticeDue, claimChatNotice, notifyChatOnce, notifyOnce, readAttempts, recordStartAttempt,
 } from "../src/start-failure.js";
+import { recordFleetStartAttempt } from "../src/start-attempt.js";
+import { fleetLockHeldByAnother } from "../src/fleet-lock.js";
 import { chatNoticeTarget, chatNoticeText, postChatNotice, type ChatTarget } from "../src/start-failure-chat.js";
 import { setLocale } from "../src/locale.js";
 
@@ -26,10 +29,9 @@ describe("#2490 when the chat notice is due", () => {
     expect(chatNoticeDue(rec([ago(20), ago(10)]), null, NOW)).toBe(false);
     expect(chatNoticeDue(rec([ago(20), ago(10), ago(0)]), null, NOW)).toBe(true);
   });
-  it("never for a version that started here, once claimed, or for attempts outside the window", () => {
+  it("never for a version that started here, or for attempts outside the window", () => {
     const three = [ago(20), ago(10), ago(0)];
     expect(chatNoticeDue(rec(three), { version: "2.3.1", at: ago(5), pid: 1, history: ["2.3.1"] }, NOW)).toBe(false);
-    expect(chatNoticeDue(rec(three, { chatNotified: true }), null, NOW)).toBe(false);
     expect(chatNoticeDue(rec([ago(1300), ago(700), ago(0)]), null, NOW)).toBe(false);    // two of them older than 10 min
     expect(chatNoticeDue(rec(three), { version: "2.2.6", at: ago(9000), pid: 1, history: ["2.2.6"] }, NOW)).toBe(true);
   });
@@ -42,13 +44,13 @@ describe("#2490 when the chat notice is due", () => {
 describe("#2490 once per version, from start-attempt", () => {
   const seed = (home: string, attempts: string[], extra: Record<string, unknown> = {}) =>
     writeFileSync(join(home, ATTEMPTS_FILE), JSON.stringify(rec(attempts, extra)));
+  const free = { lockHeld: () => false, notify: () => false };
 
   it("runs the notifier once, claimed first; every later attempt of that crash loop does nothing", () => {
     const home = scratch();
     const run = vi.fn();
     for (let i = 0; i < 6; i++) {
-      recordStartAttempt(home, "2.3.1", NOW - (5 - i) * 10_000);
-      notifyChatOnce(home, "2.3.1", NOW - (5 - i) * 10_000, run);
+      recordFleetStartAttempt(home, "2.3.1", NOW - (5 - i) * 10_000, { ...free, notifyChat: (h, v, n) => notifyChatOnce(h, v, n, run) });
     }
     expect(run).toHaveBeenCalledTimes(1);
     const [cmd, args, opts] = run.mock.calls[0]!;
@@ -56,47 +58,105 @@ describe("#2490 once per version, from start-attempt", () => {
     expect(args[0]).toMatch(/start-failure-chat\.js$/);
     expect(args[1]).toBe(home);
     expect(opts).toEqual({ timeout: 10_000 });
-    expect(readAttempts(home)).toMatchObject({ version: "2.3.1", chatNotified: true });
+    expect(existsSync(chatClaimFile(home, "2.3.1")!)).toBe(true);
   });
 
-  it("a newer version gets its own notice", () => {
+  it("a newer version gets its own notice (and the older claim goes)", () => {
     const home = scratch();
     const run = vi.fn();
-    seed(home, [ago(20), ago(10), ago(0)], { chatNotified: true });
+    seed(home, [ago(20), ago(10), ago(0)]);
+    expect(notifyChatOnce(home, "2.3.1", NOW, run)).toBe(true);
     for (let i = 0; i < 3; i++) { recordStartAttempt(home, "2.3.2", NOW + i); notifyChatOnce(home, "2.3.2", NOW + i, run); }
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(existsSync(chatClaimFile(home, "2.3.1")!)).toBe(false);
+  });
+
+  it("Prism r1: a stale writer of the attempts record (the macOS notification's) cannot undo the claim", () => {
+    const home = scratch();
+    seed(home, [ago(20), ago(10), ago(0)]);
+    const captured = readAttempts(home)!;                       // what notifyOnce was handed, before the chat claim
+    const run = vi.fn();
+    expect(notifyChatOnce(home, "2.3.1", NOW, run)).toBe(true);
+    expect(notifyOnce(home, captured, "darwin", () => ({}))).toBe(true);   // writes its stale copy of the record
+    expect(readAttempts(home)).toMatchObject({ notified: true });
+    recordStartAttempt(home, "2.3.1", NOW + 1);
+    expect(notifyChatOnce(home, "2.3.1", NOW + 1, run)).toBe(false);
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it("the claim keeps the macOS notification's mark, and the attempts carry the chat mark forward", () => {
+  it("Prism r1: concurrent claimants in separate processes — exactly one wins", async () => {
     const home = scratch();
-    seed(home, [ago(20), ago(10), ago(0)]);
-    expect(notifyOnce(home, readAttempts(home)!, "darwin", () => ({}))).toBe(true);
-    expect(notifyChatOnce(home, "2.3.1", NOW, vi.fn())).toBe(true);
-    expect(readAttempts(home)).toMatchObject({ notified: true, chatNotified: true });
-    recordStartAttempt(home, "2.3.1", NOW + 1);
-    expect(readAttempts(home)).toMatchObject({ notified: true, chatNotified: true });
-    expect(claimChatNotice(home, "2.3.1")).toBe(false);
+    const go = join(home, "go");
+    // Each child loads the module, says "ready", then waits (sleeping, not spinning) for the go file and claims at once.
+    const script = `import { existsSync } from "node:fs"; import { claimChatNotice } from ${JSON.stringify(join(process.cwd(), "src", "start-failure.ts"))};
+      process.stdout.write("ready;"); const nap = new Int32Array(new SharedArrayBuffer(4));
+      while (!existsSync(process.argv[2])) Atomics.wait(nap, 0, 0, 2);
+      process.stdout.write(claimChatNotice(process.argv[1], "2.3.1") ? "won" : "lost");`;
+    const kids = Array.from({ length: 4 }, () => spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, home, go], { stdio: ["ignore", "pipe", "inherit"] }));
+    const outs = kids.map(() => "");
+    const ready = kids.map((k, i) => new Promise<void>(resolve => k.stdout!.on("data", d => { outs[i] += d; if (outs[i].includes("ready;")) resolve(); })));
+    const closed = kids.map(k => new Promise<void>(resolve => k.on("close", () => resolve())));
+    await Promise.all(ready);
+    writeFileSync(go, "");
+    await Promise.all(closed);
+    expect(outs.map(o => o.replace("ready;", "")).sort()).toEqual(["lost", "lost", "lost", "won"]);
+  }, 30_000);
+
+  it("Prism r1: a `fleet start` refused beside a live fleet is not recorded — the next genuine start is attempt one, no notice", () => {
+    const home = scratch();
+    const run = vi.fn();
+    const chat = (h: string, v: string, n: number) => notifyChatOnce(h, v, n, run);
+    expect(recordFleetStartAttempt(home, "2.3.1", NOW - 20_000, { lockHeld: () => true, notify: () => false, notifyChat: chat })).toBe(false);
+    expect(recordFleetStartAttempt(home, "2.3.1", NOW - 10_000, { lockHeld: () => true, notify: () => false, notifyChat: chat })).toBe(false);
+    expect(readAttempts(home)).toBeNull();
+    expect(recordFleetStartAttempt(home, "2.3.1", NOW, { ...free, notifyChat: chat })).toBe(true);
+    expect(readAttempts(home)!.attempts).toHaveLength(1);
+    expect(run).not.toHaveBeenCalled();
+    // control: two more genuine failed starts → the third sends, once
+    recordFleetStartAttempt(home, "2.3.1", NOW + 10_000, { ...free, notifyChat: chat });
+    expect(run).not.toHaveBeenCalled();
+    recordFleetStartAttempt(home, "2.3.1", NOW + 20_000, { ...free, notifyChat: chat });
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it("not when the version has started here, or a live fleet other than this process holds fleet.pid", () => {
+  it("not when the version has started here", () => {
     const home = scratch();
     seed(home, [ago(20), ago(10), ago(0)]);
     writeFileSync(join(home, STARTED_FILE), JSON.stringify({ version: "2.3.1", at: ago(1), pid: 1, history: ["2.3.1"] }));
     expect(notifyChatOnce(home, "2.3.1", NOW, vi.fn())).toBe(false);
-
-    const home2 = scratch();
-    seed(home2, [ago(20), ago(10), ago(0)]);
-    writeFileSync(join(home2, "fleet.pid"), String(process.ppid));   // alive, not us: a `fleet start` refused beside it
-    expect(notifyChatOnce(home2, "2.3.1", NOW, vi.fn())).toBe(false);
-    writeFileSync(join(home2, "fleet.pid"), String(process.pid));    // this very attempt
-    expect(notifyChatOnce(home2, "2.3.1", NOW, vi.fn())).toBe(true);
   });
 
-  it("never throws, even when the notifier cannot run", () => {
+  it("never throws, even when the notifier cannot run; the claim stands (no retry storm)", () => {
     const home = scratch();
     seed(home, [ago(20), ago(10), ago(0)]);
     expect(notifyChatOnce(home, "2.3.1", NOW, () => { throw new Error("spawn failed"); })).toBe(false);
-    expect(readAttempts(home)).toMatchObject({ chatNotified: true }); // claimed: no retry storm
+    expect(claimChatNotice(home, "2.3.1")).toBe(false);
+  });
+
+  it("a version that cannot be a file name is never claimed", () => {
+    expect(chatClaimFile("/h", "2.3.1-beta.2")).toBe("/h/fleet-start-chat-notified-2.3.1-beta.2");
+    expect(chatClaimFile("/h", "../x")).toBeNull();
+    expect(claimChatNotice(scratch(), "a/b")).toBe(false);
+  });
+});
+
+describe("#2490 r1: whether the lock would refuse this `fleet start` (fleetLockHeldByAnother, as acquireFleetLock reads it)", () => {
+  const lock = (role?: string, pid = 4242) => { const h = scratch(); writeFileSync(join(h, "fleet.lock"), JSON.stringify({ pid, nonce: "n", createdAt: "x", ...(role ? { role } : {}) })); return h; };
+  const alive = () => true;
+  it.each([
+    ["a live fleet", undefined, "node /x/dist/cli.js fleet start", true],
+    ["a live owner whose command line cannot be read", undefined, "", true],
+    ["a reused pid (another program)", undefined, "/usr/bin/vim notes", false],
+    ["a live setup host", "setup-host", "node /x/dist/cli.js setup --host", true],
+  ] as const)("%s → %s", (_n, role, cmd, held) => {
+    expect(fleetLockHeldByAnother(lock(role), { isProcessAlive: alive, readCommandLine: () => cmd, pid: 1 })).toBe(held);
+  });
+  it("no lock, an unreadable record, a dead owner, or this very process: not held", () => {
+    expect(fleetLockHeldByAnother(scratch(), { isProcessAlive: alive, readCommandLine: () => "agend fleet start" })).toBe(false);
+    const bad = scratch(); writeFileSync(join(bad, "fleet.lock"), "{not json");
+    expect(fleetLockHeldByAnother(bad, { isProcessAlive: alive, readCommandLine: () => "agend fleet start" })).toBe(false);
+    expect(fleetLockHeldByAnother(lock(), { isProcessAlive: () => false, readCommandLine: () => "agend fleet start" })).toBe(false);
+    expect(fleetLockHeldByAnother(lock(undefined, 777), { pid: 777, isProcessAlive: alive, readCommandLine: () => "agend fleet start" })).toBe(false);
   });
 });
 
