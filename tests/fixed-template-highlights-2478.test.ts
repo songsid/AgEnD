@@ -23,6 +23,9 @@ describe("#2478: the fixed template — the straight bar and a flat background, 
     [".search-ctx-line", [".search-ctx-line.here"]],
     [".tw-line", [".tw-line:hover", ".tw-line:focus-visible"]],
     [".u-crow", [".u-crow:focus-visible"]],
+    // #2347: Settings' section nav and its search results.
+    [".p-settings .s-nav .seg-item", [".p-settings .s-nav .seg-item.active"]],
+    [".s-find-item", [".s-find-item.on"]],
   ];
   it.each(ROWS)("%s: square; its states host and draw the shared bar", (host, states) => {
     expect([null, "0"], `${host} radius: ${decl(host, "border-radius")}`).toContain(decl(host, "border-radius"));
@@ -44,6 +47,13 @@ describe("#2478: the fixed template — the straight bar and a flat background, 
     expect([decl(".u-crow:focus-visible", "outline"), decl(".u-crow:focus-visible", "box-shadow"), decl(".u-crow:focus-visible", "--lbar-left"), decl(".u-crow:focus-visible", "--lbar-inset")])
       .toEqual(["none", null, "var(--s-1)", "6px"]);
     expect([decl(".u-cgroup", "overflow"), decl(".u-cgroup", "border-radius")]).toEqual(["hidden", "var(--r-md)"]);
+  });
+  it("#2347: Settings' sections are square at every width (the wide column's 8 px radius too)", () => {
+    const wide = css.slice(css.indexOf("@media (min-width: 1100px)"));
+    expect(wide).toMatch(/\.p-settings > \.s-nav \.seg-item\s*\{\s*border-radius:\s*0;/);
+    // Fable r1: the narrow (phone) rule itself — without it the base `.seg-item` radius (r-full) is the pill again.
+    expect(decl(".p-settings .s-nav .seg-item", "border-radius")).toBe("0");
+    expect(decl(".p-settings .s-nav .seg-item.active", "background")).toBe("var(--surface-2)");
   });
   it("search's selected row: a flat background, no inset accent edge (it curved into the corners)", () => {
     expect([decl(".search-row.on", "background"), decl(".search-row.on", "box-shadow"), decl(".search-ctx-line.here", "box-shadow")]).toEqual(["var(--surface-2)", null, null]);
