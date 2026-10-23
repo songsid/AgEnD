@@ -13,7 +13,12 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 import { agyPoolMetrics, agyUsageBuckets } from "../src/usage/providers.js";
 
-const real = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/agy-quota-2026-10-20/${name}`, import.meta.url), "utf8"));
+// #2519 review: the recording's reset times are fixed dates. Every time in it is moved as if "now" were 2026-10-21 00:00Z,
+// so the scenario never ages: Gemini's session reset (10-20 13:11Z) is past, every other reset (10-23 … 10-27) ahead.
+const SCENARIO_NOW = Date.parse("2026-10-21T00:00:00Z");
+const rebase = (text: string) => { const shift = Date.now() - SCENARIO_NOW;
+  return text.replace(/"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)"/g, (_m, iso: string) => JSON.stringify(new Date(Date.parse(iso) + shift).toISOString())); };
+const real = (name: string) => JSON.parse(rebase(readFileSync(new URL(`./fixtures/agy-quota-2026-10-20/${name}`, import.meta.url), "utf8")));
 const H = 3_600_000;
 const metrics = () => agyPoolMetrics(agyUsageBuckets(real("summary-daily-cli-ua.json"), null as never));
 

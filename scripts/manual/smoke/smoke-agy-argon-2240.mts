@@ -27,7 +27,11 @@ fm.fleetConfig.teams = {};
 fm.getInstanceStatus = () => "running";
 
 const H = 3_600_000;
-const summary = JSON.parse(readFileSync(join(REPO, "tests/fixtures/agy-quota-2026-10-20/summary-daily-cli-ua.json"), "utf8"));
+// #2519 review: the recording's reset times are fixed dates; every time in it is moved as if "now" were 2026-10-21 00:00Z
+// (Gemini's session reset past, every other ahead), so the scenario never ages.
+const SCENARIO_NOW = Date.parse("2026-10-21T00:00:00Z");
+const summary = JSON.parse(readFileSync(join(REPO, "tests/fixtures/agy-quota-2026-10-20/summary-daily-cli-ua.json"), "utf8")
+  .replace(/"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)"/g, (_m, iso: string) => JSON.stringify(new Date(Date.parse(iso) + Date.now() - SCENARIO_NOW).toISOString())));
 const soon = (h: number) => new Date(Date.now() + h * H).toISOString();
 const pct = (key: string, label: string, used: number, windowMs: number, resetH: number) => ({ type: "percent", label, labelI18n: { key }, used, windowMs, resetsAt: soon(resetH) });
 setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [
