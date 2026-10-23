@@ -34,6 +34,30 @@ Send `/update` in General.
 
 This works from 2.2.6 on root and WSL-style hosts too: the extra step above is only for `agend update` run from a shell on the host.
 
+### On a Mac: check that the fleet came up (#2481)
+
+From 2.2.x, the update is run by 2.2.x's own updater. On a Mac (launchd), that updater can report success even when 2.3 does not start, and it does not roll back. On Linux, it does roll back.
+
+So after updating a Mac, check that the fleet is running: `agend ls` lists your fleet and its instances, and the dashboard opens. If it does not come up, go back to 2.2.6 and restart:
+
+```bash
+npm i -g @songsid/agend@2.2.6
+agend restart
+```
+
+Then please report it in a GitHub issue. Once a Mac is on 2.3, later updates check that the new fleet is really running, and roll back if it is not.
+
+You do not have to find this out yourself: 2.3 checks it. When the installed version's fleet keeps failing to start, every `agend` command (`agend ls`, `agend status`, …) prints it first, and `agend doctor` shows it as a failed check with the last lines of `~/.agend/fleet.log`, which hold the error:
+
+```
+⚠ AgEnD v2.3.0 is installed, but the fleet fails to start (launchd: exit 1, started 6 times).
+  To go back to v2.2.6: npm install -g @songsid/agend@2.2.6 && agend restart
+  The updater kept a copy of v2.2.6: ~/.npm-global/.agend-rollback/2.2.6-…/agend (nothing is restored automatically).
+  The error is at the end of ~/.agend/fleet.log. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new
+```
+
+On a Mac there is also one notification. The version to go back to is the last one that ran on this host, or the one whose copy 2.2.x's updater kept. Nothing is restored for you. A normal slow start, a fresh install still starting, and a fleet you stopped yourself are never reported.
+
 ### If something gets in the way
 
 - **Another install is running.** If another AgEnD install or update holds the install lock, the new one stops before changing anything and says why. Let the other one finish, then run the update again.
@@ -48,7 +72,7 @@ If the new service does not come up, the update tries to put the previous versio
 
 It restores only what it can prove was there before. When it cannot, it keeps the recovery copies and prints what to check. Either way, the update ends with an error, and its message says whether the previous version is running again. If the recovery was incomplete, follow the steps it prints.
 
-On macOS (launchd), an update counts as done only once the new fleet is actually running.
+From 2.3 on, an update on macOS (launchd) counts as done only once the new fleet is actually running. The hop from 2.2.x on a Mac is the exception: see [On a Mac](#on-a-mac-check-that-the-fleet-came-up-2481).
 
 ## 4. What changes on the first start of 2.3
 

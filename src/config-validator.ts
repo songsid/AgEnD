@@ -436,8 +436,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (config.web.search !== undefined) {
       if (!isObj(config.web.search)) err("web.search", "must be a mapping");
       else {
-        for (const k of Object.keys(config.web.search)) if (k !== "enabled" && k !== "retention_days") warn(`web.search.${k}`, "unknown key (known: enabled, retention_days) — ignored");
+        for (const k of Object.keys(config.web.search)) if (k !== "enabled" && k !== "retention_days" && k !== "public_link") warn(`web.search.${k}`, "unknown key (known: enabled, retention_days, public_link) — ignored");
         if (config.web.search.enabled !== undefined && typeof config.web.search.enabled !== "boolean") err("web.search.enabled", "must be a boolean");
+        if (config.web.search.public_link !== undefined && typeof config.web.search.public_link !== "boolean") err("web.search.public_link", "must be a boolean");
         const days = config.web.search.retention_days;
         if (days !== undefined && (typeof days !== "number" || !Number.isInteger(days) || days < 1 || days > 3650)) err("web.search.retention_days", "must be a whole number of days (1-3650)");
       }

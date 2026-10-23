@@ -274,6 +274,7 @@ import { presentationState, interactionSummary, sameInteractionOwner } from "./i
 import type { WorkingStateObservation, WorkingStateReason, WorkingStateReference } from "./working-state-journal.js";
 import { assertNoSessionOomStop, readSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry, SessionOomStoppedError, sessionOomStopHint, type SessionOomRetry } from "./session-oom-stop.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
+import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
@@ -1095,7 +1096,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ]);
   logger: Logger = createLogger("info");
   /** Report each bundled skill collision once per fleet, across instance starts. */
-  private skippedBundledSkills = new Set<string>();
+  /** #2482: per skills directory, the skipped set (names + their content) last said — this process's view of the record. */
+  private skippedSkillsSaid = new Map<string, string>();
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
   sessionRegistry: Map<string, string> = new Map();
@@ -4165,7 +4167,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
     if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     if (!idle) {
-      this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
+      // #2482: a busy target is the normal case (its CLI queues the message): INFO; a WARN only for a likely anomaly.
+      const log = idleGateTimeoutLog(instanceName, timeoutMs, this.instanceStateCache.get(instanceName), Date.now());
+      this.logger[log.level](log.fields, log.message);
     }
     const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent);
     if (!sent) return false;
@@ -5345,7 +5349,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     if (this.lifecycle.isPaused(name)) {
-      this.logger.info({ name }, "Persisted paused instance — skipping startup");
+      this.logger.debug({ name }, "Persisted paused instance — skipping startup");   // #2482: every start and reload
       return;
     }
     if (this.lifecycle.daemons.has(name)) {
@@ -7323,7 +7327,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startUpdateProgressMonitor(initialAdapter?: ChannelAdapter): void {
     if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
     const tick = async () => {
-      if (this.updateProgressEditRunning) return;
+      if (this.updateProgressEditRunning || this.shuttingDown) return;
       const marker = readUpdateProgress(this.dataDir);
       if (!marker) {
         if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
@@ -7366,6 +7370,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
       }
+      // #2476: from "starting" onward RestartProgress in the NEW process owns this
+      // message (resume → N/M → ✅ finish). A late CLI-stage edit of "installed" is
+      // what made "✅ 安裝完成" land after "啟動中 N/M". Failure still edits here.
+      if (marker.progress.stage === "starting") return;
       const target = marker.progress.target;
       const adapter = this.adapters.get(target.adapterId) ?? (initialAdapter?.id === target.adapterId ? initialAdapter : undefined);
       if (!adapter) return;
@@ -8063,6 +8071,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // health server — so `systemctl start` returned success while the fleet was
     // still deaf: no path existed for a user message to arrive.
     sdNotify("READY=1");
+    // #2481: this version runs — the CLI's start-failure banner stops, and this is the version to go back to later.
+    try {
+      const { ownPackage, recordStarted } = await import("./start-failure.js");
+      const version = ownPackage().version;
+      if (version) recordStarted(this.dataDir, version, process.pid, Date.now());
+    } catch (err) { this.logger.debug({ err }, "fleet-started record not written"); }
     const health = this.getFleetHealth();
     if (health.status !== "ok") {
       this.logger.warn({ health }, "Fleet started with problems — see /health");
@@ -15774,7 +15788,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
 
       this.persistCancelButtons();
-      this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
+      this.logger.debug({ instanceName, messageId: sent.messageId }, "Cancel button sent");   // #2482: per-turn bookkeeping
 
       // Retirement is normally edge-triggered, but the edge (or an explicit
       // reply/cancel clear) may have happened while notifyAlert was in flight.
@@ -16064,7 +16078,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.deleteButtonMessage(entry)
       .then(() => {
         this.discardButton(entry);
-        this.logger.info(
+        this.logger.debug(   // #2482: per-turn bookkeeping
           { instanceName: entry.instanceName, messageId: entry.messageId, historyPreserved: Boolean(entry.toolProgress) },
           "Cancel button retired",
         );
@@ -17625,6 +17639,39 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * migration exception is the pre-manifest Kiro General layout explicitly
    * selected by adoptLegacyUnmanaged.
    */
+  /**
+   * #2482: the user's own skills that shadow bundled ones, said once per directory and change — not once per name on
+   * every start (11 lines a start on the host). The record (`skipped-skills.json` in the AgEnD home) keeps what was said
+   * across restarts; a new name or an edited SKILL.md is said again.
+   */
+  private reportSkippedSkills(destSkills: string, names: string[]): void {
+    const signature = names.map(name => {
+      let content = "";
+      try { content = readFileSync(join(destSkills, name, "SKILL.md"), "utf-8"); } catch { /* gone: its name alone */ }
+      return `${name}:${createHash("sha256").update(content).digest("hex").slice(0, 16)}`;
+    }).join(",");
+    if (this.skippedSkillsSaid.get(destSkills) === signature) return;
+    this.skippedSkillsSaid.set(destSkills, signature);
+    const path = join(this.dataDir, "skipped-skills.json");
+    // Only a log's memory: whatever is in the file (missing, corrupt, any other shape) never stands in the sync's way
+    // (#2493 review) — a record that cannot be read is no record, and the warning is said.
+    const record: Record<string, string> = Object.create(null) as Record<string, string>;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed)) if (typeof value === "string") record[key] = value;
+      }
+    } catch { /* none yet, or unreadable */ }
+    if (Object.hasOwn(record, destSkills) && record[destSkills] === signature) {
+      this.logger.debug({ skills: names, destSkills }, "Skipping bundled skills — unchanged since it was last said");
+      return;
+    }
+    record[destSkills] = signature;
+    try { writeFileSync(path, JSON.stringify(record) + "\n"); } catch { /* said this time; said again next start */ }
+    this.logger.warn({ skills: names, destSkills },
+      "Skipping bundled skills — skills of these names exist but were not published by AgEnD");
+  }
+
   private syncManagedSkills(
     destSkills: string,
     srcSkills: string,
@@ -17680,18 +17727,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return role === "general" || roles.includes(role);
     });
     const managed: string[] = [];
+    const skipped: string[] = [];
 
     for (const name of eligible) {
       const destDir = join(destSkills, name);
       const dest = join(destDir, "SKILL.md");
       const isOurs = previouslyManaged.includes(name) || !existsSync(destDir);
       if (!isOurs) {
-        // The user's skill still wins on every sync; only the warning is deduped.
-        if (!this.skippedBundledSkills.has(name)) {
-          this.skippedBundledSkills.add(name);
-          this.logger.warn({ skill: name, destSkills },
-            "Skipping bundled skill — a skill of this name exists but was not published by AgEnD");
-        }
+        // The user's skill still wins on every sync; only the warning is deduped (#2482: one line per directory, and
+        // only when what is skipped there changed since it was last said — across restarts too).
+        skipped.push(name);
         continue;
       }
       managed.push(name);
@@ -17701,6 +17746,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       mkdirSync(destDir, { recursive: true });
       writeFileSync(dest, newContent);
     }
+
+    if (skipped.length) this.reportSkippedSkills(destSkills, skipped);
 
     // Remove managed skills that are no longer bundled OR no longer eligible
     // for this role. This makes a shared → general-only metadata change take
@@ -20177,6 +20224,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    if (this.updateProgressTimer) {
+      clearInterval(this.updateProgressTimer);
+      this.updateProgressTimer = null;
+    }
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
@@ -20630,8 +20681,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // so an old/new diff alone can miss the live daemon's stale value.
     for (const [name, config] of Object.entries(newInstances)) {
       if (!this.daemons.has(name)) {
-        // New instance — startInstance already calls connectIpcToInstance
-        this.logger.info({ name }, "New instance in config — starting");
+        // New instance — startInstance already calls connectIpcToInstance. #2482: a paused one is not started (startInstance
+        // returns at its pause); say so, quietly, instead of "starting" on every reload.
+        if (this.lifecycle.isPaused(name)) this.logger.debug({ name }, "Paused instance in config — not started");
+        else this.logger.info({ name }, "New instance in config — starting");
         observe?.(name, "restart", "running");
         await this.startInstanceUnattended(name, config, topicMode, "new instance");
         observe?.(name, "restart", "done");

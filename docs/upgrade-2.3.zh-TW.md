@@ -34,6 +34,30 @@ XDG_RUNTIME_DIR=/run/user/$(id -u) agend update
 
 從 2.2.6 升級時，root 或 WSL 類主機也可以直接這樣做：上面那個額外步驟，只在主機的 shell 裡執行 `agend update` 時才需要。
 
+### Mac：確認 fleet 有起來（#2481）
+
+從 2.2.x 升級時，執行更新的是 2.2.x 自己的更新程式。在 Mac（launchd）上，即使 2.3 沒有起來，它也可能回報成功，而且不會自動退回；Linux 則會退回。
+
+所以 Mac 更新完後，請確認 fleet 在跑：`agend ls` 列得出 fleet 和它的 instance，儀表板也打得開。如果沒有起來，先退回 2.2.6 再重新啟動：
+
+```bash
+npm i -g @songsid/agend@2.2.6
+agend restart
+```
+
+然後請到 GitHub 開 issue 回報。Mac 升上 2.3 之後，之後的更新會自己確認新的 fleet 真的在跑，沒有的話會自動退回。
+
+你不必自己發現：2.3 會檢查。當已安裝版本的 fleet 一直起不來時，每個 `agend` 指令（`agend ls`、`agend status`……）都會先印出來，`agend doctor` 也會把它列為失敗的檢查，並附上 `~/.agend/fleet.log` 的最後幾行（錯誤訊息在那裡）：
+
+```
+⚠ AgEnD v2.3.0 已安裝，但 fleet 無法啟動（launchd: exit 1, started 6 times）。
+  回到 v2.2.6：npm install -g @songsid/agend@2.2.6 && agend restart
+  更新程式保留了 v2.2.6 的副本：~/.npm-global/.agend-rollback/2.2.6-…/agend（不會自動還原）。
+  錯誤訊息在 ~/.agend/fleet.log 的最後幾行。請回報（agend doctor 會列出要附上的內容）：https://github.com/songsid/AgEnD/issues/new
+```
+
+在 Mac 上還會跳出一次通知。要退回的版本，是這台主機上最後一次成功執行的版本，或 2.2.x 更新程式保留了副本的那個版本。不會替你自動還原。正常但較慢的啟動、剛安裝還在啟動中，以及你自己停掉的 fleet，都不會被回報。
+
 ### 遇到阻礙時
 
 - **另一個安裝正在進行**：另一個 AgEnD 安裝或更新還占著安裝鎖時，新的這個會在改動任何東西之前停下並說明原因。等前一個完成，再更新一次。
@@ -48,7 +72,7 @@ XDG_RUNTIME_DIR=/run/user/$(id -u) agend update
 
 它只會還原能確認原本存在的東西；無法確認時，會保留復原用的副本，並印出要檢查什麼。不論哪一種，更新都會以錯誤結束，訊息會說明前一版是否已重新在跑。如果復原不完整，照它印出的步驟處理。
 
-macOS（launchd）要等新的 fleet 真的跑起來，才算更新完成。
+從 2.3 起，macOS（launchd）要等新的 fleet 真的跑起來，才算更新完成。從 2.2.x 升級的 Mac 是例外，請看上面的「Mac：確認 fleet 有起來」。
 
 ## 4. 第一次啟動 2.3 時會改變的事
 

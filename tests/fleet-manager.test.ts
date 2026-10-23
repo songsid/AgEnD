@@ -957,6 +957,22 @@ describe("FleetManager", () => {
     await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(2));
   });
 
+  it("#2482: on reload a paused instance is not reported as starting; a new one is (startInstance stubbed)", async () => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, ["instances:", "  paused-one:", "    working_directory: /tmp/p", "  fresh-one:", "    working_directory: /tmp/f", ""].join("\n"));
+    const fm = new FleetManager(tmpDir);
+    fm.loadConfig(configPath);
+    vi.spyOn(fm.lifecycle, "isPaused").mockImplementation((name: string) => name === "paused-one");
+    vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
+    const info = vi.spyOn(fm.logger, "info").mockImplementation(() => {});
+    const debug = vi.spyOn(fm.logger, "debug").mockImplementation(() => {});
+    await (fm as any).reconcileInstances();
+    const said = (spy: typeof info, msg: string) => spy.mock.calls.filter(c => c[1] === msg).map(c => (c[0] as { name: string }).name);
+    expect(said(info, "New instance in config — starting")).toEqual(["fresh-one"]);
+    expect(said(debug, "Paused instance in config — not started")).toEqual(["paused-one"]);
+    expect(info.mock.calls.some(c => (c[0] as { name?: string })?.name === "paused-one")).toBe(false);
+  });
+
   it("sends hot config over IPC without stopping the running instance", async () => {
     const configPath = join(tmpDir, "fleet.yaml");
     writeFileSync(configPath, [

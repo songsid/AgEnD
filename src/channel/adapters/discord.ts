@@ -269,6 +269,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private readonly staleThresholdMs: number;
   private readonly reconnectBaseDelayMs: number;
   private desiredRunning = false;
+  /** #2482: edits refused since the last stop (only the first is logged). */
+  private stoppedEditFailures = 0;
   private lifecycleEpoch = 0;
   private clientGeneration = 0;
   private reconnectPromise: Promise<void> | null = null;
@@ -1392,6 +1394,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async start(): Promise<void> {
     if (this.desiredRunning && this.client.isReady()) return;
     this.desiredRunning = true;
+    this.stoppedEditFailures = 0;
     const epoch = ++this.lifecycleEpoch;
     this.healthStatus = "starting";
     this.queue.start();
@@ -1627,11 +1630,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // copy. Still reject: callers such as terminal update progress explicitly
       // own the policy decision to prefer a possible duplicate over a permanent
       // stale X/N status.
-      console.warn(
-        `[discord] editMessage failed; refusing new-message fallback because delivery outcome may be unknown: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      // #2482: after a stop every pending edit fails the same way — one line per stop, not one per edit.
+      const stopped = this.desiredRunning === false;
+      const firstSinceStop = !this.stoppedEditFailures;
+      if (stopped) this.stoppedEditFailures = (this.stoppedEditFailures ?? 0) + 1;
+      if (!stopped || firstSinceStop) {
+        console.warn(
+          `[discord] editMessage failed; refusing new-message fallback because delivery outcome may be unknown: ${
+            err instanceof Error ? err.message : String(err)
+          }${stopped ? " (the adapter is stopped; further edits until it starts again are not logged)" : ""}`,
+        );
+      }
       throw err;
     }
   }

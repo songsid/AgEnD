@@ -154,7 +154,7 @@ describe("RestartProgress", () => {
       "fleet",
       "update-1",
       [
-        "✅ AgEnD updated to v2.1.4-beta.2; 2/3 agents running (25s).",
+        "✅ Update complete — v2.1.4-beta.2 · 2/3 agents ready (25s)",
         "⏸ Paused (1): sleeping",
       ].join("\n"),
       "general",
@@ -180,7 +180,7 @@ describe("RestartProgress", () => {
     expect(editMessage).toHaveBeenLastCalledWith(
       "fleet",
       "update-zh",
-      "✅ AgEnD 已更新至 v2.1.4；1/1 個 Agent 運行中（3s）。",
+      "✅ 更新完成 — v2.1.4 · 1/1 個 Agent 已就緒 (3s)",
       undefined,
     );
   });
@@ -220,7 +220,7 @@ describe("RestartProgress", () => {
     expect(await progress.finish({ running: 8, total: 8, version: "2.1.5-beta.3", pausedNames: [] })).toBe(true);
     expect(sendText).toHaveBeenCalledWith(
       "fleet",
-      "✅ AgEnD updated to v2.1.5-beta.3; 8/8 agents running (1s).",
+      "✅ Update complete — v2.1.5-beta.3 · 8/8 agents ready (1s)",
       { threadId: "general" },
     );
     expect(logger.warn).toHaveBeenCalledWith(
@@ -262,7 +262,7 @@ describe("RestartProgress", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(finishing).resolves.toBe(true);
     expect(replacementEdit).toHaveBeenCalledWith(
-      "fleet", "update-1", "✅ AgEnD updated to v2.1.5; 1/1 agents running (0s).", undefined,
+      "fleet", "update-1", "✅ Update complete — v2.1.5 · 1/1 agents ready (0s)", undefined,
     );
     expect(replacement.sendText).not.toHaveBeenCalled();
   });
@@ -344,7 +344,7 @@ describe("RestartProgress", () => {
     await expect(finishing).resolves.toBe(true);
     expect(editMessage).toHaveBeenCalledTimes(3);
     expect(editMessage).toHaveBeenLastCalledWith(
-      "fleet", "update-1", "✅ AgEnD updated to v2.1.5; 8/8 agents running (1s).", undefined,
+      "fleet", "update-1", "✅ Update complete — v2.1.5 · 8/8 agents ready (1s)", undefined,
     );
     expect(sendText).not.toHaveBeenCalled();
   });
@@ -547,7 +547,7 @@ describe("RestartProgress", () => {
     await expect(finishing).resolves.toBe(true);
     expect(editMessage).toHaveBeenCalledTimes(3);
     expect(editMessage).toHaveBeenLastCalledWith(
-      "fleet", "update-1", "✅ AgEnD updated to v2.1.5; 1/1 agents running (0s).", "general",
+      "fleet", "update-1", "✅ Update complete — v2.1.5 · 1/1 agents ready (0s)", "general",
     );
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ retryAfterMs: 3_000 }),

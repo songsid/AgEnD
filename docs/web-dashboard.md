@@ -313,7 +313,7 @@ Find who you asked about something: one search over every agent's chat (Discord,
 - **Keys:** ↑↓ move, **Enter** opens, **Esc** or a click outside closes. **Filters** folds out: an agent, a team, a time (24 hours, 7 days, 30 days), which kinds, and **Only mine** (messages you wrote).
 - **Opening a result:** a chat message opens its agent's chat at that message, flashed. A chat message the chat no longer keeps, a message between agents and a task open as the copy search kept (a chat message with the ones around it), with the chats to go to or the Task Board.
 - **What it keeps:** its own index (`search.db` in the AgEnD home), filled from what the fleet already has the first time and then as things happen, kept `web.search.retention_days` (90 by default). Secret values are masked before anything is kept. A message's verification ids, working directory and branch are never kept. A message to or from an agent whose `cross_instance_visibility` is `hidden` is not found.
-- **Who can use it:** fleet admins signed in to the dashboard reached directly. Never a guest, and never over the public link: there is no Search row, button or shortcut there, and Ctrl+F stays the browser's find. `web.search.enabled: false` turns it off ([configuration](configuration.md)).
+- **Who can use it:** fleet admins signed in to the dashboard, here or over the temporary public link, and on a phone (the **Search** row in the menu, or the 🔍 button). Never a guest: there is no Search row, button or shortcut there, and Ctrl+F stays the browser's find. `web.search.public_link: false` keeps it off the public link only, and `web.search.enabled: false` turns it off everywhere ([configuration](configuration.md)).
 
 ## Undo and redo in text fields
 
