@@ -30,6 +30,7 @@ vi.mock("node:child_process", async importOriginal => {
 vi.mock("../src/backend/index.js", async original => ({ ...await original<typeof import("../src/backend/index.js")>(), createBackend: () => { throw Error("No backend"); } }));
 vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof import("../src/tmux-manager.js")>(), TmuxManager: new Proxy({}, { get: () => () => { throw Error("No tmux"); } }) }));
 import { FleetManager } from "../src/fleet-manager.js";
+import { EventLog } from "../src/event-log.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } from "../src/web-auth.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
@@ -129,7 +130,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
-    guestOverview: () => ({}), revokeGuestWebSessions: revoke, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note } as unknown as SettingsApiContext;
+    guestOverview: () => ({ audit: [{ kind: "grant", at: 1, account: "dc:111", name: "Ada", via: "direct", added: [], removed: ["a"], endedSessions: 1 }] }), revokeGuestWebSessions: revoke, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
   const gate = new SettingsHttpConfirmation(store, {
@@ -204,6 +205,24 @@ describe("through the real gate and handler", () => {
     expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": { name: "Ada L.", instances: ["a"] } } } })).status).toBe(200);
     expect((await h.request("PUT", WEB, { guests: { chat: false } })).status).toBe(200);
     expect(h.note, "a rename and a save without grants change no one's agents").not.toHaveBeenCalled();
+  });
+  // #2499 review (Prism P2): a session policy saved together with the grant change can end the saving admin's own session;
+  // the audit still names who saved it (asked before the save), and a confirmation's replay stays null.
+  it("the saver is the one asked before the save, even when the save ends that admin's own session", async () => {
+    const h = harness({ web: { guests: { enabled: true, grants: { "dc:111": { instances: ["a", "b"] } } } } });
+    const handle = h.sessions.list(undefined, (r: any) => r.tier === "admin")[0].handle;
+    const save = h.save.getMockImplementation()!;
+    h.save.mockImplementationOnce((...args: unknown[]) => { save(...(args as [])); h.sessions.revokeByHandle(handle); });   // the new policy ends it
+    expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["a"] } } } })).status).toBe(200);
+    expect(h.note.mock.calls.map((c) => [c[0].by, c[0].via, c[0].removed])).toEqual([[`session:${handle}`, "direct", ["b"]]]);
+  });
+  it("the audit an admin reads comes with the section's own list: an admin's, never over the public link (a guest: see enforcement)", async () => {
+    const h = harness({ web: { guests: { enabled: true } } });
+    const mine = await h.request("GET", "/api/settings/guests");
+    expect([mine.status, mine.body.audit?.[0]?.removed]).toEqual([200, ["a"]]);
+    // A guest's request never reaches this handler: the fleet's guest gate (GUEST_ROUTES, default deny) refuses it first —
+    // guest-grants-enforcement-2348 asks /api/settings/guests through the real listener as a guest (403).
+    expect((await h.request("GET", "/api/settings/guests", undefined, { publicLink: true })).status).toBe(403);
   });
   it("a new grant for someone not seen in chat (or a fleet admin) is refused when it would apply; nothing is written", async () => {
     const h = harness({ web: { guests: { enabled: true, grants: {} } } });
@@ -309,7 +328,22 @@ describe("on a real FleetManager", () => {
     expect(s.guestGrantRefusal("dc", "999")).toMatch(/seen in chat/);
     expect(s.guestGrantRefusal("nowhere", "111")).toMatch(/no such connection/);
   });
-  it("#2348 delta §5: a grant change goes to the event log as guest_grant_changed (the Log tab): who, how, which agents", () => {
+  it("#2499 review: the audit reaches the admin — Settings → Guests' list reads the grant changes and the codes sent, newest first", async () => {
+    const { s } = fleet();
+    s.eventLog = new EventLog(join(tmp("agend-2499-ev-"), "events.db"));
+    expect(s.guestOverview().audit, "nothing yet").toEqual([]);
+    s.noteGuestGrantChange({ by: "session:A", via: "confirmed", account: "dc:111", added: ["a"], removed: [], endedSessions: 0 });
+    await new Promise((r) => setTimeout(r, 1100));                                          // created_at is to the second
+    expect((await s.sendGuestCodeByAdmin({ adapterId: "dc", userId: "111" }, "session:A")).body.outcome).toBe("sent");
+    await new Promise((r) => setTimeout(r, 1100));
+    s.noteGuestGrantChange({ by: "session:A", via: "direct", account: "dc:111", added: [], removed: ["a"], endedSessions: 2 });
+    const audit = s.guestOverview().audit;
+    expect(audit.map((e: any) => [e.kind, e.account, e.via ?? e.outcome, e.added ?? null, e.removed ?? null, e.endedSessions ?? null])).toEqual([
+      ["grant", "dc:111", "direct", [], ["a"], 2], ["code", "dc:111", "sent", null, null, null], ["grant", "dc:111", "confirmed", ["a"], [], 0]]);
+    expect(audit.every((e: any) => typeof e.name === "string" && e.name.length > 0 && Number.isFinite(e.at) && !("by" in e)), "a name and a time; no session handle").toBe(true);
+    s.eventLog.close();
+  }, 10_000);
+  it("#2348 delta §5: a grant change goes to the event log as guest_grant_changed: who, how, which agents", () => {
     const { s } = fleet();
     const insert = vi.fn(); s.eventLog = { insert };
     const change = { by: "session:A", via: "direct" as const, account: "dc:111", added: [], removed: ["a"], endedSessions: 2 };

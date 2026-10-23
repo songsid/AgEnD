@@ -896,6 +896,11 @@ img.amb-p { object-fit: contain; }
 .s-guests .g-search { width: 100%; max-width: 360px; margin: var(--s-1) 0 var(--s-2); }
 .s-guests .g-cand { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: var(--s-2); }
 .s-guests .g-legacy { margin: var(--s-2) 0; }
+.s-guests .g-audit { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.s-guests .g-audit-row { padding: var(--s-1) 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.s-guests .g-audit-row .g-when { color: var(--text-3); }
+.s-guests .g-add { color: var(--ok); }
+.s-guests .g-del { color: var(--danger); }
 .s-guests .g-when, .s-guests .g-wrote { white-space: nowrap; }
 .s-guests .guest-narrow-edit { margin-top: var(--s-2); }
 .s-guests .guest-away { color: var(--text-3); }

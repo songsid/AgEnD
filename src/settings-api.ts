@@ -817,6 +817,9 @@ export function handleSettingsRequest(
         }
       }
       const { session: sessionPatch, terminal: terminalPatch } = parsed;
+      // #2499 review: who is saving, asked now, before the save — a session policy saved with it can end this very session
+      // (a shorter sign-in time), and the audit must still name who did it. A confirmation's replay is no one's: null.
+      const auditBy = parsed.guests?.grants !== undefined && !isSettingsReplay(req) ? guestSettingsCaller(req, url, ctx) : null;
       const changes: RawConfigPatch[] = [];
       const web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
@@ -895,10 +898,11 @@ export function handleSettingsRequest(
         catch (err) { ctx.logger.warn({ err }, "settings: could not end a removed guest's sessions"); }
       }
       // #2348 delta §5: every grant change is audited, widening (confirmed in General, replayed here) or narrowing (at
-      // once) alike: who, how, the agents added and taken away. Agent names only; never message content.
+      // once) alike: who, how, the agents added and taken away. Agent names only; never message content. Shown under
+      // Recent changes in Settings → Guests (guestOverview), never to a guest or over the public link.
       if (parsed.guests?.grants !== undefined && ctx.noteGuestGrantChange) {
         const was = previous.web?.guests?.grants ?? {}, now = cfg.web?.guests?.grants ?? {};
-        const by = guestSettingsCaller(req, url, ctx), via = isSettingsReplay(req) ? "confirmed" as const : "direct" as const;
+        const by = auditBy, via = isSettingsReplay(req) ? "confirmed" as const : "direct" as const;
         for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
           const a = new Set(Object.hasOwn(was, key) ? was[key]!.instances : []), b = new Set(Object.hasOwn(now, key) ? now[key]!.instances : []);
           const added = [...b].filter((n) => !a.has(n)), removed = [...a].filter((n) => !b.has(n));

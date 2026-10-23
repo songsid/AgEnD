@@ -145,6 +145,19 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     await w.apply();
     expect(w.writes().map((s) => s.body)).toEqual([{ guests: { grants: { "dc:333": { name: "Sam Ortiz", instances: ["beta", "gamma"] } } } }]);
   });
+  it("#2499 review: Recent changes lists who got or lost which agents and the codes sent; empty says so", async () => {
+    const audit = [
+      { kind: "grant", at: 1_790_000_000_000, account: "dc:111", name: "Alice", via: "direct", added: [], removed: ["beta"], endedSessions: 2 },
+      { kind: "code", at: 1_789_999_000_000, account: "tg:222", name: "Bob", outcome: "dm_failed" },
+      { kind: "grant", at: 1_789_998_000_000, account: "dc:111", name: "Alice", via: "confirmed", added: ["alpha", "beta"], removed: [], endedSessions: 0 },
+    ];
+    await open(undefined, { audit });
+    const rows = [...p.root.querySelectorAll("#grantsRecentList .g-audit-row")].map((r: any) => r.textContent.replace(/\s+/g, " ").trim());
+    expect(rows.map((r) => r.replace(/^.*?(Alice|Bob)/, "$1"))).toEqual([
+      "Alice −beta · applied at once · 2 session(s) ended", "Bob sign-in code not sent (dm_failed)", "Alice +alpha +beta · confirmed in General"]);
+    await open(undefined, { audit: [] });
+    expect(p.root.querySelector("#grantsRecentNone")?.textContent).toMatch(/No change/);
+  });
   it("a grant with no agent says so on the row", async () => {
     const w = await open();
     await w.click(w.button("Edit agents", w.row("dc:111")));

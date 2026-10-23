@@ -247,6 +247,12 @@ export function GuestsSection({ ctx, staged }) {
               ${p.instances && p.instances.length ? html`<div class="note">${wroteTo(p.instances)}</div>` : null}</div>
             <button type="button" class="btn btn-sm" onClick=${() => { const k = accountKey(p); setGrant(k, { ...(p.name ? { name: p.name } : {}), instances: instances.filter((n) => (p.instances || []).includes(n)) }); setEditing(k); }}>${tn("grantsChoose")}</button></li>`)}</ul>`}`}
     </fieldset>
+    ${overview && overview.audit ? html`<h4>${tn("grantsRecent")}</h4>${!overview.audit.length ? html`<p class="note" id="grantsRecentNone">${tn("grantsRecentNone")}</p>`
+      : html`<ul class="g-audit" id="grantsRecentList">${overview.audit.map((e, i) => html`<li key=${`${e.at}-${i}`} class="g-audit-row" data-kind=${e.kind}>
+        <span class="g-when">${new Date(e.at).toLocaleString()}</span> <strong>${e.name}</strong>
+        ${e.kind === "grant" ? html`${e.added.map((n) => html` <span key=${`+${n}`} class="g-wrote g-add">+${n}</span>`)}${e.removed.map((n) => html` <span key=${`-${n}`} class="g-wrote g-del">−${n}</span>`)}
+          <span class="note"> · <span class="g-wrote">${tn(e.via === "confirmed" ? "grantsAuditConfirmed" : "grantsAuditDirect")}</span>${e.endedSessions ? html` · <span class="g-wrote">${tn("grantsAuditEnded", e.endedSessions)}</span>` : null}</span>`
+        : html` <span class="note">${e.outcome === "sent" ? tn("grantsAuditCodeSent") : tn("grantsAuditCodeNot", e.outcome)}</span>`}</li>`)}</ul>`}` : null}
     ${status && status.kind === "waiting" ? html`<p class="note" role="status">${tn("grantsWaiting")}</p>` : null}
     ${status && status.kind === "failed" ? html`<p class="note g-error" role="alert">${tn("grantsSaveFailed", status.error)}</p>` : null}
   </section>`;

@@ -7,7 +7,8 @@
 // - the section draws its people, chips and states; an edited row carries the straight bar (`.s-dirty`, #2330);
 // - no element of the section has a rounded filled background or a ring (the fixed template), no horizontal overflow
 //   on the page, no console error, no CSP violation;
-// Pictures: <case>-1-access (people with access, one being edited), -2-add (Add a person).
+// - Recent changes (#2499 review): two audit rows from the event log, flat like the rest.
+// Pictures: <case>-1-access (people with access, one being edited), -2-add (Add a person), -3-recent (Recent changes).
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2348-guests-look.mts
 import { writeFileSync } from "node:fs";
@@ -35,6 +36,10 @@ fm.guestPeople = () => ({ people: [
   { adapterId: "demo", userId: "404404404404404404", platform: "discord", username: "dan.r", name: "Dan", lastSeen: ago(35), instances: [AGENTS[2]] },
   { adapterId: "demo", userId: "505505505505505505", platform: "discord", username: "eve", name: "Eve", lastSeen: ago(60 * 26), instances: [AGENTS[0], AGENTS[3]] },
 ] });
+if (!fm.eventLog) { const { EventLog } = await import(REPO + "/src/event-log.ts"); fm.eventLog = new EventLog(`${fx.dir}/smoke-events.db`); }
+// Two audit rows (Recent changes): Bob given an agent (confirmed in General), Carol's earlier agent taken away.
+fm.noteGuestGrantChange({ by: null, via: "confirmed", account: `demo:${PEOPLE.bob.id}`, added: [AGENTS[2]], removed: [], endedSessions: 0 });
+fm.noteGuestGrantChange({ by: "session:smoke", via: "direct", account: `demo:${PEOPLE.carol.id}`, added: [], removed: [AGENTS[1]], endedSessions: 1 });
 const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|rd1-|awp-|doupo-|研一|鬥破|己把鳩/;
 
 const results: Array<Record<string, unknown>> = [];
@@ -113,6 +118,10 @@ for (const c of CASES) {
   ck.picker = (await page.locator(".s-guests .g-cand").count()) === 2;
   const pick = page.locator(".s-guests .g-pick");
   await pick.screenshot({ path: shotPath(SMOKE, c, "2-add") });
+  const recent = page.locator(".s-guests #grantsRecentList");
+  await recent.scrollIntoViewIfNeeded();
+  ck.recentRows = (await page.locator(".s-guests #grantsRecentList .g-audit-row").count()) === 2;
+  await recent.screenshot({ path: shotPath(SMOKE, c, "3-recent") });
   const cspHits = await csp();
   ck.noErrors = errors.length === 0 && cspHits.length === 0;
   record(name, ck, { chip: a.chipStyle, names: a.namesStyle, fills: a.fills, rings: a.rings, pickerFills: b.fills, errors, csp: cspHits });
