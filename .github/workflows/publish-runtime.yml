@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       node_version:
-        description: "Official Node release to package, e.g. 22.23.3 (an LTS line under maintenance)"
+        description: "Official Node release to package, e.g. 22.23.4 (an LTS line under maintenance)"
         required: true
       repack:
         description: "Repack number for the same Node (empty for the first package of this Node version)"

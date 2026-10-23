@@ -44,7 +44,7 @@ export function tmuxReadArgs(query: TmuxReadQuery): string[] {
   switch (query.kind) {
     case "windows": return ["list-windows", "-t", target, "-F", "#{window_id}|||#{window_name}"];
     case "pane": return ["list-panes", "-t", target, "-F", {
-      id: "#{pane_id}", status: "#{pane_dead} #{pane_dead_status}", pid: "#{pane_pid}",
+      id: "#{pane_id}", status: "#{pane_dead} #{pane_dead_status} #{pane_pid}", pid: "#{pane_pid}",
     }[query.field]];
     case "tty": return ["display-message", "-p", "-t", target, "#{pane_tty}"];
     case "capture": {

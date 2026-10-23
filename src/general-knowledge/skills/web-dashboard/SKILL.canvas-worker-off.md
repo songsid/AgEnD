@@ -36,7 +36,7 @@ only. Pages: `/ui` chat, `/ui/fleet`, `/ui/needs`, `/view`, `/settings`.
 ## Sign-in and access
 
 **Getting a code (`/web`).** Only a fleet admin can — someone in the bot connection's `access.allowed_users`.
-- Discord: send `/web` (alias of `/dashboard`) in the General channel. A menu offers **💻 AgEnD computer: get a
+- Discord: send `/web` in the General channel (`/dashboard` still answers but is deprecated: it says so, then opens `/web`). A menu offers **💻 AgEnD computer: get a
   code** and, when `web.public_link.allow_public` is not `false`, **🌐 Other device (temporary public)**. Sent
   anywhere else, `/web` answers privately (DM, else an ephemeral reply) with the local link and a code only.
 - Telegram: `/web` works only in the General topic ("/web works in the General topic — please use it there"). In a
@@ -54,7 +54,10 @@ days). The code arrives by DM. Limits: one a minute and five an hour per browser
 
 **Local vs public link.** Local: the dashboard on the host itself (127.0.0.1; the address cannot be changed, only
 `health_port`). Public: **🌐 Other device (temporary public)** starts a Cloudflare quick tunnel (an address under
-`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto).
+`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto). With a fixed
+hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, or `0` = no expiry, and
+`web.public_link.auto_open` reopens the link after AgEnD starts for the admin who last opened it (nothing posted; sign-in
+still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Access & security, Look,
 schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
@@ -75,7 +78,7 @@ the local address sees every instance's live terminal and the roster (status, co
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
-**Guests (#1920, 2.3 beta).** Off by default: `web.guests.enabled` (or Settings → Access & security → Guests). Then someone who is
+**Guests (#1920).** Off by default: `web.guests.enabled` (or Settings → Access & security → Guests). Then someone who is
 not a fleet admin sends `/web` and gets a code privately, signing in as their own Discord or Telegram account. A guest
 sees only the agents they can already use in chat: their connection's fleet topics and General (an `open` connection:
 only `web.guests.open_instances`), their own Telegram private ClassicBot room, and ClassicBot group rooms while their
@@ -84,7 +87,7 @@ a command (text starting with `/` is refused), and the agent sees them as `via w
 View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`. The Guests card is not in
 Settings over the public link.
 
-**Web authority (#1939, 2.3 beta).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
+**Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
 account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
@@ -93,10 +96,14 @@ again. Confirm within 5 minutes and the session menu says **Verified · speaks a
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
-per account. Never on the public link or for a guest; when a browser can't be authorized, the line says why (with a
-link to Settings when the switch or "Only this computer" is the reason). Settings → Access & security → **Web authority**
-(`web.verified_authority`, on by default) has the switch, **Only this computer can authorize** (`loopback_only`), the
-hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change there applies at once.
+per account. Never for a guest or on a quick-tunnel public link. Over the admin's own named link (#2453) only with
+**Also over my named link** (`named_link`, off by default). That authority ends with the link, and the card says "over
+your named link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
+this computer" or the named-link option is the reason). Settings → Access & security → **Web authority** (`web.verified_authority`, on
+by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown
+with a fixed hostname), the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
+there applies at once, except turning the named-link option on: a General or the host confirms that, never the browser
+asking.
 Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
 
 ## Chat
@@ -157,9 +164,9 @@ restored; files that can't be served again show as unavailable.
 **Copies in Discord/Telegram (web echo).** For a fleet topic instance, each web message is also posted to its topic as
 `🌐 web · <name>: …` (the first 500 characters plus attachment names; longer text says "(full text in web chat)").
 Turn it off with Settings → Chat & connections → **Web echo** (`web.echo_to_channel`). ClassicBot rooms: per room,
-`classicBot.yaml` `channels.<key>.web_echo` (Settings → Chat & connections → ClassicBot → the room → **Web echo**). From 2.3.0-beta.3
+`classicBot.yaml` `channels.<key>.web_echo` (Settings → Chat & connections → ClassicBot → the room → **Web echo**). Since 2.2.5
 (#2054) a room echoes by default: an unset room follows `web.echo_to_channel`, `web_echo: false` keeps it off and
-`web_echo: true` keeps it on. Before that, a room echoed only with `web_echo: true` — check the running version.
+`web_echo: true` keeps it on. Before 2.2.5, a room echoed only with `web_echo: true`.
 
 ## Needs you
 
@@ -173,7 +180,9 @@ tab title. Items, grouped by instance, oldest first:
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 "Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
-`needs_you.dm` (default off).
+`needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
+for you — set `true` to list them). The task board's daily summary is `defaults.task_board.summary_at` (off unless set,
+e.g. `"09:00"`).
 
 ## Search
 
@@ -185,8 +194,8 @@ Board tasks — never a CLI's own transcript (that is the Log). Results come as 
 first, badged Chat / Message / Task; 1–2 character words work (alone: the newest 5,000 entries, said in the dialog).
 ↑↓ / Enter / Esc / click outside; **Filters**: agent, team, time, kinds, **Only mine**; recent searches when empty.
 A chat result opens the chat at the message (flashed); a message between agents, a task or a chat row the history no
-longer keeps opens as the index's copy. Admins only (no guests; over the public link there is no row, button or shortcut). Config: `web.search.enabled`
-(default on), `web.search.retention_days` (default 90). Secrets are masked; a hidden `cross_instance_visibility`
+longer keeps opens as the index's copy. Admins only, over the temporary public link and on a phone too (no guests). Config: `web.search.enabled`
+(default on, off everywhere), `web.search.public_link` (default on; false keeps it off the public link), `web.search.retention_days` (default 90). Secrets are masked; a hidden `cross_instance_visibility`
 agent's messages are not found. "Search is off or not available": `web.search.enabled: false`, or the index could not
 open (the fleet log says why); "Still indexing": the first fill after an upgrade.
 
@@ -210,11 +219,12 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   **Send back** finished work, **Answer** a blocked card); **No project** holds `task`-tool tasks. A project is a board
   of main tasks (M-n) by status — To do, In progress, Blocked, Waiting for you, Done — with drag to move, an assignee
   filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
-  progress log, history. **Search cards** in the header. Only a signed-in person confirms work in review (an
-  instance's `done` on such a card is review). No delete: cancel. Alt+arrows on a card's title move it (no drag
-  needed; the card's Position row on a phone). A main task's tile shows the sub task at work and who is on it; a card
-  waiting for review that is not wrapped up says **To fill in** and Confirm asks first. A card's **Dispatched by** row:
-  who handed it out (a blocked question goes to them first). Read-only over the public link.
+  progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
+  (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
+  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A main
+  task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
+  **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
+  to them first). Read-only over the public link.
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't
@@ -229,6 +239,19 @@ screen**, keys `+` `-` `0` and arrows, Enter opens a chat. **Overview** (bottom 
 Click a team header to fold it. **Find** dims everything that doesn't match. A card shows the state dot, name, state
 and backend; clicking it opens the chat. List mode adds the description, model, a link to the Discord thread or
 Telegram topic, and **Open chat**.
+
+**Office** (the third view, remembered per device) draws the same fleet as a pixel office: a room per team, a desk
+per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
+with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
+blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
+desk to desk along the corridors in the Key's colours; a delegation in progress is a purple folder on the worker's
+desk. Hover (or tap once) a desk for its name, state and backend; click (or tap again) opens the chat. **Find** dims
+the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
+**Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`; changing them takes
+an admin session, never the public link — v1 has no editor). **Style** (per browser): **Desks** (the default) or
+**Studio** — one scene (Work, Lounge, Help desk, Nap corner) where each instance walks to the area for its state.
+Now and then someone says a short line for their state in a bubble (never message content). Reduced motion: still
+poses, nothing in the air, bubbles shown whole.
 
 **Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams
@@ -437,7 +460,8 @@ progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 | Web echo | `web.echo_to_channel` |
 | Log tab: each agent's steps | `web.log_tab` |
 | Offer temporary public web links | `web.public_link.allow_public` |
-| Public link minutes (1–480) | `web.public_link.ttl_minutes` |
+| Public link minutes (1–480; with a fixed hostname 0–10080, 0 = no expiry) | `web.public_link.ttl_minutes` |
+| Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
 Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `notify_login`, `preview`, `preview_port`,
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,
@@ -478,12 +502,12 @@ Settings → **Look**, card by card (the app icon and card upload limits are in 
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
 
 **What an agent can change for the user.** A worker changes only its own look (the `web-appearance` tools); before
-#2064 everything on this page was the person's. Since #2064 (2.3.0-beta.3; check the running version) General, coordinators and
+#2064 everything on this page was the person's. Since #2064 (2.2.5) General, coordinators and
 full-profile instances get `get_web_settings` / `set_web_settings`, which go through the same checks as the page;
 workers don't. The `web-appearance` skill's **For the user** section has the details. In short: General can change
 the host's appearance settings, one agent's identity colour, ambient effects and Restore defaults; for custom CSS it can save a version **on trial**, keep or revert
 the trial, switch to an earlier saved version, or turn CSS off — and it keeps a trial only once the user says they like
-it (the user's decision, 2.3.0-beta.3). Still the person's own click on the page: choosing files from their computer
+it (the user's decision). Still the person's own click on the page: choosing files from their computer
 (upload CSS assets), the per-browser switches (custom CSS off on this device, Pause/Resume), and the
 card upload limits. The docs' "Asking General to change it for you" says the same for people.
 

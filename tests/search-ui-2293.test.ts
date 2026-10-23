@@ -280,7 +280,7 @@ describe("how it opens", () => {
     const blocked = ev("k"); shell.handleSearchKey(blocked);
     expect(blocked.preventDefault).not.toHaveBeenCalled();
   });
-  it("the public link and a guest's page: no shortcut — Ctrl+K and Ctrl+F (in a chat) are left to the browser (#2298 review)", async () => {
+  it("a guest's page, and the public link kept off (web.search.public_link: false): no shortcut — Ctrl+K and Ctrl+F (in a chat) are left to the browser (#2298 review, #2478)", async () => {
     p = page({ url: "http://127.0.0.1:19280/ui/chat/dev" });
     const shell = await import("/assets/app-shell.js" as string) as Served;
     const nav = await import("/assets/app-nav.js" as string) as Served;
@@ -288,9 +288,11 @@ describe("how it opens", () => {
     const ev = (key: string) => ({ key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, isComposing: false, preventDefault: vi.fn() });
     const body = (p.document as any).body;
     body.dataset.publicLink = "1";
+    expect(shell.searchOffered(true), "#2478: the public link offers it by default").toBe(true);
+    body.dataset.searchLink = "0";
     for (const k of ["k", "f"]) { const e = ev(k); shell.handleSearchKey(e); expect(e.preventDefault, k).not.toHaveBeenCalled(); }
     expect(shell.searchOffered(true)).toBe(false);
-    delete body.dataset.publicLink;
+    delete body.dataset.publicLink; delete body.dataset.searchLink;
     body.dataset.tier = "guest";
     const g = ev("k"); shell.handleSearchKey(g);
     expect(g.preventDefault).not.toHaveBeenCalled();
@@ -298,10 +300,11 @@ describe("how it opens", () => {
     expect([shell.searchOffered(true), shell.searchOffered(false)]).toEqual([true, false]);
     shell.closeDialog();
   });
-  it("the sidebar's Search row (with its shortcut) on an admin's page reached directly — opens search; not over the public link", async () => {
-    for (const onLink of [false, true]) {
+  it("the sidebar's Search row (with its shortcut) on an admin's page — opens search; over the public link too (#2478), not when kept off there", async () => {
+    for (const [onLink, keptOff] of [[false, false], [true, false], [true, true]]) {
       p = page({ url: "http://127.0.0.1:19280/ui/chat/dev", storage: { agend_tour_done: "1" } });
       if (onLink) (p.document as any).body.dataset.publicLink = "1";
+      if (keptOff) (p.document as any).body.dataset.searchLink = "0";
       vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => [] })));
       (window as any).AgendAuth = { canWrite: () => true, onSessionEnd() {}, sessionEnded: () => false };
       const nav = await import("/assets/app-nav.js" as string) as Served;
@@ -313,7 +316,7 @@ describe("how it opens", () => {
       await p.mount(h(shell.Shell, { panels: new Map([["chat", { Component: () => h("div", null, "chat") }]]), onNewInstance() {}, viewOnly: false }));
       await settle();
       const row = (p.document as any).querySelector("#sidebar .side-nav .side-search");
-      expect([onLink, !!row]).toEqual([onLink, !onLink]);
+      expect([onLink, keptOff, !!row]).toEqual([onLink, keptOff, !keptOff]);
       if (row) {
         expect(row.textContent).toMatch(/Search\s*Ctrl K$/);
         fire(row, "click");
@@ -324,15 +327,16 @@ describe("how it opens", () => {
       await p.unmount(); p.restore(); p = null;
     }
   });
-  it("the header's search button: an admin's page reached directly — not over the public link", async () => {
+  it("the header's search button: an admin's page — over the public link too (#2478), not when kept off there", async () => {
     const shell = await import("/assets/app-shell.js" as string) as Served;
-    for (const onLink of [false, true]) {
+    for (const [onLink, keptOff] of [[false, false], [true, false], [true, true]]) {
       p = page({ url: "http://127.0.0.1:19280/ui/fleet" });
       if (onLink) (p.document as any).body.dataset.publicLink = "1";
+      if (keptOff) (p.document as any).body.dataset.searchLink = "0";
       (window as any).AgendAuth = { canWrite: () => true, onSessionEnd() {}, sessionEnded: () => false };
       await p.mount(h(shell.PanelHeader, { title: "Fleet" }));
       await settle();
-      expect([onLink, !!(p.document as any).querySelector(".sb-search")]).toEqual([onLink, !onLink]);
+      expect([onLink, keptOff, !!(p.document as any).querySelector(".sb-search")]).toEqual([onLink, keptOff, !keptOff]);
       delete (window as any).AgendAuth;
       await p.unmount(); p.restore(); p = null;
     }

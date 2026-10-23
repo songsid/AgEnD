@@ -1,5 +1,6 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { createInterface } from "node:readline/promises";
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import { writeSecretFile } from "./secret-file.js";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -9,6 +10,7 @@ import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
+import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
@@ -195,6 +197,7 @@ export function buildFleetConfig(answers: WizardAnswers): Record<string, unknown
 
   fleetData.defaults = {
     ...(answers.backend !== "claude-code" ? { backend: answers.backend } : {}),
+    dashboard: { ...NEW_FLEET_DASHBOARD },                      // a new fleet: the task board is off until switched on
     restart_policy: {
       max_retries: 10,
       backoff: "exponential",
@@ -721,7 +724,7 @@ export async function runSetupWizard(): Promise<void> {
   }
 
   // ── Write files ──
-  mkdirSync(DATA_DIR, { recursive: true });
+  ensureAgendHome(DATA_DIR);
 
   // .env — merge with existing, don't clobber other vars
   let envContent = "";

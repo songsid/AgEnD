@@ -33,7 +33,15 @@ const opt = name => { const i = args.indexOf(name); return i < 0 ? undefined : a
 if (args[0] === "pr" && args[1] === "view") {
   const pr = st.prs[args[2]]; if (!pr) fail("no such PR");
   if ((st.viewFails ?? []).includes(Number(args[2])) || (st.viewFailsAfterMerge && st.merged)) fail("HTTP 502");
-  out(pr);
+  const json = opt("--json");
+  if (json) {
+    // gh 2.74.0: Unknown JSON field: "commitsCount" (not in gh pr view --json fields).
+    const allowed = new Set("additions,assignees,author,autoMergeRequest,baseRefName,baseRefOid,body,changedFiles,closed,closedAt,closingIssuesReferences,comments,commits,createdAt,deletions,files,fullDatabaseId,headRefName,headRefOid,headRepository,headRepositoryOwner,id,isCrossRepository,isDraft,labels,latestReviews,maintainerCanModify,mergeCommit,mergeStateStatus,mergeable,mergedAt,mergedBy,milestone,number,potentialMergeCommit,projectCards,projectItems,reactionGroups,reviewDecision,reviewRequests,reviews,state,statusCheckRollup,title,updatedAt,url".split(","));
+    for (const f of json.split(",")) if (!allowed.has(f)) fail("Unknown JSON field: " + JSON.stringify(f));
+  }
+  const commits = Array.isArray(pr.commits) ? pr.commits : [];
+  // gh pr view --json commits is commits(first:100) with no completeness fields.
+  out({ ...pr, commits: commits.slice(0, 100) });
 }
 if (args[0] === "pr" && args[1] === "list") {
   const base = opt("--base"), head = opt("--head");
@@ -61,6 +69,7 @@ if (args[0] === "pr" && args[1] === "merge") {
   if (st.failMerge) fail(st.failMerge);
   if (opt("--match-head-commit") !== pr.headRefOid) fail("Head branch was modified. Review and try the merge again.");
   if (!args.includes("--squash")) fail("not squash");
+  if (opt("--body-file")) { st.lastBody = fs.readFileSync(opt("--body-file"), "utf8"); save(); }
   if (Number(args[2]) === 99 && st.revertMergePatch) Object.assign(pr, st.revertMergePatch);
   let merged = "f".repeat(40);
   if (st.actualMerge) {
@@ -79,6 +88,39 @@ if (args[0] === "pr" && args[1] === "merge") {
   process.exit(0);
 }
 if (args[0] === "api" && args[1] === "-X" && args[2] === "DELETE") { process.exit(st.failDelete ? 1 : 0); }
+if (args[0] === "api" && args[1] === "user") { if (st.failUser) fail("user unreadable"); out(st.merger ?? { login: "gate-merger", id: 1, name: "Gate Merger" }); }
+if (args[0] === "api" && args[1] === "graphql") {
+  const vars = {};
+  for (let i = 2; i < args.length; i++) {
+    if (args[i] === "-f" || args[i] === "-F") {
+      const raw = args[++i] || "";
+      const eq = raw.indexOf("=");
+      if (eq >= 0) vars[raw.slice(0, eq)] = raw.slice(eq + 1);
+    }
+  }
+  if (!/pullRequest/.test(vars.query || "") || !/commits/.test(vars.query || "")) fail("unexpected graphql");
+  const pr = st.prs[vars.number]; if (!pr) fail("no such PR");
+  const all = Array.isArray(pr.commits) ? pr.commits : [];
+  let start = 0;
+  if (vars.cursor) {
+    start = Number(vars.cursor);
+    if (!Number.isInteger(start) || start < 0) fail("bad cursor");
+  }
+  const slice = st.truncateCommits ? all.slice(0, 100) : all.slice(start, start + 100);
+  const hasNext = st.truncateCommits ? false : start + slice.length < all.length;
+  out({ data: { repository: { pullRequest: { commits: {
+    totalCount: all.length,
+    pageInfo: { hasNextPage: hasNext, endCursor: hasNext ? String(start + slice.length) : null },
+    nodes: slice.map(c => ({ commit: {
+      messageHeadline: c.messageHeadline ?? "",
+      messageBody: c.messageBody ?? "",
+      authors: { nodes: (c.authors ?? []).map(a => ({
+        name: a.name, email: a.email,
+        user: a.login ? { id: a.id, login: a.login, databaseId: typeof a.id === "number" ? a.id : null } : null,
+      })) },
+    } })),
+  } } } } });
+}
 if (args[0] === "api" && /\/rules\/branches\//.test(args[1])) { if (st.failRules) fail("HTTP 500"); out(st.rules ?? []); }
 if (args[0] === "api") {
   if (args[1].includes("actions/runs")) { if(st.failMainCi) fail("CI unavailable"); out(st.mainCi); }
@@ -101,7 +143,11 @@ if (args[0] === "api") {
 fail("unexpected gh " + args.join(" "));
 `;
 
-type Pr = { number?: number; url?: string; state: string; isDraft: boolean; headRefOid: string; headRefName: string; baseRefName: string; isCrossRepository: boolean; mergeCommit?: { oid: string } };
+type Pr = {
+  number?: number; url?: string; state: string; isDraft: boolean; headRefOid: string; headRefName: string; baseRefName: string; isCrossRepository: boolean; mergeCommit?: { oid: string };
+  body?: string;
+  commits?: { authors?: { login?: string; name?: string; email?: string; id?: number | string }[]; messageHeadline?: string; messageBody?: string }[];
+};
 type State = {
   prs: Record<string, Pr>; checkRuns: Record<string, unknown[]>; failMerge?: string; failEdit?: number[]; ignoreEdit?: number[]; totalCount?: number;
   failDelete?: boolean; rules?: unknown[]; failRules?: boolean; viewFails?: number[]; viewFailsAfterMerge?: boolean; merged?: boolean;
@@ -110,6 +156,10 @@ type State = {
   commitMetadata?: Record<string, any>; createAppliedButFails?: boolean; moveMainAfterChecks?: string;
   checkReadMutation?: { head: string; at: number; count?: number; main?: string; pr?: number; patch?: Partial<Pr> };
   revertMergePatch?: Partial<Pr>;
+  merger?: { login: string; id?: number; name?: string };
+  failUser?: boolean;
+  lastBody?: string;
+  truncateCommits?: boolean;
 };
 
 // main's gate: every required check, green.
@@ -179,7 +229,7 @@ function world() {
   return { dir, dev, work, sh, commit, publish, approved, state, ok, approval, approveText, run, writes, setEnv };
 }
 
-describe("gate-merge: the happy path and the one-line verdict", () => {
+describe("gate-merge: the happy path and the one-line verdict", { timeout: 30_000 }, () => {
   it("head = approved, CI green → squash-merges with --match-head-commit, deletes the branch, prints MERGED <sha>", () => {
     const w = world();
     const r = w.run(["7", w.approved, "xmsg-approve-1"]);
@@ -212,7 +262,7 @@ describe("gate-merge: the happy path and the one-line verdict", () => {
   });
 });
 
-describe("gate-merge: the approval must be verified", () => {
+describe("gate-merge: the approval must be verified", { timeout: 30_000 }, () => {
   const cases: [string, (w: ReturnType<typeof world>) => string, RegExp][] = [
     ["Delivery not found (not JSON)", () => "Delivery not found", /not JSON/],
     ["no delivery with that message_id", w => w.approval(w.approveText(w.approved), { message_id: "xmsg-other" }), /0 deliveries/],
@@ -261,7 +311,7 @@ describe("gate-merge: the approval must be verified", () => {
   });
 });
 
-describe("gate-merge: the PR state", () => {
+describe("gate-merge: the PR state", { timeout: 30_000 }, () => {
   it.each([["CLOSED", false], ["MERGED", false], ["OPEN", true]] as const)("%s%s → BLOCKED", (state, draft) => {
     const w = world();
     Object.assign(w.state.prs[7]!, { state, isDraft: draft });
@@ -280,7 +330,7 @@ describe("gate-merge: the PR state", () => {
   });
 });
 
-describe("gate-merge: a head that moved after the approval", () => {
+describe("gate-merge: a head that moved after the approval", { timeout: 30_000 }, () => {
   const moved = (w: ReturnType<typeof world>, head: string) => {
     w.state.prs[7]!.headRefOid = head;
     w.state.checkRuns[head] = green(w.ok, 11);
@@ -408,7 +458,7 @@ describe("gate-merge: a head that moved after the approval", () => {
   });
 });
 
-describe("gate-merge: merge-synced and green", () => {
+describe("gate-merge: merge-synced and green", { timeout: 30_000 }, () => {
   it("behind main with disjoint paths → admitted without sync", () => {
     const w = world();
     w.sh(w.dev, "checkout", "-q", "main");
@@ -538,7 +588,7 @@ describe("gate-merge: merge-synced and green", () => {
   });
 });
 
-describe("gate-merge: stacked PRs (never delete a branch another PR is based on)", () => {
+describe("gate-merge: stacked PRs (never delete a branch another PR is based on)", { timeout: 30_000 }, () => {
   const stacked = () => {
     const w = world();
     w.state.prs[8] = { state: "OPEN", isDraft: false, headRefOid: "e".repeat(40), headRefName: "feature-2", baseRefName: "feature", isCrossRepository: false };
@@ -651,7 +701,7 @@ describe("gate-merge: stacked PRs (never delete a branch another PR is based on)
 });
 
 // User-approved 4e928ba6: preserve all original auth/carry/CI/write-contract assertions above.
-describe("gate workflow 1480: reviewer prefixes and disjoint bases", () => {
+describe("gate workflow 1480: reviewer prefixes and disjoint bases", { timeout: 30_000 }, () => {
   it.each(["agend-reviewer-t1", "claude-fable-t1"])("default prefix admits %s", source_instance => {
     const w = world();
     const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved), { source_instance }));
@@ -726,7 +776,7 @@ function mergedWorld() {
   return { ...w, merged, ci, post, receipt: join(w.work, ".git", "agend-gate", `${merged}.json`) };
 }
 
-describe("gate workflow 1480: exact main CI and private single-squash revert", () => {
+describe("gate workflow 1480: exact main CI and private single-squash revert", { timeout: 30_000 }, () => {
   it.each([
     ["first CI", 1, "global"],
     ["final CI global", 2, "global"],
@@ -900,5 +950,130 @@ describe("gate workflow 1480: exact main CI and private single-squash revert", (
     w.commit("later same-path change", {"src/a.ts":"later\n"}); w.sh(w.dev,"push","-q","origin","main");
     const r = w.post(); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
     expect(w.sh(w.dev,"ls-remote","--heads","origin",`refs/heads/gate-revert/${w.merged}`)).toBe("");
+  });
+});
+
+function interpretTrailers(message: string) {
+  const res = spawnSync("git", ["interpret-trailers", "--parse"], { input: message, encoding: "utf8" });
+  if (res.status !== 0) throw new Error(res.stderr);
+  return res.stdout;
+}
+
+describe("gate-merge: Co-authored-by trailers on the squash", { timeout: 30_000 }, () => {
+  // Each case runs the real bash gate (scratch clone + gh stub). 10s is tight when
+  // this file's earlier cases have already filled /tmp with git repos.
+  it("a carry PR (external author + ours) gets real Co-authored-by trailers; the merger and bots do not", { timeout: 30_000 }, () => {
+    const w = world();
+    w.state.prs[7]!.body = [
+      "Carry of #2391 by @igs-willyliao.",
+      "",
+      "> **To whoever merges:** Put this in the squash message:",
+      "> `Co-authored-by: quoted-should-not-count <1+quoted@users.noreply.github.com>`",
+    ].join("\n");
+    w.state.prs[7]!.commits = [
+      {
+        authors: [
+          { login: "igs-willyliao", name: "igs-willyliao", email: "139523521+igs-willyliao@users.noreply.github.com", id: "U_kgDOCFD1wQ" },
+        ],
+        messageHeadline: "feat: permissions",
+        messageBody: "",
+      },
+      {
+        authors: [
+          { login: "agend-web-claude", name: "AgEnD", email: "agend-web-claude@users.noreply.github.com" },
+          { login: "dependabot[bot]", name: "dependabot[bot]", email: "49699333+dependabot[bot]@users.noreply.github.com" },
+        ],
+        messageHeadline: "fix: review findings",
+        messageBody: "Co-authored-by: Extra Helper <222+helper@users.noreply.github.com>\n",
+      },
+      {
+        authors: [{ login: "gate-merger", name: "Gate Merger", email: "1+gate-merger@users.noreply.github.com", id: 1 }],
+        messageHeadline: "Merge origin/main",
+      },
+    ];
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr + r.line).toBe(0);
+    const trailers = interpretTrailers(w.state.lastBody ?? "");
+    expect(trailers).toContain("Co-authored-by: igs-willyliao <139523521+igs-willyliao@users.noreply.github.com>");
+    expect(trailers).toContain("Co-authored-by: AgEnD <agend-web-claude@users.noreply.github.com>");
+    expect(trailers).toContain("Co-authored-by: Extra Helper <222+helper@users.noreply.github.com>");
+    expect(trailers).not.toMatch(/quoted-should-not-count/);
+    expect(trailers).not.toMatch(/dependabot/);
+    expect(trailers).not.toMatch(/gate-merger/);
+    const keys = trailers.split("\n").filter(Boolean).map(l => l.split(":")[0]);
+    expect(keys.filter(k => k === "Co-authored-by")).toHaveLength(3);
+    expect(keys.at(-1)).toBe("AgEnD-Gate-Operation");
+  });
+
+  it("a normal PR (only the merger's commits) has no extra Co-authored-by trailer", { timeout: 30_000 }, () => {
+    const w = world();
+    w.state.prs[7]!.body = "Ordinary fleet work.";
+    w.state.prs[7]!.commits = [
+      { authors: [{ login: "gate-merger", name: "Gate Merger", email: "1+gate-merger@users.noreply.github.com", id: 1 }], messageHeadline: "feat" },
+    ];
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr + r.line).toBe(0);
+    const trailers = interpretTrailers(w.state.lastBody ?? "");
+    expect(trailers).not.toMatch(/^Co-authored-by:/m);
+    expect(trailers).toMatch(/^AgEnD-Gate-Operation: [0-9a-f]{48}$/m);
+  });
+
+  it("an explicit Co-authored-by line in the PR body is honoured as a trailer", { timeout: 30_000 }, () => {
+    const w = world();
+    w.state.prs[7]!.body = "Thanks.\n\nCo-authored-by: Pat Contributor <333+pat@users.noreply.github.com>\n";
+    w.state.prs[7]!.commits = [];
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr + r.line).toBe(0);
+    expect(interpretTrailers(w.state.lastBody ?? ""))
+      .toContain("Co-authored-by: Pat Contributor <333+pat@users.noreply.github.com>");
+  });
+
+  it("a missing merging identity blocks before any write", { timeout: 30_000 }, () => {
+    const w = world();
+    w.state.failUser = true;
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.line).toMatch(/^BLOCKED /);
+    expect(w.writes(r.calls)).toEqual([]);
+  });
+
+  const mergerAuthor = { login: "gate-merger", name: "Gate Merger", email: "1+gate-merger@users.noreply.github.com", id: 1 };
+  const lateAuthor = { login: "late-contributor", name: "Late Contributor", email: "101+late-contributor@users.noreply.github.com", id: 101 };
+  const page = (lateAt: number) => {
+    const commits = Array.from({ length: 101 }, (_, i) => ({
+      authors: [i === lateAt ? lateAuthor : mergerAuthor],
+      messageHeadline: i === lateAt ? "late" : "wip",
+    }));
+    return commits;
+  };
+
+  it("a contributor first appearing in commit 101 is still a Co-authored-by trailer", { timeout: 30_000 }, () => {
+    const w = world();
+    w.state.prs[7]!.commits = page(100);
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr + r.line).toBe(0);
+    const trailers = interpretTrailers(w.state.lastBody ?? "");
+    expect(trailers).toContain("Co-authored-by: Late Contributor <101+late-contributor@users.noreply.github.com>");
+    expect(trailers).not.toMatch(/gate-merger/);
+    expect(trailers).toMatch(/^AgEnD-Gate-Operation: [0-9a-f]{48}$/m);
+  });
+
+  it("a contributor in the first page of a 101-commit PR is still credited (control)", { timeout: 30_000 }, () => {
+    const w = world();
+    w.state.prs[7]!.commits = page(0);
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr + r.line).toBe(0);
+    expect(interpretTrailers(w.state.lastBody ?? ""))
+      .toContain("Co-authored-by: Late Contributor <101+late-contributor@users.noreply.github.com>");
+  });
+
+  it("truncated commit metadata blocks before merging", { timeout: 30_000 }, () => {
+    const w = world();
+    w.state.prs[7]!.commits = page(100);
+    w.state.truncateCommits = true;
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.line).toMatch(/^BLOCKED /);
+    expect(w.writes(r.calls)).toEqual([]);
   });
 });

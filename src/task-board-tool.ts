@@ -60,8 +60,9 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
     case "move": {
       const id = need(args.id, "id");
       let to = status(args.to ?? args.status);
-      // As the tool's `done`: finishing a card that waits for the person's confirmation hands it to them (review).
-      if (to === "done") { const held = board.findCard(id); if (held?.needsReview && held.status !== "review") to = "review"; }
+      // As the tool's `done`: finishing a card that waits for someone's confirmation hands it to them (review) — unless
+      // the caller is the one who confirms it (#2434: an agent's card, by its dispatcher; nobody's, by its assignee).
+      if (to === "done") { const held = board.findCard(id); if (held?.needsReview && held.status !== "review" && !board.confirms(held, actor)) to = "review"; }
       const { card, from, notes } = board.moveCard(actor, id, to, {
         reason: str(args.reason), result: str(args.result), comment: str(args.comment), version: int(args.version),
       });

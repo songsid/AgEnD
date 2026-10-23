@@ -177,6 +177,8 @@ describe("kept across a restart", () => {
         ["a time no Date can hold", { at: Number.MAX_VALUE, provider: { ...good(t0), id: "codex" } }],
         ["a time in the future", { at: t0 + 8 * 24 * HOUR, provider: { ...good(t0), id: "codex" } }],
         ["a plan of the wrong type", { at: t0, provider: { ...good(t0), id: "codex", plan: 5 } }],
+        ["a pool of the wrong shape (#2240)", { at: t0, provider: { ...good(t0), id: "codex", metrics: [{ type: "percent", label: "S", used: 1, pool: { label: 5 } }] } }],
+        ["a pool whose words are junk (#2460 review)", { at: t0, provider: { ...good(t0), id: "codex", metrics: [{ type: "percent", label: "S", used: 1, pool: { label: "Gemini", labelI18n: { key: 5 } } }] } }],
       ] as const) {
         writeFileSync(file, JSON.stringify({ v: 1, rows: { claude: valid, codex: bad } }));
         setUsageFetcherForTests(async () => ({ fetchedAt: iso(Date.now()), providers: [expired, { ...expired, id: "codex", name: "Codex" }] }));
@@ -184,6 +186,13 @@ describe("kept across a restart", () => {
         const [c, x] = (await getUsageSnapshot()).providers;
         expect([c!.stale, c!.metrics[1]!.used, x!.status, x!.stale], why).toEqual([true, 64, "error", undefined]);
       }
+      // #2240: a metric's pool (agy's Gemini 4 Argon…) is kept across a restart.
+      const pooled = { ...good(t0), id: "codex", metrics: [{ type: "percent", label: "Gemini 4 Argon (weekly)", used: 12, windowMs: 6048e5, pool: { label: "Gemini 4 Argon", labelI18n: { key: "usage.metric.named", args: ["Gemini 4 Argon"] } } }] };
+      writeFileSync(file, JSON.stringify({ v: 1, rows: { claude: valid, codex: { at: t0, provider: pooled } } }));
+      setUsageFetcherForTests(async () => ({ fetchedAt: iso(Date.now()), providers: [expired, { ...expired, id: "codex", name: "Codex" }] }));
+      await setUsageLastGoodFileForTests(file);
+      const kept = (await getUsageSnapshot()).providers[1]!;
+      expect([kept.stale, kept.metrics[0]!.pool]).toEqual([true, pooled.metrics[0]!.pool]);
       // An unreadable file, an entry older than a week, or one whose id is not its key: nothing.
       for (const body of ["{not json", JSON.stringify({ v: 1, rows: { claude: { at: t0 - 8 * 24 * HOUR, provider: good(t0) } } }),
         JSON.stringify({ v: 1, rows: { claude: { at: t0, provider: { ...good(t0), id: "codex" } } } }), JSON.stringify({ v: 2, rows: {} })]) {

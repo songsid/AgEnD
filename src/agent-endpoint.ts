@@ -31,6 +31,7 @@ import {
   toolRefusedMessage,
 } from "./tool-permissions.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, isCanvasWorkerTool } from "./web-experimental.js";
+import { dashboardRefusalIn } from "./dashboard-permissions.js";
 import { isWebMessageId } from "./web-chat-history.js";
 
 export interface PersistedReplyContext {
@@ -342,6 +343,13 @@ export async function dispatchAgentOperation(
         "tool-permissions: refused",
       );
       throw new ToolNotPermittedError(toolRefusedMessage(profile, requestedTool));
+    }
+    // The person's dashboard switches, on top of the profile (dashboard-permissions.ts).
+    // Its own switches, else the defaults' — a ClassicBot identity included (#2391 review).
+    const switchedOff = dashboardRefusalIn(ctx.fleetConfig, instance, requestedTool);
+    if (switchedOff) {
+      ctx.logger.warn({ sink: "agent-endpoint", instance, profile, tool: requestedTool, enforced: true, dashboard: true }, "tool-permissions: refused");
+      throw new ToolNotPermittedError(switchedOff);
     }
   }
 

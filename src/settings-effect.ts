@@ -35,8 +35,11 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  // #2453 (§0.2): the trusted effect — the named-link option off before, on after — makes the change one its asker can't
+  // confirm (#2170 self-confirmation).
+  const opensNamedLink = () => before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true;
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
-    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic) } : null;
+    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensNamedLink() ? { noSelfConfirm: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (secret || connection) {
@@ -70,6 +73,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     after.fleet.defaults = { ...cfg.defaults, ...record(body) };
     if (after.fleet.defaults.locale === null || after.fleet.defaults.locale === "") delete after.fleet.defaults.locale;
+    if (after.fleet.defaults.tool_set === null || after.fleet.defaults.tool_set === "") delete after.fleet.defaults.tool_set;
   } else if (path === "/api/settings/fleet/web") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     // #1620: read as the handler reads it (one parser): what it would refuse — a read-only web field, a malformed limit —

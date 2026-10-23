@@ -83,12 +83,18 @@ function ImageLightbox({ items, index, opener, onClose }) {
     zoom.current = z;
     return () => { z.destroy(); zoom.current = null; };
   }, []);
-  // Another image: hidden until it has loaded and been fitted (its load resets the zoom).
+  // Another image: hidden until it has loaded and been fitted (its load resets the zoom). A layout effect — in the same
+  // commit that set the new src, before any load can arrive: a picture already in the cache (every thumbnail above it
+  // has loaded) fires its load before a passive effect would run, and such an effect then hid it for good with the
+  // level at "…" (the report on beta.24: Next "flashes once, then the next image is not visible"). A picture that is
+  // already complete here (the same file again: no load comes) is fitted at once.
   const first = useRef(true);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (first.current) { first.current = false; return; }
-    if (img.current) img.current.classList.remove("lb-ready");
+    const el = img.current;
+    if (el) el.classList.remove("lb-ready");
     setLevel(null);
+    if (el && el.complete && el.naturalWidth > 0 && zoom.current) zoom.current.reset();
   }, [at]);
   useEffect(() => {
     const d = ref.current;

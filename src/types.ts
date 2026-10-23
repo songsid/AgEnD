@@ -161,7 +161,10 @@ export interface InstanceConfig {
    * default UI; "v3" opts into the experimental next-generation agent.
    */
   kiro_ui?: "legacy" | "tui" | "v3";
-  /** MCP tool profile: "full" (20 tools), "standard" (8), "minimal" (3). Default: "full" */
+  /**
+   * MCP tool profile (src/tool-permissions.ts): "worker", "coordinator", "standard", "minimal" or "full". Unset: the
+   * fleet default's, else "general" for a General, else "worker".
+   */
   tool_set?: string;
   /**
    * Tool-progress detail shown in the channel processing bubble.
@@ -182,6 +185,14 @@ export interface InstanceConfig {
    * reads it at each claim; the daemon only keeps it current.
    */
   board_cards_at_once?: number;
+  /**
+   * Which dashboard features this instance may use, on top of its `tool_set` (dashboard-permissions.ts): `appearance`
+   * (its own look: theme, pictures, widgets, ambient, effects, mod proposals), `task_board` (the `task` tool) and
+   * `web_settings` (Settings → Web appearance for the person). `false` switches one off; unset allows. `defaults.dashboard`
+   * sets it for every instance and merges key by key with an instance's own. The fleet reads it at each tool call; the
+   * daemon keeps it current, and an agent's tool menu follows from its next start.
+   */
+  dashboard?: import("./dashboard-permissions.js").DashboardAccess;
   /**
    * Detect a human-channel turn that ended without a delivered reply and ask
    * the agent to send one bounded recovery reply. Only capable backends use
@@ -351,8 +362,12 @@ export interface FleetTemplate {
 export interface WebConfig {
   /** Canvas Worker effects are experimental and off unless explicitly enabled. Ambient effects are independent. */
   experimental?: { canvas_worker?: boolean };
-  /** Only menu availability; every exposure requires explicit admin consent. */
-  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number };
+  /**
+   * Only menu availability; every exposure requires explicit admin consent. `ttl_minutes`: 1..480 for a quick tunnel;
+   * with a fixed `hostname` (named tunnel) 1..10080, or 0 = no expiry. `auto_open` (named only, default false): reopen
+   * the link after the fleet starts, for the admin who last opened it — no sign-in code is sent by that.
+   */
+  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number; auto_open?: boolean };
   /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */
   echo_to_channel?: boolean;
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
@@ -382,7 +397,8 @@ export interface WebConfig {
    * index of its own (search.db, kept `retention_days`, default 90; search/search-index.ts). `enabled: false`: no index
    * from the next fleet start (the file is left as it is), and searches are refused at once.
    */
-  search?: { enabled?: boolean; retention_days?: number };
+  /** #2293 global search. #2478: `public_link` (default true) — false keeps it off the temporary public link. */
+  search?: { enabled?: boolean; retention_days?: number; public_link?: boolean };
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
   /**
@@ -457,6 +473,12 @@ export interface WebVerifiedAuthorityConfig {
   loopback_only?: boolean;
   /** A session's authorization lasts this many hours after it was given, 1–48 (default 48). */
   max_session_hours?: number;
+  /**
+   * #2453 (§0.2): sessions over the admin's own named tunnel (`web.public_link.hostname`) may be authorized too — off by
+   * default. Turning it on is confirmed in a General or on the host (never by the asking session); off applies at once
+   * and every receipt from a named-link session reads as none. A quick tunnel never qualifies.
+   */
+  named_link?: boolean;
 }
 
 /** #1920: fleet.yaml `web.guests`. */
@@ -534,7 +556,8 @@ export interface FleetConfig {
   health_port?: number;
   web?: WebConfig;
   /** #1386 "Needs you": the live list in each world's General (default on) and DMs to that world's admins (default off). */
-  needs_you?: { live_message?: boolean; dm?: boolean };
+  /** `task_board` (default false, #2425): the task board's cards that wait for the person are Needs-you items too. */
+  needs_you?: { live_message?: boolean; dm?: boolean; task_board?: boolean };
   /** Host name used when building URLs handed to users (/dashboard, web terminal). Default "localhost". */
   hostname?: string;
   /**

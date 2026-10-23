@@ -169,8 +169,9 @@ describe("a flapping instance cannot bury the fleet log again (#1116)", () => {
       }
     })();
   }
-  const edgeLogs = (logger: { info: ReturnType<typeof vi.fn> }) =>
-    logger.info.mock.calls.filter(call => call[1] === "Instance execution state changed").length;
+  // #2482: idle ↔ working edges are logged at debug now; this counts the per-edge line at whatever level it has.
+  const edgeLogs = (logger: { info: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn> }) =>
+    [...logger.info.mock.calls, ...logger.debug.mock.calls].filter(call => call[1] === "Instance execution state changed").length;
 
   it("logs the first edges, then one warning, and still publishes every edge", async () => {
     const h = harness();
@@ -184,6 +185,16 @@ describe("a flapping instance cannot bury the fleet log again (#1116)", () => {
     expect(warnings[0][0]).toMatchObject({ backend: "muse" });
     // Every edge was still emitted to observers.
     expect(h.edges.length).toBe(200);
+  });
+
+  it("#2482: idle ↔ working edges are debug; an edge into or out of stuck stays INFO", async () => {
+    const h = harness();
+    await vi.advanceTimersByTimeAsync(100);
+    const edge = (state: "idle" | "working" | "stuck") => h.daemon.applyInstanceStateSnapshot({ state, unchangedForMs: 0, observedAt: Date.now(), stateChangedAt: Date.now() });
+    for (const s of ["working", "idle", "working", "stuck", "working", "idle"] as const) { edge(s); await vi.advanceTimersByTimeAsync(20_000); }
+    const at = (spy: ReturnType<typeof vi.fn>) => spy.mock.calls.filter(c => c[1] === "Instance execution state changed").map(c => `${(c[0] as { previousState: string }).previousState}→${(c[0] as { state: string }).state}`);
+    expect(at(h.logger.info)).toEqual(["working→stuck", "stuck→working"]);
+    expect(at(h.logger.debug)).toEqual(["idle→working", "working→idle", "idle→working", "working→idle"]);
   });
 
   it("an instance that changes state a few times a minute is logged line by line, as before", async () => {

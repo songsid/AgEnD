@@ -9,7 +9,22 @@ export const CH_TYPES = ["discord", "telegram"];
 export const LOCALES = [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]];
 export const VISIBILITY_MODES = ["full", "summary", "hidden"];
 export const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"];
-export const TOOL_SETS = ["full", "standard", "minimal"];
+/**
+ * The tool profiles a person may choose (src/tool-permissions.ts; the validator's list). `general` is not one: AgEnD
+ * gives it to a General that sets none.
+ */
+export const TOOL_SETS = ["worker", "coordinator", "standard", "minimal", "full"];
+/**
+ * The profile an agent runs under while it sets none (resolveToolSet, on the config as loaded: the defaults merged
+ * under the agent's own): the fleet default's, else `general` for a General — its own `general_topic`, else the
+ * default's (#2407 review: `defaults.general_topic: true` makes every agent without its own a General), or the instance
+ * named general — else `worker`; never `full`, which the page used to show.
+ */
+export function toolSetDefault(defaults, inst, name = "") {
+  if (TOOL_SETS.includes(defaults && defaults.tool_set)) return defaults.tool_set;
+  const general = hasOwn(inst, "general_topic") ? inst.general_topic === true : !!defaults && defaults.general_topic === true;
+  return general || name === "general" ? "general" : "worker";
+}
 export const TOOL_PROGRESS = ["off", "standard", "verbose"];
 export const AGENT_MODES = ["mcp", "cli"];
 export const ACCESS_MODES = ["locked", "open", "pairing"];
@@ -21,6 +36,23 @@ export const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /** The fields of `next` that differ from `baseline`. */
 export function changedFields(next, baseline) {
   return Object.fromEntries(Object.entries(next).filter(([key, value]) => !sameValue(value, baseline[key])));
+}
+
+/**
+ * The dashboard features an agent may use (dashboard-permissions.ts): each "inherit" (the fleet default: `defaults.dashboard`,
+ * else allowed), "on" or "off". The patch names only the features that changed: null follows the default again.
+ */
+export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings"];
+export const DASHBOARD_CHOICES = ["inherit", "on", "off"];
+const dashboardOf = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+/** What a feature is for an agent with no setting of its own: the default's, else allowed. */
+export const dashboardDefault = (defaults, feature) => dashboardOf(defaults && defaults.dashboard)[feature] !== false;
+export function dashboardForm(inst) {
+  const own = dashboardOf(inst.dashboard);
+  return Object.fromEntries(DASHBOARD_FEATURES.map((f) => [f, own[f] === true ? "on" : own[f] === false ? "off" : "inherit"]));
+}
+export function dashboardPatchValue(choices) {
+  return Object.fromEntries(DASHBOARD_FEATURES.map((f) => [f, choices[f] === "on" ? true : choices[f] === "off" ? false : null]));
 }
 
 /** #1302: cross-instance notices. Unset, or a value the fleet does not know, means full. */
@@ -142,6 +174,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     model_failover: form.inherit.model_failover ? null : (form.model_failover.trim() ? [form.model_failover.trim()] : []),
     display_name: form.inherit.display_name ? null : form.display_name.trim(),
     status_emojis: form.status_emojis,
+    dashboard: dashboardPatchValue(form.dashboard),
   };
   return changedFields(next, {
     backend: inst.backend || defaults.backend || "claude-code",
@@ -164,11 +197,12 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     model_failover: hasOwn(inst, "model_failover") ? inst.model_failover : null,
     display_name: hasOwn(inst, "display_name") ? inst.display_name : null,
     status_emojis: statusEmojisBaseline,
+    dashboard: dashboardPatchValue(dashboardForm(inst)),
   });
 }
 
 /** The agent form's starting values (an override shows the inherited value while "inherit" is on). */
-export function agentForm(inst, defaults) {
+export function agentForm(inst, defaults, name = "") {
   const hang = inst.hang_detector || {};
   const inherit = (key) => !hasOwn(inst, key);
   return {
@@ -179,7 +213,9 @@ export function agentForm(inst, defaults) {
     auto_pause_after: String(inst.auto_pause_after ?? defaults.auto_pause_after ?? 0),
     hang: String(hang.timeout_minutes ?? (defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? HANG_TIMEOUT_DEFAULT_MINUTES),
     agent_mode: inst.agent_mode || defaults.agent_mode || "mcp",
-    tool_set: inst.tool_set || defaults.tool_set || "full",
+    // What the picker offers when the agent sets its own: a profile a person may choose (a General's inherited
+    // `general` is shown while inheriting, but not offered to write back).
+    tool_set: TOOL_SETS.includes(inst.tool_set) ? inst.tool_set : TOOL_SETS.includes(toolSetDefault(defaults, inst, name)) ? toolSetDefault(defaults, inst, name) : "worker",
     tool_progress: inst.tool_progress ?? defaults.tool_progress ?? "off",
     // #1302: a value the fleet does not know (a typo) is read as unset — the picker shows "full", as the old page did,
     // and the baseline is that same "full", so an unrelated edit never writes the typo back (the server refuses it).
@@ -192,6 +228,7 @@ export function agentForm(inst, defaults) {
     model_failover: Array.isArray(inst.model_failover) ? (inst.model_failover[0] || "") : ((defaults.model_failover && defaults.model_failover[0]) || ""),
     display_name: inst.display_name ?? defaults.display_name ?? "",
     status_emojis: inst.status_emojis || null,
+    dashboard: dashboardForm(inst),
     inherit: {
       auto_pause_after: inherit("auto_pause_after"), hang: !hasOwn(hang, "timeout_minutes"), agent_mode: inherit("agent_mode"),
       tool_set: inherit("tool_set"), tool_progress: inherit("tool_progress"), cross_instance_visibility: inherit("cross_instance_visibility"),

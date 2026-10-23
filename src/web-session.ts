@@ -571,7 +571,7 @@ export class WebSessionStore {
     const dir = dirname(this.path);
     const temp = `${this.path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
     try {
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
       const body = JSON.stringify({ version: 1, sessions: [...this.byHash.values()].filter(r => !this.pending.has(r.idHash)) });
       this.ops.writeFileSync(temp, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
       // fsync before rename so data survives a power loss between write and rename.

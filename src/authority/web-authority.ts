@@ -10,8 +10,12 @@ import type { WebConfig } from "../types.js";
 import { hostnameOf, LOOPBACK_HOST_NAMES } from "../web-host-guard.js";
 import type { SessionAuthorization } from "./session-authorizations.js";
 
-/** Where one request came from (§3.4): `loopback` is this machine naming a loopback host; `lan` is only "not loopback". */
-export type WebPeer = "loopback" | "lan";
+/**
+ * Where one request came from (§3.4): `loopback` is this machine naming a loopback host; `lan` is only "not loopback".
+ * §0.2 (#2453): `named_link` is the admin's own named tunnel, known only from the public gateway's provenance (its exact
+ * configured hostname) — never from the TCP peer (cloudflared is local) or a header.
+ */
+export type WebPeer = "loopback" | "lan" | "named_link";
 
 /** The account behind a human receipt, written by AgEnD at admission — nothing in a message can set it (§4). */
 export interface HumanAuthority {
@@ -27,12 +31,13 @@ export interface HumanAuthority {
 }
 
 /** §10: what turned a web-verified receipt into none after it was written. */
-export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only";
+export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only" | "named_link_off";
 
 /** Why a web request carries no authority — the first §3 check it failed. */
 export type WebAuthorityRefusal =
   | "disabled"             // §10: the server switch (web.verified_authority.enabled) is off
-  | "public_link"          // §3.5: a public-link request or session never qualifies
+  | "public_link"          // §3.5: a quick-tunnel request or session never qualifies
+  | "named_link_off"       // §0.2: over the admin's named link, while web.verified_authority.named_link is off
   | "not_session"          // §3.1: a header token, a CLI call, or no session
   | "not_admin_session"    // §3.1: a guest (or read) session
   | "token_rotated"        // §3.1: the session's token epoch is not the current one
@@ -56,6 +61,8 @@ export interface WebAuthorityPolicy {
   /** The server switch as in force (authority-state.ts: off while its state cannot be written). */
   enabled: boolean;
   loopbackOnly: boolean;
+  /** §0.2: sessions over the admin's own named tunnel may qualify (web.verified_authority.named_link; off by default). */
+  namedLink: boolean;
   maxSessionMs: number;
 }
 
@@ -65,7 +72,7 @@ export function webAuthorityPolicy(web: WebConfig | undefined): WebAuthorityPoli
   const hours = typeof v?.max_session_hours === "number" && Number.isFinite(v.max_session_hours)
     ? Math.min(VERIFIED_SESSION_HOURS.max, Math.max(VERIFIED_SESSION_HOURS.min, v.max_session_hours)) : VERIFIED_SESSION_HOURS.default;
   // §0.1: the switch is on unless fleet.yaml says false (nothing carries authority until its account confirms anyway).
-  return { enabled: v?.enabled !== false, loopbackOnly: v?.loopback_only === true, maxSessionMs: hours * 3_600_000 };
+  return { enabled: v?.enabled !== false, loopbackOnly: v?.loopback_only === true, namedLink: v?.named_link === true, maxSessionMs: hours * 3_600_000 };
 }
 
 /** Headers a proxy adds; any one of them makes a request `lan`, whatever its peer address (§3.4). */
@@ -93,7 +100,7 @@ export function classifyWebPeer(req: { socket?: { remoteAddress?: string | undef
 export interface WebAuthorityInput {
   /** The cookie session this request authenticated with; null for a header token, a CLI call, or none. */
   session: SessionRecord | null;
-  /** The request came over the public link. */
+  /** The request came over the public link (its peer `named_link` when it is the admin's named tunnel, §0.2). */
   gateway: boolean;
   peer: WebPeer;
   /** sha256 of the current web token (web-session.ts tokenEpoch); null when there is none. */
@@ -116,10 +123,16 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   const refuse = (refusal: WebAuthorityRefusal): WebAuthorityResult => ({ authority: noAuthority(i.epoch), refusal });
   const s = i.session;
   if (!i.policy.enabled) return refuse("disabled");
-  if (i.gateway) return refuse("public_link");
+  // §3.5 / §0.2: the public link never qualifies — except the admin's own named tunnel (provenance, exact hostname)
+  // while the option is on and "Only this computer can authorize" is off. A peer that says named off the gateway is not.
+  if (i.gateway) {
+    if (i.peer !== "named_link") return refuse("public_link");
+    if (i.policy.loopbackOnly) return refuse("loopback_only");
+    if (!i.policy.namedLink) return refuse("named_link_off");
+  } else if (i.peer === "named_link") return refuse("public_link");
   if (!s) return refuse("not_session");
   if (s.tier !== "admin") return refuse("not_admin_session");
-  if (s.surface !== "local") return refuse("public_link");
+  if (s.surface !== (i.gateway ? "gateway" : "local")) return refuse("public_link");
   if (!i.tokenEpoch || s.tokenEpoch !== i.tokenEpoch) return refuse("token_rotated");
   const owner = s.owner;
   if (!owner?.adapterId || !owner.userId) return refuse("no_account");
@@ -154,15 +167,18 @@ export function confirmAfterBody(arrival: WebAuthorityResult, now: WebAuthorityR
 
 /**
  * §10: a receipt's authority as it reads NOW. A web-verified one reads as none, saying why, while the switch is off, once
- * the epoch has moved past the one it was granted under, or (lan only) while "Only this computer can authorize" is on.
+ * the epoch has moved past the one it was granted under, (lan and named_link) while "Only this computer can authorize" is
+ * on, or (named_link, §0.2) while the named-link option is off.
  * Platform and none are unchanged. The receiver applies the rule to this, never to the stored value.
  */
-export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; epoch: number }): HumanAuthority {
+export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; epoch: number }): HumanAuthority {
   if (stored.kind !== "web-verified") return stored;
   const down = (downgraded: AuthorityDowngrade): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
   if (!state.enabled) return down("disabled");
   if (stored.authority_epoch < state.epoch) return down("revoked");
   if (state.loopbackOnly && stored.session?.peer !== "loopback") return down("loopback_only");
+  // §0.2: the named-link option off — every receipt from a session over it reads as none at once.
+  if (!state.namedLink && stored.session?.peer === "named_link") return down("named_link_off");
   return stored;
 }
 
@@ -187,7 +203,7 @@ export function isHumanAuthority(v: unknown): v is HumanAuthority {
   // S1's observe-only "web-session" is not authority any more (§0: never an authorization): it fails here, so reads none.
   if (a.kind !== "web-verified" || !actorOk) return false;
   const s = a.session as Record<string, unknown> | undefined;
-  return !!s && typeof s === "object" && typeof s.handle === "string" && !!s.handle && (s.peer === "loopback" || s.peer === "lan")
+  return !!s && typeof s === "object" && typeof s.handle === "string" && !!s.handle && (s.peer === "loopback" || s.peer === "lan" || s.peer === "named_link")
     && typeof s.signed_in_at === "string" && typeof s.authorized_at === "string";
 }
 

@@ -305,7 +305,9 @@ export class GrokBackend implements CliBackend {
         // line, or the exhausted-resource sentence (which may wrap to a ┃ continuation).
         // This prevents matching unrelated ┃ Retry blocks followed by ┃ lines that merely
         // contain the word "rate_limit" (e.g. a function call like scan_rate_limit()).
-        pattern: /^[ \t]*┃[ \t]+Retry failed:[ \t]+(?:rate_limit_error:|Some resource has been exhausted:[^\n]*(?:\n[ \t]*┃[ \t]+[^\n]*)*?rate limit)/im,
+        // Consume one required continuation separator; the rest of that line already allows whitespace.
+        // Repeating two overlapping whitespace consumers here makes crafted pane text backtrack exponentially.
+        pattern: /^[ \t]*┃[ \t]+Retry failed:[ \t]+(?:rate_limit_error:|Some resource has been exhausted:[^\n]*(?:\n[ \t]*┃[ \t][^\n]*)*?rate limit)/im,
         type: "rate_limit",
         action: "failover",
         message: "Grok rate limit reached",

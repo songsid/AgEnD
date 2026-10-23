@@ -107,8 +107,11 @@ describe("the classifier judges these by direction", () => {
     expect(() => judge({ session: { local: { idle_hours: 60 } } })).toThrow("invalid_settings_effect");   // #1670: > the 48 h default
     for (const body of [{ web_terminal: { ttl_minutes: 21 } }, { web_terminal: { ttl_minutes: 0 } }, { web_terminal: { enabled: "false" } },
       { web_terminal: { bind: "0.0.0.0" } }, { session: { local: { absolute_hours: "48" } } }, { session: { gateway: {} } },
-      { allowed_hosts: ["other.invalid"] }, { view_access: "open" }, { echo_to_channel: "false" }, { public_link: { ttl_minutes: 481 } }])
+      { allowed_hosts: ["other.invalid"] }, { view_access: "open" }, { echo_to_channel: "false" }, { public_link: { ttl_minutes: 10081 } }])
       expect(() => judge(body), JSON.stringify(body)).toThrow("invalid_web_settings");
+    // #named-link-ttl: 481 is a fine patch shape; on a quick tunnel the merged result is the validator's to refuse.
+    expect(() => judge({ public_link: { ttl_minutes: 481 } })).toThrow("invalid_settings_effect");
+    expect(judge({ public_link: { ttl_minutes: 481 } }, { web: { public_link: { hostname: "agend.example.com" } } })).not.toBeNull();
   });
   it("web echo stays immediate and the public link's menu stays confirmed, as before", () => {
     expect(judge({ echo_to_channel: false })).toBeNull();
@@ -198,6 +201,36 @@ describe("through the gate and the real handler", () => {
     expect((await h.request({ session: { local: { idle_hours: 6 } } }, { direct: true })).status).toBe(400);
     expect((await h.request({ session: { local: { idle_hours: 4 } } }, { direct: true, key: "k-2" })).status).toBe(200);
     expect(h.raw().web.session.local).toEqual({ absolute_hours: 4, idle_hours: 4 });
+  });
+});
+
+describe("#named-link-ttl: the named link's lifetime and auto_open through the gate and the real handler", () => {
+  const NAMED = { web: { public_link: { hostname: "agend.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN" } } };
+  it("no expiry and auto_open are confirmed like every public_link change, then round-trip to fleet.yaml and the live config", async () => {
+    const h = harness(NAMED);
+    const r = await h.request({ public_link: { ttl_minutes: 0, auto_open: true } });
+    expect([r.status, r.body.result]).toEqual([202, "pending_confirmation"]);
+    expect(h.save).not.toHaveBeenCalled();
+    expect((await h.store.decide(r.body.pending_change.id, "confirm", admin())).state).toBe("applied");
+    expect(h.raw().web.public_link).toEqual({ hostname: "agend.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN", ttl_minutes: 0, auto_open: true });
+    expect(h.config.web.public_link).toEqual(expect.objectContaining({ ttl_minutes: 0, auto_open: true }));
+  });
+  it("a quick tunnel refuses more than 480 minutes, 0 and auto_open — nothing is written", async () => {
+    for (const public_link of [{ ttl_minutes: 600 }, { ttl_minutes: 0 }, { auto_open: true }]) {
+      const h = harness(), before = readFileSync(join(roots.at(-1)!, "fleet.yaml"), "utf8");
+      const r = await h.request({ public_link }, { direct: true });
+      expect([r.status, r.body.errors?.[0]?.path], JSON.stringify(public_link)).toEqual([400, `web.public_link.${Object.keys(public_link)[0]}`]);
+      expect(readFileSync(join(roots.at(-1)!, "fleet.yaml"), "utf8")).toBe(before);
+    }
+  });
+  it("going back to a quick tunnel with a longer lifetime (or auto_open) set is refused until it fits", async () => {
+    const h = harness({ web: { public_link: { ...NAMED.web.public_link, ttl_minutes: 600 } } });
+    const back = { hostname: "", tunnel_token_env: "" };
+    const refused = await h.request({ public_link: back }, { direct: true });
+    expect([refused.status, refused.body.errors?.[0]?.path]).toEqual([400, "web.public_link.ttl_minutes"]);
+    expect(h.save).not.toHaveBeenCalled();
+    expect((await h.request({ public_link: { ...back, ttl_minutes: 480 } }, { direct: true, key: "k-2" })).status).toBe(200);
+    expect(h.raw().web.public_link).toEqual({ hostname: "", tunnel_token_env: "", ttl_minutes: 480 });
   });
 });
 

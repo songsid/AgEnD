@@ -1,3 +1,4 @@
+import { withoutTaskBoardGuidance, withoutTaskCommands } from "./dashboard-permissions.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +26,8 @@ export interface FleetInstructionsParams {
   statusEmojis?: string[];
   /** CLI mode: inject CLI quick reference instead of MCP tool usage section */
   cliInstructions?: string;
+  /** False: the person switched this agent's task board off (`dashboard.task_board`): it is not told to use it. */
+  taskBoard?: boolean;
 }
 
 /** The built-in status set as default.md spells it. */
@@ -160,8 +163,8 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
 
   // ── Message format & tool usage ──
   if (params.cliInstructions) {
-    // CLI mode: inject CLI quick reference
-    sections.push(params.cliInstructions);
+    // CLI mode: inject CLI quick reference (without the board's commands for an agent that may not use it)
+    sections.push(params.taskBoard === false ? withoutTaskCommands(params.cliInstructions) : params.cliInstructions);
     sections.push(cliCrossInstanceRule(classic));
     sections.push(`## Before acting on a peer's message\n${VERIFY_PEER_MESSAGE_RULE}`);
   } else {
@@ -214,6 +217,8 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       try {
         const here = dirname(fileURLToPath(import.meta.url));
         workflowContent = readFileSync(join(here, "workflow-templates/default.md"), "utf-8");
+        // The built-in template's task board section, only for an agent that may use the board (a custom one is the person's).
+        if (params.taskBoard === false) workflowContent = withoutTaskBoardGuidance(workflowContent);
       } catch { /* template not found — skip */ }
     }
     if (workflowContent) {

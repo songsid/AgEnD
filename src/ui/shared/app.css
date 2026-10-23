@@ -130,9 +130,15 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    A short box that clips to its corners (.msg-quote) moves the bar in (--lbar-left) and shortens it (--lbar-inset) so
    the corner never cuts its ends round.
    tests/web-left-bar-2330.test.ts keeps a coloured border-left off rounded boxes. */
-.lbar, .reply-bar, .msg-quote, .p-log .log-item.k-error, .p-log .log-item.s-failed, .org-node, .us-basis, .us-partial, .cmd-card.bad, .tb-tile, .s-dirty { position: relative; }
+.lbar, .reply-bar, .msg-quote, .p-log .log-item.k-error, .p-log .log-item.s-failed, .org-node, .us-basis, .us-partial, .cmd-card.bad, .tb-tile, .s-dirty,
+.search-row.on, .search-recent-item:hover, .search-recent-item:focus-visible, .search-ctx-line.here, .tw-line:hover, .tw-line:focus-visible,
+.u-crow:focus-visible { position: relative; }
 .lbar::before, .reply-bar::before, .msg-quote::before, .p-log .log-item.k-error::before, .p-log .log-item.s-failed::before, .org-node::before,
-.us-basis::before, .us-partial::before, .cmd-card.bad::before, .tb-tile::before, .s-dirty::before {
+.us-basis::before, .us-partial::before, .cmd-card.bad::before, .tb-tile::before, .s-dirty::before,
+/* #2478 item 7 (the user's fixed template): a selected, hovered or keyboard-focused row is the straight bar and a flat
+   background at most — never a rounded fill, a curved inset edge or a rounded ring. */
+.search-row.on::before, .search-recent-item:hover::before, .search-recent-item:focus-visible::before, .search-ctx-line.here::before,
+.tw-line:hover::before, .tw-line:focus-visible::before, .u-crow:focus-visible::before {
   content: ""; position: absolute; left: var(--lbar-left, 0); top: var(--lbar-inset, var(--s-2)); bottom: var(--lbar-inset, var(--s-2)); width: 3px;
   background: var(--lbar-color, var(--accent)); pointer-events: none; }
 /* #2347: a Settings field edited and not saved yet — the shared straight bar (above), a light tint, and the 3px the bar
@@ -520,6 +526,36 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    such as 「昨天 下午03:58」, ticks) — and a block body would stretch to it; fit-content keeps a short message short, on
    the right under its meta, and a long one still wraps at the message's max-width. */
 .msg.user .body { background: var(--user-bubble); border-radius: var(--r-xl); padding: 10px var(--s-4); width: fit-content; max-width: 100%; margin-left: auto; }
+/* A message this page is sending (chat-thread.js outgoingHtml): shown at once, its text dimmed with "Sending…" until the
+   server takes it; failed, a straight red bar with Retry and Delete. Each file: a picture as itself (or a document mark),
+   its name, a square-ended bar and its percentage, moved in place. */
+.msg.user.out .meta { align-items: center; gap: var(--s-2); }
+.msg.out.out-queued .body, .msg.out.out-sending .body { color: var(--text-3); }
+.msg.out.out-queued .body .md, .msg.out.out-sending .body .md { opacity: .72; }
+.out-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); }
+.out-spin { width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: out-spin .8s linear infinite; }
+@keyframes out-spin { to { transform: rotate(360deg); } }
+.out-files { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.msg.out .body .out-files:first-child { margin-top: 0; }
+.out-file { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.out-pic { width: 72px; height: 72px; object-fit: cover; border-radius: var(--r-md); flex: none; background: var(--surface-2); }
+.msg.out.out-queued .out-pic, .msg.out.out-sending .out-pic { opacity: .7; }
+.out-doc { width: 32px; height: 40px; flex: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); }
+.out-file-info { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px var(--s-2); min-width: 0; flex: 1; min-width: 140px; }
+.out-name { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out-pct { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.out-bar { grid-column: 1 / -1; height: 3px; background: var(--border); overflow: hidden; }
+.out-fill { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .2s linear; }
+.out-file[data-state="done"] .out-bar, .out-file[data-state="done"] .out-pct { visibility: hidden; }
+.out-file[data-state="failed"] .out-fill { background: var(--danger); }
+.out-file[data-state="failed"] .out-pct { color: var(--danger); }
+.msg.out.out-sent .out-file .out-bar, .msg.out.out-sent .out-file .out-pct { visibility: hidden; }
+/* Hugs its words under the bubble's right edge, as the bubble does: the bar stays beside them, never across the row. */
+.out-note { --lbar-color: var(--danger); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); width: fit-content; max-width: 100%;
+  margin: var(--s-2) 0 0 auto; padding: var(--s-1) 0 var(--s-1) calc(var(--s-2) + 3px); font-size: var(--fs-xs); color: var(--danger); }
+.out-error { overflow-wrap: anywhere; }
+.out-actions { display: inline-flex; gap: var(--s-1); }
+@media (prefers-reduced-motion: reduce) { .out-spin { animation: none; border-right-color: currentColor; opacity: .6; } .out-fill { transition: none; } }
 /* A person's click on a reply button: the bubble shows 🔘 and the button's label (never the value the agent was given);
    live, the label is a button that shows the reply its buttons were on. */
 .click-chip { display: flex; }
@@ -665,8 +701,8 @@ html.lb-open .scroller { overflow: hidden; }
 .p-chat > .panel-head { --bg: var(--chrome-bg); --surface: var(--chrome-surface); --text: var(--chrome-text); --text-2: var(--chrome-text-2); --accent: var(--chrome-accent); background: var(--bg); color: var(--text); }
 .p-chat.th { background: var(--bg); color: var(--text); }
 .p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
-.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
-.p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea { font-family: var(--font-mono); }
+.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
+.p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea, .p-chat.th-font-mono .composer-ph { font-family: var(--font-mono); }
 .p-chat.th-bubble-thin .msg.user .body { box-shadow: inset 0 0 0 1px var(--border); }
 .p-chat.th-bubble-accent .msg.user .body { box-shadow: inset 0 0 0 1px var(--accent); }
 .p-chat.th-agent-bubble .msg.agent .body { background: var(--agent-bubble); border-radius: var(--bubble-radius, var(--r-xl)); padding: 10px var(--s-4); }
@@ -800,6 +836,11 @@ img.amb-p { object-fit: contain; }
   font-size: var(--fs-md); line-height: var(--lh-md); resize: none; min-height: 24px; max-height: 240px; overflow-y: auto;
 }
 .composer textarea::placeholder { color: var(--text-3); }
+/* #2478: the placeholder, drawn over the empty box at its text's place: one line ending in "…" (a textarea's own is
+   clipped, never ellipsized). The same size and line as the box's text; it never takes a tap. */
+.composer-field { position: relative; flex: 1; min-width: 0; display: flex; }
+.composer-ph { position: absolute; left: var(--s-1); right: var(--s-1); top: 7px; pointer-events: none; color: var(--text-3);
+  font-size: var(--fs-md); line-height: var(--lh-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn-send { width: 36px; padding: 0; }
 .btn-send .send-label { display: none; }
 /* A narrow phone: Stop reply beside Send leaves the message box no room — the label is for screen readers there. */
@@ -845,6 +886,8 @@ img.amb-p { object-fit: contain; }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
+/* #2453: "over your named link" stays one phrase (the list item may break anywhere, CJK included). */
+.s-web-authority .s-va-named { white-space: nowrap; }
 .s-web-authority .s-va-warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-line); border-radius: var(--r-sm); padding: var(--s-1) var(--s-2); }
 .s-web-authority .save-row { flex-wrap: wrap; }
 /* #1920: a guest's note under the composer — on a phone too, where the key hints are hidden. */
@@ -970,6 +1013,8 @@ img.amb-p { object-fit: contain; }
     padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   .kb-open .tabs { display: none; }
+  /* #2478: with the keyboard up the line under the composer goes too — the box sits on the keyboard; back on blur. */
+  .kb-open .composer-row { display: none; }
   .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 56px; justify-content: center; font-size: 11px; color: var(--text-2); position: relative; }
   .tab.active { color: var(--text); font-weight: var(--fw-semibold); }
   .tab-badge { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-full); background: var(--danger-fill); color: var(--on-danger); font-size: 10px; line-height: 16px; text-align: center; }
@@ -1082,7 +1127,21 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
    down, never the count; the count is as tall as a header, so the row does not grow. */
 .nav-facets { display: flex; align-items: flex-start; gap: var(--s-2); padding: var(--s-2) var(--s-1) 0; }
 .nav-facet-groups { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); flex: 1 1 auto; min-width: 0; }
-.nav-facets .nav-shown { flex: none; margin: 0 0 0 auto; padding: 2px 0; white-space: nowrap; }
+/* #2401: the count, "shown" under it and Clear under that. The word's width is held by ::before (its text from
+   data-reserve) and idle Clear's by the button itself, both at no height, unseen and out of reach (visibility): the column —
+   and the headers' box beside it — is as wide with a facet set as without. */
+.nav-facet-end { flex: none; margin: 0 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; }
+.nav-facets .nav-shown { margin: 0; padding: 2px 0; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.nav-shown-word { display: block; }
+.nav-facet-end::before { content: attr(data-reserve); display: block; height: 0; overflow: hidden; visibility: hidden; font-size: var(--fs-xs); white-space: nowrap; }
+.nav-facet-end .is-idle { visibility: hidden; height: 0; min-height: 0; margin: 0; padding-top: 0; padding-bottom: 0; border-top-width: 0; border-bottom-width: 0; overflow: hidden; }
+/* No open list beside it (.compact): one cell of one line, as wide as the count or Clear; a facet set, Clear in the count's
+   place (the count transparent, still read; the word for a screen reader only, so its width is not held here). */
+.nav-facets.compact .nav-facet-end { display: grid; justify-items: end; align-items: center; }
+.nav-facets.compact .nav-facet-end > * { grid-area: 1 / 1; margin: 0; }
+.nav-facets.compact .nav-facet-end::before { display: none; }
+.nav-facets.compact .nav-shown.is-set { opacity: 0; pointer-events: none; }
+.nav-facets.compact .nav-shown-word { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .nav-facet { font-size: var(--fs-xs); color: var(--text-2); min-width: 0; max-width: 100%; }
 /* #1700: a facet group's header — the whole row toggles its list; folded with a filter set, a short summary. */
 .nav-facet-head { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; padding: 2px var(--s-2); border: 0; border-radius: var(--r-sm);
@@ -1091,10 +1150,15 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .nav-facet-head:focus-visible { outline: 2px solid var(--accent); }
 .nav-facet-head .caret { color: var(--text-3); flex: none; }
 .nav-facet-sum { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+/* #2401: the summary takes only the room its line has left — never counted when the headers wrap (contain: inline-size,
+   its gap taken back), so a facet set never sends a header to a line of its own; the header holding it grows into the rest. */
+.nav-facet.has-sum { flex-grow: 1; }
+.nav-facet.has-sum .nav-facet-head { width: 100%; }
+.nav-facet-sum { contain: inline-size; flex: 1 1 0; margin-left: calc(-1 * var(--s-1)); padding-left: var(--s-1); }
 .nav-facet-n { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); text-align: center; font-variant-numeric: tabular-nums; }
 .nav-facet-list { display: flex; flex-direction: column; gap: 2px; padding: var(--s-1) var(--s-2); }
 .nav-chip { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--text); }
-.nav-facet-reset { font-size: var(--fs-xs); }
+.nav-facet-reset { font-size: var(--fs-xs); flex: none; white-space: nowrap; margin-top: 2px; padding: 2px var(--s-1); }
 
 /* One gap on every page (View's, #1448): the header's controls are the same size on every tab. */
 .panel-actions .btn { gap: var(--s-1); }
@@ -1116,9 +1180,13 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .err { color: var(--danger); font-size: var(--fs-sm); }
 .u-provider { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
 .u-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
-/* #1749: one line beside ↑↓ — the name gives way first, then the plan badge (each with an ellipsis); ↑↓ never wrap. */
-.u-head strong { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.u-plan { min-width: 0; flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #1749 / #2412: one line beside ↑↓, by flexing alone (no widths assumed: ↑↓ are larger on a phone). The plan badge
+   starts at its minimum (40 px) and grows up to its own width into the room the name and ↑↓ leave, so a long badge ends
+   in an ellipsis (the full name its tooltip) while the name keeps every pixel (#2415 review: a shared shrink, however
+   weighted, still took a fraction of one and painted "Meta Muse Co…"). Only when the name, that minimum badge and ↑↓
+   cannot all fit (a 320 px phone) does the name shrink and end in an ellipsis — nothing leaves the card. */
+.u-head strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-plan { flex: 1 0 40px; max-width: max-content; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* #2014: a credential profile's row — the provider name beside the plan badge, and the profile on its own full-width
    muted line under the head (one line in the rail, whole in the dialog). */
 .u-profile { margin-top: calc(-1 * var(--s-2) + 2px); color: var(--text-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1148,7 +1216,45 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 /* #1673: the usage rail beside the page on a wide screen (header-tools.js UsageRail; shown only at min-width 1200px). */
 .u-rail { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--bg); }
 .u-rail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-3) var(--s-3) var(--s-2) var(--s-4); }
-.u-rail-head h2 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.u-rail-head h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+/* The usage view's compact mode (usage-dialog.js CompactGroup / CompactRow), the user's pick (2026-10-22): the logins
+   grouped by provider (its name once, in small capitals), each in three short lines — its name and plan with the
+   soonest reset on the right, then each window as a labelled full-width bar and the percent. */
+.dlg-tools { display: inline-flex; align-items: center; flex: none; }
+.u-compact-toggle { flex: none; }
+/* flex: none — a group never shrinks to fit the rail (it would clip its accounts): the rail scrolls instead. */
+.u-cgroup { flex: none; display: flex; flex-direction: column; border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.u-cg-head { display: flex; align-items: baseline; gap: 4px; padding: 7px var(--s-3) 3px; font-size: 11px; font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+.u-cg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-cg-count { flex: none; }
+.u-crow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; padding: 6px var(--s-3); border: 0; border-top: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; line-height: 1.3; text-align: left; cursor: pointer; }
+.u-cg-head + .u-crow { border-top: 0; }
+.u-crow:hover { background: var(--surface-2); }
+/* #2478 (Prism r1): the compact rows sit in .u-cgroup, rounded and clipping (overflow: hidden) — the bar keeps clear of
+   its 12 px corners (4 px in, 6 px off the row's ends) and there is no full-width underline to be rounded at the ends:
+   the bar is the focus mark (hover has none). */
+.u-crow:focus-visible { outline: none; background: var(--surface-2); --lbar-left: var(--s-1); --lbar-inset: 6px; }
+/* The name never gives way to the plan (#2415); the reset keeps its room on the right. */
+.u-crow-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-sm); }
+.u-crow-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); color: var(--text); }
+.u-crow .u-plan { flex: 0 100 auto; min-width: 22px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-block: 0; line-height: 16px; font-size: 10.5px; }
+.u-crow-reset { margin-left: auto; flex: none; padding-left: 6px; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.u-cm { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 3.4em; align-items: center; gap: 7px; min-width: 0; }
+.u-cm-tag { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #2240: an account of several pools (agy) names each pool's line: a wider label, ending in an ellipsis if it must. */
+.u-crow.is-pooled .u-cm { grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3.4em; }
+.u-cm-bar { height: 6px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; border-radius: var(--r-full); background: var(--accent); }
+.u-cm-fill.warn { background: var(--warn); } .u-cm-fill.crit { background: var(--danger); }
+.u-cm-pct { text-align: right; font-size: 13px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; color: var(--text); }
+.u-cm-pct.warn { color: var(--warn); } .u-cm-pct.crit { color: var(--danger); }
+.u-crow-note { font-size: var(--fs-xs); color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-crow-note.is-alert::before { content: "●"; margin-right: 5px; color: var(--danger); }
+.u-crow.is-stale .u-crow-note.is-alert::before { color: var(--warn); }
+@media (prefers-reduced-motion: no-preference) { .u-crow { transition: background-color 0.15s var(--ease); } }
 .u-rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 @media (max-width: 1199px) { .u-rail { display: none; } }
 @media (max-width: 899px) {
@@ -1516,6 +1622,49 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .oc-tools { margin-left: 0; width: 100%; flex-wrap: wrap; row-gap: var(--s-2); }
   .oc-mini { display: none; }
 }
+/* ── Fleet → Org chart → Office (fleet-office.js): the fleet as a pixel office on one <canvas>. Its size is set through
+   the CSSOM (never a style attribute, #1300); the stage scrolls, the page around it too. ── */
+.oo { display: flex; flex-direction: column; gap: var(--s-2); }
+.oo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
+.oo-pick .tb-select { max-width: 200px; }
+.oo-people { position: relative; }
+/* #2399: the offices' minimal editor (fleet-office-editor.js) — one row per office, its members unfolded under it. */
+.oe-form { border: 0; margin: 0; padding: 0; min-width: 0; }
+/* #2431: after a 409, the two ways on (keep my edits, load theirs), side by side; they wrap on a phone. */
+.oe-conflict { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.oe-list { list-style: none; margin: var(--s-3) 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.oe-row { padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
+.oe-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-2); }
+.oe-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.oe-label { font-size: var(--fs-xs); color: var(--text-2); }
+.oe-name { min-width: 0; width: 16em; max-width: 100%; }
+.oe-remove { margin-left: auto; }
+.oe-members { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.oe-group { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-width: 12em; max-height: 240px; overflow-y: auto; }
+.oe-group legend { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); padding: 0; margin-bottom: 4px; }
+.oo-people > .btn.on { border-color: var(--accent); }
+.oo-people-pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: min(280px, calc(100vw - 32px)); max-height: 340px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+.oo-people-pop input[type="search"] { width: 100%; height: 32px; }
+.oo-people-list { list-style: none; margin: 0; padding: 0; }
+.oo-people-list label { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: var(--fs-xs); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
+.oo-note { font-size: var(--fs-xs); }
+.oo-stage { position: relative; height: clamp(420px, calc(100dvh - 280px), 960px); overflow: auto; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.oo-canvas { display: block; margin: 0 auto; image-rendering: pixelated; }
+.oo-canvas.hot { cursor: pointer; }
+.oo-tip { position: absolute; left: 0; top: 0; z-index: 5; max-width: 240px; pointer-events: none; padding: 6px 10px; font-size: var(--fs-xs); line-height: 1.4;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); overflow-wrap: anywhere; }
+/* The desks as a list: for a screen reader, and shown (over the stage's corner) while the keyboard is in it. */
+.oo-desks { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; list-style: none; }
+.oo-desks:focus-within { position: sticky; left: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: 40%; margin: 0; padding: var(--s-1); clip: auto; overflow-y: auto;
+  display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: calc(100% - 2 * var(--s-2)); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); white-space: normal; }
+.oo-desk { font-size: var(--fs-xs); padding: 2px 6px; border-radius: var(--r-sm); background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.oo-desk:focus-visible { outline: none; border-color: var(--focus); box-shadow: inset 0 -2px 0 var(--focus); }
+@media (max-width: 640px) {
+  .oo-stage { height: calc(100dvh - 300px); min-height: 340px; }
+  .oo-pick .tb-select { max-width: 150px; }
+}
 /* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
 @media (max-width: 479px) {
   .p-fleet .seg-item:not(.active) > span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -1835,6 +1984,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .chat-fx-notice > span { display: block; }
 
 /* ── #2293: global search — the sidebar row's shortcut, the header's button (collapsed sidebar, phone), the dialog ── */
+/* #2478: a touch screen has no Ctrl/⌘ K — the shortcut's hint is not shown there (the row is). */
+@media (pointer: coarse) { .side-search .kbd-hint { display: none; } }
 .kbd-hint { font: inherit; font-size: var(--fs-xs); color: var(--text-3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 var(--s-1); line-height: 18px; white-space: nowrap; }
 .panel-head .sb-search { display: none; }
 .sb-collapsed .panel-head .sb-search { display: inline-flex; }
@@ -1860,15 +2011,17 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .search-note { color: var(--warn); }
 .search-recent-head { display: flex; align-items: center; justify-content: space-between; padding: var(--s-2) var(--s-3) 0; color: var(--text-3); font-size: var(--fs-xs); }
 .search-recent ul { list-style: none; margin: 0; padding: 0; }
-.search-recent-item { display: flex; align-items: center; gap: var(--s-2); width: 100%; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); padding: var(--s-2) var(--s-3); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
-.search-recent-item:hover { background: var(--surface-2); }
+.search-recent-item { display: flex; align-items: center; gap: var(--s-2); width: 100%; border: 0; border-radius: 0; --lbar-inset: 4px; background: transparent; color: var(--text); padding: var(--s-2) var(--s-3); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.search-recent-item:hover, .search-recent-item:focus-visible { background: var(--surface-2); }
+/* Keyboard focus: the bar and a straight underline (no rounded ring). */
+.search-recent-item:focus-visible { outline: none; box-shadow: inset 0 -2px 0 var(--focus); }
 .search-recent-item svg { color: var(--text-3); flex: none; }
 .search-results.stale { opacity: 0.6; }
 .search-group + .search-group { margin-top: var(--s-2); }
 .search-group-head { display: flex; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3) var(--s-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
 .search-count { color: var(--text-3); font-weight: var(--fw-regular); }
-.search-row { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); cursor: pointer; }
-.search-row.on { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+.search-row { padding: var(--s-2) var(--s-3); border-radius: 0; cursor: pointer; }
+.search-row.on { background: var(--surface-2); }
 .search-row-top { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-xs); color: var(--text-2); }
 .search-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-kind { color: var(--text-3); }
@@ -1882,8 +2035,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .search-detail-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-1) var(--s-1) var(--s-2); font-size: var(--fs-sm); }
 .search-detail-head .chip-btn { display: inline-flex; align-items: center; gap: 4px; }
 .search-ctx { list-style: none; margin: 0; padding: 0 var(--s-1); display: flex; flex-direction: column; gap: var(--s-1); }
-.search-ctx-line { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); }
-.search-ctx-line.here { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+.search-ctx-line { padding: var(--s-2) var(--s-3); border-radius: 0; }
+.search-ctx-line.here { background: var(--surface-2); }
 .search-ctx-text { margin-top: 2px; font-size: var(--fs-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 .search-detail-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); padding: var(--s-3) var(--s-1) var(--s-1); }
 @media (max-width: 899px) {
@@ -2059,9 +2212,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .tw-desc { margin: 0; font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .tw-none { margin: 0; font-size: var(--fs-xs); }
 .tw-lines { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.tw-line { display: flex; align-items: baseline; gap: var(--s-2); width: 100%; padding: 2px var(--s-1); background: none; border: 0; border-radius: var(--r-sm); color: var(--text); text-align: left; cursor: pointer; font-size: var(--fs-sm); min-width: 0; }
+.tw-line { display: flex; align-items: baseline; gap: var(--s-2); width: 100%; padding: 2px var(--s-1); background: none; border: 0; border-radius: 0; --lbar-inset: 2px; color: var(--text); text-align: left; cursor: pointer; font-size: var(--fs-sm); min-width: 0; }
 .tw-line:hover { background: var(--surface-2); }
-.tw-line:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tw-line:focus-visible { outline: none; background: var(--surface-2); box-shadow: inset 0 -2px 0 var(--focus); }
 .tw-kind { flex-shrink: 0; min-width: 4.5em; font-size: 11px; font-weight: var(--fw-semibold); color: var(--text-2); }
 .tw-kind.k-doing { color: var(--accent); }
 .tw-kind.k-blocked, .tw-kind.k-back { color: var(--danger); }

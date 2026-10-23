@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.308
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /…/claude-1000/-home-han--agend-workspaces-claude-fable-t1532671461406277715/33226202-98fe-4aa0-960b-6f13d560280a/scratchpad/cc308/w/hE400LONG308
+
+
+❯ trigger E400LONG now
+  ⎿  Prompt is too long · the request is ~213487 tokens (limit 200000) but this conversation is only ~2874 tokens — the rest is system prompt, tool definitions,
+     and attachment content. A single-exchange conversation cannot be compacted; reduce attached files/tools or start with less context. · /clear to start
+     fresh
+
+✻ Cogitated for 0s · done 9:33 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                                            ◐ medium · /effort
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

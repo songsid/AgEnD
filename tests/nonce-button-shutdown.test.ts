@@ -130,6 +130,7 @@ describe("doStopAll is wired to the sweep", () => {
       ipcStoppingInstances: new Set<string>(),
       stormWindow: { shutdown: noop },
       spawnGate: { shutdown: noop },
+      memoryPressure: { stop: noop, sample: () => ({ level: "normal" }) },
       // This fixture bypasses constructor fields; real worker cleanup has its
       // own FleetManager regression in fleet-probe-workers.test.ts.
       stopCliEnvProbes: noop,

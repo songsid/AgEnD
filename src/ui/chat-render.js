@@ -509,25 +509,15 @@
   /** Whether the chat shows "working" and its Stop button for an instance in this execution state. */
   function isBusy(state) { return state === "working" || state === "stuck"; }
 
-  /** What a key in the composer does: Enter sends, Shift+Enter is a new line, nothing happens mid-IME-composition. */
-  function composerKey(ev) {
+  /**
+   * What a key in the composer does: Enter sends, Shift+Enter is a new line, nothing happens mid-IME-composition.
+   * #2478 (the user's request): on a touch screen (a coarse pointer) Return is a new line — the Send button sends.
+   */
+  function composerKey(ev, opts) {
     if (!ev || ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return "none";
+    if (opts && opts.touch) return "newline";
     if (ev.shiftKey || ev.altKey || ev.ctrlKey || ev.metaKey) return "newline";
     return "send";
-  }
-
-  /**
-   * A send that failed: where does its text go? Back into the composer only if that composer is the same
-   * target's, still on screen and empty; otherwise it is kept aside for that target (never put into another
-   * target's composer, never over a draft someone is typing) and offered back when that chat is open.
-   */
-  function settleFailedSend(target, current, composerPresent, composerValue) {
-    return target === current && composerPresent && !composerValue ? "restore" : "keep";
-  }
-
-  /** "Put back" for a kept message: in front of whatever is being typed now, never replacing it. */
-  function putBack(failedText, draft) {
-    return draft ? failedText + "\n" + draft : failedText;
   }
 
   /** The defaults of the upload limits the server enforces (web-upload.ts UPLOAD_LIMITS), for a page that was given none. */
@@ -666,7 +656,7 @@
   return {
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, applyReplyButtons: applyReplyButtons, composerKey: composerKey,
     pollRemaining: pollRemaining,
-    settleFailedSend: settleFailedSend, putBack: putBack,
+    
     FILE_LIMITS: FILE_LIMITS, fileLimits: fileLimits, fileRejection: fileRejection, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
     applyReactions: applyReactions, reactionsHtml: reactionsHtml,

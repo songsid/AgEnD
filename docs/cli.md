@@ -25,7 +25,7 @@ The Telegram fleet menu lists 23 commands; the ClassicBot menu lists 11. Discord
 | `/collab` | Toggle bot/webhook message reception | — | 🔒 admin (not handled in Telegram ClassicBot) |
 | `/update` | Update AgEnD to the latest version on the installed channel | — | 🔒 admin |
 | `/doctor` | Run fleet health diagnostics | — | 🔒 admin |
-| `/login` | (beta) Remote CLI sign-in, installing the CLI first when missing | `[backend] [cancel]`; `/login cancel` anytime | 🔒 admin |
+| `/login` | Remote CLI sign-in, installing the CLI first when missing | `[backend] [cancel]`; `/login cancel` anytime | 🔒 admin |
 | `/usage` | Show AI subscription usage | — | All |
 | `/tips` | Draw a random usage tip where you ran it | `[mode]` — `on\|off` toggles the daily auto-send, `advanced on` unlocks the advanced tier (both admin) | All for a draw |
 
@@ -46,6 +46,16 @@ agend update --version 2.1.9    # Install a specific version
 agend update --force            # Force reinstall and restart even when already up to date
 agend reload                    # Hot-reload config (sends SIGHUP to fleet process)
 ```
+
+When the new release's service does not come up after an update (its restart or start fails, or, on macOS, its fleet does not start running under launchd), the update rolls back: the previous package, its systemd unit or launchd plist and the previous service come back, and the update says so and exits 1 (#2420).
+
+To roll back, the update first copies the installed AgEnD next to it, under `<npm prefix>/.agend-rollback/`, on a host with a service. That needs as much free space on the npm prefix's disk as the installed AgEnD takes with its bundled Node, about 235 MB. Without it the update changes nothing and says:
+
+```
+✗ Not updating: the installed AgEnD could not be copied aside for a rollback (ENOSPC, No space left on device '…/.agend-rollback/…'). Nothing was changed
+```
+
+Free some space and run it again. The copy is removed when the update ends. One left by an update that was killed is removed by the next one. A rollback that could not finish keeps its copy on purpose, names it in its message and leaves a `kept.txt` in it; remove that directory yourself once you no longer need it.
 
 `agend reload` re-reads `fleet.yaml` and reconciles instances: new instances are started, removed instances are stopped, and changed configs are applied — without restarting the fleet process.
 
@@ -405,10 +415,16 @@ The same migration also adds the #1113 settings to an older unit. `CoredumpFilte
 
 **One out-of-memory kill no longer stops the whole fleet (#2015).** Everything an instance runs (its CLI, tmux, every command an agent starts) lives in the service's cgroup. With systemd's default `OOMPolicy=stop`, the kernel OOM-killing any one of those processes stopped the whole unit, every instance included. The unit now sets `OOMPolicy=continue`, so only the killed process dies:
 - **A killed tool command** (a script an agent ran) is just an error the agent's CLI sees.
-- **A killed CLI** is a crash the fleet restarts as usual.
+- **A killed CLI** normally follows crash recovery. After two consecutive confirmed OOM deaths of the same known backend/session, automatic respawning stops (#2035); General and the web Log explain why, and Needs you lists the crashed instance. The original session and transcript stay intact. Free memory, then explicitly restart to retry, or choose a fresh session. No automatic fresh session is created.
 - **A killed fleet process** is a failed service, and `Restart=on-failure` brings it back.
 
+Install/start/restart also report the **loaded** `OOMPolicy` after the manager reload. An effective `stop`/`kill` override or an unreadable property is reported rather than treated as verified isolation; this does not add another restart refusal.
+
 An update rewrites the user unit with the line. `agend restart` adds it to an older unit, and the update's refresh adds it to a legacy system unit (`/etc/systemd/system/agend.service`). A unit that sets its own `OOMPolicy` keeps it. systemd older than 243 does not know the key and ignores it, with a warning in the journal. macOS has no equivalent: launchd has no per-service cgroup, the kernel (jetsam) kills only the one process, and `KeepAlive` restarts the fleet if it is the one killed.
+
+The same-session OOM guard currently applies to Claude Code’s per-instance statusline identity. Codex/Kiro have no owned ID here; Muse/Grok’s cwd-selected IDs are not pane ownership proof. These backends retain ordinary recovery.
+
+OOM classification is conservative: Linux needs a matching kernel victim record for the primary CLI PID observed alive, in its launch interval and the initial PID namespace. Exit 137, shared cgroup counters, pressure and transcript size alone are insufficient. An unknown session, an unobserved fast death, inaccessible evidence, a nested PID namespace or macOS uses ordinary crash handling. A tool/MCP child is not the primary CLI. No memory-triggered process killer or universal command cap is added. An explicit instance/fleet restart begins a new recovery attempt.
 
 **The fleet's ready signal must reach systemd (#2331).** The unit is `Type=notify`: the fleet tells systemd it is ready (`READY=1`) through a short-lived `systemd-notify` helper, never as the main process, so systemd accepts it only with `NotifyAccess=all`. With `main`, `exec` or no `NotifyAccess` at all (systemd's default for `Type=notify` is `main`), it refuses the signal: `Got notification message from PID …, but reception only permitted for main PID …`. The fleet itself runs normally, but the unit stays `activating` until `TimeoutStartSec` runs out, and then systemd kills and restarts it — every 15 minutes since `TimeoutStartSec=15min` (#1113). When the timeout was `0`, the same unit sat in `activating` without anyone noticing.
 - **The unit file:** `agend restart` and an update's refresh put `NotifyAccess=all` into a `Type=notify` unit (the user unit and a legacy system unit), replacing `main`, `exec` or `none`. AgEnD itself shipped `main` only in 0.0.24-beta.5 to beta.12.
@@ -416,6 +432,8 @@ An update rewrites the user unit with the line. `agend restart` adds it to an ol
 - **Leftovers:** install, start, restart and an update name the files that can change how the fleet starts: a drop-in that sets `Type`, `NotifyAccess`, `ExecStart`, `TimeoutStartSec`, `WatchdogSec`, `Restart` or `EnvironmentFile`; a user unit beside the system unit that runs the fleet; units or plists under AgEnD's old labels (`com.ccd.fleet`, `com.claude-channel-daemon`, from source builds before the rename). They are named every time, until you remove them; AgEnD never removes them. The update's refresh no longer writes a user unit on a host whose fleet runs under the system unit, so one left from before is named once and does not come back.
 - **`agend doctor`** shows the unit as systemd loaded it (the system unit when one runs the fleet) (`Type`, `NotifyAccess`, `TimeoutStartSec`), the files it came from (the unit file and each drop-in), and each leftover. A `Type=notify` unit without `NotifyAccess=all` is an error there.
 - **The first update does it:** `agend update` runs the new release's own refresh and restart, so updating to a release with this fix repairs the unit in the same update.
+
+**Memory-deferred startup (#2461).** A queued startup spawn waiting for memory renews systemd's startup deadline by 15 minutes, immediately and every 30 seconds, instead of restarting the partly started fleet. READY still waits for startup completion; the dashboard and systemd STATUS show the wait. Normal concurrency/storm waits and unrelated startup hangs do not renew the deadline. Watchdog monitoring starts before General but still depends on a responsive main loop. Bulk shutdown/restart stops use batches of at most five under elevated/critical memory pressure; stops never wait for memory recovery. See [memory pressure](memory-pressure.md).
 
 **Which Node the service runs, and when `agend restart` refuses (#1450).**
 - With AgEnD's bundled Node (or a validated `AGEND_NODE`), the unit (`ExecStart=`) and the plist (`ProgramArguments`)

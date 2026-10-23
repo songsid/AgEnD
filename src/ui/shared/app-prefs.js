@@ -45,6 +45,8 @@ export const SYNCED = {
   "color.show": { ls: "agend_color_show", ...json },
   "theme.pageByInstance": { ls: "agend_theme_page", ...json },   // #2196
   "color.off": { ls: "agend_color_off", toLocal: (v) => (v === true ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
+  // The AI usage view's compact mode: one line per login (usage-dialog.js), in the dialog and the rail alike.
+  "usage.compact": { ls: "agend_usage_compact", toLocal: (v) => (v === true ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
 };
 // #1629: fixed personal scope. A separate session-bound owner-effect store synchronizes these, never this host cache.
 export const OWNER_EFFECT_PREF_KEYS = Object.freeze(["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"]);

@@ -270,7 +270,7 @@ Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[
     const lnk = readFileSync(join(local, "lnk.txt"), "utf8");
     expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
     expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
-    expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; d=\${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
+    expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; set -f; IFS=; d=\${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
   });
   it("an install.json for another Linux: the unconfirmed script changes nothing and says which; confirmed, it repoints", () => {
     const w = scratchWindows();

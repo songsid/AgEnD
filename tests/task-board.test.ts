@@ -78,13 +78,16 @@ describe("1. card numbers, creation defaults and the two levels", () => {
     expect(main(board, ANN, { assignee: "dev-b" }).assignee).toBe("dev-b");
   });
 
-  it("a main task waits for the person's confirmation by default, a sub task does not; an instance cannot open a main task that skips it", () => {
+  it("#2434: a main task the person hands out waits for their confirmation by default; an agent's does not, unless asked; a sub task does not", () => {
     const { board } = withProject();
     const m = main(board, ANN);
-    expect(m.needsReview).toBe(true);
+    expect([m.needsReview, m.dispatcher]).toEqual([true, { kind: "person", name: "Ann" }]);
     expect(sub(board, ANN, m.code).needsReview).toBe(false);
     expect(main(board, ANN, { needsReview: false }).needsReview).toBe(false);
-    expect(refusal(() => main(board, DEV, { needsReview: false }))).toBe("forbidden");
+    // An agent's main task — for itself, or handed to another instance — is the agents' own business.
+    expect([main(board, DEV).needsReview, main(board, DEV, { assignee: "dev-b" }).needsReview]).toEqual([false, false]);
+    expect(main(board, DEV, { needsReview: false }).needsReview).toBe(false);
+    expect(main(board, DEV, { assignee: "dev-b", needsReview: true }).needsReview).toBe(true);
   });
 
   it("a batch can point at its own earlier cards; a sub task of a sub task is refused", () => {
@@ -132,7 +135,7 @@ describe("2. projects", () => {
 describe("3. a main task with sub tasks follows them", () => {
   it("open → in progress → review by itself; an instance cannot confirm it, a person can", () => {
     const { board } = withProject();
-    const m = main(board, DEV);
+    const m = main(board, ANN, { assignee: "dev-a" });           // the person handed it out (#2434)
     const [s1, s2] = board.createCards(DEV, { parent: m.code, cards: [{ title: "One" }, { title: "Two" }] }).cards;
     expect(board.getCard(m.code).status).toBe("open");
     board.moveCard(DEV, s1!.code, "claimed");
@@ -149,7 +152,7 @@ describe("3. a main task with sub tasks follows them", () => {
 
   it("an instance moves the sub tasks, not the main task; only a person reopens a confirmed one by adding to it", () => {
     const { board } = withProject();
-    const m = main(board, DEV);
+    const m = main(board, ANN, { assignee: "dev-a" });           // the person handed it out (#2434)
     const s = sub(board, DEV, m.code);
     expect(refusal(() => board.moveCard(DEV, m.code, "claimed"))).toBe("forbidden");
     board.moveCard(DEV, s.code, "claimed");
@@ -172,7 +175,7 @@ describe("3. a main task with sub tasks follows them", () => {
 
   it("sending it back needs a reason, goes to in progress (never open), and its owner resubmits it with a result", () => {
     const { board } = withProject();
-    const m = main(board, DEV);
+    const m = main(board, ANN, { assignee: "dev-a" });           // the person handed it out (#2434)
     const s = sub(board, DEV, m.code);
     board.moveCard(DEV, s.code, "claimed");
     board.moveCard(DEV, s.code, "done", { result: "r" });
@@ -188,7 +191,7 @@ describe("3. a main task with sub tasks follows them", () => {
 
   it("an instance blocks the main task itself, but cannot reopen a finished one by blocking it", () => {
     const { board } = withProject();
-    const m = main(board, DEV);
+    const m = main(board, ANN, { assignee: "dev-a" });           // the person handed it out (#2434)
     const s = sub(board, DEV, m.code);
     board.moveCard(DEV, s.code, "claimed");
     board.moveCard(DEV, m.code, "blocked", { reason: "which leaderboard period?" });
@@ -203,7 +206,7 @@ describe("3. a main task with sub tasks follows them", () => {
 describe("4. who confirms what", () => {
   it("an instance finishes its sub task; a flagged one goes to review; an instance cannot clear the flag", () => {
     const { board } = withProject();
-    const m = main(board, DEV);
+    const m = main(board, ANN, { assignee: "dev-a" });           // the person handed it out (#2434)
     const plain = sub(board, DEV, m.code);
     const flagged = sub(board, DEV, m.code, { needsReview: true });
     board.moveCard(DEV, plain.code, "claimed");
@@ -836,7 +839,7 @@ describe("15. whom a write wakes (step 2)", () => {
 
   it("comments, a send-back, an answer and a confirmation, each with its own words", () => {
     const { board } = withProject();
-    const card = main(board, LEAD, { assignee: "dev-a" });
+    const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
     const h = heard(board);
     board.updateCard(ANN, card.code, { comment: "cache it 30 s" });
     expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["comment"], by: "Ann", texts: { comment: "cache it 30 s" } }]);
@@ -847,7 +850,7 @@ describe("15. whom a write wakes (step 2)", () => {
     board.moveCard(LEAD, card.code, "claimed", { comment: "the person says codes" });
     expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["answered"], by: "lead", texts: { answered: "the person says codes" } }]);
     board.moveCard(DEV, card.code, "review", { result: "r", reason: "no checklist" });
-    // It handed it out: it tells the person the card waits for them.
+    // It handed it out and asked for review: the card waits for it (#2434).
     expect(h.take()).toEqual([{ to: "lead", code: card.code, reasons: ["to_confirm"], by: "dev-a", texts: {} }]);
     board.moveCard(ANN, card.code, "claimed", { reason: "ties share a rank" });
     expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["sent_back"], by: "Ann", texts: { sent_back: "ties share a rank" } }]);
@@ -860,15 +863,15 @@ describe("15. whom a write wakes (step 2)", () => {
     ]);
   });
 
-  it("a card going to the person for confirmation: the instance that handed it out tells them", () => {
+  it("a card going to review: the instance that handed it out is told it waits for its confirmation; the person's own, nobody", () => {
     const { board } = withProject();
-    const card = main(board, LEAD, { assignee: "dev-a" });
+    const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
     const h = heard(board);
     board.moveCard(DEV, card.code, "claimed");
     h.take();
     board.moveCard(DEV, card.code, "review", { result: "r" });
     expect(h.take()).toEqual([{ to: "lead", code: card.code, reasons: ["to_confirm"], by: "dev-a", texts: {} }]);
-    const own = main(board, ANN, { assignee: "dev-a" });       // the person handed it out: nobody relays it
+    const own = main(board, ANN, { assignee: "dev-a" });       // the person handed it out: it is in their Needs you
     h.take();
     board.moveCard(DEV, own.code, "claimed");
     board.moveCard(DEV, own.code, "review", { result: "r" });
@@ -876,7 +879,7 @@ describe("15. whom a write wakes (step 2)", () => {
     const wake = { instance: "lead", uuid: card.uuid, code: card.code, title: card.title, parent: null, reasons: ["to_confirm"] as WakeReason[], by: { to_confirm: "dev-a" }, texts: {} };
     expect(board.wakeHolds(wake)?.reasons).toEqual(["to_confirm"]);
     board.updateCard(ANN, card.code, { needsReview: false });
-    expect(board.waitingForPerson().map((w) => w.card.code)).toEqual([own.code]);   // not the person's to confirm any more
+    expect(board.waitingForPerson().map((w) => w.card.code)).toEqual([own.code]);   // never the person's: lead handed it out
     expect(board.wakeHolds(wake)).toBeNull();                   // #2341 review: its confirmation switched off meanwhile
     board.updateCard(ANN, card.code, { needsReview: true });
     expect(board.wakeHolds(wake)?.reasons).toEqual(["to_confirm"]);

@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.67-80/repo                      1.3K / 256K │ [Dashboard]
+
+     Session 01a163bc-ad6e-7db0-8880-752e739c4563, use /dashboard to switch
+     between sessions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

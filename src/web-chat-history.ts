@@ -140,7 +140,8 @@ export interface WebChatMessage {
    * #1920 (#2085 review): when it became the channel's after it was recorded (its copy was sent later) — a sequence
    * number from its boot's id counter, so a cursor handed out after that moves past it and a guest's next poll is sent
    * the row it could not see before. Kept on disk with the row (#2085 review): a page that held a cursor of that boot
-   * across a restart is still sent it.
+   * across a restart is still sent it. #1774: likewise when it was recorded late at a reserved place (an agent's reply
+   * whose files were being copied) — every replay and cursor counts it there.
    */
   seenSeq?: number;
   /**
@@ -219,6 +220,33 @@ function webChatReplyRefOf(raw: unknown): WebChatReplyRef | undefined {
 
 /** #1920: an account as a row names it — the connection id and the user id, one line. */
 const FROM = /^[^\s:]{1,64}:[^\s:]{1,128}$/;
+
+/**
+ * #2281: where a message is on a platform — the connection it went through, its chat, its topic or thread, and its own
+ * message id there: a person's message in the topic, an agent's reply that landed in it, a web message's channel copy.
+ * What a later web reply to it needs to be a native reply there. Kept beside the row, never in it: no projection of a
+ * row (a page, a guest, the public link, the stream) can carry one. Discord and Telegram ids are digits.
+ */
+export interface WebChatPost { adapterId: string; chatId: string; threadId?: string; messageId: string }
+/** At most this many posts per message (a topic copy, ClassicBot rooms). */
+export const WEB_CHAT_POSTS_MAX = 8;
+const POST_ADAPTER = /^[^\s:]{1,64}$/;
+/** Posts checked field by field; one that fails is dropped, never repaired. */
+export function webChatPosts(raw: unknown): WebChatPost[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WebChatPost[] = [];
+  for (const p of raw) {
+    if (out.length >= WEB_CHAT_POSTS_MAX) break;
+    if (!p || typeof p !== "object") continue;
+    const v = p as Record<string, unknown>;
+    if (typeof v.adapterId !== "string" || !POST_ADAPTER.test(v.adapterId)) continue;
+    if (typeof v.chatId !== "string" || !/^-?\d{1,32}$/.test(v.chatId) || typeof v.messageId !== "string" || !/^\d{1,32}$/.test(v.messageId)) continue;
+    if (v.threadId !== undefined && (typeof v.threadId !== "string" || !/^\d{1,32}$/.test(v.threadId))) continue;
+    const post: WebChatPost = { adapterId: v.adapterId, chatId: v.chatId, ...(v.threadId ? { threadId: v.threadId as string } : {}), messageId: v.messageId };
+    if (!out.some(o => o.adapterId === post.adapterId && o.chatId === post.chatId && o.messageId === post.messageId)) out.push(post);
+  }
+  return out;
+}
 export function webChatFrom(adapterId: unknown, userId: unknown): string | undefined {
   if (typeof adapterId !== "string" || typeof userId !== "string") return undefined;
   const v = `${adapterId}:${userId}`;
@@ -275,6 +303,8 @@ export interface StoredWebChatMessage {
   reactions?: string[];
   /** #2341: a status line's card numbers (see WebChatMessage). */
   cards?: string[];
+  /** #2281: where it is on a platform (see WebChatPost) — on disk only, never in a row. */
+  posts?: WebChatPost[];
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -320,6 +350,8 @@ export class WebChatHistory {
   private files: WebChatFiles | null;
   /** #1565: the boots of restored messages, by the time of their first message — older processes, in order. */
   private readonly restoredBoots = new Map<string, string>();
+  /** #2281: each row's platform posts, beside it (never a field of it). Gone with the row. */
+  private readonly posts = new WeakMap<WebChatMessage, WebChatPost[]>();
 
   constructor(opts: WebChatHistoryOptions = {}) {
     this.perInstance = opts.perInstance ?? 500;
@@ -344,8 +376,10 @@ export class WebChatHistory {
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
-      ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.channel && m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
+      ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
       ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}) };
+    const posts = this.posts.get(m);
+    if (posts?.length) row.posts = posts.map(p => ({ ...p }));
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -387,7 +421,7 @@ export class WebChatHistory {
   restore(instance: string, rows: unknown[] | null): number {
     if (!Array.isArray(rows) || this.byInstance.has(instance)) return 0;
     const seen = new Set<string>();
-    const out: Array<{ message: WebChatMessage; files: RestoredFile[] }> = [];
+    const out: Array<{ message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] }> = [];
     for (const raw of rows) {
       const r = restoredRow(raw, instance, this.boot);
       if (!r) continue;
@@ -399,7 +433,11 @@ export class WebChatHistory {
     // The newest within the bounds, in their order.
     let chars = 0, from = out.length;
     while (from > 0 && out.length - from < this.perInstance && chars + out[from - 1]!.message.text.length <= this.perInstanceChars) chars += out[--from]!.message.text.length;
-    const kept = out.slice(from).map((r) => this.restoreFiles(r, instance));
+    const kept = out.slice(from).map((r) => {
+      const message = this.restoreFiles(r, instance);
+      if (r.posts.length) this.posts.set(message, r.posts);
+      return message;
+    });
     if (!kept.length) return 0;
     this.byInstance.set(instance, { messages: kept, chars });
     for (const m of kept) {
@@ -441,9 +479,15 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
     return this.recordEntry(msg, null);
   }
+
+  /**
+   * #1774: a message's place, taken now, for one recorded later (an agent's reply whose files are still being copied):
+   * `record({ …, reserved })` puts it there — after what came before the reply, before what came while it waited.
+   */
+  reserve(): number { return this.nextId++; }
 
   /** Host-only producer seam. Generic records cannot promote sender/role strings into a Try action. */
   recordEffectTrial(instance: string, offer: unknown, ts: string): WebChatMessage | null {
@@ -453,9 +497,13 @@ export class WebChatHistory {
   }
 
   private recordEntry(msg: Parameters<WebChatHistory["record"]>[0], trial: ReturnType<typeof effectTrialOffer>): WebChatMessage {
+    // #1774: a reserved place (this boot's, not yet used) — else the next. A late one is recorded where it was reserved,
+    // and counts as seen now (seenSeq): a cursor handed out while it waited moves past it, and is still sent it.
+    const reserved = typeof msg.reserved === "number" && Number.isSafeInteger(msg.reserved) && msg.reserved > 0 && msg.reserved < this.nextId
+      && !this.byInstance.get(String(msg.instance))?.messages.some(m => m.boot === this.boot && m.id === msg.reserved) ? msg.reserved : null;
     const entry: WebChatMessage = {
       boot: this.boot,
-      id: this.nextId++,
+      id: reserved ?? this.nextId++,
       instance: String(msg.instance),
       // Anything not one of the three — or absent — is a person's message.
       role: typeof msg.role === "string" && ROLES.has(msg.role) ? msg.role as WebChatRole : "user",
@@ -482,9 +530,18 @@ export class WebChatHistory {
     // #2272: only a person's message replies to another.
     const replyTo = entry.role === "user" ? webChatReplyRefOf(msg.replyTo) : undefined;
     if (replyTo) entry.replyTo = replyTo;
+    // #2281: where it is on a platform, beside the row (the caller that sent or received it knows).
+    const posts = webChatPosts(msg.posts);
+    if (posts.length) this.posts.set(entry, posts);
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
-    slot.messages.push(entry);
+    // Always seen now, even with nothing recorded meanwhile: a poll's cursor may already have counted the reserved id.
+    if (reserved !== null) {
+      entry.seenSeq = this.nextId++;
+      let at = slot.messages.length;
+      while (at > 0 && slot.messages[at - 1]!.boot === this.boot && slot.messages[at - 1]!.id > reserved) at--;
+      slot.messages.splice(at, 0, entry);
+    } else slot.messages.push(entry);
     slot.chars += entry.text.length;
     const evicted: WebChatMessage[] = [];
     while (slot.messages.length > 1 && (slot.messages.length > this.perInstance || slot.chars > this.perInstanceChars)) {
@@ -552,20 +609,25 @@ export class WebChatHistory {
     return m;
   }
 
-  /**
-   * #1920 (#2085 review): the messages that became the channel's after this cursor (same boot) — what a guest's poll
-   * adds to its replay, since their ids are older than the cursor it was given.
-   */
-  seenAfter(cursor: { boot: string; id: number } | null): WebChatMessage[] {
-    if (!cursor) return [];
-    // The cursor's own boot (this one, or one restored from disk): its sequence is the one seenSeq counts in.
-    return this.collect((m) => m.boot === cursor.boot && m.seenSeq !== undefined && m.seenSeq > cursor.id);
-  }
 
   /** #1920: a kept message by the `message_id` the agent was given (a web message, a web click). */
   /** #2272: one kept message of an instance's chat by its row (`boot`, `id`), or undefined (never sent, or no longer kept). */
   find(instance: string, boot: string, id: number): WebChatMessage | undefined {
     return this.byInstance.get(instance)?.messages.find(m => m.boot === boot && m.id === id);
+  }
+
+  /** #2281: where this message is on a platform (empty when nowhere known). Never sent to a page. */
+  postsOf(row: WebChatMessage): readonly WebChatPost[] {
+    return this.posts.get(row) ?? [];
+  }
+  /** #2281: a web message's channel copies, once sent (by its message id); kept on disk with it. */
+  addPosts(instance: string, messageId: string, raw: readonly WebChatPost[]): void {
+    const m = this.findByMessageId(instance, messageId);
+    if (!m) return;
+    const posts = webChatPosts([...(this.posts.get(m) ?? []), ...raw]);
+    if (!posts.length) return;
+    this.posts.set(m, posts);
+    this.persist(instance);
   }
 
   findByMessageId(instance: string, messageId: string): WebChatMessage | undefined {
@@ -609,17 +671,22 @@ export class WebChatHistory {
   after(lastId: number): WebChatMessage[] {
     if (!Number.isFinite(lastId) || lastId < 0) return [];
     // #1565: only this boot's ids compare with `lastId`; 0 (no cursor yet) is everything retained, restored too.
-    return this.collect((m) => (m.boot === this.boot ? m.id > lastId : lastId === 0));
+    // #1774/#2085: a row recorded late, or made the channel's late, is newer than its id says (seenSeq).
+    return this.collect((m) => (m.boot === this.boot ? this.at(m) > lastId : lastId === 0));
   }
 
-  /** The retained messages that pass `keep`, across instances, in boot order then id order, at most replayMax (newest). */
+  /**
+   * The retained messages that pass `keep`, across instances, in boot order then in the order they were published
+   * (#1774: `at` — a late row where it was seen), at most replayMax (the newest published). A replay's cursors so only
+   * rise: a stream cut after any frame resumes from it without losing one. Pages show them in id order.
+   */
   private collect(keep: (m: WebChatMessage) => boolean): WebChatMessage[] {
     const out: WebChatMessage[] = [];
     for (const slot of this.byInstance.values()) {
       for (const m of slot.messages) if (keep(m)) out.push(m);
     }
     const r = this.bootRanks();
-    out.sort((a, b) => (r(a.boot) - r(b.boot)) || (a.id - b.id));
+    out.sort((a, b) => (r(a.boot) - r(b.boot)) || (this.at(a) - this.at(b)));
     return out.length > this.replayMax ? out.slice(-this.replayMax) : out;
   }
 
@@ -680,8 +747,10 @@ export class WebChatHistory {
     if (this.store) void this.store.remove(instance);
   }
 
-  /** The SSE cursor for one message: `<boot>-<id>`. */
-  cursorOf(m: WebChatMessage): string { return `${m.boot}-${m.id}`; }
+  /** The SSE cursor for one message: `<boot>-<n>`, n its place in its boot's sequence (id, or seenSeq once later). */
+  cursorOf(m: WebChatMessage): string { return `${m.boot}-${this.at(m)}`; }
+  /** #1774/#2085: where a row stands in its boot's sequence — its id, or when it was seen later (seenSeq). */
+  private at(m: WebChatMessage): number { return Math.max(m.id, m.seenSeq ?? 0); }
 
   /**
    * The cursor a poll hands out: the newest message its answer accounts for. This process's newest id once it has
@@ -716,7 +785,7 @@ export class WebChatHistory {
     const rank = this.bootRanks();
     const at = rank(cursor.boot);
     if (at < 0) return this.collect(() => true);
-    return this.collect((m) => { const r = rank(m.boot); return r > at || (r === at && m.id > cursor.id); });
+    return this.collect((m) => { const r = rank(m.boot); return r > at || (r === at && this.at(m) > cursor.id); });
   }
 }
 
@@ -728,7 +797,7 @@ interface RestoredFile { id?: string; path?: string; kind: "photo" | "document";
  * Only what was said comes back: no buttons, no delivery tick, no message id — whatever a row carries of those. #2305:
  * and the instance's reactions (what was answered). With no id, a message from before the restart takes no new one.
  */
-function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[] } | null {
+function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] } | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.boot !== "string" || !/^[0-9a-f]{1,32}$/.test(r.boot) || r.boot === thisBoot) return null;
@@ -747,7 +816,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // #1920: as recorded — a row from before these were written has neither, so a guest is never shown it.
   if (r.channel === true) message.channel = true;
   if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
-  if (message.channel && typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
+  // #2085 (made the channel's late) and #1774 (recorded late): either way, where it stands in its boot's sequence.
+  if (typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
   const replyTo = role === "user" ? webChatReplyRefOf(r.replyTo) : undefined;
   if (replyTo) message.replyTo = replyTo;
   const reactions = webReactionsOf(r.reactions);
@@ -762,7 +832,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
       size: typeof f.size === "number" && Number.isSafeInteger(f.size) && f.size >= 0 ? f.size : 0, mime: typeof f.mime === "string" ? f.mime.slice(0, 128) : "",
     }];
   });
-  return { message, files };
+  return { message, files, posts: webChatPosts(r.posts) };
 }
 
 /** A photo's drawn size as the page gets it (both positive integers), or nothing. Measured from the file, never kept. */

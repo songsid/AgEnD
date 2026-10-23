@@ -59,7 +59,7 @@ describe("Telegram command-menu registration", () => {
       expect(payload.commands.find((c: { command: string }) => c.command === "dashboard")?.description)
         .toBe("🔒 Deprecated — use /web");
       expect(payload.commands.find((c: { command: string }) => c.command === "login")?.description)
-        .toBe("🔒 Sign in or install a CLI backend remotely (beta)");
+        .toBe("🔒 Sign in or install a CLI backend remotely");
       // One entry point since #1131: /login installs a missing CLI too.
       expect(payload.commands.some((c: { command: string }) => c.command === "install_cli")).toBe(false);
       expect(payload.commands.find((c: { command: string }) => c.command === "restart")?.description)
@@ -77,7 +77,7 @@ describe("Telegram command-menu registration", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("registers localized Beta labels for the experimental remote commands", async () => {
+  it("registers the localized /login description, with no Beta label since 2.3.0 (#1633)", async () => {
     setLocale("zh-TW");
     const fetchMock = vi.fn().mockImplementation(async () => telegramOk());
     vi.stubGlobal("fetch", fetchMock);
@@ -88,7 +88,7 @@ describe("Telegram command-menu registration", () => {
     const payloads = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
     const fleetCommands = payloads.find(p => p.scope.type === "chat").commands;
     expect(fleetCommands.find((c: { command: string }) => c.command === "login")?.description)
-      .toBe("🔒 遠端登入或安裝 CLI Backend（Beta）");
+      .toBe("🔒 遠端登入或安裝 CLI Backend");
   });
 
   it("does not report success when Telegram rejects setMyCommands", async () => {

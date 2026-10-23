@@ -689,20 +689,21 @@ describe("chat store: files in a send (chat-store.js, driven directly)", () => {
     await s.store.send("w");
     expect(s.net.calls.map(c => c.path)).toEqual(["/ui/upload?instance=w", "/ui/upload?instance=w", "/ui/send"]);
     expect(s.net.calls.slice(0, 2).map(c => c.headers["X-Agend-Filename"])).toEqual(["a.png", "b.txt"]);
-    expect(s.net.calls[2]!.body).toEqual({ instance: "w", message: "with files", attachments: ["1".repeat(32), "2".repeat(32)] });
+    expect(s.net.calls[2]!.body).toEqual({ instance: "w", message: "with files", attachments: ["1".repeat(32), "2".repeat(32)], clientId: expect.stringMatching(/^c[0-9a-f]{24}$/) });
     expect(s.store.state.pendingFiles.w.length).toBe(0);
+    expect(s.store.state.outgoing.w[0].files.map((f: any) => [f.name, f.state, f.id])).toEqual([["a.png", "done", "1".repeat(32)], ["b.txt", "done", "2".repeat(32)]]);
   });
 
-  it("an upload that fails keeps the files pending and gives the text back, with the server's reason", async () => {
+  it("an upload that fails: the message is never sent; its bubble keeps the text and the file (marked), with the server's reason", async () => {
     const s = await chatStore();
     s.net.route = async (path) => (path.startsWith("/ui/upload") ? { ok: false, status: 415, body: { error: "unsupported file type" } } : { body: { sent: true } });
     s.store.state.pendingFiles.w = [{ name: "x.exe", size: 3, type: "" }];
     s.store.setDraft("w", "keep me");
     await s.store.send("w");
     expect(s.net.calls.map(c => c.path), "the message is never sent").not.toContain("/ui/send");
-    expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["x.exe"]);
-    expect(s.store.state.drafts.w).toBe("keep me");
-    expect(s.toasts).toEqual(["x.exe: unsupported file type"]);
+    const [e] = s.store.state.outgoing.w;
+    expect([e.text, e.outgoing.state, e.outgoing.error, e.files.map((f: any) => [f.name, f.state])]).toEqual(["keep me", "failed", "x.exe: unsupported file type", [["x.exe", "failed"]]]);
+    expect([s.store.state.pendingFiles.w, s.store.state.drafts.w, s.toasts]).toEqual([[], "", ["x.exe: unsupported file type"]]);
   });
 
   it("files alone can be sent; nothing at all sends nothing", async () => {
@@ -715,29 +716,21 @@ describe("chat store: files in a send (chat-store.js, driven directly)", () => {
     expect(s.net.calls.at(-1)).toMatchObject({ path: "/ui/send", body: { instance: "w", message: "", attachments: ["3".repeat(32)] } });
   });
 
-  it("files chosen while a send is in flight are never lost when it fails (#1252 review P2-5)", async () => {
+  it("files chosen while a send is on its way are the next message's, and never lost when that send fails (#1252 review P2-5)", async () => {
     const s = await chatStore();
-    let failSend = gate();
+    const failSend = gate();
     s.net.route = async (path) => (path === "/ui/send" ? failSend.promise : { body: { id: "4".repeat(32) } });
     s.store.state.pendingFiles.w = [0, 1, 2, 3, 4].map(i => ({ name: "old" + i, size: 1, type: "text/plain" }));
     const sending = s.store.send("w");
     await flush();
-    // While the five are on their way, five more are chosen: there is no room — the five in flight still own it.
+    // The five on their way belong to that message: the next one has its own room.
     s.store.addFiles("w", [0, 1, 2, 3, 4].map(i => ({ name: "new" + i, size: 1, type: "text/plain" })));
-    expect(s.store.state.pendingFiles.w.length).toBe(0);
-    expect(s.toasts.filter(t => t.includes("new"))).toHaveLength(5);  // each refusal is said, none is silent
+    expect([s.store.state.pendingFiles.w.length, s.toasts]).toEqual([5, []]);
     failSend.open({ body: { error: "Instance delivery failed" } });
     await sending;
-    expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["old0", "old1", "old2", "old3", "old4"]);
-    // With room left, a file chosen meanwhile is kept beside the ones that come back.
-    s.store.state.pendingFiles.w = [{ name: "a", size: 1, type: "text/plain" }];
-    failSend = gate();
-    const again = s.store.send("w");
-    await flush();
-    s.store.addFiles("w", [{ name: "b", size: 1, type: "text/plain" }]);
-    failSend.open({ body: { error: "Instance delivery failed" } });
-    await again;
-    expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["a", "b"]);
+    // The failed send keeps its five (Retry sends them); the five chosen meanwhile are still waiting in the composer.
+    expect([s.store.state.outgoing.w[0].files.map((f: any) => f.name), s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)])
+      .toEqual([["old0", "old1", "old2", "old3", "old4"], ["new0", "new1", "new2", "new3", "new4"]]);
   });
 
   it("addFiles refuses what does not fit and says why", async () => {
@@ -819,10 +812,12 @@ describe("the composer's paste (panel-chat.js, mounted)", () => {
     } finally { delete a.p.document.body.dataset.uploadLimits; }
   });
 
-  it("files sent along a send still in flight count too: no room beside them, the text pastes as usual", async () => {
+  it("files of a send already on its way are that message's: a long paste still attaches to the next one", async () => {
     const name = await freshChat();
-    a.chat.state.inFlightFiles[name] = [1, 2, 3, 4, 5].map(i => ({ name: i + ".png", size: 10 }));
-    expect(paste(LONG)).toBe(false);
+    a.chat.state.outgoing[name] = [{ boot: "out", id: 900, instance: name, role: "user", sender: "You", text: "", clientId: "c" + "0".repeat(24), outgoing: { state: "sending" },
+      files: [1, 2, 3, 4, 5].map(i => ({ name: i + ".png", size: 10, state: "uploading", loaded: 0, total: 10 })) }];
+    expect(paste(LONG)).toBe(true);
+    a.chat.state.outgoing[name] = [];
   });
 
   it("a short paste is just a paste", async () => {

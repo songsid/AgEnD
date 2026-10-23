@@ -604,7 +604,7 @@ function Install-AgendShortcuts([string]$distro, [string]$user) {
         New-Item -ItemType Directory -Path (Get-AgendShortcutDir) -Force | Out-Null
         $record = @{ distro = $distro; user = $user } | ConvertTo-Json -Compress
         [IO.File]::WriteAllText((Join-Path (Get-AgendShortcutDir) 'install.json'), $record, (New-Object System.Text.UTF8Encoding $false))
-        if ($made.Count -eq 2) { $null = Invoke-AgendInWsl $distro $user 'd=${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts' }
+        if ($made.Count -eq 2) { $null = Invoke-AgendInWsl $distro $user 'set -f; IFS=; d=${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts' }
     } catch { }
     return $made
 }
@@ -799,7 +799,7 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
 
 # 第 5 階段的設定與服務（#2235 審查：每一步都要命令成功才算完成）。回傳 $true 才可以標記完成；$false 表示使用者選擇結束，
 # 進度保留，下次執行同一行指令會從這一步繼續。
-$AGEND_ENV = 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; '
+$AGEND_ENV = 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; umask 077; node --input-type=commonjs -e ''`use strict`;  var fs = require(`fs`); var path = require(`path`);  function checkedPath(dir, io, missingAllowed, message) {   var absolute = path.resolve(dir), parent = path.parse(absolute).root;   var pieces = absolute.slice(parent.length).split(path.sep).filter(Boolean), info;   for (var i = 0; i < pieces.length; i++) {     parent = path.join(parent, pieces[i]);     try { info = io.lstatSync(parent); }     catch (error) { if (missingAllowed && error.code === `ENOENT`) return null; throw error; }     if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(message);   }   return info || io.lstatSync(absolute); }  /** Create privately; repair only an owned real home, never chmod by pathname or through a symlink. */ function ensurePrivateHome(dir, options) {   var opts = options || {}, io = opts.fs || fs;   var uid = opts.uid === undefined ? (typeof process.getuid === `function` ? process.getuid() : null) : opts.uid;   var label = opts.label || `AgEnD`;   var message = label + ` requires an owned real AGEND_HOME without group/other write permission.`;   checkedPath(dir, io, opts.create !== false, message);   if (opts.create !== false) io.mkdirSync(dir, { recursive: true, mode: 448 });    var before = checkedPath(dir, io, false, message);      if (uid === null) return;   if (before.uid !== uid) throw new Error(message);   var fd = io.openSync(dir, io.constants.O_RDONLY | io.constants.O_DIRECTORY | io.constants.O_NOFOLLOW);   try {     if (opts.afterOpen) opts.afterOpen();      var info = io.fstatSync(fd), current = checkedPath(dir, io, false, message);     if (!info.isDirectory() || info.uid !== uid || current.dev !== info.dev || current.ino !== info.ino) throw new Error(message);     if (info.mode & 18) {        io.fchmodSync(fd, 448);       if ((io.fstatSync(fd).mode & 511) !== 448) throw new Error(message);       (opts.log || function (line) { console.warn(line); })(`AgEnD: tightened owned AGEND_HOME permissions to 0700.`);     }   } finally { io.closeSync(fd); } }  module.exports = { ensurePrivateHome: ensurePrivateHome }; ensurePrivateHome(process.env.AGEND_HOME || path.join(require(`os`).homedir(), `.agend`));'' || exit $?; '
 # 主控台版的 quickstart：子程序直接接在這個視窗上（它的提示和你的輸入都在這裡），函式只回傳它的結束碼。不能直接在
 # 函式裡執行 wsl：原生程式的輸出會進到函式的回傳值，提示就看不到，結束碼也會變成一個陣列（#2235 審查）。
 function Invoke-ConsoleQuickstart {

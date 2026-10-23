@@ -22,13 +22,23 @@ export interface AuthorityState {
   /** The switch, as in force (false while the state cannot be written). */
   enabled: boolean;
   loopbackOnly: boolean;
+  /** §0.2 (#2453): sessions over the admin's named tunnel may qualify (false while the state cannot be written). */
+  namedLink: boolean;
   /** The current revocation epoch: authority granted under an older one reads as none. */
   epoch: number;
+  /** #2453: this read saw the named-link option go off (the fleet then drops the named-link sessions' authorizations). */
+  namedLinkClosed?: true;
 }
 
-interface Stored { v: 1; epoch: number; enabled: boolean; loopback_only: boolean }
+/**
+ * `named_link`: the option as last seen; `named_link_seen`: it has been on before. Turning it back on moves the epoch
+ * (§0.2: a receipt read as none while it was off never comes back); the first time does not — no such receipt exists,
+ * and nothing local is revoked by opening the option.
+ */
+interface Stored { v: 1; epoch: number; enabled: boolean; loopback_only: boolean; named_link?: boolean; named_link_seen?: boolean }
 
-const same = (a: Stored, b: Stored) => a.epoch === b.epoch && a.enabled === b.enabled && a.loopback_only === b.loopback_only;
+const same = (a: Stored, b: Stored) => a.epoch === b.epoch && a.enabled === b.enabled && a.loopback_only === b.loopback_only
+  && !!a.named_link === !!b.named_link && !!a.named_link_seen === !!b.named_link_seen;
 
 export interface AuthorityStateIo {
   read(path: string): string;
@@ -56,8 +66,10 @@ export class AuthorityStateStore {
     if (missing && floor === 0) { this.want = { v: 1, epoch: 0, enabled: false, loopback_only: false }; this.disk = { ...this.want }; return this.want; }
     try {
       const v = JSON.parse(raw ?? "") as Partial<Stored>;
-      if (v.v === 1 && Number.isSafeInteger(v.epoch) && (v.epoch as number) >= floor && typeof v.enabled === "boolean" && typeof v.loopback_only === "boolean") {
-        this.want = { v: 1, epoch: v.epoch as number, enabled: v.enabled, loopback_only: v.loopback_only };
+      if (v.v === 1 && Number.isSafeInteger(v.epoch) && (v.epoch as number) >= floor && typeof v.enabled === "boolean" && typeof v.loopback_only === "boolean"
+        && (v.named_link === undefined || typeof v.named_link === "boolean") && (v.named_link_seen === undefined || typeof v.named_link_seen === "boolean")) {
+        this.want = { v: 1, epoch: v.epoch as number, enabled: v.enabled, loopback_only: v.loopback_only,
+          ...(v.named_link ? { named_link: true } : {}), ...(v.named_link || v.named_link_seen ? { named_link_seen: true } : {}) };
         this.disk = { ...this.want };
         return this.want;
       }
@@ -89,12 +101,19 @@ export class AuthorityStateStore {
   current(config: WebVerifiedAuthorityConfig | undefined): AuthorityState {
     const s = this.load();
     const enabled = config?.enabled !== false, loopbackOnly = config?.loopback_only === true;            // §0.1: on by default
-    const revokes = s.enabled !== enabled || (s.loopback_only && !loopbackOnly);
-    if (revokes || s.loopback_only !== loopbackOnly) this.want = { v: 1, epoch: s.epoch + (revokes ? 1 : 0), enabled, loopback_only: loopbackOnly };
+    const namedLink = config?.named_link === true;                                                       // §0.2: off by default
+    const reopened = namedLink && !s.named_link && !!s.named_link_seen;
+    const closed = !!s.named_link && !namedLink;
+    const revokes = s.enabled !== enabled || (s.loopback_only && !loopbackOnly) || reopened;
+    if (revokes || s.loopback_only !== loopbackOnly || !!s.named_link !== namedLink) {
+      this.want = { v: 1, epoch: s.epoch + (revokes ? 1 : 0), enabled, loopback_only: loopbackOnly,
+        ...(namedLink ? { named_link: true } : {}), ...(namedLink || s.named_link_seen ? { named_link_seen: true } : {}) };
+    }
     const durable = this.flush();
     // Not written: off, and still "only this computer" if it was (a loosening that did not stick does not apply).
-    return durable ? { enabled, loopbackOnly, epoch: this.want!.epoch }
-      : { enabled: false, loopbackOnly: loopbackOnly || (this.disk?.loopback_only ?? true), epoch: this.want!.epoch };
+    const seenClosed = closed ? { namedLinkClosed: true as const } : {};
+    return durable ? { enabled, loopbackOnly, namedLink, epoch: this.want!.epoch, ...seenClosed }
+      : { enabled: false, loopbackOnly: loopbackOnly || (this.disk?.loopback_only ?? true), namedLink: false, epoch: this.want!.epoch, ...seenClosed };
   }
 
   /** An explicit revocation: every web authority given so far reads as none. `durable`: it is on disk. */

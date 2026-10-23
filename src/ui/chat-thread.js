@@ -132,6 +132,7 @@ export function createThread(list, scroller, opts) {
     // #1770: the label ("17:38", "Yesterday 17:38", "10/11 17:38") depends on today, so it is not part of the html a node
     // is kept by: it is written into the node (timeLabels) — crossing midnight relabels in place and reloads no preview.
     const time = x.ts ? `<span class="time" data-ts="${escAttr(x.ts)}" title="${escAttr(chatTimeFull(x.ts))}"></span>` : `<span class="time"></span>`;
+    if (x.outgoing) return outgoingHtml(x);
     const trial = readCanvasTrialMessage(x);
     if (trial) return canvasWorkerEnabled() ? trialHtml(trial, time, x) : "";
     if (x.role === "status") return statusHtml(x, time);
@@ -147,6 +148,48 @@ export function createThread(list, scroller, opts) {
     const act = opts.canReply?.() === false ? "" : `<div data-trust="thread-control" class="msg-actions"><button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
     return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
   }
+  /**
+   * A message this page is sending (chat-store.js): its own bubble at once, dimmed with "Sending…" until the server
+   * takes it, then as sent until the server's copy replaces it; failed: marked, with Retry and Delete. Each file shows
+   * its upload — a picture as itself (a local preview), anything else by name — with its own bar, moved in place by
+   * progress() (the html does not hold the numbers, so a moving bar never redraws the bubble). No data-key: it is no
+   * message yet (nothing replies to it, links to it or copies it).
+   */
+  function outgoingHtml(x) {
+    const st = x.outgoing.state, going = st === "queued" || st === "sending";
+    const files = (x.files || []).map((f, i) => {
+      const pic = f.url ? `<img class="out-pic" src="${escAttr(f.url)}" alt="${escAttr(f.name)}">` : `<span class="out-doc" aria-hidden="true"></span>`;
+      return `<div class="out-file" data-i="${escAttr(i)}">${pic}<div class="out-file-info"><span class="out-name">${escAttr(f.name)}</span>`
+        + `<span class="out-bar" role="progressbar" aria-label="${escAttr(trf("chat.uploadingFile", f.name))}" aria-valuemin="0" aria-valuemax="100"><span class="out-fill"></span></span>`
+        + `<span class="out-pct"></span></div></div>`;
+    }).join("");
+    const failed = st === "failed" ? `<div data-trust="thread-control" class="out-note lbar" role="alert"><span class="out-error">${escAttr(trf("chat.notSentBecause", x.outgoing.error || ""))}</span>`
+      + `<span class="out-actions"><button type="button" class="btn btn-sm btn-primary" data-act="retryOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.retrySend"))}</button>`
+      + `<button type="button" class="btn btn-sm" data-act="putBackOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.putBack"))}</button>`
+      + `<button type="button" class="btn btn-sm" data-act="deleteOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.deleteUnsent"))}</button></span></div>` : "";
+    const state = going ? `<span class="out-state" role="status"><span class="out-spin" aria-hidden="true"></span>${escAttr(tr("chat.sending"))}</span>` : "";
+    return `<div class="msg user out out-${st}" data-out="${escAttr(x.clientId)}"${going ? ' aria-busy="true"' : ""} tabindex="-1"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${state}</div>`
+      + `${quoteHtml(x.replyTo)}<div class="body">${x.text ? `<div class="md">${renderedMarkdown(x.text, false, opts.emojis, opts.mentions)}</div>` : ""}`
+      + `${files ? `<div class="out-files">${files}</div>` : ""}</div>${failed}</div>`;
+  }
+  /** The pending bubbles' upload bars and percentages, as their files stand now (in place: CSSOM, no redraw). */
+  function progress() {
+    for (const v of nodes.values()) {
+      const x = v.x;
+      if (!x || !x.outgoing || !x.files || !x.files.length) continue;
+      for (const el of v.node.querySelectorAll(".out-file[data-i]")) {
+        const f = x.files[Number(el.dataset.i)];
+        if (!f) continue;
+        const pct = f.state === "done" ? 100 : f.total > 0 ? Math.min(100, Math.floor((f.loaded / f.total) * 100)) : 0;
+        el.dataset.state = f.state;
+        const bar = el.querySelector(".out-bar"), fill = el.querySelector(".out-fill"), label = el.querySelector(".out-pct");
+        if (bar) bar.setAttribute("aria-valuenow", String(pct));
+        if (fill) fill.style.transform = `scaleX(${pct / 100})`;
+        if (label) { const text = f.state === "failed" ? tr("chat.uploadFailed") : f.state === "waiting" ? tr("chat.uploadWaiting") : `${pct}%`; if (label.textContent !== text) label.textContent = text; }
+      }
+    }
+  }
+
   /**
    * #2272: what a reply quotes, above its body — the quoted sender and first words (or that it had files), as the server
    * read them when it was sent; a button that shows that message. A guest that may not see it gets only "an earlier
@@ -678,6 +721,7 @@ export function createThread(list, scroller, opts) {
     armDay();
     armPolls();
     rove();
+    progress();
     return added;
   }
   /**
@@ -777,6 +821,9 @@ export function createThread(list, scroller, opts) {
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
     else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
+    else if (act === "retryOut") opts.retryOutgoing?.(el.dataset.arg);                 // a failed send, again
+    else if (act === "putBackOut") opts.putBackOutgoing?.(el.dataset.arg);              // back in the composer, to change it
+    else if (act === "deleteOut") opts.deleteOutgoing?.(el.dataset.arg);
   }
   /**
    * #2272: show the message a reply quotes, flashed — drawn now, or after the chat reads back the longest history the
@@ -834,5 +881,5 @@ export function createThread(list, scroller, opts) {
     armPolls();
   }
 
-  return { render, onScroll, onClick, jumpLatest, reveal, jumpTo, messageOf, rove, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
+  return { render, progress, onScroll, onClick, jumpLatest, reveal, jumpTo, messageOf, rove, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
 }

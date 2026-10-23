@@ -22,6 +22,7 @@ import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS, toolsWithCanvasWorker } from "./mcp-tools.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, isCanvasWorkerTool, readCanvasWorkerEnabled, watchCanvasWorkerEnabled } from "../web-experimental.js";
+import { readDashboardOff, watchDashboardOff } from "../dashboard-live.js";
 import { encodeOperationError, encodeOperationSuccess } from "./mcp-operation-response.js";
 import { buildMcpCoreInstructions } from "../instructions.js";
 import { reconnectDelayMs } from "./reconnect-backoff.js";
@@ -279,6 +280,7 @@ const mcp = new Server(
 // --- Tool definitions (see mcp-tools.ts) ---
 
 import { resolveToolSetFromEnv, toolsFor, TOOL_PROFILES } from "../tool-permissions.js";
+import { featuresOffFromEnv, withoutFeatures } from "../dashboard-permissions.js";
 export { TOOLS } from "./mcp-tools.js";
 
 const requestedToolSet = process.env.AGEND_TOOL_SET;
@@ -293,7 +295,12 @@ if (requestedToolSet && resolvedToolSet !== requestedToolSet) {
 const allowedTools = toolsFor(resolvedToolSet);
 // The IPC socket identifies the owning home even when the backend did not inherit AGEND_HOME.
 const featureDataDir = SOCKET_PATH ? dirname(dirname(dirname(SOCKET_PATH))) : getAgendHome();
-const currentTools = () => toolsWithCanvasWorker(readCanvasWorkerEnabled(featureDataDir), TOOLS.filter(t => allowedTools.has(t.name)));
+// The dashboard features the person switched off for this instance leave the menu too (the fleet refuses them anyway):
+// as the fleet config says now — a feature switched on shows at once — else what the daemon wrote at spawn.
+const spawnDashboardOff = featuresOffFromEnv(process.env.AGEND_DASHBOARD_OFF);
+const menuInstance = process.env.AGEND_INSTANCE_NAME ?? "";
+const dashboardOffNow = () => (menuInstance ? readDashboardOff(featureDataDir, menuInstance, spawnDashboardOff) : spawnDashboardOff);
+const currentTools = () => toolsWithCanvasWorker(readCanvasWorkerEnabled(featureDataDir), withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow()));
 
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentTools() }));
 
@@ -343,6 +350,7 @@ async function main(): Promise<void> {
   await mcp.connect(transport);
   // CLI clients that cache tool menus can refresh without restarting the instance. Every call still checks current state.
   watchCanvasWorkerEnabled(featureDataDir, () => { void mcp.sendToolListChanged().catch(() => {}); });
+  if (menuInstance) watchDashboardOff(featureDataDir, menuInstance, spawnDashboardOff, () => { void mcp.sendToolListChanged().catch(() => {}); });
 
   // Parent death detection.
   // Primary: ppid polling — works on all platforms, immune to libuv/kqueue bugs.
