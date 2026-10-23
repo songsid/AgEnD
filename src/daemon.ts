@@ -4869,15 +4869,17 @@ export class Daemon extends EventEmitter {
   private recoveryLegacyCovered = false;
   private recoveryNativeWork = false;
   private recoveryCancelled = false;
+  private workingRecoveryInputOwner: string | null = null;
 
   noteLegacyRestartReminder(): void { this.recoveryLegacyCovered = true; }
 
   getWorkingRecoveryState(): RecoveryLive {
     const observation = this.getWorkingStateObservation();
-    return { owner: JSON.stringify(observation.owner), configuration: observation.configuration,
-      sessionId: this.ownedWorkingSession, idle: this.instanceState === "idle" && this.pasteQueueDepth === 0,
+    const owner = JSON.stringify(observation.owner), ownsInput = this.workingRecoveryInputOwner === owner;
+    return { owner, configuration: observation.configuration,
+      sessionId: this.ownedWorkingSession, idle: (ownsInput || this.instanceState === "idle") && this.pasteQueueDepth === 0,
       paused: this.isPaused, stopped: this.isSessionOomStopped(), legacyPending: !this.recoveryBootSettled,
-      legacyCovered: this.recoveryLegacyCovered, nativeWork: this.recoveryNativeWork,
+      legacyCovered: this.recoveryLegacyCovered, nativeWork: !ownsInput && this.recoveryNativeWork,
       freshChoice: this.recoveryFreshChoice || this.isNewSession && !this.bootSkippedResume, crashLoopFresh: this.recoveryCrashLoopFresh,
       cancelled: this.recoveryCancelled, background: this.workingBackgroundObservation };
   }
@@ -4888,8 +4890,9 @@ export class Daemon extends EventEmitter {
     const current = (): boolean => this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
       && this.deliveryEpoch === epoch && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen
       && !this.spawning && !this.startupAborted && !this.isPaused && !this.healthCheckPaused
-      && this.processStatus === "running" && this.instanceState === "idle" && this.pasteQueueDepth === 0
-      && this.recoveryBootSettled && !this.recoveryNativeWork && !this.recoveryCancelled && !this.isSessionOomStopped() && admitted();
+      && this.processStatus === "running" && this.pasteQueueDepth === 0
+      && (this.workingRecoveryInputOwner === owner || this.instanceState === "idle" && !this.recoveryNativeWork)
+      && this.recoveryBootSettled && !this.recoveryCancelled && !this.isSessionOomStopped() && admitted();
     let begun = false;
     try {
       await this.paneWriteLock.run(async () => {
@@ -4906,6 +4909,9 @@ export class Daemon extends EventEmitter {
         const attempt = { ...delivery, contentSha256: deliveryContentDigest(content) };
         if (!this.beginDurableDelivery(attempt, evidence)) return;
         begun = true;
+        // Own PTY input immediately produces a working observation. It must not
+        // cancel this same fenced write; external queue/cancel/owner guards stay.
+        this.workingRecoveryInputOwner = owner;
         // Conservatively commit possible input BEFORE paste, not merely before Enter.
         // A process death at any later boundary must never replay this continuation.
         if (!this.deliveryOutbox?.markEnterStarted(delivery.deliveryId, this.bootId, delivery.attemptNo)) return;
@@ -4918,6 +4924,10 @@ export class Daemon extends EventEmitter {
       });
     } catch { /* The durable fence below owns ambiguity; never retry a begun write. */ }
     finally {
+      if (this.workingRecoveryInputOwner === owner) {
+        this.workingRecoveryInputOwner = null;
+        if (this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())) this.recoveryNativeWork = true;
+      }
       if (begun) this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, "uncertain", "local continuation may have reached input; not replayed");
       else this.deliveryOutbox?.retryBeforeBegin(delivery.deliveryId, this.bootId, delivery.attemptNo, "working recovery prerequisite changed before input", 5_000);
     }
@@ -5373,7 +5383,8 @@ export class Daemon extends EventEmitter {
       const unblockedTurn = this.turnReplyGuard.snapshot();
       if (unblockedTurn && unblockedTurn.phase === "awaiting") this.maybeProxyReplyOnTurnEnd(pane);
     }
-    if (snapshot.state === "working" && this.recoveryBootSettled) this.recoveryNativeWork = true;
+    if (snapshot.state === "working" && this.recoveryBootSettled
+      && this.workingRecoveryInputOwner !== JSON.stringify(this.interactionOwner())) this.recoveryNativeWork = true;
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
     // Reuse an already-captured pane and the backend's pure parser, never capture for the journal.

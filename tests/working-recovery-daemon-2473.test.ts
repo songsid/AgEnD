@@ -78,6 +78,18 @@ describe("working continuation reuses the durable pane fence without a user turn
     expect(f.outbox.get(f.row.deliveryId)?.state).toBe("uncertain");
     expect(f.outbox.claimNext("other-manager", () => "other-daemon", new Set())).toBeUndefined();
   });
+  it("another queued input after paste still cancels Enter during an owned write", async () => {
+    const f = fixture(); f.paste.mockImplementation(async () => { f.daemon.pasteQueueDepth = 1; return true; });
+    const sending = f.deliver(); await vi.advanceTimersByTimeAsync(1000); await sending;
+    expect(f.paste).toHaveBeenCalledOnce(); expect(f.enter).not.toHaveBeenCalled();
+    expect(f.outbox.get(f.row.deliveryId)?.state).toBe("uncertain");
+  });
+  it("unrelated work observed before admission still blocks after it returns idle", async () => {
+    const f = fixture();
+    for (const state of ["working", "idle"]) f.daemon.applyInstanceStateSnapshot({ state, observedAt: Date.now(), stateChangedAt: Date.now(), unchangedForMs: 0 });
+    await f.deliver(); expect(f.paste).not.toHaveBeenCalled(); expect(f.enter).not.toHaveBeenCalled();
+    expect(f.outbox.get(f.row.deliveryId)?.state).toBe("retry_wait");
+  });
   it("unproven submission is uncertain after exactly one paste/Enter", async () => {
     const f = fixture(); f.proof.mockResolvedValue("stranded");
     const sending = f.deliver(); await vi.advanceTimersByTimeAsync(1000); await sending;

@@ -117,6 +117,16 @@ describe("#2473 manager recovery wiring", () => {
     f.fm.fleetConfig.instances.worker.resume_interrupted_work = true; expect(await f.dispatch()).toBeDefined();
     expect(f.paste).toHaveBeenCalledOnce();
   });
+  it("its own real working observation during paste does not cancel the owned Enter", async () => {
+    const f = fixture(); await f.stable();
+    f.paste.mockImplementation(async (_text, options) => {
+      f.d.applyInstanceStateSnapshot({ state: "working", observedAt: Date.now(), stateChangedAt: Date.now(), unchangedForMs: 0 });
+      expect(options.guard()).toBe(true); return true;
+    });
+    const row = await f.dispatch(); expect(f.paste).toHaveBeenCalledOnce(); expect(f.enter).toHaveBeenCalledOnce();
+    expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("delivered");
+    expect(f.d.getWorkingRecoveryState().nativeWork).toBe(true);
+  });
   it("rechecks the claimed task after admission and does not drive a completed card", async () => {
     const f = fixture(); await f.stable(); f.board.moveCard({ kind: "instance", name: "worker" }, f.card.code, "done", { result: "Fixture task complete; inert assertions checked." });
     expect(await f.dispatch()).toBeUndefined(); expect(f.paste).not.toHaveBeenCalled();
