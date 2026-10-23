@@ -93,7 +93,7 @@ if (phase === 'create') {
       observation: { owner: { bootId: 'scratch-daemon', spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
         backend: 'mock', configuration: 'a'.repeat(64), executionState: 'working', processStatus: 'running', backgroundWork: true,
         turn: { generation: 1, deliveryId: 'scratch-turn', correlationId: 'scratch-correlation', messageId: 'scratch-message', cancelled: false, completionDelivered: false },
-        sessionId: null, backendTurnId: null },
+        sessionId: null, backendTurnId: null, recoveryDeliveryId: 'scratch-confirmed-continuation' },
       references: [{ kind: 'task', id: 'scratch-task-reference', version: 1, status: 'claimed' }], totalReferences: 1, unavailable: [] };
     assert.equal(outbox.observeWorkingState('scratch-journal', snapshot).revision, 1);
     outbox.observeWorkingState('scratch-journal', { ...snapshot, reason: 'execution', observedAt: 20,

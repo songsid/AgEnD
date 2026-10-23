@@ -53,6 +53,7 @@ describe("working continuation reuses the durable pane fence without a user turn
     const sending = f.deliver(); await vi.advanceTimersByTimeAsync(1000); await sending;
     expect(f.paste).toHaveBeenCalledOnce(); expect(f.enter).toHaveBeenCalledOnce(); expect(f.markTurn).not.toHaveBeenCalled();
     expect(f.outbox.get(f.row.deliveryId)?.state).toBe("delivered"); expect(f.outbox.openReplyObligations("worker")).toHaveLength(0);
+    expect(f.daemon.getWorkingStateObservation().recoveryDeliveryId).toBe(f.row.deliveryId);
   });
   it.each(["DRAFT\nREADY", "BUSY\nREADY", "unknown"])("does not paste into %s", pane => {
     return (async () => { const f = fixture(); f.setPane(pane); const sending = f.deliver(); await vi.advanceTimersByTimeAsync(1000); await sending;
@@ -78,6 +79,12 @@ describe("working continuation reuses the durable pane fence without a user turn
     expect(f.outbox.get(f.row.deliveryId)?.state).toBe("uncertain");
     expect(f.outbox.claimNext("other-manager", () => "other-daemon", new Set())).toBeUndefined();
   });
+  it("a real user cancel marks recovery cancelled even when a later writer captures the new delivery epoch", async () => {
+    const f = fixture(); f.daemon.clearPendingDeliveries();
+    expect(f.daemon.getWorkingRecoveryState().cancelled).toBe(true);
+    const sending = f.deliver(); await vi.advanceTimersByTimeAsync(1000); await sending;
+    expect(f.paste).not.toHaveBeenCalled(); expect(f.enter).not.toHaveBeenCalled();
+  });
   it("another queued input after paste still cancels Enter during an owned write", async () => {
     const f = fixture(); f.paste.mockImplementation(async () => { f.daemon.pasteQueueDepth = 1; return true; });
     const sending = f.deliver(); await vi.advanceTimersByTimeAsync(1000); await sending;
@@ -94,5 +101,6 @@ describe("working continuation reuses the durable pane fence without a user turn
     const f = fixture(); f.proof.mockResolvedValue("stranded");
     const sending = f.deliver(); await vi.advanceTimersByTimeAsync(1000); await sending;
     expect(f.paste).toHaveBeenCalledOnce(); expect(f.enter).toHaveBeenCalledOnce(); expect(f.outbox.get(f.row.deliveryId)?.state).toBe("uncertain");
+    expect(f.daemon.getWorkingStateObservation().recoveryDeliveryId).toBeUndefined();
   });
 });

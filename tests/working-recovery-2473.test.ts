@@ -39,11 +39,37 @@ function fixture() {
 }
 
 describe("stable, durable, pressure-paced working recovery", () => {
+  it("does not commit unchanged deferred decisions on every stable tick", () => {
+    const f = fixture(); f.enabled(false); f.coordinator.ready(); f.coordinator.tick(); f.time(120_000); f.coordinator.tick();
+    const changes = () => (f.db.prepare("SELECT total_changes() AS n").get() as { n: number }).n;
+    const before = changes();
+    for (let n = 0; n < 100; n++) { f.time(121_000 + n * 1000); f.coordinator.tick(); }
+    expect(changes() - before).toBe(0);
+    expect(f.store.get("worker")?.reason).toBe("opted_out");
+  });
+  it("a confirmed continuation forms a new episode after a second interruption, but repeated boots do not", () => {
+    const f = fixture(); f.db.exec("CREATE TABLE deliveries(delivery_id TEXT PRIMARY KEY,state TEXT)");
+    f.coordinator.ready(); f.coordinator.tick(); f.time(120_000); f.coordinator.tick();
+    f.db.prepare("INSERT INTO deliveries VALUES('delivery-a','delivered')").run();
+    const first = f.store.get("worker")!.key;
+    const previous = snapshot();
+    const resumed = snapshot({ managerBootId: "run-2", observation: { ...previous.observation, recoveryDeliveryId: "delivery-a" } as any });
+    f.store.discover("worker", resumed);
+    f.coordinator.reset(); f.coordinator.ready(); f.coordinator.tick(); f.time(240_000); f.coordinator.tick();
+    expect(f.store.get("worker")!.key).not.toBe(first);
+    expect(f.admissions).toHaveLength(2); expect(f.summaries).toHaveLength(2);
+    f.store.discover("worker", { ...resumed, managerBootId: "run-3" });
+    f.time(360_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(2);
+  });
   it("names an explicit prior requested action once, without inventing an OOM cause from a process death", () => {
     const f = fixture(); expect(f.store.beginRun("run-a", 123, 1)).toBe("unknown_interruption");
     f.store.requested("foreign-run", "update"); expect(f.store.beginRun("run-b", 124, 2)).toBe("unknown_interruption");
     f.store.requested("run-b", "manual_restart"); expect(f.store.beginRun("run-c", 125, 3)).toBe("manual_restart");
     expect(f.store.beginRun("run-d", 126, 4)).toBe("unknown_interruption");
+    f.store.requested("run-d", "update"); f.store.clearRequested("foreign-run");
+    expect(f.store.beginRun("run-e", 127, 5)).toBe("update");
+    f.store.requested("run-e", "manual_restart"); f.store.clearRequested("run-e");
+    expect(f.store.beginRun("run-f", 128, 6)).toBe("unknown_interruption");
     expect(buildWorkingRecoveryPrompt(snapshot().references, "manual_restart", true)).toContain("observed cause: unknown interruption; prior requested action: manual_restart");
   });
   it("requires final READY, two continuous run minutes and thirty continuous normal seconds", () => {

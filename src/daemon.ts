@@ -4904,6 +4904,7 @@ export class Daemon extends EventEmitter {
   private recoveryBootWorkPending = false;
   private recoveryLegacyCovered = false;
   private recoveryNativeWork = false;
+  private recoveryContinuationId: string | null = null;
   private recoveryCancelled = false;
   private workingRecoveryInputOwner: string | null = null;
 
@@ -4955,8 +4956,12 @@ export class Daemon extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, NORMAL_ENTER_SETTLE_MS));
         if (!current() || !await this.sendDeliveryEnterAfterAvailability("working-recovery", current, attempt)) return;
         const proof = await this.confirmSubmitted(signature, baseline);
-        this.deliveryOutbox.complete(delivery.deliveryId, this.bootId, delivery.attemptNo,
+        const committed = this.deliveryOutbox.complete(delivery.deliveryId, this.bootId, delivery.attemptNo,
           proof === "submitted" ? "delivered" : "uncertain", "local continuation Enter attempted once; no replay");
+        if (committed && proof === "submitted" && current()) {
+          this.recoveryContinuationId = delivery.deliveryId;
+          this.publishWorkingState("execution");
+        }
       });
     } catch { /* The durable fence below owns ambiguity; never retry a begun write. */ }
     finally {
@@ -4982,6 +4987,7 @@ export class Daemon extends EventEmitter {
       configuration: createHash("sha256").update(JSON.stringify([backend, this.config.working_directory, profile])).digest("hex"),
       executionState: this.processStatus === "running" ? this.isPaused ? "paused" : this.instanceState : null,
       processStatus: this.getProcessStatus(), sessionId: this.ownedWorkingSession, backendTurnId: null,
+      ...(this.recoveryContinuationId ? { recoveryDeliveryId: this.recoveryContinuationId } : {}),
       backgroundWork: this.workingBackgroundObservation,
       turn: turn ? { generation: turn.generation,
         deliveryId: this.workingTurnDelivery?.generation === turn.generation ? this.workingTurnDelivery.deliveryId : null,
@@ -10962,6 +10968,7 @@ export class Daemon extends EventEmitter {
   private beginSpawn(): void {
     this.unclearOomStopped = false;
     this.publishWorkingState("before_spawn");
+    this.recoveryContinuationId = null;
     this.workingBackgroundObservation = null;
     this.ownedWorkingSession = null;
     this.recoveryBootSettled = false;

@@ -15,6 +15,8 @@ import { Daemon } from "../src/daemon.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { Scheduler } from "../src/scheduler/index.js";
 import { EventLog } from "../src/event-log.js";
+import { installFleetProcessHandlers } from "../src/fleet-process-handlers.js";
+import { beginUpdateProgress, setUpdateProgressStage } from "../src/update-marker.js";
 const roots: string[] = [], fleets: any[] = [];
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
@@ -69,6 +71,61 @@ function fixture() {
   return { fm, d, card, board, paste, enter, stable, dispatch, pressure: (v: string) => { level = v; } };
 }
 describe("#2473 manager recovery wiring", () => {
+  it.each(["manual_restart", "update"])("records completed SIGTERM shutdown intent as %s", async cause => {
+    const f = fixture(); f.fm.daemons.delete("general");
+    f.d.stop = vi.fn(async () => {});
+    vi.spyOn(f.fm.memoryPressure, "sample").mockReturnValue({ level: "normal" });
+    if (cause === "update") {
+      beginUpdateProgress(f.fm.dataDir, { adapterId: "fixture", chatId: "chat", messageId: "message" });
+      setUpdateProgressStage(f.fm.dataDir, "stopping");
+    }
+    const events = new Map<string, (...args: any[]) => any>();
+    const runtime = { on: (event: string, fn: (...args: any[]) => any) => events.set(event, fn), exit: vi.fn() };
+    installFleetProcessHandlers({ dataDir: f.fm.dataDir, manager: f.fm, runtime: runtime as any,
+      describeSignal: () => "inert SIGTERM", console: { log: vi.fn(), error: vi.fn() } });
+    await events.get("SIGTERM")!();
+    expect(f.d.stop).toHaveBeenCalledOnce(); expect(runtime.exit).toHaveBeenCalledWith(0);
+    expect(f.fm.deliveryOutbox.workingRecovery.beginRun("next-manager", 123, Date.now())).toBe(cause);
+  });
+  it("SIGUSR2 reaches the real in-process restart entry and refreshes its requested cause", async () => {
+    const f = fixture(); f.fm.configPath = join(f.fm.dataDir, "fleet.yaml"); f.fm.daemons.delete("general");
+    f.fm.probeCliEnvs = vi.fn(); f.d.waitForIdle = vi.fn(async () => {});
+    f.fm.clearStatuslineWatchers = vi.fn(() => { throw Error("inert restart boundary"); });
+    const actual = f.fm.restartInstances.bind(f.fm); f.fm.restartInstances = vi.fn(actual);
+    f.fm.onGracefulRestartSignal(vi.fn());
+    await expect(f.fm.restartInstances.mock.results[0].value).rejects.toThrow("inert restart boundary");
+    expect(f.fm.workingRecoveryCause).toBe("manual_restart");
+    expect(f.fm.deliveryOutbox.workingRecovery.beginRun("next-manager", 123, Date.now())).toBe("manual_restart");
+  });
+  it("a recovery row cannot wake a paused target, while ordinary queued work still can", async () => {
+    const f = fixture(); await f.stable();
+    f.fm.fleetConfig.defaults.delivery_worker = "wake_only"; f.d.pauseWakeState = "paused";
+    const wake = vi.spyOn(f.fm.lifecycle, "wake").mockImplementation(async () => { f.d.pauseWakeState = "active"; });
+    vi.spyOn(f.fm, "getInstanceStatus").mockReturnValue("paused");
+    const coordinator = f.fm.createWakeCoordinator(); coordinator.start();
+    try {
+      await vi.advanceTimersByTimeAsync(10); expect(wake).not.toHaveBeenCalled();
+      f.fm.deliveryOutbox.admitSystemNotice("worker", "ordinary-work", "ordinary work");
+      coordinator.kick(); await vi.advanceTimersByTimeAsync(10); expect(wake).toHaveBeenCalledOnce();
+    } finally { coordinator.stop(); }
+  });
+  it("withdraws an admitted continuation when ordinary work arrives for the same target", async () => {
+    const f = fixture(); await f.stable(); const episode = f.fm.deliveryOutbox.workingRecovery.get("worker");
+    const row = f.fm.deliveryOutbox.get(episode.deliveryId);
+    f.fm.deliveryOutbox.admitSystemNotice("worker", "newer-work", "ordinary work");
+    expect(f.fm.recoveryDeliveryEligible(row)).toBe(false);
+    expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("cancelled");
+    expect(f.paste).not.toHaveBeenCalled();
+  });
+  it("rechecks recovery authority after the actual writer's awaited capture", async () => {
+    const f = fixture(); await f.stable();
+    f.d.tmux.capturePane.mockImplementation(async () => {
+      f.fm.fleetConfig.instances.worker.resume_interrupted_work = false; return "READY";
+    });
+    const row = await f.dispatch(); expect(row).toBeDefined();
+    expect(f.paste).not.toHaveBeenCalled(); expect(f.enter).not.toHaveBeenCalled();
+    expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("retry_wait");
+  });
   it("records a prior restart request separately from the unknown observed interruption cause", async () => {
     const f = fixture(); f.fm.workingRecoveryCause = "manual_restart";
     const info = vi.spyOn(f.fm.logger, "info").mockImplementation(() => {});
@@ -91,6 +148,7 @@ describe("#2473 manager recovery wiring", () => {
     expect(row.kind).toBe("working_recovery");
     expect(f.paste).toHaveBeenCalledOnce(); expect(f.enter).toHaveBeenCalledOnce();
     expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("delivered");
+    expect(f.fm.deliveryOutbox.getWorkingState("worker").current.observation.recoveryDeliveryId).toBe(row.deliveryId);
     f.fm.workingRecovery.tick(); f.fm.workingRecovery.tick();
     expect(summaries()).toHaveLength(1);
     expect(summaries()[0].targetInstance).toBe("worker");

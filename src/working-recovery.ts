@@ -44,7 +44,8 @@ export function buildWorkingRecoveryPrompt(tasks: WorkingStateReference[], cause
 /** Work identity, not boot identity: another failed boot must not create another prompt. */
 export function recoveryKey(instance: string, snapshot: WorkingStateSnapshot): string {
   return digest([instance, snapshot.observation.configuration, snapshot.observation.sessionId,
-    snapshot.observation.turn, [...snapshot.references].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]);
+    snapshot.observation.turn, snapshot.observation.recoveryDeliveryId ?? null,
+    [...snapshot.references].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))]);
 }
 
 /** Stage 3 owns task-only episodes. The legacy turn/obligation owners remain intact until stage 4. */
@@ -108,6 +109,9 @@ export class WorkingRecoveryStore {
   requested(bootId: string, cause: "manual_restart" | "update"): void {
     this.db.prepare("UPDATE working_recovery_run SET requested_cause=? WHERE singleton=1 AND boot_id=?").run(cause, bootId);
   }
+  clearRequested(bootId: string): void {
+    this.db.prepare("UPDATE working_recovery_run SET requested_cause=NULL WHERE singleton=1 AND boot_id=?").run(bootId);
+  }
   cancel(instance: string, configuration: string, sessionId: string | null): void {
     this.db.prepare("INSERT OR REPLACE INTO working_recovery_cancellations VALUES(?,?,?)").run(instance, configuration, sessionId);
   }
@@ -144,6 +148,9 @@ export class WorkingRecoveryStore {
       .run(episode.instance, JSON.stringify(episode.snapshot));
   }
   decision(episode: RecoveryEpisode, outcome: "deferred" | "excluded", reason: string): void {
+    const before = this.get(episode.instance);
+    if (before?.key !== episode.key || before.outcome === "admitted"
+      || before.outcome === outcome && before.reason === reason) return;
     this.db.transaction(() => {
       const current = this.get(episode.instance);
       if (current?.key !== episode.key || current.outcome === "admitted") return;

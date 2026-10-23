@@ -3454,8 +3454,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** SIGUSR1: full process reload. Names who asked (#1120). */
   private onFullRestartSignal(): void {
-    try { this.deliveryOutbox?.workingRecovery.requested(this.managerBootId, "manual_restart"); }
-    catch { this.logger.warn("Could not record requested restart; next recovery will report an unknown interruption"); }
+    this.recordWorkingRestartIntent("manual_restart");
     this.logger.info(`Received SIGUSR1, initiating full restart (process reload)... ${describeSignalSource(this.dataDir, "SIGUSR1")}`);
     this.gracefulShutdownForReload()
       .then(() => {
@@ -20553,6 +20552,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private stopAllInFlight: Promise<void> | null = null;
 
+  /** Signal-handler continuation, after successful graceful shutdown only. */
+  noteRequestedShutdown(): void {
+    const progress = readUpdateProgress(this.dataDir)?.progress;
+    const update = progress && updateProgressOperation(progress) === "update"
+      && ["installed", "stopping", "starting"].includes(progress.stage);
+    this.recordWorkingRestartIntent(update ? "update" : "manual_restart");
+  }
+
+  private recordWorkingRestartIntent(cause: "manual_restart" | "update"): void {
+    this.workingRecoveryCause = cause;
+    try { this.deliveryOutbox?.workingRecovery.requested(this.managerBootId, cause); }
+    catch { this.logger.warn("Could not record requested restart; next recovery will report an unknown interruption"); }
+  }
+
   /** Stops release memory. Reassess between batches without waiting for recovery. */
   private async stopInstancesInBatches<T>(entries: readonly T[], stop: (entry: T) => Promise<unknown>): Promise<void> {
     let index = 0;
@@ -22398,6 +22411,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return;
     }
 
+    this.recordWorkingRestartIntent("manual_restart");
     this.workingRecovery?.reset();
     this.logger.info(`Graceful restart: waiting for ${instanceNames.length} instances to idle...`);
 
@@ -22516,6 +22530,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     this.workingRecovery?.ready();
     this.logger.info("Graceful restart complete");
+    // The in-process interval keeps its label, but a later unrelated process
+    // crash must not inherit this completed request as its shutdown intent.
+    try { this.deliveryOutbox?.workingRecovery.clearRequested(this.managerBootId); }
+    catch { this.logger.warn("Could not clear completed in-process restart intent"); }
     const configuredNames = this.configuredStartupInstanceNames(fleet, topicMode);
     const total = configuredNames.length;
     const started = configuredNames.filter(name => this.daemons.has(name)).length;

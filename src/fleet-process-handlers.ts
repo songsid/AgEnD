@@ -16,7 +16,7 @@ export function recordFleetFatal(dataDir: string, error: unknown): void {
 
 interface FleetProcessOptions {
   dataDir: string;
-  manager: { stopAll(): Promise<void>; notifyFleetError(message: string): void };
+  manager: { stopAll(): Promise<void>; notifyFleetError(message: string): void; noteRequestedShutdown?(): void };
   runtime: Pick<NodeJS.Process, "on" | "exit">;
   describeSignal: () => string;
   console?: Pick<Console, "log" | "error">;
@@ -33,7 +33,12 @@ export function installFleetProcessHandlers(options: FleetProcessOptions): { rea
     stopping = true;
     output.log("\nStopping fleet...");
     // stopAll fences new controls and drains CPU profiles before disposal.
-    await manager.stopAll().catch(error => output.error("Shutdown error:", error));
+    try {
+      await manager.stopAll();
+      // Only a completed signal shutdown is an explicit requested boundary.
+      // Fatal cleanup below must never manufacture a manual-restart cause.
+      manager.noteRequestedShutdown?.();
+    } catch (error) { output.error("Shutdown error:", error); }
     runtime.exit(0);
   };
   runtime.on("SIGINT", shutdown);

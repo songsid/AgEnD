@@ -13,7 +13,7 @@ function harness() {
   directories.push(dataDir);
   const events = new Map<string, (...args: any[]) => any>();
   const runtime = { on: (event: string, handler: (...args: any[]) => any) => events.set(event, handler), exit: vi.fn() };
-  const manager = { stopAll: vi.fn(async () => {}), notifyFleetError: vi.fn() };
+  const manager = { stopAll: vi.fn(async () => {}), notifyFleetError: vi.fn(), noteRequestedShutdown: vi.fn() };
   const output = { log: vi.fn(), error: vi.fn() };
   const state = installFleetProcessHandlers({ dataDir, runtime: runtime as any, manager, console: output, describeSignal: () => "test SIGTERM" });
   return { dataDir, events, runtime, manager, output, state };
@@ -31,6 +31,18 @@ describe("fleet process errors (#2191)", () => {
     expect(beforeStop).toMatchObject({ pid: process.pid, reason: "uncaughtException", error: String(failure), stack: failure.stack });
     expect(h.manager.stopAll).toHaveBeenCalledTimes(1);
     expect(h.runtime.exit).toHaveBeenCalledWith(1);
+    expect(h.manager.noteRequestedShutdown).not.toHaveBeenCalled();
+  });
+
+  it("records a signal shutdown request only after a successful stop, never a failed stop", async () => {
+    const h = harness(); let release!: () => void;
+    h.manager.stopAll.mockImplementation(() => new Promise<void>(resolve => { release = resolve; }));
+    const stopping = h.events.get("SIGTERM")!();
+    expect(h.manager.noteRequestedShutdown).not.toHaveBeenCalled();
+    release(); await stopping; expect(h.manager.noteRequestedShutdown).toHaveBeenCalledOnce();
+    const failed = harness(); failed.manager.stopAll.mockRejectedValue(new Error("inert stop failure"));
+    await failed.events.get("SIGTERM")!();
+    expect(failed.manager.noteRequestedShutdown).not.toHaveBeenCalled();
   });
 
   it("keeps rejected network work local and reports it without stopping the fleet", () => {
