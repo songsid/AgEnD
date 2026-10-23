@@ -452,7 +452,7 @@ New starts: ClassicBot admins (`admin_users`) may start directly. Other callers 
 - **Backend fallback**: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`
 - **Hot reload**: changes detected every 30 seconds
 - **Instance naming**: `classic-<sanitized-channel-name>-<last4-of-channelId>`, plus a sanitized adapter suffix on non-primary connections. A persisted `instanceName` wins; otherwise the display `name` (or channel ID), rather than an arbitrary YAML key, supplies the name.
-- **DC auto-collab**: Discord `/start` auto-enables collab mode. Messages are logged for context; triggering a turn still requires mentioning the bot, or a native reply to one of its own messages (#2551; one hop: a reply to its message that was itself a reply does not trigger, a mention does).
+- **DC auto-collab**: Discord `/start` auto-enables collab mode. Messages are logged for context; triggering a turn still requires mentioning the bot, or a native reply to one of its own messages (#2551; one hop: a reply to its message that itself answered a bot does not trigger, a mention does).
 - **Fleet /collab**: per-instance in-memory toggle (non-persistent, resets on fleet restart). Lets bot/webhook messages pass the fleet topic's bot prefilter; it does not replace access control.
 
 ### Telegram ClassicBot commands

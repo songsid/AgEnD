@@ -1,8 +1,9 @@
 /**
  * #2551 (a regression from #2456's native replies): in a ClassicBot room in collab mode, a bot's native reply to one of
  * THIS bot's messages is addressed to it, as an @mention is — a Discord reply carries its ping in the reference, not in
- * the text. One hop only: a reply to a message of ours that was itself a reply is a chain (two agents answering each
- * other by native replies) and is logged, not delivered; an @mention still carries a conversation on.
+ * the text. One hop only: a reply to a message of ours that itself answered a bot is a chain (two agents answering each
+ * other by native replies) and is logged, not delivered; an @mention still carries a conversation on. A reply to our
+ * answer to a person is the ordinary handoff, and is delivered (Fable r1).
  * Fleet topics need nothing: their gate takes another fleet's bot whenever collab or open is on (no mention needed).
  * Telegram: bots never receive each other's messages there, so the same question never arises.
  */
@@ -37,10 +38,10 @@ function room() {
   const forward = vi.fn(async () => {});
   fm.forwardToClassicInstance = forward;
   /** Another fleet's bot posts in the room: `reply` as the adapter reads a native reply. */
-  const post = (text: string, reply?: { authorId: string; isReply?: boolean }) => fm.handleClassicChannelMessage("classic-room", {
+  const post = (text: string, reply?: { authorId: string; chain?: boolean }) => fm.handleClassicChannelMessage("classic-room", {
     source: "discord", adapterId: "dc", chatId: "guild-1", threadId: "555", messageId: `m-${Math.random()}`, userId: "OTHER-BOT", username: "bot-a",
     text, timestamp: new Date(), isBotMessage: true,
-    ...(reply ? { replyTo: "r-1", replyToAuthorId: reply.authorId, ...(reply.isReply ? { replyToIsReply: true } : {}) } : {}),
+    ...(reply ? { replyTo: "r-1", replyToAuthorId: reply.authorId, ...(reply.chain ? { replyToChain: true } : {}) } : {}),
   });
   return { forward, post };
 }
@@ -57,11 +58,16 @@ describe("#2551: a native reply to our bot's message is addressed to it (Classic
     await r.post("just talking");
     expect(r.forward).not.toHaveBeenCalled();
   });
-  it("loop guard: a reply to a message of ours that was itself a reply is a chain — not delivered; an @mention still is", async () => {
+  it("A replies to B's answer to a person (B's message itself a reply, to a human): delivered — the ordinary handoff", async () => {
     const r = room();
-    await r.post("and back to you", { authorId: "BOT", isReply: true });
+    await r.post("I can take that over", { authorId: "BOT" });                     // the adapter found no bot above it
+    expect(r.forward).toHaveBeenCalledTimes(1);
+  });
+  it("loop guard: a reply to a message of ours that itself answered a bot is a chain — not delivered; an @mention still is", async () => {
+    const r = room();
+    await r.post("and back to you", { authorId: "BOT", chain: true });
     expect(r.forward).not.toHaveBeenCalled();
-    await r.post("<@BOT> and back to you", { authorId: "BOT", isReply: true });
+    await r.post("<@BOT> and back to you", { authorId: "BOT", chain: true });
     expect(r.forward).toHaveBeenCalledTimes(1);
   });
 });

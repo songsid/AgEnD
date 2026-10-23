@@ -352,8 +352,12 @@ export interface InboundMessage {
    * The collab gate treats a bot's reply to one of THIS bot's messages as addressed to it, as a mention is.
    */
   replyToAuthorId?: string;
-  /** #2551: the referenced message was itself a reply — a reply to it is a chain, not one hop (never addressed). */
-  replyToIsReply?: boolean;
+  /**
+   * #2551: the referenced message was itself a reply to a bot (or to this message's sender) — a reply to it is a chain of
+   * bots answering each other, not one hop (never addressed by the reply alone). A reply to a bot's answer to a person is
+   * not a chain.
+   */
+  replyToChain?: boolean;
 }
 
 /**

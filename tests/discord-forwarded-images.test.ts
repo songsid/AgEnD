@@ -300,12 +300,19 @@ describe("Discord forwarded message images", () => {
   });
 
   // #2551: who the reply answers, and whether that message was itself a reply — the collab gate's "addressed to me".
-  it("a reply carries the referenced message's author id, and whether that message was itself a reply (#2551)", async () => {
-    const ref = (reference?: { messageId: string }) => fakeMessage({ content: "done", reference: { messageId: "b-msg" },
-      fetchReference: async () => ({ content: "B asked", embeds: [], attachments: new FakeCollection<any>(), author: { id: "bot-b" }, ...(reference ? { reference } : {}) }) });
-    const first = await inbound(ref());
-    const chained = await inbound(ref({ messageId: "earlier" }));
-    expect([first.replyToAuthorId, first.replyToIsReply, chained.replyToAuthorId, chained.replyToIsReply]).toEqual(["bot-b", undefined, "bot-b", true]);
+  // #2551 (Fable r1): a chain is our message having answered a BOT (or this sender), not merely being a reply — a bot's
+  // ordinary answer to a person is a native reply too.
+  it("a reply carries the referenced message's author, and whether that message itself answered a bot (#2551)", async () => {
+    const ref = (parent?: { mentions?: unknown; fetched?: unknown }) => fakeMessage({ content: "done", reference: { messageId: "b-msg" },
+      fetchReference: async () => ({ content: "B said", embeds: [], attachments: new FakeCollection<any>(), author: { id: "bot-b" },
+        ...(parent ? { reference: { messageId: "earlier" }, mentions: parent.mentions ?? {}, fetchReference: async () => parent.fetched } : {}) }) });
+    const plain = await inbound(ref());
+    const toPerson = await inbound(ref({ mentions: { repliedUser: { id: "person", bot: false } } }));
+    const toBot = await inbound(ref({ mentions: { repliedUser: { id: "bot-c", bot: true } } }));
+    const fetchedBot = await inbound(ref({ fetched: { author: { id: "bot-c", bot: true } } }));
+    const parentGone = await inbound(ref({ fetched: undefined }));
+    expect([plain, toPerson, toBot, fetchedBot, parentGone].map((g: any) => [g.replyToAuthorId, g.replyToChain]))
+      .toEqual([["bot-b", undefined], ["bot-b", undefined], ["bot-b", true], ["bot-b", true], ["bot-b", undefined]]);
   });
 
   it("keeps a text-only reply attachment-free", async () => {

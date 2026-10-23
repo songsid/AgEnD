@@ -627,15 +627,20 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // the reply rather than reducing the reference to text alone. Keep this
       // limited to real attachments: ordinary URL auto-embeds must not become
       // downloads (the same policy as the outer message above).
-      let replyToText: string | undefined, replyToAuthorId: string | undefined, replyToIsReply = false;
+      let replyToText: string | undefined, replyToAuthorId: string | undefined, replyToChain = false;
       if (msg.reference?.messageId) {
         try {
           const ref = await msg.fetchReference();
           replyToText = ref.content || ref.embeds?.[0]?.description || undefined;
           // #2551: who the reply answers (a bot's reply to our bot's message is addressed to it), and whether that
-          // message was itself a reply (then this is a chain, not one hop).
+          // message itself answered a bot or this sender — then this is a chain of bots answering each other, not one
+          // hop. Its own reply target: the user it pinged, else read once (a reply to a deleted message: not a chain).
           replyToAuthorId = ref.author?.id || undefined;
-          replyToIsReply = !!ref.reference?.messageId;
+          if (ref.reference?.messageId) {
+            let parent = ref.mentions?.repliedUser ?? null;
+            if (!parent) { try { parent = (await ref.fetchReference()).author ?? null; } catch { parent = null; } }
+            replyToChain = !!parent && (parent.bot === true || parent.id === userId);
+          }
           for (const att of ref.attachments?.values() ?? []) {
             if (!att.contentType?.startsWith("image/")) continue;
             if (!attachments.some(existing => existing.fileId === att.id)) {
@@ -701,7 +706,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         replyTo: msg.reference?.messageId ?? undefined,
         replyToText,
         ...(replyToAuthorId ? { replyToAuthorId } : {}),
-        ...(replyToIsReply ? { replyToIsReply: true } : {}),
+        ...(replyToChain ? { replyToChain: true } : {}),
       });
       } catch (err) {
         // A throw here would become an unhandledRejection → process.exit(1) for
