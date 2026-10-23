@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '20'
       # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per run.
@@ -40,7 +40,7 @@ jobs:
           bash scripts/ci/install-published-tarball.sh @songsid/agend "$BASELINE_TGZ" --prefix "$BASELINE_PREFIX"
           GOT="$(node -p 'require(process.argv[1]).version' "$BASELINE_PREFIX/lib/node_modules/@songsid/agend/package.json")"
           [ "$GOT" = 2.1.12 ] || { echo "::error::the baseline installed $GOT, expected 2.1.12"; exit 1; }
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
