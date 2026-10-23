@@ -9,10 +9,14 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const [oldPackageArg, oldNodeArg] = process.argv.slice(2);
-assert.ok(oldPackageArg && oldNodeArg, 'Supply an isolated installed 2.1.12 package and its Node 20 executable');
+assert.ok(oldPackageArg && oldNodeArg, 'Supply an isolated installed baseline package (2.1.12 or 2.2.6) and the Node it runs on');
 const oldPackage = realpathSync(resolve(oldPackageArg));
 const oldNode = realpathSync(resolve(oldNodeArg));
-assert.equal(JSON.parse(readFileSync(join(oldPackage, 'package.json'), 'utf8')).version, '2.1.12');
+// The published baselines and what each runs on: 2.1.12 on Node 20 with better-sqlite3 12; 2.2.6 — what #2483's Mac
+// recovery and #2481's auto-restore go back to — on its own bundled Node 22 with better-sqlite3 13.
+const BASELINES = { '2.1.12': { node: '20', sqlite: /^12\./ }, '2.2.6': { node: '22', sqlite: /^13\./ } };
+const baseline = JSON.parse(readFileSync(join(oldPackage, 'package.json'), 'utf8')).version;
+assert.ok(Object.hasOwn(BASELINES, baseline), `no data-downgrade expectations for baseline ${baseline}`);
 const currentPackage = resolve(here, '..');
 // Only this runner chooses the data directory: callers cannot supply live AGEND_HOME.
 const scratch = mkdtempSync(join(tmpdir(), 'agend-downgrade-'));
@@ -37,10 +41,10 @@ try {
     assert.equal(result.status, 0, `${phase}: ${result.stderr}\n${result.stdout}`);
     results.push(JSON.parse(result.stdout));
   }
-  assert.equal(results[1].node.split('.')[0], '20');
+  assert.equal(results[1].node.split('.')[0], BASELINES[baseline].node);
   assert.match(results[0].sqlitePackage, /^13\./);
-  assert.match(results[1].sqlitePackage, /^12\./);
-  console.log(JSON.stringify({ baseline: '2.1.12', phases: results, noFleetStarted: true }, null, 2));
+  assert.match(results[1].sqlitePackage, BASELINES[baseline].sqlite);
+  console.log(JSON.stringify({ baseline, phases: results, noFleetStarted: true }, null, 2));
 } finally {
   // A runner-owned unique directory, never a path supplied by the caller.
   rmSync(scratch, { recursive: true, force: true });

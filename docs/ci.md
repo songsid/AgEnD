@@ -13,7 +13,7 @@ the test steps and supported Node/npm versions stay the same.
 | --- | --- | --- |
 | `ci.yml` install smoke | Ubuntu × Node 22.14.0, 22, 24, 26 | Same Ubuntu cells + macOS × all four Node versions |
 | `npm-rollback-proof.yml` | Ubuntu × npm 9.9.4, 10.8.2, 11.6.2 (Node 20.19.0); PR path filter retained | Same Ubuntu cells + macOS × all three npm versions |
-| `data-downgrade.yml` | Ubuntu current → published 2.1.12 → current | No extra trigger; Linux-only |
+| `data-downgrade.yml` | Ubuntu current → published 2.1.12 → current, and current → published 2.2.6 (on its own bundled Node 22) → current | No extra trigger; Linux-only |
 
 The CI workflow still runs CHANGELOG guards, typecheck/build, four unit shards,
 integration tests and the Node 20 preinstall rollback smoke. Only a PR that

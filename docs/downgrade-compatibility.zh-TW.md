@@ -19,6 +19,17 @@ node scripts/check-data-downgrade.mjs /scratch/prefix/lib/node_modules/@songsid/
 
 Runner 自建唯一 scratch AGEND_HOME，依序執行三階段；每階段關閉所有 store，輸出版本與斷言，最後只刪自己建立的目錄。子程序環境採 allowlist，不繼承 bot token、NODE_OPTIONS 或 live IPC 路徑。每階段在 import production leaf module 前攔截 child_process。Kiro 只呼叫檔案操作的 prototype method，不建 constructor。不啟 fleet、tmux、adapter、inspector、service 或 backend。CI `data-downgrade.yml` 重跑並上傳 JSON。
 
+## 2.2.6（自 2.3.1 起）
+
+同樣的三個階段也會用已發布的 **2.2.6** 當舊版跑一次，執行時用它自己附的 Node 22（`node_modules/@songsid/agend-node-<platform>`）。#2483 的 Mac 復原建議（`npm i -g @songsid/agend@2.2.6`，再 `agend restart`）和 #2481 的 Mac 自動還原，退回的就是這個版本。runner 會從套件讀出基準版本，並檢查各自用哪個 Node 執行。
+
+2.2.6 通過和 2.1.12 相同的舊版檢查，差別如下，都在預期內：
+- 它已經認得 `needs_you`，正規化重寫時也會保留；
+- 它已經寫 outbox schema 5；
+- 它的 Kiro 寫入走自己的 launch plan，所以 2.1.12 的共用寫入檢查不適用。
+
+和 2.1.12 一樣，它的 task prune 不認得專案（見下），正規化重寫設定時會丟掉它不認得的欄位。
+
 ## 結果
 
 | 範圍 | 實測 | 限制／證據 |

@@ -21,6 +21,17 @@ node scripts/check-data-downgrade.mjs /scratch/prefix/lib/node_modules/@songsid/
 
 The runner creates its own unique scratch AGEND_HOME, runs the three phases sequentially, closes every store between phases, reports runtime/dependency versions and assertions, then removes only its own directory. Child environments use an allowlist without bot tokens, NODE_OPTIONS or live IPC paths. Each phase blocks child_process before importing production leaf modules. Kiro file tests call only file-writing prototype methods, never the constructor. No fleet, tmux, adapter, inspector, service or backend process starts. CI repeats the check in `data-downgrade.yml` and uploads the JSON result.
 
+## 2.2.6 (since 2.3.1)
+
+The same three phases also run with the published **2.2.6** as the old side, on the Node 22 it ships with (`node_modules/@songsid/agend-node-<platform>`). That is the version #2483's Mac recovery advice (`npm i -g @songsid/agend@2.2.6`, then `agend restart`) and #2481's Mac auto-restore go back to. The runner reads the baseline from the package and checks what each one runs on.
+
+2.2.6 passes the same old-side checks as 2.1.12, with these differences, all expected:
+- it already knows `needs_you`, and keeps it on a normalized rewrite;
+- it already writes outbox schema 5;
+- its Kiro writers write through their own launch plan, so 2.1.12's shared-writer probe does not apply.
+
+As with 2.1.12, its task prune knows no projects (below), and a normalized config rewrite loses fields it does not know.
+
 ## Findings
 
 | Area | Observed result | Limit / evidence |
