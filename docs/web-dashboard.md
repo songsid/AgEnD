@@ -612,14 +612,14 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | Chat | ✅ live updates | ✅ updates by polling; `/raw` and `/save` are refused | ✅ as B |
 | Uploads | ✅ 50 MB a file, 100 MB a message by default (`web.upload_max_file_mb`, `web.upload_max_total_mb`, 1–500) | ✅ at most 95 MB a file, whatever the config says | ✅ as B: at most 95 MB a file |
 | File previews (Markdown, CSV, JSON, code, text) | ✅ the **Show** card | ❌ only images show inline | ❌ as B |
-| HTML previews | ✅ after this device opts in | ✅ after this device opts in, through a second quick tunnel (`web.preview_on_public_link`, on by default) | ✅ as B: the preview still runs on a second quick tunnel, unless `web.preview_origin` is set |
+| HTML previews | ✅ after this device opts in | ✅ after this device opts in, through a second quick tunnel (`web.preview_on_public_link`, on by default), or through `web.preview_origin` when it is set | ✅ as B: a second quick tunnel even though this link is named, or `web.preview_origin` |
 | Replies and reactions | ✅ | ✅ | ✅ |
 | Global search | ✅ | ✅ on by default; `web.search.public_link: false` turns it off here | ✅ as B |
 | `/view` | ✅ open without signing in by default (`web.view_access: open`) | ✅ signing in is always required | ✅ as B |
 | Log tab | ✅ with `web.log_tab: true` (off by default) | ✅ the same setting | ✅ the same setting |
 | Usage panel | ✅ | ✅ | ✅ |
 | Usage report | ✅ | ✅ with `web.usage_report_on_public_link: true` (off by default) | ✅ as B |
-| Settings: agents, defaults, connections, ClassicBot rooms, apply and restart | ✅ a sensitive change waits for confirmation; a web-verified browser confirms it by applying | ✅ a sensitive change always waits for a fleet admin's confirmation in General, never by applying | ✅ as B |
+| Settings: agents, defaults, connections, ClassicBot rooms, apply and restart | ✅ a sensitive change waits for a fleet admin's confirmation; a web-verified browser can confirm it by applying, when its account may confirm that change | ✅ a sensitive change always waits for a fleet admin's confirmation (in General, or on the host when no chat can confirm it), never by applying | ✅ as B |
 | Settings: Web, Appearance, Guests, Web authority, secrets and tokens | ✅ | ❌ refused | ❌ as B |
 | Office editing | ✅ | ❌ view only | ❌ as B |
 | Task board, schedules, teams | ✅ | ❌ read only | ❌ as B |

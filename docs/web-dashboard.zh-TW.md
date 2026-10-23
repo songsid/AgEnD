@@ -611,14 +611,14 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | 聊天 | ✅ 即時更新 | ✅ 以輪詢更新；`/raw` 和 `/save` 會被拒絕 | ✅ 同 B |
 | 上傳 | ✅ 預設每個檔案 50 MB、每則訊息 100 MB（`web.upload_max_file_mb`、`web.upload_max_total_mb`，1–500） | ✅ 每個檔案最多 95 MB，不論設定為何 | ✅ 同 B：每個檔案最多 95 MB |
 | 檔案預覽（Markdown、CSV、JSON、程式碼、文字） | ✅ **顯示** 卡片 | ❌ 只有圖片會直接顯示 | ❌ 同 B |
-| HTML 預覽 | ✅ 這台裝置同意後 | ✅ 這台裝置同意後，透過另一條 quick tunnel（`web.preview_on_public_link`，預設開啟） | ✅ 同 B：預覽仍走另一條 quick tunnel，除非設定了 `web.preview_origin` |
+| HTML 預覽 | ✅ 這台裝置同意後 | ✅ 這台裝置同意後，透過另一條 quick tunnel（`web.preview_on_public_link`，預設開啟）；設定了 `web.preview_origin` 時改走它 | ✅ 同 B：即使這個連結是 named tunnel，預覽仍走另一條 quick tunnel，或 `web.preview_origin` |
 | 回覆與 reaction | ✅ | ✅ | ✅ |
 | 全域搜尋 | ✅ | ✅ 預設開啟；`web.search.public_link: false` 會在這裡關閉 | ✅ 同 B |
 | `/view` | ✅ 預設不用登入（`web.view_access: open`） | ✅ 一律要登入 | ✅ 同 B |
 | 紀錄分頁 | ✅ 設定 `web.log_tab: true`（預設關閉） | ✅ 同一個設定 | ✅ 同一個設定 |
 | 用量面板 | ✅ | ✅ | ✅ |
 | 用量報表 | ✅ | ✅ 設定 `web.usage_report_on_public_link: true`（預設關閉） | ✅ 同 B |
-| 設定：agent、預設值、連線、ClassicBot 聊天室、套用與重新啟動 | ✅ 敏感的變更要等確認；已驗證的瀏覽器按套用就算確認 | ✅ 敏感的變更一律要等 fleet 管理員在 General 確認，按套用不算 | ✅ 同 B |
+| 設定：agent、預設值、連線、ClassicBot 聊天室、套用與重新啟動 | ✅ 敏感的變更要等 fleet 管理員確認；已驗證的瀏覽器在帳號有權確認這項變更時，可以按套用來確認 | ✅ 敏感的變更一律要等 fleet 管理員確認（在 General，沒有聊天可確認時改在主機上），按套用不算 | ✅ 同 B |
 | 設定：網頁、外觀、訪客、網頁授權、密鑰與 token | ✅ | ❌ 會被拒絕 | ❌ 同 B |
 | Office 編輯 | ✅ | ❌ 只能看 | ❌ 同 B |
 | 任務看板、排程、團隊 | ✅ | ❌ 唯讀 | ❌ 同 B |
