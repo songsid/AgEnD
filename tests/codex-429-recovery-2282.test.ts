@@ -29,7 +29,7 @@ function rig(start = IDLE) {
   d.tmux = { isWindowAlive: async () => true, capturePane: async () => screen.text, capturePaneWithHistory: async () => screen.text, sendSpecialKey: async (k: string) => { if (k === "Enter") enters++; return true; }, pasteBuffer: async (text: string) => { sent.push(text); return true; }, getLastSendSpecialKeyError: () => null, getWindowId: () => "@private-fake" };
   d.confirmSubmitted = async () => "submitted";
   const arm = vi.spyOn(d, "armCapacityNudge");
-  const notify = vi.fn(() => true), failover = vi.fn(), restart = vi.fn();
+  const notify = vi.fn((_name: string, _text: string) => true), failover = vi.fn(), restart = vi.fn();
   const lc: any = new InstanceLifecycle({ fleetConfig: { defaults: { backend: "codex" }, instances: { w: { backend: "codex" }, general: { general_topic: true } } }, dataDir: root, getInstanceDir: () => inst, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }, eventLog: { insert: vi.fn() }, isPlannedRestart: () => false, isClassicInstance: () => false, notifyInstanceTopic: notify, notifyFleetError: vi.fn(), webhookEmit: vi.fn(), clearCancelButton: vi.fn(), checkModelFailover: failover, restartSingleInstance: restart, setTopicIcon: vi.fn() } as unknown as LifecycleContext);
   lc.verifyCodexQuota = vi.fn(async () => "exhausted"); // no provider/network probe
   lc.pause = vi.fn(async () => { d.pauseWakeState = "paused"; return "paused"; });
@@ -61,6 +61,47 @@ describe("#2282 real exhausted429 classifier and quota separation", () => {
 });
 
 describe("#2282 real daemon + lifecycle, all process/pane boundaries inert", () => {
+  it("#2543 uses real offline0.164 redraw captures without repasting the failed request", async () => {
+    const capture = (name: string) => readFileSync(join(__dirname, "fixtures/codex-nudge-2543", name + ".pane.txt"), "utf8");
+    const before = capture("before"), after = capture("after-resize");
+    expect(before).not.toBe(after);
+    expect(backend.isPeriodicRedrawIdlePane(before)).toBe(true);
+    expect(backend.isPeriodicRedrawIdlePane(after)).toBe(true);
+    const r = rig(); await r.poll(); r.screen.text = before; await r.poll();
+    r.screen.text = after; await r.poll(40_000);
+    expect(r.sent).toEqual([NUDGE]); expect(r.enters()).toBe(1); r.stop();
+  });
+  it("#2543 settles an existing promise even during planned shutdown, in its original channel", async () => {
+    const r = rig(); await r.poll(); r.screen.text = fixture("exhausted429"); await r.poll();
+    r.lc.ctx.isPlannedRestart = () => true;
+    setLocale("zh-TW"); r.d.freezeRuntimeMonitors(); r.d.freezeRuntimeMonitors();
+    expect(r.notify).toHaveBeenLastCalledWith("w", expect.stringMatching(/重試已取消.*已停止、暫停或重新啟動/));
+    expect(r.notify.mock.calls.filter(c => /重試已取消/.test(c[1]))).toHaveLength(1); r.stop();
+  });
+  it("#2543 keeps the shared 429 promise across a cosmetic redraw", async () => {
+    const r = rig(); await r.poll(); r.screen.text = fixture("exhausted429"); await r.poll();
+    r.screen.text = r.screen.text.replace("100% left", "99% left");
+    await r.poll(40_000); expect(r.sent).toEqual([NUDGE]);
+    expect(r.notify.mock.calls.filter(c => /retry cancelled/i.test(c[1]))).toHaveLength(0); r.stop();
+  });
+  it.each(["draft", "cancel", "freeze", "spawn", "write refusal"])("#2543 announces a dropped promise once: %s", async why => {
+    const r = rig(); await r.poll(); r.screen.text = fixture("exhausted429"); await r.poll();
+    expect(r.notify).toHaveBeenCalledWith("w", expect.stringMatching(/recovery 1\/3/));
+    if (why === "draft") r.screen.text = r.screen.text.replace("› Ask Codex to do anything", "› unsent request");
+    if (why === "cancel") r.d.clearPendingDeliveries();
+    if (why === "freeze") r.d.freezeRuntimeMonitors();
+    if (why === "spawn") { r.d.beginSpawn(); r.d.endSpawn(); }
+    if (why === "write refusal") r.d.submitSystemPaste = vi.fn(async () => false);
+    await r.poll(45_000);
+    expect(r.notify.mock.calls.filter(c => /retry cancelled: .+/i.test(c[1]))).toHaveLength(1);
+    expect(r.sent).toEqual([]); expect(r.enters()).toBe(0); r.stop();
+  });
+  it("#2543 does not announce cancellation when the original promise was not dispatched", async () => {
+    const r = rig(); r.notify.mockReturnValue(false);
+    await r.poll(); r.screen.text = fixture("exhausted429"); await r.poll();
+    r.notify.mockClear(); r.notify.mockReturnValue(true); r.d.clearPendingDeliveries();
+    await r.poll(45_000); expect(r.notify).not.toHaveBeenCalled(); r.stop();
+  });
   it("without a fallback tells the user, waits30s and continues the retained context exactly once", async () => {
     const r = rig(); await r.poll(); r.screen.text = fixture("exhausted429"); await r.poll();
     expect(r.events).toHaveLength(1); expect(r.arm).toHaveBeenLastCalledWith(pattern.pattern, 30_000);

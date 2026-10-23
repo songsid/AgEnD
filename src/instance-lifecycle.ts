@@ -327,6 +327,7 @@ export interface IncidentEventSource {
   /** `nudge_continue`: arm / drop the daemon's "tell the agent to keep going" for the error just reported. */
   armCapacityNudge?(pattern: RegExp, delayMs: number): boolean;
   cancelCapacityNudge?(reason: string): void;
+  markCapacityNudgePromised?(target: string): void;
   prepareCapacityNudgePause?(): Promise<CapacityNudgePauseGuard | null>;
   /** Real daemons buffer `pty_error` raised by the startup scan until the lifecycle can handle it. */
   holdStartupIncidents?(): void;
@@ -826,6 +827,19 @@ export class InstanceLifecycle {
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
+    daemon.on("capacity_nudge_cancelled", safeHandler((data: { reason: string; target: string }) => {
+      const reason = data.reason === "the user cancelled" ? t("inst.codex_retry_cancel_reason_user")
+        : data.reason === "the instance was stopped, paused or respawned" || data.reason === "the instance is not running" ? t("inst.codex_retry_cancel_reason_stopped")
+        : data.reason === "the instance has work of its own" ? t("inst.codex_retry_cancel_reason_work")
+        : data.reason === "the failed turn is no longer idle with an empty input" ? t("inst.codex_retry_cancel_reason_pane")
+        : t("inst.codex_retry_cancel_reason_unsent");
+      this.ctx.eventLog?.insert(name, "capacity_nudge_cancelled", { reason: data.reason });
+      // Settle an already-dispatched promise in its original channel, including
+      // during a planned stop. This is not a new restart/storm incident alarm.
+      if (this.ctx.notifyInstanceTopic(data.target, t("inst.codex_retry_cancelled", name, reason)) === false) {
+        this.ctx.logger.warn({ name }, "Could not dispatch retry cancellation notice");
+      }
+    }, this.ctx.logger, `daemon.capacity_nudge_cancelled[${name}]`));
     const hangDetector = daemon.getHangDetector?.();
     if (hangDetector) {
       hangDetector.on("hang", safeHandler(async (data?: { unchangedForMs?: number }) => {
@@ -1497,8 +1511,9 @@ export class InstanceLifecycle {
     budget.set(name, { count: attempts + 1, lastAt: now });
     this.ctx.logger.info({ name, attempt: attempts + 1 }, "Model at capacity — will tell it to keep going");
     if (notificationTarget) {
-      this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_scheduled" : "inst.codex_capacity_nudge_scheduled", name,
+      const promised = this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_scheduled" : "inst.codex_capacity_nudge_scheduled", name,
         String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(delayMs / 1000))));
+      if (promised) daemon.markCapacityNudgePromised?.(notificationTarget);
     }
   }
 

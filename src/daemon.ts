@@ -1555,7 +1555,10 @@ export class Daemon extends EventEmitter {
    * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
    */
   private nudgeBaselines: Map<string, number> | null = null;
-  private capacityNudge: { pane: string; pattern: RegExp; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
+  private capacityNudge: {
+    pane: string; pattern: RegExp; spawn: number; fence: number; epoch: number; dueAt: number;
+    episode: NonNullable<Daemon["lastErrorEpisode"]>; promiseTarget: string | null;
+  } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   private readonly interactionObservation = new InteractionObservation();
@@ -4216,6 +4219,7 @@ export class Daemon extends EventEmitter {
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
+    this.cancelCapacityNudge("the user cancelled");
     this.publishWorkingState("cancelled");
     this.logger.info({ deliveryEpoch: this.deliveryEpoch }, "Pending delivery queue cleared by user cancel");
   }
@@ -6633,6 +6637,7 @@ export class Daemon extends EventEmitter {
 
   /** Stop every runtime poller/watcher while preserving IPC and daemon state. */
   private freezeRuntimeMonitors(): void {
+    this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.runtimeMonitorsFrozen = true;
     this.launchFenceEpoch++;
     this.interactionObservation.reset(this.interactionOwner());
@@ -7961,7 +7966,8 @@ export class Daemon extends EventEmitter {
   /**
    * Arm the "keep going" nudge for the error occurrence just reported (`pattern` must be the one the lifecycle was
    * handed). The nudge is sent once, `delayMs` from now on the MONOTONIC clock (a wall-clock step changes nothing),
-   * and only if nothing has changed by then — see {@link tickCapacityNudge}. Returns false when there is nothing to arm.
+   * and only if the failed turn still owns an empty idle composer — see {@link tickCapacityNudge}.
+   * Cosmetic footer redraws are not new work. Returns false when there is nothing to arm.
    */
   armCapacityNudge(pattern: RegExp, delayMs: number): boolean {
     const episode = this.lastErrorEpisode;
@@ -7975,9 +7981,12 @@ export class Daemon extends EventEmitter {
     // And only when the row is the live item, not a quotation or scrollback above a newer turn. (Never a regex
     // lookahead on the counting pattern: whole-pane dedup would max at 1 and miss later hits. See #1215.)
     if (!codexLiveRowMatches(episode.pane, pattern)) return false;
+    this.cancelCapacityNudge("the instance has work of its own");
     this.capacityNudge = {
       pane: episode.pane, pattern, spawn: episode.spawn, fence: episode.fence,
       epoch: this.deliveryEpoch, dueAt: performance.now() + delayMs,
+      episode,
+      promiseTarget: null,
     };
     this.logger.info({ delayMs }, "Model-capacity nudge armed");
     return true;
@@ -7993,16 +8002,14 @@ export class Daemon extends EventEmitter {
     const nudge = this.capacityNudge, episode = this.lastErrorEpisode;
     const tmux = this.tmux, attempt = this.launchAttempt, boot = this.bootId;
     this.cancelCapacityNudge("retries exhausted");
-    if (!nudge || !episode || !tmux) return null;
+    if (!nudge || !episode || nudge.episode !== episode || !tmux) return null;
     const window = tmux.getWindowId?.();
     const current = (): boolean => this.tmux === tmux && tmux.getWindowId?.() === window
       && boot === this.bootId && nudge.spawn === this.spawnGeneration && attempt === this.launchAttempt
       && episode === this.lastErrorEpisode && this.isDeliveryEpochCurrent(nudge.epoch)
       && !this.startupAborted && !this.spawning && !this.isPaused
       && this.getProcessStatus() === "running" && this.instanceState === "idle" && this.pasteQueueDepth === 0;
-    const accepts = (pane: string): boolean => pane === nudge.pane && this.paneAuthoritativelyIdle(pane)
-      && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
-      && codexLiveRowMatches(pane, nudge.pattern) && !this.backend?.backgroundWorkRunning?.(pane);
+    const accepts = (pane: string): boolean => this.capacityNudgePaneCurrent(nudge, pane);
     const revalidate = (): Promise<boolean> => this.paneWriteLock.run(async () => {
       if (!current()) return false;
       try {
@@ -8019,9 +8026,35 @@ export class Daemon extends EventEmitter {
 
   /** Drop an armed nudge (the user stopped / paused the instance, or the lifecycle gave up on it). */
   cancelCapacityNudge(reason: string): void {
-    if (!this.capacityNudge) return;
+    const nudge = this.capacityNudge;
+    if (!nudge) return;
     this.capacityNudge = null;
     this.logger.info({ reason }, "Model-capacity nudge cancelled");
+    this.reportCapacityNudgeCancelled(nudge, reason);
+  }
+
+  /** Only a dispatched channel promise needs a later cancellation notice. */
+  markCapacityNudgePromised(target: string): void {
+    if (this.capacityNudge) this.capacityNudge.promiseTarget = target;
+  }
+
+  private reportCapacityNudgeCancelled(nudge: NonNullable<Daemon["capacityNudge"]>, reason: string): void {
+    const target = nudge.promiseTarget;
+    if (!target) return;
+    nudge.promiseTarget = null;
+    this.emit("capacity_nudge_cancelled", { name: this.name, reason, target });
+  }
+
+  /**
+   * A failed turn must still be the last live transcript item, with no new
+   * error occurrence, draft, queue, busy status or background work. Codex's
+   * own periodic-redraw idle classifier recognises its empty composer/footer;
+   * never infer inactivity from byte equality or a cached idle state alone.
+   */
+  private capacityNudgePaneCurrent(nudge: NonNullable<Daemon["capacityNudge"]>, pane: string): boolean {
+    return this.paneAuthoritativelyIdle(pane) && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
+      && !this.backend?.backgroundWorkRunning?.(pane) && codexLiveRowMatches(pane, nudge.pattern)
+      && Daemon.countOccurrences(nudge.pattern, pane) === Daemon.countOccurrences(nudge.pattern, nudge.pane);
   }
 
   /** The first live composer of a spawn fixes what is history (see {@link nudgeBaselines}). */
@@ -8045,8 +8078,8 @@ export class Daemon extends EventEmitter {
 
   /**
    * One monitor poll's look at an armed nudge. It is CANCELLED — never postponed — when anything about the instance
-   * moved: a stop / pause / respawn (spawn generation or monitor epoch), a user cancel (delivery epoch), the pane no
-   * longer being exactly the one the error was seen on (it moved on by itself, a person typed, another dialog), the
+   * moved: a stop / pause / respawn (spawn generation or monitor epoch), a user cancel (delivery epoch), the pane
+   * no longer belonging to the failed turn (new output, a draft, another dialog), the
    * agent working, or a message waiting for delivery. Only when it is due and still untouched is it fired — once — and
    * the injection re-verifies everything under the pane-write lock.
    */
@@ -8055,14 +8088,18 @@ export class Daemon extends EventEmitter {
     if (!nudge) return;
     const gone = nudge.spawn !== this.spawnGeneration || nudge.fence !== this.launchFenceEpoch ? "the instance was stopped, paused or respawned"
       : !this.isDeliveryEpochCurrent(nudge.epoch) ? "the user cancelled"
+      : nudge.episode !== this.lastErrorEpisode ? "the instance has work of its own"
       : this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped" ? "the instance is not running"
-      : pane !== nudge.pane ? "the screen changed"
       : this.instanceState === "working" || this.pasteQueueDepth > 0 ? "the instance has work of its own"
+      : !this.capacityNudgePaneCurrent(nudge, pane) ? "the failed turn is no longer idle with an empty input"
       : null;
     if (gone) { this.cancelCapacityNudge(gone); return; }
     if (performance.now() < nudge.dueAt) return;
     this.capacityNudge = null;                                    // fired: once per episode
-    void this.sendCapacityNudge(nudge).catch(err => this.logger.warn({ err: (err as Error).message }, "Model-capacity nudge failed"));
+    void this.sendCapacityNudge(nudge).catch(err => {
+      this.logger.warn({ err: (err as Error).message }, "Model-capacity nudge failed");
+      this.reportCapacityNudgeCancelled(nudge, "the retry could not be submitted");
+    });
   }
 
   private async sendCapacityNudge(nudge: NonNullable<Daemon["capacityNudge"]>): Promise<void> {
@@ -8070,21 +8107,25 @@ export class Daemon extends EventEmitter {
     // primitive too (its capture, its paste, its pause, its Enter, its retry): once any of it is false nothing more is
     // written. A message queued behind the lock, or the agent starting a turn, is "work of its own" like at the poll.
     const current = (): boolean => nudge.spawn === this.spawnGeneration && nudge.fence === this.launchFenceEpoch
+      && nudge.episode === this.lastErrorEpisode
       && this.isDeliveryEpochCurrent(nudge.epoch) && !this.isPaused && !this.healthCheckPaused
       && !this.startupAborted && this.getProcessStatus() !== "stopped"
       && this.pasteQueueDepth === 0 && this.instanceState !== "working";
     // Exclusive with every delivery: nothing can paste a turn between the verdict below and the nudge.
-    await this.paneWriteLock.run(async () => {
-      if (!this.tmux) return;
-      // ONE capture decides: it must be exactly the screen the error was seen on AND an idle composer. (A second picture
-      // vouching for the first — "same screen" here, "idle" there — would let a half-typed draft through.)
-      const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
-        current,
-        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane)
-          && codexLiveRowMatches(pane, nudge.pattern),
+    let sent = false;
+    try {
+      await this.paneWriteLock.run(async () => {
+        if (!this.tmux) return;
+        // ONE capture decides failed-turn ownership and empty/idle input.
+        sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
+          current,
+          accept: pane => this.capacityNudgePaneCurrent(nudge, pane),
+        });
+        this.logger.info({ sent }, "Model-capacity nudge attempted");
       });
-      this.logger.info({ sent }, "Model-capacity nudge attempted");
-    });
+    } finally {
+      if (!sent) this.reportCapacityNudgeCancelled(nudge, "the retry could not be submitted");
+    }
   }
 
   /** What identifies the request on screen: the backend's own identity when it has one, else the whole screen verbatim. */
@@ -10832,7 +10873,7 @@ export class Daemon extends EventEmitter {
     this.publishWorkingState("before_spawn");
     this.workingBackgroundObservation = null;
     this.dialogAnswers = null;
-    this.capacityNudge = null;
+    this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.lastErrorEpisode = null;
     this.nudgeBaselines = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
