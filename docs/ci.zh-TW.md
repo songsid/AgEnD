@@ -55,3 +55,10 @@ npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.
 - **Mac**：launchd。更新分別從 Agent 的工作階段、操作者的終端機，以及 `/update` 執行。
 
 每個 leg 都要記錄更新前後 fleet 的 pid 與執行的程式。
+
+## PR 的 dependency review（#2528）
+
+`dependency-review.yml` 在進 `main` 與 `release/**` 的 pull request 跑
+`actions/dependency-review-action`。PR diff 出現 high 或 critical 諮詢、
+或新套件的授權不在 `.github/dependency-review-config.yml` 允許名單（目前
+根目錄與 website 樹裡的授權）時失敗。偵測不到的授權只會被報告，不失敗。

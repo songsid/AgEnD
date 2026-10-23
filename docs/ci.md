@@ -80,3 +80,12 @@ A rehearsal of a change to the upgrade path runs these legs. Each one starts fro
 - **Mac**: launchd, with the update run from an agent's session, from an operator's terminal, and through `/update`.
 
 Each leg records the fleet's pid and program before and after the update.
+
+## Dependency review on PRs (#2528)
+
+`dependency-review.yml` runs `actions/dependency-review-action` on pull
+requests into `main` and `release/**`. It fails on high or critical
+advisories in the PR diff, and on a newly introduced licence that is not
+on the allow-list in `.github/dependency-review-config.yml` (the licences
+in the root and website trees today). An undetectable licence is reported
+and does not fail.

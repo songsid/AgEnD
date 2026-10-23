@@ -123,3 +123,9 @@ A browser session (local or public) can propose changes to access/F/C lists, cre
 If the affected connection cannot safely receive the prompt, AgEnD tries another world's General, then requires local `agend settings confirm <id>`. That command uses a separate same-user Unix socket (0700 parent, 0600 socket); agent environments are refused. It prints the authoritative source, requester and diff before an interactive confirmation or explicit `--yes`. There is no HTTP/MCP confirm route. Setup before a fleet exists uses the same host confirmation; a pending response never starts the fleet.
 
 Revocation, expiry, shutdown or a changed baseline prevents new effects. An admitted operation retains its resource leases through actual settlement and conditional cleanup; it may remain `applying` while native work settles. Rollback restores only still-owned fields, preserving later edits. Intentional final session revocation can return a completion receipt but cannot authorize further effects. Pending requests disappear on restart, so submit again. This boundary does not defend against another process running as the host user; independent filesystem edits are detected where possible, rather than claimed to be atomic.
+
+## CI supply chain (#2528)
+
+Pull requests into `main` and `release/**` run GitHub's dependency review:
+high or critical advisories, and licences outside the allow-list, fail the
+check. See [CI coverage](ci.md#dependency-review-on-prs-2528).

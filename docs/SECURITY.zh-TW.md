@@ -121,3 +121,8 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 受影響的 connection 無法安全收到提示時，AgEnD 先找另一個 world 的 General，否則要求本機執行 `agend settings confirm <id>`。該命令走獨立、同使用者的 Unix socket（父目錄 0700、socket 0600），拒絕 agent 環境。它先列出權威的來源、請求人及 diff，再接受互動確認或明確的 `--yes`。HTTP／MCP 沒有確認入口。Fleet 尚未存在的 Setup 也需要同樣的 host 確認；pending 回應絕不啟動 fleet。
 
 撤銷、到期、shutdown 或快照變動都會阻止新的 effect。已進入執行的操作會持有資源 lease，直到實際完成及條件式清理；等待 native 工作時可能持續顯示 `applying`。Rollback 只恢復仍屬於該操作的欄位，保留後來的修改。刻意放在最後的 session 撤銷可回傳完成 receipt，但不能授權後續 effect。Pending 請求重啟後消失，需重新提出。這個邊界不防禦以同一 host 使用者執行的其他程序；獨立檔案修改會盡可能被偵測，但不宣稱跨程序原子性。
+
+## CI 供應鏈（#2528）
+
+進 `main` 與 `release/**` 的 pull request 會跑 GitHub dependency review：
+high 或 critical 諮詢，以及不在允許名單的授權，會讓檢查失敗。見[CI 覆蓋](ci.zh-TW.md#pr-的-dependency-review2528)。
