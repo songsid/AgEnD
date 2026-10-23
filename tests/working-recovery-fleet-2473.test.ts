@@ -69,6 +69,21 @@ function fixture() {
   return { fm, d, card, board, paste, enter, stable, dispatch, pressure: (v: string) => { level = v; } };
 }
 describe("#2473 manager recovery wiring", () => {
+  it("the General summary waits for General's own continuation instead of superseding it", async () => {
+    const f = fixture();
+    f.fm.fleetConfig.instances.worker.general_topic = true;
+    f.fm.fleetConfig.instances.general.general_topic = false;
+    await f.stable();
+    const summaries = () => f.fm.deliveryOutbox.listPending().filter((r: any) => r.sourceKey?.startsWith("working-recovery-summary:"));
+    expect(summaries()).toHaveLength(0);
+    const row = await f.dispatch();
+    expect(row.kind).toBe("working_recovery");
+    expect(f.paste).toHaveBeenCalledOnce(); expect(f.enter).toHaveBeenCalledOnce();
+    expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("delivered");
+    f.fm.workingRecovery.tick(); f.fm.workingRecovery.tick();
+    expect(summaries()).toHaveLength(1);
+    expect(summaries()[0].targetInstance).toBe("worker");
+  });
   it("publishes newly owned session metadata from the existing checkpoint without waiting for a state edge", () => {
     const f = fixture(), outbox = f.fm.deliveryOutbox;
     f.d.ownedWorkingSession = null; f.fm.observeWorkingState("worker", "process");
@@ -113,6 +128,10 @@ describe("#2473 manager recovery wiring", () => {
     if (condition === "opt_out") f.fm.fleetConfig.instances.worker.resume_interrupted_work = false;
     await f.stable(); expect(await f.dispatch()).toBeUndefined(); expect(f.paste).not.toHaveBeenCalled();
     expect(f.fm.deliveryOutbox.workingRecovery.get("worker")?.outcome).toBe("deferred");
+    if (condition === "unknown_owner") {
+      const summary = f.fm.deliveryOutbox.listPending().find((r: any) => r.targetInstance === "general");
+      expect(summary.payload.content).toContain("Deferred advisory candidates (background unknown; all other gates still apply): worker (session_unknown)");
+    }
     f.d.workingBackgroundObservation = null; f.d.ownedWorkingSession = "owned-session"; f.pressure("normal");
     f.fm.fleetConfig.instances.worker.resume_interrupted_work = true;
     f.fm.workingRecovery.tick(); await vi.advanceTimersByTimeAsync(30_000); f.fm.workingRecovery.tick();
