@@ -611,7 +611,7 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | Link lifetime | — | ✅ 1–480 minutes (default 120); it never reopens by itself | ✅ 1–10080 minutes, or 0 for no expiry; `web.public_link.auto_open: true` reopens it after a restart (off by default) |
 | Chat | ✅ live updates | ✅ updates by polling; `/raw` and `/save` are refused | ✅ as B |
 | Uploads | ✅ 50 MB a file, 100 MB a message by default (`web.upload_max_file_mb`, `web.upload_max_total_mb`, 1–500) | ✅ at most 95 MB a file, whatever the config says | ✅ as B: at most 95 MB a file |
-| File previews (Markdown, CSV, JSON, code, text) | ✅ the **Show** card | ❌ only images show inline | ❌ as B |
+| File previews (Markdown, CSV/TSV, JSON, code, text) | ✅ the **Show** card: 200 lines, then **Show all**; over 1 MiB, a download | ✅ the same **Show** card (#2547); video and audio stay downloads | ✅ as B |
 | HTML previews | ✅ after this device opts in | ✅ after this device opts in, through a second quick tunnel (`web.preview_on_public_link`, on by default), or through `web.preview_origin` when it is set | ✅ as B: a second quick tunnel even though this link is named, or `web.preview_origin` |
 | Replies and reactions | ✅ | ✅ | ✅ |
 | Global search | ✅ | ✅ on by default; `web.search.public_link: false` turns it off here | ✅ as B |

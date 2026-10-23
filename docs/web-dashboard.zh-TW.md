@@ -610,7 +610,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | 連結時效 | — | ✅ 1–480 分鐘（預設 120）；不會自己重開 | ✅ 1–10080 分鐘，或 0 表示不過期；`web.public_link.auto_open: true` 會在重新啟動後重開（預設關閉） |
 | 聊天 | ✅ 即時更新 | ✅ 以輪詢更新；`/raw` 和 `/save` 會被拒絕 | ✅ 同 B |
 | 上傳 | ✅ 預設每個檔案 50 MB、每則訊息 100 MB（`web.upload_max_file_mb`、`web.upload_max_total_mb`，1–500） | ✅ 每個檔案最多 95 MB，不論設定為何 | ✅ 同 B：每個檔案最多 95 MB |
-| 檔案預覽（Markdown、CSV、JSON、程式碼、文字） | ✅ **顯示** 卡片 | ❌ 只有圖片會直接顯示 | ❌ 同 B |
+| 檔案預覽（Markdown、CSV/TSV、JSON、程式碼、文字） | ✅ **顯示** 卡片：先顯示 200 行，再按 **全部顯示**；超過 1 MiB 改為下載 | ✅ 同樣的 **顯示** 卡片（#2547）；影片和音訊仍是下載 | ✅ 同 B |
 | HTML 預覽 | ✅ 這台裝置同意後 | ✅ 這台裝置同意後，透過另一條 quick tunnel（`web.preview_on_public_link`，預設開啟）；設定了 `web.preview_origin` 時改走它 | ✅ 同 B：即使這個連結是 named tunnel，預覽仍走另一條 quick tunnel，或 `web.preview_origin` |
 | 回覆與 reaction | ✅ | ✅ | ✅ |
 | 全域搜尋 | ✅ | ✅ 預設開啟；`web.search.public_link: false` 會在這裡關閉 | ✅ 同 B |
