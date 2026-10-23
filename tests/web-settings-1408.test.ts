@@ -793,6 +793,38 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     expect(p.root.querySelector("dialog #ag-desc"), "the control: the same request opens the dialog").toBeTruthy();
   });
 
+  it("Developer (#2347, Fable r1): no setup wizard while the edit waits — not from a request elsewhere, not from Settings' own first-run card; after Discard it opens", async () => {
+    const T = await import("/assets/ui-toast.js");
+    const FR = await import("/ui/js/first-run.js");
+    FR.resetFirstRun();
+    const was = app.appStore.get();
+    app.appStore.set({ ready: true, connections: 0 });                          // a web-only fleet: the card is shown
+    const tree = (section: string, key: string, withCard: boolean) =>
+      h("div", {}, h(S.SettingsPanel, { route: { panel: "settings", section }, navKey: key }), withCard ? h(FR.FirstRunCard, {}) : null, h(T.Toasts, {}));
+    try {
+      await p.mount(tree("advanced", "settings:advanced|1|en", true)); await settle(6);
+      await applyModel(editAgents);
+      // The toast store outlives a test: count this one's own.
+      const said = () => p.root.querySelectorAll(".toast").filter((x: any) => x.textContent.includes("An unsaved fleet.yaml edit")).length;
+      const before = said();
+      // "Connect a chat app" on another page: a wizard request, taken when Settings is shown again.
+      btn(p.root.querySelector(".first-run"), "Connect a chat app").click(); await settle(2);
+      await p.mount(tree("chat", "settings:chat|2|en", false)); await settle(6);
+      expect(p.root.querySelector("dialog"), "the request is refused").toBeNull();
+      expect(said() - before, "and says why").toBe(1);
+      // Settings' own first-run card sits outside the lock: its Connect is refused too.
+      btn(p.root.querySelector(".p-settings .first-run"), "Connect a chat app").click(); await settle(4);
+      expect(p.root.querySelector("dialog")).toBeNull();
+      expect(said() - before).toBe(2);
+      btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+      btn(p.root.querySelector(".p-settings .first-run"), "Connect a chat app").click(); await settle(6);
+      expect(p.root.querySelector("dialog"), "the control: the wizard opens once the edit is gone").toBeTruthy();
+    } finally {
+      app.appStore.set({ ready: was.ready, connections: was.connections });
+      FR.resetFirstRun();
+    }
+  });
+
   it("Developer (#2347): the forms' unsaved changes to the same settings come first — Edit and Apply wait for their Save", async () => {
     await mount("agents", "settings:agents|1|en"); await settle(6);
     await stageDescription("alpha", "A2");
