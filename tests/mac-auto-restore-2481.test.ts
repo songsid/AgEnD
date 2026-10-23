@@ -4,7 +4,7 @@
  */
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   autoRestoreDue, claimRestore, maybeAutoRestore, preimageRuns, pruneFailedTrees, readRestoreRecord, restoreCandidate,
@@ -253,6 +253,7 @@ describe("#2481 auto-restore: the whole act", () => {
     const run = vi.fn((_cmd: string, _args: string[], _opts: { timeout: number }) => {});
     const launch = vi.fn((_cmd: string, _args: string[], _opts: unknown) => ({}));
     expect(notifyRestoreFailed(home, "2.3.1", "2.2.6", "EXDEV", "/p/x-failed", { run, launch, platform: "darwin" })).toBe(true);
+    expect(run.mock.calls[0]![0]).toBe(process.execPath);                  // no bundled Node at /p/x-failed: this process's
     expect(run.mock.calls[0]![1]).toEqual(["/p/x-failed/dist/start-failure-chat.js", home, "--restore-failed", "2.3.1", "2.2.6", "EXDEV"]);
     expect(launch.mock.calls[0]![1]).toEqual(["-e", 'display notification "AgEnD v2.3.1 fails to start; restoring v2.2.6 automatically did not work. Run: agend doctor" with title "AgEnD"']);
     expect(notifyRestoreFailed(home, "2.3.1", "2.2.6", "EXDEV", "/p/x-failed", { run, launch, platform: "darwin" })).toBe(false);
@@ -263,6 +264,15 @@ describe("#2481 auto-restore: the whole act", () => {
       "To go back to v2.2.6: npm install -g @songsid/agend@2.2.6 && agend restart",
       `The error is at the end of ${join(home, "fleet.log")}. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new`,
     ]);
+  });
+  it("Fable P3 on #2526: a stranded package's correction runs on the Node that moved with it (process.execPath is gone)", () => {
+    const home = scratch(); const stranded = scratch();
+    const node = join(stranded, "node_modules", "@songsid", "agend-node-darwin-arm64", "bin", "node");
+    mkdirSync(dirname(node), { recursive: true }); writeFileSync(node, "node");
+    const run = vi.fn((_cmd: string, _args: string[], _opts: { timeout: number }) => {});
+    expect(notifyRestoreFailed(home, "2.3.1", "2.2.6", "stranded", stranded, { run, launch: () => ({}), platform: "darwin", arch: "arm64" })).toBe(true);
+    expect(run.mock.calls[0]![0]).toBe(node);
+    expect(run.mock.calls[0]![1][0]).toBe(join(stranded, "dist", "start-failure-chat.js"));
   });
   it("Fable r1 P3: a restored outcome exits before anything more of the moved package loads", () => {
     const src = readFileSync(join(process.cwd(), "src", "start-attempt.ts"), "utf8");

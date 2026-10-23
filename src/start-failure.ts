@@ -362,12 +362,22 @@ export function notifyRestore(home: string, from: string, to: string, preimage: 
 }
 
 /**
+ * The Node to run a script of the package at `packageAt` with: its own bundled one when it is there, else this process's.
+ * Under launchd this process's Node is the installed package's bundled one — which, when the package is stranded in the
+ * failed tree (Fable P3 on #2526), moved with it: process.execPath no longer exists.
+ */
+function nodeIn(packageAt: string, arch: string = process.arch): string {
+  const bundled = join(packageAt, "node_modules", "@songsid", `agend-node-darwin-${arch}`, "bin", "node");
+  return existsSync(bundled) ? bundled : process.execPath;
+}
+
+/**
  * #2481, Fable r1 on #2526: the restore did not happen, but its notices said it was happening (and took #2490's chat
  * claim). The correction, once per version (its own O_EXCL claim): the failure and the way back by hand. `packageAt`:
  * where the installed package — and the chat script — is now (the failed tree when even the rename back failed).
  */
 export function notifyRestoreFailed(home: string, from: string, to: string, reason: string, packageAt: string, opts: {
-  run?: RunChild; launch?: Launch; platform?: NodeJS.Platform;
+  run?: RunChild; launch?: Launch; platform?: NodeJS.Platform; arch?: string;
 } = {}): boolean {
   try {
     if (!/^[0-9A-Za-z.+-]{1,64}$/.test(from)) return false;
@@ -381,7 +391,7 @@ export function notifyRestoreFailed(home: string, from: string, to: string, reas
         child.unref?.();
       } catch { /* the chat notice and doctor remain */ }
     }
-    (opts.run ?? defaultRunChild)(process.execPath, [join(packageAt, "dist", "start-failure-chat.js"), home, "--restore-failed", from, to, reason], { timeout: CHAT_NOTICE_TIMEOUT_MS });
+    (opts.run ?? defaultRunChild)(nodeIn(packageAt, opts.arch), [join(packageAt, "dist", "start-failure-chat.js"), home, "--restore-failed", from, to, reason], { timeout: CHAT_NOTICE_TIMEOUT_MS });
     return true;
   } catch { return false; }
 }
