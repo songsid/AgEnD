@@ -133,6 +133,10 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     const w = await open();
     const cands = () => [...p.root.querySelectorAll(".g-cand")].map((c: any) => c.getAttribute("data-account"));
     expect(cands(), "Alice already has access").toEqual(["dc:333", "tg:444"]);
+    // On a narrow screen an agent's name stays whole (never broken at its hyphens) and so does "last seen <time>".
+    const sam = p.root.querySelector('.g-cand[data-account="dc:333"]');
+    expect([...sam.querySelectorAll(".g-wrote")].map((x: any) => x.textContent)).toEqual(["beta", "gamma"]);
+    expect(sam.querySelector(".g-when").textContent).toMatch(/^Last seen /i);
     await w.type(w.$("#grantsSearch"), "sam");
     expect(cands()).toEqual(["dc:333"]);
     await w.click(w.button("Choose", p.root.querySelector('.g-cand[data-account="dc:333"]')));

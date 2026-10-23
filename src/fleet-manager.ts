@@ -6744,6 +6744,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return null;
   }
 
+  /**
+   * #2348 delta §5: a grant changed with a save — one event-log entry (the Log tab) per person: who saved it (an admin's
+   * session handle, the header token, or null when replayed for a confirmation), whether it applied at once or was
+   * confirmed in General, the agents added and taken away, and the sessions a removal ended. Never message content.
+   */
+  noteGuestGrantChange(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void {
+    this.logger.info({ account: change.account, via: change.via, added: change.added.length, removed: change.removed.length }, "Guest access changed in Settings");
+    try { this.eventLog?.insert("fleet", "guest_grant_changed", { ...change }); } catch { /* the log line stands */ }
+  }
+
   /** #2348: an admin's Send sign-in code, per admin (the caller): at most this many in ADMIN_CODE_WINDOW_MS. */
   private static readonly ADMIN_CODE_MAX = 10;
   private static readonly ADMIN_CODE_WINDOW_MS = 10 * 60_000;

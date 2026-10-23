@@ -122,13 +122,14 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const revoke = vi.fn((_owner: { adapterId: string; userId: string }) => ({ count: 1, durable: true }));
   const people = vi.fn(() => ({ people: [{ adapterId: "dc", userId: "111", username: "ada" }] }));
   const sendCode = vi.fn(async (_o: unknown, _by: string, _current?: () => boolean) => ({ status: 200, body: { ok: true, outcome: "sent" } }));
+  const note = vi.fn((_c: { by: string | null; via: string; account: string; added: string[]; removed: string[]; endedSessions: number }) => undefined);
   const refusal = vi.fn(opts.refuse ?? ((_a: string, u: string) => (u === "111" ? null : "only someone AgEnD has seen in chat can be given guest access")));
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
-    guestOverview: () => ({}), revokeGuestWebSessions: revoke, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode } as unknown as SettingsApiContext;
+    guestOverview: () => ({}), revokeGuestWebSessions: revoke, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
   const gate = new SettingsHttpConfirmation(store, {
@@ -152,7 +153,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
     });
   }
   const raw = () => yaml.load(readFileSync(path, "utf8")) as any;
-  return { config, save, store, request, raw, revoke, people, sendCode, refusal, sessions };
+  return { config, save, store, request, raw, revoke, people, sendCode, refusal, sessions, note, sid };
 }
 const confirmer = () => ({ label: "F", current: () => true });
 
@@ -184,6 +185,25 @@ describe("through the real gate and handler", () => {
     expect(h.revoke.mock.calls.map((c) => c[0])).toEqual([{ adapterId: "dc", userId: "111" }, { adapterId: "dc", userId: "222" }]);
     expect((await h.request("PUT", WEB, { guests: { grants: { "dc:222": null } } })).status).toBe(200);
     expect(h.raw().web.guests).toEqual({ enabled: true, grants: {} });
+  });
+  // #2348 design delta §5: removing or narrowing a grant applies at once and used to leave no record anywhere.
+  it("every grant change is audited: a confirmed widening, a narrowing and a removal at once (with the sessions ended); a save that changes no grant is not", async () => {
+    const h = harness({ web: { guests: { enabled: true, grants: { "dc:222": { instances: ["b"] } } } } });
+    const add = await h.request("PUT", WEB, { guests: { grants: { "dc:111": { name: "Ada", instances: ["a", "b"] } } } });
+    expect(h.note, "nothing applied yet: nothing audited").not.toHaveBeenCalled();
+    expect((await h.store.decide(add.body.pending_change.id, "confirm", confirmer())).state).toBe("applied");
+    expect(h.note.mock.calls.map((c) => c[0])).toEqual([{ by: null, via: "confirmed", account: "dc:111", added: ["a", "b"], removed: [], endedSessions: 0 }]);
+    h.note.mockClear();
+    expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": { name: "Ada", instances: ["a"] }, "dc:222": null } } })).status).toBe(200);
+    const by = `session:${h.sessions.list(undefined, (r: any) => r.tier === "admin")[0].handle}`;
+    expect(h.note.mock.calls.map((c) => c[0])).toEqual([
+      { by, via: "direct", account: "dc:222", added: [], removed: ["b"], endedSessions: 1 },
+      { by, via: "direct", account: "dc:111", added: [], removed: ["b"], endedSessions: 0 },
+    ]);
+    h.note.mockClear();
+    expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": { name: "Ada L.", instances: ["a"] } } } })).status).toBe(200);
+    expect((await h.request("PUT", WEB, { guests: { chat: false } })).status).toBe(200);
+    expect(h.note, "a rename and a save without grants change no one's agents").not.toHaveBeenCalled();
   });
   it("a new grant for someone not seen in chat (or a fleet admin) is refused when it would apply; nothing is written", async () => {
     const h = harness({ web: { guests: { enabled: true, grants: {} } } });
@@ -288,6 +308,15 @@ describe("on a real FleetManager", () => {
     expect(s.guestGrantRefusal("dc", "admin")).toMatch(/fleet admin/);
     expect(s.guestGrantRefusal("dc", "999")).toMatch(/seen in chat/);
     expect(s.guestGrantRefusal("nowhere", "111")).toMatch(/no such connection/);
+  });
+  it("#2348 delta §5: a grant change goes to the event log as guest_grant_changed (the Log tab): who, how, which agents", () => {
+    const { s } = fleet();
+    const insert = vi.fn(); s.eventLog = { insert };
+    const change = { by: "session:A", via: "direct" as const, account: "dc:111", added: [], removed: ["a"], endedSessions: 2 };
+    s.noteGuestGrantChange(change);
+    expect(insert.mock.calls).toEqual([["fleet", "guest_grant_changed", change]]);
+    s.eventLog = { insert: () => { throw new Error("disk full"); } };
+    expect(() => s.noteGuestGrantChange(change), "a failed log write never fails the save").not.toThrow();
   });
   it("Send sign-in code: a DM to that person only (the intro, then the code alone); once a minute per person", async () => {
     const { s, dms, adapter } = fleet();

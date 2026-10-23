@@ -54,6 +54,12 @@ export function guestsBody(original, f) {
   return Object.keys(out).length ? { body: out, count } : null;
 }
 
+/** "Wrote to: a, b" with each agent's name kept whole on a narrow screen (a name breaks at its hyphens otherwise). */
+function wroteTo(names) {
+  const [before, after = ""] = tn("grantsWroteTo", "\u0000").split("\u0000");
+  return html`${before}${names.map((n, i) => html`${i ? ", " : ""}<span key=${n} class="g-wrote">${n}</span>`)}${after}`;
+}
+
 function Names({ id, all, value, wrote = [], onChange }) {
   const chosen = new Set(value || []);
   return html`<div class="guest-names" id=${id} role="group">${all.map((n) => html`<label key=${n} class="check guest-name">
@@ -237,8 +243,8 @@ export function GuestsSection({ ctx, staged }) {
         ${people === null ? html`<p class="note">${t("app.loading")}</p>` : !candidates.length ? html`<p class="note" id="grantsNoPeople">${tn("grantsNoPeople")}</p>`
           : html`<ul class="g-pick">${candidates.map((p) => html`<li key=${accountKey(p)} class="g-cand" data-account=${accountKey(p)}>
             <span class="g-av" aria-hidden="true">${(p.name || "?").slice(0, 1).toUpperCase()}</span>
-            <div class="g-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""} · ${tn("grantsLastSeen", new Date(p.lastSeen).toLocaleString())}</span>
-              ${p.instances && p.instances.length ? html`<div class="note">${tn("grantsWroteTo", p.instances.join(", "))}</div>` : null}</div>
+            <div class="g-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""} · <span class="g-when">${tn("grantsLastSeen", new Date(p.lastSeen).toLocaleString())}</span></span>
+              ${p.instances && p.instances.length ? html`<div class="note">${wroteTo(p.instances)}</div>` : null}</div>
             <button type="button" class="btn btn-sm" onClick=${() => { const k = accountKey(p); setGrant(k, { ...(p.name ? { name: p.name } : {}), instances: instances.filter((n) => (p.instances || []).includes(n)) }); setEditing(k); }}>${tn("grantsChoose")}</button></li>`)}</ul>`}`}
     </fieldset>
     ${status && status.kind === "waiting" ? html`<p class="note" role="status">${tn("grantsWaiting")}</p>` : null}
