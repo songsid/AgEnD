@@ -69,9 +69,10 @@ commit SHA，版本 tag 寫在後面的註解：
 Dependabot 的 `github-actions` 生態（`.github/dependabot.yml`，每週、一個
 group）會同時更新 SHA 與註解。
 
-`ci.yml` 的 `actions-pinned` job 每次事件都跑
-`scripts/ci/assert-actions-pinned.mjs`，包含只改 changelog 片段的 PR。
-`build` aggregate 在這個 job 不是 `success` 時失敗。
+`ci.yml` 的 `actions-pinned` job 每次事件都先 `npm ci --ignore-scripts`，再跑
+`scripts/ci/assert-actions-pinned.mjs`，包含只改 changelog 片段的 PR。guard
+用 lockfile 裡的 `js-yaml@4.3.2` 解析 YAML。`build` aggregate 在這個 job
+不是 `success` 時失敗。
 
 新增 action 時用 `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`
 解析 tag（annotated tag 先走 `git/ref/tags` 再 `git/tags`），不要猜 SHA。

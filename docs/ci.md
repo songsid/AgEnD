@@ -95,9 +95,12 @@ A local composite stays `./.github/actions/…`; its own remote `uses:` are
 pinned too. Dependabot's `github-actions` ecosystem (`.github/dependabot.yml`,
 weekly, one group) updates the SHA and the comment together.
 
-The `actions-pinned` job in `ci.yml` runs
+The `actions-pinned` job in `ci.yml` runs `npm ci --ignore-scripts` then
 `scripts/ci/assert-actions-pinned.mjs` on every event, including a docs-only
-PR. The `build` aggregate fails unless that job is `success`.
+PR. The guard parses YAML with the lockfile's `js-yaml@4.3.2`
+(`https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz`, integrity
+`sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==`).
+The `build` aggregate fails unless that job is `success`.
 
 To add an action, resolve the tag with
 `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha` (peel an annotated tag

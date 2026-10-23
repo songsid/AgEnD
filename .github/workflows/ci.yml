@@ -111,11 +111,18 @@ jobs:
         run: node scripts/changelog-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
 
   # ── GitHub Actions pins (#2528) ─────────────────────────────────────────────
-  # Always runs, no npm: a moved tag must fail the gate even on a docs-only PR.
+  # Always runs, including docs-only PRs. npm ci --ignore-scripts so the guard
+  # parses YAML with the lockfile's js-yaml (already a dependency) instead of
+  # a second vendored copy.
   actions-pinned:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
       - name: "Every remote uses: is a full commit SHA"
         run: node scripts/ci/assert-actions-pinned.mjs
 

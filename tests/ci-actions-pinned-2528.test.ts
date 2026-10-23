@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -53,6 +53,33 @@ describe("assert-actions-pinned (#2528)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("parses YAML with the lockfile's js-yaml 4.3.2 after npm ci", () => {
+    const lock = JSON.parse(readFileSync(join(process.cwd(), "package-lock.json"), "utf8")) as {
+      packages: Record<string, { version?: string; resolved?: string; integrity?: string }>;
+    };
+    expect(lock.packages["node_modules/js-yaml"]).toMatchObject({
+      version: "4.3.2",
+      resolved: "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz",
+      integrity: "sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==",
+    });
+    const src = readFileSync(script, "utf8");
+    expect(src).toMatch(/from ["']js-yaml["']/);
+    expect(src).not.toMatch(/vendor\/js-yaml/);
+    expect(existsSync(join(process.cwd(), "scripts/ci/vendor"))).toBe(false);
+
+    const ci = yaml.load(readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8")) as {
+      jobs: { "actions-pinned": { steps: Array<{ uses?: string; run?: string; with?: { "node-version"?: string } }> } };
+    };
+    const steps = ci.jobs["actions-pinned"].steps;
+    expect(steps.map(s => s.uses ?? s.run)).toEqual([
+      "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+      "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "npm ci --ignore-scripts",
+      "node scripts/ci/assert-actions-pinned.mjs",
+    ]);
+    expect(String(steps[1]!.with?.["node-version"])).toBe("22");
   });
 
   it("accepts a 40-char SHA with a tag comment", () => {

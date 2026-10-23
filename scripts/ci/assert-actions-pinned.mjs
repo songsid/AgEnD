@@ -4,8 +4,8 @@
  * is not pinned to a 40-char commit SHA. Local composite paths (`./…`) are
  * allowed; their own `uses:` are checked too. #2528
  *
- * Parses YAML with vendored js-yaml 4.3.2 (MIT, scripts/ci/vendor) so the
- * actions-pinned job can walk mapping keys without npm ci. Load errors and
+ * Parses YAML with the lockfile's js-yaml (4.3.2, package-lock integrity).
+ * The actions-pinned job runs npm ci --ignore-scripts first. Load errors and
  * non-string uses values fail closed.
  *
  *   node scripts/ci/assert-actions-pinned.mjs
@@ -14,7 +14,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import yaml from "./vendor/js-yaml.mjs";
+import yaml from "js-yaml";
 
 const args = process.argv.slice(2);
 const rootIdx = args.indexOf("--root");
