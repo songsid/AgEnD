@@ -1152,7 +1152,8 @@ export function webReadOnlyDefault(path, fleet) {
   const hp = fleet.health_port ?? 19280;
   return {
     "web.allowed_hosts": [], "web.view_access": "open", "web.notify_login": true, "web.preview": true, "web.preview_port": hp === 0 ? 0 : hp + 1 <= 65535 ? hp + 1 : null,
-    "web.preview_origin": null, "web.preview_on_public_link": true, "web.usage_panel": true, "web.provider_secrets": false,
+    // #2518: web.search unset is no age limit (the 300,000-row cap still applies); its line says so itself.
+    "web.preview_origin": null, "web.preview_on_public_link": true, "web.usage_panel": true, "web.search": null, "web.provider_secrets": false,
     "web.upload_max_file_mb": uploadMbInEffect(fleet.web).file, "web.upload_max_total_mb": 100, "web_terminal.bind": "127.0.0.1", "web_terminal.tunnel": null,
   }[path];
 }
