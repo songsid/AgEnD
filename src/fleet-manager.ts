@@ -1093,7 +1093,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ]);
   logger: Logger = createLogger("info");
   /** Report each bundled skill collision once per fleet, across instance starts. */
-  private skippedBundledSkills = new Set<string>();
+  /** #2482: per skills directory, the skipped set (names + their content) last said — this process's view of the record. */
+  private skippedSkillsSaid = new Map<string, string>();
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
   sessionRegistry: Map<string, string> = new Map();
@@ -5259,7 +5260,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     if (this.lifecycle.isPaused(name)) {
-      this.logger.info({ name }, "Persisted paused instance — skipping startup");
+      this.logger.debug({ name }, "Persisted paused instance — skipping startup");   // #2482: every start and reload
       return;
     }
     if (this.lifecycle.daemons.has(name)) {
@@ -15682,7 +15683,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
 
       this.persistCancelButtons();
-      this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
+      this.logger.debug({ instanceName, messageId: sent.messageId }, "Cancel button sent");   // #2482: per-turn bookkeeping
 
       // Retirement is normally edge-triggered, but the edge (or an explicit
       // reply/cancel clear) may have happened while notifyAlert was in flight.
@@ -15972,7 +15973,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.deleteButtonMessage(entry)
       .then(() => {
         this.discardButton(entry);
-        this.logger.info(
+        this.logger.debug(   // #2482: per-turn bookkeeping
           { instanceName: entry.instanceName, messageId: entry.messageId, historyPreserved: Boolean(entry.toolProgress) },
           "Cancel button retired",
         );
@@ -17531,6 +17532,32 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * migration exception is the pre-manifest Kiro General layout explicitly
    * selected by adoptLegacyUnmanaged.
    */
+  /**
+   * #2482: the user's own skills that shadow bundled ones, said once per directory and change — not once per name on
+   * every start (11 lines a start on the host). The record (`skipped-skills.json` in the AgEnD home) keeps what was said
+   * across restarts; a new name or an edited SKILL.md is said again.
+   */
+  private reportSkippedSkills(destSkills: string, names: string[]): void {
+    const signature = names.map(name => {
+      let content = "";
+      try { content = readFileSync(join(destSkills, name, "SKILL.md"), "utf-8"); } catch { /* gone: its name alone */ }
+      return `${name}:${createHash("sha256").update(content).digest("hex").slice(0, 16)}`;
+    }).join(",");
+    if (this.skippedSkillsSaid.get(destSkills) === signature) return;
+    const path = join(this.dataDir, "skipped-skills.json");
+    let record: Record<string, string> = {};
+    try { record = JSON.parse(readFileSync(path, "utf-8")) as Record<string, string>; } catch { /* none yet */ }
+    this.skippedSkillsSaid.set(destSkills, signature);
+    if (record[destSkills] === signature) {
+      this.logger.debug({ skills: names, destSkills }, "Skipping bundled skills — unchanged since it was last said");
+      return;
+    }
+    record[destSkills] = signature;
+    try { writeFileSync(path, JSON.stringify(record) + "\n"); } catch { /* said this time; said again next start */ }
+    this.logger.warn({ skills: names, destSkills },
+      "Skipping bundled skills — skills of these names exist but were not published by AgEnD");
+  }
+
   private syncManagedSkills(
     destSkills: string,
     srcSkills: string,
@@ -17586,18 +17613,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return role === "general" || roles.includes(role);
     });
     const managed: string[] = [];
+    const skipped: string[] = [];
 
     for (const name of eligible) {
       const destDir = join(destSkills, name);
       const dest = join(destDir, "SKILL.md");
       const isOurs = previouslyManaged.includes(name) || !existsSync(destDir);
       if (!isOurs) {
-        // The user's skill still wins on every sync; only the warning is deduped.
-        if (!this.skippedBundledSkills.has(name)) {
-          this.skippedBundledSkills.add(name);
-          this.logger.warn({ skill: name, destSkills },
-            "Skipping bundled skill — a skill of this name exists but was not published by AgEnD");
-        }
+        // The user's skill still wins on every sync; only the warning is deduped (#2482: one line per directory, and
+        // only when what is skipped there changed since it was last said — across restarts too).
+        skipped.push(name);
         continue;
       }
       managed.push(name);
@@ -17607,6 +17632,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       mkdirSync(destDir, { recursive: true });
       writeFileSync(dest, newContent);
     }
+
+    if (skipped.length) this.reportSkippedSkills(destSkills, skipped);
 
     // Remove managed skills that are no longer bundled OR no longer eligible
     // for this role. This makes a shared → general-only metadata change take
@@ -20536,8 +20563,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // so an old/new diff alone can miss the live daemon's stale value.
     for (const [name, config] of Object.entries(newInstances)) {
       if (!this.daemons.has(name)) {
-        // New instance — startInstance already calls connectIpcToInstance
-        this.logger.info({ name }, "New instance in config — starting");
+        // New instance — startInstance already calls connectIpcToInstance. #2482: a paused one is not started (startInstance
+        // returns at its pause); say so, quietly, instead of "starting" on every reload.
+        if (this.lifecycle.isPaused(name)) this.logger.debug({ name }, "Paused instance in config — not started");
+        else this.logger.info({ name }, "New instance in config — starting");
         observe?.(name, "restart", "running");
         await this.startInstanceUnattended(name, config, topicMode, "new instance");
         observe?.(name, "restart", "done");

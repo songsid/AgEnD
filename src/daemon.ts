@@ -5192,7 +5192,9 @@ export class Daemon extends EventEmitter {
         this.logger.info({ notLogged: this.stateEdgesNotLogged }, "Instance execution state edges were not logged while it was flapping");
         this.stateEdgesNotLogged = 0;
       }
-      this.logger.info(fields, "Instance execution state changed");
+      // #2482: idle ↔ working is every turn (40% of daemon.log): debug. Anything involving stuck stays INFO.
+      const routine = previous !== "stuck" && snapshot.state !== "stuck";
+      this.logger[routine ? "debug" : "info"](fields, "Instance execution state changed");
       return;
     }
     if (this.stateEdgesNotLogged === 0) {
