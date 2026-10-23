@@ -71,6 +71,17 @@ function journalRows() {
   try { return db.prepare('SELECT instance_name,revision,current_json,prior_json FROM working_state_journal ORDER BY instance_name').all(); }
   finally { db.close(); }
 }
+/** Metadata compatibility only: old binaries do not enforce the recovery policy. */
+function recoveryRows() {
+  const db = new Database(outboxPath, { readonly: true });
+  try {
+    return Object.fromEntries([
+      ['working_recovery_episodes', 'instance_name'], ['working_recovery_receipts', 'episode_key'],
+      ['working_recovery_run', 'singleton'], ['working_recovery_summaries', 'episode_group'],
+      ['working_recovery_cancellations', 'instance_name'],
+    ].map(([table, key]) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY ${key}`).all()]));
+  } finally { db.close(); }
+}
 if (phase === 'create') {
   checked('working journal has populated current and prior snapshots before downgrade', () => {
     const snapshot = { version: 1, reason: 'before_stop', observedAt: 10, lastActivityAt: 9,
@@ -88,6 +99,21 @@ if (phase === 'create') {
     state.workingJournalRows = journalRows();
     assert.equal(state.workingJournalRows.length, 1);
     assert.notEqual(state.workingJournalRows[0].prior_json, null);
+  });
+  checked('recovery episode, receipt, cancellation, run and summary rows populated before downgrade', () => {
+    const store = outbox.workingRecovery;
+    const snapshot = { ...state.workingJournal.current,
+      observation: { ...state.workingJournal.current.observation, sessionId: 'scratch-owned-session', turn: null } };
+    store.beginRun('scratch-recovery-boot', 42, 100);
+    store.requested('scratch-recovery-boot', 'manual_restart');
+    store.cancel('scratch-cancelled', snapshot.observation.configuration, snapshot.observation.sessionId);
+    store.discover('scratch-recovery', snapshot);
+    assert.equal(outbox.admitWorkingRecovery(store.get('scratch-recovery'), 'scratch advisory; never executed', true), true);
+    assert.equal(store.summary('scratch-recovery-group', () => {
+      outbox.admitSystemNotice('scratch-general', 'scratch-recovery-summary', 'scratch summary; never executed');
+    }), true);
+    state.workingRecoveryRows = recoveryRows();
+    assert.ok(Object.values(state.workingRecoveryRows).every(rows => rows.length > 0));
   });
   checked('new delivery consumption and acknowledgement metadata', () => {
     const delivered = terminal('consumed', 'new-consumed', 'delivered');
@@ -174,6 +200,9 @@ if (phase === 'create') {
   checked('old outbox opens, recovers and writes delivery data without changing journal bytes', () => {
     assert.deepEqual(journalRows(), state.workingJournalRows);
   });
+  checked('old outbox writes preserve every populated recovery metadata table byte-for-byte', () => {
+    assert.deepEqual(recoveryRows(), state.workingRecoveryRows);
+  });
   checked('old scheduler accepts new history; deletion cascades the new retry', () => {
     assert.ok(scheduler.get(state.keepSchedule));
     assert.equal(scheduler.getRuns(state.keepSchedule)[0].status, 'deferred → delivered (retry)');
@@ -227,6 +256,14 @@ if (phase === 'create') {
   checks.push('old shared Kiro writers lack ownership; new agent artifacts untouched');
   writeFileSync(statePath, JSON.stringify(state));
 } else {
+  checked('recovery receipts survive old writes and still prevent duplicate admission after return', () => {
+    assert.deepEqual(recoveryRows(), state.workingRecoveryRows);
+    const store = outbox.workingRecovery;
+    assert.equal(outbox.admitWorkingRecovery(store.get('scratch-recovery'), 'must not duplicate', true), false);
+    assert.equal(store.cancelled('scratch-cancelled', store.get('scratch-recovery').snapshot), true);
+    assert.equal(store.summary('scratch-recovery-group', () => { throw new Error('duplicate summary'); }), false);
+    assert.equal(store.beginRun('return-recovery-boot', 43, 200), 'manual_restart');
+  });
   checked('working journal survives old writes and accepts a new atomic observation after return', () => {
     assert.deepEqual(journalRows(), state.workingJournalRows);
     assert.deepEqual(outbox.getWorkingState('scratch-journal'), state.workingJournal);
