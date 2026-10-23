@@ -2337,9 +2337,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.daemons.get(name)?.isSessionOomStopped?.() === true || readSessionOomStop(this.getInstanceDir(name)).blocked;
   }
 
+  private sessionOomStopReason(name: string): string {
+    const state = readSessionOomStop(this.getInstanceDir(name));
+    return state.blocked ? sessionOomStopHint(state)
+      : this.daemons.get(name)?.notAcceptingReason?.() ?? sessionOomStopHint();
+  }
+
   /** #1641: why a target is not taking queued work right now, or null when nothing known holds it. */
   private deliveryWaitingReason(target: string): string | null {
-    if (this.sessionOomStopped(target)) return sessionOomStopHint();
+    if (this.sessionOomStopped(target)) return this.sessionOomStopReason(target);
     if (this.lifecycle.isPaused(target)) return t("delivery.hold_state", "paused");
     return this.daemons.get(target)?.notAcceptingReason?.() ?? null;
   }
@@ -5063,7 +5069,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       warmCap: () => this.fleetConfig?.defaults?.warm_cap ?? 0,
       warmOverflow: () => this.fleetConfig?.defaults?.warm_overflow ?? DEFAULT_WARM_OVERFLOW,
       wokeAt: target => this.lifecycle.wokeAtFor(target),
-      notAcceptingReason: target => this.sessionOomStopped(target) ? sessionOomStopHint() : this.daemons.get(target)?.notAcceptingReason?.() ?? null,
+      notAcceptingReason: target => this.sessionOomStopped(target) ? this.sessionOomStopReason(target) : this.daemons.get(target)?.notAcceptingReason?.() ?? null,
       notifyTarget: (target, text) => { this.notifyInstanceTopic(target, text); },
       notifySender: (source, text) => { this.notifyInstanceTopic(source, text); },
       kickPump: () => this.scheduleDeliveryOutboxPump(),
@@ -5120,7 +5126,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   async explicitWake(name: string, timeoutMs = 30_000, retryStoppedSession = false): Promise<void> {
     if (this.sessionOomStopped(name)) {
-      if (!retryStoppedSession) throw new SessionOomStoppedError();
+      if (!retryStoppedSession) throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
       return this.restartSingleInstance(name, { explicit: true });
     }
     const token = await this.acquireWakeSlot(name);
@@ -5332,7 +5338,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     execution?.assert();
     if (this.sessionOomStopped(name)) {
       if (resumePaused) return this.restartSingleInstance(name, { explicit: true });
-      throw new SessionOomStoppedError();
+      throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
     }
     // CLI single-instance cold starts bypass startAll. Start diagnostics before
     // any lifecycle/wake work; a shutdown must not revive the stopped sampler.
@@ -5549,7 +5555,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.shuttingDown) return;
     if (this.sessionOomStopped(name)) {
       this.instanceProcessStatus.set(name, "stopped");
-      this.logger.warn({ name }, "Session OOM stop retained; no automatic startup retry");
+      this.logger.warn({ name }, this.sessionOomStopReason(name));
       return;
     }
     if (this.startupRetries.has(name)) return;
@@ -5990,7 +5996,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
     const retry = opts?.explicit ? captureSessionOomRetry(this.getInstanceDir(name)) : undefined;
-    if (!opts?.explicit && this.sessionOomStopped(name)) throw new SessionOomStoppedError();
+    if (!opts?.explicit && this.sessionOomStopped(name)) throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
     // One restart at a time per instance. Multiple sources can ask concurrently
     // (MCP revival, /restart, pty_error, model failover); a second stop/start
     // interleaved with the first tears down the window the first just created.

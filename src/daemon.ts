@@ -1410,7 +1410,8 @@ export class Daemon extends EventEmitter {
   private sessionOomStopUnpersisted = false;
 
   private assertSessionOomAdmission(): void {
-    if (this.sessionOomStopUnpersisted) throw new SessionOomStoppedError();
+    if (this.sessionOomStopUnpersisted) throw new SessionOomStoppedError(false,
+      { blocked: true, record: null, revision: null, confirmedOom: true });
     assertNoSessionOomStop(this.instanceDir);
   }
 
@@ -2402,7 +2403,9 @@ export class Daemon extends EventEmitter {
    * daemon's own state only; it never inspects the pane itself.
    */
   notAcceptingReason(): string | null {
-    if (this.isSessionOomStopped()) return sessionOomStopHint();
+    if (this.sessionOomStopUnpersisted) return t("inst.session_oom_hold");
+    const oomStop = readSessionOomStop(this.instanceDir);
+    if (oomStop.blocked) return sessionOomStopHint(oomStop);
     if (this.pauseWakeState !== "active") return t("delivery.hold_state", this.pauseWakeState);
     if (this.inputBlockedDialogKey !== null) return t("delivery.hold_dialog", this.inputBlockedDialogKey);
     if (this.authFailureUnresolved) return t("delivery.hold_auth");

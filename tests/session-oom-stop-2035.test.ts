@@ -165,6 +165,18 @@ function harness() {
 }
 
 describe("bounded same-session recovery with a fake OOM-killed child", () => {
+  it("daemon delivery and launch refusals name unreadable evidence without claiming an OOM", async () => {
+    const h = harness();
+    const path = join(h.instance, "session-oom-stop.json");
+    writeFileSync(path, "truncated");
+    expect(h.daemon.notAcceptingReason()).toContain("could not be read safely");
+    await expect(h.daemon.wake()).rejects.toThrow("could not be read safely");
+    unlinkSync(path);
+    writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "confirmed-stop",
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 999, at: Date.now() } });
+    expect(h.daemon.notAcceptingReason()).toContain("session-OOM stop evidence");
+    await expect(h.daemon.wake()).rejects.toThrow("session-OOM stop evidence");
+  });
   it("a stop appearing during awaited tmux preparation prevents physical window creation", async () => {
     const h = harness(); let release!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; });

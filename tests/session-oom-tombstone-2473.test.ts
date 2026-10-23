@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertNoSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry, readSessionOomStop, SESSION_OOM_STOP_FILE, SessionOomStoppedError, writeSessionOomStop } from "../src/session-oom-stop.js";
+import { setLocale } from "../src/locale.js";
 
 let root: string;
-beforeEach(() => { root = mkdtempSync(join(tmpdir(), "oom-tombstone-2473-")); });
+beforeEach(() => { root = mkdtempSync(join(tmpdir(), "oom-tombstone-2473-")); setLocale("en"); });
 afterEach(() => { vi.restoreAllMocks(); rmSync(root, { recursive: true, force: true }); });
 const evidence = () => ({ owner: { bootId: "boot-a", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
   sessionKey: JSON.stringify(["claude-code", "owned-session"]), configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 } });
@@ -27,6 +28,45 @@ describe("#2473 stage2: authoritative OOM stop independent of pause and journal"
     expect(readSessionOomStop(root)).toEqual({ blocked: false });
     appendFileSync(path, `${legacy("session_oom")}\n`);
     expect(readSessionOomStop(root).blocked).toBe(true);
+  });
+  it.each(["界".repeat(24_000), "x".repeat(70 * 1024)])("reads a complete large last crash record without inventing an OOM", (lastOutput) => {
+    const path = join(root, "crash-history.jsonl");
+    const record = { instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", exitCode: 1, lastOutput };
+    // An earlier OOM does not override the last ordinary crash.
+    writeFileSync(path, `${legacy("session_oom")}\n${JSON.stringify(record)}\n`);
+    expect(readSessionOomStop(root)).toEqual({ blocked: false });
+    expect(() => assertNoSessionOomStop(root)).not.toThrow();
+    appendFileSync(path, `${JSON.stringify({ ...record, reason: "session_oom", exitCode: 137 })}\n`);
+    expect(readSessionOomStop(root).blocked).toBe(true);
+    expect(() => assertNoSessionOomStop(root)).toThrow("session-OOM stop evidence");
+  });
+  it("does not label unreadable or truncated evidence as a confirmed session OOM", () => {
+    const path = join(root, "crash-history.jsonl");
+    writeFileSync(path, '{"instance":"worker","lastOutput":"unfinished');
+    expect(() => assertNoSessionOomStop(root)).toThrow("could not be read safely");
+    writeFileSync(path, `${legacy("session_oom")}\n`);
+    expect(() => assertNoSessionOomStop(root)).toThrow("session-OOM stop evidence");
+    rmSync(path);
+    writeSessionOomStop(root, evidence());
+    expect(() => assertNoSessionOomStop(root)).toThrow("session-OOM stop evidence");
+    writeFileSync(join(root, SESSION_OOM_STOP_FILE), "damaged");
+    expect(() => assertNoSessionOomStop(root)).toThrow("could not be read safely");
+  });
+  it("bounds the last-record scan and ignores large older records when the final record is complete", () => {
+    const path = join(root, "crash-history.jsonl");
+    const huge = JSON.stringify({ instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", lastOutput: "x".repeat(1024 * 1024) });
+    writeFileSync(path, huge + "\n");
+    expect(() => assertNoSessionOomStop(root)).toThrow("could not be read safely");
+    appendFileSync(path, legacy() + "\n\n");
+    expect(readSessionOomStop(root)).toEqual({ blocked: false });
+  });
+  it("keeps the same evidence distinction in the zh-TW retry notice", () => {
+    setLocale("zh-TW");
+    const path = join(root, "crash-history.jsonl");
+    writeFileSync(path, "truncated");
+    expect(() => assertNoSessionOomStop(root)).toThrow("無法安全讀取");
+    writeFileSync(path, legacy("session_oom") + "\n");
+    expect(() => assertNoSessionOomStop(root)).toThrow("工作階段 OOM 停止紀錄");
   });
   it("a durable retry receipt cannot hide a newer terminal stop written by an old binary", () => {
     const path = join(root, "crash-history.jsonl"); writeFileSync(path, `${legacy("session_oom")}\n`);
