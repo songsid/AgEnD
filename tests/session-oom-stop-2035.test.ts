@@ -27,9 +27,12 @@ vi.mock("node:child_process", async original => ({
     return new EventEmitter();
   },
 }));
+vi.mock("node:net", async original => ({ ...await original<typeof import("node:net")>(), createServer: io.forbidden, connect: io.forbidden, createConnection: io.forbidden }));
 import { observeCliOomIdentity, confirmedCliOom, parseKernelOoms, consecutiveSessionOoms } from "../src/session-oom.js";
 import { Daemon } from "../src/daemon.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { writeSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry } from "../src/session-oom-stop.js";
+import * as atomicWrites from "../src/atomic-write.js";
 
 let dir: string;
 function proc(pid: number, comm: string, children = "", start = "123", parent = pid === 100 ? 1 : 100, executable = comm) {
@@ -162,6 +165,77 @@ function harness() {
 }
 
 describe("bounded same-session recovery with a fake OOM-killed child", () => {
+  it("daemon delivery and launch refusals name unreadable evidence without claiming an OOM", async () => {
+    const h = harness();
+    const path = join(h.instance, "session-oom-stop.json");
+    writeFileSync(path, "truncated");
+    expect(h.daemon.notAcceptingReason()).toContain("could not be read safely");
+    await expect(h.daemon.wake()).rejects.toThrow("could not be read safely");
+    unlinkSync(path);
+    writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "confirmed-stop",
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 999, at: Date.now() } });
+    expect(h.daemon.notAcceptingReason()).toContain("session-OOM stop evidence");
+    await expect(h.daemon.wake()).rejects.toThrow("session-OOM stop evidence");
+  });
+  it("a stop appearing during awaited tmux preparation prevents physical window creation", async () => {
+    const h = harness(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    h.daemon.backend.writeConfig = vi.fn(); h.daemon.backend.preTrust = vi.fn();
+    const preparingTmux = vi.spyOn(TmuxManager, "ensureSession").mockReturnValue(held);
+    vi.spyOn(TmuxManager, "getServerPid").mockResolvedValue(123);
+    const create = h.daemon.tmux.createWindow = vi.fn(async () => { throw Error("unexpected physical spawn"); });
+    const preparing = h.daemon.trySpawnInsideGate();
+    await vi.waitFor(() => expect(preparingTmux).toHaveBeenCalled());
+    writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "owned-session",
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 101, at: Date.now() } });
+    const rejected = preparing.catch((error: unknown) => error); release(); const error = await rejected;
+    expect(create).not.toHaveBeenCalled();
+    expect(error).toMatchObject({ code: "SESSION_OOM_STOPPED" });
+  });
+  it("a stop appearing during backend preparation prevents config writes and physical spawning", async () => {
+    const h = harness(); let release!: () => void; let entered = false;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    h.daemon.backend.prepareLaunch = () => { entered = true; return held; };
+    h.daemon.backend.writeConfig = vi.fn(); h.daemon.backend.preTrust = vi.fn();
+    const preparing = h.daemon.trySpawnInsideGate(); expect(entered).toBe(true);
+    writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "owned-session",
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 101, at: Date.now() } });
+    const rejected = preparing.catch((error: unknown) => error); release(); const error = await rejected;
+    expect(h.daemon.backend.writeConfig).not.toHaveBeenCalled(); expect(h.daemon.backend.preTrust).not.toHaveBeenCalled();
+    expect(h.launches).toHaveLength(0);
+    expect(error).toMatchObject({ code: "SESSION_OOM_STOPPED" });
+  });
+  it("a persistence failure keeps the current daemon held and reports the missing durability", async () => {
+    const h = harness();
+    writeSessionOomStop(h.instance, { owner: h.daemon.getInteractionSnapshot().owner, sessionKey: "prior-stop",
+      configuration: h.daemon.getWorkingStateObservation().configuration, stoppedAt: Date.now(), count: 2, victim: { pid: 999, at: Date.now() } });
+    clearSessionOomStopForRetry(h.instance, captureSessionOomRetry(h.instance));
+    vi.spyOn(atomicWrites, "atomicWriteFileSync").mockImplementation(() => { throw Error("injected disk full"); });
+    await vi.advanceTimersByTimeAsync(1000); await h.die(); await vi.advanceTimersByTimeAsync(2000); await h.die();
+    expect(h.daemon.isSessionOomStopped()).toBe(true);
+    await expect(h.daemon.wake()).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    expect(h.notices).toHaveLength(1); expect(h.notices[0].remedy).toContain("could not be saved");
+    expect(h.launches).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(h.instance, "session-oom-stop.json"), "utf8")).reason).toBe("session_oom_cleared");
+    const replacement = new Daemon("worker", h.daemon.config, h.instance, true, h.daemon.backend, undefined, h.daemon.logger);
+    await expect(replacement.start()).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+  });
+  it("persists the terminal stop before notifying, so a replacement daemon cannot resume after fleet restart", async () => {
+    const h = harness(); const persistedAtNotice: boolean[] = [];
+    h.daemon.on("supervision_ended", () => persistedAtNotice.push(existsSync(join(h.instance, "session-oom-stop.json"))));
+    await vi.advanceTimersByTimeAsync(1000); await h.die();
+    expect(existsSync(join(h.instance, "session-oom-stop.json"))).toBe(false);
+    await vi.advanceTimersByTimeAsync(2000); await h.die();
+    expect(persistedAtNotice).toEqual([true]);
+    const record = JSON.parse(readFileSync(join(h.instance, "session-oom-stop.json"), "utf8"));
+    expect(record).toMatchObject({ reason: "session_oom", count: 2, sessionKey: JSON.stringify(["claude-code", "old-session"]),
+      owner: h.daemon.getInteractionSnapshot().owner });
+    const replacement = new Daemon("worker", h.daemon.config, h.instance, true, h.daemon.backend, undefined, h.daemon.logger) as any;
+    await expect(replacement.start()).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    await expect(replacement.wake()).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    expect(readFileSync(join(h.instance, "session-id"), "utf8")).toBe("old-session");
+    expect(h.launches).toHaveLength(1);
+  });
   it("resumes once, then stops after the second confirmed OOM without starting fresh or changing the transcript", async () => {
     const h = harness(); await vi.advanceTimersByTimeAsync(1000);
     await h.die(); expect(h.launches).toEqual(["inert --resume old-session"]);

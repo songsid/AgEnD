@@ -42,6 +42,8 @@ When a CLI process crashes, the daemon's health check detects the dead tmux wind
 4. **Fallback** — if resume fails, spawns a fresh session and injects the snapshot as context
 5. **Backoff** — exponential backoff on repeated crashes; 3+ crashes in a 5-minute sliding window pauses respawn
 
+A repeated confirmed same-session CLI OOM is a terminal stop, not an idle pause. The stop survives a fleet restart; automatic retries and incoming work cannot restart it. After freeing memory, explicitly Start, Restart or Wake that individual instance to retry. Its session and transcript are preserved. Unknown or damaged stop evidence also holds automatic starts; a save-failure notice says to repair storage before restarting the fleet. Exact session-OOM attribution currently applies to identifiable Claude Code sessions on Linux with readable kernel OOM evidence, not to memory pressure or an arbitrary exit 137 alone.
+
 ### Fleet-level circuit breaker (storm window)
 
 When the tmux server itself dies or is replaced (not just a single window), every instance loses its window at once. The fleet treats that as one incident, a **storm window**, instead of N independent crashes:

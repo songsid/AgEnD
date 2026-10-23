@@ -2,6 +2,8 @@
 
 ## Root cause and scope
 
+This note records #2446's original in-memory policy. [#2473 stage 2](interrupted-work-2473.md#stage-2-durable-session-oom-stop) subsequently makes its terminal stop durable and requires an explicit per-instance retry; a fleet restart no longer clears that stop. The attribution and first-death counter described here remain unchanged. Its rollback warning also supersedes this note's original no-marker rollback statement.
+
 All pane CLIs and tool children inherit the fleet service’s cgroup. With systemd’s default `OOMPolicy=stop`, one child OOM stops the unit. #2018 (`1037488ecb54c9a602a0dd09c92e609b64aca622`) already changed generated units and missing-key refresh to `continue`. This patch adds actual loaded-policy reporting to the shared post-reload inspection, not a second migration or another startup gate. It reports `continue`, warns truthfully about loaded `stop`/`kill` and their fragment/drop-ins, or reports unknown. Explicit restart-hardening overrides remain untouched; a full install still writes AgEnD’s generated unit as before.
 
 The daemon treats a dead CLI as a generic crash. It checkpoints and resumes the retained session. Startup reaching ready does not establish that this session will survive its next work. The generic retry/rapid-crash limits eventually stop the loop but do not explain repeated OOMs. Neither the issue nor this patch proves transcript size caused a historical incident.

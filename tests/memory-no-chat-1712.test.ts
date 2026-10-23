@@ -202,9 +202,9 @@ describe("#1712 memory protection without chat broadcasts", () => {
     f.fleetConfig.instances.worker = { working_directory: "/fixture/worker" };
     const operation = vi.fn(async () => undefined);
     const enqueue = () => fm.spawnGate.run({ instanceName: "worker", workingDirectory: "/fixture/worker", reason: action === "start" ? "startup" : action }, operation);
-    if (action === "start") vi.spyOn(fm, "startInstance").mockImplementation(enqueue);
-    else if (action === "restart") vi.spyOn(fm, "restartSingleInstance").mockImplementation(enqueue);
-    else vi.spyOn(fm, "explicitWake").mockImplementation(enqueue);
+    const requested = action === "start" ? vi.spyOn(fm, "startInstance").mockImplementation(enqueue)
+      : action === "restart" ? vi.spyOn(fm, "restartSingleInstance").mockImplementation(enqueue)
+      : vi.spyOn(fm, "explicitWake").mockImplementation(enqueue);
     const url = new URL(action === "wake" ? "/api/settings/instances/worker/wake" : `/ui/${action}/worker`, "http://fixture");
     const req = { method: "POST", url: url.pathname, headers: { "x-agend-token": f.webToken } } as unknown as IncomingMessage;
     const bodies: unknown[] = [], statuses: number[] = [];
@@ -212,6 +212,9 @@ describe("#1712 memory protection without chat broadcasts", () => {
       end: (body: string) => { bodies.push(JSON.parse(body)); } } as unknown as ServerResponse;
     expect(action === "wake" ? handleSettingsRequest(req, res, url, f) : handleWebRequest(req, res, url, f)).toBe(true);
     await vi.advanceTimersByTimeAsync(30_000);
+    if (action === "start") expect(requested).toHaveBeenCalledWith("worker", f.fleetConfig.instances.worker, false, "fleet-topic", true);
+    else if (action === "restart") expect(requested).toHaveBeenCalledWith("worker", { explicit: true });
+    else expect(requested).toHaveBeenCalledWith("worker", 30_000, true);
     expect(statuses).toEqual([202]); expect(bodies).toEqual([expect.objectContaining({ held: true, message: t("memory.action_held") })]);
     expect(operation).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled();
     set("normal"); await vi.advanceTimersByTimeAsync(120_000);

@@ -9,7 +9,7 @@
  * after a stop/restart has been requested.
  */
 import { EventEmitter } from "node:events";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -71,6 +71,7 @@ vi.mock("../src/daemon.js", async importOriginal => {
 import { FleetManager } from "../src/fleet-manager.js";
 import { SupersededStartError, PRECLAIM_LEASE_MS } from "../src/instance-lifecycle.js";
 import { hasPausedMarker, readPauseReason, readPausedAt, writePausedMarker } from "../src/pause-marker.js";
+import { writeSessionOomStop, readSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry } from "../src/session-oom-stop.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -106,6 +107,58 @@ function deferred() {
   const promise = new Promise<void>(r => { release = r; });
   return { promise, release };
 }
+
+const oomStop = () => ({ owner: { bootId: "old-owner", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
+  sessionKey: JSON.stringify(["claude-code", "old-session"]), configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 } });
+
+describe("#2473 stage2: only an explicit per-instance retry lifts the durable stop", () => {
+  it("cold starts and delayed retries do not construct a daemon for the stopped session", async () => {
+    const { fm, config, dir } = fleet(); writeSessionOomStop(dir, oomStop());
+    await expect(fm.startInstance("worker", config, false)).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    await expect(fm.lifecycle.start("worker", config, false)).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    fm.scheduleStartupRetry("worker", 0);
+    expect((fm as any).startupRetries.has("worker")).toBe(false);
+    expect(fake.created).toHaveLength(0); expect(readSessionOomStop(dir).blocked).toBe(true);
+  });
+  it("automatic restart or fresh fallback refuses before stopping the current owner", async () => {
+    const { fm, config, dir } = fleet(); await fm.lifecycle.start("worker", config, false);
+    writeSessionOomStop(dir, oomStop()); const current = fake.created[0];
+    await expect(fm.restartSingleInstance("worker", { freshStart: true })).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    expect(current.stopped).toBe(false); expect(fm.lifecycle.daemons.get("worker")).toBe(current);
+    expect(readSessionOomStop(dir).blocked).toBe(true);
+  });
+  it("an incoming-work wake cannot clear either the OOM stop or a persisted pause", async () => {
+    const { fm, dir } = fleet(); writeSessionOomStop(dir, oomStop()); writePausedMarker(dir, 123);
+    await expect(fm.explicitWake("worker")).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    await expect(fm.lifecycle.wake("worker")).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    expect(hasPausedMarker(dir)).toBe(true); expect(readSessionOomStop(dir).blocked).toBe(true);
+    expect(fake.created).toHaveLength(0);
+  });
+  it("explicit Start retries through one serialized restart and preserves the session", async () => {
+    const { fm, config, dir } = fleet(); writeSessionOomStop(dir, oomStop()); writeFileSync(join(dir, "session-id"), "old-session");
+    await expect(fm.startInstance("worker", config, false, "fleet-topic", true)).resolves.toBeUndefined();
+    expect(fake.created).toHaveLength(1); expect(fake.created[0].started).toBe(true);
+    expect(readSessionOomStop(dir).blocked).toBe(false); expect(readFileSync(join(dir, "session-id"), "utf8")).toBe("old-session");
+  });
+  it("explicit Wake of an OOM-stopped instance restarts rather than no-oping an active-phase dead daemon", async () => {
+    const { fm, dir } = fleet(); writeSessionOomStop(dir, oomStop());
+    await expect(fm.explicitWake("worker", 30_000, true)).resolves.toBeUndefined();
+    expect(fake.created).toHaveLength(1); expect(fake.created[0].started).toBe(true);
+    expect(readSessionOomStop(dir).blocked).toBe(false);
+  });
+  it("an explicit retry queued before a replacement stop cannot clear that later stop", async () => {
+    const { fm, dir } = fleet(); const original = writeSessionOomStop(dir, oomStop());
+    const gate = deferred(); const held = fm.lifecycle.runTransition("worker", async () => gate.promise); await Promise.resolve();
+    const restarting = fm.restartSingleInstance("worker", { explicit: true });
+    const rejected = expect(restarting).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
+    expect(readSessionOomStop(dir)).toMatchObject({ blocked: true, record: original });
+    clearSessionOomStopForRetry(dir, captureSessionOomRetry(dir));
+    const replacement = writeSessionOomStop(dir, { ...oomStop(), stoppedAt: 200 });
+    gate.release(); await held; await rejected;
+    expect(readSessionOomStop(dir)).toMatchObject({ blocked: true, record: replacement });
+    expect(fake.created).toHaveLength(0);
+  });
+});
 
 describe("publication fence: a superseded start never registers (2a ⑤)", () => {
   it("a stop requested while the start is spawning: the start is disposed, not published", async () => {

@@ -679,9 +679,16 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // Only a touch screen (a coarse pointer) has an on-screen keyboard: a narrow desk window made shorter is not one.
     // Turned with the keyboard up and the field still focused, the new width has no height without it yet: the keyboard
     // stays up until the field is left, or the view grows from its lowest by more than a keyboard (put away).
-    let width = -1, tallest = 0, held = false, lowest = 0;
+    // Once up, the keyboard stays up while the field keeps focus: an IME's candidate bar (or the predictive row) coming and
+    // going moves the view by tens of px on every keystroke, and must never take the tabs out and back. Only leaving the
+    // field, or the view growing from its lowest by more than a keyboard (put away), takes it down. While an IME composes
+    // nothing changes at all; what the view says then is applied at compositionend — or as soon as the field it composes
+    // in has lost focus or left the page (a composition can end without its compositionend: #2517 review).
+    let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null;
     const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     const check = () => {
+      if (composing && composing.isConnected !== false && document.activeElement === composing) return;
+      composing = null;
       const w = Math.round(vv.width), h = vv.height;
       const typing = coarse() && isTextEntry(document.activeElement);
       if (w !== width) {                                              // turned, or a new width: measured again
@@ -693,14 +700,24 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
         if (!typing || h - lowest > KEYBOARD_MIN_PX) held = false;    // left the field, or the keyboard was put away
       }
       if (!held) tallest = Math.max(tallest, window.innerHeight || 0, typing ? 0 : h);   // the view itself only when not typing
-      const up = held || keyboardUp(h, tallest, typing);
-      if (up !== shellStore.get().keyboard) shellStore.set({ keyboard: up });
+      const was = shellStore.get().keyboard;
+      let up = held || keyboardUp(h, tallest, typing);
+      if (!up && was && typing && h - upLowest <= KEYBOARD_MIN_PX) up = true;          // a bar's height, not the keyboard
+      upLowest = up ? (was ? Math.min(upLowest, h) : h) : 0;
+      if (up !== was) shellStore.set({ keyboard: up });
     };
+    const start = (e) => { composing = (e && e.target) || document.activeElement || null; };
+    const end = () => { composing = null; check(); };
     check();
     vv.addEventListener("resize", check);
     document.addEventListener("focusin", check);
     document.addEventListener("focusout", check);
-    return () => { vv.removeEventListener("resize", check); document.removeEventListener("focusin", check); document.removeEventListener("focusout", check); };
+    document.addEventListener("compositionstart", start, true);
+    document.addEventListener("compositionend", end, true);
+    return () => {
+      vv.removeEventListener("resize", check); document.removeEventListener("focusin", check); document.removeEventListener("focusout", check);
+      document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
+    };
   }, []);
   const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");

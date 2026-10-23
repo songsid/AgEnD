@@ -349,6 +349,17 @@ const defaultLaunchdReloadDeps: LaunchdReloadDeps = {
   now: () => performance.now(),
 };
 
+/** Has launchd confirmed `target` gone (`launchctl print` → 113) within `boundMs` (monotonic)? Anything else is "not yet". */
+function launchdConfirmsUnloaded(target: string, boundMs: number, deps: LaunchdReloadDeps): boolean {
+  const deadline = deps.now() + boundMs;
+  for (;;) {
+    const printed = deps.run("launchctl", ["print", target]);
+    if (printed.status === 113 && printed.signal === null) return true;
+    if (deps.now() >= deadline) return false;
+    deps.sleep(100);
+  }
+}
+
 /**
  * `agend install`'s launchd (re)load: bootout whatever is loaded, then bootstrap — but only once launchd has
  * CONFIRMED the job gone (`launchctl print` → 113). bootout returns before the job is unloaded (macOS 15: a bootstrap
@@ -358,12 +369,8 @@ const defaultLaunchdReloadDeps: LaunchdReloadDeps = {
 export function reloadLaunchdJob(domain: string, label: string, plistPath: string, deps: LaunchdReloadDeps = defaultLaunchdReloadDeps): void {
   const target = `${domain}/${label}`;
   deps.run("launchctl", ["bootout", target]);                      // not loaded is fine: confirmed below
-  const deadline = deps.now() + 10_000;
-  for (;;) {
-    const printed = deps.run("launchctl", ["print", target]);
-    if (printed.status === 113 && printed.signal === null) break;
-    if (deps.now() >= deadline) throw new Error(`launchd did not confirm that ${label} was unloaded within 10 s; nothing was loaded (retry: agend install)`);
-    deps.sleep(100);
+  if (!launchdConfirmsUnloaded(target, 10_000, deps)) {
+    throw new Error(`launchd did not confirm that ${label} was unloaded within 10 s; nothing was loaded (retry: agend install)`);
   }
   const boot = deps.run("launchctl", ["bootstrap", domain, plistPath], true);
   if (boot.status !== 0) throw new Error(`launchctl bootstrap ${domain} ${plistPath} failed (${boot.signal ?? `exit ${boot.status}`})`);
@@ -1026,12 +1033,27 @@ export function getSystemServicePath(): string | null {
   return null;
 }
 
-export function stopService(): boolean {
+/**
+ * #2505: how long `agend stop` waits for launchd to unload the job after bootout. bootout returns while the fleet is
+ * still shutting down (the job SIGTERMed); launchd SIGKILLs it after the plist's ExitTimeOut — its default, 20 s, as
+ * AgEnD's plist sets none — so 30 s covers a whole graceful stop.
+ */
+export const LAUNCHD_STOP_CONFIRM_MS = 30_000;
+
+/**
+ * Stop the user service. On macOS, only once launchd has unloaded the job (#2505): bootout returns before that, and an
+ * `agend start` in between failed with "Bootstrap failed: 5: Input/output error". "unloading": launchd still had the job
+ * when the bound ran out. False: the service manager refused the stop (not loaded, no session).
+ */
+export function stopService(deps: LaunchdReloadDeps = defaultLaunchdReloadDeps): boolean | "unloading" {
   const plat = detectPlatform();
   try {
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
-      execSync(`launchctl bootout gui/${uid}/${SERVICE_LABEL}`, { stdio: "inherit" });
+      const target = `gui/${uid}/${SERVICE_LABEL}`;
+      const out = deps.run("launchctl", ["bootout", target], true);
+      if (out.status !== 0) return false;
+      return launchdConfirmsUnloaded(target, LAUNCHD_STOP_CONFIRM_MS, deps) ? true : "unloading";
     } else {
       ensureUserSystemd();   // #2264: the bus a non-login shell left out (a stop changes no host setting)
       execSync(`systemctl --user stop ${SERVICE_LABEL}`, { stdio: "inherit" });

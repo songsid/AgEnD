@@ -15,6 +15,7 @@ import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./
 import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
 import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
 import { observeCliOomIdentity, confirmedCliOom, consecutiveSessionOoms, type CliOomIdentity, type SessionOomCount } from "./session-oom.js";
+import { assertNoSessionOomStop, readSessionOomStop, writeSessionOomStop, SessionOomStoppedError, sessionOomStopHint } from "./session-oom-stop.js";
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
@@ -1406,6 +1407,17 @@ export class Daemon extends EventEmitter {
   private crashCount = 0;
   private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: TmuxManager } | null = null;
   private consecutiveOoms: SessionOomCount | null = null;
+  private sessionOomStopUnpersisted = false;
+
+  private assertSessionOomAdmission(): void {
+    if (this.sessionOomStopUnpersisted) throw new SessionOomStoppedError(false,
+      { blocked: true, record: null, revision: null, confirmedOom: true });
+    assertNoSessionOomStop(this.instanceDir);
+  }
+
+  isSessionOomStopped(): boolean {
+    return this.sessionOomStopUnpersisted || readSessionOomStop(this.instanceDir).blocked;
+  }
 
   private oomSessionKey(): string | null {
     // Claude's per-instance statusline owns its ID. Other current getters
@@ -2391,6 +2403,9 @@ export class Daemon extends EventEmitter {
    * daemon's own state only; it never inspects the pane itself.
    */
   notAcceptingReason(): string | null {
+    if (this.sessionOomStopUnpersisted) return t("inst.session_oom_hold");
+    const oomStop = readSessionOomStop(this.instanceDir);
+    if (oomStop.blocked) return sessionOomStopHint(oomStop);
     if (this.pauseWakeState !== "active") return t("delivery.hold_state", this.pauseWakeState);
     if (this.inputBlockedDialogKey !== null) return t("delivery.hold_dialog", this.inputBlockedDialogKey);
     if (this.authFailureUnresolved) return t("delivery.hold_auth");
@@ -2433,6 +2448,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async startAdmitted(): Promise<void> {
+    this.assertSessionOomAdmission();
     ensureInstanceDir(this.instanceDir);
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
@@ -3349,11 +3365,24 @@ export class Daemon extends EventEmitter {
           if (this.consecutiveOoms && this.consecutiveOoms.count >= 2) {
             // Stop supervision, not an idle pause: queued work must not auto-wake
             // the same session. An explicit restart is the person's retry choice.
+            // No await after the final captured health owner/session check. The
+            // stop is authoritative before observers can see supervision end.
+            try {
+              writeSessionOomStop(this.instanceDir, { owner: healthOwner, sessionKey: decisionKey!,
+                configuration: this.getWorkingStateObservation().configuration, stoppedAt: Date.now(),
+                count: this.consecutiveOoms.count, victim: { pid: oom!.pid, at: oom!.at } });
+            } catch {
+              // Storage failure cannot revive this CLI in the current process.
+              // Say explicitly that a fleet restart cannot yet rely on durability.
+              this.sessionOomStopUnpersisted = true;
+              this.logger.error("Could not persist session OOM stop; fix storage before restarting the fleet");
+            }
             this.healthCheckPaused = true;
             try { this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: "session_oom" }); }
             catch (error) { this.logger.warn({ error }, "Could not append session OOM history"); }
             this.logger.error({ pid: oom!.pid, count: this.consecutiveOoms.count }, "Repeated confirmed CLI OOM — automatic resume stopped; session preserved");
-            this.emitSupervisionEnded(t("inst.session_oom_stopped"), t("inst.session_oom_remedy"), exitCode, "session_oom");
+            this.emitSupervisionEnded(t("inst.session_oom_stopped"), t("inst.session_oom_remedy")
+              + (this.sessionOomStopUnpersisted ? ` ${t("inst.session_oom_save_failed")}` : ""), exitCode, "session_oom");
             return;
           }
 
@@ -5115,6 +5144,7 @@ export class Daemon extends EventEmitter {
 
   /** Respawn the CLI in the preserved window and block until its prompt is ready. */
   async wake(timeoutMs = 30_000): Promise<void> {
+    this.assertSessionOomAdmission();
     // An explicit wake (e.g. after the user re-logs in) cancels a deferred
     // auth pause — otherwise the instance would pause again the moment it idles.
     this.pausePending = false;
@@ -10961,6 +10991,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async spawnClaudeWindow(): Promise<boolean> {
+    this.assertSessionOomAdmission();
     this.beginSpawn();
     let resumedSuccessfully = false;
     try {
@@ -11568,6 +11599,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    this.assertSessionOomAdmission();
     this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
@@ -11609,6 +11641,7 @@ export class Daemon extends EventEmitter {
     // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
     // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
     this.startupAdmission?.();
+    this.assertSessionOomAdmission();
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
@@ -11700,6 +11733,7 @@ export class Daemon extends EventEmitter {
     }
     this.startupAdmission?.();
     let windowId: string;
+    this.assertSessionOomAdmission();
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
       await this.tmux!.respawnWindow(cmd, resolvedCwd);
