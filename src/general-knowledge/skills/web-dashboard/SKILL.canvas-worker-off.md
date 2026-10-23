@@ -85,7 +85,8 @@ as their own Discord or Telegram account. What a guest sees:
   admin granted that person, nothing else (default deny once the key exists). The admin picks the person from people
   AgEnD has seen writing to an agent, ticks their agents, saves (giving access or more agents waits for a fleet admin in
   General; taking away applies at once and ends their sessions), then presses **Send sign-in code**, a DM, never a post.
-  Each code sent and each change to someone's access is in the event log (`guest_code_sent`, `guest_grant_changed`).
+  Each code sent and each change to someone's access is in the event log (`guest_code_sent`, `guest_grant_changed`),
+  shown to admins under **Recent changes** in that section (no agent's Log tab shows them).
 - **Without grants** (before an admin saves the first one): the agents they can already use in chat: their connection's
   fleet topics and General (an `open` connection: only `web.guests.open_instances`), their own Telegram private
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
