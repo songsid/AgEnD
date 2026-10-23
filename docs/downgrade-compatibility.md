@@ -16,7 +16,7 @@ npm ci
 npm run build
 # Install @songsid/agend@2.1.12 with Node 20 in a disposable explicit prefix.
 # Supply the package directory and the absolute Node 20 executable:
-node scripts/check-data-downgrade.mjs /scratch/prefix/lib/node_modules/@songsid/agend /scratch/node20/bin/node
+node scripts/check-data-downgrade.mjs /scratch/prefix/lib/node_modules/@songsid/agend /scratch/node20/bin/node 2.1.12
 ```
 
 The runner creates its own unique scratch AGEND_HOME, runs the three phases sequentially, closes every store between phases, reports runtime/dependency versions and assertions, then removes only its own directory. Child environments use an allowlist without bot tokens, NODE_OPTIONS or live IPC paths. Each phase blocks child_process before importing production leaf modules. Kiro file tests call only file-writing prototype methods, never the constructor. No fleet, tmux, adapter, inspector, service or backend process starts. CI repeats the check in `data-downgrade.yml` and uploads the JSON result.

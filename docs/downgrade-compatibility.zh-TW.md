@@ -14,7 +14,7 @@ Linux x64 三階段成功：Node 22.22.2 / better-sqlite3 13.0.3 → Node 20.19.
 npm ci
 npm run build
 # 先用 Node 20 把 @songsid/agend@2.1.12 安裝到可丟棄的明確 prefix。
-node scripts/check-data-downgrade.mjs /scratch/prefix/lib/node_modules/@songsid/agend /scratch/node20/bin/node
+node scripts/check-data-downgrade.mjs /scratch/prefix/lib/node_modules/@songsid/agend /scratch/node20/bin/node 2.1.12
 ```
 
 Runner 自建唯一 scratch AGEND_HOME，依序執行三階段；每階段關閉所有 store，輸出版本與斷言，最後只刪自己建立的目錄。子程序環境採 allowlist，不繼承 bot token、NODE_OPTIONS 或 live IPC 路徑。每階段在 import production leaf module 前攔截 child_process。Kiro 只呼叫檔案操作的 prototype method，不建 constructor。不啟 fleet、tmux、adapter、inspector、service 或 backend。CI `data-downgrade.yml` 重跑並上傳 JSON。
