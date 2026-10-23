@@ -193,6 +193,9 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     expect(before.slice(media, media + 30)).toMatch(/^@media \(max-width: 899px\)/);
     expect(css.slice(at, css.indexOf("}", at))).toMatch(/width:\s*100vw;\s*max-width:\s*100vw;\s*height:\s*100dvh;\s*max-height:\s*100dvh;\s*margin:\s*0;\s*border-radius:\s*0/);
     expect(css).toMatch(/\.p-settings \.dlg-box\s*\{\s*height:\s*100%;\s*max-height:\s*100dvh/);
+    // A line under the title and one over the actions: the fields scroll between them.
+    expect(css).toMatch(/\.p-settings \.dlg-head\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/);
+    expect(css).toMatch(/\.p-settings \.dlg-actions\s*\{\s*border-top:\s*1px solid var\(--border\)/);
     // The title never shrinks; the version shortens, and goes under 56 px of room.
     expect(css).toMatch(/\.p-settings \.panel-title h1\s*\{\s*flex:\s*none/);
     expect(css).toMatch(/\.p-settings \.panel-sub\s*\{\s*flex:\s*1 1 0;\s*min-width:\s*0;\s*container:\s*settings-ver \/ inline-size/);
