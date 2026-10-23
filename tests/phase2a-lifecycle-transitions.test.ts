@@ -1,3 +1,4 @@
+import { selfEvidence, selfOomJournal } from "./helpers/self-oom-evidence.js";
 /**
  * Phase 2a (design: docs/design/phase2-submit-contract.md §1.3, §3.2, §1.6),
  * lifecycle side: one transition at a time per instance, an epoch fence at the
@@ -109,7 +110,7 @@ function deferred() {
 }
 
 const oomStop = () => ({ owner: { bootId: "old-owner", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
-  sessionKey: JSON.stringify(["claude-code", "old-session"]), configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 } });
+  sessionKey: JSON.stringify(["claude-code", "old-session"]), configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 }, evidence: selfEvidence() });
 
 describe("#2473 stage2: only an explicit per-instance retry lifts the durable stop", () => {
   it("cold starts and delayed retries do not construct a daemon for the stopped session", async () => {

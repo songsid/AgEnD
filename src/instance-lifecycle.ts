@@ -235,6 +235,7 @@ export interface LifecycleContext {
   credentialProfileOf?(name: string, backend: string): string | null;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
+  notifySessionOomStop?(name: string): Promise<void>;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -919,6 +920,11 @@ export class InstanceLifecycle {
         }
         this.ctx.setTopicIcon(name, "red");
         return;
+      }
+      if (data.cause === "session_oom") {
+        if (this.daemons.get(name) !== daemon) return;
+        if (!this.ctx.isPlannedRestart()) await this.ctx.notifySessionOomStop?.(name);
+        if (this.daemons.get(name) !== daemon) return;
       }
       this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");
       this.notifyIncident(

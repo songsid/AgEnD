@@ -6,6 +6,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { ensureInstanceDir } from "./private-dir.js";
 import { t } from "./locale.js";
 import type { InteractionOwner } from "./backend/types.js";
+import { selfOomEvidence, type SelfOomEvidence } from "./session-oom.js";
 
 export const SESSION_OOM_STOP_FILE = "session-oom-stop.json";
 export function sessionOomStopHint(state?: SessionOomStopState): string {
@@ -14,7 +15,7 @@ export function sessionOomStopHint(state?: SessionOomStopState): string {
 }
 const MAX_BYTES = 4096;
 export interface SessionOomStop {
-  version: 1;
+  version: 2;
   id: string;
   reason: "session_oom";
   owner: InteractionOwner;
@@ -23,8 +24,9 @@ export interface SessionOomStop {
   stoppedAt: number;
   count: number;
   victim: { pid: number; at: number };
+  evidence: SelfOomEvidence;
 }
-export type SessionOomStopState = { blocked: false } | { blocked: true; record: SessionOomStop | null; revision: string | null; confirmedOom?: true };
+export type SessionOomStopState = { blocked: false } | { blocked: true; record: SessionOomStop | null; revision: string | null; confirmedOom?: true; evidence?: SelfOomEvidence };
 /** Internal action receipt: capture at the explicit command, consume only inside its serialized transition. */
 export interface SessionOomRetry { readonly revision: string | null; readonly legacyRevision: string | null }
 export class SessionOomStoppedError extends Error {
@@ -36,7 +38,7 @@ const boundedId = (x: unknown): x is string => typeof x === "string" && x.length
 const integer = (x: unknown): x is number => Number.isSafeInteger(x) && (x as number) >= 0;
 const fingerprint = (stat: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }) =>
   createHash("sha256").update(JSON.stringify([stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs])).digest("hex");
-const legacyCache = new Map<string, { revision: string; blocked: boolean; confirmedOom: boolean }>();
+const legacyCache = new Map<string, { revision: string; blocked: boolean; confirmedOom: boolean; evidence?: SelfOomEvidence }>();
 const LEGACY_SCAN_MAX_BYTES = 1024 * 1024;
 
 /** Read only the true final JSONL record, including wide/CJK pane captures. */
@@ -85,7 +87,8 @@ function legacySessionStop(instanceDir: string): SessionOomStopState {
     revision = `legacy:${fingerprint(stat)}`;
     const cached = legacyCache.get(instanceDir);
     let blocked = true, confirmedOom = false;
-    if (cached?.revision === revision) { blocked = cached.blocked; confirmedOom = cached.confirmedOom; }
+    let evidence: SelfOomEvidence | undefined;
+    if (cached?.revision === revision) { blocked = cached.blocked; confirmedOom = cached.confirmedOom; evidence = cached.evidence; }
     else {
       fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       const opened = fstatSync(fd);
@@ -99,23 +102,42 @@ function legacySessionStop(instanceDir: string): SessionOomStopState {
         const valid = !!record && typeof record === "object" && typeof record.instance === "string"
           && typeof record.timestamp === "string" && Number.isFinite(Date.parse(record.timestamp))
           && ["window", "server"].includes(record.crashType);
-        confirmedOom = valid && record.reason === "session_oom";
+        confirmedOom = valid && record.reason === "session_oom" && selfOomEvidence(record.oomEvidence);
+        if (confirmedOom) evidence = record.oomEvidence;
+        if (valid && record.reason === "session_oom" && !confirmedOom) {
+          releaseUnprovenStop(instanceDir, null, revision);
+        }
         blocked = !!last && (!valid || confirmedOom);
       }
       if (legacyCache.size >= 512) legacyCache.delete(legacyCache.keys().next().value!);
-      legacyCache.set(instanceDir, { revision, blocked, confirmedOom });
+      legacyCache.set(instanceDir, { revision, blocked, confirmedOom, evidence });
     }
-    return blocked ? { blocked: true, record: null, revision, ...(confirmedOom ? { confirmedOom: true as const } : {}) } : { blocked: false };
+    return blocked ? { blocked: true, record: null, revision, ...(confirmedOom ? { confirmedOom: true as const, evidence } : {}) } : { blocked: false };
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? { blocked: false } : { blocked: true, record: null, revision };
   } finally { if (fd !== undefined) closeSync(fd); }
 }
-function valid(value: any): value is SessionOomStop {
-  return value?.version === 1 && value.reason === "session_oom" && boundedId(value.id) && boundedId(value.sessionKey)
+function validShape(value: any): boolean {
+  return [1, 2].includes(value?.version) && value.reason === "session_oom" && boundedId(value.id) && boundedId(value.sessionKey)
     && /^[a-f0-9]{64}$/.test(value.configuration) && boundedId(value.owner?.bootId)
     && [value.owner.spawnGeneration, value.owner.launchAttempt, value.owner.launchFenceEpoch].every(integer)
     && integer(value.stoppedAt) && integer(value.count) && value.count >= 2
     && integer(value.victim?.pid) && value.victim.pid > 0 && integer(value.victim.at);
+}
+function valid(value: any): value is SessionOomStop {
+  return validShape(value) && value.version === 2 && selfOomEvidence(value.evidence);
+}
+
+/** Only a safely read old decision is migrated; preserve its evidence/history. */
+function releaseUnprovenStop(instanceDir: string, record: unknown, legacyRevision: string | null, revision?: string): void {
+  if (revision) {
+    const stat = lstatSync(join(instanceDir, SESSION_OOM_STOP_FILE));
+    if (!stat.isFile() || !owned(stat.uid) || fingerprint(stat) !== revision) throw new SessionOomStoppedError();
+    atomicWriteFileSync(join(instanceDir, `session-oom-stop-pre-policy2-${revision}.json`), JSON.stringify(record), { mode: 0o600 });
+  } else if (legacyHistoryRevision(instanceDir) !== legacyRevision) throw new SessionOomStoppedError();
+  atomicWriteFileSync(join(instanceDir, SESSION_OOM_STOP_FILE), JSON.stringify({ version: 1, id: randomUUID(),
+    reason: "session_oom_cleared", clearedAt: Date.now(), legacyRevision, migration: "no_self_oom_evidence" }), { mode: 0o600 });
+  console.warn("AgEnD: released an old session-OOM stop without self-caused memory evidence; session preserved.");
 }
 
 /** Absence alone permits a launch; malformed, foreign, symlinked or unreadable evidence holds it. */
@@ -154,6 +176,10 @@ export function readSessionOomStop(instanceDir: string): SessionOomStopState {
         // a NEW stop since this retry. A receipt acknowledges only its history.
         return cleared.legacyRevision === legacyHistoryRevision(instanceDir) ? { blocked: false } : legacySessionStop(instanceDir);
       }
+      if (validShape(parsed) && !valid(parsed)) {
+        releaseUnprovenStop(instanceDir, parsed, legacyHistoryRevision(instanceDir), revision);
+        return { blocked: false };
+      }
       return { blocked: true, record: valid(parsed) ? parsed : null, revision };
     } catch { return { blocked: true, record: null, revision }; }
   } catch (error) {
@@ -174,10 +200,13 @@ export function writeSessionOomStop(instanceDir: string, input: Omit<SessionOomS
     if (existing.record) return existing.record;
     throw new SessionOomStoppedError(false, existing);
   }
-  const record: SessionOomStop = { version: 1, id: randomUUID(), reason: "session_oom",
+  const record: SessionOomStop = { version: 2, id: randomUUID(), reason: "session_oom",
     owner: { bootId: input.owner.bootId, spawnGeneration: input.owner.spawnGeneration, launchAttempt: input.owner.launchAttempt, launchFenceEpoch: input.owner.launchFenceEpoch },
     sessionKey: input.sessionKey, configuration: input.configuration, stoppedAt: input.stoppedAt, count: input.count,
-    victim: { pid: input.victim.pid, at: input.victim.at } };
+    victim: { pid: input.victim.pid, at: input.victim.at },
+    evidence: { policy: 2, scope: "global", ramPages: input.evidence?.ramPages, victimRssPages: input.evidence?.victimRssPages,
+      victimAnonKiB: input.evidence?.victimAnonKiB, victimTotalRssKiB: input.evidence?.victimTotalRssKiB,
+      largestOtherRssPages: input.evidence?.largestOtherRssPages } };
   if (!valid(record) || Buffer.byteLength(JSON.stringify(record)) > MAX_BYTES) throw new Error("Invalid session OOM stop evidence");
   atomicWriteFileSync(join(instanceDir, SESSION_OOM_STOP_FILE), JSON.stringify(record), { mode: 0o600 });
   return record;
