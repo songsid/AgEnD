@@ -38,17 +38,18 @@ export interface AuthorityState {
 /**
  * `named_link`: the option as last seen; `named_link_seen`: it has been on before. Turning it back on moves the epoch
  * (§0.2: a receipt read as none while it was off never comes back); the first time does not — no such receipt exists,
- * and nothing local is revoked by opening the option. `quick_link` / `quick_link_seen` (§0.3): the same, for the
- * temporary public link's option as in force (its explicit value, else the release default).
+ * and nothing local is revoked by opening the option. `quick_link` (§0.3): the temporary public link's option as in
+ * force (its explicit value, else the release default). Unlike the named link, EVERY time it goes from off to on — the
+ * first included — moves the epoch: §0.3 has every widening bump it in the same write (#2525 review).
  */
 interface Stored {
   v: 1; epoch: number; enabled: boolean; loopback_only: boolean; named_link?: boolean; named_link_seen?: boolean;
-  quick_link?: boolean; quick_link_seen?: boolean;
+  quick_link?: boolean;
 }
 
 const same = (a: Stored, b: Stored) => a.epoch === b.epoch && a.enabled === b.enabled && a.loopback_only === b.loopback_only
   && !!a.named_link === !!b.named_link && !!a.named_link_seen === !!b.named_link_seen
-  && !!a.quick_link === !!b.quick_link && !!a.quick_link_seen === !!b.quick_link_seen;
+  && !!a.quick_link === !!b.quick_link;
 const optional = (v: unknown) => v === undefined || typeof v === "boolean";
 
 export interface AuthorityStateIo {
@@ -78,10 +79,10 @@ export class AuthorityStateStore {
     try {
       const v = JSON.parse(raw ?? "") as Partial<Stored>;
       if (v.v === 1 && Number.isSafeInteger(v.epoch) && (v.epoch as number) >= floor && typeof v.enabled === "boolean" && typeof v.loopback_only === "boolean"
-        && optional(v.named_link) && optional(v.named_link_seen) && optional(v.quick_link) && optional(v.quick_link_seen)) {
+        && optional(v.named_link) && optional(v.named_link_seen) && optional(v.quick_link)) {
         this.want = { v: 1, epoch: v.epoch as number, enabled: v.enabled, loopback_only: v.loopback_only,
           ...(v.named_link ? { named_link: true } : {}), ...(v.named_link || v.named_link_seen ? { named_link_seen: true } : {}),
-          ...(v.quick_link ? { quick_link: true } : {}), ...(v.quick_link || v.quick_link_seen ? { quick_link_seen: true } : {}) };
+          ...(v.quick_link ? { quick_link: true } : {}) };
         this.disk = { ...this.want };
         return this.want;
       }
@@ -115,13 +116,13 @@ export class AuthorityStateStore {
     const enabled = config?.enabled !== false, loopbackOnly = config?.loopback_only === true;            // §0.1: on by default
     const namedLink = config?.named_link === true;                                                       // §0.2: off by default
     const quickLink = quickLinkEffective(config);                                                        // §0.3: off by default
-    const reopened = (namedLink && !s.named_link && !!s.named_link_seen) || (quickLink && !s.quick_link && !!s.quick_link_seen);
+    const reopened = (namedLink && !s.named_link && !!s.named_link_seen) || (quickLink && !s.quick_link);   // §0.3: every widening
     const closed = !!s.named_link && !namedLink, quickClosed = !!s.quick_link && !quickLink;
     const revokes = s.enabled !== enabled || (s.loopback_only && !loopbackOnly) || reopened;
     if (revokes || s.loopback_only !== loopbackOnly || !!s.named_link !== namedLink || !!s.quick_link !== quickLink) {
       this.want = { v: 1, epoch: s.epoch + (revokes ? 1 : 0), enabled, loopback_only: loopbackOnly,
         ...(namedLink ? { named_link: true } : {}), ...(namedLink || s.named_link_seen ? { named_link_seen: true } : {}),
-        ...(quickLink ? { quick_link: true } : {}), ...(quickLink || s.quick_link_seen ? { quick_link_seen: true } : {}) };
+        ...(quickLink ? { quick_link: true } : {}) };
     }
     const durable = this.flush();
     // Not written: off, and still "only this computer" if it was (a loosening that did not stick does not apply).

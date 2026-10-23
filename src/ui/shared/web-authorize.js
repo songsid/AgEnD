@@ -62,6 +62,8 @@ register("webauth", {
   },
 });
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
+// The switch and "Only this computer" are changed in Settings on this computer — never over the public link (#2525 review).
+const fixable = (reason) => (reason === "disabled" || reason === "loopback_only") && globalThis.document?.body?.dataset?.publicLink !== "1";
 const REASONS = ["disabled", "loopback_only", "no_account", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "quick_link_off", "not_session"];
 // Until when: the time, with the day when it isn't today (an authorization lasts up to 48 h).
 const clock = (ms) => {
@@ -183,7 +185,7 @@ export function ComposerAuth() {
       title=${tn("authorizeWhy")} aria-label=${tn("authorizeWhy")} onClick=${a.ask}>${tn("authorizeShort")}</button>${said}</span>`;
   }
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
-  return html`<span class="webauth-row" data-state="none"><span class="note" title=${why}>${tn("notVerified")}<span class="sr-only">: ${why}</span></span>${st.reason === "disabled" || st.reason === "loopback_only"
+  return html`<span class="webauth-row" data-state="none"><span class="note" title=${why}>${tn("notVerified")}<span class="sr-only">: ${why}</span></span>${fixable(st.reason)
     ? html` · <a href="/settings/web" title=${why}>${tn("settings")}</a>` : null}</span>`;
 }
 
@@ -195,5 +197,5 @@ function body(a) {
     return html`<span class="note">${tn("notVerified")} ·</span> <button type="button" class="btn btn-sm" onClick=${a.ask}>${tn("authorize")}</button>`;
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
   // The fix, where there is one the person can take here: the switch lives in Settings → Web.
-  return html`<span class="note">${tn("notVerified")}: ${why}</span>${st.reason === "disabled" || st.reason === "loopback_only" ? html` <a href="/settings/web">${tn("settings")}</a>` : null}`;
+  return html`<span class="note">${tn("notVerified")}: ${why}</span>${fixable(st.reason) ? html` <a href="/settings/web">${tn("settings")}</a>` : null}`;
 }

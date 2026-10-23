@@ -124,25 +124,36 @@ describe("the state: quick_link remembered; back on after it was on moves the ep
     const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => { const v = files.get(p); if (v === undefined) throw Object.assign(new Error("x"), { code: "ENOENT" }); return v; }, write: (p, d) => { files.set(p, d); } });
     return { s, files };
   }
-  it("first on: no move; off: no move, and the read says it closed; on again: a move", () => {
+  // §0.3 (#2525 review): every widening moves the epoch in the same write — the first one too (unlike the named link).
+  it("every on moves the epoch, the first one too; off: no move, and the read says it closed", () => {
     const { s, files } = store();
     const base = s.current({}).epoch;
     const first = s.current({ quick_link: true });
     const off = s.current({});
     const again = s.current({ quick_link: true });
-    expect([first.quickLink, first.epoch - base, off.quickLink, off.epoch - base, off.quickLinkClosed, again.quickLink, again.epoch - base, JSON.parse(files.get("/a.json")!).quick_link_seen])
-      .toEqual([true, 0, false, 0, true, true, 1, true]);
+    const same = s.current({ quick_link: true });
+    expect([first.quickLink, first.epoch - base, off.quickLink, off.epoch - base, off.quickLinkClosed, again.epoch - base, same.epoch - base, JSON.parse(files.get("/a.json")!).epoch - base])
+      .toEqual([true, 1, false, 1, true, 2, 2, 2]);
   });
-  it("each link remembered on its own: the named one back on moves the epoch, the quick one's first on does not", () => {
+  it("a warm store (epoch 7): unset → on and explicit false → on each move it, on disk too", () => {
+    for (const before of [{}, { quick_link: false }]) {
+      const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 7, enabled: true, loopback_only: false })]]);
+      const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => files.get(p)!, write: (p, d) => { files.set(p, d); } });
+      expect(s.current(before).epoch, JSON.stringify(before)).toBe(7);
+      expect([s.current({ quick_link: true }).epoch, JSON.parse(files.get("/a.json")!).epoch], JSON.stringify(before)).toEqual([8, 8]);
+    }
+  });
+  it("each link remembered on its own: the named one's first on does not move it, the quick one's does; the named one back on does", () => {
     const { s } = store();
     const base = s.current({ named_link: true }).epoch;
     s.current({});
-    expect([s.current({ quick_link: true }).epoch - base, s.current({ quick_link: true, named_link: true }).epoch - base]).toEqual([0, 1]);
+    expect([s.current({ quick_link: true }).epoch - base, s.current({ quick_link: true, named_link: true }).epoch - base]).toEqual([1, 2]);
   });
   it("a file from before §0.3 (no quick_link) reads as off; one that cannot be written counts the option off", () => {
     const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false, named_link: true, named_link_seen: true })]]);
     const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => files.get(p)!, write: () => { throw new Error("read-only"); } });
-    expect(s.current({ quick_link: true, named_link: true })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 5 });
+    // Turning it on moves the epoch (§0.3) even while the state can't be written: never back to an older one.
+    expect(s.current({ quick_link: true, named_link: true })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 6 });
   });
 });
 

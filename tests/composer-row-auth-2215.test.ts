@@ -105,6 +105,9 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
     const off = await row({ state: "none", reason: "quick_link_off" });
     const why = "Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Web on this computer.";
     expect([off.dataset.state, off.querySelector(".note")?.getAttribute("title"), off.querySelector("a")]).toEqual(["none", why, null]);
+    // #2525 review: the switch and "Only this computer" are changed on this computer — no Settings link over the link.
+    const disabled = await row({ state: "none", reason: "disabled" });
+    expect(disabled.querySelector('a[href="/settings/web"]')).toBeNull();
     const on = await row({ state: "none", reason: "not_authorized" });
     expect(on.querySelector("button.webauth-ask")?.textContent).toBe("Authorize");
     p.document.body.removeAttribute("data-public-link");
