@@ -1,0 +1,27 @@
+
+  >_ OpenAI Codex (v0.163.0)
+     /tmp/codex-audit/run-01630/work
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› request isolated approval
+
+
+• Running echo probe
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: Run this isolated audit probe?
+
+  $ echo probe
+
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `echo probe` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

@@ -1,0 +1,38 @@
+
+  >_ OpenAI Codex (v0.163.0)
+     /tmp/codex-audit/run-01630/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› audit slow
+
+
+• ok
+
+  Worked for 8s • 12:00
+
+
+› audit near
+
+
+• ok
+
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.
+
+⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a breakdown.
+
+  Worked for <1s • 12:00
+
+
+› audit usage
+
+
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or
+try again at 12:00.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 4 warnings · f2 to view
