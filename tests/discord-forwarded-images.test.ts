@@ -299,6 +299,15 @@ describe("Discord forwarded message images", () => {
     expect((adapter as any).attachmentUrls.has("reply-document")).toBe(false);
   });
 
+  // #2551: who the reply answers, and whether that message was itself a reply — the collab gate's "addressed to me".
+  it("a reply carries the referenced message's author id, and whether that message was itself a reply (#2551)", async () => {
+    const ref = (reference?: { messageId: string }) => fakeMessage({ content: "done", reference: { messageId: "b-msg" },
+      fetchReference: async () => ({ content: "B asked", embeds: [], attachments: new FakeCollection<any>(), author: { id: "bot-b" }, ...(reference ? { reference } : {}) }) });
+    const first = await inbound(ref());
+    const chained = await inbound(ref({ messageId: "earlier" }));
+    expect([first.replyToAuthorId, first.replyToIsReply, chained.replyToAuthorId, chained.replyToIsReply]).toEqual(["bot-b", undefined, "bot-b", true]);
+  });
+
   it("keeps a text-only reply attachment-free", async () => {
     const msg = fakeMessage({
       content: "<@self-bot> follow up",

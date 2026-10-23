@@ -347,6 +347,13 @@ export interface InboundMessage {
   attachments?: Attachment[];
   replyTo?: string;
   replyToText?: string;
+  /**
+   * #2551: the platform user id of the referenced message's author (a native reply), when the adapter could read it.
+   * The collab gate treats a bot's reply to one of THIS bot's messages as addressed to it, as a mention is.
+   */
+  replyToAuthorId?: string;
+  /** #2551: the referenced message was itself a reply — a reply to it is a chain, not one hop (never addressed). */
+  replyToIsReply?: boolean;
 }
 
 /**

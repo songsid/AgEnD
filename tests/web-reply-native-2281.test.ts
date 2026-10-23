@@ -86,6 +86,21 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
     const sent = await a.sendText("1496407196106494055", "abcdefgh", { threadId: "1503382159321460000", replyTo: SNOW, chunkLimit: 4, allowedMentions: quiet });
     expect([calls, sent.messageId]).toEqual([[{ content: "abcd", allowedMentions: quiet, reply: { messageReference: SNOW, failIfNotExists: false } }, { content: "efgh", allowedMentions: quiet }], "m1"]);
   });
+  // #2551: a reply to a bot's message pings that bot explicitly; the caller's mentions (or Discord's defaults) otherwise
+  // stay; a reply to a human's message is unchanged.
+  it("a reply to a bot-authored message carries allowedMentions.repliedUser: true, with the caller's parse list or Discord's defaults", async () => {
+    const { a, calls } = dc((_p, n) => ({ id: `m${n}` }));
+    (a as any).botAuthored.add(SNOW);
+    const quiet = { parse: [] as Array<"users"> };
+    await a.sendText("1496407196106494055", "hi", { replyTo: SNOW, allowedMentions: quiet });
+    await a.sendText("1496407196106494055", "hi", { replyTo: SNOW });
+    await a.sendText("1496407196106494055", "hi", { replyTo: "1503382159321464800" });                  // a human's message
+    expect(calls).toEqual([
+      { content: "hi", allowedMentions: { parse: [], repliedUser: true }, reply: { messageReference: SNOW, failIfNotExists: false } },
+      { content: "hi", allowedMentions: { parse: ["users", "roles", "everyone"], repliedUser: true }, reply: { messageReference: SNOW, failIfNotExists: false } },
+      { content: "hi", reply: { messageReference: "1503382159321464800", failIfNotExists: false } },
+    ]);
+  });
   it("an id that is not a snowflake is no reply (sent plain)", async () => {
     const { a, calls } = dc((_p, n) => ({ id: `m${n}` }));
     await a.sendText("1496407196106494055", "hi", { threadId: "1503382159321460000", replyTo: "web-1700000000000" });

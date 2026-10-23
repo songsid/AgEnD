@@ -432,7 +432,7 @@ channels:
 - **自動更新**：`/start` 新增 channel，`/stop` 移除 channel
 - **重新載入**：每 30 秒偵測變更；backend、model、自動暫停或 profile 等啟動設定改變時，會重啟執行中的 agent；支援的執行期設定則直接套用。
 - **Instance 命名**：`classic-<sanitized-channel-name>-<channelId末4碼>`；非主要連線加上經清理的 adapter 後綴。已保存的 `instanceName` 優先，否則由 `name`（未填時為 channel ID）推導，不直接取自任意 YAML key
-- **Discord auto-collab**：`/start` 自動開啟 collab；訊息會記錄為脈絡，但觸發回合仍需 @ bot
+- **Discord auto-collab**：`/start` 自動開啟 collab；訊息會記錄為脈絡，但觸發回合仍需 @ bot，或直接回覆該 bot 自己的訊息（#2551；只算一跳：回覆的對象若本身就是回覆則不觸發，@ 仍會觸發）
 - **Fleet `/collab`**：逐 instance 的記憶體開關，fleet 重啟後重置；讓 bot／webhook 訊息通過 fleet topic 的 bot 篩選，不取代存取控制
 - **`agend ls`**：classic instance 會顯示 `(classic)` 標籤
 
