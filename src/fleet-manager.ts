@@ -17547,11 +17547,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return `${name}:${createHash("sha256").update(content).digest("hex").slice(0, 16)}`;
     }).join(",");
     if (this.skippedSkillsSaid.get(destSkills) === signature) return;
-    const path = join(this.dataDir, "skipped-skills.json");
-    let record: Record<string, string> = {};
-    try { record = JSON.parse(readFileSync(path, "utf-8")) as Record<string, string>; } catch { /* none yet */ }
     this.skippedSkillsSaid.set(destSkills, signature);
-    if (record[destSkills] === signature) {
+    const path = join(this.dataDir, "skipped-skills.json");
+    // Only a log's memory: whatever is in the file (missing, corrupt, any other shape) never stands in the sync's way
+    // (#2493 review) — a record that cannot be read is no record, and the warning is said.
+    const record: Record<string, string> = Object.create(null) as Record<string, string>;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed)) if (typeof value === "string") record[key] = value;
+      }
+    } catch { /* none yet, or unreadable */ }
+    if (Object.hasOwn(record, destSkills) && record[destSkills] === signature) {
       this.logger.debug({ skills: names, destSkills }, "Skipping bundled skills — unchanged since it was last said");
       return;
     }
