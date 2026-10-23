@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { validateFleetConfig } from "../src/config-validator.js";
 
+describe("interrupted-work recovery opt-out", () => {
+  it.each([true, false])("accepts %s for fleet defaults and an individual instance", value => {
+    expect(validateFleetConfig({ defaults: { resume_interrupted_work: value }, instances: {
+      worker: { working_directory: "/tmp/worker", resume_interrupted_work: value },
+    } }).errors).toEqual([]);
+  });
+  it.each([null, "false", 0, {}, []])("rejects non-boolean %j without truthy coercion", value => {
+    const result = validateFleetConfig({ defaults: { resume_interrupted_work: value }, instances: {
+      worker: { working_directory: "/tmp/worker", resume_interrupted_work: value },
+    } });
+    expect(result.errors).toContainEqual(expect.objectContaining({ path: "defaults.resume_interrupted_work" }));
+    expect(result.errors).toContainEqual(expect.objectContaining({ path: "instances.worker.resume_interrupted_work" }));
+  });
+});
+
 describe("validateFleetConfig max_cross_instance_message_bytes", () => {
   it("accepts a positive integer under defaults", () => {
     expect(validateFleetConfig({ defaults: { max_cross_instance_message_bytes: 12_288 }, instances: {} }).errors).toEqual([]);

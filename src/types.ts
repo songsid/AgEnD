@@ -98,6 +98,8 @@ export function resolveDeliveryWorkerMode(
 }
 
 export interface InstanceConfig {
+  /** Proactive interrupted-work continuation; defaults true, inherited from fleet defaults. */
+  resume_interrupted_work?: boolean;
   working_directory: string;
   /** Minutes an idle CLI may remain resident before auto-pause. 0 disables it. */
   auto_pause_after?: number;

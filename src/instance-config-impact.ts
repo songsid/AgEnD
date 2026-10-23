@@ -32,6 +32,7 @@ export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new S
   "tool_progress",
   "reply_completion_guard",
   "mcp_proxy_reply",
+  "resume_interrupted_work",
   "auto_pause_after",
   "warm_cap",
   "display_name",
@@ -73,7 +74,7 @@ const FLEET_SCOPED_INSTANCE_KEYS: ReadonlySet<string> = new Set([
 /** Instance-scoped fields the settings page renders. */
 const INSTANCE_FIELDS = [
   "display_name", "description", "backend", "model", "working_directory",
-  "auto_pause_after", "warm_cap", "topic_id", "channel_id", "general_topic",
+  "resume_interrupted_work", "auto_pause_after", "warm_cap", "topic_id", "channel_id", "general_topic",
   "tool_progress", "reply_completion_guard", "mcp_proxy_reply", "log_level",
   "systemPrompt", "tags", "hang_detector", "agent_mode", "tool_set",
   "lightweight", "model_failover", "effort", "pre_task_command",

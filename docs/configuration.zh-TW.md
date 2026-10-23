@@ -159,6 +159,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `scheduler` | object | — | 排程設定 |
 | `webhooks` | object[] | `[]` | Webhook 通知 |
 | `startup.concurrency` | number | 自動推算，`2`–`10` | 依空閒 RAM 與 CPU 數推算共用 spawn gate 的併發上限；明確設定時範圍為 `1`–`20` |
+| `resume_interrupted_work` | boolean | `true` | 啟動穩定後，依記憶體壓力與節奏，對符合條件的未完成任務送出一次接續提示。背景狀態不明時，只提示先檢查既有工作；已知背景工作仍在執行、或無法確認 session 歸屬時繼續等待。個別 instance 可設為 `false`，日誌仍照常記錄。本階段不改動既有回合恢復行為。 |
 | `startup.stagger_delay_ms` | number | `500` | 啟動、喚醒、恢復、重啟共用的外層生命週期入場與獨立 spawn 最小間隔（毫秒）。壓力正常時，巢狀 CLI spawn 沿用外層名額，可能同時開始；壓力升高時，實體 spawn 仍一次一個且至少相隔五秒，壓力嚴重時暫停新增 spawn；範圍 `0`–`30000` |
 | `warm_cap` | number | `0`（無上限） | 執行中 instance 的暖機上限；超過時暫停最近最少活動的 idle instance，General 與持有 work lease 的 instance 不被淘汰。與按時間計算的 `auto_pause_after` 互補 |
 | `progress_min_elapsed` | number | `30` | 進度行／取消按鈕開始顯示經過時間之前的秒數 |
@@ -304,6 +305,7 @@ templates:
 | `auto_pause_after` | number | `0`（停用） | 閒置多少分鐘後自動暫停。0 = 不暫停。 |
 | `model` | string | — | 模型覆寫；有效名稱與格式依 backend 而定 |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
+| `resume_interrupted_work` | boolean | 繼承 | 覆寫此 instance 的自動任務接續。`false` 會保留中斷工作、繼續等待，觀察日誌不受影響；修改後不需重啟 instance。 |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | 所有 backend（含 Antigravity）的預設通訊模式為 MCP；`"cli"` 改用 `agend-agent` HTTP 指令，不啟動 MCP server |
 | `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（30 個）、`minimal`（9 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | 頻道進度泡泡中的工具活動：`standard` 只列語意標籤、不含 shell 參數；`verbose` 加上截短的命令預覽。預設關閉，啟用後會向頻道顯示活動 |

@@ -1,3 +1,4 @@
+import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
@@ -1018,6 +1019,67 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly managerBootId = randomUUID();
   deliveryOutbox: DeliveryOutbox | null = null;
   private deliveryOutboxRecovered = false;
+  private workingRecovery: WorkingRecoveryCoordinator | null = null;
+  private workingRecoveryTimer: ReturnType<typeof setInterval> | null = null;
+  private workingRecoveryCause: RecoveryCause = "unknown_interruption";
+
+  private recoveryEnabled(name: string): boolean {
+    const own = this.fleetConfig?.instances[name]?.resume_interrupted_work;
+    return own ?? this.fleetConfig?.defaults?.resume_interrupted_work ?? true;
+  }
+  private initializeWorkingRecovery(outbox: DeliveryOutbox): void {
+    const store = outbox.workingRecovery;
+    this.workingRecoveryCause = store.beginRun(this.managerBootId, process.pid, Date.now());
+    this.workingRecovery = new WorkingRecoveryCoordinator({
+      store, now: () => performance.now(), active: () => this.startupComplete && !this.shuttingDown && outbox.isOpen,
+      pressure: () => {
+        const p = this.memoryPressure.snapshot();
+        return p.sampledAt === null || Date.now() - p.sampledAt > 60_000 ? { ...p, level: "unknown" as const } : p;
+      }, storm: () => this.stormWindow.isActive(),
+      enabled: name => this.recoveryEnabled(name),
+      live: name => {
+        const daemon = this.daemons.get(name);
+        if (this.sessionOomStopped(name)) return { owner: "", configuration: "", sessionId: null, idle: false,
+          paused: false, stopped: true, legacyPending: false, legacyCovered: false, nativeWork: false, cancelled: false, background: null };
+        return daemon?.getWorkingRecoveryState?.() ?? null;
+      },
+      card: id => this.scheduler?.db.board.findCard(id) ?? (this.scheduler ? undefined : null),
+      laneFree: name => !this.isInstanceRestarting(name) && !this.activeDurableTargets.has(name)
+        && outbox.countForTarget(name, ["queued", "retry_wait", "delivering", "submission_started", "reconciliation_pending"]) === 0,
+      admit: (episode, tasks, advisory) => outbox.admitWorkingRecovery(episode,
+        buildWorkingRecoveryPrompt(tasks, this.workingRecoveryCause, advisory), advisory),
+      summary: (group, rows) => {
+        const general = this.findGeneralInstance();
+        if (!general || !this.daemons.has(general)) return;
+        store.summary(group, () => outbox.admitSystemNotice(general, `working-recovery-summary:${group}`,
+          `[system:working-recovery-summary] Observed cause: unknown interruption${this.workingRecoveryCause === "unknown_interruption" ? "" : `; prior requested action: ${this.workingRecoveryCause}`}. ${rows.length} interrupted instances; continuation queued ${rows.filter(r => r.outcome === "admitted").length}, excluded ${rows.filter(r => r.outcome === "excluded").length}, still deferred ${rows.filter(r => r.outcome === "deferred").length}. ${rows.filter(r => r.reason === "advisory_background_unknown").length ? `Advisory, background unknown: ${rows.filter(r => r.reason === "advisory_background_unknown").map(r => r.instance).join(", ")}. ` : ""}Details are in the Log. Deferred work remains eligible; no action or confirmation is requested.`));
+      },
+      log: (episode, outcome, reason) => {
+        this.logger.info({ name: episode.instance, episode: episode.key, outcome, reason, cause: this.workingRecoveryCause }, "Interrupted work recovery decision");
+        this.eventLog?.insert(episode.instance, "working_state", { message: `Interrupted work: ${outcome} (${reason}); cause ${this.workingRecoveryCause}.`, reason, outcome });
+      },
+    });
+    if (this.workingRecoveryTimer) clearInterval(this.workingRecoveryTimer);
+    this.workingRecoveryTimer = setInterval(() => {
+      if (!outbox.isOpen || this.shuttingDown) return;
+      try { this.workingRecovery?.tick(); this.scheduleDeliveryOutboxPump(); }
+      catch { this.logger.warn("Working recovery deferred: prerequisites or durable store unavailable"); }
+    }, 1_000);
+    this.workingRecoveryTimer.unref?.();
+  }
+  private recoveryDeliveryEligible(row: OutboxDelivery, writing = false): boolean {
+    if (row.kind !== WORKING_RECOVERY_KIND) return true;
+    const outbox = this.deliveryOutbox, episode = outbox?.workingRecovery.get(row.targetInstance);
+    if (!episode || episode.deliveryId !== row.deliveryId
+      || outbox!.hasOtherPendingWork(row.targetInstance, row.deliveryId)
+      || this.workingRecovery?.verdict(episode).outcome === "excluded") {
+      outbox?.withdrawWorkingRecovery(row.deliveryId, "recovery superseded or no longer authorized before input");
+      return false;
+    }
+    return (writing ? this.workingRecovery?.accepts(row.targetInstance, episode.key)
+      : this.workingRecovery?.canDispatch(row.targetInstance, episode.key)) === true;
+  }
+
   /** Phase 2b: wakes paused targets for queued durable work (delivery_worker ≠ off). */
   wakeCoordinator: WakeCoordinator | null = null;
   /**
@@ -2164,6 +2226,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     this.deliveryOutbox = outbox;
     this.deliveryOutboxRecovered = true;
+    this.initializeWorkingRecovery(outbox);
     outbox.on("working_references", (names: string[]) => {
       for (const name of names) this.observeWorkingState(name, "obligations");
     });
@@ -2417,6 +2480,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const entry = outbox.observeWorkingState(name, { version: 1, reason, observedAt: Date.now(), observation,
         lastActivityAt: this.lastActivity.get(name) ?? null, references, totalReferences, unavailable });
       if (!entry) return;
+      if (reason === "cancelled") outbox.workingRecovery.cancel(name, observation.configuration, observation.sessionId);
+      if (entry.prior) outbox.workingRecovery.discover(name, entry.prior);
       const state = entry.current.observation.executionState ?? "unknown";
       const counts = { tasks: entry.current.references.filter(r => r.kind === "task").length,
         owed: entry.current.references.filter(r => r.kind === "owed").length,
@@ -2510,6 +2575,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             ? null
             : this.daemons.get(target)?.bootId ?? null,
           this.activeDurableTargets,
+          row => this.recoveryDeliveryEligible(row),
         );
         if (!claimed) break;
         this.activeDurableTargets.add(claimed.targetInstance);
@@ -2570,6 +2636,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.managerBootId,
         candidate => candidate === target ? bootId : null,
         new Set(),
+        row => this.recoveryDeliveryEligible(row),
       ),
       tryAcquireBudget: () => {
         if (this.activeDurableTargets.size >= 8) return false;
@@ -2620,7 +2687,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // including time spent waiting for a handoff/idle gate to return.
     try {
       let sent: boolean | void;
-      if (claimed.kind === "raw_paste") {
+      if (claimed.kind === WORKING_RECOVERY_KIND) {
+        const daemon = this.daemons.get(target), key = claimed.sourceKey.replace(/^working-recovery:/, "");
+        if (!daemon || typeof payload.content !== "string") throw new Error("Working recovery owner unavailable");
+        const release = this.workingRecovery?.reserveDispatch(target, key);
+        if (!release) { outbox.retryBeforeBegin(claimed.deliveryId, daemon.bootId, claimed.attemptNo, "working recovery pace or prerequisites pending", 5_000); return; }
+        try {
+          await daemon.deliverWorkingRecovery(payload.content, claimed, () => this.daemons.get(target) === daemon && this.recoveryDeliveryEligible(claimed, true));
+        } finally { release(); }
+        sent = true;
+      } else if (claimed.kind === "raw_paste") {
         if (payload.type !== "raw_paste" || typeof payload.content !== "string") {
           throw new Error("Durable raw_paste row has an invalid payload");
         }
@@ -3324,6 +3400,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** SIGUSR1: full process reload. Names who asked (#1120). */
   private onFullRestartSignal(): void {
+    try { this.deliveryOutbox?.workingRecovery.requested(this.managerBootId, "manual_restart"); }
+    catch { this.logger.warn("Could not record requested restart; next recovery will report an unknown interruption"); }
     this.logger.info(`Received SIGUSR1, initiating full restart (process reload)... ${describeSignalSource(this.dataDir, "SIGUSR1")}`);
     this.gracefulShutdownForReload()
       .then(() => {
@@ -5046,7 +5124,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return new WakeCoordinator({
       mode: target => this.deliveryWorkerMode(target),
       available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true,
-      listPending: () => this.deliveryOutbox?.listPending() ?? [],
+      listPending: () => this.deliveryOutbox?.listPending().filter(row => row.kind !== WORKING_RECOVERY_KIND) ?? [],
       isPaused: target => !this.sessionOomStopped(target) && this.lifecycle.isPaused(target),
       pauseReason: target => readPauseReason(this.getInstanceDir(target)),
       isRestarting: target => this.isInstanceRestarting(target),
@@ -7434,6 +7512,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
     this.startupComplete = false;
+    this.workingRecovery?.reset();
     this.startupDashboard = null;
     // Cleared here, not at the end of doStopAll: a stop has an async tail, and
     // anything arriving during it is still part of the stop.
@@ -8063,6 +8142,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // health server — so `systemctl start` returned success while the fleet was
     // still deaf: no path existed for a user message to arrive.
     sdNotify("READY=1");
+    this.workingRecovery?.ready();
     const health = this.getFleetHealth();
     if (health.status !== "ok") {
       this.logger.warn({ health }, "Fleet started with problems — see /health");
@@ -20171,12 +20251,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.startupMemoryDeadline?.stop();
     this.startupMemoryDeadline = null;
     this.startupComplete = false;
+    this.workingRecovery?.reset();
     this.startupDashboard = null;
     this.reloadPending = false;
     // Before anything is stopped: everything that dies from here on dies
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    this.workingRecovery?.reset();
+    if (this.workingRecoveryTimer) clearInterval(this.workingRecoveryTimer);
+    this.workingRecoveryTimer = null;
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
@@ -21962,6 +22046,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return;
     }
 
+    this.workingRecovery?.reset();
     this.logger.info(`Graceful restart: waiting for ${instanceNames.length} instances to idle...`);
 
     const groupId = this.fleetConfig?.channel?.group_id;
@@ -22077,6 +22162,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
 
+    this.workingRecovery?.ready();
     this.logger.info("Graceful restart complete");
     const configuredNames = this.configuredStartupInstanceNames(fleet, topicMode);
     const total = configuredNames.length;
@@ -22132,6 +22218,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
           const ipc = this.instanceIpcClients.get(name);
           if (ipc?.connected) {
+            daemon?.noteLegacyRestartReminder?.();
             ipc.send({
               type: "fleet_inbound",
               content: msg,

@@ -135,6 +135,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
   };
   const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
+    if (value.resume_interrupted_work !== undefined && typeof value.resume_interrupted_work !== "boolean") err(`${path}.resume_interrupted_work`, "must be a boolean");
     // `v3` is refused rather than merely undocumented. Measured on kiro-cli
     // 2.23.0: `--v3` stops at two dialogs AgEnD does not answer — a config
     // migration prompt, then a trust screen whose default option is "No,

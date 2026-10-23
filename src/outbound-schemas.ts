@@ -470,6 +470,7 @@ export const UpdateInstanceConfigArgs = z.object({
   config: z.object({
     backend: z.string().optional().describe("CLI backend. A switch restarts a running instance in a fresh session (a stopped or paused one stays so, and starts on it next time), and drops the instance's own model and effort: give `model` here for the new backend, or it inherits the fleet default, else that backend's own default."),
     model: z.string().optional().describe("Model override. With a backend switch: a model the new backend takes, else the switch is refused."),
+    resume_interrupted_work: z.boolean().optional().describe("Automatically continue known interrupted work after a stable restart"),
     auto_pause_after: z.number().optional().describe("Minutes idle before auto-pause (0 = disabled)"),
     display_name: z.string().optional().describe("Display name"),
     description: z.string().optional().describe("Role description"),
@@ -483,6 +484,7 @@ export const UpdateFleetDefaultsArgs = z.object({
   defaults: z.object({
     backend: z.string().optional().describe("Default CLI backend"),
     model: z.string().optional().describe("Default model"),
+    resume_interrupted_work: z.boolean().optional().describe("Automatically continue known interrupted work after a stable restart"),
     auto_pause_after: z.number().optional().describe("Default auto-pause minutes (0 = disabled)"),
     max_cross_instance_message_bytes: z.number().int().positive().optional()
       .describe("Maximum UTF-8 byte size of one cross-instance message body (default 12288)"),

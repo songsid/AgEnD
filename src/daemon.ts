@@ -1,3 +1,4 @@
+import type { RecoveryLive } from "./working-recovery.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
 import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
 import { agentWhatsNew, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, whatsNewNotice } from "./agent-whats-new.js";
@@ -1479,6 +1480,8 @@ export class Daemon extends EventEmitter {
    * skipResume — the #1209 gate reads this, never the resettable flag.
    */
   private bootSkippedResume = false;
+  private recoveryCrashLoopFresh = false;
+  private recoveryFreshChoice = false;
   private startupAborted = false;
   /** First time the current on-screen blocking dialog was seen (0 = none); drives the parked report. */
   private dialogParkedSince = 0;
@@ -2446,6 +2449,7 @@ export class Daemon extends EventEmitter {
 
   private async startAdmitted(): Promise<void> {
     this.assertSessionOomAdmission();
+    this.recoveryBootWorkPending = true;
     ensureInstanceDir(this.instanceDir);
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
@@ -2455,6 +2459,8 @@ export class Daemon extends EventEmitter {
     // even when the JSON is corrupt so it cannot remain forever.
     const crashStatePath = join(this.instanceDir, "crash-state.json");
     this.bootSkippedResume = false;
+    this.recoveryCrashLoopFresh = false;
+    this.recoveryFreshChoice = false;
     try {
       if (existsSync(crashStatePath)) {
         const content = readFileSync(crashStatePath, "utf-8");
@@ -2463,6 +2469,10 @@ export class Daemon extends EventEmitter {
           if (state?.resumeDisabled === true) {
             this.skipResume = true;
             this.bootSkippedResume = true;
+            this.recoveryCrashLoopFresh = (state.reason === undefined || state.reason === "crash_loop")
+              && Number.isInteger(state.crashesInWindow) && state.crashesInWindow >= 3
+              && Number.isFinite(state.lastCrashAt) && state.lastCrashAt > 0;
+            this.recoveryFreshChoice = !this.recoveryCrashLoopFresh;
             this.logger.warn("Previous crash loop detected — starting without resume");
           }
         } finally {
@@ -2597,13 +2607,17 @@ export class Daemon extends EventEmitter {
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached like the warmup notice; the gate
     // consumes its one-shot marker first and never throws into boot.
-    void this.maybeResumeInterruptedTurn().catch(() => {});
+    const legacyResume = this.maybeResumeInterruptedTurn().catch(() => "unknown");
 
     // Warmup: wait for CLI idle, then trigger steering reload — but only when
     // the instructions actually changed since the agent last saw them.
     // Skipping the no-op reload saves 10-30s of agent time on every restart
     // where instructions are unchanged.
-    void this.runWarmupInstructionNotice();
+    const warmup = this.runWarmupInstructionNotice();
+    const recoveryOwner = JSON.stringify(this.interactionOwner());
+    void Promise.allSettled([legacyResume, warmup]).then(() => {
+      if (JSON.stringify(this.interactionOwner()) === recoveryOwner) { this.recoveryBootWorkPending = false; this.recoveryBootSettled = true; }
+    });
 
     if (!this.config.lightweight) {
       // 3. Pipe-pane for prompt detection. Rotate first so a ballooned log from a
@@ -4173,6 +4187,7 @@ export class Daemon extends EventEmitter {
   clearPendingDeliveries(fleetEpoch?: number): void {
     // FleetManager calls this synchronously before sendEscape. Cancel only the
     // current human turn; leave already-forwarded tool requests to settle.
+    this.recoveryCancelled = true;
     this.turnReplyGuard.cancelByUser();
     // #1241: a cancelled turn never confirms — its next edge completes it as
     // intentional. Drop a pending confirmation so it cannot promote afterwards.
@@ -4848,6 +4863,66 @@ export class Daemon extends EventEmitter {
     return this.interactionObservation.snapshot(this.interactionOwner());
   }
 
+  private ownedWorkingSession: string | null = null;
+  private recoveryBootSettled = false;
+  private recoveryBootWorkPending = false;
+  private recoveryLegacyCovered = false;
+  private recoveryNativeWork = false;
+  private recoveryCancelled = false;
+
+  noteLegacyRestartReminder(): void { this.recoveryLegacyCovered = true; }
+
+  getWorkingRecoveryState(): RecoveryLive {
+    const observation = this.getWorkingStateObservation();
+    return { owner: JSON.stringify(observation.owner), configuration: observation.configuration,
+      sessionId: this.ownedWorkingSession, idle: this.instanceState === "idle" && this.pasteQueueDepth === 0,
+      paused: this.isPaused, stopped: this.isSessionOomStopped(), legacyPending: !this.recoveryBootSettled,
+      legacyCovered: this.recoveryLegacyCovered, nativeWork: this.recoveryNativeWork,
+      freshChoice: this.recoveryFreshChoice || this.isNewSession && !this.bootSkippedResume, crashLoopFresh: this.recoveryCrashLoopFresh,
+      cancelled: this.recoveryCancelled, background: this.workingBackgroundObservation };
+  }
+
+  /** Local system work: no user turn, channel reply target, wake or replay of an original request. */
+  async deliverWorkingRecovery(content: string, delivery: { deliveryId: string; attemptNo: number }, admitted: () => boolean): Promise<void> {
+    const tmux = this.tmux, owner = JSON.stringify(this.interactionOwner()), epoch = this.deliveryEpoch;
+    const current = (): boolean => this.tmux === tmux && owner === JSON.stringify(this.interactionOwner())
+      && this.deliveryEpoch === epoch && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen
+      && !this.spawning && !this.startupAborted && !this.isPaused && !this.healthCheckPaused
+      && this.processStatus === "running" && this.instanceState === "idle" && this.pasteQueueDepth === 0
+      && this.recoveryBootSettled && !this.recoveryNativeWork && !this.recoveryCancelled && !this.isSessionOomStopped() && admitted();
+    let begun = false;
+    try {
+      await this.paneWriteLock.run(async () => {
+        if (!tmux || !current()) return;
+        const pane = await tmux.capturePane();
+        const input = this.backend?.readInputRow?.(pane);
+        if (!current() || !input || input.text !== "" || input.collapsedPastes !== 0 || input.queued
+          || !this.paneAuthoritativelyIdle(pane) || this.inputTransientInPane(pane)
+          || this.backend?.backgroundWorkRunning?.(pane) === true) return;
+        if (await tmux.getPaneInputMode?.() !== "raw" || !current()) return;
+        const evidence = await this.durableAttemptEvidence(tmux.getWindowId(), false, false);
+        if (!current()) return;
+        const signature = this.submissionSignature(content), baseline = this.paneEvidence(pane, signature);
+        const attempt = { ...delivery, contentSha256: deliveryContentDigest(content) };
+        if (!this.beginDurableDelivery(attempt, evidence)) return;
+        begun = true;
+        // Conservatively commit possible input BEFORE paste, not merely before Enter.
+        // A process death at any later boundary must never replay this continuation.
+        if (!this.deliveryOutbox?.markEnterStarted(delivery.deliveryId, this.bootId, delivery.attemptNo)) return;
+        if (!current() || !await tmux.pasteBuffer(content, { guard: current }) || !current()) return;
+        await new Promise(resolve => setTimeout(resolve, NORMAL_ENTER_SETTLE_MS));
+        if (!current() || !await this.sendDeliveryEnterAfterAvailability("working-recovery", current, attempt)) return;
+        const proof = await this.confirmSubmitted(signature, baseline);
+        this.deliveryOutbox.complete(delivery.deliveryId, this.bootId, delivery.attemptNo,
+          proof === "submitted" ? "delivered" : "uncertain", "local continuation Enter attempted once; no replay");
+      });
+    } catch { /* The durable fence below owns ambiguity; never retry a begun write. */ }
+    finally {
+      if (begun) this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, "uncertain", "local continuation may have reached input; not replayed");
+      else this.deliveryOutbox?.retryBeforeBegin(delivery.deliveryId, this.bootId, delivery.attemptNo, "working recovery prerequisite changed before input", 5_000);
+    }
+  }
+
   private workingTurnDelivery: { generation: number; deliveryId: string | null } | null = null;
   private workingBackgroundObservation: boolean | null = null;
 
@@ -4860,7 +4935,7 @@ export class Daemon extends EventEmitter {
       owner: this.interactionOwner(), backend,
       configuration: createHash("sha256").update(JSON.stringify([backend, this.config.working_directory, profile])).digest("hex"),
       executionState: this.processStatus === "running" ? this.isPaused ? "paused" : this.instanceState : null,
-      processStatus: this.getProcessStatus(), sessionId: null, backendTurnId: null,
+      processStatus: this.getProcessStatus(), sessionId: this.ownedWorkingSession, backendTurnId: null,
       backgroundWork: this.workingBackgroundObservation,
       turn: turn ? { generation: turn.generation,
         deliveryId: this.workingTurnDelivery?.generation === turn.generation ? this.workingTurnDelivery.deliveryId : null,
@@ -5298,6 +5373,7 @@ export class Daemon extends EventEmitter {
       const unblockedTurn = this.turnReplyGuard.snapshot();
       if (unblockedTurn && unblockedTurn.phase === "awaiting") this.maybeProxyReplyOnTurnEnd(pane);
     }
+    if (snapshot.state === "working" && this.recoveryBootSettled) this.recoveryNativeWork = true;
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
     // Reuse an already-captured pane and the backend's pure parser, never capture for the journal.
@@ -5499,6 +5575,7 @@ export class Daemon extends EventEmitter {
   private async maybeResumeInterruptedTurn(): Promise<string> {
     const marker = consumeInFlightTurnMarker(this.instanceDir);
     if (!marker) return "none";
+    this.recoveryLegacyCovered = true;
     // P1 fence: capture before any await. A cancel (deliveryEpoch),
     // respawn (spawnGeneration) or stop/pause (launchFenceEpoch) during the
     // grace hold must stale this gate — the push below rechecks, and the
@@ -6705,6 +6782,9 @@ export class Daemon extends EventEmitter {
     else if (update.mcp_proxy_reply === null) delete this.config.mcp_proxy_reply;
     if (typeof update.warm_cap === "number" && Number.isInteger(update.warm_cap) && update.warm_cap >= 0) this.config.warm_cap = update.warm_cap;
     else if (update.warm_cap === null) delete this.config.warm_cap;
+
+    if (typeof update.resume_interrupted_work === "boolean") this.config.resume_interrupted_work = update.resume_interrupted_work;
+    else if (update.resume_interrupted_work === null) delete this.config.resume_interrupted_work;
 
     const nextAutoPause = typeof update.auto_pause_after === "number"
       && Number.isFinite(update.auto_pause_after)
@@ -10796,6 +10876,10 @@ export class Daemon extends EventEmitter {
   private beginSpawn(): void {
     this.publishWorkingState("before_spawn");
     this.workingBackgroundObservation = null;
+    this.ownedWorkingSession = null;
+    this.recoveryBootSettled = false;
+    this.recoveryNativeWork = false;
+    this.recoveryCancelled = false;
     this.dialogAnswers = null;
     this.capacityNudge = null;
     this.lastErrorEpisode = null;
@@ -10828,6 +10912,7 @@ export class Daemon extends EventEmitter {
   private endSpawn(): void {
     this.spawnDepth = Math.max(0, this.spawnDepth - 1);
     if (this.spawnDepth > 0) return; // an enclosing spawn is still running
+    if (!this.recoveryBootWorkPending) this.recoveryBootSettled = true;
     this.spawning = false;
     const resolve = this.resolveSpawnSettled;
     this.spawnSettled = null;
@@ -12153,6 +12238,7 @@ export class Daemon extends EventEmitter {
     try {
       const sid = this.backend?.getSessionId();
       if (!sid) return;
+      if ((this.config.backend ?? "claude-code") === "claude-code" && sid.length <= 256) this.ownedWorkingSession = sid;
       const path = join(this.instanceDir, "session-id");
       // Idle observations happen after turns. Avoid needless writes (and mtime
       // churn) while still updating the marker when /new changes the session.

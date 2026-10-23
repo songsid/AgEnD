@@ -196,6 +196,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `startup.concurrency` | number | derived, `2`–`10` | Shared spawn-gate concurrency, based on free RAM and CPU count when omitted. An explicit value must be `1`–`20`. |
+| `resume_interrupted_work` | boolean | `true` | After stable startup, continue eligible unfinished task work once, with pressure pacing. Unknown background inventory permits an advisory inspection prompt; known running background work or unknown session ownership holds it. An instance can override this to `false`; the journal remains enabled. Existing turn-resume behavior is unchanged in this stage. |
 | `startup.stagger_delay_ms` | number | `500` | Minimum spacing between outer lifecycle admissions and standalone spawns (ms), shared by startup, wake, recovery and restart. At normal pressure, nested CLI spawns reuse the outer reservation and may coincide. Under elevated pressure, physical spawns remain serialized and at least 5 seconds apart; critical pressure holds new spawns. Valid range: `0`–`30000`. |
 | `cost_guard.daily_limit_usd` | number | `0` (disabled) | Fleet-wide daily cost limit |
 | `cost_guard.warn_at_percentage` | number | `80` | Warn threshold (% of limit) |
@@ -244,6 +245,7 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 | `kiro_ui` | `"legacy"` \| `"tui"` | `"legacy"` | Kiro-only launch mode. `legacy` runs on kiro's v1 engine and `tui` on its v2 engine; both are pinned on every launch so a kiro-cli default or saved setting cannot move an instance to another engine (#1109). `"v3"` is refused by validation until Kiro's v3 interface can run unattended (#849). |
 | `model` | string | — | Model override (format depends on backend) |
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
+| `resume_interrupted_work` | boolean | inherited | Override automatic task-work continuation for this instance. `false` leaves interrupted work deferred and keeps journal observations. Takes effect without restarting the instance. |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode. `"mcp"` is the default for every backend, Antigravity included; `"cli"` opts into `agend-agent` HTTP commands |
 | `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (30), `"minimal"` (9). Not user-settable: `"general"` (dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |

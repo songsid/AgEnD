@@ -1,3 +1,4 @@
+import { WorkingRecoveryStore, WORKING_RECOVERY_KIND, type RecoveryEpisode } from "./working-recovery.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
@@ -566,6 +567,15 @@ function mapObligation(row: ReplyObligationRow): ReplyObligation {
 export class DeliveryOutbox extends EventEmitter {
   private readonly db: Database.Database;
   private workingStateJournal?: WorkingStateJournal;
+  private recoveryStore?: WorkingRecoveryStore;
+  get workingRecovery(): WorkingRecoveryStore { return this.recoveryStore ??= new WorkingRecoveryStore(this.db); }
+
+  admitWorkingRecovery(episode: RecoveryEpisode, content: string, advisory = false): boolean {
+    const inserted = this.workingRecovery.admit(episode, () => this.insertInternalNotice(episode.instance, `working-recovery:${episode.key}`, content, new Date(), undefined, WORKING_RECOVERY_KIND), advisory);
+    if (inserted) this.emit("admitted");
+    return inserted;
+  }
+
   readonly managerBootId: string;
 
   /** Observational extension: its failure never participates in delivery admission. */
@@ -597,6 +607,17 @@ export class DeliveryOutbox extends EventEmitter {
       .all(instance, instance) as Array<{ kind: "owed" | "waiting"; correlation_id: string; requester_instance: string; owner_instance: string; request_delivery_id: string }>;
     return { total: total.n, references: rows.map(r => ({ kind: r.kind, correlationId: r.correlation_id,
       requester: r.requester_instance, owner: r.owner_instance, deliveryId: r.request_delivery_id })) };
+  }
+
+  hasOtherPendingWork(target: string, deliveryId: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM deliveries WHERE target_instance=? AND delivery_id<>? AND kind<>? AND state IN ('queued','retry_wait','delivering','submission_started','reconciliation_pending') LIMIT 1")
+      .get(target, deliveryId, WORKING_RECOVERY_KIND);
+  }
+
+  withdrawWorkingRecovery(deliveryId: string, reason: string): void {
+    const changed = this.db.prepare("UPDATE deliveries SET state='cancelled',finished_at=?,updated_at=?,last_error=? WHERE delivery_id=? AND kind=? AND state IN ('queued','retry_wait','delivering')")
+      .run(new Date().toISOString(), new Date().toISOString(), reason, deliveryId, WORKING_RECOVERY_KIND).changes;
+    if (changed) this.emit("state", { deliveryId, state: "cancelled" });
   }
 
   private noteWorkingReferences(instances: string[]): void {
@@ -1019,10 +1040,22 @@ export class DeliveryOutbox extends EventEmitter {
    */
   admitSystemNotice(target: string, sourceKey: string, content: string, now: Date = new Date(),
     place?: { chatId: string; threadId?: string; adapterId?: string }): boolean {
+    const existed = this.db.prepare("SELECT 1 FROM deliveries WHERE source_key=?").get(sourceKey);
+    this.insertInternalNotice(target, sourceKey, content, now, place, SYSTEM_NOTICE_KIND);
+    // INSERT OR IGNORE returns its durable id even for a duplicate.
+    const inserted = !existed;
+    if (inserted) this.emit("admitted");
+    return inserted;
+  }
+
+  private insertInternalNotice(target: string, sourceKey: string, content: string, now: Date,
+    place: { chatId: string; threadId?: string; adapterId?: string } | undefined, kind: string): string {
+    const existing = this.db.prepare("SELECT delivery_id FROM deliveries WHERE source_key=?").get(sourceKey) as { delivery_id: string } | undefined;
+    if (existing) return existing.delivery_id;
     const noticeId = randomUUID();
     const nowIso = now.toISOString();
     const payload = {
-      type: "fleet_inbound",
+      type: kind === WORKING_RECOVERY_KIND ? WORKING_RECOVERY_KIND : "fleet_inbound",
       content,
       meta: {
         user: "AgEnD", user_id: "agend-system", message_id: `system-notice-${noticeId}`,
@@ -1030,7 +1063,7 @@ export class DeliveryOutbox extends EventEmitter {
         ...(place?.adapterId ? { adapter_id: place.adapterId } : {}),
       },
     };
-    const inserted = this.db.prepare(`
+    this.db.prepare(`
       INSERT OR IGNORE INTO deliveries (
         delivery_id,operation_id,source_key,source_instance,source_daemon_boot_id,
         target_instance,target_session,target_daemon_boot_id,kind,correlation_id,payload_json,message_id,content_sha256,state,
@@ -1038,11 +1071,10 @@ export class DeliveryOutbox extends EventEmitter {
       ) VALUES (?,?,?,'agend-system',?,?,NULL,NULL,?,?,?,?,?,'queued',0,
         (SELECT COALESCE(MAX(created_seq),0)+1 FROM deliveries),NULL,?,?,?)
     `).run(
-      noticeId, `notice:${sourceKey}`, sourceKey, this.managerBootId, target, SYSTEM_NOTICE_KIND, `notice:${sourceKey}`,
+      noticeId, `notice:${sourceKey}`, sourceKey, this.managerBootId, target, kind, `notice:${sourceKey}`,
       JSON.stringify(payload), payload.meta.message_id, deliveryContentDigest(content), nowIso, nowIso, nowIso,
-    ).changes === 1;
-    if (inserted) this.emit("admitted");
-    return inserted;
+    );
+    return noticeId;
   }
 
   /** The owner's open obligations, oldest first (#926). */
@@ -1321,10 +1353,11 @@ export class DeliveryOutbox extends EventEmitter {
     managerBootId: string,
     targetBootIdFor: (target: string) => string | null,
     blockedTargets: ReadonlySet<string>,
+    eligible?: (delivery: OutboxDelivery) => boolean,
   ): ClaimedOutboxDelivery | undefined {
-    return measureSyncWork("outbox.claimNext", () => this.claimNextSync(managerBootId, targetBootIdFor, blockedTargets));
+    return measureSyncWork("outbox.claimNext", () => this.claimNextSync(managerBootId, targetBootIdFor, blockedTargets, eligible));
   }
-  private claimNextSync(managerBootId: string, targetBootIdFor: (target: string) => string | null, blockedTargets: ReadonlySet<string>): ClaimedOutboxDelivery | undefined {
+  private claimNextSync(managerBootId: string, targetBootIdFor: (target: string) => string | null, blockedTargets: ReadonlySet<string>, eligible?: (delivery: OutboxDelivery) => boolean): ClaimedOutboxDelivery | undefined {
     const now = new Date().toISOString();
     const rows = this.db.prepare(`
       SELECT * FROM deliveries WHERE state IN ('queued','retry_wait')
@@ -1341,7 +1374,7 @@ export class DeliveryOutbox extends EventEmitter {
     for (const row of rows) {
       if (visitedTargets.has(row.target_instance)) continue;
       visitedTargets.add(row.target_instance);
-      if (blockedTargets.has(row.target_instance)) continue;
+      if (blockedTargets.has(row.target_instance) || eligible && !eligible(mapRow(row))) continue;
       // A recovered submission owns only its target lane while its evidence is
       // classified; independent targets can keep dispatching.
       if (reconciliationTargets.has(row.target_instance)) continue;
@@ -1590,7 +1623,9 @@ export class DeliveryOutbox extends EventEmitter {
       // Readiness and idle deferrals occur before begin and do not consume the
       // submission-attempt budget. The age limit remains the visible bound for
       // work that never reaches a pane-side-effect attempt.
-      const exhausted = ageMs >= maxAgeForKind(row.kind, DURABLE_DELIVERY_MAX_AGE_MS);
+      // A local continuation held before any input remains deferred across a crash
+      // loop or a persistent draft. Ordinary deliveries retain their existing TTL.
+      const exhausted = row.kind !== WORKING_RECOVERY_KIND && ageMs >= maxAgeForKind(row.kind, DURABLE_DELIVERY_MAX_AGE_MS);
       const outcome = exhausted ? "failed" : "retry_wait";
       const update = this.db.prepare(`
         UPDATE deliveries SET state=?,updated_at=?,finished_at=?,last_error=?,next_attempt_at=?
@@ -1645,6 +1680,7 @@ export class DeliveryOutbox extends EventEmitter {
       let changed = 0;
       let uncertain = 0;
       for (const row of stale) {
+        if (row.kind === WORKING_RECOVERY_KIND) continue;
         // A kind with a longer life is only stale once that has passed too.
         if (Date.parse(row.created_at) > nowMs - maxAgeForKind(row.kind, maxAgeMs)) continue;
         const specific = reasonFor?.(row.target_instance);
@@ -1686,8 +1722,8 @@ export class DeliveryOutbox extends EventEmitter {
   nextExpiryAt(): string | null {
     const oldest = (systemNotices: boolean) => (this.db.prepare(`
       SELECT MIN(created_at) AS created_at FROM deliveries
-      WHERE (state IN ('queued','retry_wait') AND (kind=?) = ?) OR (? = 0 AND state='submission_started' AND reconciliation_pending=1)
-    `).get(SYSTEM_NOTICE_KIND, systemNotices ? 1 : 0, systemNotices ? 1 : 0) as { created_at: string | null }).created_at;
+      WHERE (state IN ('queued','retry_wait') AND kind<>? AND (kind=?) = ?) OR (? = 0 AND state='submission_started' AND reconciliation_pending=1)
+    `).get(WORKING_RECOVERY_KIND, SYSTEM_NOTICE_KIND, systemNotices ? 1 : 0, systemNotices ? 1 : 0) as { created_at: string | null }).created_at;
     const expiries = [
       [oldest(false), DURABLE_DELIVERY_MAX_AGE_MS],
       [oldest(true), maxAgeForKind(SYSTEM_NOTICE_KIND, DURABLE_DELIVERY_MAX_AGE_MS)],
@@ -2045,7 +2081,7 @@ export class DeliveryOutbox extends EventEmitter {
   /** Must be called inside the same SQLite transaction as the terminal transition. */
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
     if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"
-      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND) return;
+      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND || parent.kind === WORKING_RECOVERY_KIND) return;
     // A self-scheduled silent heartbeat has no other sender to inform. Keep
     // its terminal state/evidence and fleet log without creating a new turn.
     if (parent.source_instance === parent.target_instance
