@@ -57,6 +57,7 @@ export interface LogEvent { id: number; ts: number; type: string; detail?: strin
 
 /** The event types a Log shows: what changed for the instance itself, not bookkeeping (tips, cost snapshots). */
 export const LOG_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "working_state",
   "crash_respawn", "crash_loop", "hang_detected", "hang_action", "instance_paused", "instance_resumed",
   "interactive_prompt", "interactive_prompt_assist", "dialog_parked", "model_failover", "model_recovered",
   "mcp_died", "mcp_recovered", "mcp_auto_restart", "message_failed", "pty_error", "pty_recovered",

@@ -6,6 +6,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
+import { WorkingStateJournal, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
 import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
   type HumanOrigin, type HumanReceiptRow, type HumanReceiptProof } from "./human-delivery-receipts.js";
 
@@ -564,7 +565,44 @@ function mapObligation(row: ReplyObligationRow): ReplyObligation {
 /** Durable admission and fenced state transitions for the fleet delivery queue. */
 export class DeliveryOutbox extends EventEmitter {
   private readonly db: Database.Database;
+  private workingStateJournal?: WorkingStateJournal;
   readonly managerBootId: string;
+
+  /** Observational extension: its failure never participates in delivery admission. */
+  observeWorkingState(instance: string, snapshot: Omit<WorkingStateSnapshot, "managerBootId">) {
+    const timeout = this.db.pragma("busy_timeout", { simple: true }) as number;
+    try {
+      // A diagnostic write cannot hold every stop behind an external SQLite writer.
+      // This synchronous call cannot interleave another operation on this connection.
+      this.db.pragma("busy_timeout = 0");
+      this.workingStateJournal ??= new WorkingStateJournal(this.db);
+      return this.workingStateJournal.observe(instance, { ...snapshot, managerBootId: this.managerBootId });
+    } finally { this.db.pragma(`busy_timeout = ${timeout}`); }
+  }
+
+  getWorkingState(instance: string) {
+    this.workingStateJournal ??= new WorkingStateJournal(this.db);
+    return this.workingStateJournal.get(instance);
+  }
+
+  /** Bounded metadata query, distinct from the existing unbounded reminder API. */
+  workingObligations(instance: string): { references: WorkingStateReference[]; total: number } {
+    const total = this.db.prepare(`SELECT COALESCE(SUM((owner_instance=?) + (requester_instance=?)),0) AS n
+      FROM reply_obligations WHERE state='open' AND (owner_instance=? OR requester_instance=?)`)
+      .get(instance, instance, instance, instance) as { n: number };
+    const rows = this.db.prepare(`SELECT 'owed' AS kind,correlation_id,requester_instance,owner_instance,request_delivery_id,opened_at
+      FROM reply_obligations WHERE state='open' AND owner_instance=? UNION ALL
+      SELECT 'waiting' AS kind,correlation_id,requester_instance,owner_instance,request_delivery_id,opened_at
+      FROM reply_obligations WHERE state='open' AND requester_instance=? ORDER BY opened_at,correlation_id LIMIT 16`)
+      .all(instance, instance) as Array<{ kind: "owed" | "waiting"; correlation_id: string; requester_instance: string; owner_instance: string; request_delivery_id: string }>;
+    return { total: total.n, references: rows.map(r => ({ kind: r.kind, correlationId: r.correlation_id,
+      requester: r.requester_instance, owner: r.owner_instance, deliveryId: r.request_delivery_id })) };
+  }
+
+  private noteWorkingReferences(instances: string[]): void {
+    // The transaction has committed. Telemetry must not change its result.
+    try { this.emit("working_references", [...new Set(instances)]); } catch { /* observation only */ }
+  }
 
   constructor(dbPath: string, managerBootId: string = randomUUID()) {
     super();
@@ -909,7 +947,10 @@ export class DeliveryOutbox extends EventEmitter {
       }
       return due.map(mapObligation);
     })();
-    if (expired.length) this.emit("admitted");
+    if (expired.length) {
+      this.emit("admitted");
+      this.noteWorkingReferences(expired.flatMap(row => [row.ownerInstance, row.requesterInstance]));
+    }
     return expired;
   }
 
@@ -1156,7 +1197,9 @@ export class DeliveryOutbox extends EventEmitter {
       if (result.changes === 1) this.answerReplyObligation(row, now);
       return { delivery: mapRow(row), inserted: result.changes === 1 };
     });
-    return transaction();
+    const admitted = transaction();
+    if (admitted.inserted) this.noteWorkingReferences([input.sourceInstance, input.targetInstance]);
+    return admitted;
   }
 
   get(deliveryId: string): OutboxDelivery | undefined {

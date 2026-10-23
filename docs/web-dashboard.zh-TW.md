@@ -327,6 +327,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
 
 逐步顯示 agent 做了什麼：它收到的要求、它的回覆（絕不顯示思考過程）、每次工具呼叫（Read、Edit、Search、Run、Web、MCP、Sub-agent……，可按 **Show output**）、錯誤、每回合結束、壓縮，以及 fleet 事件（例如當掉後重新啟動）。
 - 用 **All / Tools / Errors** 篩選；更新中會顯示 **Live**。
+- **工作狀態紀錄**顯示觀察到的執行狀態變化，以及任務與待回覆事項的筆數。這些項目列在 **All**，不列在 **Errors**。目前只記錄觀察結果，不會補送繼續工作的提示，也不改變重啟後的恢復行為。
 - 一開始載入最新 200 步；**Load older steps** 每次多載入 100 步，頁面最多保留 1000 步。
 - 預設關閉，要由 fleet admin 開啟：`web.log_tab`（**設定 → 網頁 → Log tab: each agent's steps**），或在分頁上按 **Turn on the Log**，需等 fleet admin 確認。
 - Claude Code 全部顯示，instance 停止後也看得到；Codex 在執行中時顯示；kiro 只顯示 fleet 事件。其他 CLI 會說明沒有 AgEnD 能讀的 transcript。秘密值會被遮蔽。

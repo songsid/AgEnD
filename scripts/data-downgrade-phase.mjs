@@ -65,7 +65,30 @@ function schedule(label) {
   return scheduler.create({ cron: '0 0 * * *', message: label, source: 'scratch-source', target: label,
     reply_chat_id: '-100123', reply_thread_id: '7', reply_adapter_id: 'scratch-world' });
 }
+/** The old binary must leave unknown journal rows, including their exact JSON bytes, intact. */
+function journalRows() {
+  const db = new Database(outboxPath, { readonly: true });
+  try { return db.prepare('SELECT instance_name,revision,current_json,prior_json FROM working_state_journal ORDER BY instance_name').all(); }
+  finally { db.close(); }
+}
 if (phase === 'create') {
+  checked('working journal has populated current and prior snapshots before downgrade', () => {
+    const snapshot = { version: 1, reason: 'before_stop', observedAt: 10, lastActivityAt: 9,
+      observation: { owner: { bootId: 'scratch-daemon', spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
+        backend: 'mock', configuration: 'a'.repeat(64), executionState: 'working', processStatus: 'running', backgroundWork: true,
+        turn: { generation: 1, deliveryId: 'scratch-turn', correlationId: 'scratch-correlation', messageId: 'scratch-message', cancelled: false, completionDelivered: false },
+        sessionId: null, backendTurnId: null },
+      references: [{ kind: 'task', id: 'scratch-task-reference', version: 1, status: 'claimed' }], totalReferences: 1, unavailable: [] };
+    assert.equal(outbox.observeWorkingState('scratch-journal', snapshot).revision, 1);
+    outbox.observeWorkingState('scratch-journal', { ...snapshot, reason: 'execution', observedAt: 20,
+      observation: { ...snapshot.observation, executionState: 'idle', backgroundWork: false, turn: null } });
+    state.workingJournal = outbox.getWorkingState('scratch-journal');
+    assert.equal(state.workingJournal.revision, 2);
+    assert.equal(state.workingJournal.prior.observation.turn.deliveryId, 'scratch-turn');
+    state.workingJournalRows = journalRows();
+    assert.equal(state.workingJournalRows.length, 1);
+    assert.notEqual(state.workingJournalRows[0].prior_json, null);
+  });
   checked('new delivery consumption and acknowledgement metadata', () => {
     const delivered = terminal('consumed', 'new-consumed', 'delivered');
     assert.equal(outbox.markConsumed(delivered.deliveryId, delivered.targetDaemonBootId, delivered.attemptNo, 'mid_turn', 'scratch'), 'marked');
@@ -148,6 +171,9 @@ if (phase === 'create') {
       targetInstance: 'consumed', kind: 'fleet_inbound', payload: {} }).inserted, false);
     state.oldDelivered = terminal('old-delivery', 'old-delivered', 'delivered').deliveryId;
   });
+  checked('old outbox opens, recovers and writes delivery data without changing journal bytes', () => {
+    assert.deepEqual(journalRows(), state.workingJournalRows);
+  });
   checked('old scheduler accepts new history; deletion cascades the new retry', () => {
     assert.ok(scheduler.get(state.keepSchedule));
     assert.equal(scheduler.getRuns(state.keepSchedule)[0].status, 'deferred → delivered (retry)');
@@ -201,6 +227,15 @@ if (phase === 'create') {
   checks.push('old shared Kiro writers lack ownership; new agent artifacts untouched');
   writeFileSync(statePath, JSON.stringify(state));
 } else {
+  checked('working journal survives old writes and accepts a new atomic observation after return', () => {
+    assert.deepEqual(journalRows(), state.workingJournalRows);
+    assert.deepEqual(outbox.getWorkingState('scratch-journal'), state.workingJournal);
+    const { managerBootId: _, ...snapshot } = state.workingJournal.current;
+    const updated = outbox.observeWorkingState('scratch-journal', { ...snapshot, observedAt: 30 });
+    assert.equal(updated.revision, 3);
+    assert.equal(updated.current.managerBootId, 'return-manager');
+    assert.deepEqual(updated.prior, state.workingJournal.prior);
+  });
   checked('new consumption/ack metadata survives old writes; old delivery remains readable', () => {
     const inspect = new Database(outboxPath, { readonly: true });
     try {

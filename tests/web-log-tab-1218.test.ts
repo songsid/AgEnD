@@ -278,6 +278,20 @@ describe("on: the newest steps, live, older on demand", () => {
     expect(rows(pg).map(x => x.split(" ")[0])).toEqual(["Crashed", "Run"]);
   });
 
+  it("shows the working journal in All, without misclassifying observations as Errors", async () => {
+    answers = [ON({ steps: [], events: [
+      { id: 1, ts: 10, type: "working_state", detail: "Observed working; no recovery action." },
+      { id: 2, ts: 11, type: "crash_loop", detail: "actual failure" },
+    ] })];
+    const pg = await app("/ui/log/web-dev");
+    expect(rows(pg).join(" ")).toContain("Working-state journal");
+    const errors = pg.root.querySelectorAll(".p-log .log-bar .chip-btn").find((b: any) => b.textContent === "Errors") as any;
+    errors.click(); await settle(4);
+    expect(rows(pg)).toHaveLength(1);
+    expect(rows(pg)[0]).toContain("Keeps crashing");
+    expect(rows(pg).join(" ")).not.toContain("Observed working");
+  });
+
   it("a new conversation (reset) is said; a backend with no transcript says what it shows instead", async () => {
     answers = [WINDOW, ON({ steps: [step("o1.0", { kind: "user", body: "new" })], reset: true, key: "3-4", after: 10 })];
     const pg = await app("/ui/log/web-dev");

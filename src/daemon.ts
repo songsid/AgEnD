@@ -1,4 +1,5 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
+import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
 import { agentWhatsNew, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
@@ -2081,7 +2082,10 @@ export class Daemon extends EventEmitter {
     // finished turn can never resume after a later restart. reset() is
     // deliberately NOT hooked: stop/spawn abandon the in-memory turn while
     // the on-disk interruption must survive for the resume gate.
-    this.turnReplyGuard.onComplete = () => clearInFlightTurnMarker(this.instanceDir);
+    this.turnReplyGuard.onComplete = () => {
+      clearInFlightTurnMarker(this.instanceDir);
+      this.publishWorkingState("turn_closed");
+    };
   }
 
   /** FleetManager and this daemon share a process, so durable begin/ACK is a direct synchronous store call. */
@@ -3603,6 +3607,7 @@ export class Daemon extends EventEmitter {
    * four, carrying a human-readable cause and the operator's next step.
    */
   private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom"): void {
+    this.publishWorkingState("supervision_ended");
     this.emit("supervision_ended", {
       name: this.name,
       reason,
@@ -3615,6 +3620,7 @@ export class Daemon extends EventEmitter {
   private setProcessStatus(status: "running" | "crashed" | "stopped"): void {
     if (this.processStatus === status) return;
     this.processStatus = status;
+    this.publishWorkingState("process");
     if (status === "running") {
       // A successful crash respawn is a new pane generation. It is ready by
       // this point, so an error gate inherited from the dead pane must not keep
@@ -4152,6 +4158,7 @@ export class Daemon extends EventEmitter {
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
+    this.publishWorkingState("cancelled");
     this.logger.info({ deliveryEpoch: this.deliveryEpoch }, "Pending delivery queue cleared by user cancel");
   }
 
@@ -4671,6 +4678,7 @@ export class Daemon extends EventEmitter {
   }
 
   async stop(): Promise<void> {
+    this.publishWorkingState("before_stop");
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
     this.fenceDeliveryWritesForStop();
@@ -4812,6 +4820,32 @@ export class Daemon extends EventEmitter {
   /** Cached, pure observation read; it never captures, constructs a backend or writes stdin. */
   getInteractionSnapshot(): InteractionSnapshot {
     return this.interactionObservation.snapshot(this.interactionOwner());
+  }
+
+  private workingTurnDelivery: { generation: number; deliveryId: string | null } | null = null;
+  private workingBackgroundObservation: boolean | null = null;
+
+  /** Pure metadata read: never discovers sessions, captures a pane or reads backend files. */
+  getWorkingStateObservation(): WorkingStateObservation {
+    const turn = this.turnReplyGuard.snapshot();
+    const backend = this.config.backend ?? this.backend?.binaryName ?? "unknown";
+    const profile = resolveCredentialProfile(this.config.backend_options?.[backend]);
+    return {
+      owner: this.interactionOwner(), backend,
+      configuration: createHash("sha256").update(JSON.stringify([backend, this.config.working_directory, profile])).digest("hex"),
+      executionState: this.processStatus === "running" ? this.isPaused ? "paused" : this.instanceState : null,
+      processStatus: this.getProcessStatus(), sessionId: null, backendTurnId: null,
+      backgroundWork: this.workingBackgroundObservation,
+      turn: turn ? { generation: turn.generation,
+        deliveryId: this.workingTurnDelivery?.generation === turn.generation ? this.workingTurnDelivery.deliveryId : null,
+        correlationId: turn.target.correlationId ?? null, messageId: turn.target.messageId ?? null,
+        cancelled: turn.cancelledByUser, completionDelivered: turn.completionDelivered } : null,
+    };
+  }
+
+  private publishWorkingState(reason: WorkingStateReason): void {
+    try { this.emit("working_state", { reason, observation: this.getWorkingStateObservation() }); }
+    catch { /* Journal observers cannot change daemon behavior. */ }
   }
 
   /** Key of the last interaction snapshot actually emitted + broadcast (#1219). */
@@ -5059,6 +5093,7 @@ export class Daemon extends EventEmitter {
         this.pauseWakeState = "paused";
         this.autoPauseController.markPaused();
         writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), reason);
+        this.publishWorkingState("execution");
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
@@ -5142,6 +5177,7 @@ export class Daemon extends EventEmitter {
         this.clearErrorRecoveryGate();
         clearPausedMarker(this.instanceDir);
         this.resumeRuntimeMonitors();
+        this.publishWorkingState("execution");
         this.logger.info("Instance auto-woke");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
@@ -5239,6 +5275,16 @@ export class Daemon extends EventEmitter {
     }
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
+    // Reuse an already-captured pane and the backend's pure parser, never capture for the journal.
+    if (typeof pane === "string" && this.backend?.backgroundWorkRunning) {
+      try {
+        const background = this.backend.backgroundWorkRunning(pane);
+        if (background !== this.workingBackgroundObservation) {
+          this.workingBackgroundObservation = background;
+          this.publishWorkingState("background");
+        }
+      } catch { /* Observational parsing cannot change accepted execution state. */ }
+    }
 
     // OpenCode creates its session lazily on the first submitted message.
     // Waiting until stop/pause to persist that id loses resume state when the
@@ -5286,6 +5332,7 @@ export class Daemon extends EventEmitter {
 
     if (snapshot.state !== previous) {
       this.logStateEdge(previous, snapshot);
+      this.publishWorkingState("execution");
       this.emit("instance_state", { name: this.name, ...snapshot });
       this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
       if (snapshot.state === "stuck" && pane && this.instanceStateReadyPattern) {
@@ -5368,6 +5415,8 @@ export class Daemon extends EventEmitter {
       deliveredText,
       deliveredAt,
     }, this.pendingWork.lastInboundTimestamp());
+    this.workingTurnDelivery = { generation: this.turnReplyGuard.snapshot()!.generation, deliveryId: meta.delivery_id || null };
+    this.publishWorkingState("turn_started");
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
     // completion (via the guard's onComplete) and cancel paths delete it.
@@ -10120,7 +10169,10 @@ export class Daemon extends EventEmitter {
         // purposes even before the idle edge completes the guard. Without
         // this, a restart in the reply-to-idle window would re-inject a
         // continuation for an already-answered turn.
-        if (replyAttempt?.completionAction) clearInFlightTurnMarker(this.instanceDir);
+        if (replyAttempt?.completionAction) {
+          clearInFlightTurnMarker(this.instanceDir);
+          this.publishWorkingState("completion_delivered");
+        }
         // #1377: a confirmed completion action (reply/react/edit_message) ends
         // the human-facing obligation immediately — the idle edge does not need
         // to confirm it.  Clear any pending confirmation window so a later
@@ -10717,6 +10769,8 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    this.publishWorkingState("before_spawn");
+    this.workingBackgroundObservation = null;
     this.dialogAnswers = null;
     this.capacityNudge = null;
     this.lastErrorEpisode = null;
