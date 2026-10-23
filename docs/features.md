@@ -230,6 +230,14 @@ Other backends do not have it.
 
 An agent can answer a web chat message with an emoji under the person's bubble instead of a reply — the same minimal acknowledgement Discord and Telegram already had ("OK", "thanks"). The reaction appears at once and is kept with the chat history, so it survives a reload, another device and a restart. A guest sees it on the messages they may see. When the web message was copied to the agent's Discord/Telegram topic or ClassicBot room, the copy gets the same reaction. A reaction completes the turn, so the chat no longer says the agent ended without replying, and AgEnD no longer asks for a conclusion. Emojis are Telegram's fixed reaction set on every platform, never AgEnD's delivery marks; another emoji is refused with an error naming the allowed ones. The agent's instructions and the `react` tool say when a reaction is enough.
 
+### Web chat sending state (#2438, #2440, #2443)
+
+A message you send in the web chat shows at once, dimmed, with "Sending…", and the composer is free for the next one. When AgEnD has it, it becomes the normal message: one bubble, never two. A message that does not get there stays with the reason ("Not sent: …") and **Retry send**, **Put back** (its text, files and reply return to the composer) or **Delete**. Nothing is retried on its own. While files upload, each shows its own bar and percentage, one file after another; Retry uploads only the files still missing. A Retry of a message that did reach the agent is recognised for 10 minutes, so the agent does not get it twice; that record is in memory only, so after a fleet restart a Retry is delivered again. Details: [web dashboard](web-dashboard.md).
+
+### Native replies on Discord and Telegram (#2281)
+
+When you reply to a message in the web chat, its echo to Discord or Telegram is a **native reply** there, if the quoted message is in that same topic or room: a person's message, an agent's reply that landed there, or an earlier web message's copy. Otherwise the echo starts with "↩ *sender*: *first words*", and a web-only original is only named, never copied out. An agent's `reply` with `reply_to` set to a platform message id is now a native reply too, and so is a closed poll's list of voters. A `web-…` id is ignored for this. Where each message sits on the platform is kept beside the chat history, never shown to a page, a guest or the public link.
+
 ## Peer-to-peer agent collaboration
 
 Instances collaborate through the tools their profiles allow. Ordinary workers can discover and message peers; creating, starting or waking instances requires the appropriate orchestration permission. See [tool profiles](features.md#tool-profiles).
