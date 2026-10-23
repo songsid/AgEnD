@@ -397,7 +397,8 @@ export interface WebConfig {
    * index of its own (search.db, kept `retention_days`, default 90; search/search-index.ts). `enabled: false`: no index
    * from the next fleet start (the file is left as it is), and searches are refused at once.
    */
-  search?: { enabled?: boolean; retention_days?: number };
+  /** #2293 global search. #2478: `public_link` (default true) — false keeps it off the temporary public link. */
+  search?: { enabled?: boolean; retention_days?: number; public_link?: boolean };
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
   /**

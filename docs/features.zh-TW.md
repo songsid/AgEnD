@@ -230,6 +230,14 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 
 agent 可以用泡泡下方的一個 emoji 回應網頁聊天的訊息，而不必寫回覆——這就是 Discord 與 Telegram 原本就有的最小回覆（「OK」、「謝謝」）。回應會立刻出現，並和聊天紀錄一起保存，所以重新整理、換一台裝置或重新啟動後都還在。訪客在自己看得到的訊息上也看得到。如果那則網頁訊息有複製到 agent 的 Discord/Telegram topic 或 ClassicBot 房間，副本也會有同樣的回應。回應會完成這一輪，所以聊天不再顯示 agent 結束這一輪卻沒有回覆，AgEnD 也不會再要求補送結論。Emoji 使用 Telegram 的固定回應集合（所有平台同一套），且不會用 AgEnD 標示送達狀態的 emoji；其他 emoji 會被拒絕，錯誤訊息會列出可用的。agent 的指示與 `react` 工具說明寫清楚什麼時候用回應就夠了。
 
+### 網頁聊天的送出狀態（#2438、#2440、#2443）
+
+在網頁聊天送出的訊息會立刻出現，呈淡色並顯示「傳送中…」，輸入框也馬上可以打下一則。AgEnD 收到後，它會變成一般的訊息：只有一個泡泡，不會重複。沒送到的訊息會留著並寫出原因（「沒有送出：…」），有 **重試傳送**、**放回輸入框**（文字、檔案和回覆回到輸入框）和 **刪除** 三個按鈕，不會自動重試。上傳檔案時，每個檔案各有自己的進度條和百分比，一個接一個上傳；重試只會上傳還沒到的檔案。如果訊息其實已送到 agent，10 分鐘內的重試會被認出來，agent 不會收到兩次；這份紀錄只存在記憶體裡，fleet 重新啟動後的重試會再送一次。詳見[網頁儀表板](web-dashboard.zh-TW.md)。
+
+### Discord 與 Telegram 的原生回覆（#2281）
+
+在網頁聊天回覆某則訊息時，如果被引用的訊息就在同一個 topic 或聊天室（某人的訊息、agent 送到那裡的回覆，或先前網頁訊息的副本），同步到 Discord 或 Telegram 的那一則會是那裡的**原生回覆**。否則同步的訊息會以「↩ *發送者*: *開頭幾個字*」開頭；只存在網頁上的原訊息只會被提到，不會被複製出去。agent 的 `reply` 帶上 `reply_to`（平台上的訊息 id）時，現在也是原生回覆；投票結束後的投票者列表也是。`web-…` 開頭的 id 不適用。每則訊息在平台上的位置會保存在對話紀錄旁，永遠不會出現在網頁、訪客或公開連結上。
+
 ## 點對點 Agent 協作 (Peer-to-peer agent collaboration)
 
 Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕並傳訊；建立、啟動或喚醒 instance 則需要對應的管理工具權限。見[工具權限組](features.zh-TW.md#工具權限組合-tool-profiles)。
@@ -1217,7 +1225,7 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 聊天裡的 `/update` 和 `agend update` 相同：安裝會留在它原本的頻道。會退回較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做，請加上 `--stable`、`--version` 或 `--force` 表明意圖。「有新版本」的通知也依循同一個頻道：beta 安裝只會被告知較新的 beta（穩定版推出後，beta 使用者仍留在 beta 線）；alpha 安裝只會被告知較新的 alpha 或更新次版本的穩定版，絕不會被告知 beta。
 
-要求更新的聊天會收到一則訊息，一路跟著更新與重啟，最後顯示「✅ AgEnD 已更新至 vX；N/M 個 Agent 運行中」。在 Telegram 上這則訊息至多每 6 秒編輯一次（一個群組每分鐘大約只允許 bot 發 20 則訊息，所有 topic 也與 fleet 啟動時的其他訊息共用這個額度）。最後一步若在啟動期間無法送達（遇到限流時段、連線尚未就緒，或網路中斷），啟動會繼續進行，最後一步則在 30 分鐘內持續重試：就地編輯，舊訊息無法編輯時改發一則新訊息（#2175、#2213）。任何啟動或重啟的「Fleet ready」訊息也一樣，小型 fleet 的也包括在內。在 AgEnD 這端逾時的送出可能其實已經送達，所以在它有結果之前不會再送任何東西：你不會收到兩次。
+要求更新的聊天會收到一則訊息，一路跟著更新與重啟。套件裝好時會寫「正在重啟 fleet」（沒有 ✅）。Agent 起來時顯示「啟動中… N/M」。只有新 fleet 已 READY 才會改成「✅ 更新完成 — vX · N/M 個 Agent 已就緒」（#2476）。在 Telegram 上這則訊息至多每 6 秒編輯一次（一個群組每分鐘大約只允許 bot 發 20 則訊息，所有 topic 也與 fleet 啟動時的其他訊息共用這個額度）。最後一步若在啟動期間無法送達（遇到限流時段、連線尚未就緒，或網路中斷），啟動會繼續進行，最後一步則在 30 分鐘內持續重試：就地編輯，舊訊息無法編輯時改發一則新訊息（#2175、#2213）。任何啟動或重啟的「Fleet ready」訊息也一樣，小型 fleet 的也包括在內。在 AgEnD 這端逾時的送出可能其實已經送達，所以在它有結果之前不會再送任何東西：你不會收到兩次。
 
 發版就是推送一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@beta`、`vX.Y.Z-alpha.N` → `@alpha`。其他任何 tag（`-rc.N`、打錯字）都會在建置任何東西之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本轉為穩定版時（2.2.0），也要把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：之後 alpha 安裝的 `/update` 會直接裝上它，通知也會請你執行 `/update`。
 
@@ -1258,7 +1266,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 
 ## 全域搜尋（#2293）
 
-在 dashboard 側欄按 **搜尋**，或按 **Ctrl+K** / **⌘K**，就能找回某件事當初交給哪個 agent。它在同一個 Spotlight 風格的對話框裡，搜尋每個 agent 的聊天、agent 之間的訊息與 Task Board。結果依 agent 分組，開啟後會跳到聊天中的那則訊息。Fleet 為此保留自己的索引，在 fleet 主迴圈之外建立，並遮蔽密鑰。只有 fleet 管理員能用，公開連結一律不行。詳見 [網頁 dashboard](web-dashboard.zh-TW.md#搜尋ctrlk)；設定見 [configuration](configuration.zh-TW.md) 的 `web.search`。
+在 dashboard 側欄按 **搜尋**，或按 **Ctrl+K** / **⌘K**，就能找回某件事當初交給哪個 agent。它在同一個 Spotlight 風格的對話框裡，搜尋每個 agent 的聊天、agent 之間的訊息與 Task Board。結果依 agent 分組，開啟後會跳到聊天中的那則訊息。Fleet 為此保留自己的索引，在 fleet 主迴圈之外建立，並遮蔽密鑰。只有 fleet 管理員能用，在這台電腦或透過公開連結都可以（`web.search.public_link: false` 可只在公開連結上關閉）；訪客一律不行。詳見 [網頁 dashboard](web-dashboard.zh-TW.md#搜尋ctrlk)；設定見 [configuration](configuration.zh-TW.md) 的 `web.search`。
 
 ## 連到訊息要你去的地方 (Links to where a message sends you, 2.2.5)
 

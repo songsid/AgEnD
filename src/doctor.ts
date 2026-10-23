@@ -12,6 +12,8 @@ import { getSystemServicePath, serviceLeftovers } from "./service-installer.js";
 import { homedir } from "node:os";
 import type { ServiceInfo } from "./service-installer.js";
 import { t } from "./locale.js";
+import { checkStartFailure, fleetLogTail, type StartFailure } from "./start-failure.js";
+import { startFailureLines } from "./start-failure-notice.js";
 import { resolveBinary } from "./backend/types.js";
 import { codexPackageProblemMessage, inspectCodexPackage, type CodexPackageReport } from "./backend/codex-package.js";
 import { collectResourceReport, resourceChecks, type ResourceReport } from "./resource-report.js";
@@ -48,12 +50,15 @@ interface DoctorDeps {
   collectResources: (dataDir: string) => Promise<ResourceReport>;
   /** #2357: the package layout of the codex AgEnD launches (read from disk; codex is never run). */
   codexPackage: () => CodexPackageReport | null;
+  /** #2481: does the installed version's fleet keep failing to start (start-failure.ts)? */
+  startFailure: (dataDir: string) => StartFailure;
   fetchFleetHealth: (port: number) => Promise<{
     adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; heartbeatAgeMs?: number | null; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
   }>;
 }
 
 const defaultDeps: DoctorDeps = {
+  startFailure: dataDir => checkStartFailure(dataDir),
   env: process.env,
   platform: platform(),
   run: (file, args) => spawnSync(file, args, { encoding: "utf8", timeout: 5000 }),
@@ -200,6 +205,14 @@ export async function collectDoctorReport(
         : t("doctor.network_family_auto", networkFamily.attemptTimeoutMs)
       : t("doctor.network_family_disabled", networkFamily.attemptTimeoutMs),
   );
+
+  // #2481: first, and whether or not a service is installed — the one thing to fix before anything below matters.
+  const startFailure = deps.startFailure(dataDir);
+  if (startFailure.failing) {
+    const [headline, ...rest] = startFailureLines(startFailure, dataDir);
+    const tail = fleetLogTail(dataDir).map(line => `    | ${line}`);
+    add("Service", "error", t("startfail.doctor_label"), [headline!.replace(/^⚠ /, ""), ...rest.map(l => `  ${l.trim()}`), ...tail].join("\n"));
+  }
 
   if (!service.installed) {
     add("Service", "warn", t("doctor.service_installed"), t("doctor.service_none"));

@@ -33,18 +33,23 @@ agend reload
 
 ## Fleet
 
-啟動全部 instance，或單一一個：
+啟動全部 instance（有安裝服務時會交給服務）。不加名稱的 `agend fleet start` 效果相同：
 
 ```bash
-agend fleet start
-agend fleet start <name>
+agend start
 ```
 
-停止同理：
+只啟動或停止一個 instance：
 
 ```bash
-agend fleet stop
+agend fleet start <name>
 agend fleet stop <name>
+```
+
+停止全部 instance：
+
+```bash
+agend stop
 ```
 
 重啟 AgEnD — 有 systemd 或 launchd 在管時就透過它們重啟，所以也會載入新版的 AgEnD 本身：
@@ -61,13 +66,13 @@ agend restart <name>
 
 `agend fleet restart` 在 2.4 之前仍可用，它會改執行 `agend restart`。
 
-看目前在跑什麼：
+看目前在跑什麼（`agend status` 是同一個指令）：
 
 ```bash
-agend fleet status
+agend ls
 ```
 
-加 `--json` 輸出機器可讀格式。
+加 `--json` 輸出機器可讀格式。`--resources` 會再列出磁碟、記憶體和 swap；它取代了 `agend fleet status`，後者現在只是它的別名。
 
 看 fleet 做過什麼 — 花費、session 輪替、卡住：
 
@@ -281,7 +286,9 @@ agend quickstart
 agend install
 ```
 
-`--no-activate` 只寫服務檔不啟動。`agend uninstall` 移除它。
+`--no-activate` 只寫服務檔不啟動。啟用是預設行為，所以 `--activate` 已移除。`agend uninstall` 移除服務。
+
+在 WSL 裡，`agend shortcuts` 會建立或更新 Windows 桌面捷徑（儀表板與重新啟動）。
 
 換一台機器：
 
@@ -332,7 +339,7 @@ zsh 需要先初始化補全系統。如果 `~/.zshrc` 裡還沒有 `autoload -U
 | `/update` | 更新 AgEnD 到最新版 | 🔒 管理員 |
 | `/doctor` | Fleet 健康診斷 | 🔒 管理員 |
 | `/login [backend]` | 遠端登入 CLI（缺少時先安裝） | 🔒 管理員 |
-| `/web` | 登入網頁儀表板；`/web revoke` 讓所有人登出 | 🔒 管理員 |
+| `/web` | 登入網頁儀表板；`/web revoke` 讓所有人登出。`/dashboard` 仍可用，但已淘汰：請改用 `/web` | 🔒 管理員 |
 | `/collab` | 在 fleet topic 切換 bot/webhook 訊息接收 | 🔒 管理員 |
 | `/visibility` | 跨 instance 訊息在 topic 裡的顯示方式（full/summary/hidden） | 🔒 管理員 |
 | `/tips` | 抽一條隨機使用提示 | 所有人 |

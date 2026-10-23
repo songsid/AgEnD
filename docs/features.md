@@ -230,6 +230,14 @@ Other backends do not have it.
 
 An agent can answer a web chat message with an emoji under the person's bubble instead of a reply — the same minimal acknowledgement Discord and Telegram already had ("OK", "thanks"). The reaction appears at once and is kept with the chat history, so it survives a reload, another device and a restart. A guest sees it on the messages they may see. When the web message was copied to the agent's Discord/Telegram topic or ClassicBot room, the copy gets the same reaction. A reaction completes the turn, so the chat no longer says the agent ended without replying, and AgEnD no longer asks for a conclusion. Emojis are Telegram's fixed reaction set on every platform, never AgEnD's delivery marks; another emoji is refused with an error naming the allowed ones. The agent's instructions and the `react` tool say when a reaction is enough.
 
+### Web chat sending state (#2438, #2440, #2443)
+
+A message you send in the web chat shows at once, dimmed, with "Sending…", and the composer is free for the next one. When AgEnD has it, it becomes the normal message: one bubble, never two. A message that does not get there stays with the reason ("Not sent: …") and **Retry send**, **Put back** (its text, files and reply return to the composer) or **Delete**. Nothing is retried on its own. While files upload, each shows its own bar and percentage, one file after another; Retry uploads only the files still missing. A Retry of a message that did reach the agent is recognised for 10 minutes, so the agent does not get it twice; that record is in memory only, so after a fleet restart a Retry is delivered again. Details: [web dashboard](web-dashboard.md).
+
+### Native replies on Discord and Telegram (#2281)
+
+When you reply to a message in the web chat, its echo to Discord or Telegram is a **native reply** there, if the quoted message is in that same topic or room: a person's message, an agent's reply that landed there, or an earlier web message's copy. Otherwise the echo starts with "↩ *sender*: *first words*", and a web-only original is only named, never copied out. An agent's `reply` with `reply_to` set to a platform message id is now a native reply too, and so is a closed poll's list of voters. A `web-…` id is ignored for this. Where each message sits on the platform is kept beside the chat history, never shown to a page, a guest or the public link.
+
 ## Peer-to-peer agent collaboration
 
 Instances collaborate through the tools their profiles allow. Ordinary workers can discover and message peers; creating, starting or waking instances requires the appropriate orchestration permission. See [tool profiles](features.md#tool-profiles).
@@ -1253,8 +1261,10 @@ that is what you want. The "update available" notice follows the same channel. A
 a newer beta: beta users stay on the beta line after a stable ships. An alpha install is told about a newer alpha
 or a stable of a later minor, never about a beta.
 
-The chat that asked for the update gets one message that follows it through the restart, ending in "✅ AgEnD updated
-to vX; N/M agents running". On Telegram that message is edited at most every 6 s (a group allows a bot about 20
+The chat that asked for the update gets one message that follows it through the restart. After the package is
+installed it says the fleet is restarting (no checkmark). While agents come up it shows "Starting… N/M". It ends in
+"✅ Update complete — vX · N/M agents ready" only once the new fleet is READY (#2476). On Telegram that message is
+edited at most every 6 s (a group allows a bot about 20
 messages a minute, and every topic shares it with the fleet's other startup messages). When the last step can't land
 during startup (a rate-limit window, the connection not up yet, or the network down), startup goes on and the final
 step is retried for up to 30 minutes: edited in place, or posted as a new message if the old one can't be edited
@@ -1306,7 +1316,7 @@ A single live **Needs you** message in each world's General topic surfaces atten
 
 ## Global search (#2293)
 
-**Search** in the dashboard's sidebar, or **Ctrl+K** / **⌘K**, finds which agent you asked about something. It searches every agent's chat, the messages agents send each other and the Task Board, in one Spotlight-style dialog. Results are grouped by agent, and opening one jumps to the message in its chat. The fleet keeps its own index for this, built off the fleet's loop, with secrets masked. Fleet admins only, never over the public link. Details: [web dashboard](web-dashboard.md#search-ctrlk); `web.search` in [configuration](configuration.md).
+**Search** in the dashboard's sidebar, or **Ctrl+K** / **⌘K**, finds which agent you asked about something. It searches every agent's chat, the messages agents send each other and the Task Board, in one Spotlight-style dialog. Results are grouped by agent, and opening one jumps to the message in its chat. The fleet keeps its own index for this, built off the fleet's loop, with secrets masked. Fleet admins only, here or over the public link (`web.search.public_link: false` keeps it off the link); never a guest. Details: [web dashboard](web-dashboard.md#search-ctrlk); `web.search` in [configuration](configuration.md).
 
 ## Links to where a message sends you (2.2.5)
 

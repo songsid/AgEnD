@@ -312,7 +312,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
 - **按鍵：** ↑↓ 移動、**Enter** 開啟、**Esc** 或點外面關閉。**篩選**可展開：agent、團隊、時間（24 小時、7 天、30 天）、種類，以及**只看我的**（你寫的訊息）。
 - **開啟結果：** 聊天訊息會開啟該 agent 的聊天，跳到那則訊息並閃一下。聊天已不保留的訊息、agent 之間的訊息與任務，會顯示搜尋保留的副本（聊天訊息會連同前後幾則），並提供可前往的聊天或 Task Board。
 - **保留什麼：** 搜尋有自己的索引（AgEnD home 中的 `search.db`）：第一次會用 fleet 已有的資料補齊，之後隨事件更新，保留 `web.search.retention_days`（預設 90 天）。存入前會先遮蔽密鑰；訊息的驗證 id、工作目錄與分支一律不保留。`cross_instance_visibility` 為 `hidden` 的 agent，其往來訊息不會被找到。
-- **誰能用：** 直接連到 dashboard 並登入的 fleet 管理員。訪客與公開連結一律不能用：那裡沒有搜尋列、按鈕或快捷鍵，Ctrl+F 仍是瀏覽器的尋找。`web.search.enabled: false` 可關閉（[設定](configuration.zh-TW.md)）。
+- **誰能用：** 登入 dashboard 的 fleet 管理員，不論是在這台電腦上，還是透過臨時公開連結；手機上也能用（選單裡的**搜尋**，或 🔍 按鈕）。訪客一律不能用：訪客頁面沒有搜尋列、按鈕或快捷鍵，Ctrl+F 仍是瀏覽器的尋找。`web.search.public_link: false` 只在公開連結上關閉搜尋，`web.search.enabled: false` 則全部關閉（[設定](configuration.zh-TW.md)）。
 
 ## 文字欄位的復原與重做
 

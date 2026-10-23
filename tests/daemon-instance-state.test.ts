@@ -989,7 +989,7 @@ describe("Daemon event-driven pane monitor", () => {
         expect(daemon.getInstanceState()).toBe("idle");
         await vi.advanceTimersByTimeAsync(2_975);
       }
-      expect(logger.info.mock.calls.filter(call => call[1] === "Instance execution state changed")).toHaveLength(0);
+      expect([...logger.info.mock.calls, ...logger.debug.mock.calls].filter(call => call[1] === "Instance execution state changed")).toHaveLength(0);
 
       // A real screen change is still promoted to working by the short probe;
       // cosmetic filtering must not create a false-idle delivery window.
