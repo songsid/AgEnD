@@ -1454,12 +1454,13 @@ A **mod** is one file that carries such a look: a theme with its pictures, card 
 
 **Uploads are not counted (2.2.5, #2083).** An agent's uploads (pictures, effects, proposed mods; effects are Canvas Worker, experimental and off by default) are not counted. Each picture slot's size limits, the agent's picture quota and each file's own caps still apply.
 
-**The Look page (2.2.5, #2071)** groups its cards under five headings, each card with a **?** that opens its section of the guide. Over a public link it shows only a notice.
+**The Look page (2.2.5, #2071; regrouped in 2.4, #2347)** groups its cards under four headings, each card with a **?** that opens its section of the guide, and ends with Restore defaults. Over a public link it shows only a notice.
 - **Look:** agents' themes on or off; identity colours, with a sample row; card size.
 - **Your layout:** your sidebar widget.
-- **Styles you write:** custom CSS, and turning it off on this device.
+- **Styles you write:** custom CSS.
 - **Add-ons:** mods, effects and your effect choices (Canvas Worker effects are experimental and off by default).
-- **Advanced:** card upload limits, and Restore defaults.
+
+This device's own switches (effects following reduced motion, custom CSS off here) are in **Settings → Preferences**, and the host-wide cards (the app icon, card upload limits, Canvas Worker effects) in **Settings → Web dashboard**.
 
 ### App icon (#2308)
 

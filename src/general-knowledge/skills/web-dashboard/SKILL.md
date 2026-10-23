@@ -498,9 +498,7 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `noti
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in
 Settings → **Look**, card by card (the app icon, card upload limits and Canvas Worker effects are in **Web dashboard**; following reduced motion and custom CSS off here are in **Preferences**):
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
-  ring colours fall back to the bots' own (all devices). **Effects: follow the system's reduced-motion setting** (this
-  device only, off by default): on, both ambient and Canvas Worker effects stay still while the system asks for reduced
-  motion. Otherwise both play, with one shared one-time chat note and a local action to follow the system.
+  ring colours fall back to the bots' own (all devices).
 - **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
   its chat by the dashboard (data only, no consent needed). They show by default, the public link too; the chat's ⋯
   menu says why one is not showing (choosing the line fixes it there) and offers **Clear the ambient effect** /
@@ -516,7 +514,7 @@ Settings → **Look**, card by card (the app icon, card upload limits and Canvas
   can't load from the internet (put pictures and fonts under Assets: PNG, WebP, JPEG, GIF, WOFF2, 1 MiB in total).
   **Save and try**, then **Keep** within 15 s or it reverts; **Turn off (all devices)**; earlier versions **Use
   this**. If something is hidden or broken, open the page with `?safe=1`, or tick **Turn off custom CSS on this
-  device**.
+  device** (in Preferences).
 - **Mods** — one `.agendmod.json` file carrying a look; importing shows everything first and applies only what you
   tick (custom CSS is never pre-ticked); agents can propose mods (**Review** / **Dismiss**); **Export a mod** writes one.
   Uninstalling removes the mod, not what it applied.
@@ -533,9 +531,12 @@ Settings → **Look**, card by card (the app icon, card upload limits and Canvas
   An unavailable
   isolated transport offers Reload, never an HTML-preview setup step. A motion refusal offers **Play effects anyway**;
   safe mode offers **Leave safe mode**. The dialog names loading, safety and raw unknown codes. Codes stay local; agents get only closed recent blocked reasons without viewer identifiers or counts.
-- **Identity card upload limits** — portrait and banner size limits and per-agent picture quota
-  (`web.appearance.*`); lowering applies at once, raising waits for an admin.
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
+
+Moved out of Look in 2.4 (#2347). **Preferences** (this device only): **Effects: follow the system's reduced-motion
+setting** (off by default): on, both ambient and Canvas Worker effects stay still while the system asks for reduced motion. Otherwise both play, with one shared one-time chat note and a local action to follow the system. And **Turn off custom CSS on this device**. **Web dashboard**: the **App icon**;
+**Identity card upload limits** — portrait and banner size limits and per-agent picture quota (`web.appearance.*`);
+lowering applies at once, raising waits for an admin; and **Experimental: Canvas Worker effects**.
 
 **What an agent can change for the user.** A worker changes only its own look (the `web-appearance` tools); before
 #2064 everything on this page was the person's. Since #2064 (2.2.5) General, coordinators and
