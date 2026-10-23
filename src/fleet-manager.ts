@@ -10627,7 +10627,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return out;
   }
 
-  // ===================== Scheduler ==============
+  // ===================== Scheduler =====================
+
   private async handleScheduleTrigger(schedule: Schedule, stableRunId: string = randomUUID(), retry?: ScheduleRetry): Promise<void> {
     const { target, reply_chat_id, reply_thread_id, label, id, source, silent } = schedule;
     // #1426: the retry of a deferred occurrence says so in every status it records.
@@ -11555,7 +11556,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  // ===================== Topic management ==============
+  // ===================== Topic management =====================
+
   /** Create a forum topic via the adapter. Returns the message_thread_id. */
   async createForumTopic(topicName: string, adapterId?: string): Promise<number | string> {
     const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
