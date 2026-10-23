@@ -1048,7 +1048,7 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span>${dm("reply")}<${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
       </div>
-      <fieldset class=${fc("field dash-perms", ...DASHBOARD_FEATURES.map((k) => `dash_${k}`))}><legend>${L(tn("dashboardAccess"), "defaults.dashboard")}</legend>
+      <fieldset id="g-dash" class=${fc("field dash-perms", ...DASHBOARD_FEATURES.map((k) => `dash_${k}`))}><legend>${L(tn("dashboardAccess"), "defaults.dashboard")}</legend>
         <p class="note">${tn("dashboardDefaultsHint")}</p>
         ${DASHBOARD_FEATURES.map((k) => html`<label key=${k} class="check"><input type="checkbox" checked=${f[`dash_${k}`]}
           onChange=${(e) => set(`dash_${k}`)(e.target.checked)} /><span>${tn(`dashboard_${k}`)}</span></label>`)}

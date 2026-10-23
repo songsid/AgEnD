@@ -15,6 +15,8 @@ const realFetch = (globalThis as any).fetch;
 /** #2383 review: the message search's answer (null: an empty one), and a configuration read held until it opens. */
 let searchAnswer: "404" | "throw" | null = null;
 let rawHold: Promise<void> | null = null;
+/** The fleet's `web` as read, and the authority overview's named hostname — a named tunnel draws more fields. */
+let rawWeb: Record<string, unknown> = {}, namedHost: string | null = null;
 const fakeFetch = async (path: string, init: { method?: string } = {}) => {
   const method = init.method ?? "GET";
   if (path.startsWith("/ui/search")) {
@@ -25,11 +27,11 @@ const fakeFetch = async (path: string, init: { method?: string } = {}) => {
   const body = (() => {
     if (method !== "GET") return { ok: true };
     if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
-    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {} };
+    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: rawWeb };
     if (path === "/api/settings/classic") return { defaults: {}, channels: { "c1": { name: "ops", instanceName: "ops-t1", channelId: "1" } } };
     if (path === "/api/settings/provider-secrets") return [{ id: "openai", display_name: "OpenAI", verifier: "available", token_present: false }];
     if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
-    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [] };
+    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], ...(namedHost ? { namedHost } : {}) };
     if (path === "/api/settings/guests") return { enabled: false, chat: true, explicit: true, instances: [], connections: [], guests: [] };
     if (path === "/api/fleet") return { version: "2.4.0", instances: [] };
     if (path === "/ui/owner-css/state") return { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } };
@@ -63,23 +65,37 @@ const open = async (section: string) => {
 };
 const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"];
 
+/** What a section draws that no entry covers, and the entries whose element it does not draw. */
+async function coverage(sections: string[], skipAbsent: (e: any) => boolean = () => false) {
+  const missing: string[] = [], absent: string[] = [];
+  for (const section of sections) {
+    await open(section);
+    const body = p.root.querySelector(".p-settings .panel-body");
+    const mine = reg.SETTINGS_REGISTRY.filter((e: any) => e.section === section);
+    const covered = (el: any) => mine.some((e: any) => {
+      const target = body.querySelector(e.target);
+      if (!target) return false;
+      for (let n = el; n; n = n.parentElement) if (n === target) return true;
+      return false;
+    });
+    for (const el of body.querySelectorAll("input[id], select[id], textarea[id], fieldset[id]")) if (!covered(el)) missing.push(`${section}: #${el.id}`);
+    for (const e of mine) if (!skipAbsent(e) && !body.querySelector(e.target)) absent.push(`${section}: ${e.id} (${e.target})`);
+  }
+  return [missing, absent];
+}
+/** Drawn only with a fixed hostname (a named tunnel): checked by the named-tunnel case below. */
+const NAMED_ONLY = new Set(["access.public-auto-open", "access.authority-named-link"]);
+
 describe("#2347 §6: the registry is what Settings draws", () => {
   it("every field with an id in a section has an entry, and every entry's element is drawn in its section", async () => {
-    const missing: string[] = [], absent: string[] = [];
-    for (const section of SECTIONS) {
-      await open(section);
-      const body = p.root.querySelector(".p-settings .panel-body");
-      const mine = reg.SETTINGS_REGISTRY.filter((e: any) => e.section === section);
-      const covered = (el: any) => mine.some((e: any) => {
-        const target = body.querySelector(e.target);
-        if (!target) return false;
-        for (let n = el; n; n = n.parentElement) if (n === target) return true;
-        return false;
-      });
-      for (const el of body.querySelectorAll("input[id], select[id], textarea[id]")) if (!covered(el)) missing.push(`${section}: #${el.id}`);
-      for (const e of mine) if (!body.querySelector(e.target)) absent.push(`${section}: ${e.id} (${e.target})`);
-    }
-    expect([missing, absent]).toEqual([[], []]);
+    expect(await coverage(SECTIONS, (e) => NAMED_ONLY.has(e.id))).toEqual([[], []]);
+  }, 30_000);
+  it("with a fixed hostname (a named tunnel): its own fields too — Reopen after start, Also over my named link", async () => {
+    rawWeb = { public_link: { hostname: "chat.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN" } }; namedHost = "chat.example.com";
+    try {
+      expect(await coverage(["access"])).toEqual([[], []]);
+      for (const id of NAMED_ONLY) expect(p.root.querySelector(reg.SETTINGS_REGISTRY.find((e: any) => e.id === id).target), id).not.toBeNull();
+    } finally { rawWeb = {}; namedHost = null; }
   }, 30_000);
   it("every entry has a name in both languages, a known section, and a unique id", async () => {
     const { SETTINGS_SECTIONS } = await import("/assets/app-route.js");
@@ -102,6 +118,18 @@ describe("#2347 §6: what a search finds", () => {
     const want: Record<string, string[]> = { port: ["access.origin-port"], https: ["access.hostname"], domain: ["access.hostname"],
       固定網址: ["access.hostname", "access.origin-port", "access.cloudflare-token"] };
     for (const [q, found] of Object.entries(want)) expect(ids(q), q).toEqual(expect.arrayContaining(found));
+  });
+  it("main's newer settings are found too (the sync after #2391, #2450, #2453): by name, key and words, both languages", () => {
+    const ids = (q: string) => reg.searchSettings(q).map((e: any) => e.id);
+    expect(ids("dashboard access")).toContain("defaults.dashboard");
+    expect(ids("defaults.dashboard")).toContain("defaults.dashboard");
+    expect(ids("權限")).toContain("defaults.dashboard");
+    expect(ids("reopen after restart")).toContain("access.public-auto-open");
+    expect(ids("web.public_link.auto_open")).toContain("access.public-auto-open");
+    expect(ids("自動開啟")).toContain("access.public-auto-open");
+    expect(ids("my named link")).toContain("access.authority-named-link");
+    expect(ids("固定網域")).toContain("access.authority-named-link");
+    expect(ids("no expiry")).toContain("access.public-ttl");
   });
   it("by config key, by its name in the other language, every word of several; nothing for nonsense", () => {
     expect([ids("web.log_tab")[0], ids("自動暫停")[0], ids("public link minutes")[0], ids("zzqx")]).toEqual(["dash.log-tab", "defaults.auto-pause", "access.public-ttl", []]);
