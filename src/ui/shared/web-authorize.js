@@ -12,7 +12,6 @@ register("webauth", {
     authorize: "Authorize this browser",
     waiting: "Waiting for your Confirm in Discord or Telegram ({0})",
     sent: "Sent — confirm it in your DM within 5 minutes.",
-    publicLink: "Not on the temporary public link: open the dashboard directly to authorize.",
     reason_disabled: "Web authority is turned off.",
     reason_loopback_only: "Only this computer can authorize, and this browser is not on it.",
     reason_no_account: "This browser was not signed in as an account (agend web): sign in with /web to authorize.",
@@ -21,6 +20,7 @@ register("webauth", {
     reason_token_rotated: "The dashboard's token changed: sign in again.",
     reason_public_link: "Not on the temporary public link.",
     reason_named_link_off: "Over your named link: turn on \"Also over my named link\" in Settings → Web on this computer.",
+    reason_quick_link_off: "Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Web on this computer.",
     reason_not_session: "Sign in to authorize.",
     reason_other: "This browser can't be authorized here.",
     refusal_pending: "A request is already waiting in your DM.",
@@ -39,7 +39,6 @@ register("webauth", {
     authorize: "授權這個瀏覽器",
     waiting: "等你在 Discord 或 Telegram 按下確認（{0}）",
     sent: "已送出——請在 5 分鐘內到私訊確認。",
-    publicLink: "臨時公開連結上無法授權：請直接開啟儀表板再授權。",
     reason_disabled: "網頁授權已關閉。",
     reason_loopback_only: "只有這台電腦可以授權，而這個瀏覽器不在這台電腦上。",
     reason_no_account: "這個瀏覽器不是用帳號登入的（agend web）：請用 /web 登入後再授權。",
@@ -48,6 +47,7 @@ register("webauth", {
     reason_token_rotated: "儀表板的 token 已變更：請重新登入。",
     reason_public_link: "臨時公開連結上無法授權。",
     reason_named_link_off: "透過固定網域：請在這台電腦的 設定 → 網頁 開啟「也允許透過我的固定網域」。",
+    reason_quick_link_off: "透過臨時公開連結：請在這台電腦的 設定 → 網頁 開啟「也允許透過臨時公開連結」。",
     reason_not_session: "登入後才能授權。",
     reason_other: "這個瀏覽器在這裡無法授權。",
     refusal_pending: "已經有一個請求在你的私訊中等待。",
@@ -62,7 +62,9 @@ register("webauth", {
   },
 });
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
-const REASONS = ["disabled", "loopback_only", "no_account", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "not_session"];
+// The switch and "Only this computer" are changed in Settings on this computer — never over the public link (#2525 review).
+const fixable = (reason) => (reason === "disabled" || reason === "loopback_only") && globalThis.document?.body?.dataset?.publicLink !== "1";
+const REASONS = ["disabled", "loopback_only", "no_account", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "quick_link_off", "not_session"];
 // Until when: the time, with the day when it isn't today (an authorization lasts up to 48 h).
 const clock = (ms) => {
   const d = new Date(ms), today = new Date().toDateString() === d.toDateString();
@@ -70,7 +72,6 @@ const clock = (ms) => {
     : d.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
-const publicLink = () => globalThis.document?.body?.dataset?.publicLink === "1";
 
 // One read per page load, shared by every line that shows it (the composer's, the session menu's): coming back to a chat
 // reads nothing (#1374). It is read again only after an ask, and while a card is pending.
@@ -98,7 +99,9 @@ export function useWebAuthorization() {
   const [deadline, setDeadline] = useState(0), [now, setNow] = useState(() => Date.now());
   const alive = useRef(true);
   const load = async () => {
-    if (publicLink() || guestPage()) return;
+    // §0.2 / §0.3: over the public link too — the server says whether this browser may be authorized there (its link's
+    // option on) or why not; a guest never asks.
+    if (guestPage()) return;
     const body = await readStatus();
     if (!alive.current) return;
     if (signedOut) { setSt(null); setNotice(null); return; }
@@ -144,7 +147,6 @@ export function resetWebAuthorization() { shared = null; answered = false; infli
 export function AuthorizeChip() {
   const a = useWebAuthorization();
   if (guestPage()) return null;
-  if (publicLink()) return html`<p class="webauth-chip note" data-state="public">${tn("publicLink")}</p>`;
   if (!a.st) return null;
   return html`<div class="webauth-chip" data-state=${a.st.state}>${body(a)}${a.notice ? html` <span class="note" role="status">${a.notice}</span>` : null}</div>`;
 }
@@ -163,7 +165,6 @@ export function ComposerAuth() {
   const tip = useRef("wa-tip-" + Math.random().toString(36).slice(2, 8));
   useEffect(() => { setOpen(false); }, [a.st && a.st.state]);              // a new state closes the bubble
   if (guestPage()) return null;
-  if (publicLink()) return html`<span class="webauth-row note" data-state="public" title=${tn("publicLink")}>${tn("publicLink")}</span>`;
   if (!a.st) return null;
   const st = a.st, id = tip.current;
   const said = a.notice ? html`<span class="webauth-notice" role="status">${a.notice}</span>` : null;
@@ -184,7 +185,7 @@ export function ComposerAuth() {
       title=${tn("authorizeWhy")} aria-label=${tn("authorizeWhy")} onClick=${a.ask}>${tn("authorizeShort")}</button>${said}</span>`;
   }
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
-  return html`<span class="webauth-row" data-state="none"><span class="note" title=${why}>${tn("notVerified")}<span class="sr-only">: ${why}</span></span>${st.reason === "disabled" || st.reason === "loopback_only"
+  return html`<span class="webauth-row" data-state="none"><span class="note" title=${why}>${tn("notVerified")}<span class="sr-only">: ${why}</span></span>${fixable(st.reason)
     ? html` · <a href="/settings/web" title=${why}>${tn("settings")}</a>` : null}</span>`;
 }
 
@@ -196,5 +197,5 @@ function body(a) {
     return html`<span class="note">${tn("notVerified")} ·</span> <button type="button" class="btn btn-sm" onClick=${a.ask}>${tn("authorize")}</button>`;
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
   // The fix, where there is one the person can take here: the switch lives in Settings → Web.
-  return html`<span class="note">${tn("notVerified")}: ${why}</span>${st.reason === "disabled" || st.reason === "loopback_only" ? html` <a href="/settings/web">${tn("settings")}</a>` : null}`;
+  return html`<span class="note">${tn("notVerified")}: ${why}</span>${fixable(st.reason) ? html` <a href="/settings/web">${tn("settings")}</a>` : null}`;
 }

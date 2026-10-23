@@ -65,7 +65,7 @@ An explicit owner-adapter General admin action may open the managed public link 
 Public cookies are Secure `__Host-` cookies and bind one exposure. The gateway rejects local header tokens, cookies and codes; public codes and sessions are exposure scoped. Public sessions have a four-hour absolute and 30-minute idle limit, also bounded by earlier link closure. Every public login needs a confirmed 🔐 public notice in the owning General within five seconds, regardless of `notify_login`; the candidate is neither usable nor persisted before confirmation. Code leakage can still grant full web-admin access. Cloudflare terminates TLS; forwarding a link alone does not sign in, but reveals the endpoint to guessing and shared-breaker denial of service. Exact Origin plus CSRF protects browser writes; Host checks are not authentication. Expiry, disable, private close, revoke, owner/binding loss and shutdown close access and withdraw public credentials before child cleanup. An unconfirmed child stop blocks another tunnel.
 
 **Web authority over the admin's named link (#2453), opt-in, off by default.** `web.verified_authority.named_link: true` lets a session on the admin's own named-tunnel hostname be authorized with the account's Confirm card (#1939 §0.2).
-- **Which requests count.** The gateway marks a request as named only when its pinned host is exactly the configured hostname. No header can set or change that, and a quick tunnel never qualifies.
+- **Which requests count.** The gateway marks a request as named only when its pinned host is exactly the configured hostname. No header can set or change that. A quick-tunnel request is governed by the quick-link option below.
 - **Turning it on** is a confirmed Settings change: a General's card or the host CLI. It is never self-confirmed by a web-verified session (#2170), and it can't be changed over the public link.
 - **Turning it off** applies at once. Every receipt from a named-link session then reads as none (`downgraded: named_link_off`). Turning it back on moves the revocation epoch, so those receipts never come back.
 - **`loopback_only`** still wins.
@@ -76,6 +76,20 @@ Public cookies are Secure `__Host-` cookies and bind one exposure. The gateway r
   - `/web revoke`;
   - the option turned off.
 - **A named-link session is never the authority that confirms a held Settings change itself.**
+
+**Web authority over the temporary public link (#1939 §0.3), opt-in, off by default.** `web.verified_authority.quick_link: true` lets a session on the temporary public link that `/web` opens (a quick tunnel, `*.trycloudflare.com`) be authorized with the account's Confirm card too.
+- **Which requests count.** Every gateway request that is not named, known from the listener alone; no header can set or change it. The session must belong to the current exposure, and every quick URL is a new one.
+- **Turning it on** is a confirmed Settings change: a General's card or the host CLI. It is never self-confirmed by a web-verified session (#2170), and it can't be changed over the public link. It is judged on the value in force (the key unset means the default, off). Every time it is turned on, the first time too, the revocation epoch moves in the same write: every authorization given so far ends, and browsers confirm again.
+- **Turning it off** applies at once. Every receipt from a quick-link session then reads as none (`downgraded: quick_link_off`), and those sessions' authorizations are dropped. Turning it back on moves the revocation epoch, so those receipts never come back.
+- **`loopback_only`** still wins.
+- **Risk accepted by turning it on.** The quick URL is a public internet address: anyone who has it reaches the sign-in page. The barrier is the same as the named link's: a sign-in code sent privately to an allowed account, then that account's Confirm for the session. Cloudflare's quick-tunnel service terminates TLS and sees the traffic, including the session cookie; AgEnD starts the quick tunnel with no front authentication. A stolen cookie of an authorized quick-link session can be replayed from anywhere until one of these ends it:
+  - the 30-minute idle or 4-hour absolute public-session limit;
+  - `max_session_hours`;
+  - **Not me** on the notice card;
+  - `/web revoke`;
+  - Close, or the link's expiry;
+  - the option turned off.
+- **A quick-link session is never the authority that confirms a held Settings change itself.**
 
 **Signing in does not protect all local HTTP reads.** `/view` and its GET APIs, including `/api/pane/<instance>`, profiles, avatars and sort order, are public to anyone who can reach the listener with an allowed `Host`. The listener binds `127.0.0.1`, but that still includes:
 - other local users and processes;

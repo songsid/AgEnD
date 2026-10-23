@@ -13,9 +13,10 @@ import type { SessionAuthorization } from "./session-authorizations.js";
 /**
  * Where one request came from (§3.4): `loopback` is this machine naming a loopback host; `lan` is only "not loopback".
  * §0.2 (#2453): `named_link` is the admin's own named tunnel, known only from the public gateway's provenance (its exact
- * configured hostname) — never from the TCP peer (cloudflared is local) or a header.
+ * configured hostname) — never from the TCP peer (cloudflared is local) or a header. §0.3: `quick_link` is every other
+ * request over the public gateway (the temporary quick-tunnel link), likewise from provenance only.
  */
-export type WebPeer = "loopback" | "lan" | "named_link";
+export type WebPeer = "loopback" | "lan" | "named_link" | "quick_link";
 
 /** The account behind a human receipt, written by AgEnD at admission — nothing in a message can set it (§4). */
 export interface HumanAuthority {
@@ -31,13 +32,14 @@ export interface HumanAuthority {
 }
 
 /** §10: what turned a web-verified receipt into none after it was written. */
-export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only" | "named_link_off";
+export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only" | "named_link_off" | "quick_link_off";
 
 /** Why a web request carries no authority — the first §3 check it failed. */
 export type WebAuthorityRefusal =
   | "disabled"             // §10: the server switch (web.verified_authority.enabled) is off
   | "public_link"          // §3.5: a quick-tunnel request or session never qualifies
   | "named_link_off"       // §0.2: over the admin's named link, while web.verified_authority.named_link is off
+  | "quick_link_off"       // §0.3: over the temporary public link, while web.verified_authority.quick_link is off
   | "not_session"          // §3.1: a header token, a CLI call, or no session
   | "not_admin_session"    // §3.1: a guest (or read) session
   | "token_rotated"        // §3.1: the session's token epoch is not the current one
@@ -63,6 +65,8 @@ export interface WebAuthorityPolicy {
   loopbackOnly: boolean;
   /** §0.2: sessions over the admin's own named tunnel may qualify (web.verified_authority.named_link; off by default). */
   namedLink: boolean;
+  /** §0.3: sessions over the temporary public link may qualify (web.verified_authority.quick_link; quickLinkEffective). */
+  quickLink: boolean;
   maxSessionMs: number;
 }
 
@@ -72,7 +76,18 @@ export function webAuthorityPolicy(web: WebConfig | undefined): WebAuthorityPoli
   const hours = typeof v?.max_session_hours === "number" && Number.isFinite(v.max_session_hours)
     ? Math.min(VERIFIED_SESSION_HOURS.max, Math.max(VERIFIED_SESSION_HOURS.min, v.max_session_hours)) : VERIFIED_SESSION_HOURS.default;
   // §0.1: the switch is on unless fleet.yaml says false (nothing carries authority until its account confirms anyway).
-  return { enabled: v?.enabled !== false, loopbackOnly: v?.loopback_only === true, namedLink: v?.named_link === true, maxSessionMs: hours * 3_600_000 };
+  return { enabled: v?.enabled !== false, loopbackOnly: v?.loopback_only === true, namedLink: v?.named_link === true,
+    quickLink: quickLinkEffective(v), maxSessionMs: hours * 3_600_000 };
+}
+
+/** §0.3: the release default of `web.verified_authority.quick_link` — off (the user's decision, 2026-10-23). */
+export const QUICK_LINK_DEFAULT = false;
+/**
+ * §0.3: the quick-link option as in force — its explicit value, else the release default. Every widening is judged on
+ * this (settings-change.ts, settings-effect.ts), never on the raw key: a key removed to inherit is a change of value too.
+ */
+export function quickLinkEffective(v: { quick_link?: unknown } | undefined | null, fallback: boolean = QUICK_LINK_DEFAULT): boolean {
+  return typeof v?.quick_link === "boolean" ? v.quick_link : fallback;
 }
 
 /** Headers a proxy adds; any one of them makes a request `lan`, whatever its peer address (§3.4). */
@@ -125,11 +140,12 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   if (!i.policy.enabled) return refuse("disabled");
   // §3.5 / §0.2: the public link never qualifies — except the admin's own named tunnel (provenance, exact hostname)
   // while the option is on and "Only this computer can authorize" is off. A peer that says named off the gateway is not.
+  // §0.3: the temporary public link (a gateway request that is not named) likewise, by its own option.
   if (i.gateway) {
-    if (i.peer !== "named_link") return refuse("public_link");
+    if (i.peer !== "named_link" && i.peer !== "quick_link") return refuse("public_link");
     if (i.policy.loopbackOnly) return refuse("loopback_only");
-    if (!i.policy.namedLink) return refuse("named_link_off");
-  } else if (i.peer === "named_link") return refuse("public_link");
+    if (i.peer === "named_link" ? !i.policy.namedLink : !i.policy.quickLink) return refuse(i.peer === "named_link" ? "named_link_off" : "quick_link_off");
+  } else if (i.peer === "named_link" || i.peer === "quick_link") return refuse("public_link");
   if (!s) return refuse("not_session");
   if (s.tier !== "admin") return refuse("not_admin_session");
   if (s.surface !== (i.gateway ? "gateway" : "local")) return refuse("public_link");
@@ -167,11 +183,11 @@ export function confirmAfterBody(arrival: WebAuthorityResult, now: WebAuthorityR
 
 /**
  * §10: a receipt's authority as it reads NOW. A web-verified one reads as none, saying why, while the switch is off, once
- * the epoch has moved past the one it was granted under, (lan and named_link) while "Only this computer can authorize" is
- * on, or (named_link, §0.2) while the named-link option is off.
+ * the epoch has moved past the one it was granted under, (every peer but loopback) while "Only this computer can
+ * authorize" is on, or (named_link, §0.2; quick_link, §0.3) while that link's option is off.
  * Platform and none are unchanged. The receiver applies the rule to this, never to the stored value.
  */
-export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; epoch: number }): HumanAuthority {
+export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; quickLink: boolean; epoch: number }): HumanAuthority {
   if (stored.kind !== "web-verified") return stored;
   const down = (downgraded: AuthorityDowngrade): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
   if (!state.enabled) return down("disabled");
@@ -179,6 +195,8 @@ export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; 
   if (state.loopbackOnly && stored.session?.peer !== "loopback") return down("loopback_only");
   // §0.2: the named-link option off — every receipt from a session over it reads as none at once.
   if (!state.namedLink && stored.session?.peer === "named_link") return down("named_link_off");
+  // §0.3: the quick-link option off — likewise for every receipt from a session over the temporary public link.
+  if (!state.quickLink && stored.session?.peer === "quick_link") return down("quick_link_off");
   return stored;
 }
 
@@ -203,7 +221,7 @@ export function isHumanAuthority(v: unknown): v is HumanAuthority {
   // S1's observe-only "web-session" is not authority any more (§0: never an authorization): it fails here, so reads none.
   if (a.kind !== "web-verified" || !actorOk) return false;
   const s = a.session as Record<string, unknown> | undefined;
-  return !!s && typeof s === "object" && typeof s.handle === "string" && !!s.handle && (s.peer === "loopback" || s.peer === "lan" || s.peer === "named_link")
+  return !!s && typeof s === "object" && typeof s.handle === "string" && !!s.handle && (s.peer === "loopback" || s.peer === "lan" || s.peer === "named_link" || s.peer === "quick_link")
     && typeof s.signed_in_at === "string" && typeof s.authorized_at === "string";
 }
 

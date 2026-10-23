@@ -477,9 +477,15 @@ export interface WebVerifiedAuthorityConfig {
   /**
    * #2453 (§0.2): sessions over the admin's own named tunnel (`web.public_link.hostname`) may be authorized too — off by
    * default. Turning it on is confirmed in a General or on the host (never by the asking session); off applies at once
-   * and every receipt from a named-link session reads as none. A quick tunnel never qualifies.
+   * and every receipt from a named-link session reads as none. A quick tunnel is `quick_link`'s (§0.3).
    */
   named_link?: boolean;
+  /**
+   * #1939 §0.3: sessions over the temporary public link (the quick tunnel `/web` opens) may be authorized too — off by
+   * default (the user's decision, 2026-10-23). Turning it on is confirmed in a General or on the host (never by the
+   * asking session); off applies at once and every receipt from a quick-link session reads as none.
+   */
+  quick_link?: boolean;
 }
 
 /** #1920: fleet.yaml `web.guests`. */

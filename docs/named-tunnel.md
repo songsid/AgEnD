@@ -154,7 +154,8 @@ hostname use **Authorize this browser** (see web-dashboard: Who the agent
 sees).
 - **It is off by default.** Turning it on is confirmed in a General or on this
   computer.
-- **Only this exact hostname counts.** A quick tunnel never qualifies.
+- **Only this exact hostname counts.** A quick tunnel has its own option,
+  `quick_link` (see web-dashboard).
 - **The authority ends with the link:** Close, `/web revoke`, expiry, a
   restart (an `auto_open` reopening is a new link), or turning the option off.
 

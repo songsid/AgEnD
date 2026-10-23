@@ -23,6 +23,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // #1408: the app shell's pages, exactly as the classifier names them (a malformed one is answered 400 behind it).
   if (reads && shellRoute(method, path) !== null) return true;
   if (method === "POST" && ["/auth/login", "/auth/logout", "/auth/request-code"].includes(path)) return true;
+  // #1939 §0.2 / §0.3: "Authorize this browser" over the link — this browser's state (GET) and the ask for its Confirm
+  // card (POST, a session write: CSRF and §3 in the handler). The server answers why not while the link's option is off.
+  if ((method === "GET" || method === "POST") && path === "/ui/authorization") return true;
   if (method === "DELETE" && /^\/auth\/sessions(?:\/[0-9a-f]{16})?$/.test(path)) return true;
   if (reads && /^\/api\/(pane|profile|avatar)\/[^/]+$/.test(path)) return true;
   // #1665: the sidebar's order is a host preference now (/ui/prefs, read-only here); the old fleet-wide /api/sort-order

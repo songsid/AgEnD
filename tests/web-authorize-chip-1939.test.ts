@@ -114,11 +114,20 @@ describe("this browser's authorization line", () => {
     expect(c.querySelector("button")).toBeNull();
     expect(c.querySelector('a[href="/settings/web"]') !== null).toBe(settings);
   });
-  it("the temporary public link: says why, never asks the server", async () => {
+  // §0.3: over the public link the server answers too — Authorize while its link's option is on, why not while it is off.
+  it("the temporary public link: asks the server like any page — the option off says how to turn it on (no Settings link: not over the link)", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    const c = await chip({ state: "none", reason: "quick_link_off" });
+    expect(c.textContent).toBe("Not verified: Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Web on this computer.");
+    expect(c.querySelector('a[href="/settings/web"]')).toBeNull();
+    expect(sent.filter(s => s.path === "/ui/authorization").length).toBe(1);
+    const off = await chip({ state: "none", reason: "loopback_only" });
+    expect(off.querySelector('a[href="/settings/web"]'), "#2525 review: no Settings link over the link").toBeNull();
+  });
+  it("the temporary public link with its option on: Authorize, as on this computer", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const c = await chip({ state: "none", reason: "not_authorized" });
-    expect(c.textContent).toBe("Not on the temporary public link: open the dashboard directly to authorize.");
-    expect(sent.filter(s => s.path === "/ui/authorization")).toEqual([]);
+    expect(c.querySelector("button")?.textContent).toBe("Authorize this browser");
   });
   it("one read per page load: a second line (the session menu's) and coming back read nothing", async () => {
     const c = await chip({ state: "verified", until: Date.now() + 3_600_000 });               // an hour ahead: never a fixed date (it expired 2026-10-20 09:00 UTC)

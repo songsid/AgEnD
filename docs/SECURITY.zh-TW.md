@@ -63,7 +63,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 公開 cookie 為 Secure `__Host-`，綁定單次入口。 Gateway 拒絕本機 header token、cookie 與碼；公開碼與 session 都綁定單次入口。公開 session 限四小時／閒置 30 分鐘，入口較早關閉也會使其失效。每次公開登入都須在五秒內確認所屬 General 收到 🔐 公開通知，不受 `notify_login` 影響；確認前候選 session 不可用也不持久化。登入碼外洩仍可授予完整 web-admin 權限。Cloudflare 終止 TLS；光轉傳連結不會登入，但會暴露端點供猜碼、耗盡共用 breaker。完整 Origin 與 CSRF 保護瀏覽器寫入；Host 檢查不是身分認證。到期、停用、私送關閉、revoke、owner／binding 失效與 shutdown 都先關存取、撤回公開憑證，再清子行程；無法確認停止時封鎖下一條 tunnel。
 
 **透過管理員固定網域的網頁授權（#2453），需自行開啟，預設關閉。** `web.verified_authority.named_link: true` 讓管理員自己 named tunnel 網域上的 session 也能透過帳號的確認卡授權（#1939 §0.2）。
-- **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點，quick tunnel 一律不行。
+- **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點。Quick tunnel 的請求由下方的臨時公開連結選項決定。
 - **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。
 - **關閉**立即生效，所有 named-link session 的回執都會視為無（`downgraded: named_link_off`）。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
@@ -74,6 +74,20 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
   - `/web revoke`；
   - 關閉選項。
 - **named-link session 永遠不能作為自行確認待處理設定變更的授權。**
+
+**透過臨時公開連結的網頁授權（#1939 §0.3），需自行開啟，預設關閉。** `web.verified_authority.quick_link: true` 讓 `/web` 開出的臨時公開連結（quick tunnel，`*.trycloudflare.com`）上的 session 也能透過帳號的確認卡授權。
+- **哪些請求算數。** 所有不是 named 的 gateway 請求，只依監聽端判定；任何 header 都無法設定或改變。session 必須屬於目前這次開放，而每個 quick 網址都是新的一次。
+- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。判斷依生效中的值（沒設定就是預設值：關閉）。每次開啟（第一次也一樣）都會在同一次寫入中推進撤銷 epoch：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。
+- **關閉**立即生效，所有 quick-link session 的回執都會視為無（`downgraded: quick_link_off`），那些 session 的授權也會被刪除。再開啟會推進撤銷 epoch，那些回執不會回來。
+- **`loopback_only`** 仍然優先。
+- **開啟即接受的風險。** quick 網址是網際網路上的公開位址：任何拿到它的人都能到登入頁。屏障和固定網域相同：私下傳給允許帳號的登入碼，以及該帳號對這個 session 的確認。Cloudflare 的 quick tunnel 服務終止 TLS，看得到流量，包括 session cookie；AgEnD 啟動 quick tunnel 時前面沒有任何驗證。已授權的 quick-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
+  - 30 分鐘閒置或 4 小時的公開 session 上限；
+  - `max_session_hours`；
+  - 通知卡上的「不是我」；
+  - `/web revoke`；
+  - 按「關閉」或連結到期；
+  - 關閉選項。
+- **quick-link session 永遠不能作為自行確認待處理設定變更的授權。**
 
 **登入並未保護所有本機 HTTP 讀取。** 任何能連到 listener 並帶允許 `Host` 的人，都能讀取 `/view` 及其 GET API，包括 `/api/pane/<instance>`、個人資料、頭像與排序。Listener 只綁定 `127.0.0.1`，但這仍然包括：
 - 本機的其他使用者與程式；

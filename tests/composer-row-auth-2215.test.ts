@@ -99,11 +99,17 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
     const admin = await row({ state: "none", reason: "not_admin" });
     expect([admin.querySelector(".note").getAttribute("title"), admin.querySelector("a")]).toEqual(["Your account is not a fleet admin here.", null]);
   });
-  it("the temporary public link: its sentence (the tooltip holds it too); a guest's page: nothing", async () => {
+  // §0.3: the public link's row is the server's state like any other (its option off: why, in the tooltip; on: Authorize).
+  it("the temporary public link: the option off says why (in the tooltip, no Settings link); on, Authorize; a guest's page: nothing", async () => {
     p.document.body.setAttribute("data-public-link", "1");
-    const pub = await row({ state: "none", reason: "public_link" });
-    expect([pub.dataset.state, pub.textContent, pub.getAttribute("title")]).toEqual(["public", "Not on the temporary public link: open the dashboard directly to authorize.",
-      "Not on the temporary public link: open the dashboard directly to authorize."]);
+    const off = await row({ state: "none", reason: "quick_link_off" });
+    const why = "Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Web on this computer.";
+    expect([off.dataset.state, off.querySelector(".note")?.getAttribute("title"), off.querySelector("a")]).toEqual(["none", why, null]);
+    // #2525 review: the switch and "Only this computer" are changed on this computer — no Settings link over the link.
+    const disabled = await row({ state: "none", reason: "disabled" });
+    expect(disabled.querySelector('a[href="/settings/web"]')).toBeNull();
+    const on = await row({ state: "none", reason: "not_authorized" });
+    expect(on.querySelector("button.webauth-ask")?.textContent).toBe("Authorize");
     p.document.body.removeAttribute("data-public-link");
     p.document.body.setAttribute("data-tier", "guest");
     expect(await row({ state: "none", reason: "not_admin_session" })).toBeNull();

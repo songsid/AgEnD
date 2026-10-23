@@ -66,12 +66,12 @@ describe("provenance: the gateway alone says named, on the exact hostname", () =
     expect([g.send({ host: "other.example.com" }), g.seen]).toEqual([403, []]);
     const quickPinned = gateway(HOST, "abc-def.trycloudflare.com");
     quickPinned.send({ host: "abc-def.trycloudflare.com" });
-    expect(quickPinned.seen).toEqual([{ named: false, peer: "lan" }]);
+    expect(quickPinned.seen).toEqual([{ named: false, peer: "quick_link" }]);              // §0.3: the temporary link
   });
   it("a quick tunnel (no hostname) is never named", () => {
     const g = gateway(undefined, "abc-def.trycloudflare.com");
     g.send({ host: "abc-def.trycloudflare.com", "x-forwarded-host": HOST });
-    expect(g.seen).toEqual([{ named: false, peer: "lan" }]);
+    expect(g.seen).toEqual([{ named: false, peer: "quick_link" }]);
   });
 });
 
@@ -81,8 +81,10 @@ describe("admission (§3 with §0.2)", () => {
   const auth = { handle: "h1", owner: { adapterId: "dc", userId: "7" }, authorizedAt: T0, until: T0 + 48 * HOUR, epoch: 2 };
   const input = (over: Partial<WebAuthorityInput> & { namedLink?: boolean; loopbackOnly?: boolean } = {}): WebAuthorityInput => ({
     session: session("gateway"), gateway: true, peer: "named_link", tokenEpoch: "E", isAdmin: () => true, authorization: auth,
-    policy: { enabled: true, loopbackOnly: over.loopbackOnly ?? false, namedLink: over.namedLink ?? true, maxSessionMs: 48 * HOUR }, epoch: 2, now: T0 + HOUR, ...over });
-  it("a quick tunnel: public_link, option on or off", () => {
+    policy: { enabled: true, loopbackOnly: over.loopbackOnly ?? false, namedLink: over.namedLink ?? true, quickLink: false, maxSessionMs: 48 * HOUR }, epoch: 2, now: T0 + HOUR, ...over });
+  // §0.3: a quick tunnel's request is `quick_link` (its own option, tests/web-authority-quick-link.test.ts); a gateway
+  // request with a local peer is never produced (webPeerOf), and is refused.
+  it("a gateway request whose peer is local (never produced): public_link, option on or off", () => {
     for (const namedLink of [true, false]) expect(evaluateWebAuthority(input({ peer: "lan", namedLink })).refusal).toBe("public_link");
   });
   it("the named link: option off → named_link_off; loopback_only on → loopback_only (it still wins)", () => {
@@ -111,7 +113,7 @@ describe("admission (§3 with §0.2)", () => {
 describe("read now (§10 with §0.2)", () => {
   const receipt = (peer: "named_link" | "lan" | "loopback"): HumanAuthority => ({ kind: "web-verified", actor: { adapter_id: "dc", user_id: "7" },
     session: { handle: "h1", peer, signed_in_at: "t", authorized_at: "t" }, authority_epoch: 3 });
-  const state = (over: Partial<{ enabled: boolean; loopbackOnly: boolean; namedLink: boolean; epoch: number }> = {}) => ({ enabled: true, loopbackOnly: false, namedLink: true, epoch: 3, ...over });
+  const state = (over: Partial<{ enabled: boolean; loopbackOnly: boolean; namedLink: boolean; epoch: number }> = {}) => ({ enabled: true, loopbackOnly: false, namedLink: true, quickLink: false, epoch: 3, ...over });
   it("option off: a named-link receipt reads as none (named_link_off); lan and loopback ones are untouched", () => {
     expect([authorityNow(receipt("named_link"), state({ namedLink: false })).downgraded, authorityNow(receipt("lan"), state({ namedLink: false })).kind,
       authorityNow(receipt("loopback"), state({ namedLink: false })).kind, authorityNow(receipt("named_link"), state()).kind]).toEqual(["named_link_off", "web-verified", "web-verified", "web-verified"]);
@@ -138,7 +140,7 @@ describe("the state: named_link remembered; back on after it was on moves the ep
   it("a file from before #2453 (no named_link) reads as off; one that cannot be written counts the option off", () => {
     const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false })]]);
     const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => files.get(p)!, write: () => { throw new Error("read-only"); } });
-    expect(s.current({ named_link: true })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, epoch: 5 });
+    expect(s.current({ named_link: true })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 5 });
   });
 });
 

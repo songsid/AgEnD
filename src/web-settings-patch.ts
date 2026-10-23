@@ -142,13 +142,14 @@ export type VerifiedAuthorityPatch = {
   loopback_only?: boolean | null;
   max_session_hours?: number | null;
   named_link?: boolean | null;
+  quick_link?: boolean | null;
 };
 export function verifiedAuthorityPatch(raw: unknown): VerifiedAuthorityPatch | null | "invalid" {
   if (raw === undefined) return null;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
   const out: VerifiedAuthorityPatch = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (k === "enabled" || k === "loopback_only" || k === "named_link") { if (v !== null && typeof v !== "boolean") return "invalid"; out[k] = v as boolean | null; continue; }
+    if (k === "enabled" || k === "loopback_only" || k === "named_link" || k === "quick_link") { if (v !== null && typeof v !== "boolean") return "invalid"; out[k] = v as boolean | null; continue; }
     if (k === "max_session_hours") { if (v !== null && !(typeof v === "number" && Number.isFinite(v))) return "invalid"; out[k] = v as number | null; continue; }
     return "invalid";
   }
@@ -159,7 +160,7 @@ export function applyVerifiedAuthorityPatch(current: WebVerifiedAuthorityConfig 
   { next: WebVerifiedAuthorityConfig | undefined; changes: Array<{ path: string[]; value: unknown; remove?: true }> } {
   const next: WebVerifiedAuthorityConfig = { ...current };
   const changes: Array<{ path: string[]; value: unknown; remove?: true }> = [];
-  for (const key of ["enabled", "loopback_only", "max_session_hours", "named_link"] as const) {
+  for (const key of ["enabled", "loopback_only", "max_session_hours", "named_link", "quick_link"] as const) {
     if (!(key in patch)) continue;
     const v = patch[key];
     if (v === null || v === undefined) { delete next[key]; changes.push({ path: ["web", "verified_authority", key], value: undefined, remove: true }); }
