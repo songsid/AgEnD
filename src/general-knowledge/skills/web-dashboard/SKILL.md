@@ -86,14 +86,24 @@ the local address sees every instance's live terminal and the roster (status, co
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
-**Guests (#1920).** Off by default: `web.guests.enabled` (or Settings → Access & security → Guests). Then someone who is
-not a fleet admin sends `/web` and gets a code privately, signing in as their own Discord or Telegram account. A guest
-sees only the agents they can already use in chat: their connection's fleet topics and General (an `open` connection:
-only `web.guests.open_instances`), their own Telegram private ClassicBot room, and ClassicBot group rooms while their
-membership is verified, minus any `web.guests.narrow`. They can chat there unless `web.guests.chat` is false, never send
-a command (text starting with `/` is refused), and the agent sees them as `via web (guest)`. A guest's app has no Fleet,
-View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`. The Guests card is not in
-Settings over the public link.
+**Guests (#1920, #2348).** Off by default: `web.guests.enabled` (or Settings → Access & security → Guests). Then someone
+who is not a fleet admin gets a code privately, by sending `/web` or from an admin's **Send sign-in code**, and signs in
+as their own Discord or Telegram account. What a guest sees:
+- **With explicit grants** (`web.guests.grants`, set in Settings → Access & security → Guests): exactly the agents an
+  admin granted that person, nothing else (default deny once the key exists). The admin picks the person from people
+  AgEnD has seen writing to an agent, ticks their agents, saves (giving access or more agents waits for a fleet admin in
+  General; taking away applies at once and ends their sessions), then presses **Send sign-in code**, a DM, never a post.
+  Each code sent and each change to someone's access is in the event log (`guest_code_sent`, `guest_grant_changed`),
+  shown to admins under **Recent changes** in that section (no agent's Log tab shows them).
+- **Without grants** (before an admin saves the first one): the agents they can already use in chat: their connection's
+  fleet topics and General (an `open` connection: only `web.guests.open_instances`), their own Telegram private
+  ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
+  **Start from today's guests** turns that into grants.
+
+They can chat there unless `web.guests.chat` is false, never send a command (text starting with `/` is refused), and the
+agent sees them as `via web (guest)`. A guest's app has no Fleet, View, Settings or Needs you. To invite someone: turn it
+on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
+send `/web`). The Guests section is not in Settings over the public link.
 
 **Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
 account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
