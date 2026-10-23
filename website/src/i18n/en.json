@@ -16,10 +16,10 @@
     "cta": "Get Started",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT License",
-    "whatsNew": "What's new in 2.2 →"
+    "whatsNew": "What's new in 2.3 →"
   },
   "terminal": {
-    "cmd": "$ agend fleet start",
+    "cmd": "$ agend start",
     "line1": "✓ web-app     — Claude Code  (Telegram)",
     "line2": "✓ api-server  — Codex        (Discord)",
     "line3": "✓ ml-pipeline — Antigravity CLI (Discord)",
@@ -171,7 +171,7 @@
     },
     "step3": {
       "label": "Launch",
-      "cmd": "agend fleet start"
+      "cmd": "agend start"
     },
     "footer": "Open Telegram, Discord or the web dashboard, send a message, start coding from your phone."
   },
