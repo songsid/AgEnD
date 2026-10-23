@@ -72,6 +72,8 @@ describe("#2481 the decision: a crash loop of the installed version, nothing els
   });
   it("never: a deliberate stop — launchd job not loaded, systemd inactive with success", () => {
     expect(judge({ manager: { kind: "launchd", loaded: false } })).toEqual({ failing: false });
+    // A crash loop the person ended by hand (`launchctl bootout`, no `agend stop`): recent attempts remain, the job is gone.
+    expect(judge({ manager: { kind: "launchd", loaded: false }, attempts: { version: V, attempts: [ago(300), ago(200), ago(100)] } })).toEqual({ failing: false });
     expect(judge({ manager: SYSTEMD({ active: "inactive", sub: "dead", result: "success", restarts: 0 }) })).toEqual({ failing: false });
     expect(judge({ manager: SYSTEMD({ active: "failed", sub: "failed", result: "success" }) })).toEqual({ failing: false });
   });
