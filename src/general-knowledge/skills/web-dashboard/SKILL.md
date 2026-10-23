@@ -487,8 +487,9 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `noti
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.
 
-**Advanced** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply & save**
-(edit mode) applies at once, without the bar.
+**Advanced** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**
+(edit mode) adds the edit to the bar, and Save writes it. While it waits, Agents, Agent defaults and the
+connections are off (and the setup wizard); while those have unsaved changes, the editor only reads.
 
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
 **Create and start**.
