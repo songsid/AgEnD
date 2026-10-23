@@ -12,7 +12,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
 import { navigate } from "/assets/app-nav.js";
-import { settingsPath } from "/assets/app-route.js";
+import { sectionPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { modelText } from "/assets/instance-nav.js";
 import { HeaderTools } from "/assets/header-tools.js";
@@ -94,7 +94,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   // A ClassicBot room (classicBot.yaml) keeps Classic's split: its own Settings dialog, and only the actions Settings'
   // Classic rows have (pause / wake) — never the fleet agent's (#1561 review).
   const classic = !!(d && d.kind === "classic");
-  const editInSettings = () => { requestAgentSettings(name, classic ? "classic" : "agent"); navigate(settingsPath(classic ? "classic" : undefined)); };
+  const editInSettings = () => { requestAgentSettings(name, classic ? "classic" : "agent"); navigate(sectionPath(classic ? "classic" : undefined)); };
   const st = inst.status;
   // Until its read is in, the page does not know which kind it is: no actions yet (only Edit is offered once known).
   const items = !d ? [] : classic ? [
