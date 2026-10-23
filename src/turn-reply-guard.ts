@@ -11,6 +11,38 @@ export interface TurnReplyTarget {
   deliveredAt?: number;
 }
 
+/**
+ * #2544: only a person waiting on a channel answer arms the reply-completion
+ * guard. Schedules (silent or not), cross-instance traffic, and AgEnD system
+ * notices must not expect a reply to a person.
+ */
+export function turnExpectsPersonReply(meta: Record<string, string>): boolean {
+  if (meta.from_instance) return false;
+  const source = meta.source ?? "";
+  if (source === "agend-system" || source === "schedule") return false;
+  if (meta.user === "scheduler") return false;
+  if (!meta.chat_id && source !== "web") return false;
+  return true;
+}
+
+/** Short, stable summary of what the guard had seen — interpolated into the channel notice. */
+export function formatReplyDropDetection(
+  turn: {
+    replyAttempted: boolean;
+    replyDelivered: boolean;
+    completionDelivered: boolean;
+    target: { chatId?: string; threadId?: string };
+  },
+  reason: string,
+): string {
+  const bits = [reason, turn.replyDelivered ? "reply-delivered" : "no-adapter-confirmed-reply"];
+  if (turn.replyAttempted) bits.push("reply-attempted");
+  if (turn.completionDelivered) bits.push("completion-delivered");
+  if (turn.target.chatId) bits.push(`chat=${turn.target.chatId}`);
+  if (turn.target.threadId) bits.push(`thread=${turn.target.threadId}`);
+  return bits.join(", ");
+}
+
 export type TurnReplyPhase = "awaiting" | "recovering";
 
 export interface ReplyAttemptToken {
@@ -58,6 +90,18 @@ interface ActiveTurn {
   busyObservedAt: number;
 }
 
+/** Adapter evidence captured while no generation was armed (Codex paste-proof lag). */
+interface PendingToolEvidence {
+  at: number;
+  replyAttempted: boolean;
+  replyAttemptFailed: boolean;
+  replyDelivered: boolean;
+  completionDelivered: boolean;
+  outboundDelivered: boolean;
+}
+
+const PRE_ARM_GENERATION = 0;
+
 /**
  * Generation-scoped evidence for one human-facing turn (or a batch of messages
  * delivered into the same busy interval).  A tool invocation is only an
@@ -76,6 +120,12 @@ export class TurnReplyGuard {
    */
   private pendingActivityAt = 0;
   /**
+   * #2544: a completion tool can begin/settle before paste proof arms the
+   * guard (codex: reply at 22:22:25, task_complete + idle confirm later).
+   * Bounded by the next arm's ingress, same as pendingActivityAt.
+   */
+  private pendingTool: PendingToolEvidence | null = null;
+  /**
    * Fired exactly when a turn actually completes (stale generations are
    * fenced out, like the boolean result). #1209 registers a marker-clear
    * here so every completion path — not just the ones someone remembered —
@@ -87,17 +137,19 @@ export class TurnReplyGuard {
     if (!this.active || this.active.cancelledByUser) {
       const carried = this.pendingActivityAt >= ingressAt ? this.pendingActivityAt : 0;
       this.pendingActivityAt = 0;
+      const pending = this.pendingTool && this.pendingTool.at >= ingressAt ? this.pendingTool : null;
+      this.pendingTool = null;
       this.active = {
         generation: ++this.generation,
         phase: "awaiting",
         cancelledByUser: false,
         target,
         latestObligation: 1,
-        replyAttemptedAt: 0,
-        replyAttemptFailedAt: 0,
-        replyDeliveredAt: 0,
-        completionDeliveredAt: 0,
-        outboundDeliveredAt: 0,
+        replyAttemptedAt: pending?.replyAttempted ? 1 : 0,
+        replyAttemptFailedAt: pending?.replyAttemptFailed ? 1 : 0,
+        replyDeliveredAt: pending?.replyDelivered ? 1 : 0,
+        completionDeliveredAt: pending?.completionDelivered ? 1 : 0,
+        outboundDeliveredAt: pending?.outboundDelivered ? 1 : 0,
         busyObservedAt: carried,
       };
       return this.active.generation;
@@ -107,6 +159,7 @@ export class TurnReplyGuard {
       this.active.busyObservedAt = Math.max(this.active.busyObservedAt, this.pendingActivityAt);
     }
     this.pendingActivityAt = 0;
+    this.pendingTool = null;
     this.active.latestObligation++;
     this.active.target = target;
     return this.active.generation;
@@ -138,7 +191,16 @@ export class TurnReplyGuard {
 
   beginToolAttempt(reply: boolean, completionAction = reply): ReplyAttemptToken | null {
     const active = this.active;
-    if (!active) return null;
+    if (!active) {
+      // #2544: Codex can call reply before paste proof arms this generation.
+      this.stashPendingBegin(reply);
+      return {
+        generation: PRE_ARM_GENERATION,
+        obligation: 0,
+        reply,
+        completionAction,
+      };
+    }
     if (reply) active.replyAttemptedAt = Math.max(active.replyAttemptedAt, active.latestObligation);
     return {
       generation: active.generation,
@@ -149,17 +211,64 @@ export class TurnReplyGuard {
   }
 
   settleToolAttempt(token: ReplyAttemptToken | null, delivered: boolean): void {
+    if (!token) return;
     const active = this.active;
-    if (!token || !active || token.generation !== active.generation) return;
+    if (token.generation === PRE_ARM_GENERATION) {
+      if (active && !active.cancelledByUser) {
+        this.applySettle(active, token, delivered, active.latestObligation);
+        return;
+      }
+      if (active?.cancelledByUser) return;
+      this.stashPendingSettle(token, delivered);
+      return;
+    }
+    if (!active || token.generation !== active.generation) return;
+    this.applySettle(active, token, delivered, token.obligation);
+  }
+
+  private applySettle(active: ActiveTurn, token: ReplyAttemptToken, delivered: boolean, obligation: number): void {
     if (!delivered) {
       // #1377: a definitive failure (adapter returned an error) is recorded so
       // maybeProxyReplyOnTurnEnd can distinguish "in-flight" from "known-failed".
-      if (token.reply) active.replyAttemptFailedAt = Math.max(active.replyAttemptFailedAt, token.obligation);
+      if (token.reply) active.replyAttemptFailedAt = Math.max(active.replyAttemptFailedAt, obligation);
       return;
     }
-    active.outboundDeliveredAt = Math.max(active.outboundDeliveredAt, token.obligation);
-    if (token.reply) active.replyDeliveredAt = Math.max(active.replyDeliveredAt, token.obligation);
-    if (token.completionAction) active.completionDeliveredAt = Math.max(active.completionDeliveredAt, token.obligation);
+    active.outboundDeliveredAt = Math.max(active.outboundDeliveredAt, obligation);
+    if (token.reply) active.replyDeliveredAt = Math.max(active.replyDeliveredAt, obligation);
+    if (token.completionAction) active.completionDeliveredAt = Math.max(active.completionDeliveredAt, obligation);
+  }
+
+  private stashPendingBegin(reply: boolean): void {
+    const prev = this.pendingTool;
+    this.pendingTool = {
+      at: Date.now(),
+      replyAttempted: (prev?.replyAttempted ?? false) || reply,
+      replyAttemptFailed: prev?.replyAttemptFailed ?? false,
+      replyDelivered: prev?.replyDelivered ?? false,
+      completionDelivered: prev?.completionDelivered ?? false,
+      outboundDelivered: prev?.outboundDelivered ?? false,
+    };
+  }
+
+  private stashPendingSettle(token: ReplyAttemptToken, delivered: boolean): void {
+    const at = Date.now();
+    const prev = this.pendingTool ?? {
+      at,
+      replyAttempted: token.reply,
+      replyAttemptFailed: false,
+      replyDelivered: false,
+      completionDelivered: false,
+      outboundDelivered: false,
+    };
+    if (!delivered) {
+      if (token.reply) prev.replyAttemptFailed = true;
+    } else {
+      prev.outboundDelivered = true;
+      if (token.reply) prev.replyDelivered = true;
+      if (token.completionAction) prev.completionDelivered = true;
+    }
+    prev.at = at;
+    this.pendingTool = prev;
   }
 
   snapshot(): TurnReplySnapshot | null {
@@ -199,5 +308,6 @@ export class TurnReplyGuard {
   reset(): void {
     this.active = null;
     this.pendingActivityAt = 0;
+    this.pendingTool = null;
   }
 }

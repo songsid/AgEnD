@@ -10983,6 +10983,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             // overwritten with coordinates the target's adapter cannot address.
             ...(foreignWorld ? {} : { chat_id: reply_chat_id, thread_id: reply_thread_id }),
             user: "scheduler",
+            source: "schedule",
             ...(adapterId ? { adapter_id: adapterId } : {}),
           },
         }, { waitForIdle: true, ...(retryCurrent ? { stillCurrent: retryCurrent } : {}) });

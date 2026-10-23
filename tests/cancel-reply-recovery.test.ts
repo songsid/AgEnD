@@ -28,7 +28,7 @@ import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale, t } from "../src/locale.js";
 import type { Logger } from "../src/logger.js";
-import { TurnReplyGuard } from "../src/turn-reply-guard.js";
+import { formatReplyDropDetection, TurnReplyGuard } from "../src/turn-reply-guard.js";
 
 const dirs: string[] = [];
 const logger = pino({ level: "silent" }) as Logger;
@@ -308,7 +308,12 @@ describe("#1199 real fleet cancel → real Daemon → idle", () => {
     await h.idleConfirmed();
     expect(h.detected).toHaveBeenCalledOnce();
     expect(prompts(h)).toHaveLength(1);
-    expect(h.daemon.deliverDaemonReply).toHaveBeenCalledWith(t("inst.reply_drop_retrying"), "replydrop", "Reply-drop status", expect.objectContaining({ messageId: "m2" }), true);
+    expect(h.daemon.deliverDaemonReply).toHaveBeenCalledWith(
+      t("inst.reply_drop_retrying", formatReplyDropDetection({
+        replyAttempted: false, replyDelivered: false, completionDelivered: false,
+        target: { chatId: "guild", threadId: "room" },
+      }, "no_valid_call")),
+      "replydrop", "Reply-drop status", expect.objectContaining({ messageId: "m2" }), true);
   });
 
   it("a real fleet-routed, already-in-flight adapter POST is acknowledged after cancel", async () => {
@@ -348,7 +353,12 @@ describe("#1199 real fleet cancel → real Daemon → idle", () => {
     await h.idle();
     expect(prompts(h)).toHaveLength(0);
     expect(h.detected).toHaveBeenCalledWith(expect.objectContaining({ recoveryStarted: false, reason: "reply_failed_or_unknown" }));
-    expect(h.daemon.deliverDaemonReply).toHaveBeenCalledWith(t("inst.reply_drop_unknown"), "replydrop", "Unconfirmed reply status", expect.anything(), true);
+    expect(h.daemon.deliverDaemonReply).toHaveBeenCalledWith(
+      t("inst.reply_drop_unknown", formatReplyDropDetection({
+        replyAttempted: true, replyDelivered: false, completionDelivered: false,
+        target: { chatId: "guild", threadId: "room" },
+      }, "reply_failed_or_unknown")),
+      "replydrop", "Unconfirmed reply status", expect.anything(), true);
   });
 });
 

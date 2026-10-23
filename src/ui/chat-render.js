@@ -627,7 +627,9 @@
     if (!Array.isArray(attachments)) return "";
     var cards = !!(opts && opts.htmlCards);
     // #1589: { inlinePreviews: true } (not on the public link) plays media and offers text inline, after the file list.
-    var inline = !!(opts && opts.inlinePreviews);
+    // #2547: { textPreviews: true } offers the text cards (Markdown, CSV/TSV, JSON, code, text) on the public link too:
+    // the same capped, same-origin read and the same rendering (nothing in the file ever runs); media stays local.
+    var inline = !!(opts && opts.inlinePreviews), texts = inline || !!(opts && opts.textPreviews);
     var out = [], after = [];
     attachments.forEach(function (a) {
       // #1565: a file from before the fleet restarted that could not be served again — its name, marked unavailable;
@@ -639,7 +641,8 @@
       if (!a || typeof a.id !== "string" || !/^[0-9a-f]{32}$/.test(a.id)) return;
       if (cards && isHtmlAttachment(a)) after.push('<div class="html-card" data-att="' + a.id + '"></div>');
       var url = "/ui/file/" + a.id;
-      var kind = inline ? attachmentPreviewType(a) : null;
+      var kind = texts ? attachmentPreviewType(a) : null;
+      if ((kind === "video" || kind === "audio") && !inline) kind = null;
       if (kind === "video") after.push('<div data-trust="media" class="att-media"><video class="att-video" controls preload="metadata" src="' + url + '"></video></div>');
       else if (kind === "audio") after.push('<div data-trust="media" class="att-media"><audio class="att-audio" controls preload="metadata" src="' + url + '"></audio></div>');
       else if (kind) after.push('<div class="text-card" data-att="' + a.id + '" data-type="' + kind + '"></div>');
