@@ -328,6 +328,7 @@ Every box you type in (the composer, search, the sidebar filter, Settings, the T
 
 What an agent did, step by step: what it was asked, its replies (never its thinking), each tool call (Read, Edit, Search, Run, Web, MCP, Sub-agent, …, with **Show output**), errors, the end of each turn, compactions, and fleet events such as a crash and restart.
 - **All / Tools / Errors** filter it; **Live** shows while it updates.
+- **Working-state journal** entries show observed execution changes and counts of task and reply references. They appear in **All**, not **Errors**. This journal records observations only; it does not send a continuation or change restart recovery.
 - It opens with the newest 200 steps; **Load older steps** adds 100 at a time, and the page keeps up to 1000.
 - It is off until a fleet admin turns it on: `web.log_tab` (**Settings → Web → Log tab: each agent's steps**), or **Turn on the Log** on the tab itself, which waits for a fleet admin's confirmation.
 - Claude Code shows everything, also after the instance stopped; Codex while it runs; kiro shows the fleet events only. Other CLIs say they have no transcript AgEnD can read. Secret values are masked.

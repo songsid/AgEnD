@@ -62,7 +62,7 @@ register("log", {
     ev_backend_unreachable: "CLI unreachable", ev_startup_backend_unreachable: "CLI unreachable at start", ev_backend_launch_warning: "Launch warning",
     ev_clear_action: "Conversation cleared", ev_normal_exit_action: "Exited", ev_reply_drop_detected: "A reply went missing",
     ev_reply_drop_recovered: "Missing reply recovered", ev_reply_drop_unrecovered: "Missing reply not recovered",
-    ev_supervision_ended: "Supervision ended", ev_tmux_server_crash: "tmux crashed", ev_malformed_tool_call: "Malformed tool call", ev_health_check_error: "Health check error",
+    ev_supervision_ended: "Supervision ended", ev_tmux_server_crash: "tmux crashed", ev_malformed_tool_call: "Malformed tool call", ev_health_check_error: "Health check error", ev_working_state: "Working-state journal",
   },
   "zh-TW": {
     offTitle: "紀錄未開啟",
@@ -100,7 +100,7 @@ register("log", {
     ev_backend_unreachable: "連不到 CLI", ev_startup_backend_unreachable: "啟動時連不到 CLI", ev_backend_launch_warning: "啟動警告",
     ev_clear_action: "對話已清除", ev_normal_exit_action: "已結束", ev_reply_drop_detected: "有回覆遺失",
     ev_reply_drop_recovered: "遺失的回覆已補回", ev_reply_drop_unrecovered: "遺失的回覆沒有補回",
-    ev_supervision_ended: "監督結束", ev_tmux_server_crash: "tmux 當掉", ev_malformed_tool_call: "格式錯誤的工具呼叫", ev_health_check_error: "健康檢查錯誤",
+    ev_supervision_ended: "監督結束", ev_tmux_server_crash: "tmux 當掉", ev_malformed_tool_call: "格式錯誤的工具呼叫", ev_health_check_error: "健康檢查錯誤", ev_working_state: "工作狀態紀錄",
   },
 });
 const tl = (key, ...a) => t(`log.${key}`, ...a);
@@ -179,7 +179,7 @@ export function timeline(steps, events) {
   return out;
 }
 
-const isError = (x) => x.kind === "error" || x.kind === "event" || x.status === "failed" || x.status === "interrupted";
+const isError = (x) => x.kind === "error" || (x.kind === "event" && x.type !== "working_state") || x.status === "failed" || x.status === "interrupted";
 /** Consecutive identical finished tool steps (same tool, subject and status) as one row with a count: a loop shows. */
 export function collapse(items) {
   const out = [];

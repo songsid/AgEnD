@@ -22,16 +22,19 @@ Instance 跑在 tmux 裡，所以關掉終端機什麼事都不會發生。
 
 Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表板。它是一個有側邊欄的 app：
 
-- **聊天**（`/ui`）— 從瀏覽器跟任何 instance 說話。它和那個 instance 的 Telegram 或 Discord topic 是**同一段對話**：你送出的訊息會在 topic 裡顯示成 `🌐 <你的名字>: …`，agent 的回覆兩邊都看得到。可以傳檔案和圖片、按 **Stop** 停止，還有打勾顯示每則訊息走到哪一步。完全沒有聊天平台的 fleet 也能只靠儀表板運作。
-- **Fleet**（`/ui/fleet`）— 任務板、排程和 team，一張 General、team 與 instance 加上即時狀態的**組織圖**，prompt cache 的**快取**分析，以及 fleet 設定。標題列的**文件**會開啟這個網站。
-- **等你處理**（`/ui/needs`）— 所有 bot 等你處理的事集中在一個清單：權限詢問、卡住通知、登入、無法確認送達的訊息。在任何地方處理掉，每個清單都會消失。
+- **聊天**（`/ui`）— 從瀏覽器跟任何 instance 說話。它和那個 instance 的 Telegram 或 Discord topic 是**同一段對話**：你送出的訊息會在 topic 裡顯示成 `🌐 <你的名字>: …`，agent 的回覆兩邊都看得到。可以傳檔案和圖片、按 **Stop** 停止，還有打勾顯示每則訊息走到哪一步。用 ↩ 或 R 回覆指定訊息；從網頁送出的回覆，在 Discord 和 Telegram 上也會是原生回覆。完全沒有聊天平台的 fleet 也能只靠儀表板運作。
+- **Fleet**（`/ui/fleet`）— **任務**看板（專案、主任務與子任務，附留言、依賴關係和歷史紀錄）、排程和 team，一張 General、team 與 instance 加上即時狀態的**組織圖**（組織圖也有**辦公室**檢視，把 fleet 畫成像素風辦公室）、prompt cache 的**快取**分析，以及 fleet 設定。標題列的**文件**會開啟這個網站。
+- **搜尋**（Ctrl+K，或 ⌘K）— 搜尋聊天訊息、agent 之間的訊息和任務，依 agent 分組。在聊天裡按 Ctrl+F 只搜那一個 agent。只有登入的管理員能搜尋；索引預設保留 90 天（`web.search.retention_days`）。
+- **等你處理**（`/ui/needs`）— 所有 bot 等你處理的事集中在一個清單：權限詢問、卡住通知、登入、無法確認送達的訊息。在任何地方處理掉，每個清單都會消失。開啟 `needs_you.task_board` 後，等你處理的任務看板卡片也會加入這個清單。
 - **檢視**（`/view`）— 每個 agent 的即時終端畫面、名單、AI 訂閱用量，以及每個 agent 的個人資料和頭像。
 - **紀錄** — 每個 instance 一份：Claude Code 和 Codex 會顯示從 agent 的 transcript 讀出的每則 prompt、回覆和工具呼叫，加上當機、重啟等 fleet 事件；其他後端只顯示 fleet 事件。預設關閉；fleet 管理員在**設定 → Web**（`web.log_tab`）打開。
-- **設定**（`/settings`）— agent、連線、ClassicBot、General 與 Web 設定，以及整份 `fleet.yaml`，先暫存再一起套用。Bot token 在這裡輸入，存檔前會先向平台確認是哪個 bot。
+- **設定**（`/settings`）— agent、連線、ClassicBot、General 與 Web 設定，以及整份 `fleet.yaml`，先暫存再一起套用。Bot token 在這裡輸入，存檔前會先向平台確認是哪個 bot。在 **Web 外觀** 下可以找到 App 圖示（「加入主畫面」時顯示的圖），以及實驗功能 Canvas Worker 特效，兩者都要手動開啟。
+
+冷啟動或完整重啟時，儀表板會在所有 agent 啟動完成前就打開，並顯示每個 agent 的啟動進度。
 
 **登入。** 在 General 送 `/web`（fleet 管理員），或在主機上執行 `agend web`，然後在登入頁輸入一次性代碼。代碼只能用一次、5 分鐘後失效。直接連到儀表板時，session 預設維持 48 小時（可設定）；透過公開連結開的 session 最多 4 小時、閒置 30 分鐘就結束，連結關閉時也會結束。用 `/web` 的代碼登入時，agent 看到的你就是你的 Discord 或 Telegram 帳號 — 只用來認人，不給任何權限。
 
-**從手機連。** `/web` 也能透過 Cloudflare Quick Tunnel 開一個**臨時公開連結**：你選它之前什麼都不會公開，連結和代碼私下傳給你，預設兩小時後關閉（或用 `/web revoke` 關掉）。拿到它的人可以用你的聊天、終端機、檔案和大部分的儀表板 — 公開連結只擋下少數變更（排程、team、Web 設定、密鑰）— 所以不要轉傳。
+**從手機連。** `/web` 也能透過 Cloudflare Quick Tunnel 開一個**臨時公開連結**：你選它之前什麼都不會公開，連結和代碼私下傳給你，預設兩小時後關閉（或用 `/web revoke` 關掉）。用自己的網域（具名 Cloudflare tunnel，用 `web.public_link.hostname` 設定）時，網址每次都相同，最長可以開到七天，或直到你關掉為止。拿到它的人可以用你的聊天、終端機、檔案和大部分的儀表板 — 公開連結只擋下少數變更（排程、team、Web 設定、密鑰）— 所以不要轉傳。
 
 完整說明：[web-dashboard.zh-TW.md](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
 
@@ -45,7 +48,7 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 - `delegate_task` — 把工作交出去，附上完成標準
 - `report_result` — 回傳結果，並連回當初那個請求
 
-`delivery_status` 讓 agent 知道它送出的訊息有沒有送到。共用的**任務板**和全 fleet 的**決策**讓多步驟的工作一目了然。
+`delivery_status` 讓 agent 知道它送出的訊息有沒有送到。共用的**任務看板**（`Fleet → Tasks`）和全 fleet 的**決策**讓多步驟的工作一目了然。卡片被指派、退回、回答或確認時，相關的 agent 會收到通知，而且每個 agent 同時只做一張卡。只有你派出去的卡片需要你確認；agent 派出的卡片，由那個 agent 確認。
 
 建立和替換 instance 需要允許它的工具權限組：`coordinator` 和 `full`（以及 General instance 自己的權限組）可以 `create_instance`、`start_instance`，只有 `coordinator` 和 `full` 能 `replace_instance`。一般的 worker 可以把工作交給同儕，但不能生出同儕。見[工具權限組](/AgEnD/zh-tw/docs/configuration/#工具權限組)。
 

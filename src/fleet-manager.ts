@@ -271,6 +271,7 @@ import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./i
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
+import type { WorkingStateObservation, WorkingStateReason, WorkingStateReference } from "./working-state-journal.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
@@ -2164,8 +2165,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     this.deliveryOutbox = outbox;
     this.deliveryOutboxRecovered = true;
+    outbox.on("working_references", (names: string[]) => {
+      for (const name of names) this.observeWorkingState(name, "obligations");
+    });
     outbox.on("admitted", () => { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
     outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
+      if (event.deliveryId) {
+        const row = outbox.get(event.deliveryId);
+        if (row) for (const name of new Set([row.sourceInstance, row.targetInstance])) this.observeWorkingState(name, "obligations");
+      }
       this.scheduleDeliveryOutboxPump();
       this.wakeCoordinator?.kick();
       if (event.deliveryId && event.state === "delivered") {
@@ -2339,6 +2347,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Called after a replacement Daemon object is installed in lifecycle.daemons. */
   onDaemonReady(name: string, daemonBootId: string): void {
+    const daemon = this.daemons.get(name);
+    if (daemon?.bootId === daemonBootId) this.listenForWorkingState(name, daemon);
     const outbox = this.deliveryOutbox;
     if (!outbox) return;
     for (const prior of outbox.getUnansweredAccepted(name, daemonBootId)) {
@@ -2358,6 +2368,67 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error({ err, owner: name }, "Could not persist the post-restart reply reminder");
     }
     this.scheduleDeliveryOutboxPump();
+  }
+
+  private workingStateListeners?: WeakSet<Daemon>;
+  private workingStateErrors?: Set<string>;
+
+  /** Attach only to the published owner. Nothing here sends or resumes work. */
+  private listenForWorkingState(name: string, daemon: Daemon): void {
+    if (typeof daemon.getWorkingStateObservation !== "function") return;
+    this.workingStateListeners ??= new WeakSet();
+    if (this.workingStateListeners.has(daemon)) return;
+    this.workingStateListeners.add(daemon);
+    daemon.on("working_state", (event: { reason: WorkingStateReason; observation: WorkingStateObservation }) => {
+      try {
+        if (this.daemons.get(name) !== daemon || !sameInteractionOwner(event.observation.owner, daemon.getInteractionSnapshot().owner)) return;
+        this.observeWorkingState(name, event.reason, event.observation);
+      } catch { /* A malformed/stale observation cannot affect the daemon. */ }
+    });
+    this.observeWorkingState(name, "published");
+  }
+
+  private observeWorkingState(name: string, reason: WorkingStateReason, supplied?: WorkingStateObservation): void {
+    const outbox = this.deliveryOutbox, daemon = this.daemons.get(name);
+    if (!outbox || !daemon || typeof daemon.getWorkingStateObservation !== "function") return;
+    try {
+      const observation = supplied ?? daemon.getWorkingStateObservation();
+      if (!sameInteractionOwner(observation.owner, daemon.getInteractionSnapshot().owner)) return;
+      const references: WorkingStateReference[] = [];
+      const unavailable: Array<"tasks" | "obligations"> = [];
+      let totalReferences = 0;
+      const board = this.scheduler?.db.board;
+      if (!board) unavailable.push("tasks");
+      else try {
+        const tasks = board.listCards({ assignee: name, status: ["claimed", "blocked", "review"], limit: 16 });
+        totalReferences += tasks.total;
+        for (const card of tasks.cards) references.push({ kind: "task", id: card.uuid, version: card.version,
+          status: card.status as "claimed" | "blocked" | "review" });
+      } catch { unavailable.push("tasks"); }
+      try {
+        const obligations = outbox.workingObligations(name);
+        references.push(...obligations.references); totalReferences += obligations.total;
+      } catch { unavailable.push("obligations"); }
+      const entry = outbox.observeWorkingState(name, { version: 1, reason, observedAt: Date.now(), observation,
+        lastActivityAt: this.lastActivity.get(name) ?? null, references, totalReferences, unavailable });
+      if (!entry) return;
+      const state = entry.current.observation.executionState ?? "unknown";
+      const counts = { tasks: entry.current.references.filter(r => r.kind === "task").length,
+        owed: entry.current.references.filter(r => r.kind === "owed").length,
+        waiting: entry.current.references.filter(r => r.kind === "waiting").length,
+        background: entry.current.observation.backgroundWork,
+        total: entry.current.totalReferences, unavailable: entry.current.unavailable };
+      this.logger.info({ name, state, reason, revision: entry.revision, ...counts }, "Working-state journal observed");
+      this.eventLog?.insert(name, "working_state", { state, reason, revision: entry.revision, ...counts,
+        message: `Observed ${state}; tasks ${counts.tasks}, replies owed ${counts.owed}, waiting ${counts.waiting}; ${counts.total} references${counts.background === true ? "; background work running" : ""}${unavailable.length ? "; some sources unavailable" : ""}. Journal only; no recovery action.` });
+      this.emitSseEvent("steps_tick", { instance: name });
+    } catch {
+      this.workingStateErrors ??= new Set();
+      if (!this.workingStateErrors.has(name)) {
+        this.workingStateErrors.add(name);
+        this.logger.warn({ name }, "Could not persist working-state observation; delivery and restart behavior unchanged");
+      }
+    }
   }
 
   /**
@@ -17168,6 +17239,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       log: (level, message, extra) => this.logger[level](extra ?? {}, message),
     });
     db.board.onChange(({ rev, ids, projects, wakes }) => {
+      // Refresh both old and new owners on reassignment; wakes are not an ownership index.
+      if (ids.length) for (const name of this.daemons.keys()) this.observeWorkingState(name, "tasks");
       this.emitSseEvent("tasks", { rev, ids, projects });
       waker.note(wakes);
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
