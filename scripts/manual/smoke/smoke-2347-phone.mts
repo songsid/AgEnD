@@ -27,7 +27,9 @@ const SHOWN = `(() => { const vw = innerWidth, seen = (e) => !!e && getComputedS
   return { path: location.pathname, vw, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     list: seen(document.querySelector(".p-settings > .s-nav")), body: seen(document.querySelector(".p-settings > .panel-body")),
     search: box(document.querySelector("#settingsSearch")), rows, back: seen(document.querySelector(".p-settings .s-back")) ? document.querySelector(".p-settings .s-back").textContent.trim() : null,
-    bar: seen(document.querySelector(".s-pending")) ? box(document.querySelector(".s-pending")) : null, tabs: seen(document.querySelector(".tabs")) ? box(document.querySelector(".tabs")) : null }; })()`;
+    bar: seen(document.querySelector(".s-pending")) ? box(document.querySelector(".s-pending")) : null,
+    barButtons: [...document.querySelectorAll(".s-pending .btn")].filter(seen).map((b) => Math.round(b.getBoundingClientRect().height)),
+    rowColors: [...new Set([...document.querySelectorAll(".p-settings > .s-nav .seg-item")].filter(seen).map((a) => getComputedStyle(a).color))], tabs: seen(document.querySelector(".tabs")) ? box(document.querySelector(".tabs")) : null }; })()`;
 for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "desk", theme: "light", lang: "en" }] as const) {
   const tag = `${c.device}-${c.theme}-${c.lang}`, res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c as any, { path: "/settings" }).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
@@ -47,7 +49,7 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
       ok(res, "list:searchOnTop", !!list.search && list.rows.length > 0 && list.search.b <= list.rows[0].t, [list.search, list.rows[0]]);
       ok(res, "list:rowsInsideScreen", list.rows.length === 8 && list.rows.every((x: any) => x.l >= 0 && x.r <= list.vw), list.rows.map((x: any) => [x.text, x.l, x.r]));
       ok(res, "list:rowsTapSize", list.rows.every((x: any) => x.h >= 44), list.rows.map((x: any) => x.h));
-      ok(res, "list:noneMarked", list.rows.every((x: any) => !x.marked));
+      ok(res, "list:noneMarked", list.rows.every((x: any) => !x.marked) && list.rowColors.length === 1, [list.rows.filter((x: any) => x.marked).map((x: any) => x.text), list.rowColors]);
       ok(res, "list:noOverflow", !list.overflow);
       // A section, on its own.
       await page.locator(".p-settings > .s-nav .seg-item[href='/settings/agent-defaults']").tap();
@@ -60,11 +62,15 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
       await shot("2-section-edited");
       ok(res, "bar:insideScreenAboveTabs", !!edited.bar && edited.bar.l >= 0 && edited.bar.r <= edited.vw && (!edited.tabs || edited.bar.b <= edited.tabs.t + 1), [edited.bar, edited.tabs]);
       ok(res, "section:noOverflow", !edited.overflow);
+      ok(res, "bar:tapTargets", edited.barButtons.length >= 2 && edited.barButtons.every((h: number) => h >= 44), edited.barButtons);
+      ok(res, "bar:gutter", !!edited.bar && edited.bar.l >= 0, edited.bar);
       // Back to the list: the change is still unsaved.
       await page.locator(".p-settings .s-back").tap(); await page.waitForTimeout(600);
       const back = await page.evaluate(SHOWN) as any;
       await shot("3-back-to-list");
       ok(res, "back:list", back.path === "/settings" && back.list && !back.body && !!back.bar, [back.path, back.list, back.body, !!back.bar]);
+      // The bar stays at the bottom, right above the tabs, under a short list too.
+      ok(res, "back:barAtBottom", !!back.bar && !!back.tabs && Math.abs(back.bar.b - back.tabs.t) <= 2, [back.bar, back.tabs]);
       // Agents opens Agents, not the list again.
       await page.locator(".p-settings > .s-nav .seg-item[href='/settings/agents']").tap(); await page.waitForTimeout(800);
       const agents = await page.evaluate(SHOWN) as any;

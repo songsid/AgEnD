@@ -500,8 +500,14 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings.s-index > .s-nav .s-nav-head { padding: var(--s-2) var(--s-3) var(--s-1); }
   .p-settings.s-index > .s-nav .seg-item { min-height: var(--tap); padding: 0 var(--s-3); font-size: var(--fs-md); white-space: normal;
     border-bottom: 1px solid var(--border); }
-  /* In the list no section is open: none is marked as the one shown. */
+  /* In the list no section is open: none is marked as the one shown — every row alike. */
+  .p-settings.s-index > .s-nav .seg-item, .p-settings.s-index > .s-nav .seg-item.active { color: var(--text); }
   .p-settings.s-index > .s-nav .seg-item.active { background: none; font-weight: inherit; }
+  /* The list fills the screen, so unsaved changes' bar stays at the bottom (above the tabs), not right under a short list. */
+  .p-settings.s-index > .s-nav { flex: 1 0 auto; }
+  /* The bar on a phone: the app's 16 px gutter, and Discard / Save a full tap target. */
+  .p-settings > .s-pending { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .p-settings > .s-pending .btn { min-height: var(--tap); }
   .p-settings.s-index > .s-nav .seg-item.active::before { display: none; }
 }
 @media (min-width: 1100px) {
