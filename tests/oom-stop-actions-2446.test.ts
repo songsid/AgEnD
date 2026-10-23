@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { writeFileSync, unlinkSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,4 +56,18 @@ it("also offers controls for a safely stored positive history fallback", async (
   await fm.notifySessionOomStop("worker");
   expect(h.notifyAlert).toHaveBeenCalledTimes(1);
   expect((h.notifyAlert.mock.calls[0] as any)[1].choices).toHaveLength(2);
+});
+
+it("a current real lifecycle OOM stop publishes actions, while a replaced owner cannot", async () => {
+  const h = setup();
+  const daemon = new EventEmitter(); fm.lifecycle.daemons.set("worker", daemon as any);
+  fm.lifecycle.attachIncidentHandlers("worker", daemon as any);
+  daemon.emit("supervision_ended", { name: "worker", reason: "self caused", remedy: "retry", cause: "session_oom" });
+  await vi.waitFor(() => expect(h.notifyAlert).toHaveBeenCalledTimes(1));
+  expect((h.notifyAlert.mock.calls[0] as any)[1].choices).toHaveLength(2);
+  fm.clearNoncePromptsForInstance("worker");
+  fm.lifecycle.daemons.set("worker", new EventEmitter() as any);
+  daemon.emit("supervision_ended", { name: "worker", reason: "self caused", remedy: "retry", cause: "session_oom" });
+  await Promise.resolve();
+  expect(h.notifyAlert).toHaveBeenCalledTimes(1);
 });
