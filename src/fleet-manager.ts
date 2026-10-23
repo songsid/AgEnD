@@ -20248,6 +20248,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   private async doStopAll(): Promise<void> {
+    // The scheduler closes before individual daemons stop. Preserve the owned
+    // task/reply boundary while those stores are still available, not a later
+    // shutdown snapshot whose unavailable sources cannot authorize recovery.
+    for (const name of this.daemons.keys()) this.observeWorkingState(name, "before_stop");
     this.startupMemoryDeadline?.stop();
     this.startupMemoryDeadline = null;
     this.startupComplete = false;

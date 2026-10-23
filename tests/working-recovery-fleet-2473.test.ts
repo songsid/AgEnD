@@ -69,6 +69,18 @@ function fixture() {
   return { fm, d, card, board, paste, enter, stable, dispatch, pressure: (v: string) => { level = v; } };
 }
 describe("#2473 manager recovery wiring", () => {
+  it("captures the task boundary before full shutdown closes the scheduler", async () => {
+    const f = fixture(), outbox = f.fm.deliveryOutbox;
+    // This scenario starts with current work, without a prior interruption.
+    (outbox as any).db.prepare("UPDATE working_state_journal SET prior_json=NULL").run();
+    f.fm.daemons.delete("general");
+    f.d.stop = vi.fn(async () => { f.d.publishWorkingState("before_stop"); });
+    vi.spyOn(f.fm.memoryPressure, "sample").mockReturnValue({ level: "normal" });
+    await f.fm.stopAll();
+    const prior = outbox.getWorkingState("worker")?.prior;
+    expect(prior?.references).toEqual([{ kind: "task", id: f.card.uuid, version: f.card.version, status: "claimed" }]);
+    expect(prior?.unavailable).toEqual([]); expect(f.d.stop).toHaveBeenCalledOnce();
+  });
   it("publishes, revalidates a real claimed card, and dispatches one background-unknown advisory without a human turn", async () => {
     const f = fixture(); expect(f.fm.deliveryOutbox.workingRecovery.get("worker")?.outcome).toBe("deferred");
     await f.stable(); expect(f.fm.workingRecovery.stable()).toBe(true);
