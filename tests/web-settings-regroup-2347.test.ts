@@ -201,5 +201,17 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     expect(css).toMatch(/\.p-settings \.panel-sub\s*\{\s*flex:\s*1 1 0;\s*min-width:\s*0;\s*container:\s*settings-ver \/ inline-size/);
     expect(css).toMatch(/@container settings-ver \(max-width: 56px\)\s*\{\s*\.p-settings \.panel-sub \.pill\.ver\s*\{\s*display:\s*none/);
   });
+  it("the CSS (§7): on a phone an effect tag wraps under its label — a field's, a legend's and a checkbox row's — whole", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const at = css.indexOf(".p-settings .field > label:not(.check) .impact");
+    expect(at).toBeGreaterThan(0);
+    const before = css.slice(0, at);
+    expect(before.slice(before.lastIndexOf("@media"), before.lastIndexOf("@media") + 30)).toMatch(/^@media \(max-width: 899px\)/);
+    expect(css.slice(at, css.indexOf("}", at))).toMatch(/\.p-settings \.field > legend \.impact\s*\{\s*display:\s*block;[^}]*white-space:\s*nowrap/);
+    expect(css).toMatch(/\.p-settings \.check:has\(> \.impact\)\s*\{\s*flex-wrap:\s*wrap/);
+    // The tag's own line, starting where the row's text does (the 16 px box and the gap).
+    expect(css).toMatch(/\.p-settings \.check > \.impact\s*\{\s*flex:\s*1 0 calc\(100% - 16px - var\(--s-2\)\);\s*margin-left:\s*calc\(16px \+ var\(--s-2\)\);\s*white-space:\s*nowrap/);
+  });
 });
 
