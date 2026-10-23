@@ -7,7 +7,9 @@
 //   still there; Agents opens Agents (/settings/agents), not the list again;
 // - a search result opens its section at the field.
 // Desk (1366×900): /settings is unchanged — the list beside Agents, no "‹ Settings".
-// Cases: phone light en, phone dark zh-TW, desk light en. LABEL=before|after names the shots.
+// #2501 review: a short phone (320×568) and one turned (844×390): the list takes the room there is and scrolls (the
+// wheel moves it; a swipe's offset in mobile WebKit), its last row comes clear of the tabs — and of the Save bar, with a change unsaved.
+// Cases: phone light en, phone dark zh-TW, desk light en, short light en, turned dark en. LABEL=before|after names the shots.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [LABEL=before] [PW_ENGINE=webkit] \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2347-phone.mts
 import { writeFileSync } from "node:fs";
@@ -30,8 +32,28 @@ const SHOWN = `(() => { const vw = innerWidth, seen = (e) => !!e && getComputedS
     bar: seen(document.querySelector(".s-pending")) ? box(document.querySelector(".s-pending")) : null,
     barButtons: [...document.querySelectorAll(".s-pending .btn")].filter(seen).map((b) => Math.round(b.getBoundingClientRect().height)),
     rowColors: [...new Set([...document.querySelectorAll(".p-settings > .s-nav .seg-item")].filter(seen).map((a) => getComputedStyle(a).color))], tabs: seen(document.querySelector(".tabs")) ? box(document.querySelector(".tabs")) : null }; })()`;
-for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "desk", theme: "light", lang: "en" }] as const) {
-  const tag = `${c.device}-${c.theme}-${c.lang}`, res: any = (r.cases[tag] = {});
+// The list's last row brought up by the wheel: how far the list moved, and whether that row is the thing at its centre
+// (not the tabs or the Save bar over it).
+const LAST = `(() => { const nav = document.querySelector(".p-settings > .s-nav"), rows = [...nav.querySelectorAll(".seg-item")], last = rows[rows.length - 1];
+  const b = last.getBoundingClientRect(), hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+  const bar = document.querySelector(".s-pending"), tabs = document.querySelector(".tabs"), shown = (e) => !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().height > 0;
+  return { scrollTop: Math.round(nav.scrollTop), scrollable: nav.scrollHeight > nav.clientHeight, onTop: !!hit && last.contains(hit), last: { t: Math.round(b.top), b: Math.round(b.bottom) },
+    bar: shown(bar) ? Math.round(bar.getBoundingClientRect().top) : null, tabs: shown(tabs) ? Math.round(tabs.getBoundingClientRect().top) : null }; })()`;
+// Mobile WebKit has no wheel: there the list's own scroll offset is moved, as a swipe would (it scrolls only if it can).
+const reachLast = async (page: any) => {
+  if (ENGINE === "webkit") await page.evaluate(`(() => { const n = document.querySelector(".p-settings > .s-nav"); n.scrollTop = n.scrollHeight; })()`);
+  else {
+    const nav = await page.locator(".p-settings > .s-nav").boundingBox();
+    await page.mouse.move(nav.x + nav.width / 2, nav.y + Math.min(nav.height / 2, 120));
+    await page.mouse.wheel(0, 3000);
+  }
+  await page.waitForTimeout(500);
+  return page.evaluate(LAST) as Promise<any>;
+};
+const SHORT = { short: { width: 320, height: 568 }, turned: { width: 844, height: 390 } } as const;
+for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "desk", theme: "light", lang: "en" },
+  { device: "phone", theme: "light", lang: "en", size: "short" }, { device: "phone", theme: "dark", lang: "en", size: "turned" }] as const) {
+  const tag = "size" in c ? `${c.size}-${c.theme}-${c.lang}` : `${c.device}-${c.theme}-${c.lang}`, res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c as any, { path: "/settings" }).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
   const { page } = p;
@@ -39,6 +61,31 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
   try {
     ok(res, "mounted", await mounted(page));
     await page.waitForSelector(".p-settings .s-nav", { timeout: 15000 }); await page.waitForTimeout(800);
+    if ("size" in c) {
+      await page.setViewportSize(SHORT[c.size]); await page.waitForTimeout(600);
+      await shot("1-settings");
+      const bare = await reachLast(page);
+      await shot("2-scrolled");
+      res.measured = { bare };
+      ok(res, "short:listScrolls", bare.scrollable && bare.scrollTop > 0, bare);
+      ok(res, "short:lastRowClear", bare.onTop && (bare.tabs === null || bare.last.b <= bare.tabs + 1), bare);
+      // With a change unsaved: the bar is there too, and the last row still comes clear of it.
+      await page.evaluate(`document.querySelector(".p-settings > .s-nav").scrollTop = 0`);
+      await page.locator(".p-settings > .s-nav .seg-item[href='/settings/agent-defaults']").tap();
+      await page.waitForSelector("#g-tp", { timeout: 15000 }); await page.waitForTimeout(500);
+      await page.selectOption("#g-tp", { index: 1 }); await page.waitForTimeout(600);
+      await page.locator(".p-settings .s-back").tap(); await page.waitForTimeout(600);
+      const unsaved = await reachLast(page);
+      await shot("3-unsaved-scrolled");
+      res.measured.unsaved = unsaved;
+      ok(res, "unsaved:barShown", unsaved.bar !== null, unsaved);
+      ok(res, "unsaved:lastRowClearOfBar", unsaved.onTop && unsaved.bar !== null && unsaved.last.b <= unsaved.bar + 1, unsaved);
+      ok(res, "short:noOverflow", !(await page.evaluate(SHOWN) as any).overflow);
+      ok(res, "noPageErrors", pageErrors(p.errors).length === 0, pageErrors(p.errors));
+      await p.ctx.close();
+      for (const who of [p.personKey, "operator"]) fx.fm.webPrefs.write(who, new Map([["nav.filter", null]]));
+      continue;
+    }
     const list = await page.evaluate(SHOWN) as any;
     await shot("1-settings");
     if (c.device === "desk") {

@@ -440,8 +440,9 @@ export function SettingsPanel({ route, navKey }) {
   const searchable = section === "agents" || section === "chat";
   // #2347 §7: on a phone, Settings itself (/settings) is the list of sections with search on top; a section opens on its
   // own with "‹ Settings" back to it. A wider screen always shows the list beside the section (the CSS decides).
+  // Which one is shown is the root's data-view: its class stays exactly the effects producer's ("panel p-settings", #1629).
   const atList = typeof location !== "undefined" && location.pathname === "/settings";
-  return html`<div data-effect-panel="settings" class=${`panel p-settings${atList ? " s-index" : ""}`}>
+  return html`<div data-effect-panel="settings" class="panel p-settings" data-view=${atList ? "index" : "section"}>
     <${PanelHeader} title=${tn("title")} sub=${data && data.version ? html`<a class="pill ver" href=${data.version.includes("-") ? `${RELEASES}/latest` : `${RELEASES}/tag/v${data.version}`} target="_blank" rel="noopener">v${data.version}</a>` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx} onClick=${() => setDialog({ kind: "wizard", key: navKey })}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
