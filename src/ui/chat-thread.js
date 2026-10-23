@@ -14,7 +14,7 @@ import { chatTime, chatTimeFull, onDayChange } from "./chat-time.js";
 import { textLinkSegments } from "/assets/app-route.js";
 
 const R = () => globalThis.AgendChatRender;
-/** #1589: the public link shows attachments as downloads only (its page says so: <body data-public-link="1">). */
+/** #1589: the public link plays no media in the page (its page says so: <body data-public-link="1">); #2547: its text cards show. */
 const PUBLIC_LINK = () => globalThis.document?.body?.dataset?.publicLink === "1";
 /** #1589: how much of a text attachment is shown before "Show all". */
 export const TEXT_PREVIEW_LINES = 200;
@@ -146,7 +146,7 @@ export function createThread(list, scroller, opts) {
     // #2272: reply to it — a hover strip at its top right (phones: swipe left or long-press; R on a focused message).
     const key = msgKey(x);
     const act = opts.canReply?.() === false ? "" : `<div data-trust="thread-control" class="msg-actions"><button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
-    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
   }
   /**
    * A message this page is sending (chat-store.js): its own bubble at once, dimmed with "Sending…" until the server
