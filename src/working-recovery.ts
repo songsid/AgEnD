@@ -129,7 +129,7 @@ export class WorkingRecoveryStore {
       // An admitted/uncertain delivery is owned by the outbox, never replaced by a new candidate.
       if (current?.outcome === "admitted" && current.deliveryId) {
         const delivery = this.db.prepare("SELECT state FROM deliveries WHERE delivery_id=?").get(current.deliveryId) as { state: string } | undefined;
-        if (!delivery || !["delivered", "uncertain", "failed", "cancelled"].includes(delivery.state)) return;
+        if (!delivery || !["delivered", "failed", "cancelled"].includes(delivery.state)) return;
       }
       this.db.prepare(`INSERT OR REPLACE INTO working_recovery_episodes VALUES(?,?,?,?,?,?,NULL)`)
         .run(instance, key, snapshot.managerBootId, JSON.stringify(snapshot), receipt?.outcome ?? "deferred", receipt?.reason ?? "awaiting_stability");

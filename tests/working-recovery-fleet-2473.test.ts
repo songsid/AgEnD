@@ -14,6 +14,7 @@ vi.mock("../src/logger.js", async load => ({ ...await load<typeof import("../src
 import { Daemon } from "../src/daemon.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { Scheduler } from "../src/scheduler/index.js";
+import { recoveryKey } from "../src/working-recovery.js";
 import { EventLog } from "../src/event-log.js";
 import { installFleetProcessHandlers } from "../src/fleet-process-handlers.js";
 import { beginUpdateProgress, setUpdateProgressStage } from "../src/update-marker.js";
@@ -152,6 +153,18 @@ describe("#2473 manager recovery wiring", () => {
     f.fm.workingRecovery.tick(); f.fm.workingRecovery.tick();
     expect(summaries()).toHaveLength(1);
     expect(summaries()[0].targetInstance).toBe("worker");
+  });
+  it("keeps the confirmed work interval across real beginSpawn and session re-checkpoint", async () => {
+    const f = fixture(); await f.stable(); const row = await f.dispatch();
+    expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("delivered");
+    const original = f.fm.deliveryOutbox.getWorkingState("worker").current;
+    f.d.beginSpawn(); f.d.endSpawn();
+    f.fm.observeWorkingState("worker", "process"); // ownership is unknown during launch
+    expect(f.fm.deliveryOutbox.getWorkingState("worker").current.observation.sessionId).toBeNull();
+    f.d.saveSessionId();
+    const replacement = f.fm.deliveryOutbox.getWorkingState("worker").current;
+    expect(replacement.observation.recoveryDeliveryId).toBe(row.deliveryId);
+    expect(recoveryKey("worker", replacement)).toBe(recoveryKey("worker", original));
   });
   it("publishes newly owned session metadata from the existing checkpoint without waiting for a state edge", () => {
     const f = fixture(), outbox = f.fm.deliveryOutbox;

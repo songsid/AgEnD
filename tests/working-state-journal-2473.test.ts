@@ -44,6 +44,21 @@ describe("#2473 stage 1: atomic metadata, no recovery", () => {
     expect(c.getWorkingState("worker")?.prior?.managerBootId).toBe("manager-a");
     expect((c as any).db.prepare("SELECT COUNT(*) n FROM deliveries").get().n).toBe(0);
   });
+  it.each(["session", "configuration"])("never carries a continuation marker into a different %s", field => {
+    const { outbox } = store(); const previous = snapshot();
+    previous.observation = { ...previous.observation, sessionId: "old-session", recoveryDeliveryId: "confirmed-before" };
+    outbox.observeWorkingState("worker", previous);
+    const next = snapshot(); next.observation = { ...next.observation, sessionId: field === "session" ? "fresh-session" : "old-session",
+      configuration: field === "configuration" ? "b".repeat(64) : previous.observation.configuration };
+    expect(outbox.observeWorkingState("worker", next)?.current.observation.recoveryDeliveryId).toBeUndefined();
+  });
+  it("a newly confirmed continuation replaces the inherited interval marker", () => {
+    const { outbox } = store(); const previous = snapshot();
+    previous.observation = { ...previous.observation, sessionId: "same-session", recoveryDeliveryId: "confirmed-before" };
+    outbox.observeWorkingState("worker", previous);
+    const next = { ...previous, observation: { ...previous.observation, recoveryDeliveryId: "confirmed-after" } };
+    expect(outbox.observeWorkingState("worker", next)?.current.observation.recoveryDeliveryId).toBe("confirmed-after");
+  });
   it("snapshots a stop before guard retirement even if the observation otherwise matches", () => {
     const { outbox } = store(); outbox.observeWorkingState("worker", snapshot());
     const stopped = outbox.observeWorkingState("worker", snapshot({ reason: "before_stop" }))!;

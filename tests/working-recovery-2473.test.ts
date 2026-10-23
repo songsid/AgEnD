@@ -61,6 +61,33 @@ describe("stable, durable, pressure-paced working recovery", () => {
     f.store.discover("worker", { ...resumed, managerBootId: "run-3" });
     f.time(360_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(2);
   });
+  it("keeps an ambiguous continuation fenced when a replacement loses its interval marker", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-recovery-ambiguous-")); dirs.push(dir);
+    const path = join(dir, "outbox.db");
+    let outbox = new DeliveryOutbox(path, "boot-1");
+    const base = snapshot();
+    const resumed = { ...base, observation: { ...base.observation, recoveryDeliveryId: "previous-confirmed" } };
+    outbox.observeWorkingState("worker", resumed);
+    outbox.workingRecovery.discover("worker", resumed);
+    const original = outbox.workingRecovery.get("worker")!;
+    expect(outbox.admitWorkingRecovery(original, "continue once")).toBe(true);
+    const row = outbox.claimNext("boot-1", () => "daemon-1", new Set())!;
+    expect(outbox.begin(row.deliveryId, "daemon-1", row.attemptNo)).toBe("begun");
+    expect(outbox.markEnterStarted(row.deliveryId, "daemon-1", row.attemptNo)).toBe(true);
+    outbox.close(); // kill after possible input, before acknowledgment
+    outbox = new DeliveryOutbox(path, "boot-2"); close.push(() => outbox.close());
+    outbox.recoverForBoot("boot-2");
+    outbox.observeWorkingState("worker", { ...base, reason: "before_spawn", observation: { ...base.observation, sessionId: null } });
+    const replacement = outbox.observeWorkingState("worker", base)!;
+    expect(recoveryKey("worker", replacement.current)).toBe(original.key);
+    outbox.complete(row.deliveryId, "daemon-1", row.attemptNo, "uncertain");
+    // Even a changed/missing marker from an older writer cannot replace an uncertain episode.
+    outbox.workingRecovery.discover("worker", base);
+    expect(outbox.workingRecovery.get("worker")?.key).toBe(original.key);
+    expect(outbox.admitWorkingRecovery(outbox.workingRecovery.get("worker")!, "duplicate")).toBe(false);
+    expect(outbox.claimNext("boot-2", () => "daemon-2", new Set())).toBeUndefined();
+    expect(outbox.get(row.deliveryId)?.state).toBe("uncertain");
+  });
   it("names an explicit prior requested action once, without inventing an OOM cause from a process death", () => {
     const f = fixture(); expect(f.store.beginRun("run-a", 123, 1)).toBe("unknown_interruption");
     f.store.requested("foreign-run", "update"); expect(f.store.beginRun("run-b", 124, 2)).toBe("unknown_interruption");

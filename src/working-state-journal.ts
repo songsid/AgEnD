@@ -110,9 +110,21 @@ export class WorkingStateJournal {
 
   observe(instance: string, input: WorkingStateSnapshot): WorkingStateEntry | null {
     if (!id(instance)) throw new Error("Invalid working-state instance");
-    const snapshot = bounded(input);
+    let snapshot = bounded(input);
     return this.db.transaction(() => {
       const previous = this.get(instance);
+      // A confirmed continuation identifies work, not a CLI generation. A
+      // replacement may temporarily lack session ownership; recover the marker
+      // only after it proves the same configuration/session, never for a fresh one.
+      if (!snapshot.observation.recoveryDeliveryId && snapshot.observation.sessionId) {
+        const matching = [previous?.current, previous?.prior].find(s => s?.observation.recoveryDeliveryId
+          && s.observation.configuration === snapshot.observation.configuration
+          && s.observation.sessionId === snapshot.observation.sessionId);
+        if (matching) {
+          snapshot.observation.recoveryDeliveryId = matching.observation.recoveryDeliveryId;
+          snapshot = bounded(snapshot); // The inherited metadata must also fit the byte budget.
+        }
+      }
       // Exact heartbeats do not write or emit. The caller observes changes, not polling.
       const comparable = (s: WorkingStateSnapshot) => JSON.stringify({ ...s, observedAt: 0, reason: "observation" });
       const boundary = snapshot.reason === "before_stop" || snapshot.reason === "before_spawn";
