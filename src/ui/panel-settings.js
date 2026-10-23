@@ -15,7 +15,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { DevicePrefs, PanelHeader, PendingChanges, setTitle } from "/assets/app-shell.js";
 import { navigate, navStore, setLeaveGuard } from "/assets/app-nav.js";
 import { discardHeldPrefs, heldPrefsCount, holdPrefs, onHeldPrefs, savePrefsHeld } from "/assets/app-prefs.js";
-import { chatPath, LEGACY_SETTINGS, settingsPath, SETTINGS_GROUPS, SETTINGS_SECTIONS } from "/assets/app-route.js";
+import { chatPath, LEGACY_SETTINGS, sectionPath, settingsPath, SETTINGS_GROUPS, SETTINGS_SECTIONS } from "/assets/app-route.js";
 import { goToSetting, goToTarget, searchSettings, settingLabel, takePendingSetting } from "./settings-registry.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -438,16 +438,20 @@ export function SettingsPanel({ route, navKey }) {
   const open = dialog && dialog.key === navKey ? dialog : null;
   const close = () => setDialog(null);
   const searchable = section === "agents" || section === "chat";
-  return html`<div data-effect-panel="settings" class="panel p-settings">
+  // #2347 §7: on a phone, Settings itself (/settings) is the list of sections with search on top; a section opens on its
+  // own with "‹ Settings" back to it. A wider screen always shows the list beside the section (the CSS decides).
+  const atList = typeof location !== "undefined" && location.pathname === "/settings";
+  return html`<div data-effect-panel="settings" class=${`panel p-settings${atList ? " s-index" : ""}`}>
     <${PanelHeader} title=${tn("title")} sub=${data && data.version ? html`<a class="pill ver" href=${data.version.includes("-") ? `${RELEASES}/latest` : `${RELEASES}/tag/v${data.version}`} target="_blank" rel="noopener">v${data.version}</a>` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx} onClick=${() => setDialog({ kind: "wizard", key: navKey })}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
-      ${g.sections.map((k) => html`<a key=${k} href=${settingsPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
+      ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
     <div data-trust="panel-content" class="panel-body"><div class="col">
+      <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}

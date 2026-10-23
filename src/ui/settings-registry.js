@@ -3,7 +3,7 @@
 // `labelKey`, or `label`), its config key, and the words people search with (synonyms, in both languages). A test
 // mounts every section and checks each field drawn has an entry, and each entry's element is drawn in its section.
 import { lang, tIn } from "/assets/app-i18n.js";
-import { settingsPath } from "/assets/app-route.js";
+import { sectionPath } from "/assets/app-route.js";
 import { navigate } from "/assets/app-nav.js";
 import "./settings-strings.js";
 import "./chat-strings.js";
@@ -125,12 +125,12 @@ let pending = null;
 /** Go to a setting: its section, then (once drawn) the setting itself, focused and flashed. */
 export function goToSetting(entry) {
   pending = entry ? entry.target : null;
-  navigate(settingsPath(entry.section));
+  navigate(sectionPath(entry.section));
 }
 /** Go to a section and, once it is drawn, to one element in it (a field the bar says to fix). */
 export function goToTarget(section, target) {
   pending = target || null;
-  navigate(settingsPath(section));
+  navigate(sectionPath(section));
 }
 /** The element a search result asked for, once (null: none). */
 export function takePendingSetting() { const p = pending; pending = null; return p; }

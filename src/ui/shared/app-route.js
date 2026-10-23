@@ -87,6 +87,15 @@ export function settingsPath(name) {
   const section = (name && legacySection(name)) || name;
   return section && section !== "agents" ? `/settings/${section}` : "/settings";
 }
+/**
+ * #2347 §7: a section's own address, always with its name (`/settings/agents` too). On a phone `/settings` is the list of
+ * sections, so going *to a section* (the nav, search, a field to fix, "Edit in Settings") uses this; `settingsPath()` is
+ * Settings itself (the app's menu and tabs).
+ */
+export function sectionPath(name) {
+  const path = settingsPath(name);
+  return path === "/settings" ? "/settings/agents" : path;
+}
 /** #2347: an old /settings/<name> address as its new one (with the place in it), or null. */
 export function legacySettingsTarget(pathname) {
   // #2347 §10: Fleet → Config's settings live in Settings now; its project folders are in Agent defaults.

@@ -484,6 +484,26 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings > .s-nav .s-nav-groups { flex-wrap: nowrap; overflow-x: auto; }
   .p-settings > .s-nav .s-nav-group { flex-wrap: nowrap; flex-shrink: 0; }
 }
+/* #2347 §7: on a phone (the app's narrow layout) Settings itself (/settings) is the list of sections — search on top,
+   the two groups as full-width rows — and a section opens on its own with "‹ Settings" back to the list. The strip
+   that scrolled sideways (and cut its ends) is gone there. Wider screens keep the list beside the section. */
+.p-settings .s-back { display: none; }
+@media (max-width: 899px) {
+  .p-settings.s-index > .panel-body { display: none; }
+  .p-settings:not(.s-index) > .s-nav { display: none; }
+  .p-settings > .panel-body .s-back { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); margin: 0 0 var(--s-2);
+    color: var(--accent); font-size: var(--fs-sm); text-decoration: none; }
+  .p-settings .s-back .s-back-here { margin-left: auto; color: var(--text); font-weight: var(--fw-semibold); }
+  .p-settings.s-index > .s-nav { flex-direction: column; align-items: stretch; padding: 0 var(--s-4) var(--s-4); }
+  .p-settings.s-index > .s-nav .s-nav-groups { flex-direction: column; align-items: stretch; flex-wrap: nowrap; overflow: visible; gap: var(--s-4); }
+  .p-settings.s-index > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; }
+  .p-settings.s-index > .s-nav .s-nav-head { padding: var(--s-2) var(--s-3) var(--s-1); }
+  .p-settings.s-index > .s-nav .seg-item { min-height: var(--tap); padding: 0 var(--s-3); font-size: var(--fs-md); white-space: normal;
+    border-bottom: 1px solid var(--border); }
+  /* In the list no section is open: none is marked as the one shown. */
+  .p-settings.s-index > .s-nav .seg-item.active { background: none; font-weight: inherit; }
+  .p-settings.s-index > .s-nav .seg-item.active::before { display: none; }
+}
 @media (min-width: 1100px) {
   .p-settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
   .p-settings > :not(.s-nav):not(.panel-body) { grid-column: 1 / -1; }
