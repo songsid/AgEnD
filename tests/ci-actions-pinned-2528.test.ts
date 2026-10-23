@@ -1,8 +1,10 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
+import { extractUses } from "../scripts/ci/assert-actions-pinned.mjs";
 
 const script = join(process.cwd(), "scripts/ci/assert-actions-pinned.mjs");
 const run = (root: string) => {
@@ -69,6 +71,32 @@ describe("assert-actions-pinned (#2528)", () => {
   });
 });
 
+function usesFromParsed(doc: unknown): string[] {
+  const out: string[] = [];
+  const walk = (n: unknown) => {
+    if (n == null || typeof n !== "object") return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    for (const [k, v] of Object.entries(n as Record<string, unknown>)) {
+      if (k === "uses") out.push(String(v));
+      walk(v);
+    }
+  };
+  walk(doc);
+  return out;
+}
+
+function yamlFiles(dir: string, acc: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) yamlFiles(p, acc);
+    else if (name.endsWith(".yml") || name.endsWith(".yaml")) acc.push(p);
+  }
+  return acc;
+}
+
 const SHA = "11d5960a326750d5838078e36cf38b85af677262";
 const LOCAL = "./.github/actions/published-agend-tarball";
 
@@ -82,7 +110,9 @@ function scratch(kind: "workflows" | "actions", body: string) {
 
 describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528 Prism r1)", kind => {
   it("fails a quoted-key unpinned uses", () => {
-    const dir = scratch(kind, "runs:\n  steps:\n    - \"uses\": actions/checkout@v4\n");
+    const body = "runs:\n  steps:\n    - \"uses\": actions/checkout@v4\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
     try {
       const r = run(dir);
       expect(r.status).toBe(1);
@@ -93,7 +123,9 @@ describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528
   });
 
   it("fails a flow-style unpinned uses", () => {
-    const dir = scratch(kind, "runs:\n  steps: [{uses: actions/checkout@v4}]\n");
+    const body = "runs:\n  steps: [{uses: actions/checkout@v4}]\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
     try {
       const r = run(dir);
       expect(r.status).toBe(1);
@@ -104,10 +136,9 @@ describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528
   });
 
   it("accepts a quoted-key full SHA and a local path", () => {
-    const dir = scratch(
-      kind,
-      `runs:\n  steps:\n    - "uses": actions/checkout@${SHA} # v4.4.0\n    - "uses": ${LOCAL}\n`,
-    );
+    const body = `runs:\n  steps:\n    - "uses": actions/checkout@${SHA} # v4.4.0\n    - "uses": ${LOCAL}\n`;
+    expect(usesFromParsed(yaml.load(body))).toEqual([`actions/checkout@${SHA}`, LOCAL]);
+    const dir = scratch(kind, body);
     try {
       const r = run(dir);
       expect(r.status, r.stderr).toBe(0);
@@ -117,10 +148,78 @@ describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528
   });
 
   it("accepts a flow-style full SHA and a local path", () => {
-    const dir = scratch(
-      kind,
-      `runs:\n  steps: [{uses: actions/checkout@${SHA}}, {uses: ${LOCAL}}]\n`,
-    );
+    const body = `runs:\n  steps: [{uses: actions/checkout@${SHA}}, {uses: ${LOCAL}}]\n`;
+    expect(usesFromParsed(yaml.load(body))).toEqual([`actions/checkout@${SHA}`, LOCAL]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status, r.stderr).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("assert-actions-pinned yaml oracle (#2528)", () => {
+  it("extractUses matches js-yaml uses values on this checkout", () => {
+    const files = yamlFiles(join(process.cwd(), ".github/workflows"))
+      .concat(yamlFiles(join(process.cwd(), ".github/actions")));
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      const text = readFileSync(f, "utf8");
+      const fromYaml = usesFromParsed(yaml.load(text));
+      const hits = extractUses(text);
+      expect(hits.filter(h => h.unsupported), f).toEqual([]);
+      expect(hits.map(h => h.value).sort(), f).toEqual([...fromYaml].sort());
+    }
+  });
+});
+
+describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528 Prism r2)", kind => {
+  it("fails a next-line scalar unpinned uses", () => {
+    const body = "runs:\n  steps:\n    - uses:\n        actions/checkout@v4\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails a unicode-escaped quoted-key unpinned uses", () => {
+    const body = "runs:\n  steps:\n    - \"u\\u0073es\": actions/checkout@v4\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a next-line scalar full SHA and a local path", () => {
+    const body =
+      `runs:\n  steps:\n    - uses:\n        actions/checkout@${SHA}\n    - uses:\n        ${LOCAL}\n`;
+    expect(usesFromParsed(yaml.load(body))).toEqual([`actions/checkout@${SHA}`, LOCAL]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status, r.stderr).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a unicode-escaped quoted-key full SHA and a local path", () => {
+    const body =
+      `runs:\n  steps:\n    - "u\\u0073es": actions/checkout@${SHA}\n    - "u\\u0073es": ${LOCAL}\n`;
+    expect(usesFromParsed(yaml.load(body))).toEqual([`actions/checkout@${SHA}`, LOCAL]);
+    const dir = scratch(kind, body);
     try {
       const r = run(dir);
       expect(r.status, r.stderr).toBe(0);
