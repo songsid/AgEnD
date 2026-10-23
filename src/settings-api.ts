@@ -1,7 +1,7 @@
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
+import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -90,6 +90,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
+  /** #2348 delta §5: one audit entry per person whose granted agents changed with a save (event log, the Log tab). */
+  noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void;
   /** #2348: the people AgEnD has seen in chat (the Guests picker), never a fleet admin or a bot. */
   guestPeople?(): unknown;
   /** #2348: why an account may not be granted (not seen in chat, a fleet admin, an unknown connection), or null. */
@@ -815,6 +817,9 @@ export function handleSettingsRequest(
         }
       }
       const { session: sessionPatch, terminal: terminalPatch } = parsed;
+      // #2499 review: who is saving, asked now, before the save — a session policy saved with it can end this very session
+      // (a shorter sign-in time), and the audit must still name who did it. A confirmation's replay is no one's: null.
+      const auditBy = parsed.guests?.grants !== undefined && !isSettingsReplay(req) ? guestSettingsCaller(req, url, ctx) : null;
       const changes: RawConfigPatch[] = [];
       const web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
@@ -885,11 +890,26 @@ export function handleSettingsRequest(
       }
       // #2348: a grant taken away (or emptied) ends that person's guest access now — sessions, an outstanding code, and
       // remembered browsers — not at their next request. A narrowed grant keeps its sessions; they see less from now on.
+      const ended = new Map<string, number>();
       for (const [key, grant] of Object.entries(parsed.guests?.grants ?? {})) {
         if (grant !== null && grant.instances.length) continue;
         const at = key.indexOf(":");
-        try { ctx.revokeGuestWebSessions?.({ adapterId: key.slice(0, at), userId: key.slice(at + 1) }); }
+        try { ended.set(key, ctx.revokeGuestWebSessions?.({ adapterId: key.slice(0, at), userId: key.slice(at + 1) })?.count ?? 0); }
         catch (err) { ctx.logger.warn({ err }, "settings: could not end a removed guest's sessions"); }
+      }
+      // #2348 delta §5: every grant change is audited, widening (confirmed in General, replayed here) or narrowing (at
+      // once) alike: who, how, the agents added and taken away. Agent names only; never message content. Shown under
+      // Recent changes in Settings → Guests (guestOverview), never to a guest or over the public link.
+      if (parsed.guests?.grants !== undefined && ctx.noteGuestGrantChange) {
+        const was = previous.web?.guests?.grants ?? {}, now = cfg.web?.guests?.grants ?? {};
+        const by = auditBy, via = isSettingsReplay(req) ? "confirmed" as const : "direct" as const;
+        for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+          const a = new Set(Object.hasOwn(was, key) ? was[key]!.instances : []), b = new Set(Object.hasOwn(now, key) ? now[key]!.instances : []);
+          const added = [...b].filter((n) => !a.has(n)), removed = [...a].filter((n) => !b.has(n));
+          if (!added.length && !removed.length) continue;
+          try { ctx.noteGuestGrantChange({ by, via, account: key, added, removed, endedSessions: ended.get(key) ?? 0 }); }
+          catch (err) { ctx.logger.warn({ err }, "settings: could not audit a guest grant change"); }
+        }
       }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));

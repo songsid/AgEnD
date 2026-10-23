@@ -484,6 +484,33 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings > .s-nav .s-nav-groups { flex-wrap: nowrap; overflow-x: auto; }
   .p-settings > .s-nav .s-nav-group { flex-wrap: nowrap; flex-shrink: 0; }
 }
+/* #2347 §7: on a phone (the app's narrow layout) Settings itself (/settings) is the list of sections — search on top,
+   the two groups as full-width rows — and a section opens on its own with "‹ Settings" back to the list. The strip
+   that scrolled sideways (and cut its ends) is gone there. Wider screens keep the list beside the section. */
+.p-settings .s-back { display: none; }
+@media (max-width: 899px) {
+  .p-settings[data-view="index"] > .panel-body { display: none; }
+  .p-settings[data-view="section"] > .s-nav { display: none; }
+  .p-settings > .panel-body .s-back { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); margin: 0 0 var(--s-2);
+    color: var(--accent); font-size: var(--fs-sm); text-decoration: none; }
+  .p-settings .s-back .s-back-here { margin-left: auto; color: var(--text); font-weight: var(--fw-semibold); }
+  .p-settings[data-view="index"] > .s-nav { flex-direction: column; align-items: stretch; padding: 0 var(--s-4) var(--s-4); }
+  .p-settings[data-view="index"] > .s-nav .s-nav-groups { flex-direction: column; align-items: stretch; flex-wrap: nowrap; overflow: visible; gap: var(--s-4); }
+  .p-settings[data-view="index"] > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; }
+  .p-settings[data-view="index"] > .s-nav .s-nav-head { padding: var(--s-2) var(--s-3) var(--s-1); }
+  .p-settings[data-view="index"] > .s-nav .seg-item { min-height: var(--tap); padding: 0 var(--s-3); font-size: var(--fs-md); white-space: normal;
+    border-bottom: 1px solid var(--border); }
+  /* In the list no section is open: none is marked as the one shown — every row alike. */
+  .p-settings[data-view="index"] > .s-nav .seg-item, .p-settings[data-view="index"] > .s-nav .seg-item.active { color: var(--text); }
+  .p-settings[data-view="index"] > .s-nav .seg-item.active { background: none; font-weight: inherit; }
+  /* The list fills the screen, so unsaved changes' bar stays at the bottom (above the tabs), not right under a short list;
+     on a short screen (a small phone, one turned) it takes the room there is and scrolls (#2501 review). */
+  .p-settings[data-view="index"] > .s-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* The bar on a phone: the app's 16 px gutter, and Discard / Save a full tap target. */
+  .p-settings > .s-pending { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .p-settings > .s-pending .btn { min-height: var(--tap); }
+  .p-settings[data-view="index"] > .s-nav .seg-item.active::before { display: none; }
+}
 @media (min-width: 1100px) {
   .p-settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
   .p-settings > :not(.s-nav):not(.panel-body) { grid-column: 1 / -1; }
@@ -875,15 +902,45 @@ img.amb-p { object-fit: contain; }
   padding: var(--s-1) var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); color: var(--text);
   box-shadow: var(--shadow-2); }
 .webauth-tip[hidden] { display: none; }
-/* #1920 phase 3: Settings → Web → Guests. */
+/* #1920 phase 3 / #2348: Settings → Access & security → Guests. The fixed template (#2330): flat rows split by a rule,
+   no rounded box or fill; an edited row is .s-dirty (the shared straight bar + tint, square). A state is coloured text. */
 .s-guests .guest-names { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px var(--s-3); max-height: 220px; overflow: auto;
-  padding: var(--s-1) var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); }
+  padding: var(--s-1) 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .s-guests .guest-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.s-guests .guest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
-.s-guests .guest-row { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); }
-.s-guests .guest-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
+.s-guests .guest-list, .s-guests .g-pick { list-style: none; margin: 0 0 var(--s-3); padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+.s-guests .guest-row, .s-guests .g-cand { padding: var(--s-3) 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.s-guests .guest-row.s-dirty { border-radius: 0; margin-left: 0; align-self: stretch; padding-left: calc(var(--s-2) + 3px); padding-right: var(--s-2); }
+.s-guests .guest-row.g-removed .g-id strong { text-decoration: line-through; color: var(--text-3); }
+.s-guests .g-head { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; min-width: 0; }
+.s-guests .g-av { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); font-weight: 600; font-size: var(--fs-sm); }
+.s-guests .g-id { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.s-guests .g-id .note { white-space: normal; }
+.s-guests .g-state { flex: 0 1 auto; max-width: 100%; margin-left: auto; font-size: var(--fs-sm); color: var(--text-3); text-align: right; }
+.s-guests .g-state.on { color: var(--ok); }
+.s-guests .g-state.sent { color: var(--accent); }
+.s-guests .g-state.warn { color: var(--danger); text-align: left; flex-basis: 100%; margin-left: calc(28px + var(--s-2)); }
+.s-guests .g-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: var(--s-2) 0 0 calc(28px + var(--s-2)); }
+.s-guests .g-chip { padding: 1px var(--s-2); border: 1px solid color-mix(in srgb, var(--text-3) 55%, transparent); border-radius: 0; font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; }
+.s-guests .g-edit { margin: var(--s-2) 0 0 calc(28px + var(--s-2)); }
+.s-guests .guest-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: var(--s-2) 0 0 calc(28px + var(--s-2)); }
+.s-guests .g-error { color: var(--danger); margin-left: calc(28px + var(--s-2)); }
+.s-guests .g-search { width: 100%; max-width: 360px; margin: var(--s-1) 0 var(--s-2); }
+.s-guests .g-cand { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: var(--s-2); }
+.s-guests .g-legacy { margin: var(--s-2) 0; }
+.s-guests .g-audit { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.s-guests .g-audit-row { padding: var(--s-1) 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.s-guests .g-audit-row .g-when { color: var(--text-3); }
+.s-guests .g-add { color: var(--ok); }
+.s-guests .g-del { color: var(--danger); }
+.s-guests .g-when, .s-guests .g-wrote { white-space: nowrap; }
 .s-guests .guest-narrow-edit { margin-top: var(--s-2); }
 .s-guests .guest-away { color: var(--text-3); }
+@media (max-width: 560px) {
+  .s-guests .g-state { flex-basis: 100%; margin-left: calc(28px + var(--s-2)); text-align: left; }
+  .s-guests .g-cand { grid-template-columns: 28px minmax(0, 1fr); }
+  .s-guests .g-cand > .btn { grid-column: 2; justify-self: start; }
+}
 /* #1939 S2b: this browser's authorization, under the composer and in the session menu (one compact line). */
 .webauth-chip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin: var(--s-1) 0 0; font-size: var(--fs-xs); }
 .webauth-chip .webauth-ok { color: var(--ok); }

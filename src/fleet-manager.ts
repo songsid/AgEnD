@@ -1005,6 +1005,11 @@ type CleanupWatch = { receipt: UpdateReceipt; summary: RestartProgressSummary; f
 /** #1774: an instance's identity when one of its replies was sent (the name's generation, its daemon then). */
 interface WebChatIdentity { generation: number; daemon: unknown }
 
+/** #2499 review: one line of Settings → Guests' Recent changes (guestOverview), from the event log. */
+export type GuestAuditEntry =
+  | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number }
+  | { kind: "code"; at: number; account: string; name: string; outcome: string };
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -6686,6 +6691,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     connections: Array<{ id: string; type: string; mode: "open" | "allowlist"; named: string[] }>;
     guests: Array<{ adapterId: string; userId: string; name: string; platform: string; scope: string[]; reach: string[]; sessions: number; lastSeen: number | null; devices: number; narrow: string[] | null;
       grant: { name?: string; instances: string[] } | null; code?: { at: number; outcome: string; expiresAt?: number; reason?: string; platform?: string; startUrl?: string } }>;
+    audit: GuestAuditEntry[];
   } {
     this.initializeWebSessions();
     const cfg = this.fleetConfig?.web?.guests;
@@ -6715,8 +6721,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...(sent.outcome.kind === "dm_failed" ? { reason: sent.outcome.reason, platform: sent.outcome.platform, ...(sent.outcome.startUrl ? { startUrl: sent.outcome.startUrl } : {}) } : {}) } } : {}) };
     }).sort((x, y) => (y.lastSeen ?? -1) - (x.lastSeen ?? -1));
     // #2348: `explicit` — grants are the scope (default deny); false: the derived scope of #1920, until grants are saved.
-    return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, explicit: cfg?.grants !== undefined, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), connections, guests };
+    return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, explicit: cfg?.grants !== undefined, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), connections, guests,
+      audit: this.guestAudit() };
   }
+
+  /**
+   * #2499 review: the guest audit an admin reads — the newest grant changes and admin-sent codes from the event log
+   * (`fleet` rows: no agent's Log shows them). Through guestOverview only: Settings' admin gate, never over the public
+   * link, never a guest's. The person's name as the card shows it; a session handle stays on the server (`by` → whether
+   * a person saved it here or it was confirmed in General).
+   */
+  private guestAudit(limit = FleetManager.GUEST_AUDIT_SHOWN): GuestAuditEntry[] {
+    if (!this.eventLog) return [];
+    // One read, newest first by row id: a total order (created_at is to the second), so the cap never drops a newer row.
+    let rows: Array<{ created_at: string; event_type: string; payload: Record<string, unknown> | null }> = [];
+    try { rows = this.eventLog.latestOfTypes("fleet", ["guest_grant_changed", "guest_code_sent"], limit); } catch { return []; }
+    const names = (list: unknown) => (Array.isArray(list) ? list.filter((n): n is string => typeof n === "string") : []);
+    return rows.flatMap((r): GuestAuditEntry[] => {
+      const p = r.payload ?? {}, account = typeof p.account === "string" ? p.account : "";
+      const at = account.indexOf(":");
+      if (at <= 0) return [];
+      const name = this.webPerson({ adapterId: account.slice(0, at), userId: account.slice(at + 1) }).name;
+      const when = Date.parse(r.created_at.includes("T") ? r.created_at : `${r.created_at.replace(" ", "T")}Z`);
+      return r.event_type === "guest_grant_changed"
+        ? [{ kind: "grant" as const, at: when, account, name, via: p.via === "confirmed" ? "confirmed" as const : "direct" as const, added: names(p.added), removed: names(p.removed),
+          endedSessions: typeof p.endedSessions === "number" ? p.endedSessions : 0 }]
+        : [{ kind: "code" as const, at: when, account, name, outcome: typeof p.outcome === "string" ? p.outcome : "unknown" }];
+    });
+  }
+  private static readonly GUEST_AUDIT_SHOWN = 20;
 
   /**
    * #2348: Settings → Guests' picker — the people AgEnD has seen in chat (seen_people, from human receipts: never a bot,
@@ -6742,6 +6775,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.isFleetAdmin(userId, adapterId)) return "a fleet admin signs in as an admin, not as a guest";
     if (!this.deliveryOutbox?.isOpen || !this.deliveryOutbox.isSeenPerson(adapterId, userId)) return "only someone AgEnD has seen in chat can be given guest access";
     return null;
+  }
+
+  /**
+   * #2348 delta §5: a grant changed with a save — one event-log entry per person, shown in Settings → Guests' Recent
+   * changes (guestOverview: admin-only, never over the public link or to a guest): who saved it (an admin's
+   * session handle, the header token, or null when replayed for a confirmation), whether it applied at once or was
+   * confirmed in General, the agents added and taken away, and the sessions a removal ended. Never message content.
+   */
+  noteGuestGrantChange(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void {
+    this.logger.info({ account: change.account, via: change.via, added: change.added.length, removed: change.removed.length }, "Guest access changed in Settings");
+    try { this.eventLog?.insert("fleet", "guest_grant_changed", { ...change }); } catch { /* the log line stands */ }
   }
 
   /** #2348: an admin's Send sign-in code, per admin (the caller): at most this many in ADMIN_CODE_WINDOW_MS. */

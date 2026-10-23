@@ -15,7 +15,7 @@ import { adminUserIdError, adminUserIdPattern, botHandle, TokenEnvNote, TokenFie
 import { DiscordServerPicker } from "./settings-discord.js";
 import { startOperation } from "./settings-apply.js";
 import { goToTarget } from "./settings-registry.js";
-import { settingsPath } from "/assets/app-route.js";
+import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalog } from "./settings-catalog.js";
@@ -90,7 +90,7 @@ export function InEffect({ text, why }) {
 export function Inherited({ text, builtin, from }) {
   const go = (e) => { e.preventDefault(); goToTarget(from.section, from.target); };
   return html`<p class="s-inherited">${tn("inheritedValue", text)}${builtin ? html` <${DefaultMark} />` : null}${from
-    ? html` · <a href=${`${settingsPath(from.section)}${from.target || ""}`} onClick=${go}>${tn(from.label)}</a>` : null}</p>`;
+    ? html` · <a href=${`${sectionPath(from.section)}${from.target || ""}`} onClick=${go}>${tn(from.label)}</a>` : null}</p>`;
 }
 /** A value as the inherited line says it: on/off, minutes (0 = off), a backend's name; anything else as it is. */
 export function valueText(v, kind) {

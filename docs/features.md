@@ -1359,17 +1359,17 @@ See [web-dashboard.md](web-dashboard.md).
 
 ## Guest web sign-in (2.2.5)
 
-**Off by default (#1920).** With it on, someone who is not a fleet admin can sign in to the dashboard as their own Discord or Telegram account and see only the agents they can already use in chat. **Settings → Access & security → Guests** turns it on and lists who signed in, and a guest's app shows only what a guest can use.
+**Off by default (#1920).** With it on, someone who is not a fleet admin can sign in to the dashboard as their own Discord or Telegram account and see only the agents they can already use in chat. **Settings → Access & security → Guests** turns it on and decides who may sign in, and a guest's app shows only what a guest can use.
 
 **Turning it on.**
 - **Settings → Access & security → Guests** has:
   - the **Guest sign-in** and **Guests may chat** switches;
-  - for each `open` connection, the agents its guests may reach;
-  - every guest account: name, platform and id, the agents it reaches, its sessions and devices, last active, and **Narrow**, **Remove narrowing** and **Sign out**.
+  - **People with access** and **Add a person** (see [Explicit grants](#guest-web-sign-in-225) below);
+  - before any grant exists, **Start from today's guests**, which turns each current guest's reach into a grant for you to review and save.
 - **Applying changes:**
-  - A change that widens what guests reach waits for a fleet admin's confirmation: turning it on, turning chat on, adding agents, or lifting a narrowing.
+  - A change that widens what guests reach waits for a fleet admin's confirmation: turning it on, turning chat on, or giving someone a person or an agent they did not have.
   - A change that narrows applies at once.
-  - The card is disabled over the public link.
+  - The section is not offered over the public link.
 - **Or in `fleet.yaml`:**
 
 ```yaml
@@ -1382,6 +1382,8 @@ web:
     narrow:                # "<connection id>:<user id>": only takes away
       "<connection id>:123456789": [helper]
     session: { absolute_hours: 12, idle_minutes: 120 }   # 1–24 h, 15–720 min
+    grants:                # #2348: once present, the whole scope (open_instances and narrow give nothing)
+      "<connection id>:123456789": { name: Ada, instances: [helper] }
 ```
 
 **Getting a code.**
@@ -1395,8 +1397,10 @@ web:
 **Explicit grants (2.4, #2348).** **Settings → Access & security → Guests** lets an admin choose each guest and their agents:
 - **People with access:** one row per person, with their agents, whether they are signed in, and **Edit agents**, **Send sign-in code**, **Remove access** and **Sign out**.
 - **Add a person:** search the people AgEnD has seen writing to an agent (never a bot, never a fleet admin). Choosing one pre-ticks the agents they wrote to.
+- **How it looks:** one flat row per person with a letter avatar, the agents as chips and the state on the right (signed in, code sent, or why a DM failed; under the name on a phone). An edited row has the straight bar.
 - **Saving:** every edit is unsaved until **Save**. Adding a person, or an agent to someone, waits for a fleet admin's OK in General; taking away applies at once, and removing someone ends their sessions, code and remembered browsers right away.
-- **Send sign-in code** is an action, not part of Save. It DMs a saved grant's account its code (once a minute per person; never posted anywhere else). If the DM fails, the row says why — on Telegram, with the bot's start link to pass on. The code works on the dashboard reached directly and, if it is open when the code is sent, on the public link. Each send is in the event log.
+- **Send sign-in code** is an action, not part of Save. It DMs a saved grant's account its code (once a minute per person; never posted anywhere else). If the DM fails, the row says why — on Telegram, with the bot's start link to pass on. The code works on the dashboard reached directly and, if it is open when the code is sent, on the public link.
+- **Audit:** the event log records each code an admin sends (`guest_code_sent`: who, to whom, the outcome) and each saved change to someone's agents (`guest_grant_changed`: who saved it, whether it applied at once or was confirmed in General, the agents added and removed, and the sessions a removal ended). The section's **Recent changes** list shows the newest of them, to admins only (never a guest, never over the public link). Every guest sign-in is also posted in General.
 - **In `fleet.yaml`:** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …] } }`. Once `grants` exists it is the whole scope — default deny: connection access, rooms, `open_instances` and `narrow` give nothing then. **Start from today's guests** stages each current guest's reach as a grant.
 
 **What a guest reaches.** It is worked out on every request and never stored. With `grants`, only the agents granted to that account (of those that still exist). Without them (#1920's derived access):

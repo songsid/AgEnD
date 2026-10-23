@@ -154,3 +154,35 @@ describe("#2347 §10: Fleet → Config is gone; its project folders are in Agent
     nav.navigate("/settings");
   });
 });
+
+// #2347 §7: on a phone /settings is the list of sections; a section has its own address (Agents too), and "‹ Settings".
+describe("#2347 §7: the list of sections and a section on its own (phone)", () => {
+  it("sectionPath: a section's own address, Agents included; settingsPath() stays Settings itself", () => {
+    expect(["agents", "agent-defaults", "access", "classic", undefined].map((k) => route.sectionPath(k)))
+      .toEqual(["/settings/agents", "/settings/agent-defaults", "/settings/access", "/settings/chat#classicbot", "/settings/agents"]);   // an old name: its place
+    expect([route.settingsPath(), route.settingsPath("agents"), route.parseRoute ? route.parseRoute("/settings/agents")?.section : "agents"]).toEqual(["/settings", "/settings", "agents"]);
+  });
+  it("at /settings the panel is the list (data-view=index); at a section it is not; every row links to its section's own address", async () => {
+    nav.navigate("/settings"); await open("agents");
+    const panel = () => p.root.querySelector(".p-settings");
+    const atList = [panel().getAttribute("class"), panel().getAttribute("data-view"), p.root.querySelectorAll(".s-nav .seg-item").map((a: any) => a.getAttribute("href"))];
+    nav.navigate("/settings/agent-defaults"); await open("agent-defaults");
+    const back = p.root.querySelector(".p-settings .panel-body .s-back");
+    expect([atList, panel().getAttribute("class"), panel().getAttribute("data-view"), back?.getAttribute("href"), back?.textContent.trim()]).toEqual([
+      // #1629: the root's class is the effects producer's, exactly — which view is shown is data-view.
+      ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/agent-defaults", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/advanced"]],
+      "panel p-settings", "section", "/settings", "SettingsAgent defaults"]);
+    nav.navigate("/settings");
+  });
+  it("the CSS: on a phone the list is alone at /settings, a section alone with ‹ Settings; the list marks no section", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const phone = css.slice(css.indexOf(".p-settings .s-back { display: none; }"));
+    for (const rule of [/\.p-settings\[data-view="index"\] > \.panel-body\s*\{\s*display:\s*none/, /\.p-settings\[data-view="section"\] > \.s-nav\s*\{\s*display:\s*none/,
+      /\.p-settings\[data-view="index"\] > \.s-nav \.seg-item\.active::before\s*\{\s*display:\s*none/, /\.p-settings > \.panel-body \.s-back\s*\{\s*display:\s*flex/,
+      // #2501 review: on a short screen the list takes the room there is and scrolls (it fills a tall one).
+      /\.p-settings\[data-view="index"\] > \.s-nav\s*\{\s*flex:\s*1 1 auto;\s*min-height:\s*0;\s*overflow-y:\s*auto/]) expect(phone).toMatch(rule);
+    expect(css.slice(css.indexOf(".p-settings .s-back { display: none; }") - 40, css.indexOf(".p-settings .s-back { display: none; }") + 200)).toMatch(/@media \(max-width: 899px\)/);
+  });
+});
+

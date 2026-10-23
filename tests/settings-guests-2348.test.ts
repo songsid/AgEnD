@@ -133,6 +133,10 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     const w = await open();
     const cands = () => [...p.root.querySelectorAll(".g-cand")].map((c: any) => c.getAttribute("data-account"));
     expect(cands(), "Alice already has access").toEqual(["dc:333", "tg:444"]);
+    // On a narrow screen an agent's name stays whole (never broken at its hyphens) and so does "last seen <time>".
+    const sam = p.root.querySelector('.g-cand[data-account="dc:333"]');
+    expect([...sam.querySelectorAll(".g-wrote")].map((x: any) => x.textContent)).toEqual(["beta", "gamma"]);
+    expect(sam.querySelector(".g-when").textContent).toMatch(/^Last seen /i);
     await w.type(w.$("#grantsSearch"), "sam");
     expect(cands()).toEqual(["dc:333"]);
     await w.click(w.button("Choose", p.root.querySelector('.g-cand[data-account="dc:333"]')));
@@ -140,6 +144,22 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     expect([w.name(w.row("dc:333"), "beta").checked, w.name(w.row("dc:333"), "gamma").checked, w.name(w.row("dc:333"), "alpha").checked]).toEqual([true, true, false]);
     await w.apply();
     expect(w.writes().map((s) => s.body)).toEqual([{ guests: { grants: { "dc:333": { name: "Sam Ortiz", instances: ["beta", "gamma"] } } } }]);
+  });
+  it("#2499 review: Recent changes lists who got or lost which agents and the codes sent; empty says so", async () => {
+    const audit = [
+      { kind: "grant", at: 1_790_000_000_000, account: "dc:111", name: "Alice", via: "direct", added: [], removed: ["beta"], endedSessions: 2 },
+      { kind: "code", at: 1_789_999_000_000, account: "tg:222", name: "Bob", outcome: "dm_failed" },
+      { kind: "grant", at: 1_789_998_000_000, account: "dc:111", name: "Alice", via: "confirmed", added: ["alpha", "beta"], removed: [], endedSessions: 0 },
+      { kind: "code", at: 1_789_997_000_000, account: "tg:222", name: "Bob", outcome: "busy" },
+      { kind: "code", at: 1_789_996_000_000, account: "tg:222", name: "Bob", outcome: "some_new_outcome" },
+    ];
+    await open(undefined, { audit });
+    const rows = [...p.root.querySelectorAll("#grantsRecentList .g-audit-row")].map((r: any) => r.textContent.replace(/\s+/g, " ").trim());
+    expect(rows.map((r) => r.replace(/^.*?(Alice|Bob)/, "$1"))).toEqual([
+      "Alice −beta · applied at once · 2 session(s) ended", "Bob sign-in code not sent (the DM did not go through)", "Alice +alpha +beta · confirmed in General",
+      "Bob sign-in code not sent (too many guest codes are waiting to be used — try again in a few minutes)", "Bob sign-in code not sent (some_new_outcome)"]);
+    await open(undefined, { audit: [] });
+    expect(p.root.querySelector("#grantsRecentNone")?.textContent).toMatch(/No change/);
   });
   it("a grant with no agent says so on the row", async () => {
     const w = await open();

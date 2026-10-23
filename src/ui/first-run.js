@@ -5,7 +5,7 @@ import { html } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { navigate } from "/assets/app-nav.js";
-import { settingsPath } from "/assets/app-route.js";
+import { sectionPath } from "/assets/app-route.js";
 import { Icon } from "/assets/ui-icons.js";
 
 register("firstRun", {
@@ -52,7 +52,7 @@ export function useFirstRun() {
 export function FirstRunCard({ onConnect }) {
   const shown = useFirstRun();
   if (!shown) return null;
-  const connect = onConnect || (() => { local.set({ wizard: true }); navigate(settingsPath("bots")); });
+  const connect = onConnect || (() => { local.set({ wizard: true }); navigate(sectionPath("bots")); });
   return html`<section class="card first-run" aria-labelledby="first-run-title">
     <h3 id="first-run-title"><${Icon} name="plug" size=${14} /> ${t("firstRun.title")}</h3>
     <p>${t("firstRun.body")}</p>
