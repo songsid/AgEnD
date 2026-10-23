@@ -68,3 +68,65 @@ describe("assert-actions-pinned (#2528)", () => {
     }
   });
 });
+
+const SHA = "11d5960a326750d5838078e36cf38b85af677262";
+const LOCAL = "./.github/actions/published-agend-tarball";
+
+function scratch(kind: "workflows" | "actions", body: string) {
+  const dir = mkdtempSync(join(tmpdir(), "agend-actions-yml-"));
+  const sub = kind === "workflows" ? ".github/workflows" : ".github/actions/x";
+  mkdirSync(join(dir, sub), { recursive: true });
+  writeFileSync(join(dir, sub, kind === "workflows" ? "x.yml" : "action.yml"), body);
+  return dir;
+}
+
+describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528 Prism r1)", kind => {
+  it("fails a quoted-key unpinned uses", () => {
+    const dir = scratch(kind, "runs:\n  steps:\n    - \"uses\": actions/checkout@v4\n");
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails a flow-style unpinned uses", () => {
+    const dir = scratch(kind, "runs:\n  steps: [{uses: actions/checkout@v4}]\n");
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a quoted-key full SHA and a local path", () => {
+    const dir = scratch(
+      kind,
+      `runs:\n  steps:\n    - "uses": actions/checkout@${SHA} # v4.4.0\n    - "uses": ${LOCAL}\n`,
+    );
+    try {
+      const r = run(dir);
+      expect(r.status, r.stderr).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a flow-style full SHA and a local path", () => {
+    const dir = scratch(
+      kind,
+      `runs:\n  steps: [{uses: actions/checkout@${SHA}}, {uses: ${LOCAL}}]\n`,
+    );
+    try {
+      const r = run(dir);
+      expect(r.status, r.stderr).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
