@@ -1631,8 +1631,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // own the policy decision to prefer a possible duplicate over a permanent
       // stale X/N status.
       // #2482: after a stop every pending edit fails the same way — one line per stop, not one per edit.
-      const stopped = !this.desiredRunning;
-      if (!stopped || this.stoppedEditFailures++ === 0) {
+      const stopped = this.desiredRunning === false;
+      const firstSinceStop = !this.stoppedEditFailures;
+      if (stopped) this.stoppedEditFailures = (this.stoppedEditFailures ?? 0) + 1;
+      if (!stopped || firstSinceStop) {
         console.warn(
           `[discord] editMessage failed; refusing new-message fallback because delivery outcome may be unknown: ${
             err instanceof Error ? err.message : String(err)
