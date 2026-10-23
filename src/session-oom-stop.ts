@@ -8,7 +8,10 @@ import { t } from "./locale.js";
 import type { InteractionOwner } from "./backend/types.js";
 
 export const SESSION_OOM_STOP_FILE = "session-oom-stop.json";
-export function sessionOomStopHint(): string { return t("inst.session_oom_hold"); }
+export function sessionOomStopHint(state?: SessionOomStopState): string {
+  return t(state?.blocked && (state.record !== null || state.confirmedOom === true)
+    ? "inst.session_oom_hold" : "inst.session_oom_evidence_unreadable");
+}
 const MAX_BYTES = 4096;
 export interface SessionOomStop {
   version: 1;
@@ -21,19 +24,46 @@ export interface SessionOomStop {
   count: number;
   victim: { pid: number; at: number };
 }
-export type SessionOomStopState = { blocked: false } | { blocked: true; record: SessionOomStop | null; revision: string | null };
+export type SessionOomStopState = { blocked: false } | { blocked: true; record: SessionOomStop | null; revision: string | null; confirmedOom?: true };
 /** Internal action receipt: capture at the explicit command, consume only inside its serialized transition. */
 export interface SessionOomRetry { readonly revision: string | null; readonly legacyRevision: string | null }
 export class SessionOomStoppedError extends Error {
   readonly code = "SESSION_OOM_STOPPED";
-  constructor(busy = false) { super(t(busy ? "inst.session_oom_retry_busy" : "inst.session_oom_hold")); this.name = "SessionOomStoppedError"; }
+  constructor(busy = false, state?: SessionOomStopState) { super(busy ? t("inst.session_oom_retry_busy") : sessionOomStopHint(state)); this.name = "SessionOomStoppedError"; }
 }
 const owned = (uid: number) => typeof process.getuid !== "function" || uid === process.getuid();
 const boundedId = (x: unknown): x is string => typeof x === "string" && x.length > 0 && Buffer.byteLength(x) <= 1024 && !/[\u0000-\u001f\u007f]/.test(x);
 const integer = (x: unknown): x is number => Number.isSafeInteger(x) && (x as number) >= 0;
 const fingerprint = (stat: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }) =>
   createHash("sha256").update(JSON.stringify([stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs])).digest("hex");
-const legacyCache = new Map<string, { revision: string; blocked: boolean }>();
+const legacyCache = new Map<string, { revision: string; blocked: boolean; confirmedOom: boolean }>();
+const LEGACY_SCAN_MAX_BYTES = 1024 * 1024;
+
+/** Read only the true final JSONL record, including wide/CJK pane captures. */
+function lastLegacyRecord(fd: number, size: number): string | null {
+  let position = size, bytesRead = 0, end: number | null = null;
+  const chunks: Buffer[] = [];
+  while (position > 0 && bytesRead < LEGACY_SCAN_MAX_BYTES) {
+    const length = Math.min(16 * 1024, position, LEGACY_SCAN_MAX_BYTES - bytesRead);
+    const chunk = Buffer.alloc(length);
+    position -= length;
+    // A short read means the captured stat no longer describes a complete record.
+    if (readSync(fd, chunk, 0, length, position) !== length) return null;
+    bytesRead += length;
+    chunks.unshift(chunk);
+    for (let i = chunk.length - 1; i >= 0; i--) {
+      const byte = chunk[i]!;
+      if (end === null) {
+        if (byte === 10 || byte === 13 || byte === 32 || byte === 9) continue;
+        end = position + i + 1;
+      }
+      if (byte === 10) {
+        return Buffer.concat(chunks).subarray(i + 1, end - position).toString("utf8");
+      }
+    }
+  }
+  return position === 0 ? Buffer.concat(chunks).subarray(0, end ?? 0).toString("utf8") : null;
+}
 function legacyHistoryRevision(instanceDir: string): string | null {
   try {
     const stat = lstatSync(join(instanceDir, "crash-history.jsonl"));
@@ -54,30 +84,28 @@ function legacySessionStop(instanceDir: string): SessionOomStopState {
     if (!stat.isFile() || !owned(stat.uid)) return { blocked: true, record: null, revision: null };
     revision = `legacy:${fingerprint(stat)}`;
     const cached = legacyCache.get(instanceDir);
-    let blocked = true;
-    if (cached?.revision === revision) blocked = cached.blocked;
+    let blocked = true, confirmedOom = false;
+    if (cached?.revision === revision) { blocked = cached.blocked; confirmedOom = cached.confirmedOom; }
     else {
       fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       const opened = fstatSync(fd);
       if (opened.dev !== stat.dev || opened.ino !== stat.ino) return { blocked: true, record: null, revision: null };
       // The final structured record names the last crash decision. Do not scan
       // transcripts, parse human logs, or guess that an old OOM is still current.
-      const bytes = Buffer.alloc(Math.min(stat.size, 64 * 1024));
-      const offset = Math.max(0, stat.size - bytes.length);
-      const n = readSync(fd, bytes, 0, bytes.length, offset);
-      const lines = bytes.subarray(0, n).toString("utf8").trimEnd().split("\n");
-      if (offset > 0 && lines.length === 1) blocked = true;
+      const last = lastLegacyRecord(fd, stat.size);
+      if (last === null) blocked = true;
       else {
-        const last = lines.at(-1);
         const record = last ? JSON.parse(last) : null;
-        blocked = !!last && (!record || typeof record !== "object" || typeof record.instance !== "string"
-          || typeof record.timestamp !== "string" || !Number.isFinite(Date.parse(record.timestamp))
-          || !["window", "server"].includes(record.crashType) || record.reason === "session_oom");
+        const valid = !!record && typeof record === "object" && typeof record.instance === "string"
+          && typeof record.timestamp === "string" && Number.isFinite(Date.parse(record.timestamp))
+          && ["window", "server"].includes(record.crashType);
+        confirmedOom = valid && record.reason === "session_oom";
+        blocked = !!last && (!valid || confirmedOom);
       }
       if (legacyCache.size >= 512) legacyCache.delete(legacyCache.keys().next().value!);
-      legacyCache.set(instanceDir, { revision, blocked });
+      legacyCache.set(instanceDir, { revision, blocked, confirmedOom });
     }
-    return blocked ? { blocked: true, record: null, revision } : { blocked: false };
+    return blocked ? { blocked: true, record: null, revision, ...(confirmedOom ? { confirmedOom: true as const } : {}) } : { blocked: false };
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? { blocked: false } : { blocked: true, record: null, revision };
   } finally { if (fd !== undefined) closeSync(fd); }
@@ -134,7 +162,8 @@ export function readSessionOomStop(instanceDir: string): SessionOomStopState {
 }
 
 export function assertNoSessionOomStop(instanceDir: string): void {
-  if (readSessionOomStop(instanceDir).blocked) throw new SessionOomStoppedError();
+  const state = readSessionOomStop(instanceDir);
+  if (state.blocked) throw new SessionOomStoppedError(false, state);
 }
 
 /** Call synchronously after the confirmed OOM's final owner check, before ending supervision. */
@@ -143,7 +172,7 @@ export function writeSessionOomStop(instanceDir: string, input: Omit<SessionOomS
   const existing = readSessionOomStop(instanceDir);
   if (existing.blocked) {
     if (existing.record) return existing.record;
-    throw new SessionOomStoppedError();
+    throw new SessionOomStoppedError(false, existing);
   }
   const record: SessionOomStop = { version: 1, id: randomUUID(), reason: "session_oom",
     owner: { bootId: input.owner.bootId, spawnGeneration: input.owner.spawnGeneration, launchAttempt: input.owner.launchAttempt, launchFenceEpoch: input.owner.launchFenceEpoch },
@@ -156,7 +185,7 @@ export function writeSessionOomStop(instanceDir: string, input: Omit<SessionOomS
 
 export function captureSessionOomRetry(instanceDir: string): SessionOomRetry {
   const state = readSessionOomStop(instanceDir);
-  if (state.blocked && state.revision === null) throw new SessionOomStoppedError();
+  if (state.blocked && state.revision === null) throw new SessionOomStoppedError(false, state);
   return { revision: state.blocked ? state.revision : null, legacyRevision: legacyHistoryRevision(instanceDir) };
 }
 
@@ -164,10 +193,10 @@ export function captureSessionOomRetry(instanceDir: string): SessionOomRetry {
 export function clearSessionOomStopForRetry(instanceDir: string, retry: SessionOomRetry): void {
   const state = readSessionOomStop(instanceDir);
   if (!state.blocked) return;
-  if (!state.revision || state.revision !== retry.revision) throw new SessionOomStoppedError();
-  if (legacyHistoryRevision(instanceDir) !== retry.legacyRevision) throw new SessionOomStoppedError();
+  if (!state.revision || state.revision !== retry.revision) throw new SessionOomStoppedError(false, state);
+  if (legacyHistoryRevision(instanceDir) !== retry.legacyRevision) throw new SessionOomStoppedError(false, state);
   try { atomicWriteFileSync(join(instanceDir, SESSION_OOM_STOP_FILE), JSON.stringify({ version: 1,
     id: randomUUID(), reason: "session_oom_cleared", clearedAt: Date.now(), legacyRevision: retry.legacyRevision }), { mode: 0o600 }); }
-  catch { throw new SessionOomStoppedError(); }
+  catch { throw new SessionOomStoppedError(false, state); }
   assertNoSessionOomStop(instanceDir);
 }

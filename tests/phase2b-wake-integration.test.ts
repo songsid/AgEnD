@@ -6,7 +6,7 @@
  * fleet restart) stayed queued at attempt 0 forever, because the pump never
  * claims a target without a daemon and the only wake ran after a claim.
  */
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -124,6 +124,19 @@ function fleet(mode: "off" | "wake_only" | "unset", defaults: Record<string, unk
 }
 
 describe("Bug1: a marker-only paused target is woken and its queued work delivered (2b ①)", () => {
+  it("the real waiting reason distinguishes unknown history from a verified OOM stop", () => {
+    const { fm, dir } = fleet("off");
+    const warn = vi.spyOn(fm.logger, "warn").mockImplementation(() => {});
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "crash-history.jsonl"), "truncated");
+    expect((fm as any).deliveryWaitingReason("worker")).toContain("could not be read safely");
+    fm.scheduleStartupRetry("worker", 0);
+    expect(warn).toHaveBeenLastCalledWith({ name: "worker" }, expect.stringContaining("could not be read safely"));
+    writeFileSync(join(dir, "crash-history.jsonl"), JSON.stringify({ instance: "worker", timestamp: new Date(100).toISOString(), crashType: "window", reason: "session_oom" }) + "\n");
+    expect((fm as any).deliveryWaitingReason("worker")).toContain("session-OOM stop evidence");
+    fm.scheduleStartupRetry("worker", 0);
+    expect(warn).toHaveBeenLastCalledWith({ name: "worker" }, expect.stringContaining("session-OOM stop evidence"));
+  });
   it("#2473 keeps stopped-session work queued at attempt zero until an explicit per-instance retry", async () => {
     const { fm, dir, outbox, admit, delivered } = fleet("wake_only");
     writeSessionOomStop(dir, { owner: { bootId: "old", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
