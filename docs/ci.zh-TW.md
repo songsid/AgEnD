@@ -88,6 +88,16 @@ group）會同時更新 SHA 與註解。
 `npm publish --dry-run`。除了真正發布 runtime 套件，不要把 `dry_run` 設成
 false。
 
+## npm registry 簽章（#2528）
+
+`npm-audit-signatures.yml` 在 `npm ci --ignore-scripts` 之後，對根目錄與
+`website/` 跑 `npm audit signatures --json`。簽章或 attestation 無效、兩者
+混在一起、以及指令／解析失敗會讓 job 失敗；只有缺少簽章時只印出來、不失敗
+（這是我們的政策：npm 10 對缺少與無效都會 exit 1）。這個 job 不跑套件 lifecycle scripts：`esbuild` /
+`lightningcss` 的 postinstall，以及測試 job 裡的 native `install`（例如
+`better-sqlite3`）仍由 `ci.yml` 與 `deploy-website.yml` 的完整 `npm ci` 執行。
+
+
 ## PR 的 dependency review（#2528）
 
 `dependency-review.yml` 在進 `main` 與 `release/**` 的 pull request 跑

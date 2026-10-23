@@ -1,0 +1,39 @@
+# #2528 PR 2: verify npm registry signatures of the installed trees.
+# Invalid signatures, invalid attestations, mixed findings, and command or
+# parse failures fail the job. Missing-only findings are printed and do not
+# fail (our policy: npm 10 exits 1 for missing as well as invalid).
+# Install uses --ignore-scripts: this job only needs the lockfile tree, not
+# native builds or binary postinstalls.
+name: npm audit signatures
+
+on:
+  push:
+    branches: [main, 'release/**']
+  pull_request:
+    branches: [main, 'release/**', 'feat/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  signatures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install the root tree without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures (root)
+        run: bash scripts/ci/audit-signatures.sh .
+      - name: Install the website tree without lifecycle scripts
+        working-directory: website
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures (website)
+        run: bash scripts/ci/audit-signatures.sh website
