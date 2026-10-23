@@ -599,6 +599,10 @@ describe("#1641: a stuck target with waiting work is visible", () => {
   it("delivery_status: a queued row says why it waits (`waiting_reason`); a delivered one carries none", () => {
     const item = (state: string) => ({ delivery_id: state, target_instance: "agend-dev-sol", state });
     const fm = Object.create(FleetManager.prototype) as any;
+    // The waiting-reason path also reads instance-local terminal OOM evidence.
+    // Supply a scratch constructor root while retaining the real reader.
+    fm.dataDir = mkdtempSync(join(tmpdir(), "agend-1641-status-"));
+    dirs.push(fm.dataDir);
     fm.ensureDeliveryOutbox = () => {};
     fm.deliveryOutbox = { queryStatusForInstance: () => ({ items: [item("queued"), item("retry_wait"), item("delivered")], next_cursor: null }) };
     const stuck = { notAcceptingReason: () => "The CLI appears stuck." as string | null };
