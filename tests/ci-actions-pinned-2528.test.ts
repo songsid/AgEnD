@@ -175,6 +175,112 @@ describe("assert-actions-pinned yaml oracle (#2528)", () => {
   });
 });
 
+describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528 Prism r3)", kind => {
+  it("fails unpinned uses after a block-scalar name |", () => {
+    const body = "runs:\n  steps:\n    - name: |\n        Checkout the project\n      uses: actions/checkout@v4\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails unpinned uses after a block-scalar name >", () => {
+    const body = "runs:\n  steps:\n    - name: >\n        Checkout the project\n      uses: actions/checkout@v4\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts SHA and local uses after a block-scalar name |", () => {
+    const body =
+      `runs:\n  steps:\n    - name: |\n        Checkout the project\n      uses: actions/checkout@${SHA}\n    - name: |\n        Local\n      uses: ${LOCAL}\n`;
+    expect(usesFromParsed(yaml.load(body))).toEqual([`actions/checkout@${SHA}`, LOCAL]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status, r.stderr).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails an anchored-key unpinned uses", () => {
+    const body = "runs:\n  steps:\n    - &key uses: actions/checkout@v4\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails a flow anchored-key unpinned uses", () => {
+    const body = "runs:\n  steps:\n    - {&key uses: actions/checkout@v4}\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails a tagged-key unpinned uses", () => {
+    const body = "runs:\n  steps:\n    - !!str uses: actions/checkout@v4\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails an explicit flow-key unpinned uses", () => {
+    const body = "runs:\n  steps:\n    - {? uses: actions/checkout@v4}\n";
+    expect(usesFromParsed(yaml.load(body))).toEqual(["actions/checkout@v4"]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("actions/checkout@v4");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts SHA and local uses with an anchored key", () => {
+    const body =
+      `runs:\n  steps:\n    - &key uses: actions/checkout@${SHA}\n    - uses: ${LOCAL}\n`;
+    expect(usesFromParsed(yaml.load(body))).toEqual([`actions/checkout@${SHA}`, LOCAL]);
+    const dir = scratch(kind, body);
+    try {
+      const r = run(dir);
+      expect(r.status, r.stderr).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.each(["workflows", "actions"] as const)("parsed YAML uses: in %s (#2528 Prism r2)", kind => {
   it("fails a next-line scalar unpinned uses", () => {
     const body = "runs:\n  steps:\n    - uses:\n        actions/checkout@v4\n";
