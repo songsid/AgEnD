@@ -189,6 +189,32 @@ describe("#2484 a person's message waits for the instance's own start retry", ()
     expect(sent).toMatchObject([{ type: "fleet_inbound", content: "hi" }]);
   });
 
+  it("a reply-button click on an instance waiting for its start retry is stamped queued and delivered after the retry, not ❌", async () => {
+    const { x, sent } = makeFleet(["up"]);
+    const statuses: unknown[][] = [];
+    x.reactMessageStatus = (...args: unknown[]) => { statuses.push(args); };
+    const fm = x as unknown as Record<string, unknown>;
+    fm.afterUserInboundDelivered = () => {};
+    fm.emitSseEvent = () => {};
+    fm.touchActivity = () => {};
+    fm.setTopicIcon = () => {};
+    x.scheduleStartupRetry("alpha", 0);
+    const click = (fm.deliverReplyButtonChoice as (...a: unknown[]) => Promise<boolean>).call(x,
+      { id: "set1", instance: "alpha", adapterId: "dc", chatId: "c1", threadId: "t1", messageId: "m1" },
+      { label: "Deploy", value: "Deploy" },
+      { userId: "u1", username: "han", source: "discord" });
+    let settled: unknown;
+    void click.then(v => { settled = v; }, e => { settled = e; });
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(settled).toBeUndefined();     // before: false (❌) at 30 s
+    expect(statuses.map(s => s[3])).toEqual(["received", "queued"]);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(settled).toBe(true);
+    expect(sent).toMatchObject([{ type: "fleet_inbound", content: "[button] Deploy" }]);
+    expect(statuses.map(s => s[3])).not.toContain("failed");
+  });
+
   it("the platform hold stamps the message queued (⏳ on Discord), in its thread; a ClassicBot room message only waits", () => {
     const { x } = makeFleet([]);
     const react = vi.fn();
