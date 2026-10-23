@@ -227,7 +227,8 @@ describe("#2481 auto-restore: the notices say it was rolled back, and the data c
   it("chat: one message per version (it takes #2490's claim), the restore wording, the caveat, where the error is", () => {
     const home = scratch();
     writeFileSync(join(home, ATTEMPTS_FILE), JSON.stringify({ version: "2.3.1", attempts: [new Date(1000).toISOString(), new Date(2000).toISOString(), new Date(3000).toISOString()] }));
-    const run = vi.fn(); const launch = vi.fn(() => ({}));
+    const run = vi.fn((_cmd: string, _args: string[], _opts: { timeout: number }) => {});
+    const launch = vi.fn((_cmd: string, _args: string[], _opts: unknown) => ({}));
     notifyRestore(home, "2.3.1", "2.2.6", "/p/.agend-rollback/2.2.6-x", { run, launch, platform: "darwin" });
     expect(run.mock.calls[0]![1].slice(1)).toEqual([home, "--restore", "2.3.1", "2.2.6", "/p/.agend-rollback/2.2.6-x"]);
     expect(launch.mock.calls[0]![1]).toEqual(["-e", 'display notification "AgEnD v2.3.1 failed to start; restoring v2.2.6 automatically. Run: agend doctor" with title "AgEnD"']);
