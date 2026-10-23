@@ -121,7 +121,7 @@ describe("#2481 auto-restore: the swap", () => {
     expect(r).toEqual({ ok: true, failedTree: join(h.prefix, ".agend-rollback", "2.3.1-2026-10-23T06-00-00-000Z-failed") });
     expect(JSON.parse(readFileSync(join(h.root, "package.json"), "utf8")).version).toBe("2.2.6");
     expect(JSON.parse(readFileSync(join(h.prefix, ".agend-rollback", "2.3.1-2026-10-23T06-00-00-000Z-failed", "package.json"), "utf8")).version).toBe("2.3.1");
-    expect(existsSync(h.keptDir + "/agend")).toBe(false);
+    expect(existsSync(h.keptDir)).toBe(false);                                          // its emptied directory goes too
     expect(() => lstatSync(join(h.prefix, "bin", "agend-install"))).toThrow();     // the link itself is gone (existsSync follows it)
     expect(readlinkSync(join(h.prefix, "bin", "agend"))).toBe("../lib/node_modules/@songsid/agend/launcher/agend");
   });
@@ -138,7 +138,7 @@ describe("#2481 auto-restore: the swap", () => {
     const calls: string[] = [];
     const fs: SwapFs = {
       rename: (a, b) => { calls.push(`${a} -> ${b}`); if (a === cand.pkg) throw new Error("EXDEV"); },
-      exists: () => true, unlink: () => {}, readlink: () => null,
+      exists: () => true, unlink: () => {}, readlink: () => null, rmdir: () => {},
     };
     const r = swapInPreimage(h.prefix, h.root, "2.3.1", cand, new Date("2026-10-23T06:00:00Z"), fs);
     expect(r).toMatchObject({ ok: false });
@@ -197,7 +197,7 @@ describe("#2481 auto-restore: the whole act", () => {
   });
   it("a failed swap is recorded and reported, and never tried again", () => {
     const h = host(); const home = scratch();
-    const fs: SwapFs = { rename: () => { throw new Error("EACCES"); }, exists: () => true, unlink: () => {}, readlink: () => null };
+    const fs: SwapFs = { rename: () => { throw new Error("EACCES"); }, exists: () => true, unlink: () => {}, readlink: () => null, rmdir: () => {} };
     expect(maybeAutoRestore(home, h.root, h.prefix, "2.3.1", [], 3, due(h, { fs }))).toMatchObject({ kind: "failed" });
     expect(readRestoreRecord(home)).toMatchObject({ result: "failed", reason: expect.stringContaining("EACCES") });
     expect(maybeAutoRestore(home, h.root, h.prefix, "2.3.1", [], 4, due(h))).toEqual({ kind: "not-due" });

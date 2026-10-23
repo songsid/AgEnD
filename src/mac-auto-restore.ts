@@ -26,7 +26,7 @@
  * Only node built-ins (start-attempt.ts runs this before the rest of the CLI loads).
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -137,9 +137,11 @@ export interface SwapFs {
   exists(path: string): boolean;
   unlink(path: string): void;
   readlink(path: string): string | null;
+  /** Removes an empty directory only (rmdir). */
+  rmdir(path: string): void;
 }
 const realFs: SwapFs = {
-  rename: renameSync, exists: existsSync, unlink: unlinkSync,
+  rename: renameSync, exists: existsSync, unlink: unlinkSync, rmdir: rmdirSync,
   readlink: p => { try { return lstatSync(p).isSymbolicLink() ? readlinkSync(p) : null; } catch { return null; } },
 };
 
@@ -160,6 +162,8 @@ export function swapInPreimage(prefix: string, root: string, installed: string, 
   const link = join(prefix, "bin", "agend-install");
   const target = fs.readlink(link);
   if (target !== null && !fs.exists(resolve(dirname(link), target))) { try { fs.unlink(link); } catch { /* a dangling link harms nothing */ } }
+  // The kept copy's directory is empty now (as 2.2.6's own restore leaves none); only if empty.
+  try { fs.rmdir(cand.dir); } catch { /* not empty, or gone: left as is */ }
   return { ok: true, failedTree };
 }
 
