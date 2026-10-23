@@ -1,0 +1,16 @@
+{
+  "rate-limit-resets": {
+    "byte_identical": true,
+    "sha256": "f0f091043b220299acc2f57d3897fe3a140537f0b1b1e0bca59f886d6b7f3d79",
+    "files": [
+      "codex-rs/app-server/src/request_processors/account_processor/rate_limit_resets.rs"
+    ]
+  },
+  "tui-usage": {
+    "byte_identical": true,
+    "sha256": "c500e782be5a1439c85014d27a1d53e2b2a31e884cd49a19c43d35366d881414",
+    "files": [
+      "codex-rs/tui/src/chatwidget/usage.rs"
+    ]
+  }
+}

@@ -114,14 +114,14 @@ again. Confirm within 5 minutes and the session menu says **Verified · speaks a
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
-per account. Never for a guest or on a quick-tunnel public link. Over the admin's own named link (#2453) only with
-**Also over my named link** (`named_link`, off by default). That authority ends with the link, and the card says "over
-your named link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
+per account. Never for a guest. Over the admin's own named link (#2453) only with **Also over my named link**
+(`named_link`, off by default); over the temporary public link `/web` opens only with **Also over the temporary public
+link** (`quick_link`, off by default, §0.3). That authority ends with the link, and the card says "over your named link"
+or "over the temporary public link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
 this computer" or the named-link option is the reason). Settings → Access & security → **Web authority** (`web.verified_authority`, on
 by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown
-with a fixed hostname), the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
-there applies at once, except turning the named-link option on: a General or the host confirms that, never the browser
-asking.
+with a fixed hostname), **Also over the temporary public link**, the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
+there applies at once, except turning a link's option on: a General or the host confirms that, never the browser asking.
 Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
 
 ## Chat
@@ -213,7 +213,7 @@ first, badged Chat / Message / Task; 1–2 character words work (alone: the newe
 ↑↓ / Enter / Esc / click outside; **Filters**: agent, team, time, kinds, **Only mine**; recent searches when empty.
 A chat result opens the chat at the message (flashed); a message between agents, a task or a chat row the history no
 longer keeps opens as the index's copy. Admins only, over the temporary public link and on a phone too (no guests). Config: `web.search.enabled`
-(default on, off everywhere), `web.search.public_link` (default on; false keeps it off the public link), `web.search.retention_days` (default 90). Secrets are masked; a hidden `cross_instance_visibility`
+(default on, off everywhere), `web.search.public_link` (default on; false keeps it off the public link), `web.search.retention_days` (unset and 0 = no age limit; 1–3650 days; daily prune still caps at 300,000). Secrets are masked; a hidden `cross_instance_visibility`
 agent's messages are not found. "Search is off or not available": `web.search.enabled: false`, or the index could not
 open (the fleet log says why); "Still indexing": the first fill after an upgrade.
 
@@ -267,11 +267,42 @@ blinking light (needs you, crashed, looks stuck). With **Live** on, each message
 desk to desk along the corridors in the Key's colours; a delegation in progress is a purple folder on the worker's
 desk. Hover (or tap once) a desk for its name, state and backend; click (or tap again) opens the chat. **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
-**Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`; changing them takes
-an admin session, never the public link — v1 has no editor). **Style** (per browser): **Desks** (the default) or
-**Studio** — one scene (Work, Lounge, Help desk, Nap corner) where each instance walks to the area for its state.
-Now and then someone says a short line for their state in a bubble (never message content). Reduced motion: still
-poses, nothing in the air, bubbles shown whole.
+**Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
+(never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
+in each (whole teams or single instances; none = everyone) and its style, and upload or delete **skin packs** (an
+artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
+checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
+pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four
+ways with `walkDown`, `walkUp` and `walkSide`, the side one mirrored for left). **Style** (per browser for the whole fleet, per office for a stored one): **Desks** (the default),
+**Studio** — one scene (Work, Lounge, Help desk, Nap corner) where each instance walks to the area for its state —
+or an uploaded pack; one the page cannot load is drawn as Desks with a note. On a stored office in Studio or a pack,
+**Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door and
+waypoints (or Tab to one and use the arrow keys, Shift for 10), add or remove waypoints and join or unjoin
+corridors; **Save layout** keeps the moves as that office's overrides (the pack stays as uploaded), **Reset** goes
+back to the pack's own. While it is open the office picker and Edit offices wait (**Cancel** closes it); if someone
+saved the offices meanwhile, Save says so and keeps your layout — Save again puts it on the current list. A crowded area packs extra people into a tighter grid, then shows "+N" in its corner; there
+only calls and work get bubbles (a few at most) and name tags show on hover or focus. **Hide paused and stopped**
+(per browser, off by default) leaves the sleepers out. Now and then someone says a short line for their state in a
+bubble (never message content). Reduced motion: still poses, nothing in the air, bubbles shown whole.
+The Office fills the Fleet panel and moves like the Canvas (#2540): drag to pan, the wheel or a pinch to zoom,
+**+** / **−** / **Fit** / **Fill** at the top right (the zoom shown as a percentage above them) or the `+ - 0` keys
+(with the office focused), an overview at the bottom right to jump (not on a phone). It takes the whole panel: the
+Fleet area's full width, down to the window's foot. **Fit** shows the whole scene as large as the panel allows
+(any scale, so it fills the panel's width or height); **Fill** (a toggle, kept per office) fills the panel instead,
+cropping what overflows — drag to see it. **+** / **−** step in pixel levels (each logical unit a whole number of
+screen pixels); drawing is always unsmoothed. A resize fits a fitted view again; the scene can never be dragged off
+the panel. The zoom, centre and Fit/Fill are kept per device for each office and style. Around the 16:9 scene the
+whole panel is a matte: a pack's own `matte` (`#rrggbb`), else its background's edge colour, else the skin's own
+(Studio's hall floor; Desks: the dashboard's background). Hover, click, name tags and Edit layout all work at any zoom: a drag on a handle moves it,
+anywhere else pans; zoom and pan are never animated.
+**Fullscreen** (the button under **Fit**, or `f`; Esc leaves) shows the office alone: the dashboard's header, tabs
+and bars go, and the zoom buttons, the overview (not on a phone), a small office switcher and Exit float over it. It
+uses the browser's fullscreen; where a page cannot have it (an iPhone) or the browser refuses, the office covers the
+window instead. Opening a chat leaves it, and it is never remembered.
+A pack may add a `foreground` (a 16:9 PNG over the whole scene, zones packs only): drawn above the people, furniture
+and items in the air, below name tags, bubbles and "+N" — door frames, pillars, table fronts that hide whoever walks
+behind them. A furniture item's `depth` may be `"y"`: drawn among the people by base y (whoever stands lower is in
+front). Numeric depths keep their meaning (under 1000 under the people, 1000 and up over them).
 
 **Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams
@@ -484,7 +515,8 @@ progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 | Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
 Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `notify_login`, `preview`, `preview_port`,
-`preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,
+`preview_origin`, `preview_on_public_link`, `usage_panel`, `search` (`retention_days`: unset and 0 = no age limit,
+300,000-row cap), `provider_secrets`, `upload_max_file_mb`,
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.
 
 **Advanced** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**

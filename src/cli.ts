@@ -1915,7 +1915,7 @@ program
     if (!gateFleetControl(DATA_DIR, "stop", { yes: opts.yes })) process.exit(1);
     // #2481: a deliberate stop — the start attempts so far are not a crash loop.
     { const { clearStartAttempts } = await import("./start-failure.js"); clearStartAttempts(DATA_DIR); }
-    const { getServicePath, getSystemServicePath, stopService, stopSystemService } = await import("./service-installer.js");
+    const { getServicePath, getSystemServicePath, stopService, stopSystemService, serviceStopReport } = await import("./service-installer.js");
     // #2356: the system unit first, as `agend start` and `agend restart` choose it; a SIGTERM would only stop the process.
     if (getSystemServicePath()) {
       if (stopSystemService()) { console.log(t("cli.system_service_stopped")); return; }
@@ -1934,8 +1934,10 @@ program
       }
       return;
     }
-    if (stopService()) {
-      console.log("Service stopped.");
+    const report = serviceStopReport(stopService());   // #2505: "unloading" is not stopped
+    if (report.kind !== "fallback") {
+      console.log(report.line);
+      if (report.exitCode) process.exitCode = report.exitCode;
     } else {
       // systemd/launchd failed (e.g. no D-Bus user session) — fallback to PID kill
       const pidPath = join(DATA_DIR, "fleet.pid");

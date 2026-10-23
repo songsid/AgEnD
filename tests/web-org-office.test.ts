@@ -809,7 +809,7 @@ describe("the Office view on the page", () => {
     try {
       localStorage.setItem("agend_org_office_skin", "studio");
       await office(); await settle(4);
-      const pack = K.skinFor("studio").pack, k = 958 / 1280;
+      const pack = K.skinFor("studio").pack, v = (await import("/ui/js/fleet-office-view.js")).fitScene(1280, 720, { w: 960, h: 600 });   // #2540: the opening view
       const nodes = (v: any) => [...new Map(M.officeRooms(v).flatMap((r: any) => r.nodes).map((n: any) => [n.name, n])).values()];
       const before = Z.zonesLayout(pack, nodes(view()));
       app.appStore.set({ ...STORE, exec: { ...STORE.exec, atlas: "working" } }); await settle(2);   // atlas: idle → working, walks
@@ -817,7 +817,7 @@ describe("the Office view on the page", () => {
       const seat = (L: any, n: string) => M.desksOf(L).find((d: any) => d.node.name === n).seat;
       const from = seat(before, "atlas"), to = seat(after, "atlas"), still = seat(after, "loner");
       expect(Math.hypot(to.x - from.x, to.y - from.y)).toBeGreaterThan(100);    // a walk, not a step
-      const click = (pt: any) => { fire(p.root.querySelector(".oo-canvas"), "pointerdown", { pointerType: "mouse" }); fire(p.root.querySelector(".oo-canvas"), "click", { clientX: pt.x * k, clientY: (pt.y - 20) * k }); };
+      const click = (pt: any) => { fire(p.root.querySelector(".oo-canvas"), "pointerdown", { pointerType: "mouse" }); fire(p.root.querySelector(".oo-canvas"), "click", { clientX: v.x + pt.x * v.k, clientY: v.y + (pt.y - 20) * v.k }); };
       click(to); await settle(1);
       expect(location.pathname).toBe("/ui/fleet/org");                   // its destination, still empty: nothing opens
       click(from); await settle(1);
@@ -837,7 +837,7 @@ describe("the Office view on the page", () => {
       localStorage.setItem("agend_org_office", "far");
       await office(); await settle(4);
       const cv = p.root.querySelector(".oo-canvas");
-      expect(parseInt(cv.style.width, 10)).toBeGreaterThan(10000);                // drawn at its size (the stage scrolls)
+      expect(cv.style.width).toBe("960px");                                       // #2540: the canvas is the stage; the layout is panned and zoomed in it
       for (const c of new Set(made)) {
         expect([c.width <= M.CANVAS_MAX.side, c.height <= M.CANVAS_MAX.side, c.width * c.height <= M.CANVAS_MAX.area]).toEqual([true, true, true]);
       }
@@ -896,8 +896,8 @@ describe("the Office view on the page", () => {
       const texts = main.calls.filter(([k]: any) => k === "fillText").map(([, a]: any) => a[0]);
       expect(texts).toContain("quill");                                         // a name tag under feet
       expect(texts.some((x: string) => ["Need you!", "A question for you", "Over here!", "Ouch, crashed", "Help!", "Hmm, stuck?", "Still thinking…"].some((l) => l.startsWith(x) && x.length > 0))).toBe(true);
-      // The canvas is the 1280×720 scene scaled to the stage (960 px here).
-      expect(p.root.querySelector(".oo-canvas").style.width).toBe(`${Math.ceil(1280 * (958 / 1280))}px`);
+      // #2540: the canvas fills the stage (960 px here); the 1280×720 scene is fitted in it.
+      expect(p.root.querySelector(".oo-canvas").style.width).toBe("960px");
       await p.unmount(); await mount();
       expect(p.root.querySelectorAll(".oo-bar select")[1].value).toBe("studio");
       const quill = p.root.querySelectorAll(".oo-desk").find((b: any) => b.getAttribute("data-name") === "quill");

@@ -893,6 +893,7 @@ img.amb-p { object-fit: contain; }
 .composer-field { position: relative; flex: 1; min-width: 0; display: flex; }
 .composer-ph { position: absolute; left: var(--s-1); right: var(--s-1); top: 7px; pointer-events: none; color: var(--text-3);
   font-size: var(--fs-md); line-height: var(--lh-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-field textarea:not(:placeholder-shown) + .composer-ph { display: none; }   /* text in the box, composing text too */
 .btn-send { width: 36px; padding: 0; }
 .btn-send .send-label { display: none; }
 /* A narrow phone: Stop reply beside Send leaves the message box no room — the label is for screen readers there. */
@@ -1323,11 +1324,14 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-crow-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); color: var(--text); }
 .u-crow .u-plan { flex: 0 100 auto; min-width: 22px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding-block: 0; line-height: 16px; font-size: 10.5px; }
-.u-crow-reset { margin-left: auto; flex: none; padding-left: 6px; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.u-cm { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 3.4em; align-items: center; gap: 7px; min-width: 0; }
+/* Last known numbers: a small muted "cached at …" at the name line's end (why, in its tooltip). */
+.u-crow-stale { margin-left: auto; flex: none; padding-left: 6px; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.u-cm { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) 2.9em 3.7em; align-items: center; gap: 5px; min-width: 0; }
+/* Each window's own reset, after its percent: muted, tabular, right-aligned (an empty cell keeps the columns lined up). */
+.u-cm-reset { text-align: right; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; overflow: hidden; }
 .u-cm-tag { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* #2240: an account of several pools (agy) names each pool's line: a wider label, ending in an ellipsis if it must. */
-.u-crow.is-pooled .u-cm { grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3.4em; }
+.u-crow.is-pooled .u-cm { grid-template-columns: minmax(0, 7.0em) minmax(0, 1fr) 2.9em 3.7em; column-gap: 7px; }
 .u-cm-bar { height: 6px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
 .u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; border-radius: var(--r-full); background: var(--accent); }
 .u-cm-fill.warn { background: var(--warn); } .u-cm-fill.crit { background: var(--danger); }
@@ -1336,6 +1340,8 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-crow-note { font-size: var(--fs-xs); color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .u-crow-note.is-alert::before { content: "●"; margin-right: 5px; color: var(--danger); }
 .u-crow.is-stale .u-crow-note.is-alert::before { color: var(--warn); }
+/* Last known numbers in compact: as the full card shows them (#2386), muted — not current. */
+.u-crow.is-stale .u-cm-pct { color: var(--text-3); } .u-crow.is-stale .u-cm-fill { background: var(--text-3); }
 @media (prefers-reduced-motion: no-preference) { .u-crow { transition: background-color 0.15s var(--ease); } }
 .u-rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 @media (max-width: 1199px) { .u-rail { display: none; } }
@@ -1711,8 +1717,18 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .oc-mini { display: none; }
 }
 /* ── Fleet → Org chart → Office (fleet-office.js): the fleet as a pixel office on one <canvas>. Its size is set through
-   the CSSOM (never a style attribute, #1300); the stage scrolls, the page around it too. ── */
-.oo { display: flex; flex-direction: column; gap: var(--s-2); }
+   the CSSOM (never a style attribute, #1300). #2540: it fills the Fleet panel — no frame or margins around the canvas,
+   the bars above it keep the column's padding; the stage pans and zooms (touch gestures are its own, touch-action:
+   none on it only) and the page around it no longer scrolls sideways. The column's `margin: 0 auto` must go too: in
+   the panel's flex column an auto margin shrinks the column to its content (the bars: the canvas is absolutely placed
+   and adds no width) and centres it — the Office was as wide as its toolbar, not the panel. ── */
+.p-fleet .panel-body:has(> .col > .oc-office) { display: flex; flex-direction: column; }
+.p-fleet .panel-body > .col:has(> .oc-office) { flex: 1 0 auto; display: flex; flex-direction: column; max-width: none; padding: 0; margin: 0; width: 100%; align-self: stretch; }
+.oc-office { flex: 1 0 auto; display: flex; flex-direction: column; min-width: 0; width: 100%; }
+.oc-office > .oc-bar { margin: 0; padding: var(--s-3) var(--s-5) var(--s-2); }
+.oc-office > .oc-legend { margin: 0 var(--s-5) var(--s-2); }
+.oo { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; width: 100%; }
+.oo > :not(.oo-stage) { margin-left: var(--s-5); margin-right: var(--s-5); }
 .oo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-pick .tb-select { max-width: 200px; }
@@ -1728,6 +1744,13 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oe-label { font-size: var(--fs-xs); color: var(--text-2); }
 .oe-name { min-width: 0; width: 16em; max-width: 100%; }
 .oe-remove { margin-left: auto; }
+/* #2513: the skin packs the host keeps — a row each with its delete, then the upload buttons (a hidden file input each). */
+.oe-packs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-3); }
+.oe-packs > legend, .oe-packs > .note { flex-basis: 100%; }
+.oe-pack-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; flex-basis: 100%; }
+.oe-pack { display: flex; align-items: center; gap: var(--s-2); overflow-wrap: anywhere; }
+.oe-pack-remove { margin-left: auto; }
+.oe-upload { position: relative; cursor: pointer; }
 .oe-members { display: flex; flex-wrap: wrap; gap: var(--s-3); }
 .oe-group { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-width: 12em; max-height: 240px; overflow-y: auto; }
 .oe-group legend { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); padding: 0; margin-bottom: 4px; }
@@ -1738,20 +1761,80 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-people-list { list-style: none; margin: 0; padding: 0; }
 .oo-people-list label { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: var(--fs-xs); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
 .oo-note { font-size: var(--fs-xs); }
-.oo-stage { position: relative; height: clamp(420px, calc(100dvh - 280px), 960px); overflow: auto; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
-.oo-canvas { display: block; margin: 0 auto; image-rendering: pixelated; }
+.oo-stage { position: relative; flex: 1 1 auto; min-height: 340px; overflow: hidden; background: var(--bg); touch-action: none; user-select: none; -webkit-user-select: none; }
+.oo-canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; cursor: grab; touch-action: none; }
+.oo-canvas:active { cursor: grabbing; }
+.oo-canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .oo-canvas.hot { cursor: pointer; }
+/* The canvas controls, as the org chart canvas's (.oc-zoom, .oc-mini): over the stage's corners. */
+.oo-zoom { z-index: 6; }
+.oo-zoom .icon-btn { color: var(--text); }
+/* The overview's box (left, top, width, height) is set by the page, inside the stage and scaled to it (miniBox). */
+.oo-mini { z-index: 6; right: auto; bottom: auto; overflow: hidden; }
+.oo-zoom-pct { display: block; padding: 3px 0; font-size: 11px; line-height: 14px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--border); user-select: none; }
+.oo-zoom .oo-fill { font-size: 11px; font-weight: var(--fw-semibold); }
+.oo-zoom .oo-fill.on { background: var(--accent-dim); color: var(--text); }
+.oo-stage.editing .oo-mini { display: none; }
+.oo-mini-scene { fill: var(--bg); }
+.oo-mini-room { fill: var(--surface); stroke: var(--border-strong); stroke-width: 6; }
+.oo-mini-dot { fill: var(--text-3); }
+.oo-mini-dot.st-working { fill: var(--ok); }
+.oo-mini-dot.st-needs, .oo-mini-dot.st-stuck { fill: var(--warn); }
+.oo-mini-dot.st-crashed { fill: var(--danger); }
+.oo-mini-dot.match { fill: var(--focus); }
 .oo-tip { position: absolute; left: 0; top: 0; z-index: 5; max-width: 240px; pointer-events: none; padding: 6px 10px; font-size: var(--fs-xs); line-height: 1.4;
   color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); overflow-wrap: anywhere; }
 /* The desks as a list: for a screen reader, and shown (over the stage's corner) while the keyboard is in it. */
 .oo-desks { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; list-style: none; }
-.oo-desks:focus-within { position: sticky; left: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: 40%; margin: 0; padding: var(--s-1); clip: auto; overflow-y: auto;
+.oo-desks:focus-within { position: absolute; z-index: 7; left: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: 40%; margin: 0; padding: var(--s-1); clip: auto; overflow-y: auto;
   display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: calc(100% - 2 * var(--s-2)); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); white-space: normal; }
 .oo-desk { font-size: var(--fs-xs); padding: 2px 6px; border-radius: var(--r-sm); background: var(--bg); color: var(--text); border: 1px solid var(--border); }
 .oo-desk:focus-visible { outline: none; border-color: var(--focus); box-shadow: inset 0 -2px 0 var(--focus); }
+/* #2513: Edit layout (fleet-office-layout.js) — an SVG over the canvas (placed and sized through the CSSOM), its 1280×720
+   grid, the areas, corridors and a handle for each seat, item, the door and waypoint; its bar sticks to the stage's foot. */
+.oo-hide-asleep { font-size: var(--fs-xs); color: var(--text-2); }
+/* #2540: fullscreen. The container is the page's fullscreen element (the Fullscreen API: the top layer), or, where the page
+   cannot take one (an iPhone) or the browser refused, "immersive": it covers the window. Only the stage shows (the bars,
+   notes and Edit offices are left out), the safe areas kept clear; floating over it the zoom controls, the overview
+   (not on a phone) and a compact office switcher. Immersive lifts the Fleet panel's band (stock content, level 1) over
+   the header (2), the phone's nav (35) and the drawer and Needs-you stack (40); menus (60) and toasts (100) stay above. */
+.oo.fs { gap: 0; margin: 0; background: var(--bg); box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.oo.fs > :not(.oo-stage) { display: none; }
+.oo.fs > .oo-stage { flex: 1 1 auto; min-height: 0; }
+.oo.fs.immersive { position: fixed; inset: 0; z-index: 50; width: 100vw; height: 100vh; width: 100dvw; height: 100dvh; }
+html.oo-immersive, html.oo-immersive body { overflow: hidden; }
+html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
+.oo-fs-bar { position: absolute; left: var(--s-3); top: var(--s-3); z-index: 6; display: flex; align-items: center; gap: var(--s-2); }
+.oo-fs-bar .tb-select { max-width: 180px; }
+.ol-overlay { position: absolute; left: 0; top: 0; z-index: 4; }
+.ol-svg { display: block; overflow: visible; touch-action: none; }
+.ol-grid { stroke: var(--text-3); stroke-opacity: 0.25; stroke-width: 1; }
+.ol-label, .ol-coord { fill: var(--text); font-size: 12px; font-family: var(--font-mono, monospace); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+.ol-area { fill: none; stroke: var(--text-2); stroke-dasharray: 6 4; stroke-width: 1.5; }
+.ol-edge { stroke: var(--focus); stroke-width: 3; stroke-opacity: 0.7; }
+.ol-handle { cursor: grab; outline: none; }
+.ol-handle > circle, .ol-handle > rect { fill: var(--surface); stroke: var(--text); stroke-width: 2; }
+.ol-seat > circle { fill: var(--ok); }
+.ol-furniture > rect { fill: var(--warn); }
+.ol-door > rect { fill: var(--danger); }
+.ol-waypoint > circle { fill: var(--focus); }
+.ol-handle.on > circle, .ol-handle.on > rect, .ol-handle:focus-visible > circle, .ol-handle:focus-visible > rect { stroke: var(--focus); stroke-width: 4; }
+.ol-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2);
+  background: var(--surface); border-top: 1px solid var(--border); }
+.ol-actions { display: inline-flex; gap: var(--s-2); margin-left: auto; }
+.ol-corridors { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.ol-msg { flex-basis: 100%; margin: 0; }
 @media (max-width: 640px) {
-  .oo-stage { height: calc(100dvh - 300px); min-height: 340px; }
+  /* A phone: the bars at the column's narrower padding; the stage at least most of a screen; no overview (as the canvas). */
+  .oc-office > .oc-bar { padding: var(--s-2) var(--s-3); }
+  .oc-office > .oc-legend { margin: 0 var(--s-3) var(--s-2); }
+  .oo > :not(.oo-stage) { margin-left: var(--s-3); margin-right: var(--s-3); }
+  .oo-stage { min-height: max(300px, calc(100dvh - 300px)); }
   .oo-pick .tb-select { max-width: 150px; }
+  .oo-mini { display: none; }
+  .oo-zoom .icon-btn { width: 40px; height: 40px; }
 }
 /* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
 @media (max-width: 479px) {

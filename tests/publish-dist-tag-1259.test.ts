@@ -14,7 +14,7 @@ import yaml from "js-yaml";
 import { afterAll, describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
-type Step = { name?: string; run?: string; uses?: string };
+type Step = { name?: string; run?: string; uses?: string; if?: string };
 const steps = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "publish.yml"), "utf8")) as { jobs: { publish: { steps: Step[] } } })
   .jobs.publish.steps;
 
@@ -199,5 +199,24 @@ describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1
 
   it("the only release path is a tag: scripts/publish.sh (stable-only, untagged, a removed plugin) is retired", () => {
     expect(existsSync(join(ROOT, "scripts", "publish.sh"))).toBe(false);
+  });
+
+  it("workflow_dispatch is validation-only: npm publish runs only on a tag push (#2528)", () => {
+    const named = Object.fromEntries(steps.filter(s => s.name).map(s => [s.name!, s]));
+    expect(named["Publish"].if).toBe("github.event_name == 'push'");
+    expect(named["Publish"].run).toContain("npm publish --access public");
+    expect(named["Validation only (no publish)"].if).toBe("github.event_name == 'workflow_dispatch'");
+    expect(named["Validation only (no publish)"].run).toMatch(/^echo /);
+    for (const name of [
+      "Set version from tag",
+      "Determine npm tag",
+      "Set package version",
+      "The packed package pins its bundled Node, as published runtime packages",
+    ]) {
+      expect(named[name].if, name).toBe("github.event_name == 'push'");
+    }
+    const on = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "publish.yml"), "utf8")) as { on: Record<string, unknown> }).on;
+    expect(Object.hasOwn(on, "workflow_dispatch")).toBe(true);
+    expect(on.push).toEqual({ tags: ["v*"] });
   });
 });

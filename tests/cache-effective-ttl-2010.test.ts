@@ -126,8 +126,10 @@ describe("the report uses it", () => {
       const inst = (name: string, f: string) => ({ name, backend: "claude-code", workingDirectory: join(dir, `w-${name}`), ledgerPath: join(dir, f), claudeConfigDir: join(dir, "none") });
       const svc = new CacheService({ instances: () => [inst("e", "e.json"), inst("s", "s.json")], claudeProjectsDir: () => join(dir, "none", "projects"), claudeKey: (d) => d,
         codexSessionsDir: () => join(dir, "none"), listRollouts: () => [], metaPath: join(dir, "meta.json"), now: () => NOW });
-      const r = await svc.report("7d");
+      // This report fixture has ledger cursors, not backing transcripts. Keep
+      // catch-up from deleting them while report() reads the seeded history.
       await svc.stop();
+      const r = await svc.report("7d");
       expect(r.instances.map((x) => [x.name, x.analysis?.recommendation.reason])).toEqual([["e", "switch_to_1h"], ["s", "never_expired"]]);
       expect([r.fleet.switchTo1h, r.fleet.analysed]).toEqual([1, 2]);
     } finally { rmSync(dir, { recursive: true, force: true }); }

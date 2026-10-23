@@ -51,7 +51,7 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 - It covers chat messages, messages between agents, and tasks. Results are grouped by agent; opening one jumps to the message.
 - Filter by agent or team, by time, by source, or to only what you wrote yourself.
 - Fleet admins signed in on the dashboard can search, here or over the temporary public link, on a phone too. Guests cannot. `web.search.public_link: false` keeps it off the public link.
-- The index keeps 90 days by default. Change it with `web.search.retention_days`.
+- From 2.3.1 the index has no age limit by default (it still caps at 300,000 rows, oldest first). Set `web.search.retention_days` to a positive integer (1–3650) to age-prune, or `0` for no age limit. 2.3.0 keeps 90 days.
 
 ### Office view
 

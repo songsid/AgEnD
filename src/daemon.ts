@@ -1,4 +1,5 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
+import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
 import { agentWhatsNew, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
@@ -13,7 +14,8 @@ import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
 import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
-import { observeCliOomIdentity, confirmedCliOom, consecutiveSessionOoms, type CliOomIdentity, type SessionOomCount } from "./session-oom.js";
+import { observeCliOomIdentity, confirmedCliOom, consecutiveSessionOoms, describeSelfOom, type SelfOomEvidence, type CliOomIdentity, type SessionOomCount } from "./session-oom.js";
+import { assertNoSessionOomStop, readSessionOomStop, writeSessionOomStop, SessionOomStoppedError, sessionOomStopHint } from "./session-oom-stop.js";
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
@@ -86,6 +88,7 @@ import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
 import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { MuseBackend } from "./backend/muse.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
@@ -1405,6 +1408,29 @@ export class Daemon extends EventEmitter {
   private crashCount = 0;
   private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: TmuxManager } | null = null;
   private consecutiveOoms: SessionOomCount | null = null;
+  private collateralOomRecovery = false;
+  private unclearOomStopped = false;
+  private sessionOomStopUnpersisted = false;
+
+  private assertSessionOomAdmission(): void {
+    if (this.sessionOomStopUnpersisted) throw new SessionOomStoppedError(false,
+      { blocked: true, record: null, revision: null, confirmedOom: true });
+    assertNoSessionOomStop(this.instanceDir);
+  }
+
+  isSessionOomStopped(): boolean {
+    return this.sessionOomStopUnpersisted || readSessionOomStop(this.instanceDir).blocked;
+  }
+
+  isUnclearOomStopped(): boolean {
+    return this.unclearOomStopped && this.healthCheckPaused && this.processStatus === "crashed";
+  }
+
+  private stopUnclearOom(exitCode?: number): void {
+    this.unclearOomStopped = true;
+    this.healthCheckPaused = true;
+    this.emitSupervisionEnded(t("inst.oom_unclear_stopped"), t("inst.session_oom_remedy"), exitCode, "oom_unclear");
+  }
 
   private oomSessionKey(): string | null {
     // Claude's per-instance statusline owns its ID. Other current getters
@@ -2066,6 +2092,12 @@ export class Daemon extends EventEmitter {
       model: config.model ?? "default",
     };
     this.logger = rootLogger.child({ instance: name }, { level: config.log_level });
+    if (backend instanceof MuseBackend) {
+      const log = this.logger;
+      backend.setPlaceholderDebug((rec) => {
+        log.debug(rec, "muse empty-composer placeholder classified as empty");
+      });
+    }
     this.tmuxSessionName = getTmuxSession();
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
@@ -2081,7 +2113,10 @@ export class Daemon extends EventEmitter {
     // finished turn can never resume after a later restart. reset() is
     // deliberately NOT hooked: stop/spawn abandon the in-memory turn while
     // the on-disk interruption must survive for the resume gate.
-    this.turnReplyGuard.onComplete = () => clearInFlightTurnMarker(this.instanceDir);
+    this.turnReplyGuard.onComplete = () => {
+      clearInFlightTurnMarker(this.instanceDir);
+      this.publishWorkingState("turn_closed");
+    };
   }
 
   /** FleetManager and this daemon share a process, so durable begin/ACK is a direct synchronous store call. */
@@ -2387,6 +2422,9 @@ export class Daemon extends EventEmitter {
    * daemon's own state only; it never inspects the pane itself.
    */
   notAcceptingReason(): string | null {
+    if (this.sessionOomStopUnpersisted) return t("inst.session_oom_hold");
+    const oomStop = readSessionOomStop(this.instanceDir);
+    if (oomStop.blocked) return sessionOomStopHint(oomStop);
     if (this.pauseWakeState !== "active") return t("delivery.hold_state", this.pauseWakeState);
     if (this.inputBlockedDialogKey !== null) return t("delivery.hold_dialog", this.inputBlockedDialogKey);
     if (this.authFailureUnresolved) return t("delivery.hold_auth");
@@ -2429,6 +2467,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async startAdmitted(): Promise<void> {
+    this.assertSessionOomAdmission();
     ensureInstanceDir(this.instanceDir);
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
@@ -3341,15 +3380,30 @@ export class Daemon extends EventEmitter {
           this.cliOomObservation = null;
           const decisionKey = this.oomSessionKey();
           this.consecutiveOoms = consecutiveSessionOoms(this.consecutiveOoms, decisionKey,
-            decisionKey === key && oom !== null);
+            decisionKey === key && oom?.attribution === "self");
+          const collateralOom = oom?.attribution === "collateral";
+          if (collateralOom) this.logger.warn({ attribution: oom.attribution, pid: oom.pid }, "OOM victim without self-caused proof — preserving session; waiting for memory recovery");
           if (this.consecutiveOoms && this.consecutiveOoms.count >= 2) {
             // Stop supervision, not an idle pause: queued work must not auto-wake
             // the same session. An explicit restart is the person's retry choice.
+            // No await after the final captured health owner/session check. The
+            // stop is authoritative before observers can see supervision end.
+            try {
+              writeSessionOomStop(this.instanceDir, { owner: healthOwner, sessionKey: decisionKey!,
+                configuration: this.getWorkingStateObservation().configuration, stoppedAt: Date.now(),
+                count: this.consecutiveOoms.count, victim: { pid: oom!.pid, at: oom!.at }, evidence: oom!.evidence! });
+            } catch {
+              // Storage failure cannot revive this CLI in the current process.
+              // Say explicitly that a fleet restart cannot yet rely on durability.
+              this.sessionOomStopUnpersisted = true;
+              this.logger.error("Could not persist session OOM stop; fix storage before restarting the fleet");
+            }
             this.healthCheckPaused = true;
-            try { this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: "session_oom" }); }
+            try { this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: "session_oom", oomEvidence: oom!.evidence! }); }
             catch (error) { this.logger.warn({ error }, "Could not append session OOM history"); }
             this.logger.error({ pid: oom!.pid, count: this.consecutiveOoms.count }, "Repeated confirmed CLI OOM — automatic resume stopped; session preserved");
-            this.emitSupervisionEnded(t("inst.session_oom_stopped"), t("inst.session_oom_remedy"), exitCode, "session_oom");
+            this.emitSupervisionEnded(`${t("inst.session_oom_stopped")} (${describeSelfOom(oom!.evidence!)})`, t("inst.session_oom_remedy")
+              + (this.sessionOomStopUnpersisted ? ` ${t("inst.session_oom_save_failed")}` : ""), exitCode, "session_oom");
             return;
           }
 
@@ -3360,7 +3414,7 @@ export class Daemon extends EventEmitter {
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
-          if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+          if (!oom && lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
             if (!this.backgroundSessionRecoveryAttempted) {
               this.backgroundSessionRecoveryAttempted = true;
               this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
@@ -3397,7 +3451,7 @@ export class Daemon extends EventEmitter {
           // --continue again and crash in the same way → loop. Clear the session id
           // and skip resume so the next spawn starts fresh. (skipResume also stops
           // saveSessionId below from resurrecting the id from statusline.json.)
-          if (this.paneSaysNoConversation(lastOutput)) {
+          if (!oom && this.paneSaysNoConversation(lastOutput)) {
             this.setSessionAside("cli_reported_no_conversation");
             this.skipResume = true;
           }
@@ -3425,7 +3479,8 @@ export class Daemon extends EventEmitter {
           }
 
           // Detect rapid crash: sliding window — 3+ crashes in 5 minutes
-          this.crashTimestamps.push(Date.now());
+          if (!collateralOom) this.crashTimestamps.push(Date.now());
+          else this.crashTimestamps = [];
           const crashWindowMs = 5 * 60_000;
           this.crashTimestamps = this.crashTimestamps.filter(t => t > Date.now() - crashWindowMs);
 
@@ -3435,6 +3490,9 @@ export class Daemon extends EventEmitter {
               { crashesInWindow: this.crashTimestamps.length, lastExitCode: exitCode ?? null, lastOutput: paneTail(lastOutput) ?? null },
               "3+ crashes in 5 minutes — pausing respawn",
             );
+            // Unknown cause is bounded like an ordinary crash, never a
+            // self-OOM verdict. Preserve the session for the person's choice.
+            if (oom?.attribution === "unknown") { this.stopUnclearOom(exitCode); return; }
             // P1: Persist crash state so next process restart skips resume
             try {
               writeFileSync(join(this.instanceDir, "crash-state.json"), JSON.stringify({
@@ -3452,15 +3510,16 @@ export class Daemon extends EventEmitter {
             this.crashCount = 0;
           }
 
-          this.crashCount++;
+          if (!collateralOom) this.crashCount++;
           this.lastCrashAt = Date.now();
 
-          if (this.crashCount > max_retries) {
+          if (!collateralOom && this.crashCount > max_retries) {
             this.logger.error(
               { crashCount: this.crashCount, maxRetries: max_retries, lastExitCode: exitCode ?? null, lastOutput: paneTail(lastOutput) ?? null },
               "Max crash retries exceeded — not respawning",
             );
             this.healthCheckPaused = true;
+            if (oom?.attribution === "unknown") { this.stopUnclearOom(exitCode); return; }
             this.emitSupervisionEnded(
               `it crashed ${this.crashCount} times, exceeding restart_policy.max_retries (${max_retries})`,
               "Check the logs for the cause, then restart it.",
@@ -3470,8 +3529,8 @@ export class Daemon extends EventEmitter {
 
           // Calculate backoff delay
           const delay = backoff === "exponential"
-            ? Math.min(1000 * Math.pow(2, this.crashCount - 1), 60_000)
-            : 1000 * this.crashCount;
+            ? Math.min(1000 * Math.pow(2, Math.max(1, this.crashCount) - 1), 60_000)
+            : 1000 * Math.max(1, this.crashCount);
 
           this.logger.warn({ crashCount: this.crashCount, delay }, `${cliLabel} window died — respawning after backoff`);
 
@@ -3513,7 +3572,10 @@ export class Daemon extends EventEmitter {
             // Write snapshot before spawn — consumed only if resume fails
             this.writeRotationSnapshot("crash");
             // Try --resume first; spawnClaudeWindow falls back to fresh session if resume fails
-            const resumed = await this.spawnClaudeWindow();
+            this.collateralOomRecovery = collateralOom;
+            let resumed: boolean;
+            try { resumed = await this.spawnClaudeWindow(); }
+            finally { this.collateralOomRecovery = false; }
             if (!resumed) {
               // Resume failed → fresh session → inject snapshot for context
               await this.injectSnapshotMessage();
@@ -3602,7 +3664,8 @@ export class Daemon extends EventEmitter {
    * `crash_loop` already had this treatment; this is the same bridge for the other
    * four, carrying a human-readable cause and the operator's next step.
    */
-  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom"): void {
+  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom" | "oom_unclear"): void {
+    this.publishWorkingState("supervision_ended");
     this.emit("supervision_ended", {
       name: this.name,
       reason,
@@ -3615,6 +3678,7 @@ export class Daemon extends EventEmitter {
   private setProcessStatus(status: "running" | "crashed" | "stopped"): void {
     if (this.processStatus === status) return;
     this.processStatus = status;
+    this.publishWorkingState("process");
     if (status === "running") {
       // A successful crash respawn is a new pane generation. It is ready by
       // this point, so an error gate inherited from the dead pane must not keep
@@ -4152,6 +4216,7 @@ export class Daemon extends EventEmitter {
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
+    this.publishWorkingState("cancelled");
     this.logger.info({ deliveryEpoch: this.deliveryEpoch }, "Pending delivery queue cleared by user cancel");
   }
 
@@ -4671,6 +4736,7 @@ export class Daemon extends EventEmitter {
   }
 
   async stop(): Promise<void> {
+    this.publishWorkingState("before_stop");
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
     this.fenceDeliveryWritesForStop();
@@ -4812,6 +4878,32 @@ export class Daemon extends EventEmitter {
   /** Cached, pure observation read; it never captures, constructs a backend or writes stdin. */
   getInteractionSnapshot(): InteractionSnapshot {
     return this.interactionObservation.snapshot(this.interactionOwner());
+  }
+
+  private workingTurnDelivery: { generation: number; deliveryId: string | null } | null = null;
+  private workingBackgroundObservation: boolean | null = null;
+
+  /** Pure metadata read: never discovers sessions, captures a pane or reads backend files. */
+  getWorkingStateObservation(): WorkingStateObservation {
+    const turn = this.turnReplyGuard.snapshot();
+    const backend = this.config.backend ?? this.backend?.binaryName ?? "unknown";
+    const profile = resolveCredentialProfile(this.config.backend_options?.[backend]);
+    return {
+      owner: this.interactionOwner(), backend,
+      configuration: createHash("sha256").update(JSON.stringify([backend, this.config.working_directory, profile])).digest("hex"),
+      executionState: this.processStatus === "running" ? this.isPaused ? "paused" : this.instanceState : null,
+      processStatus: this.getProcessStatus(), sessionId: null, backendTurnId: null,
+      backgroundWork: this.workingBackgroundObservation,
+      turn: turn ? { generation: turn.generation,
+        deliveryId: this.workingTurnDelivery?.generation === turn.generation ? this.workingTurnDelivery.deliveryId : null,
+        correlationId: turn.target.correlationId ?? null, messageId: turn.target.messageId ?? null,
+        cancelled: turn.cancelledByUser, completionDelivered: turn.completionDelivered } : null,
+    };
+  }
+
+  private publishWorkingState(reason: WorkingStateReason): void {
+    try { this.emit("working_state", { reason, observation: this.getWorkingStateObservation() }); }
+    catch { /* Journal observers cannot change daemon behavior. */ }
   }
 
   /** Key of the last interaction snapshot actually emitted + broadcast (#1219). */
@@ -5059,6 +5151,7 @@ export class Daemon extends EventEmitter {
         this.pauseWakeState = "paused";
         this.autoPauseController.markPaused();
         writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), reason);
+        this.publishWorkingState("execution");
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
@@ -5080,6 +5173,7 @@ export class Daemon extends EventEmitter {
 
   /** Respawn the CLI in the preserved window and block until its prompt is ready. */
   async wake(timeoutMs = 30_000): Promise<void> {
+    this.assertSessionOomAdmission();
     // An explicit wake (e.g. after the user re-logs in) cancels a deferred
     // auth pause — otherwise the instance would pause again the moment it idles.
     this.pausePending = false;
@@ -5142,6 +5236,7 @@ export class Daemon extends EventEmitter {
         this.clearErrorRecoveryGate();
         clearPausedMarker(this.instanceDir);
         this.resumeRuntimeMonitors();
+        this.publishWorkingState("execution");
         this.logger.info("Instance auto-woke");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
@@ -5239,6 +5334,16 @@ export class Daemon extends EventEmitter {
     }
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
+    // Reuse an already-captured pane and the backend's pure parser, never capture for the journal.
+    if (typeof pane === "string" && this.backend?.backgroundWorkRunning) {
+      try {
+        const background = this.backend.backgroundWorkRunning(pane);
+        if (background !== this.workingBackgroundObservation) {
+          this.workingBackgroundObservation = background;
+          this.publishWorkingState("background");
+        }
+      } catch { /* Observational parsing cannot change accepted execution state. */ }
+    }
 
     // OpenCode creates its session lazily on the first submitted message.
     // Waiting until stop/pause to persist that id loses resume state when the
@@ -5286,6 +5391,7 @@ export class Daemon extends EventEmitter {
 
     if (snapshot.state !== previous) {
       this.logStateEdge(previous, snapshot);
+      this.publishWorkingState("execution");
       this.emit("instance_state", { name: this.name, ...snapshot });
       this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
       if (snapshot.state === "stuck" && pane && this.instanceStateReadyPattern) {
@@ -5368,6 +5474,8 @@ export class Daemon extends EventEmitter {
       deliveredText,
       deliveredAt,
     }, this.pendingWork.lastInboundTimestamp());
+    this.workingTurnDelivery = { generation: this.turnReplyGuard.snapshot()!.generation, deliveryId: meta.delivery_id || null };
+    this.publishWorkingState("turn_started");
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
     // completion (via the guard's onComplete) and cancel paths delete it.
@@ -10120,7 +10228,10 @@ export class Daemon extends EventEmitter {
         // purposes even before the idle edge completes the guard. Without
         // this, a restart in the reply-to-idle window would re-inject a
         // continuation for an already-answered turn.
-        if (replyAttempt?.completionAction) clearInFlightTurnMarker(this.instanceDir);
+        if (replyAttempt?.completionAction) {
+          clearInFlightTurnMarker(this.instanceDir);
+          this.publishWorkingState("completion_delivered");
+        }
         // #1377: a confirmed completion action (reply/react/edit_message) ends
         // the human-facing obligation immediately — the idle edge does not need
         // to confirm it.  Clear any pending confirmation window so a later
@@ -10717,6 +10828,9 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    this.unclearOomStopped = false;
+    this.publishWorkingState("before_spawn");
+    this.workingBackgroundObservation = null;
     this.dialogAnswers = null;
     this.capacityNudge = null;
     this.lastErrorEpisode = null;
@@ -10907,6 +11021,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async spawnClaudeWindow(): Promise<boolean> {
+    this.assertSessionOomAdmission();
     this.beginSpawn();
     let resumedSuccessfully = false;
     try {
@@ -11262,11 +11377,20 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
-    const ready = !this.spawnGate ? await this.trySpawnInsideGate(reuseWindow, startupTimeoutMs) : await this.spawnGate.run({
+    const recoveryOwner = this.collateralOomRecovery ? this.interactionOwner() : null;
+    const enter = () => {
+      if (recoveryOwner && (!sameInteractionOwner(recoveryOwner, this.interactionOwner())
+        || this.startupAborted || this.deliveryWritesStopping || this.runtimeMonitorsFrozen || this.healthCheckPaused)) {
+        throw new Error("OOM recovery cancelled: the instance was stopped, paused or replaced while memory was unavailable");
+      }
+      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
+    };
+    const ready = !this.spawnGate ? await enter() : await this.spawnGate.run({
       instanceName: this.name,
       workingDirectory: this.config.working_directory,
       reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
-    }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+      requireNormalMemory: this.collateralOomRecovery,
+    }, enter);
     // #906: a resumed kiro conversation comes back as the agent it was saved under. Every launch path that reaches a
     // ready CLI (start, recovery, wake) switches it to this instance's own agent here, while the spawn still holds
     // deliveries — and outside the spawn gate, which it does not need.
@@ -11514,6 +11638,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    this.assertSessionOomAdmission();
     this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
@@ -11555,6 +11680,7 @@ export class Daemon extends EventEmitter {
     // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
     // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
     this.startupAdmission?.();
+    this.assertSessionOomAdmission();
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
@@ -11646,6 +11772,7 @@ export class Daemon extends EventEmitter {
     }
     this.startupAdmission?.();
     let windowId: string;
+    this.assertSessionOomAdmission();
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
       await this.tmux!.respawnWindow(cmd, resolvedCwd);
@@ -12247,7 +12374,7 @@ export class Daemon extends EventEmitter {
     return lines.join("\n").slice(0, 4000);
   }
 
-  private appendCrashHistory(data: { exitCode?: number; lastOutput?: string; crashType: "server" | "window"; reason?: string }): void {
+  private appendCrashHistory(data: { exitCode?: number; lastOutput?: string; crashType: "server" | "window"; reason?: string; oomEvidence?: SelfOomEvidence }): void {
     try {
       const historyPath = join(this.instanceDir, "crash-history.jsonl");
       const entry = {
@@ -12256,6 +12383,7 @@ export class Daemon extends EventEmitter {
         crashType: data.crashType,
         exitCode: data.exitCode,
         reason: data.reason,
+        ...(data.oomEvidence ? { oomEvidence: data.oomEvidence } : {}),
         lastOutput: data.lastOutput,
         crashCount: this.crashCount + 1,
         crashesInWindow: this.crashTimestamps.length,

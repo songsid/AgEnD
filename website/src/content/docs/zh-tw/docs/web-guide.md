@@ -31,7 +31,7 @@ agend web --code   # 只印出來
 
 - 按下去之前，什麼都不會公開。
 - TLS 由 Cloudflare 處理，Cloudflare 看得到流量。**登入的人可以管理整個 fleet**：終端機、檔案、設定都可以。不要轉傳連結或登入碼。
-- 連結 **2 小時**後自動關閉（可在設定改成 1–480 分鐘）。要提早關閉，按私訊或新的 `/web` 選單裡的**關閉公開連結**，或傳 `/web revoke`。
+- 連結 **2 小時**後自動關閉（可在設定改成 1–480 分鐘）。用自己的網域（具名 Cloudflare tunnel，`web.public_link.hostname`）時，網址每次都相同，連結最長可以開到 7 天，或直到你關掉為止。要提早關閉，按私訊或新的 `/web` 選單裡的**關閉公開連結**，或傳 `/web revoke`。
 - 透過它的每一次登入都會在 General 通知。
 
 公開連結關閉時（`web.public_link.allow_public: false`）不會有這個按鈕。這時請用你自己管理的連線，例如 SSH port forward 或 Tailscale：見[從別的裝置連線](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md#從別的裝置連線)。

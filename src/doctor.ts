@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import type { ServiceInfo } from "./service-installer.js";
 import { t } from "./locale.js";
 import { checkStartFailure, fleetLogTail, type StartFailure } from "./start-failure.js";
+import { readRestoreRecord, type RestoreRecord } from "./mac-auto-restore.js";
 import { startFailureLines } from "./start-failure-notice.js";
 import { resolveBinary } from "./backend/types.js";
 import { codexPackageProblemMessage, inspectCodexPackage, type CodexPackageReport } from "./backend/codex-package.js";
@@ -52,6 +53,8 @@ interface DoctorDeps {
   codexPackage: () => CodexPackageReport | null;
   /** #2481: does the installed version's fleet keep failing to start (start-failure.ts)? */
   startFailure: (dataDir: string) => StartFailure;
+  /** #2481: the automatic restore this host made, if any (fleet-auto-restore.json). */
+  autoRestore?: (dataDir: string) => RestoreRecord | null;
   fetchFleetHealth: (port: number) => Promise<{
     adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; heartbeatAgeMs?: number | null; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
   }>;
@@ -59,6 +62,7 @@ interface DoctorDeps {
 
 const defaultDeps: DoctorDeps = {
   startFailure: dataDir => checkStartFailure(dataDir),
+  autoRestore: dataDir => readRestoreRecord(dataDir),
   env: process.env,
   platform: platform(),
   run: (file, args) => spawnSync(file, args, { encoding: "utf8", timeout: 5000 }),
@@ -212,6 +216,13 @@ export async function collectDoctorReport(
     const [headline, ...rest] = startFailureLines(startFailure, dataDir);
     const tail = fleetLogTail(dataDir).map(line => `    | ${line}`);
     add("Service", "error", t("startfail.doctor_label"), [headline!.replace(/^⚠ /, ""), ...rest.map(l => `  ${l.trim()}`), ...tail].join("\n"));
+  }
+  // #2481: an automatic restore this host made (the record outlives it: the restored version cannot write one).
+  const restore = deps.autoRestore?.(dataDir) ?? null;
+  if (restore) {
+    add("Service", restore.result === "failed" ? "error" : "warn", t("startfail.doctor_restored_label"), restore.result === "failed"
+      ? t("startfail.doctor_restore_failed", restore.from, restore.to, restore.at, restore.reason ?? "?")
+      : t("startfail.doctor_restored", restore.from, restore.to, restore.at, restore.failedTree ?? restore.preimage));
   }
 
   if (!service.installed) {

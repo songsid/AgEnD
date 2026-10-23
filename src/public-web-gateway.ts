@@ -23,6 +23,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // #1408: the app shell's pages, exactly as the classifier names them (a malformed one is answered 400 behind it).
   if (reads && shellRoute(method, path) !== null) return true;
   if (method === "POST" && ["/auth/login", "/auth/logout", "/auth/request-code"].includes(path)) return true;
+  // #1939 §0.2 / §0.3: "Authorize this browser" over the link — this browser's state (GET) and the ask for its Confirm
+  // card (POST, a session write: CSRF and §3 in the handler). The server answers why not while the link's option is off.
+  if ((method === "GET" || method === "POST") && path === "/ui/authorization") return true;
   if (method === "DELETE" && /^\/auth\/sessions(?:\/[0-9a-f]{16})?$/.test(path)) return true;
   if (reads && /^\/api\/(pane|profile|avatar)\/[^/]+$/.test(path)) return true;
   // #1665: the sidebar's order is a host preference now (/ui/prefs, read-only here); the old fleet-wide /api/sort-order
@@ -39,6 +42,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // #2182: the org canvas's router, libavoid's two files (the route worker itself is under /ui/js/ above).
   if (method === "GET" && LIBAVOID_PATHS.includes(path)) return true;
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|offices|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
+  // #2513: the Office view's skin packs, read-only as the offices are (the list, a manifest, its pictures); never uploaded
+  // or deleted here (the handler refuses it too).
+  if (method === "GET" && /^\/ui\/office-skins(?:\/[A-Za-z0-9_-]{1,40}(?:\/img\/[0-9a-f]{32}\.png)?)?$/.test(path)) return true;
   // #1629: agents' themes and their pictures, read-only — the public link views themes; reset and lock are not here.
   if (method === "GET" && (path === "/ui/themes" || /^\/ui\/img\/theme\/[^/]+\/[0-9a-f]{32}$/.test(path))) return true;
   // #2118: exact current-Chat reads only; handler rechecks session/epoch/exposure/instance/retention.

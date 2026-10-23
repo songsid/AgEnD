@@ -1141,7 +1141,7 @@ function General({ ctx, part = "all" }) {
  */
 export const WEB_READ_ONLY = [
   "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
-  "web.usage_panel", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
+  "web.usage_panel", "web.search", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
 ];
 /**
  * #2347 §10: what each of them is when fleet.yaml leaves it out, as the host applies it (null: nothing — none is used).
@@ -1272,6 +1272,12 @@ function WebSection({ ctx, staged, part = "all" }) {
   const uploads = uploadMbInEffect(web);
   const shown = (path) => {
     const [top, key] = path.split(".");
+    if (top === "web" && key === "search") {
+      const days = web.search && typeof web.search === "object" ? web.search.retention_days : undefined;
+      if (days === undefined || days === null) return tn("searchRetentionUnset");
+      if (days === 0) return tn("searchRetentionZero");
+      return String(days);
+    }
     const v = (top === "web" ? web : term)[key];
     // An upload limit that is not what applies (out of range, or a file above the whole message's) says what does.
     const upload = top === "web" ? { upload_max_file_mb: uploads.file, upload_max_total_mb: uploads.total }[key] : undefined;
@@ -1338,6 +1344,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     ${has("readonly") ? html`<section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>
+      <p class="note">${tn("webSearchHint")}</p>
     </section>` : null}
   </div>`;
 }

@@ -648,7 +648,13 @@ function Composer({ name, label = name, lease, busy }) {
   const [, tick] = useState(0);
   const [sel, setSel] = useState(0);
   const [closedFor, setClosedFor] = useState(null);    // the draft the palette was closed on (Esc); it opens again on change
+  // An IME composing (Zhuyin, Pinyin, kana…): between compositionstart and compositionend the box is the IME's. Nothing
+  // here touches it — no draft update, no re-render, no auto-grow (each one moved the box, and iOS redrew the candidate
+  // bar on every keystroke: the user's flicker). What it holds is taken once, at compositionend.
+  const composing = useRef(false);
   const value = s.drafts[name] || "";
+  // A render while composing (another part of the chat changed) gives the box what it holds, so it never writes it.
+  const boxValue = composing.current && input.current ? input.current.value : value;
   const files = s.pendingFiles[name] || [];
   const reply = s.replies[name];                       // #2272: the message this one will reply to
   const content = !!value.trim() || files.length > 0;
@@ -660,7 +666,7 @@ function Composer({ name, label = name, lease, busy }) {
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
   // (#2478 — a long name's placeholder made the box two lines tall).
   useLayoutEffect(() => {
-    const el = input.current; if (!el) return;
+    const el = input.current; if (!el || composing.current) return;
     el.style.height = "auto";
     if (value) el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, [value]);
@@ -700,7 +706,11 @@ function Composer({ name, label = name, lease, busy }) {
     if (reply && e.key === "Escape" && !e.isComposing) { e.preventDefault(); store.clearReply(name); return; }   // #2272
     if (R().composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); submit(); }
   };
-  const onInput = (e) => { setValue(e.target.value); };
+  const onInput = (e) => { if (composing.current || e.isComposing) return; setValue(e.target.value); };
+  const onCompositionStart = () => { composing.current = true; };
+  // The composed text is the draft now (some engines send no input after it); a blur ends one that never ended.
+  // Lower-case props below: an element has no oncomposition… property, so Preact would listen for "CompositionStart".
+  const onCompositionEnd = (e) => { if (!composing.current) return; composing.current = false; setValue(e.target.value); };
   // Files in a paste are attached; a very long text paste goes as a text file — only once it is really attached.
   const onPaste = (e) => {
     const list = e.clipboardData && e.clipboardData.files;
@@ -727,11 +737,14 @@ function Composer({ name, label = name, lease, busy }) {
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
       ${/* #2478: the placeholder is drawn beside the box, one line ending in "…" — a textarea's own placeholder is clipped,
-          never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. */ ""}
-      <span class="composer-field"><textarea id="msgIn" ref=${input} rows="1" value=${value} aria-label=${t("chat.composerPlaceholder", label)}
+          never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. Its own
+          placeholder is one space: :placeholder-shown hides the drawn one (app.css) the moment the box holds text, an
+          IME's composing text included, with no change to the page. */ ""}
+      <span class="composer-field"><textarea id="msgIn" ref=${input} rows="1" value=${boxValue} aria-label=${t("chat.composerPlaceholder", label)}
         enterkeyhint=${touchScreen() ? "enter" : undefined} autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
-        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>${value ? null
-        : html`<span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span>`}</span>
+        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
+        oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
+        placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span></span>
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
         disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
       <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content}

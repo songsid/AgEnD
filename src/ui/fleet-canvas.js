@@ -32,6 +32,7 @@ import { Office } from "./fleet-office.js";
 import { OC, REST_KEY, SUM_LINE, canvasLayout, hits, needle, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
 import { createTrafficStore, FAR_K, HEAD, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
 import { routeScene } from "./fleet-route-scene.js";
+import { K_MAX, K_MIN, fitView, gestureState, gestures, miniPoint, pinchView, wheelFactor, zoomAt, zoomKey } from "./fleet-canvas-view.js";
 import { createRouteClient } from "./fleet-route.js";
 
 register("orgc", {
@@ -62,32 +63,9 @@ const tc = (k, ...v) => t(`orgc.${k}`, ...v);
 
 export { OC, REST_KEY, SUM_LINE, canvasLayout, openingRegion, summaryRows };
 
-// ── The view: pan, zoom, fit (pure helpers; the component applies them) ──
+// ── The view: pan, zoom, fit and the gestures (fleet-canvas-view.js, shared with the Office view) ──
 
-export const K_MIN = 0.2, K_MAX = 2.5;
-const clampK = (k) => Math.min(K_MAX, Math.max(K_MIN, k));
-/**
- * The view that shows region `r` in a `size` viewport: as large as fits (at most `maxK`), centred across, from the top.
- * `minK`: never smaller than this (a phone's opening); a region that is then wider than the viewport starts at its left.
- * `widthOnly`: fit the width, let the height run on (the opening: the rest is below).
- */
-export function fitView(r, size, { margin = 24, minK = K_MIN, maxK = 1.25, widthOnly = false } = {}) {
-  const across = (size.w - 2 * margin) / r.w, down = widthOnly ? Infinity : (size.h - 2 * margin) / r.h;
-  const k = clampK(Math.max(minK, Math.min(across, down, maxK)));
-  const x = r.w * k > size.w - 2 * margin ? margin - r.x * k : size.w / 2 - (r.x + r.w / 2) * k;
-  return { k, x, y: margin - r.y * k };
-}
-/** A pinch step: the canvas point under the old midpoint goes to the new midpoint, the zoom scaled by the spans' ratio. */
-export function pinchView(v, from, to) {
-  const k = clampK(v.k * (to.dist / from.dist));
-  const wx = (from.mid.x - v.x) / v.k, wy = (from.mid.y - v.y) / v.k;
-  return { k, x: to.mid.x - wx * k, y: to.mid.y - wy * k };
-}
-/** Zoom by `f` about the viewport point (cx, cy): the canvas point under it stays under it. */
-export function zoomAt(v, f, cx, cy) {
-  const k = clampK(v.k * f);
-  return { k, x: cx - (cx - v.x) * (k / v.k), y: cy - (cy - v.y) * (k / v.k) };
-}
+export { K_MIN, K_MAX, fitView, pinchView, zoomAt };
 
 // ── Per device ──
 
@@ -316,7 +294,7 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
   const L = useMemo(() => canvasLayout(view, folded, { narrow, label: (s, n) => `${n} ${STATE_LABEL(s)}` }), [view, folded, narrow]);
   const svgRef = useRef(null), worldRef = useRef(null), miniRef = useRef(null), miniViewRef = useRef(null);
   const vp = useRef(null);
-  const drag = useRef({ pts: new Map(), moved: 0, span: null, swallow: false });
+  const drag = useRef(gestureState());
   const size = () => {
     const r = svgRef.current ? svgRef.current.getBoundingClientRect() : null;
     return r && r.width > 0 && r.height > 0 ? { w: r.width, h: r.height } : { w: 960, h: 600 };
@@ -364,58 +342,20 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
   });
 
   const open = openChat;
-  // The click that ends a drag or a pinch opens nothing and folds nothing.
-  const onClickCapture = (e) => { if (drag.current.swallow) { e.preventDefault(); e.stopPropagation(); } };
+  // The click that ends a drag or a pinch opens nothing and folds nothing (fleet-canvas-view.js gestures).
+  const g = gestures(drag.current, { el: () => svgRef.current, pan: (dx, dy) => set({ ...vp.current, x: vp.current.x + dx, y: vp.current.y + dy }),
+    pinch: (from, to) => set(pinchView(vp.current, from, to)) });
+  const onClickCapture = g.clickCapture;
   const onWheel = (e) => {
     e.preventDefault();
     const r = svgRef.current.getBoundingClientRect();
-    set(zoomAt(vp.current, Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top));
+    set(zoomAt(vp.current, wheelFactor(e), e.clientX - r.left, e.clientY - r.top));
   };
-  // One pointer pans (after a few pixels, so a tap still opens a card); two pinch: the canvas point under their old
-  // midpoint goes to the new one, scaled by how their span changed (so a two-finger move pans too). The pointer is
-  // captured only once it drags: a capture at once would send the tap's click to the canvas, not the card.
-  const spanOf = () => {
-    const [a, b] = [...drag.current.pts.values()], r = svgRef.current.getBoundingClientRect();
-    return { mid: { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top }, dist: Math.hypot(a.x - b.x, a.y - b.y) };
-  };
-  const onPointerDown = (e) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    const d = drag.current;
-    d.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (d.pts.size === 1) { d.moved = 0; d.swallow = false; d.span = null; }
-    else if (d.pts.size === 2) { d.swallow = true; d.span = spanOf(); }
-  };
-  const onPointerMove = (e) => {
-    const d = drag.current, prev = d.pts.get(e.pointerId);
-    if (!prev) return;
-    d.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (d.pts.size === 1) {
-      d.moved += Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y);
-      if (d.moved < 5) return;
-      if (!d.swallow) { d.swallow = true; try { svgRef.current.setPointerCapture(e.pointerId); } catch { /* gone already */ } }
-      set({ ...vp.current, x: vp.current.x + e.clientX - prev.x, y: vp.current.y + e.clientY - prev.y });
-      return;
-    }
-    if (d.pts.size !== 2) return;
-    d.swallow = true;
-    const next = spanOf();
-    if (d.span && d.span.dist > 0 && next.dist > 0) set(pinchView(vp.current, d.span, next));
-    d.span = next;
-  };
-  const onPointerUp = (e) => {
-    const d = drag.current;
-    d.pts.delete(e.pointerId);
-    // Back to one finger: it pans on at once (the pinch already swallows the click); two again: a new span.
-    d.span = d.pts.size === 2 ? spanOf() : null;
-    if (d.pts.size === 1) d.moved = 5;
-    // The click that ends a drag comes after this: let it be swallowed, then forget.
-    if (d.swallow && !d.pts.size) setTimeout(() => { if (!d.pts.size) d.swallow = false; }, 0);
-  };
+  const onPointerDown = g.down, onPointerMove = g.move, onPointerUp = g.up;
   const onKeyDown = (e) => {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
-    if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomBy(1.25); return; }
-    if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomBy(0.8); return; }
-    if (e.key === "0") { e.preventDefault(); fit(); return; }
+    const z = zoomKey(e);
+    if (z) { e.preventDefault(); if (z === "fit") fit(); else zoomBy(z === "in" ? 1.25 : 0.8); return; }
     const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     const card = e.target && e.target.closest ? e.target.closest(".oc-node") : null;
     if (card && (e.key === "Enter" || e.key === " ")) {
@@ -436,12 +376,10 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
     if (c) show(c, false);
   };
   const onMini = (e) => {
-    const m = miniRef.current, r = m.getBoundingClientRect(), box = miniBox(L);
-    if (!r.width || !r.height) return;
-    const scale = Math.min(r.width / box.w, r.height / box.h);
-    const wx = box.x + (e.clientX - r.left - (r.width - box.w * scale) / 2) / scale, wy = box.y + (e.clientY - r.top - (r.height - box.h * scale) / 2) / scale;
+    const w = miniPoint(miniRef.current.getBoundingClientRect(), miniBox(L), e.clientX, e.clientY);
+    if (!w) return;
     const s = size(), v = vp.current;
-    set({ k: v.k, x: s.w / 2 - wx * v.k, y: s.h / 2 - wy * v.k });
+    set({ k: v.k, x: s.w / 2 - w.x * v.k, y: s.h / 2 - w.y * v.k });
   };
 
   const box = miniBox(L);

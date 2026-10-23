@@ -112,7 +112,7 @@ describe("ClassicBot /chat uses connection status_emojis (#1105)", () => {
       expect(h.respond).toHaveBeenCalledWith(INBOX);
       expect(h.state.deliverToInstance).toHaveBeenCalledWith("classic", expect.objectContaining({
         content: "hello", meta: expect.objectContaining({ message_id: "slash-reply", chat_id: "room", thread_id: "room" }),
-      }));
+      }), expect.objectContaining({ onStartRetryHold: expect.any(Function) })); // #2484: waits for a start retry
       expect(h.selected.notifyAlert).toHaveBeenCalledWith("room", expect.objectContaining({ message: `${WORK} 處理中…` }), undefined);
       h.fleet.reactMessageStatus("classic", "room", "slash-reply", "processing", "room");
       h.fleet.finishDeliveryStatus("classic", "room", "slash-reply", "delivered", "room");

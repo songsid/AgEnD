@@ -1,0 +1,669 @@
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc_large_node+0x79/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc+0xd0/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  v9fs_alloc_rdir_buf.isra.0+0x2c/0x40
+2026-10-23T01:12:44+0800 fixture-host kernel:  v9fs_dir_readdir_dotl+0x55/0x1a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? psi_group_change+0x17d/0x3b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? psi_task_switch+0x15e/0x2b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? selinux_file_permission+0x117/0x150
+2026-10-23T01:12:44+0800 fixture-host kernel:  iterate_dir+0x9c/0x170
+2026-10-23T01:12:44+0800 fixture-host kernel:  __x64_sys_getdents64+0x88/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __pfx_filldir64+0x10/0x10
+2026-10-23T01:12:44+0800 fixture-host kernel:  x64_sys_call+0x181a/0x1c90
+2026-10-23T01:12:44+0800 fixture-host kernel:  do_syscall_64+0x5a/0xb0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __pfx_wake_page_function+0x10/0x10
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? filemap_fault+0x1be/0xbd0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? psi_group_change+0x17d/0x3b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? psi_task_switch+0x106/0x2b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? _raw_spin_unlock+0x12/0x30
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? finish_task_switch.isra.0+0x85/0x290
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __rseq_handle_notify_resume+0xa9/0x490
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __schedule+0x3bb/0xaa0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? switch_fpu_return+0x55/0xe0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? exit_to_user_mode_prepare+0x7f/0x170
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit_to_user_mode+0x12/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit+0x3f/0x50
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? sysvec_reschedule_ipi+0x6d/0x110
+2026-10-23T01:12:44+0800 fixture-host kernel:  entry_SYSCALL_64_after_hwframe+0x78/0xe2
+2026-10-23T01:12:44+0800 fixture-host kernel: RIP: 0033:0x75f6cfb03647
+2026-10-23T01:12:44+0800 fixture-host kernel: Code: Unable to access opcode bytes at 0x75f6cfb0361d.
+2026-10-23T01:12:44+0800 fixture-host kernel: RSP: 002b:000075f6cb0016e8 EFLAGS: 00000293 ORIG_RAX: 00000000000000d9
+2026-10-23T01:12:44+0800 fixture-host kernel: RAX: ffffffffffffffda RBX: 00005f4092e5e030 RCX: 000075f6cfb03647
+2026-10-23T01:12:44+0800 fixture-host kernel: RDX: 0000000000008000 RSI: 00005f4092e5e030 RDI: 000000000000002e
+2026-10-23T01:12:44+0800 fixture-host kernel: RBP: 00005f4092e5e004 R08: 00005f408c437280 R09: 00005f409205c600
+2026-10-23T01:12:44+0800 fixture-host kernel: R10: 0000000000001000 R11: 0000000000000293 R12: fffffffffffffc00
+2026-10-23T01:12:44+0800 fixture-host kernel: R13: 000000000000000c R14: 00005f4092e5e000 R15: 0000000000000000
+2026-10-23T01:12:44+0800 fixture-host kernel:  </TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel: Mem-Info:
+2026-10-23T01:12:44+0800 fixture-host kernel: active_anon:7107150 inactive_anon:841195 isolated_anon:168
+                                                active_file:1819 inactive_file:2497 isolated_file:218
+                                                unevictable:0 dirty:31 writeback:0
+                                                slab_reclaimable:62999 slab_unreclaimable:57488
+                                                mapped:9518 shmem:22552 pagetables:28903
+                                                sec_pagetables:0 bounce:0
+                                                kernel_misc_reclaimable:0
+                                                free:40339 free_pcp:174 free_cma:0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 active_anon:28428600kB inactive_anon:3364780kB active_file:7276kB inactive_file:9988kB unevictable:0kB isolated(anon):672kB isolated(file):872kB mapped:38072kB dirty:124kB writeback:0kB shmem:90208kB shmem_thp:0kB shmem_pmdmapped:0kB anon_thp:24576kB writeback_tmp:0kB kernel_stack:26080kB pagetables:115612kB sec_pagetables:0kB all_unreclaimable? no
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32 free:118184kB boost:0kB min:5472kB low:9464kB high:13456kB reserved_highatomic:0KB active_anon:3525908kB inactive_anon:269500kB active_file:248kB inactive_file:148kB unevictable:0kB writepending:0kB present:4061820kB managed:3995648kB mlocked:0kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 28189 28189 28189
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal free:43172kB boost:0kB min:39580kB low:68444kB high:97308kB reserved_highatomic:2048KB active_anon:24903072kB inactive_anon:3094412kB active_file:6872kB inactive_file:8916kB unevictable:0kB writepending:0kB present:29491200kB managed:28873320kB mlocked:0kB bounce:0kB free_pcp:692kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 0 0 0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32: 1747*4kB (UME) 1116*8kB (UME) 893*16kB (UME) 680*32kB (UME) 394*64kB (UME) 190*128kB (UME) 54*256kB (UME) 8*512kB (ME) 0*1024kB 0*2048kB 0*4096kB = 119420kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal: 657*4kB (UMEH) 93*8kB (UMEH) 328*16kB (UEH) 1068*32kB (UEH) 3*64kB (H) 0*128kB 0*256kB 0*512kB 0*1024kB 0*2048kB 0*4096kB = 42988kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=1048576kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=2048kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 27281 total pagecache pages
+2026-10-23T01:12:44+0800 fixture-host kernel: 200 pages in swap cache
+2026-10-23T01:12:44+0800 fixture-host kernel: Free swap  = 0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Total swap = 8388608kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 8388255 pages RAM
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages HighMem/MovableOnly
+2026-10-23T01:12:44+0800 fixture-host kernel: 171013 pages reserved
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages hwpoisoned
+2026-10-23T01:12:44+0800 fixture-host kernel: systemd-journald: systemd-journal: potentially unexpected fatal signal 6.
+2026-10-23T01:12:44+0800 fixture-host kernel: CPU: 4 PID: 1466287 Comm: systemd-journal Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
+2026-10-23T01:12:44+0800 fixture-host kernel: RIP: 0033:0x55edfc8c31ae
+2026-10-23T01:12:44+0800 fixture-host kernel: Code: Unable to access opcode bytes at 0x55edfc8c3184.
+2026-10-23T01:12:44+0800 fixture-host kernel: RSP: 002b:00007ffe819cacb0 EFLAGS: 00010202
+2026-10-23T01:12:44+0800 fixture-host kernel: RAX: 0000000000000011 RBX: 0000000000000003 RCX: 0000000000000005
+2026-10-23T01:12:44+0800 fixture-host kernel: RDX: 0000000000000000 RSI: 000055ee3c66d010 RDI: 0000000000000007
+2026-10-23T01:12:44+0800 fixture-host kernel: RBP: 00007ffe819cd670 R08: 000055ee3c675a10 R09: 00007ffe819caa37
+2026-10-23T01:12:44+0800 fixture-host kernel: R10: 0000000000000000 R11: a58e26dbf538af1b R12: 0000000000000000
+2026-10-23T01:12:44+0800 fixture-host kernel: R13: 0000000000000003 R14: 000055ee3c686b70 R15: 0000000000000001
+2026-10-23T01:12:44+0800 fixture-host kernel: FS:  000076260c62b900 GS:  0000000000000000
+2026-10-23T01:12:44+0800 changhansung1 unknown: WSL (1468052 - CaptureCrash): Capturing crash for pid: 918786, executable: !usr!lib!systemd!systemd-journald, signal: 6, port: 50005
+2026-10-23T01:12:44+0800 fixture-host kernel: elasticsearch[1: page allocation failure: order:4, mode:0x40c40(GFP_NOFS|__GFP_COMP), nodemask=(null),cpuset=199015de769d20e292f30660eb54121d273f95ace5e74f50dcce770aaa9c3669,mems_allowed=0
+2026-10-23T01:12:44+0800 fixture-host kernel: CPU: 2 PID: 15439 Comm: elasticsearch[1 Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
+2026-10-23T01:12:44+0800 fixture-host kernel: Call Trace:
+2026-10-23T01:12:44+0800 fixture-host kernel:  <TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack_lvl+0x4c/0x70
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack+0x14/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  warn_alloc+0x10d/0x180
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __alloc_pages_direct_compact+0xaf/0x290
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages_slowpath.constprop.0+0xde2/0xee0
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages+0x30c/0x340
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? p9_fcall_init+0x33/0x80
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc_large_node+0x79/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc+0xd0/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_fcall_init+0x33/0x80
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_tag_alloc+0xff/0x280
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_client_prepare_req+0x77/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_client_rpc+0x7d/0x3b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? p9_msg_buf_size+0x758/0x7b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? p9pdu_readf+0x77f/0x9c0
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_client_readdir+0xb3/0x200
+2026-10-23T01:12:44+0800 fixture-host kernel:  v9fs_dir_readdir_dotl+0x15e/0x1a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? psi_group_change+0x17d/0x3b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? selinux_file_permission+0x117/0x150
+2026-10-23T01:12:44+0800 fixture-host kernel:  iterate_dir+0x9c/0x170
+2026-10-23T01:12:44+0800 fixture-host kernel:  __x64_sys_getdents64+0x88/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __pfx_filldir64+0x10/0x10
+2026-10-23T01:12:44+0800 fixture-host kernel:  x64_sys_call+0x181a/0x1c90
+2026-10-23T01:12:44+0800 fixture-host kernel:  do_syscall_64+0x5a/0xb0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? folio_add_file_rmap_range+0x121/0x1a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? set_ptes.isra.0+0x17/0x90
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? next_uptodate_folio+0x90/0x240
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? _raw_spin_unlock+0x12/0x30
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? filemap_map_pages+0x46e/0x5b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? do_fault+0x29c/0x570
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __handle_mm_fault+0x713/0x860
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __count_memcg_events+0x49/0xa0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? count_memcg_events.constprop.0+0x1e/0x40
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? switch_fpu_return+0x55/0xe0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? exit_to_user_mode_prepare+0x7f/0x170
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit_to_user_mode+0x12/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit+0x3f/0x50
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? exc_page_fault+0x87/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  entry_SYSCALL_64_after_hwframe+0x78/0xe2
+2026-10-23T01:12:44+0800 fixture-host kernel: RIP: 0033:0x796f6fc145ab
+2026-10-23T01:12:44+0800 fixture-host kernel: Code: Unable to access opcode bytes at 0x796f6fc14581.
+2026-10-23T01:12:44+0800 fixture-host kernel: RSP: 002b:0000796ee31f0fe8 EFLAGS: 00000246 ORIG_RAX: 00000000000000d9
+2026-10-23T01:12:44+0800 fixture-host kernel: RAX: ffffffffffffffda RBX: 0000796eb401fb60 RCX: 0000796f6fc145ab
+2026-10-23T01:12:44+0800 fixture-host kernel: RDX: 0000000000008000 RSI: 0000796eb401fb90 RDI: 0000000000000086
+2026-10-23T01:12:44+0800 fixture-host kernel: RBP: 0000796eb401fb90 R08: 00000000e3321b88 R09: 00000000fd6c0830
+2026-10-23T01:12:44+0800 fixture-host kernel: R10: 0000796f580e8df1 R11: 0000000000000246 R12: ffffffffffffff80
+2026-10-23T01:12:44+0800 fixture-host kernel: R13: 0000000000000000 R14: 0000796ee31f1080 R15: 0000796ee4007b20
+2026-10-23T01:12:44+0800 fixture-host kernel:  </TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel: Mem-Info:
+2026-10-23T01:12:44+0800 fixture-host kernel: active_anon:7007324 inactive_anon:941957 isolated_anon:0
+                                                active_file:2044 inactive_file:1470 isolated_file:172
+                                                unevictable:0 dirty:0 writeback:0
+                                                slab_reclaimable:62935 slab_unreclaimable:57535
+                                                mapped:9797 shmem:22783 pagetables:28930
+                                                sec_pagetables:0 bounce:0
+                                                kernel_misc_reclaimable:0
+                                                free:40370 free_pcp:176 free_cma:0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 active_anon:28029296kB inactive_anon:3767828kB active_file:8176kB inactive_file:5880kB unevictable:0kB isolated(anon):0kB isolated(file):688kB mapped:39188kB dirty:0kB writeback:0kB shmem:91132kB shmem_thp:0kB shmem_pmdmapped:0kB anon_thp:24576kB writeback_tmp:0kB kernel_stack:26064kB pagetables:115720kB sec_pagetables:0kB all_unreclaimable? no
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32 free:118184kB boost:0kB min:5472kB low:9464kB high:13456kB reserved_highatomic:0KB active_anon:3611900kB inactive_anon:183972kB active_file:452kB inactive_file:0kB unevictable:0kB writepending:4kB present:4061820kB managed:3995648kB mlocked:0kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 28189 28189 28189
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal free:43296kB boost:0kB min:39580kB low:68444kB high:97308kB reserved_highatomic:2048KB active_anon:24417248kB inactive_anon:3583784kB active_file:7168kB inactive_file:5380kB unevictable:0kB writepending:140kB present:29491200kB managed:28873320kB mlocked:0kB bounce:0kB free_pcp:756kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 0 0 0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32: 1762*4kB (UME) 1104*8kB (UME) 897*16kB (UME) 677*32kB (UME) 394*64kB (UME) 190*128kB (UME) 54*256kB (UME) 8*512kB (ME) 0*1024kB 0*2048kB 0*4096kB = 119352kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal: 692*4kB (UMEH) 73*8kB (UMEH) 313*16kB (UEH) 1070*32kB (UEH) 3*64kB (H) 0*128kB 0*256kB 0*512kB 0*1024kB 0*2048kB 0*4096kB = 42792kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=1048576kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=2048kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 26722 total pagecache pages
+2026-10-23T01:12:44+0800 fixture-host kernel: 195 pages in swap cache
+2026-10-23T01:12:44+0800 fixture-host kernel: Free swap  = 0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Total swap = 8388608kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 8388255 pages RAM
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages HighMem/MovableOnly
+2026-10-23T01:12:44+0800 fixture-host kernel: 171013 pages reserved
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages hwpoisoned
+2026-10-23T01:12:44+0800 fixture-host kernel: elasticsearch[1: page allocation failure: order:4, mode:0x40c40(GFP_NOFS|__GFP_COMP), nodemask=(null),cpuset=199015de769d20e292f30660eb54121d273f95ace5e74f50dcce770aaa9c3669,mems_allowed=0
+2026-10-23T01:12:44+0800 fixture-host kernel: CPU: 3 PID: 15439 Comm: elasticsearch[1 Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
+2026-10-23T01:12:44+0800 fixture-host kernel: Call Trace:
+2026-10-23T01:12:44+0800 fixture-host kernel:  <TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack_lvl+0x4c/0x70
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack+0x14/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  warn_alloc+0x10d/0x180
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __alloc_pages_direct_compact+0xaf/0x290
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages_slowpath.constprop.0+0xde2/0xee0
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages+0x30c/0x340
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? p9_fcall_init+0x33/0x80
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc_large_node+0x79/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc+0xd0/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_fcall_init+0x33/0x80
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_tag_alloc+0xff/0x280
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_client_prepare_req+0x77/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? finish_task_switch.isra.0+0x85/0x290
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_client_rpc+0x7d/0x3b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  p9_client_readdir+0xb3/0x200
+2026-10-23T01:12:44+0800 fixture-host kernel:  v9fs_dir_readdir_dotl+0x15e/0x1a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? trigger_load_balance+0x69/0x360
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? scheduler_tick+0x117/0x2b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? selinux_file_permission+0x117/0x150
+2026-10-23T01:12:44+0800 fixture-host kernel:  iterate_dir+0x9c/0x170
+2026-10-23T01:12:44+0800 fixture-host kernel:  __x64_sys_getdents64+0x88/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __pfx_filldir64+0x10/0x10
+2026-10-23T01:12:44+0800 fixture-host kernel:  x64_sys_call+0x181a/0x1c90
+2026-10-23T01:12:44+0800 fixture-host kernel:  do_syscall_64+0x5a/0xb0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit_to_user_mode+0x12/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit+0x3f/0x50
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? sysvec_hyperv_stimer0+0x4f/0xa0
+2026-10-23T01:12:44+0800 fixture-host kernel:  entry_SYSCALL_64_after_hwframe+0x78/0xe2
+2026-10-23T01:12:44+0800 fixture-host kernel: RIP: 0033:0x796f6fc145ab
+2026-10-23T01:12:44+0800 fixture-host kernel: Code: 00 00 48 83 c4 08 5b 5d c3 66 0f 1f 44 00 00 f3 0f 1e fa 48 8b 47 20 c3 0f 1f 80 00 00 00 00 f3 0f 1e fa b8 d9 00 00 00 0f 05 <48> 3d 00 f0 ff ff 77 05 c3 0f 1f 40 00 48 8b 15 a9 88 2f 00 f7 d8
+2026-10-23T01:12:44+0800 fixture-host kernel: RSP: 002b:0000796ee31f0fe8 EFLAGS: 00000246 ORIG_RAX: 00000000000000d9
+2026-10-23T01:12:44+0800 fixture-host kernel: RAX: ffffffffffffffda RBX: 0000796eb401fb60 RCX: 0000796f6fc145ab
+2026-10-23T01:12:44+0800 fixture-host kernel: RDX: 0000000000008000 RSI: 0000796eb401fb90 RDI: 0000000000000086
+2026-10-23T01:12:44+0800 fixture-host kernel: RBP: 0000796eb401fb90 R08: 00000000e3321b88 R09: 00000000fd681540
+2026-10-23T01:12:44+0800 fixture-host kernel: R10: 0000796f580e8df1 R11: 0000000000000246 R12: ffffffffffffff80
+2026-10-23T01:12:44+0800 fixture-host kernel: R13: 0000000000000000 R14: 0000796ee31f1080 R15: 0000796ee4007b20
+2026-10-23T01:12:44+0800 fixture-host kernel:  </TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel: Mem-Info:
+2026-10-23T01:12:44+0800 fixture-host kernel: active_anon:7081312 inactive_anon:868603 isolated_anon:0
+                                                active_file:2206 inactive_file:857 isolated_file:92
+                                                unevictable:0 dirty:4 writeback:3
+                                                slab_reclaimable:62915 slab_unreclaimable:57442
+                                                mapped:10369 shmem:22815 pagetables:28878
+                                                sec_pagetables:0 bounce:0
+                                                kernel_misc_reclaimable:0
+                                                free:40179 free_pcp:79 free_cma:0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 active_anon:28325248kB inactive_anon:3474412kB active_file:8824kB inactive_file:3428kB unevictable:0kB isolated(anon):0kB isolated(file):368kB mapped:41476kB dirty:16kB writeback:12kB shmem:91260kB shmem_thp:0kB shmem_pmdmapped:0kB anon_thp:24576kB writeback_tmp:0kB kernel_stack:25952kB pagetables:115512kB sec_pagetables:0kB all_unreclaimable? no
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32 free:117912kB boost:0kB min:5472kB low:9464kB high:13456kB reserved_highatomic:0KB active_anon:3623216kB inactive_anon:172680kB active_file:0kB inactive_file:0kB unevictable:0kB writepending:0kB present:4061820kB managed:3995648kB mlocked:0kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 28189 28189 28189
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal free:42804kB boost:0kB min:39580kB low:68444kB high:97308kB reserved_highatomic:2048KB active_anon:24702032kB inactive_anon:3301732kB active_file:8396kB inactive_file:3872kB unevictable:0kB writepending:28kB present:29491200kB managed:28873320kB mlocked:0kB bounce:0kB free_pcp:316kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 0 0 0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32: 1871*4kB (UME) 1114*8kB (UME) 892*16kB (UME) 679*32kB (UME) 394*64kB (UME) 190*128kB (UME) 54*256kB (UME) 8*512kB (ME) 0*1024kB 0*2048kB 0*4096kB = 119852kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal: 615*4kB (UMEH) 94*8kB (UMEH) 317*16kB (UMEH) 1060*32kB (UEH) 3*64kB (H) 0*128kB 0*256kB 0*512kB 0*1024kB 0*2048kB 0*4096kB = 42396kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=1048576kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=2048kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 26573 total pagecache pages
+2026-10-23T01:12:44+0800 fixture-host kernel: 365 pages in swap cache
+2026-10-23T01:12:44+0800 fixture-host kernel: Free swap  = 0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Total swap = 8388608kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 8388255 pages RAM
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages HighMem/MovableOnly
+2026-10-23T01:12:44+0800 fixture-host kernel: 171013 pages reserved
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages hwpoisoned
+2026-10-23T01:12:44+0800 fixture-host kernel: mongod: page allocation failure: order:4, mode:0x40dc0(GFP_KERNEL|__GFP_COMP|__GFP_ZERO), nodemask=(null),cpuset=0c6c2007ec7682a559d67beb212d5d8414227024cb6f24ba51b9526bee68a531,mems_allowed=0
+2026-10-23T01:12:44+0800 fixture-host kernel: CPU: 0 PID: 6828 Comm: mongod Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
+2026-10-23T01:12:44+0800 fixture-host kernel: Call Trace:
+2026-10-23T01:12:44+0800 fixture-host kernel:  <TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack_lvl+0x4c/0x70
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack+0x14/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  warn_alloc+0x10d/0x180
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __alloc_pages_direct_compact+0xaf/0x290
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages_slowpath.constprop.0+0xde2/0xee0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __blk_mq_issue_directly+0x3c/0xb0
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages+0x30c/0x340
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? v9fs_alloc_rdir_buf.isra.0+0x2c/0x40
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc_large_node+0x79/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  __kmalloc+0xd0/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  v9fs_alloc_rdir_buf.isra.0+0x2c/0x40
+2026-10-23T01:12:44+0800 fixture-host kernel:  v9fs_dir_readdir_dotl+0x55/0x1a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __schedule+0x3bb/0xaa0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? blk_finish_plug+0x31/0x50
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __mod_memcg_lruvec_state+0x52/0xa0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __mod_lruvec_state+0x3a/0x50
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __mod_lruvec_page_state+0xa3/0x150
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? selinux_file_permission+0x117/0x150
+2026-10-23T01:12:44+0800 fixture-host kernel:  iterate_dir+0x9c/0x170
+2026-10-23T01:12:44+0800 fixture-host kernel:  __x64_sys_getdents64+0x88/0x130
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __pfx_filldir64+0x10/0x10
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? syscall_trace_enter.isra.0+0x9a/0x1b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  x64_sys_call+0x181a/0x1c90
+2026-10-23T01:12:44+0800 fixture-host kernel:  do_syscall_64+0x5a/0xb0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? psi_group_change+0x17d/0x3b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? update_load_avg+0x82/0x7a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? psi_task_switch+0x106/0x2b0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? _raw_spin_unlock+0x12/0x30
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? finish_task_switch.isra.0+0x85/0x290
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __rseq_handle_notify_resume+0xa9/0x490
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? __schedule+0x3bb/0xaa0
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? exit_to_user_mode_prepare+0x7f/0x170
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit_to_user_mode+0x12/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? irqentry_exit+0x3f/0x50
+2026-10-23T01:12:44+0800 fixture-host kernel:  ? sysvec_reschedule_ipi+0x6d/0x110
+2026-10-23T01:12:44+0800 fixture-host kernel:  entry_SYSCALL_64_after_hwframe+0x78/0xe2
+2026-10-23T01:12:44+0800 fixture-host kernel: RIP: 0033:0x73e50f522647
+2026-10-23T01:12:44+0800 fixture-host kernel: Code: ac fa ff 4c 89 e0 5b 5d 41 5c c3 0f 1f 84 00 00 00 00 00 f3 0f 1e fa b8 ff ff ff 7f 48 39 c2 48 0f 47 d0 b8 d9 00 00 00 0f 05 <48> 3d 00 f0 ff ff 77 01 c3 48 8b 15 b9 37 13 00 f7 d8 64 89 02 48
+2026-10-23T01:12:44+0800 fixture-host kernel: RSP: 002b:000073e50aa206e8 EFLAGS: 00000293 ORIG_RAX: 00000000000000d9
+2026-10-23T01:12:44+0800 fixture-host kernel: RAX: ffffffffffffffda RBX: 000062191d51d030 RCX: 000073e50f522647
+2026-10-23T01:12:44+0800 fixture-host kernel: RDX: 0000000000008000 RSI: 000062191d51d030 RDI: 0000000000000031
+2026-10-23T01:12:44+0800 fixture-host kernel: RBP: 000062191d51d004 R08: 000062190f3141c0 R09: 00006219157fece0
+2026-10-23T01:12:44+0800 fixture-host kernel: R10: 0000000000001000 R11: 0000000000000293 R12: fffffffffffffc00
+2026-10-23T01:12:44+0800 fixture-host kernel: R13: 000000000000005f R14: 000062191d51d000 R15: 0000000000000000
+2026-10-23T01:12:44+0800 fixture-host kernel:  </TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel: Mem-Info:
+2026-10-23T01:12:44+0800 fixture-host kernel: active_anon:7098480 inactive_anon:851412 isolated_anon:64
+                                                active_file:1406 inactive_file:1698 isolated_file:90
+                                                unevictable:0 dirty:56 writeback:0
+                                                slab_reclaimable:62915 slab_unreclaimable:57449
+                                                mapped:9694 shmem:22823 pagetables:28895
+                                                sec_pagetables:0 bounce:0
+                                                kernel_misc_reclaimable:0
+                                                free:40315 free_pcp:94 free_cma:0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 active_anon:28393920kB inactive_anon:3405648kB active_file:5624kB inactive_file:6792kB unevictable:0kB isolated(anon):256kB isolated(file):360kB mapped:38776kB dirty:224kB writeback:0kB shmem:91292kB shmem_thp:0kB shmem_pmdmapped:0kB anon_thp:24576kB writeback_tmp:0kB kernel_stack:26000kB pagetables:115580kB sec_pagetables:0kB all_unreclaimable? no
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32 free:118092kB boost:0kB min:5472kB low:9464kB high:13456kB reserved_highatomic:0KB active_anon:3627792kB inactive_anon:168100kB active_file:0kB inactive_file:12kB unevictable:0kB writepending:0kB present:4061820kB managed:3995648kB mlocked:0kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 28189 28189 28189
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal free:43168kB boost:0kB min:39580kB low:68444kB high:97308kB reserved_highatomic:2048KB active_anon:24766272kB inactive_anon:3237272kB active_file:4720kB inactive_file:6768kB unevictable:0kB writepending:0kB present:29491200kB managed:28873320kB mlocked:0kB bounce:0kB free_pcp:608kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 0 0 0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32: 1732*4kB (UME) 1103*8kB (UME) 887*16kB (UME) 677*32kB (UME) 394*64kB (UME) 190*128kB (UME) 54*256kB (UME) 8*512kB (ME) 0*1024kB 0*2048kB 0*4096kB = 119064kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal: 738*4kB (UMEH) 108*8kB (UMEH) 320*16kB (UMEH) 1060*32kB (UMEH) 3*64kB (H) 0*128kB 0*256kB 0*512kB 0*1024kB 0*2048kB 0*4096kB = 43048kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=1048576kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=2048kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 26322 total pagecache pages
+2026-10-23T01:12:44+0800 fixture-host kernel: 210 pages in swap cache
+2026-10-23T01:12:44+0800 fixture-host kernel: Free swap  = 0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Total swap = 8388608kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 8388255 pages RAM
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages HighMem/MovableOnly
+2026-10-23T01:12:44+0800 fixture-host kernel: 171013 pages reserved
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages hwpoisoned
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1223]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1803]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1223]: /dev/kmsg buffer overrun, some messages lost.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: /dev/kmsg buffer overrun, some messages lost.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1803]: /dev/kmsg buffer overrun, some messages lost.
+2026-10-23T01:12:44+0800 fixture-host kernel: node invoked oom-killer: gfp_mask=0x140cca(GFP_HIGHUSER_MOVABLE|__GFP_COMP), order=0, oom_score_adj=0
+2026-10-23T01:12:44+0800 fixture-host kernel: CPU: 0 PID: 1467805 Comm: node Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
+2026-10-23T01:12:44+0800 fixture-host kernel: Call Trace:
+2026-10-23T01:12:44+0800 fixture-host kernel:  <TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack_lvl+0x4c/0x70
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_stack+0x14/0x20
+2026-10-23T01:12:44+0800 fixture-host kernel:  dump_header+0x51/0x260
+2026-10-23T01:12:44+0800 fixture-host kernel:  oom_kill_process+0x105/0x1a0
+2026-10-23T01:12:44+0800 fixture-host kernel:  out_of_memory+0x25d/0x550
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages_slowpath.constprop.0+0xc31/0xee0
+2026-10-23T01:12:44+0800 fixture-host kernel:  __alloc_pages+0x30c/0x340
+2026-10-23T01:12:44+0800 fixture-host kernel:  alloc_pages+0x94/0x150
+2026-10-23T01:12:44+0800 fixture-host kernel:  folio_alloc+0x19/0x40
+2026-10-23T01:12:44+0800 fixture-host kernel:  filemap_alloc_folio+0xed/0x100
+2026-10-23T01:12:44+0800 fixture-host kernel:  __filemap_get_folio+0x17f/0x2c0
+2026-10-23T01:12:44+0800 fixture-host kernel:  filemap_fault+0x15e/0xbd0
+2026-10-23T01:12:44+0800 fixture-host kernel:  __do_fault+0x36/0x180
+2026-10-23T01:12:44+0800 fixture-host kernel:  do_fault+0x2b5/0x570
+2026-10-23T01:12:44+0800 fixture-host kernel:  __handle_mm_fault+0x713/0x860
+2026-10-23T01:12:44+0800 fixture-host kernel:  handle_mm_fault+0x13c/0x310
+2026-10-23T01:12:44+0800 fixture-host kernel:  do_user_addr_fault+0x202/0x610
+2026-10-23T01:12:44+0800 fixture-host kernel:  exc_page_fault+0x76/0x160
+2026-10-23T01:12:44+0800 fixture-host kernel:  asm_exc_page_fault+0x2b/0x30
+2026-10-23T01:12:44+0800 fixture-host kernel: RIP: 0033:0xe39fb0
+2026-10-23T01:12:44+0800 fixture-host kernel: Code: Unable to access opcode bytes at 0xe39f86.
+2026-10-23T01:12:44+0800 fixture-host kernel: RSP: 002b:00007fff5949dff8 EFLAGS: 00010246
+2026-10-23T01:12:44+0800 fixture-host kernel: RAX: 0000000000000000 RBX: 000000000000000a RCX: 00000000ffffffbf
+2026-10-23T01:12:44+0800 fixture-host kernel: RDX: 0000000000000020 RSI: 0000000003fa0549 RDI: 000000002c70ba90
+2026-10-23T01:12:44+0800 fixture-host kernel: RBP: 00007fff5949e000 R08: 00000002ee50d490 R09: 0000000000000c00
+2026-10-23T01:12:44+0800 fixture-host kernel: R10: 0000000000000020 R11: 000077f0d995bce0 R12: 0000000003fa7e40
+2026-10-23T01:12:44+0800 fixture-host kernel: R13: 0000000000000000 R14: 0000000000000000 R15: 00000000000003a8
+2026-10-23T01:12:44+0800 fixture-host kernel:  </TASK>
+2026-10-23T01:12:44+0800 fixture-host kernel: Mem-Info:
+2026-10-23T01:12:44+0800 fixture-host kernel: active_anon:7032521 inactive_anon:917761 isolated_anon:0
+                                                active_file:261 inactive_file:4079 isolated_file:160
+                                                unevictable:0 dirty:9 writeback:0
+                                                slab_reclaimable:62524 slab_unreclaimable:57376
+                                                mapped:7888 shmem:23858 pagetables:28912
+                                                sec_pagetables:0 bounce:0
+                                                kernel_misc_reclaimable:0
+                                                free:39366 free_pcp:0 free_cma:0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 active_anon:28130084kB inactive_anon:3671044kB active_file:1044kB inactive_file:16316kB unevictable:0kB isolated(anon):0kB isolated(file):640kB mapped:31552kB dirty:36kB writeback:0kB shmem:95432kB shmem_thp:0kB shmem_pmdmapped:0kB anon_thp:24576kB writeback_tmp:0kB kernel_stack:26080kB pagetables:115648kB sec_pagetables:0kB all_unreclaimable? no
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32 free:117948kB boost:0kB min:5472kB low:9464kB high:13456kB reserved_highatomic:0KB active_anon:3584504kB inactive_anon:211492kB active_file:0kB inactive_file:1820kB unevictable:0kB writepending:0kB present:4061820kB managed:3995648kB mlocked:0kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 28189 28189 28189
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal free:39516kB boost:0kB min:39580kB low:68444kB high:97308kB reserved_highatomic:0KB active_anon:24546736kB inactive_anon:3457568kB active_file:1332kB inactive_file:13524kB unevictable:0kB writepending:20kB present:29491200kB managed:28873320kB mlocked:0kB bounce:0kB free_pcp:0kB local_pcp:0kB free_cma:0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: lowmem_reserve[]: 0 0 0 0
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 DMA32: 1382*4kB (UME) 1076*8kB (UME) 893*16kB (UME) 679*32kB (UME) 392*64kB (UME) 189*128kB (UME) 55*256kB (UME) 8*512kB (ME) 0*1024kB 0*2048kB 0*4096kB = 117608kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 Normal: 481*4kB (UME) 56*8kB (UME) 274*16kB (UME) 1055*32kB (UE) 0*64kB 0*128kB 0*256kB 0*512kB 0*1024kB 0*2048kB 0*4096kB = 40516kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=1048576kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Node 0 hugepages_total=0 hugepages_free=0 hugepages_surp=0 hugepages_size=2048kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 28492 total pagecache pages
+2026-10-23T01:12:44+0800 fixture-host kernel: 219 pages in swap cache
+2026-10-23T01:12:44+0800 fixture-host kernel: Free swap  = 0kB
+2026-10-23T01:12:44+0800 fixture-host kernel: Total swap = 8388608kB
+2026-10-23T01:12:44+0800 fixture-host kernel: 8388255 pages RAM
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages HighMem/MovableOnly
+2026-10-23T01:12:44+0800 fixture-host kernel: 171013 pages reserved
+2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages hwpoisoned
+2026-10-23T01:12:44+0800 fixture-host kernel: Tasks state (memory values in pages):
+2026-10-23T01:12:44+0800 fixture-host kernel: [  pid  ]   uid  tgid total_vm      rss pgtables_bytes swapents oom_score_adj name
+2026-10-23T01:12:44+0800 fixture-host kernel: [    190]     0   190      791       64    45056        0             0 DebugShell
+2026-10-23T01:12:44+0800 fixture-host kernel: [    192]     0   192     1469      128    57344        0             0 agetty
+2026-10-23T01:12:44+0800 fixture-host kernel: [    198]   999   198     1155       96    49152        0             0 chronyd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    204]     0   204      867      224    45056        0             0 GnsEngine
+2026-10-23T01:12:44+0800 fixture-host kernel: [    211]     0   211      884      136    49152        0             0 init
+2026-10-23T01:12:44+0800 fixture-host kernel: [    213]     0   213      761      160    45056        0             0 init
+2026-10-23T01:12:44+0800 fixture-host kernel: [    214]     0   214      793      160    45056        0             0 init()
+2026-10-23T01:12:44+0800 fixture-host kernel: [    218]     0   218      793      160    45056        0             0 init(docker-des
+2026-10-23T01:12:44+0800 fixture-host kernel: [    227]     0   227    12442      128    86016      160             0 WSLGd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    231]  1000   231   211364     4536   352256     5280             0 weston
+2026-10-23T01:12:44+0800 fixture-host kernel: [    237]     0   237      793       96    45056        0             0 init
+2026-10-23T01:12:44+0800 fixture-host kernel: [    240]     0   240      797       96    45056        0             0 SessionLeader
+2026-10-23T01:12:44+0800 fixture-host kernel: [    241]     0   241      799       97    45056        0             0 Relay(13)
+2026-10-23T01:12:44+0800 fixture-host kernel: [    242]     0   242   316175      128   110592      320             0 vpnkit-bridge
+2026-10-23T01:12:44+0800 fixture-host kernel: [    243]     0   243      801      130    45056        0             0 Relay(15)
+2026-10-23T01:12:44+0800 fixture-host kernel: [    244]     0   244   321151     1939   176128      736          -999 wsl-bootstrap
+2026-10-23T01:12:44+0800 fixture-host kernel: [    259]  1000   259      760       96    45056        0             0 init
+2026-10-23T01:12:44+0800 fixture-host kernel: [    260]  1000   260     2233       64    61440       64             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [    261]  1000   261    58233      128    86016      224             0 pulseaudio
+2026-10-23T01:12:44+0800 fixture-host kernel: [    265]  1000   265     2223       67    61440       64             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [    271]  1000   271    52774      192   352256     2784             0 Xwayland
+2026-10-23T01:12:44+0800 fixture-host kernel: [    288]     0   288      217        0    45056        0          -999 unshare
+2026-10-23T01:12:44+0800 fixture-host kernel: [    289]     0   289   499977     3095   356352     2368          -999 initd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    305]     0   305   921050    29744   790528     3519          -999 initd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    325]     0   325      983       80    53248       32          -999 sh
+2026-10-23T01:12:44+0800 fixture-host kernel: [    326]     0   326     1066       96    49152       64          -999 login
+2026-10-23T01:12:44+0800 fixture-host kernel: [    354]     0   354     1049       64    53248       64          -999 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [    361]     0   361     1136       96    49152       32          -999 rpc.statd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    363]   100   363     4021       96    65536       64          -999 rpcbind
+2026-10-23T01:12:44+0800 fixture-host kernel: [    367]     0   367   394443     1361   331776      672          -999 containerd-star
+2026-10-23T01:12:44+0800 fixture-host kernel: [    384]     0   384      793      128    45056        0             0 init()
+2026-10-23T01:12:44+0800 fixture-host kernel: [    390]     0   390   882579    10088   688128     1521          -500 containerd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    400]     0   400      710       32    49152       32          -999 rpc.idmapd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    434]     0   434  1027849    13775   847872     7133          -500 dockerd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    445]     0   445    42581     1543   102400      416             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    453]     0   453      794      128    45056        0             0 init-systemd(Ub
+2026-10-23T01:12:44+0800 fixture-host kernel: [    482]     0   482    30875      128    94208      192             0 WSLGd
+2026-10-23T01:12:44+0800 fixture-host kernel: [    492]  1000   492     2233       96    61440       32             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [    493]  1000   493    58259      128    90112      288             0 pulseaudio
+2026-10-23T01:12:44+0800 fixture-host kernel: [    497]  1000   497     2223      131    57344       32             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [    505]     0   505      805      127    49152        0             0 init
+2026-10-23T01:12:44+0800 fixture-host kernel: [    894]     0   894   150427      320   131072       32             0 snapfuse
+2026-10-23T01:12:44+0800 fixture-host kernel: [    903]     0   903   169085      256   131072      256             0 snapfuse
+2026-10-23T01:12:44+0800 fixture-host kernel: [    919]     0   919    75630       64    86016        0             0 snapfuse
+2026-10-23T01:12:44+0800 fixture-host kernel: [    925]     0   925   291696     6982   253952      895             0 snapfuse
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1241]     0  1241   308838     1152   118784       96          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1293]   999  1293    54583      192   159744      448             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1782]   999  1782    54616      421   180224      448             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1783]   999  1783    54583      325   151552      416             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1784]   999  1784    54583      261   139264      416             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1785]   999  1785    54725      389   151552      480             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1786]   999  1786    18208      261   118784      384             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [   1787]   999  1787    54688      325   143360      480             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2006]     0  2006      797      129    45056        0             0 SessionLeader
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2007]     0  2007      799      163    45056        0             0 Relay(338)
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2008]  1000  2008      723       32    53248        0             0 sh
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2013]     0  2013     1891       64    65536      192             0 login
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2059]  1000  2059   276952      796   253952    12160             0 kiro-cli-term
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2397]  1000  2397     2078      128    57344       96             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2590]     0  2590     1878       64    53248      192             0 login
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2642]     0  2642     1526       64    53248      384             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [   2955]  1000  2955     2116       69    61440       64             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3140]     0  3140      801      132    45056        0             0 Relay(1466)
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3141]     0  3141   321621     3045   200704      576             0 docker-desktop-
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3331]  1001  3331     1196       96    49152       32             0 runsvc.sh
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3332]  1001  3332     1196      128    45056       32             0 runsvc.sh
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3333]  1001  3333     1196      128    49152        0             0 runsvc.sh
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3334]  1001  3334     1196      160    57344        0             0 runsvc.sh
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3337]     0  3337     1077       32    53248        0             0 cron
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3339]   102  3339     2257      288    61440       64          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3344]     0  3344     7529      224   102400     2144             0 networkd-dispat
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3345]   104  3345    55603      384    77824      160             0 rsyslogd
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3348]     0  3348     4165      320    77824      224             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3365]  1001  3365   181768      320   417792     1312             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3368]     0  3368      799      128    45056        0             0 agetty
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3370]  1001  3370   215037      288   479232     1472             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3372]  1001  3372   182013      224   413696     1440             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3382]  1001  3382   181768      416   401408     1184             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3398]     0  3398    26797      256   118784     1888             0 unattended-upgr
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3401]  1000  3401     5508     1280    81920      320             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3406]  1000  3406    23860      231    90112      800             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3453]  1000  3453  5577572     3388  1421312     9664             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3454]  1000  3454   105750      352   126976        0             0 kiro-rs
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3475]  1001  3475 68571833     7845   716800     8277             0 Runner.Listener
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3477]  1001  3477 68577983     9510   704512     7904             0 Runner.Listener
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3479]  1001  3479 68557598     7851   684032     8512             0 Runner.Listener
+2026-10-23T01:12:44+0800 fixture-host kernel: [   3928]     0  3928    58886      348    94208       96             0 polkitd
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5579]     0  5579   308902     1069   122880      128          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5604]     0  5604   308902     1098   114688      128          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5629]   999  5629   717555    10791   946176    39072             0 mongod
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5642]     0  5642     1087       32    57344        0             0 tini
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5686]  1000  5686  1640873    93575  3424256   148928             0 java
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5717]     0  5717   308902     1387   131072       64          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5744]  1100  5744      697        0    45056        0             0 tini
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5838]  1100  5838  3381822   247260  4935680   248309             0 java
+2026-10-23T01:12:44+0800 fixture-host kernel: [   6011]     0  6011   308838     1088   118784      128          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [   6039]   999  6039   651209     3367   659456    14272             0 mongod
+2026-10-23T01:12:44+0800 fixture-host kernel: [   6115]     0  6115   308838     1331   131072       96          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [   6143]     0  6143   166307     4229   278528    10144             0 python
+2026-10-23T01:12:44+0800 fixture-host kernel: [   7439]  1000  7439     2195      224    61440        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [  13102]  1000 13102     2114       68    61440       96             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 307825]  1000 307825    77373      256   106496        0             0 at-spi-bus-laun
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 307831]  1000 307831     2078      160    65536        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 307847]  1000 307847    40676      256    86016       32             0 at-spi2-registr
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 361337]  1000 361337     2114      100    57344       64             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1447242]     0 1447242    73263      416   163840      416             0 packagekitd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1828262]     0 1828262      796       64    45056        0             0 SessionLeader
+2026-10-23T01:12:44+0800 fixture-host kernel: [1828263]     0 1828263      800       64    45056        0             0 Relay(1317388)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1828264]  1000 1828264   277500     6092   356352    15740             0 kiro-cli-term
+2026-10-23T01:12:44+0800 fixture-host kernel: [1828355]  1000 1828355     3635      288    65536     2400             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1828660]  1000 1828660     2114      132    65536       96             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [3010229]   101 3010229     6390      384    90112      832             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [3010292]   103 3010292    22343      224    81920        0             0 systemd-timesyn
+2026-10-23T01:12:44+0800 fixture-host kernel: [3010334]     0 3010334     5708      352    69632        0         -1000 systemd-udevd
+2026-10-23T01:12:44+0800 fixture-host kernel: [3370163]     0 3370163   275312     1692   229376     4781             0 snapfuse
+2026-10-23T01:12:44+0800 fixture-host kernel: [4134912]  1000 4134912     2002      160    61440        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [4153820]  1000 4153820     2002      196    61440        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [2496090]     0 2496090      796       32    45056        0             0 SessionLeader
+2026-10-23T01:12:44+0800 fixture-host kernel: [2496092]     0 2496092      800       96    45056        0             0 Relay(113041)
+2026-10-23T01:12:44+0800 fixture-host kernel: [2496095]  1000 2496095   277501     6695   290816     8196             0 kiro-cli-term
+2026-10-23T01:12:44+0800 fixture-host kernel: [2496138]  1000 2496138     3506      320    69632     2208             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [2496436]  1000 2496436     2079      131    61440       64             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [2546273]     0 2546273   308902     1122   118784      160          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [2546297]     0 2546297   324183     2026   217088      416             0 gatus
+2026-10-23T01:12:44+0800 fixture-host kernel: [3210177]  1000 3210177   210166     3390   344064     4891             0 weston
+2026-10-23T01:12:44+0800 fixture-host kernel: [3210185]  1000 3210185      760       96    45056        0             0 init
+2026-10-23T01:12:44+0800 fixture-host kernel: [1147045]     0 1147045      800       64    45056        0             0 Relay(2343775)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1147392]  1000 1147392    52784      192   352256     2912             0 Xwayland
+2026-10-23T01:12:44+0800 fixture-host kernel: [1147408]  1000 1147408     2079      194    57344        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1230050]     0 1230050      796       64    45056        0             0 SessionLeader
+2026-10-23T01:12:44+0800 fixture-host kernel: [1230052]     0 1230052      800       96    45056        0             0 Relay(2403409)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1230056]  1000 1230056   277497     6008   278528     7734             0 kiro-cli-term
+2026-10-23T01:12:44+0800 fixture-host kernel: [1230100]  1000 1230100     3506      128    73728     2368             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1230450]  1000 1230450     2079      130    61440       64             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [3846787]     0 3846787   308902     1006   126976       96          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [3846814]   999 3846814   234958    20259  1376256    58749             0 mongod
+2026-10-23T01:12:44+0800 fixture-host kernel: [3846892]     0 3846892   308838      963   122880       96          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [3846918]   999 3846918     9333      352    98304      384             0 redis-server
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5108]     0  5108   308902      994   114688       96          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [   5132]   999  5132   244776    17505  1433600    77520             0 mongod
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 441132]  1000 441132     2002      160    61440        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 909711]  1001 909711 68573950     7900   712704     6870             0 Runner.Listener
+2026-10-23T01:12:44+0800 fixture-host kernel: [1029476]     0 1029476   258928     4987   233472     2688             0 snapfuse
+2026-10-23T01:12:44+0800 fixture-host kernel: [2857707]  1000 2857707     1230      192    49152       64             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [2857769]  1000 2857769     2932       96    69632      320             0 ssh
+2026-10-23T01:12:44+0800 fixture-host kernel: [2980303]  1000 2980303     2002      160    57344        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [3477079]  1000 3477079     2002      192    57344        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [3908841]  1000 3908841     2002      162    61440        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [4099076]     0 4099076   308902      994   122880      128          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [4099099]   999 4099099   170860    12289   933888    21440             0 mongod
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 782978]     0 782978      796        0    45056        0             0 SessionLeader
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 782979]     0 782979      800       64    45056        0             0 Relay(470916)
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 782981]  1000 782981   277475     4654   266240     8576             0 kiro-cli-term
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 783033]  1000 783033     3506      192    69632     2272             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [ 783348]  1000 783348     2079      163    61440       64             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1386340]     0 1386340   308902      972   126976       32          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1386364] 10001 1386364       55        0    24576        0             0 dumb-init
+2026-10-23T01:12:44+0800 fixture-host kernel: [1386399] 10001 1386399  2943405    10913  2600960     4301             0 verdaccio
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440512]     0 1440512   308838     1074   122880        0          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440536]     0 1440536    22902      512    90112        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440551]     0 1440551   308902     1041   122880       64          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440574]     0 1440574   308838     1122   114688       64          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440597]     0 1440597    24949      544    90112        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440618]     0 1440618    24930      576    94208        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440637]     0 1440637   308902     1140   122880       64          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440675]     0 1440675    24931      576    90112        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440703]     0 1440703   308902     1045   122880       64          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440746]     0 1440746   308902     1034   122880       96          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440769]     0 1440769    22882      576    81920        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440770]     0 1440770   308838     1013   122880       96          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440802]     0 1440802    25192      864    98304        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1440837]     0 1440837    24980      672    86016        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441359]   102 1441359     6389     1079    94208        0             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441388]   102 1441388     6389     1143    86016        0             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441389]   102 1441389     6389     1175   102400        0             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441400]   103 1441400     2065      192    53248        0          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441440]   102 1441440     6389     1111    90112        0             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441447]     0 1441447     3804      224    69632        0             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441453]   103 1441453     2066      160    57344        0          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441454]   103 1441454     2034      224    57344        0          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441456]     0 1441456     3797      288    81920        0             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441459]   103 1441459     2034       96    53248        0          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441467]     0 1441467     3762      288    69632        0             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441492]     0 1441492     3762      320    73728        0             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441516]   102 1441516     6389     1148    94208        0             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441549]   103 1441549     2034      128    57344        0          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441556]   102 1441556     6389     1208    94208        0             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441575]     0 1441575     3795      320    69632        0             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441632]   103 1441632     2065      160    57344        0          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441635]     0 1441635     3807      288    69632        0             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441637]   102 1441637     6389     1143    94208        0             0 systemd-resolve
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441646]   103 1441646     2066      128    61440        0          -900 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441659]     0 1441659     3801      352    69632        0             0 systemd-logind
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441677]     0 1441677     4213      352    81920        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441678]  1000 1441678     4461      672    77824        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441680]     0 1441680     4497      608    86016        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441681]     0 1441681     4174      352    73728        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441684]     0 1441684     5094      618    77824        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441685]  1000 1441685    25556      677    90112        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441686]     0 1441686    25556      677    90112        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441687]     0 1441687    25575      669    94208        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441719]  1000 1441719     4213      352    77824        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441726]  1000 1441726    25575      701    94208        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441833]  1000 1441833     4213      416    77824        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441836]     0 1441836     4213      416    73728        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441858]  1000 1441858    23475      699    94208        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441859]  1000 1441859     4512      672    90112        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441872]     0 1441872    25576      705    90112        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441873]  1000 1441873    25576      705    90112        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441899]     0 1441899     4460      608    73728        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441904]  1000 1441904     4213      352    77824        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441915]     0 1441915     4213      416    69632        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441917]  1000 1441917     4461      640    77824        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441922]     0 1441922    25576      670    98304        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441923]  1000 1441923    25576      670    98304        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441924]     0 1441924    25585      707    86016        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1441925]  1000 1441925    25585      707    86016        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442140]     0 1442140     1314      320    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442183]     0 1442183     1289      288    49152        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442213]     0 1442213     1289      320    57344        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442254]     0 1442254     1314      288    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442255]     0 1442255     1314      288    49152        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442288]  1000 1442288     4458      640    73728        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442291]  1000 1442291    23568      694    86016        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442503]     0 1442503     1289      288    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1442526]     0 1442526     1314      320    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1449034]     0 1449034     4462      608    77824        0             0 systemd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1449036]     0 1449036    23547      731    94208        0             0 (sd-pam)
+2026-10-23T01:12:44+0800 fixture-host kernel: [1454888]     0 1454888   308838     1048   122880       64          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1454911]   999 1454911   781671   148128  2498560   108288             0 mysqld
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456245]     0 1456245   308838     1010   118784        0          -499 containerd-shim
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456271]     0 1456271     1127       32    53248        0             0 apachectl
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456323]     0 1456323   152089      655   794624     1376             0 apache2
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456326]    33 1456326  8445494  7151910 67248128  1142816             0 apache2
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456327]    33 1456327   152709      550   778240     1728             0 apache2
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456328]    33 1456328   152676      774   778240     1600             0 apache2
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456329]    33 1456329   152709      678   778240     1504             0 apache2
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456330]    33 1456330   152678      652   778240     1632             0 apache2
+2026-10-23T01:12:44+0800 fixture-host kernel: [1456647]    33 1456647   152676      710   778240     1504             0 apache2
+2026-10-23T01:12:44+0800 fixture-host kernel: [1460382]  1000 1460382     2001      128    61440        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1463785]   999 1463785    55073      795   184320      471             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [1463799]   999 1463799    55076      635   184320      471             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [1464368]     0 1464368     2001      128    57344        0             0 dbus-daemon
+2026-10-23T01:12:44+0800 fixture-host kernel: [1466030]     0 1466030   329810     2421   233472        0             0 kubectl
+2026-10-23T01:12:44+0800 fixture-host kernel: [1466990]     0 1466990     1949      256    61440       34             0 cron
+2026-10-23T01:12:44+0800 fixture-host kernel: [1467078]  1000 1467078      723       64    53248        0             0 sh
+2026-10-23T01:12:44+0800 fixture-host kernel: [1467082]  1000 1467082     1229       32    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1467716]  1000 1467716    27877       96   155648        0             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [1467741]     0 1467741     1314      282    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1467805]     0 1467805    27844      128   155648        0             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [1467808]     0 1467808    27844      192   159744        0             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [1467995]     0 1467995     1314      375    49152        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468040]     0 1468040     1719      128    57344        0             0 su
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468056]     0 1468056     1314      313    49152        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468124]     0 1468124     1719       64    61440        0             0 su
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468248]   999 1468248    54818      629   159744      476             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468628]     0 1468628     5755      224    86016        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468638]  1000 1468638    27636       64    73728        0             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468647]     0 1468647     3705      160    69632        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468651]     0 1468651   276031      960   188416        0          -900 snapd
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468676]   999 1468676    54683      149   135168      477             0 postgres
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468684]     0 1468684     5755      224    86016        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468685]     0 1468685     3674      128    65536        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468686]     0 1468686     3705      192    69632        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468687]     0 1468687     5755      256    81920        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468689]     0 1468689     1289      346    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468690]     0 1468690     3674       96    65536        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468691]     0 1468691     3674       96    65536        0          -250 systemd-journal
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468695]  1000 1468695   187359     1600   491520        0             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468701]     0 1468701     1837        0    53248        0             0 systemctl
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468707]  1000 1468707    27712       32    65536        0             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468708]  1000 1468708    27712       32    65536        0             0 node
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468715]     0 1468715     1289      406    49152        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468716]     0 1468716     1289      344    57344        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468718]     0 1468718     1868       32    57344        0             0 systemctl
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468722]     0 1468722     1837       32    49152        0             0 systemctl
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468735]     0 1468735     1314      346    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: [1468756]     0 1468756     1314      314    53248        0             0 bash
+2026-10-23T01:12:44+0800 fixture-host kernel: oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),cpuset=1eeb4094342de82a1e03c8369807f35893a34d987e70017a3aee016c5c42bd22,mems_allowed=0,global_oom,task_memcg=/docker/746ee888c333e4469f54504c53d53b549dc05ecd824ddd22031b746b42f57cb3,task=apache2,pid=1456326,uid=33
+2026-10-23T01:12:44+0800 fixture-host kernel: Out of memory: Killed process 1456326 (apache2) total-vm:33781976kB, anon-rss:28607512kB, file-rss:128kB, shmem-rss:0kB, UID:33 pgtables:65672kB oom_score_adj:0
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1103]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1114]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1465]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1219]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1803]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: Received SIGTERM from PID 1 (systemd).
+2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1219]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 fixture-host kernel: oom_reaper: reaped process 1456326 (apache2), now anon-rss:68kB, file-rss:128kB, shmem-rss:0kB
+2026-10-23T01:12:46+0800 changhansung1 systemd-journald[920561]: Received SIGTERM from PID 1 (systemd).
+2026-10-23T01:12:48+0800 fixture-host kernel: br-c09132179cd2: port 2(vetha674809) entered disabled state
+2026-10-23T01:12:48+0800 fixture-host kernel: vethcaaf9ea: renamed from eth0
+2026-10-23T01:12:48+0800 fixture-host kernel: br-c09132179cd2: port 2(vetha674809) entered disabled state
+2026-10-23T01:12:48+0800 fixture-host kernel: vetha674809 (unregistering): left allmulticast mode
+2026-10-23T01:12:48+0800 fixture-host kernel: vetha674809 (unregistering): left promiscuous mode
+2026-10-23T01:12:48+0800 fixture-host kernel: br-c09132179cd2: port 2(vetha674809) entered disabled state
+2026-10-23T01:12:48+0800 fixture-host kernel: br-f9d9cb9c7b5a: port 1(veth0b52c03) entered disabled state
+2026-10-23T01:12:48+0800 fixture-host kernel: vethffc6bb5: renamed from eth0
+2026-10-23T01:12:48+0800 fixture-host kernel: br-f9d9cb9c7b5a: port 1(veth0b52c03) entered disabled state
+2026-10-23T01:12:48+0800 fixture-host kernel: veth0b52c03 (unregistering): left allmulticast mode
+2026-10-23T01:12:48+0800 fixture-host kernel: veth0b52c03 (unregistering): left promiscuous mode
+2026-10-23T01:12:48+0800 fixture-host kernel: br-f9d9cb9c7b5a: port 1(veth0b52c03) entered disabled state

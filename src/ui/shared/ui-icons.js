@@ -9,6 +9,8 @@ const P = {
   plus: () => html`<path d="M12 5v14M5 12h14"/>`,
   minus: () => html`<path d="M5 12h14"/>`,                                        // #2333: the lightbox's zoom out
   fitwidth: () => html`<path d="M3 4v16M21 4v16M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/>`,   // #2333: fit width
+  fullscreen: () => html`<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>`,           // #2540: the Office's fullscreen
+  fullscreenexit: () => html`<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>`,       // …and its way out
   edit: () => html`<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>`,
   more: () => html`<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>`,
   chat: () => html`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`,

@@ -305,13 +305,15 @@ describe("the fleet feeds the index", () => {
     db.close();
     expect(seen).toEqual(["open:nginx", "claimed:nginx", "done:nginx", "open:board card", "open:board card renamed"]);
   });
-  it("fleet.yaml web.search: enabled a boolean, retention_days an integer 1–3650, unknown keys warned", () => {
+  it("fleet.yaml web.search: enabled a boolean, retention_days an integer 0–3650 (0 = no age limit), unknown keys warned", () => {
     const web = (p: string) => p.startsWith("web.");
     const paths = (w: unknown) => { const r = validateFleetConfig({ instances: {}, web: w } as never); return [r.errors.map(e => e.path).filter(web), r.warnings.map(x => x.path).filter(web)]; };
     expect(paths({ search: { enabled: true, retention_days: 30 } })).toEqual([[], []]);
+    expect(paths({ search: { retention_days: 0 } })).toEqual([[], []]);
+    expect(paths({ search: {} })).toEqual([[], []]);
     expect(paths({ search: "on" })[0]).toContain("web.search");
     expect(paths({ search: { enabled: "yes" } })[0]).toContain("web.search.enabled");
-    for (const bad of [0, 3651, 1.5, "90"]) expect(paths({ search: { retention_days: bad } })[0]).toContain("web.search.retention_days");
+    for (const bad of [-1, 3651, 1.5, "90", null, true, NaN, Infinity]) expect(paths({ search: { retention_days: bad } })[0]).toContain("web.search.retention_days");
     expect(paths({ search: { retension_days: 9 } })[1]).toContain("web.search.retension_days");
   });
 });

@@ -38,6 +38,13 @@ dirs), and the rate-limit picker with AgEnD's nudge flag removed, at 150x45 and 
 `classify.ts summary <dirs…>` (or `each <dirs…>`) runs the production CodexBackend predicates over the frames: ready,
 busy, deliverable, stable-idle, the resume-loading transient, runtime and startup dialogs, and error patterns.
 
+## Codex 0.164.0
+
+The [0.163.0 → 0.164.0 audit](../../../tests/fixtures/codex-audit-0164/README.md) captures startup, errors, resume,
+onboarding and permission/queued-input surfaces in loopback-only namespaces. The mock's `approval` mode adds an
+explicit escalation request to the inert shell probe; use approval-on flags to capture the human dialog. No backend
+change was needed. The precheck's unhinted reset-timeout string already exists in both versions.
+
 ## A package without codex-code-mode-host (#2357)
 
 `companion-missing.sh <package-dir> <label> [toolexec|tool|toolshell]` launches a codex package layout through

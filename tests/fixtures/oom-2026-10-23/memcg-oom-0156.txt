@@ -1,0 +1,88 @@
+2026-10-23T01:56:39+0800 fixture-host kernel: tsc invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=0
+2026-10-23T01:56:39+0800 fixture-host kernel: CPU: 5 PID: 1573459 Comm: tsc Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
+2026-10-23T01:56:39+0800 fixture-host kernel: Call Trace:
+2026-10-23T01:56:39+0800 fixture-host kernel:  <TASK>
+2026-10-23T01:56:39+0800 fixture-host kernel:  dump_stack_lvl+0x4c/0x70
+2026-10-23T01:56:39+0800 fixture-host kernel:  dump_stack+0x14/0x20
+2026-10-23T01:56:39+0800 fixture-host kernel:  dump_header+0x51/0x260
+2026-10-23T01:56:39+0800 fixture-host kernel:  oom_kill_process+0x105/0x1a0
+2026-10-23T01:56:39+0800 fixture-host kernel:  out_of_memory+0x25d/0x550
+2026-10-23T01:56:39+0800 fixture-host kernel:  mem_cgroup_out_of_memory+0x139/0x150
+2026-10-23T01:56:39+0800 fixture-host kernel:  try_charge_memcg+0x75d/0x850
+2026-10-23T01:56:39+0800 fixture-host kernel:  charge_memcg+0x3b/0xf0
+2026-10-23T01:56:39+0800 fixture-host kernel:  __mem_cgroup_charge+0x31/0x90
+2026-10-23T01:56:39+0800 fixture-host kernel:  do_anonymous_page+0x91/0x3b0
+2026-10-23T01:56:39+0800 fixture-host kernel:  __handle_mm_fault+0x839/0x860
+2026-10-23T01:56:39+0800 fixture-host kernel:  handle_mm_fault+0x13c/0x310
+2026-10-23T01:56:39+0800 fixture-host kernel:  do_user_addr_fault+0x16d/0x610
+2026-10-23T01:56:39+0800 fixture-host kernel:  exc_page_fault+0x76/0x160
+2026-10-23T01:56:39+0800 fixture-host kernel:  asm_exc_page_fault+0x2b/0x30
+2026-10-23T01:56:39+0800 fixture-host kernel: RIP: 0033:0x40e0d4
+2026-10-23T01:56:39+0800 fixture-host kernel: Code: 84 01 83 3d 5d 2f 71 01 00 74 10 48 8b 51 10 e8 42 0f 08 00 49 89 03 49 89 53 08 48 89 41 10 90 48 b9 80 80 80 80 80 80 80 80 <48> 89 08 48 83 c4 10 5d c3 48 89 44 24 08 48 89 5c 24 10 e8 94 f5
+2026-10-23T01:56:39+0800 fixture-host kernel: RSP: 002b:00001e862565f548 EFLAGS: 00010246
+2026-10-23T01:56:39+0800 fixture-host kernel: RAX: 00001e863cd4a000 RBX: 00000000000000d0 RCX: 8080808080808080
+2026-10-23T01:56:39+0800 fixture-host kernel: RDX: 00000000bf9fef92 RSI: 00000000a363a555 RDI: 00000000a363a555
+2026-10-23T01:56:39+0800 fixture-host kernel: RBP: 00001e862565f558 R08: 000000000000000f R09: ffffffffffffffff
+2026-10-23T01:56:39+0800 fixture-host kernel: R10: 000073512cff7d90 R11: 000073512d032000 R12: 00001e85bcefe008
+2026-10-23T01:56:39+0800 fixture-host kernel: R13: 00001e863cd4a000 R14: 00001e85c1819a40 R15: 0000000001a94500
+2026-10-23T01:56:39+0800 fixture-host kernel:  </TASK>
+2026-10-23T01:56:39+0800 fixture-host kernel: memory: usage 2097152kB, limit 2097152kB, failcnt 4115
+2026-10-23T01:56:39+0800 fixture-host kernel: swap: usage 0kB, limit 0kB, failcnt 0
+2026-10-23T01:56:39+0800 fixture-host kernel: Memory cgroup stats for /user.slice/user-1000.slice/user@1000.service/app.slice/sentinel-2461-r1-checks.service:
+2026-10-23T01:56:39+0800 fixture-host kernel: anon 2140717056
+2026-10-23T01:56:39+0800 fixture-host kernel: file 12288
+2026-10-23T01:56:39+0800 fixture-host kernel: kernel 6754304
+2026-10-23T01:56:39+0800 fixture-host kernel: kernel_stack 376832
+2026-10-23T01:56:39+0800 fixture-host kernel: pagetables 5128192
+2026-10-23T01:56:39+0800 fixture-host kernel: sec_pagetables 0
+2026-10-23T01:56:39+0800 fixture-host kernel: percpu 512
+2026-10-23T01:56:39+0800 fixture-host kernel: sock 0
+2026-10-23T01:56:39+0800 fixture-host kernel: vmalloc 0
+2026-10-23T01:56:39+0800 fixture-host kernel: shmem 0
+2026-10-23T01:56:39+0800 fixture-host kernel: file_mapped 86016
+2026-10-23T01:56:39+0800 fixture-host kernel: file_dirty 0
+2026-10-23T01:56:39+0800 fixture-host kernel: file_writeback 0
+2026-10-23T01:56:39+0800 fixture-host kernel: swapcached 0
+2026-10-23T01:56:39+0800 fixture-host kernel: anon_thp 0
+2026-10-23T01:56:39+0800 fixture-host kernel: file_thp 0
+2026-10-23T01:56:39+0800 fixture-host kernel: shmem_thp 0
+2026-10-23T01:56:39+0800 fixture-host kernel: inactive_anon 2140606464
+2026-10-23T01:56:39+0800 fixture-host kernel: active_anon 16384
+2026-10-23T01:56:39+0800 fixture-host kernel: inactive_file 8192
+2026-10-23T01:56:39+0800 fixture-host kernel: active_file 4096
+2026-10-23T01:56:39+0800 fixture-host kernel: unevictable 0
+2026-10-23T01:56:39+0800 fixture-host kernel: slab_reclaimable 531120
+2026-10-23T01:56:39+0800 fixture-host kernel: slab_unreclaimable 370992
+2026-10-23T01:56:39+0800 fixture-host kernel: slab 902112
+2026-10-23T01:56:39+0800 fixture-host kernel: workingset_refault_anon 0
+2026-10-23T01:56:39+0800 fixture-host kernel: workingset_refault_file 0
+2026-10-23T01:56:39+0800 fixture-host kernel: workingset_activate_anon 0
+2026-10-23T01:56:39+0800 fixture-host kernel: workingset_activate_file 0
+2026-10-23T01:56:39+0800 fixture-host kernel: workingset_restore_anon 0
+2026-10-23T01:56:39+0800 fixture-host kernel: workingset_restore_file 0
+2026-10-23T01:56:39+0800 fixture-host kernel: workingset_nodereclaim 0
+2026-10-23T01:56:39+0800 fixture-host kernel: pgscan 5601
+2026-10-23T01:56:39+0800 fixture-host kernel: pgsteal 5599
+2026-10-23T01:56:39+0800 fixture-host kernel: pgscan_kswapd 0
+2026-10-23T01:56:39+0800 fixture-host kernel: pgscan_direct 5601
+2026-10-23T01:56:39+0800 fixture-host kernel: pgscan_khugepaged 0
+2026-10-23T01:56:39+0800 fixture-host kernel: pgsteal_kswapd 0
+2026-10-23T01:56:39+0800 fixture-host kernel: pgsteal_direct 5599
+2026-10-23T01:56:39+0800 fixture-host kernel: pgsteal_khugepaged 0
+2026-10-23T01:56:39+0800 fixture-host kernel: pgfault 957698
+2026-10-23T01:56:39+0800 fixture-host kernel: pgmajfault 0
+2026-10-23T01:56:39+0800 fixture-host kernel: pgrefill 3
+2026-10-23T01:56:39+0800 fixture-host kernel: pgactivate 5
+2026-10-23T01:56:39+0800 fixture-host kernel: pgdeactivate 3
+2026-10-23T01:56:39+0800 fixture-host kernel: pglazyfree 0
+2026-10-23T01:56:39+0800 fixture-host kernel: pglazyfreed 0
+2026-10-23T01:56:39+0800 fixture-host kernel: thp_fault_alloc 0
+2026-10-23T01:56:39+0800 fixture-host kernel: thp_collapse_alloc 0
+2026-10-23T01:56:39+0800 fixture-host kernel: Tasks state (memory values in pages):
+2026-10-23T01:56:39+0800 fixture-host kernel: [  pid  ]   uid  tgid total_vm      rss pgtables_bytes swapents oom_score_adj name
+2026-10-23T01:56:39+0800 fixture-host kernel: [1573369]  1000 1573369     1196      800    45056        0             0 bash
+2026-10-23T01:56:39+0800 fixture-host kernel: [1573434]  1000 1573434   279375    16287   823296        0             0 npm run typeche
+2026-10-23T01:56:39+0800 fixture-host kernel: [1573445]  1000 1573445      723      384    45056        0             0 sh
+2026-10-23T01:56:39+0800 fixture-host kernel: [1573446]  1000 1573446   846346   522618  4419584        0             0 tsc
+2026-10-23T01:56:39+0800 fixture-host kernel: oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=user.slice,mems_allowed=0,oom_memcg=/user.slice/user-1000.slice/user@1000.service/app.slice/sentinel-2461-r1-checks.service,task_memcg=/user.slice/user-1000.slice/user@1000.service/app.slice/sentinel-2461-r1-checks.service,task=tsc,pid=1573446,uid=1000
+2026-10-23T01:56:39+0800 fixture-host kernel: Memory cgroup out of memory: Killed process 1573446 (tsc) total-vm:3385384kB, anon-rss:2073832kB, file-rss:16640kB, shmem-rss:0kB, UID:1000 pgtables:4316kB oom_score_adj:0

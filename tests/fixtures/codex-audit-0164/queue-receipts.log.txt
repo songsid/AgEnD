@@ -1,0 +1,20 @@
+permission-ready: 4 distinct frames
+queued-permission: 10 distinct frames
+queued-request-held 0.163.0
+permission-dismissed: 2 distinct frames
+queued-request-delivered 0.163.0
+permissions-picker: 1 distinct frames
+approval-ready: 3 distinct frames
+tool-approval: 4 distinct frames
+approval-declined: 1 distinct frames
+permissions completed 0.163.0
+permission-ready: 3 distinct frames
+queued-permission: 11 distinct frames
+queued-request-held 0.164.0
+permission-dismissed: 3 distinct frames
+queued-request-delivered 0.164.0
+permissions-picker: 1 distinct frames
+approval-ready: 3 distinct frames
+tool-approval: 4 distinct frames
+approval-declined: 1 distinct frames
+permissions completed 0.164.0

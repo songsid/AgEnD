@@ -4,7 +4,8 @@
 // "studio" (the zones layout: work desks, a lounge, an alert corner and a nap corner; people walk to the area for their
 // state). Every drawing call goes through the OfficeSkin interface below, so a skin pack (pictures from an artist,
 // format v1 in fleet-office-pack.js) can replace any part; a part a pack does not supply falls back to the built-in
-// drawing. No pack can be added yet (no upload): spriteSkin() and checkSkinPack() are the seam a later step plugs into.
+// drawing. An admin uploads a pack (#2513, the host keeps it: src/web-office-skins.ts); loadPackSkin() reads it back —
+// its manifest checked here again (checkSkinPack), its pictures by their content ids — and spriteSkin() draws it.
 //
 // ── The interface ──
 //
@@ -22,16 +23,25 @@
 // @property {(ctx, desk, look, env) => void} drawDeskFront   desks: in front — the desk's front, its sign, folders, name tag
 // @property {(ctx, L, env) => void} [drawBackground]     zones: the whole 1280×720 background, areas and their names
 // @property {(ctx, item, active, ms, env) => void} [drawFurniture]   zones: one furniture item (active: activeWhen holds)
+// @property {(ctx, L, env) => void} [drawForeground]     zones: a pack's foreground over the whole 1280×720 scene, above
+//   the people, furniture and items in the air, below the crowd counts, name tags and bubbles
 // @property {(ctx, x, y, look, env) => void} [drawTag]   zones: a name tag under feet at (x, y)
+// @property {(ctx, area, n, env) => void} [drawCrowd]    zones: an area's "+n" (who found no spot in it)
 // @property {(ctx, desk, look, ms, env) => void} drawCharacter   the occupant in its pose at time `ms` (0: still); in
-//   zones `desk` is the character's box at its current position (its feet at desk.seat)
+//   zones `desk` is the character's box at its current position (its feet at desk.seat); walking, `look.heading` is
+//   the current step's { dx, dy }
+// @property {(look, at) => {x, y, w, h}} [charBox]   zones: the box drawCharacter covers with the feet at `at`
+//   ({ x, y, walking, heading }): what hover and click hit (fleet-office-zones.js personAt)
 // @property {(ctx, prop, ms, env) => void} drawProp      a traffic item in the air: { kind, hue, x, y, t }
 // @property {(ctx, x, y, text, env, lift?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher
-// The desks layout's back and front layers change only when the fleet does: the renderer keeps them as pictures and
-// draws the characters, props and bubbles each frame. In zones the background is kept; furniture, people (walking
-// along the pack's waypoints), tags, props and bubbles are drawn each frame, furniture by depth around the people.
+// @property {(env) => string} matte   #2540: the colour around the scene (the Office fills the panel; the scene is 16:9)
+// @property {object|null} [backdrop]  a pack's loaded background picture (the page samples its edges for the matte)
+// The desks layout's back and front layers change only when the fleet (or the zoom) does: the renderer keeps them as
+// pictures and draws the characters, props and bubbles each frame. In zones the background is kept; furniture, people (walking
+// along the pack's waypoints), tags, props and bubbles are drawn each frame, furniture by depth around the people (depth "y":
+// among them by base y), then the foreground, then the crowd counts, tags and bubbles.
 import { frameAt, nameHash } from "./fleet-office-model.js";
-import { CHAR_DEPTH, LOGICAL } from "./fleet-office-pack.js";
+import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packImages, poseStrip, stripBox } from "./fleet-office-pack.js";
 
 export { nameHash };
 
@@ -271,21 +281,58 @@ function drawBubble(ctx, x, y, text, env, lift = 0) {
   ctx.restore();
 }
 
+/** A zones name tag's widest text (logical units): longer names are cut with an ellipsis. */
+export const TAG_TEXT_W = 84;
+const TAG_FONT = "600 10px system-ui, sans-serif";
+/** The box a name tag under feet at (x, y) takes (what drawTag draws; bubbles keep clear of it, #2513). */
+export function tagBox(ctx, x, y, label) {
+  ctx.save();
+  ctx.font = TAG_FONT;
+  const t = fitText(ctx, label, TAG_TEXT_W), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 10);
+  ctx.restore();
+  return { x: Math.round(x - w / 2), y: y + 3, w, h: 14, text: t };
+}
 /** Zones: a name tag under someone's feet at (x, y). */
 function drawTag(ctx, x, y, look, env) {
   const { pal } = env;
   ctx.save();
   if (look.dim) ctx.globalAlpha = 0.35;
-  ctx.font = "600 10px system-ui, sans-serif";
-  const t = fitText(ctx, look.label, 84), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 10);
+  ctx.font = TAG_FONT;
+  const t = fitText(ctx, look.label, TAG_TEXT_W), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 10);
   ctx.fillStyle = pal.surface; ctx.fillRect(Math.round(x - w / 2), y + 3, w, 14);
   ctx.strokeStyle = look.match ? pal.focus : pal.border; ctx.lineWidth = look.match ? 2 : 1; ctx.strokeRect(Math.round(x - w / 2) + 0.5, y + 3.5, w - 1, 13);
   ctx.fillStyle = pal.text; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t, x, y + 10.5);
   ctx.restore();
 }
 
+/**
+ * Zones: how many more want an area than it has room for — a chip in its bottom-right corner, inside its rect, so it
+ * never covers the area's name (#2513: "+42" over the nap corner's title).
+ */
+export function crowdChip(ctx, area, n) {
+  ctx.save();
+  ctx.font = "700 12px system-ui, sans-serif";
+  const text = `+${n}`, w = Math.ceil((ctx.measureText ? ctx.measureText(text).width : text.length * 7) + 12), h = 18, r = area.rect;
+  ctx.restore();
+  return { x: Math.round(r.x + r.w - w - 6), y: Math.round(r.y + r.h - h - 6), w, h, text };
+}
+function drawCrowd(ctx, area, n, env) {
+  if (!n) return;
+  const { pal } = env, b = crowdChip(ctx, area, n);
+  ctx.save();
+  ctx.fillStyle = pal.surface; ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+  ctx.fillStyle = pal.text; ctx.font = "700 12px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+  ctx.restore();
+}
+
+/** The built-in character in zones covers this box around its feet (as zonesLayout's desk box). */
+const charBox = (look, at) => ({ x: at.x - 24, y: at.y - 52, w: 48, h: 66 });
+/** #2540: Desks' matte (around the scene): the page's background token, which the desks' floor is too (Studio has its own). */
+const matte = (env) => env.pal.bg;
 /** @type {OfficeSkin} */
-export const pixelSkin = { id: "pixel", drawFloor, drawRoom, drawDeskBack, drawCharacter, drawDeskFront, drawProp, drawBubble, drawTag };
+export const pixelSkin = { id: "pixel", drawFloor, drawRoom, drawDeskBack, drawCharacter, drawDeskFront, drawProp, drawBubble, drawTag, drawCrowd, charBox, matte };
 
 // ── The built-in studio: the zones layout, drawn procedurally ──
 
@@ -346,8 +393,6 @@ function drawBackground(ctx, L, env) {
     ctx.strokeStyle = pal.border; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
     ctx.fillStyle = pal.text; ctx.font = "600 16px system-ui, sans-serif"; ctx.textBaseline = "top"; ctx.textAlign = "left";
     ctx.fillText(fitText(ctx, env.labels.areas[a.name] || a.name, r.w - 60), r.x + 12, r.y + 10);
-    const crowd = L.crowd && L.crowd.get(a.name);
-    if (crowd) { ctx.fillStyle = pal.text2; ctx.textAlign = "right"; ctx.fillText(`+${crowd}`, r.x + r.w - 12, r.y + 10); }
     ctx.restore();
   }
 }
@@ -396,9 +441,11 @@ function drawFurniture(ctx, f, active, ms, env) {
   }
 }
 /** @type {OfficeSkin} */
-export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawBackground, drawFurniture };
+/** #2540: the studio's matte is its hall floor (the scene's edge), so the panel around the scene reads as more of it. */
+const studioMatte = (env) => (ZONE_FLOOR[env.mode] || ZONE_FLOOR.dark).hall;
+export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawBackground, drawFurniture, matte: studioMatte };
 
-// ── Skin packs (the seam; nothing registers one yet) ──
+// ── Skin packs ──
 
 /**
  * An OfficeSkin from a checked pack (fleet-office-pack.js checkSkinPack) and its loaded pictures (`images`: src → a
@@ -406,20 +453,29 @@ export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawB
  */
 export function spriteSkin(pack, images, base = pixelSkin) {
   const img = (src) => (src && images.get(src)) || null;
-  const strip = (ctx, st, ms, x, y, frame = null) => {
+  // A strip's frame at its displayed size (dw × dh, unsmoothed), its anchor on (x, y); mirrored about the anchor.
+  const strip = (ctx, st, ms, x, y, frame = null, mirror = false) => {
     const im = img(st && st.src);
     if (!im) return false;
-    const f = frame ?? frameAt(ms, st.frames, st.fps), s = pack.scale;
+    const f = frame ?? frameAt(ms, st.frames, st.fps), b = stripBox(st, x, y, mirror);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(im, f * st.w, 0, st.w, st.h, Math.round(x - st.ax * s), Math.round(y - st.ay * s), st.w * s, st.h * s);
+    if (mirror) { ctx.translate(b.x + b.w, b.y); ctx.scale(-1, 1); ctx.drawImage(im, f * st.w, 0, st.w, st.h, 0, 0, b.w, b.h); }
+    else ctx.drawImage(im, f * st.w, 0, st.w, st.h, b.x, b.y, b.w, b.h);
     ctx.restore();
     return true;
+  };
+  const setOf = (look) => own(pack.characters, own(pack.byInstance, look.name)) || own(pack.characters, "default");
+  /** The strip a look shows (its pose; walking, by its heading), when its picture is loaded. */
+  const shown = (look, walking = look.pose === "walk") => {
+    const ps = poseStrip(setOf(look), walking ? "walk" : look.pose, look.heading);
+    return ps && img(ps.strip.src) ? ps : null;
   };
   return {
     ...base,
     id: pack.id,
     pack,
+    backdrop: img(pack.background),
     drawRoom(ctx, room, env) {
       const floor = img(pack.room.floor), wall = img(pack.room.wall);
       if (!floor) { base.drawRoom(ctx, room, env); return; }
@@ -448,6 +504,11 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       if (!im) { drawBackground(ctx, L, env); return; }
       ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, LOGICAL.w, LOGICAL.h); ctx.restore();
     },
+    drawForeground(ctx, L, env) {
+      const im = img(pack.foreground);
+      if (!im) return;
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, LOGICAL.w, LOGICAL.h); ctx.restore();
+    },
     drawFurniture(ctx, f, active, ms, env) {
       if (f.shape) { drawFurniture(ctx, f, active, ms, env); return; }
       // Active: its strip (or activeSprite) plays; otherwise its first frame holds.
@@ -456,19 +517,67 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     },
     drawCharacter(ctx, d, look, ms, env) {
       if (look.pose === "away") return;
-      const set = pack.characters[pack.byInstance[look.name]] || pack.characters.default;
+      const ps = shown(look);
       ctx.save();
       if (look.dim) ctx.globalAlpha = 0.35;
-      const done = !!set && strip(ctx, set[look.pose] || set.idle, ms, d.seat.x, d.seat.y);
+      const done = !!ps && strip(ctx, ps.strip, ms, d.seat.x, d.seat.y, null, ps.mirror);
       ctx.restore();
       if (!done) base.drawCharacter(ctx, d, look, ms, env);
     },
-    drawProp(ctx, it, ms, env) { if (!strip(ctx, pack.props[it.hue], ms, it.x, it.y)) base.drawProp(ctx, it, ms, env); },
+    charBox(look, at) {
+      const ps = shown({ ...look, heading: at.heading }, !!at.walking);
+      return ps ? stripBox(ps.strip, at.x, at.y, ps.mirror) : base.charBox(look, at);
+    },
+    drawProp(ctx, it, ms, env) { if (!strip(ctx, own(pack.props, it.hue), ms, it.x, it.y)) base.drawProp(ctx, it, ms, env); },
   };
 }
 
-/** The skins this page has: the built-in ones (a pack would be added here once loaded). */
+/** The skins built into this page; an uploaded pack is loaded by loadPackSkin. */
 export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin]]);
-export const skinFor = (id) => SKINS.get(id) || pixelSkin;
+export const BUILT_IN_SKINS = ["pixel", "studio"];
+/** A skin by id: a built-in one, else a pack loaded here (`packs`: id → skin), else the default (pixel). */
+export const skinFor = (id, packs = null) => SKINS.get(id) || (packs && packs.get(id)) || pixelSkin;
+
+const loaded = new Map();                                 // `${id}@${sha}` → Promise<OfficeSkin | null>
+const MAX_LOADED = 16;
+const defaultImage = (url) => new Promise((resolve) => {
+  if (typeof Image !== "function") { resolve(null); return; }
+  const im = new Image();
+  im.onload = () => resolve(im);
+  im.onerror = () => resolve(null);
+  im.src = url;
+});
+/**
+ * An uploaded pack (GET /ui/office-skins/<id>?v=<sha>) as an OfficeSkin: its manifest checked (null when it is not a
+ * pack: the page then draws a built-in style and says so), its pictures loaded from their content ids (one that does
+ * not load is drawn by the built-in skin). Kept per id and sha, so a pack is fetched once.
+ */
+export function loadPackSkin(id, sha, { fetch: get = globalThis.fetch, image = defaultImage } = {}) {
+  const key = `${id}@${sha}`;
+  if (loaded.has(key)) return loaded.get(key);
+  const base = `/ui/office-skins/${encodeURIComponent(id)}`;
+  const job = (async () => {
+    try {
+      const r = await get(`${base}?v=${encodeURIComponent(sha)}`, { method: "GET", headers: { "Content-Type": "application/json" } });
+      if (!r || !r.ok) return null;
+      const d = await r.json();
+      const c = checkSkinPack(d && d.manifest);
+      if (!c.ok || c.pack.id !== id) return null;
+      const files = d.files && typeof d.files === "object" ? d.files : {};
+      const images = new Map();
+      await Promise.all(packImages(c.pack).map(async (src) => {
+        const fid = own(files, src);
+        if (typeof fid !== "string" || !/^[0-9a-f]{32}$/.test(fid)) return;
+        const im = await image(`${base}/img/${fid}.png`);
+        if (im) images.set(src, im);
+      }));
+      return spriteSkin(c.pack, images);
+    } catch { return null; }
+  })();
+  loaded.set(key, job);
+  if (loaded.size > MAX_LOADED) loaded.delete(loaded.keys().next().value);
+  job.then((skin) => { if (!skin) loaded.delete(key); });   // a failed read is tried again next time
+  return job;
+}
 /** The people's depth in zones (fleet-office-pack.js). */
 export { CHAR_DEPTH };

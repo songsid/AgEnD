@@ -2,9 +2,10 @@
  * The AI usage view's compact mode (user request, Discord 1562814671289983058; then nine logins; then the user's pick
  * of layout A, 2026-10-22): a header switch beside the title (the dialog's and the rail's) turns the full cards
  * (230–290 px each) into the logins grouped by provider — its name once (×N) — each account in three short lines: its
- * name and plan with the soonest reset on the right, then its short and long window, each a labelled full-width bar
- * and the percent, coloured as the full card (high / near limit). Numbers not current, a failed read or no login: one
- * muted line in place of the bars. Coupons, credits and notes stay in the full card: an account pressed opens it in
+ * name and plan, then its short and long window, each a labelled full-width bar, the percent, coloured as the full card
+ * (high / near limit), and that window's own reset (2.3.1, the user: the week's reset was hidden behind the 5 h one's).
+ * Last known numbers (stale) show the same, muted, with "cached at 07:47" on the name line (2.3.1); a failed read, no
+ * login, or last known numbers whose windows have all reset since: one muted line in place of the bars. Coupons, credits and notes stay in the full card: an account pressed opens it in
  * place, its − folds it back. Groups and accounts keep the person's ↑↓ order. Remembered as a synced preference
  * ("usage.compact"). /api/ai-usage is a scripted fake: no server, no vendor call.
  */
@@ -47,7 +48,7 @@ afterEach(async () => {
   usage?.usageViewStore.set({ compact: false });
   i18n?.setLang("en");
 });
-async function mount(lang: "en" | "zh-TW" = "en") {
+async function mount(lang: "en" | "zh-TW" = "en", providers: unknown[] = PROVIDERS) {
   pg = page({ storage: { agend_tour_done: "1" } });
   i18n.setLang(lang);
   posts = []; hostValues = {};
@@ -58,7 +59,7 @@ async function mount(lang: "en" | "zh-TW" = "en") {
       for (const [k, v] of Object.entries(body.set)) { if (v === null) delete hostValues[k]; else hostValues[k] = v; }   // as the host keeps them
       return { ok: true, status: 200, json: async () => ({ rev: 1 + posts.length, values: { ...hostValues } }) };
     }
-    return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ fetchedAt: new Date().toISOString(), providers: PROVIDERS }) };
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ fetchedAt: new Date().toISOString(), providers }) };
   };
   await pg.mount(htm.html`<div><${usage.UsageCompactToggle} /><${usage.UsageBody} owner="usage-compact-test" /></div>`);
   await settle(3);
@@ -115,7 +116,7 @@ describe("the switch, the groups and a line opened", () => {
     expect(posts.at(-1)).toEqual({ set: { "usage.compact": null } });        // the full cards are the default: cleared
   });
 
-  it("a group: the provider once (×N); an account: name, short plan and the soonest reset, then a labelled bar per window coloured as the full card", async () => {
+  it("a group: the provider once (×N); an account: name and short plan, then a labelled bar per window coloured as the full card, each with its own reset", async () => {
     await mount();
     toggle().click(); await settle(2);
     const [cl, cx] = groups();
@@ -125,8 +126,13 @@ describe("the switch, the groups and a line opened", () => {
     expect(lines.map((r: any) => text(r.querySelector(".u-crow-head [aria-hidden]")))).toEqual(["Max ×20", "Team ×6.25", "Max ×5", "Pro"]);
     const meters = (r: any) => r.querySelectorAll(".u-cm").map((m: any) => `${text(m.querySelector(".u-cm-tag"))} ${text(m.querySelector(".u-cm-pct"))}${tone(m)}`);
     expect(lines.map(meters)).toEqual([["5h 42%", "7d 75%~"], ["5h 93%!", "7d 20%"], ["5h 5%", "7d 30%"], ["5h 71%~", "7d 91%!"]]);
-    expect(lines[0].querySelector(".u-crow-reset").getAttribute("title")).toMatch(/^resets in (?:2h 5\d|3h 0)m$/);
-    expect(text(lines[0].querySelector(".u-crow-reset"))).toMatch(/^↻ [23]h \(resets in (?:2h 5\d|3h 0)m\)$/);   // and the words for a screen reader
+    // Each window its own reset after its %, the week's too (no single "soonest" one on the name line any more).
+    expect(root().querySelector(".u-crow-reset")).toBeNull();
+    const resets = (r: any) => r.querySelectorAll(".u-cm-reset").map((x: any) => text(x.firstChild));
+    expect(resets(lines[0])).toEqual([expect.stringMatching(/^↻ [23]h$/), "↻ 3d"]);                 // 5h in ~3h, the week in 90h
+    expect(resets(lines[1])).toEqual([expect.stringMatching(/^↻ (?:59m|1h)$/), "↻ 3d"]);
+    expect(text(lines[0].querySelectorAll(".u-cm-reset")[1])).toMatch(/^↻ 3d \(resets in .+\)$/);   // the words for a screen reader
+    expect(lines[0].querySelectorAll(".u-cm")[1].getAttribute("title")).toMatch(/^Weekly: 75% \(high\) · ↻ (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d$/);   // the tooltip: when
     expect(text(lines[0])).not.toMatch(/coupons|Credits/);
     expect(meters(cx.querySelectorAll(".u-crow")[0])).toEqual(["7d 10%"]);                         // a week only: one bar
   });
@@ -135,14 +141,35 @@ describe("the switch, the groups and a line opened", () => {
     await mount();
     toggle().click(); await settle(2);
     const [, , kiro, grok, muse] = groups().map((g: any) => g.querySelector(".u-crow"));
+    // 2.3.1 (the user): last known numbers show as the others do — the bar, its % and its reset — muted, with a small
+    // "cached at 07:47" on the name line; why (expired, and what to do) is its tooltip.
     expect(kiro.getAttribute("class")).toBe("u-crow is-stale");
-    expect([kiro.querySelectorAll(".u-cm").length, kiro.querySelector(".u-crow-note").getAttribute("class")]).toEqual([0, "u-crow-note is-alert"]);
+    expect([kiro.querySelectorAll(".u-cm").length, kiro.querySelector(".u-crow-note")]).toEqual([1, null]);
+    expect(`${text(kiro.querySelector(".u-cm-tag"))} ${text(kiro.querySelector(".u-cm-pct"))} ${text(kiro.querySelector(".u-cm-reset").firstChild)}`).toBe("30d 55% ↻ 8d");
     // Cached two hours ago: the time, and its day too when that was yesterday (usageClock) — a run just after midnight.
-    expect(text(kiro.querySelector(".u-crow-note"))).toMatch(/^expired · cached at (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d$/);
-    expect(kiro.querySelector(".u-crow-note").getAttribute("title")).toMatch(/^expired · cached at (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d — Sign in again: kiro-cli login$/);
+    expect(text(kiro.querySelector(".u-crow-stale").firstChild)).toMatch(/^cached at (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d$/);
+    expect(kiro.querySelector(".u-crow-stale").getAttribute("title")).toMatch(/^expired · cached at (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d — Sign in again: kiro-cli login$/);
     expect([text(grok.querySelector(".u-crow-note")), grok.querySelector(".u-crow-note").getAttribute("class")]).toEqual(["HTTP 500 from the vendor", "u-crow-note is-alert"]);
     expect([text(muse.querySelector(".u-crow-note")), muse.querySelector(".u-crow-note").getAttribute("class"), text(muse.querySelector(".u-crow-name"))])
       .toEqual(["not logged in", "u-crow-note", "Muse"]);
+  });
+
+  it("2.3.1: last known numbers whose windows have all reset since keep the one muted line (no number is shown as current); agy's expired token shows its pool lines", async () => {
+    const ago = new Date(Date.now() - 3 * H).toISOString();
+    const pool = (label: string) => ({ label, labelI18n: { key: "usage.metric.named", args: [label] } });
+    await mount("en", [
+      { id: "claude", name: "Claude", status: "ok", plan: "Max (20x)", stale: true, staleCause: "expired", cachedAt: ago, hint: "Sign in again",
+        metrics: [{ ...pct("Session", 40, 5 * H, ago, "usage.metric.session"), resetPassed: true }, { ...pct("Weekly", 70, 168 * H, ago, "usage.metric.weekly"), resetPassed: true }] },
+      { id: "antigravity", name: "Antigravity", status: "ok", plan: "Google AI Pro", stale: true, staleCause: "expired", cachedAt: ago, hint: "Sign in to agy again",
+        metrics: [{ ...pct("Gemini (session)", 20, 5 * H, soon(2)), pool: pool("Gemini") }, { ...pct("Claude & others (session)", 5, 5 * H, soon(4)), pool: pool("Claude & others") }] },
+    ]);
+    toggle().click(); await settle(2);
+    const [claudeRow, agyRow] = rows();
+    expect([claudeRow.querySelectorAll(".u-cm").length, text(claudeRow.querySelector(".u-crow-note")).startsWith("expired · cached at"), claudeRow.querySelector(".u-crow-stale")])
+      .toEqual([0, true, null]);
+    expect([agyRow.getAttribute("class"), agyRow.querySelectorAll(".u-cm").map((m: any) => `${text(m.querySelector(".u-cm-tag"))} ${text(m.querySelector(".u-cm-reset").firstChild)}`)])
+      .toEqual(["u-crow is-stale is-pooled", ["Gemini ↻ 2h", expect.stringMatching(/^Claude & others ↻ [34]h$/)]]);
+    expect(agyRow.querySelector(".u-crow-stale").getAttribute("title")).toMatch(/^expired · cached at .+ — Sign in to agy again$/);
   });
 
   it("a line pressed opens its full card in place, in its group (coupons and all); its − folds it back; the switch closes them all", async () => {
@@ -162,6 +189,7 @@ describe("the switch, the groups and a line opened", () => {
     expect(text(toggle())).toBe("精簡");
     toggle().click(); await settle(2);
     expect([text(toggle()), groups()[0].querySelectorAll(".u-crow")[0].querySelectorAll(".u-cm-tag").map(text)]).toEqual(["完整", ["5小時", "7天"]]);
-    expect(groups()[0].querySelectorAll(".u-crow")[0].querySelectorAll(".u-cm")[1].getAttribute("title")).toBe("每週: 75% (偏高)");
+    expect(groups()[0].querySelectorAll(".u-crow")[0].querySelectorAll(".u-cm")[1].getAttribute("title")).toMatch(/^每週: 75% \(偏高\) · ↻ (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d$/);
+    expect(groups()[0].querySelectorAll(".u-crow")[0].querySelectorAll(".u-cm-reset").map((x: any) => text(x.firstChild))).toEqual([expect.stringMatching(/^↻ [23]小時$/), "↻ 3天"]);
   });
 });

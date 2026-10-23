@@ -6,14 +6,16 @@
 //   office the page makes itself (AUTO_ID, "the whole fleet", built from the teams as the canvas is), whose member
 //   filter is the team / people picker; any other office is the host's (GET /ui/offices, fleet-office-store.js),
 //   checked again here.
-//   TODO(office editor): adding and renaming offices, assigning people, dragging seats and drawing paths is a later
-//   step; it writes the same model through the store's saveOffices().
+//   The office editor (fleet-office-editor.js) adds, renames and deletes offices and picks who is in them; the layout
+//   editor (fleet-office-layout.js, #2513) moves things on a zones skin and keeps them as the office's `overrides`
+//   (fleet-office-pack.js) — both write the same model through the store's saveOffices().
 // - The auto layout: a lobby (General and the instances in no team), then a room per team in fleet.yaml's order, in a
 //   grid that wraps at the stage's width (a phone gets narrower rooms); a desk per member; a corridor graph of waypoints
 //   (each desk's aisle, a spine down each room's left padding, its door, a corridor under each row of rooms and one down
 //   the left margin) that traffic walks along (bfsPath).
 // - Poses come from the org chart's states (fleet-org.js ORG_STATES / orgState); nothing here invents a status.
 import { hue } from "./fleet-traffic.js";
+import { checkLayoutOverrides } from "./fleet-office-pack.js";
 
 // ── Poses: the org chart's states, as a character at a desk ──
 
@@ -115,7 +117,8 @@ export function officeOk(x) {
   if (!x || typeof x !== "object" || typeof x.id !== "string" || !ID.test(x.id) || x.id === AUTO_ID) return null;
   const name = typeof x.name === "string" && x.name.trim() ? x.name.trim().slice(0, 60) : x.id;
   const skin = typeof x.skin === "string" && ID.test(x.skin) ? x.skin : "pixel";
-  return { id: x.id, name, skin, members: nameList(x.members), layout: layoutOk(x.layout) };
+  const ov = x.overrides === undefined ? null : checkLayoutOverrides(x.overrides);
+  return { id: x.id, name, skin, members: nameList(x.members), layout: layoutOk(x.layout), ...(ov && ov.ok ? { overrides: ov.overrides } : {}) };
 }
 /** A stored list of offices: the valid ones, ids unique, at most MAX_OFFICES. */
 export function officesOk(list) {

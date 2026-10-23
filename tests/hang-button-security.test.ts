@@ -131,7 +131,7 @@ describe("hang notification buttons", () => {
     // restartSingleInstance serializes concurrent restarts and knows how to
     // restart Classic instances — the old hand-rolled stop+start did neither.
     expect(restartSingleInstance).toHaveBeenCalledOnce();
-    expect(restartSingleInstance).toHaveBeenCalledWith("worker");
+    expect(restartSingleInstance).toHaveBeenCalledWith("worker", { explicit: true });
     expect(editMessage).toHaveBeenCalledWith(
       "fleet-group",
       "hang-message",

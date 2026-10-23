@@ -30,7 +30,7 @@ docker run -d --privileged --cgroupns=private --memory=1536m --memory-swap=1536m
   --name "$container" "$image" > "$output/container-id"
 docker exec "$container" mkdir -p /opt/rehearsal/pkg
 # Build beforehand in a capped unit; copy only this checkout's assets/deps.
-(cd "$repo" && tar -chf - dist src launcher templates e2e/mock-servers node_modules package.json vitest.config.ts vitest.config.integration.ts tsconfig.json tests/session-oom-stop-2035.test.ts tests/oom-policy-loaded-2015.test.ts tests/child-stdio-errors-2374.test.ts tests/tmux-manager.test.ts tests/tmux-control-native-1401.test.ts tests/setup-process-guard.ts tests/setup-process-guard-global.ts tests/support) |
+(cd "$repo" && tar -chf - dist src launcher templates e2e/mock-servers node_modules package.json vitest.config.ts vitest.config.integration.ts tsconfig.json tests/session-oom-stop-2035.test.ts tests/helpers/self-oom-evidence.ts tests/oom-policy-loaded-2015.test.ts tests/child-stdio-errors-2374.test.ts tests/tmux-manager.test.ts tests/tmux-control-native-1401.test.ts tests/setup-process-guard.ts tests/setup-process-guard-global.ts tests/support) |
   docker exec -i "$container" tar -xf - -C /opt/rehearsal/pkg
 "$repo/node_modules/.bin/esbuild" "$repo/e2e/mock-servers/telegram-mock.ts" --bundle --platform=node --format=esm --outfile="$output/telegram-mock.mjs"
 docker cp "$output/telegram-mock.mjs" "$container:/opt/rehearsal/telegram-mock.mjs"

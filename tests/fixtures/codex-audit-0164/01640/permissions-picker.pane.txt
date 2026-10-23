@@ -1,0 +1,33 @@
+
+  >_ OpenAI Codex (v0.164.0)
+     /tmp/codex-audit/run-01640/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› queue first slow
+
+
+• ok
+
+  Worked for 8s • 12:00
+
+
+› queued audit request
+
+
+• ok
+
+  Worked for <1s • 12:00
+
+
+  Update Model Permissions
+
+
+  1. Ask for approval       Read and edit workspace files and run commands, with approval required for internet access or edits outside the workspace
+  2. Approve for me         Only ask for actions detected as potentially unsafe
+› 3. Full Access (current)  Use with caution: Codex can edit files outside this workspace and access the internet without approval
+  4. Read Only              Read workspace files, with approval required for edits or internet access
+
+  enter select · esc back

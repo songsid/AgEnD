@@ -27,7 +27,11 @@ fm.fleetConfig.teams = {};
 fm.getInstanceStatus = () => "running";
 
 const H = 3_600_000;
-const summary = JSON.parse(readFileSync(join(REPO, "tests/fixtures/agy-quota-2026-10-20/summary-daily-cli-ua.json"), "utf8"));
+// #2519 review: the recording's reset times are fixed dates; every time in it is moved as if "now" were 2026-10-21 00:00Z
+// (Gemini's session reset past, every other ahead), so the scenario never ages.
+const SCENARIO_NOW = Date.parse("2026-10-21T00:00:00Z");
+const summary = JSON.parse(readFileSync(join(REPO, "tests/fixtures/agy-quota-2026-10-20/summary-daily-cli-ua.json"), "utf8")
+  .replace(/"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)"/g, (_m, iso: string) => JSON.stringify(new Date(Date.parse(iso) + Date.now() - SCENARIO_NOW).toISOString())));
 const soon = (h: number) => new Date(Date.now() + h * H).toISOString();
 const pct = (key: string, label: string, used: number, windowMs: number, resetH: number) => ({ type: "percent", label, labelI18n: { key }, used, windowMs, resetsAt: soon(resetH) });
 setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [
@@ -63,6 +67,8 @@ const read = (p: FreshPage, c: MatrixCase) => p.page.evaluate(`(() => {
   return {
     full: card ? [...card.querySelectorAll(".u-label")].map((l) => l.textContent) : null,
     compact: agy ? [...agy.querySelectorAll(".u-cm")].map((m) => ({ tag: m.querySelector(".u-cm-tag").textContent, pct: m.querySelector(".u-cm-pct").textContent,
+      barW: Math.round(m.querySelector(".u-cm-bar").getBoundingClientRect().width),
+      reset: (() => { const x = m.querySelector(".u-cm-reset"); return x ? ((x.firstChild && x.firstChild.nodeType === 3) ? x.firstChild.textContent : "").trim() : null; })(),
       tagW: Math.round(m.querySelector(".u-cm-tag").getBoundingClientRect().width), clipped: clipped(m.querySelector(".u-cm-tag")) })) : null,
     claude: rows.filter((r) => r.closest(".u-cgroup")?.querySelector(".u-cg-name")?.textContent === "Claude").map((r) => [...r.querySelectorAll(".u-cm-tag")].map((t) => t.textContent)),
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth, csp: window.__smokeCsp || [],
@@ -89,6 +95,9 @@ for (const c of CASES) {
   const compact = await read(p, c);
   ck.compactPoolLines = !!compact.compact && compact.compact.length === 3 && compact.compact[2].tag === ARGON[c.lang];
   ck.poolLabelsReadable = !!compact.compact && compact.compact.every((m: any) => m.tagW >= 50);
+  // 2.3.1: each pool's line its own reset (the window its % is); none on the name line.
+  ck.poolLabelsWhole = !!compact.compact && compact.compact.every((m: any) => m.clipped === false);
+  ck.eachPoolItsReset = !!compact.compact && compact.compact.every((m: any) => typeof m.reset === "string" && /^↻ \S+$/.test(m.reset));
   ck.claudeWindows = JSON.stringify(compact.claude) === JSON.stringify([c.lang === "zh-TW" ? ["5小時", "7天"] : ["5h", "7d"]]);
   ck.noOverflow = !compact.overflow;
   ck.noErrors = p.errors.slice(navEnd).length === 0 && compact.csp.length === 0;

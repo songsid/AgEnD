@@ -9,7 +9,12 @@ const [phase, packageRoot, scratch] = process.argv.slice(2);
 assert.ok(['create', 'old', 'return'].includes(phase));
 assert.equal(resolve(scratch), process.env.AGEND_HOME);
 assert.match(scratch, /[/\\]agend-downgrade-[^/\\]+$/);
-if (phase === 'old') assert.match(process.versions.node, /^20\./);
+// The published baseline the 'old' phase runs (scripts/check-data-downgrade.mjs): 2.1.12 on Node 20, or 2.2.6 — the
+// version #2483's Mac recovery and #2481's auto-restore go back to — on its own bundled Node 22.
+const baseline = phase === 'old' ? JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).version : null;
+if (phase === 'old') assert.ok(['2.1.12', '2.2.6'].includes(baseline), `unknown baseline ${baseline}`);
+if (baseline === '2.1.12') assert.match(process.versions.node, /^20\./);
+if (baseline === '2.2.6') assert.match(process.versions.node, /^22\./);
 // Fail before native execution, even if a future leaf-module import starts a
 // probe. Both ESM and CJS imports see the guard. No inspector, adapters or tmux.
 for (const api of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) {
@@ -65,7 +70,30 @@ function schedule(label) {
   return scheduler.create({ cron: '0 0 * * *', message: label, source: 'scratch-source', target: label,
     reply_chat_id: '-100123', reply_thread_id: '7', reply_adapter_id: 'scratch-world' });
 }
+/** The old binary must leave unknown journal rows, including their exact JSON bytes, intact. */
+function journalRows() {
+  const db = new Database(outboxPath, { readonly: true });
+  try { return db.prepare('SELECT instance_name,revision,current_json,prior_json FROM working_state_journal ORDER BY instance_name').all(); }
+  finally { db.close(); }
+}
 if (phase === 'create') {
+  checked('working journal has populated current and prior snapshots before downgrade', () => {
+    const snapshot = { version: 1, reason: 'before_stop', observedAt: 10, lastActivityAt: 9,
+      observation: { owner: { bootId: 'scratch-daemon', spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 },
+        backend: 'mock', configuration: 'a'.repeat(64), executionState: 'working', processStatus: 'running', backgroundWork: true,
+        turn: { generation: 1, deliveryId: 'scratch-turn', correlationId: 'scratch-correlation', messageId: 'scratch-message', cancelled: false, completionDelivered: false },
+        sessionId: null, backendTurnId: null },
+      references: [{ kind: 'task', id: 'scratch-task-reference', version: 1, status: 'claimed' }], totalReferences: 1, unavailable: [] };
+    assert.equal(outbox.observeWorkingState('scratch-journal', snapshot).revision, 1);
+    outbox.observeWorkingState('scratch-journal', { ...snapshot, reason: 'execution', observedAt: 20,
+      observation: { ...snapshot.observation, executionState: 'idle', backgroundWork: false, turn: null } });
+    state.workingJournal = outbox.getWorkingState('scratch-journal');
+    assert.equal(state.workingJournal.revision, 2);
+    assert.equal(state.workingJournal.prior.observation.turn.deliveryId, 'scratch-turn');
+    state.workingJournalRows = journalRows();
+    assert.equal(state.workingJournalRows.length, 1);
+    assert.notEqual(state.workingJournalRows[0].prior_json, null);
+  });
   checked('new delivery consumption and acknowledgement metadata', () => {
     const delivered = terminal('consumed', 'new-consumed', 'delivered');
     assert.equal(outbox.markConsumed(delivered.deliveryId, delivered.targetDaemonBootId, delivered.attemptNo, 'mid_turn', 'scratch'), 'marked');
@@ -148,6 +176,9 @@ if (phase === 'create') {
       targetInstance: 'consumed', kind: 'fleet_inbound', payload: {} }).inserted, false);
     state.oldDelivered = terminal('old-delivery', 'old-delivered', 'delivered').deliveryId;
   });
+  checked('old outbox opens, recovers and writes delivery data without changing journal bytes', () => {
+    assert.deepEqual(journalRows(), state.workingJournalRows);
+  });
   checked('old scheduler accepts new history; deletion cascades the new retry', () => {
     assert.ok(scheduler.get(state.keepSchedule));
     assert.equal(scheduler.getRuns(state.keepSchedule)[0].status, 'deferred → delivered (retry)');
@@ -175,32 +206,48 @@ if (phase === 'create') {
   checked('raw YAML retained; old normalized rewrite loses new top-level fields', () => {
     const configPath = join(scratch, 'fleet.yaml'); const text = readFileSync(configPath, 'utf8');
     const config = loadFleetConfig(configPath); const raw = loadRawFleetConfig(configPath);
-    assert.equal(config.needs_you, undefined); assert.ok(raw.needs_you);
+    // 2.2.6 already knows needs_you (2.1.12 drops it); neither knows the sentinel.
+    if (baseline === '2.1.12') assert.equal(config.needs_you, undefined); else assert.deepEqual(config.needs_you, { live_message: true, dm: false });
+    assert.ok(raw.needs_you);
     assert.deepEqual(config.web, state.web); assert.deepEqual(config.channels.map(c => c.id), state.channelIds);
     const rewritten = yaml.load(yaml.dump(config));
-    assert.equal(rewritten.needs_you, undefined); assert.equal(rewritten.extension_sentinel, undefined);
+    if (baseline === '2.1.12') assert.equal(rewritten.needs_you, undefined); else assert.deepEqual(rewritten.needs_you, config.needs_you);
+    assert.equal(rewritten.extension_sentinel, undefined);
     assert.equal(readFileSync(configPath, 'utf8'), text); // Do not replace the original fixture.
   });
-  // Invoke only the file-writing prototype methods, never its binary-probing constructor.
-  const { KiroBackend } = await load('backend/kiro.js');
-  const workingDirectory = state.spec.workingDirectory;
-  const shared = join(workingDirectory, '.kiro', 'settings'); mkdirSync(shared, { recursive: true });
-  const steering = join(workingDirectory, '.kiro', 'steering'); mkdirSync(steering, { recursive: true });
-  const foreignWrapper = join(scratch, 'foreign-wrapper'); writeFileSync(foreignWrapper, 'inert');
-  writeFileSync(join(shared, 'mcp.json'), JSON.stringify({ mcpServers: { 'agend-worker': { command: foreignWrapper, args: [] } } }));
-  writeFileSync(join(steering, 'agend-worker.md'), 'foreign fleet steering');
-  const backend = { instanceDir: state.spec.instanceDir };
-  const cfg = { workingDirectory, instanceName: 'worker', instructions: 'old replacement',
-    mcpServers: { agend: { command: 'inert-not-executed', args: [], env: {} } } };
-  KiroBackend.prototype.writeConfig.call(backend, cfg);
-  assert.notEqual(JSON.parse(readFileSync(join(shared, 'mcp.json'), 'utf8')).mcpServers['agend-worker'].command, foreignWrapper);
-  assert.equal(readFileSync(join(steering, 'agend-worker.md'), 'utf8'), 'old replacement');
-  KiroBackend.prototype.cleanup.call(backend, cfg);
-  assert.equal(existsSync(join(steering, 'agend-worker.md')), false);
-  assert.equal(JSON.parse(readFileSync(join(shared, 'mcp.json'), 'utf8')).mcpServers['agend-worker'], undefined);
-  checks.push('old shared Kiro writers lack ownership; new agent artifacts untouched');
+  // 2.1.12 only: its shared Kiro writers had no ownership (they replace another fleet's entries). 2.2.6 writes through
+  // its own launch plan and owns what it writes; the return phase checks the new agent artifacts are byte-preserved.
+  if (baseline === '2.1.12') {
+    // Invoke only the file-writing prototype methods, never its binary-probing constructor.
+    const { KiroBackend } = await load('backend/kiro.js');
+    const workingDirectory = state.spec.workingDirectory;
+    const shared = join(workingDirectory, '.kiro', 'settings'); mkdirSync(shared, { recursive: true });
+    const steering = join(workingDirectory, '.kiro', 'steering'); mkdirSync(steering, { recursive: true });
+    const foreignWrapper = join(scratch, 'foreign-wrapper'); writeFileSync(foreignWrapper, 'inert');
+    writeFileSync(join(shared, 'mcp.json'), JSON.stringify({ mcpServers: { 'agend-worker': { command: foreignWrapper, args: [] } } }));
+    writeFileSync(join(steering, 'agend-worker.md'), 'foreign fleet steering');
+    const backend = { instanceDir: state.spec.instanceDir };
+    const cfg = { workingDirectory, instanceName: 'worker', instructions: 'old replacement',
+      mcpServers: { agend: { command: 'inert-not-executed', args: [], env: {} } } };
+    KiroBackend.prototype.writeConfig.call(backend, cfg);
+    assert.notEqual(JSON.parse(readFileSync(join(shared, 'mcp.json'), 'utf8')).mcpServers['agend-worker'].command, foreignWrapper);
+    assert.equal(readFileSync(join(steering, 'agend-worker.md'), 'utf8'), 'old replacement');
+    KiroBackend.prototype.cleanup.call(backend, cfg);
+    assert.equal(existsSync(join(steering, 'agend-worker.md')), false);
+    assert.equal(JSON.parse(readFileSync(join(shared, 'mcp.json'), 'utf8')).mcpServers['agend-worker'], undefined);
+    checks.push('old shared Kiro writers lack ownership; new agent artifacts untouched');
+  }
   writeFileSync(statePath, JSON.stringify(state));
 } else {
+  checked('working journal survives old writes and accepts a new atomic observation after return', () => {
+    assert.deepEqual(journalRows(), state.workingJournalRows);
+    assert.deepEqual(outbox.getWorkingState('scratch-journal'), state.workingJournal);
+    const { managerBootId: _, ...snapshot } = state.workingJournal.current;
+    const updated = outbox.observeWorkingState('scratch-journal', { ...snapshot, observedAt: 30 });
+    assert.equal(updated.revision, 3);
+    assert.equal(updated.current.managerBootId, 'return-manager');
+    assert.deepEqual(updated.prior, state.workingJournal.prior);
+  });
   checked('new consumption/ack metadata survives old writes; old delivery remains readable', () => {
     const inspect = new Database(outboxPath, { readonly: true });
     try {
@@ -256,5 +303,6 @@ for (const [label, path] of [['outbox', outboxPath], ['scheduler', schedulerPath
   });
   versions[label] = db.pragma('user_version', { simple: true }); db.close();
 }
-assert.equal(versions.outbox, phase === 'old' ? 4 : 5);
+// 2.1.12's outbox is schema 4 (it leaves 5's columns alone); 2.2.6 already writes 5.
+assert.equal(versions.outbox, baseline === '2.1.12' ? 4 : 5);
 console.log(JSON.stringify({ phase, node: process.versions.node, sqlitePackage, userVersion: versions, checks }));

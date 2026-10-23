@@ -185,10 +185,23 @@ describe("Settings → Web, as rendered", () => {
       ["web.allowed_hosts", "[\"box.lan\"]", false], ["web.view_access", "session", false], ["web.notify_login", "true default", true], ["web.preview", "false", false],
       ["web.preview_port", "19281 default", true], ["web.preview_origin", "none default", true], ["web.preview_on_public_link", "true default", true],
       ["web.usage_panel", "true default", true],
+      ["web.search", "not set (no age limit; 300,000-row cap)", false],
       ["web.provider_secrets", "false default", true], ["web.upload_max_file_mb", "50 default", true], ["web.upload_max_total_mb", "100 default", true],
       ["web_terminal.bind", "0.0.0.0", false], ["web_terminal.tunnel", "none default", true],
     ]);
     expect(p.root.querySelectorAll(".s-web-ro input, .s-web-ro select, .s-web-ro textarea").length).toBe(0);
+  });
+
+  it("web.search read-only: unset and 0 are no age limit; a positive day count is the number (#2516)", async () => {
+    const value = () => [...p.root.querySelectorAll(".s-web-ro > div")]
+      .find((d: any) => d.querySelector("dt")?.textContent === "web.search")?.querySelector("dd")?.textContent;
+    // #2347: the read-only list is in Advanced.
+    await open({}, "advanced");
+    expect(value()).toBe("not set (no age limit; 300,000-row cap)");
+    await open({ web: { search: { retention_days: 0 } } }, "advanced");
+    expect(value()).toBe("0 (no age limit; 300,000-row cap)");
+    await open({ web: { search: { retention_days: 90 } } }, "advanced");
+    expect(value()).toBe("90");
   });
 
   it("over the temporary public link: the web form is disabled and says why (the server refuses Web writes there); nothing can be staged", async () => {

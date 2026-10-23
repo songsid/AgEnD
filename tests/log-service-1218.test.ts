@@ -213,6 +213,14 @@ describe("live only under a watch lease", () => {
 });
 
 describe("fleet events from the event log", () => {
+  it("includes observational working-state events even without a supported transcript", async () => {
+    const s = service({ src: { backend: "mock", path: null, format: null }, events: () => [
+      { id: 1, event_type: "working_state", payload: { message: "Observed working; journal only; no recovery action." }, created_at: "2026-10-23 01:00:00" },
+    ] });
+    expect((await s.svc.steps("w", {}) as any).events).toEqual([
+      { id: 1, ts: Date.parse("2026-10-23T01:00:00Z"), type: "working_state", detail: "Observed working; journal only; no recovery action." },
+    ]);
+  });
   it("only the instance's own changes (not bookkeeping), oldest first, masked; ev= gives only newer ones", async () => {
     const secret = "ghp_" + "Aa1Bb2Cc3Dd4Ee5Ff6Gg7Hh8".repeat(2);
     const rows = [

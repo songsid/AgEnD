@@ -24,6 +24,7 @@ import type { EffectTrialActor } from "./web-effect-trials.js";
 import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
+import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
@@ -430,6 +431,10 @@ export interface WebApiContext {
   readonly officeStore?: OfficeStore;
   /** How often a person may save the offices (absent: no limit, as in a test without it). */
   readonly officeWrites?: OfficeWriteLimiter;
+  /** #2513: the Office view's uploaded skin packs (web-office-skins/); absent: /ui/office-skins is not offered. */
+  readonly officeSkins?: OfficeSkinStore;
+  /** How often a person may upload or delete a skin pack (absent: no limit). */
+  readonly officeSkinWrites?: OfficeWriteLimiter;
   readonly webAppearance?: WebAppearance;
   /** #1629 r4-5: installed mods and a person's staged import. */
   readonly mods?: ModStore;
@@ -441,7 +446,7 @@ export interface WebApiContext {
   modPlacedEffect?(person: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
   /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
   isKnownInstance?(name: string): boolean;
-  startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
+  startInstance(name: string, config: unknown, topicMode: boolean, kind?: "fleet-topic" | "classic", resumePaused?: boolean): Promise<void>;
   stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
   listWebPrompts?(): unknown[];
@@ -604,6 +609,92 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   })().catch((err) => {
     ctx.logger.error({ err: (err as Error).message }, "App icon request failed");
     try { json(res, 500, { error: "app_icon_failed", detail: "App icon request failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * #2513: the Office view's skin packs (web-office-skins.ts). The reads are the offices' (GET /ui/offices): whoever may
+ * open the org chart, the public link too (its manifest lists them; a guest's routes do not): the list, a pack's
+ * manifest (?v=<sha>: immutable, else no-store) and its pictures (by the sha of their bytes: immutable, image/png,
+ * nosniff, sandboxed). The writes are PUT /ui/offices's: an admin session only — never the CLI token, never the public
+ * link (absent from its manifest, and refused here too) — asked again once the body is in; rate limited per person.
+ * Every page hears `office_skins` on the stream and reads the list again.
+ */
+function handleOfficeSkins(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const store = ctx.officeSkins;
+  if (!store) { json(res, 404, { error: "Skin packs are not kept on this fleet" }); return true; }
+  const one = /^\/ui\/office-skins\/([A-Za-z0-9_-]{1,40})$/.exec(path);
+  const picture = /^\/ui\/office-skins\/([A-Za-z0-9_-]{1,40})\/img\/([0-9a-f]{32})\.png$/.exec(path);
+  if (method === "GET" || method === "HEAD") {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (path === "/ui/office-skins") { res.setHeader("Cache-Control", "private, no-store"); json(res, 200, store.list()); return true; }
+    if (one) {
+      const pack = store.get(one[1]!);
+      if (!pack) { res.setHeader("Cache-Control", "private, no-store"); json(res, 404, { error: "skin_unknown" }); return true; }
+      const v = url.searchParams.get("v");
+      res.setHeader("Cache-Control", v === pack.sha ? "private, max-age=31536000, immutable" : "private, no-store");
+      json(res, 200, pack);
+      return true;
+    }
+    if (picture) {
+      const bytes = store.picture(picture[1]!, picture[2]!);
+      if (!bytes) { res.setHeader("Cache-Control", "private, no-store"); json(res, 404, { error: "No such image" }); return true; }
+      res.setHeader("Content-Type", "image/png");
+      // Keyed by the sha of its bytes: a picture at this URL never changes.
+      res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+      res.writeHead(200);
+      res.end(method === "HEAD" ? undefined : bytes);
+      return true;
+    }
+    json(res, 404, { error: "not found" });
+    return true;
+  }
+  const upload = method === "POST" && path === "/ui/office-skins", removal = method === "DELETE" && !!one;
+  if (!upload && !removal) { json(res, 404, { error: "not found" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "skins_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "skins_need_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  const limited = (person: string): boolean => {
+    const allowed = ctx.officeSkinWrites ? ctx.officeSkinWrites.check(person) : { ok: true as const };
+    if (allowed.ok) return false;
+    res.setHeader("Retry-After", String(allowed.retry_after_s));
+    json(res, 429, { error: "skins_rate_limited", retry_after_s: allowed.retry_after_s });
+    return true;
+  };
+  const answer = (r: { ok: true; rev: string } | { ok: false; status: number; error: string; detail?: string }, body: () => unknown, person: string) => {
+    if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+    ctx.officeSkinWrites?.record(person);
+    ctx.emitSseEvent("office_skins", { rev: r.rev });
+    json(res, 200, body());
+  };
+  if (removal) {
+    if (limited(first.person)) return true;
+    const r = store.remove(one![1]!);
+    answer(r, () => ({ rev: r.ok ? r.rev : "" }), first.person);
+    return true;
+  }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, SKIN_WIRE_BYTES); } catch { json(res, 413, { error: "skin_too_large", detail: `at most ${Math.floor(SKIN_WIRE_BYTES / 1024 / 1024)} MiB a request` }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    let body: unknown;
+    try { body = JSON.parse(bytes.toString("utf8")); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (limited(now.person)) return;
+    const r = store.add(body, now.person);
+    answer(r, () => (r.ok ? { rev: r.rev, pack: r.pack } : null), now.person);
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, "Uploading a skin pack failed");
+    try { json(res, 500, { error: "Uploading a skin pack failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -1133,11 +1224,13 @@ function webAuthorityOf(req: IncomingMessage, url: URL, ctx: WebApiContext, inst
     peer: webPeerOf(req), ...(instance !== undefined ? { instance } : {}) });
 }
 /**
- * #1939 §3.4 / #2453 §0.2: where this request came from — the admin's named link by the gateway's own provenance (its
- * exact hostname), else what the TCP peer and Host say (a quick tunnel's request is `lan`, and refused as public_link).
+ * #1939 §3.4 / #2453 §0.2 / §0.3: where this request came from — over the public gateway, the link itself by the
+ * gateway's own provenance (never a header): the admin's named tunnel on its exact hostname, else the temporary
+ * quick-tunnel link. Off the gateway, what the TCP peer and Host say.
  */
 export function webPeerOf(req: IncomingMessage): WebPeer {
-  return gatewayRequestContext(req)?.named === true ? "named_link" : classifyWebPeer(req);
+  const gateway = gatewayRequestContext(req);
+  return gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
 }
 /**
  * #2122: what let this request in, asked now — its session (by handle, under the token it was signed in with) or the
@@ -1767,6 +1860,8 @@ export function handleWebRequest(
     return true;
   }
 
+  if (path === "/ui/office-skins" || path.startsWith("/ui/office-skins/")) return handleOfficeSkins(req, res, url, ctx, path, method);
+
   // ── #1630: avatars and Discord server emoji, same-origin (the page never loads a platform's CDN; img-src stays 'self') ──
 
   const imageMatch = path.match(/^\/ui\/img\/(bot|avatar|emoji)\/([^/]+)$/);
@@ -2123,7 +2218,7 @@ export function handleWebRequest(
       let held = false;
       try {
         await withSpawnHoldReply(async message => { held = true; json(res, 202, { held: true, message, instance: name }); },
-          () => ctx.startInstance(name, config, topicMode ?? false));
+          () => ctx.startInstance(name, config, topicMode ?? false, "fleet-topic", true));
         ctx.emitSseEvent("status", ctx.getUiStatus());
         if (!held) json(res, 200, { started: name });
       } catch (err) {

@@ -1,0 +1,542 @@
+{
+  "01630": {
+    "idle": {
+      "source": "run-01630/cap/idle/00004-802ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "busy": {
+      "source": "run-01630/cap/busy/00002-43ms.txt",
+      "ready": true,
+      "busy": true,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "turn-idle": {
+      "source": "run-01630/cap/turn-idle/00009-6107ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "near-suppressed": {
+      "source": "run-01630/cap/near-suppressed/00002-47ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "usage": {
+      "source": "run-01630/cap/usage/00002-45ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "rate429": {
+      "source": "run-01630/cap/rate429/00002-45ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "insufficient": {
+      "source": "run-01630/cap/insufficient/00002-48ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "resumed": {
+      "source": "run-01630/cap/resumed/00003-611ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "resumed-turn": {
+      "source": "run-01630/cap/resumed-turn/00003-85ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "trust": {
+      "source": "run-01630/cap/trust/00002-671ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex folder trust needs human confirmation",
+          "keys": [],
+          "holdOnly": true
+        },
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex folder trust needs human confirmation",
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "rate-picker": {
+      "source": "run-01630/cap/rate-picker/00005-563ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex rate-limit model-switch picker — Escape keeps the current model",
+          "keys": [
+            "Escape"
+          ],
+          "holdOnly": false
+        },
+        {
+          "description": "Codex rate limit model switch dialog needs human choice",
+          "keys": [],
+          "holdOnly": true
+        },
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex rate-limit model-switch picker — Escape keeps the current model",
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "rate-dismissed": {
+      "source": "run-01630/cap/rate-dismissed/00001-10ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "onboarding": {
+      "source": "run-01630/cap/onboarding/00003-862ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "queued-permission": {
+      "source": "run-01630/cap/queued-permission/00010-7463ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "permission-dismissed": {
+      "source": "run-01630/cap/permission-dismissed/00002-48ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "permissions-picker": {
+      "source": "run-01630/cap/permissions-picker/00001-9ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "tool-approval": {
+      "source": "run-01630/cap/tool-approval/00004-980ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "approval-declined": {
+      "source": "run-01630/cap/approval-declined/00001-10ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "resume-picker": {
+      "source": "run-01630/cap/resume-picker/00002-1421ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex resume selected a session from another directory (sibling git worktree) — needs a human choice",
+          "keys": [],
+          "holdOnly": true
+        },
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex resume selected a session from another directory (sibling git worktree) — needs a human choice",
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "resume-loading": {
+      "source": "run-01630/cap/resumed/00001-307ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": true,
+      "runtime": [],
+      "startup": []
+    },
+    "queueReceipt": {
+      "prompt": "queued audit request",
+      "queuedTurnRequests": 1,
+      "requestsMentioningPrompt": 2,
+      "heldBeforeDismissal": true,
+      "sourceLog": "permission-live2.log"
+    }
+  },
+  "01640": {
+    "idle": {
+      "source": "run-01640/cap/idle/00004-655ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "busy": {
+      "source": "run-01640/cap/busy/00003-80ms.txt",
+      "ready": true,
+      "busy": true,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "turn-idle": {
+      "source": "run-01640/cap/turn-idle/00010-6112ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "near-suppressed": {
+      "source": "run-01640/cap/near-suppressed/00003-84ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "usage": {
+      "source": "run-01640/cap/usage/00002-51ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "rate429": {
+      "source": "run-01640/cap/rate429/00002-42ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "insufficient": {
+      "source": "run-01640/cap/insufficient/00002-42ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "resumed": {
+      "source": "run-01640/cap/resumed/00003-555ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "resumed-turn": {
+      "source": "run-01640/cap/resumed-turn/00003-94ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "trust": {
+      "source": "run-01640/cap/trust/00002-716ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex folder trust needs human confirmation",
+          "keys": [],
+          "holdOnly": true
+        },
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex folder trust needs human confirmation",
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "rate-picker": {
+      "source": "run-01640/cap/rate-picker/00006-460ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex rate-limit model-switch picker — Escape keeps the current model",
+          "keys": [
+            "Escape"
+          ],
+          "holdOnly": false
+        },
+        {
+          "description": "Codex rate limit model switch dialog needs human choice",
+          "keys": [],
+          "holdOnly": true
+        },
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex rate-limit model-switch picker — Escape keeps the current model",
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "rate-dismissed": {
+      "source": "run-01640/cap/rate-dismissed/00001-5ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "onboarding": {
+      "source": "run-01640/cap/onboarding/00003-686ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "queued-permission": {
+      "source": "run-01640/cap/queued-permission/00011-7504ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "permission-dismissed": {
+      "source": "run-01640/cap/permission-dismissed/00003-80ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "permissions-picker": {
+      "source": "run-01640/cap/permissions-picker/00001-13ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "tool-approval": {
+      "source": "run-01640/cap/tool-approval/00004-998ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "approval-declined": {
+      "source": "run-01640/cap/approval-declined/00001-9ms.txt",
+      "ready": true,
+      "busy": false,
+      "deliverable": true,
+      "resume": false,
+      "runtime": [],
+      "startup": []
+    },
+    "resume-picker": {
+      "source": "run-01640/cap/resume-picker/00002-1528ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": false,
+      "runtime": [
+        {
+          "description": "Codex resume selected a session from another directory (sibling git worktree) — needs a human choice",
+          "keys": [],
+          "holdOnly": true
+        },
+        {
+          "description": "Codex interactive selection needs human input",
+          "keys": [],
+          "holdOnly": true
+        }
+      ],
+      "startup": [
+        "Codex resume selected a session from another directory (sibling git worktree) — needs a human choice",
+        "Codex interactive selection needs human input"
+      ]
+    },
+    "resume-loading": {
+      "source": "run-01640/cap/resumed/00001-266ms.txt",
+      "ready": false,
+      "busy": false,
+      "deliverable": false,
+      "resume": true,
+      "runtime": [],
+      "startup": []
+    },
+    "queueReceipt": {
+      "prompt": "queued audit request",
+      "queuedTurnRequests": 1,
+      "requestsMentioningPrompt": 2,
+      "heldBeforeDismissal": true,
+      "sourceLog": "permission-live2.log"
+    }
+  }
+}

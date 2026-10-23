@@ -16,6 +16,9 @@
  * read. It never fires for a slow start (one attempt, the job running), a deliberate stop (the job not loaded, or
  * systemd inactive with Result=success), or a package installed less than 90 s ago.
  *
+ * #2490: the same notice in chat (General, else the admin's DM): notifyChatOnce, from start-attempt.ts, runs
+ * start-failure-chat.js once per version, on its third failed start.
+ *
  * Only node built-ins (and child-process.ts, itself only built-ins): start-attempt.ts imports this before the rest of the CLI.
  */
 import { spawnSync, type SpawnOptions } from "node:child_process";
@@ -36,12 +39,13 @@ const KEEP_ATTEMPTS = 20;
 const KEEP_HISTORY = 5;
 
 export interface StartedRecord { version: string; at: string; pid: number; history: string[] }
+/** `notified`: the macOS notification went (once per version). The chat notice's claim is a file of its own (#2490). */
 export interface AttemptsRecord { version: string; attempts: string[]; notified?: boolean }
 
 function readJson<T>(file: string): T | null {
   try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return null; }
 }
-function writeJson(file: string, value: unknown): void {
+export function writeJson(file: string, value: unknown): void {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(value) + "\n", { mode: 0o600 });
@@ -51,6 +55,11 @@ function writeJson(file: string, value: unknown): void {
 export function readStarted(home: string): StartedRecord | null {
   const r = readJson<StartedRecord>(join(home, STARTED_FILE));
   return r && typeof r.version === "string" && Array.isArray(r.history) ? r : null;
+}
+/** #2481: the versions that completed a start here; "unreadable" when the record is there but cannot be read. */
+export function readStartedHistory(home: string): string[] | "unreadable" {
+  if (!existsSync(join(home, STARTED_FILE))) return [];
+  return readStarted(home)?.history ?? "unreadable";
 }
 export function readAttempts(home: string): AttemptsRecord | null {
   const r = readJson<AttemptsRecord>(join(home, ATTEMPTS_FILE));
@@ -265,6 +274,124 @@ export function notifyOnce(home: string, record: AttemptsRecord, platform: NodeJ
     const child = launch("osascript", ["-e", `display notification ${JSON.stringify(text)} with title "AgEnD"`], { detached: true, stdio: "ignore" });
     child.on?.("error", () => { /* no osascript: the banner and doctor remain */ });
     child.unref?.();
+    return true;
+  } catch { return false; }
+}
+
+// ── #2490: the chat notice (posted by start-failure-chat.ts) ────────────────────────────────────────────────────
+
+/** How long a failing `fleet start` waits, once per version, for the notice to go out. */
+export const CHAT_NOTICE_TIMEOUT_MS = 10_000;
+
+/** This version's attempts within the window (the loop #2488/#2490/#2481's auto-restore judge). */
+export function recentAttemptCount(record: AttemptsRecord, now: number): number {
+  return record.attempts.filter(a => { const at = Date.parse(a); return Number.isFinite(at) && at <= now && now - at <= ATTEMPT_WINDOW_MS; }).length;
+}
+
+/** Is this attempt the one that sends the chat notice? This version's third start in the window, none completed. */
+export function chatNoticeDue(record: AttemptsRecord, started: StartedRecord | null, now: number): boolean {
+  if (started?.version === record.version) return false;
+  return recentAttemptCount(record, now) >= LOOP_ATTEMPTS;
+}
+
+/** The chat notice's claim for a version: created once, O_EXCL — no rewrite of the attempts record can undo it. */
+export function chatClaimFile(home: string, version: string): string | null {
+  return /^[0-9A-Za-z.+-]{1,64}$/.test(version) ? join(home, `${CHAT_CLAIM_PREFIX}${version}`) : null;
+}
+const CHAT_CLAIM_PREFIX = "fleet-start-chat-notified-";
+
+/**
+ * Claim the chat notice for this version, atomically across processes (an O_EXCL create): true for exactly one caller,
+ * ever. The other versions' claims go (best effort): a later version gets its own notice, and a reinstalled one again.
+ */
+export function claimChatNotice(home: string, version: string): boolean {
+  const file = chatClaimFile(home, version);
+  if (!file) return false;
+  try { writeFileSync(file, new Date().toISOString() + "\n", { flag: "wx", mode: 0o600 }); }
+  catch { return false; }
+  try {
+    for (const name of readdirSync(home)) {
+      if (name.startsWith(CHAT_CLAIM_PREFIX) && join(home, name) !== file) { try { unlinkSync(join(home, name)); } catch { /* gone */ } }
+    }
+  } catch { /* the claim stands */ }
+  return true;
+}
+
+export type RunChild = (cmd: string, args: string[], opts: { timeout: number }) => void;
+const defaultRunChild: RunChild = (cmd, args, opts) => {
+  // stderr is the service's log (fleet.log): the child's one line goes there. Its exit is not waited past the timeout.
+  spawnSync(cmd, args, { timeout: opts.timeout, stdio: ["ignore", "ignore", "inherit"], killSignal: "SIGKILL" });
+};
+
+/**
+ * #2490, from start-attempt.ts: when this attempt is the one (chatNoticeDue), claim the chat notice and run
+ * start-failure-chat.js, which posts it; wait for it at most CHAT_NOTICE_TIMEOUT_MS. Never throws. True when it ran.
+ */
+export function notifyChatOnce(home: string, version: string, now: number, run: RunChild = defaultRunChild): boolean {
+  try {
+    const record = readAttempts(home);
+    if (!record || record.version !== version || !chatNoticeDue(record, readStarted(home), now)) return false;
+    if (!claimChatNotice(home, version)) return false;
+    run(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "start-failure-chat.js"), home], { timeout: CHAT_NOTICE_TIMEOUT_MS });
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * #2481 auto-restore: the notices, with the restore wording, before the swap moves this package (and the chat script)
+ * away. The chat notice takes #2490's per-version claim, so it replaces the plain one; the macOS notification its mark.
+ * Never throws.
+ */
+export function notifyRestore(home: string, from: string, to: string, preimage: string, opts: {
+  run?: RunChild; launch?: Launch; platform?: NodeJS.Platform;
+} = {}): void {
+  try {
+    const record = readAttempts(home);
+    if (record && record.version === from && !record.notified && (opts.platform ?? process.platform) === "darwin") {
+      writeJson(join(home, ATTEMPTS_FILE), { ...record, notified: true });
+      const text = `AgEnD v${from} failed to start; restoring v${to} automatically. Run: agend doctor`;
+      const child = (opts.launch ?? defaultLaunch)("osascript", ["-e", `display notification ${JSON.stringify(text)} with title "AgEnD"`], { detached: true, stdio: "ignore" });
+      child.on?.("error", () => { /* no osascript */ });
+      child.unref?.();
+    }
+  } catch { /* best effort */ }
+  try {
+    if (!claimChatNotice(home, from)) return;
+    (opts.run ?? defaultRunChild)(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "start-failure-chat.js"), home, "--restore", from, to, preimage], { timeout: CHAT_NOTICE_TIMEOUT_MS });
+  } catch { /* best effort */ }
+}
+
+/**
+ * The Node to run a script of the package at `packageAt` with: its own bundled one when it is there, else this process's.
+ * Under launchd this process's Node is the installed package's bundled one — which, when the package is stranded in the
+ * failed tree (Fable P3 on #2526), moved with it: process.execPath no longer exists.
+ */
+function nodeIn(packageAt: string, arch: string = process.arch): string {
+  const bundled = join(packageAt, "node_modules", "@songsid", `agend-node-darwin-${arch}`, "bin", "node");
+  return existsSync(bundled) ? bundled : process.execPath;
+}
+
+/**
+ * #2481, Fable r1 on #2526: the restore did not happen, but its notices said it was happening (and took #2490's chat
+ * claim). The correction, once per version (its own O_EXCL claim): the failure and the way back by hand. `packageAt`:
+ * where the installed package — and the chat script — is now (the failed tree when even the rename back failed).
+ */
+export function notifyRestoreFailed(home: string, from: string, to: string, reason: string, packageAt: string, opts: {
+  run?: RunChild; launch?: Launch; platform?: NodeJS.Platform; arch?: string;
+} = {}): boolean {
+  try {
+    if (!/^[0-9A-Za-z.+-]{1,64}$/.test(from)) return false;
+    try { writeFileSync(join(home, `fleet-start-restore-failed-${from}`), new Date().toISOString() + "\n", { flag: "wx", mode: 0o600 }); }
+    catch { return false; }
+    if ((opts.platform ?? process.platform) === "darwin") {
+      try {
+        const text = `AgEnD v${from} fails to start; restoring v${to} automatically did not work. Run: agend doctor`;
+        const child = (opts.launch ?? defaultLaunch)("osascript", ["-e", `display notification ${JSON.stringify(text)} with title "AgEnD"`], { detached: true, stdio: "ignore" });
+        child.on?.("error", () => { /* no osascript */ });
+        child.unref?.();
+      } catch { /* the chat notice and doctor remain */ }
+    }
+    (opts.run ?? defaultRunChild)(nodeIn(packageAt, opts.arch), [join(packageAt, "dist", "start-failure-chat.js"), home, "--restore-failed", from, to, reason], { timeout: CHAT_NOTICE_TIMEOUT_MS });
     return true;
   } catch { return false; }
 }

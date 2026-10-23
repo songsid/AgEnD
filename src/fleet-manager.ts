@@ -210,6 +210,7 @@ import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
+import { OfficeSkinStore } from "./web-office-skins.js";
 import { WebAppearance } from "./web-appearance.js";
 import { WebEffectLibrary } from "./web-effect-library.js";
 import { WebEffectTrials } from "./web-effect-trials.js";
@@ -271,6 +272,9 @@ import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./i
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
+import type { WorkingStateObservation, WorkingStateReason, WorkingStateReference } from "./working-state-journal.js";
+import { describeSelfOom } from "./session-oom.js";
+import { assertNoSessionOomStop, readSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry, SessionOomStoppedError, sessionOomStopHint, type SessionOomRetry } from "./session-oom-stop.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
@@ -525,6 +529,10 @@ const CARRY_LARGE_BYTES = 256 * 1024 * 1024;
 export interface RestartOpts {
   freshStart?: boolean;
   explicit?: boolean;
+  /** Internal receipt captured when an OOM action was offered. */
+  sessionOomRetry?: SessionOomRetry;
+  /** Internal pre-invalidation owner fence for an unclear-OOM action. */
+  recoveryCurrent?: () => boolean;
   carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null };
 }
 /** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
@@ -699,6 +707,7 @@ export interface ModelCatalog {
  */
 interface NonceButtonEntry {
   pendingChangeId?: string;
+  sessionOomRetry?: SessionOomRetry;
   confirmationCurrent?: () => boolean;
   confirmationAdmin?: (userId: string) => boolean;
   requesterUserId?: string;
@@ -840,6 +849,12 @@ export interface DeliveryOptions {
    * IPC hand-off itself. False drops the delivery unsent (a schedule retry past its deadline).
    */
   stillCurrent?: () => boolean;
+  /**
+   * #2484: a person's message to an instance that is in its own start-retry backoff (a retry scheduled or running, not
+   * stopped or paused by a person) waits for that retry instead of failing after the IPC grace. Called once when the
+   * wait starts, so the message can show it is queued; the delivery fails only once the retries give up.
+   */
+  onStartRetryHold?: () => void;
 }
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
@@ -865,6 +880,7 @@ interface PendingBackendSelect extends BackendMenuPlace {
 }
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
+const OOM_RETRY_CALLBACK_PREFIX = "oom-retry:";
 /** #1386: how long a paused instance's marker reason is reused before it is read again (transitions drop it at once). */
 const NEEDS_PAUSE_TTL_MS = 10_000;
 const HANG_CALLBACK_PREFIX = "hang:";
@@ -876,7 +892,7 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
  * group's approval, tips, and the per-user /model and /effort menus (which are not nonce entries at all).
  */
 const WEB_MIRRORED_PROMPT_PREFIXES: ReadonlySet<string> = new Set([
-  HANG_CALLBACK_PREFIX, EXIT_RESTART_CALLBACK_PREFIX, INTERACTIVE_ASSIST_CALLBACK_PREFIX,
+  HANG_CALLBACK_PREFIX, EXIT_RESTART_CALLBACK_PREFIX, OOM_RETRY_CALLBACK_PREFIX, INTERACTIVE_ASSIST_CALLBACK_PREFIX,
 ]);
 /**
  * Where a reply goes on a fleet with no chat platform (web track C4): it is "sent" by being shown in the
@@ -1195,6 +1211,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * backend outage during a post-update herd). instanceName → pending retry.
    */
   private startupRetries = new Map<string, { attempt: number; timer: NodeJS.Timeout }>();
+  /** #2484: instances whose automatic startup retry is running now (between its timer and its outcome). */
+  private startupRetriesRunning = new Set<string>();
   /** Bumped by every explicit stop (incl. the stop half of a restart); fences the outage hand-off. */
   private explicitStopGeneration = new Map<string, number>();
   /** instanceName → outage hand-off currently executing; a repeat joins it. */
@@ -1476,7 +1494,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private officeStoreInstance?: OfficeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json, beside web-themes.json). */
-  get officeStore(): OfficeStore { return (this.officeStoreInstance ??= new OfficeStore(this.dataDir)); }
+  get officeStore(): OfficeStore { return (this.officeStoreInstance ??= new OfficeStore(this.dataDir, id => this.officeSkins.pack(id))); }
+  private officeSkinsInstance?: OfficeSkinStore;
+  /** #2513: the Office view's uploaded skin packs (<AGEND_HOME>/web-office-skins/). */
+  get officeSkins(): OfficeSkinStore { return (this.officeSkinsInstance ??= new OfficeSkinStore(this.dataDir)); }
+  /** How often a person may upload or delete a skin pack; memory only, as the offices' limiter. */
+  readonly officeSkinWrites = new OfficeWriteLimiter(undefined, { perWindow: 10, windowMs: 60_000 });
   /** How often a person may save the offices (PUT /ui/offices); memory only, as the appearance limiter. */
   readonly officeWrites = new OfficeWriteLimiter();
   /** #1629: the theme tools, a person's reset and lock, and the one appearance rate limiter (shared with effects). */
@@ -2132,7 +2155,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...(web && by.guest ? { web_guest: "1" } : {}),        // #1920: "[user:… via web (guest), id:…]", as /ui/send
           ...reactions.meta,
         },
-      }, by.humanOrigin, button.label)) !== false;
+      }, by.humanOrigin, button.label, this.startRetryHoldFor(set.instance, inbound))) !== false;
     } finally {
       // Both false and throw reopen the choice in the controller. Finish the
       // receipt through the same reconciler as typed input, rather than leaving
@@ -2175,8 +2198,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     this.deliveryOutbox = outbox;
     this.deliveryOutboxRecovered = true;
+    outbox.on("working_references", (names: string[]) => {
+      for (const name of names) this.observeWorkingState(name, "obligations");
+    });
     outbox.on("admitted", () => { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
     outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
+      if (event.deliveryId) {
+        const row = outbox.get(event.deliveryId);
+        if (row) for (const name of new Set([row.sourceInstance, row.targetInstance])) this.observeWorkingState(name, "obligations");
+      }
       this.scheduleDeliveryOutboxPump();
       this.wakeCoordinator?.kick();
       if (event.deliveryId && event.state === "delivered") {
@@ -2334,8 +2364,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
   }
 
+  /** A terminal OOM stop is not an auto-wakeable pause, including after a fleet restart. */
+  private sessionOomStopped(name: string): boolean {
+    return this.daemons.get(name)?.isSessionOomStopped?.() === true || readSessionOomStop(this.getInstanceDir(name)).blocked;
+  }
+
+  private sessionOomStopReason(name: string): string {
+    const state = readSessionOomStop(this.getInstanceDir(name));
+    return state.blocked ? sessionOomStopHint(state)
+      : this.daemons.get(name)?.notAcceptingReason?.() ?? sessionOomStopHint();
+  }
+
   /** #1641: why a target is not taking queued work right now, or null when nothing known holds it. */
   private deliveryWaitingReason(target: string): string | null {
+    if (this.sessionOomStopped(target)) return this.sessionOomStopReason(target);
     if (this.lifecycle.isPaused(target)) return t("delivery.hold_state", "paused");
     return this.daemons.get(target)?.notAcceptingReason?.() ?? null;
   }
@@ -2350,6 +2392,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Called after a replacement Daemon object is installed in lifecycle.daemons. */
   onDaemonReady(name: string, daemonBootId: string): void {
+    const daemon = this.daemons.get(name);
+    if (daemon?.bootId === daemonBootId) this.listenForWorkingState(name, daemon);
     const outbox = this.deliveryOutbox;
     if (!outbox) return;
     for (const prior of outbox.getUnansweredAccepted(name, daemonBootId)) {
@@ -2369,6 +2413,67 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error({ err, owner: name }, "Could not persist the post-restart reply reminder");
     }
     this.scheduleDeliveryOutboxPump();
+  }
+
+  private workingStateListeners?: WeakSet<Daemon>;
+  private workingStateErrors?: Set<string>;
+
+  /** Attach only to the published owner. Nothing here sends or resumes work. */
+  private listenForWorkingState(name: string, daemon: Daemon): void {
+    if (typeof daemon.getWorkingStateObservation !== "function") return;
+    this.workingStateListeners ??= new WeakSet();
+    if (this.workingStateListeners.has(daemon)) return;
+    this.workingStateListeners.add(daemon);
+    daemon.on("working_state", (event: { reason: WorkingStateReason; observation: WorkingStateObservation }) => {
+      try {
+        if (this.daemons.get(name) !== daemon || !sameInteractionOwner(event.observation.owner, daemon.getInteractionSnapshot().owner)) return;
+        this.observeWorkingState(name, event.reason, event.observation);
+      } catch { /* A malformed/stale observation cannot affect the daemon. */ }
+    });
+    this.observeWorkingState(name, "published");
+  }
+
+  private observeWorkingState(name: string, reason: WorkingStateReason, supplied?: WorkingStateObservation): void {
+    const outbox = this.deliveryOutbox, daemon = this.daemons.get(name);
+    if (!outbox || !daemon || typeof daemon.getWorkingStateObservation !== "function") return;
+    try {
+      const observation = supplied ?? daemon.getWorkingStateObservation();
+      if (!sameInteractionOwner(observation.owner, daemon.getInteractionSnapshot().owner)) return;
+      const references: WorkingStateReference[] = [];
+      const unavailable: Array<"tasks" | "obligations"> = [];
+      let totalReferences = 0;
+      const board = this.scheduler?.db.board;
+      if (!board) unavailable.push("tasks");
+      else try {
+        const tasks = board.listCards({ assignee: name, status: ["claimed", "blocked", "review"], limit: 16 });
+        totalReferences += tasks.total;
+        for (const card of tasks.cards) references.push({ kind: "task", id: card.uuid, version: card.version,
+          status: card.status as "claimed" | "blocked" | "review" });
+      } catch { unavailable.push("tasks"); }
+      try {
+        const obligations = outbox.workingObligations(name);
+        references.push(...obligations.references); totalReferences += obligations.total;
+      } catch { unavailable.push("obligations"); }
+      const entry = outbox.observeWorkingState(name, { version: 1, reason, observedAt: Date.now(), observation,
+        lastActivityAt: this.lastActivity.get(name) ?? null, references, totalReferences, unavailable });
+      if (!entry) return;
+      const state = entry.current.observation.executionState ?? "unknown";
+      const counts = { tasks: entry.current.references.filter(r => r.kind === "task").length,
+        owed: entry.current.references.filter(r => r.kind === "owed").length,
+        waiting: entry.current.references.filter(r => r.kind === "waiting").length,
+        background: entry.current.observation.backgroundWork,
+        total: entry.current.totalReferences, unavailable: entry.current.unavailable };
+      this.logger.info({ name, state, reason, revision: entry.revision, ...counts }, "Working-state journal observed");
+      this.eventLog?.insert(name, "working_state", { state, reason, revision: entry.revision, ...counts,
+        message: `Observed ${state}; tasks ${counts.tasks}, replies owed ${counts.owed}, waiting ${counts.waiting}; ${counts.total} references${counts.background === true ? "; background work running" : ""}${unavailable.length ? "; some sources unavailable" : ""}. Journal only; no recovery action.` });
+      this.emitSseEvent("steps_tick", { instance: name });
+    } catch {
+      this.workingStateErrors ??= new Set();
+      if (!this.workingStateErrors.has(name)) {
+        this.workingStateErrors.add(name);
+        this.logger.warn({ name }, "Could not persist working-state observation; delivery and restart behavior unchanged");
+      }
+    }
   }
 
   /**
@@ -4063,6 +4168,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     deliveryEpoch: number,
     noInlineWake = false,
     stillCurrent?: () => boolean,
+    onStartRetryHold?: () => void,
   ): Promise<boolean> {
     if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
@@ -4104,7 +4210,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const log = idleGateTimeoutLog(instanceName, timeoutMs, this.instanceStateCache.get(instanceName), Date.now());
       this.logger[log.level](log.fields, log.message);
     }
-    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent);
+    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold);
     if (!sent) return false;
     if (this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.lastDeliveryAt.set(instanceName, Date.now());
@@ -4133,12 +4239,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Ordering is preserved by serialising behind any waiter already queued for this
    * instance, *including* when the socket happens to be up: otherwise a message
    * arriving after the reconnect could overtake one that has been waiting for it.
+   *
+   * `onStartRetryHold` (#2484, a person's message): an instance in its own start-retry backoff is waited for until that
+   * retry brings it up, however long the backoff, and fails only once the retries give up.
    */
   private async sendWhenConnected(
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
     stillCurrent?: () => boolean,
+    onStartRetryHold?: () => void,
   ): Promise<boolean> {
     if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
@@ -4151,7 +4261,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .catch(() => { /* a previous waiter's failure must not cancel this one */ })
       .then(() => {
         if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
-        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent);
+        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold);
       });
     // The chain stores a settled-either-way promise so one failed delivery cannot
     // wedge every later one, and so `queued` above is safe to await unguarded.
@@ -4174,15 +4284,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
     stillCurrent?: () => boolean,
+    onStartRetryHold?: () => void,
   ): Promise<boolean> {
-    const deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
+    let deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
     let warned = false;
+    let held = false;
     for (;;) {
       if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
       if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+      // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
+      // delivered once a retry brings it up, and fails only after the retries stop (they gave up, or a person stopped
+      // or paused it) and a last grace passes without it.
+      if (onStartRetryHold && this.inStartRetryBackoff(instanceName)) {
+        deadline = Math.max(deadline, Date.now() + IPC_RECONNECT_GRACE_MS);
+        if (!held) {
+          held = true;
+          this.logger.info({ instanceName, retry: this.startupRetries.get(instanceName)?.attempt }, "Instance is waiting for its start retry — holding the message until it is up");
+          try { onStartRetryHold(); } catch (err) { this.logger.debug({ err, instanceName }, "Start-retry hold notice failed"); }
+        }
+      }
       if (Date.now() >= deadline) {
         throw new Error(`Instance '${instanceName}' IPC is unavailable`);
       }
@@ -4525,6 +4648,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
   }
 
+  /**
+   * #2484: a person's message waits for its instance's own start retry (DeliveryOptions.onStartRetryHold), shown as
+   * queued on the message meanwhile. A ClassicBot room message (no `msg`) has no delivery-status reactions: it only waits.
+   */
+  private startRetryHoldFor(instanceName: string, msg?: { chatId?: string; messageId?: string; threadId?: string }): DeliveryOptions {
+    return {
+      onStartRetryHold: () => {
+        if (msg?.chatId && msg.messageId) this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "queued", msg.threadId || undefined);
+      },
+    };
+  }
+
   /** Synchronous steer/btw handoff, using the same evidence and owner binding. */
   sendHumanControl(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): boolean {
     const ipc = this.instanceIpcClients.get(instanceName);
@@ -4560,7 +4695,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent);
+      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent, options.onStartRetryHold);
       if (!sent) return false;
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
@@ -4578,6 +4713,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       deliveryEpoch,
       options.noInlineWake === true,
       options.stillCurrent,
+      options.onStartRetryHold,
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
@@ -4984,7 +5120,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       mode: target => this.deliveryWorkerMode(target),
       available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true,
       listPending: () => this.deliveryOutbox?.listPending() ?? [],
-      isPaused: target => this.lifecycle.isPaused(target),
+      isPaused: target => !this.sessionOomStopped(target) && this.lifecycle.isPaused(target),
       pauseReason: target => readPauseReason(this.getInstanceDir(target)),
       isRestarting: target => this.isInstanceRestarting(target),
       wake: async target => {
@@ -4996,7 +5132,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       warmCap: () => this.fleetConfig?.defaults?.warm_cap ?? 0,
       warmOverflow: () => this.fleetConfig?.defaults?.warm_overflow ?? DEFAULT_WARM_OVERFLOW,
       wokeAt: target => this.lifecycle.wokeAtFor(target),
-      notAcceptingReason: target => this.daemons.get(target)?.notAcceptingReason?.() ?? null,
+      notAcceptingReason: target => this.sessionOomStopped(target) ? this.sessionOomStopReason(target) : this.daemons.get(target)?.notAcceptingReason?.() ?? null,
       notifyTarget: (target, text) => { this.notifyInstanceTopic(target, text); },
       notifySender: (source, text) => { this.notifyInstanceTopic(source, text); },
       kickPump: () => this.scheduleDeliveryOutboxPump(),
@@ -5051,7 +5187,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * is exactly the old lifecycle wake; otherwise it goes through the shared
    * slot admission and joins any wake already in flight for the target.
    */
-  async explicitWake(name: string, timeoutMs = 30_000): Promise<void> {
+  async explicitWake(name: string, timeoutMs = 30_000, retryStoppedSession = false): Promise<void> {
+    if (this.sessionOomStopped(name)) {
+      if (!retryStoppedSession) throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
+      return this.restartSingleInstance(name, { explicit: true });
+    }
     const token = await this.acquireWakeSlot(name);
     try {
       await this.lifecycle.wake(name, timeoutMs);
@@ -5073,7 +5213,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   async changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle"> {
     if (action === "wake") {
-      await this.explicitWake(name, 30_000);
+      await this.explicitWake(name, 30_000, true);
       this.enforceWarmCap(name); // manual wake still respects the fleet warm cap
       return "awake";
     }
@@ -5259,6 +5399,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     execution?: SettingsExecution,
   ): Promise<void> {
     execution?.assert();
+    if (this.sessionOomStopped(name)) {
+      if (resumePaused) return this.restartSingleInstance(name, { explicit: true });
+      throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
+    }
     // CLI single-instance cold starts bypass startAll. Start diagnostics before
     // any lifecycle/wake work; a shutdown must not revive the stopped sampler.
     if (!this.shuttingDown) this.memoryPressure?.start();
@@ -5266,7 +5410,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // into a running instance — harmless, but noisy — or race this start).
     this.cancelStartupRetry(name);
     if (resumePaused && this.lifecycle.isPaused(name)) {
-      await this.explicitWake(name, 30_000);
+      await this.explicitWake(name, 30_000, true);
       // A successful wake clears the persisted pause marker and produces a
       // fresh instance_state snapshot.  Drop any stale process error left by a
       // pre-pause crash so /api/fleet and `agend ls` converge on running.
@@ -5286,7 +5430,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (resumePaused) {
         const status = this.getInstanceStatus(name);
         if (status === "crashed" || status === "stopped") {
-          await this.restartSingleInstance(name);
+          await this.restartSingleInstance(name, { explicit: true });
           return;
         }
       }
@@ -5452,6 +5596,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Superseded by a stop/restart (Phase 2a): that transition owns the
       // outcome. Retrying would start an instance the operator just stopped.
       if (err instanceof SupersededStartError) return false;
+      if (err instanceof SessionOomStoppedError) await this.notifySessionOomStop(name);
       if (this.stopOnUnsupportedCli(name, err, what)) return false;
       this.logger.error({ err, name }, `Failed to start ${what}`);
       this.scheduleStartupRetry(name, 0);
@@ -5472,6 +5617,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   scheduleStartupRetry(name: string, attempt: number): void {
     if (this.shuttingDown) return;
+    if (this.sessionOomStopped(name)) {
+      this.instanceProcessStatus.set(name, "stopped");
+      this.logger.warn({ name }, this.sessionOomStopReason(name));
+      return;
+    }
     if (this.startupRetries.has(name)) return;
     const backoff = FleetManager.STARTUP_RETRY_BACKOFF_MS;
     const outage = this.backendOutage.isActive(this.backendNameOf(name));
@@ -5496,6 +5646,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     clearTimeout(pending.timer);
     this.startupRetries.delete(name);
     this.logger.info({ name }, "Pending automatic startup retry cancelled");
+  }
+
+  /** #2484: the instance's own start retry is scheduled or running, and no person paused it (a stop cancels the retry). */
+  private inStartRetryBackoff(name: string): boolean {
+    if (this.shuttingDown || this.lifecycle.isPaused(name)) return false;
+    return this.startupRetries.has(name) || this.startupRetriesRunning.has(name);
   }
 
   /** Pending automatic retry, if any (status display / tests). */
@@ -5544,6 +5700,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async runStartupRetry(name: string, attempt: number): Promise<void> {
     this.startupRetries.delete(name);
     if (this.shuttingDown) return;
+    if (this.sessionOomStopped(name)) return;
     if (!this.isConfiguredInstance(name)) return; // removed from fleet.yaml / classic channel meanwhile
     if (this.lifecycle.isPaused(name) || this.daemons.has(name)) return; // operator acted meanwhile
     if (this.stormWindow.isSpawnBlocked()) {
@@ -5557,6 +5714,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const topicMode = this.fleetConfig?.channel?.mode === "topic"
       || !!this.fleetConfig?.channels?.some(channel => channel.mode === "topic");
+    this.startupRetriesRunning.add(name);
     try {
       await this.spawnGate.run({
         instanceName: name,
@@ -5574,6 +5732,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.stopOnUnsupportedCli(name, err, "instance")) return;
       this.logger.error({ err, name, attempt: attempt + 1 }, "Automatic startup retry failed");
       this.scheduleStartupRetry(name, attempt + 1);
+    } finally {
+      this.startupRetriesRunning.delete(name);
     }
   }
 
@@ -5908,12 +6068,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
+    if (opts?.recoveryCurrent && !opts.recoveryCurrent()) throw new Error(t("exit.expired", name));
+    const retry = opts?.explicit ? opts.sessionOomRetry ?? captureSessionOomRetry(this.getInstanceDir(name)) : undefined;
+    if (opts?.sessionOomRetry) {
+      const current = captureSessionOomRetry(this.getInstanceDir(name));
+      // An unclear-cause stop intentionally has no tombstone. Only its live
+      // launch fence can authorize an absent-marker receipt; positive stops
+      // still require the offered durable revision.
+      if ((!retry?.revision && !opts.recoveryCurrent) || current.revision !== retry?.revision || current.legacyRevision !== retry?.legacyRevision) throw new SessionOomStoppedError(true);
+    }
+    if (!opts?.explicit && this.sessionOomStopped(name)) throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
     // One restart at a time per instance. Multiple sources can ask concurrently
     // (MCP revival, /restart, pty_error, model failover); a second stop/start
     // interleaved with the first tears down the window the first just created.
     // Later callers join the in-flight restart instead — its opts win.
     const inFlight = this.restartsInFlight.get(name);
     if (inFlight) {
+      // Do not let a late explicit caller clear a stop belonging to the
+      // automatic flight it would join. That action must be retried afterwards.
+      if (retry && this.sessionOomStopped(name)) throw new SessionOomStoppedError(true);
       this.logger.info({ name }, "restartSingleInstance: joining the restart already in flight");
       // #1753: a credential-profile switch joining it still needs its conversation carried in that restart's stop →
       // start gap: handed to the restart while it has not reached the gap (and carries nothing else); otherwise not
@@ -5938,7 +6111,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       workingDirectory,
       reason: "restart",
       stage: "lifecycle",
-    }, () => this.doRestartSingleInstance(name, opts, transition)))
+    }, () => this.doRestartSingleInstance(name, opts, transition, retry)))
       .finally(() => {
         this.restartsInFlight.delete(name);
         if (this.restartGaps.get(name) === gap) this.restartGaps.delete(name);
@@ -5979,7 +6152,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  private async doRestartSingleInstance(name: string, opts: RestartOpts | undefined, transition: TransitionHandle): Promise<void> {
+  private async doRestartSingleInstance(name: string, opts: RestartOpts | undefined, transition: TransitionHandle, retry?: SessionOomRetry): Promise<void> {
     if (this.configPath) {
       this.loadConfig(this.configPath);
       this.routing.rebuild(this.fleetConfig!);
@@ -5996,7 +6169,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // published or the restart settles, so no other target can take it.
     if (!wasPaused) this.restartsHoldingSlot.add(name);
     try {
-      await this.doRestartWithSlot(name, opts, transition, config, wasPaused);
+      await this.doRestartWithSlot(name, opts, transition, config, wasPaused, retry);
       // An explicit restart of a paused instance is an operator wake (§1.6):
       // its success lifts the coordinator's park/backoff (the level stays).
       // Automatic restarts never do.
@@ -6013,6 +6186,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     transition: TransitionHandle,
     config: InstanceConfig | undefined,
     wasPaused: boolean,
+    retry?: SessionOomRetry,
   ): Promise<void> {
     const pausedAt = wasPaused ? (this.lifecycle.getLastPausedAt(name) ?? readPausedAt(this.getInstanceDir(name))) : null;
     const pauseReason = wasPaused ? readPauseReason(this.getInstanceDir(name)) : null;
@@ -6021,6 +6195,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Between the stop and the start: the old CLI's transcript is complete, the new one has not looked yet.
     /** `launching`: the login the start will use — read only when a switch is to be carried. */
     const betweenStopAndStart = async (launching: () => { backend: string; profile: string | null }) => {
+      // Clearing is synchronous, after the old daemon is stopped and inside
+      // this action's serialized transition; an unseen later stop is retained.
+      if (retry) clearSessionOomStopForRetry(this.getInstanceDir(name), retry);
+      else assertNoSessionOomStop(this.getInstanceDir(name));
       // #1753: this restart's own carry, or one a caller joined it with before this point (restartSingleInstance).
       const gap = this.restartGaps.get(name);
       const carry = gap?.carry ?? opts?.carry;
@@ -8120,6 +8298,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const { ownPackage, recordStarted } = await import("./start-failure.js");
       const version = ownPackage().version;
       if (version) recordStarted(this.dataDir, version, process.pid, Date.now());
+      // #2481: a start completed — the failed tree an automatic restore kept for a report can go.
+      const prefix = ownPackage().prefix;
+      if (prefix) void (await import("./mac-auto-restore.js")).pruneFailedTrees(prefix).catch(() => { /* next start */ });
     } catch (err) { this.logger.debug({ err }, "fleet-started record not written"); }
     const health = this.getFleetHealth();
     if (health.status !== "ok") {
@@ -9958,7 +10139,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               ...generalReactions.meta,
               ...extraMeta,
             },
-          }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text);
+          }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text, this.startRetryHoldFor(generalInstance, msg));
           generalReactions.consume();
           this.afterUserInboundDelivered(generalInstance, msg);
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
@@ -10063,7 +10244,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...reactions.meta,
           ...extraMeta,
         },
-      }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text);
+      }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text, this.startRetryHoldFor(instanceName, msg));
       // Only after the message actually went out. A failed delivery keeps the
       // reactions queued for the retry / the next message.
       reactions.consume();
@@ -13683,7 +13864,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
+    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
     timeoutMs?: number;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -14814,7 +14995,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
-      policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now: Date.now(),
+      policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now: Date.now(),
     });
   }
 
@@ -14839,12 +15020,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       session, gateway, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
-      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
     });
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
     store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
-    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs) };
+    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
@@ -14853,13 +15034,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * it is now (a change since last seen moves the epoch first; authority-state.ts). No data directory: off.
    */
   webAuthorityState(): AuthorityState {
-    if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, epoch: 0 };
+    if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 0 };
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
     const state = this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
-    // #2453 (§0.2): the named-link option seen going off — the authority of every session over the link ends now, for
-    // good: their authorizations go (a later "on" can never bring one back without its account's Confirm).
-    if (state.namedLinkClosed) this.sessionAuthorizationStore()?.prune(a => this.webSessions?.findByHandle(a.handle)?.surface === "local");
+    // #2453 (§0.2) / §0.3: a link's option seen going off — the authority of every session over that link ends now, for
+    // good: their authorizations go (a later "on" can never bring one back without its account's Confirm). A record from
+    // before §0.3 has no peer: over the gateway, only a named-link session could have been authorized then.
+    if (state.namedLinkClosed || state.quickLinkClosed) {
+      const ended = (a: SessionAuthorization): boolean => {
+        const session = this.webSessions?.findByHandle(a.handle);
+        if (!session) return true;
+        if (session.surface === "local") return false;
+        const peer = a.peer ?? "named_link";
+        return (!!state.namedLinkClosed && peer === "named_link") || (!!state.quickLinkClosed && peer === "quick_link");
+      };
+      this.sessionAuthorizationStore()?.prune(a => !ended(a));
+    }
     return state;
   }
 
@@ -14882,7 +15073,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   webAuthorityOverview(): {
     state: AuthorityState; configured: WebVerifiedAuthorityConfig; hours: typeof VERIFIED_SESSION_HOURS; lanHosts: string[];
-    authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true }>;
+    authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true; quick?: true }>;
     /** #2453 (§0.2): the admin's named-tunnel hostname, while one is configured (the named-link row shows only then). */
     namedHost: string | null;
   } {
@@ -14894,7 +15085,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .filter(a => a.epoch === state.epoch && sessions.has(a.handle) && now <= Math.min(a.until, a.authorizedAt + maxMs))
       .map(a => ({ handle: a.handle, label: sessions.get(a.handle)!.label, account: `${a.owner.adapterId}:${a.owner.userId}`, authorizedAt: a.authorizedAt,
         until: Math.min(a.until, a.authorizedAt + maxMs, sessions.get(a.handle)!.absoluteExpiry),
-        ...(sessions.get(a.handle)!.surface === "gateway" ? { named: true as const } : {}) })) : [];
+        // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
+        ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
     const host = this.fleetConfig?.web?.public_link?.hostname;
     return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null };
   }
@@ -14909,8 +15101,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
     // The host's clock, with its zone: the person may read the DM on a phone in another one.
     const when = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
+    const quickHost = (): string => { try { const u = this.publicWebLink?.openSignin()?.url; return u ? new URL(u).host : "?"; } catch { return "?"; } };
     const where = (peer: WebPeer) => peer === "named_link"
       ? t("web_auth.peer_named_link", String(this.fleetConfig?.web?.public_link?.hostname ?? "?"))   // §0.2: the internet
+      : peer === "quick_link" ? t("web_auth.peer_quick_link", quickHost())                          // §0.3: the internet
       : t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
     return this.authorizationRequests = new SessionAuthorizationRequests({
       now: () => performance.now(), wallNow: () => Date.now(),
@@ -14937,8 +15131,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       authorize: (handle, peer) => {
         const record = this.webSessions?.findByHandle(handle);
         if (!record) return { ok: false, refusal: "session_gone" };
-        // §0.2: a named-link session is judged as the gateway request it is (its exposure still the current one).
-        const r = this.authorizeWebSession(record, peer, peer === "named_link");
+        // §0.2 / §0.3: a session over a link is judged as the gateway request it is (its exposure still the current one).
+        const r = this.authorizeWebSession(record, peer, peer === "named_link" || peer === "quick_link");
         // What the card says: the end of the authorization, or the session's own end when that comes first.
         return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
@@ -14982,7 +15176,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       session: s, gateway: input.gateway, peer: input.peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
-      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
     });
     return r.refusal;
   }
@@ -15264,15 +15458,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** A clean exit is intentional from the CLI's perspective, but often not from
    * the operator's. Keep the instance notice passive and put the action in the
    * same-world General topic where an administrator can make the choice. */
-  async notifyNormalExit(instanceName: string): Promise<void> {
-    this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName) + placeSuffix({ kind: "general" }, "General"));
+  async notifySessionOomStop(instanceName: string, unclear = false): Promise<void> {
+    await this.notifyNormalExit(instanceName, unclear ? "unclear" : true);
+  }
+
+  async notifyNormalExit(instanceName: string, oom: boolean | "unclear" = false): Promise<void> {
+    const daemon = oom === "unclear" ? this.daemons.get(instanceName) : undefined;
+    const owner = daemon ? { ...daemon.getInteractionSnapshot().owner } : undefined;
+    const current = daemon && owner ? () => this.daemons.get(instanceName) === daemon
+      && daemon.isUnclearOomStopped() && sameInteractionOwner(owner, daemon.getInteractionSnapshot().owner) : undefined;
+    if (oom === "unclear" && !current?.()) return;
+    const state = oom ? readSessionOomStop(this.getInstanceDir(instanceName)) : null;
+    if (oom === "unclear" && state?.blocked) return;
+    const proof = state?.blocked ? state.record?.evidence ?? state.evidence : undefined;
+    if (oom === true && !proof) return;
+    const sessionOomRetry = oom ? captureSessionOomRetry(this.getInstanceDir(instanceName)) : undefined;
+    if (oom && [...this.pendingNonceButtons.values()].some(p => p.prefix === OOM_RETRY_CALLBACK_PREFIX
+      && p.instanceName === instanceName && p.sessionOomRetry?.revision === sessionOomRetry?.revision
+      && (oom !== "unclear" || p.confirmationCurrent?.() === true))) return;
+    const prefix = oom ? OOM_RETRY_CALLBACK_PREFIX : EXIT_RESTART_CALLBACK_PREFIX;
+    const message = oom === "unclear" ? t("inst.oom_unclear_choice", instanceName) : oom && proof
+      ? t("inst.session_oom_choice", instanceName, describeSelfOom(proof))
+      : t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName));
+    const choices = oom
+      ? [{ action: "resume", label: t("inst.session_oom_resume") }, { action: "fresh", label: t("inst.session_oom_fresh") }]
+      : [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }];
+    const extra = sessionOomRetry ? { sessionOomRetry, ...(current ? { confirmationCurrent: current } : {}) } : undefined;
+    this.notifyInstanceTopic(instanceName, (oom ? message : t("exit.instance_notice", instanceName)) + placeSuffix({ kind: "general" }, "General"));
 
     const web = this.webOnlyPromptPlace();
     if (web) {
       await this.postNonceButtonPrompt({
-        prefix: EXIT_RESTART_CALLBACK_PREFIX, alertType: "exit_restart", instanceName, ...web,
-        message: t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName)),
-        choices: [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }],
+        prefix, alertType: "exit_restart", instanceName, ...web,
+        message, extra,
+        choices,
         expiredText: t("exit.expired", instanceName),
       });
       return;
@@ -15295,18 +15514,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     await this.postNonceButtonPrompt({
-      prefix: EXIT_RESTART_CALLBACK_PREFIX,
+      prefix,
       alertType: "exit_restart",
       instanceName,
       adapter,
       adapterId,
       chatId,
       threadId,
-      message: t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName)),
-      choices: [
-        { action: "restart", label: t("exit.restart") },
-        { action: "ignore", label: t("exit.ignore") },
-      ],
+      message, extra,
+      choices,
       expiredText: t("exit.expired", instanceName),
     });
   }
@@ -15317,9 +15533,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     callbackAdapterId: string,
     receivingAdapter?: ChannelAdapter,
   ): Promise<boolean> {
+    const oom = data.callbackData.startsWith(OOM_RETRY_CALLBACK_PREFIX);
     const claimed = this.consumeNonceCallback(
-      EXIT_RESTART_CALLBACK_PREFIX,
-      /^exit-restart:([0-9a-f]+):(restart|ignore)$/,
+      oom ? OOM_RETRY_CALLBACK_PREFIX : EXIT_RESTART_CALLBACK_PREFIX,
+      oom ? /^oom-retry:([0-9a-f]+):(resume|fresh)$/ : /^exit-restart:([0-9a-f]+):(restart|ignore)$/,
       data,
       callbackAdapterId,
       receivingAdapter,
@@ -15328,7 +15545,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
 
-    this.eventLog?.insert(pending.instanceName, "normal_exit_action", { action, userId: data.userId });
+    this.eventLog?.insert(pending.instanceName, oom ? "session_oom_action" : "normal_exit_action", { action, userId: data.userId });
     if (action === "ignore") {
       await this.retireNonceButtons(
         pending,
@@ -15344,7 +15561,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       t("exit.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName);
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
+        ...(pending.confirmationCurrent ? { recoveryCurrent: pending.confirmationCurrent } : {}) } : {}) });
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
@@ -17314,6 +17532,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       log: (level, message, extra) => this.logger[level](extra ?? {}, message),
     });
     db.board.onChange(({ rev, ids, projects, wakes }) => {
+      // Refresh both old and new owners on reassignment; wakes are not an ownership index.
+      if (ids.length) for (const name of this.daemons.keys()) this.observeWorkingState(name, "tasks");
       this.emitSseEvent("tasks", { rev, ids, projects });
       waker.note(wakes);
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
@@ -17430,7 +17650,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       t("hang.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName);
+      await this.restartSingleInstance(pending.instanceName, { explicit: true });
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
@@ -18208,7 +18428,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         content: fullText,
         targetSession: instanceName,
         meta,
-      }, msg.humanOrigin, msg.humanOriginalBody ?? text);
+      }, msg.humanOrigin, msg.humanOriginalBody ?? text, this.startRetryHoldFor(instanceName));
       reactions.consume();
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Classic wake/delivery failed");
@@ -20171,13 +20391,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // also sees the channel's messages.
     if (adapterId) this.bindInstanceAdapter(instanceName, adapterId);
 
-    await this.startClassicInstance(
-      instanceName,
-      classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend),
-      classicChannels.getPreTaskCommand(channelId, adapterId),
-      classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
-      classicChannels.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-    );
+    if (this.sessionOomStopped(instanceName)) {
+      await this.restartSingleInstance(instanceName, { explicit: true });
+    } else {
+      await this.startClassicInstance(
+        instanceName,
+        classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend),
+        classicChannels.getPreTaskCommand(channelId, adapterId),
+        classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
+        classicChannels.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+      );
+    }
     this.reregisterClassicChannels();
     // Auto-enable collab for Discord classic channels (TG uses @mention directly without collab mode)
     if (guildId && !classicChannels.isCollab(channelId, adapterId)) {

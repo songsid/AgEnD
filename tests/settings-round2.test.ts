@@ -271,6 +271,13 @@ describe("Settings manual lifecycle API", () => {
     expect(response.status).toBe(200);
     expect(wake).toHaveBeenCalledWith("worker", 30_000);
   });
+  it.each(["worker", "classic-demo-0123"])("#2473 explicit Settings wake authorizes only this instance's retry (%s)", async name => {
+    const { ctx, wake } = context(); const explicitWake = vi.fn(async () => {});
+    ctx.explicitWake = explicitWake;
+    const response = await request(`/api/settings/instances/${name}/wake`, ctx);
+    expect(response.status).toBe(200); expect(explicitWake).toHaveBeenCalledWith(name, 30_000, true);
+    expect(wake).not.toHaveBeenCalled();
+  });
 
   it("does not invoke lifecycle for an unknown instance", async () => {
     const { ctx, pause } = context();

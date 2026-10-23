@@ -63,7 +63,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 公開 cookie 為 Secure `__Host-`，綁定單次入口。 Gateway 拒絕本機 header token、cookie 與碼；公開碼與 session 都綁定單次入口。公開 session 限四小時／閒置 30 分鐘，入口較早關閉也會使其失效。每次公開登入都須在五秒內確認所屬 General 收到 🔐 公開通知，不受 `notify_login` 影響；確認前候選 session 不可用也不持久化。登入碼外洩仍可授予完整 web-admin 權限。Cloudflare 終止 TLS；光轉傳連結不會登入，但會暴露端點供猜碼、耗盡共用 breaker。完整 Origin 與 CSRF 保護瀏覽器寫入；Host 檢查不是身分認證。到期、停用、私送關閉、revoke、owner／binding 失效與 shutdown 都先關存取、撤回公開憑證，再清子行程；無法確認停止時封鎖下一條 tunnel。
 
 **透過管理員固定網域的網頁授權（#2453），需自行開啟，預設關閉。** `web.verified_authority.named_link: true` 讓管理員自己 named tunnel 網域上的 session 也能透過帳號的確認卡授權（#1939 §0.2）。
-- **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點，quick tunnel 一律不行。
+- **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點。Quick tunnel 的請求由下方的臨時公開連結選項決定。
 - **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。
 - **關閉**立即生效，所有 named-link session 的回執都會視為無（`downgraded: named_link_off`）。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
@@ -74,6 +74,20 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
   - `/web revoke`；
   - 關閉選項。
 - **named-link session 永遠不能作為自行確認待處理設定變更的授權。**
+
+**透過臨時公開連結的網頁授權（#1939 §0.3），需自行開啟，預設關閉。** `web.verified_authority.quick_link: true` 讓 `/web` 開出的臨時公開連結（quick tunnel，`*.trycloudflare.com`）上的 session 也能透過帳號的確認卡授權。
+- **哪些請求算數。** 所有不是 named 的 gateway 請求，只依監聽端判定；任何 header 都無法設定或改變。session 必須屬於目前這次開放，而每個 quick 網址都是新的一次。
+- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。判斷依生效中的值（沒設定就是預設值：關閉）。每次開啟（第一次也一樣）都會在同一次寫入中推進撤銷 epoch：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。
+- **關閉**立即生效，所有 quick-link session 的回執都會視為無（`downgraded: quick_link_off`），那些 session 的授權也會被刪除。再開啟會推進撤銷 epoch，那些回執不會回來。
+- **`loopback_only`** 仍然優先。
+- **開啟即接受的風險。** quick 網址是網際網路上的公開位址：任何拿到它的人都能到登入頁。屏障和固定網域相同：私下傳給允許帳號的登入碼，以及該帳號對這個 session 的確認。Cloudflare 的 quick tunnel 服務終止 TLS，看得到流量，包括 session cookie；AgEnD 啟動 quick tunnel 時前面沒有任何驗證。已授權的 quick-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
+  - 30 分鐘閒置或 4 小時的公開 session 上限；
+  - `max_session_hours`；
+  - 通知卡上的「不是我」；
+  - `/web revoke`；
+  - 按「關閉」或連結到期；
+  - 關閉選項。
+- **quick-link session 永遠不能作為自行確認待處理設定變更的授權。**
 
 **登入並未保護所有本機 HTTP 讀取。** 任何能連到 listener 並帶允許 `Host` 的人，都能讀取 `/view` 及其 GET API，包括 `/api/pane/<instance>`、個人資料、頭像與排序。Listener 只綁定 `127.0.0.1`，但這仍然包括：
 - 本機的其他使用者與程式；
@@ -107,3 +121,15 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 受影響的 connection 無法安全收到提示時，AgEnD 先找另一個 world 的 General，否則要求本機執行 `agend settings confirm <id>`。該命令走獨立、同使用者的 Unix socket（父目錄 0700、socket 0600），拒絕 agent 環境。它先列出權威的來源、請求人及 diff，再接受互動確認或明確的 `--yes`。HTTP／MCP 沒有確認入口。Fleet 尚未存在的 Setup 也需要同樣的 host 確認；pending 回應絕不啟動 fleet。
 
 撤銷、到期、shutdown 或快照變動都會阻止新的 effect。已進入執行的操作會持有資源 lease，直到實際完成及條件式清理；等待 native 工作時可能持續顯示 `applying`。Rollback 只恢復仍屬於該操作的欄位，保留後來的修改。刻意放在最後的 session 撤銷可回傳完成 receipt，但不能授權後續 effect。Pending 請求重啟後消失，需重新提出。這個邊界不防禦以同一 host 使用者執行的其他程序；獨立檔案修改會盡可能被偵測，但不宣稱跨程序原子性。
+
+## CI 供應鏈（#2528）
+
+這個儲存庫使用的 GitHub Actions 都釘在完整 commit SHA，移動 tag 不會改到
+CI 或 npm 發布 workflow 實際執行的程式。任何遠端 `uses:` 仍是 tag 時，CI
+會讓 merge gate 失敗。見[CI 覆蓋 — GitHub Actions 釘選](ci.zh-TW.md#github-actions-釘選2528)。
+
+CI 會驗證根目錄與 `website/` 安裝樹的 npm registry 簽章（`npm audit
+signatures --json`）。簽章無效會讓 job 失敗；只有缺少簽章時會被報告。見[CI 覆蓋](ci.zh-TW.md#npm-registry-簽章2528)。
+
+進 `main` 與 `release/**` 的 pull request 會跑 GitHub dependency review：
+high 或 critical 諮詢，以及不在允許名單的授權，會讓檢查失敗。見[CI 覆蓋](ci.zh-TW.md#pr-的-dependency-review2528)。

@@ -169,7 +169,7 @@ graph LR
 
 **也可以在聊天室用 `/login <backend>` 安裝**（僅限 fleet 管理員），不必 SSH 進主機：CLI 還沒安裝時，`/login` 會在 fleet 視窗執行上表的指令，到安裝程式實際放置的位置找到 CLI，把那個目錄加進 fleet 的 PATH，並在支援時提供登入。OpenCode 與 Muse 只能安裝；Antigravity 可安裝，但沒有獨立的遠端登入流程。單獨輸入 `/login` 會列出可用的登入及缺少 CLI 的安裝操作。
 
-**已測試的 CLI 版本（AgEnD 2.3.0）**：Claude Code 2.1.308、Grok CLI 1.0.67、Muse 1.4.11-R6667.1 經過與 AgEnD 的完整檢查。Kiro CLI 到 2.33.0；更新的 kiro-cli 仍可啟動，但會提醒尚未測試。Codex 0.163.0（檢查了套件、復原與額度處理）。Antigravity（agy）1.3.6。OpenCode 1.18.34。新的 CLI 版本每天都會檢查，所以更新的版本可能已經可以用；不過新版本可能改變畫面，AgEnD 只在實際測過後才列出支援的版本。
+**已測試的 CLI 版本（AgEnD 2.3.0）**：Claude Code 2.1.308、Grok CLI 1.0.67 經過與 AgEnD 的完整檢查。Muse 1.4.12-R6909.1 以隔離的 echo/mock 檢查了輸入框、提示列與信任對話；空輸入框灰色提示的測試畫面是重建的。Kiro CLI 到 2.33.0；更新的 kiro-cli 仍可啟動，但會提醒尚未測試。Codex 0.163.0（檢查了套件、復原與額度處理）。Antigravity（agy）1.3.6。OpenCode 1.18.34。新的 CLI 版本每天都會檢查，所以更新的版本可能已經可以用；不過新版本可能改變畫面，AgEnD 只在實際測過後才列出支援的版本。
 
 ## 系統需求
 

@@ -46,6 +46,7 @@ describe("agend ls execution-state recovery", () => {
     const fm = makeFleet();
     vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(true);
     const wake = vi.spyOn(fm.lifecycle, "wake").mockResolvedValue(undefined);
+    const explicit = vi.spyOn(fm, "explicitWake");
     const respond = vi.fn();
 
     await outboundHandlers.get("start_instance")!(
@@ -56,7 +57,28 @@ describe("agend ls execution-state recovery", () => {
     );
 
     expect(wake).toHaveBeenCalledWith("worker", 30_000);
+    expect(explicit).toHaveBeenCalledWith("worker", 30_000, true);
     expect(respond).toHaveBeenCalledWith({ success: true, status: "started" });
+  });
+
+  it.each(["cold", "crashed", "classic", "wake"] as const)("#2473 MCP %s recovery preserves explicit per-instance intent", async kind => {
+    const fm = makeFleet(); const start = vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
+    const restart = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
+    const wake = vi.spyOn(fm, "explicitWake").mockResolvedValue(undefined);
+    vi.spyOn(fm, "connectIpcToInstance").mockResolvedValue(undefined);
+    if (kind === "crashed") {
+      fm.lifecycle.daemons.set("worker", { getProcessStatus: () => "crashed" } as any);
+      vi.spyOn(fm, "getInstanceStatus").mockReturnValue("crashed");
+    } else if (kind === "classic") {
+      delete fm.fleetConfig!.instances.worker;
+      (fm as any).classicChannels = { getChannelIdByInstance: () => "channel" };
+    }
+    const respond = vi.fn();
+    await outboundHandlers.get(kind === "wake" ? "wake_instance" : "start_instance")!(fm, { name: "worker" }, respond, { instanceName: "caller" } as any);
+    if (kind === "cold") expect(start).toHaveBeenCalledWith("worker", fm.fleetConfig!.instances.worker, true, "fleet-topic", true);
+    else if (kind === "wake") expect(wake).toHaveBeenCalledWith("worker", 30_000, true);
+    else expect(restart).toHaveBeenCalledWith("worker", { explicit: true });
+    expect(respond).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
   });
 
   it("keeps fleet startup pause-safe but wakes on an explicit FleetManager start", async () => {

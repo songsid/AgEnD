@@ -117,6 +117,113 @@ const MUSE_TERMINAL_TASK_ROW = /^[└├]\s+.*\brunning\b\s+(?:\d+(?:\.\d+)?[hms
 const MUSE_BUSY = /\(\s*(?:\d+(?:\.\d+)?[hms]\s*)+·\s*esc to interrupt\s*\)/;
 const MUSE_MAX_INPUT_ROWS = 200;
 
+/** SGR only. `tmux capture-pane -e` keeps these; production `-p` does not. */
+function stripSgr(s: string): string {
+  return s.replace(/\x1b\[[0-9;:]*m/g, "");
+}
+
+/**
+ * Muse 1.4.12 empty-composer rotating hints, copied from the 1.4.12-R6909.1
+ * binary catalog (offset 8596268). A prefix, a suffix, or extra characters is
+ * typed input (#2520).
+ */
+const MUSE_EMPTY_COMPOSER_HINTS: ReadonlySet<string> = new Set([
+  "Type @ to search and insert workspace file paths",
+  "Start a message with ! to run a shell command yourself",
+  "Paste an image with Ctrl+V — file paths and URLs work too",
+  "Press Alt+V to dictate instead of typing",
+  "Tab queues or steers while a run is active",
+  "Press ? on an empty composer to see keyboard shortcuts",
+  "Press Ctrl+O to expand collapsed tool output",
+]);
+
+export type MusePlaceholderDebugRec = { text: string; sgr: string };
+export type MusePlaceholderDebug = {
+  log: (rec: MusePlaceholderDebugRec) => void;
+  logged: Set<string>;
+};
+
+function logFaintPlaceholderOnce(debug: MusePlaceholderDebug | undefined, text: string, sgr: string): void {
+  if (!debug) return;
+  const key = `${text}\0${sgr}`;
+  if (debug.logged.has(key)) return;
+  debug.logged.add(key);
+  try {
+    debug.log({ text, sgr });
+  } catch { /* Detector must not throw. */ }
+}
+
+/** Visible characters of `raw` paired with whether SGR 2 (faint) is on. */
+function faintMap(raw: string): Array<{ ch: string; faint: boolean }> {
+  const out: Array<{ ch: string; faint: boolean }> = [];
+  let faint = false;
+  const re = /\x1b\[([0-9;:]*)m/g;
+  let last = 0;
+  for (const m of raw.matchAll(re)) {
+    for (const ch of raw.slice(last, m.index)) out.push({ ch, faint });
+    const parts = m[1]!.split(";");
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      const c = part === "" ? 0 : Number(part.split(":")[0]);
+      if (c === 0 || c === 22) faint = false;
+      else if (c === 2) faint = true;
+      else if ((c === 38 || c === 48 || c === 58) && !part.includes(":")) {
+        // 38;2;r;g;b (truecolour) must not be read as faint (SGR 2).
+        if (parts[i + 1] === "5") i += 2;
+        else if (parts[i + 1] === "2") i += 4;
+      }
+    }
+    last = m.index! + m[0].length;
+  }
+  for (const ch of raw.slice(last)) out.push({ ch, faint });
+  return out;
+}
+
+/**
+ * True when the live box's visible text (after `❯` / two-space continuation)
+ * is entirely faint. An empty box is not faint — it is already empty. Without
+ * SGR (production `capture-pane -p`) this is always false.
+ */
+function museComposerTextAllFaint(rawBoxRows: readonly string[]): boolean {
+  const chars: Array<{ ch: string; faint: boolean }> = [];
+  for (let i = 0; i < rawBoxRows.length; i++) {
+    const mapped = faintMap(rawBoxRows[i]!);
+    let j = 0;
+    if (i === 0) {
+      while (j < mapped.length && mapped[j]!.ch !== "❯") j++;
+      if (j < mapped.length) j++;
+      if (j < mapped.length && mapped[j]!.ch === " ") j++;
+    } else {
+      while (j < 2 && j < mapped.length && mapped[j]!.ch === " ") j++;
+    }
+    chars.push(...mapped.slice(j));
+  }
+  const significant = chars.filter(c => c.ch.trim() !== "");
+  return significant.length > 0 && significant.every(c => c.faint);
+}
+
+function museComposerIsPlaceholder(
+  textRows: readonly string[],
+  rawBoxRows: readonly string[],
+  width: number,
+  debug?: MusePlaceholderDebug,
+): boolean {
+  if (textRows.length === 0 || textRows.every(r => r === "")) return false;
+  let catalog = false;
+  for (const hint of MUSE_EMPTY_COMPOSER_HINTS) {
+    if (museDraftShows(textRows, width, hint)) {
+      catalog = true;
+      break;
+    }
+  }
+  const faint = museComposerTextAllFaint(rawBoxRows);
+  if (faint) {
+    logFaintPlaceholderOnce(debug, textRows.join("\n"), rawBoxRows.join("\n"));
+    return true;
+  }
+  return catalog;
+}
+
 /**
  * True when every row after the bottom separator is muse's status bar: its
  * first row in the bar's grammar, the rest a wrapped continuation of it. A
@@ -157,20 +264,28 @@ function museFreeComposerLayout(rows: readonly string[], busyPattern: RegExp): b
   // The approval prompt is auto-answered rather than input-blocking, so the
   // idle proof itself must refuse a frame that shows dialog chrome.
   const dialogChrome = MUSE_DIALOG_CHROME;
+  const stripped = rows.map(stripSgr);
   // Everything after the bottom separator must be the status bar (#1717:
   // optionally a terminals panel first).
-  const bottomSeparator = museBottomSeparator(rows);
+  const bottomSeparator = museBottomSeparator(stripped);
   if (bottomSeparator < 2) return false;
-  if (!museStatusFooter(rows, bottomSeparator, busyPattern)) return false;
-  // Directly above it, the EMPTY live prompt. A `❯` with text is a draft
-  // (or, higher up, a transcript echo) and never proves idle.
-  if (!/^❯\s*$/.test(rows[bottomSeparator - 1])) return false;
-  const topSeparator = bottomSeparator - 2;
-  if (!MUSE_SEPARATOR.test(rows[topSeparator])) return false;
+  if (!museStatusFooter(stripped, bottomSeparator, busyPattern)) return false;
+  // Directly above it, the EMPTY live prompt. A 1.4.12 empty-composer hint
+  // is empty (#2520); any other `❯` text is a draft and never proves idle.
+  const draft = museInputBox(rows.join("\n"), busyPattern);
+  if (draft === null || draft.rows.length > 0) return false;
+  let prompt = -1;
+  for (let i = bottomSeparator - 1; i >= 1; i--) {
+    if (MUSE_SEPARATOR.test(stripped[i]!)) break;
+    if (/^❯(?:\s|$)/.test(stripped[i]!)) { prompt = i; break; }
+  }
+  if (prompt < 1) return false;
+  const topSeparator = prompt - 1;
+  if (!MUSE_SEPARATOR.test(stripped[topSeparator]!)) return false;
   // No busy indicator and no dialog just above the input box. The working
   // line (`◇ Thinking (2s · esc to interrupt)`) sits immediately above the
   // top separator; check 8 rows up to be safe.
-  const above = rows.slice(Math.max(0, topSeparator - 8), topSeparator);
+  const above = stripped.slice(Math.max(0, topSeparator - 8), topSeparator);
   if (above.some(r => busyPattern.test(r) || dialogChrome.test(r))) return false;
   // Arrow-key pickers (`/model`) are refused by their component chrome
   // above, not by guessing from answer text that happens to list model ids.
@@ -230,26 +345,30 @@ export function museBackgroundWorkActive(pane: string): boolean {
  *
  * Captured live on muse 1.4.2 (tests/fixtures/muse-input-829/). A `❯` row above
  * an echoed turn in the transcript is never read: the box must end at the
- * separator directly above the status bar.
+ * separator directly above the status bar. Muse 1.4.12 may paint a faint
+ * rotating hint in an empty box (#2520); that is empty, not a draft.
  */
-export function museInputBox(pane: string, busy: RegExp = MUSE_BUSY): InputDraft | null {
-  const rows = pane.replace(/\r/g, "").split("\n");
-  while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+export function museInputBox(pane: string, busy: RegExp = MUSE_BUSY, debug?: MusePlaceholderDebug): InputDraft | null {
+  const rawRows = pane.replace(/\r/g, "").split("\n");
+  while (rawRows.length && !stripSgr(rawRows[rawRows.length - 1]!).trim()) rawRows.pop();
+  const rows = rawRows.map(stripSgr);
   const bottom = museBottomSeparator(rows);
   if (bottom < 2 || !museStatusFooter(rows, bottom, busy)) return null;
   for (let top = bottom - 1, n = 0; top >= 1 && n < MUSE_MAX_INPUT_ROWS; top--, n++) {
     const row = rows[top];
     if (MUSE_SEPARATOR.test(row)) return null;
     if (/^❯(?:\s|$)/.test(row)) {
-      if (!MUSE_SEPARATOR.test(rows[top - 1])) return null;
+      if (!MUSE_SEPARATOR.test(rows[top - 1]!)) return null;
       const box = rows.slice(top, bottom);
+      const rawBox = rawRows.slice(top, bottom);
       if (!box.slice(1).every(r => r === "" || /^ {2}/.test(r))) return null;
       // Only the ASCII spaces muse pads rows with are dropped; any other
       // character on screen, Unicode spaces included, is part of the draft.
-      const text = [box[0].replace(/^❯ ?/, "").replace(/ +$/, ""), ...box.slice(1).map(r => r.slice(2).replace(/ +$/, ""))];
+      const text = [box[0]!.replace(/^❯ ?/, "").replace(/ +$/, ""), ...box.slice(1).map(r => r.slice(2).replace(/ +$/, ""))];
       // The separators span the pane: that is the width the box was wrapped to.
-      const width = rows[bottom].trimEnd().length;
-      return { rows: text.every(r => r === "") ? [] : text, width };
+      const width = rows[bottom]!.trimEnd().length;
+      if (text.every(r => r === "") || museComposerIsPlaceholder(text, rawBox, width, debug)) return { rows: [], width };
+      return { rows: text, width };
     }
   }
   return null;
@@ -601,6 +720,8 @@ export class MuseBackend implements CliBackend {
   // Cached from buildCommand/writeConfig so getSessionId() (which takes no
   // args) can match sessions against this instance's workspace.
   private workingDirectory?: string;
+  /** Owner-bound faint-placeholder debug; constructing another MuseBackend must not replace this. */
+  private placeholderDebug?: MusePlaceholderDebug;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("muse");
@@ -898,7 +1019,7 @@ export class MuseBackend implements CliBackend {
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     const rows = pane.replace(/\r/g, "").split("\n");
-    while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    while (rows.length && !stripSgr(rows[rows.length - 1]!).trim()) rows.pop();
     return museFreeComposerLayout(rows, this.getBusyPattern());
   }
 
@@ -1087,9 +1208,23 @@ export class MuseBackend implements CliBackend {
     return /retained session not found: session \S+ has no saved log/;
   }
 
+  /**
+   * Production wires the daemon logger; tests inject a spy. Passing nothing
+   * clears this backend's hook. "Once" is per unique (text, sgr) on this
+   * backend so pane polls do not flood, and another Muse instance cannot
+   * steal the logger or reset the once-set.
+   */
+  setPlaceholderDebug(log?: (rec: MusePlaceholderDebugRec) => void): void {
+    if (!log) {
+      this.placeholderDebug = undefined;
+      return;
+    }
+    this.placeholderDebug = { log, logged: this.placeholderDebug?.logged ?? new Set() };
+  }
+
   /** The live input box (#829): no rows when empty, null when the bottom of the screen is not muse's layout. */
   inputDraft(pane: string): InputDraft | null {
-    return museInputBox(pane, this.getBusyPattern());
+    return museInputBox(pane, this.getBusyPattern(), this.placeholderDebug);
   }
 
   inputDraftShows(draft: InputDraft, text: string): boolean {
