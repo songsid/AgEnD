@@ -12,7 +12,7 @@ const snap = (state: "working" | "idle" | "starting", busyMs: number, stillMs: n
 describe("#2482 idle-gate timeout: what it says", () => {
   it("a target mid-turn (working, its pane moving): INFO, with how long it has been busy", () => {
     expect(idleGateTimeoutLog("w", 60_000, snap("working", 8 * 60_000, 3_000), NOW)).toEqual({
-      level: "info", message: "Delivered while the target is busy; its CLI reads it after the current turn",
+      level: "info", message: "Delivering to a busy target; its CLI reads it after the current turn",
       fields: { instanceName: "w", timeoutMs: 60_000, busyForMs: 8 * 60_000, paneStillForMs: 3_000 },
     });
   });

@@ -26,7 +26,7 @@ export function idleGateTimeoutLog(instanceName: string, timeoutMs: number, snap
     if (busyForMs >= STUCK_WORKING_MS && snapshot.unchangedForMs >= STUCK_QUIET_MS) {
       return { level: "warn", message: "Idle gate timed out on a target working for an hour with a still pane; forcing delivery", fields };
     }
-    return { level: "info", message: "Delivered while the target is busy; its CLI reads it after the current turn", fields };
+    return { level: "info", message: "Delivering to a busy target; its CLI reads it after the current turn", fields };
   }
   return { level: "warn", message: "Idle gate timed out; forcing delivery", fields: { instanceName, timeoutMs, state: snapshot?.state ?? "unknown" } };
 }
