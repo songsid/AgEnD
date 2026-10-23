@@ -6733,12 +6733,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private guestAudit(limit = FleetManager.GUEST_AUDIT_SHOWN): GuestAuditEntry[] {
     if (!this.eventLog) return [];
+    // One read, newest first by row id: a total order (created_at is to the second), so the cap never drops a newer row.
     let rows: Array<{ created_at: string; event_type: string; payload: Record<string, unknown> | null }> = [];
-    try {
-      rows = [...this.eventLog.query({ instance: "fleet", type: "guest_grant_changed", limit }), ...this.eventLog.query({ instance: "fleet", type: "guest_code_sent", limit })];
-    } catch { return []; }
+    try { rows = this.eventLog.latestOfTypes("fleet", ["guest_grant_changed", "guest_code_sent"], limit); } catch { return []; }
     const names = (list: unknown) => (Array.isArray(list) ? list.filter((n): n is string => typeof n === "string") : []);
-    return rows.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, limit).flatMap((r): GuestAuditEntry[] => {
+    return rows.flatMap((r): GuestAuditEntry[] => {
       const p = r.payload ?? {}, account = typeof p.account === "string" ? p.account : "";
       const at = account.indexOf(":");
       if (at <= 0) return [];

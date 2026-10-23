@@ -150,11 +150,14 @@ describe("Settings → Guests, as rendered (#2348)", () => {
       { kind: "grant", at: 1_790_000_000_000, account: "dc:111", name: "Alice", via: "direct", added: [], removed: ["beta"], endedSessions: 2 },
       { kind: "code", at: 1_789_999_000_000, account: "tg:222", name: "Bob", outcome: "dm_failed" },
       { kind: "grant", at: 1_789_998_000_000, account: "dc:111", name: "Alice", via: "confirmed", added: ["alpha", "beta"], removed: [], endedSessions: 0 },
+      { kind: "code", at: 1_789_997_000_000, account: "tg:222", name: "Bob", outcome: "busy" },
+      { kind: "code", at: 1_789_996_000_000, account: "tg:222", name: "Bob", outcome: "some_new_outcome" },
     ];
     await open(undefined, { audit });
     const rows = [...p.root.querySelectorAll("#grantsRecentList .g-audit-row")].map((r: any) => r.textContent.replace(/\s+/g, " ").trim());
     expect(rows.map((r) => r.replace(/^.*?(Alice|Bob)/, "$1"))).toEqual([
-      "Alice −beta · applied at once · 2 session(s) ended", "Bob sign-in code not sent (dm_failed)", "Alice +alpha +beta · confirmed in General"]);
+      "Alice −beta · applied at once · 2 session(s) ended", "Bob sign-in code not sent (the DM did not go through)", "Alice +alpha +beta · confirmed in General",
+      "Bob sign-in code not sent (too many guest codes are waiting to be used — try again in a few minutes)", "Bob sign-in code not sent (some_new_outcome)"]);
     await open(undefined, { audit: [] });
     expect(p.root.querySelector("#grantsRecentNone")?.textContent).toMatch(/No change/);
   });

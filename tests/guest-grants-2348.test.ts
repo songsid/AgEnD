@@ -333,16 +333,37 @@ describe("on a real FleetManager", () => {
     s.eventLog = new EventLog(join(tmp("agend-2499-ev-"), "events.db"));
     expect(s.guestOverview().audit, "nothing yet").toEqual([]);
     s.noteGuestGrantChange({ by: "session:A", via: "confirmed", account: "dc:111", added: ["a"], removed: [], endedSessions: 0 });
-    await new Promise((r) => setTimeout(r, 1100));                                          // created_at is to the second
     expect((await s.sendGuestCodeByAdmin({ adapterId: "dc", userId: "111" }, "session:A")).body.outcome).toBe("sent");
-    await new Promise((r) => setTimeout(r, 1100));
     s.noteGuestGrantChange({ by: "session:A", via: "direct", account: "dc:111", added: [], removed: ["a"], endedSessions: 2 });
     const audit = s.guestOverview().audit;
     expect(audit.map((e: any) => [e.kind, e.account, e.via ?? e.outcome, e.added ?? null, e.removed ?? null, e.endedSessions ?? null])).toEqual([
       ["grant", "dc:111", "direct", [], ["a"], 2], ["code", "dc:111", "sent", null, null, null], ["grant", "dc:111", "confirmed", ["a"], [], 0]]);
     expect(audit.every((e: any) => typeof e.name === "string" && e.name.length > 0 && Number.isFinite(e.at) && !("by" in e)), "a name and a time; no session handle").toBe(true);
     s.eventLog.close();
-  }, 10_000);
+  });
+  // #2499 r2 (Prism P2): created_at is to the second. Rows written in one second keep their order (the row id), so a newer
+  // code after 20 grant changes in the same second is the first line, never the one the cap drops.
+  it("#2499 r2: the newest 20 in insertion order, even when they share one second — a newer code is never cut at the cap", () => {
+    const { s } = fleet();
+    s.eventLog = new EventLog(join(tmp("agend-2499-ev-"), "events.db"));
+    for (let i = 0; i < 25; i++) s.noteGuestGrantChange({ by: null, via: "direct", account: "dc:111", added: [`n${i}`], removed: [], endedSessions: 0 });
+    s.eventLog.insert("fleet", "guest_code_sent", { by: "session:A", account: "dc:111", outcome: "sent", instances: 1 });
+    s.eventLog.insert("fleet", "instance_paused", { account: "dc:111" });                     // another fleet row: never in the list
+    const at = new Set((s.eventLog.query({ instance: "fleet", limit: 100 }) as Array<{ created_at: string }>).map((r) => r.created_at));
+    const audit = s.guestOverview().audit;
+    expect([audit.length, audit[0].kind, audit[1].added, audit[19].added]).toEqual([20, "code", ["n24"], ["n6"]]);
+    expect(at.size <= 2, "the rows share a second (or straddle one)").toBe(true);
+    s.eventLog.close();
+  });
+  it("#2499 r2: insertion order, not the clock — a row stamped later (a clock stepped back since) is not put first", () => {
+    const { s } = fleet();
+    s.eventLog = new EventLog(join(tmp("agend-2499-ev-"), "events.db"));
+    (s.eventLog as any).db.prepare("INSERT INTO events (instance_name, event_type, payload, created_at) VALUES (?, ?, ?, ?)")
+      .run("fleet", "guest_code_sent", JSON.stringify({ account: "dc:111", outcome: "sent" }), "2099-01-01 00:00:00");
+    s.noteGuestGrantChange({ by: null, via: "direct", account: "dc:111", added: [], removed: ["a"], endedSessions: 0 });
+    expect(s.guestOverview().audit.map((e: any) => e.kind)).toEqual(["grant", "code"]);
+    s.eventLog.close();
+  });
   it("#2348 delta §5: a grant change goes to the event log as guest_grant_changed: who, how, which agents", () => {
     const { s } = fleet();
     const insert = vi.fn(); s.eventLog = { insert };

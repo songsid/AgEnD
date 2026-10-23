@@ -252,7 +252,7 @@ export function GuestsSection({ ctx, staged }) {
         <span class="g-when">${new Date(e.at).toLocaleString()}</span> <strong>${e.name}</strong>
         ${e.kind === "grant" ? html`${e.added.map((n) => html` <span key=${`+${n}`} class="g-wrote g-add">+${n}</span>`)}${e.removed.map((n) => html` <span key=${`-${n}`} class="g-wrote g-del">−${n}</span>`)}
           <span class="note"> · <span class="g-wrote">${tn(e.via === "confirmed" ? "grantsAuditConfirmed" : "grantsAuditDirect")}</span>${e.endedSessions ? html` · <span class="g-wrote">${tn("grantsAuditEnded", e.endedSessions)}</span>` : null}</span>`
-        : html` <span class="note">${e.outcome === "sent" ? tn("grantsAuditCodeSent") : tn("grantsAuditCodeNot", e.outcome)}</span>`}</li>`)}</ul>`}` : null}
+        : html` <span class="note">${e.outcome === "sent" ? tn("grantsAuditCodeSent") : tn("grantsAuditCodeNot", auditOutcome(e.outcome))}</span>`}</li>`)}</ul>`}` : null}
     ${status && status.kind === "waiting" ? html`<p class="note" role="status">${tn("grantsWaiting")}</p>` : null}
     ${status && status.kind === "failed" ? html`<p class="note g-error" role="alert">${tn("grantsSaveFailed", status.error)}</p>` : null}
   </section>`;
@@ -268,6 +268,9 @@ export const GuestsCard = GuestsSection;
 /** #2390: the send-code outcomes (fleet-manager sendGuestCodeByAdmin) and their words. */
 export const CODE_REASONS = { guests_off: "codeGuestsOff", admin: "codeAdmin", nothing: "codeNothing", starting: "codeStarting", paused: "codePaused", busy: "codeBusy", revoked: "codeRevoked" };
 /** Why a code was not sent, in this page's language (the server's `error` is English): by its outcome, else as sent. */
+/** #2499 review (P3): a code's outcome in the audit, in words — the toasts' words, plus the outcomes only the audit shows. */
+const AUDIT_OUTCOMES = { dm_failed: "grantsAuditDmFailed", wait: "grantsAuditWait", admin_limit: "grantsAuditAdminLimit" };
+const auditOutcome = (outcome) => (Object.prototype.hasOwnProperty.call(AUDIT_OUTCOMES, outcome) ? tn(AUDIT_OUTCOMES[outcome]) : guestCodeReason({ outcome }));
 export const guestCodeReason = (b) => (Object.prototype.hasOwnProperty.call(CODE_REASONS, b.outcome) ? tn(CODE_REASONS[b.outcome]) : b.error || b.outcome || "?");
 export const GUESTS_SETTINGS = [
   { id: "guests.enabled", section: "access", card: "guests", key: "web.guests.enabled",
