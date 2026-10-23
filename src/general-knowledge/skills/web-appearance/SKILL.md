@@ -466,7 +466,7 @@ placed there. A reference is not a sharing or export grant. Do not keep retrying
 
 Owner selectors are available in Settings → Look. With effects enabled, personal page/header/sidebar/box choices play across supported stock pages in the same pool
 as signed-in Chat. HTML-preview consent and its service are not involved.
-Web appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell without HTML-preview consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
+Look offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell without HTML-preview consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of

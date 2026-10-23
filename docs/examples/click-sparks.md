@@ -4,7 +4,7 @@
 
 Copy [effect.json](click-sparks/effect.json) and [worker.js](click-sparks/worker.js) into a directory in your instance's working directory, then use
 `upload_web_effect { "dir": "<that-directory>" }` and `apply_web_effect { "id": "<returned-id>" }`.
-A person can also select the uploaded effect in Web appearance's page or box slot. No assets or parameters are needed. The bitmap is at most 512 px per side; painting is capped at 30 fps and stops when the particles are gone. Pointer sampling has its own separate limit below.
+A person can also select the uploaded effect in Look's page or box slot. No assets or parameters are needed. The bitmap is at most 512 px per side; painting is capped at 30 fps and stops when the particles are gone. Pointer sampling has its own separate limit below.
 
 If the chat opens with focus in the composer, click an empty area and wait for playback to start before testing another click. Input is forwarded only to an already ready effect.
 

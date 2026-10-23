@@ -399,7 +399,7 @@ Header: version, **Setup wizard**, **Help**.
 **Save**: a field edit (Agent defaults, Chat & connections, Web dashboard, Access & security) is unsaved at once (a straight bar on its left); a dialog's **Done**
 adds its changes. The bar **N unsaved change(s)** shows the cost — **Immediately**, **Restart this Agent** or **Restart
 AgEnD** — then **Save** or **Discard**; an invalid field keeps Save waiting (**Fix 1 field(s) to save**). Over a public
-link an admin can change the fleet's settings too (not Web, Guests or Web authority).
+link an admin can change the fleet's settings too (not the dashboard's own web settings, Guests or Web authority).
 Confirmations (e.g. opening access) are asked at Apply. A change that loosens access waits for a fleet admin to confirm
 in the General chat ("Waiting for confirmation", **Withdraw**) — unless the browser is web-verified (#2170): an
 account that is a fleet admin of every connection the change affects, on their platform, confirms it by its own Apply
@@ -414,7 +414,7 @@ link, an unverified browser or a change that needs the host CLI. After a failure
 |---|---|---|
 | Your name (**Save**, **Use web-user** / **Use <account>**) | the name agents see on your web messages | your profile |
 | Theme: System / Light / Dark | page theme | host prefs `theme` |
-| Language: English / 中文 | page language (not the bots' replies — that is General → Language) | host prefs `lang` |
+| Language: English / 中文 | page language (not the bots' replies — that is Agent defaults → Language) | host prefs `lang` |
 | Names: Nickname first / Real name first | sidebar names | host prefs `names.primary` |
 | Allow HTML previews | the preview opt-in | host prefs `preview.optIn` |
 | Chat tour (this device) | replays the chat tour | browser |
@@ -499,9 +499,7 @@ connections are off (and the setup wizard); while those have unsaved changes, th
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in
 Settings → **Look**, card by card (the app icon, card upload limits and Canvas Worker effects are in **Web dashboard**; following reduced motion and custom CSS off here are in **Preferences**):
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
-  ring colours fall back to the bots' own (all devices). **Effects: follow the system's reduced-motion setting** (this
-  device only, off by default): on, both ambient and Canvas Worker effects stay still while the system asks for reduced
-  motion. Otherwise both play, with one shared one-time chat note and a local action to follow the system.
+  ring colours fall back to the bots' own (all devices).
 - **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
   its chat by the dashboard (data only, no consent needed). They show by default, the public link too; the chat's ⋯
   menu says why one is not showing (choosing the line fixes it there) and offers **Clear the ambient effect** /
@@ -517,7 +515,7 @@ Settings → **Look**, card by card (the app icon, card upload limits and Canvas
   can't load from the internet (put pictures and fonts under Assets: PNG, WebP, JPEG, GIF, WOFF2, 1 MiB in total).
   **Save and try**, then **Keep** within 15 s or it reverts; **Turn off (all devices)**; earlier versions **Use
   this**. If something is hidden or broken, open the page with `?safe=1`, or tick **Turn off custom CSS on this
-  device**.
+  device** (in Preferences).
 - **Mods** — one `.agendmod.json` file carrying a look; importing shows everything first and applies only what you
   tick (custom CSS is never pre-ticked); agents can propose mods (**Review** / **Dismiss**); **Export a mod** writes one.
   Uninstalling removes the mod, not what it applied.
@@ -534,9 +532,12 @@ Settings → **Look**, card by card (the app icon, card upload limits and Canvas
   An unavailable
   isolated transport offers Reload, never an HTML-preview setup step. A motion refusal offers **Play effects anyway**;
   safe mode offers **Leave safe mode**. The dialog names loading, safety and raw unknown codes. Codes stay local; agents get only closed recent blocked reasons without viewer identifiers or counts.
-- **Identity card upload limits** — portrait and banner size limits and per-agent picture quota
-  (`web.appearance.*`); lowering applies at once, raising waits for an admin.
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
+
+Moved out of Look in 2.4 (#2347). **Preferences** (this device only): **Effects: follow the system's reduced-motion
+setting** (off by default): on, both ambient and Canvas Worker effects stay still while the system asks for reduced motion. Otherwise both play, with one shared one-time chat note and a local action to follow the system. And **Turn off custom CSS on this device**. **Web dashboard**: the **App icon**;
+**Identity card upload limits** — portrait and banner size limits and per-agent picture quota (`web.appearance.*`);
+lowering applies at once, raising waits for an admin; and **Experimental: Canvas Worker effects**.
 
 **What an agent can change for the user.** A worker changes only its own look (the `web-appearance` tools); before
 #2064 everything on this page was the person's. Since #2064 (2.2.5) General, coordinators and
@@ -596,7 +597,7 @@ no instance uses that provider.
 
 **Settings won't change something.** Over a public link, Web settings and appearance are read only; a loosening
 change waits for an admin's confirmation in General chat; a value in the "Set in fleet.yaml" list must be edited in
-fleet.yaml (Developer tab, or the file) and `agend reload`.
+fleet.yaml (Advanced, or the file) and `agend reload`.
 
 ### Canvas Worker playback diagnostics
 

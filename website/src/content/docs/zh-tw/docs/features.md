@@ -26,8 +26,8 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 - **Fleet**（`/ui/fleet`）— 任務板、排程和 team，一張 General、team 與 instance 加上即時狀態的**組織圖**，prompt cache 的**快取**分析，以及 fleet 設定。標題列的**文件**會開啟這個網站。
 - **等你處理**（`/ui/needs`）— 所有 bot 等你處理的事集中在一個清單：權限詢問、卡住通知、登入、無法確認送達的訊息。在任何地方處理掉，每個清單都會消失。
 - **檢視**（`/view`）— 每個 agent 的即時終端畫面、名單、AI 訂閱用量，以及每個 agent 的個人資料和頭像。
-- **紀錄** — 每個 instance 一份：Claude Code 和 Codex 會顯示從 agent 的 transcript 讀出的每則 prompt、回覆和工具呼叫，加上當機、重啟等 fleet 事件；其他後端只顯示 fleet 事件。預設關閉；fleet 管理員在**設定 → Web**（`web.log_tab`）打開。
-- **設定**（`/settings`）— agent、連線、ClassicBot、General 與 Web 設定，以及整份 `fleet.yaml`，先暫存再一起套用。Bot token 在這裡輸入，存檔前會先向平台確認是哪個 bot。
+- **紀錄** — 每個 instance 一份：Claude Code 和 Codex 會顯示從 agent 的 transcript 讀出的每則 prompt、回覆和工具呼叫，加上當機、重啟等 fleet 事件；其他後端只顯示 fleet 事件。預設關閉；fleet 管理員在**設定 → 網頁儀表板**（`web.log_tab`）打開。
+- **設定**（`/settings`）— agent、連線、ClassicBot、Agent 預設值與儀表板自己的設定，以及整份 `fleet.yaml`，先暫存再一起套用。Bot token 在這裡輸入，存檔前會先向平台確認是哪個 bot。
 
 **登入。** 在 General 送 `/web`（fleet 管理員），或在主機上執行 `agend web`，然後在登入頁輸入一次性代碼。代碼只能用一次、5 分鐘後失效。直接連到儀表板時，session 預設維持 48 小時（可設定）；透過公開連結開的 session 最多 4 小時、閒置 30 分鐘就結束，連結關閉時也會結束。用 `/web` 的代碼登入時，agent 看到的你就是你的 Discord 或 Telegram 帳號 — 只用來認人，不給任何權限。
 
