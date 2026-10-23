@@ -88,7 +88,7 @@ import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
 import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
-import { setMusePlaceholderDebug } from "./backend/muse.js";
+import { MuseBackend } from "./backend/muse.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
@@ -2092,9 +2092,9 @@ export class Daemon extends EventEmitter {
       model: config.model ?? "default",
     };
     this.logger = rootLogger.child({ instance: name }, { level: config.log_level });
-    if (backend?.binaryName === "muse") {
+    if (backend instanceof MuseBackend) {
       const log = this.logger;
-      setMusePlaceholderDebug((rec) => {
+      backend.setPlaceholderDebug((rec) => {
         log.debug(rec, "muse empty-composer placeholder classified as empty");
       });
     }

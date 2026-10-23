@@ -138,27 +138,18 @@ const MUSE_EMPTY_COMPOSER_HINTS: ReadonlySet<string> = new Set([
 ]);
 
 export type MusePlaceholderDebugRec = { text: string; sgr: string };
+export type MusePlaceholderDebug = {
+  log: (rec: MusePlaceholderDebugRec) => void;
+  logged: Set<string>;
+};
 
-let musePlaceholderDebug: ((rec: MusePlaceholderDebugRec) => void) | undefined;
-const musePlaceholderLogged = new Set<string>();
-
-/**
- * Production wires the daemon logger; tests inject a spy. Passing nothing
- * clears the hook and the once-set. "Once" is per unique (text, sgr) so pane
- * polls do not flood.
- */
-export function setMusePlaceholderDebug(log?: (rec: MusePlaceholderDebugRec) => void): void {
-  musePlaceholderDebug = log;
-  musePlaceholderLogged.clear();
-}
-
-function logFaintPlaceholderOnce(text: string, sgr: string): void {
-  if (!musePlaceholderDebug) return;
+function logFaintPlaceholderOnce(debug: MusePlaceholderDebug | undefined, text: string, sgr: string): void {
+  if (!debug) return;
   const key = `${text}\0${sgr}`;
-  if (musePlaceholderLogged.has(key)) return;
-  musePlaceholderLogged.add(key);
+  if (debug.logged.has(key)) return;
+  debug.logged.add(key);
   try {
-    musePlaceholderDebug({ text, sgr });
+    debug.log({ text, sgr });
   } catch { /* Detector must not throw. */ }
 }
 
@@ -211,7 +202,12 @@ function museComposerTextAllFaint(rawBoxRows: readonly string[]): boolean {
   return significant.length > 0 && significant.every(c => c.faint);
 }
 
-function museComposerIsPlaceholder(textRows: readonly string[], rawBoxRows: readonly string[], width: number): boolean {
+function museComposerIsPlaceholder(
+  textRows: readonly string[],
+  rawBoxRows: readonly string[],
+  width: number,
+  debug?: MusePlaceholderDebug,
+): boolean {
   if (textRows.length === 0 || textRows.every(r => r === "")) return false;
   let catalog = false;
   for (const hint of MUSE_EMPTY_COMPOSER_HINTS) {
@@ -222,7 +218,7 @@ function museComposerIsPlaceholder(textRows: readonly string[], rawBoxRows: read
   }
   const faint = museComposerTextAllFaint(rawBoxRows);
   if (faint) {
-    logFaintPlaceholderOnce(textRows.join("\n"), rawBoxRows.join("\n"));
+    logFaintPlaceholderOnce(debug, textRows.join("\n"), rawBoxRows.join("\n"));
     return true;
   }
   return catalog;
@@ -352,7 +348,7 @@ export function museBackgroundWorkActive(pane: string): boolean {
  * separator directly above the status bar. Muse 1.4.12 may paint a faint
  * rotating hint in an empty box (#2520); that is empty, not a draft.
  */
-export function museInputBox(pane: string, busy: RegExp = MUSE_BUSY): InputDraft | null {
+export function museInputBox(pane: string, busy: RegExp = MUSE_BUSY, debug?: MusePlaceholderDebug): InputDraft | null {
   const rawRows = pane.replace(/\r/g, "").split("\n");
   while (rawRows.length && !stripSgr(rawRows[rawRows.length - 1]!).trim()) rawRows.pop();
   const rows = rawRows.map(stripSgr);
@@ -371,7 +367,7 @@ export function museInputBox(pane: string, busy: RegExp = MUSE_BUSY): InputDraft
       const text = [box[0]!.replace(/^❯ ?/, "").replace(/ +$/, ""), ...box.slice(1).map(r => r.slice(2).replace(/ +$/, ""))];
       // The separators span the pane: that is the width the box was wrapped to.
       const width = rows[bottom]!.trimEnd().length;
-      if (text.every(r => r === "") || museComposerIsPlaceholder(text, rawBox, width)) return { rows: [], width };
+      if (text.every(r => r === "") || museComposerIsPlaceholder(text, rawBox, width, debug)) return { rows: [], width };
       return { rows: text, width };
     }
   }
@@ -724,6 +720,8 @@ export class MuseBackend implements CliBackend {
   // Cached from buildCommand/writeConfig so getSessionId() (which takes no
   // args) can match sessions against this instance's workspace.
   private workingDirectory?: string;
+  /** Owner-bound faint-placeholder debug; constructing another MuseBackend must not replace this. */
+  private placeholderDebug?: MusePlaceholderDebug;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("muse");
@@ -1210,9 +1208,23 @@ export class MuseBackend implements CliBackend {
     return /retained session not found: session \S+ has no saved log/;
   }
 
+  /**
+   * Production wires the daemon logger; tests inject a spy. Passing nothing
+   * clears this backend's hook. "Once" is per unique (text, sgr) on this
+   * backend so pane polls do not flood, and another Muse instance cannot
+   * steal the logger or reset the once-set.
+   */
+  setPlaceholderDebug(log?: (rec: MusePlaceholderDebugRec) => void): void {
+    if (!log) {
+      this.placeholderDebug = undefined;
+      return;
+    }
+    this.placeholderDebug = { log, logged: this.placeholderDebug?.logged ?? new Set() };
+  }
+
   /** The live input box (#829): no rows when empty, null when the bottom of the screen is not muse's layout. */
   inputDraft(pane: string): InputDraft | null {
-    return museInputBox(pane, this.getBusyPattern());
+    return museInputBox(pane, this.getBusyPattern(), this.placeholderDebug);
   }
 
   inputDraftShows(draft: InputDraft, text: string): boolean {

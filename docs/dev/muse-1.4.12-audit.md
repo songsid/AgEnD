@@ -21,7 +21,8 @@ characters, or ordinary typed text remains a draft.
 
 The detector logs once at debug (`muse empty-composer placeholder classified as
 empty`) with the composer `text` and raw `sgr` whenever it classifies a faint
-placeholder as empty. Production `capture-pane -p` has no SGR, so that path is
+placeholder as empty. The logger and once-set live on that Muse backend, so a
+second instance cannot steal the evidence or reset deduplication. Production `capture-pane -p` has no SGR, so that path is
 silent until an `-e` capture sees a real hint. Leader's 2026-10-23 live
 `capture-pane -e` of agend-dev-muse was a bare `❯ ` (quota exhausted until
 2026-10-26); reconstructed fixtures remain labelled as such.
