@@ -393,4 +393,11 @@ describe("#named-link-ttl: the public link's minutes and auto_open follow the mo
     await w.apply();
     expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 480, hostname: "", tunnel_token_env: "", auto_open: false } }]);
   });
+  it("#2495 review: an untouched Reopen box is not an edit — a minutes-only Save never sends auto_open", async () => {
+    const w = await open(NAMED);
+    expect([w.$("publicAutoOpen").checked, w.$("publicAutoOpen").closest("label").getAttribute("class"), pending()]).toEqual([false, "check", null]);
+    await w.type(w.$("publicWebTtl"), "600");
+    expect(pending()?.textContent).toContain("Save"); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 600 } }]);
+  });
 });
