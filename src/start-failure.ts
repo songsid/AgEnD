@@ -56,6 +56,11 @@ export function readStarted(home: string): StartedRecord | null {
   const r = readJson<StartedRecord>(join(home, STARTED_FILE));
   return r && typeof r.version === "string" && Array.isArray(r.history) ? r : null;
 }
+/** #2481: the versions that completed a start here; "unreadable" when the record is there but cannot be read. */
+export function readStartedHistory(home: string): string[] | "unreadable" {
+  if (!existsSync(join(home, STARTED_FILE))) return [];
+  return readStarted(home)?.history ?? "unreadable";
+}
 export function readAttempts(home: string): AttemptsRecord | null {
   const r = readJson<AttemptsRecord>(join(home, ATTEMPTS_FILE));
   return r && typeof r.version === "string" && Array.isArray(r.attempts) ? r : null;
@@ -354,4 +359,29 @@ export function notifyRestore(home: string, from: string, to: string, preimage: 
     if (!claimChatNotice(home, from)) return;
     (opts.run ?? defaultRunChild)(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "start-failure-chat.js"), home, "--restore", from, to, preimage], { timeout: CHAT_NOTICE_TIMEOUT_MS });
   } catch { /* best effort */ }
+}
+
+/**
+ * #2481, Fable r1 on #2526: the restore did not happen, but its notices said it was happening (and took #2490's chat
+ * claim). The correction, once per version (its own O_EXCL claim): the failure and the way back by hand. `packageAt`:
+ * where the installed package — and the chat script — is now (the failed tree when even the rename back failed).
+ */
+export function notifyRestoreFailed(home: string, from: string, to: string, reason: string, packageAt: string, opts: {
+  run?: RunChild; launch?: Launch; platform?: NodeJS.Platform;
+} = {}): boolean {
+  try {
+    if (!/^[0-9A-Za-z.+-]{1,64}$/.test(from)) return false;
+    try { writeFileSync(join(home, `fleet-start-restore-failed-${from}`), new Date().toISOString() + "\n", { flag: "wx", mode: 0o600 }); }
+    catch { return false; }
+    if ((opts.platform ?? process.platform) === "darwin") {
+      try {
+        const text = `AgEnD v${from} fails to start; restoring v${to} automatically did not work. Run: agend doctor`;
+        const child = (opts.launch ?? defaultLaunch)("osascript", ["-e", `display notification ${JSON.stringify(text)} with title "AgEnD"`], { detached: true, stdio: "ignore" });
+        child.on?.("error", () => { /* no osascript */ });
+        child.unref?.();
+      } catch { /* the chat notice and doctor remain */ }
+    }
+    (opts.run ?? defaultRunChild)(process.execPath, [join(packageAt, "dist", "start-failure-chat.js"), home, "--restore-failed", from, to, reason], { timeout: CHAT_NOTICE_TIMEOUT_MS });
+    return true;
+  } catch { return false; }
 }

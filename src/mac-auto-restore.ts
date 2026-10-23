@@ -53,16 +53,28 @@ export function versionOlder(a: string, b: string): boolean {
   return a.includes("-") && !b.includes("-");
 }
 
-/** The guards that need no file of the package: platform, launchd job, plist, a version that never ran, the 3rd attempt. */
+/**
+ * The guards that need no file of the package: platform, the launchd job itself (its label in XPC_SERVICE_NAME —
+ * inherited by everything the job starts, its tmux panes too — AND launchd as the parent), plist, a version that never
+ * ran, the 3rd attempt. `startedHistory` "unreadable" (fleet-started.json there but not readable) holds, as unreadable
+ * evidence does elsewhere.
+ */
 export function autoRestoreDue(input: {
-  platform: NodeJS.Platform; env: NodeJS.ProcessEnv; plistExists: boolean;
-  installed: string; startedHistory: string[]; recentAttempts: number;
+  platform: NodeJS.Platform; env: NodeJS.ProcessEnv; ppid: number; plistExists: boolean;
+  installed: string; startedHistory: string[] | "unreadable"; recentAttempts: number;
 }): boolean {
   return input.platform === "darwin"
     && input.env.XPC_SERVICE_NAME === LAUNCHD_LABEL
+    && input.ppid === 1
     && input.plistExists
+    && input.startedHistory !== "unreadable"
     && !input.startedHistory.includes(input.installed)
     && input.recentAttempts >= 3;
+}
+
+/** Fable r1 on #2526: only the hop out of 2.2.x — no version newer than the copy may ever have completed a start here. */
+export function historyAllowsRestoreTo(startedHistory: string[], candidate: string): boolean {
+  return startedHistory.every(v => !versionOlder(candidate, v));
 }
 
 /**
@@ -150,14 +162,24 @@ const realFs: SwapFs = {
  * into `root`. A failure of the second rename puts the first back. Then `<prefix>/bin/agend-install`, when it points
  * at a file the restored package does not have, goes. Returns the failed tree's path.
  */
-export function swapInPreimage(prefix: string, root: string, installed: string, cand: RestoreCandidate, now: Date, fs: SwapFs = realFs): { ok: true; failedTree: string } | { ok: false; reason: string } {
+export type SwapResult =
+  | { ok: true; failedTree: string }
+  /** `packageAt`: where the installed package is now — `root` again, or (`stranded`) the failed tree, nothing at `root`. */
+  | { ok: false; reason: string; packageAt: string; stranded: boolean };
+export function swapInPreimage(prefix: string, root: string, installed: string, cand: RestoreCandidate, now: Date, fs: SwapFs = realFs): SwapResult {
   const failedTree = join(prefix, ".agend-rollback", `${installed}-${now.toISOString().replace(/[:.]/g, "-")}-failed`);
   try { fs.rename(root, failedTree); }
-  catch (err) { return { ok: false, reason: `the installed package could not be moved aside (${(err as Error).message})` }; }
+  catch (err) { return { ok: false, reason: `the installed package could not be moved aside (${(err as Error).message})`, packageAt: root, stranded: false }; }
   try { fs.rename(cand.pkg, root); }
   catch (err) {
-    try { fs.rename(failedTree, root); } catch { /* reported below: the reason names both */ }
-    return { ok: false, reason: `the kept copy could not be put in place (${(err as Error).message}); the installed package was put back` };
+    const why = (err as Error).message;
+    try { fs.rename(failedTree, root); }
+    catch (back) {
+      // Nothing at root: the plist's node and bin/agend point into a missing tree — say exactly how to put it back.
+      return { ok: false, stranded: true, packageAt: failedTree,
+        reason: `the kept copy could not be put in place (${why}), and the installed package could not be moved back (${(back as Error).message}): it is at ${failedTree}. To put it back: mv '${failedTree}' '${root}'` };
+    }
+    return { ok: false, reason: `the kept copy could not be put in place (${why}); the installed package was put back`, packageAt: root, stranded: false };
   }
   const link = join(prefix, "bin", "agend-install");
   const target = fs.readlink(link);
@@ -168,10 +190,14 @@ export function swapInPreimage(prefix: string, root: string, installed: string, 
 }
 
 /** What the restore did, for start-attempt.ts's notices and exit. */
-export type RestoreOutcome = { kind: "not-due" } | { kind: "restored"; from: string; to: string; preimage: string } | { kind: "failed"; reason: string };
+export type RestoreOutcome =
+  | { kind: "not-due" }
+  | { kind: "restored"; from: string; to: string; preimage: string }
+  /** `packageAt`: where the installed package (and its chat script) is now, for the correction notice. */
+  | { kind: "failed"; from: string; to: string; reason: string; packageAt: string; stranded: boolean };
 
 export interface AutoRestoreDeps {
-  platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; plistPath?: string; arch?: string;
+  platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; ppid?: number; plistPath?: string; arch?: string;
   runVersion?: RunVersion; fs?: SwapFs; now?: Date;
   /** The notices with the restore wording, sent before the swap (their script lives in the installed package). */
   notify?: (from: string, to: string, preimage: string) => void;
@@ -182,14 +208,21 @@ export interface AutoRestoreDeps {
  * The whole decision and act, for the installed package at `root` under `prefix`. `attempts`: this version's attempts
  * in the window, this one included. Never throws.
  */
-export function maybeAutoRestore(home: string, root: string, prefix: string, installed: string, startedHistory: string[], attempts: number, deps: AutoRestoreDeps = {}): RestoreOutcome {
+export function maybeAutoRestore(home: string, root: string, prefix: string, installed: string, startedHistory: string[] | "unreadable", attempts: number, deps: AutoRestoreDeps = {}): RestoreOutcome {
   const log = deps.log ?? (line => { try { process.stderr.write(`AgEnD auto-restore: ${line}\n`); } catch { /* none */ } });
   try {
     const plistPath = deps.plistPath ?? join(homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
-    if (!autoRestoreDue({ platform: deps.platform ?? process.platform, env: deps.env ?? process.env, plistExists: existsSync(plistPath), installed, startedHistory, recentAttempts: attempts })) return { kind: "not-due" };
+    if (!autoRestoreDue({ platform: deps.platform ?? process.platform, env: deps.env ?? process.env, ppid: deps.ppid ?? process.ppid, plistExists: existsSync(plistPath), installed, startedHistory, recentAttempts: attempts })) {
+      if (startedHistory === "unreadable") log("fleet-started.json cannot be read; not restoring");
+      return { kind: "not-due" };
+    }
     if (resolve(root) !== resolve(prefix, "lib", "node_modules", "@songsid", "agend")) return { kind: "not-due" };
     const cand = restoreCandidate(prefix, installed, deps.arch);
     if (!cand) return { kind: "not-due" };
+    if (startedHistory !== "unreadable" && !historyAllowsRestoreTo(startedHistory, cand.version)) {
+      log(`a version newer than the kept v${cand.version} has run here (${startedHistory.join(", ")}); not restoring`);
+      return { kind: "not-due" };
+    }
     if (!preimageRuns(cand, deps.runVersion)) { log(`the kept copy of v${cand.version} at ${cand.dir} does not run; not restoring`); return { kind: "not-due" }; }
     if (!claimRestore(home, installed)) return { kind: "not-due" };
     const now = deps.now ?? new Date();
@@ -200,9 +233,10 @@ export function maybeAutoRestore(home: string, root: string, prefix: string, ins
     const swapped = swapInPreimage(prefix, root, installed, cand, now, deps.fs);
     const finishedAt = new Date().toISOString();
     if (!swapped.ok) {
-      writeRecord(home, { ...record, result: "failed", reason: swapped.reason, finishedAt });
       log(`restore failed: ${swapped.reason}`);
-      return { kind: "failed", reason: swapped.reason };
+      try { writeRecord(home, { ...record, result: "failed", reason: swapped.reason, finishedAt, ...(swapped.stranded ? { failedTree: swapped.packageAt } : {}) }); }
+      catch { log(`the record could not be written; ${swapped.reason}`); }
+      return { kind: "failed", from: installed, to: cand.version, reason: swapped.reason, packageAt: swapped.packageAt, stranded: swapped.stranded };
     }
     writeRecord(home, { ...record, result: "restored", failedTree: swapped.failedTree, finishedAt });
     log(`restored v${cand.version}; launchd starts it next. The failed v${installed} is kept at ${swapped.failedTree} (about 235 MB) until a later start completes`);

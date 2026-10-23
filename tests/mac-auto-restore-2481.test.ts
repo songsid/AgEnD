@@ -10,8 +10,8 @@ import {
   autoRestoreDue, claimRestore, maybeAutoRestore, preimageRuns, pruneFailedTrees, readRestoreRecord, restoreCandidate,
   swapInPreimage, versionOlder, type RestoreCandidate, type SwapFs,
 } from "../src/mac-auto-restore.js";
-import { ATTEMPTS_FILE, claimChatNotice, notifyRestore, readAttempts } from "../src/start-failure.js";
-import { restoreNoticeText } from "../src/start-failure-chat.js";
+import { ATTEMPTS_FILE, claimChatNotice, notifyRestore, notifyRestoreFailed, readAttempts, readStartedHistory } from "../src/start-failure.js";
+import { restoreFailedNoticeText, restoreNoticeText } from "../src/start-failure-chat.js";
 import { recordFleetStartAttempt } from "../src/start-attempt.js";
 import { setLocale } from "../src/locale.js";
 
@@ -49,7 +49,7 @@ function host(opts: { keptVersion?: string; manifestVersion?: string; name?: str
 const versionOk = (v: string) => () => ({ status: 0, stdout: `${v}\n` });
 
 describe("#2481 auto-restore: when it is due", () => {
-  const base = { platform: "darwin" as const, env: { XPC_SERVICE_NAME: "com.agend.fleet" }, plistExists: true, installed: "2.3.1", startedHistory: [] as string[], recentAttempts: 3 };
+  const base = { platform: "darwin" as const, env: { XPC_SERVICE_NAME: "com.agend.fleet" }, ppid: 1, plistExists: true, installed: "2.3.1", startedHistory: [] as string[] | "unreadable", recentAttempts: 3 };
   it("the launchd job's 3rd attempt of a version that never ran here", () => {
     expect(autoRestoreDue(base)).toBe(true);
   });
@@ -57,6 +57,8 @@ describe("#2481 auto-restore: when it is due", () => {
     ["not macOS", { platform: "linux" as const }],
     ["a person's `fleet start` (no launchd job)", { env: {} }],
     ["another launchd job", { env: { XPC_SERVICE_NAME: "com.other" } }],
+    ["a `fleet start` typed in a pane the job started (it inherits XPC_SERVICE_NAME, launchd is not its parent)", { ppid: 4242 }],
+    ["fleet-started.json is there but unreadable", { startedHistory: "unreadable" as const }],
     ["no AgEnD plist", { plistExists: false }],
     ["the version ran here before", { startedHistory: ["2.3.1", "2.2.6"] }],
     ["only the 2nd attempt", { recentAttempts: 2 }],
@@ -141,9 +143,20 @@ describe("#2481 auto-restore: the swap", () => {
       exists: () => true, unlink: () => {}, readlink: () => null, rmdir: () => {},
     };
     const r = swapInPreimage(h.prefix, h.root, "2.3.1", cand, new Date("2026-10-23T06:00:00Z"), fs);
-    expect(r).toMatchObject({ ok: false });
+    expect(r).toMatchObject({ ok: false, stranded: false, packageAt: h.root, reason: expect.stringContaining("the installed package was put back") });
     expect(calls).toHaveLength(3);
     expect(calls[2]).toBe(`${join(h.prefix, ".agend-rollback", "2.3.1-2026-10-23T06-00-00-000Z-failed")} -> ${h.root}`);
+  });
+  it("Fable r1 P2-3: when the rename back fails too, the reason says where the package is and how to put it back", () => {
+    const h = host();
+    const cand = restoreCandidate(h.prefix, "2.3.1", "arm64")!;
+    let n = 0;
+    const fs: SwapFs = { rename: () => { if (++n >= 2) throw new Error(n === 2 ? "EXDEV" : "EBUSY"); }, exists: () => true, unlink: () => {}, readlink: () => null, rmdir: () => {} };
+    const failedTree = join(h.prefix, ".agend-rollback", "2.3.1-2026-10-23T06-00-00-000Z-failed");
+    const r = swapInPreimage(h.prefix, h.root, "2.3.1", cand, new Date("2026-10-23T06:00:00Z"), fs);
+    expect(r).toEqual({ ok: false, stranded: true, packageAt: failedTree,
+      reason: `the kept copy could not be put in place (EXDEV), and the installed package could not be moved back (EBUSY): it is at ${failedTree}. To put it back: mv '${failedTree}' '${h.root}'` });
+    expect((r as { reason: string }).reason).not.toContain("was put back");
   });
   it("one restore per version, ever", () => {
     const home = scratch();
@@ -157,7 +170,7 @@ describe("#2481 auto-restore: the swap", () => {
 describe("#2481 auto-restore: the whole act", () => {
   const due = (h: ReturnType<typeof host>, extra = {}) => {
     const plist = join(h.prefix, "fleet.plist"); writeFileSync(plist, "<plist/>");
-    return { platform: "darwin" as const, env: { XPC_SERVICE_NAME: "com.agend.fleet" }, plistPath: plist, arch: "arm64", runVersion: versionOk("2.2.6"), now: new Date("2026-10-23T06:00:00Z"), log: () => {}, ...extra };
+    return { platform: "darwin" as const, env: { XPC_SERVICE_NAME: "com.agend.fleet" }, ppid: 1, plistPath: plist, arch: "arm64", runVersion: versionOk("2.2.6"), now: new Date("2026-10-23T06:00:00Z"), log: () => {}, ...extra };
   };
   it("restores once: the record, the notices before the swap (the installed package still in place), then the swap", () => {
     const h = host(); const home = scratch();
@@ -195,12 +208,68 @@ describe("#2481 auto-restore: the whole act", () => {
     expect(maybeAutoRestore(home, "/elsewhere/agend", h.prefix, "2.3.1", [], 3, due(h))).toEqual({ kind: "not-due" });
     expect(readRestoreRecord(home)).toBeNull();
   });
+  it("Fable r1 P2-1: never past a 2.3.x that ran here — only the hop out of 2.2.x; older history is fine", () => {
+    const h = host(); const home = scratch();
+    const log = vi.fn();
+    expect(maybeAutoRestore(home, h.root, h.prefix, "2.3.1", ["2.3.0"], 3, due(h, { log }))).toEqual({ kind: "not-due" });
+    expect(log.mock.calls.flat().join("\n")).toMatch(/newer than the kept v2\.2\.6 has run here \(2\.3\.0\)/);
+    expect(JSON.parse(readFileSync(join(h.root, "package.json"), "utf8")).version).toBe("2.3.1");
+    expect(maybeAutoRestore(home, h.root, h.prefix, "2.3.1", ["2.2.6", "2.2.5"], 3, due(h))).toMatchObject({ kind: "restored" });
+  });
+  it("Fable r1: an unreadable fleet-started.json holds (logged), as unreadable evidence does elsewhere", () => {
+    const h = host(); const home = scratch(); const log = vi.fn();
+    expect(maybeAutoRestore(home, h.root, h.prefix, "2.3.1", "unreadable", 3, due(h, { log }))).toEqual({ kind: "not-due" });
+    expect(log).toHaveBeenCalledWith("fleet-started.json cannot be read; not restoring");
+    expect(readStartedHistory(home)).toEqual([]);
+    writeFileSync(join(home, "fleet-started.json"), "{not json");
+    expect(readStartedHistory(home)).toBe("unreadable");
+    writeFileSync(join(home, "fleet-started.json"), JSON.stringify({ version: "2.3.0", at: "x", pid: 1, history: ["2.3.0", "2.2.6"] }));
+    expect(readStartedHistory(home)).toEqual(["2.3.0", "2.2.6"]);
+  });
+  it("Fable r1 P2-3: a stranded package is recorded with where it is", () => {
+    const h = host(); const home = scratch();
+    let n = 0;
+    const fs: SwapFs = { rename: () => { if (++n >= 2) throw new Error("EIO"); }, exists: () => true, unlink: () => {}, readlink: () => null, rmdir: () => {} };
+    const out = maybeAutoRestore(home, h.root, h.prefix, "2.3.1", [], 3, due(h, { fs }));
+    expect(out).toMatchObject({ kind: "failed", from: "2.3.1", to: "2.2.6", stranded: true });
+    expect(readRestoreRecord(home)).toMatchObject({ result: "failed", failedTree: (out as { packageAt: string }).packageAt, reason: expect.stringContaining("To put it back: mv") });
+  });
   it("a failed swap is recorded and reported, and never tried again", () => {
     const h = host(); const home = scratch();
     const fs: SwapFs = { rename: () => { throw new Error("EACCES"); }, exists: () => true, unlink: () => {}, readlink: () => null, rmdir: () => {} };
     expect(maybeAutoRestore(home, h.root, h.prefix, "2.3.1", [], 3, due(h, { fs }))).toMatchObject({ kind: "failed" });
     expect(readRestoreRecord(home)).toMatchObject({ result: "failed", reason: expect.stringContaining("EACCES") });
     expect(maybeAutoRestore(home, h.root, h.prefix, "2.3.1", [], 4, due(h))).toEqual({ kind: "not-due" });
+  });
+  it("Fable r1 P2-2: a failed restore sends the correction (once), from wherever the package is, and no plain notices", () => {
+    const home = scratch(); const notify = vi.fn(); const notifyChat = vi.fn(); const restoreFailed = vi.fn(() => true);
+    const failed = { kind: "failed" as const, from: "2.3.1", to: "2.2.6", reason: "EXDEV", packageAt: "/p/agend", stranded: false };
+    expect(recordFleetStartAttempt(home, "2.3.1", 1_000, { lockHeld: () => false, notify, notifyChat, restore: () => failed, restoreFailed })).toEqual(failed);
+    expect(restoreFailed).toHaveBeenCalledWith(home, "2.3.1", "2.2.6", "EXDEV", "/p/agend");
+    expect(notify).not.toHaveBeenCalled(); expect(notifyChat).not.toHaveBeenCalled();
+  });
+  it("the correction itself: its own claim, the macOS notification, the chat script from where the package is now", () => {
+    const home = scratch();
+    const run = vi.fn((_cmd: string, _args: string[], _opts: { timeout: number }) => {});
+    const launch = vi.fn((_cmd: string, _args: string[], _opts: unknown) => ({}));
+    expect(notifyRestoreFailed(home, "2.3.1", "2.2.6", "EXDEV", "/p/x-failed", { run, launch, platform: "darwin" })).toBe(true);
+    expect(run.mock.calls[0]![1]).toEqual(["/p/x-failed/dist/start-failure-chat.js", home, "--restore-failed", "2.3.1", "2.2.6", "EXDEV"]);
+    expect(launch.mock.calls[0]![1]).toEqual(["-e", 'display notification "AgEnD v2.3.1 fails to start; restoring v2.2.6 automatically did not work. Run: agend doctor" with title "AgEnD"']);
+    expect(notifyRestoreFailed(home, "2.3.1", "2.2.6", "EXDEV", "/p/x-failed", { run, launch, platform: "darwin" })).toBe(false);
+    expect(run).toHaveBeenCalledTimes(1);
+    writeFileSync(join(home, ATTEMPTS_FILE), JSON.stringify({ version: "2.3.1", attempts: [new Date(1000).toISOString(), new Date(2000).toISOString(), new Date(3000).toISOString()] }));
+    expect(restoreFailedNoticeText(home, readAttempts(home)!, 4000, "2.2.6", "EXDEV").split("\n")).toEqual([
+      "⚠ AgEnD v2.3.1 fails to start (3 start attempts in the last 10 minutes, none completed). Restoring v2.2.6 automatically did not work: EXDEV",
+      "To go back to v2.2.6: npm install -g @songsid/agend@2.2.6 && agend restart",
+      `The error is at the end of ${join(home, "fleet.log")}. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new`,
+    ]);
+  });
+  it("Fable r1 P3: a restored outcome exits before anything more of the moved package loads", () => {
+    const src = readFileSync(join(process.cwd(), "src", "start-attempt.ts"), "utf8");
+    const block = src.slice(src.indexOf('if (process.argv[2] === "fleet" && process.argv[3] === "start") {'));
+    expect(block).toMatch(/restored = recordFleetStartAttempt\(getAgendHome\(\), version, Date\.now\(\)\)\?\.kind === "restored";[\s\S]*\n  if \(restored\) process\.exit\(1\);\n\}\s*$/);
+    // start-attempt.ts imports nothing that loads the rest of the CLI
+    expect([...src.matchAll(/^import .* from "\.\/([^"]+)";$/gm)].map(m => m[1]).sort()).toEqual(["fleet-lock.js", "mac-auto-restore.js", "paths.js", "start-failure.js"]);
   });
   it("a restore replaces the plain notices; otherwise they go as before", () => {
     const home = scratch();

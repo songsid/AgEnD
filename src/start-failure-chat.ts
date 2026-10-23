@@ -25,7 +25,7 @@ import { pathToFileURL } from "node:url";
 import yaml from "js-yaml";
 import { parseEnvText } from "./env-file.js";
 import { detectLocale, setLocale } from "./locale.js";
-import { restoredLines, startFailureLines } from "./start-failure-notice.js";
+import { restoreFailedLines, restoredLines, startFailureLines } from "./start-failure-notice.js";
 import {
   ATTEMPT_WINDOW_MS, CHAT_NOTICE_TIMEOUT_MS, keptCopies, recentAttemptCount, ownPackage, previousVersion, readAttempts, readStarted,
   type AttemptsRecord, type StartedRecord,
@@ -127,8 +127,14 @@ export function restoreNoticeText(home: string, record: AttemptsRecord, now: num
   return restoredLines(record.version, to, detail, preimage, home).map(line => line.trim()).join("\n");
 }
 
+/** #2481: the correction when the automatic restore did not work. */
+export function restoreFailedNoticeText(home: string, record: AttemptsRecord, now: number, to: string, reason: string): string {
+  const detail = `${recentAttemptCount(record, now)} start attempts in the last ${ATTEMPT_WINDOW_MS / 60000} minutes, none completed`;
+  return restoreFailedLines(record.version, to, detail, reason, home).map(line => line.trim()).join("\n");
+}
+
 /** The child: read what it needs, post, say one line on stderr. `restore`: from start-attempt's auto-restore. */
-async function main(home: string, restore?: { to: string; preimage: string }): Promise<void> {
+async function main(home: string, restore?: { to: string; preimage?: string; failed?: string }): Promise<void> {
   const record = readAttempts(home);
   if (!record) return;
   let raw: unknown = null;
@@ -139,14 +145,17 @@ async function main(home: string, restore?: { to: string; preimage: string }): P
   let target: ChatTarget | null = null;
   try { target = chatNoticeTarget(raw, key => fileEnv.get(key) ?? process.env[key]); } catch { /* e.g. a refused API root */ }
   if (!target) { process.stderr.write("AgEnD start-failure chat notice: no General topic, admin or bot token to post with\n"); return; }
-  const text = restore
-    ? restoreNoticeText(home, record, Date.now(), restore.to, restore.preimage)
-    : chatNoticeText(home, record, readStarted(home), Date.now(), ownPackage().prefix);
+  const text = restore?.failed !== undefined
+    ? restoreFailedNoticeText(home, record, Date.now(), restore.to, restore.failed)
+    : restore?.preimage !== undefined
+      ? restoreNoticeText(home, record, Date.now(), restore.to, restore.preimage)
+      : chatNoticeText(home, record, readStarted(home), Date.now(), ownPackage().prefix);
   const outcome = await postChatNotice(target, text);
   process.stderr.write(`AgEnD start-failure chat notice: ${outcome}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && process.argv[2]) {
-  const restore = process.argv[3] === "--restore" && process.argv[5] && process.argv[6] ? { to: process.argv[5], preimage: process.argv[6] } : undefined;
+  const [, , , mode, , to, extra] = process.argv;
+  const restore = to && extra ? (mode === "--restore" ? { to, preimage: extra } : mode === "--restore-failed" ? { to, failed: extra } : undefined) : undefined;
   void main(process.argv[2], restore).catch(() => { /* best effort */ });
 }
