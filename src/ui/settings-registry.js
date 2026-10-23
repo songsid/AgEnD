@@ -42,6 +42,7 @@ const ROWS = [
   ["defaults.visibility", "agent-defaults", "#g-vis", "settings.crossInstanceVisibility", "defaults.cross_instance_visibility", ["visibility", "bot to bot", "cross instance", "messages"], ["可見性", "bot 之間", "跨 instance"]],
   ["defaults.reply-guard", "agent-defaults", "#g-reply", "settings.replyCompletionGuard", "defaults.reply_completion_guard", ["delivered reply", "reply guard", "require reply"], ["送達回覆", "回覆保護"]],
   ["defaults.tool-set", "agent-defaults", "#g-ts", "settings.toolSet", "defaults.tool_set", ["tool set", "tools", "mcp"], ["工具組", "工具"]],
+  ["defaults.dashboard", "agent-defaults", "#g-dash", "settings.dashboardAccess", "defaults.dashboard", ["dashboard access", "dashboard features", "permissions", "appearance tools", "task board", "web settings"], ["Dashboard 權限", "權限", "外觀", "任務看板", "網頁設定"]],
   ["defaults.log-level", "agent-defaults", "#g-ll", "settings.logLevel", "defaults.log_level", ["log level", "debug", "logging"], ["記錄層級", "除錯", "日誌"]],
   ["defaults.agent-mode", "agent-defaults", "#g-am", "settings.agentMode", "defaults.agent_mode", ["agent mode", "mcp", "cli"], ["agent 模式"]],
   ["defaults.hang-on", "agent-defaults", "#g-hang-on", "settings.hangEnabled", "defaults.hang_detector.enabled", ["hang detector", "stuck", "frozen"], ["卡住偵測", "卡住", "當機"]],
@@ -72,11 +73,15 @@ const ROWS = [
   ["access.public-link", "access", "#publicWebLink", "settings.publicLink", "web.public_link.allow_public", ["public link", "share", "tunnel", "cloudflare", "trycloudflare"], ["公開連結", "分享", "tunnel"]],
   ["access.hostname", "access", "#publicWebHostname", "settings.namedHostname", "web.public_link.hostname", ["fixed address", "domain", "hostname", "named tunnel", "https"], ["固定網址", "網域", "主機名稱", "具名 tunnel"]],
   ["access.origin-port", "access", "#publicWebOriginPort", "settings.namedOriginPort", "web.public_link.origin_port", ["port", "origin port", "fixed address"], ["連接埠", "port", "固定網址"]],
-  ["access.public-ttl", "access", "#publicWebTtl", "settings.publicTtl", "web.public_link.ttl_minutes", ["public link minutes", "how long", "ttl"], ["公開連結", "分鐘", "多久"]],
+  ["access.public-ttl", "access", "#publicWebTtl", "settings.publicTtl", "web.public_link.ttl_minutes", ["public link minutes", "how long", "ttl", "no expiry", "expire"], ["公開連結", "分鐘", "多久", "不過期", "到期"]],
+  // Shown with a fixed hostname (a named tunnel), or while it is set.
+  ["access.public-auto-open", "access", "#publicAutoOpen", "settings.publicAutoOpen", "web.public_link.auto_open", ["reopen after restart", "auto open", "public link", "named link"], ["重新開啟", "自動開啟", "公開連結", "固定網域"]],
   ["access.protocol", "access", "#publicWebProtocol", "settings.publicProtocol", "web.public_link.protocol", ["protocol", "http2", "quic", "https"], ["通訊協定", "協定"]],
   ["access.cloudflare-token", "access", "#publicTunnelToken", "settings.namedToken", "web.public_link.tunnel_token_env", ["cloudflare token", "tunnel token", "token", "fixed address", "secret"], ["Cloudflare token", "tunnel token", "token", "固定網址", "金鑰"]],
   ["access.authority", "access", "#vaEnabled", "settings.vaEnabled", "web.verified_authority.enabled", ["web authority", "verified", "authorize"], ["網頁授權", "驗證", "授權"]],
   ["access.authority-loopback", "access", "#vaLoopbackOnly", "settings.vaLoopbackOnly", "web.verified_authority.loopback_only", ["only this computer", "loopback", "authorize"], ["只有這台電腦", "授權"]],
+  // #2453: shown with a fixed hostname (a named tunnel), or while it is on; its label names the hostname, so its own words here.
+  ["access.authority-named-link", "access", "#vaNamedLink", null, "web.verified_authority.named_link", ["named link", "my named link", "authorize", "fixed hostname"], ["固定網域", "授權", "named link"], L("Also over my named link", "也允許透過我的固定網域")],
   ["access.authority-hours", "access", "#vaHours", null, "web.verified_authority.max_session_hours", ["authorization hours", "how long", "authority"], ["授權時數", "多久"], L("How long a web authorization lasts", "網頁授權持續多久")],
   ["access.authority-revoke", "access", "#vaRevoke", "settings.vaRevoke", null, ["revoke", "sign out", "authority"], ["撤銷", "登出", "授權"]],
   // Fleet · Advanced
