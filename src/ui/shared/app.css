@@ -393,6 +393,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .dlg-wide { width: min(640px, calc(100vw - 32px)); }
 .dlg::backdrop { background: var(--scrim); }
 .dlg-box { display: flex; flex-direction: column; max-height: 85vh; }
+.dlg-box:focus { outline: none; }   /* the open dialog's first stop (ui-dialog.js): no ring; Tab moves on with one */
 .dlg-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-4) var(--s-3) var(--s-2) var(--s-5); }
 .dlg-title { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
 .dlg-body { padding: var(--s-2) var(--s-5) var(--s-4); overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-3); }
@@ -1340,7 +1341,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .s-toolbar { display: flex; gap: var(--s-2); margin: var(--s-2) 0; }
 .s-search { flex: 1; display: flex; align-items: center; gap: var(--s-2); padding: 0 var(--s-3); border-radius: var(--r-sm); background: var(--surface); color: var(--text-3); }
 .s-search:focus-within { box-shadow: 0 0 0 2px var(--focus); }
-.s-search input { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent; color: var(--text); outline: none; font-size: var(--fs-sm); }
+.s-search input { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent; color: var(--text); outline: none; font-size: var(--fs-sm); text-overflow: ellipsis; }
 .s-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--s-4); }
 .s-group { margin-bottom: var(--s-2); }
 .s-group-head { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: var(--s-2) var(--s-2); border: 0; background: transparent; color: var(--text-3);
