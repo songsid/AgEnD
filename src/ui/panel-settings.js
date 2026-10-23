@@ -258,7 +258,14 @@ export function SettingsPanel({ route, navKey }) {
     // A change staged against both ends of a Save that has settled since is the end that came true (none: nothing left).
     if (change && change.afterSave && settledAs.current.size) {
       change = resolveAfterSave(key, change);
-      if (!change) { unstage(key); return; }
+      if (!change) { unstage(key); return false; }
+    }
+    // #2347: the editor's edit and a form's change to the same settings never wait together (the controls of each are
+    // off while the other is unsaved; this is the last word for a way in that is not).
+    const now = stagedRef.current;
+    if (isYamlKey(key) ? formsStaged(now) : writesModel(change) && yamlStaged(now)) {
+      toast(tn(isYamlKey(key) ? "devFormsUnsaved" : "yamlUnsaved"), false);
+      return false;
     }
     setStaged((s) => {
       const m = new Map(s);
@@ -277,6 +284,7 @@ export function SettingsPanel({ route, navKey }) {
       outcomes.current.delete(key);
       try { change.onResult(outcome); } catch { /* a section's own handler: never the Save's */ }
     }
+    return true;
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
   const discard = () => { dropSecrets(staged); revertLocal(staged); setStaged(new Map()); outcomes.current = new Map(); dropDrafts(); reload(); };
@@ -336,13 +344,16 @@ export function SettingsPanel({ route, navKey }) {
     { drafts: drafts.current, draftEpoch, staged, savingDrafts: () => submitted.current,
       savingStaged: () => (submitted.current || operationActive() ? submittedStaged.current : null) }) : null;
   // #1519 P7: "Connect a chat app" on the first-run card elsewhere came here for the wizard: it opens once the data is in.
-  useEffect(() => { if (ctx && takeWizardRequest()) setDialog({ kind: "wizard", key: navKey }); }, [!!ctx, navKey]);
+  // #2347: it writes a connection and an agent at once — not while a fleet.yaml edit waits to be saved.
+  const openWizard = () => { if (yamlStaged(stagedRef.current)) toast(tn("yamlUnsaved"), false); else setDialog({ kind: "wizard", key: navKey }); };
+  useEffect(() => { if (ctx && takeWizardRequest()) openWizard(); }, [!!ctx, navKey]);
   // #1523 N2: "Edit in Settings" on an instance's Details: that agent's dialog, once the data is in — only an agent this
   // configuration has (own key), with Settings' own staged Apply and confirmations.
   useEffect(() => {
     if (!ctx) return;
     const want = takeAgentRequest();
     if (!want) return;
+    if (yamlStaged(stagedRef.current)) { toast(tn("yamlUnsaved"), false); return; }      // #2347: the editor's edit waits
     const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
     if (want.kind === "classic") {
       // A ClassicBot room: its own dialog (ClassicDialog), found by its instance among this config's rooms.
@@ -365,15 +376,15 @@ export function SettingsPanel({ route, navKey }) {
     : section === "look" ? html`<${AppearanceSection} ...${you} part="look" />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
-    : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`
-    : section === "agent-defaults" ? html`<${General} key=${formKey} ctx=${ctx} part="fleet" />`
-    : section === "chat" ? html`<${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} />
+    : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`
+    : section === "agent-defaults" ? html`<${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
+    : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
         <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
         <div id="classicbot" class="s-anchor"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} />
           <${General} key=${formKey} ctx=${ctx} part="classic" /></div>`
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
-    : html`<${Developer} ctx=${ctx} /><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="readonly" />`;
+    : html`<${Developer} key=${`dev:${draftEpoch}`} ctx=${ctx} /><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="readonly" />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
   const wanted = useRef(null);
@@ -440,7 +451,7 @@ export function SettingsPanel({ route, navKey }) {
   const searchable = section === "agents" || section === "chat";
   return html`<div data-effect-panel="settings" class="panel p-settings">
     <${PanelHeader} title=${tn("title")} sub=${data && data.version ? html`<a class="pill ver" href=${data.version.includes("-") ? `${RELEASES}/latest` : `${RELEASES}/tag/v${data.version}`} target="_blank" rel="noopener">v${data.version}</a>` : null}>
-      <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx} onClick=${() => setDialog({ kind: "wizard", key: navKey })}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
+      <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx || yamlStaged(staged)} title=${ctx && yamlStaged(staged) ? tn("yamlUnsaved") : undefined} onClick=${openWizard}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
@@ -452,7 +463,7 @@ export function SettingsPanel({ route, navKey }) {
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
       <${PendingChanges} inline=${true} />
-      ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${() => setDialog({ kind: "wizard", key: navKey })} />` : null}
+      ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${openWizard} />` : null}
       ${sectionBody}
     </div></div>
     ${staged.size ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} section=${section} />` : null}
@@ -527,6 +538,22 @@ function SettingsSearch() {
 
 /** #2347: the staged change that stands for every held "You" preference (app-prefs.js holdPrefs). */
 const YOU_PREFS = "you:prefs";
+/** #2347: the fleet.yaml editor's staged writes (Advanced → Developer), one per write in order: `yaml:0`, `yaml:1`, … */
+const YAML_KEY = "yaml:";
+const isYamlKey = (k) => typeof k === "string" && k.startsWith(YAML_KEY);
+// What the editor writes (fleet.yaml's defaults, channels and agents), and the setup wizard's commit of both.
+const MODEL_WRITE = /^\/api\/settings\/(fleet\/(defaults|channels|instances)(\/|$)|quickstart\/)/;
+const writesModel = (c) => !!(c && c.request && MODEL_WRITE.test(String(c.request.url || "")));
+/** #2347: the editor and the forms that write the same settings refuse to mix: one waits for the other's Save or Discard. */
+const yamlStaged = (staged) => [...staged.keys()].some(isYamlKey);
+const formsStaged = (staged) => [...staged].some(([k, c]) => !isYamlKey(k) && writesModel(c));
+/** A form that writes what a staged fleet.yaml edit writes: shown, not edited, until that edit is saved or discarded. */
+function YamlLock({ staged, children }) {
+  const locked = yamlStaged(staged);
+  return html`<fieldset class="s-yaml-lock" disabled=${locked}>
+    ${locked ? html`<p class="note s-yaml-lock-note" role="status">${tn("yamlUnsaved")} <a href=${settingsPath("advanced")}>${tn("yamlOpen")}</a></p>` : null}
+    ${children}</fieldset>`;
+}
 /** Put back this person's and this device's own choices among `changes` (a Discard, or leaving Settings with them). */
 function revertLocal(changes) {
   for (const c of [...changes.values()].reverse()) if (c.local) { try { c.local.revert(); } catch { /* the rest still go back */ } }
@@ -1310,15 +1337,33 @@ function WebSection({ ctx, staged, part = "all" }) {
   </div>`;
 }
 
-/** Developer: the fleet model as YAML or JSON, to read, copy, download — or edit and apply as one operation. */
+/**
+ * Developer: the fleet model as YAML or JSON, to read, copy, download — or edit. #2347: an edit's Apply stages its
+ * writes in the Save bar like every form's change (Save writes them, in order, then one apply; Discard drops them),
+ * and the editor keeps the edit while they wait — or comes back to it after a Save that did not land.
+ */
 function Developer({ ctx }) {
-  const [fmt, setFmt] = useState("yaml");
-  const [editing, setEditing] = useState(false);
+  const mine = [...ctx.staged].find(([k]) => isYamlKey(k));
+  const held = mine && mine[1].yaml ? mine[1].yaml : null;
+  const heldCount = [...ctx.staged.keys()].filter(isYamlKey).length;
+  const [fmt, setFmt] = useState(held ? held.fmt : "yaml");
+  const [editing, setEditing] = useState(!!held);
   const model = fleetModel(ctx.fleet);
   const text = fmt === "yaml" ? toYaml(model) : JSON.stringify(model, null, 2);
-  const [draft, setDraft] = useState(text);
+  const [draft, setDraft] = useState(held ? held.text : text);
   const [msg, setMsg] = useState(null);
   useEffect(() => { if (!editing) setDraft(text); }, [text, editing]);
+  // The edit as staged: one that goes (its Save began, or Discard) leaves the editor on what is in force; one that comes
+  // back (a Save that did not land all of it) is the editor's text again.
+  const heldText = held ? held.text : null;
+  const was = useRef(heldText);
+  useEffect(() => {
+    if (heldText !== null && heldText !== was.current) { setFmt(held.fmt); setDraft(heldText); setEditing(true); }
+    else if (heldText === null && was.current !== null) { setEditing(false); setMsg(null); }
+    was.current = heldText;
+  }, [heldText]);
+  // The forms' own unsaved changes to the same settings come first: the editor is for reading until they are saved.
+  const blocked = formsStaged(ctx.staged);
   const copy = () => { try { navigator.clipboard.writeText(text).then(() => setMsg({ text: tn("copied") }), () => setMsg({ error: tn("failed") })); } catch { setMsg({ error: tn("failed") }); } };
   const download = () => {
     const a = document.createElement("a");
@@ -1329,25 +1374,32 @@ function Developer({ ctx }) {
     let parsed;
     try { parsed = fmt === "yaml" ? fromYaml(draft) : JSON.parse(draft || "{}"); } catch (e) { setMsg({ error: e.message }); return; }
     if (!parsed || typeof parsed !== "object") { setMsg({ error: tn("expectedMapping") }); return; }
+    if (formsStaged(ctx.staged)) { setMsg({ error: tn("devFormsUnsaved") }); return; }
     const requests = fullModelRequests(parsed, ctx.fleet);
+    // An Apply again replaces the edit staged before: what it writes is this text's difference from what is in force.
+    for (const k of ctx.staged.keys()) if (isYamlKey(k)) ctx.unstage(k);
+    was.current = null;                                  // its own Apply: not an edit that went (the editor stays on it)
     if (!requests.length) { setMsg({ text: tn("noChanges") }); return; }
-    if (operationActive()) { setMsg({ error: tn("applyBusyLocal") }); return; }
-    // The whole edit is one operation: its writes in order, then the apply — the same runner as every Apply.
-    if (startOperation(requests.map((r) => ({ label: `${r.method} ${decodeURIComponent(r.url.replace("/api/settings/", ""))}`, impact: requestImpact(ctx.schema, r), request: r })))) {
-      setEditing(false); setMsg(null);
+    const yaml = { fmt, text: draft };
+    let staged = 0;
+    for (const [i, r] of requests.entries()) {
+      if (ctx.stage(`${YAML_KEY}${i}`, { label: `${r.method} ${decodeURIComponent(r.url.replace("/api/settings/", ""))}`, impact: requestImpact(ctx.schema, r), request: r, yaml }, true)) staged++;
     }
+    setMsg(staged ? { text: tn("devStaged", staged) } : null);
   };
   return html`<section class="card s-dev">
     <div class="s-dev-bar">
       <div class="seg-inline" role="group" aria-label=${tn("format")}>
         ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div>
-      <button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
+      <button type="button" class="btn btn-sm" disabled=${blocked && !editing} title=${blocked && !editing ? tn("devFormsUnsaved") : undefined} onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
       <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
       <button type="button" class="btn btn-sm" title=${tn("devDownload")} onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">${tn("devDownload")}</span></button>
     </div>
     ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck=${false} wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
-        <div class="save-row"><button type="button" class="btn btn-primary" onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
+        <div class="save-row"><button type="button" class="btn btn-primary" disabled=${blocked} onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
       : html`<pre class="s-yaml">${text}</pre>`}
+    ${blocked ? html`<p class="note s-dev-blocked" role="status">${tn("devFormsUnsaved")}</p>`
+      : held && !msg ? html`<p class="note s-dev-held" role="status">${tn("devStaged", heldCount)}</p>` : null}
     ${msg ? html`<p class=${`feedback${msg.error ? " error" : ""}`} role="status">${msg.error || msg.text}</p>` : null}
   </section>`;
 }

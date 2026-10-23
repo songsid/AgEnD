@@ -710,22 +710,101 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     expect(p.root.querySelector("textarea.s-yaml").getAttribute("wrap")).toBe("off");
   });
 
-  it("Developer: an edited model is one operation — its writes in order, then one apply", async () => {
-    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+  /** Advanced → Developer: the model as JSON, edited by `change`, then the editor's Apply. */
+  async function applyModel(change: (m: any) => void) {
     btn(p.root.querySelector(".s-dev"), "JSON").click(); await settle(2);
-    btn(p.root.querySelector(".s-dev"), "Edit").click(); await settle(2);
+    if (!p.root.querySelector("textarea.s-yaml")) { btn(p.root.querySelector(".s-dev"), "Edit").click(); await settle(2); }
     const ta = p.root.querySelector("textarea.s-yaml");
     const model = JSON.parse(ta.value);
-    model.instances.alpha.description = "A3";
-    delete model.instances.beta;
-    model.instances.gamma = { working_directory: "/w/g" };
+    change(model);
     ta.value = JSON.stringify(model); fire(ta, "input"); await settle(2);
-    btn(p.root.querySelector(".s-dev"), "Apply & save").click();
+    btn(p.root.querySelector(".s-dev"), "Apply").click(); await settle(4);
+  }
+  const editAgents = (m: any) => { m.instances.alpha.description = "A3"; delete m.instances.beta; m.instances.gamma = { working_directory: "/w/g" }; };
+
+  it("Developer (#2347): Apply stages the edit in the Save bar — nothing written; Save writes it in order, then one apply", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    expect(writes()).toEqual([]);
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("3 unsaved change(s)");
+    // The editor keeps the edit while it waits, and says where it went.
+    expect(JSON.parse(p.root.querySelector("textarea.s-yaml").value).instances.gamma).toEqual({ working_directory: "/w/g" });
+    expect(p.root.querySelector(".s-dev .feedback")?.textContent).toContain("In the Save bar: 3 change(s) to fleet.yaml");
+    btn(p.root.querySelector(".s-pending"), "Save").click();
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
-    const order = writes().map(r => `${r.method} ${r.url}`);
     // #1408 step 5: only what the edit changed — the untouched defaults and channels are not written again.
-    expect(order).toEqual(["PATCH /api/settings/fleet/instances/alpha",
+    expect(writes().map(r => `${r.method} ${r.url}`)).toEqual(["PATCH /api/settings/fleet/instances/alpha",
       "POST /api/settings/fleet/instances/gamma", "DELETE /api/settings/fleet/instances/beta", "POST /api/settings/apply"]);
+    await settle(6);
+    expect(p.root.querySelector(".s-pending")).toBeNull();
+    expect(p.root.querySelector("textarea.s-yaml"), "a Save that went through leaves the editor on what is in force").toBeNull();
+  }, 10_000);
+
+  it("Developer (#2347): Apply again replaces the staged edit; an edit back to what is in force stages nothing", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("3 unsaved change(s)");
+    await applyModel((m) => { m.instances.gamma = undefined; delete m.instances.gamma; m.instances.beta = { working_directory: "/w/b", description: "B" }; });
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("1 unsaved change(s)");
+    await applyModel((m) => { m.instances.alpha.description = "A"; });
+    expect(p.root.querySelector(".s-pending")).toBeNull();
+    expect(p.root.querySelector(".s-dev .feedback")?.textContent).toContain("Nothing to change.");
+    expect(writes()).toEqual([]);
+  });
+
+  it("Developer (#2347): while the edit waits, the forms that write the same settings are off; Discard drops it and they are back", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    nav.navigate("/settings/agents");
+    await mount("agents", "settings:agents|2|en"); await settle(6);
+    const lock = p.root.querySelector(".s-yaml-lock");
+    expect(lock.disabled).toBe(true);
+    expect(lock.querySelector(".s-yaml-lock-note")?.textContent).toContain("An unsaved fleet.yaml edit (Advanced) writes these settings");
+    expect(lock.querySelector(".s-yaml-lock-note a")?.getAttribute("href")).toBe("/settings/advanced");
+    expect(btn(p.root.querySelector(".panel-actions"), "Setup wizard").disabled, "the wizard writes a connection and an agent").toBe(true);
+    for (const [section, nk] of [["agent-defaults", "settings:agent-defaults|3|en"], ["chat", "settings:chat|4|en"]] as const) {
+      nav.navigate(`/settings/${section}`);
+      await mount(section, nk); await settle(6);
+      expect(p.root.querySelector(".s-yaml-lock")?.disabled, section).toBe(true);
+    }
+    // Web settings are not in the editor's model: they stay editable beside it.
+    expect(p.root.querySelectorAll(".s-yaml-lock").length).toBe(1);
+    btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+    expect(p.root.querySelector(".s-yaml-lock")?.disabled).toBe(false);
+    expect(p.root.querySelector(".s-yaml-lock-note")).toBeNull();
+    nav.navigate("/settings/advanced");
+    await mount("advanced", "settings:advanced|5|en"); await settle(6);
+    expect(p.root.querySelector("textarea.s-yaml"), "Discard leaves the editor on what is in force").toBeNull();
+    expect(p.root.querySelector(".s-dev pre.s-yaml")?.textContent).toContain("beta");
+    expect(writes()).toEqual([]);
+  });
+
+  it("Developer (#2347): the forms' unsaved changes to the same settings come first — Edit and Apply wait for their Save", async () => {
+    await mount("agents", "settings:agents|1|en"); await settle(6);
+    await stageDescription("alpha", "A2");
+    nav.navigate("/settings/advanced");
+    await mount("advanced", "settings:advanced|2|en"); await settle(6);
+    const edit = btn(p.root.querySelector(".s-dev"), "Edit");
+    expect(edit.disabled).toBe(true);
+    expect(p.root.querySelector(".s-dev-blocked")?.textContent).toContain("Save or discard the unsaved changes to agents, agent defaults or connections first");
+    // A form's change that writes something else (You, Web) does not hold the editor.
+    btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
+    expect(btn(p.root.querySelector(".s-dev"), "Edit").disabled).toBe(false);
+    expect(p.root.querySelector(".s-dev-blocked")).toBeNull();
+    expect(writes()).toEqual([]);
+  });
+
+  it("Developer (#2347): a Save that does not land all of the edit brings the rest back to the bar, and the editor back to the edit", async () => {
+    routes.push(r => (r.method === "DELETE" && r.url.endsWith("/beta") ? { status: 409, body: { error: "settings_changed" } } : undefined));
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    await applyModel(editAgents);
+    btn(p.root.querySelector(".s-pending"), "Save").click();
+    await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 6000 });
+    await settle(8);
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("1 unsaved change(s)");
+    const ta = p.root.querySelector("textarea.s-yaml");
+    expect(ta, "the editor shows the edit again").toBeTruthy();
+    expect(JSON.parse(ta.value).instances.beta).toBeUndefined();
   }, 10_000);
 
   it("the wizard: the commit (a write an admin may confirm), then the ordinary apply — one, owned by the app — and the token only in the commit", async () => {
