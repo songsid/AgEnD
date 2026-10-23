@@ -15,11 +15,12 @@ the test steps and supported Node/npm versions stay the same.
 | `npm-rollback-proof.yml` | Ubuntu × npm 9.9.4, 10.8.2, 11.6.2 (Node 20.19.0); PR path filter retained | Same Ubuntu cells + macOS × all three npm versions |
 | `data-downgrade.yml` | Ubuntu current → published 2.1.12 → current, and current → published 2.2.6 (on its own bundled Node 22) → current | No extra trigger; Linux-only |
 
-The CI workflow still runs CHANGELOG guards, typecheck/build, four unit shards,
-integration tests and the Node 20 preinstall rollback smoke. Only a PR that
-changes nothing but `changes/` fragments skips typecheck/build and the tests (the
-CHANGELOG guards still check it); a change under `docs/` or to a root `*.md` runs
-everything, because tests read those files (#1932). macOS is included on all `v*` tags, including prereleases.
+The CI workflow still runs CHANGELOG guards, the GitHub Actions SHA-pin guard,
+typecheck/build, four unit shards, integration tests and the Node 20 preinstall
+rollback smoke. Only a PR that changes nothing but `changes/` fragments skips
+typecheck/build and the tests (the CHANGELOG guards and the pin guard still
+check it); a change under `docs/` or to a root `*.md` runs everything, because
+tests read those files (#1932). macOS is included on all `v*` tags, including prereleases.
 Weekly CI runs Monday at 03:17 UTC; the npm proof runs at 03:37 UTC. Weekly
 failures need investigation but are not a prerequisite for a PR or branch push.
 
@@ -80,3 +81,35 @@ A rehearsal of a change to the upgrade path runs these legs. Each one starts fro
 - **Mac**: launchd, with the update run from an agent's session, from an operator's terminal, and through `/update`.
 
 Each leg records the fleet's pid and program before and after the update.
+
+## GitHub Actions pins (#2528)
+
+Every remote `uses:` in `.github/workflows` and `.github/actions` is a
+40-character commit SHA, with the version tag in a trailing comment:
+
+```yaml
+- uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+```
+
+A local composite stays `./.github/actions/…`; its own remote `uses:` are
+pinned too. Dependabot's `github-actions` ecosystem (`.github/dependabot.yml`,
+weekly, one group) updates the SHA and the comment together.
+
+The `actions-pinned` job in `ci.yml` runs
+`scripts/ci/assert-actions-pinned.mjs` on every event, including a docs-only
+PR. The `build` aggregate fails unless that job is `success`.
+
+To add an action, resolve the tag with
+`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha` (peel an annotated tag
+through `git/ref/tags` then `git/tags`). Do not guess the SHA. Review a
+third-party action at the pinned commit; the only one today is
+`gitleaks/gitleaks-action` (commercial licence, `node20`, `dist/index.js` at
+`ff98106e4c7b2bc287b24eaf42907196329070c7` / v2.3.9).
+
+### Publish workflows
+
+`publish.yml` publishes `@songsid/agend` only on a `v*` tag push.
+`workflow_dispatch` is validation-only: checkout, `npm ci`, typecheck and
+build; it never runs `npm publish`. `publish-runtime.yml` defaults
+`dry_run: true` and runs `npm publish --dry-run`. Leave `dry_run` true except
+for a real runtime-package publish.

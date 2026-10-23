@@ -50,8 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -60,7 +60,7 @@ jobs:
         run: node scripts/runtime/build-runtime-packages.mjs --node "$PIN" --out "$RUNNER_TEMP/runtime"
       - name: The candidate, pinning them
         run: node scripts/ci/runtime-acceptance/prepare-candidate.mjs "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/packages" "$PIN" "2.2.0-acceptance.${{ github.run_id }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: runtime-acceptance-packages
           path: ${{ runner.temp }}/packages
@@ -78,25 +78,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: runtime-acceptance-packages
           path: ${{ runner.temp }}/packages
       # The local registry (verdaccio 6) runs on Node 22, started before the cell's own Node goes on PATH.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
       - name: Local registry with the candidate
         run: bash scripts/ci/runtime-acceptance/registry.sh "$RUNNER_TEMP/packages" "$RUNNER_TEMP/registry"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
       # Node 16's npm 8 runs node-gyp for better-sqlite3 even though it ships prebuilds (npm 10 does not); the build is a
       # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
       # has none; a Mac with the Command Line Tools' python3 does.
       - if: matrix.node == '16'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
       - name: tmux for the scratch daemon
@@ -117,24 +117,24 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: runtime-acceptance-packages
           path: ${{ runner.temp }}/packages
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
       - name: Local registry with the candidate
         run: bash scripts/ci/runtime-acceptance/registry.sh "$RUNNER_TEMP/packages" "$RUNNER_TEMP/registry"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
       # Node 16's npm 8 runs node-gyp for better-sqlite3 even though it ships prebuilds (npm 10 does not); the build is a
       # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
       # has none; a Mac with the Command Line Tools' python3 does.
       - if: matrix.node == '16'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
       # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per leg.
@@ -159,8 +159,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm

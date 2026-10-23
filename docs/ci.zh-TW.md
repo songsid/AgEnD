@@ -12,7 +12,7 @@
 | `npm-rollback-proof.yml` | Ubuntu × npm 9.9.4、10.8.2、11.6.2（Node 20.19.0）；PR 的路徑篩選保留 | 同樣的 Ubuntu 格 + macOS × 全部三個 npm 版本 |
 | `data-downgrade.yml` | Ubuntu current → published 2.1.12 → current，以及 current → published 2.2.6（用它自己附的 Node 22）→ current | 不加其他觸發；僅 Linux |
 
-CI workflow 仍執行 CHANGELOG guards、typecheck/build、四個 unit shards、integration tests，以及 Node 20 preinstall rollback smoke。只有僅改動 `changes/` 片段的 PR 會跳過 typecheck/build 與測試（CHANGELOG guards 仍會檢查）；改到 `docs/` 或根目錄 `*.md` 的 PR 會全部執行，因為測試會讀這些檔案（#1932）。所有 `v*` tag（包含預發版）都執行 macOS 格。CI 每週一 03:17 UTC 執行，npm proof 在 03:37 UTC 執行。每週失敗仍需調查，但不是 PR 或 branch push 的前置條件。
+CI workflow 仍執行 CHANGELOG guards、GitHub Actions SHA 釘選檢查、typecheck/build、四個 unit shards、integration tests，以及 Node 20 preinstall rollback smoke。只有僅改動 `changes/` 片段的 PR 會跳過 typecheck/build 與測試（CHANGELOG guards 與釘選檢查仍會跑）；改到 `docs/` 或根目錄 `*.md` 的 PR 會全部執行，因為測試會讀這些檔案（#1932）。所有 `v*` tag（包含預發版）都執行 macOS 格。CI 每週一 03:17 UTC 執行，npm proof 在 03:37 UTC 執行。每週失敗仍需調查，但不是 PR 或 branch push 的前置條件。
 
 Runtime acceptance 與 runtime publishing 使用獨立 workflow，覆蓋依其定義；參見[私有 runtime 設計](design/1450-private-node-runtime.md)。
 
@@ -55,3 +55,34 @@ npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.
 - **Mac**：launchd。更新分別從 Agent 的工作階段、操作者的終端機，以及 `/update` 執行。
 
 每個 leg 都要記錄更新前後 fleet 的 pid 與執行的程式。
+
+## GitHub Actions 釘選（#2528）
+
+`.github/workflows` 與 `.github/actions` 裡每一個遠端 `uses:` 都釘在 40 字元
+commit SHA，版本 tag 寫在後面的註解：
+
+```yaml
+- uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+```
+
+本機 composite 維持 `./.github/actions/…`；它自己的遠端 `uses:` 一樣要釘。
+Dependabot 的 `github-actions` 生態（`.github/dependabot.yml`，每週、一個
+group）會同時更新 SHA 與註解。
+
+`ci.yml` 的 `actions-pinned` job 每次事件都跑
+`scripts/ci/assert-actions-pinned.mjs`，包含只改 changelog 片段的 PR。
+`build` aggregate 在這個 job 不是 `success` 時失敗。
+
+新增 action 時用 `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`
+解析 tag（annotated tag 先走 `git/ref/tags` 再 `git/tags`），不要猜 SHA。
+第三方 action 要在釘選的 commit 上審查；目前只有
+`gitleaks/gitleaks-action`（商業授權，`node20`，`dist/index.js`，
+`ff98106e4c7b2bc287b24eaf42907196329070c7` / v2.3.9）。
+
+### 發布 workflow
+
+`publish.yml` 只在推送 `v*` tag 時發布 `@songsid/agend`。
+`workflow_dispatch` 只做驗證：checkout、`npm ci`、typecheck 與 build，
+不會跑 `npm publish`。`publish-runtime.yml` 預設 `dry_run: true`，執行
+`npm publish --dry-run`。除了真正發布 runtime 套件，不要把 `dry_run` 設成
+false。

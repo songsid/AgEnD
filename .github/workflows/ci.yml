@@ -37,7 +37,7 @@ jobs:
     outputs:
       docs-only: ${{ steps.check.outputs.docs-only }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: Detect whether this is a changelog-fragment-only change
@@ -94,7 +94,7 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       # CHANGELOG fragments (docs/development.md): every changes/*.md parses
@@ -110,6 +110,15 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/changelog-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
 
+  # ── GitHub Actions pins (#2528) ─────────────────────────────────────────────
+  # Always runs, no npm: a moved tag must fail the gate even on a docs-only PR.
+  actions-pinned:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: "Every remote uses: is a full commit SHA"
+        run: node scripts/ci/assert-actions-pinned.mjs
+
   # ── setup: install, typecheck, build — shared across all shards ─────────────
   # Always runs so gate-merge.sh always sees a `success` result (not `skipped`).
   # For docs-only PRs the heavy steps are skipped via a step condition and the
@@ -118,8 +127,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: detect-changes
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -146,8 +155,8 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -164,8 +173,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [detect-changes, setup]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -186,13 +195,14 @@ jobs:
   # never `skipped`.
   build:
     runs-on: ubuntu-latest
-    needs: [detect-changes, changelog, setup, test-shard, test-integration, install-smoke, node20-rollback-smoke]
+    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, install-smoke, node20-rollback-smoke]
     if: always()
     steps:
       - name: Check all jobs succeeded
         env:
           DOCS_ONLY: ${{ needs.detect-changes.outputs.docs-only }}
           CHANGELOG: ${{ needs.changelog.result }}
+          ACTIONS_PINNED: ${{ needs.actions-pinned.result }}
           SETUP: ${{ needs.setup.result }}
           SHARD: ${{ needs.test-shard.result }}
           INTEGRATION: ${{ needs.test-integration.result }}
@@ -200,9 +210,13 @@ jobs:
           ROLLBACK: ${{ needs.node20-rollback-smoke.result }}
         run: |
           set -euo pipefail
-          # changelog always runs; verify it first regardless of docs-only.
+          # changelog and the SHA-pin guard always run; verify them first regardless of docs-only.
           if [ "$CHANGELOG" != "success" ]; then
             echo "changelog job failed (result=$CHANGELOG)" >&2
+            exit 1
+          fi
+          if [ "$ACTIONS_PINNED" != "success" ]; then
+            echo "actions-pinned job failed (result=$ACTIONS_PINNED)" >&2
             exit 1
           fi
           if [ "$DOCS_ONLY" = "true" ]; then
@@ -347,8 +361,8 @@ jobs:
         # '24' and '26' cover the current and upcoming release lines.
         node: ['22.14.0', '22', '24', '26']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -446,8 +460,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [setup, detect-changes]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -466,7 +480,7 @@ jobs:
           git checkout -- package.json
           echo "TGZ=pinned-$TGZ" >> "$GITHUB_ENV"
           echo "TGZ_NORUNTIME=noruntime-$TGZ" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: needs.detect-changes.outputs.docs-only != 'true'
         with:
           node-version: '20'

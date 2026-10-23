@@ -3,6 +3,9 @@ name: Publish
 on:
   push:
     tags: ['v*']
+  # Validation only: checkout, install, typecheck, build. Never publishes.
+  # A v* tag push is the only path that reaches `npm publish`.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,14 +24,15 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       # Before anything is built: a tag that cannot be published fails here.
       - name: Set version from tag
+        if: github.event_name == 'push'
         run: |
           # Only a v-tag, and only version characters, may reach GITHUB_ENV (a newline would add a line of its own).
           case "$GITHUB_REF" in refs/tags/v*) ;; *) echo "::error::not a v* tag: $GITHUB_REF"; exit 1 ;; esac
@@ -38,6 +42,7 @@ jobs:
       # X.Y.Z → latest, X.Y.Z-beta.N → beta, X.Y.Z-alpha.N → alpha; anything else fails the job, and latest never
       # moves backwards (#1259). A failed lookup of the current latest skips only that last check.
       - name: Determine npm tag
+        if: github.event_name == 'push'
         run: |
           LATEST="$(npm view @songsid/agend@latest version 2>/dev/null || true)"
           NPM_TAG="$(node scripts/npm-dist-tag.mjs "$VERSION" "$LATEST")"
@@ -52,17 +57,23 @@ jobs:
       - run: npm run build
 
       - name: Set package version
+        if: github.event_name == 'push'
         run: npm pkg set "version=$VERSION"
       # #1488: 2.2 ships its own Node only through optionalDependencies pins; without them every host would run AgEnD on
       # whatever Node it has. What npm will publish — the packed manifest — must pin each shipped runtime package
       # exactly, to one version, and each must already be on the registry (scripts/release/check-runtime-pins.mjs).
       - name: The packed package pins its bundled Node, as published runtime packages
+        if: github.event_name == 'push'
         run: |
           TARBALL="$(npm pack --json --pack-destination "$RUNNER_TEMP" | node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')"
           node scripts/release/check-runtime-pins.mjs "$RUNNER_TEMP/$TARBALL"
       # The latest check again, right before publishing: the build took minutes, and the check is only as good
       # as the latest it read. The concurrency group keeps other release runs out of this window.
+      - name: Validation only (no publish)
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "workflow_dispatch is validation-only; npm publish is not run"
       - name: Publish
+        if: github.event_name == 'push'
         run: |
           LATEST="$(npm view @songsid/agend@latest version 2>/dev/null || true)"
           test "$(node scripts/npm-dist-tag.mjs "$VERSION" "$LATEST")" = "$NPM_TAG"

@@ -143,7 +143,14 @@ describe("no workflow fetches the published package from the registry by name", 
     const fetch = steps.find(s => s.run?.includes("npm pack"))!;
     expect(fetch.if).toBe("steps.restore.outputs.cache-hit != 'true'");
     // Order: restore, fetch on a miss, verify (always), save only on a miss and only after verify passed.
-    expect(steps.map(s => s.id ?? s.uses ?? "fetch")).toEqual(["restore", "fetch", "verify", "actions/cache/save@v4"]);
+    expect(steps.map(s => s.id ?? s.uses?.replace(/@[0-9a-f]{40}$/, "") ?? "fetch")).toEqual([
+      "restore",
+      "fetch",
+      "verify",
+      "actions/cache/save",
+    ]);
+    expect(steps[0].uses).toMatch(/^actions\/cache\/restore@[0-9a-f]{40}$/);
+    expect(steps[3].uses).toMatch(/^actions\/cache\/save@[0-9a-f]{40}$/);
     expect(steps[2].if).toBeUndefined();
     expect(steps[3].if).toBe("steps.restore.outputs.cache-hit != 'true'");
     expect(steps[0].with!.key).toBe(steps[3].with!.key);

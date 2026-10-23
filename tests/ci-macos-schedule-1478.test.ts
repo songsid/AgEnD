@@ -76,19 +76,24 @@ describe("CI admission and cancellation", () => {
   });
   const ci = load("ci.yml");
   const aggregate = ci.jobs.build.steps.find(step => step.name === "Check all jobs succeeded")!;
-  function runAggregate(result = "success") {
+  function runAggregate(result = "success", extra: Record<string, string> = {}) {
     return execFileSync("/bin/bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", aggregate.run!], {
       encoding: "utf8", env: { PATH: process.env.PATH, DOCS_ONLY: "false", CHANGELOG: "success",
-        SETUP: "success", SHARD: "success", INTEGRATION: "success", SMOKE: result, ROLLBACK: "success" },
+        ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success",
+        SMOKE: result, ROLLBACK: "success", ...extra },
       stdio: "pipe",
     });
   }
   it("keeps the required build aggregate and strict Linux smoke result", () => {
     expect(ci.jobs.build.if).toBe("always()");
     expect(ci.jobs.build.needs).toContain("install-smoke");
+    expect(ci.jobs.build.needs).toContain("actions-pinned");
     expect(runAggregate()).toContain("All jobs succeeded.");
   });
   it.each(["failure", "cancelled", "skipped", "", "unknown"])("a %s Linux smoke cannot make build green", result => {
     expect(() => runAggregate(result)).toThrow();
+  });
+  it("a failed SHA-pin guard cannot make build green, even for docs-only", () => {
+    expect(() => runAggregate("success", { DOCS_ONLY: "true", ACTIONS_PINNED: "failure" })).toThrow();
   });
 });
