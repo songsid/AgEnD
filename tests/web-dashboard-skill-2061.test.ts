@@ -96,4 +96,11 @@ describe("the web-dashboard skill", () => {
     expect(SKILL).not.toMatch(/\b(?:\d{1,3}\.){3}\d{1,3}\b(?<!127\.0\.0\.1)/);
     expect(SKILL).not.toMatch(/[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}/);   // a bot token shape
   });
+
+  // 2.3.0 stable (#1633): an agent on 2.3.0 is never told a feature is "2.3 beta" or to check for a beta version, in
+  // either variant (the Canvas-Worker-off one is hand-maintained beside this one).
+  it("names no beta version, in either variant", () => {
+    const off = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-dashboard/SKILL.canvas-worker-off.md"), "utf8");
+    expect([SKILL.match(/\bbeta\b[^\n]{0,40}/gi), off.match(/\bbeta\b[^\n]{0,40}/gi)]).toEqual([null, null]);
+  });
 });

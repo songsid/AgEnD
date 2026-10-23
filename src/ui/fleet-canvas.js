@@ -8,9 +8,10 @@
 //   a team or searching never moves another one. Tree lines: a stem from General, a bus over each row, a trunk at the
 //   left joining the rows, one drop per team — never a line per member (the box says who is in it). A phone packs
 //   narrower (one team a row, at most two columns), so General and the first team open readable.
-// - Per device (localStorage; blocked storage: this page only): Canvas or List, and which teams are folded. The view
-//   itself is not kept: it opens on General and the first row (#1918's user decision 2) — on a desktop as wide as the
-//   panel allows (no larger than life), on a phone no smaller than readable. 0 / Fit shows the whole fleet.
+// - Per device (localStorage; blocked storage: this page only): Canvas, List or Office (fleet-office.js: the same fleet
+//   as a pixel office), and which teams are folded. The view itself is not kept: it opens on General and the first row
+//   (#1918's user decision 2) — on a desktop as wide as the panel allows (no larger than life), on a phone no smaller
+//   than readable. 0 / Fit shows the whole fleet.
 // - Presentation only, like the list: a card opens that instance's chat; nothing is edited here (#1689 is how teams
 //   change). The live state is the app store's (fleet-org.js buildOrgView), so the canvas moves with the stream.
 // - Live traffic (fleet-traffic.js): the messages between instances, drawn between the team boxes and the cards (never
@@ -24,17 +25,18 @@ import { chatPath } from "/assets/app-route.js";
 import { navigate } from "/assets/app-nav.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
-import { avatarOf, backendLabel, firstCharacter, namesOf } from "/assets/instance-nav.js";
+import { avatarOf, firstCharacter, namesOf } from "/assets/instance-nav.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
-import { buildOrgView, OrgChart, OrgSummary } from "./fleet-org.js";
-import { OC, REST_KEY, SUM_LINE, canvasLayout, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
+import { buildOrgView, nodeText, OrgChart, OrgSummary } from "./fleet-org.js";
+import { Office } from "./fleet-office.js";
+import { OC, REST_KEY, SUM_LINE, canvasLayout, hits, needle, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
 import { createTrafficStore, FAR_K, HEAD, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
 import { routeScene } from "./fleet-route-scene.js";
 import { createRouteClient } from "./fleet-route.js";
 
 register("orgc", {
   en: {
-    view: "View", canvas: "Canvas", list: "List", find: "Find an instance", findShort: "Find", found: "{0} found", foundOne: "1 found", noMatch: "No match",
+    view: "View", canvas: "Canvas", list: "List", office: "Office", find: "Find an instance", findShort: "Find", found: "{0} found", foundOne: "1 found", noMatch: "No match",
     zoomIn: "Zoom in", zoomOut: "Zoom out", fit: "Fit to screen",
     label: "Org chart canvas. Tab or the arrow keys move between instances, Enter opens a chat, + and − zoom, 0 fits the fleet.",
     expand: "Expand", collapse: "Collapse", members: "{0} members", member: "1 member", inFolded: "{0} found · expand", noMembers: "No members",
@@ -44,7 +46,7 @@ register("orgc", {
     lgWork: "in progress (until its report)", lgReturn: "done (report back)", lgStale: "no report yet",
   },
   "zh-TW": {
-    view: "檢視", canvas: "畫布", list: "清單", find: "尋找 instance", findShort: "尋找", found: "找到 {0} 個", foundOne: "找到 1 個", noMatch: "沒有符合的",
+    view: "檢視", canvas: "畫布", list: "清單", office: "辦公室", find: "尋找 instance", findShort: "尋找", found: "找到 {0} 個", foundOne: "找到 1 個", noMatch: "沒有符合的",
     zoomIn: "放大", zoomOut: "縮小", fit: "符合畫面",
     label: "組織圖畫布。用 Tab 或方向鍵在 instance 之間移動，Enter 開啟聊天，+ 和 − 縮放，0 顯示整個 fleet。",
     expand: "展開", collapse: "收合", members: "{0} 名成員", member: "1 名成員", inFolded: "找到 {0} 個 · 展開", noMembers: "沒有成員",
@@ -90,7 +92,8 @@ export function zoomAt(v, f, cx, cy) {
 // ── Per device ──
 
 const MODE_KEY = "agend_org_mode", FOLD_KEY = "agend_org_folded", LIVE_KEY = "agend_org_live", KEY_KEY = "agend_org_key";
-function readMode() { try { return localStorage.getItem(MODE_KEY) === "list" ? "list" : "canvas"; } catch { return "canvas"; } }
+const MODES = ["canvas", "list", "office"];
+function readMode() { try { const m = localStorage.getItem(MODE_KEY); return MODES.includes(m) ? m : "canvas"; } catch { return "canvas"; } }
 function readLive() { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch { return true; } }
 function readFolded() {
   try { const a = JSON.parse(localStorage.getItem(FOLD_KEY) || "[]"); return new Set(Array.isArray(a) ? a.filter((x) => typeof x === "string").slice(0, 500) : []); } catch { return new Set(); }
@@ -118,8 +121,6 @@ export function clipText(s, n) {
   return `${out}…`;
 }
 const clip = clipText;
-const needle = (q) => String(q || "").trim().toLowerCase();
-const hits = (node, q) => !!q && (node.name.toLowerCase().includes(q) || (!!node.i && typeof node.i.display_name === "string" && node.i.display_name.toLowerCase().includes(q)));
 
 function Face({ it, name, cx, cy, r }) {
   const a = it ? avatarOf(it) : { kind: "initial", text: firstCharacter(name) };
@@ -136,10 +137,8 @@ function Face({ it, name, cx, cy, r }) {
 
 function Card({ c, lead, cls, onOpen }) {
   const n = c.node, it = n.i;
-  const names = it ? namesOf(it) : { primary: n.name, secondary: "" };
+  const { primary, sub, full } = nodeText(n);
   const id = it ? identityOf(it) : null;
-  const sub = it ? `${STATE_LABEL(n.state)} · ${backendLabel(it.backend)}` : STATE_LABEL(n.state);
-  const full = `${names.primary}${names.secondary ? ` (${names.secondary})` : ""} — ${sub}`;
   const cy = c.h / 2;
   return html`<g class=${`oc-node st-${n.state}${lead ? " lead" : ""}${cls ? ` ${cls}` : ""} ${identityClasses(id)}`} ref=${(el) => paintIdentity(el, id)}
     transform=${`translate(${c.x} ${c.y})`} data-name=${n.name} data-key=${c.key} tabindex="0" role=${it ? "link" : "img"}
@@ -149,7 +148,7 @@ function Card({ c, lead, cls, onOpen }) {
     <rect class="oc-idbar" x="0" y="8" width="4" height=${c.h - 16} rx="2" />
     <${Face} it=${it} name=${n.name} cx=${26} cy=${cy} r=${16} />
     <circle class=${`oc-dot st-${n.state}`} cx=${38} cy=${cy + 12} r=${5} />
-    <text class="oc-name" x=${50} y=${cy - 4}>${clip(names.primary, lead ? 20 : 15)}</text>
+    <text class="oc-name" x=${50} y=${cy - 4}>${clip(primary, lead ? 20 : 15)}</text>
     <text class="oc-sub" x=${50} y=${cy + 13}><tspan class=${`oc-st st-${n.state}`}>${clip(sub, lead ? 27 : 20)}</tspan></text>
   </g>`;
 }
@@ -189,6 +188,9 @@ function TeamHead({ b, q, onFold }) {
     </g>
   </g>`;
 }
+
+/** What a card (or an Office desk) opens: that instance's chat. */
+const openChat = (name) => navigate(chatPath(name));
 
 /** Every card, in the order Tab walks them (General, then each team's members in reading order). */
 const cardsOf = (L) => [...L.tops, ...L.boxes.flatMap((b) => b.cells)];
@@ -361,7 +363,7 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
     if (!L.boxes.some((b) => b.folded && b.nodes.some((n) => n.name === j.name))) pendingJump.current = null;   // gone: nothing to wait for
   });
 
-  const open = (name) => navigate(chatPath(name));
+  const open = openChat;
   // The click that ends a drag or a pinch opens nothing and folds nothing.
   const onClickCapture = (e) => { if (drag.current.swallow) { e.preventDefault(); e.stopPropagation(); } };
   const onWheel = (e) => {
@@ -547,17 +549,18 @@ export function OrgCanvas({ org, app, lease }) {
     <div class="list-head org-head oc-bar">
       <span>${view.total === 1 ? t("org.instance") : t("org.instances", view.total)}</span><${OrgSummary} counts=${view.counts} />
       <div class="oc-tools">
-        ${mode === "canvas" ? html`<label class="s-search oc-find"><${Icon} name="search" size=${14} /><span class="sr-only">${tc("find")}</span>
+        ${mode !== "list" ? html`<label class="s-search oc-find"><${Icon} name="search" size=${14} /><span class="sr-only">${tc("find")}</span>
           <input type="search" value=${query} placeholder=${tc("findShort")} autocomplete="off" onInput=${(e) => setQuery(e.target.value)} onKeyDown=${onFind} />
           ${q ? html`<span class="oc-found" role="status">${found ? (found === 1 ? tc("foundOne") : tc("found", found)) : tc("noMatch")}</span>` : null}</label>` : null}
-        ${mode === "canvas" && live ? html`<${KeyToggle} open=${keyOpen} onToggle=${toggleKey} />` : null}
+        ${mode !== "list" && live ? html`<${KeyToggle} open=${keyOpen} onToggle=${toggleKey} />` : null}
         <button type="button" class=${`btn btn-sm oc-live${live ? " on" : ""}`} aria-pressed=${live ? "true" : "false"} title=${live ? tc("liveOn") : tc("liveOff")}
           onClick=${() => setLive((v) => !v)}><span class="oc-live-dot" aria-hidden="true"></span>${tc("live")}</button>
-        <div class="seg-inline" role="group" aria-label=${tc("view")}>${modeBtn("canvas")}${modeBtn("list")}</div>
+        <div class="seg-inline" role="group" aria-label=${tc("view")}>${modeBtn("canvas")}${modeBtn("list")}${modeBtn("office")}</div>
       </div>
     </div>
-    ${mode === "canvas" && live && keyOpen ? html`<${Legend} />` : null}
+    ${mode !== "list" && live && keyOpen ? html`<${Legend} />` : null}
     ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${sending} />`
+      : mode === "office" ? html`<${Office} view=${view} traffic=${live ? traffic : null} q=${q} lease=${lease} onOpen=${openChat} />`
       : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} traffic=${live ? traffic : null} />`}
   </div>`;
 }

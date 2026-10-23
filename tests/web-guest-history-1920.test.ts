@@ -271,9 +271,9 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     const cursor = first.cursor as string;
     h.markChannel("a", "web-1");
     const parse = (c: string) => ({ boot: c.split("-")[0]!, id: Number(c.split("-")[1]) });
-    const next = guestPollBody({ instances: [] }, SCOPE, 2, g, cursor, () => [...h.replayFor(parse(cursor)), ...h.seenAfter(parse(cursor))]);
+    const next = guestPollBody({ instances: [] }, SCOPE, 2, g, cursor, () => h.replayFor(parse(cursor)));
     expect((next.messages as Array<{ text: string }>).map((m) => m.text)).toEqual(["held"]);
-    const after = guestPollBody({ instances: [] }, SCOPE, 3, g, next.cursor as string, () => [...h.replayFor(parse(next.cursor as string)), ...h.seenAfter(parse(next.cursor as string))]);
+    const after = guestPollBody({ instances: [] }, SCOPE, 3, g, next.cursor as string, () => h.replayFor(parse(next.cursor as string)));
     expect(after.messages, "not sent again").toEqual([]);
   });
   it("#2085 review: a mark made before a restart still reaches the old cursor's next poll (persisted), once; unmarked rows stay hidden", async () => {
@@ -293,7 +293,7 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     const two = new WebChatHistory({ boot: "b2" }); two.restore("a", store().load("a"));
     const g2 = guestOf(two);
     const parse = (c: string) => { const i = c.lastIndexOf("-"); return { boot: c.slice(0, i), id: Number(c.slice(i + 1)) }; };
-    const replay = (c: string) => { const cur = parse(c); const rows = [...two.replayFor(cur), ...two.seenAfter(cur)]; return rows.filter((m, i) => rows.findIndex((x) => x.boot === m.boot && x.id === m.id) === i); };
+    const replay = (c: string) => two.replayFor(parse(c));   // #1774: replayFor counts a row where it was seen (seenSeq)
     const next = guestPollBody({ instances: [] }, SCOPE, 2, g2, cursor, () => replay(cursor));
     expect((next.messages as Array<{ text: string }>).map((m) => m.text), "the old tab's next poll gets it").toEqual(["held"]);
     const again = guestPollBody({ instances: [] }, SCOPE, 3, g2, next.cursor as string, () => replay(next.cursor as string));

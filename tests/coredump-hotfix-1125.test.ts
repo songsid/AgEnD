@@ -218,6 +218,8 @@ describe("`agend update` when the package is already current (built CLI copy, st
     mkdirSync(pkg);
     spawnSync("cp", ["-r", join(process.cwd(), "dist"), join(pkg, "dist")]);
     spawnSync("cp", ["-r", join(process.cwd(), "templates"), join(pkg, "templates")]);
+    // Runtime root admission shares this shipped helper with the installer (#2435).
+    spawnSync("cp", ["-r", join(process.cwd(), "launcher"), join(pkg, "launcher")]);
     // No runtime pins, as in installedCopy (#1450).
     writeFileSync(join(pkg, "package.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")), optionalDependencies: undefined }));
     symlinkSync(join(process.cwd(), "node_modules"), join(pkg, "node_modules"));

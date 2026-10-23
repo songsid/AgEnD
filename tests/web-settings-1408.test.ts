@@ -243,6 +243,32 @@ describe("#2347: one save model — an edit is unsaved at once, the bar's Save w
     expect([away, back, p.root.querySelector("#g-ll").value, rowClass("#g-ll"), !!bar(), writes()])
       .toEqual([true, ["warn", "field s-dirty", true], "info", "field", false, []]);
   });
+  it("#2495 review: a dashboard draft keeps only the feature edited — another admin's change to the others is not undone", async () => {
+    // A Save that fails keeps the drafts and reads the configuration again, remounting the sections: meanwhile another
+    // admin turned web_settings off. The draft must put back only appearance (edited), over what is saved now.
+    let remote = false, failOnce = true;
+    const fleet = (webSettings: boolean) => ({ ...structuredClone(FLEET), defaults: { backend: "claude-code", dashboard: { appearance: true, task_board: false, web_settings: webSettings } } });
+    routes.push((r) => (r.method === "GET" && r.url === "/api/settings/fleet/raw" ? { body: fleet(!remote) } : undefined));
+    routes.push((r) => {
+      if (r.method !== "PUT" || r.url !== "/api/settings/fleet/defaults") return undefined;
+      if (failOnce) { failOnce = false; remote = true; return { status: 500, body: { error: "busy" } }; }
+      return { body: { ok: true } };
+    });
+    await general();
+    const boxes = () => p.root.querySelectorAll(".dash-perms input[type=checkbox]");
+    const before = boxes().map((b: any) => b.checked);
+    fire(Object.assign(boxes()[0], { checked: false }), "change"); await settle(4);     // appearance off
+    save().click(); await settle(2);
+    await vi.waitFor(() => expect(op()?.phase === "running").toBe(false), { timeout: 6000 });
+    await settle(20);
+    const back = boxes().map((b: any) => b.checked);
+    const puts = () => writes().filter((r) => r.url === "/api/settings/fleet/defaults").map((r) => r.body);
+    const first = puts().length;
+    save().click(); await settle(2);
+    await vi.waitFor(() => expect(puts().length).toBe(first + 1), { timeout: 6000 });
+    // All three go (the defaults write replaces `dashboard` whole): the edited one as edited, the others as now saved.
+    expect([before, back, puts().at(-1)]).toEqual([[true, false, true], [false, false, false], { dashboard: { appearance: false, task_board: false, web_settings: false } }]);
+  });
   it("after a Save that went through, the drafts go: the form shows what is saved, unmarked", async () => {
     let saved = false;
     routes.push((r) => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" ? (saved = true, { body: { ok: true } }) : undefined));

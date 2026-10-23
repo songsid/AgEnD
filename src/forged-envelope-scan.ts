@@ -1,3 +1,4 @@
+import { ensureAgendHome } from "./agend-home.js";
 /**
  * #995 (#856-B): post-hoc detection of fabricated peer envelopes.
  *
@@ -20,7 +21,7 @@
  */
 
 import { t } from "./locale.js";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { credentialStoreHomeForInstance } from "./backend/credential-profile.js";
 import { deepMergeGeneric, getEffectiveInstanceDefaults } from "./config.js";
@@ -409,7 +410,7 @@ export function loadReportedEnvelopeIds(dataDir: string): Set<string> {
 export function recordReportedEnvelopeIds(dataDir: string, ids: Iterable<string>): void {
   const merged = loadReportedEnvelopeIds(dataDir);
   for (const id of ids) merged.add(id);
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = join(dataDir, "forged-envelope-reports.json");
   writeFileSync(path, JSON.stringify({ reported_message_ids: [...merged] }, null, 2), { encoding: "utf8", mode: 0o600 });
 }

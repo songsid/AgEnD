@@ -1,3 +1,4 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -7,10 +8,8 @@ export function operatorUid(label: string): number {
   return process.getuid();
 }
 export async function assertOperatorRoot(dataDir: string, label: string): Promise<void> {
-  const root = await lstat(dataDir);
-  if (!root.isDirectory() || root.isSymbolicLink() || root.uid !== operatorUid(label) || (root.mode & 0o022)) {
-    throw new Error(`${label} requires an owned real AGEND_HOME without group/other write permission.`);
-  }
+  operatorUid(label);
+  ensureAgendHome(dataDir, { create: false, label });
 }
 export async function assertOperatorClientPath(dataDir: string, socketPath: string, label: string): Promise<void> {
   await assertOperatorRoot(dataDir, label);

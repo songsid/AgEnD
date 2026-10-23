@@ -23,6 +23,7 @@ import type { WebEffectService } from "./web-effect-service.js";
 import type { EffectTrialActor } from "./web-effect-trials.js";
 import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
+import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
@@ -53,7 +54,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage } from "./web-chat-history.js";
+import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
@@ -68,6 +69,7 @@ import { resolveTz } from "./tz-utils.js";
 import { filesPlayInChat } from "./web-effect.js";
 import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
 import { xmsgShown } from "./search/search-docs.js";
+import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -199,6 +201,9 @@ const SendMessageSchema = z.object({
   attachments: z.array(z.string().regex(/^[0-9a-f]{32}$/)).max(UPLOAD_LIMITS.maxFiles).optional(),
   /** #2272: the message of this chat this one replies to — its row only; the server reads what it quotes. */
   replyTo: z.object({ boot: z.string().regex(/^[0-9a-f]{1,32}$/), id: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER) }).strict().optional(),
+  /** The sending page's own id for its pending bubble: echoed on the live event only (never recorded), so that page
+   *  swaps its "sending" bubble for the real one even when the stream beats this answer. */
+  clientId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional(),
 }).strict().refine(v => v.message.trim().length > 0 || (v.attachments?.length ?? 0) > 0, { message: "a message or at least one file", path: ["message"] });
 
 /** An instance name that is safe as one path segment (no separator, no NUL, not a dot name). */
@@ -352,7 +357,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean } };
+    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -379,7 +384,7 @@ export interface WebApiContext {
    * (#1320 part B). Resolves the entries and adapters itself; returns how
    * many channels were posted to. Never rejects the web send on failure.
    */
-  sendClassicWebEcho?(instance: string, text: string, sender?: string, copies?: import("./web-reactions.js").WebEchoCopy[]): Promise<number>;
+  sendClassicWebEcho?(instance: string, text: string, sender?: string, copies?: import("./web-reactions.js").WebEchoCopy[], reply?: { posts: readonly WebChatPost[]; text: string }): Promise<number>;
   /** #1920 §5.2: a web message's channel copy was sent — guests of that channel may see it now. */
   /** #2305: `copies`, the copies' own message ids, so a reaction to the web message is put on them too. */
   webMessageInChannel?(instance: string, messageId: string, copies?: readonly import("./web-reactions.js").WebEchoCopy[]): void;
@@ -421,6 +426,10 @@ export interface WebApiContext {
   readonly appIcon?: AppIconStore;
   /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
   readonly themeStore?: ThemeStore;
+  /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
+  readonly officeStore?: OfficeStore;
+  /** How often a person may save the offices (absent: no limit, as in a test without it). */
+  readonly officeWrites?: OfficeWriteLimiter;
   readonly webAppearance?: WebAppearance;
   /** #1629 r4-5: installed mods and a person's staged import. */
   readonly mods?: ModStore;
@@ -1121,7 +1130,14 @@ function webAuthorityOf(req: IncomingMessage, url: URL, ctx: WebApiContext, inst
   if (!ctx.webAuthority) return { authority: noAuthority(0), refusal: "not_session" };
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   return ctx.webAuthority({ session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req),
-    peer: classifyWebPeer(req), ...(instance !== undefined ? { instance } : {}) });
+    peer: webPeerOf(req), ...(instance !== undefined ? { instance } : {}) });
+}
+/**
+ * #1939 §3.4 / #2453 §0.2: where this request came from — the admin's named link by the gateway's own provenance (its
+ * exact hostname), else what the TCP peer and Host say (a quick tunnel's request is `lan`, and refused as public_link).
+ */
+export function webPeerOf(req: IncomingMessage): WebPeer {
+  return gatewayRequestContext(req)?.named === true ? "named_link" : classifyWebPeer(req);
 }
 /**
  * #2122: what let this request in, asked now — its session (by handle, under the token it was signed in with) or the
@@ -1433,13 +1449,11 @@ export function handleWebRequest(
     const after = url.searchParams.get("after");
     const fresh = after === null || after === "";              // a cursor that is not ours in shape still gets nothing
     if (guest) {
-      // #2085 review: and what became the channel's after its cursor (an older row, its copy sent since), once each.
+      // #2085 review: with what became the channel's after its cursor (an older row, its copy sent since), once each —
+      // replayFor counts a row where it was seen (seenSeq), as for every reader (#1774).
       json(res, 200, guestPollBody(ctx.getUiStatus(), guest.scope(), Date.now(), guest, after, () => {
         if (!history) return [];
-        if (fresh) return history.after(0);
-        const cursor = parseLastEventId(after);
-        const rows = [...history.replayFor(cursor), ...history.seenAfter(cursor)];
-        return rows.filter((m, i) => rows.findIndex((x) => x.boot === m.boot && x.id === m.id) === i);
+        return fresh ? history.after(0) : history.replayFor(parseLastEventId(after));
       }));
       return true;
     }
@@ -1703,6 +1717,56 @@ export function handleWebRequest(
     return true;
   }
 
+  // ── Fleet → Org chart → Office: the offices people made (web-offices.json, web-office-store.ts) ──
+  // GET /ui/offices: { rev, offices, readable } for whoever may open the org chart (the public link too: it reads the
+  // chart; a guest's routes do not include it). PUT /ui/offices { offices, rev? }: a person's change, as a theme's reset
+  // or lock is — an admin session only, never the CLI token, never the public link (absent from its manifest, and
+  // refused here too); asked again once the body is in. Every page hears `offices` on the stream and reads again.
+  if (method === "GET" && path === "/ui/offices") {
+    const store = ctx.officeStore;
+    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+    json(res, 200, store.list());
+    return true;
+  }
+  if (method === "PUT" && path === "/ui/offices") {
+    const store = ctx.officeStore;
+    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
+    // The person (an admin session's account), or the status that refuses the request.
+    const who = (): { person: string } | { status: number } => {
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      if (verdict.kind !== "allow") return { status: 401 };
+      return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+    };
+    const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
+    const first = who();
+    if ("status" in first) { refuse(first.status); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const now = who();
+      if ("status" in now) { refuse(now.status); return; }
+      if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "offices required" }); return; }
+      const extra = Object.keys(body).find(k => k !== "offices" && k !== "rev");
+      if (extra !== undefined) { json(res, 400, { error: "offices_invalid", detail: `unknown key "${extra}"` }); return; }
+      // Office review: the rev the page read is required — a save without one would overwrite another person's unseen.
+      if (body.rev === undefined) { json(res, 428, { error: "offices_rev_required", detail: "send the rev you read (GET /ui/offices)" }); return; }
+      if (!Number.isSafeInteger(body.rev)) { json(res, 400, { error: "offices_invalid", detail: "rev: an integer" }); return; }
+      const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
+      if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
+      const r = store.replace(body.offices, body.rev as number);
+      if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+      limiter?.record(now.person);
+      ctx.emitSseEvent("offices", { rev: r.rev });
+      json(res, 200, { rev: r.rev, offices: r.offices });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Saving offices failed");
+      try { json(res, 500, { error: "Saving offices failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
   // ── #1630: avatars and Discord server emoji, same-origin (the page never loads a platform's CDN; img-src stays 'self') ──
 
   const imageMatch = path.match(/^\/ui\/img\/(bot|avatar|emoji)\/([^/]+)$/);
@@ -1954,7 +2018,7 @@ export function handleWebRequest(
   if (path === "/ui/authorization" && (method === "GET" || method === "POST")) {
     const judge = () => {
       const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      return { session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req), peer: classifyWebPeer(req) };
+      return { session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req), peer: webPeerOf(req) };
     };
     res.setHeader("Cache-Control", "no-store");
     if (method === "GET") {
@@ -2523,11 +2587,12 @@ export function handleWebRequest(
     return true;
   }
 
-  // #2293: global search — an admin's only: the header token or an admin session. Never over the public link (the gateway
-  // does not list it either), never a guest (not in GUEST_ROUTES). Asked on arrival and again before the answer is sent.
+  // #2293: global search — an admin's only: the header token or an admin session. Never a guest (not in GUEST_ROUTES).
+  // #2478 (the user's request): over the public link too, unless web.search.public_link is false. Asked on arrival and
+  // again before the answer is sent.
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) {
     const refusal = (): [number, string] | null => {
-      if (gatewayRequestContext(req)) return [404, "search_not_over_public_link"];
+      if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false) return [404, "search_not_over_public_link"];
       if (guestRequestOf(req)) return [403, "guest_forbidden"];
       if (ctx.fleetConfig?.web?.search?.enabled === false || !ctx.searchIndex || ctx.searchIndex.status() === "unavailable") return [404, "search_unavailable"];
       return null;
@@ -2814,6 +2879,14 @@ function webDeliveryFailure(err: unknown): { reason: string; error: string } {
 }
 
 /** Handle POST /ui/send — extracted for readability. */
+/** Each web server's own memory of the sends it accepted by clientId (web-send-dedupe.ts). */
+const webSendDedupes = new WeakMap<object, WebSendDedupe>();
+function webSendDedupeOf(ctx: WebApiContext): WebSendDedupe {
+  let d = webSendDedupes.get(ctx);
+  if (!d) webSendDedupes.set(ctx, d = new WebSendDedupe());
+  return d;
+}
+
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
   const arrival = webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);   // #1939 §3: again after the body
   let body = "";
@@ -2829,6 +2902,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
   });
   req.on("end", async () => {
       if (!permitWebContinuation(req, res, ctx)) return;
+    // A claimed clientId is settled however this ends: with the messageId once accepted, else forgotten.
+    let claim: Extract<WebSendClaim, { kind: "new" }> | undefined;
+    let acceptedId: string | null = null;
     try {
       const raw = JSON.parse(body);
       const parsed = SendMessageSchema.safeParse(raw);
@@ -2837,7 +2913,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 400, { error: `${issue.path.join(".") || "body"}: ${issue.message}` });
         return;
       }
-      const { instance, message: typed, attachments = [], replyTo } = parsed.data;
+      const { instance, message: typed, attachments = [], replyTo, clientId } = parsed.data;
       // #1920 step 2b: a guest writes only to an in-scope instance, while guests may chat, and never a command.
       const guest = guestRequestOf(req);
       const refused = guestChatRefusal(guest, instance);
@@ -2857,6 +2933,22 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       if (!registered && !ctx.instanceIpcClients.has(instance)) {
         json(res, 404, { error: `Instance not found: ${instance}` });
         return;
+      }
+      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
+      // body is in: a session revoked meanwhile sends nothing (not as the operator).
+      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
+      if (!person) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      // #2438 follow-up: the page's Retry of a send that already went (its answer and the live copy lost) is that send:
+      // answered with its messageId, delivered once. One still going is waited for; one that failed is sent anew.
+      if (clientId) {
+        const key = WebSendDedupe.key(person.key, instance, clientId);
+        for (;;) {
+          const seen = webSendDedupeOf(ctx).claim(key);
+          if (seen.kind === "going") { await seen.settled; if (res.destroyed) return; continue; }
+          if (seen.kind === "accepted") { json(res, 200, { sent: true, messageId: seen.messageId, repeated: true }); return; }
+          claim = seen;
+          break;
+        }
       }
       let files: UploadEntry[] = [];
       if (attachments.length > 0) {
@@ -2881,10 +2973,6 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         && (!guest || (guest.current() && !guestChatRefusal(guest, instance)))
         && (registered ? registeredChatInstance(ctx, instance) : ctx.instanceIpcClients.has(instance));
       const message = typed;
-      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
-      // body is in: a session revoked meanwhile sends nothing (not as the operator).
-      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
-      if (!person) { ctx.webFiles?.release(files); json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
       // #1939 S1: what the receipt records about who authorized it (observe only: agents still read web as recognition).
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx, instance));
       const ts = new Date().toISOString();
@@ -2902,13 +2990,18 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // Add no runtime credentials or local attachment paths to the display copy. A reply opens with the line it
       // answers (#2272) — quoted only if that message reached the channel; a web-only one is named, never copied out.
       const quoteLine = quoted ? webReplyEchoLine(quoted) : "";
-      const preview = (quoteLine ? `${quoteLine}\n` : "") + webEchoPreview(message, files.map(f => f.name));
+      const plainPreview = webEchoPreview(message, files.map(f => f.name));
+      const preview = (quoteLine ? `${quoteLine}\n` : "") + plainPreview;
+      // #2281: where the quoted message is on a platform. An echo to the same place is a native reply to it there, and
+      // then needs no quoted line; anywhere else (or a message with no known post) keeps the line, as before.
+      const quotedPosts = quoted ? ctx.webChatHistory?.postsOf(quoted) ?? [] : [];
+      const echoText = (p: string) => formatWebChannelEcho(person.name, p, t("web.echo_full_text"), { guest: !!guest });
       // ClassicBot echo (#1320 part B): same ordering lane, each room's setting (#2054: on unless it says false, or
       // the fleet-wide switch is off for a room that is unset) resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
       const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         const copies: import("./web-reactions.js").WebEchoCopy[] = [];
-        const posted = await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), person.name, copies);
+        const posted = await ctx.sendClassicWebEcho!(instance, echoText(preview), person.name, copies, quotedPosts.length ? { posts: quotedPosts, text: echoText(plainPreview) } : undefined);
         if (posted > 0) ctx.webMessageInChannel?.(instance, messageId, copies); // #1920 §5.2: the room saw it (#2305: its copies)
       }) : undefined;
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
@@ -2916,12 +3009,14 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
           || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
           || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
-        const sent = await syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+        const native = quotedPosts.find(p => p.adapterId === syncAdapter.id && p.chatId === String(groupId) && (p.threadId ?? "") === String(topicId));
+        const sent = await syncAdapter.sendText(String(groupId), echoText(native ? plainPreview : preview),
+          { threadId: String(topicId), format: "text", allowedMentions: { parse: [] }, ...(native ? { replyTo: native.messageId } : {}) });
         const copyId = sent && typeof sent === "object" && typeof (sent as { messageId?: unknown }).messageId === "string" ? (sent as { messageId: string }).messageId : "";
-        // #1920 §5.2: the topic saw it. #2305: and where it is, for a reaction to the web message.
-        const reacting = syncAdapter as unknown as Partial<import("./web-reactions.js").WebEchoCopy["adapter"]>;
-        ctx.webMessageInChannel?.(instance, messageId, copyId && typeof reacting.react === "function"
-          ? [{ adapter: reacting as import("./web-reactions.js").WebEchoCopy["adapter"], chatId: String(groupId), threadId: String(topicId), messageId: copyId }] : []);
+        // #1920 §5.2: the topic saw it. #2305: and where it is, for a reaction to the web message (#2281: and a reply).
+        const reacting = syncAdapter as unknown as import("./web-reactions.js").WebEchoCopy["adapter"];
+        ctx.webMessageInChannel?.(instance, messageId, copyId
+          ? [{ adapter: reacting, adapterId: syncAdapter.id, chatId: String(groupId), threadId: String(topicId), messageId: copyId }] : []);
         return sent;
       }) : undefined;
       let delivered: boolean | void;
@@ -2966,6 +3061,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 503, { reason: "delivery_changed", error: "The session or instance changed before this message was sent. Sign in again if needed, then retry." });
         return;
       }
+      // The agent has it: from here on a repeat of this clientId is this send, whatever fails after (the echo, the
+      // stream's copy) — a Retry then gets this messageId, never a second delivery.
+      acceptedId = messageId;
       settleEcho?.(true);
       settleClassicEcho?.(true);
       // #1666: the same cancel/progress bubble a platform inbound starts, in the topic the echo went to — a second turn
@@ -2980,10 +3078,15 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       ctx.eventLog?.logActivity("message", person.name, (message || `[${files.length} file(s)]`).slice(0, 200), instance);
       // #1920: the account that wrote it (a guest sees its own); channel-visible once its copy was sent (above).
       ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}),
-        ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}) });
+        ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}), ...(clientId ? { clientId } : {}) });
       json(res, 200, { sent: true, messageId });
     } catch {
-      json(res, 400, { error: "Invalid JSON" });
+      // A failure after the agent has it is no failed send: the page is told it went (a Retry would only find it).
+      if (res.headersSent) { /* answered already: the failure was in or after the answer */ }
+      else if (acceptedId) json(res, 200, { sent: true, messageId: acceptedId });
+      else json(res, 400, { error: "Invalid JSON" });
+    } finally {
+      claim?.settle(acceptedId);
     }
   });
 }
@@ -3116,7 +3219,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean } } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean }; search?: { public_link?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -3276,6 +3379,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-owner-css-state="${ownerCssState}"${ownerCss ? ` data-owner-css="${attr(ownerCss)}"` : ""}`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
     + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}`
+    // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
+    + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
     // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
     + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
 }

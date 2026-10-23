@@ -283,7 +283,7 @@ describe("#1776: the count is on the facet headers' row", () => {
   const shape = (pg: AppPage) => {
     const row = facetsRow(pg);
     return {
-      children: [...row.children].map((c: any) => c.className),
+      children: [...row.children].map((c: any) => c.className.split(" ")[0]),
       groups: [...row.querySelector(".nav-facet-groups").children].map((c: any) => c.className.split(" ")[0]),
       count: row.querySelector(".nav-shown")?.textContent ?? null,
       live: row.querySelector(".nav-shown")?.getAttribute("aria-live") ?? null,
@@ -293,17 +293,20 @@ describe("#1776: the count is on the facet headers' row", () => {
 
   it("folded and open, filtered or not: the headers (and the reset) in their box, the count after it, in the same row", async () => {
     const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
-    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
+    // #2401: two children — the headers' box, and the end column (the count, its "shown", Clear)
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
     (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
     fire(chip(pg, "Status", "needs you"), "change"); await settle();
-    expect(shape(pg), "a group open, a filter set: its list stays in the box; the count is still the row's last").toEqual({
-      children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet", "chip-btn"], count: "1 / 5 shown", live: "polite", ownRow: false });
+    expect(shape(pg), "a group open, a filter set: count+reset in nav-filter-row; groups box unchanged").toEqual({
+      children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet", "nav-facet"], count: "1 / 5 shown", live: "polite", ownRow: false });
     expect(facetsRow(pg).querySelector(".nav-facet-groups .nav-facet-list"), "the open list is under its header, in the box").not.toBeNull();
+    expect(facetsRow(pg).querySelector(".nav-facet-end .nav-facet-reset"), "reset button is inside nav-facet-end").not.toBeNull();
+    expect(facetsRow(pg).querySelector(".nav-facet-groups .nav-facet-reset"), "reset button NOT in nav-facet-groups").toBeNull();
   });
 
   it("one CLI (no CLI group): the count beside the Status header, still in that row", async () => {
     const pg = await app("/ui/chat/web-dev", {}, [live("web-dev"), live("api-server")]);
-    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet"], count: "2 / 2", live: "polite", ownRow: false });
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet"], count: "2 / 2", live: "polite", ownRow: false });
   });
 
   it("the rules: the row does not wrap; the headers' box does, and may shrink; the count keeps its width at the right end", async () => {
@@ -311,11 +314,63 @@ describe("#1776: the count is on the facet headers' row", () => {
     const { join } = await import("node:path");
     const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const decl = (sel: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m => m[1]!.split(",").map(s => s.trim()).includes(sel)).map(m => m[2]!).join(";");
-    expect(decl(".nav-facets")).not.toMatch(/flex-wrap/);
     expect(decl(".nav-facet-groups")).toMatch(/flex-wrap:\s*wrap/);
     expect(decl(".nav-facet-groups")).toMatch(/min-width:\s*0/);
-    expect(decl(".nav-facets .nav-shown")).toMatch(/flex:\s*none/);
-    expect(decl(".nav-facets .nav-shown")).toMatch(/margin:\s*0 0 0 auto/);
-    expect(decl(".nav-facets .nav-shown")).toMatch(/white-space:\s*nowrap/);
+    // #2401: the end column — the count, "shown" under it, Clear under that — at the row's right end, never shrunk
+    expect(decl(".nav-facet-end")).toMatch(/display:\s*flex/);
+    expect(decl(".nav-facet-end")).toMatch(/flex-direction:\s*column/);
+    expect(decl(".nav-facet-end")).toMatch(/flex:\s*none/);
+    expect(decl(".nav-shown-word")).toMatch(/display:\s*block/);
+    // the word's width held by ::before, idle Clear's by itself: at no height, unseen and out of reach
+    expect(decl(".nav-facet-end::before")).toMatch(/content:\s*attr\(data-reserve\)/);
+    // compact: one cell — Clear over the transparent count (which lets the click through), the word for a screen reader
+    expect(decl(".nav-facets.compact .nav-facet-end")).toMatch(/display:\s*grid/);
+    expect(decl(".nav-facets.compact .nav-facet-end > *")).toMatch(/grid-area:\s*1\s*\/\s*1/);
+    for (const rule of [/opacity:\s*0/, /pointer-events:\s*none/]) expect(decl(".nav-facets.compact .nav-shown.is-set")).toMatch(rule);
+    for (const rule of [/position:\s*absolute/, /clip:/]) expect(decl(".nav-facets.compact .nav-shown-word")).toMatch(rule);
+    // a folded header's summary is never counted when the headers wrap; its header grows into what its line has left
+    expect(decl(".nav-facet-sum")).toMatch(/contain:\s*inline-size/);
+    expect(decl(".nav-facet.has-sum")).toMatch(/flex-grow:\s*1/);
+    for (const sel of [".nav-facet-end::before", ".nav-facet-end .is-idle"])
+      for (const rule of [/visibility:\s*hidden/, /(^|;)\s*height:\s*0/, /overflow:\s*hidden/]) expect(decl(sel), sel).toMatch(rule);
+  });
+
+  it("#2401: Clear is always there — idle by a class (never a style attribute, #1300); the column holds the word's width", async () => {
+    const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
+    const end = () => pg.root.querySelector(".nav-facets .nav-facet-end") as any;
+    const seen = () => {
+      const reset = end().querySelector(".nav-facet-reset");
+      return { reset: reset && { idle: reset.classList.contains("is-idle"), style: reset.getAttribute("style") },
+        word: end().querySelector(".nav-shown-word")?.textContent ?? null, reserve: end().getAttribute("data-reserve"), style: end().getAttribute("style") };
+    };
+    expect(seen(), "no facet set").toEqual({ reset: { idle: true, style: null }, word: null, reserve: "shown", style: null });
+    (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
+    fire(chip(pg, "Status", "needs you"), "change"); await settle();
+    expect(seen(), "a facet set").toEqual({ reset: { idle: false, style: null }, word: " shown", reserve: "shown", style: null });
+    expect(pg.root.querySelector(".nav-facet-groups .nav-facet-reset"), "Clear is not in the headers' box").toBeNull();
+    (pg.root.querySelector(".nav-facet-reset") as any).click(); await settle();
+    expect(seen(), "cleared").toEqual({ reset: { idle: true, style: null }, word: null, reserve: "shown", style: null });
+  });
+
+  it("#2401 (Prism r1): with no open list beside it the column is compact — a facet set, Clear in the count's place", async () => {
+    const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
+    const row = () => facetsRow(pg);
+    const state = () => ({ compact: row().classList.contains("compact"), countSet: row().querySelector(".nav-shown").classList.contains("is-set"),
+      count: row().querySelector(".nav-shown").textContent, title: row().querySelector(".nav-facet-reset").getAttribute("title") || null,  // Preact leaves "" once set: no tooltip
+      sum: [...row().querySelectorAll(".nav-facet")].map((g: any) => g.classList.contains("has-sum")) });
+    expect(state(), "all folded, nothing set").toEqual({ compact: true, countSet: false, count: "5 / 5", title: null, sum: [false, false] });
+    (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
+    expect(state().compact, "Status open: stacked").toBe(false);
+    fire(chip(pg, "Status", "needs you"), "change"); await settle();
+    expect(state(), "Status open, a facet set").toEqual({ compact: false, countSet: true, count: "1 / 5 shown", title: "1 / 5 shown", sum: [false, false] });
+    (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
+    expect(state(), "folded again, the facet still set: compact, the summary on Status").toEqual({ compact: true, countSet: true, count: "1 / 5 shown", title: "1 / 5 shown", sum: [true, false] });
+    (pg.root.querySelector(".nav-facet-reset") as any).click(); await settle();
+    expect(state(), "Clear while folded").toEqual({ compact: true, countSet: false, count: "5 / 5", title: null, sum: [false, false] });
+  });
+
+  it("#2401 (Prism r1): one CLI — its group open is a one-line list, so the column stays compact", async () => {
+    const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":true}' }, [live("web-dev"), live("api-server")]);
+    expect(facetsRow(pg).classList.contains("compact")).toBe(true);
   });
 });

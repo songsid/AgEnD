@@ -10,7 +10,7 @@ import { t } from "./app-i18n.js";
  * <${Dialog} title="Create task" onClose=${…} actions=${html`…`}>…body…</${Dialog}>
  * Rendered = open; the parent unmounts it to close. `busy` keeps Esc and the backdrop from closing it mid-request.
  */
-export function Dialog({ title, onClose, actions, children, busy = false, wide = false, drawer = false, label }) {
+export function Dialog({ title, onClose, actions, children, busy = false, wide = false, drawer = false, label, tools = null }) {
   const ref = useRef(null);
   const opener = useRef(null);
   const busyRef = useRef(busy);
@@ -38,7 +38,7 @@ export function Dialog({ title, onClose, actions, children, busy = false, wide =
   }, [onClose]);
   return html`<dialog data-trust="dialog" ref=${ref} class=${`dlg${wide ? " dlg-wide" : ""}${drawer ? " dlg-drawer" : ""}`} aria-label=${label || title}>
     <div class="dlg-box">
-      <div class="dlg-head"><h2 class="dlg-title">${title}</h2>
+      <div class="dlg-head"><h2 class="dlg-title">${title}</h2>${tools ? html`<span class="dlg-tools">${tools}</span>` : null}
         <button type="button" class="icon-btn dlg-x" aria-label=${t("app.close")} title=${t("app.close")} onClick=${() => { if (!busyRef.current) onClose(); }}><${Icon} name="close" /></button></div>
       <div class="dlg-body">${children}</div>
       ${actions ? html`<div class="dlg-actions">${actions}</div>` : null}

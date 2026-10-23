@@ -43,11 +43,17 @@ Field limits (code points) keep a card cheap for an agent to read: title 100, go
 One rule set for every writer — the page, the `task` tool, a script. The actor is a person, an instance, a script
 or the board itself.
 
-- **The person's confirmation.** `needs_review` cards stop at `review` when finished. A main task opened by a person
-  needs review unless they untick it; an instance cannot open one that skips it, and only a person clears the flag.
-  Only a person moves a card from `review` to `done` (an approve note when they add one) or sends it back (a reason,
-  stored as a send-back entry the assignee reads first). On the `task` tool, `done` (or `update status=done`) on such
-  a card is `review`. Only a person reopens finished work — including by adding a sub task to a done main task.
+- **Who confirms (#2434).** `needs_review` cards stop at `review` when finished. The person confirms the cards they
+  handed out (`dispatcher_kind = 'person'`, #2426's rule for a blocked card): a main task opened by a person needs
+  review unless they untick it, and only a person clears the flag, moves the card from `review` to `done` (an approve
+  note when they add one), sends it back (a reason, stored as a send-back entry the assignee reads first) or hands it
+  to someone else. A card an agent handed out is the agents' own: its main task needs no review unless asked for
+  (`needs_review: true`), and then its instance dispatcher — or, when nobody handed it out, its assignee — confirms it,
+  sends it back or clears the flag; a person may too. Cards already in review from before #2434 (every agent's main
+  task then needed review) are finished that way as they are: nothing is rewritten. On the `task` tool, `done` (or
+  `update status=done`) on such a card is `review`, unless the caller is the one who confirms it. Only a person
+  reopens finished work — including by adding a sub task to a done main task. A card opened on the board carries
+  `on_board` (#2434): before, a main task's default review marked it as the board's rather than a plain `task`.
 - **Main tasks follow their sub tasks.** With sub tasks (not cancelled), a main task is `open` until one starts,
   `claimed` while they run, and `review` (or `done`, when it skips review) when all are done. An instance moves the
   sub tasks, not the main task: it may block it, resubmit it after a send-back with a result, or cancel one it opened.

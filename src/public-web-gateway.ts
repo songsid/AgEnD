@@ -38,7 +38,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
   // #2182: the org canvas's router, libavoid's two files (the route worker itself is under /ui/js/ above).
   if (method === "GET" && LIBAVOID_PATHS.includes(path)) return true;
-  if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
+  if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|offices|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
   // #1629: agents' themes and their pictures, read-only — the public link views themes; reset and lock are not here.
   if (method === "GET" && (path === "/ui/themes" || /^\/ui\/img\/theme\/[^/]+\/[0-9a-f]{32}$/.test(path))) return true;
   // #2118: exact current-Chat reads only; handler rechecks session/epoch/exposure/instance/retention.
@@ -52,6 +52,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // page, the old /ui/tasks create and update included: the handlers refuse a write over the public link too
   // (confirming, sending back and assigning are the person's authority, never carried here).
   if (method === "GET" && /^\/ui\/tasks\/cards\/[^/]+$/.test(path)) return true;
+  // #2478 (the user's request): global search, an admin's (the handler refuses a guest, and web.search.public_link: false).
+  if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   // #1724: schedules are not created, edited or deleted over the public link (the handlers refuse it too).
@@ -115,7 +117,9 @@ export function createPublicWebGateway(opts: {
         }
         return reject(res, 503);
       }
-      bindGatewayRequest(req, { surface: "gateway", exposureId: opts.exposureId, expectedOrigin: `https://${host}`, isCurrent: () => opts.isCurrent() && opts.isOpen() });
+      // #2453: named only on the exact configured hostname (setHost also takes a trycloudflare name: never named).
+      const named = !!opts.hostname && publicTunnelHostname(opts.hostname) === host;
+      bindGatewayRequest(req, { surface: "gateway", named, exposureId: opts.exposureId, expectedOrigin: `https://${host}`, isCurrent: () => opts.isCurrent() && opts.isOpen() });
       opts.dispatch(req, res);
     } catch {
       if (!res.headersSent) reject(res, 400); else res.destroy();

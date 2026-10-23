@@ -43,8 +43,8 @@ describe("same-user local-only operator transport", () => {
     await expect(requestCpuProfile(h.directory, 1, {})).rejects.toMatchObject({ remainingSeconds: 43 });
     expect(h.start).toHaveBeenCalledTimes(1);
   });
-  it("refuses writable roots, symlink directories and non-socket paths without deleting them", async () => {
-    const h = await rig(); await chmod(h.directory, 0o777); await expect(h.server.listen()).rejects.toThrow("without group/other write");
+  it("repairs owned writable roots, but refuses symlink directories and non-socket paths without deleting them", async () => {
+    const h = await rig(); await chmod(h.directory, 0o777); await h.server.listen(); expect((await lstat(h.directory)).mode & 0o777).toBe(0o700);
     const b = await rig(); await mkdir(join(b.directory, "target")); await symlink(join(b.directory, "target"), join(b.directory, "operator"));
     await expect(b.server.listen()).rejects.toThrow(); expect((await lstat(join(b.directory, "operator"))).isSymbolicLink()).toBe(true);
     const c = await rig(); await mkdir(join(c.directory, "operator")); await writeFile(profileSocketPath(c.directory), "keep");

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Build the @songsid/agend-node-<os>-<cpu> packages from an OFFICIAL Node release (#1450, option A).
 //
-//   node scripts/runtime/build-runtime-packages.mjs --node 22.23.3 --out <dir>
+//   node scripts/runtime/build-runtime-packages.mjs --node 22.23.4 --out <dir>
 //        [--dist-url https://nodejs.org/dist] [--keyring <pubring.kbx>] [--release-keys-commit <sha>] [--repack N]
 //
 // Nothing is compiled and nothing is trusted from the network unverified:

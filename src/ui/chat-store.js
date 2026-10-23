@@ -42,7 +42,7 @@ const COMPACT_PAGE_LIMIT_MS = 11 * 60_000;
 /** Build a store. `deps` (fetch, toast, announce, t, now) are injected so tests can drive every path. */
 export function createChatStore(deps) {
   const s = {
-    msgs: {}, drafts: {}, replies: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {}, sendFailures: {}, instanceStatus: {}, waking: {},
+    msgs: {}, drafts: {}, replies: {}, pendingFiles: {}, sending: {}, outgoing: {}, instanceStatus: {}, waking: {},
     prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
     pollMine: readPollMine(),
     // #1823 (#1828 review): the server's clock minus this device's. A poll's deadline is the server's; a page whose clock
@@ -108,6 +108,8 @@ export function createChatStore(deps) {
     liveReplies.message(m, extra);
     const before = s.msgs[m.instance];
     s.msgs[m.instance] = R().mergeMessages(before, [m], 500);
+    // The live copy of a message this page sent carries its clientId: its pending bubble goes in this same redraw.
+    if (settleOutgoing(m.instance, m.role === "user" ? m.clientId : undefined) && s.msgs[m.instance] === before) changed(m.instance, "msgs");
     if (m.instance === s.current && s.msgs[m.instance] !== before && m.role !== "status" && !isUser(m, m.instance) && (s.msgs[m.instance] || []).length > (before || []).length) deps.announce(tf("chat.a11yReplied", m.sender));
     if (s.msgs[m.instance] !== before) changed(m.instance, "msgs");
   }
@@ -166,6 +168,7 @@ export function createChatStore(deps) {
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
       for (const m of r.messages) liveReplies.message(m);
       s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500);
+      settleOutgoing(name);
       changed(name, "msgs");
     } catch { s.historyRead.delete(name); /* the live stream still works; the next visit tries again */ }
     void lease;
@@ -242,71 +245,186 @@ export function createChatStore(deps) {
   }
   const promptsFor = (instance) => Object.values(s.prompts).filter(p => p.instance === instance);
 
-  // ── Sending. Never lose anything: a failed send's files go back to that chat's list and its text back into its own
-  // composer when that is empty, otherwise it is kept for its chat and offered back (Put back).
-  async function uploadFile(target, file) {
-    const r = await deps.fetch(`/ui/upload?instance=${encodeURIComponent(target)}`, {
-      method: "POST",
-      headers: { "Content-Type": file.type || "application/octet-stream", "X-Agend-Filename": encodeURIComponent(file.name || "file") },
-      body: file,
-    });
-    let body = {};
-    try { body = await r.json(); } catch { /* not JSON */ }
-    if (!r.ok || !body || typeof body.id !== "string") throw new Error(body && body.error ? `${file.name}: ${body.error}` : `${file.name}: upload failed (${r.status})`);
-    return body;
+  // ── Sending (Discord-like, the user's request): a message shows at once as its own bubble, dimmed while it goes; its
+  // files show their upload progress. The server's copy replaces it when it arrives — matched by the page's clientId
+  // (on the live copy) or the messageId the send answered with — so it is never shown twice. A send that fails stays,
+  // marked, with Retry and Delete: nothing is lost, and nothing is put back into the composer behind the person's back.
+  // Sends of one chat go out in order, one at a time; a later one waits behind an earlier one still going.
+  let outSeq = 0;
+  const objectUrl = (f) => { try { return globalThis.URL && typeof URL.createObjectURL === "function" && /^image\/(png|jpeg|gif|webp)$/.test(f.type || "") ? URL.createObjectURL(f) : null; } catch { return null; } };
+  const freeUrl = (u) => { try { if (u) URL.revokeObjectURL(u); } catch { /* gone */ } };
+  const newClientId = () => {
+    const bytes = new Uint8Array(12);
+    try { globalThis.crypto.getRandomValues(bytes); } catch { for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256); }
+    return "c" + [...bytes].map((x) => x.toString(16).padStart(2, "0")).join("");
+  };
+  /** Pending bubbles the server's copy now stands for go (their previews freed). Returns whether any went. */
+  function settleOutgoing(name, clientId) {
+    const list = s.outgoing[name];
+    if (!list || !list.length) return false;
+    const ids = new Set((s.msgs[name] || []).map((m) => m.messageId).filter(Boolean)), clients = new Set(clientId ? [clientId] : []);
+    const kept = list.filter((e) => !((e.messageId && ids.has(e.messageId)) || clients.has(e.clientId)));
+    if (kept.length === list.length) return false;
+    for (const e of list) if (!kept.includes(e)) for (const f of e.files) freeUrl(f.url);
+    s.outgoing[name] = kept;
+    return true;
   }
-  async function send(target) {
+  /** The thread as drawn: the server's messages, then this page's pending ones. */
+  function threadRows(name) {
+    const out = s.outgoing[name];
+    return out && out.length ? (s.msgs[name] || []).concat(out) : (s.msgs[name] || []);
+  }
+  /** Upload one file, its progress told as it goes (XHR: fetch cannot report an upload's progress). */
+  async function uploadFile(target, file, onProgress) {
+    const url = `/ui/upload?instance=${encodeURIComponent(target)}`;
+    const X = deps.XMLHttpRequest;
+    if (!X) {                                                            // no XHR given (a test): the whole file at once
+      const r = await deps.fetch(url, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "X-Agend-Filename": encodeURIComponent(file.name || "file") }, body: file });
+      let body = {};
+      try { body = await r.json(); } catch { /* not JSON */ }
+      if (!r.ok || !body || typeof body.id !== "string") throw new Error(body && body.error ? `${file.name}: ${body.error}` : `${file.name}: upload failed (${r.status})`);
+      onProgress?.(file.size || 0, file.size || 0);
+      return body;
+    }
+    // The CSRF header the page's fetch adds (agend-auth.js), added here too; a 401 ends the session as fetch's would.
+    const csrf = globalThis.AgendAuth && typeof globalThis.AgendAuth.csrf === "function" ? await globalThis.AgendAuth.csrf().catch(() => null) : null;
+    return new Promise((resolve, reject) => {
+      const xhr = new X();
+      xhr.open("POST", url);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.setRequestHeader("X-Agend-Filename", encodeURIComponent(file.name || "file"));
+      if (csrf) xhr.setRequestHeader("X-Agend-CSRF", csrf);
+      if (xhr.upload && onProgress) xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) onProgress(ev.loaded, ev.total); };
+      xhr.onload = () => {
+        let body = {};
+        try { body = JSON.parse(xhr.responseText || "{}"); } catch { /* not JSON */ }
+        if (xhr.status === 401) globalThis.AgendAuth?.unauthorized?.();
+        if (xhr.status >= 200 && xhr.status < 300 && body && typeof body.id === "string") resolve(body);
+        else reject(new Error(body && body.error ? `${file.name}: ${body.error}` : `${file.name}: upload failed (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error(`${file.name}: ${t("chat.uploadNoConnection")}`));
+      xhr.onabort = () => reject(new Error(`${file.name}: ${t("chat.uploadNoConnection")}`));
+      xhr.send(file);
+    });
+  }
+  /** Send what the composer holds: its bubble at once, then out in this chat's order. */
+  function send(target) {
     const txt = (s.drafts[target] || "").trim();
-    const quote = s.replies[target];         // #2272: the message this one replies to (its row; the server reads the rest)
     const files = (s.pendingFiles[target] || []).slice();
-    if ((!txt && !files.length) || !target || s.sending[target]) return;
-    s.sending[target] = true;
-    s.waking[target] = s.instanceStatus[target] === "paused";
-    delete s.sendFailures[target];
+    if ((!txt && !files.length) || !target) return;
+    const quote = s.replies[target];
+    const e = {
+      // "You" until the server's copy (with the person's name) replaces it: no request is made for a name.
+      boot: "out", id: ++outSeq, instance: target, role: "user", sender: t("chat.you"), text: txt,
+      ts: new Date().toISOString(), clientId: newClientId(), replyTo: quote ? { boot: quote.boot, id: quote.id, sender: quote.sender, text: quote.text, media: quote.media } : undefined,
+      quote, outgoing: { state: "queued" },
+      files: files.map((f) => ({ file: f, name: f.name || "file", size: f.size || 0, type: f.type || "", url: objectUrl(f), loaded: 0, total: f.size || 0, state: "waiting", id: null })),
+    };
+    (s.outgoing[target] = s.outgoing[target] || []).push(e);
     s.drafts[target] = "";
-    s.pendingFiles[target] = []; s.inFlightFiles[target] = files;
+    s.pendingFiles[target] = [];
+    if (quote) delete s.replies[target];
+    changed(target, "msgs");
     changed(target);
     changed(target, "sent");          // your own message: the thread goes to the bottom
+    return pump(target);
+  }
+  /** Take this chat's waiting sends, one after another. */
+  async function pump(target) {
+    if (s.sending[target]) return;
+    s.sending[target] = true;
+    try {
+      for (let e = nextQueued(target); e; e = nextQueued(target)) await deliver(target, e);
+    } finally { s.sending[target] = false; delete s.waking[target]; changed(target); }
+  }
+  const nextQueued = (target) => (s.outgoing[target] || []).find((x) => x.outgoing.state === "queued");
+  /** One send: its files (each with its own progress), then the message. */
+  async function deliver(target, e) {
+    e.outgoing = { state: "sending" };
+    s.waking[target] = s.instanceStatus[target] === "paused";
+    changed(target, "msgs"); changed(target);
     let r;
     try {
-      const ids = [];
-      for (const f of files) ids.push((await uploadFile(target, f)).id);
-      const body = ids.length ? { instance: target, message: txt, attachments: ids } : { instance: target, message: txt };
-      if (quote) body.replyTo = { boot: quote.boot, id: quote.id };
+      for (const f of e.files) {
+        if (f.id) continue;                                              // uploaded by an earlier try
+        f.state = "uploading"; f.loaded = 0; changed(target, "progress");
+        let last = 0;
+        const body = await uploadFile(target, f.file, (loaded, total) => {
+          f.loaded = loaded; f.total = total || f.total;
+          const at = deps.now ? deps.now() : Date.now();
+          if (at - last > 60 || loaded >= f.total) { last = at; changed(target, "progress"); }
+        });
+        f.id = body.id; f.state = "done"; f.loaded = f.total; changed(target, "progress");
+      }
+      const body = { instance: target, message: e.text, clientId: e.clientId };
+      const ids = e.files.map((f) => f.id);
+      if (ids.length) body.attachments = ids;
+      if (e.quote) body.replyTo = { boot: e.quote.boot, id: e.quote.id };
       r = await api("POST", "/ui/send", body);
-    } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
-    s.sending[target] = false;
-    delete s.waking[target];
-    delete s.inFlightFiles[target];
-    if (r && !r.error) { if (s.replies[target] === quote) delete s.replies[target]; changed(target); return; }
-    // #2272: the quoted message is gone: the reply goes, the text and files stay (sent again without it, or re-aimed).
-    if (r && r.reason === "reply_gone" && s.replies[target] === quote) delete s.replies[target];
-    if (files.length) s.pendingFiles[target] = R().checkFiles(files, s.pendingFiles[target] || []).kept;
-    if (txt) {
-      const shown = s.current === target;
-      if (R().settleFailedSend(target, s.current, shown, shown ? (s.drafts[target] || "") : "") === "restore") s.drafts[target] = txt;
-      else s.failedSends[target] = s.failedSends[target] ? `${s.failedSends[target]}\n${txt}` : txt;
+    } catch (err) {
+      const f = e.files.find((x) => x.state === "uploading");
+      if (f) f.state = "failed";
+      // The browser's own words for a request that never reached the server (Chrome, Firefox, Safari): the page's.
+      const offline = err && err.name === "TypeError" && /failed to fetch|networkerror|load failed/i.test(err.message || "");
+      r = { error: offline ? t("chat.sendNoConnection") : err && err.message ? err.message : t("chat.disconnected") };
     }
+    if (!(s.outgoing[target] || []).includes(e)) return;                // deleted meanwhile
+    if (r && !r.error && r.sent !== false) {
+      e.outgoing = { state: "sent" };
+      if (typeof r.messageId === "string") e.messageId = r.messageId;
+      settleOutgoing(target);
+      changed(target, "msgs"); changed(target);
+      return;
+    }
+    // Files the server no longer holds (they are released when a delivery fails) are uploaded again on Retry.
+    if (r && typeof r.error === "string" && /files? (are|is) not available|no such file|already sent/i.test(r.error)) for (const f of e.files) { f.id = null; f.state = "waiting"; }
+    // #2272: the quoted message is gone: Retry sends it without the quote.
+    if (r && r.reason === "reply_gone") { e.quote = undefined; e.replyTo = undefined; }
     const why = r && r.reason;
     const key = typeof why === "string" ? `chat.sendFailure_${why}` : "";
     const localized = key ? t(key) : "";
-    const error = localized && localized !== key ? localized : (r && r.error ? r.error : t("chat.disconnected"));
-    s.sendFailures[target] = { error, text: txt, files };
-    changed(target);
-    deps.toast(error, false);
+    e.outgoing = { state: "failed", error: localized && localized !== key ? localized : (r && r.error ? r.error : t("chat.disconnected")) };
+    changed(target, "msgs"); changed(target);
+    deps.toast(e.outgoing.error, false);
   }
-  function canRetrySend(target) {
-    const failed = s.sendFailures[target], files = s.pendingFiles[target] || [];
-    return !!failed && !s.sending[target] && !s.failedSends[target]
-      && (s.drafts[target] || "").trim() === failed.text
-      && files.length === failed.files.length && files.every((f, i) => f === failed.files[i]);
+  /** A failed send, sent again (the same bubble; files already uploaded are not uploaded again). */
+  function retryOutgoing(target, clientId) {
+    const e = (s.outgoing[target] || []).find((x) => x.clientId === clientId);
+    if (!e || e.outgoing.state !== "failed") return;
+    e.outgoing = { state: "queued" };
+    for (const f of e.files) if (f.state === "failed") f.state = "waiting";
+    changed(target, "msgs");
+    return pump(target);
   }
-  function retrySend(target) { if (canRetrySend(target)) return send(target); }
+  /** A failed send, let go (its previews freed). */
+  function deleteOutgoing(target, clientId) {
+    const list = s.outgoing[target] || [];
+    const e = list.find((x) => x.clientId === clientId);
+    if (!e || e.outgoing.state !== "failed") return;
+    for (const f of e.files) freeUrl(f.url);
+    s.outgoing[target] = list.filter((x) => x !== e);
+    changed(target, "msgs"); changed(target);
+  }
+  /**
+   * A failed send, back in the composer to change it: its text before what is typed there now, its files (within the
+   * limits) and its reply, if none is started; the bubble goes. The page records the composer's undo step first.
+   */
+  function putBackOutgoing(target, clientId) {
+    const list = s.outgoing[target] || [];
+    const e = list.find((x) => x.clientId === clientId);
+    if (!e || e.outgoing.state !== "failed") return;
+    const draft = s.drafts[target] || "";
+    s.drafts[target] = e.text ? (draft ? e.text + "\n" + draft : e.text) : draft;
+    for (const f of e.files) freeUrl(f.url);
+    s.outgoing[target] = list.filter((x) => x !== e);
+    if (e.quote && !s.replies[target]) s.replies[target] = e.quote;
+    changed(target, "msgs");
+    if (e.files.length) addFiles(target, e.files.map((f) => f.file)); else changed(target);
+  }
   function addFiles(target, list) {
     if (!target) return;
-    const inFlight = s.inFlightFiles[target] || [];
-    const res = R().checkFiles(inFlight.concat(s.pendingFiles[target] || []), [...(list || [])]);
-    s.pendingFiles[target] = res.kept.slice(inFlight.length);
+    const res = R().checkFiles(s.pendingFiles[target] || [], [...(list || [])]);
+    s.pendingFiles[target] = res.kept;
     for (const x of res.rejected) { const why = R().fileRejection(x.reason); deps.toast(`${x.name}: ${t(why.key, ...why.values)}`, false); }
     changed(target);
   }
@@ -316,7 +434,7 @@ export function createChatStore(deps) {
     if (!target) return false;
     const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
     const f = new File([text], `pasted-${stamp}.txt`, { type: "text/plain" });
-    const taken = (s.inFlightFiles[target] || []).concat(s.pendingFiles[target] || []);
+    const taken = s.pendingFiles[target] || [];
     if (R().checkFiles(taken, [f]).rejected.length) { deps.toast(t("chat.pasteKeptAsText")); return false; }
     pastedTexts.set(f, text);
     addFiles(target, [f]);
@@ -333,16 +451,8 @@ export function createChatStore(deps) {
     changed(target);
   }
   const isPasted = (f) => pastedTexts.has(f);
-  function putBack(target) {
-    const kept = s.failedSends[target];
-    if (!kept) return;
-    s.drafts[target] = R().putBack(kept, s.drafts[target] || "");
-    delete s.failedSends[target];
-    changed(target);
-  }
-  function discardFailed(target) { delete s.failedSends[target]; changed(target); }
-  /** Typing stays local, except a failed send's Retry button must follow edits too. */
-  function setDraft(target, value) { s.drafts[target] = value; if (s.sendFailures[target]) changed(target); }
+  /** Typing stays local. */
+  function setDraft(target, value) { s.drafts[target] = value; }
   /**
    * #2272: reply to a message of this chat — what the bar above the composer shows (its sender and first words); only
    * its row is sent. One at a time per chat: a new one replaces it.
@@ -363,7 +473,7 @@ export function createChatStore(deps) {
     if (has()) return true;
     try {
       const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=500`);
-      if (r && Array.isArray(r.messages)) { s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500); changed(name, "msgs"); }
+      if (r && Array.isArray(r.messages)) { s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500); settleOutgoing(name); changed(name, "msgs"); }
     } catch { /* the jump says it is not there */ }
     return has();
   }
@@ -461,7 +571,7 @@ export function createChatStore(deps) {
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
-    uploadFile, send, canRetrySend, retrySend, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
+    uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
     startReply, clearReply, findQuoted,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
   };

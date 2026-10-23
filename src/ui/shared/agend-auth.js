@@ -106,6 +106,8 @@
     /** Display hint from the same server session response; Start still reauthorizes. No CSRF is exposed here. */
     trialSession() { return session().then(s => !ended && s?.handle && /^[a-f0-9]{16}$/.test(s.handle) ? Object.freeze({ epoch: s.handle, localAdmin: s.localAdmin === true }) : null); },
     sessionEnded() { return ended !== null; },
+    /** A same-origin request made outside fetch (an upload's XHR, for its progress) was answered 401: the same end. */
+    unauthorized() { endSession("unauthorized"); sessionEndedBanner(); },
     /** #1568: the session handle of this page's sign-in, or null when there is none. */
     sessionHandle() { return session().then((s) => (s && s.handle ? s.handle : null)); },
     async signOut() {

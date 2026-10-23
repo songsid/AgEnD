@@ -11,12 +11,17 @@
  * the record.
  */
 import { createHash } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensureAgendHome } from "./agend-home.js";
 import { parseLaunchctlPrint, parsePlist, sameJob, type ActivationTuple, type TupleDeps } from "./service-activation.js";
 import { judgeTuple, type ExpectedTuple } from "./restart-guard.js";
 import type { CommandResult } from "./update-install.js";
 
 export const SERVICE_PLAN_FILE = "service-plan.json";
+/** Exclusive lock directory for every publish, revoke and consume of `SERVICE_PLAN_FILE`. */
+export const SERVICE_PLAN_LOCK = "service-plan.lock";
+const PLAN_LOCK_MS = 15_000;
 
 export interface ServicePlan {
   kind: "launchd-activation";
@@ -35,9 +40,108 @@ export interface PlanDeps extends Pick<TupleDeps, "realpath" | "isExecutable"> {
   writeFile(path: string, content: string): void;
   removeFile(path: string): void;
   now(): Date;
+  /**
+   * Exclusive section covering this home's plan file. Every publisher, revoker and consumer of
+   * `service-plan.json` must take it; a nested caller from another CLI waits. `pendingPlan` does not.
+   */
+  withPlanLock(fn: () => void): void;
 }
 
 export const planPath = (agendHome: string) => join(agendHome, SERVICE_PLAN_FILE);
+export const planLockPath = (agendHome: string) => join(agendHome, SERVICE_PLAN_LOCK);
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function pidAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return (e as NodeJS.ErrnoException).code !== "ESRCH"; }
+}
+
+/** Holder files are named by pid so unlink is generation-specific (a stale reclaim cannot drop a successor). */
+function pidFromName(name: string): number {
+  if (!/^[1-9][0-9]*$/.test(name)) return 0;
+  const pid = Number(name);
+  return Number.isInteger(pid) && pid > 0 ? pid : 0;
+}
+
+function stealDeadLock(dir: string): void {
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return; }
+  let liveOther = false;
+  for (const name of names) {
+    const pid = pidFromName(name);
+    if (pid > 0) {
+      if (pid !== process.pid && pidAlive(pid)) { liveOther = true; continue; }
+      try { unlinkSync(join(dir, name)); } catch { /* gone */ }
+      continue;
+    }
+    if (name === "pid") {
+      let old = 0;
+      try { old = Number(readFileSync(join(dir, name), "utf8").trim()); } catch { /* empty / unreadable */ }
+      if (Number.isInteger(old) && old > 0 && old !== process.pid && pidAlive(old)) { liveOther = true; continue; }
+    }
+    try { unlinkSync(join(dir, name)); } catch { /* gone */ }
+  }
+  if (liveOther) return;
+  try { rmdirSync(dir); } catch { /* ENOTEMPTY: a successor published its holder file */ }
+}
+
+function liveOtherHolder(dir: string, self: number): boolean {
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return false; }
+  return names.some(name => {
+    const pid = pidFromName(name);
+    return pid > 0 && pid !== self && pidAlive(pid);
+  });
+}
+
+/**
+ * Cross-process exclusive lock for this home's plan file (mkdir; holder file named by pid).
+ * Same-process nested acquires wait until timeout — do not call a publisher from inside a
+ * consumer's section; another CLI blocks.
+ */
+export function withFsPlanLock(agendHome: string, fn: () => void): void {
+  ensureAgendHome(agendHome);
+  const dir = planLockPath(agendHome);
+  const mine = join(dir, String(process.pid));
+  const deadline = Date.now() + PLAN_LOCK_MS;
+  for (;;) {
+    try {
+      mkdirSync(dir, { mode: 0o700 });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${dir}`);
+      stealDeadLock(dir);
+      sleepSync(20);
+      continue;
+    }
+    let held = false;
+    try {
+      try {
+        writeFileSync(mine, `${process.pid}\n`, { mode: 0o600 });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw e;
+      }
+      if (liveOtherHolder(dir, process.pid)) continue;
+      held = true;
+      fn();
+      return;
+    } finally {
+      try { unlinkSync(mine); } catch { /* */ }
+      if (held) {
+        try { rmdirSync(dir); } catch { /* */ }
+      }
+    }
+  }
+}
+
+/** Locked unlink of this home's plan. Install `--no-activate` revokes any earlier record first. */
+export function revokePlan(agendHome: string, deps: Pick<PlanDeps, "removeFile" | "withPlanLock">): void {
+  deps.withPlanLock(() => deps.removeFile(planPath(agendHome)));
+}
 /**
  * `launchctl print` exits that CONFIRM nothing is loaded: 113, no such service; 125, this session has no such domain
  * (an SSH login on a Mac nobody is logged in to has no gui/<uid>, so nothing can be loaded there). Anything else that
@@ -47,14 +151,17 @@ export const LAUNCHD_NOT_LOADED = [113, 125];
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 const completed = (r: CommandResult) => r.status !== null && r.signal === null;
 
-export function readPlan(agendHome: string, deps: Pick<PlanDeps, "readFile">): ServicePlan | null {
-  const text = deps.readFile(planPath(agendHome));
+function parsePlan(text: string | null): ServicePlan | null {
   if (text === null) return null;
   try {
     const p = JSON.parse(text) as ServicePlan;
     return p && p.kind === "launchd-activation" && typeof p.plistPath === "string" && typeof p.sha256 === "string"
       && p.preimage && typeof p.preimage.plist === "string" && p.preimage.tuple && typeof p.pkgDir === "string" ? p : null;
   } catch { return null; }
+}
+
+export function readPlan(agendHome: string, deps: Pick<PlanDeps, "readFile">): ServicePlan | null {
+  return parsePlan(deps.readFile(planPath(agendHome)));
 }
 
 export type RefreshOutcome =
@@ -70,7 +177,7 @@ export function refreshLaunchdWithoutActivating(
   deps: PlanDeps,
 ): RefreshOutcome {
   // An older plan never outlives a refresh, whatever this one comes to: removed before anything can fail.
-  deps.removeFile(planPath(o.agendHome));
+  revokePlan(o.agendHome, deps);
   const preimage = deps.readFile(o.plistPath);
   const printed = deps.run("launchctl", ["print", o.target]);
   let loaded: ReturnType<typeof parseLaunchctlPrint> | null = null;
@@ -103,7 +210,7 @@ export function refreshLaunchdWithoutActivating(
     kind: "launchd-activation", label: o.label, plistPath: o.plistPath, sha256: sha256(o.newPlist),
     preimage: { plist: preimage, tuple: loaded.tuple, pid: loaded.pid }, pkgDir: o.pkgDir, createdAt: deps.now().toISOString(),
   };
-  deps.writeFile(planPath(o.agendHome), JSON.stringify(plan, null, 2) + "\n");
+  deps.withPlanLock(() => deps.writeFile(planPath(o.agendHome), JSON.stringify(plan, null, 2) + "\n"));
   return { ok: true, planned: true, message: `${o.plistPath} written and proven; launchd still runs the previous job until \`agend restart\` activates it` };
 }
 
@@ -131,8 +238,8 @@ export function admitPlan(plan: ServicePlan, o: { target: string; expected: Expe
  * proven one and launchd runs its job. `agend restart` then restarts that job as an unchanged one (path 1, whose
  * guard proves it again); a plan that changes nothing about the job comes to the same restart.
  *
- * Read-only on purpose: the record stays where it is, and the next refresh revokes it as it revokes every plan. A
- * consumer that deleted or moved it would race with a refresh publishing or revoking at the same path.
+ * Read-only on purpose: a consumer that deleted after `launchctl print` would race with a refresh publishing at the
+ * same path (Prism, #2376). Removal is compare-and-delete of a snapshot taken before that print (`consumeUnchangedPlan`).
  */
 export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<PlanDeps, "readFile" | "run">): boolean {
   const onDisk = deps.readFile(plan.plistPath);
@@ -149,11 +256,37 @@ export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<Pla
  * The plan `agend restart` still has to carry out, or null (#2375). A plan whose job launchd already runs — #1871's
  * interrupted update after `agend start`, or an update whose planned plist is the job already loaded — is done:
  * nothing to activate, and nothing to say about it (every restart used to print a note). Read-only like
- * planCarriedOut: the record stays for the next refresh to revoke. Removing it here could remove a newer plan another
- * refresh published while launchd was being asked (Prism, #2376 R1).
+ * planCarriedOut: removing it here could remove a newer plan another refresh published while launchd was being asked
+ * (Prism, #2376 R1). The publication path consumes the leftover with `consumeCarriedOutPlan`.
  */
 export function pendingPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run">): ServicePlan | null {
   const recorded = readPlan(agendHome, deps);
   if (!recorded) return null;
   return planCarriedOut(recorded, target, deps) ? null : recorded;
+}
+
+/**
+ * Delete the plan file only if it is still `snapshot` (#2439). After slow work (`launchctl print`, bootout) a refresh
+ * may have published a newer plan; those bytes must stay. Read and unlink share `withPlanLock` with every publisher
+ * and revoker: a second CLI that writes B after this comparison read waits, then publishes onto the empty path
+ * (Prism #2441 P2). A second stat-then-unlink without that lock still loses B.
+ */
+export function consumeUnchangedPlan(agendHome: string, snapshot: string | null, deps: Pick<PlanDeps, "readFile" | "removeFile" | "withPlanLock">): void {
+  if (snapshot === null) return;
+  const path = planPath(agendHome);
+  deps.withPlanLock(() => {
+    if (deps.readFile(path) === snapshot) deps.removeFile(path);
+  });
+}
+
+/**
+ * After a plan is applied (or already carried out): snapshot, confirm launchd runs it, then compare-and-delete.
+ * A newer plan published during the print is a different snapshot and is left (#2376). The final read/unlink is
+ * locked with publishers so a publication after that read cannot be the unlink's target (#2441).
+ */
+export function consumeCarriedOutPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run" | "removeFile" | "withPlanLock">): void {
+  const snapshot = deps.readFile(planPath(agendHome));
+  const plan = parsePlan(snapshot);
+  if (!plan || !planCarriedOut(plan, target, deps)) return;
+  consumeUnchangedPlan(agendHome, snapshot, deps);
 }

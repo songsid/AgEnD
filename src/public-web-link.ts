@@ -14,27 +14,66 @@ import type { WebConfig } from "./types.js";
 import type { PublicPreview, PublicPreviewStatus } from "./public-preview.js";
 
 export const PUBLIC_LINK_DEFAULT_MINUTES = 120;
+/** A quick tunnel's (random trycloudflare.com address) longest lifetime. */
 export const PUBLIC_LINK_MAX_MINUTES = 480;
+/** With a fixed hostname (named tunnel): up to 7 days, or `0` = no expiry (open until closed or the fleet stops). */
+export const PUBLIC_LINK_NAMED_MAX_MINUTES = 10_080;
+export const PUBLIC_LINK_NO_EXPIRY = 0;
+const PUBLIC_LINK_KEYS = ["allow_public", "ttl_minutes", "protocol", "hostname", "tunnel_token_env", "origin_port", "auto_open"];
+/** Named mode: a usable fixed hostname is configured (what the longer lifetime and auto_open hang on). */
+export function publicLinkNamedHostname(web: WebConfig | undefined): boolean {
+  return publicTunnelHostname(web?.public_link?.hostname) !== null;
+}
 export function publicLinkSettings(web: WebConfig | undefined): { allowed: boolean; ttlMs: number; protocol: "http2" | "quic" | "auto" } {
   // Raw YAML startup does not go through the Settings validator. Enforce the
-  // fixed cap here too, at the boundary every runtime consumer shares.
+  // fixed cap here too, at the boundary every runtime consumer shares: 480 for a
+  // quick tunnel, 10080 (or 0 = no expiry, ttlMs Infinity) with a fixed hostname.
   const settings = web?.public_link;
-  const minutes = typeof settings?.ttl_minutes === "number" && Number.isInteger(settings.ttl_minutes) && settings.ttl_minutes > 0
-    ? Math.min(settings.ttl_minutes, PUBLIC_LINK_MAX_MINUTES) : PUBLIC_LINK_DEFAULT_MINUTES;
+  const named = publicLinkNamedHostname(web);
+  const raw = settings?.ttl_minutes;
+  const whole = typeof raw === "number" && Number.isInteger(raw);
+  const ttlMs = named && whole && raw === PUBLIC_LINK_NO_EXPIRY ? Infinity
+    : (whole && raw > 0 ? Math.min(raw, named ? PUBLIC_LINK_NAMED_MAX_MINUTES : PUBLIC_LINK_MAX_MINUTES) : PUBLIC_LINK_DEFAULT_MINUTES) * 60_000;
   const protocol = settings?.protocol;
-  return { allowed: settings?.allow_public === undefined || settings.allow_public === true, ttlMs: minutes * 60_000,
+  return { allowed: settings?.allow_public === undefined || settings.allow_public === true, ttlMs,
     protocol: typeof protocol === "string" && ["http2", "quic", "auto"].includes(protocol) ? protocol : "http2" };
 }
-export function validPublicLinkPatch(value: unknown): value is NonNullable<WebConfig["public_link"]> {
+/** `web.public_link.auto_open` (#named-link-ttl): only with a fixed hostname, and only while public links are allowed. */
+export function publicLinkAutoOpen(web: WebConfig | undefined): boolean {
+  return web?.public_link?.auto_open === true && publicLinkNamedHostname(web) && publicLinkSettings(web).allowed;
+}
+/**
+ * The shape of a Settings patch to `web.public_link`, before it is merged: every key known and of its kind, minutes
+ * within the widest range (0..10080). Whether the merged result fits its mode is the validator's (validPublicLinkPatch).
+ */
+export function publicLinkPatchShape(value: unknown): value is NonNullable<WebConfig["public_link"]> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  return Object.keys(v).every(k => ["allow_public", "ttl_minutes", "protocol", "hostname", "tunnel_token_env", "origin_port"].includes(k))
+  return Object.keys(v).every(k => PUBLIC_LINK_KEYS.includes(k))
     && (v.allow_public === undefined || typeof v.allow_public === "boolean")
-    && (v.ttl_minutes === undefined || (Number.isInteger(v.ttl_minutes) && Number(v.ttl_minutes) >= 1 && Number(v.ttl_minutes) <= PUBLIC_LINK_MAX_MINUTES))
+    && (v.auto_open === undefined || typeof v.auto_open === "boolean")
+    && (v.ttl_minutes === undefined || (Number.isInteger(v.ttl_minutes) && Number(v.ttl_minutes) >= 0 && Number(v.ttl_minutes) <= PUBLIC_LINK_NAMED_MAX_MINUTES))
     && (v.hostname === undefined || v.hostname === "" || publicTunnelHostname(v.hostname) !== null)
     && (v.tunnel_token_env === undefined || v.tunnel_token_env === "" || v.tunnel_token_env === PUBLIC_TUNNEL_TOKEN_ENV)
     && (v.origin_port === undefined || Number.isInteger(v.origin_port) && Number(v.origin_port) >= 1024 && Number(v.origin_port) <= 65535)
     && (v.protocol === undefined || (typeof v.protocol === "string" && ["http2", "quic", "auto"].includes(v.protocol)));
+}
+/**
+ * What is wrong with a whole `web.public_link` for its mode, or null. Quick tunnel (no hostname): 1..480 minutes and no
+ * auto_open. Fixed hostname: 1..10080 minutes or 0 (no expiry); auto_open allowed.
+ */
+export function publicLinkModeProblem(value: NonNullable<WebConfig["public_link"]>): { key: "ttl_minutes" | "auto_open"; message: string } | null {
+  const named = publicTunnelHostname(value.hostname) !== null;
+  const ttl = value.ttl_minutes;
+  if (!named && ttl !== undefined && (ttl < 1 || ttl > PUBLIC_LINK_MAX_MINUTES)) {
+    return { key: "ttl_minutes", message: `must be 1..${PUBLIC_LINK_MAX_MINUTES} minutes for a quick tunnel; 0 (no expiry) or up to ${PUBLIC_LINK_NAMED_MAX_MINUTES} needs web.public_link.hostname` };
+  }
+  if (!named && value.auto_open === true) return { key: "auto_open", message: "needs web.public_link.hostname (a named tunnel); a quick tunnel is never opened automatically" };
+  return null;
+}
+/** A whole `web.public_link` (the validator's view): its shape, then its mode's ranges. */
+export function validPublicLinkPatch(value: unknown): value is NonNullable<WebConfig["public_link"]> {
+  return publicLinkPatchShape(value) && publicLinkModeProblem(value) === null;
 }
 export function namedPublicLinkSettings(web: WebConfig | undefined): { hostname: string; token: string; port: number } | undefined {
   const settings = web?.public_link;
@@ -57,8 +96,10 @@ interface Exposure {
   id: string;
   owner: LoginCodeOwner;
   abort: AbortController;
+  /** Monotonic; Infinity when the link has no expiry (a named tunnel's `ttl_minutes: 0`). */
   deadline: number;
-  expiresAt: number;
+  /** Wall clock; null = no expiry: open until closed or the fleet stops. */
+  expiresAt: number | null;
   phase: "starting" | "open" | "closing" | "cleanup_unconfirmed";
   reservation: TunnelReservation;
   gateway: PublicGateway | null;
@@ -78,9 +119,12 @@ interface Exposure {
 export interface PublicLinkDelivery {
   readonly exposureId: string;
   readonly url: string;
-  readonly expiresAt: number;
+  /** null: no expiry (a named tunnel's `ttl_minutes: 0`) — open until closed or the fleet stops. */
+  readonly expiresAt: number | null;
   readonly isCurrent: () => boolean;
 }
+/** What a tunnel child and its lease are given for a link without expiry: a finite "far future" (JSON-safe). */
+const NO_EXPIRY_WALL = Number.MAX_SAFE_INTEGER;
 /** What the install reports, onto the public link's steps (①–③). */
 export function applyInstallProgress(progress: PublicLinkProgressTracker, p: CloudflaredInstallProgress): void {
   if (p.phase === "checked") progress.installChecked(p.download, p.version);
@@ -97,6 +141,16 @@ class StartFailure extends Error {
 export function logDetail(text: string | undefined): string | undefined {
   if (!text) return undefined;
   return text.replace(/https?:\/\/\S+/g, "<url>").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 300);
+}
+/**
+ * The refusal when the one tunnel is someone else's. #1525: drawn on ④, not ① — the refusal short-circuits before any
+ * install work, so ① renders ✅·0s while the lease-held sentence on ④ carries the truth.
+ */
+function leaseHeldProgress(now: () => number): PublicLinkProgress {
+  const refused = new PublicLinkProgressTracker(now, () => {});
+  refused.begin("tunnel");
+  refused.fail("lease-held");
+  return refused.snapshot;
 }
 /** Owns access before child cleanup: losing a tunnel cannot leave a public web session alive. */
 export class PublicWebLink {
@@ -147,10 +201,13 @@ export class PublicWebLink {
     if (!e || e.id !== exposureId || e.phase !== "open" || !this.current(e) || !e.preview) return null;
     return e.preview.status();
   }
-  status(): { state: string; expiresAt?: number; remainingSeconds?: number } {
+  /** `noExpiry`: an open link without an expiry (no expiresAt / remainingSeconds then). */
+  status(): { state: string; expiresAt?: number; remainingSeconds?: number; noExpiry?: true } {
     const e = this.entry;
     if (e && this.now() >= e.deadline && !e.closing) void this.close("expired");
-    return e ? { state: e.phase, expiresAt: e.expiresAt, remainingSeconds: Math.max(0, Math.ceil((e.deadline - this.now()) / 1000)) } : { state: "closed" };
+    if (!e) return { state: "closed" };
+    return e.expiresAt === null ? { state: e.phase, noExpiry: true }
+      : { state: e.phase, expiresAt: e.expiresAt, remainingSeconds: Math.max(0, Math.ceil((e.deadline - this.now()) / 1000)) };
   }
   private current(e: Exposure): boolean {
     return this.entry === e && e.configuration === configurationKey(this.deps.web()) && !e.closing && !e.abort.signal.aborted && this.now() < e.deadline
@@ -170,36 +227,13 @@ export class PublicWebLink {
     let e = this.entry;
     if (e && (e.owner.adapterId !== owner.adapterId || e.owner.chatId !== owner.chatId || e.owner.threadId !== owner.threadId || !this.current(e))) return false;
     if (!e) {
-      const settings = publicLinkSettings(this.deps.web());
-      const id = newTunnelSid();
-      const reservation = this.deps.reserve(id); // Before installer, listener, or any await.
-      if (!reservation) {
+      const created = this.create(owner);
+      if (!created) {
         // The one tunnel is someone else's (a /login link, or one whose cleanup is unconfirmed): say so.
-        // #1525: drawn on ④, not ① — the refusal short-circuits before any
-        // install work, so ① renders ✅·0s while the lease-held sentence on ④
-        // carries the truth.
-        const refused = new PublicLinkProgressTracker(this.now, () => {});
-        refused.begin("tunnel");
-        refused.fail("lease-held");
-        onProgress?.(refused.snapshot);
+        onProgress?.(leaseHeldProgress(this.now));
         return false;
       }
-      e = { configuration: configurationKey(this.deps.web()), id, owner: { ...owner }, reservation, abort: new AbortController(), deadline: this.now() + settings.ttlMs,
-        expiresAt: (this.deps.wallNow ?? Date.now)() + settings.ttlMs, phase: "starting", gateway: null, starting: Promise.resolve(), requests: 0, delivered: false,
-        progress: undefined as unknown as PublicLinkProgressTracker, watchers: new Set() };
-      const watched = e;
-      e.progress = new PublicLinkProgressTracker(this.now, () => { for (const w of watched.watchers) w(); });
-      this.entry = e;
-      const captured = e;
-      const expire = (): void => {
-        if (this.entry !== captured || captured.closing) return;
-        const remaining = captured.deadline - this.now();
-        if (remaining <= 0) void this.close("expired");
-        else { captured.timer = setTimeout(expire, Math.ceil(remaining)); captured.timer.unref?.(); }
-      };
-      expire();
-      e.starting = this.start(e, settings.protocol);
-      this.deps.log("requested", id);
+      e = created;
     }
     e.requests++;
     // This request's view: the shared steps, then its own ⑥.
@@ -244,6 +278,58 @@ export class PublicWebLink {
       if (!e.delivered && e.requests === 0 && this.entry === e) await this.close("no confirmed private recipient");
     }
   }
+  /** A new exposure for `owner` (its lifetime counted from now, its start begun), or null when the tunnel lane is held. */
+  private create(owner: LoginCodeOwner, how = "requested"): Exposure | null {
+    const settings = publicLinkSettings(this.deps.web());
+    const id = newTunnelSid();
+    const reservation = this.deps.reserve(id); // Before installer, listener, or any await.
+    if (!reservation) return null;
+    const lasting = Number.isFinite(settings.ttlMs);
+    const e: Exposure = { configuration: configurationKey(this.deps.web()), id, owner: { ...owner }, reservation, abort: new AbortController(),
+      deadline: lasting ? this.now() + settings.ttlMs : Infinity, expiresAt: lasting ? (this.deps.wallNow ?? Date.now)() + settings.ttlMs : null,
+      phase: "starting", gateway: null, starting: Promise.resolve(), requests: 0, delivered: false,
+      progress: undefined as unknown as PublicLinkProgressTracker, watchers: new Set() };
+    e.progress = new PublicLinkProgressTracker(this.now, () => { for (const w of e.watchers) w(); });
+    this.entry = e;
+    // No expiry: no timer at all (a setTimeout of Infinity would fire at once). Close, policy changes and shutdown end it.
+    const expire = (): void => {
+      if (this.entry !== e || e.closing) return;
+      const remaining = e.deadline - this.now();
+      if (remaining <= 0) void this.close("expired");
+      else { e.timer = setTimeout(expire, Math.ceil(remaining)); e.timer.unref?.(); }
+    };
+    if (lasting) expire();
+    e.starting = this.start(e, settings.protocol);
+    this.deps.log(how, id);
+    return e;
+  }
+  /**
+   * #named-link-ttl: open the link with nobody waiting for it — `web.public_link.auto_open` after the fleet starts. The
+   * same start and readiness probe as a requested link, owned by `owner` (the admin who last opened it; still checked by
+   * `permitted`), but no sign-in URL or code is sent anywhere: the sign-in page still asks for a code, which only a
+   * private /web or a returning device's request delivers. "busy": a link (or its cleanup) already exists — nothing done.
+   */
+  async openUnattended(owner: LoginCodeOwner, onProgress?: (p: PublicLinkProgress) => void): Promise<"opened" | "busy" | "failed"> {
+    if (this.entry) return "busy";
+    if (!this.deps.permitted(owner) || !publicLinkSettings(this.deps.web()).allowed) return "failed";
+    const e = this.create(owner, "requested unattended");
+    if (!e) { onProgress?.(leaseHeldProgress(this.now)); return "failed"; }
+    // Nobody is owed a delivery: a request joining it later and failing its own delivery never closes it.
+    e.delivered = true;
+    const watcher = onProgress ? () => onProgress(e.progress.snapshot) : null;
+    if (watcher) e.watchers.add(watcher);
+    try {
+      await e.starting;
+      if (!this.current(e)) throw new Error("closed");
+      this.deps.log("opened unattended", e.id);
+      return "opened";
+    } catch {
+      await this.close("unattended start failed", e.id); // its own exposure only (a later one is left alone)
+      return "failed";
+    } finally {
+      if (watcher) { e.watchers.delete(watcher); watcher(); }
+    }
+  }
   private async start(e: Exposure, protocol: "http2" | "quic" | "auto"): Promise<void> {
     const namedMode = !!(this.deps.web()?.public_link?.hostname || this.deps.web()?.public_link?.tunnel_token_env);
     try {
@@ -256,7 +342,7 @@ export class PublicWebLink {
       // preview starts, in which case both close. Nothing below waits on the preview or reads it.
       const startPreview = (): void => {
         if (e.preview !== undefined || !this.current(e)) return;
-        e.preview = this.deps.createPreview?.({ id: e.id, expiresAt: e.expiresAt, binary: binary.path, protocol,
+        e.preview = this.deps.createPreview?.({ id: e.id, expiresAt: e.expiresAt ?? NO_EXPIRY_WALL, binary: binary.path, protocol,
           dashboardOrigin: () => (e.url ? new URL(e.url).origin : null), isCurrent: () => this.current(e) }) ?? null;
         e.preview?.start();
       };
@@ -267,7 +353,7 @@ export class PublicWebLink {
       if (!this.current(e)) throw new Error("closed");
       const provider = (this.deps.provider ?? ((path, p, n) => new CloudflaredProvider({ binaryName: path, protocol: p, named: n })))(binary.path, protocol, named);
       const result = await e.reservation.start(provider, {
-        sid: e.id, origin, pagePath: "/signin", readinessMarker: gateway.readinessMarker, expiresAt: e.expiresAt,
+        sid: e.id, origin, pagePath: "/signin", readinessMarker: gateway.readinessMarker, expiresAt: e.expiresAt ?? NO_EXPIRY_WALL,
         signal: e.abort.signal, onCandidateHost: host => { if (this.current(e)) { gateway.setHost(host); e.progress.begin("address"); startPreview(); } },
       });
       if (!result.ok) throw new StartFailure(failureOf(result.errorKind), result.message);

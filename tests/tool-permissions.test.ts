@@ -293,6 +293,8 @@ describe("sink 1 — the fleet's outbound IPC", () => {
       setTopicIcon: () => {},
       eventLog: null,
       checkToolPermission: (FleetManager.prototype as unknown as Record<string, unknown>).checkToolPermission,
+      // #1774: a reply's sender, taken at the handler's entry (the name's generation and daemon then).
+      webChatIdentity: () => ({ generation: 0, daemon: undefined }),
     };
     const handle = (FleetManager.prototype as unknown as {
       handleOutboundFromInstance(instance: string, msg: Record<string, unknown>): Promise<void>;

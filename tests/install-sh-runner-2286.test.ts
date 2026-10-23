@@ -17,7 +17,7 @@
  * prefix and maps the version to the tarball.
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -50,6 +50,8 @@ function brokenHost(o: { latestHasInstaller: boolean; betaHasInstaller: boolean 
   writeFileSync(join(scope, "agend", "partial.tmp"), "");
   mkdirSync(join(prefix, "bin"));
   const bin = join(d, "bin"); mkdirSync(bin);
+  // The real one-liner ensures Node before this extracted installer block.
+  symlinkSync(process.execPath, join(bin, "node"));
   const withInstaller = JSON.stringify({ agend: "launcher/agend", "agend-install": "launcher/agend-install.cjs" });
   const without = JSON.stringify({ agend: "launcher/agend" });
   writeFileSync(join(bin, "npm"), `#!${process.execPath}
@@ -146,6 +148,8 @@ function legacyHost(state: "interrupted" | "unrunnable" | "clean", o = { latestH
   if (state === "interrupted") { mkdirSync(join(scope, "agend")); writeFileSync(join(scope, "agend", "partial.tmp"), ""); }
   const tgz = legacyTarball(d);
   const bin = join(d, "bin"); mkdirSync(bin);
+  // The real one-liner ensures Node before this extracted installer block.
+  symlinkSync(process.execPath, join(bin, "node"));
   const withInstaller = JSON.stringify({ agend: "launcher/agend", "agend-install": "launcher/agend-install.cjs" });
   writeFileSync(join(bin, "npm"), `#!${process.execPath}
 const fs = require("fs"), path = require("path"), cp = require("child_process");

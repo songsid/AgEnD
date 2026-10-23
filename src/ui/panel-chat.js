@@ -122,7 +122,9 @@ export async function setPreviewOptIn(on, commit = (apply) => apply()) {
 export function boot({ stream, boot: bootData, deps = {} }) {
   if (store) return store;
   store = createChatStore({
-    fetch: (...a) => fetch(...a), toast, announce, t, setTimeout: (fn, ms) => setTimeout(fn, ms), confirm: confirmDialog, ...deps,
+    fetch: (...a) => fetch(...a), toast, announce, t, setTimeout: (fn, ms) => setTimeout(fn, ms), confirm: confirmDialog,
+    XMLHttpRequest: typeof XMLHttpRequest === "function" ? XMLHttpRequest : undefined,   // an upload's progress (chat-store.js)
+    ...deps,
   });
   emojiIndex = createEmojiIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
   mentionIndex = createMentionIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
@@ -187,6 +189,10 @@ function useChatTick(name, kinds) {
 
 /** #1722: the chat's title — the name that leads, the other on hover. */
 const headerName = ({ primary, secondary }) => (secondary ? html`<span title=${secondary}>${primary}</span>` : primary);
+/** #2478: who the composer writes to — the display name, else the instance's name (a long id made the box two lines). */
+const composerLabel = (inst, name) => (inst && typeof inst.display_name === "string" && inst.display_name.trim()) || name;
+/** #2478: a touch screen (a coarse pointer) — Return is a new line there and only the Send button sends. Asked each time. */
+const touchScreen = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
 export function ChatPanel({ route, navKey }) {
   const lease = useLease(navKey);
@@ -425,6 +431,9 @@ function threadEntry(name, doc) {
     canTryEffect: x => getAppEffects()?.canTry(x) === true,
     startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && e.sink && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
+    retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
+    deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
+    putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); },   // undoable, as typing
     // #2272: reply to a message (the bar above the composer), and show the one a reply quotes.
     startReply: (x) => { store.startReply(name, x); doc.getElementById("msgIn")?.focus(); },
     findQuoted: (key) => store.findQuoted(name, key),
@@ -446,12 +455,13 @@ function follow(name, thread) {
   // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
   const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
   const offs = [];
-  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(store.state.msgs[name] || [])));
-  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(store.state.msgs[name] || [])));
+  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(store.threadRows(name))));
+  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(store.threadRows(name))));
   wantEmojis(store.state.msgs[name]);
   offs.push(store.subscribe((instance, kind) => {
     if (instance !== name) return;
-    if (kind === "msgs") { thread.render(store.state.msgs[name] || []); wantEmojis(store.state.msgs[name]); }
+    if (kind === "msgs") { thread.render(store.threadRows(name)); wantEmojis(store.state.msgs[name]); }
+    else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
     else if (kind === "sent") thread.jumpLatest();
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
@@ -461,10 +471,10 @@ function follow(name, thread) {
     const next = getAppEffects();
     if (next === trialOwner) return;
     trialOff?.(); trialOff = null; trialOwner = next;
-    trialOff = next?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? null;
+    trialOff = next?.subscribeTrial(() => thread.render(store.threadRows(name))) ?? null;
   };
   watchTrial();
-  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.state.msgs[name] || []); }));
+  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.threadRows(name)); }));
   offs.push(() => { trialOff?.(); trialOff = null; trialOwner = null; });
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
   return () => { for (const off of offs) off(); };
@@ -493,7 +503,7 @@ function Thread({ name, th }) {
     thread.attach(sc);
     th.current = thread;
     // Up to date, at the reader's place (the bottom unless they had scrolled up); a kept one's cards say what they can do.
-    thread.render(store.state.msgs[name] || [], { restore: store.state.scrollMemo[name] ?? null });
+    thread.render(store.threadRows(name), { restore: store.state.scrollMemo[name] ?? null });
     if (kept) thread.refreshCards();
     const unfollow = follow(name, thread);
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
@@ -546,15 +556,10 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
-    ${s.failedSends[name] ? html`<div class="failed-send" role="alert"><span>${t("chat.notSent")}</span><span class="txt">${s.failedSends[name]}</span>
-      <button type="button" class="btn btn-primary btn-sm" onClick=${() => { recordEdit(composerField()); store.putBack(name); }}>${t("chat.putBack")}</button>
-      <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
-    ${s.sendFailures[name] ? html`<div class="failed-send send-failure" role="alert"><span>${s.sendFailures[name].error}</span>
-      <button type="button" class="btn btn-sm" disabled=${!store.canRetrySend(name)} onClick=${() => store.retrySend(name)}>${t("chat.retrySend")}</button></div>` : null}
-    <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
+    <${Composer} name=${name} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
     <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
-      class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t("chat.composerHint")}</span></div>
+      class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t(touchScreen() ? "chat.composerHintTouch" : "chat.composerHint")}</span></div>
   </div></div>`;
 }
 
@@ -637,7 +642,7 @@ function replySnippet(r) {
   return text || (r.media === "photo" ? t("chat.replyPhoto") : r.media === "document" ? t("chat.replyFile") : "");
 }
 
-function Composer({ name, lease, busy }) {
+function Composer({ name, label = name, lease, busy }) {
   const s = store.state;
   const input = useRef(null), fileIn = useRef(null);
   const [, tick] = useState(0);
@@ -652,8 +657,13 @@ function Composer({ name, lease, busy }) {
   const guest = guestPage();
   const palette = guest || files.length || closedFor === value ? null : paletteFor(value);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
-  // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300).
-  useLayoutEffect(() => { const el = input.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; }, [value]);
+  // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
+  // (#2478 — a long name's placeholder made the box two lines tall).
+  useLayoutEffect(() => {
+    const el = input.current; if (!el) return;
+    el.style.height = "auto";
+    if (value) el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [value]);
   useEffect(() => { if (input.current) input.current.focus(); }, [name]);
   useEffect(() => { refreshTourSpot(); });
   const setValue = (v) => { store.setDraft(name, v); setSel(0); tick(n => n + 1); };
@@ -688,7 +698,7 @@ function Composer({ name, lease, busy }) {
     if (pick && e.key === "Tab" && !e.shiftKey) { e.preventDefault(); complete(pick); return; }
     if (palette && e.key === "Escape" && !e.isComposing) { e.preventDefault(); setClosedFor(value); return; }
     if (reply && e.key === "Escape" && !e.isComposing) { e.preventDefault(); store.clearReply(name); return; }   // #2272
-    if (R().composerKey(e) === "send") { e.preventDefault(); submit(); }
+    if (R().composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); submit(); }
   };
   const onInput = (e) => { setValue(e.target.value); };
   // Files in a paste are attached; a very long text paste goes as a text file — only once it is really attached.
@@ -716,12 +726,15 @@ function Composer({ name, lease, busy }) {
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
-      <textarea id="msgIn" ref=${input} rows="1" value=${value} placeholder=${t("chat.composerPlaceholder", name)} aria-label=${t("chat.composerPlaceholder", name)}
-        autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
-        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>
+      ${/* #2478: the placeholder is drawn beside the box, one line ending in "…" — a textarea's own placeholder is clipped,
+          never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. */ ""}
+      <span class="composer-field"><textarea id="msgIn" ref=${input} rows="1" value=${value} aria-label=${t("chat.composerPlaceholder", label)}
+        enterkeyhint=${touchScreen() ? "enter" : undefined} autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
+        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>${value ? null
+        : html`<span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span>`}</span>
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
         disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
-      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content || !!s.sending[name]}
+      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content}
         onMouseDown=${(e) => e.preventDefault()}
         aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;

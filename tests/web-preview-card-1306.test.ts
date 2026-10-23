@@ -50,7 +50,9 @@ describe("which fences get a card (§6.1)", () => {
     // #1630: the same rule, written as a flag; the emoji lookup is the page's own (never message text).
     // #2053: through the memo; its one caller passes the server's role, and the memo hands it on unchanged.
     expect(THREAD).toContain('renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)');
-    expect(THREAD.match(/renderedMarkdown\(/g)?.length, "defined once, called once").toBe(2);
+    // A message this page is still sending is a person's own text: never cards (a literal false, not a role).
+    expect(THREAD).toContain('renderedMarkdown(x.text, false, opts.emojis, opts.mentions)');
+    expect(THREAD.match(/renderedMarkdown\(/g)?.length, "defined once, called for a message and a pending send").toBe(3);
     expect(THREAD).toContain("R().renderMarkdown(src, { htmlCards: cards, emojis, mentions })");
     const code = (src: string) => src.split("\n").filter(l => !/^\s*(\*|\/\/)/.test(l));
     // Any place that can turn cards on (literally, or from the server's role): still only the thread's one line.

@@ -34,6 +34,7 @@ import {
   type PartialUser,
   type Interaction,
   type ChatInputCommandInteraction,
+  type MessageCreateOptions,
 } from "discord.js";
 import type {
   ChannelAdapter,
@@ -60,6 +61,15 @@ import { CROSS_INSTANCE_VISIBILITY_MODES } from "../../cross-instance-notice.js"
 import { POLL_STATUS_CALLBACK, type PollRender } from "../../reply-polls.js";
 import { protectDiscordClientRetirement, retireDiscordClient } from "./discord-client-retirement.js";
 
+/**
+ * #2281: Discord refused a message over its reply reference: Invalid Form Body (50035), Unknown Message (10008), or
+ * "Cannot reply without permission to read message history" (160002 — a channel that denies the bot its history, where
+ * a plain message still posts).
+ */
+function isDiscordReplyRefusal(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 50035 || code === 10008 || code === 160002;
+}
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
 const GATEWAY_STALE_MIN_MS = 180_000;
@@ -259,6 +269,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private readonly staleThresholdMs: number;
   private readonly reconnectBaseDelayMs: number;
   private desiredRunning = false;
+  /** #2482: edits refused since the last stop (only the first is logged). */
+  private stoppedEditFailures = 0;
   private lifecycleEpoch = 0;
   private clientGeneration = 0;
   private reconnectPromise: Promise<void> | null = null;
@@ -300,7 +312,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.registerCommands = opts.registerCommands !== false;
     this.fleetLabel = opts.fleetLabel;
 
-    mkdirSync(this.inboxDir, { recursive: true });
+    mkdirSync(this.inboxDir, { recursive: true, mode: 0o700 });
 
     this.clientFactory = opts.clientFactory ?? (() => this.buildClient());
     this.now = opts.now ?? Date.now;
@@ -1382,6 +1394,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async start(): Promise<void> {
     if (this.desiredRunning && this.client.isReady()) return;
     this.desiredRunning = true;
+    this.stoppedEditFailures = 0;
     const epoch = ++this.lifecycleEpoch;
     this.healthStatus = "starting";
     this.queue.start();
@@ -1513,11 +1526,23 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     let last: Awaited<ReturnType<typeof channel.send>> | undefined;
     // #1266: a reply's buttons go on the last part (built first: too many buttons is an error before anything is sent).
     const replyRows = opts?.replyPoll ? discordPollRows(opts.replyPoll) : opts?.replyButtons?.length ? buttonRows(opts.replyButtons) : null;
+    // #2281: `replyTo` makes the first part a native reply (a Discord snowflake only). failIfNotExists: false — a reply
+    // to a message deleted since is sent as a plain message by Discord itself.
+    const replyTo = opts?.replyTo && /^\d{15,25}$/.test(opts.replyTo) ? opts.replyTo : undefined;
     for (const [i, chunk] of chunks.entries()) {
       const components = replyRows && i === chunks.length - 1 ? { components: replyRows } : {};
-      const sent = await channel.send(opts?.disablePreview || opts?.allowedMentions || replyRows
-        ? { content: chunk, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.allowedMentions ? { allowedMentions: opts.allowedMentions } : {}), ...components }
-        : chunk);
+      const reply = replyTo && i === 0 ? { reply: { messageReference: replyTo, failIfNotExists: false } } : {};
+      const payload = (withReply: boolean): string | MessageCreateOptions => opts?.disablePreview || opts?.allowedMentions || replyRows || (withReply && replyTo && i === 0)
+        ? { content: chunk, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds as const } : {}), ...(opts?.allowedMentions ? { allowedMentions: opts.allowedMentions } : {}), ...components, ...(withReply ? reply : {}) }
+        : chunk;
+      let sent: Awaited<ReturnType<typeof channel.send>>;
+      try { sent = await channel.send(payload(true)); } catch (err) {
+        // The reference itself refused (Invalid Form Body / Unknown Message): nothing was posted, so the plain part is
+        // no duplicate. Any other failure is the send's own, as before.
+        if (!(i === 0 && replyTo && isDiscordReplyRefusal(err))) throw err;
+        console.warn(`[discord] reply refused; sending without it: ${(err as Error).message}`);
+        sent = await channel.send(payload(false));
+      }
       first ??= sent;
       last = sent;
     }
@@ -1605,11 +1630,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // copy. Still reject: callers such as terminal update progress explicitly
       // own the policy decision to prefer a possible duplicate over a permanent
       // stale X/N status.
-      console.warn(
-        `[discord] editMessage failed; refusing new-message fallback because delivery outcome may be unknown: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      // #2482: after a stop every pending edit fails the same way — one line per stop, not one per edit.
+      const stopped = this.desiredRunning === false;
+      const firstSinceStop = !this.stoppedEditFailures;
+      if (stopped) this.stoppedEditFailures = (this.stoppedEditFailures ?? 0) + 1;
+      if (!stopped || firstSinceStop) {
+        console.warn(
+          `[discord] editMessage failed; refusing new-message fallback because delivery outcome may be unknown: ${
+            err instanceof Error ? err.message : String(err)
+          }${stopped ? " (the adapter is stopped; further edits until it starts again are not logged)" : ""}`,
+        );
+      }
       throw err;
     }
   }

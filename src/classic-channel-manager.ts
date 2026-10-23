@@ -1,3 +1,4 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { mergeSettingsDelta, noteSettingsWrite } from "./settings-transaction.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, copyFileSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -453,7 +454,7 @@ export class ClassicChannelManager {
   }
 
   private save(): void {
-    mkdirSync(this.dataDir, { recursive: true });
+    ensureAgendHome(this.dataDir);
     const projected = this.document();
     const fresh = existsSync(this.configPath) ? yaml.load(readFileSync(this.configPath, "utf8")) as ClassicBotYaml : { defaults: {}, channels: {} };
     if (fresh !== null && (typeof fresh !== "object" || Array.isArray(fresh))) throw new Error("invalid Classic configuration");
@@ -897,7 +898,7 @@ export class ClassicChannelManager {
 
   static logMessage(instanceName: string, username: string, text: string, timestamp: Date, replyToText?: string): void {
     const logDir = ClassicChannelManager.chatLogDir(instanceName);
-    mkdirSync(logDir, { recursive: true });
+    mkdirSync(logDir, { recursive: true, mode: 0o700 });
     const tz = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const localStr = timestamp.toLocaleString("sv-SE", { timeZone: tz, hour12: false }).replace(" ", "T");
     const dateStr = localStr.slice(0, 10);

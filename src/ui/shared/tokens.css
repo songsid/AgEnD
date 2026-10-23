@@ -166,3 +166,7 @@
 @media (pointer: coarse), (max-width: 899px) {
   input, select, textarea { --fs-xs: 16px; --fs-sm: 16px; --fs-md: 16px; }
 }
+/* #2478: the composer's drawn placeholder (a span over the box) is the box's text in size too. */
+@media (pointer: coarse), (max-width: 899px) {
+  .composer-ph { --fs-md: 16px; }
+}

@@ -1,6 +1,7 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-context.js";
 import { fleetCookieName } from "./web-cookie-names.js";
-import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import {
@@ -60,7 +61,7 @@ function tokenPath(dataDir: string): string {
  * A fleet restart must not revoke every previously issued /web URL.
  */
 export function loadOrCreateWebToken(dataDir: string): string {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = tokenPath(dataDir);
   const existing = readValidToken(path);
   if (existing) {
@@ -98,7 +99,7 @@ export function readWebToken(dataDir: string): string | null {
  * and session cookie stops being accepted as soon as the next request is served.
  */
 export function rotateWebToken(dataDir: string): string {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = tokenPath(dataDir);
   const token = randomBytes(24).toString("hex");
   replaceTokenAtomically(path, token);
@@ -397,7 +398,7 @@ function authorize(
  * default and then touch nothing at all.
  */
 // #1665: /ui/prefs is read by the page when another device changed a preference — the page's doing, not the person's.
-const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization"]);   // #1918: the public link polls traffic
+const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization", "/ui/offices"]);   // #1918: the public link polls traffic; the Office view reads offices again when the stream says they changed
 const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
 /** #1630: the pictures a page draws (avatars, server emoji) and the emoji list are loaded by the page, not done by a person. */
 const PASSIVE_GET_IMAGES = /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/;   // #1682: mention names too

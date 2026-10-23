@@ -143,20 +143,22 @@ describe("web paused delivery uses the channel facade, never a cached IPC", () =
 });
 
 describe("chat waking state and explicit retry preserve the draft", () => {
-  it("shows waking while held, retains a failed draft, retries exactly once, then clears the reason", async () => {
+  it("shows waking while held; a failed send stays as its own bubble with the reason; Retry sends it exactly once more", async () => {
     let release!: (v: any) => void;
     const fetch = vi.fn(() => new Promise<any>(r => { release = r; }));
     const store = createChatStore({ fetch, toast() {}, announce() {}, t: (s: string) => s });
     store.applyStatus({ instances: [{ name: "alpha", status: "paused" }] }); store.setCurrent("alpha"); store.setDraft("alpha", "hello");
     const sending = store.send("alpha");
     expect(store.state.waking.alpha).toBe(true); expect(store.state.sending.alpha).toBe(true);
+    const [bubble] = store.state.outgoing.alpha;
+    expect([bubble.text, bubble.outgoing.state, store.state.drafts.alpha]).toEqual(["hello", "sending", ""]);
     release({ json: async () => ({ error: "No slot free. Retry later.", reason: "wake_capacity" }) }); await sending;
-    expect(store.state.waking.alpha).toBeUndefined(); expect(store.state.drafts.alpha).toBe("hello");
-    expect(store.state.sendFailures.alpha.error).toBe("No slot free. Retry later."); expect(store.canRetrySend("alpha")).toBe(true);
-    const retry = store.retrySend("alpha"); store.retrySend("alpha");
+    expect(store.state.waking.alpha).toBeUndefined();
+    expect([bubble.outgoing.state, bubble.outgoing.error, store.state.drafts.alpha]).toEqual(["failed", "No slot free. Retry later.", ""]);
+    const retry = store.retryOutgoing("alpha", bubble.clientId); store.retryOutgoing("alpha", bubble.clientId);
     expect(fetch).toHaveBeenCalledTimes(2);
-    release({ json: async () => ({ sent: true }) }); await retry;
-    expect(store.state.sendFailures.alpha).toBeUndefined(); expect(store.state.drafts.alpha).toBe("");
+    release({ json: async () => ({ sent: true, messageId: "m1" }) }); await retry;
+    expect([bubble.outgoing.state, bubble.messageId, store.state.drafts.alpha]).toEqual(["sent", "m1", ""]);
   });
   it("a concurrent draft or navigation never gets overwritten or silently retried", async () => {
     let release!: (v: any) => void;
@@ -165,7 +167,8 @@ describe("chat waking state and explicit retry preserve the draft", () => {
     store.setCurrent("alpha"); store.setDraft("alpha", "original"); const pending = store.send("alpha");
     store.setDraft("alpha", "new text"); store.setCurrent("other");
     release({ json: async () => ({ error: "not ready" }) }); await pending;
-    expect(store.state.drafts.alpha).toBe("new text"); expect(store.state.failedSends.alpha).toBe("original");
-    expect(store.canRetrySend("alpha")).toBe(false); store.retrySend("alpha"); expect(fetch).toHaveBeenCalledTimes(1);
+    await new Promise((r) => setTimeout(r, 20));
+    expect([store.state.drafts.alpha, store.state.outgoing.alpha.map((x: any) => [x.text, x.outgoing.state])]).toEqual(["new text", [["original", "failed"]]]);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

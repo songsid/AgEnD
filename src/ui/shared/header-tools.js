@@ -9,7 +9,7 @@ import { html, useEffect, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { createStore, useStore } from "./app-store.js";
 import { Icon } from "./ui-icons.js";
-import { UsageBody, UsageDialog } from "./usage-dialog.js";
+import { UsageBody, UsageCompactToggle, UsageDialog } from "./usage-dialog.js";
 
 export const TEXT_SIZE_KEY = "agend_text_size";
 export const VIEW_FIT_KEY = "agend_view_fit";
@@ -126,7 +126,7 @@ export function UsageRail({ route }) {
   const { open } = useStore(usageRailStore);
   if (!wide || !open || !route || !RAIL_PANELS.includes(route.panel) || !usageOffered()) return null;
   return html`<aside data-trust="usage" class="u-rail" aria-label=${t("view.usage.title_plain")}>
-    <div class="u-rail-head"><h2>${t("view.usage.title")}</h2>
+    <div class="u-rail-head"><h2>${t("view.usage.title")}</h2><${UsageCompactToggle} />
       <button type="button" class="icon-btn" onClick=${() => setUsageRail(false)} aria-label=${t("app.usageHide")} title=${t("app.usageHide")}><${Icon} name="close" size=${16} /></button></div>
     <div class="u-rail-body"><${UsageBody} owner="usage-rail" /></div>
   </aside>`;

@@ -46,7 +46,7 @@ vi.mock("node:http", async importOriginal => ({
   ...await importOriginal<typeof import("node:http")>(),
   createServer: vi.fn((handler: (req: IncomingMessage, res: ServerResponse) => void) => {
     guards.httpHandler ??= handler;           // the web listener's: it is created first (the #1306 preview listener after it)
-    return { on: vi.fn(), listen: vi.fn(), close: vi.fn() }; // No socket/listener/lifecycle starts.
+    return { on: vi.fn(), once: vi.fn(), listen: vi.fn(), close: vi.fn() }; // No socket/listener/lifecycle starts.
   }),
 }));
 

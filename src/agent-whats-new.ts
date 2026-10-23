@@ -64,9 +64,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // install would never be told. The ids keep their 2.3- names: the record is by id, so an instance already told on a
   // 2.3.0 beta is not told again. An entry added before 2.2.5 is cut takes `since: "2.2.5"` too.
   { id: "2.3-web-appearance-topic", since: "2.2.5",
-    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and mods, and Canvas Worker effects with Try, which are still beta (2.3) (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
+    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and mods, and Canvas Worker effects with Try, which are experimental — off unless the person turns them on (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
   { id: "2.3-web-settings-for-the-user", since: "2.2.5", audience: ["general", "coordinator"],
-    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, Canvas Worker effects (still beta (2.3)), Restore defaults. Load the `web-appearance` skill first." },
+    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, Canvas Worker effects (experimental — off unless the person turns them on), Restore defaults. Load the `web-appearance` skill first." },
   { id: "2.3-web-ambient", since: "2.2.5",
     text: "Ambient effects: `set_web_ambient` puts falling petals, snow, rising lanterns, twinkles or stars on a click in your web chat — data only, drawn by the dashboard, no Try needed (`clear_web_ambient` removes it). Load the `web-appearance` skill." },
   { id: "2.3-repo-tools", since: "2.2.5",
@@ -77,6 +77,16 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "`list_decisions` now answers titles by default (id, title, scope, date, tags). Read a decision's full text with `list_decisions { id }`, or all of them with `{ full: true }` (large). CLI mode: `agend-agent decision-get <id>`." },
   { id: "2.3-web-ordinary-requests", since: "2.2.5",
     text: "The web-chat rule is reworded (#1939): a plain `via web` message is the signed-in person — answer it and do what it asks within your work (questions, reading, analysis, changes in your own scope). Only a go-ahead action — a release or publish, anything destructive or irreversible beyond your own work files and branches, spending beyond normal work, credentials or secrets, granting authority to another instance — needs their account behind it: a Discord or Telegram receipt, or `via web (verified)` with its receipt read (`delivery_status`). A guest only chats. The full text is in your instructions and the cross-instance-messaging skill." },
+  // 2.3.0 stable: what agents can do since 2.2.6 (2.2.5/2.2.6 = 2.3.0-beta.12's code, so everything above reached them).
+  // `since: "2.3.0"`: a 2.3.0 beta install is told these on reaching 2.3.0, once, like a 2.2.6 one.
+  { id: "2.3.0-task-board", since: "2.3.0",
+    text: "Task board: the `task` tool also works the board — main tasks M-n and sub tasks S-n: `mine` (your work; start here after a reset), `get`, `projects`, `move` (blocked or cancelled needs a reason, finishing needs a result), `create` with `project` or `parent`, `update` with board fields. A `[Task board]` notice is news on your cards: act with the tool, no chat reply. One card in progress at a time. A card you hand out to another instance is yours to answer and confirm; only cards the person handed out wait for the person. If the person switched the task board off for you, the tool is not in your list." },
+  { id: "2.3.0-web-reply-react", since: "2.3.0",
+    text: "Web chat: a person can reply to a specific message — it arrives with `(reply_to: \"…\")` as from Discord or Telegram. `react` now works on web-chat messages too (a `message_id` starting with `web-`, one emoji from the web set); a reaction is a complete answer to a message that only thanks or acknowledges. `reply` with `reply_to` is now a native reply on Discord and Telegram." },
+  { id: "2.3.0-dashboard-switches", since: "2.3.0",
+    text: "The person can switch off, per agent, its dashboard tools: appearance, task board, web settings (`dashboard` in fleet.yaml). A call to a switched-off tool is refused with the reason: don't retry it or work around it; tell the person if you need it." },
+  { id: "2.3.0-cli", since: "2.3.0", audience: ["general", "coordinator"],
+    text: "CLI: `agend restart` is the one full restart (it goes through systemd or launchd); `agend restart <instance>` restarts one. `agend fleet restart` is deprecated (removed in 2.4). Removed: `agend schedule trigger`, `agend fleet logs` (use `agend logs`), chat `/install-cli` (use `/login`), `agend install --activate`. `create_instance` reconciles by itself: no `agend reload` after it. The `fleet-restart` skill has the details." },
 ];
 
 /** #2275: old sessions learn only the capabilities currently enabled. Keep the full

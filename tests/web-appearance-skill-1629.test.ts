@@ -141,7 +141,9 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
     for (const version of ["2.2.0", "2.2.1", "2.2.4"]) expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version }), version).toBeNull();
     for (const version of ["2.2.5", "2.3.0-beta.12", "2.3.0"]) {
       const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(NEW);
+      // On 2.3.0 the 2.3.0 stable entries come with them (whats-new-2.2.5.test.ts pins those).
+      const also = version === "2.3.0" ? AGENT_WHATS_NEW.filter(e => e.since === "2.3.0").map(e => e.id) : [];
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual([...NEW, ...also]);
     }
     expect(planWhatsNew({ record: { announced: AGENT_WHATS_NEW.map(e => e.id) }, fresh: false, version: "2.3.0" })).toBeNull();
   });

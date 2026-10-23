@@ -82,11 +82,12 @@ export function backendLabel(backend) { return BACKEND_LABELS[backend] || backen
 export const KNOWN_BACKENDS = new Set(Object.keys(BACKEND_LABELS));
 export const STATUS_KEYS = { running: "statusRunning", paused: "statusPaused", stopped: "statusStopped", crashed: "statusCrashed" };
 
-/** The status chips, in order (design Q5): what the row's dot says, in five words. */
-export const STATUS_FACETS = ["working", "needs", "idle", "stopped", "crashed"];
+/** The status chips, in order: what the row's dot says, including agents queued for this boot. */
+export const STATUS_FACETS = ["working", "needs", "starting", "idle", "stopped", "crashed"];
 /** Which status chip a row falls under: needs you first, then crashed, not running, working (or stuck), idle. */
 export function statusFacet(it, exec, awaiting) {
   if (awaiting != null) return "needs";
+  if (it?.startup_phase === "queued" || it?.startup_phase === "starting") return "starting";
   if (!it || it.status === "crashed") return "crashed";
   if (it.status !== "running") return "stopped";
   return exec === "working" || exec === "stuck" ? "working" : "idle";
@@ -127,7 +128,8 @@ export function filterSidebar(groupNames, instByGroup, rosterByName, query, labe
 }
 export function instanceTooltip(it) {
   const context = it.context_pct != null && Number.isFinite(it.context_pct) ? `${Math.round(Math.min(100, Math.max(0, it.context_pct)))}%` : tn("tooltipUnavailable");
-  const status = STATUS_KEYS[it.status] ? tn(STATUS_KEYS[it.status]) : it.status || tn("statusUnknown");
+  const status = it.startup_phase === "queued" ? t("app.statusQueued") : it.startup_phase === "starting" ? t("app.statusStarting")
+    : STATUS_KEYS[it.status] ? tn(STATUS_KEYS[it.status]) : it.status || tn("statusUnknown");
   const line = (key, value) => tn(key, { value });
   const lines = [];
   const name = nameOf(it);
@@ -361,12 +363,15 @@ export function avatarOf(it) {
 /** The status dot on the avatar: needs you, crashed, paused, stopped, looks stuck, working, idle — colour AND a label. */
 export function dotState(it, exec, awaiting) {
   if (awaiting != null) return "needs";
+  if (it?.startup_phase === "queued") return "queued";
+  if (it?.startup_phase === "starting") return "starting";
   if (!it || it.status === "crashed") return "crashed";
   if (it.status === "paused") return "paused";
   if (it.status !== "running") return "stopped";
   return exec === "stuck" ? "stuck" : exec === "working" ? "working" : "idle";
 }
 const DOT = {
+  queued: ["off", () => t("app.statusQueued")], starting: ["busy", () => t("app.statusStarting")],
   needs: ["warn", () => t("app.needsYou")], crashed: ["bad", () => t("app.statusCrashed")], paused: ["off hollow", () => t("app.statusPaused")],
   stopped: ["off", () => t("app.statusStopped")], stuck: ["warn", () => t("app.statusStuck")], working: ["busy", () => t("app.statusWorking")],
   idle: ["ok", () => t("app.statusIdle")],
@@ -393,7 +398,7 @@ export function InstanceAvatar({ it, state, cli = false }) {
 
 // ── The list ──
 
-const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet === "working" ? t("app.statusWorking") : facet === "idle" ? t("app.statusIdle")
+const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet === "starting" ? t("app.statusStarting") : facet === "working" ? t("app.statusWorking") : facet === "idle" ? t("app.statusIdle")
   : facet === "crashed" ? t("app.statusCrashed") : t("app.statusStopped"));
 
 // ── #2179: when each instance last replied to a person (the status frame's last_reply) ──
@@ -571,7 +576,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     const sel = f[key];
     const summary = !open && sel.length ? (sel.length <= 2 ? sel.map(text).join(", ") : tn("facetSelected", { n: sel.length })) : "";
     const hint = tn(open ? "facetHide" : "facetShow", { group: label });
-    return html`<div class=${`nav-facet${open ? " open" : ""}`}>
+    return html`<div class=${`nav-facet${open ? " open" : ""}${summary ? " has-sum" : ""}`}>
       <button type="button" class="nav-facet-head" aria-expanded=${open ? "true" : "false"} aria-controls=${`nav-facet-${key}`}
         title=${summary ? `${hint} (${label} · ${summary})` : hint} onClick=${() => toggleFacet(key)}>
         <${Icon} name="chevron" size=${12} cls=${open ? "caret" : "caret folded"} /><span class="nav-facet-label">${label}</span>
@@ -614,6 +619,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           aria-label=${tn(starred ? "favRemove" : "favAdd", { name: label })} title=${full ? tn("favFull", { max: MAX_FAVORITES }) : tn(starred ? "favRemove" : "favAdd", { name: label })}
           onClick=${() => toggleFavorite(name, known)}><${Icon} name="star" size=${14} /></button>` : null}</li>`;
   };
+  // #2401: an open list of two or more lines leaves room under the count for "shown" and Clear (stacked); otherwise compact.
+  const facetSet = f.status.length > 0 || f.cli.length > 0;
+  const stacked = (!viewOnly && facetOpen.status) || (facetOpen.cli && backends.length > 1);
   // The list scrolls; the filter under it stays in view (#999), so it sits outside the scrolling section.
   return html`<div class=${`view-roster inst-nav${editing && canStar ? " fav-editing" : ""}`}>
     <div data-trust="navigation" class="side-section" id="instanceList" ref=${list}>
@@ -653,13 +661,22 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
         ${f.q ? html`<button type="button" class="icon-btn v-filter-clear" aria-label=${tn("filterClear")} title=${tn("filterClear")}
           onClick=${() => { recordEdit(filterRef.current); setNavFilter({ q: "" }); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
       </label>
-      <div class="nav-facets">
+      <div class=${`nav-facets${stacked ? "" : " compact"}`}>
         <div class="nav-facet-groups">
           ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
           ${backends.length > 1 || f.cli.length ? chips("cli", backends, tn("filterCli"), backendLabel) : null}
-          ${f.status.length || f.cli.length ? html`<button type="button" class="chip-btn nav-facet-reset" onClick=${() => setNavFilter({ status: [], cli: [] })}>${tn("filterFacetsReset")}</button>` : null}
         </div>
-        <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
+        ${/* #2401: the count, its "shown" and Clear stack at the row's right end — beside an open list there is room under
+            the count, so setting a facet adds no row (a word beside the count, or Clear beside it, wrapped CLI under the
+            list). With no such list (.compact) they share one cell of one line: a facet set, Clear takes the count's place
+            (the count kept for a screen reader and in Clear's title). Either way the column keeps Clear's width (idle, there
+            unseen at no height: .is-idle, a class — never a style attribute, #1300), and stacked the word's too
+            (data-reserve, drawn unseen at no height), so the headers' box beside it never narrows. */ ""}
+        <div class="nav-facet-end" data-reserve=${tn("filterShown")}>
+          <p class=${`note nav-shown${facetSet ? " is-set" : ""}`} aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? html`<span class="nav-shown-word"> ${tn("filterShown")}</span>` : ""}</p>
+          <button type="button" class=${`chip-btn nav-facet-reset${facetSet ? "" : " is-idle"}`} title=${facetSet ? `${shown.shown} / ${shown.total} ${tn("filterShown")}` : undefined}
+            onClick=${() => setNavFilter({ status: [], cli: [] })}>${tn("filterFacetsReset")}</button>
+        </div>
       </div>
     </div>`}
   </div>`;

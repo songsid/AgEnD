@@ -320,12 +320,12 @@ describe("discord registration includes the new commands", () => {
     expect(src).toContain('{ name: "opencode", value: "opencode" }');
   });
 
-  it("sources the Beta marker from the shared locale descriptions", () => {
+  it("sources the /login description from the shared locale descriptions, with no Beta marker since 2.3.0 (#1633)", () => {
     try {
       setLocale("en");
-      expect(t("slash.login")).toBe("Sign in or install a CLI backend remotely (beta)");
+      expect(t("slash.login")).toBe("Sign in or install a CLI backend remotely");
       setLocale("zh-TW");
-      expect(t("slash.login")).toBe("遠端登入或安裝 CLI Backend（Beta）");
+      expect(t("slash.login")).toBe("遠端登入或安裝 CLI Backend");
     } finally {
       setLocale("en");
     }

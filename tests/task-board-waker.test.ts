@@ -103,9 +103,14 @@ describe("the message", () => {
       .toBe('[Task board] 2 things on your cards:\n- S-1 "Build the API": new comment from Ann.\n- S-2 "Build the API": you handed it out; the person confirmed it.\nYour work: task mine');
   });
 
-  it("the dispatcher is asked to tell the person a card waits for them, and what it lacks", () => {
+  it("#2434: the dispatcher is told a card it handed out is ready for its own confirmation, and what it lacks", () => {
     expect(wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"], who: "dev-a" } as Partial<Wake>)], () => ({ assignee: "dev-a", kind: "sub", acceptance: [{ text: "a", done: false }], result: "" }) as never))
-      .toBe('[Task board] S-1 "Build the API": you handed it out and it waits for the person\'s confirmation (@dev-a), though 1 acceptance item unchecked, no result — tell the person to confirm it. Read it with: task get S-1');
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it is ready for your confirmation (@dev-a), though 1 acceptance item unchecked, no result — check it, then move it to done, or back to claimed with what is missing. Read it with: task get S-1');
+    // Confirmed by an instance: its name; by the person (their own card): "the person".
+    const agent = () => ({ assignee: "dev-a", dispatcher: { kind: "instance", name: "lead" } }) as never;
+    expect(wakeMessage([wake({ reasons: ["approved"], instance: "dev-a", who: "lead" } as Partial<Wake>)], agent)).toContain("lead confirmed it");
+    const theirs = () => ({ assignee: "dev-a", dispatcher: { kind: "person", name: "Ann" } }) as never;
+    expect(wakeMessage([wake({ reasons: ["approved"], instance: "dev-a" } as Partial<Wake>)], theirs)).toContain("the person confirmed it");
   });
 
   it("a card cancelled by someone else, alone or with its main task", () => {
@@ -124,14 +129,15 @@ describe("the message", () => {
     const here = () => true;
     expect(wakeMessage([wake({ instance: "lead", reasons: ["decide"], who: "dev-a", texts: { decide: "codes or messages?" } } as Partial<Wake>)], () => ({ assignee: "dev-a" }) as never, here))
       .toBe('[Task board] S-1 "Build the API": you handed it out and it is blocked (@dev-a): "codes or messages?" — answer it yourself if you can (move it back to claimed with the decision as the comment); otherwise the person has Answer for it in your channel. Read it with: task get S-1');
+    // #2434: a card to confirm is the dispatcher's own (an agent's card), whatever the lane: nothing to relay.
     expect(wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"], who: "dev-a" } as Partial<Wake>)], () => ({ assignee: "dev-a", kind: "sub", acceptance: [], result: "done" }) as never, here))
-      .toBe('[Task board] S-1 "Build the API": you handed it out and it waits for the person\'s confirmation (@dev-a) — they have Confirm / Send back for it in your channel; add only what they need to decide. Read it with: task get S-1');
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it is ready for your confirmation (@dev-a) — check it, then move it to done, or back to claimed with what is missing. Read it with: task get S-1');
     // Per wake: only the one whose card is laned here.
-    const two = wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"] }), wake({ uuid: "u2", code: "S-2", instance: "lead", reasons: ["to_confirm"] })],
+    const two = wakeMessage([wake({ instance: "lead", reasons: ["decide"] }), wake({ uuid: "u2", code: "S-2", instance: "lead", reasons: ["decide"] })],
       () => ({ assignee: "dev-a", kind: "sub", acceptance: [], result: "done" }) as never, (w) => w.code === "S-2");
     const at = (code: string) => two.split("\n").find((l) => l.includes(`${code} "`))!;
-    expect(at("S-1")).toContain("tell the person to confirm it");
-    expect(at("S-2")).toContain("Confirm / Send back for it in your channel");
+    expect(at("S-1")).toContain("ask the person, then answer it");
+    expect(at("S-2")).toContain("the person has Answer for it in your channel");
   });
 });
 

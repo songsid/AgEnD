@@ -49,7 +49,7 @@ Not promised:
 - **Packages:** four of them, `@songsid/agend-node-{linux-x64,linux-arm64,darwin-x64,darwin-arm64}`.
   - Each holds the **official** `bin/node` and `LICENSE` from `node-vX-<platform>.tar.gz`. A release workflow verifies
     that tarball against `SHASUMS256.txt` and its GPG signature (Node release keys), and publishes with `--provenance`.
-  - Package version = Node version (`22.23.3`); `-agend.N` only for a repack of the same Node.
+  - Package version = Node version (`22.23.4`); `-agend.N` only for a repack of the same Node.
   - Fields: `"os"`, `"cpu"`, and, for linux, **`"libc": ["glibc"]`**. npm 9 and 10 already filter on `libc` (checked
     in `npm-install-checks` of npm 9.9.4 and 10.8.2); a musl host does not get the glibc package from those npms.
 - **Pinning:** `@songsid/agend` lists all four in `optionalDependencies` at **exact** versions. The pin for a global
@@ -506,6 +506,8 @@ The old updater has **two branches**, both reachable (sol 7):
 There is no nvm offer: the runtime replaces it.
 
 ## Pinned Node
+
+- Current source pin: **22.23.4**, the [October 21, 2026 security release](https://nodejs.org/en/blog/release/v22.23.4).
 
 - Only an LTS line under maintenance: 22.x "Jod" (maintenance until 2027-04-30).
 - Each AgEnD release pins the newest 22.x.

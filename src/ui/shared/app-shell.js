@@ -70,12 +70,14 @@ export const isMacLike = () => typeof navigator !== "undefined" && /Mac|iPhone|i
 /** What the row and tooltips show: ⌘K on a Mac, Ctrl K elsewhere. */
 export const searchShortcut = () => (isMacLike() ? "⌘K" : "Ctrl K");
 /**
- * Whether this page offers search: an admin's page reached directly. A guest's never, and never over the public link —
- * the server refuses it there (#2298 review), so no entry, no shortcut, and Ctrl+F stays the browser's.
+ * Whether this page offers search: an admin's page. A guest's never. #2478 (the user's request): over the public link
+ * too, unless the fleet keeps it off there (web.search.public_link: false — the page says data-search-link="0", the
+ * server refuses it), so then no entry, no shortcut, and Ctrl+F stays the browser's.
  */
 export function searchOffered(admin) {
-  const onLink = typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
-  return !!admin && !guestPage() && !onLink;
+  const body = typeof document !== "undefined" ? document.body : null;
+  const offLink = !!body && body.dataset.publicLink === "1" && body.dataset.searchLink === "0";
+  return !!admin && !guestPage() && !offLink;
 }
 let searchModule = null;
 /** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
@@ -284,6 +286,8 @@ appStore.subscribe((s) => {
 
 function statusLabel(i, exec, awaiting) {
   if (awaiting != null) return t("app.needsYou");
+  if (i.startup_phase === "queued") return t("app.statusQueued");
+  if (i.startup_phase === "starting") return t("app.statusStarting");
   if (i.status !== "running") return i.status === "crashed" ? t("app.statusCrashed") : t("app.statusStopped");
   if (exec === "working") return t("app.statusWorking");
   if (exec === "stuck") return t("app.statusStuck");
@@ -291,6 +295,8 @@ function statusLabel(i, exec, awaiting) {
 }
 export function statusClass(i, exec, awaiting) {
   if (awaiting != null) return "warn";
+  if (i?.startup_phase === "starting") return "busy";
+  if (i?.startup_phase === "queued") return "off";
   if (!i || i.status !== "running") return i && i.status === "crashed" ? "bad" : "off";
   return exec === "working" ? "busy" : exec === "stuck" ? "warn" : "ok";
 }
@@ -500,6 +506,13 @@ function ConnectionLine() {
   // (agend-auth's banner says that) draw nothing either; only reconnecting and a failed catch-up are shown.
   return null;
 }
+
+/** A connected fleet is still bringing up agents; this is distinct from the reconnect banner. */
+export function StartupLine() {
+  const { startup } = useStore(appStore);
+  if (!startup) return null;
+  return html`<div data-trust="status" class="conn fleet-starting" role="status">${t("app.fleetStarting", startup.ready, startup.total)}</div>`;
+}
 /** #1580: the fleet is not answering (a restart): said, with when the next try is — never a silent stale page. */
 function Reconnecting() {
   const { retryAt } = useStore(appStore);
@@ -687,6 +700,20 @@ function usePageTheme(ref, route) {
   }, [agent]);
 }
 
+/** #2478: how far short of its tallest the view must be, with a text field focused, to be a keyboard (not a browser bar). */
+export const KEYBOARD_MIN_PX = 150;
+/** #2478: the on-screen keyboard is up — something is being typed into, and the view is well short of its tallest. */
+export function keyboardUp(height, tallest, typing) { return !!typing && tallest - height > KEYBOARD_MIN_PX; }
+const NOT_TYPED = /^(button|checkbox|radio|range|color|file|submit|reset|image|hidden)$/i;
+/** #2478: an element the keyboard types into — a textarea, a text-like input, or an editable region. */
+export function isTextEntry(el) {
+  if (!el || !el.tagName) return false;
+  const tag = String(el.tagName).toUpperCase();
+  if (tag === "TEXTAREA") return !el.readOnly && !el.disabled;
+  if (tag === "INPUT") return !NOT_TYPED.test(el.type || "text") && !el.readOnly && !el.disabled;
+  return el.isContentEditable === true;
+}
+
 export function Shell({ panels, onNewInstance, viewOnly = false }) {
   const nav = useStore(navStore);
   const shell = useStore(shellStore);
@@ -696,13 +723,38 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   // A language switch re-renders everything and gives the panel a new lease (its key includes the language).
   useEffect(() => onLang(() => relang(n => n + 1)), []);
   useEffect(() => { closeDrawer(); }, [nav.seq]);
-  // The bottom tabs give their room to the keyboard on a phone.
+  // The bottom tabs (and the line under the composer) give their room to the keyboard on a phone (#2478).
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
-    if (!vv) return undefined;
-    const onResize = () => shellStore.set({ keyboard: window.innerHeight - vv.height > 150 });
-    vv.addEventListener("resize", onResize);
-    return () => vv.removeEventListener("resize", onResize);
+    if (!vv || typeof document === "undefined") return undefined;
+    // The tallest the view has been at this width: what it is with no keyboard. innerHeight is no measure on its own —
+    // it shrinks with the keyboard on iOS Safari and, under interactive-widget=resizes-content, on Android — so
+    // innerHeight − height stayed near 0 and the strips stayed between the composer and the keyboard.
+    // Only a touch screen (a coarse pointer) has an on-screen keyboard: a narrow desk window made shorter is not one.
+    // Turned with the keyboard up and the field still focused, the new width has no height without it yet: the keyboard
+    // stays up until the field is left, or the view grows from its lowest by more than a keyboard (put away).
+    let width = -1, tallest = 0, held = false, lowest = 0;
+    const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    const check = () => {
+      const w = Math.round(vv.width), h = vv.height;
+      const typing = coarse() && isTextEntry(document.activeElement);
+      if (w !== width) {                                              // turned, or a new width: measured again
+        held = width !== -1 && typing && shellStore.get().keyboard;
+        width = w; tallest = 0; lowest = h;
+      }
+      if (held) {
+        lowest = Math.min(lowest, h);
+        if (!typing || h - lowest > KEYBOARD_MIN_PX) held = false;    // left the field, or the keyboard was put away
+      }
+      if (!held) tallest = Math.max(tallest, window.innerHeight || 0, typing ? 0 : h);   // the view itself only when not typing
+      const up = held || keyboardUp(h, tallest, typing);
+      if (up !== shellStore.get().keyboard) shellStore.set({ keyboard: up });
+    };
+    check();
+    vv.addEventListener("resize", check);
+    document.addEventListener("focusin", check);
+    document.addEventListener("focusout", check);
+    return () => { vv.removeEventListener("resize", check); document.removeEventListener("focusin", check); document.removeEventListener("focusout", check); };
   }, []);
   const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
@@ -712,6 +764,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
+      <${StartupLine} />
       ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest ? null : html`<${RestartLine} />`}
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}

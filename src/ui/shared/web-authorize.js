@@ -20,6 +20,7 @@ register("webauth", {
     reason_not_admin_session: "Guests can't authorize.",
     reason_token_rotated: "The dashboard's token changed: sign in again.",
     reason_public_link: "Not on the temporary public link.",
+    reason_named_link_off: "Over your named link: turn on \"Also over my named link\" in Settings → Web on this computer.",
     reason_not_session: "Sign in to authorize.",
     reason_other: "This browser can't be authorized here.",
     refusal_pending: "A request is already waiting in your DM.",
@@ -46,6 +47,7 @@ register("webauth", {
     reason_not_admin_session: "訪客無法授權。",
     reason_token_rotated: "儀表板的 token 已變更：請重新登入。",
     reason_public_link: "臨時公開連結上無法授權。",
+    reason_named_link_off: "透過固定網域：請在這台電腦的 設定 → 網頁 開啟「也允許透過我的固定網域」。",
     reason_not_session: "登入後才能授權。",
     reason_other: "這個瀏覽器在這裡無法授權。",
     refusal_pending: "已經有一個請求在你的私訊中等待。",
@@ -60,7 +62,7 @@ register("webauth", {
   },
 });
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
-const REASONS = ["disabled", "loopback_only", "no_account", "not_admin", "not_admin_session", "token_rotated", "public_link", "not_session"];
+const REASONS = ["disabled", "loopback_only", "no_account", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "not_session"];
 // Until when: the time, with the day when it isn't today (an authorization lasts up to 48 h).
 const clock = (ms) => {
   const d = new Date(ms), today = new Date().toDateString() === d.toDateString();

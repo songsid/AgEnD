@@ -50,6 +50,7 @@ export function applyStatus(d) {
     if (i.state === "awaiting_input") awaiting[i.name] = typeof i.interaction_summary === "string" ? i.interaction_summary : "";
   }
   appStore.set({ canvasWorker: d.canvas_worker === true, ready: true, instances: d.instances, uptime: d.uptime ?? 0, exec, awaiting,
+    startup: d.startup?.phase === "starting" ? d.startup : null,
     connections: typeof d.connections === "number" ? d.connections : null,
     // #1665: the host preferences' revision (app-prefs.js re-reads them when it moves).
     prefsRev: typeof d.prefs_rev === "number" ? d.prefs_rev : null,

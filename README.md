@@ -17,7 +17,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
   <code>You → Telegram/Discord/Web → AgEnD → Fleet of AI Agents → Results back to you</code>
 </p>
 
-[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.2 what’s new](docs/release-notes/2.2.0.md)
+[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.3 what’s new](docs/whats-new-2.3.md) · [Upgrading to 2.3](docs/upgrade-2.3.md)
 
 ---
 
@@ -45,7 +45,9 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
 
 ## Feature Highlights
 
-✨ **New in 2.2:** chat with your agents in the browser, one list of everything that needs you, a second Claude account, and a bundled Node. See [What's new in 2.2](docs/release-notes/2.2.0.md) and the [upgrade guide](docs/upgrade-2.2.md).
+✨ **New in 2.3:** a task board (Fleet › Tasks) that can remind you in chat, global search with Ctrl+K, an Office view of the fleet, your own domain for the public link, and a one-line Windows installer. See [What's new in 2.3](docs/whats-new-2.3.md), and [Upgrading from 2.2 to 2.3](docs/upgrade-2.3.md).
+
+<p align="center"><img src="docs/assets/whats-new-2.3/task-board.webp" width="760" alt="The task board, with made-up demo data: the Leaderboard project with one card each in To do, In progress and Blocked; the blocked card shows its question, “Which scores count: ranked games only?”."></p>
 
 🚀 **Fleet Management** — One bot, N projects. Each Telegram forum topic or Discord channel is an isolated agent session.
 
@@ -77,7 +79,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
 
 🔌 **Extensible** — Adapter plugins, webhook notifications, health endpoint, external session support via IPC.
 
-👥 **Teams & Task Board** — Named groups for targeted broadcasting. Shared task board for multi-step work tracking across instances.
+👥 **Teams & Task Board** — Named groups for targeted broadcasting. Shared task board (Fleet › Tasks) for multi-step work across instances, with dependencies and comments. Turn on the chat reminders with `needs_you.task_board: true`.
 
 📋 **Fleet Templates** — Define reusable fleet configurations. Deploy multi-instance setups with one command; supply `branch` to give each role its own git worktree.
 
@@ -165,9 +167,9 @@ graph LR
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` (x.ai OAuth device flow). Needs CLI 1.0.13 or later; run `grok update` if the server refuses an older one |
 | Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"` (the launcher keeps its binary beside itself, so it is saved first) | `muse login` |
 
-**Or install from chat with `/login <backend>`** (beta, fleet admins only), without SSH-ing into the host: when the CLI is not installed yet, `/login` runs the command above in a fleet window, finds the CLI where its installer put it, adds that directory to the fleet's PATH, and offers sign-in where supported. OpenCode and Muse are install-only; Antigravity can be installed but has no isolated remote sign-in. A bare `/login` offers the available sign-in and missing-CLI installation actions.
+**Or install from chat with `/login <backend>`** (fleet admins only), without SSH-ing into the host: when the CLI is not installed yet, `/login` runs the command above in a fleet window, finds the CLI where its installer put it, adds that directory to the fleet's PATH, and offers sign-in where supported. OpenCode and Muse are install-only; Antigravity can be installed but has no isolated remote sign-in. A bare `/login` offers the available sign-in and missing-CLI installation actions.
 
-**Tested CLI versions (AgEnD 2.1.9).** Codex 0.155 to 0.159. Claude Code 2.1.286 (first-run, trust and resume screens captured from the real CLI). Kiro CLI 2.21 to 2.27 run live; older 2.x versions still start, with a warning to update, and anything newer than 2.27 is launched only after its own `--help` confirms the flags AgEnD pins (the legacy UI on kiro's v1 engine, the terminal UI on v2). A kiro-cli that can no longer run an instance that way is refused, not started on another engine (#1109). `kiro_ui: v3` is not supported yet (#849). Grok CLI 1.0.13 or later. Muse 1.3.0. Antigravity and OpenCode have no pinned version. Other versions usually work, but a new CLI release can change its screens, so AgEnD only claims a version after testing against it.
+**Tested CLI versions (AgEnD 2.3.0).** Claude Code 2.1.308, Grok CLI 1.0.67 and Muse 1.4.11-R6667.1 were audited against AgEnD end to end. Kiro CLI up to 2.33.0: a newer kiro-cli still starts, with a warning that it is untested. Codex 0.163.0, checked for its package, recovery and quota handling. Antigravity (agy) 1.3.6. OpenCode 1.18.34. New CLI releases are audited daily, so a newer version may already work. A new release can change its screens, though, so AgEnD only claims a version once it has been tested against it.
 
 ## Requirements
 

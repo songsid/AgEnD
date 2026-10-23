@@ -42,6 +42,8 @@ export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new S
   "cross_instance_visibility",
   // #2303: the fleet reads it at each task board claim; the daemon only keeps it current.
   "board_cards_at_once",
+  // The fleet reads it at each tool call; the daemon keeps it current for the next spawn's tool menu.
+  "dashboard",
 ]);
 
 /**
@@ -81,6 +83,8 @@ const INSTANCE_FIELDS = [
   "cross_instance_visibility",
   // #2303: read by the fleet at each task board claim.
   "board_cards_at_once",
+  // Read by the fleet at each tool call (dashboard-permissions.ts).
+  "dashboard",
 ] as const;
 
 /** ClassicBot channel fields the settings page renders. */
@@ -105,6 +109,8 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "web.public_link.hostname": "now",
   "web.public_link.tunnel_token_env": "now",
   "web.public_link.origin_port": "now",
+  // #named-link-ttl: read once, after the fleet starts.
+  "web.public_link.auto_open": "fleet",
   // #1620: read at every session check, and by /login when it starts a terminal.
   "web.session.local.absolute_hours": "now",
   "web.session.local.idle_hours": "now",

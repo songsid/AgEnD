@@ -6,6 +6,7 @@ import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
+import { DASHBOARD_FEATURES } from "./dashboard-permissions.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -185,12 +186,15 @@ const atVerified = (path: readonly string[]): boolean => (path.length === 3 && V
  * hours grant nothing by themselves (a session still needs its account's Confirm in Discord or Telegram), so no change
  * to them waits for a confirmation. Returns [] (nothing to confirm), or null when the change touches another key (then
  * walked key by key, as everything else).
+ * #2453 (§0.2): except `named_link` turned on — the one switch that lets a session reached from the internet qualify. It
+ * is confirmed (a stolen session must not open the internet path by itself); off applies at once, as every narrowing.
  */
 function verifiedAuthorityChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {
   if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
   const a: Record<string, any> = object(old) ? old : {}, b: Record<string, any> = object(next) ? next : {};
   const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
-  return changed.some(k => !["enabled", "loopback_only", "max_session_hours"].includes(k)) ? null : [];
+  if (changed.some(k => !["enabled", "loopback_only", "max_session_hours", "named_link"].includes(k))) return null;
+  return a.named_link !== true && b.named_link === true ? [["named_link", a.named_link, b.named_link]] : [];
 }
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
@@ -249,6 +253,51 @@ function visibilityWidening(before: unknown, after: unknown): string[] {
   }
   return out;
 }
+const DASHBOARD = "dashboard";
+/** The defaults' or an agent's dashboard switches, whole or one feature: judged by dashboardWidening, not key by key. */
+const dashboardPath = (path: readonly string[]): boolean =>
+  (path.at(-1) === DASHBOARD && (path.at(-2) === "defaults" || path.at(-3) === "instances"))
+  || (path.at(-2) === DASHBOARD && (path.at(-3) === "defaults" || path.at(-4) === "instances"));
+/**
+ * What a change to the dashboard switches (dashboard-permissions.ts) opens up, as summary lines (none: it only switches
+ * features off, or leaves them). Judged as what each agent gets per feature — its own value, else the default's, else
+ * allowed — as bot-to-bot visibility is: switching off applies directly; switching on (or a value the validator would
+ * refuse) waits for the confirmation.
+ */
+function dashboardWidening(before: unknown, after: unknown): string[] {
+  const b = fleetIn(before), a = fleetIn(after), out: string[] = [];
+  if (!a) return out;
+  const switches = (v: unknown): Record<string, unknown> => (object(v) ? v : {});
+  const features = new Set<string>(DASHBOARD_FEATURES);
+  for (const f of [a, b]) {
+    for (const k of Object.keys(switches(f?.defaults?.[DASHBOARD]))) features.add(k);
+    for (const inst of Object.values(object(f?.instances) ? f!.instances : {})) for (const k of Object.keys(switches(object(inst) ? inst[DASHBOARD] : undefined))) features.add(k);
+  }
+  const fallback = (f: Record<string, any> | null, feature: string): unknown => switches(f?.defaults?.[DASHBOARD])[feature];
+  const own = (f: Record<string, any> | null, name: string, feature: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? switches(f!.instances[name][DASHBOARD])[feature] : undefined);
+  const on = (v: unknown, inherited: boolean): boolean => (typeof v === "boolean" ? v : inherited);
+  const line = (label: string, from: unknown, to: unknown) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
+  // A value the validator would refuse (not a boolean, or no such feature) is never applied quietly.
+  const odd = (v: unknown, feature: string) => v !== undefined && v !== null && (typeof v !== "boolean" || !(DASHBOARD_FEATURES as readonly string[]).includes(feature));
+  for (const feature of features) {
+    const defA = fallback(a, feature), defB = fallback(b, feature);
+    const inheritors: string[] = [];
+    for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
+      if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
+      const raw = own(a, name, feature), ownChanged = !same(raw, own(b, name, feature));
+      if (ownChanged && odd(raw, feature)) { line(`instances.${name}.${DASHBOARD}.${feature}`, own(b, name, feature) ?? "default", raw); continue; }
+      const was = on(own(b, name, feature), on(defB, true)), now = on(raw, on(defA, true));
+      if (was || !now) continue;
+      if (ownChanged) line(`instances.${name}.${DASHBOARD}.${feature} (in effect)`, false, true);
+      else inheritors.push(name);
+    }
+    const shown = 5, more = inheritors.length > shown ? ` +${inheritors.length - shown} more` : "";
+    const who = inheritors.length ? ` — ${inheritors.length} agent(s) inherit it: ${settingsDisplay(inheritors.slice(0, shown).join(", "))}${more}` : "";
+    if (odd(defA, feature) && !same(defA, defB)) out.unshift(`${settingsDisplay(`defaults.${DASHBOARD}.${feature}`)}: ${settingsDisplay(defB ?? "default")} → ${settingsDisplay(defA)}${who}`);
+    else if ((on(defA, true) && !on(defB, true)) || inheritors.length) out.unshift(`${settingsDisplay(`defaults.${DASHBOARD}.${feature} (in effect)`)}: ${settingsDisplay(on(defB, true))} → ${settingsDisplay(on(defA, true))}${who}`);
+  }
+  return out;
+}
 /** A child of an immediate key that is not one of its known children (see IMMEDIATE_CHILDREN). */
 function unknownImmediateChild(path: readonly string[]): boolean {
   const key = path.at(-1), parent = path.at(-2);
@@ -262,6 +311,11 @@ export interface SettingsChangeDiff {
   affectedConnections: readonly string[];
   /** Private normalized effect scope, populated by prepareSettingsEffect. */
   authority?: SettingsChangeAuthority;
+  /**
+   * #2453 (§0.2): the effect turns `web.verified_authority.named_link` on — never confirmed by the asking session itself
+   * (#2170), whatever else the change holds. Judged from the config before and after (prepareSettingsEffect), never the body.
+   */
+  noSelfConfirm?: true;
 }
 /** Compare the entire normalized effect, including removals and primary/order. */
 export function settingsChangeDiff(before: unknown, after: unknown, options: {
@@ -308,6 +362,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (direction === false) return;                             // #1620: tightening applies directly
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
     if (visibilityPath(path)) return;                                // judged as a whole, by direction (below)
+    if (dashboardPath(path)) return;                                 // likewise: the dashboard switches, by direction
     if (ordinary(path, old, next) || plainList(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
@@ -371,6 +426,10 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
   const widened = visibilityWidening(before, after);
   if (widened.length && section !== "secret") section = "access";
   for (const line of widened) add(line);
+  // The dashboard switches the same way: switching a feature off applies directly; switching one on waits.
+  const opened = dashboardWidening(before, after);
+  if (opened.length && section !== "secret") section = "access";
+  for (const line of opened) add(line);
   if (!summary.length && options.force) add(`${settingsDisplay(options.operation)}: confirmed operation`);
   if (!summary.length) return null;
   summary.unshift(settingsDisplay(options.operation));

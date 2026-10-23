@@ -59,6 +59,7 @@ import yaml from "js-yaml";
 import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
+import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 
 /** How long the form may stay open at all. */
 export const SETUP_HOST_TTL_MS = 15 * 60_000;
@@ -229,8 +230,13 @@ export class SetupHost {
   private get idleMs(): number { return this.opts.idleMs ?? SETUP_HOST_IDLE_MS; }
   private log(message: string): void { (this.opts.log ?? console.log)(message); }
 
-  /** The config the wizard edits: a file if there is one, otherwise a blank. */
+  /**
+   * The config the wizard edits: a file if there is one, otherwise a blank. A blank where there is no file yet is a new
+   * fleet, and says so (NEW_FLEET_DASHBOARD: the task board off until switched on); a file that does not load stays the
+   * plain blank it always was.
+   */
   private readConfig() {
+    if (!existsSync(this.opts.configPath)) return { defaults: { dashboard: { ...NEW_FLEET_DASHBOARD } }, instances: {} };
     try { return loadFleetConfig(this.opts.configPath); }
     catch { return { defaults: {}, instances: {} }; }
   }

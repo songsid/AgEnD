@@ -160,6 +160,25 @@ describe("through the gate and the real handler", () => {
   });
 });
 
+describe("#2453 (§0.2): the named-link option through the gate", () => {
+  it("on: held for a confirmation, the held change marked not self-confirmable; nothing written yet", async () => {
+    const h = harness();
+    const r = await h.request("PUT", WEB, { verified_authority: { named_link: true } });
+    expect([r.status, r.body.result, h.store.selfConfirmable(r.body.pending_change.id), h.save.mock.calls.length]).toEqual([202, "pending_confirmation", false, 0]);
+  });
+  it("off: written at once; and never over the public link", async () => {
+    const h = harness({ web: { verified_authority: { named_link: true } } });
+    expect((await h.request("PUT", WEB, { verified_authority: { named_link: true } }, { publicLink: true })).status).toBe(403);
+    expect((await h.request("PUT", WEB, { verified_authority: { named_link: null } })).status).toBe(200);
+    expect(h.raw().web.verified_authority).toBeUndefined();
+  });
+  it("control — an ordinary held change stays self-confirmable", async () => {
+    const h = harness();
+    const r = await h.request("PUT", "/api/settings/fleet/channels", [{ id: "dc", type: "discord", group_id: "G", bot_token_env: "X", access: { mode: "locked", allowed_users: ["2"] } }]);
+    expect([r.status, h.store.selfConfirmable(r.body.pending_change.id)]).toEqual([202, true]);
+  });
+});
+
 describe("the overview (a real FleetManager)", () => {
   function fm(web: Record<string, unknown>) {
     const dir = mkdtempSync(join(tmpdir(), "agend-1939so-")); roots.push(dir);
@@ -175,7 +194,7 @@ describe("the overview (a real FleetManager)", () => {
     const firefox = h.session("Firefox on Mac"), phone = h.session("Safari on iPhone");
     expect(h.s.authorizeWebSession(firefox, "loopback", false)).toMatchObject({ ok: true });
     const o = h.s.webAuthorityOverview();
-    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, epoch: 1 });
+    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 1 });
     expect(o.configured).toEqual({ enabled: true, max_session_hours: 6 });
     expect(o.hours).toEqual({ min: 1, max: 48, default: 48 });
     expect(o.lanHosts).toEqual(["agend.example.com", "192.168.1.5:19280"]);
