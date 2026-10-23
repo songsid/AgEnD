@@ -118,7 +118,7 @@ describe("this browser's authorization line", () => {
   it("the temporary public link: asks the server like any page — the option off says how to turn it on (no Settings link: not over the link)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const c = await chip({ state: "none", reason: "quick_link_off" });
-    expect(c.textContent).toBe("Not verified: Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Web on this computer.");
+    expect(c.textContent).toBe("Not verified: Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Access & security on this computer.");
     expect(c.querySelector('a[href="/settings/web"]')).toBeNull();
     expect(sent.filter(s => s.path === "/ui/authorization").length).toBe(1);
     const off = await chip({ state: "none", reason: "loopback_only" });

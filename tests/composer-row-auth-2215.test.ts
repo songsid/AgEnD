@@ -103,7 +103,7 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
   it("the temporary public link: the option off says why (in the tooltip, no Settings link); on, Authorize; a guest's page: nothing", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const off = await row({ state: "none", reason: "quick_link_off" });
-    const why = "Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Web on this computer.";
+    const why = "Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Access & security on this computer.";
     expect([off.dataset.state, off.querySelector(".note")?.getAttribute("title"), off.querySelector("a")]).toEqual(["none", why, null]);
     // #2525 review: the switch and "Only this computer" are changed on this computer — no Settings link over the link.
     const disabled = await row({ state: "none", reason: "disabled" });

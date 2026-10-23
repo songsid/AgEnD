@@ -86,7 +86,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
     - **Its authority ends with the link:** Close, `/web revoke`, the link's expiry, a fleet restart, or the option turned off. Turning the option off makes every receipt given over the link read as none at once.
     - **Turning the option off** ends the authority of every session over the link at once, not the sessions themselves: they keep chatting like any public-link session.
     - **"Only this computer can authorize"** still wins.
-  - **Over the temporary public link (#1939 §0.3), opt-in.** Settings → Web → Web authority shows **Also over the temporary public link**, off by default (`web.verified_authority.quick_link`).
+  - **Over the temporary public link (#1939 §0.3), opt-in.** Settings → Access & security → Web authority shows **Also over the temporary public link**, off by default (`web.verified_authority.quick_link`).
     - **Turning it on** is confirmed in a General or on this computer, never by the browser asking.
     - **Turning it on ends every authorization given so far** (on this computer too): each browser confirms again.
     - **Once it's on,** a browser signed in over the link `/web` opens can be authorized the same way. The Confirm card says "over the temporary public link <host> (the internet)", and the device list marks it.

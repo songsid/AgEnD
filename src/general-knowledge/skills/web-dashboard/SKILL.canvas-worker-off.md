@@ -540,7 +540,7 @@ Settings → **Look**, card by card (the app icon and card upload limits are in 
   device** (in Preferences).
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
 
-Moved out of Look in 2.4 (#2347). **Preferences** (this device only): **Effects: follow the system's reduced-motion
+Moved out of Look in 2.3.2 (#2347). **Preferences** (this device only): **Effects: follow the system's reduced-motion
 setting** (off by default): on, ambient effects stay still while the system asks for reduced motion. Otherwise they play, with one shared one-time chat note and a local action to follow the system. And **Turn off custom CSS on this device**. **Web dashboard**: the **App icon**;
 **Identity card upload limits** — portrait and banner size limits and per-agent picture quota (`web.appearance.*`);
 lowering applies at once, raising waits for an admin.

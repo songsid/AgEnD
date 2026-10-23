@@ -82,6 +82,7 @@ const ROWS = [
   ["access.authority-loopback", "access", "#vaLoopbackOnly", "settings.vaLoopbackOnly", "web.verified_authority.loopback_only", ["only this computer", "loopback", "authorize"], ["只有這台電腦", "授權"]],
   // #2453: shown with a fixed hostname (a named tunnel), or while it is on; its label names the hostname, so its own words here.
   ["access.authority-named-link", "access", "#vaNamedLink", null, "web.verified_authority.named_link", ["named link", "my named link", "authorize", "fixed hostname"], ["固定網域", "授權", "named link"], L("Also over my named link", "也允許透過我的固定網域")],
+  ["access.authority-quick-link", "access", "#vaQuickLink", null, "web.verified_authority.quick_link", ["temporary public link", "quick link", "quick tunnel", "authorize", "trycloudflare"], ["臨時公開連結", "授權", "quick tunnel"], L("Also over the temporary public link", "也允許透過臨時公開連結")],
   ["access.authority-hours", "access", "#vaHours", null, "web.verified_authority.max_session_hours", ["authorization hours", "how long", "authority"], ["授權時數", "多久"], L("How long a web authorization lasts", "網頁授權持續多久")],
   ["access.authority-revoke", "access", "#vaRevoke", "settings.vaRevoke", null, ["revoke", "sign out", "authority"], ["撤銷", "登出", "授權"]],
   // Fleet · Advanced

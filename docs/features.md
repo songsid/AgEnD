@@ -1396,7 +1396,7 @@ web:
 - **Notices:** every guest sign-in is posted in General.
 - **Signing out:** a guest's own `/web revoke` ends only its sessions, code and remembered devices.
 
-**Explicit grants (2.4, #2348).** **Settings → Access & security → Guests** lets an admin choose each guest and their agents:
+**Explicit grants (2.3.2, #2348).** **Settings → Access & security → Guests** lets an admin choose each guest and their agents:
 - **People with access:** one row per person, with their agents, whether they are signed in, and **Edit agents**, **Send sign-in code**, **Remove access** and **Sign out**.
 - **Add a person:** search the people AgEnD has seen writing to an agent (never a bot, never a fleet admin). Choosing one pre-ticks the agents they wrote to.
 - **How it looks:** one flat row per person with a letter avatar, the agents as chips and the state on the right (signed in, code sent, or why a DM failed; under the name on a phone). An edited row has the straight bar.
@@ -1456,7 +1456,7 @@ A **mod** is one file that carries such a look: a theme with its pictures, card 
 
 **Uploads are not counted (2.2.5, #2083).** An agent's uploads (pictures, effects, proposed mods; effects are Canvas Worker, experimental and off by default) are not counted. Each picture slot's size limits, the agent's picture quota and each file's own caps still apply.
 
-**The Look page (2.2.5, #2071; regrouped in 2.4, #2347)** groups its cards under four headings, each card with a **?** that opens its section of the guide, and ends with Restore defaults. Over a public link it shows only a notice.
+**The Look page (2.2.5, #2071; regrouped in 2.3.2, #2347)** groups its cards under four headings, each card with a **?** that opens its section of the guide, and ends with Restore defaults. Over a public link it shows only a notice.
 - **Look:** agents' themes on or off; identity colours, with a sample row; card size.
 - **Your layout:** your sidebar widget.
 - **Styles you write:** custom CSS.
