@@ -1043,25 +1043,39 @@ export const LAUNCHD_STOP_CONFIRM_MS = 30_000;
 /**
  * Stop the user service. On macOS, only once launchd has unloaded the job (#2505): bootout returns before that, and an
  * `agend start` in between failed with "Bootstrap failed: 5: Input/output error". "unloading": launchd still had the job
- * when the bound ran out. False: the service manager refused the stop (not loaded, no session).
+ * when the bound ran out. False: the service manager refused the stop (not loaded, no session). Callers compare the
+ * result, never test its truth: "unloading" is not stopped (serviceStopReport says what `agend stop` does with each).
  */
-export function stopService(deps: LaunchdReloadDeps = defaultLaunchdReloadDeps): boolean | "unloading" {
+export type ServiceStopResult = "stopped" | "unloading" | false;
+export function stopService(deps: LaunchdReloadDeps = defaultLaunchdReloadDeps): ServiceStopResult {
   const plat = detectPlatform();
   try {
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
       const target = `gui/${uid}/${SERVICE_LABEL}`;
       const out = deps.run("launchctl", ["bootout", target], true);
-      if (out.status !== 0) return false;
-      return launchdConfirmsUnloaded(target, LAUNCHD_STOP_CONFIRM_MS, deps) ? true : "unloading";
+      // A bootout killed by its own timeout (a launchd that blocks until the job exits, on a long graceful stop) is not
+      // a refusal: whether the job is gone is what the confirmation below asks.
+      if (out.status !== 0 && out.signal === null) return false;
+      return launchdConfirmsUnloaded(target, LAUNCHD_STOP_CONFIRM_MS, deps) ? "stopped" : "unloading";
     } else {
       ensureUserSystemd();   // #2264: the bus a non-login shell left out (a stop changes no host setting)
       execSync(`systemctl --user stop ${SERVICE_LABEL}`, { stdio: "inherit" });
     }
-    return true;
+    return "stopped";
   } catch {
     return false;
   }
+}
+
+/**
+ * What `agend stop` does with a user-service stop result (#2505): "stopped" says so; "unloading" says launchd still has
+ * the job (an `agend start` now would fail) and exits 1; a refusal ("fallback") stops the fleet by its pid instead.
+ */
+export function serviceStopReport(result: ServiceStopResult): { kind: "stopped" | "unloading" | "fallback"; line?: string; exitCode: 0 | 1 } {
+  if (result === "unloading") return { kind: "unloading", line: t("cli.launchd_still_unloading", LAUNCHD_STOP_CONFIRM_MS / 1000), exitCode: 1 };
+  if (result === "stopped") return { kind: "stopped", line: "Service stopped.", exitCode: 0 };
+  return { kind: "fallback", exitCode: 0 };
 }
 
 export function startService(): boolean {
