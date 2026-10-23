@@ -70,8 +70,11 @@ describe("Codex 0.164.0 versus 0.163.0 native surfaces", () => {
   it.each([["usage", "quota/pause"], ["insufficient", "quota/pause"], ["rate429", "rate_limit/nudge_continue"]])("%s keeps its own classification, excluding historical rows", (name, error) => {
     for (const v of ["01630", "01640"]) {
       const pane = frame(v, name), rows = pane.split("\n");
-      const composer = rows.findLastIndex(r => /^› Ask Codex/.test(r));
-      const input = rows.findLastIndex((r, i) => i < composer && /^› audit /.test(r));
+      let composer = -1, input = -1;
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (composer < 0 && /^› Ask Codex/.test(rows[i])) composer = i;
+        else if (composer >= 0 && /^› audit /.test(rows[i])) { input = i; break; }
+      }
       expect(composer).toBeGreaterThan(input); expect(input).toBeGreaterThanOrEqual(0);
       const output = rows.slice(input + 1, composer).join("\n");
       expect(output).toMatch(/^■ /m); expect(output).not.toContain("Heads up");
