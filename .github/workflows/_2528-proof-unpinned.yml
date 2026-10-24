@@ -1,0 +1,11 @@
+# SYNTHETIC #2528 bad case — DO NOT MERGE.
+# A floating tag must fail scripts/ci/assert-actions-pinned.mjs.
+name: "2528 proof unpinned (throwaway)"
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
