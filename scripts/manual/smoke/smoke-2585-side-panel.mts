@@ -52,8 +52,14 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
     const s0 = await state();
     await shot("1-office-rail");
     await page.locator(".oo-edit").click(); await page.waitForTimeout(900);
+    // An office in the draft (its members shown): the rows as they are edited (Cancel throws the draft away below).
+    await page.locator("#oeAdd").click(); await page.waitForTimeout(500);     // a new office opens with its members shown
+    const rows = await page.evaluate(`(() => { const d = document.querySelector("dialog.dlg[open]"); if (!d) return null; const r = d.getBoundingClientRect();
+      return { fit: [...d.querySelectorAll(".oe-row, .oe-row *")].every((e) => { const b = e.getBoundingClientRect(); return b.width === 0 || (b.left >= r.left - 1 && b.right <= r.right + 1); }),
+        body: d.querySelector(".dlg-body").scrollWidth <= d.querySelector(".dlg-body").clientWidth + 1 }; })()`) as any;
     const s1 = await state();
     await shot("2-edit-offices");
+    ok(res, "rowsFit", !!rows && rows.fit && rows.body, rows);
     res.measured = { s0, s1 };
     if (LABEL === "after") {
       ok(res, "docked", !!s1.panel && !s1.modal && s1.title === title, { panel: s1.panel, modal: s1.modal, title: s1.title });
