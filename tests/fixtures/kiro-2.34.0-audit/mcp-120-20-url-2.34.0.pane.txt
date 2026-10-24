@@ -1,0 +1,40 @@
+                             Upgrade your V2 agent configurations to V3 with /upgrade-agent
+                                             https://kiro.dev/docs/cli/v3/
+                               Prefer the previous experience? Launch with kiro-cli --v2
+
+               Tip: Press Ctrl+G to open the full-screen monitor of subagent activity; Ctrl+G or q exits.
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (form)
+
+• Cancelled
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (url)
+
+• Thinking... (esc to cancel)
+  ╰ Tip: Press Ctrl+O to expand a tool's full output, then again to collapse it.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Input requested · MCP server
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Sign in to the audit service to continue
+   Host: example.invalid
+   URL: https://example.invalid/authorize?state=audit
+   Open in browser
+ ❯ Copy URL
+   I'll open it myself
+   Decline
+   Cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc to cancel · ↑↓ to navigate · enter to select
+
+
+

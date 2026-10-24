@@ -420,6 +420,8 @@ export interface WebConfig {
   view_access?: "open" | "session";
   /** Sign-in notices: true/topic (existing default), false/operator notices off, or dm with topic fallback. */
   notify_login?: boolean | "dm";
+  /** Downgrade-safe optional routing; legacy boolean fields remain readable by older releases. */
+  notice_delivery?: { login?: "dm"; tips?: "dm" };
   /**
    * #1620: how long a web session lasts. Only the LOCAL surface (the dashboard reached directly — loopback, a LAN, a
    * tailnet) is configurable; a public-link session's limits stay fixed. Hours, 1 ≤ idle_hours ≤ absolute_hours ≤ 720;

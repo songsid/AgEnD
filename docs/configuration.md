@@ -684,7 +684,7 @@ and different profile names do not guarantee different billing accounts.
 
 ### Private sign-in notices and daily tips
 
-`web.notify_login` accepts `true` (the existing topic notice), `"dm"` (private notice with the same topic fallback), or `false`. An existing fleet with the key omitted keeps `true`; new fleets created by `agend init`, `quickstart`, or setup explicitly write `web.notify_login: "dm"`. New-fleet tips remain `true`.
+`web.notify_login` accepts `true` (the existing topic notice), `"dm"` (private notice with the same topic fallback), or `false`. An existing fleet with the key omitted keeps `true`; new fleets created by `agend init`, `quickstart`, or setup explicitly write `web.notify_login: true` plus `web.notice_delivery.login: dm`. New-fleet tips remain `true`.
 
 In DM mode, an operator's sign-in notice goes to the account that requested the sign-in code. Public-link sign-ins, including guests, notify the admin who owns that link. A local guest sign-in notifies the **first user in the owning connection's `access.allowed_users`**, never the guest. Daily tips likewise use the first configured admin of General's connection. If that account or private transport is unavailable, or the DM fails, AgEnD uses the original topic destination. It never substitutes an admin from a different connection.
 
@@ -694,10 +694,15 @@ Use **Settings → Access & security → Web sign-in notices** and **Agent defau
 
 ```yaml
 web:
-  notify_login: dm
+  notify_login: true
+  notice_delivery:
+    login: dm
+    tips: dm
 defaults:
-  tips: dm
+  tips: true
 ```
+
+The routing choices are stored under `web.notice_delivery` so older releases see valid booleans and use topic delivery. Returning to a newer release restores DM routing. Settings still accepts the three-way choice; the short-lived `notify_login: dm` / `tips: dm` form is converted on startup or an accepted reload (with a `.bak`), and every managed save writes the compatible form. Set either boolean to `false` to disable it; choosing Topic in Settings clears its DM routing preference.
 
 ### Web chat channel echo (2.2 web line)
 

@@ -700,7 +700,7 @@ AgEnD 會以 `0700` 建立主目錄（預設 `~/.agend`，也可由 `AGEND_HOME`
 
 ### 登入通知與每日提示改送私訊
 
-`web.notify_login` 接受 `true`（原本的頻道通知）、`"dm"`（私訊，失敗時改送原頻道）或 `false`。既有 fleet 省略此欄位時仍為 `true`；`agend init`、quickstart 或 setup 建立的新 fleet 會明確寫入 `web.notify_login: "dm"`。新 fleet 的每日提示仍為 `true`。
+`web.notify_login` 接受 `true`（原本的頻道通知）、`"dm"`（私訊，失敗時改送原頻道）或 `false`。既有 fleet 省略此欄位時仍為 `true`；`agend init`、quickstart 或 setup 建立的新 fleet 會明確寫入 `web.notify_login: true` 及 `web.notice_delivery.login: dm`。新 fleet 的每日提示仍為 `true`。
 
 私訊模式下，管理者登入通知送給要求登入碼的帳號。公開連結登入（含訪客）通知開啟連結的管理者。本機訪客登入通知送給**所屬連線 `access.allowed_users` 的第一位管理員**，不送給訪客本人。每日提示同樣送給 General 所屬連線的第一位設定管理員。帳號或私訊功能不明、或私訊失敗時，使用原本的頻道目的地，不借用其他連線的管理員。
 
@@ -710,10 +710,15 @@ AgEnD 會以 `0700` 建立主目錄（預設 `~/.agend`，也可由 `AGEND_HOME`
 
 ```yaml
 web:
-  notify_login: dm
+  notify_login: true
+  notice_delivery:
+    login: dm
+    tips: dm
 defaults:
-  tips: dm
+  tips: true
 ```
+
+私訊路由存放在 `web.notice_delivery`，讓舊版仍讀到有效的 boolean 並送至原頻道；回到新版後恢復私訊。設定頁仍接受三選一；短暫使用過的 `notify_login: dm`／`tips: dm` 格式會在啟動或接受重新載入時轉換（保留 `.bak`），所有受管理的儲存都寫成相容格式。boolean 設為 `false` 可停用；在設定頁選「頻道」會清除對應的私訊路由。
 
 ### Web chat 主題同步（2.2 web 線）
 

@@ -335,14 +335,14 @@ describe("P3: version gate", () => {
     expect(probe(KIRO_TESTED_MAX, help("2.27.0")).calls).toEqual([["--version"]]);
   });
 
-  it.each(["2.33.1", "2.34.0", "3.0.0"])("kiro-cli %s (newer than tested) is read from its --help", (version) => {
+  it.each(["2.34.1", "2.35.0", "3.0.0"])("kiro-cli %s (newer than tested) is read from its --help", (version) => {
     const { calls, compat } = probe(version, help("2.33.0"));
     expect(calls).toEqual([["--version"], ["chat", "--help"]]);
     expect(compat.source).toBe("help");
   });
 
   it("an untested 2.x whose help cannot be read falls back to the 2.x table", () => {
-    const { compat } = probe("2.34.0", null);
+    const { compat } = probe("2.35.0", null);
     expect(compat.source).toBe("version");
     expect(planKiroLaunch("legacy", compat)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
   });
@@ -357,9 +357,9 @@ describe("P3: version gate", () => {
     tested.buildCommand(config());
     expect(tested.consumeLaunchWarning()).toBeNull();
 
-    const newer = new KiroBackend("/tmp/kiro-1109", probe("2.34.0", help("2.33.0")).compat);
+    const newer = new KiroBackend("/tmp/kiro-1109", probe("2.35.0", help("2.33.0")).compat);
     newer.buildCommand(config());
-    expect(newer.consumeLaunchWarning()).toBe(t("kiro.version_untested", "2.34.0", KIRO_TESTED_MAX));
+    expect(newer.consumeLaunchWarning()).toBe(t("kiro.version_untested", "2.35.0", KIRO_TESTED_MAX));
     newer.buildCommand(config());
     expect(newer.consumeLaunchWarning()).toBeNull(); // once per binary generation
   });

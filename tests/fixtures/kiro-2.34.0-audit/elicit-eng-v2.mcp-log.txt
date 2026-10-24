@@ -1,0 +1,9 @@
+1792849385012 < {"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"Q DEV CLI","version":"1.0.0"}}}
+1792849385013 > {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"prompts":{}},"serverInfo":{"name":"elicit-audit","version":"1.0.0"}}}
+1792849385013 < {"jsonrpc":"2.0","method":"notifications/initialized"}
+1792849385014 < {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"progressToken":0}}}
+1792849385014 > {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ask_values","description":"Asks the user for values","inputSchema":{"type":"object","properties":{}}}]}}
+1792849385014 < {"jsonrpc":"2.0","id":2,"method":"prompts/list","params":{"_meta":{"progressToken":1}}}
+1792849385014 > {"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"askme","description":"Ask the user for values"}]}}
+1792849386515 > {"jsonrpc":"2.0","id":1000,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792849386517 < {"jsonrpc":"2.0","id":1000,"error":{"code":-32601,"message":"elicitation/create"}}

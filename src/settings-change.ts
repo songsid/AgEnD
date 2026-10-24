@@ -13,7 +13,7 @@ export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
 const immediate = new Set([
   "backend", "model", "effort", "thinking", "thinking_level", "display_name", "name", "description", "locale",
-  "notify_login", "tips", "tips_enabled", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "web_echo",
+  "notice_delivery", "notify_login", "tips", "tips_enabled", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "web_echo",
   "echo_to_channel", "status_emojis", "persona", "emoji", "hang_detector", "guardian", "watchdog", "timeout_minutes",
   "enabled", "startup_concurrency", "spawn_concurrency", "spawn_stagger_ms", "warm_cap", "idle_timeout",
   // #2346: offered by Settings (General → Defaults / Advanced, the agent dialog) and refused here before — a small set of
@@ -50,6 +50,7 @@ function object(value: unknown): value is Record<string, unknown> { return !!val
  */
 const IMMEDIATE_CHILDREN: Readonly<Record<string, ReadonlySet<string>>> = {
   status_emojis: new Set<string>(STATUS_EMOJI_CONFIG_KEYS),
+  notice_delivery: new Set(["login", "tips"]),
   hang_detector: new Set(["enabled", "timeout_minutes"]),
   startup: new Set(["concurrency", "stagger_delay_ms"]),
 };

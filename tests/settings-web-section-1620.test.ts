@@ -188,7 +188,7 @@ describe("Settings → Web, as rendered", () => {
   });
   it("shows a saved dm notice mode and keeps its select disabled on the public link", async () => {
     p.document.body.setAttribute("data-public-link", "1");
-    const w = await open({ web: { notify_login: "dm" } }, "access");
+    const w = await open({ web: { notify_login: true, notice_delivery: { login: "dm" } } }, "access");
     expect(w.$("webNotifyLogin").value).toBe("dm");
     expect(w.$("webNotifyLogin").closest("fieldset").disabled).toBe(true);
     expect(w.webWrites()).toEqual([]);

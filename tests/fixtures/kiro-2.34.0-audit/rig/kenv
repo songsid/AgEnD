@@ -1,0 +1,7 @@
+#!/bin/bash
+# kenv <version> <home> <cmd…>: run that kiro-cli version fully isolated (scratch HOME/XDG, no network, coredump_filter=0).
+V=$1; H=$2; shift 2; K=${K:?set K to the rig dir}
+mkdir -p $H/.config $H/.local/share $H/.local/state $H/.cache
+exec env -i KIRO_MOCK_CHAT_RESPONSE="${KIRO_MOCK_CHAT_RESPONSE:-}" KIRO_MOCK_ACP="${KIRO_MOCK_ACP:-}" KIRO_TEST_MODE="${KIRO_TEST_MODE:-}" KIRO_TEST_TUI_IPC_SOCKET_PATH="${KIRO_TEST_TUI_IPC_SOCKET_PATH:-}" KIRO_TEST_MOCK_TURN_TIMEOUT_MS="${KIRO_TEST_MOCK_TURN_TIMEOUT_MS:-}" HOME=$H XDG_CONFIG_HOME=$H/.config XDG_DATA_HOME=$H/.local/share XDG_STATE_HOME=$H/.local/state XDG_CACHE_HOME=$H/.cache \
+  TERM=xterm-256color LANG=C.UTF-8 PATH=$K/$V/kirocli/bin:/usr/bin:/bin \
+  unshare -rn sh -c 'echo 0 > /proc/self/coredump_filter 2>/dev/null; exec "$@"' -- "$@"

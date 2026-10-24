@@ -1,0 +1,40 @@
+                             Upgrade your V2 agent configurations to V3 with /upgrade-agent
+                                              https://kiro.dev/docs/cli/v3/
+                                Prefer the previous experience? Launch with kiro-cli --v2
+
+                   Tip: Want a simpler, lighter-weight terminal with all the same features? Try /lite!
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ✧ What's new: Cloud sessions, specs, expanded hooks, improved trust model and memory.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (form)
+
+• Cancelled
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › hello from agend
+
+• Cancelled
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (url)
+
+• Cancelled
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › ask me a question
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Question
+ Which branch should I use?
+
+ ❯ 1. undefined
+   2. undefined
+   Type a different answer…
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   esc to cancel · ↑↓ to navigate · ↵ to submit
+
+
+

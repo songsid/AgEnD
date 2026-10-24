@@ -1,0 +1,40 @@
+         Upgrade your V2 agent configurations to V3 with [1m/upgrade-agent[0m
+                          [95mhttps://kiro.dev/docs/cli/v3/[39m
+            Prefer the previous experience? Launch with [95mkiro-cli --v2[39m
+
+      [1mTip: [0mMade a wrong turn? Use [95m/rewind[39m to fork the conversation from any
+      earlier point.
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+ [36m▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on,[39m
+   [36myou'll be upgraded to 3.0 automatically.[39m
+   [36mIt brings cloud sessions, memory, workflows, an improved trust model,[39m
+   [36mexpanded hooks and specs.[39m
+   [36mNote: 3.0 doesn't support the legacy --classic experience or the legacy[39m
+   [36mdesktop app.[39m
+────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (form)
+
+
+────────────────────────────────────────────────────────────────────────────────
+ [33mTrust All Tools active, confirmations are off[39m · /quit to exit
+────────────────────────────────────────────────────────────────────────────────
+Mock Model
+[95m/tmp/k234
+/work/el-2.34.0[39m
+(master)
+
+› [7m [0mask a question or describe a task ↵
+                                       /sessions to resume · /copy to clipboard
+
+
+
+
+
+
+
+
+
+

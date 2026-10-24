@@ -54,7 +54,7 @@ export const KIRO_INSTANCE_AGENT_MIN = "2.21.0";
  * the binary's own --help instead of the version table, and the operator is
  * told the version is unverified.
  */
-export const KIRO_TESTED_MAX = "2.33.0";
+export const KIRO_TESTED_MAX = "2.34.0";
 
 /**
  * kiro-cli versions, per TUI front-end, whose mid-turn steering AgEnD drives (#1405). Only kiro's TUI steers — typed
@@ -342,6 +342,35 @@ function kiroWorkspaceTrustDialogs(trustAll: boolean): RuntimeDialog[] {
       isActive: pane => kiroWorkspaceTrustState(pane).active,
     },
   ];
+}
+
+const KIRO_MCP_INPUT_HEADER = /^\s*Input requested · \S.*$/;
+const KIRO_MCP_INPUT_FOOTER = /^\s*esc to cancel · ↑↓ to navigate · enter to select(?: · ctrl\+s to submit)?$/;
+
+/**
+ * #2587: kiro-cli 2.34.0's V3 engine answers an MCP server's `elicitation/create` (a tool asking the user for input)
+ * with a card in place of the composer: a divider, `Input requested · <server>`, a divider, the server's message and
+ * one row per form field then Submit / Decline (form mode) — or Host, URL and Open in browser / Copy URL / I'll open it
+ * myself / Decline / Cancel (url mode) — with exactly one `❯` cursor row, a divider, and the key hints as the last row
+ * (tests/fixtures/kiro-2.34.0-audit). Bottom-anchored: the card is live only while it is what the pane ends with. The
+ * answer can carry credentials or a sign-in, so it is the person's: never a key, and no delivery's Enter may land in it.
+ */
+export function kiroMcpInputRequestActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let last = rows.length - 1;
+  while (last >= 0 && !rows[last].trim()) last--;
+  if (last < 0 || !KIRO_MCP_INPUT_FOOTER.test(rows[last])) return false;
+  const divider = (row: string | undefined) => row !== undefined && /^─{3,}$/.test(row.trim());
+  if (!divider(rows[last - 1])) return false;
+  let header = -1;
+  for (let index = last - 2; index >= 1; index--) {
+    if (KIRO_MCP_INPUT_HEADER.test(rows[index])) { header = index; break; }
+  }
+  if (header < 0 || !divider(rows[header - 1]) || !divider(rows[header + 1])) return false;
+  const body = rows.slice(header + 2, last - 1);
+  // A V3 composer (`›` at column 0) inside means the card is history. A lone `>` is a form field's own input caret.
+  if (body.some(row => divider(row) || /^›(?:[ \t]|$)/.test(row))) return false;
+  return body.filter(row => /^\s*❯\s+\S/.test(row)).length === 1;
 }
 
 /**
@@ -1737,6 +1766,16 @@ export class KiroBackend implements CliBackend {
         holdOnly: true,
         inputBlocked: true,
         isActive: kiroModelPickerAtTail,
+      },
+      {
+        // #2587: an MCP server's input request (kiro-cli 2.34.0 V3) owns stdin until the person answers or cancels it.
+        pattern: KIRO_MCP_INPUT_HEADER,
+        keys: [],
+        description: "Kiro MCP server is asking for input — answer it in the instance pane",
+        blocksDelivery: true,
+        holdOnly: true,
+        inputBlocked: true,
+        isActive: kiroMcpInputRequestActive,
       },
       ...kiroTrustPromptDialogs(this.activeTrustAll),
       ...kiroWorkspaceTrustDialogs(this.activeTrustAll),

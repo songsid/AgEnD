@@ -1,0 +1,12 @@
+## 2.34.0 kiro-cli-chat 'Trust this workspace?': count 1
+ confirmationtrust-all-toolsTRUST_TOOLSTrust only this set of tools. Example: trust some tools: '--trust-tools=fs_read,fs_write', trust no tools: '--trust-tools='trust-toolsNO_INTERACTIVEWhether the command should run without expecting user inputno-interactivenon-interactiveTRUST_WORKSPACESkip the "Trust this workspace?" prompt for this launch only (V3 only). Hooks, agents, MCP servers and workflows from this folder load without asking; the decision is not saved, so a folder that is not already trusted asks again ne
+
+## 2.34.0 kiro-cli-chat 'The previous response was interrupted. Continue from the recorded response; do not repeat completed work.': count 1
+to get prompts from serverMCP server failedevent crates/agent/src/agent/mod.rs:5440starting tool executionevent crates/agent/src/agent/mod.rs:5571Knowledge tool is not available in this session.Code intelligence not available. Run '/code init' to initialize.Task tool is not available in this contextThe previous response was interrupted. Continue from the recorded response; do not repeat completed work.event crates/agent/src/agent/mod.rs:3971causeevent crates/agent/src/agent/mod.rs:3954event crates/agent/src/agent/mod.rs:3950event crates/agent/src/agent/mod.rs:3962no_targetthe failing model is unkno
+
+## 2.34.0 kiro-cli-chat 'Are you sure you want to continue uninstalling Kiro CLI?': count 1
+one-cutover`: it must run before `Os` is builtnull. (global) (workspace) (session). ..`....Could not create glob'--delete''[VALUE]'<KEY>Could not get settings pathCould not get workspace settings pathNeither VISUAL nor EDITOR environment variable is setEditor process did not exit with successnot setAre you sure you want to continue uninstalling Kiro CLI?Cancelled.Uninstalling is only supported for the kiro-cli binary in ~/.local/bin. Please uninstall with your system's package manager.event crates/chat-cli/src/auth/builder_id.rs:444chat_cli::auth::bu
+
+## 2.33.1 kiro-cli-chat 'Trust this workspace?': count 0
+## 2.33.1 kiro-cli-chat 'The previous response was interrupted. Continue from the recorded response; do not repeat completed work.': count 0
+## 2.33.1 kiro-cli-chat 'Are you sure you want to continue uninstalling Kiro CLI?': count 0
