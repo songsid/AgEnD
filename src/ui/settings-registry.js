@@ -33,6 +33,8 @@ const ROWS = [
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],
   ["agents.provider-keys", "agents", ".s-provider-keys", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
+  ["defaults.tips", "agent-defaults", "#g-tips", "settings.dailyTips", "defaults.tips", ["daily tips", "dm", "notices"], ["每日提示", "私訊"]],
+  ["web.notify-login", "access", "#webNotifyLogin", "settings.webNotifyLogin", "web.notify_login", ["sign in", "login", "dm", "notices"], ["登入通知", "私訊"]],
   // Fleet · Agent defaults
   ["defaults.locale", "agent-defaults", "#g-locale", "settings.language", "defaults.locale", ["language", "bot language", "reply language", "locale"], ["語言", "回覆語言", "bot 語言"]],
   ["defaults.backend", "agent-defaults", "#g-be", "settings.defaultBackend", "defaults.backend", ["backend", "cli", "claude", "codex", "kiro"], ["後端", "CLI"]],
