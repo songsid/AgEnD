@@ -100,9 +100,14 @@ describe("the reply-completion guard covers web messages", () => {
         await silentTurn(daemon);
         expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
         expect(String(daemon.deliverMessage.mock.calls[0]![0])).toMatch(/^\[system:reply-required\]/);
-        // The status the person sees goes to where they wrote from: their chat, or (no chat) the fleet's web sink.
-        const target = daemon.deliverDaemonReply.mock.calls[0]![3];
+        // Suspected misses are quiet, including the web-only sink; recovery retains the original target.
+        expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
+        const target = daemon.turnReplyGuard.snapshot()?.target;
         expect(target).toMatchObject(bound ? { chatId: "guild-1", threadId: "topic-7" } : { chatId: "" });
+        // Only a failed recovery warns the person, on that same original destination.
+        await silentTurn(daemon);
+        expect(daemon.deliverDaemonReply).toHaveBeenCalledOnce();
+        expect(daemon.deliverDaemonReply.mock.calls[0]![3]).toMatchObject(target);
       });
     }
   }
