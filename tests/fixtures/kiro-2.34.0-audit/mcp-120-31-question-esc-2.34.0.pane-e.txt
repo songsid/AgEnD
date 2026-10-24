@@ -1,0 +1,40 @@
+                             Upgrade your V2 agent configurations to V3 with [1m/upgrade-agent[0m
+                                             [95mhttps://kiro.dev/docs/cli/v3/[39m
+                               Prefer the previous experience? Launch with [95mkiro-cli --v2[39m
+
+               [1mTip: [0mPress [95mCtrl+G[39m to open the full-screen monitor of subagent activity; [95mCtrl+G[39m or q exits.
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ [36m▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.[39m
+   [36mIt brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.[39m
+   [36mNote: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.[39m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (form)
+
+[31m•[39m [3mCancelled[0m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (url)
+
+[31m•[39m [3mCancelled[0m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › ask me a question
+
+[31m•[39m Which branch should I use?
+  [31mCancelled[39m
+[36m•[39m [36mCancelled streaming[39m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ [33mTrust All Tools active, confirmations are off[39m · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+[95m/tmp/k234/work/el-2.34.0[39m ·
+(master)
+
+› [7m [0mask a question or describe a task ↵
+                                                                               /sessions to resume · /copy to clipboard
+
+
+
+
+

@@ -1,0 +1,18 @@
+3c3
+< Usage: kiro-cli-chat chat [OPTIONS] [INPUT]
+---
+> Usage: kiro-cli chat [OPTIONS] [INPUT]
+41a42,46
+>       --trust-workspace
+>           Skip the "Trust this workspace?" prompt for this launch only (V3 only). Hooks, agents, MCP
+>           servers and workflows from this folder load without asking; the decision is not saved, so
+>           a folder that is not already trusted asks again next launch
+> 
+92,94d96
+<   -v, --verbose...
+<           Increase logging verbosity
+< 
+101a104,106
+> 
+>   -v, --verbose...
+>           Increase logging verbosity
