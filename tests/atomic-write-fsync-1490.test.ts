@@ -144,6 +144,7 @@ describe("saveFleetConfig: fsync called before rename (#1490 P3)", () => {
     (fm as any).fleetConfig = loadFleetConfig(configPath);
     (fm as any).savedFleetConfigSnapshot = structuredClone((fm as any).fleetConfig);
     (fm as any).publicWebLink = null;
+    (fm as any).lifecycle = { daemons: new Map() }; // post-save permission refresh: no live daemons in this persistence-only fixture
     (fm as any).savedFleetConfigProblem = (_path: string) => null;
     (fm as any).writeFleetConfigBackup = () => {};
     (fm as any).patchFleetDocument = () => {};
