@@ -11,6 +11,8 @@ mappings parts of AgEnD follow, with their licences.
   - `src/kiro-usage.ts`: Kiro's usage estimate (#2122 §10) follows the formula and field mapping of tokscale's
     `crates/tokscale-core/src/sessions/kiro.rs`.
   - `src/opencode-usage-scan.ts`: OpenCode's field mapping follows `crates/tokscale-core/src/sessions/opencode_schema.rs`.
+  - `src/antigravity-usage-scan.ts`: Antigravity's protobuf field numbers follow tokscale's reverse engineering in
+    `crates/tokscale-core/src/sessions/antigravity_cli.rs`.
 - The TypeScript is AgEnD's own; no tokscale code is included, and tokscale is never run or depended on.
 
 ```

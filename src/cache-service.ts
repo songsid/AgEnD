@@ -25,6 +25,7 @@ import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, foldHours, pruneDays, readDays, writeDays, type UsageDays } from "./usage-rollup.js";
 import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
 import type { OpencodeScanInput, OpencodeScanOutput } from "./opencode-usage-scan.js";
+import type { AntigravityScanInput, AntigravityScanOutput } from "./antigravity-usage-scan.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
 export interface CacheInstance {
@@ -56,6 +57,10 @@ export interface CacheServiceOptions {
   opencodeDbPath?(): string;
   /** One OpenCode scan (default: on a worker thread, kiro-usage-run.ts; tests run it in-process). */
   opencodeScan?(input: OpencodeScanInput): Promise<OpencodeScanOutput>;
+  /** #2122 §10 step 6: Antigravity's conversation databases' directory; absent: Antigravity is not read. */
+  antigravityDir?(): string;
+  /** One Antigravity scan (default: on a worker thread, kiro-usage-run.ts; tests run it in-process). */
+  antigravityScan?(input: AntigravityScanInput): Promise<AntigravityScanOutput>;
   /** Rollout files with their mtimes (the shared rollout index). */
   listRollouts(root: string): Array<{ path: string; mtimeMs: number }>;
   /** #2122: how much the last listing of `root` could not read (rollout-index.ts `unreadable`); absent: 0. */
@@ -111,7 +116,7 @@ export interface CacheReport {
 const DAY = 86_400_000;
 const META_MAX_BYTES = 256 * 1024;   // session_meta carries the instructions (~22 KB in real rollouts)
 const kindOf = (backend: string): TranscriptKind | null =>
-  (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : backend === "kiro-cli" ? "kiro" : backend === "grok" ? "grok" : backend === "muse" ? "muse" : backend === "opencode" ? "opencode" : null);
+  (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : backend === "kiro-cli" ? "kiro" : backend === "grok" ? "grok" : backend === "muse" ? "muse" : backend === "opencode" ? "opencode" : backend === "antigravity" ? "antigravity" : null);
 /** The readers the cache analysis covers; the others are in the usage report only. */
 const analysed = (kind: TranscriptKind | null): kind is "claude" | "codex" => kind === "claude" || kind === "codex";
 const sleep = (ms: number): Promise<void> => new Promise((r) => { const h = setTimeout(r, ms); h.unref?.(); });
@@ -213,7 +218,7 @@ export class CacheService {
   /** Whether this service is told where that reader's stores are (Kiro and Grok are optional). */
   private reads(kind: TranscriptKind): boolean {
     return kind === "kiro" ? !!this.o.kiroDbPath : kind === "grok" ? !!this.o.grokSessionsDir : kind === "muse" ? !!this.o.museSessionsDir
-      : kind === "opencode" ? !!this.o.opencodeDbPath : true;
+      : kind === "opencode" ? !!this.o.opencodeDbPath : kind === "antigravity" ? !!this.o.antigravityDir : true;
   }
   private zone(): string { return this.o.zone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
   private daysPath(inst: CacheInstance): string { return join(dirname(inst.ledgerPath), "usage-days.json"); }
@@ -315,13 +320,14 @@ export class CacheService {
     const kiro = await this.kiroPass(insts.filter((i) => kindOf(i.backend) === "kiro" && !shared.has(i.name)), cutoff, budget);
     budget -= kiro.read;
     await this.opencodePass(insts.filter((i) => kindOf(i.backend) === "opencode" && !shared.has(i.name)), cutoff);
+    await this.antigravityPass(insts.filter((i) => kindOf(i.backend) === "antigravity" && !shared.has(i.name)), cutoff);
     behindBytes += kiro.behindBytes; behindFiles += kiro.behindSources;
     for (const inst of insts) {
       if (this.stopped) break;
       const kind = kindOf(inst.backend);
       if (!kind || shared.has(inst.name)) { await this.keepHistory(inst, cutoff); continue; }
       const ledger = await this.ledgerFor(inst);
-      if (kind === "kiro" || kind === "opencode") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
+      if (kind === "kiro" || kind === "opencode" || kind === "antigravity") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff)
         : kind === "muse" ? muse.get(inst.name) ?? [] : codex.get(inst.name) ?? [];
       // A listing that could not read everything is no inventory: a cursor it missed stays, or the file would be counted
@@ -448,6 +454,51 @@ export class CacheService {
       for (const t of [...r.turns].sort((a, b) => a.t - b.t)) addTurn(ledger, cur, t, cutoff, inst.profile ?? "default");
       if (r.turns.length || cur.after !== r.cursor.after) this.dirty.add(r.name);
       cur.after = r.cursor.after; cur.ids = r.cursor.ids;
+    }
+  }
+
+  /** Antigravity database → its signature and workspace, as the last scan saw them (antigravity-usage-scan.ts). */
+  private antigravityIndex: AntigravityScanInput["index"] = Object.create(null);
+  /**
+   * #2122 §10 step 6: one Antigravity scan for these instances (on a worker thread), its generations added to their
+   * ledgers. As the Kiro pass: a failed scan reads nothing and covers no one, and keeps every cursor.
+   */
+  private async antigravityPass(insts: CacheInstance[], cutoff: number): Promise<void> {
+    const dir = this.o.antigravityDir?.();
+    if (!insts.length || !dir) return;
+    const ledgers = new Map<string, Ledger>();
+    const input: AntigravityScanInput = { dir, cutoff, index: this.antigravityIndex, instances: [] };
+    for (const inst of insts) {
+      const ledger = await this.ledgerFor(inst);
+      ledgers.set(inst.name, ledger);
+      const cursors: AntigravityScanInput["instances"][number]["cursors"] = Object.create(null);
+      for (const [k, f] of Object.entries(ledger.files)) if (f.kind === "antigravity" && f.sig !== undefined) cursors[k] = { sig: f.sig, after: f.after ?? -1 };
+      input.instances.push({ name: inst.name, cwds: await cwdKeys(inst.workingDirectory), cursors });
+    }
+    let out: AntigravityScanOutput;
+    try {
+      out = await (this.o.antigravityScan ?? (async (i: AntigravityScanInput) => (await import("./kiro-usage-run.js")).runAntigravityUsageScan(i)))(input);
+    } catch (err) {
+      this.o.log?.("warn", "usage: the Antigravity scan failed; it is tried again next pass", { err: String(err) });
+      for (const i of insts) this.unread.add(i.name);
+      return;
+    }
+    this.antigravityIndex = out.index;
+    const byName = new Map(insts.map((i) => [i.name, i]));
+    for (const r of out.instances) {
+      const inst = byName.get(r.name), ledger = ledgers.get(r.name);
+      if (!inst || !ledger) continue;
+      if (r.failed) this.unread.add(r.name);
+      else {
+        const live = new Set(r.live);
+        for (const [k, f] of Object.entries(ledger.files)) if (f.kind === "antigravity" && !live.has(k)) { delete ledger.files[k]; this.dirty.add(r.name); }
+      }
+      for (const u of r.updates) {
+        const cur: FileCursor = ledger.files[u.key] ??= { kind: "antigravity", ino: 0, offset: 0 };
+        for (const t of [...u.turns].sort((a, b) => a.t - b.t)) addTurn(ledger, cur, t, cutoff, inst.profile ?? "default");
+        cur.sig = u.sig; cur.after = u.after;
+        this.dirty.add(r.name);
+      }
     }
   }
 
