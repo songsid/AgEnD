@@ -847,11 +847,24 @@ $ALL_BACKENDS = @(
     [PSCustomObject]@{ Id=1; Key="kiro";        Name="Kiro CLI";        Note='免費，需 AWS Builder ID / GitHub / Google'; Install='curl -fsSL https://cli.kiro.dev/install | bash';                 Bin="kiro-cli"; NeedsNode=$false },
     [PSCustomObject]@{ Id=2; Key="claude";      Name="Claude Code";     Note='需 Anthropic 帳號，Claude Pro $20/月+';       Install='curl -fsSL https://claude.ai/install.sh | bash';                  Bin="claude";   NeedsNode=$false },
     [PSCustomObject]@{ Id=3; Key="antigravity"; Name="Antigravity CLI"; Note='免費，需 Google 帳號';                        Install='curl -fsSL https://antigravity.google/cli/install.sh | bash';     Bin="agy";      NeedsNode=$false },
-    [PSCustomObject]@{ Id=4; Key="codex";       Name="OpenAI Codex";    Note='需 ChatGPT 帳號或 API Key';                   Install='curl -fsSL https://chatgpt.com/codex/install.sh | sh';             Bin="codex";    NeedsNode=$false }
+    [PSCustomObject]@{ Id=4; Key="codex";       Name="OpenAI Codex";    Note='需 ChatGPT 帳號或 API Key';                   Install='curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh'; Bin="codex";    NeedsNode=$false }
 )
 # 統一 PATH：涵蓋所有後端二進位位置（.local/bin: kiro/codex-global 等；.claude/local: Claude Code）
 # 不加雙引號 —— 路徑無空白，且避免 PowerShell 5.1 傳參給 wsl 時的引號轉義問題
 $BACKEND_PATH = 'export PATH=/root/.local/bin:$HOME/.claude/local:$PATH'
+# 每個後端的安裝指令都在沒有控制終端機的情況下執行（stdin 是 /dev/null）：Invoke-Watched 透過 wsl.exe 執行時有 /dev/tty，
+# 上游安裝程式若在 /dev/tty 上詢問（例如 Codex 的 "Start Codex now? [y/N]"），會一直等下去。
+# setsid 讓它沒有 /dev/tty 可讀，問題便直接以預設值略過。__AGEND_INSTALL__ 會換成該後端的指令。
+$UNATTENDED_INSTALL = @'
+agend_install() {
+__AGEND_INSTALL__
+}
+if command -v setsid >/dev/null 2>&1; then
+  setsid -w bash -c "$(declare -f agend_install); agend_install" </dev/null
+else
+  agend_install </dev/null
+fi
+'@
 
 function Save-Backends($csv) { Add-Content -Path $ProgressFile -Value "BACKENDS=$csv" }
 function Get-SavedBackends {
@@ -1463,7 +1476,7 @@ if (Stage-Done 2) {
         if ($b.NeedsNode) {
             $nodePrep = 'export NVM_DIR=/root/.nvm; [ -s $NVM_DIR/nvm.sh ] && . $NVM_DIR/nvm.sh; if ! command -v npm >/dev/null 2>&1; then curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash; export NVM_DIR=/root/.nvm; . $NVM_DIR/nvm.sh; nvm install 22 >/dev/null 2>&1; fi; '
         }
-        $cmd = "$BACKEND_PATH; $nodePrep$($b.Install)"
+        $cmd = $UNATTENDED_INSTALL.Replace('__AGEND_INSTALL__', "$BACKEND_PATH; $nodePrep$($b.Install)")
         $null = Invoke-WslStep -Label ("安裝 {0}" -f $b.Name) -Usually "通常需要 1–3 分鐘" -UpperMinutes 6 -Script $cmd
         $check = wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; if command -v $($b.Bin) >/dev/null 2>&1; then echo OK; else echo FAIL; fi" 2>&1 | Out-String
         if ($check -match "OK") { Write-Ok ("{0} 安裝完成" -f $b.Name) }
