@@ -172,7 +172,7 @@ describe("#1843 silent-schedule attribution does not depend on submission proof"
     const h = harness("stranded", false);
     await h.run(); await h.endTurn();
     expect(h.detected).toHaveBeenCalledTimes(1);
-    expect(h.replies()).toHaveLength(1);
+    expect(h.replies()).toHaveLength(0);
     expect(h.recovery()).toHaveLength(1);
     expect(h.retirements()).toEqual([]);
   });
@@ -205,7 +205,7 @@ describe("#1843 silent-schedule attribution does not depend on submission proof"
     expect(h.detected).not.toHaveBeenCalled();
     h.humanTurn(); await h.endTurn();
     expect(h.detected).toHaveBeenCalledTimes(1);
-    expect(h.replies()).toHaveLength(1);
+    expect(h.replies()).toHaveLength(0);
     expect(h.recovery()).toHaveLength(1);
   });
 
@@ -227,7 +227,7 @@ describe("#1843 silent-schedule attribution does not depend on submission proof"
     const handoff = h.dispatch();
     h.daemon.startReplyRecovery(h.daemon.turnReplyGuard.snapshot(), "no_valid_call");
     expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({ phase: "recovering" });
-    expect(h.replies()).toHaveLength(1); // the original human's status, already sent before the silent write
+    expect(h.replies()).toHaveLength(0); // detection is log-only, even before the silent write
     release();
     await vi.advanceTimersByTimeAsync(5_000);
     await h.daemon.pasteLock; await handoff;
@@ -236,7 +236,7 @@ describe("#1843 silent-schedule attribution does not depend on submission proof"
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
     expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
     expect(h.recovery()).toEqual([]);
-    expect(h.replies()).toHaveLength(1); // no new notice path, even for a genuinely missed human reply
+    expect(h.replies()).toHaveLength(0); // no warning for a retired recovery
     expect(h.unrecovered).not.toHaveBeenCalled();
     expect(h.retirements()).toEqual([expect.objectContaining({
       correlationId: "cid-human", generation: 1, phase: "recovering", reason: "silent_schedule_delivery", deliveryId: h.row.deliveryId,

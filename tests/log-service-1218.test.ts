@@ -213,6 +213,18 @@ describe("live only under a watch lease", () => {
 });
 
 describe("fleet events from the event log", () => {
+  it("keeps reply-drop detection and final diagnostics readable in the Log tab", async () => {
+    const diagnostics = "no_valid_call, no-adapter-confirmed-reply, chat=guild, thread=room";
+    const unknown = "reply_failed_or_unknown, no-adapter-confirmed-reply, reply-attempted, chat=guild, thread=room";
+    const final = "recovery_turn_missing_reply, no-adapter-confirmed-reply, chat=guild, thread=room";
+    const s = service({ src: { backend: "mock", path: null, format: null }, events: () => [
+      { id: 3, event_type: "reply_drop_unrecovered", payload: { message: final }, created_at: "2026-10-24 08:00:02" },
+      { id: 2, event_type: "reply_drop_detected", payload: { message: unknown, recoveryStarted: false }, created_at: "2026-10-24 08:00:01" },
+      { id: 1, event_type: "reply_drop_detected", payload: { message: diagnostics, recoveryStarted: true }, created_at: "2026-10-24 08:00:00" },
+    ] });
+    const result = await s.svc.steps("w", {}) as any;
+    expect(result.events.map((e: any) => e.detail)).toEqual([diagnostics, unknown, final]);
+  });
   it("includes observational working-state events even without a supported transcript", async () => {
     const s = service({ src: { backend: "mock", path: null, format: null }, events: () => [
       { id: 1, event_type: "working_state", payload: { message: "Observed working; journal only; no recovery action." }, created_at: "2026-10-23 01:00:00" },

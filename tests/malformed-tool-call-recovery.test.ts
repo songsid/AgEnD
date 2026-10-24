@@ -207,9 +207,12 @@ describe("malformed tool-call lifecycle notification", () => {
   it("records reply-drop detection, recovery, and terminal failure without another channel notice", () => {
     const insert = vi.fn();
     const notifyInstanceTopic = vi.fn();
+    const warn = vi.fn(), error = vi.fn();
+    const detection = "no_valid_call, no-adapter-confirmed-reply, chat=guild, thread=room";
+    const final = "recovery_turn_missing_reply, no-adapter-confirmed-reply, chat=guild, thread=room";
     const context = {
       fleetConfig: { defaults: {}, instances: { worker: { backend: "claude-code" } } },
-      logger: { info() {}, warn() {}, error() {}, debug() {} },
+      logger: { info() {}, warn, error, debug() {} },
       eventLog: { insert },
       isClassicInstance: () => false,
       isPlannedRestart: () => false,
@@ -226,29 +229,31 @@ describe("malformed tool-call lifecycle notification", () => {
 
     source.emit("reply_drop_detected", {
       name: "worker", correlationId: "cid-drop", generation: 4,
-      reason: "no_valid_call", recoveryStarted: true,
+      reason: "no_valid_call", recoveryStarted: true, message: detection,
     });
     source.emit("reply_drop_recovered", {
       name: "worker", correlationId: "cid-drop", generation: 4,
     });
     source.emit("reply_drop_unrecovered", {
       name: "worker", correlationId: "cid-drop", generation: 5,
-      reason: "recovery_turn_missing_reply",
+      reason: "recovery_turn_missing_reply", message: final,
     });
 
     expect(insert.mock.calls).toEqual(expect.arrayContaining([
       ["worker", "reply_drop_detected", {
         correlationId: "cid-drop", generation: 4,
-        reason: "no_valid_call", recoveryStarted: true,
+        reason: "no_valid_call", recoveryStarted: true, message: detection,
       }],
       ["worker", "reply_drop_recovered", {
         correlationId: "cid-drop", generation: 4,
       }],
       ["worker", "reply_drop_unrecovered", {
         correlationId: "cid-drop", generation: 5,
-        reason: "recovery_turn_missing_reply",
+        reason: "recovery_turn_missing_reply", message: final,
       }],
     ]));
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", message: detection }), expect.any(String));
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({ reason: "recovery_turn_missing_reply", message: final }), expect.any(String));
     expect(notifyInstanceTopic).not.toHaveBeenCalled();
   });
 });

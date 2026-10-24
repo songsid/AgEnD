@@ -25,7 +25,7 @@ export function turnExpectsPersonReply(meta: Record<string, string>): boolean {
   return true;
 }
 
-/** Short, stable summary of what the guard had seen — interpolated into the channel notice. */
+/** Short, stable diagnostic summary for daemon.log and the web Log; never channel text. */
 export function formatReplyDropDetection(
   turn: {
     replyAttempted: boolean;

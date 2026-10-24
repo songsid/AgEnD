@@ -11,7 +11,6 @@ import type { CliBackend, CliBackendConfig } from "../src/backend/types.js";
 import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import { setLocale, t, type Locale } from "../src/locale.js";
 import type { Logger } from "../src/logger.js";
-import { formatReplyDropDetection } from "../src/turn-reply-guard.js";
 
 // These fixture tests must not probe an installed CLI while constructing it.
 vi.mock("../src/backend/types.js", async importOriginal => ({
@@ -159,7 +158,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
   const idlePane = () => fixture(`${ui}-idle`);
   const busyPane = () => fixture(`${ui}-busy`);
 
-  it.each(["en", "zh-TW"] as Locale[])("uses existing %s notice and asks once for the missing conclusion", async locale => {
+  it.each(["en", "zh-TW"] as Locale[])("keeps %s detection log-only and asks once for the missing conclusion", async locale => {
     setLocale(locale);
     const h = harness(ui);
     await h.inbound();
@@ -168,18 +167,11 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.daemon.getInstanceState()).toBe("idle");
     await h.confirmIdle();
     expect(h.detected).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
-    expect(h.daemon.deliverDaemonReply).toHaveBeenCalledExactlyOnceWith(
-      t("inst.reply_drop_retrying", formatReplyDropDetection({
-        replyAttempted: false, replyDelivered: false, completionDelivered: false,
-        target: { chatId: "guild-1", threadId: "channel-1" },
-      }, "no_valid_call")),
-      "replydrop", "Reply-drop status", expect.objectContaining({
-      adapterId: "discord-persona", chatId: "guild-1", threadId: "channel-1", messageId: "message-1",
-    }), true);
+    expect(h.daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(h.detected).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("no_valid_call, no-adapter-confirmed-reply, chat=guild-1, thread=channel-1") }));
     expect(recoveryWrites(h)).toHaveLength(1);
     expect(recoveryWrites(h)[0]).toContain("Do not redo the work");
     expect(recoveryWrites(h)[0]).toContain("react or reply tool");
-    expect(h.daemon.deliverDaemonReply.mock.calls[0][0]).not.toContain("SENTINEL_KIRO");
     expect(h.daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
   });
 
@@ -233,10 +225,8 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     tool(h.daemon, "reply")(null, "provider timed out");
     await h.capture(idlePane());
     expect(h.detected).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: "reply_failed_or_unknown", recoveryStarted: false }));
-    expect(h.daemon.deliverDaemonReply.mock.calls[0][0]).toBe(t("inst.reply_drop_unknown", formatReplyDropDetection({
-      replyAttempted: true, replyDelivered: false, completionDelivered: false,
-      target: { chatId: "guild-1", threadId: "channel-1" },
-    }, "reply_failed_or_unknown")));
+    expect(h.daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(h.detected).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("reply_failed_or_unknown") }));
     expect(recoveryWrites(h)).toHaveLength(0);
     expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
   });
@@ -270,7 +260,9 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     await h.capture(idlePane());
     await h.confirmIdle();
     expect(recoveryWrites(h)).toHaveLength(1);
-    expect(h.daemon.deliverDaemonReply.mock.calls[0][3]).toMatchObject({ messageId: "message-2", threadId: "channel-2" });
+    expect(h.daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(h.daemon.turnReplyGuard.snapshot()?.target).toMatchObject({ messageId: "message-2", threadId: "channel-2" });
+    expect(h.detected).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("thread=channel-2") }));
   });
 
   it("a stale idle observation cannot retire a newly delivered turn", async () => {
@@ -310,10 +302,8 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.unrecovered).toHaveBeenCalledTimes(3);
     const warnings = h.daemon.deliverDaemonReply.mock.calls.filter((args: any[]) => args[1] === "replydropwarn");
     expect(warnings).toHaveLength(2);
-    expect(warnings[0][0]).toBe(t("inst.reply_drop_unrecovered", formatReplyDropDetection({
-      replyAttempted: false, replyDelivered: false, completionDelivered: false,
-      target: { chatId: "guild-1", threadId: "channel-1" },
-    }, "recovery_turn_missing_reply")));
+    expect(warnings[0][0]).toBe(t("inst.reply_drop_unrecovered"));
+    expect(warnings[0][0]).not.toMatch(/chat=|thread=|recovery_turn_missing_reply|\n/);
   });
 
   it("a queued recovery prompt is fenced by cancellation", async () => {

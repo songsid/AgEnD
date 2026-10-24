@@ -1055,9 +1055,8 @@ export class InstanceLifecycle {
         recovered: data.recovered,
         ...(data.recoveryStarted ? { recoveryStarted: true } : {}),
       });
-      // The reply guard posts its own immediate, exact-target status before
-      // asking for one recovery turn. Do not duplicate that with the older
-      // instance-topic malformed-call notice.
+      // The reply guard owns recovery and log-only detection. Do not duplicate
+      // a possible false alarm with the older instance-topic malformed-call notice.
       if (data.recoveryStarted) return;
       const notificationTarget = this.ptyErrorNotificationTarget(name);
       if (notificationTarget) {
@@ -1072,12 +1071,14 @@ export class InstanceLifecycle {
       generation: number;
       reason: string;
       recoveryStarted: boolean;
+      message?: string;
     }) => {
       this.ctx.eventLog?.insert(name, "reply_drop_detected", {
         correlationId: data.correlationId,
         generation: data.generation,
         reason: data.reason,
         recoveryStarted: data.recoveryStarted,
+        ...(data.message ? { message: data.message } : {}),
       });
       this.ctx.logger.warn(data, "Turn ended without an adapter-confirmed reply");
     }, this.ctx.logger, `daemon.reply_drop_detected[${name}]`));
@@ -1099,11 +1100,13 @@ export class InstanceLifecycle {
       correlationId?: string;
       generation: number;
       reason: string;
+      message?: string;
     }) => {
       this.ctx.eventLog?.insert(name, "reply_drop_unrecovered", {
         correlationId: data.correlationId,
         generation: data.generation,
         reason: data.reason,
+        ...(data.message ? { message: data.message } : {}),
       });
       this.ctx.logger.error(data, "Reply-drop recovery ended without a delivered reply");
     }, this.ctx.logger, `daemon.reply_drop_unrecovered[${name}]`));

@@ -284,11 +284,8 @@ describe("Claude human-turn reply completion harness", () => {
       reason: "no_valid_call",
       recoveryStarted: true,
     }));
-    expect(daemon.deliverDaemonReply).toHaveBeenCalledWith(
-      expect.any(String), "replydrop", "Reply-drop status",
-      expect.objectContaining({ adapterId: "discord-persona", chatId: "guild-1", threadId: "channel-1" }),
-      true,
-    );
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("chat=guild-1, thread=channel-1") }));
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
     expect(daemon.deliverMessage.mock.calls[0][0]).toContain("React with an emoji or use the reply tool");
     expect(daemon.deliverMessage.mock.calls[0][0]).not.toMatch(/👍|✅|👀|⏳|❌/); // no specific emoji
@@ -463,10 +460,7 @@ describe("Claude human-turn reply completion harness", () => {
 
     daemon.applyInstanceStateSnapshot(idle(), "❯");
 
-    expect(daemon.deliverDaemonReply).toHaveBeenCalledWith(
-      expect.any(String), "replydrop", "Unconfirmed reply status", expect.any(Object),
-      true,
-    );
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
     expect(daemon.deliverMessage).not.toHaveBeenCalled();
     expect(daemon.turnReplyGuard.snapshot()).toBeNull();
   });
@@ -506,25 +500,20 @@ describe("Claude human-turn reply completion harness", () => {
     expect(daemon.turnReplyGuard.snapshot()).toBeNull();
   });
 
-  it.each(["en", "zh-TW"] as Locale[])("#2544 %s notices name a possible false positive, show detection, never /clear", locale => {
+  it.each(["en", "zh-TW"] as Locale[])("#2566 %s final warning is one short line without diagnostic identifiers", locale => {
     setLocale(locale);
     const detected = formatReplyDropDetection({
       replyAttempted: false, replyDelivered: false, completionDelivered: false,
       target: { chatId: "guild-1", threadId: "channel-1" },
     }, "no_valid_call");
-    for (const key of ["inst.reply_drop_retrying", "inst.reply_drop_unknown", "inst.reply_drop_unrecovered"] as const) {
-      const text = t(key, detected);
-      expect(text, key).toContain(detected);
-      expect(text.toLowerCase(), key).not.toContain("/clear");
-      expect(text, key).not.toContain("soul.md");
-      if (locale === "en") {
-        expect(text, key).toMatch(/false positive/i);
-        expect(text, key).toMatch(/continue|resend/i);
-      } else {
-        expect(text, key).toContain("誤報");
-        expect(text, key).toMatch(/繼續|重送/);
-      }
-    }
+    expect(detected).toContain("no_valid_call"); // retained for log diagnostics only
+    expect(detected).toContain("chat=guild-1, thread=channel-1");
+    const text = t("inst.reply_drop_unrecovered");
+    expect(text).not.toMatch(/chat=|thread=|no_valid_call|recovery_turn_missing_reply|no-adapter-confirmed-reply|\n|\{0\}/);
+    expect(text.length).toBeLessThan(100);
+    expect(text).toBe(locale === "en"
+      ? "⚠️ Still no confirmed reply after one retry. Ask it to continue if you saw nothing."
+      : "⚠️ 補送後仍沒確認到回覆，沒收到請叫它繼續。");
     setLocale("en");
   });
 
@@ -985,9 +974,7 @@ describe("#1377 P2 regression: late failure after idle edge with no busyObserved
       reason: "reply_failed_or_unknown",
       recoveryStarted: false,
     }));
-    expect(daemon.deliverDaemonReply).toHaveBeenCalledWith(
-      expect.any(String), "replydrop", "Unconfirmed reply status", expect.any(Object), true,
-    );
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
     expect(daemon.turnReplyGuard.snapshot()).toBeNull();
   });
 

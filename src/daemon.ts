@@ -6014,8 +6014,8 @@ export class Daemon extends EventEmitter {
       generation: turn.generation,
       reason,
       recoveryStarted: true,
+      message: formatReplyDropDetection(turn, reason),
     });
-    this.deliverReplyDropNotice("inst.reply_drop_retrying", "replydrop", "Reply-drop status", turn, reason, false);
     this.queueReplyRecoveryPrompt(turn);
   }
 
@@ -6029,8 +6029,8 @@ export class Daemon extends EventEmitter {
       generation: turn.generation,
       reason,
       recoveryStarted: false,
+      message: formatReplyDropDetection(turn, reason),
     });
-    this.deliverReplyDropNotice("inst.reply_drop_unknown", "replydrop", "Unconfirmed reply status", turn, reason, true);
   }
 
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
@@ -6128,6 +6128,7 @@ export class Daemon extends EventEmitter {
       correlationId: turn.target.correlationId,
       generation: turn.generation,
       reason,
+      message: formatReplyDropDetection(turn, reason),
     });
     this.deliverReplyDropNotice(
       "inst.reply_drop_unrecovered",
@@ -6141,7 +6142,7 @@ export class Daemon extends EventEmitter {
 
   /** Channel notice for a reply-drop. `rateLimit` shares the per-instance cooldown (#2544). */
   private deliverReplyDropNotice(
-    key: "inst.reply_drop_retrying" | "inst.reply_drop_unknown" | "inst.reply_drop_unrecovered",
+    key: "inst.reply_drop_unrecovered",
     kind: string,
     title: string,
     turn: TurnReplySnapshot,
@@ -6158,7 +6159,7 @@ export class Daemon extends EventEmitter {
       this.lastReplyDropWarningAt = now;
     }
     void this.deliverDaemonReply(
-      t(key, formatReplyDropDetection(turn, reason)),
+      t(key),
       kind,
       title,
       turn.target,
