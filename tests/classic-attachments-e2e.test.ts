@@ -52,6 +52,7 @@ function setup(opts: { collab?: boolean; failing?: string[]; botUserId?: string 
   state.botUserId = opts.botUserId;
   state.classicChannels = {
     isCollab: () => !!opts.collab,
+    getReplyTriggers: () => false,
     getAdapterIdByInstance: () => "tg",
     getChannelIdByInstance: () => "room-1",
     getContextLines: () => 5,

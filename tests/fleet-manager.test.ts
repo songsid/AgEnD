@@ -1135,7 +1135,7 @@ describe("FleetManager", () => {
 
     expect(send).toHaveBeenCalledWith({
       type: "config_update",
-      config: { tool_progress: "verbose", reply_completion_guard: false },
+      config: { tool_progress: "verbose", reply_completion_guard: false, reply_triggers: false },
     });
     expect(daemon.applyConfigUpdate).not.toHaveBeenCalled();
     expect(stop).not.toHaveBeenCalled();

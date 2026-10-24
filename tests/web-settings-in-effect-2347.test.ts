@@ -143,9 +143,9 @@ describe("#2347 §10: a ClassicBot room inherits from ClassicBot defaults first"
       .toEqual(["Inherited: verbose · change in ClassicBot defaults", "/settings/chat#g-ctp", "Inherited: 30 min · change in Agent defaults", "/settings/agent-defaults#g-auto",
         "Inherited: Codex · change in Agent defaults"]);
     expect(text(p.root.querySelectorAll("#cl-model option")[0])).toBe("inherit (gpt-5.5)");
-    // Every line in the dialog, in order — the reply guard set nowhere: the built-in "on", marked default.
+    // Every inherited line, including built-in reply guard on and reply-trigger off.
     expect(p.root.querySelector("dialog").querySelectorAll(".s-inherited").map(text)).toEqual(["Inherited: Codex · change in Agent defaults",
-      "Inherited: 30 min · change in Agent defaults", "Inherited: verbose · change in ClassicBot defaults", "Inherited: on default · change in Agent defaults"]);
+      "Inherited: 30 min · change in Agent defaults", "Inherited: verbose · change in ClassicBot defaults", "Inherited: on default · change in Agent defaults", "Inherited: off default · change in Agent defaults"]);
   });
   it("ClassicBot defaults' own inherited fields say what they take from Agent defaults", async () => {
     await open("chat", "classic-defaults");

@@ -100,6 +100,7 @@ function classicAttachment(kind: "document" | "photo", collab: boolean) {
   vi.spyOn(fm as any, "getRecentChatLog").mockReturnValue("");
   Object.assign(fm, { classicChannels: {
     isCollab: () => collab,
+    getReplyTriggers: () => false,
     getAdapterIdByInstance: () => "bot",
     getChannelIdByInstance: () => "-200",
     getContextLines: () => 5,

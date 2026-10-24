@@ -34,6 +34,7 @@ function rig(opts: { collab?: boolean; home?: string; deliver?: () => Promise<vo
   fms.push(fm);
   fm.classicChannels = {
     isCollab: () => !!opts.collab,
+    getReplyTriggers: () => false,
     isClassicChannel: (ch: string) => ch === ROOM.channelId,
     getInstanceByChannel: (ch: string) => (ch === ROOM.channelId ? ROOM.instanceName : undefined),
     getAdapterIdByInstance: () => ROOM.adapterId,

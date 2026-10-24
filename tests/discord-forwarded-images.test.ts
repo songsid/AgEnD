@@ -109,6 +109,29 @@ describe("Discord forwarded message images", () => {
     }
   });
 
+  it("an omitted outer reference type is a Default reply and still triggers when enabled", async () => {
+    const got = await inbound(fakeMessage({ content: "follow up", reference: { messageId: "our-reply" },
+      fetchReference: async () => ({ content: "our answer", author: { id: "self-bot" }, attachments: new FakeCollection<any>() }) }));
+    expect((await classic(got, true)).forwardToClassicInstance).toHaveBeenCalledOnce();
+    expect([got.replyTo, got.replyToAuthorId]).toEqual(["our-reply", "self-bot"]);
+  });
+
+  it("an omitted parent reference type retains the bot reply-chain fence", async () => {
+    const got = await inbound(fakeMessage({ content: "follow up", reference: { type: MessageReferenceType.Default, messageId: "our-reply" },
+      fetchReference: async () => ({ content: "our answer", author: { id: "self-bot" }, attachments: new FakeCollection<any>(),
+        reference: { messageId: "other-bot" }, fetchReference: async () => ({ author: { id: "another-bot", bot: true } }) }) }));
+    expect((await classic(got, true)).forwardToClassicInstance).not.toHaveBeenCalled();
+    expect(got.replyToChain).toBe(true);
+  });
+
+  it.each([99, null])("an unknown explicit reference type %s never addresses", async type => {
+    const fetchReference = vi.fn(async () => ({ content: "our answer", author: { id: "self-bot" } }));
+    const got = await inbound(fakeMessage({ content: "follow up", reference: { type, messageId: "our-reply" }, fetchReference }));
+    expect((await classic(got, true)).forwardToClassicInstance).not.toHaveBeenCalled();
+    expect([got.replyTo, got.replyToAuthorId]).toEqual([undefined, undefined]);
+    expect(fetchReference).not.toHaveBeenCalled();
+  });
+
   it("a quoted mention in forwarded text is context, not an authored mention", async () => {
     const got = await inbound(fakeMessage({ author: { id: "sender", username: "sender", bot: true },
       reference: { type: MessageReferenceType.Forward, messageId: "our-text" },

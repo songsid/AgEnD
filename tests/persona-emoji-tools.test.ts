@@ -655,7 +655,7 @@ describe("the four saved-attachment stamps read the configured emoji (#1080)", (
     if (opts.channelOptions) (world.channelConfig as any).options = { status_emojis: opts.channelOptions };
     if (opts.instanceOverride) (fm as any).fleetConfig.instances[instance] = { working_directory: "/c", status_emojis: opts.instanceOverride };
     const internals = fm as unknown as Internals;
-    internals.classicChannels = { isCollab: () => site.collab } as any;
+    internals.classicChannels = { isCollab: () => site.collab, getReplyTriggers: () => false } as any;
     internals.saveClassicAttachment = vi.fn(async () => ({ path: "/inbox/f", paths: ["/inbox/f"], kind }));
     internals.forwardToClassicInstance = vi.fn(async () => {});
     await internals.handleClassicChannelMessage(instance, {
@@ -719,7 +719,7 @@ describe("the four saved-attachment stamps read the configured emoji (#1080)", (
       tgWorld.botUserId = "BOT";
       if (options) (tgWorld.channelConfig as any).options = { status_emojis: options };
       const internals = fm as unknown as Internals;
-      internals.classicChannels = { isCollab: () => site.collab } as any;
+      internals.classicChannels = { isCollab: () => site.collab, getReplyTriggers: () => false } as any;
       internals.saveClassicAttachment = vi.fn(async () => ({ path: "/i/f", paths: ["/i/f"], kind }));
       internals.forwardToClassicInstance = vi.fn(async () => {});
       await internals.handleClassicChannelMessage("classic-room", {

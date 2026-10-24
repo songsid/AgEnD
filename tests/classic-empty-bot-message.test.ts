@@ -17,7 +17,7 @@ import { ClassicChannelManager } from "../src/classic-channel-manager.js";
  */
 
 type Internals = {
-  classicChannels: { isCollab: (channelId: string, adapterId?: string) => boolean };
+  classicChannels: { isCollab: (channelId: string, adapterId?: string) => boolean; getReplyTriggers: () => boolean };
   handleClassicChannelMessage: (instanceName: string, msg: unknown) => Promise<void>;
 };
 
@@ -38,8 +38,8 @@ describe("collab chat log and empty bot messages", () => {
   function setup() {
     const fm = new FleetManager(tmpDir);
     const internals = fm as unknown as Internals;
-    // Only the one answer this path asks of the classic channel registry.
-    internals.classicChannels = { isCollab: () => true };
+    // Registry answers for collab admission and the off reply-trigger default.
+    internals.classicChannels = { isCollab: () => true, getReplyTriggers: () => false };
     return { fm, internals };
   }
 

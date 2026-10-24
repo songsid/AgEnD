@@ -238,7 +238,7 @@ describe("the reaction filter follows config (#1005 point 3)", () => {
     ], { alpha: { channel_id: "bot-a" } });
     const fm = fleet as any;
     fm.classicChannels = {
-      isCollab: () => true, getInstanceByChannel: () => "classic-b", getChannelIdByInstance: (n: string) => (n === "classic-b" ? "room" : undefined),
+      isCollab: () => true, getReplyTriggers: () => false, getInstanceByChannel: () => "classic-b", getChannelIdByInstance: (n: string) => (n === "classic-b" ? "room" : undefined),
       getAdapterIdByInstance: () => "bot-b", getContextLines: () => 5, getAll: () => [{ instanceName: "classic-b", channelId: "room", adapterId: "bot-b" }],
     };
     fm.forwardToClassicInstance = vi.fn(async () => {});
