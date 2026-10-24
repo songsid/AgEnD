@@ -65,7 +65,7 @@ ${body}`);
  * The installer is a stub that records how it was run and ends with code 7. The temporary directory has a space and a
  * semicolon in its name: the quoting and wt's own ';' are part of what is checked.
  */
-function elevated(wt: "run" | "start-and-close" | "nothing" | "declined" | "fail" | "absent", extra = "", env: Record<string, string> = {}) {
+function elevated(wt: "run" | "start-and-close" | "empty-claim" | "partial-code" | "live-owner" | "nothing" | "declined" | "fail" | "absent", extra = "", env: Record<string, string> = {}, shell = "pwsh") {
   return run(BOOTSTRAP, `
 $base = Join-Path $env:TMPDIR 'a b;c'; New-Item -ItemType Directory -Path $base -Force | Out-Null
 $tmp = Join-Path $base 'install-agend-x.ps1'
@@ -80,13 +80,16 @@ function Start-Process { param($FilePath, $ArgumentList, $Verb, [switch]$Wait, [
       'fail' { throw 'wt.exe is broken' }
       'run' { $w = ($ArgumentList[-1] -replace '^"|"$', '') -replace '\\\\;', ';'; $psi = New-Object Diagnostics.ProcessStartInfo 'pwsh'; foreach ($a in @('-NoProfile', '-File', $w)) { $psi.ArgumentList.Add($a) }; $null = [Diagnostics.Process]::Start($psi) }
       'start-and-close' { $s = "$tmp.started"; $null = [Diagnostics.Process]::Start('pwsh', @('-NoProfile', '-c', "[IO.File]::WriteAllText('$s', [string]\`$PID)")) }
+      'empty-claim' { [IO.File]::WriteAllText("$tmp.started", '') }
+      'partial-code' { $s = "$tmp.started"; $p = [Diagnostics.Process]::Start('pwsh', @('-NoProfile', '-c', "[IO.File]::WriteAllText('$s', [string]\`$PID)")); $p.WaitForExit(); [IO.File]::WriteAllText("$tmp.code", '') }
+      'live-owner' { $s = "$tmp.started"; $d = "$tmp.code"; $null = [Diagnostics.Process]::Start('pwsh', @('-NoProfile', '-c', "[IO.File]::WriteAllText('$s', [string]\`$PID); Start-Sleep 2; [IO.File]::WriteAllText('$d.tmp', '5'); Move-Item -LiteralPath '$d.tmp' -Destination '$d' -Force")) }
     }
     return
   }
   return [pscustomobject]@{ ExitCode = 3 }
 }
 ${extra}
-$r = Start-ElevatedInstaller 'pwsh' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp, '-Force') $tmp $env:TERMINAL_MODE 2
+$r = Start-ElevatedInstaller '${shell}' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp, '-Force') $tmp $env:TERMINAL_MODE 2 1
 Write-Output ("OUTCOME=" + $r.Outcome + " CODE=" + $r.Code)
 foreach ($c in $script:calls) { Write-Output ("CALL " + $c) }
 Write-Output ("RAN=" + $(if (Test-Path (Join-Path $env:TMPDIR 'ran.txt')) { (Get-Content -Raw (Join-Path $env:TMPDIR 'ran.txt')).Trim() } else { 'no' }))
@@ -97,7 +100,7 @@ describe.skipIf(!pwsh)("with pwsh: the elevated launch (install.ps1)", { timeout
   it("Windows Terminal present: wt.exe -w new <shell> … -File \"<wrapper>\" (';' escaped), and the installer's exit code comes back through <tmp>.code", () => {
     const { out } = elevated("run");
     expect(out).toContain("OUTCOME=done CODE=7");
-    expect(out).toMatch(/CALL start \/stub\/wt\.exe \| -w new pwsh -NoProfile -ExecutionPolicy Bypass -File "[^"]*a b\\;c\/install-agend-x\.ps1\.wt\.ps1" \| RunAs \| wait=False/);
+    expect(out).toMatch(/CALL start \/stub\/wt\.exe \| -w new "pwsh" -NoProfile -ExecutionPolicy Bypass -File "[^"]*a b\\;c\/install-agend-x\.ps1\.wt\.ps1" \| RunAs \| wait=False/);
     expect(out).not.toMatch(/CALL start pwsh/);                                         // no second window
     expect(out).toContain("RAN=force=True");                                             // the arguments carried, -Force too
     expect(out).toMatch(/LEFT=install-agend-x\.ps1,install-agend-x\.ps1\.wt\.ps1\n/);  // .code/.started cleaned up
@@ -116,6 +119,23 @@ describe.skipIf(!pwsh)("with pwsh: the elevated launch (install.ps1)", { timeout
     const { out } = elevated("start-and-close");
     expect(out).toContain("OUTCOME=closed");
     expect(out).not.toMatch(/CALL start pwsh/);
+  });
+  it("an interrupted claim (.started created, no PID written) ends as closed after the claim grace, never a wait forever", () => {
+    const { out } = elevated("empty-claim");
+    expect(out).toContain("OUTCOME=closed");
+    expect(out).not.toMatch(/CALL start pwsh/);                                         // .started still blocks a second run
+  });
+  it("an unreadable .code with a dead owner ends as closed (it does not shadow the owner check)", () => {
+    const { out } = elevated("partial-code");
+    expect(out).toContain("OUTCOME=closed");
+  });
+  it("control: a live owner that finishes later publishes its code whole, and that code comes back", () => {
+    const { out } = elevated("live-owner");
+    expect(out).toContain("OUTCOME=done CODE=5");
+  });
+  it("AGEND_INSTALL_SHELL with spaces: quoted in wt's command line too (with wt's ';' escaped)", () => {
+    const { out } = elevated("fail", "", {}, "C:\\Program Files\\Power;Shell\\7\\pwsh.exe");
+    expect(out).toMatch(/CALL start \/stub\/wt\.exe \| -w new "C:\\Program Files\\Power\\;Shell\\7\\pwsh\.exe" -NoProfile -ExecutionPolicy Bypass -File "/);
   });
   it("the tab never starts: the late wrapper is cancelled first, then the old window runs it — never twice", () => {
     const { out, dir } = elevated("nothing");

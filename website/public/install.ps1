@@ -24,9 +24,10 @@
     # <tmp>.code, and this window waits for that file. The wrapper first creates <tmp>.started (CreateNew) holding its
     # PID, then looks for <tmp>.cancel: if that tab never starts, this window creates <tmp>.cancel and only falls back
     # when it still sees no <tmp>.started, so the installer never runs twice. A tab closed early leaves .started
-    # without .exit and a process that is gone. A declined UAC prompt is final; any other wt failure falls back to the
+    # without .code and a process that is gone, or a .started still empty after a short grace (the wrapper died between
+    # creating it and writing its PID). A declined UAC prompt is final; any other wt failure falls back to the
     # old window. Returns @{ Outcome = 'done' | 'declined' | 'closed'; Code }.
-    function Start-ElevatedInstaller([string]$shell, [string[]]$installerArgs, [string]$tmp, [string]$terminal, [int]$startTimeoutSec = 90) {
+    function Start-ElevatedInstaller([string]$shell, [string[]]$installerArgs, [string]$tmp, [string]$terminal, [int]$startTimeoutSec = 90, [int]$claimGraceSec = 10) {
         $declinedError = { $e = $args[0].Exception; while ($e) { if ($e.NativeErrorCode -eq 1223) { return $true }; $e = $e.InnerException }; return $false }
         $wt = $null
         if ($terminal -ne 'conhost') { $wt = Get-Command -Name 'wt.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -41,14 +42,16 @@
                 "if (Test-Path -LiteralPath `$cancel) { return }",
                 "& $(& $sq $tmp)$force",
                 "`$c = `$LASTEXITCODE; if (`$null -eq `$c) { `$c = 0 }",
-                "[IO.File]::WriteAllText(`$done, [string]`$c)"
+                "[IO.File]::WriteAllText(`$done + '.tmp', [string]`$c); Move-Item -LiteralPath (`$done + '.tmp') -Destination `$done -Force"
             )
             $launched = $false
             try {
                 [IO.File]::WriteAllText($wrapper, ($lines -join "`r`n"), (New-Object Text.UTF8Encoding $true))
-                # wt.exe reads ';' as its own command separator: escaped as '\;'. The wrapper path is quoted for spaces.
+                # wt.exe reads ';' as its own command separator: escaped as '\;'. The shell (AGEND_INSTALL_SHELL may be a path
+                # with spaces) and the wrapper path are quoted.
                 $path = '"' + ($wrapper -replace ';', '\;') + '"'
-                $null = Start-Process -FilePath $wt.Source -ArgumentList @('-w', 'new', $shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $path) -Verb RunAs
+                $shellArg = '"' + ($shell -replace ';', '\;') + '"'
+                $null = Start-Process -FilePath $wt.Source -ArgumentList @('-w', 'new', $shellArg, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $path) -Verb RunAs
                 $launched = $true
             } catch {
                 if (& $declinedError $_) { return @{ Outcome = 'declined'; Code = $null } }
@@ -57,21 +60,24 @@
             if ($launched) {
                 Write-Host "AgEnD: the installer is running in Windows Terminal. Press Ctrl+C here only to stop waiting; it keeps running there."
                 $deadline = (Get-Date).AddSeconds($startTimeoutSec)
-                $giveUp = $false
+                $giveUp = $false; $claimSeen = $null
+                # The code, once it is there whole (the wrapper renames it into place); an unreadable one is no code.
+                $readCode = { $t = ''; try { $t = [IO.File]::ReadAllText($done).Trim() } catch { }; $v = 0; if ([int]::TryParse($t, [ref]$v)) { return $v }; return $null }
                 try {
                     while ($true) {
-                        if (Test-Path -LiteralPath $done) {
-                            $text = ''
-                            try { $text = [IO.File]::ReadAllText($done).Trim() } catch { }
-                            $n = 0
-                            if ([int]::TryParse($text, [ref]$n)) { return @{ Outcome = 'done'; Code = $n } }
-                        } elseif (Test-Path -LiteralPath $started) {
+                        if (Test-Path -LiteralPath $done) { $n = & $readCode; if ($null -ne $n) { return @{ Outcome = 'done'; Code = $n } } }
+                        if (Test-Path -LiteralPath $started) {
                             $owner = 0
                             try { $null = [int]::TryParse([IO.File]::ReadAllText($started).Trim(), [ref]$owner) } catch { }
-                            if ($owner -gt 0 -and -not (Get-Process -Id $owner -ErrorAction SilentlyContinue)) {
-                                Start-Sleep -Milliseconds 500
-                                if (-not (Test-Path -LiteralPath $done)) { return @{ Outcome = 'closed'; Code = $null } }
-                            }
+                            if ($owner -gt 0) {
+                                if (-not (Get-Process -Id $owner -ErrorAction SilentlyContinue)) {
+                                    Start-Sleep -Milliseconds 500
+                                    $n = $null; if (Test-Path -LiteralPath $done) { $n = & $readCode }
+                                    if ($null -ne $n) { return @{ Outcome = 'done'; Code = $n } }
+                                    return @{ Outcome = 'closed'; Code = $null }
+                                }
+                            } elseif ($null -eq $claimSeen) { $claimSeen = Get-Date }
+                            elseif (((Get-Date) - $claimSeen).TotalSeconds -gt $claimGraceSec) { return @{ Outcome = 'closed'; Code = $null } }
                         } elseif ((Get-Date) -gt $deadline) {
                             try { [IO.File]::Open($cancel, 'CreateNew', 'Write').Close() } catch { }
                             if (-not (Test-Path -LiteralPath $started)) { $giveUp = $true; break }
@@ -79,7 +85,7 @@
                         Start-Sleep -Milliseconds 500
                     }
                 } finally {
-                    if (-not $giveUp) { foreach ($f in @($done, $started, $cancel)) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue } }
+                    if (-not $giveUp) { foreach ($f in @($done, "$done.tmp", $started, $cancel)) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue } }
                 }
                 Write-Host "AgEnD: the installer did not start in Windows Terminal; using a PowerShell window." -ForegroundColor Yellow
             }
