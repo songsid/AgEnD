@@ -81,7 +81,7 @@ describe("All offices: the pure part (fleet-office-overview.js)", () => {
   });
   it("a desks office is as large as its rooms: cropped to them (no margins, no corridors outside), everything moved with it", () => {
     const L = M.autoLayout([{ key: "o", name: "O", lobby: false, nodes: view().teams[0].nodes }], { width: 1280 });
-    expect(L.width).toBe(1280);                                            // as laid out: the stage's width
+    expect(L.width).toBe(L.rooms[0].x + L.rooms[0].w + M.OF.M);           // as laid out: its room's width and the margin (#2585 B)
     const C = O.cropToRooms(L), r = L.rooms[0];
     expect([C.width, C.height, C.rooms[0].x, C.rooms[0].y]).toEqual([r.w, r.h, 0, 0]);
     expect(C.rooms[0].desks.map((d: any) => [d.x, d.y, d.seat.x, d.seat.y])).toEqual(r.desks.map((d: any) => [d.x - r.x, d.y - r.y, d.seat.x - r.x, d.seat.y - r.y]));

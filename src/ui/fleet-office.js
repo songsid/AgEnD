@@ -705,7 +705,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     const fitted0 = zones || overview;                                 // All offices opens whole, as a zones scene
     return { v: overview ? fitL(fitMode) : openingView(L.width, L.height, size, ratio, fitted0, fitMode), fit: fitted0 };
   };
-  // An office (or style) opened: its kept view, else its opening (zones fitted; desks from the top left). A resize fits
+  // An office (or style) opened: its kept view, else its opening (zones fitted; desks from the top left, or centred where smaller). A resize fits
   // a fitted view again (and opens an untouched one again); a view a person moved keeps the same point in the middle.
   // Either way it is then kept on the scene (clampPan): a kept view from a bigger panel cannot leave it off-screen.
   const opened = useRef(null), sized = useRef(null);

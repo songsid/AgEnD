@@ -199,7 +199,9 @@ export function autoLayout(rooms, { width = 960 } = {}) {
     }
   });
   const right = out.length ? Math.max(...out.map((r) => r.x + r.w)) : 0, bottom = out.length ? Math.max(...out.map((r) => r.y + r.h)) : 0;
-  return { rooms: out, waypoints, edges, width: Math.max(width, right + M), height: bottom + GAP / 2 + M };
+  // As wide as its rooms (rows wrap at `width`): a scene narrower than the stage is centred in it (clampPan), never
+  // left at the stage's left edge with the rest of the stage empty (#2585 B).
+  return { rooms: out, waypoints, edges, width: out.length ? right + M : width, height: bottom + GAP / 2 + M };
 }
 
 /**
