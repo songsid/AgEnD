@@ -102,7 +102,9 @@ describe("the auto layout", () => {
     for (const w of [1400, 960, 360]) {
       const l = L(w);
       for (const r of l.rooms) expect(r.x + r.w, `${w}: ${r.name}`).toBeLessThanOrEqual(w - M.OF.M);
-      expect(l.width).toBe(w);
+      // #2585 B: as wide as its rooms (its widest row and the margin), not the stage: a narrower scene is centred in it.
+      expect(l.width).toBe(Math.max(...l.rooms.map((r: any) => r.x + r.w)) + M.OF.M);
+      expect(l.width).toBeLessThanOrEqual(w);
     }
     expect(new Set(L(1400).rooms.map((r: any) => r.y)).size).toBeLessThan(new Set(L(360).rooms.map((r: any) => r.y)).size);
     // Rooms never overlap.
@@ -915,10 +917,11 @@ describe("the Office view on the page", () => {
       const main = p.root.querySelector(".oo-canvas")._ctx;
       expect(main.calls.filter(([k]: any) => k === "drawImage").length).toBeGreaterThanOrEqual(2);        // back and front layers
       expect(p.root.querySelector(".oo-canvas").style.width).toMatch(/^\d+px$/);
-      // A click on a desk (measured from the canvas) opens its chat.
+      // A click on a desk (measured from the canvas, through the view: the scene is centred where it is smaller) opens its chat.
       const l = M.autoLayout(M.officeRooms(view()), { width: 960 }), tide = M.desksOf(l).find((d: any) => d.node.name === "tide");
+      const fr = p.root.querySelector(".oo-mini-view"), [k, vx, vy] = ["data-k", "data-x", "data-y"].map((a) => Number(fr.getAttribute(a)));
       fire(p.root.querySelector(".oo-canvas"), "pointerdown", { pointerType: "mouse" });
-      fire(p.root.querySelector(".oo-canvas"), "click", { clientX: tide.x + 10, clientY: tide.y + 10 });
+      fire(p.root.querySelector(".oo-canvas"), "click", { clientX: vx + (tide.x + 10) * k, clientY: vy + (tide.y + 10) * k });
       await settle(2);
       expect(location.pathname).toBe("/ui/chat/tide");
       const n = main.calls.length;

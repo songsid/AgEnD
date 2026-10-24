@@ -42,7 +42,7 @@ const STORE = { ready: true, instances: INSTANCES, exec: { quill: "working" }, a
 const STAGE = { w: 960, h: 600 };                                    // the stage before it is measured (a test page has none)
 
 let p: AppPage;
-let V: any, CV: any, PK: any, Z: any, K: any, app: any, nav: any, fleet: any, SK: any;
+let V: any, OM: any, CV: any, PK: any, Z: any, K: any, app: any, nav: any, fleet: any, SK: any;
 let offices: any = { rev: 0, offices: [] }, skins: any = { rev: "", packs: [] }, manifestAnswer: any = null;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/fleet/org" });
@@ -56,6 +56,7 @@ beforeAll(async () => {
   nav.startRouter(p.window);
   fleet = await import("/ui/js/panel-fleet.js");
   V = await import("/ui/js/fleet-office-view.js");
+  OM = await import("/ui/js/fleet-office-model.js");
   CV = await import("/ui/js/fleet-canvas-view.js");
   PK = await import("/ui/js/fleet-office-pack.js");
   Z = await import("/ui/js/fleet-office-zones.js");
@@ -150,13 +151,16 @@ describe("pixel levels and Fit (fleet-office-view.js)", () => {
     expect([V.desksK(1), V.desksK(1.25), V.desksK(1.5), V.desksK(2), V.desksK(3)]).toEqual([1, 0.8, 4 / 3, 1, 1]);
     expect(V.openingView(960, 2000, STAGE, 1.5, false)).toEqual({ k: 4 / 3, x: 0, y: 0 });
   });
-  it("clampPan: the scene never goes off-screen — larger than the panel it covers it (no gap), smaller it stays wholly inside", () => {
+  it("clampPan: the scene never goes off-screen — larger than the panel it covers it (no gap), smaller it is centred on that axis (#2585 B)", () => {
     expect(V.clampPan({ k: 1, x: 5000, y: -5000 }, 1280, 720, STAGE)).toEqual({ k: 1, x: 0, y: 600 - 720 });
     expect(V.clampPan({ k: 1, x: -5000, y: 5000 }, 1280, 720, STAGE)).toEqual({ k: 1, x: 960 - 1280, y: 0 });
     expect(V.clampPan({ k: 2, x: -300, y: -200 }, 1280, 720, STAGE)).toEqual({ k: 2, x: -300, y: -200 });   // inside: as it is
-    // Smaller than the panel (zoomed out): wholly in view, wherever it was dragged.
-    expect(V.clampPan({ k: 0.5, x: -100, y: 900 }, 1280, 720, STAGE)).toEqual({ k: 0.5, x: 0, y: 600 - 360 });
-    expect(V.clampPan({ k: 0.5, x: 200, y: 100 }, 1280, 720, STAGE)).toEqual({ k: 0.5, x: 200, y: 100 });
+    // Smaller than the panel (zoomed out): centred, wherever it was dragged (the canvas's middle is the scene's).
+    expect(V.clampPan({ k: 0.5, x: -100, y: 900 }, 1280, 720, STAGE)).toEqual({ k: 0.5, x: (960 - 640) / 2, y: (600 - 360) / 2 });
+    expect(V.clampPan({ k: 0.5, x: 200, y: 100 }, 1280, 720, STAGE)).toEqual({ k: 0.5, x: 160, y: 120 });
+    // Smaller on one axis only: centred on that one, kept on the scene on the other.
+    expect(V.clampPan({ k: 1, x: 37, y: -50 }, 760, 1400, STAGE)).toEqual({ k: 1, x: (960 - 760) / 2, y: -50 });
+    expect(V.clampPan({ k: 1, x: -400, y: 300 }, 2000, 300, STAGE)).toEqual({ k: 1, x: -400, y: 150 });
     // A kept view from a bigger panel (k 1 centred on a 2231 px stage), restored on 975 × 720: the scene's left edge
     // was cut off and its frame stuck at the overview's left; clamped, the scene covers the stage.
     const kept = V.savedOf({ k: 1, x: (2231 - 1280) / 2, y: 149 }, { w: 2231, h: 1018 });
@@ -409,8 +413,10 @@ describe("the Office canvas on the page", () => {
     near(shown(), v0);
     fire(cv, "pointermove", { pointerId: 1, pointerType: "mouse", clientX: 160, clientY: 130 });
     fire(cv, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 160, clientY: 130 });
-    near(shown(), clamped({ k: v0.k, x: v0.x + 58, y: v0.y + 29 }));   // as wide as the stage: only down, to the edge
-    expect(shown().y).toBeCloseTo(59, 6);
+    // As wide as the stage and shorter (960 × 540 in 960 × 600): it covers the width and is centred on the height
+    // (#2585 B), so this drag moves it neither way.
+    near(shown(), clamped({ k: v0.k, x: v0.x + 58, y: v0.y + 29 }));
+    expect([shown().x, shown().y]).toEqual([0, 30]);
     fire(cv, "click", { clientX: 160, clientY: 130 });
     expect(location.pathname).toBe("/ui/fleet/org");
     await settle(2);
@@ -455,6 +461,32 @@ describe("the Office canvas on the page", () => {
     const old = CV.toScreen(V.fitScene(1280, 720, STAGE), seat.x, seat.y - 20);
     fire(cv, "pointermove", { clientX: old.x, clientY: old.y, pointerType: "mouse" }); await settle(2);
     expect(p.root.querySelector(".oo-tip strong")?.textContent ?? null).not.toBe("quill");
+  });
+  it("#2585 B: a scene smaller than the stage is centred on that axis — opening, a drag, Fit and a zoom out alike", async () => {
+    localStorage.setItem("agend_org_office_skin", "pixel"); await office();
+    const [, , w, h] = p.root.querySelector(".oo-mini").getAttribute("viewBox").split(" ").map(Number);
+    /** Centred on an axis where the scene is smaller; on the other, covering the stage (no gap at either edge). */
+    const centred = (v: any, why: string) => {
+      const sw = w * v.k, sh = h * v.k;
+      if (sw < STAGE.w) expect(v.x, `${why}: x`).toBeCloseTo((STAGE.w - sw) / 2, 6); else { expect(v.x, why).toBeLessThanOrEqual(0); expect(v.x + sw, why).toBeGreaterThanOrEqual(STAGE.w - 1e-6); }
+      if (sh < STAGE.h) expect(v.y, `${why}: y`).toBeCloseTo((STAGE.h - sh) / 2, 6); else { expect(v.y, why).toBeLessThanOrEqual(0); expect(v.y + sh, why).toBeGreaterThanOrEqual(STAGE.h - 1e-6); }
+    };
+    const v0 = shown();
+    expect(w * v0.k, "the desks scene is as wide as its rooms: narrower than the stage here").toBeLessThan(STAGE.w);
+    expect(v0.x, "not at the stage's left edge").toBeGreaterThan(OM.OF.M);
+    centred(v0, "opening");
+    const cv = p.root.querySelector(".oo-canvas");
+    fire(cv, "pointerdown", { pointerId: 1, pointerType: "mouse", button: 0, clientX: 100, clientY: 100 });
+    fire(cv, "pointermove", { pointerId: 1, pointerType: "mouse", clientX: 300, clientY: 260 });
+    fire(cv, "pointerup", { pointerId: 1, pointerType: "mouse", clientX: 300, clientY: 260 }); await settle(2);
+    centred(shown(), "after a drag");
+    await key("0"); centred(shown(), "Fit");
+    await key("-"); await key("-");
+    const out = shown();
+    expect([w * out.k < STAGE.w, h * out.k < STAGE.h], "zoomed out: smaller both ways").toEqual([true, true]);
+    centred(out, "zoomed out");
+    await key("+"); await key("+"); await key("+"); centred(shown(), "zoomed in");
+    await p.unmount();
   });
   it("the view is kept per office and style (a moment after it moves, and when the view goes) and restored, kept on screen", async () => {
     studio(); await office();

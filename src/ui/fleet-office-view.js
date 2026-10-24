@@ -9,7 +9,8 @@
 //   whole scene shows — non-integer, so the scene fills the panel's width or height. "cover" (Fill): the smallest
 //   scale that fills both; what overflows is cropped and stays a pan away. Either is centred.
 // - The view never loses the scene (clampPan): along an axis where the scene is larger than the panel it covers the
-//   panel (no gap at an edge); where it is smaller it stays wholly inside.
+//   panel (no gap at an edge); where it is smaller it is centred on that axis (the user: the canvas's middle is the
+//   scene's), on opening, Fit, any zoom and a resize alike.
 //
 // Around the scene is a matte: the pack's `matte` (fleet-office-pack.js), else the colour of the background's edge
 // pixels (sampled once per style: edgeMatte), else the skin's own (Studio's hall floor; Desks': the dashboard's
@@ -65,13 +66,13 @@ export function fitScene(w, h, size, mode = "contain", margin = 0) {
  * 4/3 at 150 %, 0.8 at 125 %); the layout wraps at the panel's width over it, so it opens as wide as the panel.
  */
 export const desksK = (dpr = 1) => Math.max(1, Math.round(dpr)) / dpr;
-/** The view a scene opens on with nothing kept: zones fitted (the office's mode), desks from the top left at desksK. */
+/** The view a scene opens on with nothing kept: zones fitted (the office's mode), desks from the top left at desksK (centred by clampPan on an axis where it is smaller). */
 export const openingView = (w, h, size, dpr, zones, mode = "contain") => (zones ? fitScene(w, h, size, mode) : { k: desksK(dpr), x: 0, y: 0 });
 /** One axis of clampPan: offset `o` of a scene `s` long in a viewport `n` long. */
-const clampAxis = (o, s, n) => (s >= n ? Math.min(0, Math.max(n - s, o)) : Math.min(n - s, Math.max(0, o)));
+const clampAxis = (o, s, n) => (s >= n ? Math.min(0, Math.max(n - s, o)) : (n - s) / 2);
 /**
  * The view kept on the scene: along an axis where the scene is at least the viewport it covers the viewport (no gap at
- * either edge); where it is smaller it stays wholly inside. Nothing can be scrolled off-screen.
+ * either edge); where it is smaller it is centred on that axis. Nothing can be scrolled off-screen.
  */
 export function clampPan(v, w, h, size) {
   return { k: v.k, x: clampAxis(v.x, w * v.k, size.w), y: clampAxis(v.y, h * v.k, size.h) };
