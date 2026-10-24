@@ -867,6 +867,22 @@ fi
 '@
 
 function Save-Backends($csv) { Add-Content -Path $ProgressFile -Value "BACKENDS=$csv" }
+
+# 重跑安裝程式時，已經裝好且能執行的後端直接保留，不再跑它的安裝程式（#2583 後續）：Kiro 的 install.sh 在 kiro-cli
+# 已存在時會在 /dev/tty 上問「Do you want to replace it?」，沒有參數能略過，沒有終端機時就以失敗結束；手動裝好的 Codex
+# 以前也會被重裝。各 CLI 會自己更新（Claude、Antigravity 在背景更新；Codex、Kiro 有自己的 update 指令）。
+# 找的位置就是各家安裝程式放的地方：PATH、/root/.local/bin、$HOME/.local/bin、$HOME/.claude/local，以及 npm 全域
+# （例如 nvm 底下 npm i -g 裝的 codex）。只在 npm 全域找到時，連結到 $HOME/.local/bin，fleet 才找得到（AgEnD 以
+# $AGEND_USER＝root 執行，跟這裡同一個使用者）。__BIN__ 會換成該後端的指令名稱。跟 $AGEND_PROBE 一樣寫成一行、
+# 不含雙引號（IFS= 與 set -f 取代引號），這樣 5.1 把它當參數傳給 wsl.exe 時不會壞。
+$BACKEND_PROBE = 'set -f; IFS=; export PATH=/root/.local/bin:$HOME/.local/bin:$HOME/.claude/local:$PATH; p=$(command -v __BIN__ 2>/dev/null) || p=; l=; if [ x$p = x ]; then [ -s $HOME/.nvm/nvm.sh ] && . $HOME/.nvm/nvm.sh >/dev/null 2>&1; n=$(npm prefix -g 2>/dev/null) || n=; if [ x$n != x ] && [ -x $n/bin/__BIN__ ]; then mkdir -p $HOME/.local/bin && ln -sf $n/bin/__BIN__ $HOME/.local/bin/__BIN__ && p=$HOME/.local/bin/__BIN__ && l=$n/bin/__BIN__; fi; fi; [ x$p != x ] || exit 1; v=$($p --version 2>/dev/null </dev/null) || exit 1; v=$(head -n 1 <<<$v); [ x$v != x ] || exit 1; echo KEPT\|$v\|$p\|$l'
+# 回傳 @{ Version; Path; LinkedFrom }（已裝好且能執行），否則 $null。
+function Get-InstalledBackend($b) {
+    $out = (wsl -d $UBUNTU_DISTRO -u root -- bash -c $BACKEND_PROBE.Replace('__BIN__', $b.Bin) 2>$null | Out-String)
+    $m = [regex]::Match($out, '(?m)^KEPT\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]*)\r?$')
+    if (-not $m.Success) { return $null }
+    return @{ Version = $m.Groups[1].Value.Trim(); Path = $m.Groups[2].Value; LinkedFrom = $m.Groups[3].Value }
+}
 function Get-SavedBackends {
     if (Test-Path $ProgressFile) {
         $saved = Get-ProgressValue 'BACKENDS' '[\d,]+'
@@ -1470,6 +1486,12 @@ if (Stage-Done 2) {
 
     $failed = @()
     foreach ($b in $selected) {
+        $have = Get-InstalledBackend $b
+        if ($have) {
+            Write-Ok ("{0} 已安裝（{1}），保留" -f $b.Name, $have.Version)
+            if ($have.LinkedFrom) { Write-Info ("    它裝在 npm 全域（{0}），已連結到 {1}，讓 AgEnD 找得到" -f $have.LinkedFrom, $have.Path) }
+            continue
+        }
         Write-Info ("  [WSL] 安裝 {0}..." -f $b.Name)
         # 需要 Node 的後端（如 Codex）在 Stage 4 之前先用 nvm 引導 Node 22
         $nodePrep = ""
