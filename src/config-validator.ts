@@ -453,8 +453,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (config.web.view_access !== undefined && config.web.view_access !== "open" && config.web.view_access !== "session") {
       err("web.view_access", "must be open or session");
     }
-    if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean") {
-      err("web.notify_login", "must be a boolean");
+    if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean" && config.web.notify_login !== "dm") {
+      err("web.notify_login", 'must be a boolean or "dm"');
     }
     // #1306 HTML previews
     if (config.web.preview !== undefined && typeof config.web.preview !== "boolean") err("web.preview", "must be a boolean");
@@ -538,8 +538,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         err("defaults.max_cross_instance_message_bytes", "must be a positive integer number of bytes");
       }
     }
-    if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean") {
-      err("defaults.tips", "must be a boolean");
+    if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean" && config.defaults.tips !== "dm") {
+      err("defaults.tips", 'must be a boolean or "dm"');
     }
     if (config.defaults.task_board !== undefined) {
       if (!isObj(config.defaults.task_board)) err("defaults.task_board", "must be a mapping");

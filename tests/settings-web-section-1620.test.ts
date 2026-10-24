@@ -177,12 +177,28 @@ describe("Settings → Web, as rendered", () => {
     expect([capped, over, row("web.upload_max_total_mb")])
       .toEqual([["10 default capped by upload_max_total_mb", "10"], "60 in effect: 10", "999 in effect: 100"]);
   });
+  it("offers all three notice modes, shows the effective default, and stages dm", async () => {
+    const w = await open({}, "access");
+    const select = w.$("webNotifyLogin");
+    expect(select.value).toBe("true");
+    expect(select.querySelectorAll("option").map((o: any) => o.value)).toEqual(["true", "dm", "false"]);
+    expect(select.closest(".field").textContent).toContain("In effect: Topic");
+    select.value = "dm"; fire(select, "change"); await settle(); await w.apply();
+    expect(w.webWrites().at(-1)?.body).toEqual({ notify_login: "dm" });
+  });
+  it("shows a saved dm notice mode and keeps its select disabled on the public link", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    const w = await open({ web: { notify_login: "dm" } }, "access");
+    expect(w.$("webNotifyLogin").value).toBe("dm");
+    expect(w.$("webNotifyLogin").closest("fieldset").disabled).toBe(true);
+    expect(w.webWrites()).toEqual([]);
+  });
   it("lists every other web setting read-only, with its value from fleet.yaml or the one in effect, marked default (#2347 §10)", async () => {
     const w = await open({ web: { view_access: "session", allowed_hosts: ["box.lan"], preview: false }, web_terminal: { bind: "0.0.0.0" } }, "advanced");
     const rows = p.root.querySelectorAll(".s-web-ro > div").map((d: any) => [d.querySelector("dt").textContent, d.querySelector("dd").textContent,
       !!d.querySelector("dd .s-default")]);
     expect(rows).toEqual([
-      ["web.allowed_hosts", "[\"box.lan\"]", false], ["web.view_access", "session", false], ["web.notify_login", "true default", true], ["web.preview", "false", false],
+      ["web.allowed_hosts", "[\"box.lan\"]", false], ["web.view_access", "session", false], ["web.preview", "false", false],
       ["web.preview_port", "19281 default", true], ["web.preview_origin", "none default", true], ["web.preview_on_public_link", "true default", true],
       ["web.usage_panel", "true default", true],
       ["web.search", "not set (no age limit; 300,000-row cap)", false],

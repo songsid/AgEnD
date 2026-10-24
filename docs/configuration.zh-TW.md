@@ -168,7 +168,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `reply_overdue_minutes` | number | `15` | 距上次詢問／提醒多少分鐘後，通知寄件者一次：`requires_reply` 請求仍未回答，且負責的 instance 並非 working。`0` 只停用這則閒置逾期通知，不停用對負責者的提醒或 TTL 到期的最後通知 |
 | `reply_obligation_ttl_hours` | number | `24` | 開放中的回覆義務距上次詢問多久後到期，必須是有限正數（小時）；提醒不延長期限。到期會記錄 log，若尚未通知過逾期則通知寄件者一次，即使 `reply_overdue_minutes` 是 `0` 也一樣。重啟只發一則提醒，最多列十筆請求及「+N 個其他請求」；回合結束的提醒保留既有寬限及每次詢問一次的規則。 |
 | `retention_days` | number | `30` | `delivery-outbox.db` 保留已完成投遞（`delivered`/`failed`）及 Task Board 已完成/已取消任務的天數。`uncertain` 與非終態的 row 永遠不會被清除。fleet 啟動時執行一次，之後每天執行，每次最多刪除 500 筆以免卡住 event loop。被清除的 delivery_id 在 `delivery_status` 工具中會回傳「早於保留期限，已清除」而非「找不到」 |
-| `tips` | boolean | `true` | General 每日提示；不受 `daily_summary.enabled` 控制 |
+| `tips` | boolean 或 `"dm"` | `true` | `true` 在 General 發每日提示；`"dm"` 私訊 General 所屬連線的第一位設定管理員，失敗時改送 General；`false` 關閉。不受 `daily_summary.enabled` 控制 |
 | `task_board.summary_at` | string | 關閉 | 任務看板給人的每日摘要（自 2.3.0 起沒設定就關閉，設定時間即開啟），發到各平台的 General 和網頁聊天室：`"HH:MM"`（24 小時制，依 `scheduler.default_timezone`，沒設就用主機時區）或 `"off"`。每分鐘檢查時讀取，改了不用重啟。見[功能說明](features.zh-TW.md#任務看板的每日摘要) |
 
 重啟去重另外保存 owner／boot 檢查點（只有識別碼與時間），不跟著通知的保留政策清理。刪除舊的已送達通知，不會讓同一個 boot 重新提醒或重新標記請求。
@@ -697,6 +697,23 @@ AgEnD 會以 `0700` 建立主目錄（預設 `~/.agend`，也可由 `AGEND_HOME`
 | `instances/<name>/channel.sock` | IPC Unix socket |
 | `instances/<name>/statusline.json` | 最新 CLI 狀態 |
 | `instances/<name>/rotation-state.json` | 崩潰恢復 snapshot（之後啟動時一次性消費，不依 Context 用量輪替） |
+
+### 登入通知與每日提示改送私訊
+
+`web.notify_login` 接受 `true`（原本的頻道通知）、`"dm"`（私訊，失敗時改送原頻道）或 `false`。既有 fleet 省略此欄位時仍為 `true`；`agend init`、quickstart 或 setup 建立的新 fleet 會明確寫入 `web.notify_login: "dm"`。新 fleet 的每日提示仍為 `true`。
+
+私訊模式下，管理者登入通知送給要求登入碼的帳號。公開連結登入（含訪客）通知開啟連結的管理者。本機訪客登入通知送給**所屬連線 `access.allowed_users` 的第一位管理員**，不送給訪客本人。每日提示同樣送給 General 所屬連線的第一位設定管理員。帳號或私訊功能不明、或私訊失敗時，使用原本的頻道目的地，不借用其他連線的管理員。
+
+`false` 保留原有規則：只關閉管理者的本機登入通知；訪客及公開連結安全通知仍必要，送至原頻道。`true` 保留原本的文字與目的地。`/tips` 仍在呼叫的聊天室發文；私訊設定只改變每日提示，按鈕仍可用。更新完成後的提示仍跟隨更新結果。
+
+在**設定 → 存取與安全 → 網頁登入通知**、**Agent 預設值 → 每日提示**選擇「頻道／私訊（失敗時改送頻道）／關閉」，並查看有效值；變更立即生效。
+
+```yaml
+web:
+  notify_login: dm
+defaults:
+  tips: dm
+```
 
 ### Web chat 主題同步（2.2 web 線）
 

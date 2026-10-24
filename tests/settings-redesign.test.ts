@@ -242,6 +242,15 @@ describe("Settings P0 redesign shell", () => {
     expect(p.root.querySelector("dialog")!.textContent).toContain("Stored but inactive: kiro-cli in mcp mode does not support reply-drop recovery.");
   });
 
+  it("daily tips defaults to Topic and stages a DM choice", async () => {
+    answer = succeed;
+    await mountSettings("agent-defaults");
+    const select = p.root.querySelector("#g-tips");
+    expect(select.value).toBe("true");
+    expect(select.closest(".field").textContent).toContain("In effect: Topic");
+    select.value = "dm"; fire(select, "change"); await settle(); await applyStaged();
+    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: "dm" });
+  });
   it("shows the off fleet reply-trigger default and stages an explicit on", async () => {
     answer = succeed;
     await mountSettings("agent-defaults");

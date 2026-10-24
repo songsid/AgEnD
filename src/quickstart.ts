@@ -1,3 +1,4 @@
+import { NEW_FLEET_WEB } from "./notice-delivery.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { createInterface } from "node:readline/promises";
 import { writeFileSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -404,6 +405,7 @@ export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: st
   }
   if (projectRoots.length > 0) fleetObj.project_roots = projectRoots;
   fleetObj.defaults = { backend, dashboard: { ...NEW_FLEET_DASHBOARD } };
+  fleetObj.web = { ...NEW_FLEET_WEB };
   return fleetObj;
 }
 

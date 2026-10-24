@@ -1,3 +1,4 @@
+import { NEW_FLEET_WEB } from "./notice-delivery.js";
 import { randomBytes } from "node:crypto";
 import { SettingsBaselines, readSettingsCommittedFile, SETTINGS_BASELINE_MAX_FILE_BYTES } from "./settings-baseline.js";
 import { SettingsConfirmationStore, SettingsConfirmationError } from "./settings-confirmation.js";
@@ -236,7 +237,7 @@ export class SetupHost {
    * plain blank it always was.
    */
   private readConfig() {
-    if (!existsSync(this.opts.configPath)) return { defaults: { dashboard: { ...NEW_FLEET_DASHBOARD } }, instances: {} };
+    if (!existsSync(this.opts.configPath)) return { web: { ...NEW_FLEET_WEB }, defaults: { dashboard: { ...NEW_FLEET_DASHBOARD } }, instances: {} };
     try { return loadFleetConfig(this.opts.configPath); }
     catch { return { defaults: {}, instances: {} }; }
   }

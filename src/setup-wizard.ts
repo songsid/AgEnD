@@ -1,3 +1,4 @@
+import { NEW_FLEET_WEB } from "./notice-delivery.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { createInterface } from "node:readline/promises";
 import { writeFileSync, existsSync, readFileSync } from "node:fs";
@@ -227,6 +228,7 @@ export function buildFleetConfig(answers: WizardAnswers): Record<string, unknown
       ...(inst.topicId != null ? { topic_id: inst.topicId } : {}),
     };
   }
+  fleetData.web = { ...NEW_FLEET_WEB };
   fleetData.instances = instancesObj;
 
   return fleetData;
