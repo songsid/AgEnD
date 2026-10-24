@@ -1358,6 +1358,8 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .side-panel .dlg-body { flex: 1; min-height: 0; padding-top: var(--s-4); }
 .side-panel .dlg-actions { padding: var(--s-3) var(--s-5); border-top: 1px solid var(--border); }
 @media (max-width: 1199px) { .dlg.side-panel { display: none; } }
+/* A toast (Offices saved.) beside a docked panel, not over its Cancel and Save. */
+@media (min-width: 1200px) { .shell:has(> .side-panel) .toasts { right: calc(400px + var(--s-6)); } }
 @media (max-width: 899px) {
   .hide-narrow { display: none; }
   .v-id { padding-left: var(--s-3); padding-right: var(--s-3); }

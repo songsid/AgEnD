@@ -129,6 +129,8 @@ describe("#2585: a docked side panel in the usage rail's place (wide screen)", (
     const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
     expect(css).toContain("@media (max-width: 1199px) { .dlg.side-panel { display: none; } }");
     expect(css).toMatch(/\.dlg\.side-panel \{ position: static;[^}]*width: 400px;/);
+    // A toast beside a docked panel, not over its actions.
+    expect(css).toContain("@media (min-width: 1200px) { .shell:has(> .side-panel) .toasts { right: calc(400px + var(--s-6)); } }");
   });
   it("`fallback`: below the rail's width it is that, not the Dialog; `dock` false keeps a wide screen from docking (the Office in fullscreen)", async () => {
     mode = { fallback: true };
