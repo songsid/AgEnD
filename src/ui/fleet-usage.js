@@ -18,12 +18,12 @@ register("fusage", {
     amount: "API-equivalent", input: "Input", output: "Output", reasoning: "Reasoning", read: "Cache read", write: "Cache write", total: "Total tokens", requests: "Requests", messages: "Messages",
     notPriced: "not priced", partial: "partial", noTeam: "(no team)", unknown: "unknown",
     f_cache_write_not_reported: "cache writes not reported (Codex) — an estimate", f_not_priced: "not priced: {0}", f_source_unknown: "read before backend and profile were recorded",
-    f_estimated: "estimated from text size — Kiro records no token counts", f_includes_estimates: "includes estimates (Kiro)", estimatedPart: "of which estimated: {0}",
+    f_estimated: "estimated from text size — Kiro records no token counts", f_includes_estimates: "includes estimates (Kiro)", f_cost_reported: "amount as the CLI reported it (no list price for this model)", estimatedPart: "of which estimated: {0}",
     scanning: "Scanning — totals may still grow.", updated: "Updated {0} · read every 10 min", since: "Collected since {0}", notYet: "Not collected yet",
     refresh: "Refresh",
     notMeasured: "Not measured", nm_credit_billed: "Kiro is credit-billed and records no tokens", nm_unsupported: "AgEnD can't read this CLI's usage yet", nm_no_data: "nothing read yet",
     shared: "shares its working directory with {0}; their transcripts can't be told apart",
-    empty: "Nothing recorded yet", emptyHint: "Usage is read from Claude Code and Codex transcripts, and estimated for Kiro, from when the fleet started.",
+    empty: "Nothing recorded yet", emptyHint: "Usage is read from Claude Code, Codex and Grok transcripts, and estimated for Kiro, from when the fleet started.",
     blocked: "Not offered over the public link", blockedHint: "Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web dashboard — on the dashboard reached directly, on the computer running AgEnD.",
     openSettings: "Open Settings → Web dashboard on that computer",
     partialDays: "Daily detail from {0}: the earlier days in this range are too many rows to send. The rows and totals above cover the whole range; the trend, the heatmap and the CSV start at {0}.",
@@ -46,12 +46,12 @@ register("fusage", {
     amount: "API 等值", input: "輸入", output: "輸出", reasoning: "推理", read: "快取讀取", write: "快取寫入", total: "token 總計", requests: "請求數", messages: "訊息數",
     notPriced: "未定價", partial: "部分", noTeam: "（不屬於任何 team）", unknown: "未知",
     f_cache_write_not_reported: "未回報快取寫入（Codex）——是估算", f_not_priced: "未定價：{0}", f_source_unknown: "讀取時尚未記錄 backend 與 profile",
-    f_estimated: "依文字長度估算——Kiro 不記錄 token 數", f_includes_estimates: "含估算值（Kiro）", estimatedPart: "其中估算：{0}",
+    f_estimated: "依文字長度估算——Kiro 不記錄 token 數", f_includes_estimates: "含估算值（Kiro）", f_cost_reported: "金額為 CLI 自行回報（價目表沒有此模型）", estimatedPart: "其中估算：{0}",
     scanning: "掃描中——總數可能還會增加。", updated: "更新於 {0} · 每 10 分鐘讀取一次", since: "自 {0} 起收集", notYet: "尚未收集",
     refresh: "重新整理",
     notMeasured: "未量測", nm_credit_billed: "Kiro 以 credit 計費，不記錄 token", nm_unsupported: "AgEnD 目前還讀不到這個 CLI 的用量", nm_no_data: "尚未讀到任何資料",
     shared: "與 {0} 共用工作目錄，無法分辨各自的 transcript",
-    empty: "還沒有任何紀錄", emptyHint: "用量從 Claude Code 與 Codex 的 transcript 讀取，Kiro 則為估算，自 fleet 啟動起計。",
+    empty: "還沒有任何紀錄", emptyHint: "用量從 Claude Code、Codex 與 Grok 的 transcript 讀取，Kiro 則為估算，自 fleet 啟動起計。",
     blocked: "公開連結上不提供", blockedHint: "只有在設定 → 網頁儀表板裡開啟「透過公開連結提供用量報告」時，公開連結才會提供用量；這個設定要在執行 AgEnD 的那台電腦上、直接開啟的儀表板裡變更。",
     openSettings: "在那台電腦上開啟設定 → 網頁儀表板",
     partialDays: "每日明細從 {0} 起：這段期間更早的日子資料列太多，無法一次送出。上方的各列與總計涵蓋整段期間；趨勢、熱度圖與 CSV 則從 {0} 開始。",
@@ -97,7 +97,7 @@ export function keyText(group, key) {
 const writes = (r) => (r.cacheWrite5m || 0) + (r.cacheWrite1h || 0) + (r.cacheWrite || 0);
 function flagText(f, r) {
   if (f === "not_priced") return tu("f_not_priced", (r.unpriced || []).join(", "));
-  return ["cache_write_not_reported", "source_unknown", "estimated", "includes_estimates"].includes(f) ? tu(`f_${f}`) : f;
+  return ["cache_write_not_reported", "source_unknown", "estimated", "includes_estimates", "cost_reported"].includes(f) ? tu(`f_${f}`) : f;
 }
 
 // ── CSV (design §4): the daily rows of this same answer; messages on their own rows (they are per agent, not per model).

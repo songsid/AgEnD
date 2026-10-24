@@ -31,7 +31,7 @@ const M = 1_000_000;
 /** The backends whose usage is estimated, not measured (#2122 §10.2: Kiro records no token counts). */
 export const ESTIMATED_BACKENDS: ReadonlySet<string> = new Set(["kiro-cli"]);
 /** The backends whose transcripts report reasoning tokens (#2122 §10.3); elsewhere a 0 means not reported. */
-export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex"]);
+export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex", "grok"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface UsageInstanceInput {
@@ -179,7 +179,7 @@ function amountOf(model: string, long: boolean, [, uncached, read, w5, w1h, w, o
   return (uncached * r.input + read * r.read + w5 * r.write5m + w1h * r.write1h + w * r.write + out * r.output) / M;
 }
 
-interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; reasoning: number; writesReported: boolean }
+interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; reasoning: number; cost: number; writesReported: boolean }
 const estimatedSlice = (s: Slice): boolean => ESTIMATED_BACKENDS.has(s.backend);
 const unknownSource = (s: Slice): boolean => s.backend === "unknown" || s.profile === "unknown";
 
@@ -202,7 +202,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     const base = { instance: i.name, team: i.team };
     for (const row of i.days.rows) {
       if (!inRange(row.date)) continue;
-      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: row.be !== "codex" || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot, reasoning: row.r?.[mk] ?? 0 });
+      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: row.be !== "codex" || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot, reasoning: row.r?.[mk] ?? 0, cost: row.c?.[mk] ?? 0 });
     }
     for (const [hk, hour] of Object.entries(i.ledger.hours)) {
       const h = Number(hk);
@@ -210,7 +210,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       const date = localDate(h, input.zone);
       if (!inRange(date)) continue;
       for (const src of hourSources(hour)) {
-        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: src.backend !== "codex" || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot, reasoning: src.r[mk] ?? 0 });
+        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: src.backend !== "codex" || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot, reasoning: src.r[mk] ?? 0, cost: src.c[mk] ?? 0 });
       }
     }
   }
@@ -236,7 +236,10 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     addTotals(row, s.tot, s.reasoning);
     if (REPORTS_REASONING.has(s.backend)) row.reasoningReported = true;
     uniq(row.instances, s.instance); uniq(row.backends, s.backend); uniq(row.models, s.model); uniq(row.profiles, s.profile);
-    const amount = amountOf(s.model, s.long, s.tot);
+    // List price first; a model the table lacks takes the cost its CLI reported (Grok), said so (design §10.2).
+    const listed = amountOf(s.model, s.long, s.tot), reported = listed === null && s.cost > 0;
+    const amount = listed ?? (reported ? s.cost : null);
+    if (reported) uniq(row.flags, "cost_reported");
     if (amount === null) { row._unpricedAny = true; uniq(row.unpriced, s.model); } else { row._pricedAny = true; row._amount += amount; }
     if (estimatedSlice(s)) { row.estimated = true; uniq(row.flags, "estimated"); if (amount !== null) { row._estPriced = true; row._estAmount += amount; } }
     if (!s.writesReported) uniq(row.flags, "cache_write_not_reported");
@@ -250,6 +253,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       dailyBy.set(dk, d);
     }
     addTotals(d, s.tot, s.reasoning);
+    if (reported && !d.flags.includes("cost_reported")) d.flags.push("cost_reported");
     if (amount !== null && d.amount !== null) d.amount += amount;
   }
   const allDaily = [...dailyBy.values()].sort((a, b) => a.date.localeCompare(b.date) || a.instance.localeCompare(b.instance) || a.model.localeCompare(b.model) || a.zone.localeCompare(b.zone));

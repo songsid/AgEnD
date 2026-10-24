@@ -56,8 +56,8 @@ describe("§5.1 each source of an hour keeps its own totals; hours from before #
     const l = legacyLedger();
     addTurn(l, cursor(), turn(h + 1000), 0, "work");
     expect(hourSources(l.hours[String(h)]!)).toEqual([
-      { backend: "claude-code", profile: "work", m: { [MK]: [1, 100, 800, 50, 50, 0, 20] }, r: {} },
-      { backend: "unknown", profile: "unknown", m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000] }, r: {} },
+      { backend: "claude-code", profile: "work", m: { [MK]: [1, 100, 800, 50, 50, 0, 20] }, r: {}, c: {} },
+      { backend: "unknown", profile: "unknown", m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000] }, r: {}, c: {} },
     ]);
   });
   it("two profiles in one hour: each exact (no \"mixed\"), and they survive the ledger's round trip and the fold", () => {

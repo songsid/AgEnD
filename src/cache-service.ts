@@ -19,7 +19,7 @@
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { scanJsonl } from "./cache-scan.js";
-import { addTurn, claudeLine, codexLine, emptyLedger, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
+import { addTurn, claudeLine, codexLine, emptyLedger, grokLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, foldHours, pruneDays, readDays, writeDays, type UsageDays } from "./usage-rollup.js";
@@ -44,6 +44,8 @@ export interface CacheServiceOptions {
   claudeProjectsDir(): string;
   claudeKey(workingDirectory: string): string;
   codexSessionsDir(): string;
+  /** #2122 §10 step 3: grok's sessions, `<dir>/<encodeURIComponent(cwd)>/<session>/updates.jsonl`; absent: grok is not read. */
+  grokSessionsDir?(): string;
   /** Rollout files with their mtimes (the shared rollout index). */
   listRollouts(root: string): Array<{ path: string; mtimeMs: number }>;
   /** #2122: how much the last listing of `root` could not read (rollout-index.ts `unreadable`); absent: 0. */
@@ -99,7 +101,9 @@ export interface CacheReport {
 const DAY = 86_400_000;
 const META_MAX_BYTES = 256 * 1024;   // session_meta carries the instructions (~22 KB in real rollouts)
 const kindOf = (backend: string): TranscriptKind | null =>
-  (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : backend === "kiro-cli" ? "kiro" : null);
+  (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : backend === "kiro-cli" ? "kiro" : backend === "grok" ? "grok" : null);
+/** The readers the cache analysis covers; the others are in the usage report only. */
+const analysed = (kind: TranscriptKind | null): kind is "claude" | "codex" => kind === "claude" || kind === "codex";
 const sleep = (ms: number): Promise<void> => new Promise((r) => { const h = setTimeout(r, ms); h.unref?.(); });
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 /** An error that means the path is not there (never was, or went): a real absence, not a failure to read it. */
@@ -196,6 +200,10 @@ export class CacheService {
     }
   }
 
+  /** Whether this service is told where that reader's stores are (Kiro and Grok are optional). */
+  private reads(kind: TranscriptKind): boolean {
+    return kind === "kiro" ? !!this.o.kiroDbPath : kind === "grok" ? !!this.o.grokSessionsDir : true;
+  }
   private zone(): string { return this.o.zone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
   private daysPath(inst: CacheInstance): string { return join(dirname(inst.ledgerPath), "usage-days.json"); }
   /** #2122: an instance's rollup, read once. */
@@ -235,7 +243,7 @@ export class CacheService {
     const shared = await this.shared(insts);
     for (const inst of insts) {
       const kind = kindOf(inst.backend);
-      if (!kind || (kind === "kiro" && !this.o.kiroDbPath) || shared.has(inst.name) || this.unread.has(inst.name)) continue;
+      if (!kind || !this.reads(kind) || shared.has(inst.name) || this.unread.has(inst.name)) continue;
       const next: UsageDays = structuredClone(await this.rollupFor(inst));
       addCoverage(next, now - KEEP_DAYS * DAY, now);
       if (await writeDays(this.daysPath(inst), next)) this.rollups.set(inst.name, next);
@@ -301,7 +309,7 @@ export class CacheService {
       if (!kind || shared.has(inst.name)) { await this.keepHistory(inst, cutoff); continue; }
       const ledger = await this.ledgerFor(inst);
       if (kind === "kiro") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
-      const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : codex.get(inst.name) ?? [];
+      const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff) : codex.get(inst.name) ?? [];
       const listed = new Set(files.map((f) => f.path));
       for (const path of Object.keys(ledger.files)) if (!listed.has(path)) { delete ledger.files[path]; this.dirty.add(inst.name); }
       for (const f of files) {
@@ -399,6 +407,7 @@ export class CacheService {
   private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string): Promise<{ read: number; behind: number; failed?: true }> {
     try {
       const res = await scanJsonl(path, cur.offset, { maxBytes: budget, ino: cur.ino }, (line) => {
+        if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, profile); return; }
         const turn = cur.kind === "claude" ? claudeLine(line, cur) : codexLine(line, cur);
         if (turn) addTurn(ledger, cur, turn, cutoff, profile);
       });
@@ -427,6 +436,24 @@ export class CacheService {
       const path = join(dir, n);
       try { const st = await stat(path); if (st.isFile() && st.mtimeMs >= cutoff) out.push({ path, ino: st.ino, size: st.size }); }
       catch (err) { if (!gone(err)) this.unread.add(inst.name); }
+    }
+    return out;
+  }
+
+  /** #2122 §10 step 3: a grok instance's sessions' `updates.jsonl` of the last KEEP_DAYS (its directory is its cwd). */
+  private async grokFiles(inst: CacheInstance, cutoff: number): Promise<Array<{ path: string; ino: number; size: number }>> {
+    const root = this.o.grokSessionsDir?.();
+    if (!root) return [];
+    const out: Array<{ path: string; ino: number; size: number }> = [];
+    for (const cwd of await cwdKeys(inst.workingDirectory)) {
+      const dir = join(root, encodeURIComponent(cwd));
+      let names: string[];
+      try { names = await readdir(dir); } catch (err) { if (!gone(err)) this.unread.add(inst.name); continue; }
+      for (const n of names) {
+        const path = join(dir, n, "updates.jsonl");
+        try { const st = await stat(path); if (st.isFile() && st.mtimeMs >= cutoff) out.push({ path, ino: st.ino, size: st.size }); }
+        catch (err) { if (!gone(err)) this.unread.add(inst.name); }
+      }
     }
     return out;
   }
@@ -529,7 +556,7 @@ export class CacheService {
       // `status` is about collecting now; what it measured before (another backend, a directory it did not share yet)
       // is in `ledger` and `days` either way.
       const kind = kindOf(inst.backend), others = shared.get(inst.name);
-      if (!kind || (kind === "kiro" && !this.o.kiroDbPath)) out.push({ inst, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported", ledger, days });
+      if (!kind || !this.reads(kind)) out.push({ inst, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported", ledger, days });
       else if (others) out.push({ inst, status: "shared", with: others, ledger, days });
       else out.push({ inst, status: "ok", ledger, days });
     }
@@ -548,7 +575,7 @@ export class CacheService {
     for (const inst of insts) {
       const kind = kindOf(inst.backend);
       // Kiro is in the usage report (estimated), not in the cache analysis: it records no cache use to analyse.
-      if (!kind || kind === "kiro") { instances.push({ name: inst.name, backend: inst.backend, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported" }); continue; }
+      if (!analysed(kind)) { instances.push({ name: inst.name, backend: inst.backend, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported" }); continue; }
       const others = shared.get(inst.name);
       if (others) { instances.push({ name: inst.name, backend: inst.backend, status: "shared", with: others }); continue; }
       const ledger = await this.ledgerFor(inst);

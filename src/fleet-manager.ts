@@ -14509,6 +14509,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (backend === "claude-code") return this.credentialProfileOf(name, "claude-code") ?? "default";
     if (backend === "codex") return "unrecorded";
     if (backend === "kiro-cli") return this.credentialProfileOf(name, "kiro-cli") ?? "default";
+    if (backend === "grok") return "default";
     return undefined;
   }
   /** #2122 §10: a Kiro instance with a credential profile writes its classic store in that profile's home. */
@@ -14559,6 +14560,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2122 §10: Kiro's shared classic store (XDG_DATA_HOME, as kiro-cli resolves it) and its KIRO_HOME.
       kiroDbPath: () => join(process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share"), "kiro-cli", "data.sqlite3"),
       kiroHome: () => kiroHome(),
+      // #2122 §10 step 3: grok keeps its sessions under ~/.grok (grok.ts reads them there too).
+      grokSessionsDir: () => join(homedir(), ".grok", "sessions"),
       log: (level, msg, extra) => this.logger[level](extra ?? {}, msg),
     });
   }

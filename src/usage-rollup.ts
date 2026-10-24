@@ -32,11 +32,12 @@ export const COVERAGE_MAX = 64;
  * One day row: its local date, the zone it was folded in, its source (backend, profile) → model|tier → totals, and
  * (#2122 §10.3) the reasoning part of those totals' output by model|tier, kept beside them (cache-ledger.ts `rs`).
  */
-export interface DayRow { date: string; zone: string; be: string; pf: string; m: Record<string, HourTotals>; r?: Record<string, number> }
+export interface DayRow { date: string; zone: string; be: string; pf: string; m: Record<string, HourTotals>; r?: Record<string, number>; c?: Record<string, number> }
 
 /** Where an hour's totals were read: the backend whose reader read them ("unknown" before #2122), and the profile. */
-export interface HourSource { backend: string; profile: string; m: Record<string, HourTotals>; r: Record<string, number> }
-const READER_BACKEND: Record<string, string> = { claude: "claude-code", codex: "codex", kiro: "kiro-cli" };
+/** `r`: the reasoning part of each model key's output; `c`: the cost the CLI reported for it (USD), where it did. */
+export interface HourSource { backend: string; profile: string; m: Record<string, HourTotals>; r: Record<string, number>; c: Record<string, number> }
+const READER_BACKEND: Record<string, string> = { claude: "claude-code", codex: "codex", kiro: "kiro-cli", grok: "grok" };
 /**
  * An hour's totals by source (cache-ledger.ts `src`), each exact. What `m` holds beyond them was counted before #2122:
  * one more source, backend and profile "unknown".
@@ -46,7 +47,7 @@ export function hourSources(hour: HourAgg): HourSource[] {
   const known = dict<HourTotals>();
   for (const [sk, m] of Object.entries(hour.src ?? {})) {
     const colon = sk.indexOf(":");
-    out.push({ backend: READER_BACKEND[sk.slice(0, colon)] ?? "unknown", profile: sk.slice(colon + 1), m, r: hour.rs?.[sk] ?? dict<number>() });
+    out.push({ backend: READER_BACKEND[sk.slice(0, colon)] ?? "unknown", profile: sk.slice(colon + 1), m, r: hour.rs?.[sk] ?? dict<number>(), c: hour.cs?.[sk] ?? dict<number>() });
     for (const [mk, t] of Object.entries(m)) add(known[mk] ??= [0, 0, 0, 0, 0, 0, 0], t);
   }
   const legacy = dict<HourTotals>();
@@ -54,7 +55,7 @@ export function hourSources(hour: HourAgg): HourSource[] {
     const k = known[mk], rest = t.map((n, i) => n - (k?.[i] ?? 0)) as HourTotals;
     if (rest.some(n => n > 0)) legacy[mk] = rest.map(n => Math.max(0, n)) as HourTotals;
   }
-  if (Object.keys(legacy).length) out.push({ backend: "unknown", profile: "unknown", m: legacy, r: dict<number>() });
+  if (Object.keys(legacy).length) out.push({ backend: "unknown", profile: "unknown", m: legacy, r: dict<number>(), c: dict<number>() });
   return out;
 }
 export interface UsageDays {
@@ -80,9 +81,13 @@ export function reviveDays(raw: unknown): UsageDays {
     if (!row || typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || typeof row.zone !== "string" || typeof row.be !== "string" || typeof row.pf !== "string") continue;
     const m = dict<HourTotals>();
     for (const [k, t] of Object.entries(row.m ?? {})) if (Array.isArray(t) && t.length === 7 && t.every(n => Number.isFinite(n))) m[k] = t as HourTotals;
-    const r = dict<number>();
-    for (const [k, n] of Object.entries(row.r ?? {})) if (m[k] && typeof n === "number" && Number.isFinite(n) && n > 0) r[k] = n;
-    d.rows.push({ date: row.date, zone: row.zone, be: row.be, pf: row.pf, m, ...(Object.keys(r).length ? { r } : {}) });
+    const beside = (raw: unknown): Record<string, number> => {
+      const out = dict<number>();
+      for (const [k, n] of Object.entries((raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>)) if (m[k] && typeof n === "number" && Number.isFinite(n) && n > 0) out[k] = n;
+      return out;
+    };
+    const r = beside(row.r), c = beside(row.c);
+    d.rows.push({ date: row.date, zone: row.zone, be: row.be, pf: row.pf, m, ...(Object.keys(r).length ? { r } : {}), ...(Object.keys(c).length ? { c } : {}) });
   }
   if (Array.isArray(r.coverage)) for (const c of r.coverage) if (Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]) && c[0] <= c[1]) d.coverage.push([c[0], c[1]]);
   return d;
@@ -116,6 +121,7 @@ export function foldHours(days: UsageDays, ledger: Ledger, cutoff: number, zone:
       const row = days.rows[i]!;
       for (const [mk, tot] of Object.entries(src.m)) add(row.m[mk] ??= [0, 0, 0, 0, 0, 0, 0], tot);
       for (const [mk, n] of Object.entries(src.r)) { const r = row.r ??= dict<number>(); r[mk] = (r[mk] ?? 0) + n; }
+      for (const [mk, n] of Object.entries(src.c)) { const c = row.c ??= dict<number>(); c[mk] = (c[mk] ?? 0) + n; }
     }
   }
   days.checkpoint = hours[hours.length - 1]!;

@@ -20,8 +20,8 @@
 import { objectAt, type ScanLine } from "./cache-scan.js";
 import { isLongPrompt } from "./cache-prices.js";
 
-/** The reader: Claude Code and Codex transcripts are measured; Kiro is estimated (kiro-usage.ts, #2122 §10). */
-export type TranscriptKind = "claude" | "codex" | "kiro";
+/** The reader: Claude Code, Codex and Grok transcripts are measured; Kiro is estimated (kiro-usage.ts, #2122 §10). */
+export type TranscriptKind = "claude" | "codex" | "kiro" | "grok";
 
 /** One model request, as the transcript records it. */
 export interface Turn {
@@ -38,6 +38,10 @@ export interface Turn {
   output: number;
   /** The part of `output` the CLI reports as reasoning (Codex `reasoning_output_tokens`); absent or 0 where none is. */
   reasoning?: number;
+  /** The model calls this record covers (Grok's `modelCalls`); absent: one. */
+  requests?: number;
+  /** What the CLI itself reported the request cost, USD (Grok's `costUsdTicks` × 1e-10); absent: not reported. */
+  cost?: number;
 }
 
 /** Gap histogram edges, seconds: ≤5 min, ≤30 min, ≤1 h, ≤2 h, ≤6 h, ≤24 h, longer. */
@@ -64,6 +68,8 @@ export interface HourAgg {
    * #2604 P1); an older version that rewrites the ledger drops only this.
    */
   rs?: Record<string, Record<string, number>>;
+  /** #2122 §10.2: the cost a CLI reported (USD), by source and model key — beside the totals, as `rs`. */
+  cs?: Record<string, Record<string, number>>;
 }
 /** A source of an hour's totals: the reader that read them and the profile it read them under. */
 export const sourceKey = (reader: TranscriptKind, profile: string): string => `${reader}:${profile}`;
@@ -123,19 +129,24 @@ export function reviveLedger(raw: unknown): Ledger {
     for (const [mk, tot] of Object.entries(v.m ?? {})) if (Array.isArray(tot) && tot.length === 7) m[mk] = tot as HourTotals;
     const src = dict<Record<string, HourTotals>>();
     for (const [sk, sm] of Object.entries(v.src ?? {})) {
-      if (!/^(?:claude|codex|kiro):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
+      if (!/^(?:claude|codex|kiro|grok):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
       const into = dict<HourTotals>();
       for (const [mk, tot] of Object.entries(sm)) if (Array.isArray(tot) && tot.length === 7 && tot.every(n => Number.isFinite(n))) into[mk] = tot as HourTotals;
       src[sk] = into;
     }
-    const rs = dict<Record<string, number>>();
-    for (const [sk, sm] of Object.entries(v.rs ?? {})) {
-      if (!src[sk] || !sm || typeof sm !== "object") continue;
-      const into = dict<number>();
-      for (const [mk, n] of Object.entries(sm)) if (typeof n === "number" && Number.isFinite(n) && n > 0 && src[sk][mk]) into[mk] = n;
-      if (Object.keys(into).length) rs[sk] = into;
-    }
-    l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}), ...(Object.keys(rs).length ? { rs } : {}) };
+    // Beside the totals, by source and model key: only for a total that exists, only positive and finite.
+    const beside = (raw: unknown): Record<string, Record<string, number>> => {
+      const out = dict<Record<string, number>>();
+      for (const [sk, sm] of Object.entries((raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>)) {
+        if (!src[sk] || !sm || typeof sm !== "object") continue;
+        const into = dict<number>();
+        for (const [mk, n] of Object.entries(sm)) if (typeof n === "number" && Number.isFinite(n) && n > 0 && src[sk][mk]) into[mk] = n;
+        if (Object.keys(into).length) out[sk] = into;
+      }
+      return out;
+    };
+    const rs = beside(v.rs), cs = beside(v.cs);
+    l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}), ...(Object.keys(rs).length ? { rs } : {}), ...(Object.keys(cs).length ? { cs } : {}) };
   }
   if (Array.isArray(r.gaps)) l.gaps = r.gaps.filter((g) => Array.isArray(g) && g.length === 9);
   if (r.writesSeen) l.writesSeen = true;
@@ -174,7 +185,7 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const hour = ledger.hours[hk] ??= { m: dict<HourTotals>(), g: new Array<number>(GAP_BUCKETS).fill(0) };
   const mk = modelKey(turn.model, turn.prompt);
   const bump = (tot: HourTotals): void => {
-    tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
+    tot[0] += turn.requests ?? 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
   };
   bump(hour.m[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
   // #2122: and under its source — the reader that read it (this file's kind) and the profile it was read under.
@@ -182,8 +193,9 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const src = (hour.src ??= dict<Record<string, HourTotals>>())[sk] ??= dict<HourTotals>();
   bump(src[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
   if (turn.reasoning) { const rs = (hour.rs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); rs[mk] = (rs[mk] ?? 0) + turn.reasoning; }
-  // Kiro is not in the cache analysis (its turns are estimates): no gaps to keep.
-  if (!prev || file.kind === "kiro") return;
+  if (turn.cost) { const cs = (hour.cs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); cs[mk] = (cs[mk] ?? 0) + turn.cost; }
+  // Kiro and Grok are not in the cache analysis (Kiro's turns are estimates; Grok's analysis is not built): no gaps.
+  if (!prev || file.kind === "kiro" || file.kind === "grok") return;
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;
   hour.g[gapBucket(gap)]! += 1;
@@ -282,4 +294,38 @@ export function codexLine(line: ScanLine, file: FileCursor): Turn | null {
   const write = typeof u.cache_write_input_tokens === "number" ? Math.min(num(u.cache_write_input_tokens), input - read) : null;
   // Reasoning is counted inside output_tokens (total_tokens = input + output): kept as its part, capped at output.
   return { t, model: file.model ?? "unknown", prompt: input, uncached: input - read - (write ?? 0), read, write5m: 0, write1h: 0, write, output, reasoning: Math.min(num(u.reasoning_output_tokens), output) };
+}
+
+/**
+ * #2122 §10 step 3: the turns a Grok `updates.jsonl` line records — a `turn_completed` update's `usage`, one turn per
+ * model in its `modelUsage` (else the whole usage under `_meta.modelId`). Real counts, per turn (not cumulative):
+ * `inputTokens` includes the cache reads and writes, `reasoningTokens` is a part of `outputTokens` (totalTokens = input +
+ * output, checked on the host's 1.0.x sessions), `modelCalls` the requests, `costUsdTicks` × 1e-10 the cost grok
+ * reported. A turn already counted (its `prompt_id`, kept in `file.ids`) is not counted again.
+ */
+export function grokLine(line: ScanLine, file: FileCursor): Turn[] {
+  if (!("whole" in line) || line.whole.indexOf("\"turn_completed\"") === -1) return [];
+  let d: { timestamp?: unknown; params?: { update?: Record<string, unknown>; _meta?: Record<string, unknown> } };
+  try { d = JSON.parse(line.whole.toString("utf8")); } catch { return []; }
+  const u = d.params?.update, meta = d.params?._meta;
+  if (!u || u.sessionUpdate !== "turn_completed" || !u.usage || typeof u.usage !== "object") return [];
+  const id = typeof u.prompt_id === "string" ? u.prompt_id : typeof meta?.eventId === "string" ? meta.eventId : undefined;
+  if (id && file.ids?.includes(id)) return [];
+  const ms = typeof meta?.agentTimestampMs === "number" ? meta.agentTimestampMs : typeof d.timestamp === "number" ? d.timestamp * 1000 : NaN;
+  if (!Number.isFinite(ms)) return [];
+  const usage = u.usage as Record<string, unknown>;
+  const perModel = usage.modelUsage && typeof usage.modelUsage === "object" && Object.keys(usage.modelUsage).length
+    ? Object.entries(usage.modelUsage as Record<string, Record<string, unknown>>)
+    : [[typeof meta?.modelId === "string" ? meta.modelId : "unknown", usage] as [string, Record<string, unknown>]];
+  const out: Turn[] = [];
+  for (const [model, mu] of perModel) {
+    if (!mu || typeof mu !== "object") continue;
+    const input = num(mu.inputTokens), read = Math.min(num(mu.cachedReadTokens), input), write = Math.min(num(mu.cacheCreationTokens), input - read);
+    const output = num(mu.outputTokens), ticks = num(mu.costUsdTicks);
+    if (!input && !output) continue;
+    out.push({ t: ms, model, prompt: input, uncached: input - read - write, read, write5m: 0, write1h: 0, write, output,
+      reasoning: Math.min(num(mu.reasoningTokens), output), requests: Math.max(1, Math.round(num(mu.modelCalls))), ...(ticks ? { cost: ticks * 1e-10 } : {}) });
+  }
+  if (id && out.length) file.ids = [...(file.ids ?? []).slice(-15), id];
+  return out;
 }

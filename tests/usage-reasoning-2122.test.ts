@@ -77,7 +77,7 @@ describe("Codex: reasoning_output_tokens is a part of output_tokens", () => {
     const hour = codexLedger().hours[String(H)]!;
     expect(hour.m[MK]).toEqual([1, 2000, 8000, 0, 0, 0, 900]);
     expect(hour.rs).toEqual({ "codex:unrecorded": { [MK]: 600 } });
-    expect(hourSources(hour)).toEqual([{ backend: "codex", profile: "unrecorded", m: { [MK]: [1, 2000, 8000, 0, 0, 0, 900] }, r: { [MK]: 600 } }]);
+    expect(hourSources(hour)).toEqual([{ backend: "codex", profile: "unrecorded", m: { [MK]: [1, 2000, 8000, 0, 0, 0, 900] }, r: { [MK]: 600 }, c: {} }]);
   });
 });
 
