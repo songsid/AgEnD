@@ -325,7 +325,8 @@ export class CacheService {
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff)
         : kind === "muse" ? muse.get(inst.name) ?? [] : codex.get(inst.name) ?? [];
       // A listing that could not read everything is no inventory: a cursor it missed stays, or the file would be counted
-      // again from its start once it is listed (Prism #2605).
+      // again from its start once it is listed (Prism #2605). An instance whose store stays unreadable keeps its cursors
+      // until it is readable again — bounded by its own files.
       const listed = new Set(files.map((f) => f.path));
       if (!this.unread.has(inst.name)) for (const path of Object.keys(ledger.files)) if (!listed.has(path)) { delete ledger.files[path]; this.dirty.add(inst.name); }
       for (const f of files) {
@@ -503,7 +504,9 @@ export class CacheService {
     for (const cwd of await cwdKeys(inst.workingDirectory)) {
       const dir = join(root, encodeURIComponent(cwd));
       let names: string[];
-      try { names = await readdir(dir); } catch (err) { if (!gone(err)) this.unread.add(inst.name); continue; }
+      // Sessions are directories; grok also keeps plain files there (prompt_history.jsonl), which are not sessions.
+      try { names = (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name); }
+      catch (err) { if (!gone(err)) this.unread.add(inst.name); continue; }
       for (const n of names) {
         const path = join(dir, n, "updates.jsonl");
         try { const st = await stat(path); if (st.isFile() && st.mtimeMs >= cutoff) out.push({ path, ino: st.ino, size: st.size }); }
@@ -527,7 +530,12 @@ export class CacheService {
     const byCwd = new Map<string, string>();
     for (const i of insts) for (const k of await cwdKeys(i.workingDirectory)) byCwd.set(k, i.name);
     const unlisted = (): void => { for (const i of insts) this.unread.add(i.name); };
-    const list = async (dir: string): Promise<string[]> => { try { return await readdir(dir); } catch (err) { if (!gone(err)) unlisted(); return []; } };
+    // Directories only, and never muse's own dot-entries (`.msp-view-v1/`, lock and marker files): a plain file there is no
+    // session, and listing through it would fail every pass (Fable #2606).
+    const list = async (dir: string): Promise<string[]> => {
+      try { return (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); }
+      catch (err) { if (!gone(err)) unlisted(); return []; }
+    };
     const live = new Set<string>();
     for (const y of await list(root)) for (const m of await list(join(root, y))) for (const d of await list(join(root, y, m))) {
       for (const id of await list(join(root, y, m, d))) {
