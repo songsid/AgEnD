@@ -1,0 +1,10 @@
+#!/bin/bash
+# SYNTHETIC #2528 bad case — DO NOT MERGE.
+# Pretend npm audit signatures found an invalid registry signature.
+if [[ " $* " == *" audit "* && " $* " == *" signatures "* ]]; then
+  cat <<'JSON'
+{"invalid":[{"code":"EINTEGRITYSIGNATURE","message":"synthetic invalid signature for #2528 proof","name":"evil","version":"1.0.0","registry":"https://registry.npmjs.org/"}],"missing":[]}
+JSON
+  exit 1
+fi
+exec "$(command -v npm)" "$@"
