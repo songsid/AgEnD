@@ -42,6 +42,11 @@ describe("in the usage report", () => {
   function setup() {
     const root = tmp(), sessions = join(root, "muse", "sessions"), cwd = join(root, "dev-muse"), other = join(root, "other");
     mkdirSync(cwd); mkdirSync(other);
+    // As muse writes it: lock and marker files and a dot-directory beside the date tree (Fable #2606).
+    mkdirSync(join(sessions, ".msp-view-v1", "01a0"), { recursive: true });
+    writeFileSync(join(sessions, ".msp-view-v1", "01a0", "HEAD.json"), "{}");
+    writeFileSync(join(sessions, ".msp-maintenance-owner.lock"), "");
+    writeFileSync(join(sessions, ".prior-crash-telemetry-markers-v1"), "");
     const session = (day: string, id: string, lines: string[], sub?: { id: string; lines: string[] }) => {
       const dir = join(sessions, ...day.split("-"), id);
       mkdirSync(dir, { recursive: true });
@@ -68,6 +73,8 @@ describe("in the usage report", () => {
       amount: null, priced: "none", models: ["muse-spark-1.3", "muse-spark-1.3-contributor"] });
     expect(r.rows[0]!.flags).toEqual(expect.arrayContaining(["cache_write_not_reported", "not_priced"]));
     expect((await svc.report("7d")).instances[0]).toMatchObject({ status: "unsupported" });
+    await svc.kick();                                                     // read whole: covered, the stray entries no failure
+    expect((await svc.usageData()).instances[0]!.days.coverage).not.toEqual([]);
   });
   it("a session that started before the read window but is still written is read; one untouched since is not", async () => {
     const s = setup();

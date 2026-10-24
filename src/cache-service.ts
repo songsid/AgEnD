@@ -488,7 +488,12 @@ export class CacheService {
     const byCwd = new Map<string, string>();
     for (const i of insts) for (const k of await cwdKeys(i.workingDirectory)) byCwd.set(k, i.name);
     const unlisted = (): void => { for (const i of insts) this.unread.add(i.name); };
-    const list = async (dir: string): Promise<string[]> => { try { return await readdir(dir); } catch (err) { if (!gone(err)) unlisted(); return []; } };
+    // Directories only, and never muse's own dot-entries (`.msp-view-v1/`, lock and marker files): a plain file there is no
+    // session, and listing through it would fail every pass (Fable #2606).
+    const list = async (dir: string): Promise<string[]> => {
+      try { return (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); }
+      catch (err) { if (!gone(err)) unlisted(); return []; }
+    };
     const live = new Set<string>();
     for (const y of await list(root)) for (const m of await list(join(root, y))) for (const d of await list(join(root, y, m))) {
       for (const id of await list(join(root, y, m, d))) {
