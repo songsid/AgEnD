@@ -41,7 +41,7 @@
 // along the pack's waypoints), tags, props and bubbles are drawn each frame, furniture by depth around the people (depth "y":
 // among them by base y), then the foreground, then the crowd counts, tags and bubbles.
 import { frameAt, nameHash } from "./fleet-office-model.js";
-import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packImages, poseStrip, stripBox } from "./fleet-office-pack.js";
+import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packImages, poseStrip, stripBox, walkStrip } from "./fleet-office-pack.js";
 
 export { nameHash };
 
@@ -513,6 +513,9 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     },
     drawFurniture(ctx, f, active, ms, env) {
       if (f.shape) { drawFurniture(ctx, f, active, ms, env); return; }
+      // An NPC walking (#2596): its walk strip for its heading (walkSide mirrored going left), when its picture is loaded.
+      const ws = walkStrip(f);
+      if (ws && strip(ctx, ws.strip, ms, f.x, f.y, null, ws.mirror)) return;
       // Active: its activeSprite (or its strip) plays; otherwise its strip loops ("loop", #2570) or its first frame holds.
       if (active) strip(ctx, f.activeSprite || f.sprite, ms, f.x, f.y);
       else if (f.loop) strip(ctx, f.sprite, ms, f.x, f.y);

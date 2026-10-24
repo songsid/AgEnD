@@ -36,4 +36,5 @@ export function checkLayoutOverrides(x: unknown): { ok: true; overrides: LayoutO
 export function applyOverrides(pack: CheckedPack, ov: LayoutOverrides | null | undefined): { ok: true; pack: CheckedPack } | { ok: false; error: string };
 export function overridesBetween(pack: CheckedPack, edited: CheckedPack): LayoutOverrides | null;
 export function poseStrip(set: Record<string, PackStrip> | null | undefined, pose: string, heading?: { dx: number; dy: number } | null): { strip: PackStrip; mirror: boolean } | null;
+export function walkStrip(f: { walk?: Record<string, PackStrip> | null; walking?: boolean; heading?: { dx: number; dy: number } | null } | null | undefined): { strip: PackStrip; mirror: boolean } | null;
 export function stripBox(st: PackStrip, x: number, y: number, mirror?: boolean): { x: number; y: number; w: number; h: number };

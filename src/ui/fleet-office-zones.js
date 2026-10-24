@@ -132,18 +132,27 @@ export function wanderTarget(name, seat, graph, t, seats = []) {
   const w = near[nameHash(`${name}\u0000${turn}`) % near.length];
   return { x: w.x, y: w.y };
 }
+/** An NPC drawn as furniture (#2596: an item with `walk`): its walker's name — never a person's, and its own phase. */
+export const npcKey = (f) => `furniture/${f.id}`;
 /** Everyone's walk target: their seat, or — idle and `wander` on — wanderTarget's spot (one person a spot: whoever
- * would share it stays seated this time). */
-export function walkTargets(desks, graph, t, wander = true) {
+ * would share it stays seated this time). And, `wander` on, each item of `furniture` with a `walk` (#2596): its spot
+ * (x, y), or a stroll near it as an idle person's (by npcKey) — none at `night` for one with a night place (asleep there). */
+export function walkTargets(desks, graph, t, wander = true, furniture = [], night = false) {
   // Every seat of the office (anyone's, taken or not: someone may sit down on it any moment), not only the ones in use.
-  const seats = [...Object.values(graph.areas || {}).flatMap((a) => a.seats || []), ...desks.map((d) => d.seat)], used = new Set();
-  return new Map(desks.map((d) => {
-    if (!wander || d.node.state !== "idle" || d.night) return [d.node.name, d.seat];
-    const p = wanderTarget(d.node.name, d.seat, graph, t, seats), k = `${p.x},${p.y}`;
-    if (p === d.seat || used.has(k)) return [d.node.name, d.seat];
+  // And each walking NPC's spot (#2596 review): its home, where it stands outside its stroll and goes back to whenever
+  // its stroll would collide, so nobody else's stroll may end there — no two walkers ever share a target.
+  const homes = wander ? furniture.filter((f) => f.walk && !(night && f.night)).map((f) => ({ x: f.x, y: f.y })) : [];
+  const seats = [...Object.values(graph.areas || {}).flatMap((a) => a.seats || []), ...desks.map((d) => d.seat), ...homes];
+  const used = new Set(homes.map((h) => `${h.x},${h.y}`));
+  const stroll = (name, home) => {
+    const p = wanderTarget(name, home, graph, t, seats), k = `${p.x},${p.y}`;
+    if (p === home || used.has(k)) return home;
     used.add(k);
-    return [d.node.name, p];
-  }));
+    return p;
+  };
+  const out = new Map(desks.map((d) => [d.node.name, !wander || d.node.state !== "idle" || d.night ? d.seat : stroll(d.node.name, d.seat)]));
+  if (wander) for (const f of furniture) if (f.walk && !(night && f.night)) out.set(npcKey(f), stroll(npcKey(f), { x: f.x, y: f.y }));
+  return out;
 }
 
 // ── Mail from another office (#2564) ──
