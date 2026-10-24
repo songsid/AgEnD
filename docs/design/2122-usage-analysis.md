@@ -339,7 +339,8 @@ stores were copied to scratch, WAL files included, before any query.
 | Backend | Store tokscale reads | Tokens on the host | Cache read / write | Reasoning | Model | Attribution |
 |---|---|---|---|---|---|---|
 | kiro-cli, classic | `~/.local/share/kiro-cli/data.sqlite3`, `conversations_v2.value.history[].request_metadata` | **none**: `uncached_input_tokens`, `output_tokens`, `cache_*_input_tokens` and `total_tokens` are null on all 135,924 requests (627 conversations, 2025-08 to 2026-10) | none | none | `model_id` on 99.9% (`auto` on 32%) | the row's `key` is the cwd |
-| kiro-cli, V3 / TUI | `~/.kiro/sessions/cli/<id>.json` `session_state.conversation_metadata.user_turn_metadatas[]` (and a `.jsonl` sidecar) | **none**: every `*_token_count` is 0 on all 1,164 turns (185 sessions) | none | none | `model` per turn, `auto` or a named model | `cwd` in the session file |
+| kiro-cli, TUI (engine v2) | `~/.kiro/sessions/cli/<id>.json` `session_state.conversation_metadata.user_turn_metadatas[]` (and a `.jsonl` sidecar) | **none**: every `*_token_count` is 0 on all 1,164 turns (185 sessions) | none | none | `model` per turn, `auto` or a named model | `cwd` in the session file |
+| kiro-cli, V3 (KAS; where the kiro 3.0 migration moves instances) | `~/.kiro/sessions/<sha256(cwd)[:16]>/sess_<id>/{session.json, messages.jsonl}` | **none**: no token field at all (2 sessions on the host) | none | none | `session.json` `modelId` | the bucket is the cwd's hash; `workspacePaths[0]` |
 | grok | `~/.grok/sessions/<urlencoded cwd>/<sid>/updates.jsonl`, `turn_completed` `usage` | **real, per turn** (not cumulative) on 253 of 259 turns | `cachedReadTokens` real; `cacheCreationTokens` present, 0 so far | `reasoningTokens` real | the `usage.modelUsage` key (`_meta.modelId` is absent here) | the directory name is the cwd |
 | muse | `$XDG_DATA_HOME/muse/sessions/**/session.jsonl`, `model_completed` `usage` | **real, per call** on 5,552 of 5,553 calls (600 sessions) | `cache_read_tokens` real; `cache_write_tokens` always 0 | `reasoning_tokens` real | `event.model` (`muse-spark-1.3…`) | `workspace_root` in the session metadata; 522 subagent calls have none, so they are attributed through the parent session |
 | antigravity (agy 1.4.6) | `~/.gemini/antigravity-cli/conversations/*.db`: `gen_metadata` protobuf, field map reverse-engineered by tokscale | **real, per generation** (442 in 41 conversations); output field `#9` missing on 60 | `#5` cache read on 316; no write | `#10` thinking | `#19`, or the `#21` label | workspace URI `trajectory_metadata_blob #1.#1` on 400 of 442 |
@@ -350,7 +351,7 @@ stores were copied to scratch, WAL files included, before any query.
   and the response. It derives cache read from `context_usage_percentage × context window − fresh input`. Each
   such row is an estimate, and the cache-read part dominates it.
 - **No credits.** The user's plan is Amazon Q, not a Kiro plan, so this account is not billed in credits. The
-  stores' credit fields (`metering_usage[]` per V3 turn, `user_turn_metadata.usage_info[]` per classic
+  stores' credit fields (`metering_usage[]` per TUI turn, `user_turn_metadata.usage_info[]` per classic
   conversation) are empty except for July and August 2026, and the legacy pane's `▸ Credits: X • Time: Ys` line
   shows on only some turns. Neither is a bill for this account, so AgEnD reads no credits, from the stores or from
   the pane, and shows none.
@@ -360,13 +361,19 @@ stores were copied to scratch, WAL files included, before any query.
     (`$XDG_RUNTIME_DIR/kiro-log`) and the project `.kiro` directories hold no usage.
   - **`/usage`:** it calls the `GetUsageLimits` API, the account's monthly quota. AgEnD's usage rail already shows
     that, and it is not per instance.
-- **11 session ids exist in both stores**, because the classic and V3 engines carry a conversation over. Their indexes
-  count different things: V3 counts user turns, and classic counts requests (one session has 29 V3 turns and 1,604
-  classic requests). Each store's own records only cover the turns run in that engine. On the host, no V3 turn's
+- **11 session ids exist in both stores**, because the classic and TUI engines carry a conversation over. Their indexes
+  count different things: TUI counts user turns, and classic counts requests (one session has 29 TUI turns and 1,604
+  classic requests). Each store's own records only cover the turns run in that engine. On the host, no TUI turn's
   window `[end_timestamp − turn_duration, end_timestamp]` contains a classic request of the same session, in any of
-  the 11. The V3 `.jsonl` sidecar does copy the older messages, so a V3 turn is estimated only from the messages
-  its `message_ids` name. The dedup rule: per session id, a V3 turn whose window contains a classic request of that
+  the 11. The TUI `.jsonl` sidecar does copy the older messages, so a TUI turn is estimated only from the messages
+  its `message_ids` name. The dedup rule: per session id, a TUI turn whose window contains a classic request of that
   session is dropped in favour of the classic requests.
+- **V3 (KAS)**, the store the kiro 3.0 migration moves instances to, records no token field either. It is estimated
+  the way tokscale estimates its "IDE session" layout: a turn runs to its `turn_end`; its `user` and `tool_result` text
+  are fresh input, its `assistant` text the output, and its last `contextUsage` the context, on a 200,000 window. A
+  session converted from another engine (`ensure-session`: a new id, the history copied in) does not count a turn
+  that ended before the session was created, nor one whose window holds a request of its classic source. No converted
+  session existed on the host to check this against: the first migrated instance is to be checked.
 
 **The others are real**, and per instance through their cwd, as the Claude and Codex readers do. Grok's
 `unified.jsonl` log (per request, real) is rotated: it held one session over two days. It is no history source, so
@@ -389,9 +396,9 @@ stores were copied to scratch, WAL files included, before any query.
   amounts as two parts of the total, so an estimate never mixes silently into a measured number.
 - **The method:** tokscale's, at the commit above:
   - **input:** fresh input is `ceil(bytes / 4)` of `user_prompt_length` plus that turn's tool results;
-  - **output:** `ceil(bytes / 4)` of `response_size` (classic) or `assistant_response_length` (V3);
+  - **output:** `ceil(bytes / 4)` of `response_size` (classic) or `assistant_response_length` (TUI);
   - **cache read:** `max(floor(context window × context_usage_percentage / 100) − fresh input, 0)`, with
-    `model_info.context_window_tokens` as the window. As in tokscale, a V3 session without a window uses 200,000,
+    `model_info.context_window_tokens` as the window. As in tokscale, a TUI session without a window uses 200,000,
     and a classic conversation without one gets cache read 0;
   - **cache write and reasoning:** 0.
 - **Dropped:** option A's credit display, and the pane-credit reader with it. An Amazon Q plan bills no credits.
@@ -428,7 +435,8 @@ Hours written before that change keep `reasoning` 0, and output as recorded.
 1. **Ledger units:** the `reasoning` bucket, output net of reasoning, the backend in the key, and per (backend,
    model, day) rows in `get_usage_report` and the CSV. Codex gains reasoning at once. It is small, and every reader
    below builds on it.
-2. **Kiro (option B):** estimated tokens per instance from both stores, by cwd, with the cross-store dedup above,
+2. **Kiro (option B):** estimated tokens per instance from its three stores (classic, TUI and V3 — tokscale reads V3 as
+   its "IDE session" layout), by cwd, with the cross-store dedup above,
    priced at the named model's list price (`auto` not priced). The "estimated" flag goes on rows, on totals, and in
    the API, the page and the CSV. It goes first among the readers because Kiro is the largest unmeasured share
    (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms).

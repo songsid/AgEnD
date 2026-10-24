@@ -20,7 +20,8 @@
 import { objectAt, type ScanLine } from "./cache-scan.js";
 import { isLongPrompt } from "./cache-prices.js";
 
-export type TranscriptKind = "claude" | "codex";
+/** The reader: Claude Code and Codex transcripts are measured; Kiro is estimated (kiro-usage.ts, #2122 §10). */
+export type TranscriptKind = "claude" | "codex" | "kiro";
 
 /** One model request, as the transcript records it. */
 export interface Turn {
@@ -92,6 +93,9 @@ export interface FileCursor {
   total?: number;
   /** Claude: ids of the last messages counted (one message spans several lines). */
   ids?: string[];
+  /** Kiro (kiro-usage-scan.ts): what the source looked like when read, and the time of the last turn counted. */
+  sig?: string;
+  after?: number;
 }
 
 export interface Ledger {
@@ -119,7 +123,7 @@ export function reviveLedger(raw: unknown): Ledger {
     for (const [mk, tot] of Object.entries(v.m ?? {})) if (Array.isArray(tot) && tot.length === 7) m[mk] = tot as HourTotals;
     const src = dict<Record<string, HourTotals>>();
     for (const [sk, sm] of Object.entries(v.src ?? {})) {
-      if (!/^(?:claude|codex):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
+      if (!/^(?:claude|codex|kiro):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
       const into = dict<HourTotals>();
       for (const [mk, tot] of Object.entries(sm)) if (Array.isArray(tot) && tot.length === 7 && tot.every(n => Number.isFinite(n))) into[mk] = tot as HourTotals;
       src[sk] = into;
@@ -178,7 +182,8 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const src = (hour.src ??= dict<Record<string, HourTotals>>())[sk] ??= dict<HourTotals>();
   bump(src[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
   if (turn.reasoning) { const rs = (hour.rs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); rs[mk] = (rs[mk] ?? 0) + turn.reasoning; }
-  if (!prev) return;
+  // Kiro is not in the cache analysis (its turns are estimates): no gaps to keep.
+  if (!prev || file.kind === "kiro") return;
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;
   hour.g[gapBucket(gap)]! += 1;

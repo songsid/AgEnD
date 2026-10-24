@@ -24,6 +24,7 @@ const rosterMethods = {
   credentialProfileOf: (FleetManager.prototype as any).credentialProfileOf,
   cacheServiceFor: (FleetManager.prototype as any).cacheServiceFor,
   usageProfileOf: (FleetManager.prototype as any).usageProfileOf,
+  kiroDbPathOf: (FleetManager.prototype as any).kiroDbPathOf,
   usageZone: (FleetManager.prototype as any).usageZone,
   daemons: new Map(),
 };

@@ -1936,6 +1936,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .us-bar { display: block; width: 100%; height: 6px; margin: 4px 0; }
 .us-bar-bg { fill: var(--surface-2); } .us-bar-fg { fill: var(--us-0); }
 .us-meta { display: block; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.us-est { display: block; font-size: var(--fs-xs); font-weight: var(--fw-regular); color: var(--text-3); }
 .us-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .us-trend, .us-heat { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
 .us-trend h3, .us-heat h3, .us-rest h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }

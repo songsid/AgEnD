@@ -70,11 +70,13 @@ const TABLE: Record<string, Row> = {
 
 /**
  * The table's key for a model id as a transcript records it: "claude-opus-4-5-20251101" → "claude-opus-4-5",
- * "claude-opus-5-5[1m]" → "claude-opus-5-5". Exact keys only — "claude-opus-5" never prices "claude-opus-5-5".
+ * "claude-opus-5-5[1m]" → "claude-opus-5-5", and Kiro's spelling of a Claude version, "claude-sonnet-4.6" →
+ * "claude-sonnet-4-6" (#2122 §10). Exact keys only — "claude-opus-5" never prices "claude-opus-5-5".
  */
 export function priceKey(model: string | null | undefined): string | null {
   if (typeof model !== "string") return null;
-  const id = model.trim().toLowerCase().replace(/\[[^\]]*\]$/, "").replace(/-\d{8}$/, "");
+  let id = model.trim().toLowerCase().replace(/\[[^\]]*\]$/, "").replace(/-\d{8}$/, "");
+  if (id.startsWith("claude-")) id = id.replace(/(\d)\.(\d)/g, "$1-$2");
   return Object.prototype.hasOwnProperty.call(TABLE, id) ? id : null;
 }
 

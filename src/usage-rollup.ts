@@ -36,7 +36,7 @@ export interface DayRow { date: string; zone: string; be: string; pf: string; m:
 
 /** Where an hour's totals were read: the backend whose reader read them ("unknown" before #2122), and the profile. */
 export interface HourSource { backend: string; profile: string; m: Record<string, HourTotals>; r: Record<string, number> }
-const READER_BACKEND: Record<string, string> = { claude: "claude-code", codex: "codex" };
+const READER_BACKEND: Record<string, string> = { claude: "claude-code", codex: "codex", kiro: "kiro-cli" };
 /**
  * An hour's totals by source (cache-ledger.ts `src`), each exact. What `m` holds beyond them was counted before #2122:
  * one more source, backend and profile "unknown".

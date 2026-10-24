@@ -380,7 +380,9 @@ coordinators and full-profile instances, and each other instance only its own ro
 model, credential profile, team): input, output, reasoning, cache read and cache write tokens, requests, delivered messages,
 and an amount, over today / 7d / month / all / custom days in the fleet's timezone. **Every amount is the
 API-equivalent at list price — not money spent** (subscriptions aren't billed per token): say "API-equivalent", never
-"spent". Measured for Claude Code and Codex. Marks to repeat in words:
+"spent". Measured for Claude Code and Codex; **estimated** for Kiro (it records no token counts). Marks to repeat in words:
+- `estimated` (a row) / `includes_estimates` (the totals, with `amountEstimated`): Kiro's tokens are estimated from text
+  size, not measured — say "estimated" and give the estimated part apart.
 - `cache_write_not_reported`: Codex records no cache writes, so they are neither shown as 0 nor priced.
 - `not_priced`: the tokens are shown, the amount isn't.
 - `source_unknown`: read before #2122, when which backend and profile read it was not recorded (backend and profile

@@ -390,6 +390,7 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
+import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
@@ -14477,6 +14478,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
       name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
       claudeConfigDir: this.claudeConfigDirOf(name), profile: this.usageProfileOf(name, this.backendNameOf(name)),
+      kiroDbPath: this.kiroDbPathOf(name, this.backendNameOf(name)),
     }));
     const taken = new Set(fleet.map(i => i.name));
     const classic = (this.classicChannels?.getAll() ?? []).filter(ch => !taken.has(ch.instanceName)).map(ch => ({
@@ -14486,6 +14488,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ledgerPath: join(this.getInstanceDir(ch.instanceName), "cache-ledger.json"),
       claudeConfigDir: this.claudeConfigDirOf(ch.instanceName),
       profile: this.usageProfileOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
+      kiroDbPath: this.kiroDbPathOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
     }));
     return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
   }
@@ -14505,7 +14508,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private usageProfileOf(name: string, backend: string): string | undefined {
     if (backend === "claude-code") return this.credentialProfileOf(name, "claude-code") ?? "default";
     if (backend === "codex") return "unrecorded";
+    if (backend === "kiro-cli") return this.credentialProfileOf(name, "kiro-cli") ?? "default";
     return undefined;
+  }
+  /** #2122 §10: a Kiro instance with a credential profile writes its classic store in that profile's home. */
+  private kiroDbPathOf(name: string, backend: string): string | undefined {
+    if (backend !== "kiro-cli") return undefined;
+    const profile = this.credentialProfileOf(name, "kiro-cli");
+    return profile ? join(credentialProfileStoreHome(getAgendHome(), "kiro-cli", profile), "data.sqlite3") : undefined;
   }
   /** #2122: the fleet's day boundary zone — defaults.scheduler.default_timezone, else this host's. */
   usageZone(): string {
@@ -14546,6 +14556,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       rolloutsUnreadable: root => sharedRolloutIndex(root).unreadable,
       metaPath: join(this.dataDir, "cache-codex-rollouts.json"),
       zone: () => this.usageZone(),
+      // #2122 §10: Kiro's shared classic store (XDG_DATA_HOME, as kiro-cli resolves it) and its KIRO_HOME.
+      kiroDbPath: () => join(process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share"), "kiro-cli", "data.sqlite3"),
+      kiroHome: () => kiroHome(),
       log: (level, msg, extra) => this.logger[level](extra ?? {}, msg),
     });
   }

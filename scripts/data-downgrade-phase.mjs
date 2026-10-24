@@ -100,22 +100,24 @@ if (phase === 'create') {
   const turn = (t, model) => ({ t, model, prompt: 10_000, uncached: 2000, read: 8000, write5m: 0, write1h: 0, write: 0, output: 900, reasoning: 600 });
   addTurn(ledger, file, turn(hour + 60_000, 'gpt-5.6-sol'), 0, 'unrecorded');
   addTurn(ledger, file, turn(hour + 3 * 3_600_000, 'gpt-5.6-sol'), 0, 'unrecorded');
+  // #2122 §10: a Kiro estimate. An older reader knows no `kiro:` source: it keeps the totals and reads them as unknown.
+  addTurn(ledger, { kind: 'kiro', ino: 0, offset: 0 }, { ...turn(hour + 120_000, 'claude-sonnet-4.6'), write: null, reasoning: 0 }, 0, 'default');
   foldHours(days, ledger, hour + 3_600_000, 'UTC');                          // the first hour also in the rollup
   checked('the usage ledger and rollup keep 7 totals, reasoning beside them', () => {
     for (const h of Object.values(ledger.hours)) for (const t of [...Object.values(h.m), ...Object.values(h.src).flatMap(Object.values)]) assert.equal(t.length, 7);
     for (const row of days.rows) for (const t of Object.values(row.m)) assert.equal(t.length, 7);
-    assert.ok(Object.values(ledger.hours).every(h => h.rs) && days.rows.every(r => r.r));
+    assert.ok(Object.values(ledger.hours).every(h => h.rs) && days.rows.filter(r => r.be === 'codex').every(r => r.r));
   });
   writeFileSync(usageLedgerPath, JSON.stringify(ledger)); writeFileSync(usageDaysPath, JSON.stringify(days));
-  state.usage = { hours: Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: h.m, src: h.src }])), rows: days.rows.map(r => r.m) };
+  state.usage = { hours: Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: h.m, src: { 'codex:unrecorded': h.src['codex:unrecorded'] } }])), rows: days.rows.map(r => r.m) };
 } else if (phase === 'old' && hasUsageRollup) {
   const { reviveLedger } = await load('cache-ledger.js');
   const { reviveDays } = await load('usage-rollup.js');
   checked('the old reader keeps every usage total and writes them back', () => {
     const ledger = reviveLedger(JSON.parse(readFileSync(usageLedgerPath, 'utf8')));
     const days = reviveDays(JSON.parse(readFileSync(usageDaysPath, 'utf8')));
-    assert.deepEqual(Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: { ...h.m }, src: Object.fromEntries(Object.entries(h.src).map(([s, m]) => [s, { ...m }])) }])), state.usage.hours);
-    assert.deepEqual(days.rows.map(r => ({ ...r.m })), state.usage.rows);
+    assert.deepEqual(Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: { ...h.m }, src: { 'codex:unrecorded': { ...h.src['codex:unrecorded'] } } }])), state.usage.hours);
+    assert.deepEqual(days.rows.map(r => ({ ...r.m })).filter(m => Object.keys(m).length), state.usage.rows.filter(m => Object.keys(m).length));
     // As it does after a catch-up (cache-service save, recordCoverage): what it revived is what goes back to disk.
     writeFileSync(usageLedgerPath, JSON.stringify(ledger)); writeFileSync(usageDaysPath, JSON.stringify(days));
   });
@@ -125,8 +127,8 @@ if (phase === 'create') {
   checked('back on the new version, every usage total is there', () => {
     const ledger = reviveLedger(JSON.parse(readFileSync(usageLedgerPath, 'utf8')));
     const days = reviveDays(JSON.parse(readFileSync(usageDaysPath, 'utf8')));
-    assert.deepEqual(Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: { ...h.m }, src: Object.fromEntries(Object.entries(h.src).map(([s, m]) => [s, { ...m }])) }])), state.usage.hours);
-    assert.deepEqual(days.rows.map(r => ({ ...r.m })), state.usage.rows);
+    assert.deepEqual(Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: { ...h.m }, src: { 'codex:unrecorded': { ...h.src['codex:unrecorded'] } } }])), state.usage.hours);
+    assert.deepEqual(days.rows.map(r => ({ ...r.m })).filter(m => Object.keys(m).length), state.usage.rows.filter(m => Object.keys(m).length));
   });
 }
 if (phase === 'create') {

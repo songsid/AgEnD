@@ -7,6 +7,9 @@
  * Honest by construction: an amount is "API-equivalent at list price (checked <date>) — not money spent"; an unpriced
  * model's tokens are shown and its amount is not; Codex's cache writes are "not reported" (every CLI seen records 0),
  * never priced as uncached; an instance whose backend AgEnD cannot measure is listed with its reason, never as $0.
+ * Kiro records no token counts: its rows are ESTIMATED from text size (kiro-usage.ts, design §10.2) and say so — on the
+ * row (`estimated`), on any total that includes one (`includes_estimates`, with the estimated part of the amount), in
+ * the API, on the page and in the CSV. An estimate never mixes silently into a measured number.
  */
 import type { HourTotals, Ledger } from "./cache-ledger.js";
 import { PRICES_CHECKED, ratesFor } from "./cache-prices.js";
@@ -25,6 +28,8 @@ export const usageBasis = (checked = PRICES_CHECKED): string => `API-equivalent 
 export const USAGE_DAILY_MAX = 20_000;
 
 const M = 1_000_000;
+/** The backends whose usage is estimated, not measured (#2122 §10.2: Kiro records no token counts). */
+export const ESTIMATED_BACKENDS: ReadonlySet<string> = new Set(["kiro-cli"]);
 /** The backends whose transcripts report reasoning tokens (#2122 §10.3); elsewhere a 0 means not reported. */
 export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -72,6 +77,10 @@ export interface UsageRow extends UsageTotals {
   key: string;
   /** Whether any of it comes from a CLI that reports reasoning (REPORTS_REASONING): false → its 0 is "not reported". */
   reasoningReported: boolean;
+  /** Some of it is estimated (ESTIMATED_BACKENDS); flagged "estimated" (a row) or "includes_estimates" (the totals). */
+  estimated: boolean;
+  /** The estimated part of `amount` (null: nothing estimated is priced). */
+  amountEstimated: number | null;
   total: number;
   /** Delivered messages; null where a message has no such key (by model, by profile). */
   messages: number | null;
@@ -92,6 +101,7 @@ export interface UsageRow extends UsageTotals {
 export interface UsageDaily extends UsageTotals {
   date: string;
   reasoningReported: boolean;
+  estimated: boolean;
   zone: string;
   instance: string;
   backend: string;
@@ -170,6 +180,7 @@ function amountOf(model: string, long: boolean, [, uncached, read, w5, w1h, w, o
 }
 
 interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; reasoning: number; writesReported: boolean }
+const estimatedSlice = (s: Slice): boolean => ESTIMATED_BACKENDS.has(s.backend);
 const unknownSource = (s: Slice): boolean => s.backend === "unknown" || s.profile === "unknown";
 
 export function buildUsageReport(input: UsageInput): UsageReport {
@@ -213,9 +224,9 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       case "team": return s.team ?? "";
     }
   };
-  type Acc = UsageRow & { _amount: number; _pricedAny: boolean; _unpricedAny: boolean };
+  type Acc = UsageRow & { _amount: number; _pricedAny: boolean; _unpricedAny: boolean; _estAmount: number; _estPriced: boolean };
   const rows = new Map<string, Acc>();
-  const newRow = (key: string): Acc => ({ key, ...zero(), reasoningReported: false, total: 0, messages: null, amount: null, priced: "none", flags: [], unpriced: [], instances: [], backends: [], models: [], profiles: [], _amount: 0, _pricedAny: false, _unpricedAny: false });
+  const newRow = (key: string): Acc => ({ key, ...zero(), reasoningReported: false, estimated: false, amountEstimated: null, _estAmount: 0, _estPriced: false, total: 0, messages: null, amount: null, priced: "none", flags: [], unpriced: [], instances: [], backends: [], models: [], profiles: [], _amount: 0, _pricedAny: false, _unpricedAny: false });
   const uniq = (list: string[], v: string) => { if (!list.includes(v)) list.push(v); };
   // Daily rows: one per day, zone, agent, backend, model, tier and profile (an hour's slices summed into their day).
   const dailyBy = new Map<string, UsageDaily>();
@@ -227,14 +238,15 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     uniq(row.instances, s.instance); uniq(row.backends, s.backend); uniq(row.models, s.model); uniq(row.profiles, s.profile);
     const amount = amountOf(s.model, s.long, s.tot);
     if (amount === null) { row._unpricedAny = true; uniq(row.unpriced, s.model); } else { row._pricedAny = true; row._amount += amount; }
+    if (estimatedSlice(s)) { row.estimated = true; uniq(row.flags, "estimated"); if (amount !== null) { row._estPriced = true; row._estAmount += amount; } }
     if (!s.writesReported) uniq(row.flags, "cache_write_not_reported");
     if (unknownSource(s)) uniq(row.flags, "source_unknown");
     const tier = s.long ? "long" : "standard";
     const dk = [s.date, s.zone, s.instance, s.backend, s.model, tier, s.profile].join("\u0000");
     let d = dailyBy.get(dk);
     if (!d) {
-      d = { date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier, profile: s.profile, ...zero(), reasoningReported: REPORTS_REASONING.has(s.backend), amount: amount === null ? null : 0,
-        flags: [...(s.writesReported ? [] : ["cache_write_not_reported"]), ...(amount === null ? ["not_priced"] : []), ...(unknownSource(s) ? ["source_unknown"] : [])] };
+      d = { date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier, profile: s.profile, ...zero(), reasoningReported: REPORTS_REASONING.has(s.backend), estimated: estimatedSlice(s), amount: amount === null ? null : 0,
+        flags: [...(estimatedSlice(s) ? ["estimated"] : []), ...(s.writesReported ? [] : ["cache_write_not_reported"]), ...(amount === null ? ["not_priced"] : []), ...(unknownSource(s) ? ["source_unknown"] : [])] };
       dailyBy.set(dk, d);
     }
     addTotals(d, s.tot, s.reasoning);
@@ -284,7 +296,8 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   }
 
   const finish = (row: Acc): UsageRow => {
-    const { _amount, _pricedAny, _unpricedAny, ...rest } = row;
+    const { _amount, _pricedAny, _unpricedAny, _estAmount, _estPriced, ...rest } = row;
+    rest.amountEstimated = _estPriced ? _estAmount : null;
     rest.total = rest.input + rest.output + rest.reasoning + rest.cacheRead + rest.cacheWrite5m + rest.cacheWrite1h + rest.cacheWrite;
     rest.amount = _pricedAny ? _amount : null;
     rest.priced = _pricedAny ? (_unpricedAny ? "partial" : "all") : "none";
@@ -300,7 +313,9 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     if (r.messages !== null) totals.messages = (totals.messages ?? 0) + r.messages;
     if (r.amount !== null) totals.amount = (totals.amount ?? 0) + r.amount;
     if (r.reasoningReported) totals.reasoningReported = true;
-    for (const f of r.flags) uniq(totals.flags, f);
+    if (r.estimated) { totals.estimated = true; uniq(totals.flags, "includes_estimates"); }
+    if (r.amountEstimated !== null) totals.amountEstimated = (totals.amountEstimated ?? 0) + r.amountEstimated;
+    for (const f of r.flags) if (f !== "estimated") uniq(totals.flags, f);
     for (const m of r.unpriced) uniq(totals.unpriced, m);
   }
   totals.priced = out.some(r => r.priced !== "none") ? (out.some(r => r.priced !== "all" && r.total > 0) ? "partial" : "all") : "none";

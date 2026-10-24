@@ -13,6 +13,8 @@
  * already counted, and counting them twice would be worse than missing a rewrite. The inode is checked on the
  * descriptor actually read, not only on the listing. Two instances whose transcripts land in the same place (the same
  * working directory: one Claude project, one Codex cwd) cannot be told apart: neither is analysed, both say so.
+ * Kiro (#2122 §10): its stores hold no token counts, so its turns are estimated (kiro-usage.ts) by a scan on a worker
+ * thread (kiro-usage-run.ts) — for the usage report only; the cache analysis leaves Kiro out.
  */
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -21,6 +23,7 @@ import { addTurn, claudeLine, codexLine, emptyLedger, KEEP_DAYS, pruneLedger, re
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, foldHours, pruneDays, readDays, writeDays, type UsageDays } from "./usage-rollup.js";
+import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
 export interface CacheInstance {
@@ -32,6 +35,8 @@ export interface CacheInstance {
    * without one); "unrecorded" for codex (a rollout does not say which login wrote it).
    */
   profile?: string;
+  /** #2122: a Kiro instance's classic store — its credential profile's `data.sqlite3`; absent = `kiroDbPath()`. */
+  kiroDbPath?: string;
 }
 
 export interface CacheServiceOptions {
@@ -54,6 +59,11 @@ export interface CacheServiceOptions {
   monotonic?: () => number;
   /** #2122: the zone days are folded in (defaults.scheduler.default_timezone, else the host's). */
   zone?: () => string;
+  /** #2122 §10: Kiro's shared classic store and KIRO_HOME; absent: Kiro instances are not read. */
+  kiroDbPath?(): string;
+  kiroHome?(): string;
+  /** One bounded Kiro scan (default: on a worker thread, kiro-usage-run.ts; tests run it in-process). */
+  kiroScan?(input: KiroScanInput): Promise<KiroScanOutput>;
 }
 
 export type CacheWindow = "24h" | "7d" | "30d";
@@ -88,7 +98,8 @@ export interface CacheReport {
 
 const DAY = 86_400_000;
 const META_MAX_BYTES = 256 * 1024;   // session_meta carries the instructions (~22 KB in real rollouts)
-const kindOf = (backend: string): TranscriptKind | null => (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : null);
+const kindOf = (backend: string): TranscriptKind | null =>
+  (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : backend === "kiro-cli" ? "kiro" : null);
 const sleep = (ms: number): Promise<void> => new Promise((r) => { const h = setTimeout(r, ms); h.unref?.(); });
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 /** An error that means the path is not there (never was, or went): a real absence, not a failure to read it. */
@@ -223,7 +234,8 @@ export class CacheService {
     const insts = this.o.instances();
     const shared = await this.shared(insts);
     for (const inst of insts) {
-      if (!kindOf(inst.backend) || shared.has(inst.name) || this.unread.has(inst.name)) continue;
+      const kind = kindOf(inst.backend);
+      if (!kind || (kind === "kiro" && !this.o.kiroDbPath) || shared.has(inst.name) || this.unread.has(inst.name)) continue;
       const next: UsageDays = structuredClone(await this.rollupFor(inst));
       addCoverage(next, now - KEEP_DAYS * DAY, now);
       if (await writeDays(this.daysPath(inst), next)) this.rollups.set(inst.name, next);
@@ -250,7 +262,7 @@ export class CacheService {
     for (const i of insts) {
       const kind = kindOf(i.backend);
       if (!kind) continue;
-      const keys = kind === "claude" ? [`claude|${this.o.claudeKey(i.workingDirectory)}`] : (await cwdKeys(i.workingDirectory)).map((k) => `codex|${k}`);
+      const keys = kind === "claude" ? [`claude|${this.o.claudeKey(i.workingDirectory)}`] : (await cwdKeys(i.workingDirectory)).map((k) => `${kind}|${k}`);
       for (const k of keys) groups.set(k, [...(groups.get(k) ?? []), i.name]);
     }
     const out = new Map<string, string[]>();
@@ -280,11 +292,15 @@ export class CacheService {
     const insts = this.o.instances();
     const shared = await this.shared(insts);
     const codex = await this.codexFilesByInstance(insts.filter((i) => !shared.has(i.name)), cutoff);
+    const kiro = await this.kiroPass(insts.filter((i) => kindOf(i.backend) === "kiro" && !shared.has(i.name)), cutoff, budget);
+    budget -= kiro.read;
+    behindBytes += kiro.behindBytes; behindFiles += kiro.behindSources;
     for (const inst of insts) {
       if (this.stopped) break;
       const kind = kindOf(inst.backend);
       if (!kind || shared.has(inst.name)) { await this.keepHistory(inst, cutoff); continue; }
       const ledger = await this.ledgerFor(inst);
+      if (kind === "kiro") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : codex.get(inst.name) ?? [];
       const listed = new Set(files.map((f) => f.path));
       for (const path of Object.keys(ledger.files)) if (!listed.has(path)) { delete ledger.files[path]; this.dirty.add(inst.name); }
@@ -323,6 +339,53 @@ export class CacheService {
     if (!before) return;
     pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff));
     if (Object.keys(ledger.hours).length !== before) this.dirty.add(inst.name);
+  }
+
+  /** TUI session file → its signature and cwd, as the last Kiro scan saw them (kiro-usage-scan.ts). */
+  private kiroTuiIndex: KiroScanInput["tuiIndex"] = Object.create(null);
+  /**
+   * #2122 §10: one bounded scan of Kiro's stores for these instances (on a worker thread), its estimated turns added to
+   * their ledgers. A scan that fails or times out reads nothing and covers no one; the next pass tries again from the
+   * same cursors.
+   */
+  private async kiroPass(insts: CacheInstance[], cutoff: number, budget: number): Promise<{ read: number; behindBytes: number; behindSources: number }> {
+    const none = { read: 0, behindBytes: 0, behindSources: 0 };
+    if (!insts.length) return none;
+    const dbPath = this.o.kiroDbPath?.(), home = this.o.kiroHome?.();
+    if (!dbPath || !home) return none;
+    const ledgers = new Map<string, Ledger>();
+    const input: KiroScanInput = { kiroHome: home, cutoff, maxBytes: Math.max(budget, 1), tuiIndex: this.kiroTuiIndex, instances: [] };
+    for (const inst of insts) {
+      const ledger = await this.ledgerFor(inst);
+      ledgers.set(inst.name, ledger);
+      const cursors: KiroScanInput["instances"][number]["cursors"] = Object.create(null);
+      for (const [k, f] of Object.entries(ledger.files)) if (f.kind === "kiro" && f.sig !== undefined) cursors[k] = { sig: f.sig, after: f.after ?? cutoff };
+      input.instances.push({ name: inst.name, cwds: await cwdKeys(inst.workingDirectory), dbPath: inst.kiroDbPath ?? dbPath, cursors });
+    }
+    let out: KiroScanOutput;
+    try {
+      out = await (this.o.kiroScan ?? (async (i: KiroScanInput) => (await import("./kiro-usage-run.js")).runKiroUsageScan(i)))(input);
+    } catch (err) {
+      this.o.log?.("warn", "usage: the Kiro scan failed; it is tried again next pass", { err: String(err) });
+      for (const i of insts) this.unread.add(i.name);
+      return none;
+    }
+    this.kiroTuiIndex = out.tuiIndex;
+    const byName = new Map(insts.map((i) => [i.name, i]));
+    for (const r of out.instances) {
+      const inst = byName.get(r.name), ledger = ledgers.get(r.name);
+      if (!inst || !ledger) continue;
+      if (r.failed) this.unread.add(r.name);
+      const live = new Set(r.live);
+      for (const [k, f] of Object.entries(ledger.files)) if (f.kind === "kiro" && !live.has(k)) { delete ledger.files[k]; this.dirty.add(r.name); }
+      for (const u of r.updates) {
+        const cur: FileCursor = ledger.files[u.key] ??= { kind: "kiro", ino: 0, offset: 0 };
+        for (const t of [...u.turns].sort((a, b) => a.t - b.t)) addTurn(ledger, cur, t, cutoff, inst.profile ?? "default");
+        cur.sig = u.sig; cur.after = u.after;
+        this.dirty.add(r.name);
+      }
+    }
+    return { read: out.readBytes, behindBytes: out.behindBytes, behindSources: out.behindSources };
   }
 
   /** A file that is not the one the cursor read (another inode, or shorter): keep the session's end, start at its end. */
@@ -466,7 +529,7 @@ export class CacheService {
       // `status` is about collecting now; what it measured before (another backend, a directory it did not share yet)
       // is in `ledger` and `days` either way.
       const kind = kindOf(inst.backend), others = shared.get(inst.name);
-      if (!kind) out.push({ inst, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported", ledger, days });
+      if (!kind || (kind === "kiro" && !this.o.kiroDbPath)) out.push({ inst, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported", ledger, days });
       else if (others) out.push({ inst, status: "shared", with: others, ledger, days });
       else out.push({ inst, status: "ok", ledger, days });
     }
@@ -484,7 +547,8 @@ export class CacheService {
     const shared = await this.shared(insts);
     for (const inst of insts) {
       const kind = kindOf(inst.backend);
-      if (!kind) { instances.push({ name: inst.name, backend: inst.backend, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported" }); continue; }
+      // Kiro is in the usage report (estimated), not in the cache analysis: it records no cache use to analyse.
+      if (!kind || kind === "kiro") { instances.push({ name: inst.name, backend: inst.backend, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported" }); continue; }
       const others = shared.get(inst.name);
       if (others) { instances.push({ name: inst.name, backend: inst.backend, status: "shared", with: others }); continue; }
       const ledger = await this.ledgerFor(inst);
