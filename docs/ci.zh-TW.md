@@ -66,20 +66,31 @@ commit SHA，版本 tag 寫在後面的註解：
 ```
 
 本機 composite 維持 `./.github/actions/…`；它自己的遠端 `uses:` 一樣要釘。
-Dependabot 的 `github-actions` 生態（`.github/dependabot.yml`，每週）會同時
-更新 SHA 與註解：patch 與 minor 合在一個 PR；每個 major 單獨開 PR，讓
-Node runtime 或 artifact 協定的破壞性變更可以分開審查。
+浮動 tag（`@v4`、`@v4.4.0`、`@main`）或短 SHA 會讓 `ci.yml` 的
+`actions-pinned` job 失敗：該 job 每次事件都先 `npm ci --ignore-scripts`，
+再跑 `scripts/ci/assert-actions-pinned.mjs`，包含只改 changelog 片段的 PR。
+guard 用 lockfile 裡的 `js-yaml@4.3.2` 解析 YAML。`build` aggregate 在這個
+job 不是 `success` 時失敗。
 
-`ci.yml` 的 `actions-pinned` job 每次事件都先 `npm ci --ignore-scripts`，再跑
-`scripts/ci/assert-actions-pinned.mjs`，包含只改 changelog 片段的 PR。guard
-用 lockfile 裡的 `js-yaml@4.3.2` 解析 YAML。`build` aggregate 在這個 job
-不是 `success` 時失敗。
+### 釘選如何更新
 
-新增 action 時用 `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`
-解析 tag（annotated tag 先走 `git/ref/tags` 再 `git/tags`），不要猜 SHA。
-第三方 action 要在釘選的 commit 上審查；目前只有
-`gitleaks/gitleaks-action`（商業授權，`node20`，`dist/index.js`，
-`ff98106e4c7b2bc287b24eaf42907196329070c7` / v2.3.9）。
+Dependabot 的 `github-actions` 生態（`.github/dependabot.yml`，每週，
+`directory: /`）會同時改寫 commit SHA 與後面的 tag 註解。patch 與 minor
+的 version-update 合在一個 PR（`github-actions-patch-minor`）；同等級的
+security-update 另開一個（`github-actions-security-patch-minor`）。每個
+major 單獨開 PR，讓 Node runtime 或 artifact 協定的破壞性變更可以分開
+審查。major 不會被忽略：GitHub-hosted runner 在 2026-09-16 之後不再跑
+Node 20 的 action。
+
+審查 Dependabot 釘選 PR 時，用
+`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha` 把 tag 解析成 SHA
+（annotated tag 先走 `git/ref/tags` 再 `git/tags`），確認與 `uses:` 一致。
+不要猜 SHA，也不要在沒查過的情況下手改。第三方 action 要在釘選的
+commit 上審查；目前只有 `gitleaks/gitleaks-action`（商業授權，
+`dist/index.js`，`e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` / v3.0.0）。
+
+手動新增 action 也用同一套查法，寫 40 字元 SHA 與 tag 註解，並讓 pin
+guard 保持綠燈。
 
 ### 發布 workflow
 
@@ -102,6 +113,18 @@ false。
 ## PR 的 dependency review（#2528）
 
 `dependency-review.yml` 在進 `main` 與 `release/**` 的 pull request 跑
-`actions/dependency-review-action`。PR diff 出現 high 或 critical 諮詢、
-或新套件的授權不在 `.github/dependency-review-config.yml` 允許名單（目前
-根目錄與 website 樹裡的授權）時失敗。偵測不到的授權只會被報告，不失敗。
+`actions/dependency-review-action`。GitHub 比的是這次 PR 相對 base 的
+diff，不是對 `main` 整棵樹做審計。設定在
+`.github/dependency-review-config.yml`。
+
+檢查會在 diff 裡出現下列任一項時**失敗**：
+
+- **high 或 critical** 諮詢（`fail-on-severity: high`），且範圍是
+  `runtime` 或 `development`（`fail-on-scopes`）；
+- 新引入的**授權**不在允許名單（目前根目錄與 website 樹裡的授權：
+  0BSD、Apache-2.0 以及那一條 Apache-2.0/LGPL/MIT 合取、BSD-2-Clause、
+  BSD-3-Clause、BlueOak-1.0.0、CC0-1.0、ISC、LGPL-2.1-or-later、
+  LGPL-3.0-or-later、MIT、MPL-2.0、Python-2.0）。
+
+moderate／low 諮詢、偵測不到的授權（只報告）、以及 base 上已有、這次
+PR 沒改到的諮詢，**不會**因此失敗。
