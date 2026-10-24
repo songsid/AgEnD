@@ -422,7 +422,7 @@ export class CacheService {
     try {
       const res = await scanJsonl(path, cur.offset, { maxBytes: budget, ino: cur.ino }, (line) => {
         if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, profile); return; }
-        const turn = cur.kind === "claude" ? claudeLine(line, cur) : cur.kind === "muse" ? museLine(line) : codexLine(line, cur);
+        const turn = cur.kind === "claude" ? claudeLine(line, cur) : cur.kind === "muse" ? museLine(line, cur) : codexLine(line, cur);
         if (turn) addTurn(ledger, cur, turn, cutoff, profile);
       });
       if (res.replaced) { this.followFromEnd(ledger, path, cur, res.ino, res.size); return { read: 0, behind: 0 }; }
