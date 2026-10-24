@@ -16,7 +16,8 @@ import { onPrefsChanged, savePref } from "./app-prefs.js";
 import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
-import { UsageRail, usageRailStore } from "./header-tools.js";
+import { usageRailStore } from "./header-tools.js";
+import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 
@@ -127,7 +128,7 @@ export const sidebarWidthStore = createStore({ width: null });
 function mainBudget() {
   const vw = viewportWidth();
   if (vw < 1200 || typeof document === "undefined") return vw;
-  const rail = document.querySelector(".u-rail");
+  const rail = document.querySelector(".shell > .u-rail, .shell > .side-panel");   // #2585: a docked panel in its place
   if (!rail) return vw;
   const w = Math.round(rail.getBoundingClientRect ? rail.getBoundingClientRect().width : 0) || RAIL_W;
   return vw - w;
@@ -181,11 +182,15 @@ function SidebarResize() {
     // once the page has drawn its change.
     const again = () => afterPaint(applyKeptSidebarWidth);
     const offRail = usageRailStore.subscribe(again);
+    // #2585: a docked panel in the rail's place (it is published on every render of its editor: only its coming and
+    // going changes the room).
+    let docked = !!sidePanelStore.get().panel;
+    const offPanel = sidePanelStore.subscribe(() => { const now = !!sidePanelStore.get().panel; if (now !== docked) { docked = now; again(); } });
     const offNav = navStore.subscribe(again);
     const w = win();
     if (w && typeof w.addEventListener === "function") w.addEventListener("resize", applyKeptSidebarWidth);
     return () => {
-      offRail(); offNav();
+      offRail(); offPanel(); offNav();
       if (w && typeof w.removeEventListener === "function") w.removeEventListener("resize", applyKeptSidebarWidth);
       if (activeDrag) activeDrag.end(false);   // unmounted mid-drag: nothing kept, nothing left behind
     };
@@ -787,7 +792,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
-    ${guest ? null : html`<${UsageRail} route=${nav.route} />`}
+    ${guest ? null : html`<${RightRail} route=${nav.route} />`}
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || guest || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}

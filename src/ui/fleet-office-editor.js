@@ -8,7 +8,7 @@
 // the public link or a read-only session (the host refuses them too).
 import { html, useMemo, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
-import { Dialog } from "/assets/ui-dialog.js";
+import { SidePanel } from "/assets/side-panel.js";
 import { toast } from "/assets/ui-toast.js";
 import { nodeText } from "./fleet-org.js";
 
@@ -191,7 +191,8 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
   };
   const actions = html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${te("cancel")}</button>
     <button type="button" class="btn btn-primary" id="oeSave" onClick=${save} disabled=${busy || !!conflict}>${te("save")}</button>`;
-  return html`<${Dialog} title=${te("title")} onClose=${onClose} actions=${actions} busy=${busy} wide=${true}>
+  // #2585: docked on the right on a wide desk (the page beside it in use); the centred dialog elsewhere.
+  return html`<${SidePanel} title=${te("title")} onClose=${onClose} actions=${actions} busy=${busy}>
     <p class="note">${te("lead")}</p>
     <fieldset class="oe-form" disabled=${busy}>
     ${draft.length ? null : html`<p class="note" id="oeNone">${te("none")}</p>`}
@@ -220,5 +221,5 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
       <button type="button" class="btn btn-sm" id="oeKeepMine" onClick=${keepMine} disabled=${busy}>${te("keepMine")}</button>
       <button type="button" class="btn btn-sm" id="oeLoadTheirs" onClick=${loadTheirs} disabled=${busy}>${te("loadTheirs")}</button>
     </div>` : null}
-  </${Dialog}>`;
+  </${SidePanel}>`;
 }
