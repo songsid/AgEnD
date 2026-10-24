@@ -1,3 +1,4 @@
+import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { mergeSettingsDelta, noteSettingsWrite } from "./settings-transaction.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, copyFileSync, readdirSync, unlinkSync, statSync } from "node:fs";
@@ -57,6 +58,7 @@ export interface ClassicChannel {
   description?: string;
   autoPauseAfter?: number;
   collab?: boolean;
+  replyTriggers?: boolean;
   preTaskCommand?: string;
   contextLines?: number;
   toolProgress?: InstanceConfig["tool_progress"];
@@ -83,6 +85,7 @@ interface ClassicDefaults {
   context_lines?: number;
   tool_progress?: InstanceConfig["tool_progress"];
   reply_completion_guard?: boolean;
+  reply_triggers?: boolean;
   allowed_guilds?: string[];
   admin_users?: string[];
   allowed_groups?: string[];
@@ -107,6 +110,7 @@ interface ClassicBotYaml {
     context_lines?: number;
     tool_progress?: InstanceConfig["tool_progress"];
     reply_completion_guard?: boolean;
+    reply_triggers?: boolean;
     backend_options?: unknown;
     web_echo?: unknown;
     collab?: boolean;
@@ -324,6 +328,7 @@ export class ClassicChannelManager {
               description: val.description,
               autoPauseAfter: val.auto_pause_after,
               collab: val.collab,
+              replyTriggers: val.reply_triggers,
               preTaskCommand: val.pre_task_command,
               contextLines: val.context_lines,
               toolProgress: val.tool_progress,
@@ -434,7 +439,7 @@ export class ClassicChannelManager {
         createdBy: ch.createdBy,
         createdAt: ch.createdAt,
       };
-      for (const key of ["adapterId", "backend", "model", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
+      for (const key of ["adapterId", "backend", "model", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "reply_triggers", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
       if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
@@ -446,6 +451,7 @@ export class ClassicChannelManager {
       if (ch.replyCompletionGuard !== undefined) entry.reply_completion_guard = ch.replyCompletionGuard;
       if (ch.webEcho !== undefined) entry.web_echo = ch.webEcho;            // #2054: an explicit off survives a save
       if (ch.backendOptions && Object.keys(ch.backendOptions).length > 0) entry.backend_options = ch.backendOptions;
+      if (ch.replyTriggers !== undefined) entry.reply_triggers = ch.replyTriggers;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
       obj.channels![this.compositeKey(ch.channelId, ch.adapterId)] = entry as any;
@@ -815,6 +821,17 @@ export class ClassicChannelManager {
       }
     }
     return this.defaults.reply_completion_guard ?? fleetDefault ?? true;
+  }
+
+  /** Room → Classic defaults → fleet default → built-in off; explicit false wins. */
+  getReplyTriggers(channelId: string, adapterId?: string, fleetDefault?: boolean): boolean {
+    return this.find(channelId, adapterId)?.replyTriggers ?? this.defaults.reply_triggers ?? fleetDefault ?? DEFAULT_REPLY_TRIGGERS;
+  }
+
+  getReplyTriggersByInstance(instanceName: string, fleetDefault?: boolean): boolean {
+    const ch = [...this.channels.values()].find(c => c.instanceName === instanceName);
+    return ch ? this.getReplyTriggers(ch.channelId, ch.adapterId, fleetDefault)
+      : this.defaults.reply_triggers ?? fleetDefault ?? DEFAULT_REPLY_TRIGGERS;
   }
 
   /** Get backend for an instance by name */

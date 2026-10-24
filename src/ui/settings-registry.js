@@ -40,6 +40,8 @@ const ROWS = [
   ["defaults.auto-pause", "agent-defaults", "#g-auto", "settings.autoPause", "defaults.auto_pause_after", ["auto pause", "idle", "sleep", "minutes"], ["自動暫停", "閒置", "休眠"]],
   ["defaults.tool-progress", "agent-defaults", "#g-tp", "settings.toolProgress", "defaults.tool_progress", ["tool progress", "verbose", "steps"], ["工具進度", "詳細"]],
   ["defaults.visibility", "agent-defaults", "#g-vis", "settings.crossInstanceVisibility", "defaults.cross_instance_visibility", ["visibility", "bot to bot", "cross instance", "messages"], ["可見性", "bot 之間", "跨 instance"]],
+  ["defaults.reply-triggers", "agent-defaults", "#g-reply-triggers", "settings.replyTriggers", "defaults.reply_triggers", ["classic native reply", "reply trigger"], ["原生回覆觸發"]],
+  ["chat.classic-reply-triggers", "chat", "#g-creply-triggers", "settings.replyTriggers", "classic_defaults.reply_triggers", ["classic native reply"], ["ClassicBot 原生回覆觸發"]],
   ["defaults.reply-guard", "agent-defaults", "#g-reply", "settings.replyCompletionGuard", "defaults.reply_completion_guard", ["delivered reply", "reply guard", "require reply"], ["送達回覆", "回覆保護"]],
   ["defaults.tool-set", "agent-defaults", "#g-ts", "settings.toolSet", "defaults.tool_set", ["tool set", "tools", "mcp"], ["工具組", "工具"]],
   ["defaults.dashboard", "agent-defaults", "#g-dash", "settings.dashboardAccess", "defaults.dashboard", ["dashboard access", "dashboard features", "permissions", "appearance tools", "task board", "web settings"], ["Dashboard 權限", "權限", "外觀", "任務看板", "網頁設定"]],

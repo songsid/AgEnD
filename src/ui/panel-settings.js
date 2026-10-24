@@ -953,7 +953,7 @@ function Classic({ ctx, search, openDialog }) {
 }
 
 /** General's form, from the saved defaults (`d`) and ClassicBot's (`c`). */
-function generalForm(d, c, fleet = {}) {
+function generalForm(d, c, fleet = {}, schema = {}) {
   const hang = d.hang_detector || {}, startup = d.startup || {};
   return {
     backend: d.backend || "claude-code", model: d.model || "", locale: d.locale || "", auto: String(d.auto_pause_after ?? 0),
@@ -966,6 +966,8 @@ function generalForm(d, c, fleet = {}) {
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
     concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
+    replyTriggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default),
+    classicReplyTriggers: Boolean(c.reply_triggers ?? d.reply_triggers ?? schema.reply_triggers_default), classicReplyTriggersInherit: !hasOwn(c, "reply_triggers"),
     classicBackend: c.backend || d.backend || "claude-code",
     classicToolProgress: c.tool_progress ?? d.tool_progress ?? "off", classicToolProgressInherit: !hasOwn(c, "tool_progress"),
     classicReply: c.reply_completion_guard ?? d.reply_completion_guard ?? true, classicReplyInherit: !hasOwn(c, "reply_completion_guard"),
@@ -985,7 +987,7 @@ function General({ ctx, part = "all" }) {
   const hang = d.hang_detector || {}, startup = d.startup || {};
   const primary = channelsOf(ctx.fleet)[0];
   const original = useMemo(() => ({ c: structuredClone(c) }), []);
-  const base = useMemo(() => generalForm(d, c, ctx.fleet), []);
+  const base = useMemo(() => generalForm(d, c, ctx.fleet, schema), []);
   const [f, setF] = useDraft(ctx, "general", () => base);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   /** The class of a field's row: `field`, and `s-dirty` while one of its keys differs from what is saved. */
@@ -1011,7 +1013,7 @@ function General({ ctx, part = "all" }) {
     const defaultsPatch = changedFields({
       backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
       agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
-      reply_completion_guard: f.reply, log_level: f.log_level,
+      reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
       // The dashboard features every agent may use unless its own setting says otherwise. All three go, because the write
       // to the fleet's defaults merges top-level keys only (`dashboard` is replaced whole): the untouched ones as saved.
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, f[`dash_${k}`]])),
@@ -1020,18 +1022,20 @@ function General({ ctx, part = "all" }) {
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
-      cross_instance_visibility: visibilityDefault(d), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
+      cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, dashboardDefault(d, k)])),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
       startup: { ...(startup.concurrency == null ? {} : { concurrency: startup.concurrency }), stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
     });
     const oc = original.c;
     const classicPatch = changedFields({
+      reply_triggers: f.classicReplyTriggersInherit ? null : f.classicReplyTriggers,
       backend: f.classicBackend,
       tool_progress: f.classicToolProgressInherit ? null : f.classicToolProgress,
       reply_completion_guard: f.classicReplyInherit ? null : f.classicReply,
       admin_users: f.admins, allowed_guilds: f.guilds,
     }, {
+      reply_triggers: hasOwn(oc, "reply_triggers") ? oc.reply_triggers : null,
       backend: oc.backend || d.backend || "claude-code",
       tool_progress: hasOwn(oc, "tool_progress") ? oc.tool_progress : null,
       reply_completion_guard: hasOwn(oc, "reply_completion_guard") ? oc.reply_completion_guard : null,
@@ -1054,7 +1058,7 @@ function General({ ctx, part = "all" }) {
   // ClassicBot's inherited ones say what they inherit from Agent defaults.
   const unset = {
     locale: !d.locale, backend: !d.backend, model: !d.model, auto: !hasOwn(d, "auto_pause_after"), tool_progress: !hasOwn(d, "tool_progress"),
-    visibility: !VISIBILITY_MODES.includes(d.cross_instance_visibility), reply: !hasOwn(d, "reply_completion_guard"), tool_set: !d.tool_set,
+    replyTriggers: !hasOwn(d, "reply_triggers"), visibility: !VISIBILITY_MODES.includes(d.cross_instance_visibility), reply: !hasOwn(d, "reply_completion_guard"), tool_set: !d.tool_set,
     log_level: !d.log_level, agent_mode: !d.agent_mode, hangOn: !hasOwn(hang, "enabled"), hang: !hasOwn(hang, "timeout_minutes"),
     concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
   };
@@ -1077,6 +1081,7 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
         <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
+        <div class=${fc("field", "replyTriggers")}><label class="check"><input id="g-reply-triggers" type="checkbox" checked=${f.replyTriggers} onChange=${(e) => set("replyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span>${dm("replyTriggers")}<${Impact} schema=${schema} field="defaults.reply_triggers" /></label><p class="note">${tn("replyTriggersHint")}</p></div>
         <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span>${dm("reply")}<${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
       </div>
@@ -1093,6 +1098,9 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "classicToolProgress", "classicToolProgressInherit")}>${L(tn("toolProgress"), "classic_defaults.tool_progress", "g-ctp")}
           <${Override} inherit=${f.classicToolProgressInherit} onInherit=${set("classicToolProgressInherit")} inherited=${fromDefaults("tool_progress", d.tool_progress ?? "off", "#g-tp")}>
             <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${TOOL_PROGRESS} /></${Override}></div>
+        <div class=${fc("field", "classicReplyTriggers", "classicReplyTriggersInherit")}>${L(tn("replyTriggers"), "classic_defaults.reply_triggers")}
+          <${Override} inherit=${f.classicReplyTriggersInherit} onInherit=${set("classicReplyTriggersInherit")} inherited=${fromDefaults("reply_triggers", Boolean(d.reply_triggers ?? schema.reply_triggers_default), "#g-reply-triggers")}>
+            <label class="check"><input id="g-creply-triggers" type="checkbox" disabled=${f.classicReplyTriggersInherit} checked=${f.classicReplyTriggersInherit ? Boolean(d.reply_triggers ?? schema.reply_triggers_default) : f.classicReplyTriggers} onChange=${(e) => set("classicReplyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>
         <div class=${fc("field", "classicReply", "classicReplyInherit")}>${L(tn("replyCompletionGuard"), "classic_defaults.reply_completion_guard")}
           <${Override} inherit=${f.classicReplyInherit} onInherit=${set("classicReplyInherit")} inherited=${fromDefaults("reply_completion_guard", d.reply_completion_guard ?? true, "#g-reply")}>
             <label class="check"><input id="g-creply" type="checkbox" disabled=${f.classicReplyInherit} checked=${f.classicReplyInherit ? (d.reply_completion_guard ?? true) : f.classicReply} onChange=${(e) => set("classicReply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>

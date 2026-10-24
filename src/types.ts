@@ -202,6 +202,8 @@ export interface InstanceConfig {
    * Default: true.
    */
   reply_completion_guard?: boolean;
+  /** Fleet-wide default for native replies addressing ClassicBot collab rooms. */
+  reply_triggers?: boolean;
   /** Skip non-essential subsystems (transcript monitor, context guardian, approval server, prompt detector) */
   lightweight?: boolean;
   /** System prompt — supports comma-separated file: paths for modularization */

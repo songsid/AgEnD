@@ -316,6 +316,7 @@ templates:
 | `terminal.rows` | number | `36` | 啟用時的高度；整數 `24`–`120` |
 | `mcp_auto_restart` | boolean | `true` | MCP 死亡或 CLI 啟動後 90 秒仍未連線時重啟並 resume；通常等 idle，但有 30 分鐘強制重啟上限；未解決的 auth 問題會抑制自動重啟。`false` 只通知 |
 | `mcp_proxy_reply` | boolean | `false` | 自願啟用：人類回合結束時若 MCP 已死且未送回覆，daemon 將 pane 最後文字轉貼到頻道並標 ⚠️。原始 pane 文字可能洩漏無法完整遮蔽的內容，預設關閉 |
+| `reply_triggers` | boolean | `false` | ClassicBot collab 聊天室的 fleet 預設；開啟後也接受直接回覆該 bot。不改變 fleet-topic 的訊息接收規則 |
 | `reply_completion_guard` | boolean | `true` | 人類回合結束卻未送出回覆時，一次有界的補結論機制；必須有 backend 支援：Claude Code、成功建立的 Kiro legacy/TUI 啟動，以及 Codex 與 Muse（僅限 CLI 自己的紀錄顯示該輪已結束時）；Kiro v3 與其他 backend 不啟用。Classic defaults／個別 channel 也可設定 |
 | `systemPrompt` | string | — | 額外指令：內嵌字串或 `file:path`，透過下方列出的 backend 原生指令路徑載入。相對檔案路徑以 instance 的 `working_directory` 解析；多個部分以逗號連接，見 [features](features.zh-TW.md#systemprompt-檔案路徑-systemprompt-file-paths) |
 | `workflow` | string \| false | `"builtin"` | 工作流程：`"builtin"`、`"file:path"`、內嵌內容或 `false`。可放在 instance 或 `defaults`，不可放在 fleet.yaml 頂層 |
@@ -434,7 +435,8 @@ channels:
 - **自動更新**：`/start` 新增 channel，`/stop` 移除 channel
 - **重新載入**：每 30 秒偵測變更；backend、model、自動暫停或 profile 等啟動設定改變時，會重啟執行中的 agent；支援的執行期設定則直接套用。
 - **Instance 命名**：`classic-<sanitized-channel-name>-<channelId末4碼>`；非主要連線加上經清理的 adapter 後綴。已保存的 `instanceName` 優先，否則由 `name`（未填時為 channel ID）推導，不直接取自任意 YAML key
-- **Discord auto-collab**：`/start` 自動開啟 collab；訊息會記錄為脈絡，但觸發回合仍需 @ bot，或直接回覆該 bot 自己的訊息（#2551；只算一跳：被回覆的訊息若本身是在回覆某個 bot 則不觸發，@ 仍會觸發）
+- **Discord auto-collab**：`/start` 自動開啟 collab；預設只有發送者自己文字中的精確 `<@bot>` 提及才觸發回合。開啟 `reply_triggers` 後，也接受直接回覆該 bot（一跳）；若被回覆的訊息本身是在回覆 bot，仍不觸發。無論此設定開關為何，轉發的 reference 與轉發內容裡的提及都不算對 bot 發話；轉發圖片仍保留作為脈絡。
+- **回覆觸發設定**：**設定 → Agent 預設值** 顯示 fleet 預設（關閉）；**聊天與連線 → ClassicBot 預設值** 與各 ClassicBot 聊天室編輯視窗顯示繼承的有效值及覆寫。變更立即生效，不重啟 agent。例如 `fleet.yaml` 設 `defaults.reply_triggers: true`，仍可在 `classicBot.yaml` 設 `channels.<key>.reply_triggers: false`，讓該聊天室只接受提及。
 - **Fleet `/collab`**：逐 instance 的記憶體開關，fleet 重啟後重置；讓 bot／webhook 訊息通過 fleet topic 的 bot 篩選，不取代存取控制
 - **`agend ls`**：classic instance 會顯示 `(classic)` 標籤
 
@@ -450,6 +452,7 @@ channels:
 | `defaults.allowed_groups` | string[] | 獲准存取的 Telegram 群組 ID（空白／省略會申請核准） |
 | `defaults.allowed_users` | string[] | 獲准新啟動的 Telegram 私訊使用者 ID（空白／省略會申請核准） |
 | `defaults.admin_users` | string[] | Classic 管理者 ID；平台間的指令 gate 不同，見[指令介面矩陣](command-surface.zh-TW.md)。Classic Telegram `/raw` 目前被擋住；Fleet 隱藏 `/raw` 須有 owning bot 的 F |
+| `defaults.reply_triggers` | boolean | channel → Classic defaults → `fleet.yaml` defaults → `false`；控制原生回覆是否觸發 collab 聊天室 |
 | `defaults.reply_completion_guard` | boolean | 個別 channel → Classic defaults → fleet defaults → `true`；仍需上述 backend capability |
 | `channels.<key>.channelId` | string | 真實 channel／chat ID；未填時使用 YAML key |
 | `channels.<key>.name` | string | 顯示名稱；未填時使用 channel ID |
@@ -463,6 +466,7 @@ channels:
 | `channels.<key>.display_name` / `description` | string | Agent 顯示名稱與說明 |
 | `channels.<key>.web_echo` | boolean | 此 ClassicBot 聊天室的 web chat 同步；未設定時依 `web.echo_to_channel`（預設開啟），`false` 讓這個聊天室保持關閉 |
 | `channels.<key>.reply_completion_guard` | boolean | 個別 channel 的人類回覆 guard 覆寫 |
+| `channels.<key>.reply_triggers` | boolean | 個別 collab 聊天室的回覆觸發覆寫；明確的 `false` 可覆蓋已開啟的預設 |
 | `channels.<key>.collab` | boolean | @mention 觸發的協作模式（預設 `false`） |
 | `channels.<key>.pre_task_command` | string | 每次訊息前貼入的原始命令 |
 

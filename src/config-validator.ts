@@ -219,6 +219,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (value.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(value.tool_progress))) {
       err(`${path}.tool_progress`, "must be off, standard, or verbose");
     }
+    if (value.reply_triggers !== undefined && typeof value.reply_triggers !== "boolean") {
+      err(`${path}.reply_triggers`, "must be a boolean");
+    }
     if (value.reply_completion_guard !== undefined && typeof value.reply_completion_guard !== "boolean") {
       err(`${path}.reply_completion_guard`, "must be a boolean");
     }
@@ -626,6 +629,9 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
     if (d.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(d.tool_progress))) {
       err("defaults.tool_progress", "must be off, standard, or verbose");
     }
+    if (d.reply_triggers !== undefined && typeof d.reply_triggers !== "boolean") {
+      err("defaults.reply_triggers", "must be a boolean");
+    }
     if (d.reply_completion_guard !== undefined && typeof d.reply_completion_guard !== "boolean") {
       err("defaults.reply_completion_guard", "must be a boolean");
     }
@@ -646,6 +652,9 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
       if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {
         err(`channels.${key}.tool_progress`, "must be off, standard, or verbose");
+      }
+      if (channel.reply_triggers !== undefined && typeof channel.reply_triggers !== "boolean") {
+        err(`channels.${key}.reply_triggers`, "must be a boolean");
       }
       if (channel.reply_completion_guard !== undefined && typeof channel.reply_completion_guard !== "boolean") {
         err(`channels.${key}.reply_completion_guard`, "must be a boolean");

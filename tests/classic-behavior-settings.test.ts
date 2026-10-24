@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
+import { DEFAULT_REPLY_TRIGGERS } from "../src/reply-triggers.js";
 import { validateClassicBotConfig } from "../src/config-validator.js";
 
 const dirs: string[] = [];
@@ -23,6 +24,20 @@ afterEach(() => {
 });
 
 describe("Classic behavior setting fallback", () => {
+  it("reply triggers default off, inherit fleet/Classic defaults and retain an explicit room false on save/reload", () => {
+    expect(DEFAULT_REPLY_TRIGGERS).toBe(false);
+    expect(manager({}).getReplyTriggers("missing")).toBe(false);
+    expect(manager({}).getReplyTriggers("missing", undefined, true)).toBe(true);
+    expect(manager({ defaults: { reply_triggers: false } }).getReplyTriggers("missing", undefined, true)).toBe(false);
+    const m = manager({ defaults: { reply_triggers: true }, channels: { "123#discord": {
+      channelId: "123", adapterId: "discord", name: "room", instanceName: "classic-one", reply_triggers: false,
+    } } });
+    expect(m.getReplyTriggers("123", "discord", true)).toBe(false);
+    m.toggleCollab("123", "discord");
+    m.reloadFromDisk();
+    expect(m.getReplyTriggersByInstance("classic-one", true)).toBe(false);
+    expect((yaml.load(readFileSync(join(dirs.at(-1)!, "classicBot.yaml"), "utf8")) as any).channels["123#discord"].reply_triggers).toBe(false);
+  });
   it("resolves channel → Classic defaults → fleet defaults with nullish boolean semantics", () => {
     const channels = {
       "123456789012345678#discord": {
@@ -52,10 +67,12 @@ describe("Classic behavior setting fallback", () => {
 
   it("validates both Classic defaults and channel overrides", () => {
     const result = validateClassicBotConfig({
-      defaults: { tool_progress: "chatty", reply_completion_guard: "yes" },
-      channels: { one: { tool_progress: "sometimes", reply_completion_guard: 1 } },
+      defaults: { reply_triggers: "yes", tool_progress: "chatty", reply_completion_guard: "yes" },
+      channels: { one: { reply_triggers: 1, tool_progress: "sometimes", reply_completion_guard: 1 } },
     });
     expect(result.errors.map(error => error.path)).toEqual(expect.arrayContaining([
+      "defaults.reply_triggers",
+      "channels.one.reply_triggers",
       "defaults.tool_progress",
       "defaults.reply_completion_guard",
       "channels.one.tool_progress",

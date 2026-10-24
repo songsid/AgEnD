@@ -119,7 +119,7 @@ describe("the redesigned panel loses nothing", () => {
   it("can still write every ClassicBot channel setting", () => {
     expect(patchKeys("settings-dialogs.js", "const pending = () => changedFields({")).toEqual([
       "auto_pause_after", "backend", "collab", "context_lines", "model",
-      "reply_completion_guard", "tool_progress", "web_echo",
+      "reply_completion_guard", "reply_triggers", "tool_progress", "web_echo",
     ]);
   });
 });

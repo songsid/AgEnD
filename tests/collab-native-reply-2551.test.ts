@@ -22,7 +22,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); vi.restoreAllMocks(); });
 const OPEN = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
 
-function room() {
+function room(replyTriggers = true) {
   const dir = mkdtempSync(join(tmpdir(), "agend-2551-")); dirs.push(dir);
   const fleetPath = join(dir, "fleet.yaml");
   writeFileSync(fleetPath, ["channels:", "  - { id: dc, type: discord, mode: topic, bot_token_env: FAKE_DC, group_id: guild-1, access: { mode: open } }",
@@ -33,7 +33,7 @@ function room() {
   const world = new AdapterWorld("dc", adapter, new AccessManager(OPEN as any, join(dir, "a.json")), fm.fleetConfig.channels[0]);
   world.botUserId = "BOT";
   fm.worlds.set("dc", world);
-  fm.classicChannels = { isCollab: () => true, getInstanceByChannel: () => "classic-room" };
+  fm.classicChannels = { getReplyTriggers: () => replyTriggers, isCollab: () => true, getInstanceByChannel: () => "classic-room" };
   vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
   const forward = vi.fn(async () => {});
   fm.forwardToClassicInstance = forward;
@@ -47,6 +47,13 @@ function room() {
 }
 
 describe("#2551: a native reply to our bot's message is addressed to it (ClassicBot collab)", () => {
+  it.each([false, true])("reply_triggers=%s: replies are opt-in and exact mentions always work", async enabled => {
+    const r = room(enabled);
+    await r.post("native reply", { authorId: "BOT" });
+    expect(r.forward).toHaveBeenCalledTimes(enabled ? 1 : 0);
+    await r.post("<@BOT> explicit mention");
+    expect(r.forward).toHaveBeenCalledTimes(enabled ? 2 : 1);
+  });
   it("bot A's native reply to bot B's message reaches B, with no <@B> in the text", async () => {
     const r = room();
     await r.post("here is the file you asked for", { authorId: "BOT" });

@@ -1,3 +1,4 @@
+import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
@@ -341,6 +342,7 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/api/settings/schema") {
     json(res, 200, {
       ...buildSettingsImpactSchema(),
+      reply_triggers_default: DEFAULT_REPLY_TRIGGERS,
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.
       fleet_signature_mismatch: ctx.fleetSignatureMismatchKeys?.() ?? null,
@@ -1093,6 +1095,7 @@ export function handleSettingsRequest(
       const merged = { ...(classic.defaults as Record<string, unknown> ?? {}), ...body };
       if (body.tool_progress === null) delete merged.tool_progress;
       if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
+      if (body.reply_triggers === null) delete merged.reply_triggers;
       const before = validateClassicBotConfig(classic);
       const after = validateClassicBotConfig({ ...classic, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
@@ -1125,6 +1128,7 @@ export function handleSettingsRequest(
         "model",
         "auto_pause_after",
         "collab",
+        "reply_triggers",
         "context_lines",
         "tool_progress",
         "reply_completion_guard",
@@ -1139,6 +1143,9 @@ export function handleSettingsRequest(
       if (body.auto_pause_after !== undefined && body.auto_pause_after !== null
         && (typeof body.auto_pause_after !== "number" || !Number.isFinite(body.auto_pause_after) || body.auto_pause_after < 0)) {
         return json(res, 400, { error: "auto_pause_after must be a non-negative finite number" });
+      }
+      if (body.reply_triggers !== undefined && body.reply_triggers !== null && typeof body.reply_triggers !== "boolean") {
+        return json(res, 400, { error: "reply_triggers must be a boolean" });
       }
       if (body.collab !== undefined && typeof body.collab !== "boolean") return json(res, 400, { error: "collab must be a boolean" });
       if (body.context_lines !== undefined && (!Number.isInteger(body.context_lines) || (body.context_lines as number) < 0)) {
@@ -1169,6 +1176,7 @@ export function handleSettingsRequest(
       if (body.auto_pause_after === null) delete merged.auto_pause_after;
       if (body.tool_progress === null) delete merged.tool_progress;
       if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
+      if (body.reply_triggers === null) delete merged.reply_triggers;
       (channels as Record<string, unknown>)[key] = merged;
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);

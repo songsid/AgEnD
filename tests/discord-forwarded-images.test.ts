@@ -1,9 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Message } from "discord.js";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Message, MessageReferenceType } from "discord.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
+import { FleetManager } from "../src/fleet-manager.js";
+import { ClassicChannelManager } from "../src/classic-channel-manager.js";
+vi.mock("../src/logger.js", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child() { return this; } }) }));
 import { AccessManager } from "../src/channel/access-manager.js";
 
 /**
@@ -67,6 +70,7 @@ describe("Discord forwarded message images", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await adapter.stop();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -76,6 +80,43 @@ describe("Discord forwarded message images", () => {
     client.emit("messageCreate", msg);
     return seen;
   }
+
+  async function classic(got: any, enabled: boolean) {
+    const fm = new FleetManager(dir) as any;
+    fm.fleetConfig = { defaults: { reply_triggers: enabled }, instances: {} };
+    fm.classicChannels = { isCollab: () => true, getReplyTriggers: () => enabled };
+    const routingAdapter = { react: vi.fn(async () => {}), unreact: vi.fn(async () => {}) };
+    fm.worlds.set("discord", { adapter: routingAdapter, botUserId: "self-bot" });
+    vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
+    fm.saveClassicAttachment = vi.fn(async () => ({ kind: "photo", paths: ["/private/forwarded.png"] }));
+    fm.forwardToClassicInstance = vi.fn(async () => {});
+    await fm.handleClassicChannelMessage("classic-room", got);
+    return fm;
+  }
+
+  it.each([false, true])("reply_triggers=%s: a cross-channel forward of our own bot image is saved but never addressed", async enabled => {
+    for (const bot of [true, false]) {
+      const fetchReference = vi.fn(async () => ({ content: "", author: { id: "self-bot" }, attachments: new FakeCollection<any>() }));
+      const snapshots = new FakeCollection<any>().set("s", { content: "", embeds: [], attachments: new FakeCollection<any>().set("photo", fakeAttachment("photo", "https://cdn.example/photo.png")) });
+      const got = await inbound(fakeMessage({ author: { id: "sender", username: "sender", bot },
+        reference: { type: MessageReferenceType.Forward, channelId: "original-channel", messageId: "our-image" }, fetchReference, messageSnapshots: snapshots }));
+      const fm = await classic(got, enabled);
+      expect(fm.forwardToClassicInstance).not.toHaveBeenCalled();
+      expect(fm.saveClassicAttachment).toHaveBeenCalledOnce();
+      expect(got.attachments).toEqual([expect.objectContaining({ fileId: "photo", kind: "photo" })]);
+      expect([got.replyTo, got.replyToText, got.replyToAuthorId, got.replyToChain]).toEqual([undefined, undefined, undefined, undefined]);
+      expect(fetchReference).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a quoted mention in forwarded text is context, not an authored mention", async () => {
+    const got = await inbound(fakeMessage({ author: { id: "sender", username: "sender", bot: true },
+      reference: { type: MessageReferenceType.Forward, messageId: "our-text" },
+      fetchReference: vi.fn(async () => { throw Error("inaccessible original channel"); }),
+      messageSnapshots: new FakeCollection<any>().set("s", { content: "<@self-bot> original words", embeds: [], attachments: new FakeCollection<any>() }) }));
+    expect(got.text).toContain("<@self-bot>");
+    expect((await classic(got, true)).forwardToClassicInstance).not.toHaveBeenCalled();
+  });
 
   function realDiscordJsForward(content = "look at this"): Message {
     const now = new Date().toISOString();
@@ -273,7 +314,7 @@ describe("Discord forwarded message images", () => {
     ));
     const msg = fakeMessage({
       content: "<@self-bot> please inspect this image",
-      reference: { messageId: "original-message" },
+      reference: { type: MessageReferenceType.Default, messageId: "original-message" },
       fetchReference: async () => ({
         content: "the original image",
         embeds: [],
@@ -303,9 +344,9 @@ describe("Discord forwarded message images", () => {
   // #2551 (Fable r1): a chain is our message having answered a BOT (or this sender), not merely being a reply — a bot's
   // ordinary answer to a person is a native reply too.
   it("a reply carries the referenced message's author, and whether that message itself answered a bot (#2551)", async () => {
-    const ref = (parent?: { mentions?: unknown; fetched?: unknown }) => fakeMessage({ content: "done", reference: { messageId: "b-msg" },
+    const ref = (parent?: { mentions?: unknown; fetched?: unknown }) => fakeMessage({ content: "done", reference: { type: MessageReferenceType.Default, messageId: "b-msg" },
       fetchReference: async () => ({ content: "B said", embeds: [], attachments: new FakeCollection<any>(), author: { id: "bot-b" },
-        ...(parent ? { reference: { messageId: "earlier" }, mentions: parent.mentions ?? {}, fetchReference: async () => parent.fetched } : {}) }) });
+        ...(parent ? { reference: { type: MessageReferenceType.Default, messageId: "earlier" }, mentions: parent.mentions ?? {}, fetchReference: async () => parent.fetched } : {}) }) });
     const plain = await inbound(ref());
     const toPerson = await inbound(ref({ mentions: { repliedUser: { id: "person", bot: false } } }));
     const toBot = await inbound(ref({ mentions: { repliedUser: { id: "bot-c", bot: true } } }));
@@ -315,10 +356,18 @@ describe("Discord forwarded message images", () => {
       .toEqual([["bot-b", undefined], ["bot-b", undefined], ["bot-b", true], ["bot-b", true], ["bot-b", undefined]]);
   });
 
+  it("a Default reply to a forwarded post does not inherit a synthetic reply chain", async () => {
+    const fetchParent = vi.fn(async () => ({ author: { id: "bot-c", bot: true } }));
+    const got = await inbound(fakeMessage({ content: "follow up", reference: { type: MessageReferenceType.Default, messageId: "real-reply" },
+      fetchReference: async () => ({ content: "forwarded post", author: { id: "bot-b" }, attachments: new FakeCollection<any>(),
+        reference: { type: MessageReferenceType.Forward, messageId: "forward-origin" },
+        mentions: { repliedUser: { id: "bot-c", bot: true } }, fetchReference: fetchParent }) }));
+    expect(got.replyToAuthorId).toBe("bot-b"); expect(got.replyToChain).toBeUndefined(); expect(fetchParent).not.toHaveBeenCalled();
+  });
   it("keeps a text-only reply attachment-free", async () => {
     const msg = fakeMessage({
       content: "<@self-bot> follow up",
-      reference: { messageId: "text-message" },
+      reference: { type: MessageReferenceType.Default, messageId: "text-message" },
       fetchReference: async () => ({
         content: "plain original text",
         embeds: [],

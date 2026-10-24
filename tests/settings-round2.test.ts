@@ -51,6 +51,15 @@ function context(dataDir = "/tmp") {
 }
 
 describe("Settings manual lifecycle API", () => {
+  it("saves and validates the fleet-wide Classic reply-trigger default", async () => {
+    const { ctx } = context();
+    for (const value of [true, false]) {
+      const result = await request("/api/settings/fleet/defaults", ctx, "PUT", { reply_triggers: value });
+      expect(result.status).toBe(200);
+      expect(ctx.fleetConfig?.defaults.reply_triggers).toBe(value);
+    }
+    expect((await request("/api/settings/fleet/defaults", ctx, "PUT", { reply_triggers: "yes" })).status).toBe(400);
+  });
   it("persists fleet-level channel access mode and allowed users", async () => {
     const { ctx } = context();
     ctx.fleetConfig!.channels = [{
@@ -419,6 +428,20 @@ describe("Settings classicBot persistence", () => {
   };
   afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
+  it("saves, validates and clears reply_triggers overrides through the Classic settings API", async () => {
+    const dir = makeDir(); const path = join(dir, "classicBot.yaml");
+    writeFileSync(path, yaml.dump({ defaults: {}, channels: { room: { instanceName: "classic-demo-0123", channelId: "123" } } }));
+    const { ctx } = context(dir);
+    for (const value of [true, false, null]) {
+      expect((await request("/api/settings/classic/defaults", ctx, "PUT", { reply_triggers: value })).status).toBe(200);
+      expect((yaml.load(readFileSync(path, "utf8")) as any).defaults.reply_triggers).toBe(value ?? undefined);
+      expect((await request("/api/settings/classic/channels/room", ctx, "PATCH", { reply_triggers: value })).status).toBe(200);
+      expect((yaml.load(readFileSync(path, "utf8")) as any).channels.room.reply_triggers).toBe(value ?? undefined);
+    }
+    expect((await request("/api/settings/classic/defaults", ctx, "PUT", { reply_triggers: "yes" })).status).toBe(400);
+    expect((await request("/api/settings/classic/channels/room", ctx, "PATCH", { reply_triggers: "yes" })).status).toBe(400);
+    expect((await request("/api/settings/schema", ctx, "GET")).body.reply_triggers_default).toBe(false);
+  });
   it("rejects malformed classicBot.yaml without overwriting it", async () => {
     const dir = makeDir();
     const path = join(dir, "classicBot.yaml");

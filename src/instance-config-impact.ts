@@ -31,6 +31,7 @@ export const IMPACT_ORDER: readonly ConfigImpact[] = ["now", "instance", "fleet"
 export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new Set<keyof InstanceConfig>([
   "tool_progress",
   "reply_completion_guard",
+  "reply_triggers",
   "mcp_proxy_reply",
   "resume_interrupted_work",
   "auto_pause_after",
@@ -57,7 +58,7 @@ export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new S
  * drops it here too.
  */
 export const CLASSIC_HOT_CONFIG_KEYS: ReadonlySet<string> = new Set(
-  (["tool_progress", "reply_completion_guard"] as const)
+  (["tool_progress", "reply_completion_guard", "reply_triggers"] as const)
     .filter(key => HOT_INSTANCE_CONFIG_KEYS.has(key)),
 );
 
@@ -75,7 +76,7 @@ const FLEET_SCOPED_INSTANCE_KEYS: ReadonlySet<string> = new Set([
 const INSTANCE_FIELDS = [
   "display_name", "description", "backend", "model", "working_directory",
   "resume_interrupted_work", "auto_pause_after", "warm_cap", "topic_id", "channel_id", "general_topic",
-  "tool_progress", "reply_completion_guard", "mcp_proxy_reply", "log_level",
+  "tool_progress", "reply_completion_guard", "reply_triggers", "mcp_proxy_reply", "log_level",
   "systemPrompt", "tags", "hang_detector", "agent_mode", "tool_set",
   "lightweight", "model_failover", "effort", "pre_task_command",
   // #1005: the status reactions follow at once, but the instructions' avoid
@@ -91,7 +92,7 @@ const INSTANCE_FIELDS = [
 /** ClassicBot channel fields the settings page renders. */
 const CLASSIC_FIELDS = [
   "backend", "model", "auto_pause_after", "tool_progress",
-  "reply_completion_guard", "collab", "context_lines", "pre_task_command",
+  "reply_completion_guard", "reply_triggers", "collab", "context_lines", "pre_task_command",
   "web_echo",
 ] as const;
 
@@ -100,6 +101,7 @@ const CLASSIC_FIELDS = [
  * fleet process or the channel binding rather than to an instance's config.
  */
 const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
+  "defaults.reply_triggers": "now",
   "web.experimental.canvas_worker": "now",
   "web.echo_to_channel": "now",
   "web.log_tab": "now",

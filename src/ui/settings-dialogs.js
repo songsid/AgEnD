@@ -642,6 +642,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
   const inherited = {
     backend: cd.backend || fd.backend || "claude-code", model: cd.model || fd.model || "",
     auto_pause_after: cd.auto_pause_after ?? fd.auto_pause_after ?? 0, tool_progress: cd.tool_progress ?? fd.tool_progress ?? "off",
+    reply_triggers: Boolean(cd.reply_triggers ?? fd.reply_triggers ?? schema.reply_triggers_default),
     reply_completion_guard: cd.reply_completion_guard ?? fd.reply_completion_guard ?? true,
   };
   const c = room;
@@ -649,8 +650,9 @@ export function ClassicDialog({ room, ctx, onClose }) {
     backend: c.backend || inherited.backend, model: c.model || "",
     auto_pause_after: String(c.auto_pause_after ?? inherited.auto_pause_after), tool_progress: c.tool_progress ?? inherited.tool_progress,
     reply_completion_guard: c.reply_completion_guard ?? inherited.reply_completion_guard,
+    reply_triggers: c.reply_triggers ?? inherited.reply_triggers,
     collab: !!c.collab, web_echo: classicWebEchoEffective(c, fleet), context_lines: String(c.context_lines ?? cd.context_lines ?? 5),
-    inherit: { auto_pause_after: !hasOwn(c, "auto_pause_after"), tool_progress: !hasOwn(c, "tool_progress"), reply_completion_guard: !hasOwn(c, "reply_completion_guard") },
+    inherit: { reply_triggers: !hasOwn(c, "reply_triggers"), auto_pause_after: !hasOwn(c, "auto_pause_after"), tool_progress: !hasOwn(c, "tool_progress"), reply_completion_guard: !hasOwn(c, "reply_completion_guard") },
   }));
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   const setInherit = (k) => (on) => setF((x) => ({ ...x, inherit: { ...x.inherit, [k]: on } }));
@@ -664,12 +666,14 @@ export function ClassicDialog({ room, ctx, onClose }) {
       auto_pause_after: f.inherit.auto_pause_after ? null : Number(f.auto_pause_after),
       tool_progress: f.inherit.tool_progress ? null : f.tool_progress,
       reply_completion_guard: f.inherit.reply_completion_guard ? null : f.reply_completion_guard,
+      reply_triggers: f.inherit.reply_triggers ? null : f.reply_triggers,
       collab: f.collab, context_lines: Number(f.context_lines), web_echo: f.web_echo,
     }, {
       backend: c.backend || inherited.backend, model: (c.model && c.model.trim()) || null,
       auto_pause_after: hasOwn(c, "auto_pause_after") ? c.auto_pause_after : null,
       tool_progress: hasOwn(c, "tool_progress") ? c.tool_progress : null,
       reply_completion_guard: hasOwn(c, "reply_completion_guard") ? c.reply_completion_guard : null,
+      reply_triggers: hasOwn(c, "reply_triggers") ? c.reply_triggers : null,
       collab: !!c.collab, context_lines: c.context_lines ?? cd.context_lines ?? 5, web_echo: classicWebEchoEffective(c, fleet),
     });
   const stage = async () => {
@@ -707,6 +711,9 @@ export function ClassicDialog({ room, ctx, onClose }) {
           <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${f.inherit.reply_completion_guard ? inherited.reply_completion_guard : f.reply_completion_guard}
             onChange=${(e) => set("reply_completion_guard")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
         <p class="note">${replyHint(f.backend, classicMode, fd.kiro_ui)}</p></div>
+      <div class="field">${L(tn("replyTriggers"), "classic.reply_triggers")}
+        <${Override} inherit=${f.inherit.reply_triggers} onInherit=${setInherit("reply_triggers")} inherited=${roomInh("reply_triggers", "", "#g-creply-triggers", "#g-reply-triggers")}>
+          <label class="check"><input type="checkbox" disabled=${f.inherit.reply_triggers} checked=${f.inherit.reply_triggers ? inherited.reply_triggers : f.reply_triggers} onChange=${(e) => set("reply_triggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>
       <label class="check"><input type="checkbox" checked=${f.collab} onChange=${(e) => set("collab")(e.target.checked)} /><span>${tn("collabMode")}</span><${Impact} schema=${schema} field="classic.collab" /></label>
       <label class="check"><input type="checkbox" checked=${f.web_echo} onChange=${(e) => set("web_echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="classic.web_echo" /></label>
     </div>

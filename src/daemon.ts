@@ -6853,6 +6853,8 @@ export class Daemon extends EventEmitter {
     if (update.tool_progress === null || ["off", "standard", "verbose"].includes(String(update.tool_progress))) {
       this.updateToolProgress(update.tool_progress === null ? undefined : update.tool_progress as InstanceConfig["tool_progress"]);
     }
+    if (typeof update.reply_triggers === "boolean") this.config.reply_triggers = update.reply_triggers;
+    else if (update.reply_triggers === null) delete this.config.reply_triggers;
     if (typeof update.reply_completion_guard === "boolean") {
       this.config.reply_completion_guard = update.reply_completion_guard;
     } else if (update.reply_completion_guard === null) {

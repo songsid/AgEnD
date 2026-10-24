@@ -260,6 +260,7 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 | `terminal.rows` | number | `36` | Terminal height when enabled; integer `24`–`120`. |
 | `mcp_auto_restart` | boolean | `true` | Restart/resume when MCP dies or never connects within 90 seconds of CLI startup. Normally waits for idle, with a 30-minute forced-restart backstop; unresolved auth trouble suppresses automatic restart. `false` = notify only. |
 | `mcp_proxy_reply` | boolean | `false` | Opt-in: when the MCP server is dead at end of turn and no reply was sent, the daemon relays the pane's final text to the channel (marked ⚠️ as proxy reply). Off by default — raw pane text can leak content redaction doesn't catch. |
+| `reply_triggers` | boolean | `false` | Fleet-wide default for ClassicBot collab rooms: also accept native replies to this bot when enabled. Does not change fleet-topic admission. |
 | `reply_completion_guard` | boolean | `true` | Bounded recovery when a human turn ends without a delivered reply. Requires backend support: Claude Code, successfully built Kiro legacy/TUI launches, Codex and Muse (only when the CLI's own log shows the turn ended); not Kiro v3 or other backends. Also configurable in Classic defaults/per-channel entries. |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
 | `systemPrompt` | string | — | Additional instructions, inline or `file:path`, delivered through the native route below. A relative file path resolves under the instance's `working_directory`; several parts are joined with commas — see [features](features.md#systemprompt-file-paths). |
@@ -423,6 +424,7 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 | `allowed_groups` | string[] | `[]` | Telegram group IDs granted access; empty/unset requests approval |
 | `allowed_users` | string[] | `[]` | Telegram private user IDs granted new starts; empty/unset requests approval |
 | `admin_users` | string[] | `[]` | Classic admin user IDs. Command gates differ by platform; see the [command surface matrix](command-surface.md). Classic Telegram `/raw` is currently blocked; hidden Fleet `/raw` requires the owning bot's F. |
+| `reply_triggers` | boolean | inherited | ClassicBot default: channel → Classic defaults → `fleet.yaml` defaults → `false`. |
 | `reply_completion_guard` | boolean | inherited | Per-channel → Classic defaults → fleet defaults → `true`; requires the backend capability described above. |
 
 New starts: ClassicBot admins (`admin_users`) may start directly. Other callers need an explicit guild/private-user grant; unlisted callers request General approval through **Allow / Allow+admin / Ignore** buttons. Telegram private approvals add the user to `allowed_users`. Telegram group starts still require a ClassicBot admin; Allow grants only the group, while Allow+admin also promotes the requester. Existing registered channels keep working, and Discord DMs remain unsupported. Approval does not start an agent: retry `/start` (groups: `/start@OurBot`).
@@ -444,6 +446,7 @@ New starts: ClassicBot admins (`admin_users`) may start directly. Other callers 
 | `display_name` / `description` | string | — | Agent display label and description |
 | `web_echo` | boolean | unset: follows `web.echo_to_channel` (on) | Copy this ClassicBot room’s web chat to its platform chat; `false` keeps the room off |
 | `reply_completion_guard` | boolean | inherited | Override the human reply guard for this Classic channel |
+| `reply_triggers` | boolean | inherited | Override native-reply triggering for this collab room; explicit `false` overrides an enabled default. |
 | `collab` | boolean | `false` | Collaboration mode (@mention trigger) |
 | `pre_task_command` | string | — | Raw command pasted before each message |
 | `createdBy` | string | — | User ID who created this channel |
@@ -454,7 +457,8 @@ New starts: ClassicBot admins (`admin_users`) may start directly. Other callers 
 - **Backend fallback**: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`
 - **Hot reload**: changes detected every 30 seconds
 - **Instance naming**: `classic-<sanitized-channel-name>-<last4-of-channelId>`, plus a sanitized adapter suffix on non-primary connections. A persisted `instanceName` wins; otherwise the display `name` (or channel ID), rather than an arbitrary YAML key, supplies the name.
-- **DC auto-collab**: Discord `/start` auto-enables collab mode. Messages are logged for context; triggering a turn still requires mentioning the bot, or a native reply to one of its own messages (#2551; one hop: a reply to its message that itself answered a bot does not trigger, a mention does).
+- **DC auto-collab**: Discord `/start` auto-enables collab mode. By default, only an exact `<@bot>` mention in the sender’s own text triggers a turn. Enable `reply_triggers` to also accept a one-hop native reply to that bot; a reply to its message that itself answered a bot still does not trigger. Forward references and mentions inside forwarded content never count as addressing, regardless of this switch. Forwarded images remain available as context.
+- **Reply-trigger Settings**: **Settings → Agent defaults** shows the fleet default (off); **Chat & connections → ClassicBot defaults** and each ClassicBot channel’s edit dialog show inherited effective values and overrides. Changes apply immediately without restarting agents. For example, `fleet.yaml` can set `defaults.reply_triggers: true`, while `classicBot.yaml` sets `channels.<key>.reply_triggers: false` to keep one room mention-only.
 - **Fleet /collab**: per-instance in-memory toggle (non-persistent, resets on fleet restart). Lets bot/webhook messages pass the fleet topic's bot prefilter; it does not replace access control.
 
 ### Telegram ClassicBot commands

@@ -26,7 +26,7 @@ const agentFormKeys = [
 ];
 const classicFormKeys = [
   "auto_pause_after", "backend", "collab", "context_lines", "model",
-  "reply_completion_guard", "tool_progress", "web_echo",
+  "reply_completion_guard", "reply_triggers", "tool_progress", "web_echo",
 ];
 
 /**
@@ -95,6 +95,7 @@ const HOT_KEY_PROBES: Record<string, unknown> = {
   resume_interrupted_work: false,
   tool_progress: "verbose",
   reply_completion_guard: false,
+  reply_triggers: true,
   mcp_proxy_reply: true,
   auto_pause_after: 4,
   warm_cap: 7,
@@ -209,6 +210,7 @@ describe("the classic hot set is derived, not re-listed", () => {
     (fm as unknown as { classicChannels: unknown }).classicChannels = {
       getToolProgressByInstance: () => "standard",
       getReplyCompletionGuardByInstance: () => true,
+      getReplyTriggersByInstance: () => false,
     };
 
     const payload = (fm as unknown as {

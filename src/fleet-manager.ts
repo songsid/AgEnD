@@ -1,3 +1,4 @@
+import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
@@ -5330,6 +5331,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private classicBehaviorUpdate(instanceName: string): Record<string, unknown> {
     return {
+      reply_triggers: this.classicChannels?.getReplyTriggersByInstance(instanceName, this.fleetConfig?.defaults?.reply_triggers) ?? DEFAULT_REPLY_TRIGGERS,
       tool_progress: this.classicChannels?.getToolProgressByInstance(
         instanceName,
         this.fleetConfig?.defaults?.tool_progress,
@@ -18288,8 +18290,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // its ping in the reference, not the text). One hop only: a reply to a message of ours that itself answered a bot
       // (or the sender) is a chain of bots answering each other — a mention still carries it on. A reply to our answer
       // to a person is the ordinary handoff, and is addressed.
-      const repliesToUs = !!adapterBotUserId && msg.replyToAuthorId === adapterBotUserId && msg.replyToChain !== true;
-      const isMentioned = (mentionTag && text.includes(mentionTag)) || repliesToUs;
+      const replyTriggers = this.classicChannels?.getReplyTriggers(channelId, msg.adapterId, this.fleetConfig?.defaults?.reply_triggers) ?? DEFAULT_REPLY_TRIGGERS;
+      const repliesToUs = replyTriggers && !!adapterBotUserId && msg.replyToAuthorId === adapterBotUserId && msg.replyToChain !== true;
+      // Snapshot/quoted content is context, never the forwarder's own mention.
+      const addressText = msg.source === "discord" ? (msg.humanOriginalBody ?? text) : text;
+      const isMentioned = (mentionTag && addressText.includes(mentionTag)) || repliesToUs;
       if (!isMentioned) {
         // Bare attachment (no @mention) — already saved above; just acknowledge.
         if (saved) {

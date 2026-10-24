@@ -242,6 +242,31 @@ describe("Settings P0 redesign shell", () => {
     expect(p.root.querySelector("dialog")!.textContent).toContain("Stored but inactive: kiro-cli in mcp mode does not support reply-drop recovery.");
   });
 
+  it("shows the off fleet reply-trigger default and stages an explicit on", async () => {
+    answer = succeed;
+    await mountSettings("agent-defaults");
+    const box = p.root.querySelector("#g-reply-triggers");
+    expect(box).toBeTruthy(); expect(box.checked).toBe(false);
+    expect(box.parentNode.parentNode.textContent).toContain("Off by default");
+    await check(box, true); await applyStaged();
+    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toMatchObject({ reply_triggers: true });
+  });
+  it("shows Classic reply-trigger inheritance and a room's explicit off can be changed", async () => {
+    w = world({ fleet: { defaults: { reply_triggers: true }, instances: {}, channels: [] },
+      classic: { defaults: {}, channels: { c1: { name: "ops", instanceName: "ops-t9", channelId: "1", reply_triggers: false } } },
+      instances: { "ops-t9": { status: "running", classic: true } } });
+    answer = succeed;
+    await mountSettings("chat");
+    expect(p.root.querySelector("#g-creply-triggers").checked).toBe(true);
+    expect(p.root.querySelector("#g-creply-triggers").disabled).toBe(true);
+    expect(p.root.textContent).toContain("change in Agent defaults");
+    await mountSettings("classic"); await click(button("Settings"));
+    const dlg = p.root.querySelector("dialog");
+    const box = dlg.querySelectorAll("label.check").find((l: any) => l.textContent.includes("Native replies trigger ClassicBot"))?.querySelector("input");
+    expect(box.checked).toBe(false); expect(box.disabled).toBe(false);
+    await check(box, true); await click(button("Done")); await applyStaged();
+    expect(writes().find(s => s.method === "PATCH")?.body).toEqual({ reply_triggers: true });
+  });
   it("surfaces the ClassicBot access and editable channel workflow", async () => {
     w = world({ classic: { channels: { "c1": { name: "ops", instanceName: "ops-t9", backend: "claude-code", model: "claude-opus-5-5", channelId: "1" } }, defaults: {} },
       instances: { "ops-t9": { status: "running", classic: true } } });
