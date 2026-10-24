@@ -182,6 +182,18 @@ describe("Settings: one feature at a time; switching off applies directly, switc
     const form = agentForm(inst, {});
     expect(agentPatch(form, inst, {}, null, null)).toEqual({});                                   // nothing touched, nothing sent
     form.dashboard = { appearance: "inherit", task_board: "off", web_settings: "inherit", office: "inherit" };
-    expect(agentPatch(form, inst, {}, null, null)).toEqual({ dashboard: { appearance: null, task_board: false, web_settings: null, office: null } });
+    expect(agentPatch(form, inst, {}, null, null)).toEqual({ dashboard: { appearance: null, task_board: false, web_settings: null } });
   });
+  it("the Office picker reads and writes the compatible scalar without a dashboard.office key", () => {
+    const inst = { working_directory: "/w", office_access: false };
+    const form = agentForm(inst, { office_access: true });
+    expect(form.dashboard.office).toBe("off");
+    expect(dashboardDefault({ office_access: true }, "office")).toBe(true);
+    expect(agentPatch(form, inst, { office_access: true }, null, null)).toEqual({});
+    form.dashboard.office = "on";
+    expect(agentPatch(form, inst, { office_access: true }, null, null)).toEqual({ office_access: true });
+    form.dashboard.office = "inherit";
+    expect(agentPatch(form, inst, { office_access: true }, null, null)).toEqual({ office_access: null });
+  });
+
 });

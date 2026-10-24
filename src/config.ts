@@ -5,7 +5,7 @@ import { join } from "node:path";
 import yaml from "js-yaml";
 import { unshareParsed } from "./yaml-shared-nodes.js";
 import { getAgendHome, getTmuxSessionName, ensureWorkspaceGit } from "./paths.js";
-import { dashboardSwitches } from "./dashboard-permissions.js";
+import { normalizeOfficeStorage, dashboardSwitches } from "./dashboard-permissions.js";
 import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetDefaults, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
 
 export function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
@@ -181,6 +181,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     return { defaults: {}, instances: {} };
   }
 
+  normalizeOfficeStorage(parsed);
   const fleetDefaults: FleetDefaults = parsed.defaults ?? {};
   const rawInstances = parsed.instances ?? {};
   const instances: Record<string, InstanceConfig> = {};
@@ -189,6 +190,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     // #2391 review: a dashboard switch written as null follows the default (dashboardSwitches), so it never masks it.
     const overrides = written && typeof written === "object" && written.dashboard !== undefined
       ? { ...written, dashboard: dashboardSwitches(written.dashboard) } : written;
+    if (overrides?.office_access === null) delete overrides.office_access;
     const merged = deepMergeGeneric(
       getEffectiveInstanceDefaults(fleetDefaults),
       overrides,

@@ -1,3 +1,4 @@
+import { dashboardAccessOf } from "./dashboard-permissions.js";
 import type { RecoveryLive } from "./working-recovery.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
 import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
@@ -6896,6 +6897,8 @@ export class Daemon extends EventEmitter {
     if (Number.isInteger(update.board_cards_at_once) && (update.board_cards_at_once as number) >= 1) this.config.board_cards_at_once = update.board_cards_at_once as number;
     else if (update.board_cards_at_once === null) delete this.config.board_cards_at_once;
     // The fleet reads it at each tool call; kept current here for the next spawn's tool menu.
+    if (typeof update.office_access === "boolean") this.config.office_access = update.office_access;
+    else if (update.office_access === null) delete this.config.office_access;
     if (update.dashboard && typeof update.dashboard === "object" && !dashboardAccessProblem(update.dashboard)) this.config.dashboard = update.dashboard as InstanceConfig["dashboard"];
     else if (update.dashboard === null) delete this.config.dashboard;
     if (["trace", "debug", "info", "warn", "error"].includes(String(update.log_level))) {
@@ -10866,7 +10869,7 @@ export class Daemon extends EventEmitter {
     mcpEnv.AGEND_TOOL_SET = toolSet;
     // The dashboard features the person switched off: out of the tool menu from this start (the fleet refuses them
     // at once, whatever the menu still shows).
-    const dashboardOff = dashboardFeaturesOff(this.config.dashboard);
+    const dashboardOff = dashboardFeaturesOff(dashboardAccessOf(this.config));
     if (dashboardOff.length) mcpEnv.AGEND_DASHBOARD_OFF = dashboardOff.join(",");
     if (this.config.display_name) mcpEnv.AGEND_DISPLAY_NAME = this.config.display_name;
     if (this.config.description) mcpEnv.AGEND_DESCRIPTION = this.config.description;

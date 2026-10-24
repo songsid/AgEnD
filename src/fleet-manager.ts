@@ -1,3 +1,4 @@
+import { hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
 import { loginNoticeMode, tipNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
@@ -12204,7 +12205,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     normalizeNoticeDelivery(this.fleetConfig);
+    normalizeOfficeStorage(this.fleetConfig);
     explicitPatches = explicitPatches.flatMap(patch => {
+      const path = patch.path;
+      if (path.at(-2) === "dashboard" && path.at(-1) === "office" && !patch.remove) {
+        return [{ ...patch, path: [...path.slice(0, -2), "office_access"] }, { path, remove: true }];
+      }
+      if (path.at(-1) === "dashboard" && patch.value && typeof patch.value === "object" && Object.hasOwn(patch.value, "office")) {
+        const { office, ...dashboard } = patch.value as Record<string, unknown>;
+        return [{ ...patch, value: dashboard }, { path: [...path.slice(0, -1), "office_access"], value: office, remove: office === null }];
+      }
       if (patch.path.join(".") === "web.notify_login" && patch.value === "dm") return [{ ...patch, value: true }, { path: ["web", "notice_delivery", "login"], value: "dm" }];
       if (patch.path.join(".") === "defaults.tips" && patch.value === "dm") return [{ ...patch, value: true }, { path: ["web", "notice_delivery", "tips"], value: "dm" }];
       return [patch];
@@ -12331,7 +12341,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  private migrateOfficeStorage(): void {
+    if (!this.fleetConfig || !this.configPath || !hasLegacyOffice(this.rawFleetConfig) || !validateFleetConfig(this.rawFleetConfig).valid) return;
+    try {
+      this.writeFleetConfigBackup(readFileSync(this.configPath, "utf8"));
+      const patches: RawConfigPatch[] = [];
+      const raw = this.rawFleetConfig as any;
+      for (const [path, item] of [[ ["defaults"], raw.defaults ], ...Object.entries(raw.instances ?? {}).map(([name, value]) => [["instances", name], value])] as Array<[string[], any]>) {
+        if (!item?.dashboard || !Object.hasOwn(item.dashboard, "office")) continue;
+        patches.push({ path: [...path, "dashboard", "office"], remove: true });
+        if (!Object.hasOwn(item, "office_access") && typeof item.dashboard.office === "boolean") patches.push({ path: [...path, "office_access"], value: item.dashboard.office });
+      }
+      this.saveFleetConfig(patches);
+      this.logger.info("Stored Office access outside dashboard for downgrade compatibility");
+    } catch (err) { this.logger.warn({ err }, "Could not migrate Office access; keeping the original file"); }
+  }
+
   private slimFleetConfigAtStartup(): void {
+    this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
     const redundantPaths = collectRedundantInstanceDefaultPaths(this.rawFleetConfig);
     if (redundantPaths.length === 0) return;
@@ -21083,6 +21110,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
 
     if (canvasWorkerEnabled(oldConfig?.web) !== this.canvasWorkerEnabled()) {

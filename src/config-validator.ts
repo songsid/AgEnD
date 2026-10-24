@@ -231,6 +231,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (value.board_cards_at_once !== undefined && !(Number.isInteger(value.board_cards_at_once) && (value.board_cards_at_once as number) >= 1)) {
       err(`${path}.board_cards_at_once`, "must be a whole number of at least 1");
     }
+    if (value.office_access !== undefined && value.office_access !== null && typeof value.office_access !== "boolean") err(`${path}.office_access`, "must be a boolean");
     const dashboardProblem = dashboardAccessProblem(value.dashboard);
     if (dashboardProblem) err(`${path}.dashboard`, dashboardProblem);
 

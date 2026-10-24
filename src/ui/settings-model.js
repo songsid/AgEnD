@@ -50,15 +50,15 @@ export const DASHBOARD_CHOICES = ["inherit", "on", "off"];
 const dashboardOf = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 /** What a feature is for an agent with no setting of its own: the default's, else allowed (off for OFF_UNLESS_ON). */
 export const dashboardDefault = (defaults, feature) => {
-  const v = dashboardOf(defaults && defaults.dashboard)[feature];
+  const v = feature === "office" && defaults && Object.hasOwn(defaults, "office_access") ? defaults.office_access : dashboardOf(defaults && defaults.dashboard)[feature];
   return OFF_UNLESS_ON.includes(feature) ? v === true : v !== false;
 };
 export function dashboardForm(inst) {
-  const own = dashboardOf(inst.dashboard);
+  const own = { ...dashboardOf(inst.dashboard), ...(Object.hasOwn(inst, "office_access") ? { office: inst.office_access } : {}) };
   return Object.fromEntries(DASHBOARD_FEATURES.map((f) => [f, own[f] === true ? "on" : own[f] === false ? "off" : "inherit"]));
 }
 export function dashboardPatchValue(choices) {
-  return Object.fromEntries(DASHBOARD_FEATURES.map((f) => [f, choices[f] === "on" ? true : choices[f] === "off" ? false : null]));
+  return Object.fromEntries(DASHBOARD_FEATURES.filter((f) => f !== "office").map((f) => [f, choices[f] === "on" ? true : choices[f] === "off" ? false : null]));
 }
 
 /** #1302: cross-instance notices. Unset, or a value the fleet does not know, means full. */
@@ -181,6 +181,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     display_name: form.inherit.display_name ? null : form.display_name.trim(),
     status_emojis: form.status_emojis,
     dashboard: dashboardPatchValue(form.dashboard),
+    office_access: form.dashboard.office === "on" ? true : form.dashboard.office === "off" ? false : null,
   };
   return changedFields(next, {
     backend: inst.backend || defaults.backend || "claude-code",
@@ -204,6 +205,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     display_name: hasOwn(inst, "display_name") ? inst.display_name : null,
     status_emojis: statusEmojisBaseline,
     dashboard: dashboardPatchValue(dashboardForm(inst)),
+    office_access: dashboardForm(inst).office === "on" ? true : dashboardForm(inst).office === "off" ? false : null,
   });
 }
 

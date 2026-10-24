@@ -196,6 +196,10 @@ if (phase === 'create') {
   assert.equal(validateFleetConfig(notices).valid, true);
   writeFileSync(join(scratch, 'notice-fleet.yaml'), yaml.dump(notices));
   checks.push('DM notice config producer writes downgrade-safe boolean fields');
+  const { normalizeOfficeStorage } = await load('dashboard-permissions.js');
+  const office = { defaults: { dashboard: { office: true } }, instances: { officeAgent: { working_directory: scratch, dashboard: { office: false } } } };
+  normalizeOfficeStorage(office);
+  writeFileSync(join(scratch, 'office-fleet.yaml'), yaml.dump(office));
   writeFileSync(statePath, JSON.stringify(state));
 } else if (phase === 'old') {
   checked('old recovery keeps begun work fenced and requeues only unbegun claims', () => {
@@ -238,6 +242,12 @@ if (phase === 'create') {
     assert.ok(events.listActivity().some(row => row.event === 'new-activity'));
     const reaction = events.pendingReactions('scratch'); assert.ok(reaction); events.markReactionsConsumed('scratch', reaction.maxId);
     events.insert('scratch', 'old-event', { sentinel: 43 });
+  });
+  checked('Office switches validate in the published old package outside the closed dashboard map', () => {
+    const path = join(scratch, 'office-fleet.yaml'), raw = loadRawFleetConfig(path), old = loadFleetConfig(path);
+    assert.equal(validateFleetConfig(raw).valid, true);
+    assert.equal(old.defaults.office_access, true); assert.equal(old.instances.officeAgent.office_access, false);
+    writeFileSync(path, yaml.dump(old));
   });
   checked('DM notice config validates in the published old package and survives its normalized rewrite', () => {
     const path = join(scratch, 'notice-fleet.yaml');
@@ -284,6 +294,12 @@ if (phase === 'create') {
   writeFileSync(statePath, JSON.stringify(state));
 } else {
   const { loginNoticeMode, tipNoticeMode } = await load('notice-delivery.js');
+  checked('Office on/off switches survive the published old config round trip', () => {
+    const config = loadFleetConfig(join(scratch, 'office-fleet.yaml'));
+    assert.equal(validateFleetConfig(config).valid, true);
+    assert.equal(config.defaults.office_access, true); assert.equal(config.instances.officeAgent.office_access, false);
+    assert.equal(config.defaults.dashboard?.office, undefined); assert.equal(config.instances.officeAgent.dashboard?.office, undefined);
+  });
   checked('DM notice preferences survive the published old config round trip', () => {
     const config = loadFleetConfig(join(scratch, 'notice-fleet.yaml'));
     assert.equal(validateFleetConfig(config).valid, true);

@@ -1,3 +1,4 @@
+import { officeInputPatch } from "./dashboard-permissions.js";
 import { setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
@@ -982,7 +983,7 @@ export function handleSettingsRequest(
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
       const restored = restoreRedactedSecrets(body, cfg.defaults);
       if ("path" in restored) return json(res, 400, { error: `redacted value has no stored credential: defaults.${restored.path}` });
-      const merged = { ...cfg.defaults, ...restored.value };
+      const merged = { ...cfg.defaults, ...officeInputPatch(restored.value) };
       // #1310: locale:null means "clear the key" (user chose Auto). Mirrors
       // how the instance save handles model ("" → delete) and nullable overrides.
       if (body.locale === null || body.locale === "") delete (merged as Record<string, unknown>).locale;
@@ -1362,7 +1363,7 @@ export function handleSettingsRequest(
     const base = (exists ? cfg!.instances[name] : {}) as Record<string, unknown>;
     const restored = restoreRedactedSecrets(body as Record<string, unknown>, base);
     if ("path" in restored) { json(res, 400, { error: `redacted value has no stored credential: instances.${name}.${restored.path}` }); return; }
-    const patch = restored.value;
+    const patch = officeInputPatch(restored.value);
     let mergedInst: Record<string, any>;
     try { mergedInst = normalizeSettingsInstancePatch(base, patch); }
     catch { json(res, 400, { error: "unsupported_instance_null" }); return; }

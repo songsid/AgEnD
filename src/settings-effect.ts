@@ -1,3 +1,4 @@
+import { officeInputPatch } from "./dashboard-permissions.js";
 import { setNoticeMode } from "./notice-delivery.js";
 import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
@@ -75,7 +76,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     before.fleet.channels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []); delete before.fleet.channel;
   } else if (path === "/api/settings/fleet/defaults") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
-    after.fleet.defaults = { ...cfg.defaults, ...record(body) };
+    after.fleet.defaults = { ...cfg.defaults, ...officeInputPatch(record(body)) };
     if (typeof record(body).tips === "boolean" || record(body).tips === "dm") setNoticeMode(after.fleet, "tips", record(body).tips);
     if (after.fleet.defaults.locale === null || after.fleet.defaults.locale === "") delete after.fleet.defaults.locale;
     if (after.fleet.defaults.tool_set === null || after.fleet.defaults.tool_set === "") delete after.fleet.defaults.tool_set;

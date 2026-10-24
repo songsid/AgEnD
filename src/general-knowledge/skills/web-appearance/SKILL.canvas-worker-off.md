@@ -269,7 +269,7 @@ Then stars on a click, alongside: `set_web_ambient { "preset": "burst-on-click",
 ## Your character in the Office view
 
 Fleet → Org chart → **Office** draws the fleet as an office, with a little character per agent placed by its state.
-When a person switches the **office** dashboard feature on for you (`dashboard.office: true`; off until then — the tools
+When a person switches the **office** dashboard feature on for you (`office_access: true`; off until then — the tools
 are not in your list), you can direct your own character for a moment:
 
 - `office_view { office? }`: the stored offices you are in — each `{ id, name, skin, members: [{ name, display_name?,

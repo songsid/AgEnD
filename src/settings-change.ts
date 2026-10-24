@@ -7,7 +7,7 @@ import { quickLinkEffective } from "./authority/web-authority.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
-import { DASHBOARD_FEATURES, dashboardFeatureDefault } from "./dashboard-permissions.js";
+import { DASHBOARD_FEATURES, dashboardFeatureDefault, officeAccessValue } from "./dashboard-permissions.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -263,6 +263,7 @@ function visibilityWidening(before: unknown, after: unknown): string[] {
 const DASHBOARD = "dashboard";
 /** The defaults' or an agent's dashboard switches, whole or one feature: judged by dashboardWidening, not key by key. */
 const dashboardPath = (path: readonly string[]): boolean =>
+  (path.at(-1) === "office_access" && (path.at(-2) === "defaults" || path.at(-3) === "instances")) ||
   (path.at(-1) === DASHBOARD && (path.at(-2) === "defaults" || path.at(-3) === "instances"))
   || (path.at(-2) === DASHBOARD && (path.at(-3) === "defaults" || path.at(-4) === "instances"));
 /**
@@ -280,28 +281,29 @@ function dashboardWidening(before: unknown, after: unknown): string[] {
     for (const k of Object.keys(switches(f?.defaults?.[DASHBOARD]))) features.add(k);
     for (const inst of Object.values(object(f?.instances) ? f!.instances : {})) for (const k of Object.keys(switches(object(inst) ? inst[DASHBOARD] : undefined))) features.add(k);
   }
-  const fallback = (f: Record<string, any> | null, feature: string): unknown => switches(f?.defaults?.[DASHBOARD])[feature];
-  const own = (f: Record<string, any> | null, name: string, feature: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? switches(f!.instances[name][DASHBOARD])[feature] : undefined);
+  const fallback = (f: Record<string, any> | null, feature: string): unknown => feature === "office" ? officeAccessValue(f?.defaults) : switches(f?.defaults?.[DASHBOARD])[feature];
+  const own = (f: Record<string, any> | null, name: string, feature: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? (feature === "office" ? officeAccessValue(f!.instances[name]) : switches(f!.instances[name][DASHBOARD])[feature]) : undefined);
   const on = (v: unknown, inherited: boolean): boolean => (typeof v === "boolean" ? v : inherited);
   const line = (label: string, from: unknown, to: unknown) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
   // A value the validator would refuse (not a boolean, or no such feature) is never applied quietly.
   const odd = (v: unknown, feature: string) => v !== undefined && v !== null && (typeof v !== "boolean" || !(DASHBOARD_FEATURES as readonly string[]).includes(feature));
   for (const feature of features) {
+    const key = feature === "office" ? "office_access" : `${DASHBOARD}.${feature}`;
     const defA = fallback(a, feature), defB = fallback(b, feature), unset = dashboardFeatureDefault(feature);
     const inheritors: string[] = [];
     for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
       if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
       const raw = own(a, name, feature), ownChanged = !same(raw, own(b, name, feature));
-      if (ownChanged && odd(raw, feature)) { line(`instances.${name}.${DASHBOARD}.${feature}`, own(b, name, feature) ?? "default", raw); continue; }
+      if (ownChanged && odd(raw, feature)) { line(`instances.${name}.${key}`, own(b, name, feature) ?? "default", raw); continue; }
       const was = on(own(b, name, feature), on(defB, unset)), now = on(raw, on(defA, unset));
       if (was || !now) continue;
-      if (ownChanged) line(`instances.${name}.${DASHBOARD}.${feature} (in effect)`, false, true);
+      if (ownChanged) line(`instances.${name}.${key} (in effect)`, false, true);
       else inheritors.push(name);
     }
     const shown = 5, more = inheritors.length > shown ? ` +${inheritors.length - shown} more` : "";
     const who = inheritors.length ? ` — ${inheritors.length} agent(s) inherit it: ${settingsDisplay(inheritors.slice(0, shown).join(", "))}${more}` : "";
-    if (odd(defA, feature) && !same(defA, defB)) out.unshift(`${settingsDisplay(`defaults.${DASHBOARD}.${feature}`)}: ${settingsDisplay(defB ?? "default")} → ${settingsDisplay(defA)}${who}`);
-    else if ((on(defA, unset) && !on(defB, unset)) || inheritors.length) out.unshift(`${settingsDisplay(`defaults.${DASHBOARD}.${feature} (in effect)`)}: ${settingsDisplay(on(defB, unset))} → ${settingsDisplay(on(defA, unset))}${who}`);
+    if (odd(defA, feature) && !same(defA, defB)) out.unshift(`${settingsDisplay(`defaults.${key}`)}: ${settingsDisplay(defB ?? "default")} → ${settingsDisplay(defA)}${who}`);
+    else if ((on(defA, unset) && !on(defB, unset)) || inheritors.length) out.unshift(`${settingsDisplay(`defaults.${key} (in effect)`)}: ${settingsDisplay(on(defB, unset))} → ${settingsDisplay(on(defA, unset))}${who}`);
   }
   return out;
 }

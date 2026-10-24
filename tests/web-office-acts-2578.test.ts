@@ -101,7 +101,7 @@ describe("the `office` feature: off unless set true", () => {
     expect(dashboardFeaturesOff({ office: null })).toEqual(["office"]);
     expect(dashboardFeaturesOff({ office: false, task_board: false })).toEqual(["task_board", "office"]);
     expect(dashboardFeaturesOff({ office: true })).toEqual([]);
-    expect(dashboardRefusal({}, "office_set")).toMatch(/office_set is not available.*"office" is off until the person switches it on \(dashboard\.office: true\).*Do not retry/);
+    expect(dashboardRefusal({}, "office_set")).toMatch(/office_set is not available.*"office" is off until the person switches it on \(office_access: true\).*Do not retry/);
     expect(dashboardRefusal({ office: true }, "office_view")).toBeNull();
     // Its own switch, else the default's.
     const fleet = { defaults: { dashboard: { office: true } }, instances: { a: { dashboard: { office: false } }, b: {} } };
@@ -120,7 +120,7 @@ describe("the `office` feature: off unless set true", () => {
       logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() }, canvasWorkerEnabled: () => false };
     const check = (FleetManager.prototype as any).checkToolPermission.bind(fm);
     expect(check("ipc-typed", "dev", "office_set")).toEqual({ allowed: false, message: dashboardRefusal({}, "office_set") });
-    fm.fleetConfig.instances.dev.dashboard = { office: true };
+    fm.fleetConfig.instances.dev.office_access = true;
     expect(check("ipc-typed", "dev", "office_set").allowed).toBe(true);
 
     const handled = vi.fn(async () => ({ offices: [] }));
@@ -129,7 +129,7 @@ describe("the `office` feature: off unless set true", () => {
     const err = await dispatchAgentOperation(ctx as never, "dev", "office-view", {}).catch(e => e as Error);
     expect(err).toBeInstanceOf(ToolNotPermittedError);
     expect(handled).not.toHaveBeenCalled();
-    ctx.fleetConfig.instances.dev.dashboard = { office: true };
+    ctx.fleetConfig.instances.dev.office_access = true;
     await expect(dispatchAgentOperation(ctx as never, "dev", "office-set", { say: "hi" })).resolves.toEqual({ offices: [] });
     expect(handled).toHaveBeenCalledWith("dev", "office_set", { say: "hi" });
   }, 30_000);
@@ -141,10 +141,10 @@ describe("the `office` feature: off unless set true", () => {
       instances: { dev: { working_directory: "/tmp/dev" } as Record<string, any> } });
     const gate = (path: string, method: string, body: unknown, cfg: any) => { const { diff } = prepareSettingsEffect(method, path, body, { config: cfg, classic: {} }); return diff ? [...diff.summary] : "direct"; };
     expect(gate("/api/settings/fleet/instances/dev", "PATCH", { dashboard: { office: true } }, config()))
-      .toEqual([expect.any(String), "instances.dev.dashboard.office \\(in effect\\): false → true"]);
+      .toEqual([expect.any(String), "instances.dev.office\\_access \\(in effect\\): false → true"]);
     expect(gate("/api/settings/fleet/instances/dev", "PATCH", { dashboard: { office: false } }, config())).toBe("direct");
     expect(gate("/api/settings/fleet/defaults", "PUT", { dashboard: { office: true } }, config()))
-      .toEqual([expect.any(String), expect.stringMatching(/^defaults\.dashboard\.office \\\(in effect\\\): false → true — 1 agent\(s\) inherit it: dev/)]);
+      .toEqual([expect.any(String), expect.stringMatching(/^defaults\.office\\_access \\\(in effect\\\): false → true — 1 agent\(s\) inherit it: dev/)]);
   });
 
   it("the settings labels, in English and zh-TW", () => {

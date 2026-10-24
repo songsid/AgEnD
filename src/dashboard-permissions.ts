@@ -7,7 +7,7 @@
  * - `appearance`: its own look on the dashboard — theme, pictures, widgets, ambient, effects, mods it proposes;
  * - `task_board`: the task board (`task`, and `agend task …`);
  * - `web_settings`: Settings → Web appearance for the person (`get_web_settings`, `set_web_settings`);
- * - `office` (#2578): its own character in Fleet → Org chart → Office — walking, a speech bubble, a pose
+ * - `office` (#2578), stored separately as `office_access`: its own character in Fleet → Org chart → Office — walking, a speech bubble, a pose
  *   (`office_view`, `office_set`).
  *
  * Unset is allowed: a fleet that switches nothing off works as before, and the profile still decides what an agent
@@ -70,7 +70,7 @@ function refusalFor(off: readonly DashboardFeature[], tool: string): string | nu
   const feature = dashboardFeatureOf(tool);
   if (!feature || !off.includes(feature)) return null;
   if (OFF_UNLESS_ON.has(feature)) {
-    return `${tool} is not available to this instance: its dashboard feature "${feature}" is off until the person switches it on (dashboard.${feature}: true). `
+    return `${tool} is not available to this instance: its dashboard feature "${feature}" is off until the person switches it on (${feature === "office" ? "office_access" : `dashboard.${feature}`}: true). `
       + "Do not retry it; tell the person if you need it.";
   }
   return `${tool} is not available to this instance: the person switched its dashboard feature "${feature}" off (dashboard.${feature}: false). `
@@ -122,6 +122,41 @@ export function dashboardSwitches(value: unknown): DashboardAccess {
   return out;
 }
 
+/** Office lives beside dashboard so published rollback validators never see a new feature in that closed map. */
+export function officeAccessValue(config: any): unknown {
+  return config && Object.hasOwn(config, "office_access") ? config.office_access : config?.dashboard?.office;
+}
+export function dashboardAccessOf(config: any): DashboardAccess {
+  const access = dashboardSwitches(config?.dashboard), office = officeAccessValue(config);
+  delete access.office;
+  if (typeof office === "boolean") access.office = office;
+  return access;
+}
+/** Transitional dashboard.office input is accepted, but never written by a managed save. Canonical values win. */
+export function normalizeOfficeStorage(fleet: any): void {
+  for (const config of [fleet?.defaults, ...Object.values(fleet?.instances ?? {})]) {
+    if (!config || typeof config !== "object" || Array.isArray(config)) continue;
+    const item = config as Record<string, any>;
+    if (!item.dashboard || typeof item.dashboard !== "object" || !Object.hasOwn(item.dashboard, "office")) continue;
+    if (!Object.hasOwn(item, "office_access") && typeof item.dashboard.office === "boolean") item.office_access = item.dashboard.office;
+    const { office: _office, ...dashboard } = item.dashboard;
+    item.dashboard = dashboard;
+  }
+}
+/** Accept an older Settings client, but project/save its Office edit using the canonical field. */
+export function officeInputPatch(value: Record<string, any>): Record<string, any> {
+  const result = { ...value };
+  if (value.dashboard && typeof value.dashboard === "object" && !Array.isArray(value.dashboard) && Object.hasOwn(value.dashboard, "office")) {
+    const { office, ...dashboard } = value.dashboard;
+    result.dashboard = dashboard;
+    if (!Object.hasOwn(value, "office_access")) result.office_access = office;
+  }
+  return result;
+}
+export function hasLegacyOffice(fleet: any): boolean {
+  return [fleet?.defaults, ...Object.values(fleet?.instances ?? {})].some((item: any) => item?.dashboard && Object.hasOwn(item.dashboard, "office"));
+}
+
 /**
  * The features switched off in a fleet config for `name`: each feature's own switch where the instance has one, else
  * the default's, else allowed (off for OFF_UNLESS_ON). `name` with no own `instances` entry (a ClassicBot identity) gets the defaults'.
@@ -130,7 +165,7 @@ export function dashboardFeaturesOffIn(fleet: unknown, name: string): DashboardF
   const f = fleet && typeof fleet === "object" ? fleet as { defaults?: { dashboard?: unknown }; instances?: Record<string, { dashboard?: unknown } | undefined> } : {};
   const instances = f.instances && typeof f.instances === "object" ? f.instances : {};
   const inst = Object.hasOwn(instances, name) ? instances[name] : undefined;            // a name is a key of its own, never an inherited one
-  return dashboardFeaturesOff({ ...dashboardSwitches(f.defaults?.dashboard), ...dashboardSwitches(inst?.dashboard) });
+  return dashboardFeaturesOff({ ...dashboardAccessOf(f.defaults), ...dashboardAccessOf(inst) });
 }
 
 /**

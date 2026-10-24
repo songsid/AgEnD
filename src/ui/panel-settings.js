@@ -1022,14 +1022,16 @@ function General({ ctx, part = "all" }) {
       tips: noticeMode(f.tips), reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
       // The dashboard features every agent may use unless its own setting says otherwise. All of them go, because the write
       // to the fleet's defaults merges top-level keys only (`dashboard` is replaced whole): the untouched ones as saved.
-      dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, f[`dash_${k}`]])),
+      dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => k !== "office").map((k) => [k, f[`dash_${k}`]])),
+      office_access: f.dash_office,
       hang_detector: { enabled: f.hangOn, timeout_minutes: num(f.hang) },
       startup: { ...(f.concurrency.trim() === "" ? {} : { concurrency: num(f.concurrency) }), stagger_delay_ms: num(f.stagger) },
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
       tips: configuredNoticeMode(d.tips, ctx.fleet.web?.notice_delivery?.tips), cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
-      dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, dashboardDefault(d, k)])),
+      dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => k !== "office").map((k) => [k, dashboardDefault(d, k)])),
+      office_access: dashboardDefault(d, "office"),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
       startup: { ...(startup.concurrency == null ? {} : { concurrency: startup.concurrency }), stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
     });
