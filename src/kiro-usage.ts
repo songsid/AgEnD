@@ -38,8 +38,8 @@ const modelOf = (info: unknown): string => {
   const m = at(info, "model_id");
   return typeof m === "string" && m.trim() ? m : "unknown";
 };
-const turn = (t: number, model: string, input: number, read: number, output: number): Turn =>
-  ({ t, model, prompt: input + read, uncached: input, read, write5m: 0, write1h: 0, write: null, output });
+const turn = (t: number, model: string, input: number, read: number, output: number, requests = 1): Turn =>
+  ({ t, model, prompt: input + read, uncached: input, read, write5m: 0, write1h: 0, write: null, output, ...(requests > 1 ? { requests } : {}) });
 
 /** The classic store's tool results: the bytes of every `Text`/`text` string inside, else of the whole JSON. */
 function classicToolResultBytes(value: unknown): number {
@@ -87,7 +87,8 @@ export function kiroClassicTurns(conversation: unknown, after: number): KiroClas
     const read = realRead ?? (realInput === null ? Math.max(context - fresh, 0) : 0);
     const output = realOutput ?? estimate(count(meta.response_size) ?? 0);
     if (input + output === 0) return;
-    out.push({ ...turn(t, model, input, read, output), index });
+    const requests = positive(meta.request_count) ?? positive(meta.user_turn_request_count) ?? positive(meta.total_request_count) ?? 1;
+    out.push({ ...turn(t, model, input, read, output, requests), index });
   });
   return out;
 }
@@ -196,7 +197,7 @@ export function kiroTuiTurns(session: unknown, jsonlLines: Iterable<string>, aft
     const responseBytes = positive(at(tm, "assistant_response_length"));
     const output = realOutput ?? estimate(responseBytes ?? assistant);
     if (input + output === 0) return;
-    out.push({ ...turn(t, model, input, read, output), index });
+    out.push({ ...turn(t, model, input, read, output, positive(at(tm, "total_request_count")) ?? 1), index });
   });
   return out;
 }
@@ -213,10 +214,10 @@ export function kiroTuiTurns(session: unknown, jsonlLines: Iterable<string>, aft
 export function kiroKasTurns(session: unknown, jsonlLines: Iterable<string>, after: number, classicTimes: readonly number[] = []): Turn[] {
   const model = typeof at(session, "modelId") === "string" && String(at(session, "modelId")).trim() ? String(at(session, "modelId")) : "unknown";
   const created = v3Time(at(session, "createdAt"));
-  type T = { prompt: number; assistant: number; tools: number; pct: number; promptAt: number | null; endAt: number | null; elapsed: number | null };
+  type T = { prompt: number; assistant: number; tools: number; pct: number; promptAt: number | null; endAt: number | null; elapsed: number | null; requests: number };
   const turns: T[] = [];
   let cur: T | null = null;
-  const fresh = (): T => ({ prompt: 0, assistant: 0, tools: 0, pct: 0, promptAt: null, endAt: null, elapsed: null });
+  const fresh = (): T => ({ prompt: 0, assistant: 0, tools: 0, pct: 0, promptAt: null, endAt: null, elapsed: null, requests: 0 });
   const close = (): void => { if (cur && (cur.prompt || cur.assistant || cur.tools)) turns.push(cur); cur = null; };
   for (const line of jsonlLines) {
     let e: unknown;
@@ -230,11 +231,17 @@ export function kiroKasTurns(session: unknown, jsonlLines: Iterable<string>, aft
       case "assistant": if (cur) cur.assistant += text; break;
       case "tool_result": cur ??= fresh(); cur.tools += text; break;
       case "session_metadata": { const pct = count(at(p, "value", "usagePercentage")); if (p.key === "contextUsage" && cur && pct !== null) cur.pct = pct; break; }
-      case "usage_summary": { const el = count(p.elapsedTime); if (cur && el !== null) cur.elapsed = el; break; }
+      case "usage_summary": {
+        const el = count(p.elapsedTime);
+        if (cur && el !== null) cur.elapsed = el;
+        if (cur && Array.isArray(p.requestIds)) cur.requests = p.requestIds.length;
+        break;
+      }
       case "turn_end": if (cur) cur.endAt = ts; close(); break;
     }
   }
-  close();
+  // A turn still being written (no turn_end yet) is not counted now: counted unfinished, the rest of it would come after
+  // the cursor's `after` and never be added. It is counted, whole, once it ends.
   const out: Turn[] = [];
   for (const t of turns) {
     const at0 = t.promptAt ?? t.endAt;
@@ -246,7 +253,7 @@ export function kiroKasTurns(session: unknown, jsonlLines: Iterable<string>, aft
     const read = Math.max((t.pct > 0 ? Math.floor(KIRO_DEFAULT_WINDOW * t.pct / 100) : 0) - input, 0);
     const output = estimate(t.assistant);
     if (input + output === 0) continue;
-    out.push(turn(at0, model, input, read, output));
+    out.push(turn(at0, model, input, read, output, Math.max(1, t.requests)));
   }
   return out;
 }

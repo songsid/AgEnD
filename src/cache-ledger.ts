@@ -38,7 +38,7 @@ export interface Turn {
   output: number;
   /** The part of `output` the CLI reports as reasoning (Codex `reasoning_output_tokens`); absent or 0 where none is. */
   reasoning?: number;
-  /** The model calls this record covers (Grok's `modelCalls`); absent: one. */
+  /** The model requests this record covers (a Kiro turn's `total_request_count`, Grok's `modelCalls`); absent: one. */
   requests?: number;
   /** What the CLI itself reported the request cost, USD (Grok's `costUsdTicks` × 1e-10); absent: not reported. */
   cost?: number;
