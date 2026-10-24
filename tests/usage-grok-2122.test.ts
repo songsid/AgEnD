@@ -76,6 +76,19 @@ describe("in the usage report", () => {
     await svc.pass(); await svc.pass();
     expect(report(await svc.usageData()).rows[0]!.requests).toBe(8);
   });
+  it("a listing that fails keeps the cursors: listed again, nothing is counted twice", async () => {
+    const s = setup();
+    s.write(s.cwd, "sess-1", [completed(T(9), "p1")]);
+    const svc = s.svc();
+    await svc.pass();
+    const dir = join(s.root, "grok-sessions", encodeURIComponent(s.cwd));
+    const { renameSync } = await import("node:fs");
+    renameSync(dir, `${dir}.away`); writeFileSync(dir, "not a directory");        // there, and not listable
+    await svc.pass();
+    rmSync(dir); renameSync(`${dir}.away`, dir);
+    await svc.pass(); await svc.pass();
+    expect(report(await svc.usageData()).rows[0]!.requests).toBe(4);
+  });
   it("the reported cost survives the ledger's round trip and the rollup; an older reader keeps the totals", async () => {
     const s = setup();
     s.write(s.cwd, "sess-1", [completed(T(9), "p1")]);

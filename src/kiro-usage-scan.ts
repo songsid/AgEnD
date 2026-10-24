@@ -97,7 +97,8 @@ export function scanKiroUsage(input: KiroScanInput): KiroScanOutput {
       const known = input.tuiIndex[path];
       let cwd = known?.sig === s.sig ? known.cwd : undefined;
       if (cwd === undefined) {
-        try { const v = JSON.parse(readFileSync(path, "utf8")) as { cwd?: unknown }; cwd = typeof v.cwd === "string" ? v.cwd : null; }
+        const text = readFileSync(path, "utf8");                 // a read that fails is a failure (below), not an empty store
+        try { const v = JSON.parse(text) as { cwd?: unknown }; cwd = typeof v.cwd === "string" ? v.cwd : null; }
         catch { continue; }                                   // being written: next pass
       }
       tuiIndex[path] = { sig: s.sig, cwd };
