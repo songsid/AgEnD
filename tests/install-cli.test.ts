@@ -123,7 +123,8 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     const started = await fm.startLoginSession("codex", chat);
     expect(started).toBe(t("install.started", "codex"));
     expect(fakeSessions).toHaveLength(1);
-    expect(fakeSessions[0].flow.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | sh");
+    // Nobody types into the install window: codex's install.sh must not ask "Start Codex now?" on /dev/tty.
+    expect(fakeSessions[0].flow.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh");
     expect(fakeSessions[0].started).toBe(true);
 
     // The installed CLI is on PATH now: the sign-in that follows is a login.

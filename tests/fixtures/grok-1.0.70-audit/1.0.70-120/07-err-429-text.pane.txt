@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.70-120/repo                                                             1.4K / 256K │ [Dashboard]
+
+
+     ❯ error turn h                                                                                          1:20 PM
+
+
+  ┃  Retry failed: rate_limit_error: rate limit exceeded; too many requests
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

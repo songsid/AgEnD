@@ -58,7 +58,15 @@ const instancePlace = (name: string): string => placeRef({ kind: "instance", nam
 
 export interface BackendInstallationInfo {
   binary: string;
+  /** The install command shown to a person (to copy and run themselves). */
   install: string;
+  /**
+   * The same install when AgEnD runs it with nobody at the terminal (`/login`'s install window). Codex's
+   * install.sh asks "Start Codex now? [y/N]" (and, on a conflict, whether to uninstall) on /dev/tty, so a
+   * window nobody types into waits until the install times out; CODEX_NON_INTERACTIVE=1 skips both questions.
+   * Omitted: `install` runs as it is.
+   */
+  unattended?: string;
   /**
    * #1092: where this backend's own installer puts the binary, read from the
    * installer script itself. `/login`'s install verifies on a fresh login shell
@@ -82,6 +90,7 @@ export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallat
   // a symlink into ~/.codex/packages/standalone/current/bin (#1092).
   codex: {
     binary: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+    unattended: "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh",
     binDirs: (env, home) => [env.CODEX_INSTALL_DIR, localBin(home)].filter((d): d is string => !!d),
   },
   opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash", binDirs: (_env, home) => [join(home, ".opencode", "bin")] },

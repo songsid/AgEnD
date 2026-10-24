@@ -17341,7 +17341,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // session only judges that verdict; it does not read the output for URLs or prompts.
     const flow: LoginFlow = {
       backend,
-      command: info.install,
+      command: info.unattended ?? info.install,
       successPattern: /$^/,
       timeoutMs: 10 * 60 * 1000,
     };
