@@ -36,7 +36,7 @@ const STATE = `(() => { const b = (e) => e ? (({ x, y, width, height }) => ({ x:
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`;
 for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk", theme: "dark", lang: "zh-TW" }] as const) {
   const tag = `${c.device}-${c.theme}-${c.lang}`, res: any = (r.cases[tag] = {});
-  const title = c.lang === "en" ? "Edit offices" : "編輯辦公室", cancel = c.lang === "en" ? "Cancel" : "取消";
+  const title = c.lang === "en" ? "Offices" : "辦公室", cancel = c.lang === "en" ? "Cancel" : "取消";   // the editor's own title
   const p = await freshPage(fx, c as any).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
   const { page, base } = p;

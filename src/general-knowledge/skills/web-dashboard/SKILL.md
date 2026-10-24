@@ -269,7 +269,8 @@ desk to desk along the corridors in the Key's colours; a delegation in progress 
 desk. Hover (or tap once) a desk for its name, state and backend; click (or tap again) opens the chat. **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
-(never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
+(never a read-only one, a guest or the public link) gets **Edit offices** (≥1200 px: a panel docked on the right in the
+usage rail's place, the Office in use beside it, × or Esc closes it and the rail returns; narrower: a centred dialog): add, rename and delete offices, pick who is
 in each (whole teams or single instances; none = everyone) and its style, and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
