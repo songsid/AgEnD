@@ -326,3 +326,100 @@ Each state is screenshotted and its message asserted. Unit tests pin §5:
    docs and skill.
 3. **2.4:** readers for Kiro (once real `request_metadata` carries tokens) and OpenCode (tokscale's schema, verified
    offline); then Grok and Muse. Claude subagent and sidechain usage, if wanted.
+
+## 10. Addendum (2026-10-25): readers for Kiro, Grok, Muse, Antigravity and OpenCode
+
+This section replaces the 2.4 plan in §2.1 and §9 step 3. tokscale was read again at commit
+`669fdaeec54502a30468adbfa97789bb7ee2b762` (2026-10-23; npm 4.20.1). It is still MIT, "Copyright (c) 2025 Junho Yeo".
+It was read only, never run. Each store below was checked on the development host, offline and read-only: SQLite
+stores were copied to scratch, WAL files included, before any query.
+
+### 10.1 Findings per backend
+
+| Backend | Store tokscale reads | Tokens on the host | Cache read / write | Reasoning | Model | Attribution |
+|---|---|---|---|---|---|---|
+| kiro-cli, classic | `~/.local/share/kiro-cli/data.sqlite3`, `conversations_v2.value.history[].request_metadata` | **none**: `uncached_input_tokens`, `output_tokens`, `cache_*_input_tokens` and `total_tokens` are null on all 135,924 requests (627 conversations, 2025-08 to 2026-10) | none | none | `model_id` on 99.9% (`auto` on 32%) | the row's `key` is the cwd |
+| kiro-cli, V3 / TUI | `~/.kiro/sessions/cli/<id>.json` `session_state.conversation_metadata.user_turn_metadatas[]` (and a `.jsonl` sidecar) | **none**: every `*_token_count` is 0 on all 1,164 turns (185 sessions) | none | none | `model` per turn, `auto` or a named model | `cwd` in the session file |
+| grok | `~/.grok/sessions/<urlencoded cwd>/<sid>/updates.jsonl`, `turn_completed` `usage` | **real, per turn** (not cumulative) on 253 of 259 turns | `cachedReadTokens` real; `cacheCreationTokens` present, 0 so far | `reasoningTokens` real | the `usage.modelUsage` key (`_meta.modelId` is absent here) | the directory name is the cwd |
+| muse | `$XDG_DATA_HOME/muse/sessions/**/session.jsonl`, `model_completed` `usage` | **real, per call** on 5,552 of 5,553 calls (600 sessions) | `cache_read_tokens` real; `cache_write_tokens` always 0 | `reasoning_tokens` real | `event.model` (`muse-spark-1.3…`) | `workspace_root` in the session metadata; 522 subagent calls have none, so they are attributed through the parent session |
+| antigravity (agy 1.4.6) | `~/.gemini/antigravity-cli/conversations/*.db`: `gen_metadata` protobuf, field map reverse-engineered by tokscale | **real, per generation** (442 in 41 conversations); output field `#9` missing on 60 | `#5` cache read on 316; no write | `#10` thinking | `#19`, or the `#21` label | workspace URI `trajectory_metadata_blob #1.#1` on 400 of 442 |
+| opencode | `opencode.db` `message` (v1) / `session_message` (v2) `data.tokens` | **real** on 1,339 of 1,367 assistant messages | `tokens.cache.read` / `.write` real | `tokens.reasoning` | `modelID` + `providerID` | `session.directory` |
+
+**Kiro is the gap, and on this host it cannot be measured.**
+- Neither store carries a token count. tokscale *estimates* Kiro: `ceil(bytes / 4)` of the prompt, the tool results
+  and the response. It derives cache read from `context_usage_percentage × context window − fresh input`. Each
+  such row is a guess, and the cache-read part dominates it.
+- **Credits** are Kiro's billing unit: `metering_usage[] {value, unit: "credit"}` per V3 turn, and
+  `user_turn_metadata.usage_info[]` per classic conversation. On this host they were written only in July and
+  August 2026 (1,091 credits on 224 V3 turns, 99 credits on 38 classic conversations). They are empty on every turn
+  since September (679 V3 turns). There is no field that converts credits to tokens. tokscale prices a credit at a
+  fixed $0.04 (the pay-as-you-go rate), books a classic conversation's credits on its first turn, and prices the
+  estimated tokens of named models (for example `claude-opus-4.6`) at that model's list price. `auto` is never
+  priced.
+- 11 sessions exist in both stores: the classic→V3 migration copies a conversation. A reader must dedup by the
+  conversation or session id across stores. tokscale's two dedup keys differ, so it can count such a session twice.
+
+**The others are real**, and per instance through their cwd, as the Claude and Codex readers do. Grok's
+`unified.jsonl` log (per request, real) is rotated: it held one session over two days. It is no history source, so
+`updates.jsonl` is.
+
+### 10.2 What each row shows
+
+| Backend | Tokens | Amount |
+|---|---|---|
+| grok | measured | list price where the bundled table has the model; otherwise grok's own `costUsdTicks` (× 1e-10 USD), marked "reported by grok". tokscale uses that reported cost too. |
+| muse | measured; cache write "not reported" (as Codex) | **not priced**: Meta publishes no per-token price |
+| opencode | measured | list price of `modelID`. The provider is often `github-copilot`, a subscription, so the amount is API-equivalent as everywhere |
+| antigravity | measured, marked "decoded" (the field map is tokscale's reverse engineering, checked here against 41 databases) | list price for Gemini and Claude models once the table has them |
+| kiro-cli | **"not measured: Kiro records no token counts"**, plus credits where Kiro wrote them | credits only. A credit amount is shown in credits; it is not converted to USD |
+
+**The Kiro choice for the user**, because the company's report (§10.3) does use tokscale's estimate:
+- **A (recommended):** as in the table. Kiro is "not measured" for tokens, and shows credits where it wrote any. The
+  page doesn't show a guess as a measurement. The trade-off: Kiro rows won't match the company report.
+- **B:** compute tokscale's estimate, labelled "estimated from text size", and price it the way tokscale does: named
+  models at list price, `auto` not priced, credits × $0.04. This lines up with the company report, but most of a
+  Kiro row would then be estimated cache reads.
+
+### 10.3 Units: the same as the company's tokscale-based daily report
+
+The user's company reports daily usage from `tokscale graph --json`, one row per (tool, model, date). AgEnD's rows
+use the same units, so the two can be compared.
+
+| Company field | AgEnD | Note |
+|---|---|---|
+| `input_tokens` | `uncached` | input without cache reads or writes, as in the ledger today |
+| `output_tokens` | `output − reasoning` | tokscale keeps reasoning in its own bucket. Codex, Grok and Muse report reasoning **inside** output, so it is subtracted once. Claude reports none (0) |
+| `reasoning_tokens` | **new** ledger bucket `reasoning` | from Codex `reasoning_output_tokens`, Grok `reasoningTokens`, Muse `reasoning_tokens`, Antigravity `#10`, OpenCode `tokens.reasoning`; 0 elsewhere |
+| `cache_read_tokens` | `read` | |
+| `cache_creation_tokens` | `write5m + write1h + write` | Codex and Muse write "not reported" where tokscale writes 0 |
+| `message_count` | `requests` | tokscale counts model calls. AgEnD's "delivered messages" (§5.4) are human messages, and have no company field |
+| `cost_usd` | amount | both are per-model list-price USD. tokscale fetches LiteLLM prices every hour, and AgEnD bundles a checked table (§3), so a model's rates can differ until the table is re-checked. Each table update compares its rates with LiteLLM's for the models in use |
+| `active_time_ms` | — | not planned. The stores do have durations (Kiro stream start and end, Grok `apiDurationMs`, Muse `duration_ms`) |
+| `tool` / `agent_type` | `backend`, under tokscale's ids | `claude`, `codex`, `kiro`, `grok`, `muse`, `antigravity-cli`, `opencode` |
+| `provider` | the model's vendor | OpenCode's `providerID` as written |
+| `model` | `model` | as the CLI wrote it; never fuzzy-matched |
+| date | day in the fleet's timezone | tokscale uses the host's zone. On a fleet with no zone set, the two agree |
+
+**Intentional differences:** AgEnD attributes usage per instance (cwd and credential profile), not per device.
+Instances that share a directory are "shared". Unknown cache writes are "not reported", never 0, and an unknown
+price is "not priced", never estimated. Kiro rows follow §10.2 option A unless the user picks B.
+
+To serve these rows, the ledger key gains the backend, `backend|model|tier|profile`, and its totals gain `reasoning`.
+Hours written before that change keep `reasoning` 0, and output as recorded.
+
+### 10.4 Order of work
+
+1. **Ledger units:** the `reasoning` bucket, output net of reasoning, the backend in the key, and per (backend,
+   model, day) rows in `get_usage_report` and the CSV. Codex gains reasoning at once. It is small, and every reader
+   below builds on it.
+2. **Kiro:** credits per instance from both stores, deduped across the migration copy, and "not measured" for tokens
+   (option A), or the estimate (option B). It goes first among the readers because Kiro is the largest unmeasured
+   share (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms). Without new credit
+   rows, option A shows little for recent months; that is the honest state.
+3. **Grok:** real and per turn, a small parser of `updates.jsonl`.
+4. **Muse:** real; not priced.
+5. **OpenCode:** real, by SQL on a read-only connection to `opencode.db`; little current use on this fleet.
+6. **Antigravity:** a protobuf wire reader on tokscale's field map, kept behind a version check (agy 1.4.6 verified).
+
+Each reader is TypeScript written for AgEnD. Where its field mapping follows tokscale, the file names tokscale, its
+MIT licence and the commit above, and `THIRD_PARTY_NOTICES.md` carries the notice (§2.1).
