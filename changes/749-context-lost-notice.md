@@ -1,0 +1,5 @@
+---
+section: Fixed
+---
+- **You are told when an instance starts over without its conversation (#749).** After repeated failed attempts to resume, AgEnD gives up and starts the instance on a fresh conversation, so the instance keeps working. The previous conversation is set aside in the instance's folder, not deleted. Until now this was recorded only in daemon.log, so the instance just stopped remembering earlier work. AgEnD now posts in the instance's topic and in General that the previous context is lost, also during a planned restart. A ClassicBot's notice goes to General only, never to its users' chat. The event also appears on the Log tab and is sent to webhooks as `context_lost`.
+- **Startup concurrency counts the CPUs the fleet may use, not the host's (#749).** How many agents cold-start at once was capped by the host's core count. Inside a container or a systemd slice with a CPU quota, that is more than the fleet can run, and starts then missed their deadline. The cap now uses the CPU affinity and the cgroup v1/v2 CPU quota. `startup.concurrency` still overrides it.

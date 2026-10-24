@@ -811,6 +811,26 @@ export class InstanceLifecycle {
   }
 
   /**
+   * The daemon gave up resuming after repeated startup failures and started a
+   * fresh conversation (#737, #749). Without this the only trace was an error
+   * line in daemon.log. Attached before start, because the startup spawn is
+   * where it happens; and never suppressed for a planned restart, which is
+   * exactly when the user expects the conversation to carry on. A ClassicBot's
+   * channel is the end user's chat, so its notice goes to General only.
+   */
+  attachContextLostHandler(name: string, daemon: IncidentEventSource): void {
+    daemon.on("context_lost", safeHandler((_name: string, reason: string, attempts?: number) => {
+      this.ctx.eventLog?.insert(name, "context_lost", { reason, ...(attempts != null ? { attempts } : {}) });
+      this.ctx.logger.warn({ name, reason, attempts }, "Instance started a fresh conversation — previous context lost");
+      const tries = attempts != null ? String(attempts) : "?";
+      if (!this.ctx.isClassicInstance?.(name)) this.ctx.notifyInstanceTopic(name, t("inst.context_lost", name, tries));
+      const general = this.findGeneralInstance();
+      if (general && general !== name) this.ctx.notifyInstanceTopic(general, t("inst.context_lost_general", name, tries));
+      this.ctx.webhookEmit("context_lost", name, { reason, ...(attempts != null ? { attempts } : {}) });
+    }, this.ctx.logger, `daemon.context_lost[${name}]`));
+  }
+
+  /**
    * Daemon delivery events → the status reaction on the inbound message. The
    * emoji for each status comes from config (#1005); this only names it.
    */
@@ -1717,6 +1737,7 @@ export class InstanceLifecycle {
     // warning synchronously inside Daemon.start, long before
     // attachIncidentHandlers runs (#984).
     this.attachLaunchWarningHandler(name, daemon);
+    this.attachContextLostHandler(name, daemon);
     daemon.on("durable_delivery_deferred", (data: {
       deliveryId: string;
       attemptNo: number;
