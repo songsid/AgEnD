@@ -43,6 +43,13 @@ const judge = (body: unknown, fleet: Record<string, unknown> = {}) =>
   prepareSettingsEffect("PUT", WEB, body, { config: { defaults: {}, instances: {}, ...fleet } as any, classic: {} }).diff;
 
 describe("the classifier judges these by direction", () => {
+  it("the delivery-only preference accepts all three modes without an access confirmation", () => {
+    for (const mode of [true, false, "dm"]) {
+      const effect = prepareSettingsEffect("PUT", WEB, { notify_login: mode }, { config: { defaults: {}, instances: {} } as any, classic: {} });
+      expect(effect.diff).toBeNull();
+    }
+  });
+
   it("tightening applies directly: a shorter session or idle time, the terminal off, a shorter terminal session", () => {
     expect(judge({ session: { local: { absolute_hours: 6 } } })).toBeNull();
     expect(judge({ session: { local: { idle_hours: 1 } } })).toBeNull();

@@ -952,6 +952,10 @@ function Classic({ ctx, search, openDialog }) {
   })}</div>`;
 }
 
+const noticeMode = (v) => v === "dm" ? "dm" : v === "false" || v === false ? false : true;
+const noticeChoices = () => [{ value: "true", label: tn("noticeTopic") }, { value: "dm", label: tn("noticeDm") }, { value: "false", label: tn("noticeOff") }];
+const noticeLabel = (v) => tn(v === "dm" ? "noticeDm" : v === false ? "noticeOff" : "noticeTopic");
+
 /** General's form, from the saved defaults (`d`) and ClassicBot's (`c`). */
 function generalForm(d, c, fleet = {}, schema = {}) {
   const hang = d.hang_detector || {}, startup = d.startup || {};
@@ -966,6 +970,7 @@ function generalForm(d, c, fleet = {}, schema = {}) {
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
     concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
+    tips: String(d.tips ?? true),
     replyTriggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default),
     classicReplyTriggers: Boolean(c.reply_triggers ?? d.reply_triggers ?? schema.reply_triggers_default), classicReplyTriggersInherit: !hasOwn(c, "reply_triggers"),
     classicBackend: c.backend || d.backend || "claude-code",
@@ -1013,7 +1018,7 @@ function General({ ctx, part = "all" }) {
     const defaultsPatch = changedFields({
       backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
       agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
-      reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
+      tips: noticeMode(f.tips), reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
       // The dashboard features every agent may use unless its own setting says otherwise. All three go, because the write
       // to the fleet's defaults merges top-level keys only (`dashboard` is replaced whole): the untouched ones as saved.
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, f[`dash_${k}`]])),
@@ -1022,7 +1027,7 @@ function General({ ctx, part = "all" }) {
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
-      cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
+      tips: d.tips ?? true, cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, dashboardDefault(d, k)])),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
       startup: { ...(startup.concurrency == null ? {} : { concurrency: startup.concurrency }), stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
@@ -1058,7 +1063,7 @@ function General({ ctx, part = "all" }) {
   // ClassicBot's inherited ones say what they inherit from Agent defaults.
   const unset = {
     locale: !d.locale, backend: !d.backend, model: !d.model, auto: !hasOwn(d, "auto_pause_after"), tool_progress: !hasOwn(d, "tool_progress"),
-    replyTriggers: !hasOwn(d, "reply_triggers"), visibility: !VISIBILITY_MODES.includes(d.cross_instance_visibility), reply: !hasOwn(d, "reply_completion_guard"), tool_set: !d.tool_set,
+    tips: !hasOwn(d, "tips"), replyTriggers: !hasOwn(d, "reply_triggers"), visibility: !VISIBILITY_MODES.includes(d.cross_instance_visibility), reply: !hasOwn(d, "reply_completion_guard"), tool_set: !d.tool_set,
     log_level: !d.log_level, agent_mode: !d.agent_mode, hangOn: !hasOwn(hang, "enabled"), hang: !hasOwn(hang, "timeout_minutes"),
     concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
   };
@@ -1081,6 +1086,7 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
         <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
+        <div class=${fc("field", "tips")}>${L(tn("dailyTips"), "defaults.tips", "g-tips", "tips")}<${Select} id="g-tips" value=${f.tips} onChange=${set("tips")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.tips))} /><p class="note">${tn("dailyTipsHint")}</p></div>
         <div class=${fc("field", "replyTriggers")}><label class="check"><input id="g-reply-triggers" type="checkbox" checked=${f.replyTriggers} onChange=${(e) => set("replyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span>${dm("replyTriggers")}<${Impact} schema=${schema} field="defaults.reply_triggers" /></label><p class="note">${tn("replyTriggersHint")}</p></div>
         <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span>${dm("reply")}<${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
@@ -1148,7 +1154,7 @@ function General({ ctx, part = "all" }) {
  * the temporary public link none of it can be changed — the form says so and stays disabled (the server refuses too).
  */
 export const WEB_READ_ONLY = [
-  "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
+  "web.allowed_hosts", "web.view_access", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
   "web.usage_panel", "web.search", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
 ];
 /**
@@ -1181,6 +1187,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   // serves their reads there).
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
   const original = useMemo(() => ({
+    notify: web.notify_login ?? true,
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
@@ -1190,7 +1197,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
-  const savedForm = useMemo(() => ({ echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public,
+  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public,
     ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
     termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
@@ -1202,6 +1209,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     const pub = pending.public_link || {}, session = pending.session?.local || {}, terminal = pending.web_terminal || {};
     const pick = (obj, key, fallback) => Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : fallback;
     return {
+      notify: String(pick(pending, "notify_login", original.notify)),
       echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
       pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
       hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
@@ -1250,6 +1258,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     const terminalPatch = changedFields({ enabled: f.termOn === (original.terminal.enabled !== false) ? original.terminal.enabled : f.termOn ? null : false,
       ttl_minutes: value(f.termTtl) }, original.terminal);
     const body = {
+      ...(noticeMode(f.notify) !== original.notify ? { notify_login: noticeMode(f.notify) } : {}),
       ...(f.echo !== original.echo ? { echo_to_channel: f.echo } : {}),
       ...(f.log !== original.log ? { log_tab: f.log } : {}),
       ...(f.usagePub !== original.usagePub ? { usage_report_on_public_link: f.usagePub } : {}),
@@ -1258,6 +1267,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
     };
     const fields = [
+      ...(body.notify_login !== undefined ? ["web.notify_login"] : []),
       ...(body.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []),
       ...(body.log_tab !== undefined ? ["web.log_tab"] : []),
       ...(body.usage_report_on_public_link !== undefined ? ["web.usage_report_on_public_link"] : []),
@@ -1305,6 +1315,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     ${overPublicLink && part !== "readonly" ? html`<p class="note" role="status" id="webPublicRefused">${tn("webPublicRefused")}</p>` : null}
     ${has("access") ? lock(html`<section class="card"><h3>${tn("webSessionTitle")}</h3>
       <p class="note">${tn("webSessionHint")}</p>
+      <div class=${fc("field", "notify")}><label for="webNotifyLogin">${tn("webNotifyLogin")}<${Impact} schema=${schema} field="web.notify_login" /></label><${Select} id="webNotifyLogin" value=${f.notify} onChange=${set("notify")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.notify))} />${web.notify_login === undefined ? html`<${DefaultMark} />` : null}<p class="note">${tn("webNotifyLoginHint")}</p></div>
       <div class="grid2">
         <div class=${fc("field", "abs")}><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any"
           class=${errors.abs ? "invalid" : ""} value=${f.abs} onInput=${(e) => set("abs")(e.target.value)} /><${Feedback} error=${errors.abs} />

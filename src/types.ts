@@ -293,8 +293,8 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   cost_guard?: CostGuardConfig;
   hang_detector?: HangDetectorConfig;
   daily_summary?: DailySummaryConfig;
-  /** Daily General-topic tips and update-completion tip. Default: true. */
-  tips?: boolean;
+  /** Daily tips: true/topic, dm with topic fallback, or false/off. Update-completion tips stay with the result. Default: true. */
+  tips?: boolean | "dm";
   /** #2246 step 3: the task board's fleet-level settings. */
   task_board?: {
     /** The daily summary's time in the fleet's zone ("HH:MM", 24 h), or "off". Default "09:00". */
@@ -418,8 +418,8 @@ export interface WebConfig {
    * `session`: a signed-in web session or the CLI header token. Writes need a credential either way.
    */
   view_access?: "open" | "session";
-  /** Tell the admin channel when someone signs in to the web panel (default true). */
-  notify_login?: boolean;
+  /** Sign-in notices: true/topic (existing default), false/operator notices off, or dm with topic fallback. */
+  notify_login?: boolean | "dm";
   /**
    * #1620: how long a web session lasts. Only the LOCAL surface (the dashboard reached directly — loopback, a LAN, a
    * tailnet) is configurable; a public-link session's limits stay fixed. Hours, 1 ≤ idle_hours ≤ absolute_hours ≤ 720;

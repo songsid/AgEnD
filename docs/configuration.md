@@ -219,7 +219,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `reply_overdue_minutes` | number | `15` | Minutes since the last ask/reminder before notifying the requester once that a `requires_reply` request is unanswered and its owner is not working. `0` disables this idle-overdue notice, not owner reminders or the final TTL-expiration notice. |
 | `reply_obligation_ttl_hours` | number | `24` | Positive finite hours since the last ask before an open reply obligation expires. Reminders do not extend it. Expiration is logged and tells the requester once if no overdue notice was already sent, even when `reply_overdue_minutes` is `0`. A restart sends one notice with up to ten open requests and `+N more`; turn-ended reminders keep their existing grace and one-per-ask behavior. |
 | `retention_days` | number | `30` | How many days to keep terminal deliveries (`delivered`/`failed`) in `delivery-outbox.db` and `done`/`cancelled` tasks on the Task Board. `uncertain` and non-terminal rows are never pruned. Pruning runs once at fleet startup and daily after that, in chunks of 500 rows so it never stalls the event loop. A `delivery_status` query for a pruned delivery_id returns "older than the retention window; record pruned" instead of "Delivery not found". |
-| `tips` | boolean | `true` | Daily General-topic tips. Independent of `daily_summary.enabled`. |
+| `tips` | boolean or `"dm"` | `true` | Daily tips: `true` posts in General; `"dm"` privately sends to the General connection’s first configured admin, falling back to General; `false` disables. Independent of `daily_summary.enabled`. |
 | `task_board.summary_at` | string | off | The task board's daily summary for the person (off unless set, since 2.3.0 — set a time to turn it on), in each platform's General and the web chat: `"HH:MM"` (24 h, in `scheduler.default_timezone`, else the host's zone) or `"off"`. Read at every minute's check (no restart). See [features](features.md#the-task-boards-daily-summary). |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. Read when AgEnD starts: restart AgEnD after changing it. |
 
@@ -681,6 +681,23 @@ An active Kiro profile without a readable login retains a signed-out hint.
 Visibility also depends on the provider: Codex rows without OAuth usage
 credentials, including API-key-only profiles, are omitted. Rows are not combined,
 and different profile names do not guarantee different billing accounts.
+
+### Private sign-in notices and daily tips
+
+`web.notify_login` accepts `true` (the existing topic notice), `"dm"` (private notice with the same topic fallback), or `false`. An existing fleet with the key omitted keeps `true`; new fleets created by `agend init`, `quickstart`, or setup explicitly write `web.notify_login: "dm"`. New-fleet tips remain `true`.
+
+In DM mode, an operator's sign-in notice goes to the account that requested the sign-in code. Public-link sign-ins, including guests, notify the admin who owns that link. A local guest sign-in notifies the **first user in the owning connection's `access.allowed_users`**, never the guest. Daily tips likewise use the first configured admin of General's connection. If that account or private transport is unavailable, or the DM fails, AgEnD uses the original topic destination. It never substitutes an admin from a different connection.
+
+`false` preserves the existing policy: it suppresses the operator's local sign-in notice; guest and public-link security notices remain mandatory and go to their original topics. `true` preserves their existing text and destinations. `/tips` still posts where invoked; the delivery choice changes the daily tip, retaining its buttons. Update-completion tips stay with the update result.
+
+Use **Settings → Access & security → Web sign-in notices** and **Agent defaults → Daily tips** to choose Topic / Direct message (topic fallback) / Off and see the effective value. These changes apply immediately.
+
+```yaml
+web:
+  notify_login: dm
+defaults:
+  tips: dm
+```
 
 ### Web chat channel echo (2.2 web line)
 
