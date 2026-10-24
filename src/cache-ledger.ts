@@ -332,22 +332,40 @@ export function grokLine(line: ScanLine, file: FileCursor): Turn[] {
 
 /**
  * #2122 §10 step 4: the turn a Muse `session.jsonl` line records — a `runtime.session` event `model_completed` with its
- * `usage`. Real counts, one per model call: `input_tokens` includes the cache reads (`cache_read_tokens`, older lines
- * `cached_tokens`) and writes, `reasoning_tokens` is a part of `output_tokens` (as tokscale reads them). Only
- * `model_completed` counts: a workflow's aggregate events would count a child's calls twice.
+ * `usage`. Real counts, one per model call, read as tokscale reads them (sessions/muse.rs at 669fdaee):
+ * - `input_tokens` includes the cache reads — `cache_read_tokens`, else (absent, not 0) the older `cached_tokens` — and
+ *   `cache_write_tokens` is apart; `reasoning_tokens` is a part of `output_tokens`;
+ * - the call's time is its start: `recorded_at` (when it completed; µs, ms or s) less a positive `duration_ms`;
+ * - a call replayed into the file (the same stream, sequence, model and counts) is counted once (`file.ids`).
+ * Only `model_completed` counts: a workflow's aggregate events would count a child's calls twice.
  */
-export function museLine(line: ScanLine): Turn | null {
+export function museLine(line: ScanLine, file: FileCursor): Turn | null {
   if (!("whole" in line) || line.whole.indexOf("\"model_completed\"") === -1) return null;
-  let d: { recorded_at?: unknown; payload_type?: unknown; payload?: { event?: Record<string, unknown> } };
+  let d: { recorded_at?: unknown; sequence?: unknown; stream?: { id?: unknown }; payload_type?: unknown; payload?: { event?: Record<string, unknown> } };
   try { d = JSON.parse(line.whole.toString("utf8")); } catch { return null; }
   const e = d.payload?.event;
   if (d.payload_type !== "runtime.session" || !e || e.kind !== "model_completed" || !e.usage || typeof e.usage !== "object") return null;
-  if (typeof d.recorded_at !== "number" || !Number.isFinite(d.recorded_at)) return null;
+  const ended = museMs(d.recorded_at);
+  if (ended === null) return null;
   const u = e.usage as Record<string, unknown>;
-  const input = num(u.input_tokens), read = Math.min(num(u.cache_read_tokens) || num(u.cached_tokens), input);
-  const write = typeof u.cache_write_tokens === "number" ? Math.min(num(u.cache_write_tokens), input - read) : null;
-  const output = num(u.output_tokens);
-  if (!input && !output) return null;
-  return { t: Math.floor(d.recorded_at / 1000), model: typeof e.model === "string" && e.model ? e.model : "unknown", prompt: input, uncached: input - read - (write ?? 0), read,
-    write5m: 0, write1h: 0, write, output, reasoning: Math.min(num(u.reasoning_tokens), output) };
+  const present = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  const input = num(u.input_tokens), read = Math.min(num(present(u.cache_read_tokens) ? u.cache_read_tokens : u.cached_tokens), input);
+  const write = present(u.cache_write_tokens) ? num(u.cache_write_tokens) : null;
+  const output = num(u.output_tokens), reasoning = Math.min(num(u.reasoning_tokens), output);
+  if (!input && !output && !write) return null;
+  const model = typeof e.model === "string" && e.model ? e.model : "unknown";
+  const id = `${typeof d.stream?.id === "string" ? d.stream.id : ""}:${present(d.sequence) ? d.sequence : ""}:${model}:${input}:${output}:${read}:${write ?? 0}:${reasoning}`;
+  if (file.ids?.includes(id)) return null;
+  file.ids = [...(file.ids ?? []).slice(-63), id];
+  const duration = num(e.duration_ms);
+  return { t: duration && ended - duration > 0 ? ended - duration : ended, model, prompt: input + (write ?? 0), uncached: input - read, read,
+    write5m: 0, write1h: 0, write, output, reasoning };
+}
+/** Muse's `recorded_at` as milliseconds: it writes microseconds; milliseconds and seconds are read too (as tokscale does). */
+function museMs(raw: unknown): number | null {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+  if (raw >= 1e15) return Math.floor(raw / 1000);
+  if (raw >= 1e12) return raw;
+  if (raw >= 1e9) return raw * 1000;
+  return null;
 }

@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { museLine } from "../src/cache-ledger.js";
+import { museLine, type FileCursor } from "../src/cache-ledger.js";
 import { CacheService, type CacheInstance } from "../src/cache-service.js";
 import { buildUsageReport } from "../src/usage-report.js";
 
@@ -24,17 +24,34 @@ const call = (t: number, u: Record<string, number> = {}, model = "muse-spark-1.3
 const line = (s: string) => { const whole = Buffer.from(s); return { whole, length: whole.length }; };
 
 describe("a model_completed line", () => {
-  it("cache reads out of input, reasoning a part of output, the time from recorded_at (µs)", () => {
-    expect(museLine(line(call(T(9))))).toEqual({ t: T(9), model: "muse-spark-1.3", prompt: 51_170, uncached: 11_170, read: 40_000, write5m: 0, write1h: 0, write: 0, output: 223, reasoning: 102 });
+  const cur = (): FileCursor => ({ kind: "muse", ino: 1, offset: 0 });
+  it("cache reads out of input, reasoning a part of output; the time is the call's start (recorded_at µs less duration_ms)", () => {
+    expect(museLine(line(call(T(9))), cur())).toEqual({ t: T(9) - 3838, model: "muse-spark-1.3", prompt: 51_170, uncached: 11_170, read: 40_000, write5m: 0, write1h: 0, write: 0, output: 223, reasoning: 102 });
   });
-  it("older lines name the cache read `cached_tokens`; other events are not usage", () => {
-    expect(museLine(line(call(T(9), { cache_read_tokens: 0, cached_tokens: 5000 })))).toMatchObject({ read: 5000 });
-    expect(museLine(line(call(T(9)).replace('"model_completed"', '"workflow_completed"')))).toBeNull();
-    expect(museLine(line(meta("/w")))).toBeNull();
+  it("a call that ends just after midnight but started before it is the previous day's (Prism #2607)", () => {
+    const midnight = Date.UTC(2026, 9, 17);
+    expect(new Date(museLine(line(call(midnight + 1000)), cur())!.t).toISOString().slice(0, 10)).toBe("2026-10-16");
+  });
+  it("the older `cached_tokens` only when `cache_read_tokens` is absent — an explicit 0 is 0 (Prism #2607)", () => {
+    const old = JSON.parse(call(T(9), { cached_tokens: 5000 }));
+    delete old.payload.event.usage.cache_read_tokens;
+    expect(museLine(line(JSON.stringify(old)), cur())).toMatchObject({ read: 5000, uncached: 46_170 });
+    expect(museLine(line(call(T(9), { cache_read_tokens: 0, cached_tokens: 5000 })), cur())).toMatchObject({ read: 0, uncached: 51_170 });
+  });
+  it("a call replayed into the file is counted once; another sequence is another call (Prism #2607)", () => {
+    const c = cur();
+    expect(museLine(line(call(T(9))), c)).not.toBeNull();
+    expect(museLine(line(call(T(9))), c)).toBeNull();
+    const next = JSON.parse(call(T(9))); next.sequence += 1;
+    expect(museLine(line(JSON.stringify(next)), c)).not.toBeNull();
+  });
+  it("other events are not usage", () => {
+    expect(museLine(line(call(T(9)).replace('"model_completed"', '"workflow_completed"')), cur())).toBeNull();
+    expect(museLine(line(meta("/w")), cur())).toBeNull();
     // A workflow's aggregate names its children's model_completed events: counting it would count them twice.
     const aggregate = JSON.parse(call(T(9)));
     aggregate.payload.event.kind = "workflow_completed"; aggregate.payload.event.children = ["model_completed"];
-    expect(museLine(line(JSON.stringify(aggregate)))).toBeNull();
+    expect(museLine(line(JSON.stringify(aggregate)), cur())).toBeNull();
   });
 });
 
