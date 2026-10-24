@@ -1,0 +1,40 @@
+     [1mTip: [0mTune how much each tool call shows — args, reasoning, output caps,
+     density — via [95m/verbosity[39m or [95m/settings[39m → verbosity.
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+ [36m▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on,[39m
+   [36myou'll be upgraded to 3.0 automatically.[39m
+   [36mIt brings cloud sessions, memory, workflows, an improved trust model,[39m
+   [36mexpanded hooks and specs.[39m
+   [36mNote: 3.0 doesn't support the legacy --classic experience or the legacy[39m
+   [36mdesktop app.[39m
+────────────────────────────────────────────────────────────────────────────────
+  › ask me (basic)
+
+[32m•[39m Which branch should I use?
+────────────────────────────────────────────────────────────────────────────────
+  › hello from agend
+
+[31m•[39m [3mCancelled[0m
+────────────────────────────────────────────────────────────────────────────────
+  › ask me (rich)
+
+
+────────────────────────────────────────────────────────────────────────────────
+ [33mTrust All Tools active, confirmations are off[39m · /quit to exit
+────────────────────────────────────────────────────────────────────────────────
+ Question
+ How should I deploy this change?
+
+   1. Staged rollout (recommended)
+      Ship to 10% of hosts first, then the rest
+   2. All at once
+ ❯ [1m[35m3. Choose components[0m
+   Type a different answer…
+────────────────────────────────────────────────────────────────────────────────
+   esc to cancel · ↑↓ to navigate · ↵ to submit
+
+
+

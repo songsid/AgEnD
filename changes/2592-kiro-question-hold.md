@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **kiro: a message no longer answers the agent's question by accident (#2592).** When a kiro V3 agent asks you a question, kiro replaces its input box with a "Question" card: numbered choices and "Type a different answer…". AgEnD read that screen as an idle input box. The next message was pasted in, became a typed answer, and was submitted, so the agent took your message as the answer to a question nobody had read. The card is now held, as kiro 2.34.0's "Input requested" card is (#2587). No message is delivered and no key is pressed until you answer or cancel it in the instance's pane. Messages that arrive meanwhile wait and are delivered once the card is gone. After a minute AgEnD posts in the instance's topic and in General that the instance is waiting on a question. The card is the same in kiro-cli 2.33.1 and 2.34.0.

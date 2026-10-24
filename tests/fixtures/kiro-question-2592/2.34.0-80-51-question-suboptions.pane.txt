@@ -1,0 +1,40 @@
+     Tip: Tune how much each tool call shows — args, reasoning, output caps,
+     density — via /verbosity or /settings → verbosity.
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on,
+   you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model,
+   expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy
+   desktop app.
+────────────────────────────────────────────────────────────────────────────────
+  › ask me (basic)
+
+• Which branch should I use?
+────────────────────────────────────────────────────────────────────────────────
+  › hello from agend
+
+• Cancelled
+────────────────────────────────────────────────────────────────────────────────
+  › ask me (rich)
+
+
+────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────
+ Question
+ How should I deploy this change?
+
+ ❯ [✓] api
+   [✓] web
+────────────────────────────────────────────────────────────────────────────────
+   esc to go back · ↑↓ to navigate · space to toggle · ↵ to submit
+
+
+
+
+
+
