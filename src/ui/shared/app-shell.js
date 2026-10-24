@@ -90,14 +90,17 @@ export function openSearch(preset = {}) {
 }
 /**
  * Ctrl+K (⌘K) anywhere opens search; Ctrl+F (⌘F) in an agent's chat opens it narrowed to that agent — elsewhere the
- * browser's own find stays. Not while another dialog is open (search, open already, has its input focused).
+ * browser's own find stays. Not while another dialog is open (search, open already, has its input focused); a docked
+ * side panel (#2585) is not one.
  */
 export function handleSearchKey(e) {
   if (!searchOffered(true)) return;
   if (e.isComposing || e.altKey || e.shiftKey || !(isMacLike() ? e.metaKey : e.ctrlKey)) return;
   const key = (e.key || "").toLowerCase();
   if (key !== "k" && key !== "f") return;
-  if (typeof document !== "undefined" && document.querySelector("dialog[open]")) return;
+  // #2585: a docked side panel is not modal — the page beside it is in use, so search is too (a result that leaves
+  // the page asks first when the panel holds changes: side-panel.js).
+  if (typeof document !== "undefined" && document.querySelector("dialog[open]:not(.side-panel)")) return;
   const route = navStore.get().route;
   if (key === "f" && !(route && route.panel === "chat" && route.instance)) return;
   e.preventDefault();

@@ -9,8 +9,9 @@
 // the public link or a read-only session (the host refuses their saves too).
 //
 // The pure part (handles, moving, adding and removing) is exported for tests; LayoutEditor is the overlay.
-import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
+import { SidePanel } from "/assets/side-panel.js";
 import { LOGICAL, overridesBetween, own } from "./fleet-office-pack.js";
 
 register("orgl", {
@@ -96,7 +97,7 @@ const KEY_STEP = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], Arr
  * moves (the canvas redraws it); `onSave(overrides | null)` → { ok } or { ok: false, message }; `onClose()`. `stale` (a message): the
  * office or its style changed underneath the session — no handles, nothing to save, only Cancel.
  */
-export function LayoutEditor({ base, start, place = null, stale = "", onChange, onSave, onClose }) {
+export function LayoutEditor({ base, start, place = null, stale = "", dock = true, onChange, onSave, onClose }) {
   const [edited, setEdited] = useState(start);
   const [sel, setSel] = useState(null);
   const [coords, setCoords] = useState(true);
@@ -149,13 +150,38 @@ export function LayoutEditor({ base, start, place = null, stale = "", onChange, 
   }
   const at = new Map(edited.waypoints.map((w) => [w.id, w]));
   const edgeKey = (e) => `${e[0]}\u0000${e[1]}`;
+  // #2585: the controls dock in the side panel on a wide desk (the canvas left whole for the handles), else they are
+  // the bar over the canvas as before. Esc (in the panel, or on the canvas's handles) is Cancel, never mid-save.
+  const esc = (e) => { if (e.key === "Escape" && !e.defaultPrevented && !busy) { e.preventDefault(); onClose(); } };
+  const dirty = useMemo(() => JSON.stringify(edited) !== JSON.stringify(start), [edited, start]);
+  const panel = (controls, actions, tail) => html`<${SidePanel} title=${tl("title")} dock=${dock} busy=${busy} dirty=${dirty} onClose=${onClose} actions=${actions}
+      fallback=${html`<div class="ol-bar">${controls}<span class="ol-actions">${actions}</span>${tail}</div>`}>
+    <div class="ol-side">${controls}${tail}</div>
+  </${SidePanel}>`;
   if (stale) {
-    return html`<div class="ol" role="group" aria-label=${tl("title")}><div class="ol-bar">
-      <p class="note ol-msg ol-stale" role="status">${stale}</p>
-      <span class="ol-actions"><button type="button" class="btn btn-sm ol-cancel" onClick=${onClose} disabled=${busy}>${tl("cancel")}</button></span>
-    </div></div>`;
+    return html`<div class="ol" role="group" aria-label=${tl("title")} onKeyDown=${esc}>
+      ${panel(null, html`<button type="button" class="btn btn-sm ol-cancel" onClick=${onClose} disabled=${busy}>${tl("cancel")}</button>`,
+        html`<p class="note ol-msg ol-stale" role="status">${stale}</p>`)}
+    </div>`;
   }
-  return html`<div class="ol" role="group" aria-label=${tl("title")}>
+  const controls = html`<label class="check"><input type="checkbox" class="ol-coords" checked=${coords} onChange=${() => setCoords((v) => !v)} /><span>${tl("coords")}</span></label>
+      <button type="button" class="btn btn-sm ol-add" onClick=${add} disabled=${busy}>${tl("addWaypoint")}</button>
+      <span class="muted ol-sel" aria-live="polite">${selected ? tl("at", selected.label, selected.x, selected.y) : tl("none")}</span>
+      ${wpSel ? html`<button type="button" class="btn btn-sm btn-danger ol-remove" onClick=${() => { change(removeWaypoint(edited, wpSel)); setSel(null); }} disabled=${busy}>${tl("removeWaypoint")}</button>
+        <label class="oo-pick"><span class="oo-pick-label">${tl("joinTo")}</span>
+          <select class="tb-select ol-join-to" value=${joinTo} onChange=${(e) => setJoinTo(e.target.value)}>
+            <option value="">—</option>
+            ${edited.waypoints.filter((w) => w.id !== wpSel).map((w) => html`<option key=${w.id} value=${w.id}>${w.id}</option>`)}
+          </select></label>
+        <button type="button" class="btn btn-sm ol-join" disabled=${busy || !joinTo || joinTo === wpSel} onClick=${() => { change(toggleEdge(edited, wpSel, joinTo)); setJoinTo(""); }}>${tl("join")}</button>
+        <span class="ol-corridors">${edited.edges.filter((e) => e[0] === wpSel || e[1] === wpSel).map((e) => { const other = e[0] === wpSel ? e[1] : e[0];
+          return html`<button key=${edgeKey(e)} type="button" class="btn btn-sm ol-unjoin" data-other=${other} disabled=${busy} onClick=${() => change(toggleEdge(edited, wpSel, other))}>${tl("unjoin", other)}</button>`; })}</span>` : null}`;
+  const actions = html`<button type="button" class="btn btn-sm ol-reset" onClick=${reset} disabled=${busy}>${tl("reset")}</button>
+        <button type="button" class="btn btn-sm ol-cancel" onClick=${onClose} disabled=${busy}>${tl("cancel")}</button>
+        <button type="button" class="btn btn-sm btn-primary ol-save" onClick=${save} disabled=${busy}>${tl("save")}</button>`;
+  const tail = html`<span class="muted oo-note">${tl("hint")}</span>
+      ${msg ? html`<p class="note ol-msg" role="status">${msg}</p>` : null}`;
+  return html`<div class="ol" role="group" aria-label=${tl("title")} onKeyDown=${esc}>
     <div class="ol-overlay" ref=${overlay}>
       <svg ref=${svg} class="ol-svg" viewBox=${`0 0 ${LOGICAL.w} ${LOGICAL.h}`} width="100%" height="100%"
         onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onPointerLeave=${up}>
@@ -172,26 +198,6 @@ export function LayoutEditor({ base, start, place = null, stale = "", onChange, 
         </g>`)}
       </svg>
     </div>
-    <div class="ol-bar">
-      <label class="check"><input type="checkbox" class="ol-coords" checked=${coords} onChange=${() => setCoords((v) => !v)} /><span>${tl("coords")}</span></label>
-      <button type="button" class="btn btn-sm ol-add" onClick=${add} disabled=${busy}>${tl("addWaypoint")}</button>
-      <span class="muted ol-sel" aria-live="polite">${selected ? tl("at", selected.label, selected.x, selected.y) : tl("none")}</span>
-      ${wpSel ? html`<button type="button" class="btn btn-sm btn-danger ol-remove" onClick=${() => { change(removeWaypoint(edited, wpSel)); setSel(null); }} disabled=${busy}>${tl("removeWaypoint")}</button>
-        <label class="oo-pick"><span class="oo-pick-label">${tl("joinTo")}</span>
-          <select class="tb-select ol-join-to" value=${joinTo} onChange=${(e) => setJoinTo(e.target.value)}>
-            <option value="">—</option>
-            ${edited.waypoints.filter((w) => w.id !== wpSel).map((w) => html`<option key=${w.id} value=${w.id}>${w.id}</option>`)}
-          </select></label>
-        <button type="button" class="btn btn-sm ol-join" disabled=${busy || !joinTo || joinTo === wpSel} onClick=${() => { change(toggleEdge(edited, wpSel, joinTo)); setJoinTo(""); }}>${tl("join")}</button>
-        <span class="ol-corridors">${edited.edges.filter((e) => e[0] === wpSel || e[1] === wpSel).map((e) => { const other = e[0] === wpSel ? e[1] : e[0];
-          return html`<button key=${edgeKey(e)} type="button" class="btn btn-sm ol-unjoin" data-other=${other} disabled=${busy} onClick=${() => change(toggleEdge(edited, wpSel, other))}>${tl("unjoin", other)}</button>`; })}</span>` : null}
-      <span class="ol-actions">
-        <button type="button" class="btn btn-sm ol-reset" onClick=${reset} disabled=${busy}>${tl("reset")}</button>
-        <button type="button" class="btn btn-sm ol-cancel" onClick=${onClose} disabled=${busy}>${tl("cancel")}</button>
-        <button type="button" class="btn btn-sm btn-primary ol-save" onClick=${save} disabled=${busy}>${tl("save")}</button>
-      </span>
-      <span class="muted oo-note">${tl("hint")}</span>
-      ${msg ? html`<p class="note ol-msg" role="status">${msg}</p>` : null}
-    </div>
+    ${panel(controls, actions, tail)}
   </div>`;
 }

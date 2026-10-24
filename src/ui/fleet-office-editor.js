@@ -147,8 +147,11 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
   // the rev under an older draft (a save would then overwrite what it never showed). After a 409 the person chooses
   // (#2431): keep their edits (on the newer rev: Save then replaces what was saved meanwhile, knowingly) or load the
   // newer list — never their draft thrown away unasked.
-  const [base, setBase] = useState(() => ({ rev, draft: offices.map((o) => ({ ...o, members: [...o.members] })) }));
+  // `saved`: the list the draft is measured against (as read, or the newer one loaded) — the draft holds changes when
+  // it differs (#2585: leaving the page beside the docked editor then asks first).
+  const [base, setBase] = useState(() => ({ rev, saved: JSON.stringify(offices), draft: offices.map((o) => ({ ...o, members: [...o.members] })) }));
   const draft = base.draft;
+  const dirty = JSON.stringify(draft) !== base.saved;
   const setDraft = (next) => setBase((b) => ({ ...b, draft: typeof next === "function" ? next(b.draft) : next }));
   const [open, setOpen] = useState(null);                              // the office whose members are shown
   const [busy, setBusy] = useState(false);
@@ -157,8 +160,8 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
   const copy = (list) => list.map((o) => ({ ...o, members: [...o.members] }));
   // The choice takes the snapshot in force when it is made: the stream may have read a newer one since the 409 (#2449).
   const inForce = () => current() || conflict;
-  const keepMine = () => { const now = inForce(); setBase((b) => ({ rev: now.rev, draft: b.draft })); setConflict(null); setMsg(te("keptMine")); };
-  const loadTheirs = () => { const now = inForce(); setBase({ rev: now.rev, draft: copy(now.offices) }); setOpen(null); setConflict(null); setMsg(""); };
+  const keepMine = () => { const now = inForce(); setBase((b) => ({ rev: now.rev, saved: JSON.stringify(now.offices), draft: b.draft })); setConflict(null); setMsg(te("keptMine")); };
+  const loadTheirs = () => { const now = inForce(); setBase({ rev: now.rev, saved: JSON.stringify(now.offices), draft: copy(now.offices) }); setOpen(null); setConflict(null); setMsg(""); };
   const everyone = useMemo(() => { const m = new Map(); for (const n of [...view.top, ...view.teams.flatMap((tm) => tm.nodes), ...view.rest.nodes]) if (!m.has(n.name)) m.set(n.name, n); return [...m.values()]; }, [view]);
   const set = (id, patch) => setDraft((d) => d.map((o) => (o.id === id ? { ...o, ...patch } : o)));
   const add = () => {
@@ -192,7 +195,7 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
   const actions = html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${te("cancel")}</button>
     <button type="button" class="btn btn-primary" id="oeSave" onClick=${save} disabled=${busy || !!conflict}>${te("save")}</button>`;
   // #2585: docked on the right on a wide desk (the page beside it in use); the centred dialog elsewhere.
-  return html`<${SidePanel} title=${te("title")} onClose=${onClose} actions=${actions} busy=${busy}>
+  return html`<${SidePanel} title=${te("title")} onClose=${onClose} actions=${actions} busy=${busy} dirty=${dirty}>
     <p class="note">${te("lead")}</p>
     <fieldset class="oe-form" disabled=${busy}>
     ${draft.length ? null : html`<p class="note" id="oeNone">${te("none")}</p>`}

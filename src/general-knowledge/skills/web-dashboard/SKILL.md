@@ -281,7 +281,10 @@ or an uploaded pack; one the page cannot load is drawn as Desks with a note. On 
 **Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door and
 waypoints (or Tab to one and use the arrow keys, Shift for 10), add or remove waypoints and join or unjoin
 corridors; **Save layout** keeps the moves as that office's overrides (the pack stays as uploaded), **Reset** goes
-back to the pack's own. While it is open the office picker and Edit offices wait (**Cancel** closes it); if someone
+back to the pack's own. On a screen ≥1200 px its controls sit in the right-hand panel (the canvas whole for the
+handles); narrower, or in fullscreen, they are the bar along the canvas's bottom. Esc is Cancel. While either editor
+is docked the page beside it works, Ctrl+K search included; leaving the page with unsaved changes asks first
+("Discard changes"). While it is open the office picker and Edit offices wait (**Cancel** closes it); if someone
 saved the offices meanwhile, Save says so and keeps your layout — Save again puts it on the current list. A crowded area packs extra people into a tighter grid, then shows "+N" in its corner; there
 only calls and work get bubbles (a few at most) and name tags show on hover or focus. **Hide paused and stopped**
 (per browser, off by default) leaves the sleepers out. Now and then someone says a short line for their state in a

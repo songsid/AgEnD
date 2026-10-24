@@ -1849,6 +1849,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ol-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2);
   background: var(--surface); border-top: 1px solid var(--border); }
 .ol-actions { display: inline-flex; gap: var(--s-2); margin-left: auto; }
+/* #2585: Edit layout's controls docked in the side panel (a wide desk): one column, the waypoint's own row wrapping. */
+.ol-side { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); }
+.ol-side .ol-corridors { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .ol-corridors { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .ol-msg { flex-basis: 100%; margin: 0; }
 @media (max-width: 640px) {

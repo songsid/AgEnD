@@ -7,12 +7,19 @@
 // close (like Dialog). Docked, the owner renders nothing itself: it publishes its title, body and actions to the shell's
 // host (sidePanelStore) on every render, so the body keeps the owner's state and closures; the owner going (a close, a
 // navigation) takes the panel with it. Esc in the panel and its × close it (not while `busy`); focus moves into it when
-// it opens and goes back to what opened it when it closes.
-import { html, useLayoutEffect, useRef } from "./app-html.js";
+// it opens and goes back to what opened it when it closes. Docked, the body renders under the shell, not under its
+// owner: a context provided above the owner does not reach it (pass what it needs as props, or read a store).
+// `dirty`: the editor holds unsaved changes. Docked, the page beside it is in use (its links, search): leaving the page
+// then closes the panel as Cancel does — and with changes, asks first (the app's leave guard; one at a time).
+// `dock` false keeps it from docking (the Office in fullscreen, where the shell is out of view); `fallback`, when given,
+// is what it is below the rail's width (or not docked) instead of the Dialog — Edit layout's bar over the canvas.
+import { html, useEffect, useLayoutEffect, useRef } from "./app-html.js";
 import { createStore, useStore } from "./app-store.js";
 import { t } from "./app-i18n.js";
 import { Icon } from "./ui-icons.js";
 import { Dialog } from "./ui-dialog.js";
+import { confirmDialog } from "./ui-confirm.js";
+import { navigate, setLeaveGuard } from "./app-nav.js";
 import { UsageRail, useRailWidth } from "./header-tools.js";
 
 /** { panel: { id, title, label, body, actions, busy, onClose } | null } — the one docked panel. */
@@ -21,8 +28,8 @@ let seq = 0;
 const clear = (id) => { if (sidePanelStore.get().panel?.id === id) sidePanelStore.set({ panel: null }); };
 
 /** An editor: docked on a wide screen, the shared Dialog (`wide`) elsewhere. */
-export function SidePanel({ title, label, onClose, actions, busy = false, children }) {
-  const docked = useRailWidth();
+export function SidePanel({ title, label, onClose, actions, busy = false, dirty = false, dock = true, fallback, children }) {
+  const docked = useRailWidth() && dock;
   const id = useRef(0);
   if (!id.current) id.current = ++seq;
   const opener = useRef(undefined);
@@ -39,7 +46,27 @@ export function SidePanel({ title, label, onClose, actions, busy = false, childr
     const back = opener.current;
     if ((inside || !host) && back && typeof back.focus === "function" && document.contains?.(back)) back.focus();
   }, []);
+  // Leaving the page with changes in the docked panel: asked in the app's dialog; yes = Cancel, then on to there.
+  const live = useRef(null);
+  live.current = { title, onClose };
+  useEffect(() => {
+    if (!docked || !dirty) return undefined;
+    let asking = false;
+    return setLeaveGuard((_to, path) => {
+      if (!asking) {
+        asking = true;
+        confirmDialog({ message: t("app.sidePanelLeave", live.current.title), confirmLabel: t("app.sidePanelDiscard"), danger: true }).then((yes) => {
+          asking = false;
+          if (!yes) return;
+          live.current.onClose();
+          navigate(path, { force: true });
+        });
+      }
+      return false;
+    });
+  }, [docked, dirty]);
   if (docked) return null;
+  if (fallback !== undefined) return fallback;
   return html`<${Dialog} title=${title} label=${label} onClose=${onClose} actions=${actions} busy=${busy} wide=${true}>${children}</${Dialog}>`;
 }
 
