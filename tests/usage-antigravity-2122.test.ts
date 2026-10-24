@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { antigravityGeneration, scanAntigravityUsage, type AntigravityScanInput } from "../src/antigravity-usage-scan.js";
+import { antigravityGeneration, antigravityUsageSupported, scanAntigravityUsage, type AntigravityScanInput } from "../src/antigravity-usage-scan.js";
 import { runAntigravityUsageScan } from "../src/kiro-usage-run.js";
 import { CacheService, type CacheInstance } from "../src/cache-service.js";
 import { buildUsageReport } from "../src/usage-report.js";
@@ -74,6 +74,21 @@ describe("the scan", () => {
     const r = scanAntigravityUsage(input(c)).instances[0]!;
     expect([r.failed, r.live.length, r.updates[0]!.turns.map(t => [t.t, t.model])]).toEqual([false, 1, [[T(9), "claude-sonnet-4-6"], [T(10), "claude-sonnet-4-6"]]]);
   });
+  it("a label two models share is ambiguous: a row without #19 stays unknown (Prism #2609)", () => {
+    const c = conversations();
+    c.make("a", c.cwd, T(8), [[0, gen({ id: "r1", model: "claude-sonnet-4-5", label: "Sonnet", at: T(9) })], [1, gen({ id: "r2", model: "claude-sonnet-4-6", label: "Sonnet", at: T(9) })],
+      [2, gen({ id: "r3", label: "Sonnet", at: T(10) })]]);
+    expect(scanAntigravityUsage(input(c)).instances[0]!.updates[0]!.turns.map(t => t.model)).toEqual(["claude-sonnet-4-5", "claude-sonnet-4-6", "unknown"]);
+  });
+  it("a step without a generation index (#20 with no #3) dates nothing; an explicit index 0 does (Prism #2609)", () => {
+    const c = conversations();
+    const step = (at: number, idx: number | null) => pb([[1, ts(at)], [20, idx === null ? [[1, 5]] : [[1, 5], [3, idx]]]]);
+    c.make("a", c.cwd, T(8), [[0, gen({ id: "r1", model: "m" })]], [step(T(10), null)]);
+    expect(scanAntigravityUsage(input(c)).instances[0]!.updates[0]!.turns.map(t => t.t)).toEqual([T(8)]);
+    const d = conversations();
+    d.make("a", d.cwd, T(8), [[0, gen({ id: "r1", model: "m" })]], [step(T(10), 0)]);
+    expect(scanAntigravityUsage(input(d)).instances[0]!.updates[0]!.turns.map(t => t.t)).toEqual([T(10)]);
+  });
   it("incremental: unchanged is not opened again; new generations after the last index only", () => {
     const c = conversations();
     const path = c.make("a", c.cwd, T(8), [[0, gen({ id: "r1", model: "m", at: T(9) })]]);
@@ -94,13 +109,34 @@ describe("the scan", () => {
   }, 90_000);
 });
 
+describe("the version gate (design §10.4: the field map is reverse-engineered)", () => {
+  it("the checked line is read; another version, or none recorded yet, is not", () => {
+    expect(["1.4.6", "1.4.7", "agy 1.4.12"].map(antigravityUsageSupported)).toEqual([true, true, true]);
+    expect(["1.5.0", "1.3.9", "2.0.0", "", null, undefined].map(antigravityUsageSupported)).toEqual([false, false, false, false, false, false]);
+  });
+  it("an unchecked version: not read, listed as not measured, nothing covered — its history kept", async () => {
+    const c = conversations();
+    c.make("a", c.cwd, T(8), [[0, gen({ id: "r1", model: "claude-sonnet-4-6", at: T(9) })]]);
+    for (const version of ["1.5.0", null]) {
+      let scans = 0;
+      const inst: CacheInstance = { name: "agy", backend: "antigravity", workingDirectory: c.cwd, ledgerPath: join(c.root, `agy-${version}`, "cache-ledger.json"), profile: "default" };
+      const svc = new CacheService({ instances: () => [inst], claudeProjectsDir: () => join(c.root, "c"), claudeKey: (d) => d, codexSessionsDir: () => join(c.root, "x"),
+        listRollouts: () => [], metaPath: join(c.root, "m.json"), now: () => NOW, zone: () => "UTC", antigravityDir: () => c.dir, antigravityVersion: () => version,
+        antigravityScan: async (i) => { scans++; return scanAntigravityUsage(i); } });
+      await svc.kick();
+      const d = (await svc.usageData()).instances[0]!;
+      expect([scans, d.status, d.days.coverage, Object.keys(d.ledger.hours)]).toEqual([0, "unsupported", [], []]);
+    }
+  });
+});
+
 describe("in the usage report", () => {
   it("measured per instance with reasoning; Claude at list price, Gemini not priced; out of the cache analysis", async () => {
     const c = conversations();
     c.make("a", c.cwd, T(8), [[0, gen({ id: "r1", model: "claude-sonnet-4-6", out: 300, at: T(9) })], [1, gen({ id: "r2", model: "gemini-3-flash-a", out: 100, at: T(10) })]]);
     const inst: CacheInstance = { name: "agy", backend: "antigravity", workingDirectory: c.cwd, ledgerPath: join(c.root, "agy", "cache-ledger.json"), profile: "default" };
     const svc = new CacheService({ instances: () => [inst], claudeProjectsDir: () => join(c.root, "c"), claudeKey: (d) => d, codexSessionsDir: () => join(c.root, "x"),
-      listRollouts: () => [], metaPath: join(c.root, "m.json"), now: () => NOW, zone: () => "UTC", antigravityDir: () => c.dir, antigravityScan: async (i) => scanAntigravityUsage(i) });
+      listRollouts: () => [], metaPath: join(c.root, "m.json"), now: () => NOW, zone: () => "UTC", antigravityDir: () => c.dir, antigravityVersion: () => "1.4.7", antigravityScan: async (i) => scanAntigravityUsage(i) });
     await svc.pass(); await svc.pass();
     const data = await svc.usageData();
     const r = buildUsageReport({ now: NOW, zone: "UTC", range: { kind: "7d" }, group: "model", messages: [], scanning: data.scanning,

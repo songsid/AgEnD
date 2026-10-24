@@ -53,11 +53,13 @@ const message = (buf: Uint8Array | null | undefined, n: number): Uint8Array | nu
   const f = fields(buf)?.find((x) => x.n === n && x.wire === 2);
   return f ? f.v as Uint8Array : null;
 };
-const varint = (buf: Uint8Array | null | undefined, n: number): number => {
-  if (!buf) return 0;
+/** A varint field's value, or null when the field is absent (0 is a value: Prism #2609). */
+const varintField = (buf: Uint8Array | null | undefined, n: number): number | null => {
+  if (!buf) return null;
   const f = fields(buf)?.find((x) => x.n === n && x.wire === 0);
-  return f && Number.isSafeInteger(f.v) ? f.v as number : 0;
+  return f && Number.isSafeInteger(f.v) ? f.v as number : null;
 };
+const varint = (buf: Uint8Array | null | undefined, n: number): number => varintField(buf, n) ?? 0;
 const text = (buf: Uint8Array | null | undefined, n: number): string | null => {
   const m = message(buf, n);
   if (!m) return null;
@@ -69,6 +71,17 @@ const timestamp = (buf: Uint8Array | null): number | null => {
   const s = varint(buf, 1), ns = varint(buf, 2);
   return s > 0 && ns <= 999_999_999 ? s * 1000 + Math.floor(ns / 1e6) : null;
 };
+
+/**
+ * The agy versions this reader's field map is checked on (design §10.4: kept behind a version check). The map is
+ * reverse-engineered, so another version is not read until it is checked: its instances are "not measured".
+ */
+export const ANTIGRAVITY_USAGE_VERIFIED = /^1\.4\.\d+$/;
+/** Whether agy at this version (as AgEnD's cached CLI probe recorded it; null: not known yet) is read. */
+export function antigravityUsageSupported(version: string | null | undefined): boolean {
+  const v = typeof version === "string" ? /\d+\.\d+\.\d+/.exec(version)?.[0] : undefined;
+  return !!v && ANTIGRAVITY_USAGE_VERIFIED.test(v);
+}
 
 /** The workspace a conversation records (a file:// URI made a path), and when it was created. */
 export function antigravityConversation(blob: Uint8Array | null): { workspace: string | null; created: number | null } {
@@ -152,8 +165,8 @@ export function scanAntigravityUsage(input: AntigravityScanInput): AntigravitySc
         if (t === null) continue;
         const id = text(message(r.metadata, 9), 11);
         if (id) steps.set(id, t);
-        const gi = message(r.metadata, 20);
-        if (gi) byIdx.set(varint(gi, 3), t);
+        const gi = varintField(message(r.metadata, 20), 3);
+        if (gi !== null) byIdx.set(gi, t);
       }
       const after = inst.cursors[key]?.after ?? -1;
       const gens: AntigravityGeneration[] = [];
@@ -164,9 +177,10 @@ export function scanAntigravityUsage(input: AntigravityScanInput): AntigravitySc
         if (g.responseId) { if (seen.has(g.responseId)) continue; seen.add(g.responseId); }
         gens.push(g);
       }
-      // A row without #19 takes the model another row with its display label named.
-      const byLabel = new Map<string, string>();
-      for (const g of gens) if (g.model && g.label) byLabel.set(g.label, g.model);
+      // A row without #19 takes the model other rows with its display label named — only when they all name the same
+      // one: a label two models share is ambiguous, and the row stays unknown (Prism #2609; tokscale tests it too).
+      const byLabel = new Map<string, string | null>();
+      for (const g of gens) if (g.model && g.label) byLabel.set(g.label, byLabel.has(g.label) && byLabel.get(g.label) !== g.model ? null : g.model);
       const turns: Turn[] = [];
       let last = after;
       for (const g of gens) {

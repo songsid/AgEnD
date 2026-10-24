@@ -25,7 +25,7 @@ import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, foldHours, pruneDays, readDays, writeDays, type UsageDays } from "./usage-rollup.js";
 import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
 import type { OpencodeScanInput, OpencodeScanOutput } from "./opencode-usage-scan.js";
-import type { AntigravityScanInput, AntigravityScanOutput } from "./antigravity-usage-scan.js";
+import { antigravityUsageSupported, type AntigravityScanInput, type AntigravityScanOutput } from "./antigravity-usage-scan.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
 export interface CacheInstance {
@@ -59,6 +59,11 @@ export interface CacheServiceOptions {
   opencodeScan?(input: OpencodeScanInput): Promise<OpencodeScanOutput>;
   /** #2122 §10 step 6: Antigravity's conversation databases' directory; absent: Antigravity is not read. */
   antigravityDir?(): string;
+  /**
+   * agy's version as AgEnD's cached CLI probe recorded it (never a probe from here); null: not known yet. Only a version
+   * the field map is checked on is read (antigravityUsageSupported).
+   */
+  antigravityVersion?(): string | null;
   /** One Antigravity scan (default: on a worker thread, kiro-usage-run.ts; tests run it in-process). */
   antigravityScan?(input: AntigravityScanInput): Promise<AntigravityScanOutput>;
   /** Rollout files with their mtimes (the shared rollout index). */
@@ -218,7 +223,7 @@ export class CacheService {
   /** Whether this service is told where that reader's stores are (Kiro and Grok are optional). */
   private reads(kind: TranscriptKind): boolean {
     return kind === "kiro" ? !!this.o.kiroDbPath : kind === "grok" ? !!this.o.grokSessionsDir : kind === "muse" ? !!this.o.museSessionsDir
-      : kind === "opencode" ? !!this.o.opencodeDbPath : kind === "antigravity" ? !!this.o.antigravityDir : true;
+      : kind === "opencode" ? !!this.o.opencodeDbPath : kind === "antigravity" ? !!this.o.antigravityDir && antigravityUsageSupported(this.o.antigravityVersion?.() ?? null) : true;
   }
   private zone(): string { return this.o.zone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
   private daysPath(inst: CacheInstance): string { return join(dirname(inst.ledgerPath), "usage-days.json"); }
@@ -466,7 +471,7 @@ export class CacheService {
    */
   private async antigravityPass(insts: CacheInstance[], cutoff: number): Promise<void> {
     const dir = this.o.antigravityDir?.();
-    if (!insts.length || !dir) return;
+    if (!insts.length || !dir || !this.reads("antigravity")) return;
     const ledgers = new Map<string, Ledger>();
     const input: AntigravityScanInput = { dir, cutoff, index: this.antigravityIndex, instances: [] };
     for (const inst of insts) {

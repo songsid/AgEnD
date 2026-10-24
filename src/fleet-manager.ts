@@ -14566,6 +14566,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2122 §10 step 5: OpenCode's database, under XDG_DATA_HOME as opencode resolves it.
       // #2122 §10 step 6: agy's conversations, under ~/.gemini as the antigravity backend reads its settings.
       antigravityDir: () => join(homedir(), ".gemini", "antigravity-cli", "conversations"),
+      // The version AgEnD's CLI probe last recorded for agy: its cache file, whatever its age (never runs agy).
+      antigravityVersion: () => this.lastRecordedCliVersion("antigravity"),
       opencodeDbPath: () => join(process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share"), "opencode", "opencode.db"),
       museSessionsDir: () => join(process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share"), "muse", "sessions"),
       log: (level, msg, extra) => this.logger[level](extra ?? {}, msg),
@@ -18812,6 +18814,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (typeof env?.probedAt === "number" && Date.now() - env.probedAt < CLI_ENV_TTL_MS) return env;
     } catch { /* missing / stale / corrupt */ }
     return null;
+  }
+
+  /**
+   * #2122 §10: the version the CLI probe last recorded for a backend — its cache file read whatever its age (the usage
+   * reader's version gate needs the last known version, not a fresh one); null when none was recorded. Never a probe.
+   */
+  private lastRecordedCliVersion(backend: string): string | null {
+    try {
+      const v = (JSON.parse(readFileSync(this.cliEnvPath(backend), "utf-8")) as { version?: unknown }).version;
+      return typeof v === "string" && v.trim() ? v.trim() : null;
+    } catch { return null; }
   }
 
   /** Return cached CLI versions immediately. Refresh is started after /sysinfo is sent. */
