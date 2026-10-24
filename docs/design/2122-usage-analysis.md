@@ -362,6 +362,20 @@ stores were copied to scratch, WAL files included, before any query.
   classic requests). A reader that takes both must decide by timestamps which requests each store covers. The id
   alone won't tell.
 
+- **Where else it was looked for** (re-checked 2026-10-25):
+  - **Other stores:** no Kiro instance uses a credential profile, so every one of them writes the default stores
+    above. No other `data.sqlite3` exists on the host outside test homes. Kiro's `state` table, its chat log
+    (`$XDG_RUNTIME_DIR/kiro-log`) and the project `.kiro` directories hold no usage. The current classic rows keep
+    `usage_info: []`.
+  - **`/usage`:** it calls the `GetUsageLimits` API, the account's monthly quota. AgEnD's usage rail already shows
+    that, and it is not per instance.
+  - **The pane:** the legacy UI prints `▸ Credits: 1.02 • Time: 9s` after an answer, and AgEnD's `output.log`
+    (pipe-pane) records it. It is the only per-turn credit figure on the host today. It is partial:
+    - many turns print only `▸ Time: …`, with no reason we can see (same model, same account). The coordinator
+      shows no credit line in 4 rotated logs, and General shows none in its current log;
+    - the TUI and V3 UIs print neither;
+    - `output.log` rolls at 10 MB, so the line has to be read as it is written, and redraws can repeat it.
+
 **The others are real**, and per instance through their cwd, as the Claude and Codex readers do. Grok's
 `unified.jsonl` log (per request, real) is rotated: it held one session over two days. It is no history source, so
 `updates.jsonl` is.
@@ -374,7 +388,7 @@ stores were copied to scratch, WAL files included, before any query.
 | muse | measured; cache write "not reported" (as Codex) | **not priced**: Meta publishes no per-token price |
 | opencode | measured | list price of `modelID`. The provider is often `github-copilot`, a subscription, so the amount is API-equivalent as everywhere |
 | antigravity | measured, marked "decoded" (the field map is tokscale's reverse engineering, checked here against 41 databases) | list price for Gemini and Claude models once the table has them |
-| kiro-cli | **"not measured: Kiro records no token counts"**, plus credits where Kiro wrote them | credits only. A credit amount is shown in credits; it is not converted to USD |
+| kiro-cli | **"not measured: Kiro records no token counts"**, plus credits where Kiro wrote them: the stores (Jul–Aug 2026), and the pane's `Credits:` line from now on, marked "partial: not every turn shows credits" | credits only. A credit amount is shown in credits; it is not converted to USD |
 
 **The Kiro choice for the user**, because the company's report (§10.3) does use tokscale's estimate:
 - **A (recommended):** as in the table. Kiro is "not measured" for tokens, and shows credits where it wrote any. The
@@ -416,10 +430,9 @@ Hours written before that change keep `reasoning` 0, and output as recorded.
 1. **Ledger units:** the `reasoning` bucket, output net of reasoning, the backend in the key, and per (backend,
    model, day) rows in `get_usage_report` and the CSV. Codex gains reasoning at once. It is small, and every reader
    below builds on it.
-2. **Kiro:** credits per instance from both stores, split by timestamp where the migration carried a session over, and "not measured" for tokens
+2. **Kiro:** credits per instance from both stores (split by timestamp where the migration carried a session over) and from the legacy pane's `Credits:` line, read as `output.log` grows, before rotation, with redraws deduped, and "not measured" for tokens
    (option A), or the estimate (option B). It goes first among the readers because Kiro is the largest unmeasured
-   share (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms). Without new credit
-   rows, option A shows little for recent months; that is the honest state.
+   share (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms). Before this reader runs there are no recent credits in the stores, and from then on the pane gives only some turns, so a Kiro credit total is a lower bound and is labelled so.
 3. **Grok:** real and per turn, a small parser of `updates.jsonl`.
 4. **Muse:** real; not priced.
 5. **OpenCode:** real, by SQL on a read-only connection to `opencode.db`; little current use on this fleet.
