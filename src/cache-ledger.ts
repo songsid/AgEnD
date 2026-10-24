@@ -46,17 +46,8 @@ export const GAP_BUCKETS = GAP_EDGES.length + 1;
 export const GAP_EVENT_SEC = 240;
 export const KEEP_DAYS = 31;
 
-/**
- * [requests, uncached, read, write5m, write1h, write, output, reasoning]. `reasoning` is a part of `output`, not added to
- * it (#2122 §10.3). Totals written before it existed have 7 entries and read back with reasoning 0 (reviveTotals).
- */
-export type HourTotals = [number, number, number, number, number, number, number, number];
-export const zeroTotals = (): HourTotals => [0, 0, 0, 0, 0, 0, 0, 0];
-/** Totals read back from disk: 7 or 8 finite numbers (7: written before `reasoning`), else null. */
-export function reviveTotals(t: unknown): HourTotals | null {
-  if (!Array.isArray(t) || (t.length !== 7 && t.length !== 8) || !t.every(n => Number.isFinite(n))) return null;
-  return (t.length === 7 ? [...t, 0] : [...t]) as HourTotals;
-}
+/** [requests, uncached, read, write5m, write1h, write, output] */
+export type HourTotals = [number, number, number, number, number, number, number];
 /**
  * `src` (#2122): the same totals split by where they were read from — `sourceKey(reader, profile)`: the transcript reader
  * (claude, codex) and the credential profile (claude: its config dir's profile, "default" without one; codex:
@@ -64,7 +55,15 @@ export function reviveTotals(t: unknown): HourTotals | null {
  * holds beyond the sum of `src` was counted before #2122 and reads as unknown (hourSources) — never relabelled with
  * today's backend or profile.
  */
-export interface HourAgg { m: Record<string, HourTotals>; g: number[]; src?: Record<string, Record<string, HourTotals>> }
+export interface HourAgg {
+  m: Record<string, HourTotals>; g: number[]; src?: Record<string, Record<string, HourTotals>>;
+  /**
+   * #2122 §10.3: reasoning tokens, by source and model key — the part of `output` a CLI reports as reasoning (Codex). Kept
+   * beside the totals, never as an 8th entry: a published reader keeps only 7-entry totals and would drop the hour (Fable
+   * #2604 P1); an older version that rewrites the ledger drops only this.
+   */
+  rs?: Record<string, Record<string, number>>;
+}
 /** A source of an hour's totals: the reader that read them and the profile it read them under. */
 export const sourceKey = (reader: TranscriptKind, profile: string): string => `${reader}:${profile}`;
 /**
@@ -117,15 +116,22 @@ export function reviveLedger(raw: unknown): Ledger {
   for (const [k, v] of Object.entries(r.hours ?? {})) {
     if (!v || !Array.isArray(v.g)) continue;
     const m = dict<HourTotals>();
-    for (const [mk, tot] of Object.entries(v.m ?? {})) { const t = reviveTotals(tot); if (t) m[mk] = t; }
+    for (const [mk, tot] of Object.entries(v.m ?? {})) if (Array.isArray(tot) && tot.length === 7) m[mk] = tot as HourTotals;
     const src = dict<Record<string, HourTotals>>();
     for (const [sk, sm] of Object.entries(v.src ?? {})) {
       if (!/^(?:claude|codex):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
       const into = dict<HourTotals>();
-      for (const [mk, tot] of Object.entries(sm)) { const t = reviveTotals(tot); if (t) into[mk] = t; }
+      for (const [mk, tot] of Object.entries(sm)) if (Array.isArray(tot) && tot.length === 7 && tot.every(n => Number.isFinite(n))) into[mk] = tot as HourTotals;
       src[sk] = into;
     }
-    l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}) };
+    const rs = dict<Record<string, number>>();
+    for (const [sk, sm] of Object.entries(v.rs ?? {})) {
+      if (!src[sk] || !sm || typeof sm !== "object") continue;
+      const into = dict<number>();
+      for (const [mk, n] of Object.entries(sm)) if (typeof n === "number" && Number.isFinite(n) && n > 0 && src[sk][mk]) into[mk] = n;
+      if (Object.keys(into).length) rs[sk] = into;
+    }
+    l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}), ...(Object.keys(rs).length ? { rs } : {}) };
   }
   if (Array.isArray(r.gaps)) l.gaps = r.gaps.filter((g) => Array.isArray(g) && g.length === 9);
   if (r.writesSeen) l.writesSeen = true;
@@ -164,12 +170,14 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const hour = ledger.hours[hk] ??= { m: dict<HourTotals>(), g: new Array<number>(GAP_BUCKETS).fill(0) };
   const mk = modelKey(turn.model, turn.prompt);
   const bump = (tot: HourTotals): void => {
-    tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output; tot[7] += turn.reasoning ?? 0;
+    tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
   };
-  bump(hour.m[mk] ??= zeroTotals());
+  bump(hour.m[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
   // #2122: and under its source — the reader that read it (this file's kind) and the profile it was read under.
-  const src = (hour.src ??= dict<Record<string, HourTotals>>())[sourceKey(file.kind, profile ?? "unknown")] ??= dict<HourTotals>();
-  bump(src[mk] ??= zeroTotals());
+  const sk = sourceKey(file.kind, profile ?? "unknown");
+  const src = (hour.src ??= dict<Record<string, HourTotals>>())[sk] ??= dict<HourTotals>();
+  bump(src[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
+  if (turn.reasoning) { const rs = (hour.rs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); rs[mk] = (rs[mk] ?? 0) + turn.reasoning; }
   if (!prev) return;
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;

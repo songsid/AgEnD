@@ -135,12 +135,22 @@ describe("what it shows", () => {
   });
   it("hours from before #2122 say so; a row with only messages shows them", async () => {
     const legacy = emptyLedger();
-    legacy.hours[String(at(1))] = { m: { "claude-opus-4-5|0": [2, 100, 800, 0, 50, 0, 20, 0] }, g: [0, 0, 0, 0, 0, 0, 0] };
+    legacy.hours[String(at(1))] = { m: { "claude-opus-4-5|0": [2, 100, 800, 0, 50, 0, 20] }, g: [0, 0, 0, 0, 0, 0, 0] };
     answer = { status: 200, body: report({ instances: [inst("old", "claude-code", legacy)], messages: [{ instance: "talker", hour: at(1), count: 2 }] }) };
     await mount();
     const old = rows().find((r: any) => name(r) === "old");
     expect(old.querySelector(".us-flags").textContent).toBe("read before backend and profile were recorded");
     expect(cell(rows().find((r: any) => name(r) === "talker"), "Messages")).toBe("2");
+  });
+  it("reasoning (#2122 §10.3): a Codex row shows it; a CLI that reports none reads —, never a measured 0", async () => {
+    answer = { status: 200, body: report({ messages: [], instances: [
+      inst("billing", "claude-code", ledger([[at(1), "claude-opus-4-5"]])),
+      inst("indexer", "codex", ledger([[at(1), "gpt-5.6-sol", { output: 900, reasoning: 600, write: 0 }]], "codex")),
+    ] }) };
+    await mount();
+    expect(cell(rows().find((r: any) => name(r) === "billing"), "Reasoning")).toBe("—");
+    const codex = rows().find((r: any) => name(r) === "indexer");
+    expect([cell(codex, "Output"), cell(codex, "Reasoning")]).toEqual(["300", "600"]);
   });
   it("scanning: says totals may still grow, and Refresh reads again", async () => {
     answer = { status: 200, body: { ...report(), scanning: { active: true, caughtUp: false, pendingBytes: 5e6, pendingFiles: 2 } } };
@@ -287,11 +297,10 @@ describe("what the charts say about a day (Prism R1)", () => {
     expect([p.root.querySelectorAll(".us-h").length, p.root.querySelector(".us-chart")]).toEqual([0, null]);
     expect(p.root.querySelector(".us-csv").disabled).toBe(true);
     expect(cell(rows()[0], "Requests")).toBe("6");
-    expect(cell(rows()[0], "Reasoning")).toBe("0");
   });
   it("the timezone changed: a date made in two zones shows each part, and the page says the zone changed", async () => {
     const days = { ...emptyDays(), checkpoint: at(1, 0) - HOUR, coverage: [[NOW - 31 * DAY, NOW]] as Array<[number, number]>,
-      rows: [{ date: "2026-10-17", zone: "Asia/Taipei", be: "claude-code", pf: "default", m: { "claude-opus-4-5|0": [2, 2000, 16000, 0, 1000, 0, 400, 0] as [number, number, number, number, number, number, number, number] } }] };
+      rows: [{ date: "2026-10-17", zone: "Asia/Taipei", be: "claude-code", pf: "default", m: { "claude-opus-4-5|0": [2, 2000, 16000, 0, 1000, 0, 400] as [number, number, number, number, number, number, number] } }] };
     const r = report({ instances: [inst("billing", "claude-code", ledger([[at(1, 9), "claude-opus-4-5"]]), { days })], messages: [] });
     expect(new Set(r.daily.filter((d: any) => d.date === "2026-10-17").map((d: any) => d.zone))).toEqual(new Set(["Asia/Taipei", "UTC"]));
     answer = { status: 200, body: r };

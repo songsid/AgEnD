@@ -25,6 +25,8 @@ export const usageBasis = (checked = PRICES_CHECKED): string => `API-equivalent 
 export const USAGE_DAILY_MAX = 20_000;
 
 const M = 1_000_000;
+/** The backends whose transcripts report reasoning tokens (#2122 §10.3); elsewhere a 0 means not reported. */
+export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface UsageInstanceInput {
@@ -68,6 +70,8 @@ export interface UsageTotals {
 }
 export interface UsageRow extends UsageTotals {
   key: string;
+  /** Whether any of it comes from a CLI that reports reasoning (REPORTS_REASONING): false → its 0 is "not reported". */
+  reasoningReported: boolean;
   total: number;
   /** Delivered messages; null where a message has no such key (by model, by profile). */
   messages: number | null;
@@ -87,6 +91,7 @@ export interface UsageRow extends UsageTotals {
 }
 export interface UsageDaily extends UsageTotals {
   date: string;
+  reasoningReported: boolean;
   zone: string;
   instance: string;
   backend: string;
@@ -146,14 +151,15 @@ export function rangeDates(range: UsageRange, now: number, zone: string): { from
 }
 
 const zero = (): UsageTotals => ({ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWrite: 0, requests: 0 });
-const addTotals = (into: UsageTotals, [n, uncached, read, w5, w1h, w, out, reasoning]: HourTotals): void => {
-  const r = Math.min(reasoning ?? 0, out);
+/** One slice into a row: `reasoning` is the part of the slice's output reported as reasoning (shown beside the rest). */
+const addTotals = (into: UsageTotals, [n, uncached, read, w5, w1h, w, out]: HourTotals, reasoning: number): void => {
+  const r = Math.min(Math.max(0, reasoning), out);
   into.requests += n; into.input += uncached; into.cacheRead += read; into.cacheWrite5m += w5; into.cacheWrite1h += w1h; into.cacheWrite += w; into.output += out - r; into.reasoning += r;
 };
 const splitKey = (mk: string): { model: string; long: boolean } => { const bar = mk.lastIndexOf("|"); return { model: mk.slice(0, bar), long: mk.slice(bar + 1) === "1" }; };
 
 /**
- * The list-price amount of one slice, or null when its model is not in the table. Reasoning is a part of the ledger's
+ * The list-price amount of one slice, or null when its model is not in the table. Reasoning is a part of the slice's
  * output, so the whole output is priced at the output rate once. Codex writes not reported are 0 in the
  * ledger (it marks writesSeen on the first one above 0), so they add nothing and are never priced as uncached input.
  */
@@ -163,7 +169,7 @@ function amountOf(model: string, long: boolean, [, uncached, read, w5, w1h, w, o
   return (uncached * r.input + read * r.read + w5 * r.write5m + w1h * r.write1h + w * r.write + out * r.output) / M;
 }
 
-interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; writesReported: boolean }
+interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; reasoning: number; writesReported: boolean }
 const unknownSource = (s: Slice): boolean => s.backend === "unknown" || s.profile === "unknown";
 
 export function buildUsageReport(input: UsageInput): UsageReport {
@@ -185,7 +191,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     const base = { instance: i.name, team: i.team };
     for (const row of i.days.rows) {
       if (!inRange(row.date)) continue;
-      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: row.be !== "codex" || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot });
+      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: row.be !== "codex" || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot, reasoning: row.r?.[mk] ?? 0 });
     }
     for (const [hk, hour] of Object.entries(i.ledger.hours)) {
       const h = Number(hk);
@@ -193,7 +199,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       const date = localDate(h, input.zone);
       if (!inRange(date)) continue;
       for (const src of hourSources(hour)) {
-        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: src.backend !== "codex" || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot });
+        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: src.backend !== "codex" || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot, reasoning: src.r[mk] ?? 0 });
       }
     }
   }
@@ -209,14 +215,15 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   };
   type Acc = UsageRow & { _amount: number; _pricedAny: boolean; _unpricedAny: boolean };
   const rows = new Map<string, Acc>();
-  const newRow = (key: string): Acc => ({ key, ...zero(), total: 0, messages: null, amount: null, priced: "none", flags: [], unpriced: [], instances: [], backends: [], models: [], profiles: [], _amount: 0, _pricedAny: false, _unpricedAny: false });
+  const newRow = (key: string): Acc => ({ key, ...zero(), reasoningReported: false, total: 0, messages: null, amount: null, priced: "none", flags: [], unpriced: [], instances: [], backends: [], models: [], profiles: [], _amount: 0, _pricedAny: false, _unpricedAny: false });
   const uniq = (list: string[], v: string) => { if (!list.includes(v)) list.push(v); };
   // Daily rows: one per day, zone, agent, backend, model, tier and profile (an hour's slices summed into their day).
   const dailyBy = new Map<string, UsageDaily>();
   for (const s of slices) {
     const key = keyOf(s);
     const row = rows.get(key) ?? (rows.set(key, newRow(key)), rows.get(key)!);
-    addTotals(row, s.tot);
+    addTotals(row, s.tot, s.reasoning);
+    if (REPORTS_REASONING.has(s.backend)) row.reasoningReported = true;
     uniq(row.instances, s.instance); uniq(row.backends, s.backend); uniq(row.models, s.model); uniq(row.profiles, s.profile);
     const amount = amountOf(s.model, s.long, s.tot);
     if (amount === null) { row._unpricedAny = true; uniq(row.unpriced, s.model); } else { row._pricedAny = true; row._amount += amount; }
@@ -226,11 +233,11 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     const dk = [s.date, s.zone, s.instance, s.backend, s.model, tier, s.profile].join("\u0000");
     let d = dailyBy.get(dk);
     if (!d) {
-      d = { date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier, profile: s.profile, ...zero(), amount: amount === null ? null : 0,
+      d = { date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier, profile: s.profile, ...zero(), reasoningReported: REPORTS_REASONING.has(s.backend), amount: amount === null ? null : 0,
         flags: [...(s.writesReported ? [] : ["cache_write_not_reported"]), ...(amount === null ? ["not_priced"] : []), ...(unknownSource(s) ? ["source_unknown"] : [])] };
       dailyBy.set(dk, d);
     }
-    addTotals(d, s.tot);
+    addTotals(d, s.tot, s.reasoning);
     if (amount !== null && d.amount !== null) d.amount += amount;
   }
   const allDaily = [...dailyBy.values()].sort((a, b) => a.date.localeCompare(b.date) || a.instance.localeCompare(b.instance) || a.model.localeCompare(b.model) || a.zone.localeCompare(b.zone));
@@ -292,6 +299,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     totals.total += r.total;
     if (r.messages !== null) totals.messages = (totals.messages ?? 0) + r.messages;
     if (r.amount !== null) totals.amount = (totals.amount ?? 0) + r.amount;
+    if (r.reasoningReported) totals.reasoningReported = true;
     for (const f of r.flags) uniq(totals.flags, f);
     for (const m of r.unpriced) uniq(totals.unpriced, m);
   }

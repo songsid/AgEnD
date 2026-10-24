@@ -49,15 +49,15 @@ describe("§5.1 each source of an hour keeps its own totals; hours from before #
   /** An hour as a ledger from before #2122 wrote it: 100 requests, no source. */
   function legacyLedger(): Ledger {
     const l = emptyLedger();
-    l.hours[String(h)] = { m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000, 0] }, g: [0, 0, 0, 0, 0, 0, 0] };
+    l.hours[String(h)] = { m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000] }, g: [0, 0, 0, 0, 0, 0, 0] };
     return l;
   }
   it("a legacy hour that gets one more request: the 100 stay unknown, the new one is the reader's and profile's", () => {
     const l = legacyLedger();
     addTurn(l, cursor(), turn(h + 1000), 0, "work");
     expect(hourSources(l.hours[String(h)]!)).toEqual([
-      { backend: "claude-code", profile: "work", m: { [MK]: [1, 100, 800, 50, 50, 0, 20, 0] } },
-      { backend: "unknown", profile: "unknown", m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000, 0] } },
+      { backend: "claude-code", profile: "work", m: { [MK]: [1, 100, 800, 50, 50, 0, 20] }, r: {} },
+      { backend: "unknown", profile: "unknown", m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000] }, r: {} },
     ]);
   });
   it("two profiles in one hour: each exact (no \"mixed\"), and they survive the ledger's round trip and the fold", () => {
@@ -67,7 +67,7 @@ describe("§5.1 each source of an hour keeps its own totals; hours from before #
     addTurn(l, cursor(), turn(h + 3000), 0, "work");
     const back = reviveLedger(JSON.parse(JSON.stringify(l)));
     const by = Object.fromEntries(hourSources(back.hours[String(h)]!).map(s => [s.profile, s.m[MK]]));
-    expect(by).toEqual({ work: [2, 200, 1600, 100, 100, 0, 40, 0], home: [1, 100, 800, 50, 50, 0, 7, 0] });
+    expect(by).toEqual({ work: [2, 200, 1600, 100, 100, 0, 40], home: [1, 100, 800, 50, 50, 0, 7] });
     const d = emptyDays();
     foldHours(d, back, h + 2 * HOUR, "UTC");
     expect(d.rows.map(r => [r.be, r.pf, r.m[MK]![0]]).sort()).toEqual([["claude-code", "home", 1], ["claude-code", "work", 2]]);
@@ -400,7 +400,7 @@ describe("the report: honest by construction", () => {
   });
   it("hours from before #2122: reported under an unknown source, flagged — never as today's backend", () => {
     const l = emptyLedger();
-    l.hours[String(h)] = { m: { "claude-opus-4-5|0": [5, 500, 4000, 250, 250, 0, 100, 0] }, g: [0, 0, 0, 0, 0, 0, 0] };
+    l.hours[String(h)] = { m: { "claude-opus-4-5|0": [5, 500, 4000, 250, 250, 0, 100] }, g: [0, 0, 0, 0, 0, 0, 0] };
     const r = input([ok("a", "codex", l)], { group: "backend" });
     expect(r.rows.map(x => [x.key, x.requests])).toEqual(expect.arrayContaining([["unknown", 5]]));
     expect(r.rows.find(x => x.key === "unknown")!.flags).toEqual(["source_unknown"]);

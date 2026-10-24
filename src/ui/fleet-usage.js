@@ -327,7 +327,7 @@ function Row({ r, group, max, measure }) {
     <td data-label=${tu("amount")} class=${`num${r.amount === null ? " muted" : ""}`}>${amountText(r)}</td>
     <td data-label=${tu("input")} class="num">${tokens(r.input)}</td>
     <td data-label=${tu("output")} class="num">${tokens(r.output)}</td>
-    <td data-label=${tu("reasoning")} class="num">${tokens(r.reasoning || 0)}</td>
+    <td data-label=${tu("reasoning")} class="num">${r.reasoningReported === false ? "—" : tokens(r.reasoning || 0)}</td>
     <td data-label=${tu("read")} class="num">${tokens(r.cacheRead)}</td>
     <td data-label=${tu("write")} class="num">${r.flags.includes("cache_write_not_reported") && writes(r) === 0 ? "—" : tokens(writes(r))}</td>
     <td data-label=${tu("total")} class="num">${tokens(r.total)}</td>

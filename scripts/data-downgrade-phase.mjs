@@ -88,6 +88,47 @@ function recoveryRows() {
     ].map(([table, key]) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY ${key}`).all()]));
   } finally { db.close(); }
 }
+// #2122 (Fable #2604 P1): the usage ledger and its daily rollup. A published reader keeps a totals array only with
+// exactly 7 entries and writes back what it revived; the totals this version writes must survive that round trip.
+const usageLedgerPath = join(scratch, 'cache-ledger.json'), usageDaysPath = join(scratch, 'usage-days.json');
+const hasUsageRollup = existsSync(join(packageRoot, 'dist', 'usage-rollup.js'));
+if (phase === 'create') {
+  const { addTurn, emptyLedger } = await load('cache-ledger.js');
+  const { emptyDays, foldHours } = await load('usage-rollup.js');
+  const hour = Date.UTC(2026, 0, 5, 9), ledger = emptyLedger(), days = emptyDays();
+  const file = { kind: 'codex', ino: 1, offset: 0 };
+  const turn = (t, model) => ({ t, model, prompt: 10_000, uncached: 2000, read: 8000, write5m: 0, write1h: 0, write: 0, output: 900, reasoning: 600 });
+  addTurn(ledger, file, turn(hour + 60_000, 'gpt-5.6-sol'), 0, 'unrecorded');
+  addTurn(ledger, file, turn(hour + 3 * 3_600_000, 'gpt-5.6-sol'), 0, 'unrecorded');
+  foldHours(days, ledger, hour + 3_600_000, 'UTC');                          // the first hour also in the rollup
+  checked('the usage ledger and rollup keep 7 totals, reasoning beside them', () => {
+    for (const h of Object.values(ledger.hours)) for (const t of [...Object.values(h.m), ...Object.values(h.src).flatMap(Object.values)]) assert.equal(t.length, 7);
+    for (const row of days.rows) for (const t of Object.values(row.m)) assert.equal(t.length, 7);
+    assert.ok(Object.values(ledger.hours).every(h => h.rs) && days.rows.every(r => r.r));
+  });
+  writeFileSync(usageLedgerPath, JSON.stringify(ledger)); writeFileSync(usageDaysPath, JSON.stringify(days));
+  state.usage = { hours: Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: h.m, src: h.src }])), rows: days.rows.map(r => r.m) };
+} else if (phase === 'old' && hasUsageRollup) {
+  const { reviveLedger } = await load('cache-ledger.js');
+  const { reviveDays } = await load('usage-rollup.js');
+  checked('the old reader keeps every usage total and writes them back', () => {
+    const ledger = reviveLedger(JSON.parse(readFileSync(usageLedgerPath, 'utf8')));
+    const days = reviveDays(JSON.parse(readFileSync(usageDaysPath, 'utf8')));
+    assert.deepEqual(Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: { ...h.m }, src: Object.fromEntries(Object.entries(h.src).map(([s, m]) => [s, { ...m }])) }])), state.usage.hours);
+    assert.deepEqual(days.rows.map(r => ({ ...r.m })), state.usage.rows);
+    // As it does after a catch-up (cache-service save, recordCoverage): what it revived is what goes back to disk.
+    writeFileSync(usageLedgerPath, JSON.stringify(ledger)); writeFileSync(usageDaysPath, JSON.stringify(days));
+  });
+} else if (phase === 'return') {
+  const { reviveLedger } = await load('cache-ledger.js');
+  const { reviveDays } = await load('usage-rollup.js');
+  checked('back on the new version, every usage total is there', () => {
+    const ledger = reviveLedger(JSON.parse(readFileSync(usageLedgerPath, 'utf8')));
+    const days = reviveDays(JSON.parse(readFileSync(usageDaysPath, 'utf8')));
+    assert.deepEqual(Object.fromEntries(Object.entries(ledger.hours).map(([k, h]) => [k, { m: { ...h.m }, src: Object.fromEntries(Object.entries(h.src).map(([s, m]) => [s, { ...m }])) }])), state.usage.hours);
+    assert.deepEqual(days.rows.map(r => ({ ...r.m })), state.usage.rows);
+  });
+}
 if (phase === 'create') {
   checked('working journal has populated current and prior snapshots before downgrade', () => {
     const snapshot = { version: 1, reason: 'before_stop', observedAt: 10, lastActivityAt: 9,
