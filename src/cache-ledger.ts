@@ -20,8 +20,8 @@
 import { objectAt, type ScanLine } from "./cache-scan.js";
 import { isLongPrompt } from "./cache-prices.js";
 
-/** The reader: Claude Code, Codex and Grok transcripts are measured; Kiro is estimated (kiro-usage.ts, #2122 §10). */
-export type TranscriptKind = "claude" | "codex" | "kiro" | "grok";
+/** The reader: Claude Code, Codex, Grok and Muse transcripts are measured; Kiro is estimated (kiro-usage.ts, #2122 §10). */
+export type TranscriptKind = "claude" | "codex" | "kiro" | "grok" | "muse";
 
 /** One model request, as the transcript records it. */
 export interface Turn {
@@ -129,7 +129,7 @@ export function reviveLedger(raw: unknown): Ledger {
     for (const [mk, tot] of Object.entries(v.m ?? {})) if (Array.isArray(tot) && tot.length === 7) m[mk] = tot as HourTotals;
     const src = dict<Record<string, HourTotals>>();
     for (const [sk, sm] of Object.entries(v.src ?? {})) {
-      if (!/^(?:claude|codex|kiro|grok):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
+      if (!/^(?:claude|codex|kiro|grok|muse):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
       const into = dict<HourTotals>();
       for (const [mk, tot] of Object.entries(sm)) if (Array.isArray(tot) && tot.length === 7 && tot.every(n => Number.isFinite(n))) into[mk] = tot as HourTotals;
       src[sk] = into;
@@ -194,8 +194,8 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   bump(src[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
   if (turn.reasoning) { const rs = (hour.rs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); rs[mk] = (rs[mk] ?? 0) + turn.reasoning; }
   if (turn.cost) { const cs = (hour.cs ??= dict<Record<string, number>>())[sk] ??= dict<number>(); cs[mk] = (cs[mk] ?? 0) + turn.cost; }
-  // Kiro and Grok are not in the cache analysis (Kiro's turns are estimates; Grok's analysis is not built): no gaps.
-  if (!prev || file.kind === "kiro" || file.kind === "grok") return;
+  // Only Claude and Codex are in the cache analysis (Kiro's turns are estimates; the others' analysis is not built).
+  if (!prev || (file.kind !== "claude" && file.kind !== "codex")) return;
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;
   hour.g[gapBucket(gap)]! += 1;
@@ -328,4 +328,26 @@ export function grokLine(line: ScanLine, file: FileCursor): Turn[] {
   }
   if (id && out.length) file.ids = [...(file.ids ?? []).slice(-15), id];
   return out;
+}
+
+/**
+ * #2122 §10 step 4: the turn a Muse `session.jsonl` line records — a `runtime.session` event `model_completed` with its
+ * `usage`. Real counts, one per model call: `input_tokens` includes the cache reads (`cache_read_tokens`, older lines
+ * `cached_tokens`) and writes, `reasoning_tokens` is a part of `output_tokens` (as tokscale reads them). Only
+ * `model_completed` counts: a workflow's aggregate events would count a child's calls twice.
+ */
+export function museLine(line: ScanLine): Turn | null {
+  if (!("whole" in line) || line.whole.indexOf("\"model_completed\"") === -1) return null;
+  let d: { recorded_at?: unknown; payload_type?: unknown; payload?: { event?: Record<string, unknown> } };
+  try { d = JSON.parse(line.whole.toString("utf8")); } catch { return null; }
+  const e = d.payload?.event;
+  if (d.payload_type !== "runtime.session" || !e || e.kind !== "model_completed" || !e.usage || typeof e.usage !== "object") return null;
+  if (typeof d.recorded_at !== "number" || !Number.isFinite(d.recorded_at)) return null;
+  const u = e.usage as Record<string, unknown>;
+  const input = num(u.input_tokens), read = Math.min(num(u.cache_read_tokens) || num(u.cached_tokens), input);
+  const write = typeof u.cache_write_tokens === "number" ? Math.min(num(u.cache_write_tokens), input - read) : null;
+  const output = num(u.output_tokens);
+  if (!input && !output) return null;
+  return { t: Math.floor(d.recorded_at / 1000), model: typeof e.model === "string" && e.model ? e.model : "unknown", prompt: input, uncached: input - read - (write ?? 0), read,
+    write5m: 0, write1h: 0, write, output, reasoning: Math.min(num(u.reasoning_tokens), output) };
 }

@@ -31,7 +31,9 @@ const M = 1_000_000;
 /** The backends whose usage is estimated, not measured (#2122 §10.2: Kiro records no token counts). */
 export const ESTIMATED_BACKENDS: ReadonlySet<string> = new Set(["kiro-cli"]);
 /** The backends whose transcripts report reasoning tokens (#2122 §10.3); elsewhere a 0 means not reported. */
-export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex", "grok"]);
+export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex", "grok", "muse"]);
+/** The backends whose transcripts carry a cache-write field that stays 0: "not reported" until a real write is seen. */
+export const WRITES_UNREPORTED: ReadonlySet<string> = new Set(["codex", "muse"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface UsageInstanceInput {
@@ -197,12 +199,12 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     else if (i.status !== "ok") notMeasured.push({ name: i.name, backend: i.backend, reason: i.status === "credit_billed" ? "credit_billed" : i.status === "no_data" ? "no_data" : "unsupported" });
     if (!i.ledger || !i.days) continue;
     coverage.push({ name: i.name, intervals: i.days.coverage.map(([a, b]) => [a, b] as [number, number]) });
-    // Codex: a write is reported only once a real one has been seen (every CLI so far records 0).
+    // Codex and Muse: a write is reported only once a real one has been seen (every CLI so far records 0).
     const writesSeen = i.ledger.writesSeen === true;
     const base = { instance: i.name, team: i.team };
     for (const row of i.days.rows) {
       if (!inRange(row.date)) continue;
-      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: row.be !== "codex" || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot, reasoning: row.r?.[mk] ?? 0, cost: row.c?.[mk] ?? 0 });
+      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: !WRITES_UNREPORTED.has(row.be) || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot, reasoning: row.r?.[mk] ?? 0, cost: row.c?.[mk] ?? 0 });
     }
     for (const [hk, hour] of Object.entries(i.ledger.hours)) {
       const h = Number(hk);
@@ -210,7 +212,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       const date = localDate(h, input.zone);
       if (!inRange(date)) continue;
       for (const src of hourSources(hour)) {
-        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: src.backend !== "codex" || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot, reasoning: src.r[mk] ?? 0, cost: src.c[mk] ?? 0 });
+        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: !WRITES_UNREPORTED.has(src.backend) || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot, reasoning: src.r[mk] ?? 0, cost: src.c[mk] ?? 0 });
       }
     }
   }

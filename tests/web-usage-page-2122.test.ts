@@ -107,7 +107,7 @@ describe("what it shows", () => {
     expect(cell(billing, "API-equivalent")).toMatch(/^\$\d+\.\d\d$/);
     expect([cell(billing, "Requests"), cell(billing, "Messages"), cell(billing, "Input")]).toEqual(["3", "4", "3k"]);
     expect(cell(indexer, "Cache write")).toBe("—");                                    // not reported, not 0
-    expect(indexer.querySelector(".us-flags").textContent).toBe("cache writes not reported (Codex) — an estimate");
+    expect(indexer.querySelector(".us-flags").textContent).toBe("cache writes not reported (Codex, Muse) — an estimate");
     expect(cell(lab, "API-equivalent")).toBe("not priced");
     expect(lab.querySelector(".us-flags").textContent).toBe("not priced: made-up-model-9");
     expect(p.root.querySelectorAll(".us-totals dt").map((e: any) => e.textContent)).toEqual(["API-equivalent", "Total tokens", "Requests", "Messages"]);
@@ -216,7 +216,7 @@ describe("states it explains", () => {
     answer = { status: 200, body: report({ instances: [inst("fresh", "claude-code", undefined, { days: emptyDays() })], messages: [] }) };
     await mount();
     expect(p.root.querySelector(".empty").textContent).toContain("Nothing recorded yet");
-    expect(p.root.querySelector(".empty").textContent).toContain("Usage is read from Claude Code, Codex and Grok transcripts, and estimated for Kiro");
+    expect(p.root.querySelector(".empty").textContent).toContain("Usage is read from Claude Code, Codex, Grok and Muse transcripts, and estimated for Kiro");
   });
   it("the public link without the key (403): not offered there, why, and a working link to where it is turned on", async () => {
     answer = { status: 403, body: { error: "usage_report_not_over_public_link", settings: "http://localhost:19280/settings/web" } };
