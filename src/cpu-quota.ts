@@ -7,11 +7,13 @@ import { availableParallelism, platform } from "node:os";
  * `os.cpus().length` is the host's core count. Inside a container or a
  * systemd slice with `CPUQuota=`, that overstates what the fleet can run, and
  * the cold-start concurrency derived from it starts more CLIs than can make
- * progress. `availableParallelism()` honours the CPU affinity mask (cpuset);
- * the CFS quota is read here from cgroup v2 (`cpu.max`, every level from this
- * process's cgroup up to the root — the tightest wins) or cgroup v1
- * (`cpu.cfs_quota_us` / `cpu.cfs_period_us`). A fractional quota rounds up: a
- * 1.5-CPU limit still runs two processes concurrently, just throttled.
+ * progress. `availableParallelism()` honours the CPU affinity mask, and on
+ * current Node (22, libuv) it already applies a cgroup v2 quota too, rounded
+ * down (`--cpus=1.5` → 1). The quota read here — cgroup v2 `cpu.max` at every
+ * level from this process's cgroup up to the root, the tightest winning, or
+ * cgroup v1 `cpu.cfs_quota_us` / `cpu.cfs_period_us` — is the fallback for
+ * runtimes and hosts where it does not (older libuv, v1 and hybrid hosts). The
+ * smaller of the two wins; a fractional quota read here rounds up.
  */
 export interface CpuQuotaDeps {
   platform: NodeJS.Platform;
