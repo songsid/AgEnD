@@ -1,0 +1,40 @@
+                             Upgrade your V2 agent configurations to V3 with [1m/upgrade-agent[0m
+                                              [95mhttps://kiro.dev/docs/cli/v3/[39m
+                                Prefer the previous experience? Launch with [95mkiro-cli --v2[39m
+
+                   [1mTip: [0mWant a simpler, lighter-weight terminal with all the same features? Try [95m/lite![39m
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ [36m▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.[39m
+   [36mIt brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.[39m
+   [36mNote: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.[39m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › ask me (basic)
+
+[32m•[39m Which branch should I use?
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › hello from agend
+
+[31m•[39m [3mCancelled[0m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › ask me (rich)
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ [33mTrust All Tools active, confirmations are off[39m · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Question
+ How should I deploy this change?
+
+ ❯ [1m[35m[✓] api[0m
+   [✓] web
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   esc to go back · ↑↓ to navigate · space to toggle · ↵ to submit
+
+
+
+
+
+

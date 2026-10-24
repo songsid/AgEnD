@@ -37,7 +37,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       </p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLiner}</pre>
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
-        <li>• Windows asks once for <b class="text-text-primary">Administrator</b> approval, because the installer enables WSL. Choose <i>Yes</i>: the installer opens in a new window. Already in an Administrator PowerShell? It runs right there.</li>
+        <li>• Windows asks once for <b class="text-text-primary">Administrator</b> approval, because the installer enables WSL. Choose <i>Yes</i>: the installer opens in a new window — in Windows Terminal when it is installed (it shows Chinese text properly), otherwise in a PowerShell window. The window you pasted into waits and says how it ended. Already in an Administrator PowerShell? It runs right there.</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> applies to that one command only. Your execution policy is not changed, and there is no file to unblock.</li>
         <li>• <b class="text-text-primary">If it asks you to restart Windows</b>, press Enter: after you log back in, the install carries on by itself (Windows asks once for approval; choose <i>Yes</i>). If it doesn't, paste the same line again: it resumes where it stopped.</li>
         <li>• Every long step shows how long it has been running and how long it usually takes, with the tool's own progress under it.</li>

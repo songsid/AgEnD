@@ -577,6 +577,14 @@ function Test-InstallRecordAsSeen($seen, [string]$distro, [string]$user) {
     if ($null -eq $now) { return $true }
     return ($null -ne $seen -and $now.Distro -eq $seen.Distro -and $now.User -ceq $seen.User)
 }
+# 有 Windows Terminal 時捷徑在它裡面開（中文顯示較好）；沒有或 AGEND_INSTALL_TERMINAL=conhost 時直接開 PowerShell。
+function Get-ShortcutCommand([string]$file) {
+    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $a = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file
+    $wt = $null; if ($env:AGEND_INSTALL_TERMINAL -ne 'conhost') { $wt = Get-Command wt.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if ($wt) { return @{ Target = $wt.Source; Arguments = '-w new "{0}" {1}' -f $ps, ($a -replace ';', '\;') } }
+    return @{ Target = $ps; Arguments = $a }
+}
 # 一個桌面捷徑：腳本寫在 %LOCALAPPDATA%\AgEnD，捷徑以 Windows PowerShell 執行它（-ExecutionPolicy Bypass 只對那個行程）。
 function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
     $dir = Get-AgendShortcutDir
@@ -586,8 +594,9 @@ function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptTe
     $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) ($name + '.lnk')
     $shell = New-Object -ComObject WScript.Shell
     $sc = $shell.CreateShortcut($lnk)
-    $sc.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $sc.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file)
+    $cmd = Get-ShortcutCommand $file
+    $sc.TargetPath = $cmd.Target
+    $sc.Arguments = $cmd.Arguments
     $sc.Description = $description
     $sc.Save()
     return $lnk
@@ -988,6 +997,44 @@ function Limit-Width([string]$text, [int]$max) {
     foreach ($ch in $text.ToCharArray()) { if ((Get-DisplayWidth ($out + $ch + '...')) -gt $max) { break }; $out += $ch }
     return $out + '...'
 }
+# 原地更新的狀態列：寧可算寬，也不能換行。舊的藍色主控台用中文字型或字碼頁時，「–」「…」這類寬度不定的字也佔兩格；
+# 狀態列只要多出一格就會折到下一行，之後每次的 `r 只回到折下去的那一行，畫面就變成每秒多一行（使用者回報的截圖）。
+# 所以這裡把每個非 ASCII 字都當兩格，再留一格。
+function Get-SafeWidth([string]$text) {
+    $w = 0
+    foreach ($ch in $text.ToCharArray()) { if ([int]$ch -lt 0x80) { $w += 1 } else { $w += 2 } }
+    return $w
+}
+function Format-StatusLine([string]$text, [int]$width) {
+    $max = $width - 1
+    if ($max -lt 8) { return '' }
+    $text = $text -replace "[\r\n\t]", ' '
+    if ((Get-SafeWidth $text) -le $max) { return $text }
+    $out = ''
+    foreach ($ch in $text.ToCharArray()) { if ((Get-SafeWidth ($out + $ch + '...')) -gt $max) { break }; $out += $ch }
+    return $out + '...'
+}
+# 狀態列寫到主控台：用 PowerShell 主控台自己的 Unicode 寫法（和 Write-Host 同一條路），不用 [Console]::Write——在
+# Windows PowerShell 5.1 它會先轉成主控台字碼頁，中文會變亂碼。$row：狀態列開始的那一行；游標不在那一行（萬一還是折行了）
+# 就回到那一行重畫，清掉它用過的行，不會一秒多一行。回傳這次開始的行。$console 只給測試換成假的主控台。
+function New-StatusConsole {
+    return @{ Top = { [Console]::CursorTop }; Height = { [Console]::BufferHeight }; Move = { [Console]::SetCursorPosition(0, $args[0]) }; Write = { $Host.UI.Write($args[0]) } }
+}
+function Write-StatusLine([string]$text, [int]$width, $row, $console = $null) {
+    if (-not $console) { $console = New-StatusConsole }
+    try {
+        $top = & $console.Top
+        if ($null -ne $row -and $top -ne $row -and $row -ge 0 -and $row -lt (& $console.Height)) {
+            for ($r = $row; $r -le $top; $r++) { & $console.Move $r; & $console.Write (' ' * $width) }
+            & $console.Move $row
+        } else {
+            & $console.Write ("`r" + (' ' * $width) + "`r")
+        }
+        $start = & $console.Top
+    } catch { $start = $null; & $console.Write "`r" }
+    & $console.Write (Format-StatusLine $text $width)
+    return $start
+}
 
 # 讀取子程序寫到檔案的新輸出，用這一步已知的編碼（不從位元組猜：純中文的 UTF-16 開頭可以是合法的 ASCII，
 # 「上」U+4E0A 也含 0x0A，#2228 審查）。'utf8'：WSL 裡的程式（Linux 的輸出原樣傳過來）；'utf16'：wsl.exe 自己的指令
@@ -1054,7 +1101,7 @@ function Invoke-Watched {
     $prevUtf8 = $env:WSL_UTF8
     if ($Encoding -eq 'utf16') { Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue } else { $env:WSL_UTF8 = '1' }
     # 這一步的狀態（scriptblock 之間共用同一個 hashtable）。
-    $st = @{ Tails = @((New-OutputTail $outFile $Encoding), (New-OutputTail $errFile $Encoding)); Pending = @('', ''); Progress = ''; Shown = $false }
+    $st = @{ Tails = @((New-OutputTail $outFile $Encoding), (New-OutputTail $errFile $Encoding)); Pending = @('', ''); Progress = ''; Shown = $false; Row = $null }
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $nextBeat = $HeartbeatSeconds
     $spin = '|/-\'
@@ -1063,8 +1110,12 @@ function Invoke-Watched {
     $clearStatus = {
         if ($st.Shown) {
             $w = Get-StatusWidth
-            [Console]::Write("`r" + (' ' * $w) + "`r")
-            $st.Shown = $false
+            try {
+                $c = New-StatusConsole
+                if ($null -ne $st.Row -and (& $c.Top) -ne $st.Row) { & $c.Move $st.Row }
+                & $c.Write ("`r" + (' ' * $w) + "`r")
+            } catch { }
+            $st.Shown = $false; $st.Row = $null
         }
     }
     $beatText = {
@@ -1116,7 +1167,7 @@ function Invoke-Watched {
                 $w = Get-StatusWidth
                 $line = "  " + $spin[$tick % 4] + " " + (& $beatText)
                 if ($st.Progress) { $line += "  " + $st.Progress }
-                [Console]::Write("`r" + (' ' * $w) + "`r" + (Limit-Width $line $w))
+                $st.Row = Write-StatusLine $line $w $(if ($st.Shown) { $st.Row } else { $null })
                 $st.Shown = $true
             } elseif ($clock.Elapsed.TotalSeconds -ge $nextBeat) {
                 Write-Host ("  ... " + (& $beatText))

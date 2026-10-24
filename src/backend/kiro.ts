@@ -373,6 +373,35 @@ export function kiroMcpInputRequestActive(pane: string): boolean {
   return body.filter(row => /^\s*❯\s+\S/.test(row)).length === 1;
 }
 
+const KIRO_QUESTION_HEADER = /^\s*(?:\S.* > )?Question$/;
+const KIRO_QUESTION_FOOTER = /^\s*esc to (?:cancel|go back) · ↑↓ to navigate(?: · space to toggle)? · ↵ to submit$/;
+
+/**
+ * #2592: kiro's V3 engine shows the agent's question to the user (`question_request`) as a card in place of the
+ * composer: a divider, `Question` (or `<name> > Question`), the question, numbered options (a description row under
+ * one, `(recommended)` after one) and `Type a different answer…`, a divider, and the key hints as the last row — or, in
+ * an option's sub-options, `[✓] <title>` rows and `esc to go back · … · space to toggle · ↵ to submit`
+ * (tests/fixtures/kiro-question-2592; unchanged from 2.33.1 to 2.34.0). Any typed character turns the card into a free
+ * answer and Enter submits it, so a delivered message would become the answer to a question nobody read. The person
+ * answers it in the pane (the user's decision on #2592); it is never keyed. Bottom-anchored like
+ * kiroMcpInputRequestActive: the header is the row right under the nearest divider above the key hints' divider.
+ */
+export function kiroQuestionCardActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let last = rows.length - 1;
+  while (last >= 0 && !rows[last].trim()) last--;
+  if (last < 0 || !KIRO_QUESTION_FOOTER.test(rows[last])) return false;
+  const divider = (row: string | undefined) => row !== undefined && /^─{3,}$/.test(row.trim());
+  if (!divider(rows[last - 1])) return false;
+  let top = last - 2;
+  while (top >= 0 && !divider(rows[top])) top--;
+  if (top < 0 || !KIRO_QUESTION_HEADER.test(rows[top + 1] ?? "")) return false;
+  const body = rows.slice(top + 2, last - 1);
+  // The question, then the options: a V3 composer (`›` at column 0) among them means the card is history.
+  if (body.length < 2 || body.some(row => /^›(?:[ \t]|$)/.test(row))) return false;
+  return body.filter(row => /^\s*❯\s+\S/.test(row)).length === 1;
+}
+
 /**
  * Kiro's service-unavailable path opens the same picker as `/model`, but only
  * the former needs incident escalation. The runtime scanner and delivery gate
@@ -1776,6 +1805,16 @@ export class KiroBackend implements CliBackend {
         holdOnly: true,
         inputBlocked: true,
         isActive: kiroMcpInputRequestActive,
+      },
+      {
+        // #2592: the agent's question to the user owns stdin until the person answers or cancels it.
+        pattern: KIRO_QUESTION_HEADER,
+        keys: [],
+        description: "Kiro agent is asking a question — answer it in the instance pane",
+        blocksDelivery: true,
+        holdOnly: true,
+        inputBlocked: true,
+        isActive: kiroQuestionCardActive,
       },
       ...kiroTrustPromptDialogs(this.activeTrustAll),
       ...kiroWorkspaceTrustDialogs(this.activeTrustAll),
