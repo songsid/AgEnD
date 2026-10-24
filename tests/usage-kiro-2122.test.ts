@@ -208,6 +208,20 @@ describe("Prism #2605: what a scan must never lose or double", () => {
     s.putTui("t1", s.cwd, T(10));
     expect(scanKiroUsage(input(s)).instances[0]).toMatchObject({ failed: false, updates: [expect.objectContaining({ turns: [expect.anything()] })] });
   });
+  for (const which of ["TUI", "V3"] as const) it(`a ${which} session caught mid-rewrite keeps its cursor and withholds coverage: rewritten whole, nothing is counted twice`, async () => {
+    const s = stores();
+    const path = which === "TUI" ? s.putTui("t1", s.cwd, T(10)) : (s.putKas(s.cwd, "sess_a", T(11)), join(s.kiroHome, "sessions", kasBucket(s.cwd), "sess_a", "session.json"));
+    const svc = svcFor(s, join(s.root, "ledger"));
+    await svc.pass();
+    expect(await requests(svc)).toBe(1);
+    const text = readFileSync(path, "utf8");
+    writeFileSync(path, which === "TUI" ? '{"session_id":' : '{"id":');
+    expect(scanKiroUsage(input(s)).instances[0]!.failed).toBe(true);
+    await svc.pass();
+    writeFileSync(path, text);
+    await svc.pass(); await svc.pass();
+    expect(await requests(svc)).toBe(1);
+  });
   it("a V3 turn still being written is counted once it ends, whole", () => {
     const s = stores();
     const dir = join(s.kiroHome, "sessions", kasBucket(s.cwd), "sess_live");

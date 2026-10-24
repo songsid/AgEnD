@@ -99,7 +99,9 @@ export function scanKiroUsage(input: KiroScanInput): KiroScanOutput {
       if (cwd === undefined) {
         const text = readFileSync(path, "utf8");                 // a read that fails is a failure (below), not an empty store
         try { const v = JSON.parse(text) as { cwd?: unknown }; cwd = typeof v.cwd === "string" ? v.cwd : null; }
-        catch { continue; }                                   // being written: next pass
+        // Being rewritten: read again next pass. Until then whose it is can't be known, so no instance's scan is
+        // complete (no coverage, and no cursor is pruned — Prism #2605).
+        catch { tuiFailed = true; continue; }
       }
       tuiIndex[path] = { sig: s.sig, cwd };
       tuiFiles.push({ path, sig: s.sig, size: s.size, cwd });
@@ -167,7 +169,7 @@ export function scanKiroUsage(input: KiroScanInput): KiroScanOutput {
             // A converted session's id is `cli_<classic id>_<suffix>`: its source's requests are counted there.
             const source = /^cli_(.+)_[^_]+$/.exec(n)?.[1];
             push(key, sig, kiroKasTurns(session, lines(messagesPath), afterOf(key), source ? classicTimes(db, source) : []));
-          } catch (err) { if (!gone(err) && !(err instanceof SyntaxError)) res.failed = true; }
+          } catch (err) { if (!gone(err)) res.failed = true; }   // being rewritten (SyntaxError) included: next pass
         }
       }
       out.push(res);
