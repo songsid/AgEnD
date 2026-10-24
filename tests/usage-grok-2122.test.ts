@@ -44,7 +44,11 @@ describe("in the usage report", () => {
   function setup() {
     const root = tmp(), sessions = join(root, "grok-sessions"), cwd = join(root, "dev-grok"), other = join(root, "other");
     mkdirSync(cwd); mkdirSync(other);
-    const write = (at: string, id: string, lines: string[]) => { const d = join(sessions, encodeURIComponent(at), id); mkdirSync(d, { recursive: true }); writeFileSync(join(d, "updates.jsonl"), lines.join("\n") + "\n"); };
+    // As grok writes it: session directories, and a plain prompt_history.jsonl beside them (Fable #2606).
+    const write = (at: string, id: string, lines: string[]) => {
+      const d = join(sessions, encodeURIComponent(at), id); mkdirSync(d, { recursive: true }); writeFileSync(join(d, "updates.jsonl"), lines.join("\n") + "\n");
+      writeFileSync(join(sessions, encodeURIComponent(at), "prompt_history.jsonl"), "{}\n");
+    };
     const inst: CacheInstance = { name: "dev-grok", backend: "grok", workingDirectory: cwd, ledgerPath: join(root, "dev-grok", "cache-ledger.json"), profile: "default" };
     const svc = (insts = [inst]) => new CacheService({ instances: () => insts, claudeProjectsDir: () => join(root, "c"), claudeKey: (d) => d, codexSessionsDir: () => join(root, "x"),
       listRollouts: () => [], metaPath: join(root, "m.json"), now: () => NOW, zone: () => "UTC", grokSessionsDir: () => sessions });
@@ -66,6 +70,9 @@ describe("in the usage report", () => {
     expect(r.rows[0]!.flags).toEqual(["cost_reported"]);
     expect(r.daily[0]!.flags).toContain("cost_reported");
     expect((await svc.report("7d")).instances[0]).toMatchObject({ name: "dev-grok", status: "unsupported" });
+    // Read whole, so covered: the plain file beside the sessions is no failure.
+    await svc.kick();                                                     // a whole catch-up records coverage
+    expect((await svc.usageData()).instances[0]!.days.coverage).not.toEqual([]);
   });
   it("read incrementally: a second pass adds only the new turn", async () => {
     const s = setup();
