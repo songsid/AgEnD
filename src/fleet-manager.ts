@@ -1,3 +1,4 @@
+import { loginNoticeMode, tipNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
@@ -3629,7 +3630,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(t("permission.denied"));
         return;
       }
-      this.fleetConfig.defaults.tips = mode === "on";
+      setNoticeMode(this.fleetConfig, "tips", mode === "on");
       this.saveFleetConfig();
       await data.respond(t(mode === "on" ? "tips.enabled" : "tips.disabled"));
       return;
@@ -6646,7 +6647,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!current() || !this.publicOwnerCurrent(info.owner)) throw new Error("public owner unavailable");
     const adapter = info.owner.binding as ChannelAdapter;
     const text = t("web.public_login_notice", info.label, info.handle.slice(0, 8));
-    if (this.fleetConfig?.web?.notify_login !== "dm" || !await this.tryNoticeDm(adapter, info.owner.userId, text)) {
+    if (loginNoticeMode(this.fleetConfig?.web) !== "dm" || !await this.tryNoticeDm(adapter, info.owner.userId, text)) {
       if (!current() || !this.publicOwnerCurrent(info.owner)) throw new Error("public owner changed");
       await adapter.sendText(info.owner.chatId, text, { threadId: info.owner.threadId, allowedMentions: { parse: [] } });
     }
@@ -6666,7 +6667,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!open) throw new Error("guest public sign-in unavailable");
     const adapter = open.owner.binding as ChannelAdapter;
     const text = t("web.guest_public_login_notice", this.webPerson(info.account).name, info.label, this.guestScope(info.account).size, info.handle.slice(0, 8));
-    if (this.fleetConfig?.web?.notify_login !== "dm" || !await this.tryNoticeDm(adapter, open.owner.userId, text)) {
+    if (loginNoticeMode(this.fleetConfig?.web) !== "dm" || !await this.tryNoticeDm(adapter, open.owner.userId, text)) {
       if (!admitted()) throw new Error("guest public sign-in changed");
       await adapter.sendText(open.owner.chatId, text, { threadId: open.owner.threadId, allowedMentions: { parse: [] } });
     }
@@ -7402,7 +7403,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const text = guest
       ? t("web.guest_login_notice", this.webPerson(info.owner!).name, info.label, this.guestScope(info.owner!).size, info.handle.slice(0, 8))
       : t("web.login_notice", info.label, info.surface, info.handle.slice(0, 8));
-    if (this.fleetConfig?.web?.notify_login === "dm") {
+    if (loginNoticeMode(this.fleetConfig?.web) === "dm") {
       const adapterId = info.owner?.adapterId;
       const adapter = adapterId ? this.adapters.get(adapterId) : undefined;
       // A local guest's own account must never receive the admin's security notice.
@@ -12160,6 +12161,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.fleetConfig || !this.configPath) return;
 
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    normalizeNoticeDelivery(this.fleetConfig);
+    explicitPatches = explicitPatches.flatMap(patch => {
+      if (patch.path.join(".") === "web.notify_login" && patch.value === "dm") return [{ ...patch, value: true }, { path: ["web", "notice_delivery", "login"], value: "dm" }];
+      if (patch.path.join(".") === "defaults.tips" && patch.value === "dm") return [{ ...patch, value: true }, { path: ["web", "notice_delivery", "tips"], value: "dm" }];
+      return [patch];
+    });
 
     // Re-read immediately before patching so an unrelated concurrent/manual
     // edit is retained. Invalid concurrent YAML is never overwritten.
@@ -12271,7 +12278,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** One-time upgrade migration; invalid YAML is never rewritten. */
+  private migrateNoticeDeliveryStorage(): void {
+    if (this.fleetConfig && this.configPath && (this.fleetConfig.web?.notify_login === "dm" || this.fleetConfig.defaults.tips === "dm")
+      && validateFleetConfig(this.rawFleetConfig).valid) {
+      try {
+        this.writeFleetConfigBackup(readFileSync(this.configPath, "utf8"));
+        this.saveFleetConfig();
+        this.logger.info("Stored DM notice routing with downgrade-safe boolean fields");
+      } catch (err) { this.logger.warn({ err }, "Could not migrate DM notice routing; keeping the original file"); }
+    }
+  }
+
   private slimFleetConfigAtStartup(): void {
+    this.migrateNoticeDeliveryStorage();
     const redundantPaths = collectRedundantInstanceDefaultPaths(this.rawFleetConfig);
     if (redundantPaths.length === 0) return;
     const validation = validateFleetConfig(this.rawFleetConfig);
@@ -14871,7 +14890,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const chatId = this.getGroupIdForInstance(generalName);
     const topicId = this.fleetConfig?.instances[generalName]?.topic_id;
     if (!adapter || !chatId) return;
-    if (this.fleetConfig?.defaults.tips === "dm" && adapter.sendDirect) {
+    if (this.fleetConfig && tipNoticeMode(this.fleetConfig) === "dm" && adapter.sendDirect) {
       const userId = this.noticeAdmin(adapter.id);
       if (userId) {
         const result = await this.promptTip(generalName, adapter, userId, undefined, userId);
@@ -21022,6 +21041,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.migrateNoticeDeliveryStorage();
 
     if (canvasWorkerEnabled(oldConfig?.web) !== this.canvasWorkerEnabled()) {
       this.canvasWorkerSettingChanged();

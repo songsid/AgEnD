@@ -952,6 +952,7 @@ function Classic({ ctx, search, openDialog }) {
   })}</div>`;
 }
 
+const configuredNoticeMode = (value, route) => value === false ? false : value === "dm" || route === "dm" ? "dm" : true;
 const noticeMode = (v) => v === "dm" ? "dm" : v === "false" || v === false ? false : true;
 const noticeChoices = () => [{ value: "true", label: tn("noticeTopic") }, { value: "dm", label: tn("noticeDm") }, { value: "false", label: tn("noticeOff") }];
 const noticeLabel = (v) => tn(v === "dm" ? "noticeDm" : v === false ? "noticeOff" : "noticeTopic");
@@ -970,7 +971,7 @@ function generalForm(d, c, fleet = {}, schema = {}) {
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
     concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
-    tips: String(d.tips ?? true),
+    tips: String(configuredNoticeMode(d.tips, fleet.web?.notice_delivery?.tips)),
     replyTriggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default),
     classicReplyTriggers: Boolean(c.reply_triggers ?? d.reply_triggers ?? schema.reply_triggers_default), classicReplyTriggersInherit: !hasOwn(c, "reply_triggers"),
     classicBackend: c.backend || d.backend || "claude-code",
@@ -1027,7 +1028,7 @@ function General({ ctx, part = "all" }) {
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
-      tips: d.tips ?? true, cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
+      tips: configuredNoticeMode(d.tips, ctx.fleet.web?.notice_delivery?.tips), cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, dashboardDefault(d, k)])),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
       startup: { ...(startup.concurrency == null ? {} : { concurrency: startup.concurrency }), stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
@@ -1187,7 +1188,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   // serves their reads there).
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
   const original = useMemo(() => ({
-    notify: web.notify_login ?? true,
+    notify: configuredNoticeMode(web.notify_login, web.notice_delivery?.login),
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default

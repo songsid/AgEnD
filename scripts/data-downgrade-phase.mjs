@@ -31,6 +31,7 @@ const { DeliveryOutbox } = await load('delivery-outbox.js');
 const { SchedulerDb } = await load('scheduler/db.js');
 const { EventLog } = await load('event-log.js');
 const { loadFleetConfig, loadRawFleetConfig } = await load('config.js');
+const { validateFleetConfig } = await load('config-validator.js');
 const statePath = join(scratch, 'probe-state.json');
 const state = phase === 'create' ? {} : JSON.parse(readFileSync(statePath, 'utf8'));
 const outboxPath = join(scratch, 'delivery-outbox.db');
@@ -189,6 +190,12 @@ if (phase === 'create') {
   assert.deepEqual(config.needs_you, { live_message: true, dm: false });
   state.web = config.web; state.channelIds = config.channels.map(c => c.id);
   checks.push('new owned Kiro files, pointer and config created in scratch');
+  const { NEW_FLEET_WEB, setNoticeMode } = await load('notice-delivery.js');
+  const notices = { defaults: {}, web: { ...NEW_FLEET_WEB }, instances: {} };
+  setNoticeMode(notices, 'tips', 'dm');
+  assert.equal(validateFleetConfig(notices).valid, true);
+  writeFileSync(join(scratch, 'notice-fleet.yaml'), yaml.dump(notices));
+  checks.push('DM notice config producer writes downgrade-safe boolean fields');
   writeFileSync(statePath, JSON.stringify(state));
 } else if (phase === 'old') {
   checked('old recovery keeps begun work fenced and requeues only unbegun claims', () => {
@@ -232,6 +239,14 @@ if (phase === 'create') {
     const reaction = events.pendingReactions('scratch'); assert.ok(reaction); events.markReactionsConsumed('scratch', reaction.maxId);
     events.insert('scratch', 'old-event', { sentinel: 43 });
   });
+  checked('DM notice config validates in the published old package and survives its normalized rewrite', () => {
+    const path = join(scratch, 'notice-fleet.yaml');
+    const raw = loadRawFleetConfig(path), config = loadFleetConfig(path);
+    assert.equal(validateFleetConfig(raw).valid, true);
+    assert.equal(config.web.notify_login, true); assert.equal(config.defaults.tips, true);
+    assert.deepEqual(config.web.notice_delivery, { login: 'dm', tips: 'dm' });
+    writeFileSync(path, yaml.dump(config));
+  });
   checked('raw YAML retained; old normalized rewrite loses new top-level fields', () => {
     const configPath = join(scratch, 'fleet.yaml'); const text = readFileSync(configPath, 'utf8');
     const config = loadFleetConfig(configPath); const raw = loadRawFleetConfig(configPath);
@@ -268,6 +283,12 @@ if (phase === 'create') {
   }
   writeFileSync(statePath, JSON.stringify(state));
 } else {
+  const { loginNoticeMode, tipNoticeMode } = await load('notice-delivery.js');
+  checked('DM notice preferences survive the published old config round trip', () => {
+    const config = loadFleetConfig(join(scratch, 'notice-fleet.yaml'));
+    assert.equal(validateFleetConfig(config).valid, true);
+    assert.equal(loginNoticeMode(config.web), 'dm'); assert.equal(tipNoticeMode(config), 'dm');
+  });
   checked('recovery receipts survive old writes and still prevent duplicate admission after return', () => {
     assert.deepEqual(recoveryRows(), state.workingRecoveryRows);
     const store = outbox.workingRecovery;

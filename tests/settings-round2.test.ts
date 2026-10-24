@@ -1,3 +1,4 @@
+import { loginNoticeMode, tipNoticeMode } from "../src/notice-delivery.js";
 import { EventEmitter } from "node:events";
 import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -55,9 +56,9 @@ describe("#2580 notice settings writes", () => {
     const { ctx } = context();
     for (const mode of [true, false, "dm"]) {
       expect((await request("/api/settings/fleet/web", ctx, "PUT", { notify_login: mode })).status).toBe(200);
-      expect((ctx.fleetConfig as any).web.notify_login).toBe(mode);
+      expect(loginNoticeMode(ctx.fleetConfig!.web)).toBe(mode);
       expect((await request("/api/settings/fleet/defaults", ctx, "PUT", { tips: mode })).status).toBe(200);
-      expect((ctx.fleetConfig!.defaults as any).tips).toBe(mode);
+      expect(tipNoticeMode(ctx.fleetConfig!)).toBe(mode);
     }
     expect((await request("/api/settings/fleet/web", ctx, "PUT", { notify_login: "email" })).status).toBe(400);
     expect((await request("/api/settings/fleet/defaults", ctx, "PUT", { tips: "email" })).status).toBe(400);
