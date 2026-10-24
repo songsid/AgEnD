@@ -1,0 +1,30 @@
+2026-10-24T13:27:39.175895Z  WARN controller: pending-request list failed error=error sending request for url (https://a
+pi.cursor.com/v0/private-workers/pending-requests?limit=100): client error (Connect): dns error: failed to lookup addres
+s information: Try again
+2026-10-24T13:27:39.176345Z  WARN controller: reconcile poll failed error=error sending request for url (https://api.cur
+sor.com/v0/private-workers/pending-requests?limit=100): client error (Connect): dns error: failed to lookup address info
+rmation: Try again
+^C2026-10-24T13:27:40.034512Z  INFO stopping after the running hooks finish; press Ctrl+C again to kill them
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Sat Oct 24 13:27:40 2026)
