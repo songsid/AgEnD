@@ -100,6 +100,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 
 ### The layout
 - The conversation is one centred column. Your messages are bubbles on the right; an agent's replies use the full column, each with **Copy**.
+- **⋯ → Full width** (#2556; not on a phone, where the column is already the screen) widens the conversation and the message box to the whole chat panel, so wide tables and code have room. Your bubbles keep their size. It's off by default and remembered for this browser, for every chat.
 - **Code blocks** show their language, with **Copy** and **Wrap** (long lines wrap instead of scrolling; remembered for this browser). A block longer than 30 lines is folded: **Show all N lines** opens it.
 - **Discord server emoji** written as `<:name:id>` (or `<a:name:id>`) show as the emoji's picture when it belongs to a server the fleet's Discord bots are in; AgEnD fetches it once and the dashboard serves it, so the page never loads Discord. Any other one, or one whose picture can't be loaded, reads `:name:` (never the raw markup or an empty box).
 - **Emoji** in any message are drawn by your system's colour emoji font (Segoe UI Emoji on Windows, Apple Color Emoji on macOS, Noto Color Emoji on Linux), whatever the agent's theme font — never as boxes. On Linux, install a colour emoji font (for example `fonts-noto-color-emoji`) if you see boxes everywhere.

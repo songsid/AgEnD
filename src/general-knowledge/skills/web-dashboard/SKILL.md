@@ -152,7 +152,8 @@ workspace `inbox/`; an unused upload is deleted after 30 minutes.
 
 **In replies.** Images inline; video and audio play inline; Markdown, CSV, JSON, code and text files get a **Show**
 card (200 lines, then "Show all … lines"); other files download. Code blocks have a language tag, **Wrap** and
-**Copy**, and fold after 30 lines. Each reply has **Copy this reply**. Markdown: headings, lists, quotes, bold/italic/
+**Copy**, and fold after 30 lines. **⋯ → Full width** (desk only, off by default, this browser's choice) widens the
+thread and the composer to the whole chat panel for wide tables and code; a person's bubbles keep their size. Each reply has **Copy this reply**. Markdown: headings, lists, quotes, bold/italic/
 strike, links, and tables (header row plus separator, alignment, up to 20 columns). Discord mentions show as names;
 a Discord server emoji (`<:name:id>`) of the fleet's servers shows as its picture, and any other (or one whose picture
 can't load) as `:name:`. Unicode emoji are drawn by the system's colour emoji font under every theme font (boxes on

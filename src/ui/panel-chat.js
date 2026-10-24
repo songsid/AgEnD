@@ -44,6 +44,11 @@ const writeKey = (k, v) => { try { if (v) localStorage.setItem(k, v); else local
 export const chatCardPrefs = createStore({ open: readKey(CHAT_CARD_KEY, "open"), rowHidden: readKey(CHAT_CARD_ROW_KEY, "hidden") });
 export const setChatCardOpen = (open) => { writeKey(CHAT_CARD_KEY, open ? "open" : null); chatCardPrefs.set((s) => ({ ...s, open })); };
 export const setChatCardRowHidden = (rowHidden) => { writeKey(CHAT_CARD_ROW_KEY, rowHidden ? "hidden" : null); chatCardPrefs.set((s) => ({ ...s, rowHidden })); };
+// Full width (the header's ⋯ menu): this browser's choice, like code wrap. The thread and the composer take the panel's
+// width; a person's bubble keeps its cap (app.css). A phone's column is the screen already: no item there.
+const CHAT_WIDE_KEY = "agend_chat_full_width";
+export const chatWide = createStore({ on: readKey(CHAT_WIDE_KEY, "on") });
+export const setChatWide = (on) => { writeKey(CHAT_WIDE_KEY, on ? "on" : null); chatWide.set({ on }); };
 function ChatCard({ name, card }) {
   const prefs = useStore(chatCardPrefs);
   if (!card || !prefs.open) return null;
@@ -260,6 +265,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const publishCanvasPlayback = useCallback(value => setCanvasPlayback(previous =>
     !previous && !value.playing || previous?.name === value.name && previous.playing === value.playing ? previous : value), []);
   const [wrap, setWrap] = useState(codeWrap);
+  const wide = useStore(chatWide).on;
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
   useLayoutEffect(() => { applyTheme(view.current, theme, mode); }, [themeKey, mode]);
   useLayoutEffect(() => {
@@ -321,6 +327,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ...themeMenuItems(name),
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
     ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
+    narrowScreen() ? null : { key: "fullWidth", checkbox: true, checked: wide, label: t("chat.fullWidth"), onSelect: () => setChatWide(!wide) },
     cwEnabled && canvasWorkerMenuAvailable(window) ? { key: "effects", label: t("cwControls.title"), onSelect: () => setDialog("effects") } : null,
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
@@ -333,7 +340,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
-  return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
+  return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />

@@ -573,6 +573,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    the message's overflow-wrap: anywhere that is one character wide (the #1672 status line's time, one glyph per line). */
 .msg .time { font-family: var(--font-mono); white-space: nowrap; flex: none; }
 .msg.user { align-self: flex-end; max-width: min(80%, 620px); }
+/* Full width (the header's ⋯ menu, this browser's choice): the thread and the composer take the panel, less their own
+   padding, for wide tables and code; a person's bubble keeps its cap (above). A phone's column is the screen already. */
+@media (min-width: 900px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] .dock-col { max-width: none; } }
 .msg.user .meta { justify-content: flex-end; }
 /* #1773: the bubble hugs its text. The message is as wide as its widest child — usually the meta row (sender, a time
    such as 「昨天 下午03:58」, ticks) — and a block body would stretch to it; fit-content keeps a short message short, on

@@ -83,8 +83,8 @@ const PANELS = () => new Map([
   ["view", { Component: () => h("div", { class: "stub-view" }, "view") }], ["fleet", { Component: () => h("div", { class: "stub-fleet" }, "fleet") }],
   ["settings", { Component: () => h("div", { class: "stub-settings" }, "settings") }], ["needs", { Component: () => h("div", { class: "stub-needs" }, "needs") }],
 ]);
-async function app(path: string) {
-  const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1" } });
+async function app(path: string, opts: { matchNarrow?: boolean } = {}) {
+  const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1" }, ...opts });
   mounted.push(pg);
   (globalThis as any).fetch = fakeFetch;
   detail = { "web-dev": DETAIL("web-dev"), "api-server": { ...DETAIL("api-server"), status: "stopped", binding: { channel_id: "telegram", implicit: true, topic_id: null, general_topic: false } },
@@ -150,6 +150,31 @@ describe("the switch keeps the instance", () => {
     pg.root.querySelector(".p-chat .menu > button").click(); await settle();
     pg.root.querySelectorAll(".p-chat .menu-list .menu-item").find((b: any) => b.textContent.trim() === "Instance details").click(); await settle(6);
     expect([await route(), pg.root.querySelector("dialog") ? "dialog" : null]).toEqual([{ panel: "details", instance: "web-dev" }, null]);
+  });
+  it("Chat's ⋯ → Full width: off by default; checked, the chat takes the panel's width (data-width), kept on this device; no item on a phone", async () => {
+    const pg = await app("/ui/chat/web-dev");
+    const open = async () => { pg.root.querySelector(".p-chat .panel-head .menu:not(.chat-card-menu) > button").click(); await settle(); };
+    const item = () => pg.root.querySelectorAll(".p-chat .menu-list [role=menuitemcheckbox]").find((b: any) => b.textContent.trim() === "Full width");
+    const state = () => [pg.root.querySelector(".p-chat").getAttribute("data-width"), item()?.getAttribute("aria-checked") ?? null, pg.storage.get("agend_chat_full_width") ?? null];
+    await open();
+    expect(state()).toEqual([null, "false", null]);
+    item().click(); await settle(2);
+    expect(state()).toEqual(["full", "true", "on"]);
+    // The root's class stays the template's: the theme's classes (applyTheme, by classList) are not wiped by the toggle.
+    expect(pg.root.querySelector(".p-chat").getAttribute("class")).toBe("panel p-chat");
+    item().click(); await settle(2);
+    expect(state()).toEqual([null, "false", null]);
+    await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
+    const phone = await app("/ui/chat/web-dev", { matchNarrow: true });
+    phone.root.querySelector(".p-chat .panel-head .menu:not(.chat-card-menu) > button").click(); await settle();
+    expect([phone.root.querySelectorAll(".p-chat .menu-list .menu-item").length > 0, phone.root.querySelectorAll(".p-chat .menu-list .menu-item").map((b: any) => b.textContent.trim()).includes("Full width")])
+      .toEqual([true, false]);
+  });
+  it("Full width's CSS: only on a desk, the thread and the composer lose the column cap; a person's bubble keeps its own", async () => {
+    const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
+    expect(css).toContain('@media (min-width: 900px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] .dock-col { max-width: none; } }');
+    expect(css).toContain(".msg.user { align-self: flex-end; max-width: min(80%, 620px); }");
+    expect(css.match(/data-width="full"\][^{]*\.msg/g)).toBeNull();
   });
 });
 
