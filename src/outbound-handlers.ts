@@ -1543,7 +1543,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
               // happen when the agent reaches for it.
               conversation_carried_over: carried || !switchLosesConversation,
               ...(carried
-                ? { conversation_note: "The conversation was copied into the new profile and resumed there (the old profile keeps its own copy). The next reply re-reads it from a cold cache: one slower, full-price turn." }
+                ? { conversation_note: "The conversation was copied into the new profile and resumed there (the old profile keeps its own copy). The next reply may re-read it at full price (one slower turn) if the two profiles belong to different organizations or the prompt cache has expired; within the same organization the cache usually carries over." }
                 : switchLosesConversation
                 ? { handover_chars: handoverChars, ...(carry?.result && !carry.result.carried ? { carry_failed: carry.result.reason } : {}) }
                 : { conversation_note: `${backendAfter} keeps its history outside the login, so it is shared across profiles; switching back to a profile returns to the same history.` }),

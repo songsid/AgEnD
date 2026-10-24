@@ -647,7 +647,9 @@ the new one's start, AgEnD copies the session's transcript (`projects/<dir>/<ses
 file history into the new profile, then dates the copy as the newest so the relaunch's `--continue` picks it.
 - The old profile keeps its own copy, so switching back returns to the same conversation (with the turns added
   meanwhile).
-- The next reply re-reads the conversation from a cold cache: one slower, full-price turn.
+- The next reply may re-read the conversation at full price (one slower turn), but only when the two profiles belong to
+  different organizations or the prompt cache has expired. Anthropic's prompt cache is scoped to the organization, so
+  within the same organization it usually carries over.
 - The reply says `conversation_carried_over: true`.
 - Settings and the login stay per profile; other transcripts in either profile are left as they are. Project auto-memory is shared as described above (an existing non-empty profile memory folder is preserved).
 
