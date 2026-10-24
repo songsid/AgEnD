@@ -15,7 +15,7 @@ register("fusage", {
     range: "Range", today: "Today", r7d: "7 days", month: "This month", all: "All", custom: "Custom", from: "From", to: "To", apply: "Apply",
     group: "Group by", g_instance: "Agent", g_backend: "Backend", g_model: "Model", g_profile: "Credential profile", g_team: "Team (as configured now)",
     csv: "Download CSV", basis: "API-equivalent at list price (checked {0}) — not money spent. Subscriptions are not billed per token.",
-    amount: "API-equivalent", input: "Input", output: "Output", read: "Cache read", write: "Cache write", total: "Total tokens", requests: "Requests", messages: "Messages",
+    amount: "API-equivalent", input: "Input", output: "Output", reasoning: "Reasoning", read: "Cache read", write: "Cache write", total: "Total tokens", requests: "Requests", messages: "Messages",
     notPriced: "not priced", partial: "partial", noTeam: "(no team)", unknown: "unknown",
     f_cache_write_not_reported: "cache writes not reported (Codex) — an estimate", f_not_priced: "not priced: {0}", f_source_unknown: "read before backend and profile were recorded",
     scanning: "Scanning — totals may still grow.", updated: "Updated {0} · read every 10 min", since: "Collected since {0}", notYet: "Not collected yet",
@@ -42,7 +42,7 @@ register("fusage", {
     range: "期間", today: "今天", r7d: "7 天", month: "本月", all: "全部", custom: "自訂", from: "從", to: "到", apply: "套用",
     group: "分組", g_instance: "Agent", g_backend: "Backend", g_model: "模型", g_profile: "憑證 profile", g_team: "Team（依目前設定）",
     csv: "下載 CSV", basis: "依牌價換算的 API 等值（查證日期 {0}）——不是實際花費。訂閱方案不按 token 計費。",
-    amount: "API 等值", input: "輸入", output: "輸出", read: "快取讀取", write: "快取寫入", total: "token 總計", requests: "請求數", messages: "訊息數",
+    amount: "API 等值", input: "輸入", output: "輸出", reasoning: "推理", read: "快取讀取", write: "快取寫入", total: "token 總計", requests: "請求數", messages: "訊息數",
     notPriced: "未定價", partial: "部分", noTeam: "（不屬於任何 team）", unknown: "未知",
     f_cache_write_not_reported: "未回報快取寫入（Codex）——是估算", f_not_priced: "未定價：{0}", f_source_unknown: "讀取時尚未記錄 backend 與 profile",
     scanning: "掃描中——總數可能還會增加。", updated: "更新於 {0} · 每 10 分鐘讀取一次", since: "自 {0} 起收集", notYet: "尚未收集",
@@ -99,7 +99,7 @@ function flagText(f, r) {
 }
 
 // ── CSV (design §4): the daily rows of this same answer; messages on their own rows (they are per agent, not per model).
-const CSV_COLUMNS = ["date", "zone", "instance", "backend", "model", "tier", "profile", "input", "output", "cache_read", "cache_write_5m", "cache_write_1h", "cache_write", "requests", "messages", "amount", "basis", "flags"];
+const CSV_COLUMNS = ["date", "zone", "instance", "backend", "model", "tier", "profile", "input", "output", "reasoning", "cache_read", "cache_write_5m", "cache_write_1h", "cache_write", "requests", "messages", "amount", "basis", "flags"];
 /** One CSV field: quoted when it must be, and never read as a formula by a spreadsheet (=, +, -, @, tab, CR first). */
 export function csvField(v) {
   let s = v === null || v === undefined ? "" : String(v);
@@ -109,11 +109,11 @@ export function csvField(v) {
 export function usageCsv(report) {
   const lines = [CSV_COLUMNS.join(",")];
   for (const d of report.daily || []) {
-    lines.push([d.date, d.zone, d.instance, d.backend, d.model, d.tier, d.profile, d.input, d.output, d.cacheRead, d.cacheWrite5m, d.cacheWrite1h, d.cacheWrite,
+    lines.push([d.date, d.zone, d.instance, d.backend, d.model, d.tier, d.profile, d.input, d.output, d.reasoning, d.cacheRead, d.cacheWrite5m, d.cacheWrite1h, d.cacheWrite,
       d.requests, "", d.amount === null ? "" : d.amount.toFixed(6), report.basis, (d.flags || []).join(" ")].map(csvField).join(","));
   }
   for (const m of report.messagesDaily || []) {
-    lines.push([m.date, report.zone, m.instance, "", "", "", "", "", "", "", "", "", "", "", m.count, "", report.basis, ""].map(csvField).join(","));
+    lines.push([m.date, report.zone, m.instance, "", "", "", "", "", "", "", "", "", "", "", "", m.count, "", report.basis, ""].map(csvField).join(","));
   }
   return `${lines.join("\r\n")}\r\n`;
 }
@@ -151,7 +151,7 @@ export function levels(values) {
   return (v) => (!(v > 0) ? 0 : v <= cut[0] ? 1 : v <= cut[1] ? 2 : v <= cut[2] ? 3 : 4);
 }
 
-const tokensOf = (d) => d.input + d.output + d.cacheRead + d.cacheWrite5m + d.cacheWrite1h + d.cacheWrite;
+const tokensOf = (d) => d.input + d.output + (d.reasoning || 0) + d.cacheRead + d.cacheWrite5m + d.cacheWrite1h + d.cacheWrite;
 /**
  * Each day of the answer: its tokens (whether it was used at all), the priced part of its amount, whether part of it is
  * not priced, and its parts by zone (a day folded before the fleet's timezone changed keeps its own zone, §5.3).
@@ -218,7 +218,7 @@ export function thinXLabels(n, slotPx, labelWidthPx) {
 /** The trend's series: the top `TOP` agents by the measure over the range, then "others"; one value per date. */
 export function trendSeries(report, dates) {
   const priced = report.totals && report.totals.amount !== null && report.totals.amount > 0;
-  const measure = (d) => (priced ? d.amount || 0 : d.input + d.output + d.cacheRead + d.cacheWrite5m + d.cacheWrite1h + d.cacheWrite);
+  const measure = (d) => (priced ? d.amount || 0 : tokensOf(d));
   const byAgent = new Map();
   for (const d of report.daily || []) byAgent.set(d.instance, (byAgent.get(d.instance) || 0) + measure(d));
   const ranked = [...byAgent.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -327,6 +327,7 @@ function Row({ r, group, max, measure }) {
     <td data-label=${tu("amount")} class=${`num${r.amount === null ? " muted" : ""}`}>${amountText(r)}</td>
     <td data-label=${tu("input")} class="num">${tokens(r.input)}</td>
     <td data-label=${tu("output")} class="num">${tokens(r.output)}</td>
+    <td data-label=${tu("reasoning")} class="num">${tokens(r.reasoning || 0)}</td>
     <td data-label=${tu("read")} class="num">${tokens(r.cacheRead)}</td>
     <td data-label=${tu("write")} class="num">${r.flags.includes("cache_write_not_reported") && writes(r) === 0 ? "—" : tokens(writes(r))}</td>
     <td data-label=${tu("total")} class="num">${tokens(r.total)}</td>
@@ -385,7 +386,7 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
         <div class="ch-metric"><dt>${tu("messages")}</dt><dd>${report.totals.messages === null ? "—" : n(report.totals.messages)}</dd></div>
       </dl>
       ${rows.length ? html`<table class="us-table"><thead><tr><th scope="col">${tu(`g_${group}`)}</th><th scope="col" class="num">${tu("amount")}</th>
-        <th scope="col" class="num">${tu("input")}</th><th scope="col" class="num">${tu("output")}</th><th scope="col" class="num">${tu("read")}</th><th scope="col" class="num">${tu("write")}</th>
+        <th scope="col" class="num">${tu("input")}</th><th scope="col" class="num">${tu("output")}</th><th scope="col" class="num">${tu("reasoning")}</th><th scope="col" class="num">${tu("read")}</th><th scope="col" class="num">${tu("write")}</th>
         <th scope="col" class="num">${tu("total")}</th><th scope="col" class="num">${tu("requests")}</th><th scope="col" class="num">${tu("messages")}</th></tr></thead>
         <tbody>${rows.map((r) => html`<${Row} key=${r.key} r=${r} group=${group} max=${max} measure=${measure} />`)}</tbody></table>`
         : html`<p class="note">${tu("noRows")}</p>`}

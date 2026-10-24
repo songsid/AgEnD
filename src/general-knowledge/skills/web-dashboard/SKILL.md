@@ -392,7 +392,7 @@ coordinators and full-profile instances, and each other instance only its own ro
 
 **The usage report** (the `get_usage_report` tool, and Fleet → **Usage**, `/ui/fleet/usage`, #2122; the ◔ dialog's
 **By agent →** opens it). Per instance (or backend,
-model, credential profile, team): input, output, cache read and cache write tokens, requests, delivered messages,
+model, credential profile, team): input, output, reasoning, cache read and cache write tokens, requests, delivered messages,
 and an amount, over today / 7d / month / all / custom days in the fleet's timezone. **Every amount is the
 API-equivalent at list price — not money spent** (subscriptions aren't billed per token): say "API-equivalent", never
 "spent". Measured for Claude Code and Codex. Marks to repeat in words:

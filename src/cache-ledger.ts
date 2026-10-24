@@ -13,7 +13,7 @@
  *   cache_creation: { ephemeral_5m_input_tokens, ephemeral_1h_input_tokens }, output_tokens }. A message spans several
  *   lines (one per content block) carrying the same id and usage: counted once.
  * - Codex (0.160): `event_msg` `token_count` with `info.last_token_usage` { input_tokens (cached included),
- *   cached_input_tokens, cache_write_input_tokens, output_tokens }. The write field exists but was 0 in every one of
+ *   cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_output_tokens (a part of output_tokens) }. The write field exists but was 0 in every one of
  *   38,551 real events on GPT-5.6+ models — so a write is estimated as the request's uncached input unless a real
  *   write count shows up. The model comes from the preceding `turn_context`.
  */
@@ -35,6 +35,8 @@ export interface Turn {
   /** An OpenAI cache write as recorded (null: not recorded, 0 included when the field is absent). */
   write: number | null;
   output: number;
+  /** The part of `output` the CLI reports as reasoning (Codex `reasoning_output_tokens`); absent or 0 where none is. */
+  reasoning?: number;
 }
 
 /** Gap histogram edges, seconds: ≤5 min, ≤30 min, ≤1 h, ≤2 h, ≤6 h, ≤24 h, longer. */
@@ -44,8 +46,17 @@ export const GAP_BUCKETS = GAP_EDGES.length + 1;
 export const GAP_EVENT_SEC = 240;
 export const KEEP_DAYS = 31;
 
-/** [requests, uncached, read, write5m, write1h, write, output] */
-export type HourTotals = [number, number, number, number, number, number, number];
+/**
+ * [requests, uncached, read, write5m, write1h, write, output, reasoning]. `reasoning` is a part of `output`, not added to
+ * it (#2122 §10.3). Totals written before it existed have 7 entries and read back with reasoning 0 (reviveTotals).
+ */
+export type HourTotals = [number, number, number, number, number, number, number, number];
+export const zeroTotals = (): HourTotals => [0, 0, 0, 0, 0, 0, 0, 0];
+/** Totals read back from disk: 7 or 8 finite numbers (7: written before `reasoning`), else null. */
+export function reviveTotals(t: unknown): HourTotals | null {
+  if (!Array.isArray(t) || (t.length !== 7 && t.length !== 8) || !t.every(n => Number.isFinite(n))) return null;
+  return (t.length === 7 ? [...t, 0] : [...t]) as HourTotals;
+}
 /**
  * `src` (#2122): the same totals split by where they were read from — `sourceKey(reader, profile)`: the transcript reader
  * (claude, codex) and the credential profile (claude: its config dir's profile, "default" without one; codex:
@@ -106,12 +117,12 @@ export function reviveLedger(raw: unknown): Ledger {
   for (const [k, v] of Object.entries(r.hours ?? {})) {
     if (!v || !Array.isArray(v.g)) continue;
     const m = dict<HourTotals>();
-    for (const [mk, tot] of Object.entries(v.m ?? {})) if (Array.isArray(tot) && tot.length === 7) m[mk] = tot as HourTotals;
+    for (const [mk, tot] of Object.entries(v.m ?? {})) { const t = reviveTotals(tot); if (t) m[mk] = t; }
     const src = dict<Record<string, HourTotals>>();
     for (const [sk, sm] of Object.entries(v.src ?? {})) {
       if (!/^(?:claude|codex):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
       const into = dict<HourTotals>();
-      for (const [mk, tot] of Object.entries(sm)) if (Array.isArray(tot) && tot.length === 7 && tot.every(n => Number.isFinite(n))) into[mk] = tot as HourTotals;
+      for (const [mk, tot] of Object.entries(sm)) { const t = reviveTotals(tot); if (t) into[mk] = t; }
       src[sk] = into;
     }
     l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}) };
@@ -153,12 +164,12 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const hour = ledger.hours[hk] ??= { m: dict<HourTotals>(), g: new Array<number>(GAP_BUCKETS).fill(0) };
   const mk = modelKey(turn.model, turn.prompt);
   const bump = (tot: HourTotals): void => {
-    tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
+    tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output; tot[7] += turn.reasoning ?? 0;
   };
-  bump(hour.m[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
+  bump(hour.m[mk] ??= zeroTotals());
   // #2122: and under its source — the reader that read it (this file's kind) and the profile it was read under.
   const src = (hour.src ??= dict<Record<string, HourTotals>>())[sourceKey(file.kind, profile ?? "unknown")] ??= dict<HourTotals>();
-  bump(src[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
+  bump(src[mk] ??= zeroTotals());
   if (!prev) return;
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;
@@ -254,7 +265,8 @@ export function codexLine(line: ScanLine, file: FileCursor): Turn | null {
   if (total) file.total = total;
   const t = Date.parse(d.timestamp);
   if (!Number.isFinite(t)) return null;
-  const input = num(u.input_tokens), read = Math.min(num(u.cached_input_tokens), input);
+  const input = num(u.input_tokens), read = Math.min(num(u.cached_input_tokens), input), output = num(u.output_tokens);
   const write = typeof u.cache_write_input_tokens === "number" ? Math.min(num(u.cache_write_input_tokens), input - read) : null;
-  return { t, model: file.model ?? "unknown", prompt: input, uncached: input - read - (write ?? 0), read, write5m: 0, write1h: 0, write, output: num(u.output_tokens) };
+  // Reasoning is counted inside output_tokens (total_tokens = input + output): kept as its part, capped at output.
+  return { t, model: file.model ?? "unknown", prompt: input, uncached: input - read - (write ?? 0), read, write5m: 0, write1h: 0, write, output, reasoning: Math.min(num(u.reasoning_output_tokens), output) };
 }

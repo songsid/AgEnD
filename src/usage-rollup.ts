@@ -20,7 +20,7 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { HourAgg, HourTotals, Ledger } from "./cache-ledger.js";
+import { reviveTotals, zeroTotals, type HourAgg, type HourTotals, type Ledger } from "./cache-ledger.js";
 
 export const ROLLUP_KEEP_DAYS = 400;
 const HOUR = 3_600_000;
@@ -44,7 +44,7 @@ export function hourSources(hour: HourAgg): HourSource[] {
   for (const [sk, m] of Object.entries(hour.src ?? {})) {
     const colon = sk.indexOf(":");
     out.push({ backend: READER_BACKEND[sk.slice(0, colon)] ?? "unknown", profile: sk.slice(colon + 1), m });
-    for (const [mk, t] of Object.entries(m)) add(known[mk] ??= [0, 0, 0, 0, 0, 0, 0], t);
+    for (const [mk, t] of Object.entries(m)) add(known[mk] ??= zeroTotals(), t);
   }
   const legacy = dict<HourTotals>();
   for (const [mk, t] of Object.entries(hour.m)) {
@@ -64,7 +64,7 @@ export interface UsageDays {
 }
 
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
-const add = (into: HourTotals, from: HourTotals): void => { for (let i = 0; i < 7; i++) into[i] = (into[i] ?? 0) + (from[i] ?? 0); };
+const add = (into: HourTotals, from: HourTotals): void => { for (let i = 0; i < 8; i++) into[i] = (into[i] ?? 0) + (from[i] ?? 0); };
 export const emptyDays = (): UsageDays => ({ v: 1, checkpoint: -1, rows: [], coverage: [] });
 
 /** A rollup read back from disk; anything that is not one is empty. */
@@ -76,7 +76,7 @@ export function reviveDays(raw: unknown): UsageDays {
   if (Array.isArray(r.rows)) for (const row of r.rows) {
     if (!row || typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || typeof row.zone !== "string" || typeof row.be !== "string" || typeof row.pf !== "string") continue;
     const m = dict<HourTotals>();
-    for (const [k, t] of Object.entries(row.m ?? {})) if (Array.isArray(t) && t.length === 7 && t.every(n => Number.isFinite(n))) m[k] = t as HourTotals;
+    for (const [k, t] of Object.entries(row.m ?? {})) { const tot = reviveTotals(t); if (tot) m[k] = tot; }
     d.rows.push({ date: row.date, zone: row.zone, be: row.be, pf: row.pf, m });
   }
   if (Array.isArray(r.coverage)) for (const c of r.coverage) if (Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]) && c[0] <= c[1]) d.coverage.push([c[0], c[1]]);
@@ -109,7 +109,7 @@ export function foldHours(days: UsageDays, ledger: Ledger, cutoff: number, zone:
       let i = index.get(key);
       if (i === undefined) { i = days.rows.push({ date, zone, be: src.backend, pf: src.profile, m: dict<HourTotals>() }) - 1; index.set(key, i); }
       const row = days.rows[i]!;
-      for (const [mk, tot] of Object.entries(src.m)) add(row.m[mk] ??= [0, 0, 0, 0, 0, 0, 0], tot);
+      for (const [mk, tot] of Object.entries(src.m)) add(row.m[mk] ??= zeroTotals(), tot);
     }
   }
   days.checkpoint = hours[hours.length - 1]!;

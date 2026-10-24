@@ -55,7 +55,10 @@ export interface UsageInput {
 export interface UsageTotals {
   /** Uncached input. */
   input: number;
+  /** Output without its reasoning part — the units of tokscale's daily rows (design §10.3). */
   output: number;
+  /** The part of the output a CLI reports as reasoning (Codex); 0 where none is reported (Claude). */
+  reasoning: number;
   cacheRead: number;
   cacheWrite5m: number;
   cacheWrite1h: number;
@@ -142,14 +145,16 @@ export function rangeDates(range: UsageRange, now: number, zone: string): { from
   }
 }
 
-const zero = (): UsageTotals => ({ input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWrite: 0, requests: 0 });
-const addTotals = (into: UsageTotals, [n, uncached, read, w5, w1h, w, out]: HourTotals): void => {
-  into.requests += n; into.input += uncached; into.cacheRead += read; into.cacheWrite5m += w5; into.cacheWrite1h += w1h; into.cacheWrite += w; into.output += out;
+const zero = (): UsageTotals => ({ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWrite: 0, requests: 0 });
+const addTotals = (into: UsageTotals, [n, uncached, read, w5, w1h, w, out, reasoning]: HourTotals): void => {
+  const r = Math.min(reasoning ?? 0, out);
+  into.requests += n; into.input += uncached; into.cacheRead += read; into.cacheWrite5m += w5; into.cacheWrite1h += w1h; into.cacheWrite += w; into.output += out - r; into.reasoning += r;
 };
 const splitKey = (mk: string): { model: string; long: boolean } => { const bar = mk.lastIndexOf("|"); return { model: mk.slice(0, bar), long: mk.slice(bar + 1) === "1" }; };
 
 /**
- * The list-price amount of one slice, or null when its model is not in the table. Codex writes not reported are 0 in the
+ * The list-price amount of one slice, or null when its model is not in the table. Reasoning is a part of the ledger's
+ * output, so the whole output is priced at the output rate once. Codex writes not reported are 0 in the
  * ledger (it marks writesSeen on the first one above 0), so they add nothing and are never priced as uncached input.
  */
 function amountOf(model: string, long: boolean, [, uncached, read, w5, w1h, w, out]: HourTotals): number | null {
@@ -273,7 +278,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
 
   const finish = (row: Acc): UsageRow => {
     const { _amount, _pricedAny, _unpricedAny, ...rest } = row;
-    rest.total = rest.input + rest.output + rest.cacheRead + rest.cacheWrite5m + rest.cacheWrite1h + rest.cacheWrite;
+    rest.total = rest.input + rest.output + rest.reasoning + rest.cacheRead + rest.cacheWrite5m + rest.cacheWrite1h + rest.cacheWrite;
     rest.amount = _pricedAny ? _amount : null;
     rest.priced = _pricedAny ? (_unpricedAny ? "partial" : "all") : "none";
     if (_unpricedAny) uniq(rest.flags, "not_priced");
@@ -283,7 +288,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     .sort((a, b) => (b.amount ?? -1) - (a.amount ?? -1) || b.total - a.total || a.key.localeCompare(b.key));
   const totals = finish(newRow("all"));
   for (const r of out) {
-    for (const k of ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h", "cacheWrite", "requests"] as const) totals[k] += r[k];
+    for (const k of ["input", "output", "reasoning", "cacheRead", "cacheWrite5m", "cacheWrite1h", "cacheWrite", "requests"] as const) totals[k] += r[k];
     totals.total += r.total;
     if (r.messages !== null) totals.messages = (totals.messages ?? 0) + r.messages;
     if (r.amount !== null) totals.amount = (totals.amount ?? 0) + r.amount;
