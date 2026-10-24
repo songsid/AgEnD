@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.70-120/repo                                                               13 / 256K │ [Dashboard]
+
+
+     ❯ hello after g                                                                                         1:25 PM
+
+
+     mock reply r3                                                                                           1:25 PM
+
+     Worked for 0.1s
+
+     Compacting conversation…
+
+  ┃  Compaction failed - API error (status 500 Internal Server Error): Internal server error
+
+
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

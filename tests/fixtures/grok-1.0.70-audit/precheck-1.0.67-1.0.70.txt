@@ -1,0 +1,54 @@
+precheck grok (manifest scripts/manual/cli-upstream-precheck/sources.json, 30 literals)
+  old: <download>/1.0.67 — 1 file(s), 194.2 MB
+  new: <download>/1.0.70 — 1 file(s), 195.7 MB
+
+literals in the old artifact: 18 of 30 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 3
+  [idle-busy] 78 -> 83  "Grok Build"   (src/backend/grok.ts:231 GrokBackend.getReadyPattern)
+  [error] 31 -> 32  "rate limit"   (src/backend/grok.ts:310 GrokBackend.getErrorPatterns.pattern)
+  [error] 72 -> 75  "rate_limit"   (src/backend/grok.ts:311 GrokBackend.getErrorPatterns.type)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 8
+  [error] "Rate limited (Request timed out (Conflict (failed after retries: request error:Server error:"   near "rate limit"   hint: the old release has "Rate limited (Request timed out (Conflic"… (only a neighbouring string changed?)
+  [idle-busy,onboarding] "Yes, proceedNo, cancelDo you trust the contents of this directory?Grok B"   near "Grok Build"; "Do you trust the contents"   hint: the old release has "Yes, proceed"… (only a neighbouring string changed?)
+  [onboarding] "press Ctrl+C again to exit nowforced stop: killed the running hooks and released t"   near "grok login"
+  [onboarding] "press Ctrl+C again to kill themkilling the running hooks and releasing their claim"   near "grok login"
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called first struct St"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called first }false{fe"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstDeadlineExp"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "usage limit reachedstatus 401unauthorizedinvalid_request_errorevent crates/codegen/xai-grok-"   near "out of credits"
+
+NEW PROMPT-LIKE STRINGS elsewhere: 7
+  "Press h to show all.No tasks or agents.▲▼│─╭╮╰╯/btw Ans"   hint: the old release has "Press h to show all."… (only a neighbouring string changed?)
+  "Resume the paused goal<objective> | status | pause | resumeassertion failed: signal >= 0Edi"
+  "press Enter to insert a newline.sandbox.tomlBGrok is using the user profile"   hint: the old release has "press Enter to insert a newline."… (only a neighbouring string changed?)
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.A"   hint: the old release has "press Enter to retry."… (only a neighbouring string changed?)
+  "press t to turn memory on or off and s for status.memory/memorymemView"   hint: the old release has "press t to turn memory on or off and s f"… (only a neighbouring string changed?)
+  "resume the subagentFailed to rehydrate subagent worktreeCreated isolated worktree for subag"
+  "usage limit upsellmodel switch/doctor fix/deleteOpened question view from ext_methodask_user"
+
+PROMPT-LIKE STRINGS gone in the new artifact: 12
+  "Press h to show all.No tasks or agents.▲▼❯Add feedback text or an"
+  "Rate limited (Request timed out (Conflict (failed after retries: request error:is not in you"
+  "Resume the paused goal<objective> | status | pause | resume (active)groknightgrokdaytokyoni"
+  "Yes, proceedNo, cancel│─╭╮╰╯Do you trust the contents of thi"
+  "press Enter to insert a newline., sandbox.tomlBGrok is using the user profi"
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.e"
+  "press t to turn memory on or off and s for status...page must have been"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstResultOkErr"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstassertion f"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstcorrect err"
+  "usage limit reachedstatus 401unauthorizedinvalid_request_errordetailCompaction failed: Compa"
+  "usage limit upsellmodel switch/doctor fixOpened question view from ext_methodask_user_questi"
+
+REASON: 8 new prompt-like string(s) on a known surface: [error] "Rate limited (Request timed out (Conflict (failed after retr"; [idle-busy,onboarding] "Yes, proceedNo, cancelDo you trust the contents of this dire"; [onboarding] "press Ctrl+C again to exit nowforced stop: killed the runnin"; [onboarding] "press Ctrl+C again to kill themkilling the running hooks and"; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "
+REASON: 3 literal count(s) changed
+REASON: 7 new prompt-like string(s) away from known literals
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 3, hinted new prompts 5
+BASIS: hard=3; hinted=5
+PRECHECK: MAJOR

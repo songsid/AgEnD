@@ -1,0 +1,195 @@
+58c58
+<           Use OAuth when the welcome screen starts authentication
+---
+>           Force browser (loopback) login when the welcome screen authenticates
+126,129c126,130
+<   start   Run a leader in this terminal until Ctrl+C
+<   stop    Unregister from Cursor and release the claims (the leader keeps running)
+<   status  Show the current worker status and its Cloud Agent claims [aliases: list]
+<   help    Print this message or the help of the given subcommand(s)
+---
+>   start       Run a leader in this terminal until Ctrl+C
+>   stop        Unregister from Cursor and release the claims (the leader keeps running)
+>   status      Show the current worker status and its Cloud Agent claims [aliases: list]
+>   controller  Claim pending Cloud Agent requests for team pools and run a spawn hook for each
+>   help        Print this message or the help of the given subcommand(s)
+132,138c133,154
+<       --name <NAME>           Worker display name shown in Cursor
+<       --worker-dir <DIR>      Repository directory offered to Cursor Cloud Agents
+<       --max-agents <N>        Maximum concurrent Cloud Agent claims
+<       --debug                 Enable debug logging
+<       --debug-file <FILE>     Write debug logs to FILE
+<   -h, --help                  Print help (see more with 'grok help worker')
+<       --leader-socket <PATH>  Use a custom leader socket path instead of the default `~/.grok/leader.sock`
+---
+>       --name <NAME>                     Worker display name shown in Cursor [env: CURSOR_WORKER_NAME=]
+>       --worker-dir <DIR>                Repository directory offered to Cursor Cloud Agents
+>       --max-agents <N>                  Maximum concurrent Cloud Agent claims
+>       --pool [<NAME>]                   Join a team Self-Hosted Pool
+>       --single-use                      Same as `--pool` (legacy alias)
+>       --pool-name <NAME>                Deprecated alias for `--pool <NAME>`. Needs `--pool` or `--single-use`
+>       --mint-github-token               Let Cursor send the pool worker short-lived GitHub tokens during a claimed run
+>       --sync-dashboard-secrets          Let Cursor send the pool worker the team's dashboard secrets as env variables
+>       --clone-git-repos                 Clone the claimed run's repository with the minted token
+>       --label <KEY=VALUE>               Routing label for the worker, as `key=value`. Repeatable
+>       --labels-file <PATH>              JSON or TOML file of worker labels. Cannot be combined with `--label` [env: CURSOR_WORKER_LABELS_FILE=]
+>       --api-key <KEY>                   Cursor API key the worker registers with, in place of your linked Cursor account [env: CURSOR_API_KEY]
+>       --auth-token-file <PATH>          File holding the worker's Cursor auth token, re-read before every reconnect
+>       --on-session-start <COMMAND>      Command run on this host once a pool claim lands. Needs `--pool`
+>       --on-session-end <COMMAND>        Command run on this host once a pool claim is released. Needs `--pool`
+>       --identity-socket                 Give each Cloud Agent its own OIDC identity socket
+>       --management-addr <ADDRESS>       Serve worker health over HTTP for Kubernetes probes
+>       --idle-release-timeout <SECONDS>  Seconds a claim may sit idle before Cursor releases it. 0 turns this off [env: CURSOR_WORKER_IDLE_RELEASE_TIMEOUT=]
+>       --debug                           Enable debug logging
+>       --debug-file <FILE>               Write debug logs to FILE
+>   -h, --help                            Print help (see more with 'grok help worker')
+>       --leader-socket <PATH>            Use a custom leader socket path instead of the default `~/.grok/leader.sock`
+140c156
+< error: unrecognized subcommand 'controller'
+---
+> Claim pending Cloud Agent requests for team pools and run a spawn hook for each.
+142c158,160
+< Usage: grok worker [OPTIONS] <COMMAND>
+---
+> Watches the pending-request stream of each `--pool` (or the whole team with `--all-pools`), claims each new request for a fresh worker id, and runs `--spawn` once per claim. The hook gets `CURSOR_AGENT_WORKER_ID`, `CURSOR_POOL`, `CURSOR_API_KEY` (or `CURSOR_AUTH_TOKEN` with `--session-token`) and the request's fields, and should start `grok worker --pool "$CURSOR_POOL" start` somewhere. A sleeping machine in a pool with a wake window runs the hook again with `CURSOR_WAKE=1`, `CURSOR_WAKE_TIMEOUT_MS` and its own worker id, without a claim. Logs go to stderr at info level; `RUST_LOG` overrides that. Authenticates with a team service account key (`--api-key` or `CURSOR_API_KEY`).
+> 
+> Usage: grok worker controller [OPTIONS] --spawn <PATH>
+144c162,297
+< For more information, try '--help'.
+---
+> Options:
+>       --name <NAME>
+>           Worker display name shown in Cursor.
+>           
+>           Default: `[cursor_worker].name`, then the hostname.
+>           
+>           [env: CURSOR_WORKER_NAME=]
+> 
+>       --spawn <PATH>
+>           Hook to run once per claimed request, with the request in its environment.
+>           
+>           The hook must exit 0 within 60 seconds, so it should start the worker in the background. A hook that fails or runs longer is killed with everything it started, and the claim is released back to the queue.
+> 
+>       --pool <NAME>
+>           Pool to watch. Repeatable.
+>           
+>           Pools other than `default` are registered at startup. Cannot be combined with `--all-pools`.
+> 
+>       --worker-dir <DIR>
+>           Repository directory offered to Cursor Cloud Agents.
+>           
+>           Repeatable (default: `[cursor_worker].worker_dirs`). The first one is the registered working directory.
+> 
+>       --all-pools
+>           Watch every pool of the team, without registering any
+> 
+>       --max-agents <N>
+>           Maximum concurrent Cloud Agent claims.
+>           
+>           Default: `[cursor_worker].max_agents`; unset means no cap.
+> 
+>       --repository <URL>
+>           Only take requests for this repository URL. Required for repository-scoped keys.
+>           
+>           Also pins the pools registered at startup to the repository.
+> 
+>       --session-token
+>           Give the hook a token that serves only its claim, in place of the API key.
+>           
+>           The hook gets `CURSOR_AUTH_TOKEN` and `CURSOR_AUTH_TOKEN_EXPIRES_AT`; write the token to a file and start the worker with `--auth-token-file`. Needs private-worker session tokens enabled for the team.
+> 
+>       --single-use
+>           Same as `--pool` (legacy alias)
+> 
+>       --identity-audience <AUD>
+>           Ask each claim for a signed identity token bound to this audience.
+>           
+>           The hook gets `CURSOR_IDENTITY_TOKEN`, `CURSOR_IDENTITY_TOKEN_EXPIRES_AT` and `CURSOR_IDENTITY_NONCE` to check the user before it starts a worker. A wake makes no claim, so its hook gets no identity token.
+> 
+>       --pool-name <NAME>
+>           Deprecated alias for `--pool <NAME>`. Needs `--pool` or `--single-use`.
+>           
+>           `CURSOR_WORKER_POOL_NAME` names the pool of a bare `--pool` or `--single-use` and is ignored otherwise.
+> 
+>       --endpoint <URL>
+>           Cursor public API base for the claim calls and the hook's `CURSOR_API_URL`.
+>           
+>           Not read from `CURSOR_API_ENDPOINT`, which Grok Build uses for the agent host's backend.
+>           
+>           [default: https://api.cursor.com]
+> 
+>       --mint-github-token
+>           Let Cursor send the pool worker short-lived GitHub tokens during a claimed run.
+>           
+>           Needs `--pool`. A team admin must turn on GitHub token minting for pool workers. Without this flag, the worker refuses the tokens. The worker redacts the token from what the agent sees, best effort.
+> 
+>       --sync-dashboard-secrets
+>           Let Cursor send the pool worker the team's dashboard secrets as env variables.
+>           
+>           They arrive during a claimed run. Needs `--pool`. A team admin must turn on dashboard secret sync for pool workers. The worker redacts them from what the agent sees, best effort.
+> 
+>       --clone-git-repos
+>           Clone the claimed run's repository with the minted token.
+>           
+>           For an any-repo pool worker: a named `--pool` other than `default`, a `--worker-dir` that is not a git checkout with an origin, and no `repo=` or `name=` label. Clones go under the worker's own directory in the Grok home, never into the worker dir; a clone of the same repository there is reused and fetched. Implies `--mint-github-token`.
+> 
+>       --label <KEY=VALUE>
+>           Routing label for the worker, as `key=value`. Repeatable
+> 
+>       --labels-file <PATH>
+>           JSON or TOML file of worker labels. Cannot be combined with `--label`
+>           
+>           [env: CURSOR_WORKER_LABELS_FILE=]
+> 
+>       --api-key <KEY>
+>           Cursor API key the worker registers with, in place of your linked Cursor account.
+>           
+>           Needs the agent-host backend (`GROK_AGENT_HOST_BACKEND=1`), as does `--auth-token-file`. Prefer `CURSOR_API_KEY`: other local users can read a key passed here in the process list.
+>           
+>           [env: CURSOR_API_KEY]
+> 
+>       --auth-token-file <PATH>
+>           File holding the worker's Cursor auth token, re-read before every reconnect.
+>           
+>           The file holds only the token; surrounding whitespace is trimmed. Takes precedence over `--api-key`.
+> 
+>       --on-session-start <COMMAND>
+>           Command run on this host once a pool claim lands. Needs `--pool`.
+>           
+>           Runs with `sh -c` in your home directory and gets the session as JSON on stdin. `CURSOR_WORKER_BC_ID` names the agent run. A JSON reply with an `env` object sets variables for the `--on-session-end` command. Stopped after 60 seconds; a failure is logged and never holds up the claim.
+> 
+>       --on-session-end <COMMAND>
+>           Command run on this host once a pool claim is released. Needs `--pool`.
+>           
+>           Runs with `sh -c` in your home directory, after `--on-session-start` finishes, and gets the session and its end `reason` as JSON on stdin. The worker recycles after it finishes, or after 60 seconds; stopping the worker gives it only 5 seconds. A failure is logged and never holds up the teardown.
+> 
+>       --identity-socket
+>           Give each Cloud Agent its own OIDC identity socket.
+>           
+>           Its shells get the path as `CURSOR_AGENT_SOCKET`. An agent POSTs to `/v1/tokens/oidc` on it to mint a short-lived Cursor cloud-agent identity token for an audience it names. Off by default; no socket exists without it. Needs the agent-host backend (`GROK_AGENT_HOST_BACKEND=1`).
+> 
+>       --management-addr <ADDRESS>
+>           Serve worker health over HTTP for Kubernetes probes.
+>           
+>           ADDRESS is `:8080` (every IPv4 address) or `host:8080`. `GET /healthz` answers 200 while the worker runs, and 503 once it has stopped for good (a rejected credential). `GET /readyz` answers 200 when the worker is connected to Cursor, holds no claim and is not shutting down, and 503 otherwise; its JSON body reports each of those. The worker fails to start when it cannot bind ADDRESS. Needs the agent-host backend (`GROK_AGENT_HOST_BACKEND=1`).
+> 
+>       --idle-release-timeout <SECONDS>
+>           Seconds a claim may sit idle before Cursor releases it. 0 turns this off.
+>           
+>           Defaults to 3600 for a `--pool` worker, which stops once released, and to 0 otherwise. Cursor still releases claims for its other reasons. Needs the agent-host backend (`GROK_AGENT_HOST_BACKEND=1`).
+>           
+>           [env: CURSOR_WORKER_IDLE_RELEASE_TIMEOUT=]
+> 
+>       --debug
+>           Enable debug logging
+> 
+>       --debug-file <FILE>
+>           Write debug logs to FILE
+> 
+>   -h, --help
+>           Print help (see a summary with '-h')
+> 
+>       --leader-socket <PATH>
+>           Use a custom leader socket path instead of the default `~/.grok/leader.sock`.
+>           
+>           A local/branch build can thus run an isolated leader without colliding with the default one already running on the machine. Name it `~/.grok/leader-*.sock` to keep `grok leader list/kill` able to find it; any other location works but won't be auto-discovered. In Grok Build unified, PATH is the leader's own socket, and its shared daemon listens beside it at `PATH.daemon`
