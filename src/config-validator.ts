@@ -31,7 +31,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["experimental", "public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -452,6 +452,12 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.view_access !== undefined && config.web.view_access !== "open" && config.web.view_access !== "session") {
       err("web.view_access", "must be open or session");
+    }
+    if (config.web.notice_delivery !== undefined) {
+      const delivery = config.web.notice_delivery;
+      if ((!delivery || typeof delivery !== "object" || Array.isArray(delivery)) || Object.entries(delivery).some(([key, value]) => !["login", "tips"].includes(key) || value !== "dm")) {
+        err("web.notice_delivery", 'must contain only login/tips: "dm"');
+      }
     }
     if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean" && config.web.notify_login !== "dm") {
       err("web.notify_login", 'must be a boolean or "dm"');

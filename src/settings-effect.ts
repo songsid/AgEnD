@@ -1,3 +1,4 @@
+import { setNoticeMode } from "./notice-delivery.js";
 import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
@@ -75,6 +76,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   } else if (path === "/api/settings/fleet/defaults") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     after.fleet.defaults = { ...cfg.defaults, ...record(body) };
+    if (typeof record(body).tips === "boolean" || record(body).tips === "dm") setNoticeMode(after.fleet, "tips", record(body).tips);
     if (after.fleet.defaults.locale === null || after.fleet.defaults.locale === "") delete after.fleet.defaults.locale;
     if (after.fleet.defaults.tool_set === null || after.fleet.defaults.tool_set === "") delete after.fleet.defaults.tool_set;
   } else if (path === "/api/settings/fleet/web") {
@@ -86,7 +88,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const { session: sessionPatch, terminal: terminalPatch } = parsed;
     after.fleet.web = { ...cfg.web };
     if (parsed.canvasWorker !== undefined) after.fleet.web.experimental = { ...cfg.web?.experimental, canvas_worker: parsed.canvasWorker };
-    if (parsed.notifyLogin !== undefined) after.fleet.web.notify_login = parsed.notifyLogin;
+    if (parsed.notifyLogin !== undefined) setNoticeMode(after.fleet, "login", parsed.notifyLogin);
     if (parsed.echo !== undefined) after.fleet.web.echo_to_channel = parsed.echo;
     if (parsed.logTab !== undefined) after.fleet.web.log_tab = parsed.logTab;
     if (parsed.usageOnPublicLink !== undefined) after.fleet.web.usage_report_on_public_link = parsed.usageOnPublicLink;

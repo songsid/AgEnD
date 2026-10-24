@@ -1,0 +1,11 @@
+1792848221396 < {"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"kiro","version":"0.0.0"},"io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{},"url":{}}}}}}
+1792848221396 > {"jsonrpc":"2.0","id":"server-discover-probe-1","result":{}}
+1792848221474 < {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}}},"clientInfo":{"name":"kiro","version":"0.0.0"}},"jsonrpc":"2.0","id":0}
+1792848221474 > {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"prompts":{}},"serverInfo":{"name":"elicit-audit","version":"1.0.0"}}}
+1792848221491 < {"jsonrpc":"2.0","method":"notifications/initialized"}
+1792848221492 < {"method":"tools/list","params":{},"jsonrpc":"2.0","id":1}
+1792848221492 > {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ask_values","description":"Asks the user for values","inputSchema":{"type":"object","properties":{}}}]}}
+1792848221499 < {"method":"prompts/list","params":{},"jsonrpc":"2.0","id":2}
+1792848221499 > {"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"askme","description":"Ask the user for values"}]}}
+1792848222993 > {"jsonrpc":"2.0","id":1000,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848223000 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1000}

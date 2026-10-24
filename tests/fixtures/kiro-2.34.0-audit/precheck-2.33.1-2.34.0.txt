@@ -1,0 +1,35 @@
+precheck kiro-cli (manifest scripts/manual/cli-upstream-precheck/sources.json, 97 literals)
+  old: <download>/2.33.1 — 8 file(s), 282.2 MB
+  new: <download>/2.34.0 — 8 file(s), 283.9 MB
+
+literals in the old artifact: 55 of 97 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 4
+  [input-box] 3 -> 4  "to queue"   (src/backend/kiro.ts:106 readKiroComposer)
+  [error] 34 -> 33  "ExpiredTokenException"   (src/backend/kiro.ts:1584 KiroBackend.getErrorPatterns.pattern)
+  [error] 26 -> 25  "SlowDownException"   (src/backend/kiro.ts:1685 KiroBackend.getErrorPatterns.pattern)
+  [dialog] 3 -> 4  "Are you sure"   (src/backend/kiro.ts:1764 KiroBackend.getClearConfirmationDialog.pattern)
+
+APPEARED (not in old, in new): 2
+  [trust] 0 -> 1  "Trust this workspace?"   (src/backend/kiro.ts:260 KIRO_WORKSPACE_TRUST_HEADER)
+  [trust] 0 -> 1  "Trust this workspace"   (src/backend/kiro.ts:261 KIRO_WORKSPACE_TRUST_PATTERN)
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 4
+  [dialog] "Are you sure you want to continue uninstalling Kiro CLI?"   near "Are you sure"
+  [error] "Continue from the recorded response; do not repeat completed work.event crates/agent/src/agent"   near "not available"
+  [trust] "Trust this workspace?"   near "Trust this workspace?"; "Trust this workspace"
+  [error,trust] "rate limit reached:Your prompt is too long even after truncation."   near "to navigate"; "to select"; "Kiro rate limit reached"   hint: the old release has "rate limit reached:"… (only a neighbouring string changed?)
+
+NEW PROMPT-LIKE STRINGS elsewhere: 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 1
+  "rate limit reached:/compact --help"
+
+REASON: 4 new prompt-like string(s) on a known surface: [dialog] "Are you sure you want to continue uninstalling Kiro CLI?"; [error] "Continue from the recorded response; do not repeat completed"; [trust] "Trust this workspace?"; [error,trust] "rate limit reached:Your prompt is too long even after trunca"
+REASON: 4 literal count(s) changed
+REASON: 2 literal(s) appeared
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 3, hinted new prompts 1
+BASIS: hard=3; hinted=1
+PRECHECK: MAJOR

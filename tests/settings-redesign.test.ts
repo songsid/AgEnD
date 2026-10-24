@@ -251,6 +251,13 @@ describe("Settings P0 redesign shell", () => {
     select.value = "dm"; fire(select, "change"); await settle(); await applyStaged();
     expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: "dm" });
   });
+  it("shows canonical DM tip storage and stages Topic to clear its routing preference", async () => {
+    w = world({ fleet: { defaults: { tips: true }, web: { notice_delivery: { tips: "dm" } }, instances: {}, channels: [] } });
+    answer = succeed; await mountSettings("agent-defaults");
+    const select = p.root.querySelector("#g-tips"); expect(select.value).toBe("dm");
+    await choose(select, "true"); await applyStaged();
+    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: true });
+  });
   it("shows the off fleet reply-trigger default and stages an explicit on", async () => {
     answer = succeed;
     await mountSettings("agent-defaults");

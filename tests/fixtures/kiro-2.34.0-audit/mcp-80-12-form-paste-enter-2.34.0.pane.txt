@@ -1,0 +1,40 @@
+         Upgrade your V2 agent configurations to V3 with /upgrade-agent
+                          https://kiro.dev/docs/cli/v3/
+            Prefer the previous experience? Launch with kiro-cli --v2
+
+      Tip: Made a wrong turn? Use /rewind to fork the conversation from any
+      earlier point.
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on,
+   you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model,
+   expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy
+   desktop app.
+────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (form)
+
+• Thinking... (esc to cancel)
+  ╰ Tip: Tune how much each tool call shows — args, reasoning, output caps,
+density — via /verbosity or /settings → verbosity.
+
+────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────
+ Input requested · MCP server
+────────────────────────────────────────────────────────────────────────────────
+   The audit server asks for a few values
+   Favourite colour (required): (none)
+ ❯ How many
+     >
+   A short note: empty
+   Submit
+   Decline
+────────────────────────────────────────────────────────────────────────────────
+ esc to cancel · ↑↓ to navigate · enter to select · ctrl+s to submit
+
+
+

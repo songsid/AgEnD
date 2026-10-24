@@ -236,15 +236,15 @@ describe("kiro-cli 2.33.0: rate-limit and quota text (static; not reachable offl
   });
 });
 
-describe("kiro-cli 2.33.0 is the tested maximum", () => {
+describe("kiro-cli 2.33.0 is within the tested range (#2587 moved the maximum to 2.34.0)", () => {
   it("is read from the version table, with the pins 2.27–2.32 had; its --help is 2.32.0's", () => {
-    expect(KIRO_TESTED_MAX).toBe("2.33.0");
+    expect(KIRO_TESTED_MAX).toBe("2.34.0");
     const table = compat();
     expect(table.source).toBe("version");
     expect(planKiroLaunch("legacy", table)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
     expect(planKiroLaunch("tui", table)).toEqual({ kind: "launch", ui: "tui", flags: ["--tui", "--agent-engine=v2"] });
     expect(planKiroLaunch("v3", table)).toEqual({ kind: "launch", ui: "v3", flags: ["--v3"] });
-    const help = compat("2.33.1");
+    const help = compat("2.34.1");
     expect(help.source).toBe("help");
     expect(help.agentEngines).toEqual(["v2", "v1", "v3"]);
     expect(planKiroLaunch("tui", help)).toEqual(planKiroLaunch("tui", table));

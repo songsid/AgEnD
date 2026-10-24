@@ -1,0 +1,40 @@
+      earlier point.
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on,
+   you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model,
+   expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy
+   desktop app.
+────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (form)
+
+• Cancelled
+────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (url)
+
+ᗢ Thinking... (esc to cancel)
+  ╰ Tip: Reasoning blocks in the way? Set thinking display to collapsed or off
+via /verbosity.
+
+────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────
+Mock Model
+/tmp/k234
+/work/el-2.34.0
+(master)
+
+›  Kiro is working · 3s · Type to steer · Ctrl+S to queue
+
+
+
+
+
+
+
+
+

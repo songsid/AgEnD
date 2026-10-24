@@ -1,3 +1,4 @@
+import { setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
@@ -823,13 +824,17 @@ export function handleSettingsRequest(
       // (a shorter sign-in time), and the audit must still name who did it. A confirmation's replay is no one's: null.
       const auditBy = parsed.guests?.grants !== undefined && !isSettingsReplay(req) ? guestSettingsCaller(req, url, ctx) : null;
       const changes: RawConfigPatch[] = [];
-      const web = { ...cfg.web };
+      let web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
       if (parsed.canvasWorker !== undefined) {
         web.experimental = { ...web.experimental, canvas_worker: parsed.canvasWorker };
         changes.push({ path: ["web", "experimental", "canvas_worker"], value: parsed.canvasWorker });
       }
-      if (parsed.notifyLogin !== undefined) { web.notify_login = parsed.notifyLogin; changes.push({ path: ["web", "notify_login"], value: parsed.notifyLogin }); }
+      if (parsed.notifyLogin !== undefined) {
+        const holder = { defaults: cfg.defaults, web }; setNoticeMode(holder, "login", parsed.notifyLogin); web = holder.web;
+        changes.push({ path: ["web", "notify_login"], value: web.notify_login },
+          { path: ["web", "notice_delivery", "login"], ...(parsed.notifyLogin === "dm" ? { value: "dm" } : { remove: true }) });
+      }
       if (parsed.echo !== undefined) { web.echo_to_channel = parsed.echo; changes.push({ path: ["web", "echo_to_channel"], value: parsed.echo }); }
       if (parsed.logTab !== undefined) { web.log_tab = parsed.logTab; changes.push({ path: ["web", "log_tab"], value: parsed.logTab }); }
       if (parsed.usageOnPublicLink !== undefined) { web.usage_report_on_public_link = parsed.usageOnPublicLink; changes.push({ path: ["web", "usage_report_on_public_link"], value: parsed.usageOnPublicLink }); }
@@ -986,7 +991,9 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
-      settingsWrite(req, () => { cfg.defaults = merged as typeof cfg.defaults; ctx.saveFleetConfig(); });
+      settingsWrite(req, () => { cfg.defaults = merged as typeof cfg.defaults;
+        if (typeof body.tips === "boolean" || body.tips === "dm") setNoticeMode(cfg, "tips", body.tips);
+        ctx.saveFleetConfig(); });
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;

@@ -1,3 +1,4 @@
+import { setNoticeMode } from "./notice-delivery.js";
 import { PaneContextCache } from "./pane-context-cache.js";
 import { sanitizeInstanceName } from "./instance-names.js";
 import { LOGIN_BACKEND_ALIASES } from "./login-flows.js";
@@ -1476,7 +1477,7 @@ export class TopicCommands {
         await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
         return;
       }
-      this.ctx.fleetConfig.defaults.tips = mode === "on";
+      setNoticeMode(this.ctx.fleetConfig, "tips", mode === "on");
       this.ctx.saveFleetConfig();
       await adapter.sendText(msg.chatId, t(mode === "on" ? "tips.enabled" : "tips.disabled"), {
         threadId: msg.threadId,

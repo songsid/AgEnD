@@ -1,0 +1,63 @@
+1792848212406 < {"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"kiro","version":"0.0.0"},"io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{},"url":{}}}}}}
+1792848212407 > {"jsonrpc":"2.0","id":"server-discover-probe-1","result":{}}
+1792848212496 < {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}}},"clientInfo":{"name":"kiro","version":"0.0.0"}},"jsonrpc":"2.0","id":0}
+1792848212496 > {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"prompts":{}},"serverInfo":{"name":"elicit-audit","version":"1.0.0"}}}
+1792848212508 < {"jsonrpc":"2.0","method":"notifications/initialized"}
+1792848212510 < {"method":"tools/list","params":{},"jsonrpc":"2.0","id":1}
+1792848212510 > {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ask_values","description":"Asks the user for values","inputSchema":{"type":"object","properties":{}}}]}}
+1792848212517 < {"method":"prompts/list","params":{},"jsonrpc":"2.0","id":2}
+1792848212517 > {"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"askme","description":"Ask the user for values"}]}}
+1792848214010 > {"jsonrpc":"2.0","id":1000,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848214016 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1000}
+1792848245734 < {"method":"prompts/get","params":{"name":"askme","arguments":{}},"jsonrpc":"2.0","id":3}
+1792848245734 > {"jsonrpc":"2.0","id":1001,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848245737 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1001}
+1792848245737 > {"jsonrpc":"2.0","id":3,"result":{"messages":[{"role":"user","content":{"type":"text","text":"elicited: {\"action\":\"cancel\"}"}}]}}
+1792848267051 < {"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"kiro","version":"0.0.0"},"io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{},"url":{}}}}}}
+1792848267052 > {"jsonrpc":"2.0","id":"server-discover-probe-1","result":{}}
+1792848267202 < {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}}},"clientInfo":{"name":"kiro","version":"0.0.0"}},"jsonrpc":"2.0","id":0}
+1792848267202 > {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"prompts":{}},"serverInfo":{"name":"elicit-audit","version":"1.0.0"}}}
+1792848267210 < {"jsonrpc":"2.0","method":"notifications/initialized"}
+1792848267212 < {"method":"tools/list","params":{},"jsonrpc":"2.0","id":1}
+1792848267212 > {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ask_values","description":"Asks the user for values","inputSchema":{"type":"object","properties":{}}}]}}
+1792848267221 < {"method":"prompts/list","params":{},"jsonrpc":"2.0","id":2}
+1792848267222 > {"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"askme","description":"Ask the user for values"}]}}
+1792848268712 > {"jsonrpc":"2.0","id":1000,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848268719 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1000}
+1792848282193 < {"method":"prompts/get","params":{"name":"askme","arguments":{}},"jsonrpc":"2.0","id":3}
+1792848282193 > {"jsonrpc":"2.0","id":1001,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848282196 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1001}
+1792848282196 > {"jsonrpc":"2.0","id":3,"result":{"messages":[{"role":"user","content":{"type":"text","text":"elicited: {\"action\":\"cancel\"}"}}]}}
+1792848327624 < {"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"kiro","version":"0.0.0"},"io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{},"url":{}}}}}}
+1792848327624 > {"jsonrpc":"2.0","id":"server-discover-probe-1","result":{}}
+1792848327859 < {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}}},"clientInfo":{"name":"kiro","version":"0.0.0"}},"jsonrpc":"2.0","id":0}
+1792848327859 > {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"prompts":{}},"serverInfo":{"name":"elicit-audit","version":"1.0.0"}}}
+1792848327891 < {"jsonrpc":"2.0","method":"notifications/initialized"}
+1792848327892 < {"method":"tools/list","params":{},"jsonrpc":"2.0","id":1}
+1792848327892 > {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ask_values","description":"Asks the user for values","inputSchema":{"type":"object","properties":{}}}]}}
+1792848327932 < {"method":"prompts/list","params":{},"jsonrpc":"2.0","id":2}
+1792848327932 > {"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"askme","description":"Ask the user for values"}]}}
+1792848329394 > {"jsonrpc":"2.0","id":1000,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848329416 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1000}
+1792848358688 < {"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"kiro","version":"0.0.0"},"io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{},"url":{}}}}}}
+1792848358688 > {"jsonrpc":"2.0","id":"server-discover-probe-1","result":{}}
+1792848358818 < {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}}},"clientInfo":{"name":"kiro","version":"0.0.0"}},"jsonrpc":"2.0","id":0}
+1792848358818 > {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"prompts":{}},"serverInfo":{"name":"elicit-audit","version":"1.0.0"}}}
+1792848358831 < {"jsonrpc":"2.0","method":"notifications/initialized"}
+1792848358832 < {"method":"tools/list","params":{},"jsonrpc":"2.0","id":1}
+1792848358832 > {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ask_values","description":"Asks the user for values","inputSchema":{"type":"object","properties":{}}}]}}
+1792848358840 < {"method":"prompts/list","params":{},"jsonrpc":"2.0","id":2}
+1792848358840 > {"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"askme","description":"Ask the user for values"}]}}
+1792848360332 > {"jsonrpc":"2.0","id":1000,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848360343 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1000}
+1792848392368 < {"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"kiro","version":"0.0.0"},"io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{},"url":{}}}}}}
+1792848392368 > {"jsonrpc":"2.0","id":"server-discover-probe-1","result":{}}
+1792848392622 < {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}}},"clientInfo":{"name":"kiro","version":"0.0.0"}},"jsonrpc":"2.0","id":0}
+1792848392622 > {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{},"prompts":{}},"serverInfo":{"name":"elicit-audit","version":"1.0.0"}}}
+1792848392678 < {"jsonrpc":"2.0","method":"notifications/initialized"}
+1792848392681 < {"method":"tools/list","params":{},"jsonrpc":"2.0","id":1}
+1792848392681 > {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ask_values","description":"Asks the user for values","inputSchema":{"type":"object","properties":{}}}]}}
+1792848392715 < {"method":"prompts/list","params":{},"jsonrpc":"2.0","id":2}
+1792848392715 > {"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"askme","description":"Ask the user for values"}]}}
+1792848394179 > {"jsonrpc":"2.0","id":1000,"method":"elicitation/create","params":{"message":"The audit server asks for a few values","requestedSchema":{"type":"object","properties":{"colour":{"type":"string","title":"Favourite colour","enum":["red","green","blue"],"enumNames":["Red","Green","Blue"]},"count":{"type":"integer","title":"How many","minimum":1,"maximum":9},"note":{"type":"string","title":"A short note"}},"required":["colour"]}}}
+1792848394191 < {"result":{"action":"cancel"},"jsonrpc":"2.0","id":1000}

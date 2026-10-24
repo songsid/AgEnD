@@ -1,0 +1,40 @@
+      earlier point.
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+ [36m▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on,[39m
+   [36myou'll be upgraded to 3.0 automatically.[39m
+   [36mIt brings cloud sessions, memory, workflows, an improved trust model,[39m
+   [36mexpanded hooks and specs.[39m
+   [36mNote: 3.0 doesn't support the legacy --classic experience or the legacy[39m
+   [36mdesktop app.[39m
+────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (form)
+
+[31m•[39m [3mCancelled[0m
+────────────────────────────────────────────────────────────────────────────────
+  › run the audit tool please (url)
+
+[31m•[39m [3mCancelled[0m
+────────────────────────────────────────────────────────────────────────────────
+  › ask me a question
+
+[31m•[39m Which branch should I use?
+  [31mCancelled[39m
+[36m•[39m [36mCancelled streaming[39m
+────────────────────────────────────────────────────────────────────────────────
+ [33mTrust All Tools active, confirmations are off[39m · /quit to exit
+────────────────────────────────────────────────────────────────────────────────
+Mock Model
+[95m/tmp/k234
+/work/el-2.34.0[39m
+(master)
+
+› [7m [0mask a question or describe a task ↵
+                                       /sessions to resume · /copy to clipboard
+
+
+
+
+
