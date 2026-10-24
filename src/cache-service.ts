@@ -375,9 +375,13 @@ export class CacheService {
     for (const r of out.instances) {
       const inst = byName.get(r.name), ledger = ledgers.get(r.name);
       if (!inst || !ledger) continue;
+      // A scan that could not read everything is no inventory: its cursors stay (Prism #2605: dropping them would count a
+      // source again from the start once it is readable).
       if (r.failed) this.unread.add(r.name);
-      const live = new Set(r.live);
-      for (const [k, f] of Object.entries(ledger.files)) if (f.kind === "kiro" && !live.has(k)) { delete ledger.files[k]; this.dirty.add(r.name); }
+      else {
+        const live = new Set(r.live);
+        for (const [k, f] of Object.entries(ledger.files)) if (f.kind === "kiro" && !live.has(k)) { delete ledger.files[k]; this.dirty.add(r.name); }
+      }
       for (const u of r.updates) {
         const cur: FileCursor = ledger.files[u.key] ??= { kind: "kiro", ino: 0, offset: 0 };
         for (const t of [...u.turns].sort((a, b) => a.t - b.t)) addTurn(ledger, cur, t, cutoff, inst.profile ?? "default");

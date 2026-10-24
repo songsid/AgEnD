@@ -38,6 +38,8 @@ export interface Turn {
   output: number;
   /** The part of `output` the CLI reports as reasoning (Codex `reasoning_output_tokens`); absent or 0 where none is. */
   reasoning?: number;
+  /** The model requests this record covers (a Kiro turn's `total_request_count`); absent: one. */
+  requests?: number;
 }
 
 /** Gap histogram edges, seconds: ≤5 min, ≤30 min, ≤1 h, ≤2 h, ≤6 h, ≤24 h, longer. */
@@ -174,7 +176,7 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const hour = ledger.hours[hk] ??= { m: dict<HourTotals>(), g: new Array<number>(GAP_BUCKETS).fill(0) };
   const mk = modelKey(turn.model, turn.prompt);
   const bump = (tot: HourTotals): void => {
-    tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
+    tot[0] += turn.requests ?? 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
   };
   bump(hour.m[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
   // #2122: and under its source — the reader that read it (this file's kind) and the profile it was read under.

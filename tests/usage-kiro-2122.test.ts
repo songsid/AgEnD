@@ -50,6 +50,9 @@ describe("the estimate: tokscale's method, per store", () => {
     const e = classicEntry(T(9));
     Object.assign(e.request_metadata, { uncached_input_tokens: 1234, output_tokens: 56, cache_read_input_tokens: 7890 });
     expect(kiroClassicTurns(classicConversation([e]), 0)[0]).toMatchObject({ uncached: 1234, output: 56, read: 7890 });
+    Object.assign(e.request_metadata, { request_count: 3 });
+    expect(kiroClassicTurns(classicConversation([e]), 0)[0]).toMatchObject({ requests: 3 });
+    expect(kiroClassicTurns(classicConversation([classicEntry(T(9))]), 0)[0]!.requests).toBeUndefined();   // one
   });
   it("TUI: only the messages a turn names count (the sidecar also holds history brought over), and the 200,000 window by default", () => {
     const session = { session_id: "s1", cwd: "/w", session_state: { rts_model_state: { model_info: { model_id: "claude-sonnet-4.6" } },
@@ -172,6 +175,63 @@ describe("the scan: by working directory, incremental, bounded, read-only", () =
     const direct = scanKiroUsage(input(s)), threaded = await runKiroUsageScan(input(s), 60_000);
     expect(threaded.instances).toEqual(direct.instances);
   }, 90_000);
+});
+
+describe("Prism #2605: what a scan must never lose or double", () => {
+  const svcFor = (s: ReturnType<typeof stores>, ledgerDir: string) => new CacheService({
+    instances: () => [{ name: "w", backend: "kiro-cli", workingDirectory: s.cwd, ledgerPath: join(ledgerDir, "cache-ledger.json"), profile: "default" }],
+    claudeProjectsDir: () => join(s.root, "claude"), claudeKey: (d) => d, codexSessionsDir: () => join(s.root, "codex"), listRollouts: () => [], metaPath: join(s.root, "meta.json"),
+    now: () => NOW, zone: () => "UTC", kiroDbPath: () => s.dbPath, kiroHome: () => s.kiroHome, kiroScan: async (i) => scanKiroUsage(i) });
+  const requests = async (svc: CacheService) => {
+    const d = (await svc.usageData()).instances[0]!;
+    return Object.values(d.ledger.hours).reduce((n, h) => n + Object.values(h.m).reduce((a, t) => a + t[0], 0), 0);
+  };
+  it("a store unreadable for a pass keeps the cursors: once it is readable again nothing is counted twice", async () => {
+    const s = stores();
+    s.putRow(s.cwd, "c1", [classicEntry(T(9))], T(9, 1));
+    s.db.close();
+    const svc = svcFor(s, join(s.root, "ledger"));
+    await svc.pass();
+    expect(await requests(svc)).toBe(1);
+    const { renameSync } = await import("node:fs");
+    renameSync(s.dbPath, `${s.dbPath}.away`); mkdirSync(s.dbPath);              // there, and not a database
+    await svc.pass();
+    rmSync(s.dbPath, { recursive: true }); renameSync(`${s.dbPath}.away`, s.dbPath);
+    await svc.pass(); await svc.pass();
+    expect(await requests(svc)).toBe(1);
+  });
+  it("a TUI session file that cannot be read fails the scan (no coverage); readable again, it is read", () => {
+    const s = stores();
+    mkdirSync(join(s.kiroHome, "sessions", "cli", "unreadable.json"));
+    expect(scanKiroUsage(input(s)).instances[0]!.failed).toBe(true);
+    rmSync(join(s.kiroHome, "sessions", "cli", "unreadable.json"), { recursive: true });
+    s.putTui("t1", s.cwd, T(10));
+    expect(scanKiroUsage(input(s)).instances[0]).toMatchObject({ failed: false, updates: [expect.objectContaining({ turns: [expect.anything()] })] });
+  });
+  it("a V3 turn still being written is counted once it ends, whole", () => {
+    const s = stores();
+    const dir = join(s.kiroHome, "sessions", kasBucket(s.cwd), "sess_live");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "session.json"), JSON.stringify({ id: "sess_live", modelId: "claude-sonnet-4.6", createdAt: new Date(T(8)).toISOString() }));
+    const l = (ts: number, p: object) => JSON.stringify({ timestamp: new Date(ts).toISOString(), payload: p });
+    writeFileSync(join(dir, "messages.jsonl"), l(T(9), { type: "user", content: "abcd" }) + "\n");
+    const first = scanKiroUsage(input(s)).instances[0]!.updates[0]!;
+    expect(first.turns).toEqual([]);
+    writeFileSync(join(dir, "messages.jsonl"), [l(T(9), { type: "user", content: "abcd" }), l(T(9, 1), { type: "assistant", content: "a".repeat(400) }),
+      l(T(9, 2), { type: "usage_summary", requestIds: ["r1", "r2", "r3"] }), l(T(9, 2), { type: "turn_end" })].join("\n") + "\n");
+    const second = scanKiroUsage(input(s, { instances: [{ name: "w", cwds: [s.cwd], dbPath: s.dbPath, cursors: { [first.key]: { sig: first.sig, after: first.after } } }] })).instances[0]!.updates[0]!;
+    expect(second.turns).toEqual([expect.objectContaining({ output: 100, requests: 3 })]);
+  });
+  it("requests are model requests: a TUI turn of 4 counts 4", async () => {
+    const s = stores();
+    const path = s.putTui("t1", s.cwd, T(10));
+    const v = JSON.parse(readFileSync(path, "utf8"));
+    v.session_state.conversation_metadata.user_turn_metadatas[0].total_request_count = 4;
+    writeFileSync(path, JSON.stringify(v));
+    const svc = svcFor(s, join(s.root, "ledger"));
+    await svc.pass();
+    expect(await requests(svc)).toBe(4);
+  });
 });
 
 describe("in the usage report: estimated, and said so", () => {
