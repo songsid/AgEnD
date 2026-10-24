@@ -345,36 +345,28 @@ stores were copied to scratch, WAL files included, before any query.
 | antigravity (agy 1.4.6) | `~/.gemini/antigravity-cli/conversations/*.db`: `gen_metadata` protobuf, field map reverse-engineered by tokscale | **real, per generation** (442 in 41 conversations); output field `#9` missing on 60 | `#5` cache read on 316; no write | `#10` thinking | `#19`, or the `#21` label | workspace URI `trajectory_metadata_blob #1.#1` on 400 of 442 |
 | opencode | `opencode.db` `message` (v1) / `session_message` (v2) `data.tokens` | **real** on 1,339 of 1,367 assistant messages | `tokens.cache.read` / `.write` real | `tokens.reasoning` | `modelID` + `providerID` | `session.directory` |
 
-**Kiro is the gap, and on this host it cannot be measured.**
+**Kiro is the gap: no store holds a token count, so Kiro is estimated (the user's decision, 2026-10-25).**
 - Neither store carries a token count. tokscale *estimates* Kiro: `ceil(bytes / 4)` of the prompt, the tool results
   and the response. It derives cache read from `context_usage_percentage × context window − fresh input`. Each
-  such row is a guess, and the cache-read part dominates it.
-- **Credits** are Kiro's billing unit: `metering_usage[] {value, unit: "credit"}` per V3 turn, and
-  `user_turn_metadata.usage_info[]` per classic conversation. On this host they were written only in July and
-  August 2026 (1,091 credits on 224 V3 turns, 99 credits on 38 classic conversations). They are empty on every turn
-  since September (679 V3 turns). There is no field that converts credits to tokens. tokscale prices a credit at a
-  fixed $0.04 (the pay-as-you-go rate) and books a classic conversation's credits on its first turn. A credit
-  amount is the row's cost and overrides any token price, `auto` turns included. A turn without credits gets its
-  estimated tokens priced at the named model's list price (for example `claude-opus-4.6`); an `auto` turn without
-  credits is not priced.
-- 11 session ids exist in both stores: the classic→V3 migration carries a conversation over. Their indexes count
-  different things: V3 counts user turns, and classic counts requests (one session has 29 V3 turns and 1,604
-  classic requests). A reader that takes both must decide by timestamps which requests each store covers. The id
-  alone won't tell.
-
+  such row is an estimate, and the cache-read part dominates it.
+- **No credits.** The user's plan is Amazon Q, not a Kiro plan, so this account is not billed in credits. The
+  stores' credit fields (`metering_usage[]` per V3 turn, `user_turn_metadata.usage_info[]` per classic
+  conversation) are empty except for July and August 2026, and the legacy pane's `▸ Credits: X • Time: Ys` line
+  shows on only some turns. Neither is a bill for this account, so AgEnD reads no credits, from the stores or from
+  the pane, and shows none.
 - **Where else it was looked for** (re-checked 2026-10-25):
   - **Other stores:** no Kiro instance uses a credential profile, so every one of them writes the default stores
     above. No other `data.sqlite3` exists on the host outside test homes. Kiro's `state` table, its chat log
-    (`$XDG_RUNTIME_DIR/kiro-log`) and the project `.kiro` directories hold no usage. The current classic rows keep
-    `usage_info: []`.
+    (`$XDG_RUNTIME_DIR/kiro-log`) and the project `.kiro` directories hold no usage.
   - **`/usage`:** it calls the `GetUsageLimits` API, the account's monthly quota. AgEnD's usage rail already shows
     that, and it is not per instance.
-  - **The pane:** the legacy UI prints `▸ Credits: 1.02 • Time: 9s` after an answer, and AgEnD's `output.log`
-    (pipe-pane) records it. It is the only per-turn credit figure on the host today. It is partial:
-    - many turns print only `▸ Time: …`, with no reason we can see (same model, same account). The coordinator
-      shows no credit line in 4 rotated logs, and General shows none in its current log;
-    - the TUI and V3 UIs print neither;
-    - `output.log` rolls at 10 MB, so the line has to be read as it is written, and redraws can repeat it.
+- **11 session ids exist in both stores**, because the classic and V3 engines carry a conversation over. Their indexes
+  count different things: V3 counts user turns, and classic counts requests (one session has 29 V3 turns and 1,604
+  classic requests). Each store's own records only cover the turns run in that engine. On the host, no V3 turn's
+  window `[end_timestamp − turn_duration, end_timestamp]` contains a classic request of the same session, in any of
+  the 11. The V3 `.jsonl` sidecar does copy the older messages, so a V3 turn is estimated only from the messages
+  its `message_ids` name. The dedup rule: per session id, a V3 turn whose window contains a classic request of that
+  session is dropped in favour of the classic requests.
 
 **The others are real**, and per instance through their cwd, as the Claude and Codex readers do. Grok's
 `unified.jsonl` log (per request, real) is rotated: it held one session over two days. It is no history source, so
@@ -388,15 +380,21 @@ stores were copied to scratch, WAL files included, before any query.
 | muse | measured; cache write "not reported" (as Codex) | **not priced**: Meta publishes no per-token price |
 | opencode | measured | list price of `modelID`. The provider is often `github-copilot`, a subscription, so the amount is API-equivalent as everywhere |
 | antigravity | measured, marked "decoded" (the field map is tokscale's reverse engineering, checked here against 41 databases) | list price for Gemini and Claude models once the table has them |
-| kiro-cli | **"not measured: Kiro records no token counts"**, plus credits where Kiro wrote them: the stores (Jul–Aug 2026), and the pane's `Credits:` line from now on, marked "partial: not every turn shows credits" | credits only. A credit amount is shown in credits; it is not converted to USD |
+| kiro-cli | **estimated** (tokscale's method at the commit above), flagged "estimated" on every row and on any total that includes one | the estimate at the named model's list price, the company report's basis; `auto` **not priced** |
 
-**The Kiro choice for the user**, because the company's report (§10.3) does use tokscale's estimate:
-- **A (recommended):** as in the table. Kiro is "not measured" for tokens, and shows credits where it wrote any. The
-  page doesn't show a guess as a measurement. The trade-off: Kiro rows won't match the company report.
-- **B:** compute tokscale's estimate, labelled "estimated from text size", and price it the way tokscale does: named
-  models at list price, credits × $0.04 wherever Kiro wrote credits (`auto` included), and an `auto` turn without
-  credits not priced. This lines up with the company report, but most of a
-  Kiro row would then be estimated cache reads.
+**The Kiro decision (the user, 2026-10-25): option B, the estimate, labelled clearly.**
+- **The flag:** `estimated: true` on every Kiro row in `get_usage_report`, an "estimated" mark on the page, and an
+  `estimated` column in the CSV.
+- **Totals:** a total that includes a Kiro row is flagged "includes estimates". The page shows measured and estimated
+  amounts as two parts of the total, so an estimate never mixes silently into a measured number.
+- **The method:** tokscale's, at the commit above:
+  - **input:** fresh input is `ceil(bytes / 4)` of `user_prompt_length` plus that turn's tool results;
+  - **output:** `ceil(bytes / 4)` of `response_size` (classic) or `assistant_response_length` (V3);
+  - **cache read:** `max(floor(context window × context_usage_percentage / 100) − fresh input, 0)`, with
+    `model_info.context_window_tokens` as the window. As in tokscale, a V3 session without a window uses 200,000,
+    and a classic conversation without one gets cache read 0;
+  - **cache write and reasoning:** 0.
+- **Dropped:** option A's credit display, and the pane-credit reader with it. An Amazon Q plan bills no credits.
 
 ### 10.3 Units: the same as the company's tokscale-based daily report
 
@@ -420,7 +418,7 @@ use the same units, so the two can be compared.
 
 **Intentional differences:** AgEnD attributes usage per instance (cwd and credential profile), not per device.
 Instances that share a directory are "shared". Unknown cache writes are "not reported", never 0, and an unknown
-price is "not priced", never estimated. Kiro rows follow §10.2 option A unless the user picks B.
+price is "not priced", never estimated. Kiro tokens are the one estimate, and are flagged so (§10.2).
 
 To serve these rows, the ledger key gains the backend, `backend|model|tier|profile`, and its totals gain `reasoning`.
 Hours written before that change keep `reasoning` 0, and output as recorded.
@@ -430,9 +428,10 @@ Hours written before that change keep `reasoning` 0, and output as recorded.
 1. **Ledger units:** the `reasoning` bucket, output net of reasoning, the backend in the key, and per (backend,
    model, day) rows in `get_usage_report` and the CSV. Codex gains reasoning at once. It is small, and every reader
    below builds on it.
-2. **Kiro:** credits per instance from both stores (split by timestamp where the migration carried a session over) and from the legacy pane's `Credits:` line, read as `output.log` grows, before rotation, with redraws deduped, and "not measured" for tokens
-   (option A), or the estimate (option B). It goes first among the readers because Kiro is the largest unmeasured
-   share (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms). Before this reader runs there are no recent credits in the stores, and from then on the pane gives only some turns, so a Kiro credit total is a lower bound and is labelled so.
+2. **Kiro (option B):** estimated tokens per instance from both stores, by cwd, with the cross-store dedup above,
+   priced at the named model's list price (`auto` not priced). The "estimated" flag goes on rows, on totals, and in
+   the API, the page and the CSV. It goes first among the readers because Kiro is the largest unmeasured share
+   (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms).
 3. **Grok:** real and per turn, a small parser of `updates.jsonl`.
 4. **Muse:** real; not priced.
 5. **OpenCode:** real, by SQL on a read-only connection to `opencode.db`; little current use on this fleet.
