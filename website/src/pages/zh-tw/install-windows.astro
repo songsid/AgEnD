@@ -38,7 +38,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       </p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLiner}</pre>
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
-        <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
+        <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行：裝有 Windows Terminal 時在它裡面開（中文顯示正常），沒有的話是 PowerShell 視窗；你貼上指令的那個視窗會等它，最後告訴你結果。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> 只對這一個指令有效，不會改動你的執行原則，也不需要解除封鎖檔案。</li>
         <li>• <b class="text-text-primary">如果要求重新開機</b>，按 Enter 就好：重新登入 Windows 後，安裝會自己繼續（Windows 會先問一次，請選「是」）。如果沒有自動繼續，再貼上同一行指令，就會從中斷處繼續。</li>
         <li>• 每個比較久的步驟都會顯示已經過多久、通常需要多久，下面還有那個工具自己的進度。</li>

@@ -148,6 +148,14 @@ function Test-InstallRecordAsSeen($seen, [string]$distro, [string]$user) {
     if ($null -eq $now) { return $true }
     return ($null -ne $seen -and $now.Distro -eq $seen.Distro -and $now.User -ceq $seen.User)
 }
+# 有 Windows Terminal 時捷徑在它裡面開（中文顯示較好）；沒有或 AGEND_INSTALL_TERMINAL=conhost 時直接開 PowerShell。
+function Get-ShortcutCommand([string]$file) {
+    $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $a = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file
+    $wt = $null; if ($env:AGEND_INSTALL_TERMINAL -ne 'conhost') { $wt = Get-Command wt.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if ($wt) { return @{ Target = $wt.Source; Arguments = '-w new "{0}" {1}' -f $ps, ($a -replace ';', '\;') } }
+    return @{ Target = $ps; Arguments = $a }
+}
 # 一個桌面捷徑：腳本寫在 %LOCALAPPDATA%\AgEnD，捷徑以 Windows PowerShell 執行它（-ExecutionPolicy Bypass 只對那個行程）。
 function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
     $dir = Get-AgendShortcutDir
@@ -157,8 +165,9 @@ function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptTe
     $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) ($name + '.lnk')
     $shell = New-Object -ComObject WScript.Shell
     $sc = $shell.CreateShortcut($lnk)
-    $sc.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $sc.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file)
+    $cmd = Get-ShortcutCommand $file
+    $sc.TargetPath = $cmd.Target
+    $sc.Arguments = $cmd.Arguments
     $sc.Description = $description
     $sc.Save()
     return $lnk
