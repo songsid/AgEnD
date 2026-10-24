@@ -1731,7 +1731,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oc-office > .oc-bar { margin: 0; padding: var(--s-3) var(--s-5) var(--s-2); }
 .oc-office > .oc-legend { margin: 0 var(--s-5) var(--s-2); }
 .oo { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; width: 100%; }
-.oo > :not(.oo-stage) { margin-left: var(--s-5); margin-right: var(--s-5); }
+.oo > :not(.oo-stage):not(dialog) { margin-left: var(--s-5); margin-right: var(--s-5); }   /* not the editors' dialogs: they centre themselves (#2585) */
 .oo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-pick .tb-select { max-width: 200px; }
@@ -1845,7 +1845,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   /* A phone: the bars at the column's narrower padding; the stage at least most of a screen; no overview (as the canvas). */
   .oc-office > .oc-bar { padding: var(--s-2) var(--s-3); }
   .oc-office > .oc-legend { margin: 0 var(--s-3) var(--s-2); }
-  .oo > :not(.oo-stage) { margin-left: var(--s-3); margin-right: var(--s-3); }
+  .oo > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo-stage { min-height: max(300px, calc(100dvh - 300px)); }
   .oo-pick .tb-select { max-width: 150px; }
   .oo-mini { display: none; }
