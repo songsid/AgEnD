@@ -353,11 +353,14 @@ stores were copied to scratch, WAL files included, before any query.
   `user_turn_metadata.usage_info[]` per classic conversation. On this host they were written only in July and
   August 2026 (1,091 credits on 224 V3 turns, 99 credits on 38 classic conversations). They are empty on every turn
   since September (679 V3 turns). There is no field that converts credits to tokens. tokscale prices a credit at a
-  fixed $0.04 (the pay-as-you-go rate), books a classic conversation's credits on its first turn, and prices the
-  estimated tokens of named models (for example `claude-opus-4.6`) at that model's list price. `auto` is never
-  priced.
-- 11 sessions exist in both stores: the classic→V3 migration copies a conversation. A reader must dedup by the
-  conversation or session id across stores. tokscale's two dedup keys differ, so it can count such a session twice.
+  fixed $0.04 (the pay-as-you-go rate) and books a classic conversation's credits on its first turn. A credit
+  amount is the row's cost and overrides any token price, `auto` turns included. A turn without credits gets its
+  estimated tokens priced at the named model's list price (for example `claude-opus-4.6`); an `auto` turn without
+  credits is not priced.
+- 11 session ids exist in both stores: the classic→V3 migration carries a conversation over. Their indexes count
+  different things: V3 counts user turns, and classic counts requests (one session has 29 V3 turns and 1,604
+  classic requests). A reader that takes both must decide by timestamps which requests each store covers. The id
+  alone won't tell.
 
 **The others are real**, and per instance through their cwd, as the Claude and Codex readers do. Grok's
 `unified.jsonl` log (per request, real) is rotated: it held one session over two days. It is no history source, so
@@ -377,7 +380,8 @@ stores were copied to scratch, WAL files included, before any query.
 - **A (recommended):** as in the table. Kiro is "not measured" for tokens, and shows credits where it wrote any. The
   page doesn't show a guess as a measurement. The trade-off: Kiro rows won't match the company report.
 - **B:** compute tokscale's estimate, labelled "estimated from text size", and price it the way tokscale does: named
-  models at list price, `auto` not priced, credits × $0.04. This lines up with the company report, but most of a
+  models at list price, credits × $0.04 wherever Kiro wrote credits (`auto` included), and an `auto` turn without
+  credits not priced. This lines up with the company report, but most of a
   Kiro row would then be estimated cache reads.
 
 ### 10.3 Units: the same as the company's tokscale-based daily report
@@ -412,7 +416,7 @@ Hours written before that change keep `reasoning` 0, and output as recorded.
 1. **Ledger units:** the `reasoning` bucket, output net of reasoning, the backend in the key, and per (backend,
    model, day) rows in `get_usage_report` and the CSV. Codex gains reasoning at once. It is small, and every reader
    below builds on it.
-2. **Kiro:** credits per instance from both stores, deduped across the migration copy, and "not measured" for tokens
+2. **Kiro:** credits per instance from both stores, split by timestamp where the migration carried a session over, and "not measured" for tokens
    (option A), or the estimate (option B). It goes first among the readers because Kiro is the largest unmeasured
    share (13 fleet instances, including General and the coordinator, plus the ClassicBot rooms). Without new credit
    rows, option A shows little for recent months; that is the honest state.
