@@ -24,6 +24,7 @@ import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, foldHours, pruneDays, readDays, writeDays, type UsageDays } from "./usage-rollup.js";
 import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
+import type { OpencodeScanInput, OpencodeScanOutput } from "./opencode-usage-scan.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
 export interface CacheInstance {
@@ -51,6 +52,10 @@ export interface CacheServiceOptions {
    * `<id>/subagent/<sub>/session.jsonl`; absent: muse is not read.
    */
   museSessionsDir?(): string;
+  /** #2122 §10 step 5: OpenCode's database (`<XDG_DATA_HOME>/opencode/opencode.db`); absent: OpenCode is not read. */
+  opencodeDbPath?(): string;
+  /** One OpenCode scan (default: on a worker thread, kiro-usage-run.ts; tests run it in-process). */
+  opencodeScan?(input: OpencodeScanInput): Promise<OpencodeScanOutput>;
   /** Rollout files with their mtimes (the shared rollout index). */
   listRollouts(root: string): Array<{ path: string; mtimeMs: number }>;
   /** #2122: how much the last listing of `root` could not read (rollout-index.ts `unreadable`); absent: 0. */
@@ -106,7 +111,7 @@ export interface CacheReport {
 const DAY = 86_400_000;
 const META_MAX_BYTES = 256 * 1024;   // session_meta carries the instructions (~22 KB in real rollouts)
 const kindOf = (backend: string): TranscriptKind | null =>
-  (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : backend === "kiro-cli" ? "kiro" : backend === "grok" ? "grok" : backend === "muse" ? "muse" : null);
+  (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : backend === "kiro-cli" ? "kiro" : backend === "grok" ? "grok" : backend === "muse" ? "muse" : backend === "opencode" ? "opencode" : null);
 /** The readers the cache analysis covers; the others are in the usage report only. */
 const analysed = (kind: TranscriptKind | null): kind is "claude" | "codex" => kind === "claude" || kind === "codex";
 const sleep = (ms: number): Promise<void> => new Promise((r) => { const h = setTimeout(r, ms); h.unref?.(); });
@@ -207,7 +212,8 @@ export class CacheService {
 
   /** Whether this service is told where that reader's stores are (Kiro and Grok are optional). */
   private reads(kind: TranscriptKind): boolean {
-    return kind === "kiro" ? !!this.o.kiroDbPath : kind === "grok" ? !!this.o.grokSessionsDir : kind === "muse" ? !!this.o.museSessionsDir : true;
+    return kind === "kiro" ? !!this.o.kiroDbPath : kind === "grok" ? !!this.o.grokSessionsDir : kind === "muse" ? !!this.o.museSessionsDir
+      : kind === "opencode" ? !!this.o.opencodeDbPath : true;
   }
   private zone(): string { return this.o.zone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
   private daysPath(inst: CacheInstance): string { return join(dirname(inst.ledgerPath), "usage-days.json"); }
@@ -308,13 +314,14 @@ export class CacheService {
     const muse = await this.museFilesByInstance(insts.filter((i) => kindOf(i.backend) === "muse" && !shared.has(i.name)), cutoff);
     const kiro = await this.kiroPass(insts.filter((i) => kindOf(i.backend) === "kiro" && !shared.has(i.name)), cutoff, budget);
     budget -= kiro.read;
+    await this.opencodePass(insts.filter((i) => kindOf(i.backend) === "opencode" && !shared.has(i.name)), cutoff);
     behindBytes += kiro.behindBytes; behindFiles += kiro.behindSources;
     for (const inst of insts) {
       if (this.stopped) break;
       const kind = kindOf(inst.backend);
       if (!kind || shared.has(inst.name)) { await this.keepHistory(inst, cutoff); continue; }
       const ledger = await this.ledgerFor(inst);
-      if (kind === "kiro") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
+      if (kind === "kiro" || kind === "opencode") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff)
         : kind === "muse" ? muse.get(inst.name) ?? [] : codex.get(inst.name) ?? [];
       // A listing that could not read everything is no inventory: a cursor it missed stays, or the file would be counted
@@ -407,6 +414,41 @@ export class CacheService {
       }
     }
     return { read: out.readBytes, behindBytes: out.behindBytes, behindSources: out.behindSources };
+  }
+
+  /**
+   * #2122 §10 step 5: one OpenCode scan for these instances (on a worker thread), its finished messages added to their
+   * ledgers. A failed scan reads nothing and covers no one; the cursor (`opencode:db`) stays where it was.
+   */
+  private async opencodePass(insts: CacheInstance[], cutoff: number): Promise<void> {
+    const dbPath = this.o.opencodeDbPath?.();
+    if (!insts.length || !dbPath) return;
+    const ledgers = new Map<string, Ledger>();
+    const input: OpencodeScanInput = { dbPath, cutoff, instances: [] };
+    for (const inst of insts) {
+      const ledger = await this.ledgerFor(inst);
+      ledgers.set(inst.name, ledger);
+      const c = ledger.files["opencode:db"];
+      input.instances.push({ name: inst.name, cwds: await cwdKeys(inst.workingDirectory), cursor: c ? { after: c.after ?? cutoff, ids: c.ids ?? [] } : null });
+    }
+    let out: OpencodeScanOutput;
+    try {
+      out = await (this.o.opencodeScan ?? (async (i: OpencodeScanInput) => (await import("./kiro-usage-run.js")).runOpencodeUsageScan(i)))(input);
+    } catch (err) {
+      this.o.log?.("warn", "usage: the OpenCode scan failed; it is tried again next pass", { err: String(err) });
+      for (const i of insts) this.unread.add(i.name);
+      return;
+    }
+    const byName = new Map(insts.map((i) => [i.name, i]));
+    for (const r of out.instances) {
+      const inst = byName.get(r.name), ledger = ledgers.get(r.name);
+      if (!inst || !ledger) continue;
+      if (r.failed) { this.unread.add(r.name); continue; }
+      const cur: FileCursor = ledger.files["opencode:db"] ??= { kind: "opencode", ino: 0, offset: 0 };
+      for (const t of [...r.turns].sort((a, b) => a.t - b.t)) addTurn(ledger, cur, t, cutoff, inst.profile ?? "default");
+      if (r.turns.length || cur.after !== r.cursor.after) this.dirty.add(r.name);
+      cur.after = r.cursor.after; cur.ids = r.cursor.ids;
+    }
   }
 
   /** A file that is not the one the cursor read (another inode, or shorter): keep the session's end, start at its end. */

@@ -31,7 +31,7 @@ const M = 1_000_000;
 /** The backends whose usage is estimated, not measured (#2122 §10.2: Kiro records no token counts). */
 export const ESTIMATED_BACKENDS: ReadonlySet<string> = new Set(["kiro-cli"]);
 /** The backends whose transcripts report reasoning tokens (#2122 §10.3); elsewhere a 0 means not reported. */
-export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex", "grok", "muse"]);
+export const REPORTS_REASONING: ReadonlySet<string> = new Set(["codex", "grok", "muse", "opencode"]);
 /** The backends whose transcripts carry a cache-write field that stays 0: "not reported" until a real write is seen. */
 export const WRITES_UNREPORTED: ReadonlySet<string> = new Set(["codex", "muse"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

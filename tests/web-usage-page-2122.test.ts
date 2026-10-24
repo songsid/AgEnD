@@ -216,7 +216,7 @@ describe("states it explains", () => {
     answer = { status: 200, body: report({ instances: [inst("fresh", "claude-code", undefined, { days: emptyDays() })], messages: [] }) };
     await mount();
     expect(p.root.querySelector(".empty").textContent).toContain("Nothing recorded yet");
-    expect(p.root.querySelector(".empty").textContent).toContain("Usage is read from Claude Code, Codex, Grok and Muse transcripts, and estimated for Kiro");
+    expect(p.root.querySelector(".empty").textContent).toContain("Usage is read from Claude Code, Codex, Grok, Muse and OpenCode, and estimated for Kiro");
   });
   it("the public link without the key (403): not offered there, why, and a working link to where it is turned on", async () => {
     answer = { status: 403, body: { error: "usage_report_not_over_public_link", settings: "http://localhost:19280/settings/web" } };

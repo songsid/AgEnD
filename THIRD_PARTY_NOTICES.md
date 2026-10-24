@@ -7,9 +7,11 @@ mappings parts of AgEnD follow, with their licences.
 
 - **Project:** tokscale, https://github.com/junhoyeo/tokscale
 - **Version read:** commit `669fdaeec54502a30468adbfa97789bb7ee2b762` (2026-10-23)
-- **Used in:** `src/kiro-usage.ts`. Kiro's usage estimate (#2122 §10) follows the formula and field mapping of
-  tokscale's `crates/tokscale-core/src/sessions/kiro.rs`. The TypeScript is AgEnD's own; no tokscale code is
-  included, and tokscale is never run or depended on.
+- **Used in:**
+  - `src/kiro-usage.ts`: Kiro's usage estimate (#2122 §10) follows the formula and field mapping of tokscale's
+    `crates/tokscale-core/src/sessions/kiro.rs`.
+  - `src/opencode-usage-scan.ts`: OpenCode's field mapping follows `crates/tokscale-core/src/sessions/opencode_schema.rs`.
+- The TypeScript is AgEnD's own; no tokscale code is included, and tokscale is never run or depended on.
 
 ```
 MIT License
