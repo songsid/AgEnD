@@ -12295,11 +12295,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
 
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
+    // The instance map is defaults-expanded. A defaults edit changes that view even when it writes no instance
+    // leaves. Re-resolve from the committed YAML so inherited values cannot become stale overrides on the next save.
+    // Keep the FleetConfig object itself: Settings and other request contexts hold it.
+    const resolvedInstances = loadFleetConfig(this.configPath).instances;
+    for (const [name, resolved] of Object.entries(resolvedInstances)) {
+      const current = this.fleetConfig.instances[name];
+      if (!current) { this.fleetConfig.instances[name] = resolved; continue; }
+      // Lifecycle rollback fences hold these object identities across save. Refresh their values, not their owner.
+      for (const key of Object.keys(current)) if (!Object.hasOwn(resolved, key)) delete (current as unknown as Record<string, unknown>)[key];
+      Object.assign(current, resolved);
+    }
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.refreshSavedDashboardPermissions();
     this.logger.info(
       { path: this.configPath, strippedDefaults: redundantPaths.length },
       "Saved fleet config (lossless patch)",
     );
+  }
+
+  /** A permission tightening is effective when its save returns, independently of the later apply job or IPC. */
+  private refreshSavedDashboardPermissions(): void {
+    if (!this.fleetConfig) return;
+    const classicNames = new Set(this.classicChannels?.getAll().map(ch => ch.instanceName) ?? []);
+    for (const [name, daemon] of this.daemons) {
+      const next = this.fleetConfig.instances[name] ?? (classicNames.has(name) ? getEffectiveInstanceDefaults(this.fleetConfig.defaults) : undefined);
+      const previous = daemon.getConfigSnapshot?.();
+      if (!next || !previous) continue;
+      if (isDeepStrictEqual(previous.dashboard, next.dashboard) && previous.office_access === next.office_access) continue;
+      // Only permissions are adopted here. Cold fields retain the live daemon's old snapshot, so reconcile still
+      // detects that they require a restart. MCP menus also watch the raw file; this updates the next spawn's env.
+      daemon.applyConfigUpdate({ dashboard: next.dashboard ?? null, office_access: next.office_access ?? null });
+      if (taskBoardSwitchedOn(previous.dashboard, next.dashboard)) {
+        this.admitTaskBoardNotice(name, TASK_BOARD_ON_NOTICE, `task-board-on:${name}:${Date.now()}`);
+      }
+    }
   }
 
   /** Why the config written to `candidate` must not replace fleet.yaml, or null: it does not load, or it adds errors. */

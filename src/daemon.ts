@@ -2094,6 +2094,9 @@ export class Daemon extends EventEmitter {
     private backendOutage?: BackendOutageView,
   ) {
     super();
+    // The live process owns its adopted configuration. Fleet defaults may be re-resolved in place after a save;
+    // sharing that object would activate cold changes before the normal restart/apply boundary.
+    this.config = structuredClone(config);
     if (!rootLogger) throw new Error("Daemon requires a shared root logger");
     this.runtimeIdentity ??= {
       kind: "fleet-topic",
