@@ -311,7 +311,8 @@ export class CacheService {
       if (kind === "kiro") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff) : codex.get(inst.name) ?? [];
       // A listing that could not read everything is no inventory: a cursor it missed stays, or the file would be counted
-      // again from its start once it is listed (Prism #2605).
+      // again from its start once it is listed (Prism #2605). An instance whose store stays unreadable keeps its cursors
+      // until it is readable again — bounded by its own files.
       const listed = new Set(files.map((f) => f.path));
       if (!this.unread.has(inst.name)) for (const path of Object.keys(ledger.files)) if (!listed.has(path)) { delete ledger.files[path]; this.dirty.add(inst.name); }
       for (const f of files) {
@@ -454,7 +455,9 @@ export class CacheService {
     for (const cwd of await cwdKeys(inst.workingDirectory)) {
       const dir = join(root, encodeURIComponent(cwd));
       let names: string[];
-      try { names = await readdir(dir); } catch (err) { if (!gone(err)) this.unread.add(inst.name); continue; }
+      // Sessions are directories; grok also keeps plain files there (prompt_history.jsonl), which are not sessions.
+      try { names = (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name); }
+      catch (err) { if (!gone(err)) this.unread.add(inst.name); continue; }
       for (const n of names) {
         const path = join(dir, n, "updates.jsonl");
         try { const st = await stat(path); if (st.isFile() && st.mtimeMs >= cutoff) out.push({ path, ino: st.ino, size: st.size }); }
