@@ -210,7 +210,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | 欄位 | 型別 | 說明 |
 |------|------|------|
 | `url` | string | Webhook endpoint URL |
-| `events` | string[] | 已有事件：`hang`、`mcp_died`、`pty_error`、`pty_recovered`、`cost_warning`、`cost_limit`、`schedule_deferred`、`model_failover`、`model_recovered`；`["*"]` 訂閱全部 |
+| `events` | string[] | 已有事件：`hang`、`mcp_died`、`pty_error`、`pty_recovered`、`cost_warning`、`cost_limit`、`schedule_deferred`、`model_failover`、`model_recovered`、`context_lost`（多次啟動失敗後放棄 resume、改用全新對話）；`["*"]` 訂閱全部 |
 | `headers` | object | 選用的 HTTP headers |
 
 `instance.started`、`instance.stopped`、`rotation` 與 `crash_loop` 並未送出。範例：

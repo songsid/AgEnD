@@ -11280,7 +11280,7 @@ export class Daemon extends EventEmitter {
           "Giving up on resuming after repeated startup failures — starting fresh. "
           + "The previous conversation is NOT continued; its context is lost to this session.",
         );
-        this.emit("context_lost", this.name, "resume_repeatedly_failed");
+        this.emit("context_lost", this.name, "resume_repeatedly_failed", failures);
       }
       this.setSessionAside(proven ? "cli_reported_no_conversation" : "resume_failed_repeatedly");
       this.skipResume = true;

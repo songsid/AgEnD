@@ -33,7 +33,8 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, lstatSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { freemem, totalmem, cpus, homedir } from "node:os";
+import { freemem, totalmem, homedir } from "node:os";
+import { effectiveCpuCount } from "./cpu-quota.js";
 import { access } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { Worker } from "node:worker_threads";
@@ -988,6 +989,7 @@ export const CLI_ENV_PROBE_DEADLINE_MS = 16_000;
  * started ten CLIs together, saturated the CPU, and healthy starts then missed
  * their startup budget — which used to cost the user their conversation. Cores
  * bound how many can actually make progress; memory bounds how many fit.
+ * `cores` is what this process may use (cpuset and cgroup quota, #749), not the host's count.
  */
 export function deriveSpawnConcurrency(freeMemMB: number, cores: number): number {
   const byMemory = Math.floor(freeMemMB / 300);
@@ -2886,7 +2888,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private spawnConcurrency(): number {
     const explicit = this.fleetConfig?.defaults?.startup?.concurrency;
     if (explicit != null) return Math.max(1, Math.min(20, explicit));
-    return deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), cpus().length);
+    return deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), effectiveCpuCount());
   }
 
   /** #1685: "elevated" or "critical" while host memory pressure slows or holds new agents; otherwise null (an
