@@ -24,9 +24,9 @@ const setupFn = code.slice(code.indexOf("function Invoke-SetupAndService"), code
 
 describe("stage 5 sets up in the browser (static)", () => {
   it("stage 5 is marked done only after setup and the service both succeeded; otherwise it ends with its progress kept", () => {
-    expect(stage5).toMatch(/if \(-not \(Invoke-SetupAndService -BackendSignins \$browserSignins\)\) \{\n\s+Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"\n\s+Read-Host "按 Enter 結束"; exit 1\n\s+\}/);
+    expect(stage5).toMatch(/if \(-not \(Invoke-SetupAndService -BackendSignins \$browserSignins -Backends \$selected\)\) \{\n\s+Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"\n\s+Read-Host "按 Enter 結束"; exit 1\n\s+\}/);
     expect(stage5).not.toMatch(/準備好了嗎/);                                       // nothing to press before the page opens
-    expect(code.indexOf("Mark-Stage 5")).toBeGreaterThan(code.indexOf("if (-not (Invoke-SetupAndService -BackendSignins $browserSignins))"));
+    expect(code.indexOf("Mark-Stage 5")).toBeGreaterThan(code.indexOf("if (-not (Invoke-SetupAndService -BackendSignins $browserSignins -Backends $selected))"));
   });
   it("runs agend setup through the watched runner, with the hook that opens the page; the service only when not already running", () => {
     expect(setupFn).toMatch(/Invoke-BrowserSetup \{ param\(\$hook\) Invoke-WslStep -Label "等待你在瀏覽器完成設定"[^\n]*-OnLine \$hook -Script \(\$AGEND_ENV \+ \$setupCommand\) \}/);
@@ -73,6 +73,7 @@ Write-Output ("DONE=" + $r.Done + " SHOWN=" + $r.Shown + " ALREADY=" + $r.Alread
     expect(clip).toBe("K7QM-3XRD\n");
     expect(out).toContain("設定碼：  K 7 Q M - 3 X R D");
     expect(out).toContain("設定頁已在瀏覽器打開。");
+    expect(out).toContain("設定頁網址：http://127.0.0.1:19280/s/ab12/");          // #2650 item 10: printed even when it opened
     expect(out).toContain("設定碼已複製：在網頁的輸入框按 Ctrl+V（或右鍵 → 貼上）。");
     expect(out).toContain("DONE=True SHOWN=True ALREADY=False");
   });
@@ -91,7 +92,8 @@ Write-Output ("DONE=" + $r.Done + " ALREADY=" + $r.Already + " SHOWN=" + $r.Show
     const { out } = withHelpers(`function Open-InBrowser([string]$url) { return $false }
 function Set-SetupClipboard([string]$text) { return $false }
 $null = Invoke-BrowserSetup (FakeSetup 'echo "  Setup page: http://127.0.0.1:19280/s/q/"; echo "  Setup code: CCCC-DDDD"')`);
-    expect(out).toContain("瀏覽器沒有自動打開，請自己打開這個網址：http://127.0.0.1:19280/s/q/");
+    expect(out).toContain("瀏覽器沒有自動打開，請自己打開下面的網址。");
+    expect(out).toContain("設定頁網址：http://127.0.0.1:19280/s/q/");
     expect(out).toContain("在網頁的輸入框輸入上面的設定碼。");
   });
 });
