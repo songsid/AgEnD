@@ -105,6 +105,7 @@ describe("identity: arming the move (B2)", () => {
 /** The instance's adoption file name (its state file's, with .adopting). */
 function readdirPending(dir: string): string {
   const state = readdirSync(dir).find((n: string) => n.endsWith(".json") && !n.endsWith(".adopting.json"));
+  if (!state) throw new Error(`no state file in ${dir}`);
   return state.replace(/\.json$/, ".adopting.json");
 }
 
@@ -250,6 +251,7 @@ it("the state file is the real one (sanity: the floor reads what the resolver wr
   launch("v2", [], { launchedBefore: false });
   const dir = join(home, "kiro-identity", "instances");
   const file = readdirSync(dir).find((n: string) => !n.includes("adopting"));
+  if (!file) throw new Error("no state file");
   expect(JSON.parse(readFileSync(join(dir, file), "utf8")).instance).toBe("wiki");
 });
 
