@@ -279,6 +279,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private lastWatchdogTickAt = 0;
   private generationReadyAt = 0;
   private generationNonReadySince = 0;
+  /**
+   * When the current generation's first connect began (0 = none in flight): its login is running, or it has logged
+   * in and is still receiving its guilds — discord.js resolves login() on READY, but isReady() only once every guild
+   * arrived (up to 15 s). An outbound request waits for such a generation instead of rebuilding it (#2642).
+   */
+  private firstConnectSince = 0;
+  private readonly firstReadyWaiters = new Set<() => void>();
   private shardNonReadySince = new Map<number, number>();
   private previousHeartbeatAck = new Map<number, number>();
   private observedHeartbeatInterval = new Map<number, number>();
@@ -941,6 +948,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.client = client;
     this.generationReadyAt = 0;
     this.generationNonReadySince = this.now();
+    this.firstConnectSince = this.now();
     this.shardNonReadySince.clear();
     this.previousHeartbeatAck.clear();
     this.observedHeartbeatInterval.clear();
@@ -954,11 +962,24 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       this.lastReconnectAt = this.now();
       this.lastReconnectReason = reason;
       this.healthStatus = client.isReady() ? "connected" : "starting";
+      if (client.isReady()) this.endFirstConnect();
       this.emitHealthChanged();
     } catch (err) {
+      if (this.client === client) this.endFirstConnect();
       await this.retireClient(client);
       throw err;
     }
+  }
+
+  /** The current generation's first connect is over (ready, failed or stopped): every waiting request re-checks. */
+  private endFirstConnect(): void {
+    this.firstConnectSince = 0;
+    for (const wake of [...this.firstReadyWaiters]) wake();
+  }
+
+  /** A first connect is in flight and not yet past the watchdog's stale threshold (after that it is rebuilt). */
+  private firstConnectInFlight(): boolean {
+    return this.desiredRunning && this.firstConnectSince > 0 && this.now() - this.firstConnectSince <= this.staleThresholdMs;
   }
 
   private retireClient(client: Client): Promise<void> {
@@ -1023,17 +1044,29 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       ? this.client.isReady()
       : true;
     if (isReady && !this.reconnectPromise) return this.client;
-    const reconnect = this.reconnectPromise ?? this.reconnectGateway("outbound requested while gateway unavailable");
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(this.firstConnectInFlight()
+        ? "Discord gateway still connecting (first ready not reached)"
+        : "Discord gateway reconnect timed out")), GATEWAY_RECONNECT_WAIT_MS);
+      timer.unref?.();
+    });
+    deadline.catch(() => {});
+    let wake: (() => void) | undefined;
     try {
-      await Promise.race([
-        reconnect,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("Discord gateway reconnect timed out")), GATEWAY_RECONNECT_WAIT_MS);
-          timer.unref?.();
-        }),
-      ]);
+      // #2642: a generation still on its first connect — the startup login itself, or a rebuild that has logged in
+      // and is receiving its guilds — is waited for, never rebuilt. Rebuilding it destroyed the startup client mid-login
+      // (start() then never settled and fleet startup stopped behind it), and each rebuild that "succeeded" before its
+      // guilds arrived was rebuilt again by the next request, so the bot never became ready.
+      if (this.reconnectPromise || !this.firstConnectInFlight()) {
+        await Promise.race([this.reconnectPromise ?? this.reconnectGateway("outbound requested while gateway unavailable"), deadline]);
+      }
+      while (!this.client.isReady() && this.firstConnectInFlight()) {
+        await Promise.race([new Promise<void>(resolve => { wake = resolve; this.firstReadyWaiters.add(resolve); }), deadline]);
+        if (wake) this.firstReadyWaiters.delete(wake);
+      }
     } finally {
+      if (wake) this.firstReadyWaiters.delete(wake);
       if (timer) clearTimeout(timer);
     }
     if (!this.client.isReady()) throw new Error("Discord gateway is not ready");
@@ -1223,6 +1256,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private async handleClientReady(client: Client, generation: number): Promise<void> {
     if (!this.isCurrentClient(client, generation)) return;
     this.healthStatus = "connected";
+    this.endFirstConnect();
     this.generationReadyAt = this.now();
     this.generationNonReadySince = 0;
     this.shardNonReadySince.clear();
@@ -1418,6 +1452,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.stoppedEditFailures = 0;
     const epoch = ++this.lifecycleEpoch;
     this.healthStatus = "starting";
+    // From here, not from the new Client: loginFreshClient first retires the old one, and a request in that gap must
+    // already wait for this login rather than start a rebuild of its own (#2642).
+    this.firstConnectSince = this.now();
     this.queue.start();
     try {
       await this.loginFreshClient("startup", epoch);
@@ -1426,6 +1463,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       if (epoch === this.lifecycleEpoch) {
         this.desiredRunning = false;
         this.healthStatus = "stopped";
+        this.endFirstConnect();
       }
       throw err;
     }
@@ -1435,6 +1473,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.desiredRunning = false;
     this.lifecycleEpoch++;
     this.healthStatus = "stopped";
+    this.endFirstConnect();
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);
     this.watchdogTimer = null;
     this.queue.stop();

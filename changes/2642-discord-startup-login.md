@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **A fleet no longer stops starting, with its ClassicBot instances left Stopped, when its main Discord bot is sent something while it logs in (#2642).** On 2.3.2-beta.3 to beta.5, a message sent through the main bot during its login rebuilt the bot's gateway connection and destroyed the login in progress. The bot then never came online ("polling started" never appeared; "Discord gateway reconnect timed out" repeated), and startup stopped after "Fleet startup batch completed": ClassicBot instances never started, and `agend fleet start` kept answering that the fleet was still starting. Now a send waits for a bot that is still connecting instead of rebuilding it. Fleet startup also waits at most 60 seconds for its chat connections before it carries on; a connection that comes up later joins as before.

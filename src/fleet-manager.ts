@@ -8725,28 +8725,46 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (channelConfigs.length === 0) return;
 
     // Start ALL adapters in parallel — any single failure doesn't block others.
-    const results = await Promise.allSettled(
-      channelConfigs.map((cfg, i) =>
-        i === 0
-          ? this.startSingleAdapter(fleet, cfg)
-          : this.startAdditionalAdapter(cfg)
-      )
-    );
-
-    // Track state + schedule background retry for failures.
-    for (let i = 0; i < channelConfigs.length; i++) {
-      const adapterId = channelConfigs[i].id ?? channelConfigs[i].type;
-      if (results[i].status === "fulfilled") {
-        this.adapterState.set(adapterId, { status: "connected", retryCount: 0 });
-      } else {
-        const err = (results[i] as PromiseRejectedResult).reason;
-        this.logger.error({ adapterId, err: (err as Error)?.message ?? err }, "Adapter startup failed — scheduling background retry");
-        this.adapterState.set(adapterId, { status: "retrying", retryCount: 0, lastError: (err as Error)?.message ?? String(err) });
-        this.scheduleAdapterRetry(adapterId);
-        // Notify admin via whichever adapter is already up
-        this.notifyAdapterFailure(adapterId, (err as Error)?.message ?? String(err));
-      }
+    const settled = channelConfigs.map(() => false);
+    // Each connection is recorded (connected, or retrying with its retry scheduled) as its own login settles.
+    const recorded = channelConfigs.map((cfg, i) =>
+      (i === 0
+        ? this.startSingleAdapter(fleet, cfg)
+        : this.startAdditionalAdapter(cfg)
+      ).then(() => ({ status: "fulfilled" as const }), (reason: unknown) => ({ status: "rejected" as const, reason }))
+        .then(result => { settled[i] = true; this.recordAdapterStartup(cfg, result); })
+        .catch(err => this.logger.error({ err }, "Recording a chat connection's startup failed")));
+    // #2642: bounded. Startup continues past a connection still logging in after this long (ClassicBot instances,
+    // READY); that connection is recorded, or retried, when its login settles, and joins the fleet as it would anyway.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const inTime = await Promise.race([
+      Promise.all(recorded).then(() => true),
+      new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), FleetManager.ADAPTER_STARTUP_WAIT_MS); timer.unref?.(); }),
+    ]).finally(() => clearTimeout(timer));
+    if (!inTime) {
+      this.logger.warn({
+        pending: channelConfigs.filter((_, i) => !settled[i]).map(cfg => cfg.id ?? cfg.type),
+        waitedMs: FleetManager.ADAPTER_STARTUP_WAIT_MS,
+      }, "Chat connection still connecting — fleet startup continues without waiting for it");
     }
+  }
+
+  /** How long fleet startup waits for its chat connections before it continues without the slow ones (#2642). */
+  static ADAPTER_STARTUP_WAIT_MS = 60_000;
+
+  /** Track a connection's startup outcome; a failure gets the background retry. */
+  private recordAdapterStartup(cfg: ChannelConfig, result: { status: "fulfilled" } | { status: "rejected"; reason: unknown }): void {
+    const adapterId = cfg.id ?? cfg.type;
+    if (result.status === "fulfilled") {
+      this.adapterState.set(adapterId, { status: "connected", retryCount: 0 });
+      return;
+    }
+    const err = result.reason;
+    this.logger.error({ adapterId, err: (err as Error)?.message ?? err }, "Adapter startup failed — scheduling background retry");
+    this.adapterState.set(adapterId, { status: "retrying", retryCount: 0, lastError: (err as Error)?.message ?? String(err) });
+    this.scheduleAdapterRetry(adapterId);
+    // Notify admin via whichever adapter is already up
+    this.notifyAdapterFailure(adapterId, (err as Error)?.message ?? String(err));
   }
 
   /** Keep trying while the fleet runs, with a five-minute cap even after a long outage. */
