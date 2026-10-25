@@ -6,7 +6,7 @@ import { SETUP_FORM_HTML } from "../src/setup-form.js";
 function browser(ready = false) {
   const elements = new Map<string, any>();
   function element(tag = "input") {
-    const item: any = { tag, children: [], disabled: false, hidden: false, value: "", textContent: "", className: "", listeners: new Map(),
+    const item: any = { tag, dataset: {}, children: [], disabled: false, hidden: false, value: "", textContent: "", className: "", listeners: new Map(),
       addEventListener(event: string, callback: any) { this.listeners.set(event, callback); },
       append(...children: any[]) { this.children.push(...children); for (const child of children) if (child.id) elements.set(child.id, child); } };
     Object.defineProperty(item, "innerHTML", { get: () => "", set() {
