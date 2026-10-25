@@ -1486,6 +1486,92 @@ function Test-InstallerReady {
     return ($code -eq 0)
 }
 
+
+# #2650: merge only installer-owned INI keys. Keep comments, unknown sections and all unrelated values.
+function Merge-InstallIni([string]$Text, [System.Collections.IDictionary]$Updates) {
+    $newline = if ($Text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $lines = [Collections.Generic.List[string]]::new()
+    $section = ''; $seenSections = @{}; $seenKeys = @{}
+    $flush = {
+        if ($Updates.Contains($section)) {
+            foreach ($key in $Updates[$section].Keys) {
+                $id = "$section/$key"
+                if (-not $seenKeys.ContainsKey($id)) { $lines.Add("$key=$($Updates[$section][$key])"); $seenKeys[$id] = $true }
+            }
+        }
+    }
+    foreach ($line in @($Text -split '\r?\n')) {
+        if ($line -match '^\s*\[([^\]]+)\]\s*(?:[#;].*)?$') {
+            & $flush
+            $section = $Matches[1].Trim().ToLowerInvariant(); $seenSections[$section] = $true
+        }
+        $next = $line
+        if ($Updates.Contains($section) -and $line -match '^\s*([^#;=]+?)\s*=') {
+            $key = $Matches[1].Trim().ToLowerInvariant()
+            if ($Updates[$section].Contains($key)) {
+                $comment = [regex]::Match($line, '\s+[#;].*$').Value
+                $canonical = @($Updates[$section].Keys | Where-Object { $_.ToLowerInvariant() -eq $key })[0]
+                $next = "$canonical=$($Updates[$section][$canonical])$comment"
+                $seenKeys["$section/$key"] = $true
+            }
+        }
+        $lines.Add($next)
+    }
+    & $flush
+    foreach ($name in $Updates.Keys) {
+        if (-not $seenSections.ContainsKey($name)) {
+            $lines.Add(''); $lines.Add("[$name]")
+            foreach ($key in $Updates[$name].Keys) { $lines.Add("$key=$($Updates[$name][$key])") }
+        }
+    }
+    return (($lines -join $newline).TrimEnd("`r", "`n") + $newline)
+}
+function Write-MergedWindowsWslConfig([string]$Path) {
+    $old = if (Test-Path -LiteralPath $Path) { [IO.File]::ReadAllText($Path) } else { '' }
+    $next = Merge-InstallIni $old ([ordered]@{ general = [ordered]@{ instanceIdleTimeout = '-1' }; wsl2 = [ordered]@{ vmIdleTimeout = '-1' } })
+    if ($next -ceq $old) { return }
+    if (Test-Path -LiteralPath $Path) {
+        $backup = $Path + '.agend-backup-' + [Guid]::NewGuid().ToString('N')
+        [IO.File]::Copy($Path, $backup, $false)
+        Write-Info "原有 WSL 設定已備份：$backup"
+    }
+    $temp = $Path + '.agend-' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        [IO.File]::WriteAllText($temp, $next, (New-Object Text.UTF8Encoding $false))
+        Move-Item -LiteralPath $temp -Destination $Path -Force -ErrorAction Stop
+    } finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+}
+function ConvertFrom-WslConfigSnapshot([string]$Encoded) {
+    try {
+        $text = (New-Object Text.UTF8Encoding $false, $true).GetString([Convert]::FromBase64String($Encoded))
+        if ($text.Contains([string][char]0)) { throw 'NUL is not an INI character' }
+        return $text
+    } catch { throw '/etc/wsl.conf is not UTF-8 text; convert it or move it aside, then rerun. No settings were replaced.' }
+}
+function Get-MergedLinuxWslConfigScript([string]$Text, [string]$ExpectedBase64 = '') {
+    if (-not $ExpectedBase64) { $ExpectedBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text)) }
+    if ($ExpectedBase64 -notmatch '^[A-Za-z0-9+/=]*$') { throw 'Invalid WSL configuration snapshot.' }
+    $next = Merge-InstallIni $Text ([ordered]@{ boot = [ordered]@{ systemd = 'true' }; interop = [ordered]@{ appendWindowsPath = 'false' }; user = [ordered]@{ default = 'root' } })
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($next))
+    $nonce = [Guid]::NewGuid().ToString('N')
+    return (@(
+        'set -eu'
+        'file=/etc/wsl.conf'
+        '[ ! -L "$file" ] || { echo "Refusing to replace symlinked /etc/wsl.conf" >&2; exit 1; }'
+        ('temp=/etc/.agend-wsl-' + $nonce)
+        'trap ''rm -f -- "$temp"'' EXIT'
+        # Match the read snapshot immediately before making a backup or replacing the file.
+        ('expected=' + $ExpectedBase64)
+        'actual=; if [ -e "$file" ]; then actual=$(base64 -w0 -- "$file"); fi'
+        '[ "$actual" = "$expected" ] || { echo "WSL config changed; rerun installer to merge the latest settings" >&2; exit 1; }'
+        ('if [ -e "$file" ]; then cp -p -- "$file" "$file.agend-backup-' + $nonce + '"; echo "WSL config backup: $file.agend-backup-' + $nonce + '"; fi')
+        ("printf '%s' '" + $encoded + "' | base64 -d > " + '"$temp"')
+        'if [ -e "$file" ]; then chmod --reference="$file" "$temp"; else chmod 644 "$temp"; fi'
+        'mv -f -- "$temp" "$file"'
+        'echo WSL_CONF_OK'
+    ) -join "`n")
+}
+
 # ── 開始 ─────────────────────────────────────────────────
 
 # Validate before any WSL, network, registry or installation action.
