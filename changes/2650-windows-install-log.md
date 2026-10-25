@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **The Windows installer keeps a support file, and says why it stopped (#2650).** Everything the installer shows, and every line its long steps print, now also goes to a log in `%LOCALAPPDATA%\AgEnD\install-logs` (the last 10 are kept, up to 5 MB each). Setup and sign-in codes, tokens and URL credentials are hidden before anything is written. The first error names the file. When the installer stops, fails or its window is closed, the window you pasted the command in tells you the stage it stopped at and where the file is. That window also tells a declined Administrator prompt apart from one blocked by a security policy (AppLocker, WDAC), one stopped by antivirus, and a failed download. It never runs a downloaded installer whose bytes changed after it was checked. An unexpected error is caught and explained instead of ending with a bare PowerShell error.

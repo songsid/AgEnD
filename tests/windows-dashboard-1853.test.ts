@@ -20,7 +20,8 @@ const ending = code.slice(code.indexOf("全部安裝完成！"));
 describe("the installer ends on the dashboard (static)", () => {
   it("the shortcut is made and the dashboard opened, after the progress is cleared; console commands only under 進階", () => {
     expect(ending).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
-    expect(ending).toMatch(/\$null = Invoke-OpenDashboard \$UBUNTU_DISTRO \$AGEND_USER -BackendSignins \$browserSignins\n/);
+    // #2650 item 10: a dashboard that does not open names the two ways back to it (neither reinstalls).
+    expect(ending).toMatch(/if \(-not \(Invoke-OpenDashboard \$UBUNTU_DISTRO \$AGEND_USER -BackendSignins \$browserSignins\)\) \{\n\s+Write-Info "安裝已經完成，設定都保留著。之後要打開儀表板：按兩下桌面上的「AgEnD 儀表板」，或再貼一次同一行安裝指令（不會重新安裝，會問你要不要打開儀表板）。"\n\}/);
     expect(ending.indexOf("Invoke-OpenDashboard $UBUNTU_DISTRO")).toBeGreaterThan(ending.indexOf("Clear-ResumeAtLogon"));
     const advanced = ending.indexOf("── 進階（需要用主控台時才看）──");
     expect(advanced).toBeGreaterThan(ending.indexOf("日常使用："));
@@ -74,6 +75,7 @@ Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, bin);
     expect(readFileSync(join(dir, "opened.txt"), "utf8")).toBe("http://localhost:19280/signin\n");
     expect(readFileSync(join(dir, "clip.txt"), "utf8")).toBe("K7QM-3XRD\n");
     expect(out).toContain("儀表板登入碼：  K 7 Q M - 3 X R D");
+    expect(out).toContain("登入頁網址：http://localhost:19280/signin");       // #2650 item 10: even when the browser opened
     expect(out).toContain("RESULT=True");
     // The user AgEnD was installed as, and its own home — never a hard-coded root.
     expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u han -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
@@ -156,7 +158,7 @@ Write-Output ("NEW-SHORTCUT-OFF-WINDOWS=[" + (@(Install-AgendShortcuts 'Ubuntu-2
     const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "open-dashboard.ps1")], { encoding: "utf8", timeout: 60_000, input: "\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, BROWSER: "false" } });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("儀表板登入碼：  K 7 Q M - 3 X R D");
-    expect(r.stdout).toMatch(/登入頁已在瀏覽器打開|請自己在瀏覽器打開：http:\/\/localhost:19280\/signin/);
+    expect(r.stdout).toContain("登入頁網址：http://localhost:19280/signin");    // #2650 item 10: printed whether or not a browser opened
     expect(readFileSync(join(bin, "args.txt"), "utf8")).toMatch(/^-d Ubuntu-22\.04 -u root -- bash -lc /);
   });
 });

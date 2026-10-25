@@ -23,7 +23,7 @@ const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
 
 describe("the WSL update stage (static)", () => {
   it("stage 1 runs Invoke-WslUpdateStage and acts only on reboot and failure; the Store is asked before GitHub", () => {
-    expect(code).toMatch(/switch \(Invoke-WslUpdateStage\) \{\n\s+'reboot' \{ Request-Reboot [^\n]+\}\n\s+'verify-reboot' \{ Mark-Stage "1b"; Request-Reboot [^\n]+\}\n\s+'failed' \{ Read-Host "按 Enter 結束"; exit 1 \}\n\s+\}/);
+    expect(code).toMatch(/switch \(Invoke-WslUpdateStage\) \{\n\s+'reboot' \{ Request-Reboot [^\n]+\}\n\s+'verify-reboot' \{ Mark-Stage "1b"; Request-Reboot [^\n]+\}\n\s+'failed' \{ Set-InstallFailure 'download'; Read-Host "按 Enter 結束"; exit 1 \}\n\s+\}/);
     const fn = code.slice(code.indexOf("function Invoke-WslUpdateStage"));
     expect(fn.indexOf('-Arguments @("--update")')).toBeLessThan(fn.indexOf('-Arguments @("--update", "--web-download")'));
     expect(code).not.toMatch(/Get-InstalledWslVersion[^\n]*wsl(\.exe)? --version/);   // the version is read from the file
