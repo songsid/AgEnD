@@ -9,7 +9,7 @@ const wf = yaml.load(readFileSync(join(ROOT, ".github/workflows/dependency-revie
   permissions: Record<string, string>;
   jobs: {
     "dependency-review": {
-      steps: Array<{ uses?: string; with?: Record<string, string>; "continue-on-error"?: boolean }>;
+      steps: Array<{ uses?: string; with?: Record<string, string>; if?: string; "continue-on-error"?: boolean }>;
     };
   };
 };
@@ -48,9 +48,12 @@ describe("dependency-review (#2528 PR 3)", () => {
   it("pins checkout and dependency-review-action to 40-char SHAs", () => {
     const steps = wf.jobs["dependency-review"].steps;
     expect(steps.every(s => s["continue-on-error"] !== true)).toBe(true);
-    expect(steps[0]!.uses).toMatch(/^actions\/checkout@[0-9a-f]{40}$/);
-    expect(steps[1]!.uses).toMatch(/^actions\/dependency-review-action@[0-9a-f]{40}$/);
-    expect(steps[1]!.with?.["config-file"]).toBe("./.github/dependency-review-config.yml");
+    const checkout = steps.find(s => s.uses?.startsWith("actions/checkout@"));
+    const action = steps.find(s => s.uses?.startsWith("actions/dependency-review-action@"));
+    expect(checkout!.uses).toMatch(/^actions\/checkout@[0-9a-f]{40}$/);
+    expect(action!.uses).toMatch(/^actions\/dependency-review-action@[0-9a-f]{40}$/);
+    expect(action!.if).toBe("steps.changes.outputs.deps == 'true'");
+    expect(action!.with?.["config-file"]).toBe("./.github/dependency-review-config.yml");
   });
 
   it("a licence not on the allow-list is a synthetic fail (the action would reject it)", () => {
