@@ -5,12 +5,13 @@
 // session that started a sign-in gets its terminal link, access code and device code; every other admin page only that
 // one runs, on which device, and may cancel it. The stream's `backend_login` event carries nothing — it only says to
 // read again. Starting is two steps, as in chat: check (the server keeps what it found) and start (with its id).
-import { html, useEffect, useState } from "/assets/app-html.js";
+import { html, useEffect, useState, useRef } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { closeDialog, shellStore, showDialog } from "/assets/app-shell.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
+import { mountStructuredSignIns } from "./structured-signin.js";
 
 register("signin", {
   en: {
@@ -49,6 +50,8 @@ register("signin", {
     notOffered: "A public link is not offered for this sign-in.",
     failed: "That did not work.",
     listTitle: "Sign-ins",
+    browserRunning: "Signing in to {0} on this machine",
+    consoleFallback: "Use console fallback",
     listHint: "Each backend's login on this machine, and each credential profile an agent uses.",
     stUsable: "signed in",
     stNotSignedIn: "not signed in",
@@ -98,6 +101,8 @@ register("signin", {
     notOffered: "這次登入不提供公開連結。",
     failed: "沒有成功。",
     listTitle: "登入",
+    browserRunning: "正在這台機器登入 {0}",
+    consoleFallback: "改用主控台備援",
     listHint: "這台機器上每個 backend 的登入，以及代理使用的每個憑證設定檔。",
     stUsable: "已登入",
     stNotSignedIn: "未登入",
@@ -116,7 +121,7 @@ const tn = (k, ...v) => t(`signin.${k}`, ...v);
 const shownOf = (backend, profile) => (profile ? tn("profile", backend, profile) : backend);
 
 /** What this page knows: the current sign-in as this session may see it, and Settings' list. */
-export const signInStore = createStore({ loaded: false, login: null, targets: [] });
+export const signInStore = createStore({ loaded: false, login: null, targets: [], structured: null });
 
 let reading = null, again = false;
 /**
@@ -125,9 +130,13 @@ let reading = null, again = false;
  */
 export function refreshSignIn() {
   if (reading) { again = true; return reading; }
-  reading = fetch("/ui/backend-login", { cache: "no-store" })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((b) => { if (b) signInStore.set({ loaded: true, login: b.login || null, targets: Array.isArray(b.targets) ? b.targets : [] }); return b; })
+  reading = Promise.all([
+    fetch("/ui/backend-login", { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch("/ui/browser-backend-signins", { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null),
+  ]).then(([b, structured]) => {
+    if (b) signInStore.set({ loaded: true, login: b.login || null, targets: Array.isArray(b.targets) ? b.targets : [] });
+    signInStore.set({ structured }); return b;
+  })
     .catch(() => null)
     .finally(() => { reading = null; if (again) { again = false; void refreshSignIn(); } });
   return reading;
@@ -146,7 +155,8 @@ export function installSignIn() {
 
 /** Open the dialog for one login (a backend's default one, or a credential profile). */
 export function openSignIn({ backend, profile }) {
-  showDialog(SignInDialog, { backend, ...(profile ? { profile } : {}) });
+  if (!profile && ["kiro-cli", "claude-code", "codex"].includes(backend)) showDialog(BrowserSignInDialog, { backend });
+  else showDialog(SignInDialog, { backend, ...(profile ? { profile } : {}) });
 }
 
 /** Open the dialog on the running sign-in (its starter's view, or the cancel-only one). */
@@ -189,6 +199,30 @@ function Running({ login }) {
       ${away ? html`<p class="signin-note">${tn("loopback")}</p>` : null}` : null}
     ${!hint && !terminal ? html`<p class="signin-note">${tn("waitingHint")}</p>` : null}
   </div>`;
+}
+
+/** The same closed controls as first setup. Profile-specific logins retain their existing flow. */
+export function BrowserSignInDialog({ backend, onClose }) {
+  const root = useRef(null), close = onClose || closeDialog;
+  useEffect(() => {
+    let cards, last = "";
+    cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", changed: next => {
+      if (!next.selected.includes(backend)) void cards.addBackend(backend);
+      const signature = JSON.stringify([next.login, next.pending]);
+      if (signature !== last) { last = signature; void refreshSignIn(); }
+    } });
+    return () => cards.dispose();
+  }, [backend]);
+  const fallback = async () => {
+    const result = await post("/ui/browser-backend-signins", { operation: "cancel" });
+    if (!result.ok) { toast(tn("failed")); return; }
+    showDialog(SignInDialog, { backend });
+  };
+  return html`<${Dialog} title=${tn("title", backend)} onClose=${close}>
+    <div ref=${root}></div>
+    <div class="s-actions"><button type="button" class="btn" onClick=${fallback}>${tn("consoleFallback")}</button>
+    <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>
+  </${Dialog}>`;
 }
 
 export function SignInDialog({ backend, profile, resume = false, onClose }) {
@@ -265,7 +299,12 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
 
 /** The line every admin page shows while a sign-in runs (the shell's banner slot). */
 export function SignInLine() {
-  const { login } = useStore(signInStore);
+  const { login, structured } = useStore(signInStore);
+  const active = structured?.login;
+  if ((!login || login.phase !== "running") && active && active.phase !== "done" && !(active.phase === "failed" && active.reason)) {
+    return html`<div data-trust="status" class="conn op-line signin-line" role="status"><span>${tn("browserRunning", active.backend)}</span>
+      <button type="button" class="btn btn-sm" onClick=${() => openSignIn({ backend: active.backend })}>${tn("open")}</button></div>`;
+  }
   if (!login || login.phase !== "running") return null;
   return html`<div data-trust="status" class="conn op-line signin-line" role="status">
     <span>${tn("running", shownOf(login.backend, login.profile), login.startedOn)}</span>
@@ -276,13 +315,14 @@ const STATE_KEY = { usable: "stUsable", not_signed_in: "stNotSignedIn", not_inst
 
 /** Settings → Agents: each login on this machine, with Sign in where the dashboard can do it. */
 export function SignInList() {
-  const { targets, loaded, login } = useStore(signInStore);
+  const { targets, loaded, login, structured } = useStore(signInStore);
   // Not over the temporary public link: only the dashboard reached directly signs a backend in, and the link does not
   // serve this read (it was a 404 in the console there, found by smoke-1939-authorize-defaults).
   const offered = signInOffered();
   useEffect(() => { if (offered) void refreshSignIn(); }, []);
   if (!offered || !loaded || !targets.length) return null;
-  const running = login && login.phase === "running";
+  const active = structured?.login;
+  const running = (login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason));
   return html`<section class="s-group signin-list" aria-label=${tn("listTitle")}>
     <div class="list-head"><span>${tn("listTitle")}</span></div>
     <p class="sub">${tn("listHint")}</p>

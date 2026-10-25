@@ -53,6 +53,7 @@ export class BrowserBackendSignIns {
     // final safe reason (or done) proves that finish has settled the writer.
     return view.phase === "done" || (view.phase === "failed" && !!view.reason);
   }
+  get active(): boolean { return !!this.run && !this.terminal(this.run); }
   get ready(): boolean {
     return this.terminal(this.run) && this.run?.session.view(this.run.owner).reason !== "cleanup_failed"
       && this.record.pending.every(backend => this.skipped.has(backend));

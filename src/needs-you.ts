@@ -7,7 +7,7 @@
  * a file or a clock of its own.
  */
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task";
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -48,7 +48,7 @@ export type NeedsYouReason =
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "auth_paused" | "crashed"                                       // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
-  | "task_review" | "task_blocked";                                 // task
+  | "task_review" | "task_blocked" | "backend_signin";                                 // task
 
 /** A fleet prompt offered on the dashboard (hang / exit-restart / interactive-assist), as the fleet holds it. */
 export interface PromptInput {
@@ -112,11 +112,14 @@ export interface TaskInput {
   since: number;
 }
 
+export interface BackendSignInInput { backend: string; since: number; browser: boolean }
+
 export interface NeedsYouInputs {
   prompts: PromptInput[];
   instances: InstanceInput[];
   deliveries: DeliveryInput[];
   tasks?: TaskInput[];
+  backendSignIns?: BackendSignInInput[];
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
   ownerOf: (instance: string) => string | undefined;
 }
@@ -189,6 +192,12 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       detail: oneLine(`${d.source} → ${d.target} · ${d.kind}`), since: d.finishedAt, deliveryId: d.deliveryId,
     });
   }
+
+  // Installer-selected backends are fleet-level web items, including when no agent uses them.
+  for (const b of inputs.backendSignIns ?? []) items.push({
+    id: `backend-signin:${b.backend}:${b.since}`, type: "backend", instance: "", reason: "backend_signin", detail: b.backend, since: b.since,
+    ...(b.browser ? { signIn: { backend: b.backend } } : {}),
+  });
 
   // Task board cards waiting for the person (#2246 step 3), under their assignee.
   for (const c of inputs.tasks ?? []) {

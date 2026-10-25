@@ -918,7 +918,8 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
     if (reading) result = await service.refresh(owner);
     else {
       let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
-      if (!permitWebContinuation(req, res, ctx) || who() !== owner) return;
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
       let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
       const parsed = z.discriminatedUnion("operation", [
         z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(["kiro-cli", "claude-code", "codex", "antigravity"])).max(4) }),

@@ -23,7 +23,7 @@ import type { ChannelAdapter } from "./channel/types.js";
 import { isMessageEditLoss } from "./channel/message-edit-errors.js";
 import {
   deriveNeedsYou, itemsForWorld, itemsForLane, lanesOf, renderLiveMessage, renderSignature, messageLink, instanceLink,
-  type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type TaskInput, type WorldPlace,
+  type BackendSignInInput, type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type TaskInput, type WorldPlace,
 } from "./needs-you.js";
 import { GroupMembership, topicUrl } from "./topic-link.js";
 import { NeedsYouLiveMessage, canonicalTarget, samePlace, type LiveAcks, type LivePointer, type LiveTarget } from "./needs-you-live.js";
@@ -80,6 +80,7 @@ export interface NeedsYouHubContext {
   acknowledge(deliveryId: string, by: string): boolean;
   /** Task board cards waiting for the person (#2246 step 3); none when the board is not open. */
   tasks?(): TaskInput[];
+  backendSignIns?(): BackendSignInInput[];
   /**
    * The person's move on a card from the chat: confirm it, send it back with `text` (the reason), or answer its blocked
    * question with `text`. Checked against the version the button showed; the answer is said to the clicker.
@@ -249,7 +250,7 @@ export class NeedsYouHub {
     try { tasks = this.ctx.tasks?.() ?? []; } catch (err) {
       this.ctx.log("warn", "Needs you: could not read the task board", { err: String((err as Error)?.message ?? err) });
     }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
