@@ -108,6 +108,8 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   <h1>Set up AgEnD</h1>
   <div class="sub" id="intro">This page is open only while setup is running. It closes itself when you finish, or after 15 minutes.</div>
 
+  <div class="step" id="setupSignins" aria-label="AI backend sign-ins"></div>
+
   <div class="step">
     <h2>1 · Agent</h2>
     <label for="backend">Backend</label>
@@ -315,6 +317,9 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     setTimeout(poll, 1000);
   };
   $("finish").onclick = async () => {
+    if ($("setupSignins").dataset.ready === "false") {
+      $("finishMsg").textContent = "Finish backend sign-in or choose Sign in later before continuing."; return;
+    }
     $("finish").disabled = true;
     try {
       if (approvedSetup) {
@@ -386,6 +391,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   setPlatform("telegram");
 })();
 </script>
+<script type="module" src="setup/signin.js"></script>
 </body>
 </html>
 `;
@@ -410,5 +416,5 @@ export function setupContentSecurityPolicy(nonce: string): string {
 
 /** A setup page with `nonce` on its inline `<script>` and `<style>` tags — the only ones the policy admits. */
 export function setupPage(html: string, nonce: string): string {
-  return html.replace(/<script>/g, `<script nonce="${nonce}">`).replace(/<style>/g, `<style nonce="${nonce}">`);
+  return html.replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`).replace(/<style>/g, `<style nonce="${nonce}">`);
 }
