@@ -87,21 +87,27 @@ Write-Output ('M5=' + (Get-NetFailureKind (M 'Response status code does not indi
     expect(out).toContain("M5=proxy");
   });
 
-  it("Test-WindowsEndpoint: success or any HTTP response is reachable; a failure is tried twice, no more, and named", () => {
+  it("Test-WindowsEndpoint: success or an HTTP response is reachable, except a proxy's 407; a failure is tried twice, no more, and named", () => {
     const { out } = run(`
 $script:calls = 0
 function Invoke-WebRequest { param($Uri, $Method, $TimeoutSec, [switch]$UseBasicParsing, $ErrorAction)
   $script:calls++; $script:last = "$Method $Uri $TimeoutSec"
   switch -wildcard ($Uri) {
     '*ok.example*' { return 'ok' }
+    '*proxyauth.example*' { $ex = [Net.WebException]::new('407'); $resp = [PSCustomObject]@{ StatusCode = 407 }; $ex | Add-Member -NotePropertyName Response -NotePropertyValue $resp -Force; throw $ex }
+    '*notallowed.example*' { $ex = [Net.WebException]::new('405'); $resp = [PSCustomObject]@{ StatusCode = 405 }; $ex | Add-Member -NotePropertyName Response -NotePropertyValue $resp -Force; throw $ex }
     '*forbidden.example*' { $ex = [Net.WebException]::new('403'); $resp = [PSCustomObject]@{ StatusCode = 403 }; $ex | Add-Member -NotePropertyName Response -NotePropertyValue $resp -Force; throw $ex }
     default { throw [Net.WebException]::new('x', [Net.WebExceptionStatus]::NameResolutionFailure) } } }
 Write-Output ('OK=[' + (Test-WindowsEndpoint 'ok.example') + '] calls=' + $script:calls + ' last=' + $script:last); $script:calls = 0
 Write-Output ('HTTP=[' + (Test-WindowsEndpoint 'forbidden.example') + '] calls=' + $script:calls); $script:calls = 0
-Write-Output ('DNS=[' + (Test-WindowsEndpoint 'gone.example') + '] calls=' + $script:calls)`);
+Write-Output ('DNS=[' + (Test-WindowsEndpoint 'gone.example') + '] calls=' + $script:calls); $script:calls = 0
+Write-Output ('PROXY=[' + (Test-WindowsEndpoint 'proxyauth.example') + '] calls=' + $script:calls); $script:calls = 0
+Write-Output ('METHOD=[' + (Test-WindowsEndpoint 'notallowed.example') + ']')`);
     expect(out).toContain("OK=[] calls=1 last=Head https://ok.example/ 10");
     expect(out).toContain("HTTP=[] calls=1");
     expect(out).toContain("DNS=[dns] calls=2");
+    expect(out).toContain("PROXY=[proxy] calls=1");                         // a proxy's 407 is not the site answering (Prism review)
+    expect(out).toContain("METHOD=[]");                                      // 405 (HEAD not allowed) is still the site answering
   });
 
   it("Resolve-NetResults: all fine is one line; an optional failure warns and goes on; a required one explains and asks, default no", () => {

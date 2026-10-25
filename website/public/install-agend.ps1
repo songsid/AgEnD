@@ -156,7 +156,10 @@ function Test-WindowsEndpoint([string]$hostName, [int]$tries = 2, [int]$timeoutS
             return $null
         } catch {
             $resp = $null; try { $resp = $_.Exception.Response } catch { }
-            if ($resp -and $resp.StatusCode) { return $null }                    # 有 HTTP 回應（403、404、3xx 都算）：連得上
+            # 407 是 proxy 要登入，不是網站的回應：算 proxy 問題，不算連得上（Prism 審查）。
+            $code = 0; if ($resp) { try { $code = [int]$resp.StatusCode } catch { } }
+            if ($code -eq 407) { return 'proxy' }
+            if ($code -gt 0) { return $null }                                   # 其他 HTTP 回應（403、404、405、3xx 都算）：連得上
             $kind = Get-NetFailureKind $_
         }
     }
