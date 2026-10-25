@@ -9,7 +9,7 @@ import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
-import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession } from "./config.js";
+import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
@@ -2478,11 +2478,9 @@ export class InstanceLifecycle {
           && !isModelCompatible(instanceConfig.backend, instanceConfig.model)) {
         delete instanceConfig.model;
       }
-      // #2598: a new kiro instance is written with its engine, the TUI (kiro 3.0 drops classic) — explicit, so nothing
-      // that later reads the engine ledger under its name (a predecessor's classic launches) can put it on classic.
-      if ((instanceConfig.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code") === "kiro-cli" && !instanceConfig.kiro_ui) {
-        instanceConfig.kiro_ui = "tui";
-      }
+      // #2598: a new kiro instance is written with the TUI engine, explicitly (an unset one is classic).
+      const newKiroUi = newInstanceKiroUi(instanceConfig.backend, this.ctx.fleetConfig?.defaults);
+      if (newKiroUi) instanceConfig.kiro_ui = newKiroUi;
       createdConfig = instanceConfig;
       const beforeCreate = structuredClone(this.ctx.fleetConfig);
       const persist = (): void => {

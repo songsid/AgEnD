@@ -404,7 +404,8 @@ export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: st
     fleetObj.channels = platforms.map(p => buildChannelConfig(p));
   }
   if (projectRoots.length > 0) fleetObj.project_roots = projectRoots;
-  fleetObj.defaults = { backend, dashboard: { ...NEW_FLEET_DASHBOARD } };
+  // #2598: a new kiro fleet runs kiro's TUI engine (an entry without kiro_ui would be classic).
+  fleetObj.defaults = { backend, ...(backend === "kiro-cli" ? { kiro_ui: "tui" } : {}), dashboard: { ...NEW_FLEET_DASHBOARD } };
   fleetObj.web = { ...NEW_FLEET_WEB };
   return fleetObj;
 }

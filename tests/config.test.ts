@@ -92,7 +92,7 @@ instances:
     expect(existsSync(expectedDir)).toBe(true);
   });
 
-  it("leaves Kiro UI unset (resolved per instance, #2598) and supports per-instance TUI/v3 overrides", () => {
+  it("defaults Kiro UI to legacy and supports per-instance TUI/v3 overrides", () => {
     const fleetPath = join(tmpDir, "fleet.yaml");
     writeFileSync(fleetPath, `instances:
   legacy:
@@ -109,7 +109,7 @@ instances:
 `);
 
     const fleet = loadFleetConfig(fleetPath);
-    expect(fleet.instances.legacy.kiro_ui).toBeUndefined();
+    expect(fleet.instances.legacy.kiro_ui).toBe("legacy");
     expect(fleet.instances.tui.kiro_ui).toBe("tui");
     expect(fleet.instances.v3.kiro_ui).toBe("v3");
   });

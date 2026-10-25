@@ -1,20 +1,20 @@
 /**
- * #2598 (4): kiro's default engine is the TUI — for NEW instances only. kiro 3.0 drops classic, so a new kiro instance
- * starts on the TUI; but an existing instance that relied on the old default (no kiro_ui in fleet.yaml) keeps classic,
- * because its engine ledger shows classic launches. Moving it is migrate_kiro_instance's job, with its history; an
- * upgrade flipping it would start it on an empty conversation, unnoticed (B2). ClassicBot channels stay on classic
- * until their own move is decided (D8).
+ * #2598 (4): a NEW kiro instance runs kiro's TUI engine (kiro 3.0 drops classic) — written explicitly into fleet.yaml
+ * by every path that creates one. An existing entry that sets no kiro_ui stays classic, exactly as before: its engine
+ * is never guessed (a missing or damaged launch ledger proves nothing about whether it is new — #2621 review), and
+ * moving its conversation is migrate_kiro_instance's job. ClassicBot channels and any fleet default kiro_ui keep
+ * deciding for themselves.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CLASSIC_CHANNEL_KIRO_UI, defaultKiroUi, recordKiroLaunch } from "../src/backend/kiro-engine-ledger.js";
-import { DEFAULT_INSTANCE_CONFIG } from "../src/config.js";
+import { DEFAULT_INSTANCE_CONFIG, loadFleetConfig, newInstanceKiroUi } from "../src/config.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "../src/kiro-engine-status.js";
-import { planKiroMigration } from "../src/kiro-migrate.js";
-import { t } from "../src/locale.js";
+import { draftWebOnly } from "../src/quickstart-api.js";
+import { newQuickstartFleet } from "../src/quickstart.js";
+import { buildFleetConfig, type WizardAnswers } from "../src/setup-wizard.js";
 import type { FleetConfig } from "../src/types.js";
 
 let home: string;
@@ -25,70 +25,42 @@ afterEach(() => {
   if (savedHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = savedHome;
   rmSync(home, { recursive: true, force: true });
 });
-const ledger = () => join(home, "kiro-engine-ledger.json");
-const launched = (instance: string, ui: "legacy" | "tui") => recordKiroLaunch({
-  instance, workingDirectory: "/w", credentialProfile: null, kiroVersion: "2.30.0", ui,
-  flags: ui === "legacy" ? ["--legacy-ui", "--agent-engine=v1"] : ["--tui", "--agent-engine=v2"],
-}, ledger());
 
-describe("defaultKiroUi: the TUI for a new instance, classic for one already launched on classic", () => {
-  it("no launch on record → tui", () => expect(defaultKiroUi("fresh", home)).toBe("tui"));
-  it("last launched on classic → legacy (an upgrade never moves its conversation)", () => {
-    launched("old", "legacy");
-    expect(defaultKiroUi("old", home)).toBe("legacy");
-    expect(defaultKiroUi("fresh", home), "another instance's record is not this one's").toBe("tui");
+describe("newInstanceKiroUi: what a newly created instance is written with", () => {
+  it("kiro, by its own backend or the fleet default → tui", () => {
+    expect(newInstanceKiroUi("kiro-cli", {})).toBe("tui");
+    expect(newInstanceKiroUi(undefined, { backend: "kiro-cli" })).toBe("tui");
   });
-  it("last launched on the TUI → tui", () => {
-    launched("old", "legacy");
-    launched("old", "tui");
-    expect(defaultKiroUi("old", home)).toBe("tui");
-  });
-  it("a damaged ledger reads as no record (→ tui); a name like __proto__ is no record either", () => {
-    writeFileSync(ledger(), "{oops");
-    expect(defaultKiroUi("old", home)).toBe("tui");
-    expect(defaultKiroUi("__proto__", home)).toBe("tui");
-  });
-  it("the built-in instance defaults no longer carry kiro_ui", () => {
-    expect(DEFAULT_INSTANCE_CONFIG).not.toHaveProperty("kiro_ui");
+  it("a fleet default kiro_ui decides instead (the instance inherits it); other backends get nothing", () => {
+    expect(newInstanceKiroUi("kiro-cli", { kiro_ui: "legacy" })).toBeUndefined();
+    expect(newInstanceKiroUi("codex", {})).toBeUndefined();
+    expect(newInstanceKiroUi(undefined, {})).toBeUndefined();
+    expect(newInstanceKiroUi(undefined, undefined)).toBeUndefined();
   });
 });
 
-describe("where the default is applied", () => {
-  it("the daemon resolves an unset kiro_ui per instance when it hands the backend its config", () => {
-    const src = readFileSync(new URL("../src/daemon.ts", import.meta.url), "utf8");
-    expect(src).toContain("kiroUi: this.config.kiro_ui ?? defaultKiroUi(this.name),");
-  });
-
-  it("a ClassicBot channel is launched on classic unless the fleet default names one", () => {
-    const src = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8");
-    expect(src).toContain("kiro_ui: this.fleetConfig?.defaults?.kiro_ui ?? CLASSIC_CHANNEL_KIRO_UI,");
-    expect(CLASSIC_CHANNEL_KIRO_UI).toBe("legacy");
-  });
-
-  it("kiro_engine_status: unset fleet instances by their record, ClassicBot channels classic", () => {
-    launched("old", "legacy");
-    const fleet = { defaults: { backend: "kiro-cli" }, instances: { old: {}, fresh: {}, pinned: { kiro_ui: "legacy" } } } as unknown as FleetConfig;
-    const classic = { getAll: () => [{ instanceName: "chan", backend: "kiro-cli" }] };
-    const by = Object.fromEntries(kiroEngineStatus(kiroEngineCandidates(fleet, classic), { agendHome: home, snapshot: () => null })
-      .instances.map(i => [i.name, i.kiro_ui]));
-    expect(by).toEqual({ old: "legacy", fresh: "tui", pinned: "legacy", chan: "legacy" });
-  });
-
-  it("migrate_kiro_instance: an unset instance with classic launches can be moved; a new one is already TUI", () => {
-    launched("old", "legacy");
-    const fleet = { defaults: {}, instances: { old: { backend: "kiro-cli", working_directory: home }, fresh: { backend: "kiro-cli", working_directory: home } } } as unknown as FleetConfig;
-    const deps = { agendHome: home, fleetConfig: () => fleet, saveFleetConfig() {}, status: () => "stopped", restart: async () => {} };
-    expect(planKiroMigration(deps, "old", true)).toMatchObject({ ok: true });
-    expect(planKiroMigration(deps, "fresh", true)).toEqual({ ok: false, error: t("kiro_migrate.not_legacy", "fresh", "tui") });
-  });
+describe("an existing entry without kiro_ui stays classic — whatever the launch ledger says (#2621 review)", () => {
+  const fleetYaml = "defaults:\n  backend: kiro-cli\ninstances:\n  old:\n    working_directory: /tmp/old\n";
+  for (const [label, ledger] of [["missing", null], ["damaged", "{not json"], ["empty", "{}"]] as const) {
+    it(`ledger ${label}: loaded as legacy, and kiro_engine_status says legacy`, () => {
+      if (ledger !== null) writeFileSync(join(home, "kiro-engine-ledger.json"), ledger);
+      const path = join(home, "fleet.yaml");
+      writeFileSync(path, fleetYaml);
+      const fleet = loadFleetConfig(path);
+      expect(fleet.instances.old.kiro_ui).toBe("legacy");
+      const status = kiroEngineStatus(kiroEngineCandidates(fleet), { agendHome: home, snapshot: () => null });
+      expect(status.instances.map(i => [i.name, i.kiro_ui])).toEqual([["old", "legacy"]]);
+    });
+  }
+  it("the built-in default is still classic", () => expect(DEFAULT_INSTANCE_CONFIG.kiro_ui).toBe("legacy"));
 });
 
-describe("create_instance writes a new kiro instance's engine explicitly", () => {
-  async function create(backend: string, defaults = "") {
+describe("every creation path writes a new kiro instance's engine", () => {
+  async function create(backend: string, defaults = "", seed = "instances: {}\n") {
     const dataDir = mkdtempSync(join(home, "data-"));
     const projectDir = mkdtempSync(join(home, "proj-"));
     const configPath = join(dataDir, "fleet.yaml");
-    writeFileSync(configPath, `${defaults}instances: {}\n`);
+    writeFileSync(configPath, `${defaults}${seed}`);
     const { FleetManager } = await import("../src/fleet-manager.js");
     const { CreateInstanceArgs } = await import("../src/outbound-schemas.js");
     const fm = new FleetManager(dataDir);
@@ -99,20 +71,45 @@ describe("create_instance writes a new kiro instance's engine explicitly", () =>
     let error: string | undefined;
     await fm.lifecycle.handleCreate(CreateInstanceArgs.parse({ directory: projectDir, topic_name: "k", ...(backend ? { backend } : {}) }), (_v, m) => { error = m; });
     expect(error).toBeUndefined();
-    return (yaml.load(readFileSync(configPath, "utf-8")) as { instances: Record<string, { kiro_ui?: string }> }).instances["k-t902"]!;
+    return (yaml.load(readFileSync(configPath, "utf-8")) as { instances: Record<string, { kiro_ui?: string }> }).instances;
   }
 
-  it("kiro-cli → kiro_ui: tui in fleet.yaml, so a predecessor's classic record under the same name cannot apply", async () => {
-    launched("k-t902", "legacy");
-    expect((await create("kiro-cli")).kiro_ui).toBe("tui");
+  it("create_instance, kiro-cli → kiro_ui: tui in fleet.yaml", async () => {
+    expect((await create("kiro-cli"))["k-t902"]!.kiro_ui).toBe("tui");
   });
-  it("kiro-cli by the fleet default backend → tui too", async () => {
-    expect((await create("", "defaults:\n  backend: kiro-cli\n")).kiro_ui).toBe("tui");
+  it("create_instance by the fleet default backend → tui; the existing unset entry beside it is left alone", async () => {
+    const instances = await create("", "defaults:\n  backend: kiro-cli\n", "instances:\n  old:\n    working_directory: /tmp/old\n");
+    expect(instances["k-t902"]!.kiro_ui).toBe("tui");
+    expect(instances.old).not.toHaveProperty("kiro_ui");
   });
-  it("a fleet default kiro_ui wins: inherited (persistence leaves out what equals the default), never overwritten with tui", async () => {
-    expect(await create("kiro-cli", "defaults:\n  kiro_ui: legacy\n")).not.toHaveProperty("kiro_ui");
+  it("create_instance under a fleet default kiro_ui: inherited (left out of the entry), never overwritten with tui", async () => {
+    expect((await create("kiro-cli", "defaults:\n  kiro_ui: legacy\n"))["k-t902"]).not.toHaveProperty("kiro_ui");
   });
-  it("another backend gets no kiro_ui", async () => {
-    expect(await create("codex")).not.toHaveProperty("kiro_ui");
+  it("create_instance, another backend: no kiro_ui", async () => {
+    expect((await create("codex"))["k-t902"]).not.toHaveProperty("kiro_ui");
+  });
+
+  it("the web wizard's new agent → tui; an agent that already exists keeps its entry", () => {
+    const cfg = { defaults: {}, instances: { old: { working_directory: "/o", backend: "kiro-cli" } } } as unknown as FleetConfig;
+    expect(draftWebOnly(cfg, { instance_name: "new", backend: "kiro-cli", working_directory: "/n" }).instances.new).toMatchObject({ kiro_ui: "tui" });
+    expect(draftWebOnly(cfg, { instance_name: "old", backend: "kiro-cli", working_directory: "/o" }).instances.old).not.toHaveProperty("kiro_ui");
+    expect(draftWebOnly(cfg, { instance_name: "new", backend: "codex", working_directory: "/n" }).instances.new).not.toHaveProperty("kiro_ui");
+  });
+
+  it("a new fleet (agend setup / agend quickstart) on kiro → defaults.kiro_ui: tui; on another backend nothing", () => {
+    const answers = (backend: string): WizardAnswers => ({ channelType: "telegram", backend, botTokenEnv: "T", groupId: -100, channelMode: "topic",
+      accessMode: "locked", allowedUsers: [], projectRoots: [], instances: [], costGuard: { enabled: false }, dailySummary: { enabled: false } }) as unknown as WizardAnswers;
+    expect((buildFleetConfig(answers("kiro-cli")).defaults as Record<string, unknown>).kiro_ui).toBe("tui");
+    expect(buildFleetConfig(answers("codex")).defaults).not.toHaveProperty("kiro_ui");
+    expect(newQuickstartFleet([], [], "kiro-cli").defaults.kiro_ui).toBe("tui");
+    expect(newQuickstartFleet([], [], "codex").defaults).not.toHaveProperty("kiro_ui");
+  });
+
+  it("a General the fleet creates for a connection, and a topic bound to a new directory, use the same rule (source pins)", () => {
+    const fm = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8");
+    expect(fm).toContain("const newKiroUi = newInstanceKiroUi(undefined, fleet.defaults);");
+    expect(fm).toContain("...(newKiroUi ? { kiro_ui: newKiroUi } : {}),");
+    const tc = readFileSync(new URL("../src/topic-commands.ts", import.meta.url), "utf8");
+    expect(tc).toContain("if (newKiroUi) this.ctx.fleetConfig.instances[instanceName].kiro_ui = newKiroUi;");
   });
 });

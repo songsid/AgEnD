@@ -44,7 +44,6 @@ import { join, dirname, basename, delimiter, isAbsolute, relative, resolve as re
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
-import { CLASSIC_CHANNEL_KIRO_UI } from "./backend/kiro-engine-ledger.js";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps, type KiroMigrationPlan } from "./kiro-migrate.js";
 import { fleetLabel } from "./fleet-label.js";
 import {
@@ -88,7 +87,7 @@ import {
   type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis, type StatusEmojiKey,
 } from "./status-emojis.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
-import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, newInstanceKiroUi } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
@@ -8180,11 +8179,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       mkdirSync(generalDir, { recursive: true, mode: 0o700 });
       const backendName = fleet.defaults.backend ?? "claude-code";
       this.ensureGeneralInstructions(generalDir, backendName, name);
+      const newKiroUi = newInstanceKiroUi(undefined, fleet.defaults);   // #2598: a new kiro General runs the TUI
       fleet.instances[name] = {
         ...DEFAULT_INSTANCE_CONFIG,
         working_directory: generalDir,
         general_topic: true,
         channel_id: need.adapterId,
+        ...(newKiroUi ? { kiro_ui: newKiroUi } : {}),
       };
       generalsCreated = true;
     }
@@ -20725,8 +20726,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       ...this.fleetConfig?.defaults,
       working_directory: workDir,
       lightweight: true,
-      // #2598 D8: a ClassicBot channel stays on classic kiro unless the fleet default says otherwise.
-      kiro_ui: this.fleetConfig?.defaults?.kiro_ui ?? CLASSIC_CHANNEL_KIRO_UI,
       tool_progress: toolProgress ?? "off",
       reply_completion_guard: replyCompletionGuard ?? true,
       ...(backend ? { backend } : {}),

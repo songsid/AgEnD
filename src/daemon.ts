@@ -1,5 +1,4 @@
 import { dashboardAccessOf } from "./dashboard-permissions.js";
-import { defaultKiroUi } from "./backend/kiro-engine-ledger.js";
 import type { RecoveryLive } from "./working-recovery.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
 import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
@@ -10946,8 +10945,7 @@ export class Daemon extends EventEmitter {
       skipPermissions: this.config.skipPermissions,
       model: this.modelOverride ?? this.config.model,
       effort: (this.config as InstanceConfig & { effort?: string }).effort,
-      // #2598: unset → the per-instance default (the TUI for a new instance, classic for one launched on classic).
-      kiroUi: this.config.kiro_ui ?? defaultKiroUi(this.name),
+      kiroUi: this.config.kiro_ui,
       skipResume: this.skipResume,
       instructions,
       agentMode: isCliMode ? "cli" : "mcp",
