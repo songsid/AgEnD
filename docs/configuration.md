@@ -736,3 +736,13 @@ root to `0700` and logs one line. Existing files and non-writable roots are left
 or a path containing a symlink is refused; use a real directory owned by the account running AgEnD. The local
 operator directory and sockets retain their separate private-permission checks. The live shell/WSL installer
 prepares this boundary before running older releases' setup code too.
+
+### Browser backend sign-in during first setup
+
+The local `agend setup` page offers named sign-in controls for Kiro, Claude Code and Codex before the fleet starts. Kiro's account method, organization Start URL and region, and Claude's returned code are entered in the browser. Codex shows its provider link and device code. No browser terminal or arbitrary command input is exposed. This works for both **Web only (no bot)** and bot setup. Other backends, including Antigravity, keep the explicit console fallback.
+
+An installer can require a checklist with `agend setup --backend-signins kiro-cli,claude-code,codex`; the page cannot remove those selected backends. **Sign in later** leaves only their canonical IDs in the private `backend-signin-pending.json` file for later dashboard handling. That file contains no codes, provider URLs or credentials and never proves that authentication succeeded. The fleet can start only after each selected sign-in is verified or explicitly skipped and its login process is confirmed closed.
+
+Sign-in controls require the current setup cookie on this computer; they are refused through `--tunnel`. Refresh rejoins the same attempt. An answered prompt cannot be submitted again after a redraw; cancel and retry the attempt if the CLI repeats it. If process cleanup cannot be confirmed, setup refuses handoff: close the setup-owned login process on the host and restart setup before trying again. The ordinary host confirmation for writing configuration still applies.
+
+`agend setup --backend-signin-capabilities` prints installer capability JSON without opening setup or clearing its completion marker. In this stage it advertises setup support, with dashboard checklist support still `false`; the Windows installer's ordering changes in a later stage of #2599.

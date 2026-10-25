@@ -40,7 +40,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFleetConfig } from "./config.js";
 import { acquireFleetLock, releaseFleetLock, type FleetLockHandle, type FleetLockProbe } from "./fleet-lock.js";
-import { handleQuickstartRequest, type QuickstartApiContext } from "./quickstart-api.js";
+import { detectWizardBackends, handleQuickstartRequest, type QuickstartApiContext } from "./quickstart-api.js";
 import { markSetupComplete } from "./setup-marker.js";
 import { isSameOriginRequest, parseCookieHeader, loadOrCreateWebToken } from "./web-auth.js";
 import { fleetCookieName } from "./web-cookie-names.js";
@@ -61,6 +61,12 @@ import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
 import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
+import { BrowserBackendSignIns, type BrowserBackendSignInDeps } from "./browser-backend-signins.js";
+import { createStructuredSignInTransport } from "./structured-signin-transport.js";
+import { LOGIN_FLOWS, checkAuthStatus } from "./login-flows.js";
+import { onboardingBackends, type OnboardingBackend } from "./backend-signin-pending.js";
+import { readBoundedWebBody } from "./web-body.js";
+import { setupSignInScript } from "./setup-signin-assets.js";
 
 /** How long the form may stay open at all. */
 export const SETUP_HOST_TTL_MS = 15 * 60_000;
@@ -97,6 +103,10 @@ export interface SetupHostOptions {
   tunnel?: boolean;
   /** Test seam: the real one runs cloudflared. */
   tunnelProvider?: TunnelProvider;
+  /** Fixed canonical IDs selected by the installer; no executable or environment from the client. */
+  backendSignIns?: OnboardingBackend[];
+  /** Inert backend seam for setup HTTP/browser proofs. */
+  signInDeps?: Pick<BrowserBackendSignInDeps, "installed" | "checkAuth" | "transport">;
 }
 
 /**
@@ -168,6 +178,58 @@ export class SetupHost {
   private startedAt = 0;
   private admittedFinish = false;
   private shutdownPromise: Promise<void> | null = null;
+  private signIns: BrowserBackendSignIns | null = null;
+
+  private signInCoordinator(): BrowserBackendSignIns {
+    return this.signIns ??= new BrowserBackendSignIns({
+      dataDir: this.opts.dataDir, selected: this.opts.backendSignIns,
+      current: owner => !this.stopping && !this.admittedFinish && this.credentials.isSessionCurrent(owner)
+        && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs,
+      installed: this.opts.signInDeps?.installed ?? (async () => detectWizardBackends()),
+      checkAuth: this.opts.signInDeps?.checkAuth ?? (backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!)),
+      transport: this.opts.signInDeps?.transport ?? (() => createStructuredSignInTransport()),
+      changed: event => this.log(`Backend sign-in: ${JSON.stringify(event)}`),
+    });
+  }
+
+  private async handleSignIns(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const owner = this.credentials.sessionIdentity;
+    const current = () => !!owner && !this.stopping && !this.admittedFinish && this.credentials.isSessionCurrent(owner)
+      && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs;
+    if (this.opts.tunnel || this.externalHost || !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "")) {
+      this.deny(res, 403, "backend_signin_local_only"); return;
+    }
+    if (!current() || !owner) { this.deny(res, 409, "signin_session_expired"); return; }
+    const json = (status: number, value: unknown) => {
+      if (res.destroyed) return;
+      res.setHeader("Content-Type", "application/json"); res.writeHead(status); res.end(JSON.stringify(value));
+    };
+    try {
+      const signIns = this.signInCoordinator();
+      if (req.method === "GET") { const view = await signIns.refresh(owner); if (current()) json(200, view); else json(409, { error: "signin_session_expired" }); return; }
+      const body = JSON.parse((await readBoundedWebBody(req, 8192)).toString("utf8"));
+      if (!current() || req.aborted || res.destroyed) { json(409, { error: "signin_session_expired" }); return; }
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid_signin_action");
+      let view;
+      if (body.operation === "select") {
+        const selected = onboardingBackends(body.backends);
+        if (!selected) throw new Error("invalid_signin_checklist");
+        view = await signIns.select(owner, [...new Set([...(this.opts.backendSignIns ?? []), ...selected])]);
+      } else if (body.operation === "start" && typeof body.backend === "string" && (body.relogin === undefined || typeof body.relogin === "boolean")) {
+        view = await signIns.begin(owner, body.backend, body.relogin === true);
+      } else if (body.operation === "input" && typeof body.id === "string" && /^[0-9a-f]{32}$/.test(body.id) && Number.isSafeInteger(body.revision)) {
+        view = await signIns.input(owner, body.id, body.revision, body.action);
+      } else if (body.operation === "cancel") view = await signIns.cancel(owner);
+      else if (body.operation === "skip" && typeof body.backend === "string") view = await signIns.skip(owner, body.backend);
+      else if (body.operation === "refresh") view = await signIns.refresh(owner, true);
+      else throw new Error("invalid_signin_action");
+      if (current()) json(200, view); else json(409, { error: "signin_session_expired" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist))$/.test(message) ? message : "signin_failed";
+      json(safe === "signin_cleanup_failed" || safe === "signin_failed" ? 503 : 409, { error: safe });
+    }
+  }
 
   private confirmationGate(): SettingsHttpConfirmation {
     if (this.confirmation) return this.confirmation;
@@ -200,7 +262,8 @@ export class SetupHost {
     const owner = this.credentials.sessionIdentity, gate = this.confirmationGate(), expected = this.committedFingerprint;
     const eligible = () => !!owner && owner === this.committedOwner && this.credentials.isSessionCurrent(owner)
       && !this.stopping && !this.admittedFinish && this.committedApproved && !!expected && expected === this.committedFingerprint
-      && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs && !gate.store.list(owner.id).length;
+      && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs && !gate.store.list(owner.id).length
+      && (this.opts.tunnel || this.signInCoordinator().ready);
     if (!eligible()) return false;
     const baseline = new SettingsBaselines({ dataDir: this.opts.dataDir, configPath: () => this.opts.configPath,
       config: () => this.setupContext!.fleetConfig, current: () => [this.stopping, this.credentials.sessionIdentity?.id ?? null] });
@@ -219,7 +282,18 @@ export class SetupHost {
       || (this.opts.now?.() ?? performance.now()) >= this.startedAt + this.ttlMs) {
       this.deny(res, 409, "Setup changed; review and confirm again."); return;
     }
-    this.admittedFinish = true; this.handoverRequested = true;
+    this.admittedFinish = true; // seal login admission before awaiting cleanup
+    if (this.signIns && !await this.signIns.close()) {
+      this.deny(res, 503, "signin_cleanup_failed"); return;
+    }
+    // Teardown may have waited while authority or the committed file changed.
+    try { commitCurrent = baseline.captureCommitted() === this.committedFingerprint; } catch { commitCurrent = false; }
+    if (!commitCurrent || req.aborted || res.destroyed || !this.committedApproved || owner !== this.committedOwner
+      || gate.store.list(owner.id).length || this.stopping || !this.credentials.isSessionCurrent(owner)
+      || (this.opts.now?.() ?? performance.now()) >= this.startedAt + this.ttlMs) {
+      this.deny(res, 409, "Setup confirmation unavailable."); return;
+    }
+    this.handoverRequested = true;
     gate.store.close();
     res.setHeader("Content-Type", "application/json"); res.writeHead(202);
     res.end(JSON.stringify({ starting: true, watch: this.externalHost === null }));
@@ -517,7 +591,14 @@ export class SetupHost {
 
     // Only now: an authorized request is the only kind that should be able to
     // keep this page alive.
-    if (!(req.method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(rest))) this.touch();
+    if (!(req.method === "GET" && (/^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(rest) || rest === "/setup/signins"))) this.touch();
+
+    if (req.method === "GET" && rest === "/setup/signin.js") {
+      res.setHeader("Content-Type", "text/javascript; charset=utf-8"); res.writeHead(200); res.end(setupSignInScript()); return;
+    }
+    if ((req.method === "GET" || req.method === "POST") && rest === "/setup/signins") {
+      void this.handleSignIns(req, res); return;
+    }
 
     if (req.method === "GET" && rest === "/setup/status") {
       const owner = this.credentials.sessionIdentity;
@@ -601,6 +682,7 @@ export class SetupHost {
     //    arriving through a tunnel that is still up — is already unauthorized
     //    from here, so the order below can take its time without a window.
     this.credentials.revoke();
+    const signInsClosed = this.signIns?.close();
 
     // 2. The listener, and its open connections. From this point the public URL
     //    reaches nothing, whatever the tunnel is doing.
@@ -627,10 +709,12 @@ export class SetupHost {
     }
 
     await confirmationClosed;
+    const loginCleanup = await signInsClosed;
     releaseFleetLock(this.lock);
     this.lock = undefined;
 
-    if (!handOver) {
+    if (!handOver || loginCleanup === false) {
+      if (loginCleanup === false) this.log("Backend sign-in cleanup could not be confirmed; AgEnD was NOT started. Close the setup-owned login process before retrying.");
       this.log(`Setup host stopped (${reason}). Run \`agend setup\` again to reopen it.`);
       return;
     }

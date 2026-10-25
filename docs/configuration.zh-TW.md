@@ -742,3 +742,13 @@ web:
 關閉時，本機、公開連結與訪客頁面都會隱藏 Canvas Worker 控制項、試播、海報、效果庫與播放，不載入 CW 執行模組或 Worker。CW 專用工具（包含網頁 mod 匯出與提案）不出現在 agent 工具清單，直接呼叫也會拒絕；混合型外觀工具保留非 CW 選項。受管理技能與 agent 公告省略 CW 操作說明。關閉會停止正在播放的 CW 特效，但不刪除磁碟上的 Worker、套用位置、偏好或 mod；重新開啟會恢復，仍遵守原本的同意與信任檢查。
 
 落花、點擊星星等只含資料的環境效果，以及主題、小工具和自訂 CSS，都不受此開關影響。
+
+### 首次設定時從瀏覽器登入後端
+
+本機的 `agend setup` 頁面會在 fleet 啟動前提供 Kiro、Claude Code、Codex 的登入控制。Kiro 的登入方式、組織 Start URL 與區域，以及 Claude 回傳的驗證碼，都在瀏覽器輸入；Codex 會顯示供應商連結與裝置碼。不會開放瀏覽器終端機或任意指令輸入。**Web only（不使用 bot）** 與 bot 設定共用此流程。Antigravity 等其他後端仍走明確的主控台備援路徑。
+
+安裝程式可用 `agend setup --backend-signins kiro-cli,claude-code,codex` 指定清單，網頁不能移除這些已選的後端。選擇 **Sign in later** 只會在私有的 `backend-signin-pending.json` 留下標準後端 ID，供後續儀表板處理；檔案不含驗證碼、供應商網址或憑證，也不能當成登入成功的證明。每個已選後端都必須驗證登入或明確略過，且登入程序確認關閉，才可啟動 fleet。
+
+登入控制必須使用這台電腦上仍有效的 setup cookie，透過 `--tunnel` 一律拒絕。重新整理會接回同一次嘗試；畫面重繪不會讓已回答的提示再次接受輸入，若 CLI 重問，請取消再重試。若無法確認程序已關閉，setup 會拒絕交接；請在主機關閉該 setup 的登入程序，再重新執行 setup。寫入設定仍需要原有的主機確認。
+
+`agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。本階段宣告支援 setup，但儀表板清單仍為 `false`；Windows 安裝順序會在 #2599 的後續階段調整。

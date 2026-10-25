@@ -46,3 +46,20 @@ Rollback is per stage. Removing the unused stage-1 driver changes no active
 login behavior; the extracted provider URL allowlist is byte-equivalent and
 re-exported through the existing module. Later installer rollback selects its
 explicit console path and preserves provider credentials.
+
+Stage 2 adds `BrowserBackendSignIns`, the fixed native PTY adapter, local setup
+routes and shared browser cards. Every route retains the setup cookie, exact
+Host/origin and post-await owner/TTL checks; tunneled setup cannot use login
+controls. GET polling does not extend the idle lifetime. The pending file holds
+only canonical selected/pending IDs, atomically at 0600. Old hint files are not
+auth proof. Finish seals admission, awaits reap, and rechecks the committed
+configuration before handoff. Shutdown also joins cleanup before any successor.
+The `--backend-signin-capabilities` probe returns before marker/reset handling;
+it keeps dashboard=false until stage 3. No installer behavior changes here.
+
+Stage-2 browser proof: `PW_DIR=<own playwright package> OUT=<own output directory>
+AGEND_HOME=<scratch home> tsx scripts/manual/setup-signin-2599.mts`. The actual
+SetupHost and Chromium use injected stub backend transports and auth probes,
+with a forbidden successor and all external browser requests blocked. It covers
+three backend flows, agy skip, same-cookie refresh, verified cleanup and safe
+logs. This is not real-provider or Windows/WSL acceptance.
