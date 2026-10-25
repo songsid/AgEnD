@@ -44,6 +44,7 @@ import { join, dirname, basename, delimiter, isAbsolute, relative, resolve as re
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps, type KiroMigrationPlan } from "./kiro-migrate.js";
 import { fleetLabel } from "./fleet-label.js";
 import {
   beginFullRestartProgress as persistFullRestartProgress,
@@ -892,6 +893,10 @@ const OOM_RETRY_CALLBACK_PREFIX = "oom-retry:";
 const NEEDS_PAUSE_TTL_MS = 10_000;
 const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
+/** #2598 B2: a kiro classic → TUI move's Confirm in General. "kiro-migrate:" (13) + 32 hex + ":confirm" (8) = 53 bytes. */
+const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
+/** Long enough for an admin to read the prompt; the move is judged again on the click. */
+const KIRO_MIGRATE_TIMEOUT_MS = 10 * 60_000;
 /**
  * The prompts the web dashboard also offers: the ones about an instance's own health, which a dashboard
  * user — holding the full-fleet web credential — may answer exactly as a fleet admin on the platform may.
@@ -1329,6 +1334,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingBackendSelects = new Map<string, PendingBackendSelect>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
+  /** #2598 B2: the kiro moves waiting on a fleet admin's Confirm in General, by prompt nonce. */
+  private pendingKiroMigrations = new Map<string, KiroMigrationPlan>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
   /** When the fleet first saw an instance crashed, for its "Needs you" age; cleared when it is not. */
@@ -2068,6 +2075,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // No platform confirmation was reachable. Host inspection is still required.
     this.logger.info({ id: view.id }, "Settings change requires local `agend settings confirm <id>`");
+  }
+
+  private kiroMigrateDeps(): KiroMigrateDeps {
+    return {
+      agendHome: getAgendHome(),
+      fleetConfig: () => this.fleetConfig,
+      saveFleetConfig: () => this.saveFleetConfig(),
+      status: name => this.getInstanceStatus(name),
+      restart: name => this.restartSingleInstance(name, { explicit: true }),
+    };
+  }
+
+  /**
+   * #2598 B2, migrate_kiro_instance: judge the move, then ask in General for a fleet admin's Confirm. Nothing changes
+   * here; the move runs on the Confirm (handleKiroMigrateCallback), judged again then.
+   */
+  async requestKiroMigration(name: string, startFresh: boolean): Promise<{ ok: true; text: string; classic_conversation: string | null } | { ok: false; error: string }> {
+    const judged = planKiroMigration(this.kiroMigrateDeps(), name, startFresh);
+    if (!judged.ok) return judged;
+    const general = this.findGeneralInstance();
+    const adapterId = general ? this.getInstanceAdapterId(general) : undefined;
+    const adapter = general ? this.getAdapterForInstance(general) : undefined;
+    const chatId = general ? this.getGroupIdForInstance(general) : undefined;
+    const topic = general ? String(this.fleetConfig?.instances[general]?.topic_id ?? "") : "";
+    if (!general || !adapterId || !adapter || !chatId) return { ok: false, error: t("kiro_migrate.no_general") };
+    const { plan } = judged;
+    try {
+      const nonce = await this.postNonceButtonPromptOrThrow({
+        prefix: KIRO_MIGRATE_CALLBACK_PREFIX, alertType: "clear_confirm", instanceName: name, adapter, adapterId, chatId,
+        ...(topic ? { threadId: topic } : {}),
+        message: kiroMigrationPrompt(plan, this.getInstanceStatus(name) === "running"),
+        choices: [{ action: "confirm", label: t("kiro_migrate.confirm_button") }, { action: "cancel", label: t("kiro_migrate.cancel_button") }],
+        expiredText: t("kiro_migrate.expired", name),
+        timeoutMs: KIRO_MIGRATE_TIMEOUT_MS,
+      });
+      this.pendingKiroMigrations.set(nonce, plan);
+      const expiry = setTimeout(() => this.pendingKiroMigrations.delete(nonce), KIRO_MIGRATE_TIMEOUT_MS + 60_000);
+      expiry.unref?.();
+    } catch (err) {
+      return { ok: false, error: `${t("kiro_migrate.no_general")} (${(err as Error).message})` };
+    }
+    return { ok: true, text: t("kiro_migrate.requested"), classic_conversation: plan.classicId };
+  }
+
+  /** A fleet admin's Confirm or Cancel on a kiro move. Any fleet admin (the default nonce authorization), in General. */
+  private async handleKiroMigrateCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(KIRO_MIGRATE_CALLBACK_PREFIX, /^kiro-migrate:([0-9a-f]{32}):(confirm|cancel)$/, data, adapterId, adapter);
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const nonce = data.callbackData.slice(KIRO_MIGRATE_CALLBACK_PREFIX.length, KIRO_MIGRATE_CALLBACK_PREFIX.length + 32);
+    const plan = this.pendingKiroMigrations.get(nonce);
+    this.pendingKiroMigrations.delete(nonce);
+    const messageId = entry.messageId ?? data.messageId;
+    if (action === "cancel" || !plan) {
+      await this.retireNonceButtons(entry, messageId, t(plan ? "kiro_migrate.cancelled" : "kiro_migrate.expired", entry.instanceName));
+      return true;
+    }
+    this.eventLog?.insert(plan.name, "kiro_migrate", { classicId: plan.classicId, userId: data.userId });
+    await this.retireNonceButtons(entry, messageId, t("kiro_migrate.applying", plan.name));
+    const outcome = await applyKiroMigration(this.kiroMigrateDeps(), plan);
+    this.logger.info({ name: plan.name, ok: outcome.ok, classicId: plan.classicId }, "kiro classic → TUI move");
+    this.notifyFleetError(outcome.text);
+    if (outcome.ok) this.notifyInstanceTopic(plan.name, outcome.text);
+    return true;
   }
 
   private async handleSettingsChangeCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
@@ -14370,6 +14442,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
+    if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
     if (await this.handleClassicApproval(data, adapterId, adapter)) return true;
     if (this.handleRetiredPromptButton(data, adapterId, adapter)) return true;

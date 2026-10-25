@@ -147,9 +147,9 @@ describe("the kiro launch", () => {
     });
   });
 
-  it("legacy and TUI still resume with --resume", () => {
+  it("legacy still resumes with --resume; TUI never uses the boolean form (#2598 B3)", () => {
     expect(new KiroBackend(scratch("i-"), KIRO).buildCommand(config())).toMatch(/ --resume(\s|$)/);
-    expect(new KiroBackend(scratch("i-"), KIRO).buildCommand(config({ kiroUi: "tui" }))).toMatch(/ --resume(\s|$)/);
+    expect(new KiroBackend(scratch("i-"), KIRO).buildCommand(config({ kiroUi: "tui" }))).not.toMatch(/ --resume(\s|$)/);
   });
 
   it("V3 starts fresh, then resumes the session that launch made by id — never kiro's --resume", () => {
