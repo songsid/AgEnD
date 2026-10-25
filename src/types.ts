@@ -408,6 +408,12 @@ export interface WebConfig {
    */
   /** #2293 global search. #2478: `public_link` (default true) — false keeps it off the temporary public link. */
   search?: { enabled?: boolean; retention_days?: number; public_link?: boolean };
+  /**
+   * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of its
+   * own. `enabled` (default true): false offers no Share and ends every open share. `max_hours` (1–24, default 24): the
+   * longest a share may live.
+   */
+  office_share?: { enabled?: boolean; max_hours?: number };
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
   /**
