@@ -92,24 +92,32 @@ Every remote `uses:` in `.github/workflows` and `.github/actions` is a
 ```
 
 A local composite stays `./.github/actions/…`; its own remote `uses:` are
-pinned too. Dependabot's `github-actions` ecosystem (`.github/dependabot.yml`,
-weekly) updates the SHA and the comment together: patch and minor share one
-PR; each major is its own PR so a Node-runtime or artifact-protocol bump is
-reviewed alone.
-
-The `actions-pinned` job in `ci.yml` runs `npm ci --ignore-scripts` then
-`scripts/ci/assert-actions-pinned.mjs` on every event, including a docs-only
-PR. The guard parses YAML with the lockfile's `js-yaml@4.3.2`
-(`https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz`, integrity
-`sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==`).
+pinned too. A floating tag (`@v4`, `@v4.4.0`, `@main`) or a short SHA fails
+the `actions-pinned` job in `ci.yml`: that job runs `npm ci --ignore-scripts`
+then `scripts/ci/assert-actions-pinned.mjs` on every event, including a
+docs-only PR. The guard parses YAML with the lockfile's `js-yaml@4.3.2`.
 The `build` aggregate fails unless that job is `success`.
 
-To add an action, resolve the tag with
-`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha` (peel an annotated tag
-through `git/ref/tags` then `git/tags`). Do not guess the SHA. Review a
-third-party action at the pinned commit; the only one today is
-`gitleaks/gitleaks-action` (commercial licence, `node20`, `dist/index.js` at
-`ff98106e4c7b2bc287b24eaf42907196329070c7` / v2.3.9).
+### How pins are updated
+
+Dependabot's `github-actions` ecosystem (`.github/dependabot.yml`, weekly,
+`directory: /`) rewrites the commit SHA and the trailing tag comment
+together. Patch and minor version-updates share one PR
+(`github-actions-patch-minor`); security updates of those same levels share
+another (`github-actions-security-patch-minor`). Each major is its own PR
+so a Node-runtime or artifact-protocol bump is reviewed alone. Majors are
+not ignored: Node 20 actions stop on GitHub-hosted runners after 2026-09-16.
+
+Review a Dependabot pin PR by resolving the tag to a SHA
+(`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`; peel an annotated
+tag through `git/ref/tags` then `git/tags`) and checking it matches the
+`uses:` line. Do not guess the SHA or hand-edit it without that lookup.
+Review a third-party action at the pinned commit; the only one today is
+`gitleaks/gitleaks-action` (commercial licence, `dist/index.js` at
+`e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` / v3.0.0).
+
+To add an action by hand, use the same lookup, write the 40-character SHA
+and the tag comment, and leave the pin guard green.
 
 ### Publish workflows
 
@@ -134,8 +142,20 @@ lifecycle scripts: `esbuild` / `lightningcss` postinstall and any native
 ## Dependency review on PRs (#2528)
 
 `dependency-review.yml` runs `actions/dependency-review-action` on pull
-requests into `main` and `release/**`. It fails on high or critical
-advisories in the PR diff, and on a newly introduced licence that is not
-on the allow-list in `.github/dependency-review-config.yml` (the licences
-in the root and website trees today). An undetectable licence is reported
-and does not fail.
+requests into `main` and `release/**`. GitHub diffs the PR against its
+base; this is not a full-tree audit of `main`. Config:
+`.github/dependency-review-config.yml`.
+
+The check **fails** the PR when any of these appear in that diff:
+
+- a **high or critical** advisory (`fail-on-severity: high`) in a
+  `runtime` or `development` scope (`fail-on-scopes`);
+- a newly introduced **licence** that is not on the allow-list (the
+  licences in the root and website trees today: 0BSD, Apache-2.0 and the
+  one Apache-2.0/LGPL/MIT conjunction, BSD-2-Clause, BSD-3-Clause,
+  BlueOak-1.0.0, CC0-1.0, ISC, LGPL-2.1-or-later, LGPL-3.0-or-later, MIT,
+  MPL-2.0, Python-2.0).
+
+It does **not** fail on moderate/low advisories, on an undetectable
+licence (those are reported), or on an advisory that already exists on
+the base branch and this PR does not change.

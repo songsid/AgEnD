@@ -130,7 +130,9 @@ Revocation, expiry, shutdown or a changed baseline prevents new effects. An admi
 
 GitHub Actions used by this repository are pinned to full commit SHAs, so a
 moved tag cannot change what CI or the npm publish workflows run. A CI job
-fails the merge gate if any remote `uses:` is still a tag. See
+fails the merge gate if any remote `uses:` is still a tag. Dependabot's
+weekly `github-actions` updates rewrite the SHA and the trailing tag
+comment together (patch/minor grouped; each major its own PR). See
 [CI coverage — GitHub Actions pins](ci.md#github-actions-pins-2528).
 
 CI verifies npm registry signatures of the root and `website/` install trees
