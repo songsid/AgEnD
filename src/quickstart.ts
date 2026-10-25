@@ -1,4 +1,3 @@
-import { NEW_FLEET_WEB } from "./notice-delivery.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { createInterface } from "node:readline/promises";
 import { writeFileSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -406,7 +405,6 @@ export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: st
   if (projectRoots.length > 0) fleetObj.project_roots = projectRoots;
   // #2598: a new kiro fleet runs kiro's TUI engine (an entry without kiro_ui would be classic).
   fleetObj.defaults = { backend, ...(backend === "kiro-cli" ? { kiro_ui: "tui" } : {}), dashboard: { ...NEW_FLEET_DASHBOARD } };
-  fleetObj.web = { ...NEW_FLEET_WEB };
   return fleetObj;
 }
 

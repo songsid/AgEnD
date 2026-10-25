@@ -834,7 +834,7 @@ export function handleSettingsRequest(
       if (parsed.notifyLogin !== undefined) {
         const holder = { defaults: cfg.defaults, web }; setNoticeMode(holder, "login", parsed.notifyLogin); web = holder.web;
         changes.push({ path: ["web", "notify_login"], value: web.notify_login },
-          { path: ["web", "notice_delivery", "login"], ...(parsed.notifyLogin === "dm" ? { value: "dm" } : { remove: true }) });
+          { path: ["web", "notice_delivery", "login"], remove: true });
       }
       if (parsed.echo !== undefined) { web.echo_to_channel = parsed.echo; changes.push({ path: ["web", "echo_to_channel"], value: parsed.echo }); }
       if (parsed.logTab !== undefined) { web.log_tab = parsed.logTab; changes.push({ path: ["web", "log_tab"], value: parsed.logTab }); }

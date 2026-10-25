@@ -297,7 +297,7 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   cost_guard?: CostGuardConfig;
   hang_detector?: HangDetectorConfig;
   daily_summary?: DailySummaryConfig;
-  /** Daily tips: true/topic, dm with topic fallback, or false/off. Update-completion tips stay with the result. Default: true. */
+  /** Daily tips: true (posted in the General topic) or false. A legacy "dm" (#2581, withdrawn) reads as true. Update-completion tips stay with the result. Default: true. */
   tips?: boolean | "dm";
   /** #2246 step 3: the task board's fleet-level settings. */
   task_board?: {
@@ -428,9 +428,9 @@ export interface WebConfig {
    * `session`: a signed-in web session or the CLI header token. Writes need a credential either way.
    */
   view_access?: "open" | "session";
-  /** Sign-in notices: true/topic (existing default), false/operator notices off, or dm with topic fallback. */
+  /** Sign-in notices: true/topic (default) or false/operator notices off. A legacy "dm" (#2581, withdrawn) reads as true. */
   notify_login?: boolean | "dm";
-  /** Downgrade-safe optional routing; legacy boolean fields remain readable by older releases. */
+  /** Legacy (#2591), ignored and dropped on startup: notices always post in the topic. */
   notice_delivery?: { login?: "dm"; tips?: "dm" };
   /**
    * #1620: how long a web session lasts. Only the LOCAL surface (the dashboard reached directly — loopback, a LAN, a

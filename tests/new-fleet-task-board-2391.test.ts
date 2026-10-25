@@ -33,7 +33,7 @@ describe("a new fleet.yaml says the task board is off", () => {
       channelMode: "topic", accessMode: "locked", allowedUsers: [], projectRoots: [], instances: [], costGuard: { enabled: false }, dailySummary: { enabled: false } };
     const written = yaml.load(yaml.dump(buildFleetConfig(answers))) as Record<string, any>;
     expect([written.defaults.dashboard, validateFleetConfig(written as never).valid, board(written)]).toEqual([{ task_board: false }, true, "off"]);
-    expect([loginNoticeMode(written.web), written.defaults.tips ?? true]).toEqual(["dm", true]);
+    expect([loginNoticeMode(written.web), written.web?.notice_delivery, written.defaults.tips ?? true]).toEqual([true, undefined, true]);   // no DM opt-in (hmsg-3b8ac2af)
   });
   it("agend quickstart (a new fleet, or a fresh start): in defaults beside the backend, one connection or several", () => {
     const telegram = { type: "telegram", token: "t", tokenEnvName: "TG", botUsername: "b", groupId: "-100", userId: "1" };
@@ -41,7 +41,7 @@ describe("a new fleet.yaml says the task board is off", () => {
     for (const platforms of [[telegram], [telegram, discord]]) {
       const written = yaml.load(yaml.dump(newQuickstartFleet(platforms as never, [], "codex"))) as Record<string, any>;
       expect([written.defaults, board(written)]).toEqual([{ backend: "codex", dashboard: { task_board: false } }, "off"]);
-      expect([loginNoticeMode(written.web), written.defaults.tips ?? true]).toEqual(["dm", true]);
+      expect([loginNoticeMode(written.web), written.web?.notice_delivery, written.defaults.tips ?? true]).toEqual([true, undefined, true]);   // no DM opt-in (hmsg-3b8ac2af)
     }
   });
 });
@@ -69,7 +69,7 @@ describe("the setup page (agend setup, the web quickstart before a fleet)", () =
     expect(existsSync(join(h.dir, "fleet.yaml"))).toBe(false);
     const written = await h.commit();
     expect([written.defaults?.dashboard, board(written), validateFleetConfig(written as never).valid]).toEqual([{ task_board: false }, "off", true]);
-    expect([loginNoticeMode(written.web), written.defaults.tips ?? true]).toEqual(["dm", true]);
+    expect([loginNoticeMode(written.web), written.web?.notice_delivery, written.defaults.tips ?? true]).toEqual([true, undefined, true]);   // no DM opt-in (hmsg-3b8ac2af)
   });
   it("control — a fleet.yaml already there is never given the switch: its board stays allowed", async () => {
     const h = await harness("defaults:\n  backend: claude-code\ninstances: {}\n");

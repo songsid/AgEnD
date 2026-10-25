@@ -487,6 +487,7 @@ opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`).
 | Agent mode, Tool set | `agent_mode`, `tool_set` | agent |
 | Tool progress; Bot-to-bot messages in topics (full / summary / hidden); Log level | `tool_progress`, `cross_instance_visibility`, `log_level` | now |
 | Require a delivered reply | `reply_completion_guard` | now |
+| Daily tips (Topic / Off; always posted in General, never by DM) | `tips` | now |
 | Lightweight mode, Fallback model | `lightweight`, `model_failover` | agent |
 | System prompt | `systemPrompt` | agent |
 | Tags | `tags` | now |
@@ -521,11 +522,12 @@ progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 | Terminal session minutes (1–20) | `web_terminal.ttl_minutes` |
 | Web echo | `web.echo_to_channel` |
 | Log tab: each agent's steps | `web.log_tab` |
+| Web sign-in notices (Topic / Off; never by DM, guest and public-link notices always post) | `web.notify_login` |
 | Offer temporary public web links | `web.public_link.allow_public` |
 | Public link minutes (1–480; with a fixed hostname 0–10080, 0 = no expiry) | `web.public_link.ttl_minutes` |
 | Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
-Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `notify_login`, `preview`, `preview_port`,
+Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `preview`, `preview_port`,
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `search` (`retention_days`: unset and 0 = no age limit,
 300,000-row cap), `provider_secrets`, `upload_max_file_mb`,
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.

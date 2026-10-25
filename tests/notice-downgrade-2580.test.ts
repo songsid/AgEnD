@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
-import { loginNoticeMode, tipNoticeMode, normalizeNoticeDelivery, NEW_FLEET_WEB } from "../src/notice-delivery.js";
+import { loginNoticeMode, tipNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "../src/notice-delivery.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
@@ -27,9 +27,10 @@ function put(fm: any, path: string, body: unknown): Promise<number> {
   });
 }
 describe("#2580 downgrade-safe notice storage", () => {
-  it("new fleets keep the legacy field boolean, with DM in the ignored optional key", () => {
-    const config = { defaults: {}, web: { ...NEW_FLEET_WEB }, instances: {} };
-    expect(config.web.notify_login).toBe(true); expect(loginNoticeMode(config.web)).toBe("dm");
+  it("a legacy \"dm\" through setNoticeMode writes only the boolean and drops any route", () => {
+    const config: any = { defaults: {}, web: { notice_delivery: { login: "dm", tips: "dm" } }, instances: {} };
+    setNoticeMode(config, "login", "dm"); setNoticeMode(config, "tips", "dm");
+    expect(config).toEqual({ defaults: { tips: true }, web: { notify_login: true }, instances: {} });
     expect(validateFleetConfig(config).valid).toBe(true);
   });
   it("startup migrates both short-lived string forms, backs up and preserves comments", () => {
@@ -37,10 +38,24 @@ describe("#2580 downgrade-safe notice storage", () => {
     const h = rig(original); h.fm.slimFleetConfigAtStartup();
     const raw = h.read();
     expect([raw.web.notify_login, raw.defaults.tips]).toEqual([true, true]);
-    expect(raw.web.notice_delivery).toEqual({ login: "dm", tips: "dm" });
-    expect([loginNoticeMode(raw.web), tipNoticeMode(raw)]).toEqual(["dm", "dm"]);
+    expect(raw.web.notice_delivery).toBeUndefined();                             // hmsg-d1809f2a/3b8ac2af: no DM routes
+    expect([loginNoticeMode(raw.web), tipNoticeMode(raw)]).toEqual([true, true]);
     expect(readFileSync(h.file, "utf8")).toContain("# Keep my settings");
     expect(readFileSync(h.file + ".bak", "utf8")).toBe(original);
+  });
+  it("startup drops #2591's stored routes and backs up", () => {
+    const original = "# Keep my settings\ndefaults:\n  tips: true\nweb:\n  notify_login: true\n  notice_delivery:\n    login: dm\n    tips: dm\ninstances: {}\n";
+    const h = rig(original); h.fm.slimFleetConfigAtStartup();
+    const raw = h.read();
+    expect([raw.defaults.tips, raw.web.notify_login]).toEqual([true, true]);
+    expect(raw.web.notice_delivery).toBeUndefined();
+    expect(readFileSync(h.file, "utf8")).toContain("# Keep my settings");
+    expect(readFileSync(h.file + ".bak", "utf8")).toBe(original);
+    const off = rig("defaults:\n  tips: false\nweb:\n  notice_delivery:\n    tips: dm\ninstances: {}\n"); off.fm.slimFleetConfigAtStartup();
+    expect(off.read().defaults.tips).toBe(false); expect(off.read().web?.notice_delivery).toBeUndefined();
+    const login = "web:\n  notify_login: true\n  notice_delivery:\n    login: dm\ninstances: {}\n";
+    const only = rig(login); only.fm.slimFleetConfigAtStartup();
+    expect(only.read().web).toEqual({ notify_login: true }); expect(readFileSync(only.file + ".bak", "utf8")).toBe(login);
   });
   it("an accepted hot reload converts legacy strings before a later rollback", async () => {
     const h = rig();
@@ -50,28 +65,40 @@ describe("#2580 downgrade-safe notice storage", () => {
     writeFileSync(h.file, "defaults:\n  tips: dm\nweb:\n  notify_login: dm\ninstances: {}\n");
     expect(await h.fm.reconcileInstances()).toEqual({});
     expect([h.read().web.notify_login, h.read().defaults.tips]).toEqual([true, true]);
-    expect(h.read().web.notice_delivery).toEqual({ login: "dm", tips: "dm" });
+    expect(h.read().web.notice_delivery).toBeUndefined();
   });
   it("real Settings saves, reloads, and clears both modes without ever persisting a string boolean", async () => {
     const h = rig();
-    expect(await put(h.fm, "/api/settings/fleet/defaults", { tips: "dm" })).toBe(200);
+    expect(await put(h.fm, "/api/settings/fleet/defaults", { tips: "dm" })).toBe(200);    // a stale client's "dm" = on, topic
     expect(await put(h.fm, "/api/settings/fleet/web", { notify_login: "dm" })).toBe(200);
     expect([h.read().defaults.tips, h.read().web.notify_login]).toEqual([true, true]);
-    expect(h.read().web.notice_delivery).toEqual({ login: "dm", tips: "dm" });
+    expect(h.read().web.notice_delivery).toBeUndefined();
     h.fm.loadConfig(h.file);
-    expect([loginNoticeMode(h.fm.fleetConfig.web), tipNoticeMode(h.fm.fleetConfig)]).toEqual(["dm", "dm"]);
-    expect(await put(h.fm, "/api/settings/fleet/web", { notify_login: true })).toBe(200);
-    expect(h.read().web.notice_delivery).toEqual({ tips: "dm" });
+    expect([loginNoticeMode(h.fm.fleetConfig.web), tipNoticeMode(h.fm.fleetConfig)]).toEqual([true, true]);
+    expect(await put(h.fm, "/api/settings/fleet/web", { notify_login: false })).toBe(200);
+    expect(h.read().web.notify_login).toBe(false);
     expect(await put(h.fm, "/api/settings/fleet/defaults", { tips: false })).toBe(200);
-    expect([loginNoticeMode(h.read().web), tipNoticeMode(h.read())]).toEqual([true, false]);
+    expect([loginNoticeMode(h.read().web), tipNoticeMode(h.read())]).toEqual([false, false]);
     expect(h.read().web.notice_delivery).toBeUndefined();
   });
+  it.each([["/api/settings/fleet/web", { notify_login: true }], ["/api/settings/fleet/defaults", { tips: true }], ["/api/settings/fleet/web", { log_tab: true }]])(
+    "a managed save (%s %j) drops the stale #2591 routes from the file", async (path, body) => {
+      const h = rig("web:\n  notify_login: true\n  notice_delivery:\n    login: dm\n    tips: dm\ndefaults:\n  tips: true\ninstances: {}\n");
+      expect(await put(h.fm, path, body)).toBe(200);
+      expect(h.read().web.notice_delivery).toBeUndefined();
+      expect([h.read().web.notify_login, h.read().defaults.tips]).toEqual([true, true]);
+    });
   it("off overrides retained routing metadata; legacy shorthand normalizes idempotently", () => {
     const cfg = { defaults: { tips: "dm" as const }, web: { notify_login: "dm" as const } };
     normalizeNoticeDelivery(cfg); const once = structuredClone(cfg); normalizeNoticeDelivery(cfg);
     expect(cfg).toEqual(once);
+    expect(cfg).toEqual({ defaults: { tips: true }, web: { notify_login: true } });
     expect(loginNoticeMode({ notify_login: false, notice_delivery: { login: "dm" } })).toBe(false);
+    expect(loginNoticeMode({ notify_login: true, notice_delivery: { login: "dm" } })).toBe(true);
+    expect(loginNoticeMode({ notify_login: "dm" })).toBe(true);
     expect(tipNoticeMode({ defaults: { tips: false }, web: { notice_delivery: { tips: "dm" } } })).toBe(false);
+    expect(tipNoticeMode({ defaults: { tips: true }, web: { notice_delivery: { tips: "dm" } } })).toBe(true);
+    expect(tipNoticeMode({ defaults: { tips: "dm" } })).toBe(true);
   });
   it("routing has a closed schema and cannot hide unknown Settings effects", () => {
     expect(validateFleetConfig({ defaults: {}, instances: {}, web: { notice_delivery: { login: "email" } } }).valid).toBe(false);

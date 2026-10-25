@@ -469,10 +469,13 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       if ((!delivery || typeof delivery !== "object" || Array.isArray(delivery)) || Object.entries(delivery).some(([key, value]) => !["login", "tips"].includes(key) || value !== "dm")) {
         err("web.notice_delivery", 'must contain only login/tips: "dm"');
       }
+      // Tolerated so an older file stays valid; notices no longer go by DM (hmsg-d1809f2a, hmsg-3b8ac2af).
+      else warn("web.notice_delivery", "ignored: sign-in notices and daily tips post in the topic, never by DM");
     }
     if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean" && config.web.notify_login !== "dm") {
-      err("web.notify_login", 'must be a boolean or "dm"');
+      err("web.notify_login", "must be a boolean");
     }
+    if (config.web.notify_login === "dm") warn("web.notify_login", '"dm" is no longer offered: sign-in notices post in the topic (read as true)');
     // #1306 HTML previews
     if (config.web.preview !== undefined && typeof config.web.preview !== "boolean") err("web.preview", "must be a boolean");
     // #1723: previews over the temporary public link (a second quick tunnel of the link's own).
@@ -556,8 +559,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       }
     }
     if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean" && config.defaults.tips !== "dm") {
-      err("defaults.tips", 'must be a boolean or "dm"');
+      err("defaults.tips", "must be a boolean");
     }
+    if (config.defaults.tips === "dm") warn("defaults.tips", '"dm" is no longer offered: daily tips post in the General topic (read as true)');
     if (config.defaults.task_board !== undefined) {
       if (!isObj(config.defaults.task_board)) err("defaults.task_board", "must be a mapping");
       else if (summaryTime(config.defaults.task_board.summary_at) === undefined) {

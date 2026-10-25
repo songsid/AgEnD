@@ -4,10 +4,10 @@ import { register } from "/assets/app-i18n.js";
 
 register("settings", {
   en: {
-    noticeTopic: "Topic", noticeDm: "Direct message (topic fallback)", noticeOff: "Off",
+    noticeTopic: "Topic", noticeOff: "Off",
     webNotifyLogin: "Web sign-in notices", dailyTips: "Daily tips",
-    webNotifyLoginHint: "DM the signing-in operator or public-link owner; local guest notices go to the owning connection’s first configured admin. Missing account or failed DM falls back to the topic. Off suppresses operator notices only; guest and public-link security notices remain in the topic. Existing default: Topic; new fleets: DM.",
-    dailyTipsHint: "DM the General connection’s first configured admin, with topic fallback. Default: Topic. /tips still posts where invoked.",
+    webNotifyLoginHint: "Posted in the topic. Off suppresses operator notices only; guest and public-link security notices still post. Default: Topic.",
+    dailyTipsHint: "Posted in the General topic. Default: Topic. /tips still posts where invoked.",
     title: "Settings",
     myAgents: "My Agents",
     bots: "Bots",
@@ -679,10 +679,10 @@ register("settings", {
     se_externalEmojiHint: "使用其他伺服器的 emoji，bot 在要加反應的頻道需有「使用外部表情符號」權限。",
     se_unavailable: "無法使用",
     se_hint: "留空即使用預設值。預覽由 AgEnD 依 bot 實際 react 的方式解析。進度前綴不是反應，而是進度訊息開頭的 emoji。",
-    noticeTopic: "頻道", noticeDm: "私訊（失敗時改送頻道）", noticeOff: "關閉",
+    noticeTopic: "頻道", noticeOff: "關閉",
     webNotifyLogin: "網頁登入通知", dailyTips: "每日提示",
-    webNotifyLoginHint: "私訊登入的管理者或公開連結擁有者；本機訪客登入通知送給所屬連線的第一位設定管理員。帳號不明或私訊失敗時改送原頻道。關閉只停用管理者登入通知；訪客與公開連結安全通知仍送頻道。既有預設：頻道；新 fleet：私訊。",
-    dailyTipsHint: "私訊 General 所屬連線的第一位設定管理員，失敗時改送頻道。預設：頻道。/tips 仍送至呼叫的聊天室。",
+    webNotifyLoginHint: "發在頻道。關閉只停用管理者登入通知；訪客與公開連結安全通知仍會發出。預設：頻道。",
+    dailyTipsHint: "發在 General 頻道。預設：頻道。/tips 仍送至呼叫的聊天室。",
     title: "設定",
     myAgents: "我的 Agent",
     bots: "機器人",

@@ -242,21 +242,26 @@ describe("Settings P0 redesign shell", () => {
     expect(p.root.querySelector("dialog")!.textContent).toContain("Stored but inactive: kiro-cli in mcp mode does not support reply-drop recovery.");
   });
 
-  it("daily tips defaults to Topic and stages a DM choice", async () => {
+  it("daily tips offer only Topic and Off (no DM, hmsg-d1809f2a), default Topic, and stage Off", async () => {
     answer = succeed;
     await mountSettings("agent-defaults");
     const select = p.root.querySelector("#g-tips");
     expect(select.value).toBe("true");
+    expect([...select.querySelectorAll("option")].map(o => o.value)).toEqual(["true", "false"]);
     expect(select.closest(".field").textContent).toContain("In effect: Topic");
-    select.value = "dm"; fire(select, "change"); await settle(); await applyStaged();
-    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: "dm" });
+    expect(select.closest(".field").textContent).not.toMatch(/DM|Direct message/);
+    await choose(select, "false"); await applyStaged();
+    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: false });
   });
-  it("shows canonical DM tip storage and stages Topic to clear its routing preference", async () => {
-    w = world({ fleet: { defaults: { tips: true }, web: { notice_delivery: { tips: "dm" } }, instances: {}, channels: [] } });
-    answer = succeed; await mountSettings("agent-defaults");
-    const select = p.root.querySelector("#g-tips"); expect(select.value).toBe("dm");
-    await choose(select, "true"); await applyStaged();
-    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: true });
+  it("a legacy tips DM route or \"dm\" value shows as Topic, and Topic saves canonical true", async () => {
+    for (const fleet of [{ defaults: { tips: true }, web: { notice_delivery: { tips: "dm" } } }, { defaults: { tips: "dm" } }]) {
+      w = world({ fleet: { ...fleet, instances: {}, channels: [] } });
+      answer = succeed; await mountSettings("agent-defaults");
+      const select = p.root.querySelector("#g-tips"); expect(select.value).toBe("true");
+      expect(select.closest(".field").textContent).toContain("In effect: Topic");
+    }
+    await choose(p.root.querySelector("#g-tips"), "false"); await applyStaged();
+    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: false });
   });
   it("shows the off fleet reply-trigger default and stages an explicit on", async () => {
     answer = succeed;

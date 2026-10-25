@@ -34,7 +34,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (!body || typeof body !== "object" || Array.isArray(body)
     || Object.keys(body).some(key => !(WEB_SETTINGS_BODY_KEYS as readonly string[]).includes(key))) return { error: "unknown web field" };
   const patch = body as Record<string, unknown>;
-  if (patch.notify_login !== undefined && typeof patch.notify_login !== "boolean" && patch.notify_login !== "dm") return { error: 'notify_login must be a boolean or "dm"' };
+  if (patch.notify_login !== undefined && typeof patch.notify_login !== "boolean" && patch.notify_login !== "dm") return { error: "notify_login must be a boolean" };
   if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return { error: "echo_to_channel must be a boolean" };
   if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
   if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };

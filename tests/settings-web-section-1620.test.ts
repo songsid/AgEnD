@@ -177,19 +177,21 @@ describe("Settings → Web, as rendered", () => {
     expect([capped, over, row("web.upload_max_total_mb")])
       .toEqual([["10 default capped by upload_max_total_mb", "10"], "60 in effect: 10", "999 in effect: 100"]);
   });
-  it("offers all three notice modes, shows the effective default, and stages dm", async () => {
+  it("offers Topic and Off only (no DM, hmsg-3b8ac2af), shows the effective default, and stages Off", async () => {
     const w = await open({}, "access");
     const select = w.$("webNotifyLogin");
     expect(select.value).toBe("true");
-    expect(select.querySelectorAll("option").map((o: any) => o.value)).toEqual(["true", "dm", "false"]);
+    expect(select.querySelectorAll("option").map((o: any) => o.value)).toEqual(["true", "false"]);
     expect(select.closest(".field").textContent).toContain("In effect: Topic");
-    select.value = "dm"; fire(select, "change"); await settle(); await w.apply();
-    expect(w.webWrites().at(-1)?.body).toEqual({ notify_login: "dm" });
+    expect(select.closest(".field").textContent).not.toMatch(/DM|Direct message/);
+    select.value = "false"; fire(select, "change"); await settle(); await w.apply();
+    expect(w.webWrites().at(-1)?.body).toEqual({ notify_login: false });
   });
-  it("shows a saved dm notice mode and keeps its select disabled on the public link", async () => {
+  it.each([[{ notify_login: true, notice_delivery: { login: "dm" } }], [{ notify_login: "dm" }]])("a legacy DM setting %j shows as Topic; the select stays disabled on the public link", async web => {
     p.document.body.setAttribute("data-public-link", "1");
-    const w = await open({ web: { notify_login: true, notice_delivery: { login: "dm" } } }, "access");
-    expect(w.$("webNotifyLogin").value).toBe("dm");
+    const w = await open({ web }, "access");
+    expect(w.$("webNotifyLogin").value).toBe("true");
+    expect(w.$("webNotifyLogin").closest(".field").textContent).toContain("In effect: Topic");
     expect(w.$("webNotifyLogin").closest("fieldset").disabled).toBe(true);
     expect(w.webWrites()).toEqual([]);
   });

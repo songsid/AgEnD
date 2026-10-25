@@ -1,29 +1,26 @@
 import type { FleetDefaults, WebConfig } from "./types.js";
 
+/** A legacy "dm" (#2581) is still accepted as input and means true: notices are never sent by DM (hmsg-d1809f2a, hmsg-3b8ac2af). */
 export type NoticeMode = boolean | "dm";
 type NoticeConfig = { defaults: FleetDefaults; web?: WebConfig };
-/** Old versions see ordinary enabled notices; only new versions interpret the routing preference. */
-export const NEW_FLEET_WEB: Readonly<Pick<WebConfig, "notify_login" | "notice_delivery">> = Object.freeze({
-  notify_login: true, notice_delivery: Object.freeze({ login: "dm" as const }),
-});
-export function loginNoticeMode(web?: WebConfig): NoticeMode {
-  const enabled = web?.notify_login ?? true;
-  return enabled === true && web?.notice_delivery?.login === "dm" ? "dm" : enabled;
+/** Sign-in notices post in the topic unless turned off; a legacy "dm" or `notice_delivery.login` route reads as on. */
+export function loginNoticeMode(web?: WebConfig): boolean {
+  return web?.notify_login !== false;
 }
-export function tipNoticeMode(config: NoticeConfig): NoticeMode {
-  const enabled = config.defaults.tips ?? true;
-  return enabled === true && config.web?.notice_delivery?.tips === "dm" ? "dm" : enabled;
+/** Daily tips always post in the General topic; an old "dm" reads as on. */
+export function tipNoticeMode(config: NoticeConfig): boolean {
+  return config.defaults.tips !== false;
 }
-/** API choices remain three-way; disk always uses boolean legacy fields plus an optional, ignored routing key. */
+/** Disk keeps only the boolean field; setting it clears the stale `notice_delivery` route #2591 stored beside it. */
 export function setNoticeMode(config: NoticeConfig, kind: "login" | "tips", mode: NoticeMode): void {
   const web = config.web = { ...config.web };
   const delivery = { ...web.notice_delivery };
-  if (mode === "dm") delivery[kind] = "dm"; else delete delivery[kind];
+  delete delivery[kind];
   if (Object.keys(delivery).length) web.notice_delivery = delivery; else delete web.notice_delivery;
   if (kind === "login") web.notify_login = mode !== false; else config.defaults.tips = mode !== false;
 }
-/** Accept the short-lived #2581 string form, but never write it back to either legacy boolean key. */
+/** Accept the short-lived #2581 string form and #2591's routes, but write back only booleans. */
 export function normalizeNoticeDelivery(config: NoticeConfig): void {
-  if (config.web?.notify_login === "dm") setNoticeMode(config, "login", "dm");
-  if (config.defaults.tips === "dm") setNoticeMode(config, "tips", "dm");
+  if (config.web?.notify_login === "dm" || config.web?.notice_delivery?.login) setNoticeMode(config, "login", config.web.notify_login !== false);
+  if (config.defaults.tips === "dm" || config.web?.notice_delivery?.tips) setNoticeMode(config, "tips", config.defaults.tips !== false);
 }

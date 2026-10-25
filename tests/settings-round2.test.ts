@@ -52,13 +52,19 @@ function context(dataDir = "/tmp") {
 }
 
 describe("#2580 notice settings writes", () => {
-  it("saves the three web modes through the real API and rejects other values", async () => {
+  it("saves true/false (a legacy dm as true) through the real API and rejects other values", async () => {
     const { ctx } = context();
     for (const mode of [true, false, "dm"]) {
+      // No DM any more (hmsg-3b8ac2af): a stale "dm" saves as on, with no route.
       expect((await request("/api/settings/fleet/web", ctx, "PUT", { notify_login: mode })).status).toBe(200);
-      expect(loginNoticeMode(ctx.fleetConfig!.web)).toBe(mode);
+      expect(loginNoticeMode(ctx.fleetConfig!.web)).toBe(mode !== false);
+      expect(ctx.fleetConfig!.web?.notify_login).toBe(mode !== false);
+      expect(ctx.fleetConfig!.web?.notice_delivery).toBeUndefined();
+      // Tips have no DM (hmsg-d1809f2a): a stale "dm" saves as on, with no route.
       expect((await request("/api/settings/fleet/defaults", ctx, "PUT", { tips: mode })).status).toBe(200);
-      expect(tipNoticeMode(ctx.fleetConfig!)).toBe(mode);
+      expect(tipNoticeMode(ctx.fleetConfig!)).toBe(mode !== false);
+      expect(ctx.fleetConfig!.defaults.tips).toBe(mode !== false);
+      expect(ctx.fleetConfig!.web?.notice_delivery?.tips).toBeUndefined();
     }
     expect((await request("/api/settings/fleet/web", ctx, "PUT", { notify_login: "email" })).status).toBe(400);
     expect((await request("/api/settings/fleet/defaults", ctx, "PUT", { tips: "email" })).status).toBe(400);

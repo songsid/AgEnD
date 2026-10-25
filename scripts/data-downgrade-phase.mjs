@@ -233,12 +233,16 @@ if (phase === 'create') {
   assert.deepEqual(config.needs_you, { live_message: true, dm: false });
   state.web = config.web; state.channelIds = config.channels.map(c => c.id);
   checks.push('new owned Kiro files, pointer and config created in scratch');
-  const { NEW_FLEET_WEB, setNoticeMode } = await load('notice-delivery.js');
-  const notices = { defaults: {}, web: { ...NEW_FLEET_WEB }, instances: {} };
-  setNoticeMode(notices, 'tips', 'dm');
+  const { setNoticeMode } = await load('notice-delivery.js');
+  const notices = { defaults: {}, web: {}, instances: {} };
+  setNoticeMode(notices, 'login', 'dm'); setNoticeMode(notices, 'tips', 'dm');
+  // Notices no longer go by DM (hmsg-d1809f2a, hmsg-3b8ac2af): a legacy "dm" writes plain booleans, no route.
+  assert.deepEqual(notices.web, { notify_login: true }); assert.equal(notices.defaults.tips, true);
+  // A file written by 2.3.x before that still carries #2591's routes; it stays valid here and in the old package.
+  notices.web.notice_delivery = { login: 'dm', tips: 'dm' };
   assert.equal(validateFleetConfig(notices).valid, true);
   writeFileSync(join(scratch, 'notice-fleet.yaml'), yaml.dump(notices));
-  checks.push('DM notice config producer writes downgrade-safe boolean fields');
+  checks.push('notice config producer writes boolean fields; a legacy DM-routed file stays valid');
   const { normalizeOfficeStorage } = await load('dashboard-permissions.js');
   const office = { defaults: { dashboard: { office: true } }, instances: { officeAgent: { working_directory: scratch, dashboard: { office: false } } } };
   normalizeOfficeStorage(office);
@@ -343,10 +347,10 @@ if (phase === 'create') {
     assert.equal(config.defaults.office_access, true); assert.equal(config.instances.officeAgent.office_access, false);
     assert.equal(config.defaults.dashboard?.office, undefined); assert.equal(config.instances.officeAgent.dashboard?.office, undefined);
   });
-  checked('DM notice preferences survive the published old config round trip', () => {
+  checked('legacy DM notice routes read as topic after the published old config round trip', () => {
     const config = loadFleetConfig(join(scratch, 'notice-fleet.yaml'));
     assert.equal(validateFleetConfig(config).valid, true);
-    assert.equal(loginNoticeMode(config.web), 'dm'); assert.equal(tipNoticeMode(config), 'dm');
+    assert.equal(loginNoticeMode(config.web), true); assert.equal(tipNoticeMode(config), true);   // stale routes read as topic
   });
   checked('recovery receipts survive old writes and still prevent duplicate admission after return', () => {
     assert.deepEqual(recoveryRows(), state.workingRecoveryRows);
