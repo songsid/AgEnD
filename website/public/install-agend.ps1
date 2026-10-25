@@ -6,7 +6,8 @@
 
 param(
     [switch]$Force,  # 強制重新執行所有階段
-    [string]$InstallVersion = $env:AGEND_VERSION
+    [string]$InstallVersion = $env:AGEND_VERSION,
+    [string]$InstallRunId = ''  # 一行安裝指令給的這一次的代號：它讀 last.json 時，只認這一次寫的（#2650）
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,11 +22,98 @@ $NODE_VERSION = "22"  # LTS 穩定版，AgEnD 需要 22+
 
 function Write-Step($num, $total, $msg) {
     Write-Host "`n[$num/$total] $msg" -ForegroundColor Cyan
+    Write-InstallLog "[$num/$total] $msg"
+    Set-InstallStage ([string]$num)
 }
-function Write-Ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green }
-function Write-Warn($msg) { Write-Host "  [!!] $msg" -ForegroundColor Yellow }
-function Write-Err($msg) { Write-Host "  [X] $msg" -ForegroundColor Red }
-function Write-Info($msg) { Write-Host "  $msg" -ForegroundColor White }
+function Write-Ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green; Write-InstallLog "  [OK] $msg" }
+function Write-Warn($msg) { Write-Host "  [!!] $msg" -ForegroundColor Yellow; Write-InstallLog "  [!!] $msg" }
+function Write-Err($msg) {
+    Write-Host "  [X] $msg" -ForegroundColor Red; Write-InstallLog "  [X] $msg"
+    # 第一次出錯時說一次安裝紀錄在哪裡：視窗關掉以後，回報問題就附上這個檔案。
+    if ($script:InstallLog -and -not $script:InstallLogShown) {
+        $script:InstallLogShown = $true
+        Write-Host "  安裝紀錄（回報問題時請附上這個檔案）：$($script:InstallLog)" -ForegroundColor Yellow
+    }
+}
+function Write-Info($msg) { Write-Host "  $msg" -ForegroundColor White; Write-InstallLog "  $msg" }
+
+# ── 安裝紀錄與結果檔（#2650 第 9 項）──────────────────────────
+# 視窗關掉以後還要能回報問題：畫面上說的話、長步驟裡子程式的每一行輸出，都寫進 %LOCALAPPDATA%\AgEnD\install-logs 裡
+# 這一次的紀錄檔，寫之前先遮掉設定碼、登入碼、token 和網址裡的驗證參數（Protect-LogText）。設定碼與儀表板登入碼的大框
+# 直接用 Write-Host 印，本來就不進紀錄。每個紀錄檔最多 5 MB，只留最近 10 個。
+# 結果檔 last.json 記這一次的紀錄檔、目前階段（Write-Step 更新）、結果（running／failed／done）和失敗種類
+# （Set-InstallFailure）；一行安裝指令（install.ps1）在安裝程式結束、失敗或視窗被關掉時讀它，說出停在哪一步和紀錄檔的位置。
+# 寫紀錄失敗絕不影響安裝。
+$INSTALL_LOG_MAX_BYTES = 5MB
+$INSTALL_LOG_KEEP = 10
+$script:InstallLog = $null; $script:InstallLogShown = $false; $script:InstallLogFull = $false
+$script:InstallStage = 'start'; $script:InstallFailure = $null; $script:InstallRunId = ''
+function Get-InstallLogDir {
+    if (-not $env:LOCALAPPDATA) { return $null }
+    return (Join-Path (Join-Path $env:LOCALAPPDATA 'AgEnD') 'install-logs')
+}
+function Protect-LogText([string]$text) {
+    $t = $text
+    $t = $t -replace '(?i)([?&#](?:code|token|state|key|sig|signature|secret|password|access_token|id_token|refresh_token|auth)=)[^&#\s]+', '$1[hidden]'
+    $t = $t -replace '\b\d{6,}:[A-Za-z0-9_-]{30,}', '[hidden token]'
+    $t = $t -replace '[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}', '[hidden token]'
+    $t = $t -replace '\b(?:sk-|gh[pousr]_|xox[abpr]-|AKIA)[A-Za-z0-9_-]{12,}', '[hidden token]'
+    $t = $t -replace '(?i)\b(authorization)(\s*[:=]\s*).+$', '$1$2[hidden]'
+    $t = $t -replace '(?i)\b(token|password|passwd|secret|api[ _-]?key)(\s*[:=]\s*)(?!\[hidden)\S+', '$1$2[hidden]'
+    $t = $t -replace '(?i)\b(bearer)(\s+)(?!\[hidden)\S+', '$1$2[hidden]'
+    # code: 後面的值：錯誤碼（數字、0x…）留著，診斷要用；其他（登入碼、設定碼）遮掉。
+    $t = $t -replace '(?i)\b(code)(\s*[:=]\s*)(?!\[hidden|0x[0-9a-f]+\b|-?\d+\b)\S+', '$1$2[hidden]'
+    $t = $t -replace '\b[A-Z0-9]{4}-[A-Z0-9]{4,5}\b', '[hidden code]'
+    return $t
+}
+function Write-InstallLog([string]$text) {
+    if (-not $script:InstallLog -or $script:InstallLogFull) { return }
+    try {
+        $line = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') + ' ' + (Protect-LogText $text) + "`r`n"
+        $size = 0; try { $size = (Get-Item -LiteralPath $script:InstallLog -ErrorAction Stop).Length } catch { }
+        if ($size + $line.Length * 3 -gt $INSTALL_LOG_MAX_BYTES) {
+            $script:InstallLogFull = $true
+            $line = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') + " [log reached $INSTALL_LOG_MAX_BYTES bytes; later lines are not kept]`r`n"
+        }
+        [IO.File]::AppendAllText($script:InstallLog, $line, (New-Object System.Text.UTF8Encoding $true))
+    } catch { }
+}
+function Save-InstallReceipt([string]$outcome, [string[]]$pendingSignIns = @()) {
+    $dir = Get-InstallLogDir
+    if (-not $dir) { return }
+    if ($outcome -eq 'done') { $script:InstallFailure = $null }
+    try {
+        $receipt = [ordered]@{
+            run = $script:InstallRunId; outcome = $outcome; stage = $script:InstallStage; failure = $script:InstallFailure
+            log = $script:InstallLog; pendingSignIns = @($pendingSignIns); time = (Get-Date).ToUniversalTime().ToString('o')
+        } | ConvertTo-Json -Compress
+        $file = Join-Path $dir 'last.json'
+        [IO.File]::WriteAllText("$file.tmp", $receipt, (New-Object System.Text.UTF8Encoding $false))
+        Move-Item -LiteralPath "$file.tmp" -Destination $file -Force
+    } catch { }
+}
+# 進到新的一步：上一步重試成功前記下的失敗種類不再算數。
+function Set-InstallStage([string]$stage) { $script:InstallStage = $stage; $script:InstallFailure = $null; Save-InstallReceipt 'running' }
+# 失敗的種類：network、download、wsl、backend、agend、auth、service、setup、error（沒預料到的錯誤）。
+function Set-InstallFailure([string]$kind) {
+    $script:InstallFailure = $kind
+    Write-InstallLog "FAILED stage=$($script:InstallStage) kind=$kind"
+    Save-InstallReceipt 'failed'
+}
+function Start-InstallLog([string]$runId) {
+    if ($runId -match '^[0-9a-f]{32}$') { $script:InstallRunId = $runId }
+    $dir = Get-InstallLogDir
+    if (-not $dir) { return }
+    try {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        @(Get-ChildItem -LiteralPath $dir -Filter 'install-*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending |
+            Select-Object -Skip ($INSTALL_LOG_KEEP - 1)) | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        $script:InstallLog = Join-Path $dir ('install-' + (Get-Date).ToString('yyyyMMdd-HHmmss') + '-' + $PID + '.log')
+        $os = try { [Environment]::OSVersion.VersionString } catch { '?' }
+        Write-InstallLog ("AgEnD installer started; PowerShell {0}; {1}; {2}; requested version '{3}'; Force={4}" -f $PSVersionTable.PSVersion, $os, $env:PROCESSOR_ARCHITECTURE, $InstallVersion, [bool]$Force)
+        Save-InstallReceipt 'running'
+    } catch { $script:InstallLog = $null }
+}
 
 function Stage-Done($stage) {
     if ($Force) { return $false }
@@ -902,6 +990,7 @@ function Invoke-SetupAndService([string]$BackendSignins = '') {
         $code = Invoke-WslStep -Label "安裝並啟動 AgEnD 服務" -Usually "通常不到 1 分鐘" -UpperMinutes 3 -Script ($AGEND_ENV + 'if systemctl --user is-active --quiet com.agend.fleet; then echo "AgEnD service is already running"; else agend install; fi')
         if ($code -eq 0) { return $true }
         Write-Err "AgEnD 服務沒有安裝成功（結束碼 $code）。設定已經存好，不用重新設定。"
+        Set-InstallFailure 'service'
         $again = Read-Host "  按 Enter 再試一次；輸入 n 再按 Enter 結束"
         if ($again -match '^\s*[nN]') { return $false }
     }
@@ -1183,6 +1272,7 @@ function Invoke-Watched {
     $printLine = {
         param([string]$line)
         & $clearStatus; Write-Host ("    " + $line) -ForegroundColor DarkGray
+        Write-InstallLog ("    " + $line)
         if ($OnLine) { & $OnLine $line }
     }
     $emit = {
@@ -1288,6 +1378,15 @@ function Invoke-WslStep {
 
 # Validate before any WSL, network, registry or installation action.
 $AgendInstallVersion = Get-SavedInstallVersion $InstallVersion $Force.IsPresent
+Start-InstallLog $InstallRunId
+# 沒有被接住的錯誤：記進安裝紀錄、說明停在哪裡，而不是只丟出一段 PowerShell 錯誤就結束（#2650 第 9 項）。
+trap {
+    Write-InstallLog ("unexpected error: " + $_.Exception.Message + " " + ($_.InvocationInfo.PositionMessage -replace "`r?`n", ' '))
+    Set-InstallFailure 'error'
+    Write-Err ("安裝程式遇到沒有預料到的錯誤，已經停下來：" + $_.Exception.Message)
+    Write-Info "之後再執行同一行安裝指令，會從還沒完成的步驟繼續。"
+    Read-Host "按 Enter 結束"; exit 1
+}
 
 Clear-Host
 Write-Host "=" * 43 -ForegroundColor Magenta
@@ -1414,7 +1513,7 @@ if (Stage-Done 1) {
     switch (Invoke-WslUpdateStage) {
         'reboot' { Request-Reboot "WSL 已安裝，需要重新開機才能生效" }
         'verify-reboot' { Mark-Stage "1b"; Request-Reboot "WSL 安裝完成，但還需要重新開機才能使用" }
-        'failed' { Read-Host "按 Enter 結束"; exit 1 }
+        'failed' { Set-InstallFailure 'download'; Read-Host "按 Enter 結束"; exit 1 }
     }
 
     # ── 1c: 設定 WSL 預設版本為 2 ──
@@ -1795,6 +1894,7 @@ Write-Info "    agend web               # 取得儀表板的一次性登入碼"
 Write-Info ("    手動啟動：" + (Get-AgendStartHint $UBUNTU_DISTRO $AGEND_USER))
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
+Save-InstallReceipt 'done' @($skippedLogins | ForEach-Object { [string]$_.Key })
 
 # 清除進度檔與自動接續的登記
 Remove-Item $ProgressFile -Force -ErrorAction SilentlyContinue
