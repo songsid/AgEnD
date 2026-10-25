@@ -376,7 +376,7 @@ const STUDIO_FURNITURE = [
 ].sort((a, b) => a.depth - b.depth);
 /** The studio's pack: the same shape as a checked one (fleet-office-pack.js), furniture by `shape` instead of sprites. */
 export const STUDIO_PACK = {
-  format: 1, id: "studio", scale: 1, areas: STUDIO_AREAS, door: { x: HALL_X, y: 704 }, furniture: STUDIO_FURNITURE, ...studioGraph(STUDIO_AREAS), straight: false,
+  format: 1, id: "studio", scale: 1, areas: STUDIO_AREAS, door: { x: HALL_X, y: 704 }, furniture: STUDIO_FURNITURE, ...studioGraph(STUDIO_AREAS),
   stateZones: { working: "desks", idle: "lounge", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" },
   characters: {}, byInstance: {}, props: {}, bubbles: {},
 };
@@ -561,9 +561,10 @@ const defaultImage = (url) => new Promise((resolve) => {
 /**
  * An uploaded pack (GET /ui/office-skins/<id>?v=<sha>) as an OfficeSkin: its manifest checked (null when it is not a
  * pack: the page then draws a built-in style and says so), its pictures loaded from their content ids (one that does
- * not load is drawn by the built-in skin). Kept per id and sha, so a pack is fetched once.
+ * not load is drawn by the built-in skin). Kept per id and sha, so a pack is fetched once. `url`: where a picture's path
+ * is read (a share link's page reads its own address, #2636).
  */
-export function loadPackSkin(id, sha, { fetch: get = globalThis.fetch, image = defaultImage } = {}) {
+export function loadPackSkin(id, sha, { fetch: get = globalThis.fetch, image = defaultImage, url = (p) => p } = {}) {
   const key = `${id}@${sha}`;
   if (loaded.has(key)) return loaded.get(key);
   const base = `/ui/office-skins/${encodeURIComponent(id)}`;
@@ -579,7 +580,7 @@ export function loadPackSkin(id, sha, { fetch: get = globalThis.fetch, image = d
       await Promise.all(packImages(c.pack).map(async (src) => {
         const fid = own(files, src);
         if (typeof fid !== "string" || !/^[0-9a-f]{32}$/.test(fid)) return;
-        const im = await image(`${base}/img/${fid}.png`);
+        const im = await image(url(`${base}/img/${fid}.png`));
         if (im) images.set(src, im);
       }));
       return spriteSkin(c.pack, images);
