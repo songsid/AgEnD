@@ -468,11 +468,18 @@ these hold:
    This is compared on every path except `docs/` and `changes/`. Anything else
    prints `NEEDS_REVIEW <paths>`, and the reviewer re-confirms.
 4. **The base branch tip is an ancestor**, or the base and PR changed entirely
-   disjoint paths since their merge-base. Both rename ends, deletions, docs and
-   fragments count. If the base changed root `package.json`, `package-lock.json`
-   or any `.github/**` path, it always requires merge-sync. Any overlap or
-   failed read blocks. A disjoint merge prints `merged behind main, disjoint`
-   on stderr; it still requires the original approved exact head and green CI.
+   disjoint paths since their merge-base, or their paths overlap but a
+   three-way merge of the base tip and the head is clean. Both rename ends,
+   deletions, docs and fragments count as paths. The three-way merge is
+   `git merge-tree --write-tree`; a git older than 2.38 runs the same merge in
+   a private scratch worktree and throws it away. If the base changed root
+   `package.json`, `package-lock.json` or any `.github/**` path, it always
+   requires merge-sync. A real conflict or a failed read blocks with
+   `merge-sync first`. A merge behind main prints `merged behind main, disjoint`
+   or `merged behind main, overlapping but clean` (with the shared paths) on
+   stderr; it still requires the original approved exact head and green CI.
+   Just before the merge, the base is fetched again and this check repeats:
+   a base that moved to a conflicting tip blocks there.
 5. **CI passed in full on the exact head.** Every required check has a run, and
    every run (the latest of each name) is completed with `success`. A skipped
    or neutral run does not count. The required checks are

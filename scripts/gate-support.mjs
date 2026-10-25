@@ -21,8 +21,40 @@ function paths(base, head) { return new Set(git('diff', '--name-only', '-z', '--
 function overlap(base, head) {
   const mb = git('merge-base', base, head).trim();
   const upstream = paths(mb, base), own = paths(mb, head);
-  const collisions = [...upstream].filter(p => own.has(p) || p === 'package.json' || p === 'package-lock.json' || p.startsWith('.github/'));
+  const collisions = [...upstream].filter(p => own.has(p) || globalPath(p));
   return collisions.length ? `OVERLAP ${JSON.stringify(collisions)}` : 'DISJOINT';
+}
+// Main's package, lockfile and workflow changes always need a merge-sync, however cleanly they would merge.
+const globalPath = p => p === 'package.json' || p === 'package-lock.json' || p.startsWith('.github/');
+// mergeCheck: DISJOINT, CLEAN [paths] (overlapping, but a three-way merge of base and head has no conflict),
+// CONFLICT [paths], or OVERLAP [paths] when main changed a global path. Any git failure throws (→ BLOCKED).
+function mergeCheck(base, head) {
+  const verdict = overlap(base, head);
+  if (verdict === 'DISJOINT') return verdict;
+  const mb = git('merge-base', base, head).trim();
+  const upstream = paths(mb, base), own = paths(mb, head);
+  const global = [...upstream].filter(globalPath);
+  if (global.length) return `OVERLAP ${JSON.stringify(global)}`;
+  const shared = JSON.stringify([...upstream].filter(p => own.has(p)));
+  return threeWayClean(base, head) ? `CLEAN ${shared}` : `CONFLICT ${shared}`;
+}
+// threeWayClean: git merge-tree --write-tree (git ≥ 2.38: 0 clean, 1 conflicted, the tree id first either way). An
+// older git does not know --write-tree, so the merge runs in a private scratch worktree instead and is thrown away.
+function threeWayClean(base, head) {
+  const t = spawnSync('git', ['merge-tree', '--write-tree', '--no-messages', base, head], { encoding: 'utf8', timeout: 120000, maxBuffer: 16 * 1024 * 1024 });
+  if (!t.error && (t.status === 0 || t.status === 1) && sha(t.stdout.split('\n')[0])) return t.status === 0;
+  const scratch = join(store(), `merge-check-${randomBytes(6).toString('hex')}`);
+  git('worktree', 'add', '-q', '--detach', scratch, base);
+  try {
+    const m = spawnSync('git', ['-c', 'rerere.enabled=false', '-c', 'user.name=gate', '-c', 'user.email=gate@invalid', 'merge', '-q', '--no-commit', '--no-ff', '--no-edit', head],
+      { cwd: scratch, encoding: 'utf8', timeout: 120000, maxBuffer: 16 * 1024 * 1024 });
+    requireThat(!m.error && m.status !== null, `git merge failed: ${m.error?.message}`);
+    if (m.status === 0) return true;
+    requireThat(run('git', ['ls-files', '-u'], scratch).trim() !== '', `git merge failed: ${m.stderr?.slice(0, 300)}`);
+    return false;
+  } finally {
+    git('worktree', 'remove', '--force', scratch);
+  }
 }
 function privatePath(path, directory = false) {
   const st = lstatSync(path);
@@ -336,6 +368,7 @@ try {
   const [action, ...args] = process.argv.slice(2);
   let result;
   if (action === 'overlap') result = overlap(...args);
+  else if (action === 'merge-check') result = mergeCheck(...args);
   else if (action === 'prepare') result = prepare(...args);
   else if (action === 'body') result = readPrivate(operationFile(args[0])).body;
   else if (action === 'record') { record(...args); result = 'RECORDED'; }

@@ -207,7 +207,8 @@ function world() {
   }] });
   const approveText = (sha: string, pr = 7) => `APPROVE — PR #${pr} @${sha}（GH exact head、CI 5/5 SUCCESS）。\nNotes: none.`;
   // GIT_FAIL_ON: a regex over git's arguments; a matching call fails (a stand-in for a git read failure).
-  writeFileSync(join(bin, "git"), `#!/bin/bash\nif [ -n "\${GIT_FAIL_ON:-}" ] && [[ " $* " =~ $GIT_FAIL_ON ]]; then echo "fatal: injected" >&2; exit 128; fi\nexec ${spawnSync("bash", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim()} "$@"\n`);
+  // GIT_LOG: a file each git call's arguments are appended to.
+  writeFileSync(join(bin, "git"), `#!/bin/bash\n[ -n "\${GIT_LOG:-}" ] && echo "$*" >> "$GIT_LOG"\nif [ -n "\${GIT_FAIL_ON:-}" ] && [[ " $* " =~ $GIT_FAIL_ON ]]; then echo "fatal: injected" >&2; exit 128; fi\nexec ${spawnSync("bash", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim()} "$@"\n`);
   chmodSync(join(bin, "git"), 0o755);
   let extraEnv: Record<string, string> = {};
   const setEnv = (e: Record<string, string>) => { extraEnv = e; };
@@ -736,8 +737,10 @@ describe("gate workflow 1480: reviewer prefixes and disjoint bases", { timeout: 
     else w.sh(w.dev, "mv", "docs/x.md", "docs/renamed.md");
     w.commit("rename", {}); w.sh(w.dev, "push", "-q", "origin", "main");
     const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
-    expect(r.status).toBe(kind === "unrelated" ? 0 : 1);
-    if (kind !== "unrelated") expect(r.line).toContain("src/a.ts");
+    // A pure rename of the file the PR edits merges cleanly (the edit follows the rename): overlapping but clean.
+    expect(r.status).toBe(kind === "destination" ? 1 : 0);
+    if (kind !== "unrelated") expect(r.line + r.stderr).toContain("src/a.ts");
+    if (kind === "source") expect(r.stderr).toContain("merged behind main, overlapping but clean");
   });
   it("PR rename destination and deleted source both count", () => {
     const w = world(); w.sh(w.dev, "mv", "src/a.ts", "src/renamed.ts");
@@ -752,6 +755,80 @@ describe("gate workflow 1480: reviewer prefixes and disjoint bases", { timeout: 
     w.sh(w.dev,"push","-q","origin","main:refs/heads/future");
     const r = w.run(["7",w.approved,"xmsg-approve-1"]);
     expect(r.status).toBe(1); expect(r.line).toContain("base moved or overlaps"); expect(w.writes(r.calls)).toEqual([]);
+  });
+  // The user's rule (2026-10-25): an overlap that merges cleanly needs no merge-sync; a conflict or a global file does.
+  // Each case also runs on the scratch-worktree path that a git without `merge-tree --write-tree` (< 2.38) takes.
+  const behind = (w: ReturnType<typeof world>, files: Record<string, string>) => {
+    w.sh(w.dev, "checkout", "-q", "main"); w.commit("main moves", files); w.sh(w.dev, "push", "-q", "origin", "main");
+  };
+  const worktrees = (w: ReturnType<typeof world>) => w.sh(w.work, "worktree", "list", "--porcelain").split("\n").filter(l => l.startsWith("worktree ")).length;
+  const paths3 = [["merge-tree", {}], ["scratch worktree", { GIT_FAIL_ON: " merge-tree --write-tree " }]] as const;
+  // The PR edits the first line of a five-line file; main then edits its last line (a clean overlap).
+  const prOnFiveLines = (w: ReturnType<typeof world>) => {
+    w.sh(w.dev, "checkout", "-q", "main"); w.commit("base", { "src/c.ts": "t1\nx\nmid\ny\nend\n" }); w.sh(w.dev, "push", "-q", "origin", "main");
+    w.sh(w.dev, "checkout", "-q", "feature"); w.sh(w.dev, "merge", "-q", "--no-edit", "main");
+    const head = w.commit("pr edits the top", { "src/c.ts": "t2\nx\nmid\ny\nend\n" }); w.publish();
+    w.state.prs[7]!.headRefOid = head; w.state.checkRuns[head] = green(w.ok, 1);
+    return head;
+  };
+  // A main commit pushed only once the CI read is done (its object reaches origin now, on a side ref).
+  const lateMain = (w: ReturnType<typeof world>, files: Record<string, string>) => {
+    w.state.moveMainAfterChecks = w.commit("late main", files);
+    w.sh(w.dev, "push", "-q", "origin", "main:refs/heads/future");
+    return w.state.moveMainAfterChecks;
+  };
+  it.each(paths3)("clean overlap (main edits another line of the PR's file) → merged without sync [%s]", (label, env) => {
+    const w = world(); const log = join(w.dir, "git.log"); w.setEnv({ ...env, GIT_LOG: log });
+    const head = prOnFiveLines(w);
+    behind(w, { "src/c.ts": "t1\nx\nmid\ny\nEND\n" });
+    const r = w.run(["7", head, "xmsg-approve-1"]);
+    expect(r.status, r.line + r.stderr).toBe(0);
+    expect(r.line).toMatch(/^MERGED /);
+    expect(r.stderr).toContain("merged behind main, overlapping but clean");
+    expect(r.stderr).toContain("src/c.ts");
+    expect(worktrees(w)).toBe(1);
+    // The scratch worktree is only the fallback: a git with `merge-tree --write-tree` (≥ 2.38, as on CI) never needs it.
+    const writeTree = spawnSync("git", ["merge-tree", "--write-tree", "HEAD", "HEAD"], { cwd: w.work, encoding: "utf8" }).status === 0;
+    expect(readFileSync(log, "utf8").includes("worktree add")).toBe(label === "scratch worktree" || !writeTree);
+  });
+  it.each(paths3)("conflicting overlap → BLOCKED merge-sync first, nothing written [%s]", (_l, env) => {
+    const w = world(); w.setEnv(env);
+    behind(w, { "src/a.ts": "main's own a2\n" });
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.line).toMatch(/^BLOCKED .*merge-sync first \(CONFLICT \["src\/a\.ts"\]\)/);
+    expect(w.writes(r.calls)).toEqual([]);
+    expect(worktrees(w)).toBe(1);
+  });
+  it.each(["package-lock.json", ".github/workflows/ci.yml"])("main changes %s beside a clean overlap → still BLOCKED", file => {
+    const w = world();
+    const head = prOnFiveLines(w);
+    behind(w, { "src/c.ts": "t1\nx\nmid\ny\nEND\n", [file]: "new\n" });
+    const r = w.run(["7", head, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.line).toContain("merge-sync first (OVERLAP");
+    expect(r.line).toContain(file);
+    expect(w.writes(r.calls)).toEqual([]);
+  });
+  it.each(paths3)("final re-check: a clean overlap at step 4, then main moves to a conflicting tip → BLOCKED [%s]", (_l, env) => {
+    const w = world(); w.setEnv(env);
+    const head = prOnFiveLines(w);
+    behind(w, { "src/c.ts": "t1\nx\nmid\ny\nEND\n" });
+    lateMain(w, { "src/c.ts": "T1\nx\nmid\ny\nEND\n" }); // now main edits the PR's own line
+    const r = w.run(["7", head, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("merged behind main, overlapping but clean");
+    expect(r.line).toContain("base moved or overlaps: merge-sync first (CONFLICT");
+    expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("final re-check: main moves to another clean overlapping tip → merged, and the note names the new tip", () => {
+    const w = world();
+    const head = prOnFiveLines(w);
+    behind(w, { "src/c.ts": "t1\nx\nmid\ny\nEND\n" });
+    const late = lateMain(w, { "src/c.ts": "t1\nx\nMID\ny\nEND\n" });
+    const r = w.run(["7", head, "xmsg-approve-1"]);
+    expect(r.status, r.line + r.stderr).toBe(0);
+    expect(r.stderr).toContain(`overlapping but clean (main moved to ${late}`);
   });
   it("disjoint diff read failure never grants an exemption", () => {
     const w = world(); w.sh(w.dev, "checkout", "-q", "main"); w.commit("main", { "src/b.ts": "b\n" }); w.sh(w.dev, "push", "-q", "origin", "main");
