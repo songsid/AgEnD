@@ -53,6 +53,10 @@ describe("#2580 downgrade-safe notice storage", () => {
     expect(readFileSync(h.file + ".bak", "utf8")).toBe(original);
     const off = rig("defaults:\n  tips: false\nweb:\n  notice_delivery:\n    tips: dm\ninstances: {}\n"); off.fm.slimFleetConfigAtStartup();
     expect(off.read().defaults.tips).toBe(false); expect(off.read().web?.notice_delivery).toBeUndefined();
+    const empty = rig("web:\n  notify_login: false\n  notice_delivery: {}\ninstances: {}\n"); empty.fm.slimFleetConfigAtStartup();
+    expect(empty.read().web).toEqual({ notify_login: false });
+    const cfg: any = { defaults: {}, instances: {}, web: { notice_delivery: {} } }; normalizeNoticeDelivery(cfg);
+    expect(cfg.web).not.toHaveProperty("notice_delivery"); expect(cfg.web.notify_login).toBeUndefined();
     const login = "web:\n  notify_login: true\n  notice_delivery:\n    login: dm\ninstances: {}\n";
     const only = rig(login); only.fm.slimFleetConfigAtStartup();
     expect(only.read().web).toEqual({ notify_login: true }); expect(readFileSync(only.file + ".bak", "utf8")).toBe(login);

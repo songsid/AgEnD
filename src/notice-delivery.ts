@@ -23,4 +23,6 @@ export function setNoticeMode(config: NoticeConfig, kind: "login" | "tips", mode
 export function normalizeNoticeDelivery(config: NoticeConfig): void {
   if (config.web?.notify_login === "dm" || config.web?.notice_delivery?.login) setNoticeMode(config, "login", config.web.notify_login !== false);
   if (config.defaults.tips === "dm" || config.web?.notice_delivery?.tips) setNoticeMode(config, "tips", config.defaults.tips !== false);
+  // Even an empty `notice_delivery: {}` is dropped, or the startup migration would rewrite the file on every start.
+  if (config.web && Object.hasOwn(config.web, "notice_delivery")) { config.web = { ...config.web }; delete config.web.notice_delivery; }
 }
