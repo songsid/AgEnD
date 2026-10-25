@@ -699,6 +699,98 @@ function Write-ShortcutResult($made) {
     return $false
 }
 
+# ── WSL 安裝前檢查（#2650 第 7 項）─────────────────────────
+# 在動任何東西之前先看清楚：Windows 組建（WSL 2 需要 Windows 10 2004，組建 19041 以上，或 Windows 11）、架構（x64 或
+# ARM64；ARM64 要裝 ARM64 版的 WSL）、兩個 Windows 功能（Microsoft-Windows-Subsystem-Linux 和 VirtualMachinePlatform，
+# 各看各的），以及虛擬化（BIOS/UEFI 裡的 Intel VT-x / AMD-V）。缺哪個功能就只啟用哪個；DISM 的結束碼要是 0 或 3010
+# （成功、需要重新開機），啟用後再讀一次兩個功能的狀態，確定真的啟用（或等重新開機生效）才說已啟用。
+$WSL_MIN_BUILD = 19041
+$WSL_FEATURES = @('Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform')
+function Get-WindowsBuild {
+    try { return [int](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).BuildNumber } catch { }
+    try { return [Environment]::OSVersion.Version.Build } catch { return $null }
+}
+# 'x64'、'arm64'，或其他（例如 32 位元的 x86：不支援）。看作業系統的架構，不看這個 PowerShell 行程的。
+function Get-WindowsArch {
+    $a = $null
+    try { $a = [string][System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture } catch { }
+    if (-not $a) { $a = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { [string]$env:PROCESSOR_ARCHITECTURE } }
+    switch -regex ($a) { '^(X64|AMD64)$' { return 'x64' } '^ARM64$' { return 'arm64' } }
+    return $a.ToLowerInvariant()
+}
+# 一個 Windows 功能的狀態：'Enabled'、'EnablePending'（已啟用，重新開機後生效）、'Disabled'（含 DisablePending），或
+# 'Unknown'（讀不到：例如這台電腦沒有 DISM 的 PowerShell 模組）。
+function Get-WslFeatureState([string]$name) {
+    try {
+        $f = Get-WindowsOptionalFeature -Online -FeatureName $name -ErrorAction Stop
+        switch ([string]$f.State) { 'Enabled' { return 'Enabled' } 'EnablePending' { return 'EnablePending' } default { return 'Disabled' } }
+    } catch { return 'Unknown' }
+}
+# 虛擬化：$true（已經有 hypervisor 在跑，或 BIOS/UEFI 已開）、$false（明確沒開），或 $null（看不出來，不下結論）。
+function Test-Virtualization {
+    try { if ((Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).HypervisorPresent) { return $true } } catch { }
+    try {
+        $v = @(Get-CimInstance Win32_Processor -ErrorAction Stop | ForEach-Object { $_.VirtualizationFirmwareEnabled })
+        if ($v -contains $true) { return $true }
+        if ($v.Count -gt 0 -and $v -contains $false) { return $false }
+    } catch { }
+    return $null
+}
+function Get-WslPreflight {
+    $features = [ordered]@{}
+    foreach ($n in $WSL_FEATURES) { $features[$n] = Get-WslFeatureState $n }
+    return @{ Build = (Get-WindowsBuild); Arch = (Get-WindowsArch); Features = $features; Virtualization = (Test-Virtualization) }
+}
+# 組建和架構不行就說明並回傳 $false（不要再往下做）；虛擬化看起來沒開只警告（偵測不一定準，虛擬機裡尤其如此）。
+function Test-WslPreflight($pre) {
+    if ($pre.Build -and $pre.Build -lt $WSL_MIN_BUILD) {
+        Write-Err ("這台電腦的 Windows 太舊（組建 {0}）：WSL 2 需要 Windows 10 2004（組建 {1}）以上，或 Windows 11。" -f $pre.Build, $WSL_MIN_BUILD)
+        Write-Info "  請先用 Windows Update 更新 Windows，再執行同一行安裝指令。"
+        return $false
+    }
+    if ($pre.Arch -ne 'x64' -and $pre.Arch -ne 'arm64') {
+        Write-Err ("這台電腦的 Windows 是 {0} 版：WSL 2 只支援 64 位元（x64 或 ARM64）的 Windows。" -f $pre.Arch)
+        return $false
+    }
+    if ($pre.Virtualization -eq $false) { Write-VirtualizationHint }
+    return $true
+}
+function Write-VirtualizationHint {
+    Write-Warn "這台電腦的虛擬化看起來沒有開啟，WSL 2 需要它。"
+    Write-Info "  請到 BIOS/UEFI 設定裡開啟 Intel VT-x（Intel Virtualization Technology）或 AMD-V（SVM Mode），存檔後重新開機。"
+    Write-Info "  在虛擬機裡執行時，需要虛擬機軟體開啟「巢狀虛擬化」。公司電腦請洽 IT 人員。"
+}
+# 啟用缺少的功能。回傳 'ready'（兩個都已啟用）、'reboot'（剛啟用或等待生效，要重新開機），或 'failed'（原因已說明）。
+# $features：Get-WslPreflight 讀到的狀態。
+function Enable-WslFeatures($features) {
+    $needReboot = $false
+    foreach ($n in $WSL_FEATURES) {
+        $state = $features[$n]
+        if ($state -eq 'Enabled') { continue }
+        if ($state -eq 'EnablePending') { $needReboot = $true; continue }
+        $label = if ($n -eq 'VirtualMachinePlatform') { '啟用虛擬機器平台' } else { '啟用 WSL 功能' }
+        $code = Invoke-Watched -Label $label -Usually "通常需要 1–3 分鐘" -UpperMinutes 5 -Encoding oem -File "dism.exe" -Arguments @("/online", "/enable-feature", "/featurename:$n", "/all", "/norestart")
+        if ($code -eq 3010) { $needReboot = $true }
+        elseif ($code -ne 0) {
+            Write-Err ("{0} 沒有成功（DISM 結束碼 {1}）。" -f $label, $code)
+            Write-Info "  可能是公司的原則不允許，或 Windows 元件損壞。請洽 IT 人員，或先執行 Windows Update 後再試同一行安裝指令。"
+            return 'failed'
+        } else { $needReboot = $true }
+    }
+    # 再讀一次：DISM 說成功不算數，要 Windows 自己說已啟用（或等重新開機）。讀不到（Unknown）就相信結束碼。
+    foreach ($n in $WSL_FEATURES) {
+        if ($features[$n] -eq 'Enabled') { continue }
+        $now = Get-WslFeatureState $n
+        if ($now -eq 'Disabled') {
+            Write-Err ("{0} 還是沒有啟用。" -f $n)
+            Write-Info "  可能是公司的原則不允許。請洽 IT 人員；或打開「開啟或關閉 Windows 功能」手動勾選後重新開機，再執行同一行安裝指令。"
+            return 'failed'
+        }
+    }
+    if ($needReboot) { return 'reboot' }
+    return 'ready'
+}
+
 # ── WSL 更新：已經是 2 以上就不強制更新（#1853：使用者在共用對外 IP 的辦公室實測）──────────
 # GitHub 對沒登入的請求，每個 IP 每小時只給 60 次（超過回 403/429）；很多人共用一個對外 IP 時，wsl --update --web-download
 # 和下面的 MSI 備案都會被擋。所以：已安裝的 WSL（Store／MSI 版裝在 %ProgramFiles%\WSL\wsl.exe）版本 2.0.0 以上就略過更新；
@@ -735,7 +827,7 @@ function Write-DownloadFailure([string]$kind) {
             Write-Warn "連不上 GitHub（逾時、連線失敗，或被防火牆擋住）。"
             Write-Info "請確認網路正常後再執行同一行安裝指令，或換一個網路（例如手機熱點）再試。"
         }
-        default { Write-Info "請稍後再執行同一行安裝指令；也可以手動到 https://github.com/microsoft/WSL/releases 下載 x64 的 .msi 安裝。" }
+        default { Write-Info ("請稍後再執行同一行安裝指令；也可以手動到 https://github.com/microsoft/WSL/releases 下載 {0} 的 .msi 安裝。" -f (Get-WindowsArch)) }
     }
 }
 # 第 1 階段的 WSL 更新。回傳：skipped（已是 2 以上）、updated、usable（更新失敗但現有的 WSL 可用）、reboot（MSI 要求重開機）、
@@ -766,15 +858,17 @@ function Invoke-WslUpdateStage {
     Write-Warn "wsl --update 失敗，從 GitHub 下載最新版 WSL..."
     try {
         $release = Invoke-RestMethod "https://api.github.com/repos/microsoft/WSL/releases/latest" -TimeoutSec 30
-        $msiAsset = $release.assets | Where-Object { $_.name -match "x64\.msi$" } | Select-Object -First 1
+        # 依這台電腦的架構選 MSI：ARM64 的 Windows 裝 x64 版不能用（#2650 第 7 項）。
+        $arch = Get-WindowsArch
+        $msiAsset = $release.assets | Where-Object { $_.name -match "\.$arch\.msi$" } | Select-Object -First 1
         if (-not $msiAsset) {
-            Write-Err "找不到 MSI 下載連結"
-            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 x64 .msi 安裝"
+            Write-Err "找不到 $arch 的 MSI 下載連結"
+            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 $arch 的 .msi 安裝"
             return 'failed'
         }
         $wslMsi = "$env:TEMP\wsl-latest.msi"
         Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
-        Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing
+        Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing -TimeoutSec 1800
         $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
         Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
         if ($msiCode -eq 3010) { return 'reboot' }
@@ -1387,25 +1481,30 @@ Write-Step 1 $TOTAL "安裝 WSL ($UBUNTU_DISTRO)"
 if (Stage-Done 1) {
     Write-Ok "WSL 已安裝，跳過此步驟"
 } else {
-    # ── 1a: 檢查 WSL 功能是否已啟用 ──
-    Write-Info "檢查 WSL 功能狀態..."
-    $wslFeatureEnabled = $false
-    try {
-        $feature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -ErrorAction SilentlyContinue
-        if ($feature -and $feature.State -eq "Enabled") { $wslFeatureEnabled = $true }
-    } catch {
+    # ── 1a: 安裝前檢查（組建、架構、兩個 Windows 功能、虛擬化），缺哪個功能就啟用哪個（見 Get-WslPreflight）──
+    Write-Info "檢查這台電腦能不能用 WSL 2..."
+    $preflight = Get-WslPreflight
+    Write-Info ("Windows 組建 {0}，{1}；WSL 功能：{2}；虛擬機器平台：{3}" -f $preflight.Build, $preflight.Arch, $preflight.Features['Microsoft-Windows-Subsystem-Linux'], $preflight.Features['VirtualMachinePlatform'])
+    if (-not (Test-WslPreflight $preflight)) { Read-Host "按 Enter 結束"; exit 1 }
+    $featureStates = @($preflight.Features.Values)
+    if ($featureStates -contains 'Unknown') {
+        # 讀不到功能狀態（沒有 DISM 的 PowerShell 模組）：沿用以前的判斷，wsl --status 能用就當作已啟用。
         $statusOut = wsl --status 2>&1 | Out-String
-        if ($statusOut -notmatch "Usage" -and $statusOut -notmatch "引數") { $wslFeatureEnabled = $true }
+        if ($statusOut -match "Usage" -or $statusOut -match "引數") {
+            foreach ($n in $WSL_FEATURES) { if ($preflight.Features[$n] -eq 'Unknown') { $preflight.Features[$n] = 'Disabled' } }
+        }
     }
-
-    if (-not $wslFeatureEnabled) {
-        Write-Info "正在啟用 WSL 功能..."
-        $null = Invoke-Watched -Label "啟用 WSL 功能" -Usually "通常需要 1–3 分鐘" -UpperMinutes 5 -Encoding oem -File "dism.exe" -Arguments @("/online", "/enable-feature", "/featurename:Microsoft-Windows-Subsystem-Linux", "/all", "/norestart")
-        $null = Invoke-Watched -Label "啟用虛擬機器平台" -Usually "通常需要 1–3 分鐘" -UpperMinutes 5 -Encoding oem -File "dism.exe" -Arguments @("/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart")
-        Write-Ok "WSL 功能已啟用"
-
-        Mark-Stage "1a"
-        Request-Reboot "WSL 功能剛啟用，需要重新開機才能繼續"
+    if (@($preflight.Features.Values | Where-Object { $_ -ne 'Enabled' -and $_ -ne 'Unknown' }).Count -gt 0) {
+        Write-Info "正在啟用 WSL 需要的 Windows 功能..."
+        switch (Enable-WslFeatures $preflight.Features) {
+            'failed' { Read-Host "按 Enter 結束"; exit 1 }
+            'reboot' {
+                Write-Ok "WSL 需要的 Windows 功能已啟用，重新開機後生效"
+                Mark-Stage "1a"
+                Request-Reboot "WSL 功能剛啟用，需要重新開機才能繼續"
+            }
+            default { Write-Ok "WSL 功能已啟用" }
+        }
     } else {
         Write-Ok "WSL 功能已啟用"
     }
@@ -1468,6 +1567,16 @@ if (Stage-Done 1) {
             }
         } else {
             $null = Invoke-Watched -Label "下載並安裝 $UBUNTU_DISTRO" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")
+            # 較舊的 WSL 不認得 --location，或安裝沒有成功：和另外安裝時一樣，改用官方映像檔匯入（#2650 第 7 項）。
+            $afterFresh = Get-WslDistroNames
+            if ($null -ne $afterFresh -and $afterFresh -notcontains $UBUNTU_DISTRO) {
+                Write-Warn "$UBUNTU_DISTRO 沒有用這個方式裝好，改用官方的 Ubuntu 映像檔..."
+                if (-not (Install-AgendDistro $UBUNTU_DISTRO $wslPath)) {
+                    Write-Err "$UBUNTU_DISTRO 沒有安裝成功。"
+                    Write-Info "  請確認網路正常，再執行同一行安裝指令。"
+                    Read-Host "按 Enter 結束"; exit 1
+                }
+            }
         }
 
         # 驗證
@@ -1481,10 +1590,11 @@ if (Stage-Done 1) {
             Read-Host "按 Enter 結束"; exit 1
         } else {
             Write-Err "Ubuntu 安裝失敗！"
+            if ((Test-Virtualization) -eq $false) { Write-VirtualizationHint }
             Write-Info "可能原因："
             Write-Info "  - 需要重新開機（請重開機後再執行同一行安裝指令）"
             Write-Info "  - 網路問題（無法下載 Ubuntu）"
-            Write-Info "  - Windows 版本太舊（需要 Win10 2004 以上或 Win11）"
+            Write-Info "  - BIOS/UEFI 的虛擬化沒有開啟，或公司的安全性原則不允許虛擬機器平台"
             Read-Host "按 Enter 結束"; exit 1
         }
     }
