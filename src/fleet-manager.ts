@@ -281,7 +281,7 @@ import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -5810,43 +5810,54 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     entries: [string, InstanceConfig][],
     topicMode: boolean,
     onReady?: (name: string) => void,
+    classic: ClassicChannel[] = [],
   ): Promise<void> {
     // Persisted pauses are intentionally preserved across fleet restarts. Filter
     // them before grouping/staggering: startInstance() retains its own guard as
     // a final backstop, but putting a no-op entry in this queue still consumes a
     // full stagger slot for every distinct working directory.
     const runnableEntries = entries.filter(([name]) => !this.lifecycle.isPaused(name));
+    // ClassicBot rooms queue with the fleet instances, at the same pressure pacing (#2642 follow-up): they used to start
+    // only after the whole fleet, the chat connections, topics and icons. A name the fleet also configures is the fleet's.
+    const fleetNames = new Set(entries.map(([name]) => name));
+    const runnableClassic = classic.filter(ch => !this.lifecycle.isPaused(ch.instanceName) && !fleetNames.has(ch.instanceName));
     const pausedCount = entries.length - runnableEntries.length;
     if (pausedCount > 0) {
       this.logger.info({ pausedCount }, "Paused instances excluded from startup queue");
     }
-    if (runnableEntries.length === 0) return;
+    if (runnableEntries.length === 0 && runnableClassic.length === 0) return;
 
     if (this.fleetConfig?.defaults?.startup?.concurrency == null) {
       this.logger.info({
         concurrency: this.spawnConcurrency(),
         freeMemMB: Math.round(freemem() / (1024 * 1024)),
-        totalInstances: runnableEntries.length,
+        totalInstances: runnableEntries.length + runnableClassic.length,
       }, "Adaptive startup concurrency");
     }
     const startedAt = performance.now();
     let active = 0, peakConcurrentStarts = 0, readyInstances = 0;
-    await Promise.all(runnableEntries.map(([name, config]) => this.spawnGate.run({
+    const admit = (name: string, workingDirectory: string, start: () => Promise<boolean>) => this.spawnGate.run({
       instanceName: name,
-      workingDirectory: config.working_directory,
+      workingDirectory,
       reason: "startup",
       stage: "lifecycle",
     }, async () => {
       peakConcurrentStarts = Math.max(peakConcurrentStarts, ++active);
       try {
-        if (await this.startInstanceUnattended(name, config, topicMode, "instance")) {
+        if (await start()) {
           readyInstances++;
           onReady?.(name);
         }
       } finally { active--; }
-    })));
+    });
+    await Promise.all([
+      ...runnableEntries.map(([name, config]) => admit(name, config.working_directory,
+        () => this.startInstanceUnattended(name, config, topicMode, "instance"))),
+      ...runnableClassic.map(ch => admit(ch.instanceName, join(getAgendHome(), "workspaces", ch.instanceName),
+        () => this.startClassicInstanceUnattended(ch, "classic instance"))),
+    ]);
     this.logger.info({
-      totalInstances: runnableEntries.length, readyInstances,
+      totalInstances: runnableEntries.length + runnableClassic.length, classicInstances: runnableClassic.length, readyInstances,
       elapsedSeconds: Math.round((performance.now() - startedAt) / 100) / 10,
       peakConcurrentStarts,
     }, "Fleet startup batch completed");
@@ -8407,9 +8418,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, 24 * 60 * 60_000);
     this.logRotateTimer.unref?.();
 
-    // Phase 2: Start remaining instances with staggered concurrency
-    if (others.length > 0) {
-      await this.startInstancesWithConcurrency(others, topicMode, () => startupProgress.markReady());
+    // Phase 2: Start remaining instances, and the ClassicBot rooms with them, with staggered concurrency. A room needs no
+    // chat connection to spawn: its open-list is set above (reregisterClassicChannels) and inbound queues until it is up.
+    const classicAtBoot = topicMode && (fleet.channel || fleet.channels?.length) ? this.classicChannels?.getAll() ?? [] : [];
+    if (others.length > 0 || classicAtBoot.length > 0) {
+      await this.startInstancesWithConcurrency(others, topicMode, () => startupProgress.markReady(), classicAtBoot);
     }
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
@@ -8455,21 +8468,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // connectIpcToInstance. The previous 3s sleep + connectToInstances loop
       // was redundant.
 
-      // Start classic channel instances (parallel, concurrency 3)
-      if (this.classicChannels) {
-        const fleetBackend = this.fleetConfig?.defaults?.backend;
-        const channels = this.classicChannels.getAll()
-          .filter(ch => !this.lifecycle.isPaused(ch.instanceName));
-        const concurrency = 3;
-        let idx = 0;
-        while (idx < channels.length) {
-          const batch = channels.slice(idx, idx + concurrency);
-          await Promise.allSettled(batch.map(async ch => {
-            if (await this.startClassicInstanceUnattended(ch, "classic instance")) startupProgress.markReady();
-          }));
-          idx += concurrency;
-        }
-      }
+      // The ClassicBot rooms started in Phase 2, with the fleet.
 
       for (const name of Object.keys(fleet.instances)) {
         this.startStatuslineWatcher(name);
@@ -22897,30 +22896,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     // General is ready again; now its topic can own the live progress message.
     await restartProgress.start(progressTarget);
-    if (restartOthers.length > 0) {
-      await this.startInstancesWithConcurrency(restartOthers, topicMode, () => restartProgress.markReady());
+    // The ClassicBot rooms (killed during orphan cleanup) restart with the fleet instances, in the same queue; their
+    // open-lists are refreshed first so a room's inbound is never dropped while it starts.
+    const restartClassic = topicMode ? this.classicChannels?.getAll() ?? [] : [];
+    if (restartClassic.length > 0) this.reregisterClassicChannels();
+    if (restartOthers.length > 0 || restartClassic.length > 0) {
+      await this.startInstancesWithConcurrency(restartOthers, topicMode, () => restartProgress.markReady(), restartClassic);
     }
 
     if (topicMode) {
       this.routing.rebuild(this.fleetConfig!);
       this.reregisterClassicChannels();
       // startInstance already calls connectIpcToInstance, no need for connectToInstances here
-
-      // Restart classic channel instances (killed during orphan cleanup)
-      if (this.classicChannels) {
-        const fleetBackend = this.fleetConfig?.defaults?.backend;
-        const channels = this.classicChannels.getAll()
-          .filter(ch => !this.lifecycle.isPaused(ch.instanceName));
-        const concurrency = 3;
-        let idx = 0;
-        while (idx < channels.length) {
-          const batch = channels.slice(idx, idx + concurrency);
-          await Promise.allSettled(batch.map(async ch => {
-            if (await this.startClassicInstanceUnattended(ch, "classic instance")) restartProgress.markReady();
-          }));
-          idx += concurrency;
-        }
-      }
 
       for (const name of Object.keys(fleet.instances)) {
         this.startStatuslineWatcher(name);
