@@ -182,3 +182,5 @@ The check **fails** the PR when any of these appear in that diff:
 It does **not** fail on moderate/low advisories, on an undetectable
 licence (those are reported), or on an advisory that already exists on
 the base branch and this PR does not change.
+
+<!-- proof: text-only CI path gating; close unmerged -->
