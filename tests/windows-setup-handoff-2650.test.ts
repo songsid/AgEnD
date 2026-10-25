@@ -203,16 +203,21 @@ describe("item 10: the dashboard after the install (static)", () => {
 });
 
 /** The page's own script with an inert DOM, a manual clock and timer queue. */
-function page(opts: { remaining?: number; pending?: string; failPending?: boolean } = {}) {
+function page(opts: { remaining?: number; pending?: string; failPending?: boolean; holdList?: boolean; holdCommit?: boolean } = {}) {
   const elements = new Map<string, any>();
-  const element = (tag = "input") => ({ tag, dataset: {}, children: [], disabled: false, hidden: false, value: "", textContent: "", className: "", listeners: new Map(),
+  const element = (tag = "input"): any => ({ tag, dataset: {}, children: [], disabled: false, hidden: false, value: "", textContent: "", className: "", listeners: new Map(),
     addEventListener(event: string, cb: any) { this.listeners.set(event, cb); }, append(...c: any[]) { this.children.push(...c); }, set innerHTML(_v: string) { this.children = []; } });
   for (const m of SETUP_FORM_HTML.matchAll(/<(input|select|button|div|span|pre)[^>]*\bid="([^"]+)"/g)) { const e: any = element(m[1]); e.id = m[2]; elements.set(e.id, e); }
   let now = 0;
   const timers: { at: number; fn: () => void }[] = [];
   const state = { failPending: opts.failPending ?? false };
+  // Held answers (#2653 review): released by the test, after the page may have closed.
+  const held: Array<() => void> = [];
+  const hold = () => new Promise<void>(resolve => held.push(resolve));
   const fetch = vi.fn(async (path: string) => {
     if (path.startsWith("api/settings/pending/") && state.failPending) throw new Error("offline");
+    if (path === "api/settings/pending" && opts.holdList) await hold();
+    if (path === "api/settings/quickstart/commit" && opts.holdCommit) { await hold(); return { ok: true, status: 202, json: async () => ({ result: "pending_confirmation", pending_change: { id: ID } }) }; }
     let body: any = {};
     if (path === "api/settings/quickstart/environment") body = { backends: ["kiro-cli"] };
     if (path === "api/settings/pending") body = opts.pending ? [{ id: opts.pending, state: "pending" }] : [];
@@ -236,7 +241,8 @@ function page(opts: { remaining?: number; pending?: string; failPending?: boolea
     }
     now = end; await flush();
   };
-  return { $: (id: string) => elements.get(id), flush, advance, fetch, state };
+  const release = async () => { for (const r of held.splice(0)) r(); await flush(); };
+  return { $: (id: string) => elements.get(id), flush, advance, fetch, state, release };
 }
 
 describe("item 10 and item 1 on the setup page", () => {
@@ -272,6 +278,28 @@ describe("item 10 and item 1 on the setup page", () => {
     expect(p.$("finishMsg").textContent).toMatch(/^Lost contact with the setup page; still trying\. If this stays, the page has closed\. Reopen it/);
     p.state.failPending = false; await p.advance(3_000);
     expect(p.$("finishMsg").textContent).toMatch(/^Approve this on the computer running AgEnD\./);
+  });
+  it("an answer that arrives after the page closed neither reopens it nor starts polling (pending list, commit)", async () => {
+    const late = page({ pending: ID, remaining: 2_000, holdList: true }); await late.flush();
+    await late.advance(3_000);
+    expect(late.$("finishMsg").textContent).toMatch(/^This setup page has closed\./);
+    await late.release();
+    const after = late.fetch.mock.calls.length;
+    await late.advance(5_000);
+    expect(late.fetch.mock.calls.length).toBe(after);                              // no poll started
+    expect(late.$("finishMsg").textContent).toMatch(/^This setup page has closed\./);
+
+    const commit = page({ remaining: 60_000, holdCommit: true }); await commit.flush();
+    commit.$("pickWeb").onclick(); commit.$("dir").value = "/home/demo/app"; await commit.flush();
+    commit.$("finish").disabled = false; void commit.$("finish").onclick(); await commit.flush();
+    expect(commit.fetch.mock.calls.some(([path]: any[]) => path === "api/settings/quickstart/commit")).toBe(true);
+    await commit.advance(61_000);
+    await commit.release();
+    const calls = commit.fetch.mock.calls.length;
+    await commit.advance(5_000);
+    expect(commit.fetch.mock.calls.length).toBe(calls);
+    expect(commit.$("finishMsg").textContent).toMatch(/^This setup page has closed\./);
+    expect(commit.$("finish").disabled).toBe(true);
   });
   it("the TTL passing while waiting stops the polling", async () => {
     const p = page({ pending: ID, remaining: 20_000 }); await p.flush();

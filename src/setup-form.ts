@@ -318,6 +318,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     for (const field of document.querySelectorAll("main input, main select, #verify, #preview, #pickTelegram, #pickDiscord, #pickWeb, #detect")) field.disabled = frozen;
   };
   const restoreEditing = (message) => {
+    if (pageClosed) return;                       // a late answer never reopens a closed page (#2653 review)
     pollGeneration++; approvedSetup = false; submission = null; state.identity = null;
     freezeFields(false); $("finish").disabled = true; $("finish").textContent = "Create and start AgEnD";
     $("finishMsg").className = "msg err"; $("finishMsg").textContent = message;
@@ -326,6 +327,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     approvedSetup = false; submission = null; $("finish").textContent = "Create and start AgEnD";
   });
   const watchPending = (pendingId) => {
+    if (pageClosed) return;                       // a late pending list or commit answer: the page stays closed
     const generation = ++pollGeneration;
     freezeFields(true); $("finish").disabled = true;
     // #2650 item 1: the page asks; a person at the computer running AgEnD approves. Nothing on this page can.
@@ -354,6 +356,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     setTimeout(poll, 1000);
   };
   $("finish").onclick = async () => {
+    if (pageClosed) return;
     if ($("setupSignins").dataset.ready === "false") {
       $("finishMsg").textContent = "Finish backend sign-in or choose Sign in later before continuing."; return;
     }
@@ -377,7 +380,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       if (commit.body?.result !== "pending_confirmation" || !commit.body.pending_change?.id) { restoreEditing("Expected a pending host confirmation."); return; }
       $("token").value = ""; submission = null;
       watchPending(commit.body.pending_change.id);
-    } catch { $("finishMsg").textContent = "Connection failed. Retry to find the same confirmation."; $("finish").disabled = false; }
+    } catch { if (pageClosed) return; $("finishMsg").textContent = "Connection failed. Retry to find the same confirmation."; $("finish").disabled = false; }
   };
   // Same-cookie reloads rediscover an unresolved consent request without a secret.
   const status = api("setup/status").then(result => { if (result.ok) trackRemaining(result.body); return result; });
