@@ -188,6 +188,12 @@ describe("loadPackSkin: an uploaded pack as a skin", () => {
     expect(await K.loadPackSkin("other-id", "1".repeat(32), { fetch: get })).toBeNull();     // a manifest for another id
     expect(await K.loadPackSkin("clinic-sample", "2".repeat(32), { fetch: get })).not.toBeNull();
   });
+  it("#2636: `url` says where a picture is read (a share link's page reads its own address)", async () => {
+    const get = async () => ({ ok: true, json: async () => ({ manifest: MANIFEST(), files: FILES }) });
+    const images: string[] = [];
+    await K.loadPackSkin("clinic-sample", "3".repeat(32), { fetch: get, image: async (u: string) => { images.push(u); return { width: 1 }; }, url: (p: string) => `/o/T${p.slice(3)}` });
+    expect(images.sort()).toEqual([`/o/T/office-skins/clinic-sample/img/${"a".repeat(32)}.png`, `/o/T/office-skins/clinic-sample/img/${"b".repeat(32)}.png`]);
+  });
 });
 
 describe("the Office view with packs", () => {

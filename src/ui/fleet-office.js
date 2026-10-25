@@ -422,15 +422,17 @@ function People({ nodes, pinned, onChange }) {
 
 /**
  * The view: `view` buildOrgView's answer; `traffic` the live items (null: Live is off); `q` the Find box's needle;
- * `lease` the tab's (its reads); `onOpen(name)` what a desk opens (the canvas's: the chat).
+ * `lease` the tab's (its reads); `onOpen(name)` what a desk opens (the canvas's: the chat; none: a desk opens nothing,
+ * as on a share link's page, #2636); `assetUrl(path)` where a skin pack's picture is read (the share's address);
+ * `opening` the office it opens on (the share's), instead of the one this browser chose last.
  */
-export function Office({ view, traffic, q = "", lease, onOpen }) {
+export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, opening }) {
   const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
   const [stored, setStored] = useState([]);
   const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
   const [canEdit, setCanEdit] = useState(false);                      // an admin session (never a guest or the public link)
   const [editing, setEditing] = useState(false);
-  const [choice, setChoice] = useState(() => store.choice());
+  const [choice, setChoice] = useState(() => opening ?? store.choice());
   const [filter, setFilter] = useState(() => store.filter());
   const [style, setStyle] = useState(() => store.skin());
   const [hideAsleep, setHideAsleep] = useState(() => store.hideAsleep());
@@ -574,7 +576,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     if (!want.length) return undefined;
     let live = true;
     const get = lease ? (path, o) => lease.fetch(path, o) : undefined;
-    for (const [k, pk] of want) loadPackSkin(pk.id, pk.sha, get ? { fetch: get } : {}).then((sk) => { if (live) setPackSkins((m) => new Map(m).set(k, sk)); });
+    for (const [k, pk] of want) loadPackSkin(pk.id, pk.sha, { ...(get ? { fetch: get } : {}), ...(assetUrl ? { url: assetUrl } : {}) }).then((sk) => { if (live) setPackSkins((m) => new Map(m).set(k, sk)); });
     return () => { live = false; };
   }, [neededKey]);
   const loading = !!packInfo && !packSkins.has(packKey);
@@ -877,7 +879,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     return () => root.classList.remove("oo-immersive");
   }, [fs]);
   /** A desk opens its chat: out of fullscreen first (the chat is beside the view, or instead of it). */
-  const open = (name) => { if (fsRef.current) exitFs(); onOpen(name); };
+  const open = (name) => { if (!onOpen) return; if (fsRef.current) exitFs(); onOpen(name); };
 
   // ── Drawing: the back and front layers are pictures of the scene at the view's resolution (remade when the office
   // or the zoom changes, never on a pan); each frame draws the matte, the layers, the people and the items in the air ──
@@ -1169,12 +1171,12 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
         <strong>${tipText.primary}</strong>${tipText.secondary ? html` <span class="muted mono">${tipText.secondary}</span>` : null}
         <div>${tipText.sub}</div><div class="muted">${caption(officePose(tipDesk.node.state), tipDesk.node.state)}</div>
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}
-        ${tipDesk.node.i && lastType.current === "touch" ? html`<div class="muted">${to("tapAgain")}</div>` : null}
+        ${tipDesk.node.i && onOpen && lastType.current === "touch" ? html`<div class="muted">${to("tapAgain")}</div>` : null}
       </div>` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state), where = d.office ? ` · ${d.office}` : "";
         return html`<li key=${d.key}>${d.node.i
-          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${nt.full}${where} · ${cap}. ${t("orgc.openChat")}`}
+          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${nt.full}${where} · ${cap}.${onOpen ? ` ${t("orgc.openChat")}` : ""}`}
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => open(d.node.name)}>${nt.primary}</button>`
           : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${nt.full}</span>`}</li>`;
       })}</ul>

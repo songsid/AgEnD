@@ -32,6 +32,8 @@ export const OFFICE_SHARE_LIMITS = {
   defaultMinutes: 60, minMinutes: 15, maxHours: 24,
   /** Per share, a sliding minute: requests, and bytes answered. */
   requestsPerMinute: 120, bytesPerMinute: 16 * 1024 * 1024,
+  /** The page's static files (its code, the same for every share), all shares together. */
+  staticRequestsPerMinute: 1200, staticBytesPerMinute: 64 * 1024 * 1024,
 } as const;
 /** "All offices": every stored office (and whoever is in none); otherwise a stored office's id. */
 export const ALL_OFFICES = "all";
@@ -165,15 +167,16 @@ export class OfficeShares {
   }
 }
 
-/** Per share: requests and bytes in a sliding minute (monotonic, memory only). */
+/** Per key (a share's id): requests and bytes in a sliding minute (monotonic, memory only). */
 export class OfficeShareLimiter {
   private readonly seen = new Map<string, Array<[number, number]>>();
-  constructor(private readonly now: () => number = () => performance.now()) {}
-  /** A request arrives: false when the share has had its requests or bytes this minute. */
+  constructor(private readonly now: () => number = () => performance.now(),
+    private readonly limits: { requests: number; bytes: number } = { requests: OFFICE_SHARE_LIMITS.requestsPerMinute, bytes: OFFICE_SHARE_LIMITS.bytesPerMinute }) {}
+  /** A request arrives: false when the key has had its requests or bytes this minute. */
   admit(id: string): boolean {
     const list = this.window(id);
-    if (list.length >= OFFICE_SHARE_LIMITS.requestsPerMinute) return false;
-    if (list.reduce((sum, [, b]) => sum + b, 0) >= OFFICE_SHARE_LIMITS.bytesPerMinute) return false;
+    if (list.length >= this.limits.requests) return false;
+    if (list.reduce((sum, [, b]) => sum + b, 0) >= this.limits.bytes) return false;
     list.push([this.now(), 0]);
     return true;
   }
@@ -232,7 +235,7 @@ export class OfficeShareView {
   /** fleet.yaml's teams with someone shown, each with only its shown members. */
   private readonly teams: Array<{ name: string; members: string[] }>;
 
-  constructor(private readonly share: Pick<OfficeShare, "office" | "text">, private readonly src: OfficeShareSource) {
+  constructor(private readonly share: Pick<OfficeShare, "office" | "text"> & Partial<Pick<OfficeShare, "expiresAt">>, private readonly src: OfficeShareSource) {
     const status = src.status();
     const listed = isObj(status) && Array.isArray(status.instances) ? status.instances.filter(isObj) : [];
     const known = listed.filter(i => typeof i.name === "string" && !src.hidden(i.name as string));
@@ -271,6 +274,10 @@ export class OfficeShareView {
       needs: this.src.needs().filter(n => this.scope.has(n)).map(instance => ({ instance })),
       traffic: { now: traffic.now, items: traffic.items.filter(among), delegations: (traffic.delegations ?? []).filter(among) },
       text: this.share.text,
+      // Which office the page opens on: the shared one, or All offices.
+      office: this.share.office,
+      // When it ends (wall clock, the host's): the page says until when.
+      ...(typeof this.share.expiresAt === "number" ? { ends: this.share.expiresAt } : {}),
     };
   }
 
@@ -349,7 +356,9 @@ export interface OfficeShareGateway {
  *   /o/<t>/office-skins                     the packs the shown offices use
  *   /o/<t>/office-skins/<id>                one of them, its instance names cut to the share (never cached)
  *   /o/<t>/office-skins/<id>/img/<sha>.png  its picture (immutable)
- *   /o/<t>/js/<file>.js                     `script` (the page's modules; 404 while there are none)
+ *
+ * and, with no token, the page's static files at the dashboard's own paths (`statics`: `/assets/<name>`, `/ui/js/<name>`;
+ * office-share-page.ts names them), limited together (OFFICE_SHARE_LIMITS.static*).
  *
  * Anything else, an unknown or ended token, an office since deleted: an empty 404 (no word on why: a stranger learns
  * nothing). Over the limit: 429. The share is asked again before each answer is sent. No cookie is read or set and
@@ -361,14 +370,21 @@ export function createOfficeShareGateway(opts: {
   limiter?: OfficeShareLimiter;
   /** The page for a share (HTML), or null while there is none. */
   page?(share: OfficeShare, token: string): { body: string; csp: string } | null;
-  /** A module of the page, or null. */
-  script?(file: string): string | null;
+  /** A static file of the page by its path (`/assets/…`, `/ui/js/…`), or null. */
+  statics?(path: string): { body: Buffer; type: string } | null;
+  staticLimiter?: OfficeShareLimiter;
   create?: typeof createServer;
   marker?: string;
 }): OfficeShareGateway {
   let host: string | null = null;
   const marker = opts.marker ?? `agend-office-share-${randomBytes(8).toString("hex")}`;
   const limiter = opts.limiter ?? new OfficeShareLimiter();
+  const staticLimiter = opts.staticLimiter
+    ?? new OfficeShareLimiter(undefined, { requests: OFFICE_SHARE_LIMITS.staticRequestsPerMinute, bytes: OFFICE_SHARE_LIMITS.staticBytesPerMinute });
+  const tooMany = (res: ServerResponse): void => {
+    res.writeHead(429, { "Content-Length": "0", "Cache-Control": "no-store", "Retry-After": "60" });
+    res.end();
+  };
   const sockets = new Set<Socket>();
   const base = (res: ServerResponse): void => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -387,11 +403,20 @@ export function createOfficeShareGateway(opts: {
     const method = req.method ?? "GET";
     if (method !== "GET" && method !== "HEAD") return empty(res, 405);
     const raw = req.url ?? "/";
-    if (!raw.startsWith("/") || raw.startsWith("//") || /[\\\u0000- \u007f]/.test(raw)) return empty(res, 400);
+    if (!raw.startsWith("/") || raw.startsWith("//") || /[\\\u0000-\u0020\u007f]/.test(raw)) return empty(res, 400);
     const url = new URL(raw, `https://${host}`);
     if (url.pathname === "/ready") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       res.end(`<html><body>${marker}</body></html>`);
+      return;
+    }
+    if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/ui/js/")) {
+      const file = opts.statics?.(url.pathname) ?? null;
+      if (!file) return empty(res, 404);
+      if (!staticLimiter.admit("static")) return tooMany(res);
+      staticLimiter.sent("static", file.body.length);
+      res.writeHead(200, { "Content-Type": file.type, "Content-Length": String(file.body.length), "Cache-Control": "no-cache" });
+      res.end(method === "HEAD" ? undefined : file.body);
       return;
     }
     const m = /^\/o\/([A-Za-z0-9_-]{43})(\/.*)?$/.exec(url.pathname);
@@ -405,11 +430,7 @@ export function createOfficeShareGateway(opts: {
       res.end(method === "HEAD" ? undefined : ENDED_PAGE);
       return;
     }
-    if (!limiter.admit(share.id)) {
-      res.writeHead(429, { "Content-Length": "0", "Cache-Control": "no-store", "Retry-After": "60" });
-      res.end();
-      return;
-    }
+    if (!limiter.admit(share.id)) return tooMany(res);
     // Every read below is synchronous: the share found above is the share answered.
     const send = (status: number, type: string, body: Buffer | string, cache = "no-store", csp = "default-src 'none'; sandbox"): void => {
       const bytes = typeof body === "string" ? Buffer.from(body) : body;
@@ -421,11 +442,6 @@ export function createOfficeShareGateway(opts: {
     if (rest === "" || rest === "/") {
       const page = opts.page?.(share, token) ?? null;
       return page ? send(200, "text/html; charset=utf-8", page.body, "no-store", page.csp) : empty(res, 404);
-    }
-    const js = /^\/js\/([a-z0-9_-]+\.js)$/.exec(rest);
-    if (js) {
-      const body = opts.script?.(js[1]!) ?? null;
-      return body === null ? empty(res, 404) : send(200, "text/javascript; charset=utf-8", body, "no-store", "default-src 'none'");
     }
     const view = new OfficeShareView(share, opts.source);
     if (!view.offices) return empty(res, 404);

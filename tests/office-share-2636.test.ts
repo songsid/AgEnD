@@ -340,15 +340,23 @@ describe("the share gateway (#2636)", () => {
     expect(over.headers["retry-after"]).toBe("60");
   });
 
-  it("the page and its modules come from the caller (404 while there are none)", async () => {
-    const { shares, get } = await rig({ page: (s, t) => ({ body: `<p>${s.office}:${t.length}</p>`, csp: "default-src 'self'" }), script: f => (f === "share.js" ? "export {}" : null) });
+  it("the page comes from the caller (404 while there is none); its static files without a token, only those named", async () => {
+    const files: Record<string, string> = { "/assets/app-html.js": "export {}", "/ui/js/office-share-page.js": "export {}" };
+    const { shares, get } = await rig({ page: (s, t) => ({ body: `<p>${s.office}:${t.length}</p>`, csp: "default-src 'self'" }),
+      statics: path => (Object.prototype.hasOwnProperty.call(files, path) ? { body: Buffer.from(files[path]!), type: "text/javascript; charset=utf-8" } : null),
+      staticLimiter: new OfficeShareLimiter(clock().now, { requests: 3, bytes: 1 << 20 }) });
     const r = open(shares);
     const page = await get(`/o/${r.token}`);
     expect(page.status).toBe(200);
     expect(page.body).toBe("<p>eng:43</p>");
     expect(page.headers["content-security-policy"]).toBe("default-src 'self'");
-    expect((await get(`/o/${r.token}/js/share.js`)).body).toBe("export {}");
-    expect((await get(`/o/${r.token}/js/other.js`)).status).toBe(404);
+    const mod = await get("/assets/app-html.js");
+    expect(mod.status).toBe(200);
+    expect(mod.headers["content-type"]).toBe("text/javascript; charset=utf-8");
+    expect((await get("/ui/js/office-share-page.js")).body).toBe("export {}");
+    expect((await get("/assets/agend-auth.js")).status).toBe(404);
+    expect((await get("/assets/app-html.js")).status).toBe(200);   // a refused name is not counted: this is the 3rd
+    expect((await get("/assets/app-html.js")).status).toBe(429);   // the static files' own minute (3 here)
   });
 
   it("the dashboard's public gateway never routes a share", () => {

@@ -288,6 +288,9 @@ describe("no agent path reaches it", () => {
         "web-mod-agent.ts",
         // #2026: file admission names the host CSS store only as a forbidden managed root (pinned below).
         "agent-file-read.ts",
+        // #2636: the Office share page's static asset list — the module file, served as code; its /ui/owner-css reads
+        // 404 on the share origin (the share lease refuses them).
+        "office-share-page.ts",
         // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — custom CSS through
         // the store's own save (checkOwnerCss and all), keep, revert and restore (pinned below).
         "web-settings-tools.ts",
