@@ -798,9 +798,23 @@ function readKiroConversationStatusSync(
 }
 
 /**
+ * #2598 B1: what the running kiro launch is — its engine picks the store (v1 = conversations_v2 in data.sqlite3,
+ * v2 = the TUI's <id>.json/.jsonl session files), and a resumed launch's id picks the conversation in it.
+ */
+export interface KiroTranscriptLaunch {
+  engine: "v1" | "v2" | "v3" | null;
+  sessionId: string | null;
+}
+
+/**
  * Follows the newest Kiro conversation whose cwd matches this instance.
  * Kiro 2.19 moved primary conversations to conversations_v2 in data.sqlite3;
  * legacy releases use <uuid>.jsonl plus sibling <uuid>.json metadata.
+ *
+ * With a launch (#2598 B1) the store is no longer guessed: a v1 launch reads only the sqlite store, a v2 launch only
+ * the session files — a classic conversation resumed under the TUI leaves its sqlite row frozen, and reading that row
+ * first returned "nothing new" forever. A resumed launch follows its own conversation by id, not the directory's
+ * newest (a sibling's, or the frozen row). An unknown engine (an older kiro, no launch yet) reads as before.
  */
 /** The Kiro legacy fallback's scan bounds (#1490): see KiroSessionSource.resolveActiveSession. */
 export const KIRO_FULL_SCAN_MS = 30_000;
@@ -814,6 +828,9 @@ async function forEachLimited(count: number, limit: number, task: (index: number
   const worker = async (): Promise<void> => { while (next < count) await task(next++); };
   await Promise.all(Array.from({ length: Math.min(limit, count) }, worker));
 }
+
+/** One TUI session's metadata, as the scan keeps it. `ours`: its cwd is this instance's. */
+interface KiroSessionMeta { ours: boolean; id: string; updated: number; created: number }
 
 export class KiroSessionSource implements TranscriptSource {
   private currentFile: string | null = null;
@@ -835,6 +852,7 @@ export class KiroSessionSource implements TranscriptSource {
     now = Date.now(),
     private dbPath = kiroStoreDbPath(),
     private lane: KiroDbLane = sharedKiroTranscriptLane,
+    private launch: () => KiroTranscriptLaunch | null = () => null,
   ) {
     this.createdAt = now;
     void this.initialize();
@@ -844,7 +862,19 @@ export class KiroSessionSource implements TranscriptSource {
     this.lease ??= this.lane.acquire();
     const lease = this.lease, generation = this.generation;
     if (!this.needsBaseline) return Promise.resolve();
-    this.ready = lease.read({ workingDirectory: this.workingDirectory, dbPath: this.dbPath, createdAt: this.createdAt, baseline: true }).then(reply => {
+    const launch = this.launch();
+    if (launch?.engine === "v2") {
+      // The TUI's store is files: nothing in the sqlite store to baseline (and nothing there is ours). The session file
+      // is attached now, before the daemon admits work — attached at the first timer poll instead, anything written
+      // in between would be taken for history (#2617 review).
+      this.ready = this.resolveActiveSession(launch.sessionId).then(async active => {
+        if (generation !== this.generation || this.lease !== lease) return;
+        if (active) await this.attach(active, generation);
+        if (generation === this.generation) this.needsBaseline = false;
+      }, () => {});
+      return this.ready;
+    }
+    this.ready = lease.read({ workingDirectory: this.workingDirectory, dbPath: this.dbPath, createdAt: this.createdAt, baseline: true, conversationId: this.v1Pin() }).then(reply => {
       if (generation !== this.generation || this.lease !== lease) return;
       this.cursor = reply?.cursor;
       this.needsBaseline = false;
@@ -867,12 +897,18 @@ export class KiroSessionSource implements TranscriptSource {
     this.lease = null;
     this.ready = null;
   }
+  /** The sqlite conversation a resumed v1 launch owns; null = the directory's newest (any other launch). */
+  private v1Pin(): string | null {
+    const launch = this.launch();
+    return launch?.engine === "v1" ? launch.sessionId : null;
+  }
+
   private async pollDb(): Promise<TranscriptEvents | null> {
     const generation = this.generation;
     await this.initialize();
     if (generation !== this.generation || !this.lease) return EMPTY;
     const lease = this.lease;
-    const reply = await lease.read({ workingDirectory: this.workingDirectory, dbPath: this.dbPath, createdAt: this.createdAt, baseline: false, cursor: this.cursor });
+    const reply = await lease.read({ workingDirectory: this.workingDirectory, dbPath: this.dbPath, createdAt: this.createdAt, baseline: false, cursor: this.cursor, conversationId: this.v1Pin() });
     if (generation !== this.generation || this.lease !== lease) return EMPTY;
     if (!reply) return null;
     this.cursor = reply.cursor;
@@ -885,7 +921,7 @@ export class KiroSessionSource implements TranscriptSource {
    * 2 s poll, for every instance; now an unchanged file costs one stat.
    * `null` = the file does not concern us (another cwd, or a subagent child).
    */
-  private metaCache = new Map<string, { mtimeMs: number; size: number; meta: { updated: number; created: number } | null }>();
+  private metaCache = new Map<string, { mtimeMs: number; size: number; meta: KiroSessionMeta | null }>();
   /** The sessions directory as last listed: re-listed only when its mtime moves (a session added or removed). */
   private sessionsListing: { mtimeMs: number; names: string[]; hotWhenRead: boolean } | null = null;
   private fullScanAt = Number.NEGATIVE_INFINITY;
@@ -903,7 +939,7 @@ export class KiroSessionSource implements TranscriptSource {
    *     stat of the directory plus the recently active files; an old session resumed is seen within KIRO_FULL_SCAN_MS;
    *   - every full scan (each KIRO_FULL_SCAN_MS) re-stats everything, KIRO_SCAN_CONCURRENCY at a time.
    */
-  private async resolveActiveSession(): Promise<{ jsonlPath: string; createdAtMs: number } | null> {
+  private async resolveActiveSession(pinned: string | null = null): Promise<{ jsonlPath: string; createdAtMs: number } | null> {
     const now = this.wall();
     const full = this.mono() - this.fullScanAt >= KIRO_FULL_SCAN_MS;
     let dirMtimeMs: number;
@@ -917,7 +953,7 @@ export class KiroSessionSource implements TranscriptSource {
     }
     if (full) this.fullScanAt = this.mono();
 
-    const verdicts = new Array<{ updated: number; created: number } | null>(listing.names.length).fill(null);
+    const verdicts = new Array<KiroSessionMeta | null>(listing.names.length).fill(null);
     const names = listing.names;
     await forEachLimited(names.length, KIRO_SCAN_CONCURRENCY, async (i) => {
       const metaPath = join(this.sessionsDir, names[i]!);
@@ -928,13 +964,15 @@ export class KiroSessionSource implements TranscriptSource {
         if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
           const meta = JSON.parse(await readFile(metaPath, "utf-8"));
           // Subagent sessions are children of a turn already being reported.
-          const ours = meta.cwd === this.workingDirectory && meta.session_created_reason !== "subagent";
           cached = {
             mtimeMs: st.mtimeMs,
             size: st.size,
-            meta: ours
-              ? { updated: Date.parse(meta.updated_at ?? "") || 0, created: Date.parse(meta.created_at ?? "") || 0 }
-              : null,
+            meta: meta?.session_created_reason === "subagent" ? null : {
+              ours: meta.cwd === this.workingDirectory,
+              id: typeof meta.session_id === "string" ? meta.session_id : names[i]!.slice(0, -".json".length),
+              updated: Date.parse(meta.updated_at ?? "") || 0,
+              created: Date.parse(meta.created_at ?? "") || 0,
+            },
           };
           this.metaCache.set(metaPath, cached);
         }
@@ -947,7 +985,9 @@ export class KiroSessionSource implements TranscriptSource {
     let best: { jsonlPath: string; updated: number; createdAtMs: number } | null = null;
     names.forEach((e, i) => {
       const meta = verdicts[i];
-      if (meta && (!best || meta.updated > best.updated)) {
+      // A resumed launch follows its own conversation, wherever its newest sibling is.
+      const eligible = meta && (pinned ? meta.id === pinned : meta.ours);
+      if (meta && eligible && (!best || meta.updated > best.updated)) {
         best = { jsonlPath: join(this.sessionsDir, e.replace(/\.json$/, ".jsonl")), updated: meta.updated, createdAtMs: meta.created };
       }
     });
@@ -957,36 +997,49 @@ export class KiroSessionSource implements TranscriptSource {
     return { jsonlPath: chosen.jsonlPath, createdAtMs: chosen.createdAtMs };
   }
 
+  /**
+   * Follow a newly chosen session file. Our own fresh session (created after this source) is read from the start; an
+   * older one is attached at its last line boundary — its content is history. If that boundary cannot be read now,
+   * nothing is attached and the next poll tries again (#1283 review): never offset 0, which would replay it all.
+   */
+  private async attach(active: { jsonlPath: string; createdAtMs: number }, generation: number): Promise<"from-start" | "at-end" | "not-attached"> {
+    if (active.createdAtMs >= this.createdAt) {
+      this.currentFile = active.jsonlPath;
+      this.byteOffset = 0;
+      this.skipping = false;
+      this.pendingLong = null;
+      return "from-start";
+    }
+    let offset: number;
+    try { offset = await lastLineBoundary(active.jsonlPath); } catch { return "not-attached"; }
+    if (generation !== this.generation) return "not-attached";
+    this.currentFile = active.jsonlPath;
+    this.byteOffset = offset;
+    this.skipping = false;
+    this.pendingLong = null;
+    return "at-end";
+  }
+
   async poll(): Promise<TranscriptEvents> {
     // Current Kiro stores the primary session in SQLite; JSONL is now mostly
     // used for subagents. Keep the legacy path as a compatibility fallback.
     const generation = this.generation;
-    const dbEvents = await this.pollDb();
-    if (generation !== this.generation) return EMPTY;
-    if (dbEvents !== null) return dbEvents;
+    const launch = this.launch();
+    if (launch?.engine !== "v2") {
+      const dbEvents = await this.pollDb();
+      if (generation !== this.generation) return EMPTY;
+      if (dbEvents !== null) return dbEvents;
+      // A classic launch writes only the sqlite store: the session files are another engine's (#2598 B1).
+      if (launch?.engine === "v1") return EMPTY;
+    }
 
-    const active = await this.resolveActiveSession();
+    const active = await this.resolveActiveSession(launch?.engine === "v2" ? launch.sessionId : null);
     if (generation !== this.generation || !active) return EMPTY;
 
     if (active.jsonlPath !== this.currentFile) {
-      if (active.createdAtMs >= this.createdAt) {
-        this.currentFile = active.jsonlPath;
-        this.byteOffset = 0; // our own fresh session — observable from the start
-        this.skipping = false;
-        this.pendingLong = null;
-      } else {
-        // An older session is attached at its last line boundary. If that cannot be read now, nothing is adopted
-        // and the next poll tries again (#1283 review) — never offset 0, which would replay the whole session.
-        let offset: number;
-        try { offset = await lastLineBoundary(active.jsonlPath); } catch { return EMPTY; }
-        if (generation !== this.generation) return EMPTY;
-        this.currentFile = active.jsonlPath;
-        this.byteOffset = offset;
-        this.skipping = false;
-        this.pendingLong = null;
-        return EMPTY;
-      }
+      if (await this.attach(active, generation) !== "from-start") return EMPTY;
     }
+    if (this.currentFile === null) return EMPTY;
 
     // #1218 P0: bounded looks, as the other JSONL sources. Kiro's nesting needs the whole record: a long line is read
     // whole up to WHOLE_LINE_MAX_BYTES (as every line was before), and skipped beyond it.
@@ -1138,12 +1191,14 @@ export function createTranscriptSource(
   workingDirectory: string,
   /** The credential profile's store, when this instance runs on one. */
   storeHome?: string,
+  /** kiro: the running launch's engine and owned conversation (#2598 B1), read at every poll. */
+  kiroLaunch?: () => KiroTranscriptLaunch | null,
 ): TranscriptSource | null {
   switch (backend) {
     case "codex": return new CodexRolloutSource(workingDirectory);
     case "muse": return new MuseSessionSource(workingDirectory);
     // undefined keeps each parameter's own default; only the store moves.
-    case "kiro-cli": return new KiroSessionSource(workingDirectory, undefined, undefined, kiroStoreDbPath(storeHome));
+    case "kiro-cli": return new KiroSessionSource(workingDirectory, undefined, undefined, kiroStoreDbPath(storeHome), undefined, kiroLaunch);
     case "opencode": return new OpenCodeDbSource(workingDirectory);
     default: return null;
   }

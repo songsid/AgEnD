@@ -513,3 +513,73 @@ export function forgetKiroIdentity(agendHome: string, instance: string): void {
   rmSync(paths(agendHome, "v1", instance).state, { force: true });
   rmSync(paths(agendHome, "v1", instance).pending, { force: true });
 }
+
+/**
+ * #2598 B3: the newest engine this instance has a conversation record on — v2 once it ran under the TUI, v3 under V3
+ * — or null (never past classic). Moving to a newer engine forks the conversation and freezes the old engine's copy, so
+ * a launch on an older engine than this would resume the stale copy and lose everything done since. A pending
+ * migration does not count: until the newer engine's launch records it, nothing has happened there.
+ */
+export function kiroEngineFloor(agendHome: string, instance: string): "v2" | "v3" | null {
+  if (!OWNER_NAME.test(instance)) return null;
+  const read = readState(paths(agendHome, "v1", instance).state, instance);
+  if (read.kind !== "ok") return null;
+  const engines = new Set(Object.values(read.state.keys).map(r => r.engine));
+  return engines.has("v3") ? "v3" : engines.has("v2") ? "v2" : null;
+}
+
+export type KiroTuiMigration =
+  | { kind: "ready"; classicId: string | null }
+  | { kind: "refused"; reason: "already-tui" | "no-classic-conversation" | "unreadable" | "name" };
+
+/**
+ * #2598 B2: what moving this instance from classic (v1) to the TUI (v2) would carry, read-only. Its classic
+ * conversation is the one its v1 record holds (claim still held); null when it has none (a fresh or legacy-mode
+ * instance). Refused once it has any TUI record or a TUI adoption under way.
+ */
+export function inspectKiroTuiMigration(opts: { agendHome: string; instance: string; workingDirectory: string; credentialProfile: string | null }): KiroTuiMigration {
+  const { agendHome, instance, workingDirectory, credentialProfile } = opts;
+  if (!OWNER_NAME.test(instance)) return { kind: "refused", reason: "name" };
+  const p1 = paths(agendHome, "v1", instance);
+  const read = readState(p1.state, instance);
+  if (read.kind === "bad") return { kind: "refused", reason: "unreadable" };
+  const pending = readPending(p1.pending);
+  if (pending === "unreadable") return { kind: "refused", reason: "unreadable" };
+  const v2Key = keyOf("v2", workingDirectory, credentialProfile);
+  const keys = read.kind === "ok" ? read.state.keys : {};
+  if (Object.values(keys).some(r => r.engine === "v2" || r.engine === "v3") || Object.hasOwn(pending, v2Key)) {
+    return { kind: "refused", reason: "already-tui" };
+  }
+  const v1 = keys[keyOf("v1", workingDirectory, credentialProfile)];
+  const classicId = v1?.id && heldBy(claimOf(p1.claims, v1.id), instance) ? v1.id : null;
+  return { kind: "ready", classicId };
+}
+
+/**
+ * #2598 B2: arm the move. The classic conversation is recorded as this instance's TUI adoption under way, so the
+ * next TUI launch resolves to exactly it (resolveKiroIdentity's pending path: claimed, recorded, resumed by id once —
+ * kiro copies the classic history into its session files). Nothing else is written; the classic record and claim
+ * stay as they are. With no classic conversation nothing is armed, and the TUI launch starts fresh.
+ * Throws when the adoption cannot be written. Returns what was armed.
+ */
+export function armKiroTuiMigration(opts: { agendHome: string; instance: string; workingDirectory: string; credentialProfile: string | null }): KiroTuiMigration {
+  const inspected = inspectKiroTuiMigration(opts);
+  if (inspected.kind !== "ready" || !inspected.classicId) return inspected;
+  const p = paths(opts.agendHome, "v2", opts.instance);
+  const pending = readPending(p.pending);
+  if (pending === "unreadable") return { kind: "refused", reason: "unreadable" };
+  mkdirSync(p.instances, { recursive: true, mode: 0o700 });
+  writePending(p.pending, { ...pending, [keyOf("v2", opts.workingDirectory, opts.credentialProfile)]: inspected.classicId });
+  return inspected;
+}
+
+/** Undo armKiroTuiMigration before any TUI launch took it up (a config save that failed after arming). */
+export function disarmKiroTuiMigration(opts: { agendHome: string; instance: string; workingDirectory: string; credentialProfile: string | null }): void {
+  if (!OWNER_NAME.test(opts.instance)) return;
+  const p = paths(opts.agendHome, "v2", opts.instance);
+  const pending = readPending(p.pending);
+  if (pending === "unreadable") return;
+  const rest = { ...pending };
+  delete rest[keyOf("v2", opts.workingDirectory, opts.credentialProfile)];
+  try { writePending(p.pending, rest); } catch { /* left armed: the next TUI launch takes it up, as intended anyway */ }
+}

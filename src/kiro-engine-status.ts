@@ -13,6 +13,11 @@ import { classicProfile, profileName } from "./classic-bindings.js";
 import { readKiroLedger, type KiroLaunchRecord } from "./backend/kiro-engine-ledger.js";
 import { readKiroV3Identity, type KiroV3Identity } from "./backend/kiro-v3-identity.js";
 import { getAgendHome } from "./paths.js";
+import { kiroEngineFloor } from "./backend/kiro-identity.js";
+import { t } from "./locale.js";
+
+/** As KIRO_ENGINE_RANK in backend/kiro.ts: a conversation moves only forward. */
+const UI_RANK: Record<"legacy" | "tui" | "v3", number> = { legacy: 1, tui: 2, v3: 3 };
 import { join } from "node:path";
 
 type KiroUi = "legacy" | "tui" | "v3";
@@ -69,6 +74,8 @@ export interface KiroEngineStatusInstance {
   /** Prepared launches, one per change of kiro-cli version, AgEnD version, UI or engine flags, oldest first. */
   history: KiroLaunchRecord[];
   v3: KiroV3Identity;
+  /** #2598 B3: the oldest kiro_ui it may still launch on — "tui" once it ran under the TUI — or null (any). */
+  engine_floor: "tui" | "v3" | null;
 }
 
 export interface KiroEngineStatus {
@@ -100,6 +107,9 @@ export function kiroEngineStatus(candidates: readonly KiroEngineCandidate[], opt
       const plan = planKiroLaunch(c.kiroUi, compat);
       nextLaunch = plan.kind === "refuse" ? { refused: plan.reason } : { flags: plan.flags };
     }
+    const floorEngine = kiroEngineFloor(agendHome, c.name);
+    const floor = floorEngine === "v2" ? "tui" as const : floorEngine;
+    if (floor && UI_RANK[c.kiroUi] < UI_RANK[floor]) nextLaunch = { refused: t("kiro.engine_floor", c.name, c.kiroUi, floor) };
     const entry = ledger[c.name];
     return {
       name: c.name,
@@ -111,6 +121,7 @@ export function kiroEngineStatus(candidates: readonly KiroEngineCandidate[], opt
       first_seen: entry?.firstSeen ?? null,
       history: entry?.history ?? [],
       v3: readKiroV3Identity(c.name, agendHome),
+      engine_floor: floor,
     };
   });
   return {

@@ -24,6 +24,9 @@ export class KiroDbReader {
   private newestRowStmt: Database.Statement | null = null;
   private historyStmt: Database.Statement | null = null;
   private createdAtStmt: Database.Statement | null = null;
+  private pinnedRowStmt: Database.Statement | null = null;
+  /** #2598 B1: the conversation this instance's launch resumed; null = the newest for the directory. */
+  private pinned: string | null = null;
 
   constructor(private workingDirectory: string, private dbPath: string, now = Date.now(), baseline = true) {
     this.createdAt = now;
@@ -56,6 +59,12 @@ export class KiroDbReader {
     this.newestRowStmt = null;
     this.historyStmt = null;
     this.createdAtStmt = null;
+    this.pinnedRowStmt = null;
+  }
+
+  /** Follow exactly this conversation (a resumed launch's), or null for the directory's newest. */
+  pin(conversationId: string | null): void {
+    this.pinned = conversationId;
   }
 
   /** The shared handle, opened on first use; null while the store is absent. */
@@ -84,6 +93,18 @@ export class KiroDbReader {
    */
   private newestDbRow(db: Database.Database): { key: string; conversation_id: string; updated_at: number; size: number } | undefined {
     const keys = this.workingDirectoryKeys();
+    if (this.pinned) {
+      // Not the newest row: a sibling in the same directory, or a frozen classic row, is not this instance's.
+      if (!this.pinnedRowStmt || this.pinnedRowStmt.database !== db) {
+        this.pinnedRowStmt = db.prepare(
+          `SELECT key, conversation_id, updated_at, octet_length(value) AS size
+           FROM conversations_v2 WHERE key IN (?, ?, ?) AND conversation_id = ?
+           ORDER BY updated_at DESC LIMIT 1`,
+        );
+      }
+      const [a, b = a, c = b] = keys;
+      return this.pinnedRowStmt.get(a, b, c, this.pinned) as { key: string; conversation_id: string; updated_at: number; size: number } | undefined;
+    }
     if (!this.newestRowStmt || this.newestRowStmt.database !== db) {
       this.newestRowStmt = db.prepare(
         `SELECT key, conversation_id, updated_at, octet_length(value) AS size

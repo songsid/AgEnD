@@ -12,6 +12,8 @@ export interface KiroDbInput {
   createdAt: number;
   baseline: boolean;
   cursor?: KiroDbCursor;
+  /** #2598 B1: read only this conversation (the one the launch resumed); absent = the directory's newest. */
+  conversationId?: string | null;
 }
 export interface KiroDbReply { events: TranscriptEvents | null; cursor: KiroDbCursor; }
 export interface KiroDbLease { read(input: KiroDbInput): Promise<KiroDbReply | null>; close(): void; }

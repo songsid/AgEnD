@@ -441,9 +441,11 @@ describe("the transcript source is handed the store, not something else", () => 
 
     const args = callArgs(daemonSource, "createTranscriptSource");
 
-    expect(args).toHaveLength(3);
+    expect(args).toHaveLength(4);
     expect(args[0]).toContain("this.config.backend");
     expect(args[1]).toBe("this.config.working_directory");
     expect(args[2]).toBe("this.credentialProfileStore()");
+    // #2598 B1: kiro's running launch (engine + resumed id), read at every poll.
+    expect(args[3]).toBe("() => this.backend?.transcriptLaunch?.() ?? null");
   });
 });
