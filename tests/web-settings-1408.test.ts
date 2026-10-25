@@ -455,9 +455,9 @@ describe("#1374 and leaks", () => {
   it("mounting reads the configuration once; while it stays open nothing is read again", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
     const m = mount(); await vi.advanceTimersByTimeAsync(50); await m;
-    // #2233: Agents' sign-in list reads its rows once (GET /ui/backend-login); the stream says when to read again.
+    // #2599: both sign-in controllers are read once; the stream says when to read again.
     expect(reads().sort()).toEqual(["/api/fleet", "/api/profiles", "/api/settings/classic", "/api/settings/connections", "/api/settings/fleet/raw",
-      "/api/settings/pending", "/api/settings/provider-secrets", "/api/settings/schema", "/ui/backend-login"]);
+      "/api/settings/pending", "/api/settings/provider-secrets", "/api/settings/schema", "/ui/backend-login", "/ui/browser-backend-signins"]);
     reqs = [];
     await vi.advanceTimersByTimeAsync(120_000);
     expect(reqs).toEqual([]);
