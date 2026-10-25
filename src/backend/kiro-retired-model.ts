@@ -134,12 +134,16 @@ export function decideKiroModelError(
   fallbackModel: string,
 ): KiroModelErrorVerdict {
   const records = readKiroModelRecords(instanceDir);
-  const save = (): void => { try { writeKiroModelRecords(instanceDir, records); } catch { /* best effort: at worst said again */ } };
+  const save = (): boolean => { try { writeKiroModelRecords(instanceDir, records); return true; } catch { return false; } };
   if (!launch.ownModel && launch.conversation && !launch.launchModel && !records.restarted.includes(launch.conversation)) {
+    const before = records.switched[launch.conversation];
     records.restarted.push(launch.conversation);
-    records.switched[launch.conversation] = { from: records.switched[launch.conversation]?.from ?? null, to: fallbackModel, announced: false };
-    save();
-    return { kind: "restart", model: fallbackModel };
+    records.switched[launch.conversation] = { from: before?.from ?? null, to: fallbackModel, announced: false };
+    // The restart is the record's to authorize: one that cannot be committed would restart again on the same error,
+    // and the next launch would not know to switch. Then it is only said (#2649 review).
+    if (save()) return { kind: "restart", model: fallbackModel };
+    records.restarted.pop();
+    if (before) records.switched[launch.conversation] = before; else delete records.switched[launch.conversation];
   }
   const key = `${launch.conversation ?? "-"}|${launch.launchModel ?? "-"}`;
   if (records.notified.includes(key)) return { kind: "quiet" };

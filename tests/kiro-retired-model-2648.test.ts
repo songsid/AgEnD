@@ -98,6 +98,21 @@ describe("#2648 step 1 + 3: classic (v1) — the owned row's saved model, read a
     expect(b.consumeLaunchWarning() ?? "").not.toContain("no longer offers");
   });
 
+  it("a later supported choice in the conversation (/model) wins over an earlier switch; the announcement stays once (#2649 review)", async () => {
+    classic(); v1Row("conv-1", RETIRED);
+    const b = new KiroBackend(instanceDir, COMPAT);
+    expect(await launch(b)).toContain(" --model 'auto'");
+    b.consumeLaunchWarning();
+    v1Row("conv-1", "claude-haiku-4.5");                                     // the person picked haiku with /model
+    const next = new KiroBackend(instanceDir, COMPAT);
+    expect(await launch(next)).not.toContain("--model");
+    expect(next.consumeLaunchWarning() ?? "").not.toContain(announced());
+    v1Row("conv-1", RETIRED);                                                // retired again (same conversation): switched,
+    const again = new KiroBackend(instanceDir, COMPAT);                      // not announced a second time
+    expect(await launch(again)).toContain(" --model 'auto'");
+    expect(again.consumeLaunchWarning() ?? "").not.toContain(announced());
+  });
+
   it("kiro's catalog default is used when it names one of its models", async () => {
     catalog({ currentModel: "claude-sonnet-4.6" });
     classic(); v1Row("conv-1", RETIRED);
@@ -174,7 +189,7 @@ describe("#2648 steps 2 + 4: a model error after the launch", () => {
     // The restart's launch runs on the default and announces it.
     const restarted = new KiroBackend(instanceDir, COMPAT);
     expect(await launch(restarted)).toContain(" --model 'auto'");
-    expect(restarted.consumeLaunchWarning()).toContain(t("kiro.retired_model_switched", "worker", t("kiro.retired_model_unknown"), "auto"));
+    expect(restarted.consumeLaunchWarning()).toContain(announced());     // the model that failed, read at this launch
     // Still failing on the default: never a second restart — said once, then quiet across restarts.
     expect(restarted.onModelError()).toEqual({ kind: "notify", configured: null });
     const later = new KiroBackend(instanceDir, COMPAT);
@@ -205,6 +220,24 @@ describe("#2648 steps 2 + 4: a model error after the launch", () => {
     expect(decideKiroModelError(instanceDir, launch, "auto")).toEqual({ kind: "restart", model: "auto" });
     expect(decideKiroModelError(instanceDir, launch, "auto")).toEqual({ kind: "notify", configured: null });
     expect(decideKiroModelError(instanceDir, { ...launch, conversation: "conv-10" }, "auto")).toEqual({ kind: "restart", model: "auto" });
+  });
+
+  it("a restart that cannot be recorded is not made: said instead, and never a restart loop (#2649 review)", () => {
+    mkdirSync(join(instanceDir, "kiro-model.json"));                       // the record cannot be replaced
+    const launch = { ownModel: null, launchModel: null, conversation: "conv-1" };
+    expect(decideKiroModelError(instanceDir, launch, "auto")).toEqual({ kind: "notify", configured: null });
+    expect(decideKiroModelError(instanceDir, launch, "auto")).toEqual({ kind: "notify", configured: null });
+  });
+
+  it("the restart's record is applied only while the conversation still holds the failed model or cannot be read", async () => {
+    classic(); v1Row("conv-1", RETIRED); catalog(null);
+    const b = new KiroBackend(instanceDir, COMPAT);
+    await launch(b);
+    expect(b.onModelError()).toEqual({ kind: "restart", model: "auto" });
+    writeFileSync(join(root, "xdg", "kiro-cli", "data.sqlite3"), "not a database");      // unreadable: the record applies
+    expect(await launch(new KiroBackend(instanceDir, COMPAT))).toContain(" --model 'auto'");
+    rmSync(join(root, "xdg", "kiro-cli", "data.sqlite3")); v1Row("conv-1", "auto");   // kiro saved the default
+    expect(await launch(new KiroBackend(instanceDir, COMPAT))).not.toContain("--model");
   });
 
   it("a damaged record file reads as empty", () => {

@@ -26,7 +26,7 @@ import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, ty
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
-import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict } from "./kiro-retired-model.js";
+import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict, type KiroModelRecords, type KiroModelSwitch } from "./kiro-retired-model.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
 import type { KiroLogLaunch } from "../kiro-log-gate.js";
@@ -1461,29 +1461,44 @@ export class KiroBackend implements CliBackend {
   }
 
   /**
-   * #2648 steps 1 and 3: the model a resumed conversation is launched on instead of its saved one — a switch already
-   * recorded for it (step 2's restart, or an earlier launch), else its saved model when kiro's cached list no longer
-   * has it. Announced once per conversation. Null = launch as before. Only for an instance with no model of its own.
+   * #2648 steps 1 and 3: the model a resumed conversation is launched on instead of its saved one, or null to launch as
+   * before. Only for an instance with no model of its own. The conversation's current saved model decides, every
+   * launch: one kiro's cached list no longer has is switched to kiro's default; one it has — or, without a list, one
+   * other than the model that failed (a later /model choice, or the default kiro saved after a switch) — is launched
+   * as saved, even after an earlier switch (#2649 review). Only when the saved model cannot be read does a recorded
+   * switch (step 2's restart) still apply. Announced once per conversation; the record also keeps that dedupe.
    */
   private retiredModelFallback(config: CliBackendConfig, resumed: { engine: "v1" | "v2"; id: string }, credentialProfile: string | null): string | null {
     const records = readKiroModelRecords(config.instanceDir);
-    let entry = records.switched[resumed.id];
-    if (!entry) {
-      const known = readKiroKnownModels(getAgendHome());
-      if (!known) return null;
-      const prepared = this.preparedV2Model;
-      const saved = resumed.engine === "v1"
-        ? readKiroV1SavedModel({ id: resumed.id, workingDirectory: config.workingDirectory, dbPath: kiroV1DbPath(credentialProfile) })
-        : prepared && prepared.key === this.storeKey(config) && prepared.id === resumed.id ? prepared.model : null;
-      if (!saved || known.models.has(saved)) return null;
-      entry = records.switched[resumed.id] = { from: saved, to: known.defaultModel, announced: false };
+    let entry: KiroModelSwitch | undefined = records.switched[resumed.id];
+    const known = readKiroKnownModels(getAgendHome());
+    const prepared = this.preparedV2Model;
+    const saved = resumed.engine === "v1"
+      ? readKiroV1SavedModel({ id: resumed.id, workingDirectory: config.workingDirectory, dbPath: kiroV1DbPath(credentialProfile) })
+      : prepared && prepared.key === this.storeKey(config) && prepared.id === resumed.id ? prepared.model : null;
+    if (saved) {
+      // Step 2's restart recorded no model: the one saved now is the one that failed — unless it is the default the
+      // switch put there (kiro saves the model a launch ran on).
+      if (entry && entry.from === null && saved !== entry.to) entry.from = saved;
+      const supported = known ? known.models.has(saved) : !!entry && (saved === entry.to || (entry.from !== null && saved !== entry.from));
+      if (supported || (!known && !entry)) {
+        if (entry && entry.from !== saved) this.saveModelRecords(config.instanceDir, records);
+        return null;
+      }
+      if (!entry || entry.from !== saved) entry = records.switched[resumed.id] = { from: saved, to: known?.defaultModel ?? entry?.to ?? KIRO_FALLBACK_MODEL, announced: entry?.announced ?? false };
+    } else if (!entry) {
+      return null;
     }
     if (!entry.announced) {
       this.addLaunchWarning(t("kiro.retired_model_switched", config.instanceName, entry.from ?? t("kiro.retired_model_unknown"), entry.to));
       entry.announced = true;
     }
-    try { writeKiroModelRecords(config.instanceDir, records); } catch { /* the next launch decides again; at worst it says so again */ }
+    this.saveModelRecords(config.instanceDir, records);
     return entry.to;
+  }
+
+  private saveModelRecords(instanceDir: string, records: KiroModelRecords): void {
+    try { writeKiroModelRecords(instanceDir, records); } catch { /* the next launch decides again; at worst it says so again */ }
   }
 
   /** #2648 steps 2 and 4: what a model error on this launch should do (records it); null before any launch. */
