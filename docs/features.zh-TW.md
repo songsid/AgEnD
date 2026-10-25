@@ -242,7 +242,7 @@ agent 可以用泡泡下方的一個 emoji 回應網頁聊天的訊息，而不�
 
 ## 點對點 Agent 協作 (Peer-to-peer agent collaboration)
 
-Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕並傳訊；建立、啟動或喚醒 instance 則需要對應的管理工具權限。見[工具權限組](features.zh-TW.md#工具權限組合-tool-profiles)。
+Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕並傳訊。建立、啟動，或明確喚醒 instance（`wake_instance`）則需要含管理工具的權限組。不過 worker 的 `send_to_instance` 仍可能間接喚醒暫停中的收件者：投遞時會用和 `/wake` 相同的方式喚醒目標（見[自動暫停與喚醒](#自動暫停與喚醒-auto-pause--wake)）。見[工具權限組](features.zh-TW.md#工具權限組合-tool-profiles)。
 
 **核心 MCP 工具：**
 

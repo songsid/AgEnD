@@ -10782,7 +10782,7 @@ export class Daemon extends EventEmitter {
       onWarning: (warning) => {
         if (warning.problem === "fleet_dir_fallback") {
           this.logger.warn({ field: warning.field, path: warning.path, legacyPath: warning.legacyPath },
-            `${warning.field} file: ref is not under the instance's working directory (${warning.path}); read ${warning.legacyPath} from the fleet directory instead — make the path absolute or move the file. The fallback is removed in 2.2.`);
+            `${warning.field} file: ref is not under the instance's working directory (${warning.path}); read ${warning.legacyPath} from the fleet directory instead — make the path absolute or move the file. A later release will remove this fallback.`);
           const key = `${warning.field}:${warning.path}`;
           if (!this.promptFileFallbackNoticed.has(key)) {
             this.promptFileFallbackNoticed.add(key);

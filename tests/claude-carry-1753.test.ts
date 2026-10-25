@@ -347,7 +347,7 @@ describe("update_instance_config: a claude-code profile switch asks the restart 
     const h = harness({ working_directory: "/tmp/w", backend: "claude-code" }, (opts) => { opts.carry.result = { carried: true, sessionId: SID, bytes: 10, ms: 1, replacedOlderCopy: false }; });
     const r = await update(h.ctx, { backend_options: { "claude-code": { credential_profile: "team" } } });
     expect([h.restartSingleInstance.mock.calls[0]?.[1]?.carry && { ...h.restartSingleInstance.mock.calls[0][1].carry, result: undefined }, h.delivered.length,
-      r?.conversation_carried_over, /re-reads it from a cold cache/.test(String(r?.conversation_note)), "handover_chars" in (r ?? {})])
+      r?.conversation_carried_over, /does not by itself make the prompt cache cold.*may rebuild it.*scope, the model or the profile's settings differ, or the cache has expired/.test(String(r?.conversation_note)), "handover_chars" in (r ?? {})])
       .toEqual([{ backend: "claude-code", from: null, to: "team", result: undefined }, 0, true, true, false]);
   });
 
