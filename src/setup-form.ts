@@ -282,6 +282,10 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     $("finish").disabled = !(state.platform === "web" || state.identity?.valid);
   };
 
+  let approvedSetup = false;
+  let formFrozen = false;
+  let submission = null;
+  let pollGeneration = 0;
   // #2650 item 10: how long this page has left, counted here from the host's own remaining time (no polling: a request
   // would keep an idle page open). After it, the page says it has closed and how to reopen it, instead of freezing.
   const REOPEN = "Reopen it where you started setup: in the Windows installer, press Enter in its window; otherwise run agend setup again on the computer running AgEnD.";
@@ -309,10 +313,6 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     closesAt = performance.now() + ms; showRemaining();
   };
 
-  let approvedSetup = false;
-  let formFrozen = false;
-  let submission = null;
-  let pollGeneration = 0;
   const freezeFields = (frozen) => {
     formFrozen = frozen;
     for (const field of document.querySelectorAll("main input, main select, #verify, #preview, #pickTelegram, #pickDiscord, #pickWeb, #detect")) field.disabled = frozen;
