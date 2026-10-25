@@ -149,3 +149,24 @@ it("null native status is unknown, and a held input is reaped before cleanup ret
   const closing = h.transport.close(); expect(h.native.kill).not.toHaveBeenCalled(); input.resolve();
   await Promise.allSettled([sending, closing]); expect(h.native.kill).toHaveBeenCalledOnce();
 });
+
+it("agy remains console-only but an independently verified console login clears its pending hint", async () => {
+  const h = rig();
+  const check = vi.fn(async () => "valid" as const);
+  (h.c as any).deps.checkConsoleAuth = check;
+  await h.c.select(h.owner, ["antigravity"]);
+  expect(h.c.snapshot(h.owner)).toMatchObject({ pending: [], states: { antigravity: "valid" } });
+  expect(check).toHaveBeenCalledOnce(); expect(h.transport.start).not.toHaveBeenCalled();
+  await expect(h.c.begin(h.owner, "antigravity" as any)).rejects.toThrow("signin_console_only");
+});
+it("console auth unknown or a held console writer cannot clear agy pending", async () => {
+  const h = rig(); const lock = (h.c as any).lock;
+  (h.c as any).deps.checkConsoleAuth = vi.fn(async () => "unknown");
+  await h.c.select(h.owner, ["antigravity"]);
+  expect(h.c.snapshot(h.owner)).toMatchObject({ pending: ["antigravity"], states: { antigravity: "console_only" } });
+  const check = vi.fn(async () => "valid"); (h.c as any).deps.checkConsoleAuth = check;
+  const release = lock.tryClaim("web", "antigravity"); expect(release).not.toBeNull();
+  await h.c.refresh(h.owner, true);
+  expect(check).not.toHaveBeenCalled(); expect(h.c.snapshot(h.owner).pending).toEqual(["antigravity"]);
+  lock.release(release); await h.c.refresh(h.owner, true); expect(h.c.snapshot(h.owner).pending).toEqual([]);
+});

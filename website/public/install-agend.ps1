@@ -452,15 +452,17 @@ function Get-DashboardSignIn([string]$text) {
     if (-not $url.Success -or -not $code.Success) { return $null }
     return @{ Url = $url.Groups[1].Value; Code = $code.Groups[1].Value }
 }
-function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$Wait) {
-    # agend web --code 失敗時（AgEnD 沒在跑、沒有 token、連不上）會寫到 stderr 並以 1 結束。Windows PowerShell 5.1 會把重導的
-    # stderr 變成錯誤紀錄，在 ErrorActionPreference=Stop 下直接中止（#2242 審查）：取得輸出的這段改用 Continue、每一筆都轉成文字，
-    # 結束碼不是 0、啟動不了 wsl，都走下面「打不開」的說明。原本的設定在 finally 還原。
+function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$Wait, [string]$BackendSignins = '') {
+    $command = 'agend web --code'
+    if ($BackendSignins) {
+        if ($BackendSignins -cnotmatch '^(kiro-cli|claude-code|codex|antigravity)(,(kiro-cli|claude-code|codex|antigravity)){0,3}\z') { throw 'Invalid backend selection' }
+        $command += ' --backend-signins ' + $BackendSignins
+    }
     $text = ''; $exit = 1
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $text = ((& wsl.exe -d $distro -u $user -- bash -lc (Get-WslAgendCommand 'agend web --code') 2>&1) | ForEach-Object { "$_" } | Out-String)
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc (Get-WslAgendCommand $command) 2>&1) | ForEach-Object { "$_" } | Out-String)
         $exit = $LASTEXITCODE
     } catch {
         $text = "$_"; $exit = 1
@@ -821,10 +823,35 @@ function Invoke-ConsoleQuickstart {
         return [int]$p.ExitCode
     } catch { return 1 }
 }
-function Invoke-SetupAndService {
+function Test-BrowserSignInCapability([string]$distro, [string]$user) {
+    $result = Invoke-AgendInWsl $distro $user 'agend setup --backend-signin-capabilities'
+    if ($result.Code -ne 0 -or $result.Text.Length -gt 4096) { return $false }
+    try {
+        $c = $result.Text | ConvertFrom-Json -ErrorAction Stop
+        return (($c.version -is [int] -or $c.version -is [long]) -and $c.version -eq 1 -and $c.setup -is [bool] -and $c.setup -and
+            $c.dashboard -is [bool] -and $c.dashboard -and $c.installer -is [bool] -and $c.installer -and
+            @($c.backends) -contains 'kiro-cli' -and @($c.backends) -contains 'claude-code' -and @($c.backends) -contains 'codex')
+    } catch { return $false }
+}
+function Get-BrowserSignInSelection($backends) {
+    $ids = @{ kiro = 'kiro-cli'; claude = 'claude-code'; codex = 'codex'; antigravity = 'antigravity' }
+    $pending = @()
+    foreach ($b in @($backends)) {
+        if (-not $ids.ContainsKey([string]$b.Key)) { throw 'Unknown backend selection' }
+        if (-not (Test-WslLogin $b.Key)) { $pending += $ids[[string]$b.Key] }
+    }
+    return (($pending | Select-Object -Unique) -join ',')
+}
+function Get-BrowserSetupCommand([string]$BackendSignins = '') {
+    if (-not $BackendSignins) { return 'agend setup' }
+    if ($BackendSignins -cnotmatch '^(kiro-cli|claude-code|codex|antigravity)(,(kiro-cli|claude-code|codex|antigravity)){0,3}\z') { throw 'Invalid backend selection' }
+    return ('agend setup --backend-signins ' + $BackendSignins)
+}
+function Invoke-SetupAndService([string]$BackendSignins = '') {
+    $setupCommand = Get-BrowserSetupCommand $BackendSignins
     $configured = $false
     while (-not $configured) {
-        $setup = Invoke-BrowserSetup { param($hook) Invoke-WslStep -Label "等待你在瀏覽器完成設定" -Usually "設定頁 15 分鐘沒完成會自動關閉" -UpperMinutes 15 -OnLine $hook -Script ($AGEND_ENV + 'agend setup') }
+        $setup = Invoke-BrowserSetup { param($hook) Invoke-WslStep -Label "等待你在瀏覽器完成設定" -Usually "設定頁 15 分鐘沒完成會自動關閉" -UpperMinutes 15 -OnLine $hook -Script ($AGEND_ENV + $setupCommand) }
         if ($setup.Done -or $setup.Already) { $configured = $true; break }
         Write-Host ""
         if ($setup.Shown) {
@@ -1579,25 +1606,12 @@ if (Stage-Done 2) {
     Mark-Stage 2
 }
 
-# ═══════════════════════════════════════════════════════════
-# 階段 3: 登入所選 AI 後端（瀏覽器授權）
-# ═══════════════════════════════════════════════════════════
-
-Write-Step 3 $TOTAL "登入 AI 後端"
-
-$skippedLogins = @()
-if (Stage-Done 3) {
-    Write-Ok "AI 後端已登入，跳過此步驟"
-} else {
-    $skippedLogins = @(Complete-LoginStage $selected)
-}
-
-
+# Progress IDs stay compatible: 4 = installed AgEnD, 3 = verified backend sign-ins.
 # ═══════════════════════════════════════════════════════════
 # 階段 4: 安裝 AgEnD（官方安裝腳本，含 Node.js 22）
 # ═══════════════════════════════════════════════════════════
 
-Write-Step 4 $TOTAL "安裝 AgEnD"
+Write-Step 3 $TOTAL "安裝 AgEnD"
 
 if (Stage-Done 4) {
     Write-Ok "AgEnD 已安裝，跳過此步驟"
@@ -1648,6 +1662,23 @@ if (Stage-Done 4) {
     }
 }
 
+# ── Backend sign-in follows package installation (#2599). Never infer capability from a version string. ──
+Write-Step 4 $TOTAL "準備瀏覽器登入"
+$browserSignins = ''
+$browserLogin = Test-BrowserSignInCapability $UBUNTU_DISTRO $AGEND_USER
+$skippedLogins = @()
+if ($browserLogin) {
+    $browserSignins = Get-BrowserSignInSelection $selected
+    Write-Info "Kiro、Claude、Codex 會在接下來的設定頁登入；不用在此視窗選方法或貼代碼。"
+    Write-Info "可以在網頁選「Sign in later」，之後從儀表板的 Needs you 繼續。"
+    if (@($selected | Where-Object { $_.Key -eq 'antigravity' }).Count) {
+        Write-Warn "Antigravity 目前只提供明確的主控台備援，可稍後執行：$(Get-LoginFollowUpCommand 'antigravity')"
+    }
+} else {
+    Write-Warn "已安裝版本尚未支援瀏覽器登入，保留主控台備援（可選略過，稍後登入）。"
+    $skippedLogins = @(Complete-LoginStage $selected)
+}
+
 # ═══════════════════════════════════════════════════════════
 # 階段 5: 串接通訊軟體 + 啟動服務
 # ═══════════════════════════════════════════════════════════
@@ -1660,7 +1691,7 @@ if (Stage-Done 5) {
     Write-Host ""
     Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram 並貼上 Bot Token；或選「Web only (no bot)」，不用 Bot、只用網頁儀表板。"
     Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
-    if (-not (Invoke-SetupAndService)) {
+    if (-not (Invoke-SetupAndService -BackendSignins $browserSignins)) {
         Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
         Read-Host "按 Enter 結束"; exit 1
     }
@@ -1687,7 +1718,10 @@ Write-Host "  全部安裝完成！" -ForegroundColor Green
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
 Write-Host ""
 Write-Info "  [OK] WSL ($UBUNTU_DISTRO) 已安裝"
-$signedIn = @($selected | Where-Object { $s = $_; -not (@($skippedLogins) | Where-Object { $_.Key -eq $s.Key }) })
+# Independent auth checks: a setup Skip or an old stage marker is never sign-in proof.
+$signedIn = @($selected | Where-Object { Test-WslLogin $_.Key })
+$skippedLogins = @($selected | Where-Object { $b = $_; -not (@($signedIn) | Where-Object { $_.Key -eq $b.Key }) })
+if ($skippedLogins.Count -eq 0) { Mark-Stage 3 }
 if ($signedIn.Count -gt 0) { Write-Info ("  [OK] AI 後端已安裝並登入：" + (($signedIn | ForEach-Object { $_.Name }) -join "、")) }
 foreach ($b in @($skippedLogins)) {
     Write-Warn ("  [!!] {0} 已安裝但還沒登入。要登入，在 PowerShell 執行：{1}" -f $b.Name, (Get-LoginFollowUpCommand $b.Key))
@@ -1734,7 +1768,7 @@ Clear-ResumeAtLogon
 # 最後直接打開儀表板（和桌面捷徑相同的流程）。
 Write-Host ""
 Write-Info "正在打開 AgEnD 網頁儀表板..."
-$null = Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER
+$null = Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER -BackendSignins $browserSignins
 
 Read-Host "按 Enter 結束"
 

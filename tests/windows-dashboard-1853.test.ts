@@ -20,7 +20,7 @@ const ending = code.slice(code.indexOf("全部安裝完成！"));
 describe("the installer ends on the dashboard (static)", () => {
   it("the shortcut is made and the dashboard opened, after the progress is cleared; console commands only under 進階", () => {
     expect(ending).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
-    expect(ending).toMatch(/\$null = Invoke-OpenDashboard \$UBUNTU_DISTRO \$AGEND_USER\n/);
+    expect(ending).toMatch(/\$null = Invoke-OpenDashboard \$UBUNTU_DISTRO \$AGEND_USER -BackendSignins \$browserSignins\n/);
     expect(ending.indexOf("Invoke-OpenDashboard $UBUNTU_DISTRO")).toBeGreaterThan(ending.indexOf("Clear-ResumeAtLogon"));
     const advanced = ending.indexOf("── 進階（需要用主控台時才看）──");
     expect(advanced).toBeGreaterThan(ending.indexOf("日常使用："));

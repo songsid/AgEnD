@@ -716,7 +716,7 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 ### 固定 UI 與引擎（`kiro_ui`、`kiro_engine_status`）
 
-`kiro_ui` 決定 kiro instance 的啟動方式：`legacy`（預設）以 kiro 的 legacy UI 搭配 v1 agent 引擎執行（`--legacy-ui --agent-engine=v1`），`tui` 則以它的終端機 UI 搭配 v2 引擎執行（`--tui --agent-engine=v2`）。每次啟動都會明確帶上這兩個旗標，所以 kiro-cli 的預設值或儲存的設定都無法把 instance 換到另一個引擎上，否則它的對話不會跟過去。如果安裝的 kiro-cli 已經跑不了 instance 固定使用的組合，AgEnD 會拒絕啟動並說明原因，而不是讓 kiro 自己挑（#1109）。`kiro_ui: v3` 在 kiro 的 v3 介面能無人值守執行之前，都會被驗證擋下（#849）。
+`kiro_ui` 決定 kiro instance 的啟動方式：`legacy` 以 kiro 的 legacy UI 搭配 v1 agent 引擎執行（`--legacy-ui --agent-engine=v1`），`tui` 則以它的終端機 UI 搭配 v2 引擎執行（`--tui --agent-engine=v2`）。新的 kiro instance 會由建立它的流程寫入 `tui`（#2598）。沒有設定 `kiro_ui` 的既有項目維持 `legacy`，直到用 `migrate_kiro_instance` 搬移；AgEnD 不會自行猜測。每次啟動都會明確帶上這兩個旗標，所以 kiro-cli 的預設值或儲存的設定都無法把 instance 換到另一個引擎上，否則它的對話不會跟過去。如果安裝的 kiro-cli 已經跑不了 instance 固定使用的組合，AgEnD 會拒絕啟動並說明原因，而不是讓 kiro 自己挑（#1109）。`kiro_ui: v3` 在 kiro 的 v3 介面能無人值守執行之前，都會被驗證擋下（#849）。
 
 `kiro_engine_status`（除了 `minimal` 以外每種權限組合都有的唯讀工具）會針對每個 kiro instance 和 ClassicBot 頻道，顯示它的 `kiro_ui`、下次啟動會用的引擎旗標（或 kiro-cli 會拒絕的原因）、歷次啟動紀錄（每次變動時的 kiro-cli 和 AgEnD 版本）、它的 V3 session，以及它的憑證 profile。它讀的是 AgEnD 在上次啟動時記錄的內容，自己從不執行 kiro-cli。它也會顯示 `engine_floor`（見下）。
 

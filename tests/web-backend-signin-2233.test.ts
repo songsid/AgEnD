@@ -238,3 +238,38 @@ describe("#2599 shared browser controls", () => {
     expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog);
   });
 });
+
+
+describe("#2599 installer dashboard handoff", () => {
+  it("accepts only known non-secret backend IDs in navigation", () => {
+    expect(S.installerSignInBackends("?backend_signins=kiro-cli%2Ccodex%2Cantigravity")).toEqual(["kiro-cli", "codex", "antigravity"]);
+    for (const value of ["", "?backend_signins=codex;whoami", "?backend_signins=unknown", "?backend_signins=codex,,,,"]) expect(S.installerSignInBackends(value)).toBeNull();
+  });
+  it("opens the installer guide only after the local-admin endpoint answered", async () => {
+    const before = location.pathname + location.search;
+    history.pushState(null, "", "/settings/agents?backend_signins=codex%2Cantigravity");
+    try {
+      answer = r => r.url === "/ui/browser-backend-signins" ? { selected: [], pending: [], states: {}, skipped: [], login: null, ready: true } : { targets: [], login: null };
+      S.installSignIn(); await settle(12);
+      expect(shell.shellStore.get().dialog?.Component).toBe(S.BrowserSignInDialog);
+      expect(shell.shellStore.get().dialog?.props).toEqual({ backends: ["codex", "antigravity"] });
+      expect(reqs.every(r => r.method === "GET")).toBe(true);
+    } finally { history.replaceState(null, "", before); }
+  });
+  it("merges the checklist without starting a CLI, with an explicit per-backend console fallback", async () => {
+    let snapshot = { selected: ["kiro-cli"], pending: ["kiro-cli"], skipped: [], states: { "kiro-cli": "invalid", codex: "invalid", antigravity: "console_only" }, login: null, ready: false };
+    answer = r => {
+      if (r.url !== "/ui/browser-backend-signins") return {};
+      if (r.body?.operation === "select") snapshot = { ...snapshot, selected: r.body.backends, pending: r.body.backends };
+      return snapshot;
+    };
+    await p.mount(h(S.BrowserSignInDialog, { backends: ["codex", "antigravity"] })); await settle(12);
+    expect(reqs.filter(r => r.body?.operation === "select").map(r => r.body.backends)).toEqual([["kiro-cli", "codex", "antigravity"]]);
+    expect(reqs.filter(r => ["start", "input", "cancel"].includes(r.body?.operation))).toEqual([]);
+    expect(text()).toContain("Antigravity (console fallback)");
+    expect(btn("antigravity · Use console fallback")).toBeUndefined();
+    fire(btn("codex · Use console fallback"), "click"); await settle(4);
+    expect(reqs.some(r => r.body?.operation === "cancel")).toBe(true);
+    expect(shell.shellStore.get().dialog.props).toMatchObject({ backend: "codex" });
+  });
+});

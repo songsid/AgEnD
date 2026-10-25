@@ -93,6 +93,10 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
   }
   render(); void poll();
   return {
+    addBackends(backends) {
+      if (view && Array.isArray(backends) && backends.every(b => NAMES[b]) && backends.some(b => !view.selected.includes(b)))
+        return perform({ operation: "select", backends: [...new Set([...view.selected, ...backends])] });
+    },
     addBackend(backend) { if (view && NAMES[backend] && !view.selected.includes(backend)) return perform({ operation: "select", backends: [...view.selected, backend] }); },
     dispose() { disposed = true; generation++; clearTimeout(timer); root.replaceChildren(); },
   };

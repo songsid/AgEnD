@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 const execAsync = promisify(exec);
 import type { FleetContext } from "./fleet-context.js";
 import type { ChannelAdapter, InboundMessage, SendOpts } from "./channel/types.js";
-import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { DEFAULT_INSTANCE_CONFIG, newInstanceKiroUi } from "./config.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { formatCents } from "./cost-guard.js";
 import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
@@ -1878,6 +1878,8 @@ export class TopicCommands {
       restart_policy: this.ctx.fleetConfig.defaults.restart_policy ?? DEFAULT_INSTANCE_CONFIG.restart_policy,
       log_level: this.ctx.fleetConfig.defaults.log_level ?? DEFAULT_INSTANCE_CONFIG.log_level,
     };
+    const newKiroUi = newInstanceKiroUi(undefined, this.ctx.fleetConfig.defaults);   // #2598
+    if (newKiroUi) this.ctx.fleetConfig.instances[instanceName].kiro_ui = newKiroUi;
 
     this.ctx.saveFleetConfig();
     this.ctx.routingTable.set(String(topicId), { kind: "instance", name: instanceName });

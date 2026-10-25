@@ -12,6 +12,7 @@ export interface BrowserBackendSignInDeps {
   current(owner: object): boolean;
   installed(): Promise<readonly string[]>;
   checkAuth(backend: StructuredBackend): Promise<AuthCheckResult>;
+  checkConsoleAuth?(): Promise<AuthCheckResult>;
   transport(backend: StructuredBackend): StructuredSignInTransport;
   lock?: LoginWindowLock;
   changed?(event: { backend: StructuredBackend; phase: string; reason?: string }, owner: object, launched: boolean): void;
@@ -79,8 +80,9 @@ export class BrowserBackendSignIns {
           if (!current()) return;
           const checked: BrowserBackendSignInSnapshot["states"] = {};
           for (const backend of selected) {
-            const status = !installed.includes(backend) ? "not_installed" : !structuredSignInSupported(backend)
-              ? "console_only" : this.loginMayWrite(backend) ? "unknown" : await this.deps.checkAuth(backend);
+            const status = !installed.includes(backend) ? "not_installed" : this.loginMayWrite(backend) ? "unknown"
+              : structuredSignInSupported(backend) ? await this.deps.checkAuth(backend)
+              : await this.deps.checkConsoleAuth?.() === "valid" ? "valid" : "console_only";
             if (!current()) return;
             checked[backend] = status;
           }

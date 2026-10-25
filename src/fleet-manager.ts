@@ -87,7 +87,7 @@ import {
   type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis, type StatusEmojiKey,
 } from "./status-emojis.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
-import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
@@ -8183,12 +8183,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       mkdirSync(generalDir, { recursive: true, mode: 0o700 });
       const backendName = fleet.defaults.backend ?? "claude-code";
       this.ensureGeneralInstructions(generalDir, backendName, name);
-      fleet.instances[name] = {
-        ...DEFAULT_INSTANCE_CONFIG,
-        working_directory: generalDir,
-        general_topic: true,
-        channel_id: need.adapterId,
-      };
+      fleet.instances[name] = autoGeneralInstanceConfig(fleet.defaults, generalDir, need.adapterId);   // #2598: its kiro_ui is the fleet's
       generalsCreated = true;
     }
     if (generalsCreated) this.saveFleetConfig();
@@ -16967,6 +16962,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       current: owner => this.browserSignInOwnerCurrent(owner),
       installed: async () => ONBOARDING_BACKENDS.filter(backend => this.isCliInstalled(backend)),
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
+      checkConsoleAuth: () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
       transport: () => createStructuredSignInTransport(),
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }

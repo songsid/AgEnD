@@ -80,3 +80,28 @@ The capability probe now advertises dashboard support; installer order remains
 stage 4. Run `scripts/manual/dashboard-signin-2599.mts` with PW_DIR, OUT and a
 scratch AGEND_HOME for the real dialog + cookie/CSRF HTTP proof, injected stub
 backend, blocked external requests and no fleet.
+
+
+Stage 4 moves package installation before backend sign-in, while keeping stored
+progress IDs (4 = package installed, 3 = credentials verified). Capability JSON
+must advertise version 1 and setup/dashboard/installer support; old or malformed
+responses retain the explicit console fallback. New setup receives canonical
+backend IDs. An already-completed setup is never reset: after service setup, the
+installer opens an authenticated dashboard checklist instead. `agend web --code
+--backend-signins ...` creates only a same-origin navigation hint; the page merges
+IDs without starting a CLI, cancelling another writer, or accepting a command.
+Antigravity remains console-only, with an explicit skip and pending hint. A deliberate Check sign-ins uses its existing read-only auth probe to clear that hint after console sign-in; it never starts an agy login or device bridge.
+
+The PowerShell helpers are exercised with all WSL/auth/browser boundaries stubbed
+and private HOME/USERPROFILE. Portable PowerShell 7 is a syntax/runtime proof,
+not a claim of native Windows PowerShell 5.1 or WSL localhost acceptance. Actual
+Windows acceptance: fresh install; Kiro method/org fields, Claude code, Codex
+device code in browser; refresh joins; skip leaves Needs you; rerun preserves an
+existing config; old published package falls back; agy never enters a structured
+writer. No real-account acceptance is performed by the automated suite.
+
+The shared shortcut source is encoded as UTF-16/base64 into a Windows command
+line. Its existing 30,000-character test keeps space below the 32,767 limit;
+embedded commentary is kept short to preserve that margin. The dashboard opener
+still captures native stderr under Continue and restores ErrorActionPreference
+in finally, because Windows PowerShell 5.1 represents stderr as error records.

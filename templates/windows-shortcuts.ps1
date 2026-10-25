@@ -23,15 +23,17 @@ function Get-DashboardSignIn([string]$text) {
     if (-not $url.Success -or -not $code.Success) { return $null }
     return @{ Url = $url.Groups[1].Value; Code = $code.Groups[1].Value }
 }
-function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$Wait) {
-    # agend web --code 失敗時（AgEnD 沒在跑、沒有 token、連不上）會寫到 stderr 並以 1 結束。Windows PowerShell 5.1 會把重導的
-    # stderr 變成錯誤紀錄，在 ErrorActionPreference=Stop 下直接中止（#2242 審查）：取得輸出的這段改用 Continue、每一筆都轉成文字，
-    # 結束碼不是 0、啟動不了 wsl，都走下面「打不開」的說明。原本的設定在 finally 還原。
+function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$Wait, [string]$BackendSignins = '') {
+    $command = 'agend web --code'
+    if ($BackendSignins) {
+        if ($BackendSignins -cnotmatch '^(kiro-cli|claude-code|codex|antigravity)(,(kiro-cli|claude-code|codex|antigravity)){0,3}\z') { throw 'Invalid backend selection' }
+        $command += ' --backend-signins ' + $BackendSignins
+    }
     $text = ''; $exit = 1
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $text = ((& wsl.exe -d $distro -u $user -- bash -lc (Get-WslAgendCommand 'agend web --code') 2>&1) | ForEach-Object { "$_" } | Out-String)
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc (Get-WslAgendCommand $command) 2>&1) | ForEach-Object { "$_" } | Out-String)
         $exit = $LASTEXITCODE
     } catch {
         $text = "$_"; $exit = 1

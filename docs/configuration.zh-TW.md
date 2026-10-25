@@ -301,7 +301,7 @@ templates:
 | `channel_id` | string | — | 多連線模式中綁定的 adapter ID |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
 | `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`opencode`、`kiro-cli`、`antigravity`、`grok`、`muse` |
-| `kiro_ui` | `"legacy"` \| `"tui"` | `"legacy"` | 僅供 Kiro 使用的啟動模式。`legacy` 跑在 kiro 的 v1 engine，`tui` 跑在 v2 engine；每次啟動都會明確指定，kiro-cli 的預設值或已存的設定都無法把 instance 換到別的 engine（#1109）。在 Kiro v3 介面能無人值守執行之前，`"v3"` 會被設定驗證拒絕（#849）。 |
+| `kiro_ui` | `"legacy"` \| `"tui"` | `"legacy"`；新建的 instance 會寫入 `"tui"`（#2598） | 僅供 Kiro 使用的啟動模式。所有建立 kiro instance 的方式（`create_instance`、網頁精靈、`agend setup` 或 `agend quickstart` 建立的新 fleet、fleet 自動建立的 General 或 topic）都會寫入 `tui`，除非 fleet 預設已指定。沒有設定的既有項目維持 `legacy`：要搬請用 `migrate_kiro_instance`，不要直接改這個值。`legacy` 跑在 kiro 的 v1 engine，`tui` 跑在 v2 engine；每次啟動都會明確指定，kiro-cli 的預設值或已存的設定都無法把 instance 換到別的 engine（#1109）。在 Kiro v3 介面能無人值守執行之前，`"v3"` 會被設定驗證拒絕（#849）。 |
 | `auto_pause_after` | number | `0`（停用） | 閒置多少分鐘後自動暫停。0 = 不暫停。 |
 | `model` | string | — | 模型覆寫；有效名稱與格式依 backend 而定 |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
@@ -752,6 +752,6 @@ web:
 
 登入控制必須使用這台電腦上仍有效的 setup cookie，透過 `--tunnel` 一律拒絕。重新整理會接回同一次嘗試；畫面重繪不會讓已回答的提示再次接受輸入，若 CLI 重問，請取消再重試。若無法確認程序已關閉，setup 會拒絕交接；請在主機關閉該 setup 的登入程序，再重新執行 setup。寫入設定仍需要原有的主機確認。
 
-`agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。能力資訊宣告支援 setup 與儀表板登入清單；Windows 安裝順序會在 #2599 的後續階段調整。
+`agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。Windows 安裝程式只有在版本 1 的 setup、dashboard、installer 能力旗標都成立時才使用新流程：先安裝 AgEnD，再於 setup 頁面登入後端。舊版套件保留主控台備援。已有設定的安裝會用 `agend web --code --backend-signins kiro-cli,claude-code,codex` 開啟儀表板清單，單純導覽不會啟動登入。安裝進度 ID 維持相容；最後狀態會重新檢查登入，略過的後端不會被說成已登入。Antigravity 仍為明確的主控台備援，尚未啟用被動裝置驗證橋接。
 
 直接連線的儀表板也只有目前有效的本機管理員 session 可操作登入；agent 的 header token、唯讀 session、訪客與公開連結，都不能讀取提示或送出答案。Kiro、Claude、Codex 的預設帳號使用具名控制；憑證設定檔保留原有流程。遇到不支援的畫面，可明確選擇 **改用主控台備援**。頂端狀態列可重新開啟進行中的嘗試。成功登入後會沿用原有的預設帳號 agent 恢復流程；若只是確認原有憑證仍有效，不會重新啟動正在執行的 agent。登入、安裝、舊版與 profile 流程共用同一個寫入保留名額。

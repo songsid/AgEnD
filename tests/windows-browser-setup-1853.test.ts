@@ -24,12 +24,12 @@ const setupFn = code.slice(code.indexOf("function Invoke-SetupAndService"), code
 
 describe("stage 5 sets up in the browser (static)", () => {
   it("stage 5 is marked done only after setup and the service both succeeded; otherwise it ends with its progress kept", () => {
-    expect(stage5).toMatch(/if \(-not \(Invoke-SetupAndService\)\) \{\n\s+Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"\n\s+Read-Host "按 Enter 結束"; exit 1\n\s+\}/);
+    expect(stage5).toMatch(/if \(-not \(Invoke-SetupAndService -BackendSignins \$browserSignins\)\) \{\n\s+Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"\n\s+Read-Host "按 Enter 結束"; exit 1\n\s+\}/);
     expect(stage5).not.toMatch(/準備好了嗎/);                                       // nothing to press before the page opens
-    expect(code.indexOf("Mark-Stage 5")).toBeGreaterThan(code.indexOf("if (-not (Invoke-SetupAndService))"));
+    expect(code.indexOf("Mark-Stage 5")).toBeGreaterThan(code.indexOf("if (-not (Invoke-SetupAndService -BackendSignins $browserSignins))"));
   });
   it("runs agend setup through the watched runner, with the hook that opens the page; the service only when not already running", () => {
-    expect(setupFn).toMatch(/Invoke-BrowserSetup \{ param\(\$hook\) Invoke-WslStep -Label "等待你在瀏覽器完成設定"[^\n]*-OnLine \$hook -Script \(\$AGEND_ENV \+ 'agend setup'\) \}/);
+    expect(setupFn).toMatch(/Invoke-BrowserSetup \{ param\(\$hook\) Invoke-WslStep -Label "等待你在瀏覽器完成設定"[^\n]*-OnLine \$hook -Script \(\$AGEND_ENV \+ \$setupCommand\) \}/);
     expect(setupFn).toMatch(/if systemctl --user is-active --quiet com\.agend\.fleet; then echo "AgEnD service is already running"; else agend install; fi/);
     expect(code.match(/agend quickstart/g)).toHaveLength(1);                      // only Invoke-ConsoleQuickstart, the no-page fallback
   });

@@ -1,15 +1,18 @@
 /** Real loopback setup HTTP + confirmation socket, injected inert CLI transport only. */
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
+import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 import { SetupHost } from "../src/setup-host.js";
 import { setupHttp, decideSetup } from "./helpers/setup-confirmation-1423.js";
 import { readPendingBackendSignIns } from "../src/backend-signin-pending.js";
 
+const nativeProbe = vi.fn(async () => { throw new Error("native auth forbidden"); });
+beforeEach(() => { nativeProbe.mockClear(); setAuthCheckRunnerForTests(nativeProbe); });
 const fixtures: { host: SetupHost; dir: string }[] = [];
-afterEach(async () => { for (const h of fixtures.splice(0)) { await h.host.shutdown(false, "test cleanup"); rmSync(h.dir, { recursive: true, force: true }); } vi.restoreAllMocks(); });
+afterEach(async () => { for (const h of fixtures.splice(0)) { await h.host.shutdown(false, "test cleanup"); rmSync(h.dir, { recursive: true, force: true }); } setAuthCheckRunnerForTests(null); expect(nativeProbe).not.toHaveBeenCalled(); vi.restoreAllMocks(); });
 function deferred<T = void>() { let resolve!: (value: T | PromiseLike<T>) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 async function rig(selected: ("codex" | "claude-code" | "kiro-cli" | "antigravity")[] = ["codex"]) {
   const dir = mkdtempSync(join(tmpdir(), "agend-setup-signin-")), logs: string[] = [];
@@ -122,4 +125,10 @@ it("rechecks the committed file after awaited cleanup before granting fleet hand
   await vi.waitFor(() => expect(closing).toHaveBeenCalled());
   writeFileSync(join(h.dir, "fleet.yaml"), "instances: {}\n"); close.resolve(true);
   expect((await finish).status).toBe(409); expect(h.spawnFleet).not.toHaveBeenCalled();
+});
+it("injected setup dependencies never fall back to a native console auth probe", async () => {
+  const h = await rig(["antigravity"]);
+  const view = await h.api();
+  expect(view.status).toBe(200); expect(view.body.states.antigravity).toBe("console_only");
+  expect(nativeProbe).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled();
 });

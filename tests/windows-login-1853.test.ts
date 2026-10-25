@@ -20,7 +20,7 @@ const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-
 const text = readFileSync(INSTALLER, "utf8");
 const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
 const stage3 = code.slice(code.indexOf("function Invoke-LoginStage"), code.indexOf("function Complete-LoginStage"));
-const stage3Top = code.slice(code.indexOf("Write-Step 3 $TOTAL"), code.indexOf("Write-Step 4 $TOTAL"));
+const stage3Top = code.slice(code.indexOf("Write-Step 4 $TOTAL"), code.indexOf("Write-Step 5 $TOTAL"));
 const agySh = text.slice(text.indexOf("$AGY_LOGIN_SH = @'") + "$AGY_LOGIN_SH = @'".length + 1, text.indexOf("\n'@", text.indexOf("$AGY_LOGIN_SH = @'")));
 
 describe("stage 3 signs in through each backend's own login (static)", () => {
@@ -34,8 +34,8 @@ describe("stage 3 signs in through each backend's own login (static)", () => {
     expect(stage3).toMatch(/\$loginFile, \$loginWsl = New-WslScriptFile \(Get-LoginScript \$b\.Key\)/);
     expect(stage3).toMatch(/按 Enter 再試一次；輸入 s 再按 Enter 先跳過/);
     expect(stage3).not.toMatch(/^\s*wsl -d/m);                                   // the login runs on the console (Start-Process), never inline
-    expect(stage3Top).toMatch(/\$skippedLogins = @\(\)\nif \(Stage-Done 3\) \{[\s\S]*\$skippedLogins = @\(Complete-LoginStage \$selected\)/);
-    expect(stage3Top).not.toMatch(/Mark-Stage 3/);                                // only Complete-LoginStage marks it, and only with nothing skipped
+    expect(stage3Top).toMatch(/\$skippedLogins = @\(\)\nif \(\$browserLogin\) \{[\s\S]*\} else \{[\s\S]*\$skippedLogins = @\(Complete-LoginStage \$selected\)/);
+    expect(stage3Top).not.toMatch(/Mark-Stage 3/);                                // console fallback marks it only with nothing skipped; browser mode verifies at the end
   });
   it("agy: its own tmux socket, a leftover session reattached (never killed), and nothing that kills", () => {
     expect(agySh).toMatch(/tmux -L agend-install has-session -t agy-login/);

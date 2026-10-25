@@ -24,6 +24,7 @@ import { discordBotPortalUrl, discordInviteUrl } from "./discord-permissions.js"
 import { EnvFileUnreadableError, envFileKeys, generateTokenEnvName, generatedTokenEnvStale, newTokenEnvConflict, takenTokenEnvNames, TOKEN_ENV_PATTERN } from "./token-env-name.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import type { FleetConfig } from "./types.js";
+import { newInstanceKiroUi } from "./config.js";
 import {
   awaitTelegramGroupStart,
   detectInstalledBackends,
@@ -372,7 +373,8 @@ export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: W
     // #1519 P7: an existing agent keeps everything it has; only its connection becomes the new one — and a topic of
     // another chat is not carried into this one (#1549 review: releasesTopic).
     ? withMovedTopic({ ...existing, channel_id: plan.channel_id }, movedTopic(cfg, body.instance_name, plan.channel))
-    : { ...(existing ?? {}), working_directory: body.working_directory, backend: body.backend, channel_id: plan.channel_id },
+    : { ...(existing ?? {}), working_directory: body.working_directory, backend: body.backend, channel_id: plan.channel_id,
+      ...newAgentKiroUi(existing, body.backend, cfg) },
   } as FleetConfig["instances"];
   return draft;
 }
@@ -432,10 +434,19 @@ export function webOnlyConflict(cfg: FleetConfig | null): string | null {
   return wizardChannels(cfg).length ? "this fleet already has a chat connection — add the agent with New agent instead" : null;
 }
 
+/** #2598: a wizard's NEW kiro agent is written with the TUI engine; an existing entry keeps whatever it has. */
+function newAgentKiroUi(existing: unknown, backend: string | undefined, cfg: FleetConfig): { kiro_ui?: "tui" } {
+  if (existing) return {};
+  const ui = newInstanceKiroUi(backend, cfg.defaults);
+  return ui ? { kiro_ui: ui } : {};
+}
+
 /** #2233: the web-only draft — the new agent, bound to no connection; channels untouched (none). */
 export function draftWebOnly(cfg: FleetConfig, body: Pick<WizardPlanInput, "instance_name" | "backend" | "working_directory">): FleetConfig {
   const draft = structuredClone(cfg);
-  draft.instances = { ...draft.instances, [body.instance_name]: { working_directory: body.working_directory, backend: body.backend } } as FleetConfig["instances"];
+  const existing = Object.hasOwn(draft.instances, body.instance_name) ? draft.instances[body.instance_name] : undefined;
+  draft.instances = { ...draft.instances, [body.instance_name]: { working_directory: body.working_directory, backend: body.backend,
+    ...newAgentKiroUi(existing, body.backend, cfg) } } as FleetConfig["instances"];
   return draft;
 }
 

@@ -21,7 +21,9 @@
 #      branch, whitespace kept, only index lines and hunk line numbers normalised) is the same, i.e. a merge-sync.
 #      Compared on every path except docs/ and changes/: src/ and tests/, and also scripts, workflows and package
 #      files. Anything else is NEEDS_REVIEW with the paths;
-#   4. the base tip is an ancestor, or both sides changed disjoint paths (main package/lock/workflow changes block);
+#   4. the base tip is an ancestor, or both sides changed disjoint paths, or they overlap but a three-way merge of the
+#      base tip and the head is clean (git merge-tree --write-tree; a scratch worktree merge on git < 2.38). Main's
+#      package/lock/workflow changes and a real conflict block ("merge-sync first");
 #   5. CI: every required check (GATE_REQUIRED_CHECKS, plus any the base branch's rulesets require) has a run on the
 #      exact head, and every check-run there (the latest run of each name) is completed with conclusion success.
 # Then it retargets open PRs based on this PR's branch to this PR's base (stacked PRs), squash-merges with
@@ -195,13 +197,16 @@ if [ "$HEAD" != "$APPROVED" ]; then
   note "head $HEAD carries the approval of $APPROVED ($CARRY-identical outside docs/ and changes/)"
 fi
 
-# ── 4. Merge-synced or disjoint ─────────────────────────────────────────────────────────────────────────────────────────────
+# ── 4. Merge-synced, disjoint, or overlapping but clean ─────────────────────────────────────────────────────────────────────
 git merge-base --is-ancestor "$BASE_TIP" "$HEAD"; rc=$?
 [ "$rc" -le 1 ] || blocked "git merge-base --is-ancestor failed"
 if [ "$rc" -eq 1 ]; then
-  OVERLAP="$(node "$SUPPORT" overlap "$BASE_TIP" "$HEAD")" || blocked "#$PR behind $BASE_REF: cannot read changed paths; merge-sync first"
-  [ "$OVERLAP" = "DISJOINT" ] || blocked "#$PR is behind $BASE_REF ($BASE_TIP): merge-sync first ($OVERLAP)"
-  note "merged behind main, disjoint ($BASE_REF at $BASE_TIP)"
+  OVERLAP="$(node "$SUPPORT" merge-check "$BASE_TIP" "$HEAD")" || blocked "#$PR behind $BASE_REF: cannot read changed paths; merge-sync first"
+  case "$OVERLAP" in
+    DISJOINT) note "merged behind main, disjoint ($BASE_REF at $BASE_TIP)" ;;
+    "CLEAN "*) note "merged behind main, overlapping but clean ($BASE_REF at $BASE_TIP: ${OVERLAP#CLEAN })" ;;
+    *) blocked "#$PR is behind $BASE_REF ($BASE_TIP): merge-sync first ($OVERLAP)" ;;
+  esac
 fi
 
 # ── 5. CI on the exact head ─────────────────────────────────────────────────────────────────────────────────────
@@ -290,8 +295,12 @@ BODY="$(node "$SUPPORT" body "$OP")" || { put_back; blocked "cannot read gate me
 # Retarget/read/receipt work can outlive another main merge. Refresh at the actual mutation boundary too.
 git fetch -q "$REMOTE" "+refs/heads/$BASE_REF:refs/gate/base-$PR" 2>/dev/null || { put_back; blocked "final base fetch failed"; }
 FINAL_BASE="$(git rev-parse "refs/gate/base-$PR")" || { put_back; blocked "final base unreadable"; }
-FINAL_OVERLAP="$(node "$SUPPORT" overlap "$FINAL_BASE" "$HEAD")" || { put_back; blocked "final changed paths unreadable"; }
-[ "$FINAL_OVERLAP" = "DISJOINT" ] || { put_back; blocked "#$PR base moved or overlaps: merge-sync first ($FINAL_OVERLAP)"; }
+FINAL_OVERLAP="$(node "$SUPPORT" merge-check "$FINAL_BASE" "$HEAD")" || { put_back; blocked "final changed paths unreadable"; }
+case "$FINAL_OVERLAP" in
+  DISJOINT) ;;
+  "CLEAN "*) [ "$FINAL_BASE" = "$BASE_TIP" ] || note "merged behind main, overlapping but clean ($BASE_REF moved to $FINAL_BASE: ${FINAL_OVERLAP#CLEAN })" ;;
+  *) put_back; blocked "#$PR base moved or overlaps: merge-sync first ($FINAL_OVERLAP)" ;;
+esac
 MERGE_OK=1
 MERGE_ERR="$(gh pr merge "$PR" -R "$REPO" --squash --match-head-commit "$HEAD" --body-file "$BODY" 2>&1 >/dev/null)" || MERGE_OK=0
 # Whatever gh said, GitHub's state decides what happened.

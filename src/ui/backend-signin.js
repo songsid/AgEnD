@@ -149,8 +149,19 @@ export function installSignIn() {
   installed = true;
   const on = appStore.get().streamOn;
   if (typeof on === "function") on("backend_login", () => { void refreshSignIn(); });
-  void refreshSignIn();
+  void refreshSignIn().then(() => {
+    // A navigation hint from the installer, never authority to start a CLI or cancel another writer.
+    const backends = installerSignInBackends(typeof location === "undefined" ? "" : location.search);
+    if (backends && signInStore.get().structured) showDialog(BrowserSignInDialog, { backends });
+  });
   shellStore.set({ banner: SignInLine });
+}
+
+export function installerSignInBackends(search) {
+  const csv = new URLSearchParams(search).get("backend_signins");
+  if (!csv || csv.length > 100) return null;
+  const ids = csv.split(",");
+  return ids.length <= 4 && ids.every(b => ["kiro-cli", "claude-code", "codex", "antigravity"].includes(b)) ? [...new Set(ids)] : null;
 }
 
 /** Open the dialog for one login (a backend's default one, or a credential profile). */
@@ -202,25 +213,27 @@ function Running({ login }) {
 }
 
 /** The same closed controls as first setup. Profile-specific logins retain their existing flow. */
-export function BrowserSignInDialog({ backend, onClose }) {
+export function BrowserSignInDialog({ backend, backends, onClose }) {
   const root = useRef(null), close = onClose || closeDialog;
   useEffect(() => {
     let cards, last = "";
     cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", changed: next => {
-      if (!next.selected.includes(backend)) void cards.addBackend(backend);
+      if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
+      else if (!next.selected.includes(backend)) void cards.addBackend(backend);
       const signature = JSON.stringify([next.login, next.pending]);
       if (signature !== last) { last = signature; void refreshSignIn(); }
     } });
     return () => cards.dispose();
-  }, [backend]);
-  const fallback = async () => {
+  }, [backend, backends]);
+  const fallback = async (chosen = backend) => {
     const result = await post("/ui/browser-backend-signins", { operation: "cancel" });
     if (!result.ok) { toast(tn("failed")); return; }
-    showDialog(SignInDialog, { backend });
+    showDialog(SignInDialog, { backend: chosen });
   };
-  return html`<${Dialog} title=${tn("title", backend)} onClose=${close}>
+  return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", backend)} onClose=${close}>
     <div ref=${root}></div>
-    <div class="s-actions"><button type="button" class="btn" onClick=${fallback}>${tn("consoleFallback")}</button>
+    ${backends ? backends.filter(b => b !== "antigravity").map(b => html`<button type="button" class="btn" onClick=${() => fallback(b)}>${b} · ${tn("consoleFallback")}</button>`) : null}
+    <div class="s-actions">${backend ? html`<button type="button" class="btn" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button>` : null}
     <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>
   </${Dialog}>`;
 }
