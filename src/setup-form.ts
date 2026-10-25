@@ -107,6 +107,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 <main>
   <h1>Set up AgEnD</h1>
   <div class="sub" id="intro">This page is open only while setup is running. It closes itself when you finish, or after 15 minutes.</div>
+  <div class="sub msg" id="ttlMsg" role="status"></div>
 
   <div class="step" id="setupSignins" aria-label="AI backend sign-ins"></div>
 
@@ -285,11 +286,39 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   let formFrozen = false;
   let submission = null;
   let pollGeneration = 0;
+  // #2650 item 10: how long this page has left, counted here from the host's own remaining time (no polling: a request
+  // would keep an idle page open). After it, the page says it has closed and how to reopen it, instead of freezing.
+  const REOPEN = "Reopen it where you started setup: in the Windows installer, press Enter in its window; otherwise run agend setup again on the computer running AgEnD.";
+  let closesAt = null, handedOver = false, pageClosed = false;
+  const closePage = () => {
+    if (handedOver || pageClosed) return;
+    pageClosed = true; pollGeneration++; freezeFields(true); $("finish").disabled = true;
+    $("ttlMsg").className = "sub msg err"; $("ttlMsg").textContent = "This setup page has closed.";
+    $("finishMsg").className = "msg err"; $("finishMsg").textContent = "This setup page has closed. " + REOPEN + " Backends you already signed in stay signed in.";
+  };
+  const showRemaining = () => {
+    if (closesAt === null || handedOver || pageClosed) return;
+    const left = closesAt - performance.now();
+    if (left <= 0) { closePage(); return; }
+    const total = Math.ceil(left / 1000), text = Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+    const soon = left <= 3 * 60_000;
+    $("ttlMsg").className = soon ? "sub msg err" : "sub msg";
+    $("ttlMsg").textContent = "This page closes in " + text + " at the latest (sooner after 10 minutes without activity)."
+      + (soon ? " Finish soon. If it closes first: " + REOPEN : "");
+    setTimeout(showRemaining, 1000);
+  };
+  const trackRemaining = (status) => {
+    const ms = status?.remaining_ms;
+    if (closesAt !== null || typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return;
+    closesAt = performance.now() + ms; showRemaining();
+  };
+
   const freezeFields = (frozen) => {
     formFrozen = frozen;
     for (const field of document.querySelectorAll("main input, main select, #verify, #preview, #pickTelegram, #pickDiscord, #pickWeb, #detect")) field.disabled = frozen;
   };
   const restoreEditing = (message) => {
+    if (pageClosed) return;                       // a late answer never reopens a closed page (#2653 review)
     pollGeneration++; approvedSetup = false; submission = null; state.identity = null;
     freezeFields(false); $("finish").disabled = true; $("finish").textContent = "Create and start AgEnD";
     $("finishMsg").className = "msg err"; $("finishMsg").textContent = message;
@@ -298,25 +327,36 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     approvedSetup = false; submission = null; $("finish").textContent = "Create and start AgEnD";
   });
   const watchPending = (pendingId) => {
+    if (pageClosed) return;                       // a late pending list or commit answer: the page stays closed
     const generation = ++pollGeneration;
     freezeFields(true); $("finish").disabled = true;
-    $("finishMsg").textContent = "On the host, run: agend settings confirm " + pendingId;
+    // #2650 item 1: the page asks; a person at the computer running AgEnD approves. Nothing on this page can.
+    const ask = "Approve this on the computer running AgEnD. The Windows installer opens a confirmation window for it, and shows a command to paste if no window appears. Otherwise run there: agend settings confirm " + pendingId;
+    $("finishMsg").className = "msg"; $("finishMsg").textContent = ask;
+    let misses = 0;
     const poll = async () => {
       if (generation !== pollGeneration) return;
       try {
         const result = await api("api/settings/pending/" + pendingId);
         if (generation !== pollGeneration) return;
+        if (misses) { misses = 0; $("finishMsg").className = "msg"; $("finishMsg").textContent = ask; }
         if (!result.ok) { restoreEditing("Setup confirmation is no longer available. Review and enter the token again."); return; }
         const pending = result.body;
         if (pending.state === "pending" || pending.state === "applying") { setTimeout(poll, 1000); return; }
         if (pending.state !== "applied") { restoreEditing(pending.outcome?.message || "Change was not applied. Review and enter the token again."); return; }
         approvedSetup = true; submission = null; $("finish").disabled = false; $("finish").textContent = "Start AgEnD";
         $("finishMsg").textContent = "Configuration confirmed. Select Start AgEnD to finish setup.";
-      } catch { if (generation === pollGeneration) setTimeout(poll, 1000); }
+      } catch {
+        if (generation !== pollGeneration) return;
+        // #2650 item 10: a lost connection is said, not waited out silently; the pending confirmation keeps its id.
+        if (++misses === 5) { $("finishMsg").className = "msg err"; $("finishMsg").textContent = "Lost contact with the setup page; still trying. If this stays, the page has closed. " + REOPEN; }
+        setTimeout(poll, misses < 5 ? 1000 : 3000);
+      }
     };
     setTimeout(poll, 1000);
   };
   $("finish").onclick = async () => {
+    if (pageClosed) return;
     if ($("setupSignins").dataset.ready === "false") {
       $("finishMsg").textContent = "Finish backend sign-in or choose Sign in later before continuing."; return;
     }
@@ -325,6 +365,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       if (approvedSetup) {
         const finished = await api("setup/finish", { method: "POST" });
         if (!finished.ok) { restoreEditing(finished.body?.error || "Confirmation is no longer current."); return; }
+        handedOver = true; $("ttlMsg").textContent = "";
         $("finishMsg").textContent = state.platform === "web" ? "AgEnD is starting. Its dashboard link shows here once it is up." : "AgEnD is starting. Continue in the channel you configured.";
         if (finished.body?.watch !== false) waitForFleet();
         return;
@@ -339,14 +380,16 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       if (commit.body?.result !== "pending_confirmation" || !commit.body.pending_change?.id) { restoreEditing("Expected a pending host confirmation."); return; }
       $("token").value = ""; submission = null;
       watchPending(commit.body.pending_change.id);
-    } catch { $("finishMsg").textContent = "Connection failed. Retry to find the same confirmation."; $("finish").disabled = false; }
+    } catch { if (pageClosed) return; $("finishMsg").textContent = "Connection failed. Retry to find the same confirmation."; $("finish").disabled = false; }
   };
   // Same-cookie reloads rediscover an unresolved consent request without a secret.
+  const status = api("setup/status").then(result => { if (result.ok) trackRemaining(result.body); return result; });
+  status.catch(() => {});
   api("api/settings/pending").then(result => {
     const pending = result.ok && Array.isArray(result.body) && result.body.find(item => item.state === "pending" || item.state === "applying");
     if (pending) { watchPending(pending.id); return; }
-    api("setup/status").then(status => {
-      if (!status.ok || !status.body?.finish_ready || submission || pollGeneration) return;
+    status.then(current => {
+      if (pageClosed || !current.ok || !current.body?.finish_ready || submission || pollGeneration) return;
       approvedSetup = true; freezeFields(true); $("finish").disabled = false; $("finish").textContent = "Start AgEnD";
       $("finishMsg").textContent = "Configuration confirmed. Select Start AgEnD to finish setup.";
     }).catch(() => {});

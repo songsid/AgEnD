@@ -373,6 +373,12 @@ function Get-LoginFollowUpCommand([string]$key) {
     $cmd = if ($key -eq 'antigravity') { 'agy' } else { Get-LoginCommand $key }
     return ("wsl -d {0} -u root -- bash -lc 'export PATH=/root/.local/bin:`$HOME/.claude/local:`$PATH; {1}'" -f $UBUNTU_DISTRO, $cmd)
 }
+# 設定頁要求「在主機上確認」時（#2650 第 1 項）：在 WSL 裡執行 agend settings confirm 的那行指令（給人貼到另一個 PowerShell
+# 視窗）。確認一定要有人在這台電腦上看過內容、輸入 y：網頁自己做不到，安裝程式也不代答。編號只接受 32 位小寫十六進位。
+function Get-HostConfirmCommand([string]$id) {
+    if ($id -cnotmatch '^[0-9a-f]{32}\z') { throw 'Invalid confirmation id' }
+    return ("wsl -d {0} -u root -- bash -lc 'export PATH=/root/.local/bin:`$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm {1}'" -f $UBUNTU_DISTRO, $id)
+}
 # #2233：設定頁選了「Web only (no bot)」嗎？問 AgEnD 自己（agend validate --connections 解析 fleet.yaml，和 fleet 讀的一樣），
 # 不用 grep 猜。回傳 'web'（0 個連線）、'chat'（有連線）或 'unknown'（讀不到、舊版沒有這個選項、WSL 沒回應）——不知道就不說「已串接」。
 # 傳給 wsl 的指令裡沒有雙引號：Windows PowerShell 5.1 傳原生參數時會把內嵌的雙引號弄掉（#2261 審查）。
@@ -538,7 +544,8 @@ function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$
   Write-Host ("  ┌──────────────────────────────────────┐") -ForegroundColor Green
   Write-Host ("  │   儀表板登入碼：  " + $spaced + "    │") -ForegroundColor Green
   Write-Host ("  └──────────────────────────────────────┘") -ForegroundColor Green
-  if ($opened) { Write-Host "  [OK] 登入頁已在瀏覽器打開。" -ForegroundColor Green } else { Write-Host ("  請自己在瀏覽器打開：" + $signIn.Url) }
+  if ($opened) { Write-Host "  [OK] 登入頁已在瀏覽器打開。" -ForegroundColor Green }
+  Write-Host ("  登入頁網址：" + $signIn.Url)
   if ($copied) { Write-Host "  [OK] 登入碼已複製：在登入頁的輸入框按 Ctrl+V。這組登入碼只能用一次，幾分鐘內有效。" -ForegroundColor Green }
   else { Write-Host "  在登入頁輸入上面的登入碼。這組登入碼只能用一次，幾分鐘內有效。" }
   if ($Wait) { Read-Host "按 Enter 關閉" }
@@ -806,30 +813,80 @@ function Invoke-WslUpdateStage {
 function Get-SetupPrompt([string]$line) {
     if ($line -match 'Setup page:\s*(https?://\S+)') { return @{ Url = $Matches[1] } }
     if ($line -match 'Setup code:\s*([A-Z2-7]{4}-[A-Z2-7]{4})') { return @{ Code = $Matches[1] } }
+    # #2650 第 1 項：設定頁要求主機確認時，agend setup 印出的稽核行（2026-10-09 起每一版都有，不必等新版）。只認設定頁自己
+    # 提出的（source 是 setup_session）、編號是 32 位小寫十六進位的；其他一律不理。
+    if ($line -match 'Settings confirmation requested:\s*(\{.*\})\s*$') {
+        try { $f = $Matches[1] | ConvertFrom-Json -ErrorAction Stop } catch { return $null }
+        if ($f.source -ceq 'setup_session' -and ([string]$f.id) -cmatch '^[0-9a-f]{32}\z') { return @{ Confirm = [string]$f.id } }
+        return $null
+    }
+    # 設定頁為什麼關掉（agend setup 的 "Setup host stopped (原因)"）：ttl、idle、lockout 等，用來說清楚發生什麼事。
+    if ($line -match 'Setup host stopped \(([a-z ]{1,40})\)') { return @{ Stopped = $Matches[1] } }
     return $null
 }
 function Open-InBrowser([string]$url) { try { Start-Process $url; return $true } catch { return $false } }
 function Set-SetupClipboard([string]$text) { try { Set-Clipboard -Value $text; return $true } catch { return $false } }
+# 另開一個視窗執行 agend settings confirm：那個視窗先列出這次設定會改什麼，再問 y/N（agend 自己問，不是安裝程式代答）。
+# 這個視窗正在等設定頁，不能在這裡打字，所以確認放到另一個視窗。回傳視窗有沒有打開。
+function Open-HostConfirmWindow([string]$id) {
+    if ($id -cnotmatch '^[0-9a-f]{32}\z') { return $false }
+    $script = 'printf ''\033]0;AgEnD setup confirmation\007''; export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm ' + $id + '; echo; read -r -p ''Press Enter to close this window. '' _'
+    try {
+        $null = Start-Process -FilePath 'wsl.exe' -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-lc', $script))
+        return $true
+    } catch { return $false }
+}
+function Show-HostConfirm([string]$id, [bool]$opened) {
+    Write-Host ""
+    Write-Warn "設定頁要你在這台電腦上確認設定（網頁自己不能確認，要有人在這台電腦上同意）。"
+    if ($opened) {
+        Write-Ok "已經另外打開一個「AgEnD setup confirmation」視窗：看過裡面列出的內容，沒問題就輸入 y 再按 Enter。"
+        Write-Info "確認後回到網頁，按「Start AgEnD」。"
+    } else {
+        Write-Warn "沒辦法自動打開確認視窗。"
+    }
+    Write-Info "沒看到確認視窗的話：另外開一個 PowerShell 視窗，貼上這一行再按 Enter（同樣會先列出內容、問你 y/N）："
+    Write-Host ("    " + (Get-HostConfirmCommand $id)) -ForegroundColor Cyan
+    Write-Host ""
+}
 function Show-SetupCode([string]$code, [bool]$copied, [bool]$opened, [string]$url) {
     $spaced = ($code.ToCharArray() | ForEach-Object { [string]$_ }) -join ' '
     Write-Host ""
     Write-Host "  ┌──────────────────────────────────────┐" -ForegroundColor Green
     Write-Host ("  │   設定碼：  " + $spaced + "    │") -ForegroundColor Green
     Write-Host "  └──────────────────────────────────────┘" -ForegroundColor Green
-    if ($opened) { Write-Ok "設定頁已在瀏覽器打開。" } else { Write-Warn "瀏覽器沒有自動打開，請自己打開這個網址：$url" }
+    if ($opened) { Write-Ok "設定頁已在瀏覽器打開。" } else { Write-Warn "瀏覽器沒有自動打開，請自己打開下面的網址。" }
+    # #2650 第 10 項：網址一定印出來。瀏覽器開到別的視窗、別的帳號，或分頁被關掉時，都可以複製它重新打開。
+    Write-Host ("  設定頁網址：" + $url) -ForegroundColor White                   # Write-Host：不進安裝紀錄檔（網址含這次設定的路徑）
     if ($copied) { Write-Ok "設定碼已複製：在網頁的輸入框按 Ctrl+V（或右鍵 → 貼上）。" } else { Write-Info "在網頁的輸入框輸入上面的設定碼。" }
     Write-Info "在網頁上選擇 Discord 或 Telegram 並貼上 Bot Token，或選「Web only (no bot)」只用網頁；最後按完成。這個視窗會等你，不用在這裡打字。"
+    Write-Info "設定頁最多開 15 分鐘（10 分鐘沒有操作也會關閉）。關掉了也沒關係：回到這個視窗按 Enter 就會重新打開，已經完成的後端登入不用重來。"
     Write-Host ""
 }
+# 設定頁關掉的原因，說給人聽（agend setup 印的英文原因 → 中文）。不認得的原因只說「關閉了」。
+function Get-SetupStopText([string]$reason) {
+    switch ($reason) {
+        'ttl' { return '設定頁開滿 15 分鐘，自動關閉了。' }
+        'idle' { return '設定頁太久沒有操作，自動關閉了。' }
+        'lockout' { return '設定碼輸錯太多次，設定頁關閉了。' }
+    }
+    return '設定頁關閉了，設定還沒完成。'
+}
 # 跑一次設定頁。$Run 收到一個每行呼叫的 hook，回傳結束碼。結果：Done（完成、AgEnD 已啟動）、Already（之前就設定好了）、
-# Shown（設定頁有沒有出現過）。
+# Shown（設定頁有沒有出現過）、Stopped（設定頁關掉的原因，沒有就是 $null）。設定頁要求主機確認時，每個確認編號開一次
+# 確認視窗（同一個設定頁最多 5 次），並印出可以自己貼的指令。
 function Invoke-BrowserSetup([scriptblock]$Run) {
-    $setupSeen = @{ Url = $null; Code = $null; Shown = $false; Done = $false; Already = $false }
+    $setupSeen = @{ Url = $null; Code = $null; Shown = $false; Done = $false; Already = $false; Stopped = $null; Confirms = @() }
     $hook = {
         param([string]$line)
         $prompt = Get-SetupPrompt $line
         if ($prompt -and $prompt.Url) { $setupSeen.Url = $prompt.Url }
         if ($prompt -and $prompt.Code) { $setupSeen.Code = $prompt.Code }
+        if ($prompt -and $prompt.Stopped) { $setupSeen.Stopped = $prompt.Stopped }
+        if ($prompt -and $prompt.Confirm -and $setupSeen.Confirms -notcontains $prompt.Confirm -and $setupSeen.Confirms.Count -lt 5) {
+            $setupSeen.Confirms += $prompt.Confirm
+            Show-HostConfirm $prompt.Confirm (Open-HostConfirmWindow $prompt.Confirm)
+        }
         if ($line -match 'Setup complete') { $setupSeen.Done = $true }
         if ($line -match 'Setup has already been completed') { $setupSeen.Already = $true }
         if ($setupSeen.Url -and $setupSeen.Code -and -not $setupSeen.Shown) {
@@ -840,7 +897,7 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
         }
     }
     $exit = & $Run $hook
-    return @{ Exit = $exit; Done = $setupSeen.Done; Already = $setupSeen.Already; Shown = $setupSeen.Shown }
+    return @{ Exit = $exit; Done = $setupSeen.Done; Already = $setupSeen.Already; Shown = $setupSeen.Shown; Stopped = $setupSeen.Stopped }
 }
 
 # 第 5 階段的設定與服務（#2235 審查：每一步都要命令成功才算完成）。回傳 $true 才可以標記完成；$false 表示使用者選擇結束，
@@ -882,17 +939,28 @@ function Get-BrowserSetupCommand([string]$BackendSignins = '') {
     if ($BackendSignins -cnotmatch '^(kiro-cli|claude-code|codex|antigravity)(,(kiro-cli|claude-code|codex|antigravity)){0,3}\z') { throw 'Invalid backend selection' }
     return ('agend setup --backend-signins ' + $BackendSignins)
 }
-function Invoke-SetupAndService([string]$BackendSignins = '') {
-    $setupCommand = Get-BrowserSetupCommand $BackendSignins
+function Invoke-SetupAndService([string]$BackendSignins = '', $Backends = $null) {
     $configured = $false
     while (-not $configured) {
+        $setupCommand = Get-BrowserSetupCommand $BackendSignins
         $setup = Invoke-BrowserSetup { param($hook) Invoke-WslStep -Label "等待你在瀏覽器完成設定" -Usually "設定頁 15 分鐘沒完成會自動關閉" -UpperMinutes 15 -OnLine $hook -Script ($AGEND_ENV + $setupCommand) }
         if ($setup.Done -or $setup.Already) { $configured = $true; break }
         Write-Host ""
         if ($setup.Shown) {
-            Write-Warn "設定頁已經關閉，設定還沒完成（15 分鐘沒完成、閒置太久，或設定碼輸錯太多次）。"
-            $again = Read-Host "  按 Enter 重新打開設定頁；輸入 n 再按 Enter 結束"
+            # #2650 第 10 項：說清楚為什麼關掉、什麼還在，並給三條路：重新打開、改在這個視窗設定、結束（進度保留）。
+            Write-Warn (Get-SetupStopText $setup.Stopped)
+            $again = Read-Host "  按 Enter 重新打開設定頁；輸入 c 改在這個視窗設定；輸入 n 結束（下次執行同一行指令會從這一步繼續）"
             if ($again -match '^\s*[nN]') { return $false }
+            if ($again -match '^\s*[cC]') {
+                $qs = Invoke-ConsoleQuickstart
+                if ($qs -eq 0) { $configured = $true } else { Write-Warn "主控台的設定沒有完成（結束碼 $qs）。" }
+                continue
+            }
+            # 重新打開前再查一次哪些後端已經登入：已經登入的不用在新的設定頁再登一次（不會重複一個做到一半的登入）。
+            if ($BackendSignins -and $Backends) {
+                $BackendSignins = Get-BrowserSignInSelection $Backends
+                if (-not $BackendSignins) { Write-Ok "選的後端都已經登入，新的設定頁不會再要求登入。" }
+            }
         } else {
             Write-Warn "設定頁沒有出現。"
             $console = Read-Host "  改在這個視窗設定嗎？(Y/n)"
@@ -1547,6 +1615,9 @@ if (-not $Force -and -not (Test-Path $ProgressFile)) {
             $made = @(Install-AgendShortcuts $existing.Distro $existing.User)
             $null = Write-ShortcutResult $made
         } else { Write-Info "沒有改動任何東西。" }
+        # #2650 第 10 項：安裝完成後儀表板沒打開（或之後找不到它），再貼一次安裝指令就能打開，不用重新安裝。
+        $ans = Read-Host "  要現在打開 AgEnD 網頁儀表板嗎？(Y/n)"
+        if ($ans -notmatch '^\s*[nN]') { $null = Invoke-OpenDashboard $existing.Distro $existing.User }
         Write-Info "要全部重新安裝：先在這個視窗執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行安裝指令。"
         Clear-ResumeAtLogon
         Read-Host "按 Enter 結束"; exit 0
@@ -1934,7 +2005,7 @@ if ((Stage-Done 5) -and (Test-InstallerReady)) {
     Write-Host ""
     Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram 並貼上 Bot Token；或選「Web only (no bot)」，不用 Bot、只用網頁儀表板。"
     Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
-    if (-not (Invoke-SetupAndService -BackendSignins $browserSignins)) {
+    if (-not (Invoke-SetupAndService -BackendSignins $browserSignins -Backends $selected)) {
         Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
         Read-Host "按 Enter 結束"; exit 1
     }
@@ -2016,7 +2087,12 @@ Clear-ResumeAtLogon
 # 最後直接打開儀表板（和桌面捷徑相同的流程）。
 Write-Host ""
 Write-Info "正在打開 AgEnD 網頁儀表板..."
-$null = Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER -BackendSignins $browserSignins
+if (-not (Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER -BackendSignins $browserSignins)) {
+    # #2650 第 10 項：安裝已經完成，只是儀表板現在打不開。說出之後打開它的兩條路（都不會重新安裝）。
+    if ($script:InstallerReady -and $missingBackends.Count -eq 0) {
+    Write-Info "安裝已經完成，設定都保留著。之後要打開儀表板：按兩下桌面上的「AgEnD 儀表板」，或再貼一次同一行安裝指令（不會重新安裝，會問你要不要打開儀表板）。"
+    } else { Write-Info "設定與進度都保留著。可按兩下桌面的「AgEnD 儀表板」；再貼一次同一行安裝指令會從沒完成的步驟繼續。" }
+}
 
 Read-Host "按 Enter 結束"
 if (-not $script:InstallerReady -or $missingBackends.Count -gt 0) { exit 1 }
