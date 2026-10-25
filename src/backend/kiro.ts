@@ -715,6 +715,19 @@ function compatibilityFromHelp(version: string | undefined, help: string): KiroC
 }
 
 /**
+ * #2598 (D1): kiro-cli-chat skips its self-update when this is set (2.30.0 and 2.34.0 both read it). AgEnD pins the
+ * kiro version it has audited; an in-place update can swap the engine a running fleet depends on (3.0 drops legacy).
+ * Every chat AgEnD starts carries it: the instance launch (a shell prefix) and the probes (their child env). The
+ * host-wide `app.disableAutoupdates` setting is the operator's half; this holds even where that was never set.
+ */
+export const KIRO_NO_AUTO_UPDATE = "KIRO_NO_AUTO_UPDATE";
+
+/** A kiro child's environment: the given one (default: ours) with self-update off. */
+export function kiroChildEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...base, [KIRO_NO_AUTO_UPDATE]: "1" };
+}
+
+/**
  * Probe once per binary generation. A version AgEnD has run (<= TESTED_MAX)
  * is answered from the table without a second CLI call; anything newer, or a
  * version string that does not parse, is answered by the binary's own
@@ -727,6 +740,7 @@ export function probeKiroCliCompatibility(
     encoding: "utf-8",
     timeout: 5000,
     stdio: ["ignore", "pipe", "ignore"],
+    env: kiroChildEnv(),
   })),
 ): KiroCliCompatibility {
   return measureSyncWork("kiro.compatibilitySync", () => probeKiroCliCompatibilitySync(binaryPath, run));
@@ -1199,7 +1213,8 @@ export class KiroBackend implements CliBackend {
     }
     const plan = planKiroLaunch(ui, this.compatibility);
     if (plan.kind === "refuse") throw new UnsupportedCliError(plan.reason);
-    let cmd = `${this.binaryPath} chat`;
+    // #2598: a shell assignment, so it reaches kiro-cli-chat through `kiro-cli chat` and any credential-home prefix.
+    let cmd = `${KIRO_NO_AUTO_UPDATE}=1 ${this.binaryPath} chat`;
     for (const flag of plan.flags) cmd += ` ${flag}`;
     this.noteVersionGate();
     const credentialProfile = resolveCredentialProfile(config.backendOptions);
@@ -1857,7 +1872,7 @@ export class KiroBackend implements CliBackend {
   private readModelsPayload(): { models: import("./types.js").ModelOption[]; defaultModel?: string } {
     try {
       const out = execFileSync(this.binaryPath, ["chat", "--list-models", "--format", "json"],
-        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"], env: kiroChildEnv() });
       const parsed = JSON.parse(out);
       const arr: unknown[] = Array.isArray(parsed) ? parsed : (parsed?.models ?? []);
       const models = arr.map((m: unknown) => {

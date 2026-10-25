@@ -354,8 +354,9 @@ defaults:
 ```
 
 Emitted events are `hang`, `mcp_died`, `pty_error`, `pty_recovered`,
-`cost_warning`, `cost_limit`, `schedule_deferred`, `model_failover` and
-`model_recovered`. Use `events: ["*"]` to subscribe to all emitted events.
+`cost_warning`, `cost_limit`, `schedule_deferred`, `model_failover`,
+`model_recovered` and `context_lost` (an instance gave up resuming after
+repeated failed starts and began a fresh conversation). Use `events: ["*"]` to subscribe to all emitted events.
 `instance.started`, `instance.stopped`, `rotation` and `crash_loop` are not emitted.
 
 ---

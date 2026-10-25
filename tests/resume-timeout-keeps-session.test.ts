@@ -152,7 +152,7 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
     expect(sessionExists(), "the live id is cleared").toBe(false);
     expect(setAside(), "but recoverable on disk").toHaveLength(1);
     expect(lost, "the loss is surfaced, not reported as a plain success").toHaveBeenCalledWith(
-      "resume-test", "resume_repeatedly_failed",
+      "resume-test", "resume_repeatedly_failed", 3,
     );
   });
 
@@ -196,12 +196,13 @@ describe("startup concurrency respects cores, not just memory", () => {
 
   it("spawnConcurrency actually delegates to it (wiring, not just the formula)", async () => {
     const { FleetManager, deriveSpawnConcurrency } = await import("../src/fleet-manager.js");
-    const { freemem, cpus } = await import("node:os");
+    const { effectiveCpuCount } = await import("../src/cpu-quota.js");
+    const { freemem } = await import("node:os");
     const fm = new FleetManager(dir) as any;
     fm.fleetConfig = { defaults: {}, instances: {} };
 
     expect(fm.spawnConcurrency())
-      .toBe(deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), cpus().length));
+      .toBe(deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), effectiveCpuCount()));
   });
 
   it("an explicit setting still wins", async () => {
