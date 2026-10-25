@@ -16895,7 +16895,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       installed: async () => ONBOARDING_BACKENDS.filter(backend => this.isCliInstalled(backend)),
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       transport: () => createStructuredSignInTransport(),
-      changed: (event, owner) => {
+      changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
         this.needsYou?.poke();
@@ -16906,7 +16906,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         if (event.phase === "done") {
           void this.backendAvailability.refresh([event.backend], { force: true }).catch(() => {});
-          void this.recoverBackendInstances(event.backend, undefined, null).catch(() => this.logger.warn({ backend: event.backend }, "Post sign-in recovery failed"));
+          if (launched) void this.recoverBackendInstances(event.backend, undefined, null).catch(() => this.logger.warn({ backend: event.backend }, "Post sign-in recovery failed"));
         }
       },
     });
@@ -17324,10 +17324,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.installHandoff = null;
       return t("login.cancelled", backend);
     }
-    if (this.browserBackendSignInsInstance?.active) {
-      const confirmed = await this.browserBackendSignInsInstance.close();
+    const browserLogin = this.browserBackendSignInsInstance, browserBackend = browserLogin?.activeBackend;
+    if (browserLogin && browserBackend) {
+      const confirmed = await browserLogin.close();
       if (confirmed) this.browserBackendSignInsInstance = null;
-      return confirmed ? t("login.cancelled", "browser sign-in") : "Sign-in cleanup could not be confirmed; close the setup-owned login process and restart AgEnD.";
+      return confirmed ? t("login.cancelled", browserBackend) : t("login.browser_cleanup_failed");
     }
     if (this.loginController?.isActive()) return this.loginController.cancel();
     return t("login.no_session");

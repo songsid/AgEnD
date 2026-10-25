@@ -93,6 +93,7 @@ export class MiniNode extends Target {
   replaceChild(n: MiniNode, old: MiniNode) { this.insertBefore(n, old); this._detach(old); return old; }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
   replaceWith(...nodes: any[]) { const p = this.parentNode; if (!p) return; for (const n of nodes) p.insertBefore(typeof n === "string" ? this.ownerDocument.createTextNode(n) : n, this); p.removeChild(this); }
+  replaceChildren(...nodes: any[]) { for (const child of [...this.childNodes]) this.removeChild(child); this.append(...nodes); }
   append(...nodes: any[]) { for (const n of nodes) this.appendChild(typeof n === "string" ? this.ownerDocument.createTextNode(n) : n); }
   prepend(...nodes: any[]) { const first = this.firstChild; for (const n of nodes) this.insertBefore(typeof n === "string" ? this.ownerDocument.createTextNode(n) : n, first); }
   contains(n: MiniNode | null): boolean { while (n) { if (n === this) return true; n = n.parentNode; } return false; }

@@ -14,7 +14,7 @@ export interface BrowserBackendSignInDeps {
   checkAuth(backend: StructuredBackend): Promise<AuthCheckResult>;
   transport(backend: StructuredBackend): StructuredSignInTransport;
   lock?: LoginWindowLock;
-  changed?(event: { backend: StructuredBackend; phase: string; reason?: string }, owner: object): void;
+  changed?(event: { backend: StructuredBackend; phase: string; reason?: string }, owner: object, launched: boolean): void;
 }
 export interface BrowserBackendSignInSnapshot {
   selected: OnboardingBackend[];
@@ -53,7 +53,7 @@ export class BrowserBackendSignIns {
     // final safe reason (or done) proves that finish has settled the writer.
     return view.phase === "done" || (view.phase === "failed" && !!view.reason);
   }
-  get active(): boolean { return !!this.run && !this.terminal(this.run); }
+  get activeBackend(): StructuredBackend | null { return this.run && !this.terminal(this.run) ? this.run.backend : null; }
   private loginMayWrite(backend: OnboardingBackend): boolean {
     return this.lock.current?.backend === backend || (this.run?.backend === backend
       && (!this.terminal(this.run) || this.run.session.view(this.run.owner).reason === "cleanup_failed"));
@@ -127,7 +127,7 @@ export class BrowserBackendSignIns {
             : [...new Set([...this.record.pending, backend])];
           this.persist();
         }
-        this.deps.changed?.(event, owner);
+        this.deps.changed?.(event, owner, session.launched);
       },
     });
     const run: Run = { session, owner, backend }; this.run = run; // reserve before the installed await

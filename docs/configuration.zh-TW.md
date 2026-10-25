@@ -747,8 +747,10 @@ web:
 
 本機的 `agend setup` 頁面會在 fleet 啟動前提供 Kiro、Claude Code、Codex 的登入控制。Kiro 的登入方式、組織 Start URL 與區域，以及 Claude 回傳的驗證碼，都在瀏覽器輸入；Codex 會顯示供應商連結與裝置碼。不會開放瀏覽器終端機或任意指令輸入。**Web only（不使用 bot）** 與 bot 設定共用此流程。Antigravity 等其他後端仍走明確的主控台備援路徑。
 
-安裝程式可用 `agend setup --backend-signins kiro-cli,claude-code,codex` 指定清單，網頁不能移除這些已選的後端。選擇 **Sign in later** 只會在私有的 `backend-signin-pending.json` 留下標準後端 ID，供後續儀表板處理；檔案不含驗證碼、供應商網址或憑證，也不能當成登入成功的證明。每個已選後端都必須驗證登入或明確略過，且登入程序確認關閉，才可啟動 fleet。
+安裝程式可用 `agend setup --backend-signins kiro-cli,claude-code,codex` 指定清單，網頁不能移除這些已選的後端。選擇 **Sign in later** 只會在私有的 `backend-signin-pending.json` 留下標準後端 ID，即使沒有 agent 使用該後端，也會顯示在 **Needs you**。**設定 → Agent → 登入** 提供相同的瀏覽器控制；檔案不含驗證碼、供應商網址或憑證，也不能當成登入成功的證明。每個已選後端都必須驗證登入或明確略過，且登入程序確認關閉，才可啟動 fleet。
 
 登入控制必須使用這台電腦上仍有效的 setup cookie，透過 `--tunnel` 一律拒絕。重新整理會接回同一次嘗試；畫面重繪不會讓已回答的提示再次接受輸入，若 CLI 重問，請取消再重試。若無法確認程序已關閉，setup 會拒絕交接；請在主機關閉該 setup 的登入程序，再重新執行 setup。寫入設定仍需要原有的主機確認。
 
-`agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。本階段宣告支援 setup，但儀表板清單仍為 `false`；Windows 安裝順序會在 #2599 的後續階段調整。
+`agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。能力資訊宣告支援 setup 與儀表板登入清單；Windows 安裝順序會在 #2599 的後續階段調整。
+
+直接連線的儀表板也只有目前有效的本機管理員 session 可操作登入；agent 的 header token、唯讀 session、訪客與公開連結，都不能讀取提示或送出答案。Kiro、Claude、Codex 的預設帳號使用具名控制；憑證設定檔保留原有流程。遇到不支援的畫面，可明確選擇 **改用主控台備援**。頂端狀態列可重新開啟進行中的嘗試。成功登入後會沿用原有的預設帳號 agent 恢復流程；若只是確認原有憑證仍有效，不會重新啟動正在執行的 agent。登入、安裝、舊版與 profile 流程共用同一個寫入保留名額。

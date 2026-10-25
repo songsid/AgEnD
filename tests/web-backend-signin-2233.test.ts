@@ -40,7 +40,7 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
   reqs = []; answer = () => ({});
-  S.signInStore.set({ loaded: false, login: null, targets: [] });
+  S.signInStore.set({ loaded: false, login: null, targets: [], structured: null });
   shell.shellStore.set({ dialog: null });
 });
 const text = () => p.root.textContent.replace(/\s+/g, " ");
@@ -158,7 +158,7 @@ describe("#2262 review", () => {
 
   it("an event that lands while a read is on its way is not lost: one more read follows, and its answer is what shows", async () => {
     let release!: (v: unknown) => void, reads = 0;
-    answer = () => { reads++; return reads === 1 ? new Promise(r => { release = r; }) : { login: { ...TERMINAL, mine: false }, targets: [] }; };
+    answer = r => { if (r.url === "/ui/browser-backend-signins") return { selected: [], pending: [], login: null }; reads++; return reads === 1 ? new Promise(r => { release = r; }) : { login: { ...TERMINAL, mine: false }, targets: [] }; };
     const first = S.refreshSignIn();
     S.refreshSignIn();                                        // the event, while the first read is on its way
     release({ login: null, targets: [] });                    // the first read's (older) answer
@@ -209,5 +209,32 @@ describe("#2233 where Sign in is offered", () => {
     expect(items.map((i: any) => i.querySelectorAll("button").map((b: any) => b.textContent.trim()))).toEqual([["Sign in"], []]);
     fire(items[0].querySelector("button"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
+  });
+});
+
+
+describe("#2599 shared browser controls", () => {
+  it("default Kiro/Claude/Codex use browser cards; credential profiles retain their existing dialog", () => {
+    for (const backend of ["kiro-cli", "claude-code", "codex"]) { S.openSignIn({ backend }); expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog); }
+    S.openSignIn({ backend: "claude-code", profile: "work" }); expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
+  });
+  it("the real shared cards use the closed API, with an explicit console fallback", async () => {
+    const snapshot = { selected: ["codex"], pending: ["codex"], skipped: [], states: { codex: "invalid" }, login: null, ready: false };
+    answer = r => r.url === "/ui/browser-backend-signins" ? snapshot : {};
+    await p.mount(h(S.BrowserSignInDialog, { backend: "codex" })); await settle(8);
+    expect(text()).toContain("Sign in your AI backends"); expect(text()).toContain("Sign in later"); expect(text()).not.toContain("Open the sign-in terminal");
+    const start = p.root.querySelectorAll("section button").find((b: any) => b.textContent === "Sign in") as any;
+    expect(start).toBeDefined(); await start.onclick(); await settle(4);
+    expect(reqs.some(r => r.url === "/ui/browser-backend-signins" && r.body?.operation === "start" && r.body.backend === "codex")).toBe(true);
+    fire(btn("Use console fallback"), "click"); await settle(4);
+    expect(reqs.some(r => r.url === "/ui/browser-backend-signins" && r.body?.operation === "cancel")).toBe(true);
+    expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
+  });
+  it("a backend-only Needs you item opens sign-in without inventing an agent/chat link", async () => {
+    app.appStore.set({ instances: [], needs: [{ id: "backend:codex", type: "backend", instance: "", reason: "backend_signin", detail: "codex", since: Date.now(), signIn: { backend: "codex" } }] });
+    await p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" })); await settle(6);
+    expect(text()).toContain("Fleet sign-ins"); expect(text()).toContain("Backend sign-in needed");
+    expect(p.root.querySelectorAll(".n-item a")).toEqual([]); fire(btn("Sign in"), "click");
+    expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog);
   });
 });

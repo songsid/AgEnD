@@ -162,6 +162,8 @@ export class StructuredSignIn {
   constructor(readonly backend: StructuredBackend, private readonly owner: object, private readonly deps: StructuredSignInDeps) {
     if (!structuredSignInSupported(backend)) throw new Error("structured_signin_unsupported");
   }
+  /** A reused valid login changes no credentials and needs no running-agent restart. */
+  get launched(): boolean { return this.transportTouched; }
   private now(): number { return (this.deps.now ?? (() => performance.now()))(); }
   private authorized(): boolean { try { return this.now() < this.expiresAt && this.deps.current(); } catch { return false; } }
   private lostReason(): SignInFailure { return this.now() >= this.expiresAt ? "expired" : "revoked"; }

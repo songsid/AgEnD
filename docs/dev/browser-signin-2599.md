@@ -63,3 +63,20 @@ SetupHost and Chromium use injected stub backend transports and auth probes,
 with a forbidden successor and all external browser requests blocked. It covers
 three backend flows, agy skip, same-cookie refresh, verified cleanup and safe
 logs. This is not real-provider or Windows/WSL acceptance.
+
+Stage 3 exposes GET/POST `/ui/browser-backend-signins` behind the current local
+admin session, CSRF, surface and post-await ownership checks. It shares the
+exact `loginWindow` reservation with chat, install and profile sign-ins. Browser
+cards serve default accounts, while credential profiles and explicit console
+fallback keep the old controller. Provider hints stay with the starting session;
+SSE contains no hints. Verified fresh login invokes default-account recovery;
+reusing valid credentials only updates availability/pending metadata.
+
+Installer pending IDs also feed the real NeedsYouHub as backend items without
+a fabricated agent or chat world. They are web-only items and never a request to
+spawn an agent. A failed structured reap keeps admission closed across an
+in-process restart; a new host process plus manual cleanup is the recovery path.
+The capability probe now advertises dashboard support; installer order remains
+stage 4. Run `scripts/manual/dashboard-signin-2599.mts` with PW_DIR, OUT and a
+scratch AGEND_HOME for the real dialog + cookie/CSRF HTTP proof, injected stub
+backend, blocked external requests and no fleet.

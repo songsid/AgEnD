@@ -135,7 +135,7 @@ export function refreshSignIn() {
     fetch("/ui/browser-backend-signins", { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null),
   ]).then(([b, structured]) => {
     if (b) signInStore.set({ loaded: true, login: b.login || null, targets: Array.isArray(b.targets) ? b.targets : [] });
-    signInStore.set({ structured }); return b;
+    signInStore.set({ structured: structured && Array.isArray(structured.selected) && Array.isArray(structured.pending) ? structured : null }); return b;
   })
     .catch(() => null)
     .finally(() => { reading = null; if (again) { again = false; void refreshSignIn(); } });
