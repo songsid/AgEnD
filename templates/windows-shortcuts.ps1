@@ -54,7 +54,8 @@ function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$
     Write-Host ("  ┌──────────────────────────────────────┐") -ForegroundColor Green
     Write-Host ("  │   儀表板登入碼：  " + $spaced + "    │") -ForegroundColor Green
     Write-Host ("  └──────────────────────────────────────┘") -ForegroundColor Green
-    if ($opened) { Write-Host "  [OK] 登入頁已在瀏覽器打開。" -ForegroundColor Green } else { Write-Host ("  請自己在瀏覽器打開：" + $signIn.Url) }
+    if ($opened) { Write-Host "  [OK] 登入頁已在瀏覽器打開。" -ForegroundColor Green }
+    Write-Host ("  登入頁網址：" + $signIn.Url)
     if ($copied) { Write-Host "  [OK] 登入碼已複製：在登入頁的輸入框按 Ctrl+V。這組登入碼只能用一次，幾分鐘內有效。" -ForegroundColor Green }
     else { Write-Host "  在登入頁輸入上面的登入碼。這組登入碼只能用一次，幾分鐘內有效。" }
     if ($Wait) { Read-Host "按 Enter 關閉" }

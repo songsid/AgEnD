@@ -608,7 +608,9 @@ export class SetupHost {
           this.deny(res, 409, "Setup confirmation unavailable."); return;
         }
         res.setHeader("Content-Type", "application/json"); res.writeHead(200);
-        res.end(JSON.stringify({ pre_fleet: true, ttl_ms: this.ttlMs, finish_ready: ready }));
+        // #2650 item 10: remaining_ms lets the page count down to the TTL (performance.now() based, as startedAt is).
+        const remaining = Math.max(0, Math.round(this.startedAt + this.ttlMs - (this.opts.now?.() ?? performance.now())));
+        res.end(JSON.stringify({ pre_fleet: true, ttl_ms: this.ttlMs, remaining_ms: remaining, finish_ready: ready }));
       }).catch(() => this.deny(res, 409, "Setup confirmation unavailable."));
       return;
     }
