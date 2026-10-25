@@ -33,12 +33,19 @@ event (push to main, tags, schedule, `workflow_dispatch`), run the full suite
   missing from that list fails `tests/docs-reading-tests-list.test.ts`. Any
   `src/`, `tests/`, `scripts/`, workflow, package or lockfile path means it is
   not text-only.
-- **packaging** — `package.json`, a lockfile, `launcher/`, and
-  install/update/service code and scripts. `install-smoke` and the Node 20
-  rollback smoke run their real steps.
-- **deps** — `package.json` or a lockfile (root or `website/`).
-  `npm-audit-signatures` and `dependency-review` run their real step.
-- **src** — any `src/**` path. `data-downgrade` runs its real step.
+- **packaging** — `package.json`, a lockfile, `launcher/`,
+  install/update/service code and scripts, any `scripts/**` path, and any
+  `.github/**` path. `install-smoke` and the Node 20 rollback smoke run their
+  real steps.
+- **deps** — `package.json` or a lockfile (root or `website/`), or any
+  `.github/**` path. `npm-audit-signatures` and `dependency-review` run their
+  real step.
+- **src** — any `src/**`, `scripts/**`, or `.github/**` path.
+  `data-downgrade` runs its real step.
+
+A change to a gated job's own workflow, action or scripts turns that job on:
+`.github/**` runs the full suite (packaging, deps and src true, text-only
+false). `scripts/**` sets src and packaging.
 
 macOS is included on all `v*` tags, including prereleases.
 Weekly CI runs Monday at 03:17 UTC; the npm proof runs at 03:37 UTC. Weekly
@@ -155,8 +162,8 @@ attestations, mixed findings, and command or parse failures fail the job.
 Missing-only findings are printed and do not fail (npm 10 itself exits 1 for
 missing as well as invalid; the wrapper applies that report-only policy).
 On a pull request the real `npm ci` and `npm audit signatures` steps run only
-when the diff touches `package.json` or a lockfile (`deps`); otherwise the job
-still reports success. Push to main always runs them. The job does not run
+when the diff sets `deps` (`package.json`, a lockfile, or any `.github/**`
+path); otherwise the job still reports success. Push to main always runs them. The job does not run
 package lifecycle scripts: `esbuild` / `lightningcss` postinstall and any
 native `install` (for example `better-sqlite3` in the test jobs) stay in
 `ci.yml` and `deploy-website.yml`, which still run a full `npm ci`.
@@ -165,8 +172,8 @@ native `install` (for example `better-sqlite3` in the test jobs) stay in
 
 `dependency-review.yml` runs `actions/dependency-review-action` on pull
 requests into `main` and `release/**`. The action itself runs only when the
-diff touches `package.json` or a lockfile (`deps`); otherwise the job still
-reports success. GitHub diffs the PR against its base; this is not a
+diff sets `deps` (`package.json`, a lockfile, or any `.github/**` path);
+otherwise the job still reports success. GitHub diffs the PR against its base; this is not a
 full-tree audit of `main`. Config: `.github/dependency-review-config.yml`.
 
 The check **fails** the PR when any of these appear in that diff:

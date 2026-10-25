@@ -391,4 +391,30 @@ describe("detect-changes: text-only / packaging / deps / src", () => {
     const wf = r.commit("wf", { ".github/workflows/ci.yml": "name: CI\non: push\n" });
     expect(r.run(base, wf).textOnly).toBe(false);
   });
+
+  it("a .github/workflows/data-downgrade.yml diff runs the full suite (src, packaging, deps)", () => {
+    const r = makeRepo();
+    const base = r.commit("init", {
+      "src/a.ts": "1\n",
+      ".github/workflows/data-downgrade.yml": "name: old\n",
+    });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("wf", { ".github/workflows/data-downgrade.yml": "name: new\n" });
+    expect(r.run(base, head)).toMatchObject({
+      src: true, packaging: true, deps: true, textOnly: false, docsOnly: false, exitCode: 0,
+    });
+  });
+
+  it("a scripts/data-downgrade-phase.mjs diff sets src", () => {
+    const r = makeRepo();
+    const base = r.commit("init", {
+      "src/a.ts": "1\n",
+      "scripts/data-downgrade-phase.mjs": "1\n",
+    });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("script", { "scripts/data-downgrade-phase.mjs": "2\n" });
+    expect(r.run(base, head)).toMatchObject({
+      src: true, packaging: true, deps: false, textOnly: false, exitCode: 0,
+    });
+  });
 });

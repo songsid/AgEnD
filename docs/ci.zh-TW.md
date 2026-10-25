@@ -15,9 +15,11 @@
 CI workflow 仍執行 CHANGELOG guards、GitHub Actions SHA 釘選檢查、typecheck/build、四個 unit shards、integration tests，以及 Node 20 preinstall rollback smoke。Pull request 上，`detect-changes` 會對 merge-base 的 diff 分類（`scripts/ci/detect-changes.sh`），並跳過這次改動碰不到的重步驟。job 本身一定會跑、結果是 success，merge gate 因此看不到 `skipped`（matrix 格若用 job 級 `if:` 跳過，必要 check 名稱會一直 pending）。diff 讀不到或是空的，以及所有非 PR 事件（push 到 main、tag、排程、`workflow_dispatch`）都跑完整套件（fail closed）。CodeQL 不變（GitHub default setup）。
 
 - **text-only** — 只有 `docs/**`、`changes/**`、根目錄 `*.md`、以及 `website/src/content/**`。CHANGELOG guards、釘選檢查、Gitleaks，以及 `scripts/ci/docs-reading-tests.txt` 裡的測試會跑。四個 shard、integration、typecheck/build 與 install-smoke 跳過重步驟。測試若讀了 `docs/`、根目錄 README 或 website 內容頁，卻不在這份清單，`tests/docs-reading-tests-list.test.ts` 會失敗。任何 `src/`、`tests/`、`scripts/`、workflow、package 或 lockfile 路徑都不是 text-only。
-- **packaging** — `package.json`、lockfile、`launcher/`，以及 install／update／service 的程式與腳本。`install-smoke` 與 Node 20 rollback smoke 跑真正的步驟。
-- **deps** — `package.json` 或 lockfile（根目錄或 `website/`）。`npm-audit-signatures` 與 `dependency-review` 跑真正的步驟。
-- **src** — 任何 `src/**` 路徑。`data-downgrade` 跑真正的步驟。
+- **packaging** — `package.json`、lockfile、`launcher/`，install／update／service 的程式與腳本，以及任何 `scripts/**` 或 `.github/**` 路徑。`install-smoke` 與 Node 20 rollback smoke 跑真正的步驟。
+- **deps** — `package.json` 或 lockfile（根目錄或 `website/`），或任何 `.github/**` 路徑。`npm-audit-signatures` 與 `dependency-review` 跑真正的步驟。
+- **src** — 任何 `src/**`、`scripts/**` 或 `.github/**` 路徑。`data-downgrade` 跑真正的步驟。
+
+改到 gated job 自己的 workflow、action 或腳本時，那個 job 必須跑：`.github/**` 跑完整套件（packaging、deps、src 皆 true，text-only false）。`scripts/**` 會設 src 與 packaging。
 
 所有 `v*` tag（包含預發版）都執行 macOS 格。CI 每週一 03:17 UTC 執行，npm proof 在 03:37 UTC 執行。每週失敗仍需調查，但不是 PR 或 branch push 的前置條件。
 
@@ -112,7 +114,7 @@ false。
 `npm-audit-signatures.yml` 在 `npm ci --ignore-scripts` 之後，對根目錄與
 `website/` 跑 `npm audit signatures --json`。簽章或 attestation 無效、兩者
 混在一起、以及指令／解析失敗會讓 job 失敗；只有缺少簽章時只印出來、不失敗
-（這是我們的政策：npm 10 對缺少與無效都會 exit 1）。Pull request 上，真正的 `npm ci` 與 `npm audit signatures` 只在 diff 碰到 `package.json` 或 lockfile（`deps`）時跑；否則 job 仍報 success。Push 到 main 一定跑。這個 job 不跑套件 lifecycle scripts：`esbuild` /
+（這是我們的政策：npm 10 對缺少與無效都會 exit 1）。Pull request 上，真正的 `npm ci` 與 `npm audit signatures` 只在 diff 設了 `deps`（`package.json`、lockfile，或任何 `.github/**` 路徑）時跑；否則 job 仍報 success。Push 到 main 一定跑。這個 job 不跑套件 lifecycle scripts：`esbuild` /
 `lightningcss` 的 postinstall，以及測試 job 裡的 native `install`（例如
 `better-sqlite3`）仍由 `ci.yml` 與 `deploy-website.yml` 的完整 `npm ci` 執行。
 
@@ -120,8 +122,8 @@ false。
 ## PR 的 dependency review（#2528）
 
 `dependency-review.yml` 在進 `main` 與 `release/**` 的 pull request 跑
-`actions/dependency-review-action`。真正的 action 只在 diff 碰到
-`package.json` 或 lockfile（`deps`）時跑；否則 job 仍報 success。GitHub
+`actions/dependency-review-action`。真正的 action 只在 diff 設了 `deps`
+（`package.json`、lockfile，或任何 `.github/**` 路徑）時跑；否則 job 仍報 success。GitHub
 比的是這次 PR 相對 base 的 diff，不是對 `main` 整棵樹做審計。設定在
 `.github/dependency-review-config.yml`。
 
