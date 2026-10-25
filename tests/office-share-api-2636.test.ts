@@ -1,8 +1,8 @@
 /**
  * #2636 part 3: Office share links on the dashboard and in General — GET / POST /ui/office-share and DELETE
- * /ui/office-share/<id|all> (an admin session on the dashboard reached directly only; never the public link; refusals
- * say why, a 429 included) and the notice in General. No chat command (the user, #2636 follow-up): every chat surface
- * refuses to know it. A real FleetManager with a fake share tunnel: no process, no network.
+ * /ui/office-share/<id|all> (an admin session, on the dashboard reached directly or — the user's choice, #2636
+ * follow-up — over the public link; never a read-only session or a guest; refusals say why, a 429 included) and the
+ * notice in General. No chat command (the user, #2636 follow-up): no chat surface knows it. A real FleetManager with a fake share tunnel: no process, no network.
  */
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
