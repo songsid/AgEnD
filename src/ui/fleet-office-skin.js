@@ -376,7 +376,7 @@ const STUDIO_FURNITURE = [
 ].sort((a, b) => a.depth - b.depth);
 /** The studio's pack: the same shape as a checked one (fleet-office-pack.js), furniture by `shape` instead of sprites. */
 export const STUDIO_PACK = {
-  format: 1, id: "studio", scale: 1, areas: STUDIO_AREAS, door: { x: HALL_X, y: 704 }, furniture: STUDIO_FURNITURE, ...studioGraph(STUDIO_AREAS),
+  format: 1, id: "studio", scale: 1, areas: STUDIO_AREAS, door: { x: HALL_X, y: 704 }, furniture: STUDIO_FURNITURE, ...studioGraph(STUDIO_AREAS), straight: false,
   stateZones: { working: "desks", idle: "lounge", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" },
   characters: {}, byInstance: {}, props: {}, bubbles: {},
 };
