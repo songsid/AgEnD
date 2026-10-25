@@ -92,7 +92,7 @@ describe("(b) the unproven-failure count survives a restart", () => {
     await expect(third["spawnClaudeWindow"]()).rejects.toThrow(/failed to start after retry/);
     expect(sessionId()).toBeNull();
     expect(setAside()).toHaveLength(1);
-    expect(lost).toHaveBeenCalledWith("switch-test", "resume_repeatedly_failed");
+    expect(lost).toHaveBeenCalledWith("switch-test", "resume_repeatedly_failed", 3);
   });
 
   it("a different session id starts the count again", async () => {
