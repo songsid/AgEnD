@@ -99,3 +99,9 @@ Windows acceptance: fresh install; Kiro method/org fields, Claude code, Codex
 device code in browser; refresh joins; skip leaves Needs you; rerun preserves an
 existing config; old published package falls back; agy never enters a structured
 writer. No real-account acceptance is performed by the automated suite.
+
+The shared shortcut source is encoded as UTF-16/base64 into a Windows command
+line. Its existing 30,000-character test keeps space below the 32,767 limit;
+embedded commentary is kept short to preserve that margin. The dashboard opener
+still captures native stderr under Continue and restores ErrorActionPreference
+in finally, because Windows PowerShell 5.1 represents stderr as error records.
