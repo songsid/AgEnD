@@ -101,6 +101,20 @@ describe("#2599 structured login: commands and named controls", () => {
     expect(await h.act({ kind: "method", choice: "github" })).toBe("stale");
     expect(h.transport.write).toHaveBeenCalledOnce();
   });
+  it.each([false, true])("our own highlight redraw cannot re-arm an answered method (blank capture: %s)", async blank => {
+    const h = harness("kiro-cli"); await h.session.start();
+    expect(await h.act({ kind: "method", choice: "github" })).toBe("accepted");
+    if (blank) { h.state.pane = ""; await h.session.poll(); }
+    h.state.pane = KIRO.replace("❯ Use with Builder ID", "  Use with Builder ID").replace("  Use with GitHub", "❯ Use with GitHub");
+    await h.session.poll();
+    expect(h.view().canAct).toBe(false);
+    expect(await h.act({ kind: "method", choice: "github" })).toBe("stale");
+    expect(h.transport.write).toHaveBeenCalledOnce();
+    h.state.pane = "? Enter Start URL ›"; await h.session.poll();
+    expect(h.view().canAct).toBe(true);
+    expect(await h.act({ kind: "start_url", value: "https://org.awsapps.com/start" })).toBe("accepted");
+    expect(h.transport.write).toHaveBeenCalledTimes(2);
+  });
   it("Claude offers only subscription/console, not the enterprise task/configuration route", async () => {
     const h = harness("claude-code"); h.state.pane = CLAUDE; await h.session.start();
     expect(h.view().choices).toEqual(["subscription", "console"]);

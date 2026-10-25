@@ -31,8 +31,11 @@ live prompt. Unknown prompts fail closed after a short redraw grace. The
 separate console path handles unsupported provider/onboarding screens. Only
 the starting owner sees provider URLs/codes; safe change events contain neither
 raw output nor supplied text. A possibly live child retains the shared login
-reservation on cleanup failure. An ambiguous input ends the attempt without
-repeating it.
+reservation on cleanup failure; stage 2 must surface that a confirmed reap and
+host restart are required before retrying. Each actionable prompt phase accepts
+one answer per attempt, including across selection redraws or blank captures.
+A different phase remains usable; retrying the same phase requires a new attempt.
+An ambiguous input ends the attempt without repeating it.
 
 Stage 1 proofs use injected inert transports, the audited Kiro/Claude menu
 fixtures, synthetic provider screens, and held async boundaries. They do not
