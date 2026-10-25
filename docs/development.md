@@ -477,7 +477,9 @@ these hold:
    requires merge-sync. A real conflict or a failed read blocks with
    `merge-sync first`. A merge behind main prints `merged behind main, disjoint`
    or `merged behind main, overlapping but clean` (with the shared paths) on
-   stderr; it still requires the original approved exact head and green CI.
+   stderr; it still requires the original approved exact head and green CI on
+   the PR head. The clean merge itself is not re-tested against the newer main
+   before merging; main's post-merge CI, with revert-on-red, covers that.
    Just before the merge, the base is fetched again and this check repeats:
    a base that moved to a conflicting tip blocks there.
 5. **CI passed in full on the exact head.** Every required check has a run, and

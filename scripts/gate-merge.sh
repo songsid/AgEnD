@@ -58,6 +58,9 @@ note() { echo "gate-merge: $*" >&2; }
 
 ARGS=()
 SUPPORT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/gate-support.mjs"
+# A gate killed mid-check can leave the registration of its scratch worktree (merge-check-*, work-*) behind; prune
+# drops only registrations whose directory is gone. Tidying only: a failure here blocks nothing.
+git worktree prune 2>/dev/null || note "git worktree prune failed"
 if [ "${1:-}" = "--post-merge-check" ]; then
   [ $# -eq 2 ] || usage
   exec node "$SUPPORT" post "$2"

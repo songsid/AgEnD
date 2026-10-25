@@ -830,6 +830,19 @@ describe("gate workflow 1480: reviewer prefixes and disjoint bases", { timeout: 
     expect(r.status, r.line + r.stderr).toBe(0);
     expect(r.stderr).toContain(`overlapping but clean (main moved to ${late}`);
   });
+  it("a scratch worktree registration left by a killed gate is pruned at start; a live worktree is kept", () => {
+    const w = world();
+    const stale = join(w.dir, "merge-check-dead"), live = join(w.dir, "live");
+    w.sh(w.work, "worktree", "add", "-q", "--detach", stale, "HEAD");
+    w.sh(w.work, "worktree", "add", "-q", "--detach", live, "HEAD");
+    rmSync(stale, { recursive: true, force: true });
+    expect(worktrees(w)).toBe(3);
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect(r.lines).toEqual([`WOULD_MERGE ${w.approved}`]);
+    const left = w.sh(w.work, "worktree", "list", "--porcelain");
+    expect(left).not.toContain("merge-check-dead");
+    expect(left).toContain(live);
+  });
   it("disjoint diff read failure never grants an exemption", () => {
     const w = world(); w.sh(w.dev, "checkout", "-q", "main"); w.commit("main", { "src/b.ts": "b\n" }); w.sh(w.dev, "push", "-q", "origin", "main");
     w.setEnv({ GIT_FAIL_ON: "diff --name-only -z" });
