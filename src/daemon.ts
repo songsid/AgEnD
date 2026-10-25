@@ -2013,6 +2013,12 @@ export class Daemon extends EventEmitter {
   }
 
   /** Read the occurrence baseline so a lifecycle-owned restart can carry it forward. */
+  /** #2648: kiro only — what a model error on the current launch should do (see kiro-retired-model.ts). */
+  kiroModelError(): import("./backend/kiro-retired-model.js").KiroModelErrorVerdict | null {
+    const backend = this.backend as { onModelError?: () => import("./backend/kiro-retired-model.js").KiroModelErrorVerdict | null } | undefined;
+    return typeof backend?.onModelError === "function" ? backend.onModelError() : null;
+  }
+
   getErrorPatternOccurrenceCount(type: ErrorPattern["type"], pattern: RegExp): number {
     return this.lastErrorCount.get(`${type}:${pattern.source}`) ?? 0;
   }

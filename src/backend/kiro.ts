@@ -16,7 +16,7 @@ import {
 } from "./kiro-agent.js";
 import {
   type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
-  kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
+  kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroRecordedConversation, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
   kiroEngineFloor,
 } from "./kiro-identity.js";
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
@@ -26,6 +26,7 @@ import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, ty
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
+import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict } from "./kiro-retired-model.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
 import type { KiroLogLaunch } from "../kiro-log-gate.js";
@@ -1053,6 +1054,8 @@ export class KiroBackend implements CliBackend {
   private activeTrustAll = true;
   /** Version-gate notice for the launch just built (consumeLaunchWarning). */
   private launchWarning: string | null = null;
+  /** #2648: what this launch's model came from, for a model error to be judged by (decideKiroModelError). */
+  private launchModels: { instanceDir: string; ownModel: string | null; launchModel: string | null; conversation: string | null } | null = null;
   /**
    * What this launch attempt resumes and as which agent (#906), resolved once per attempt in writeConfig — it claims
    * conversations and records fresh starts — and read by the buildCommand that follows it.
@@ -1063,6 +1066,8 @@ export class KiroBackend implements CliBackend {
   /** #1218: the last launch built in full (cleared when a build starts, set only when it returns). */
   private builtLaunch: KiroLogLaunch | null = null;
   private preparedV2Store: { key: string; store: KiroStoreRead } | null = null;
+  /** #2648: the saved model of the v2 conversation this instance has recorded, read in prepareLaunch (off the loop). */
+  private preparedV2Model: { key: string; id: string; model: string | null } | null = null;
   private storePreparation = 0;
   private storeKey(config: CliBackendConfig): string {
     return JSON.stringify([config.instanceName, config.workingDirectory, kiroCanonicalDirectory(config.workingDirectory), config.kiroUi,
@@ -1081,6 +1086,7 @@ export class KiroBackend implements CliBackend {
   async prepareLaunch(config?: CliBackendConfig): Promise<void> {
     const preparation = ++this.storePreparation;
     this.preparedV2Store = null;
+    this.preparedV2Model = null;
     if (!config || config.kiroUi !== "tui") return;
     if (!this.fixedCompatibility) this.compatibility = cachedKiroCliCompatibility(this.binaryPath).compatibility;
     const key = this.storeKey(config);
@@ -1091,6 +1097,13 @@ export class KiroBackend implements CliBackend {
     if (kiroIdentityNeedsStore(opts)) {
       const store = await listKiroV2Sessions(config.workingDirectory, kiroV2SessionsDir());
       if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Store = { key, store };
+    }
+    // #2648: only for an instance with no model of its own, and only the conversation it has recorded (the resolver
+    // in writeConfig may pick another — then nothing is foreseen, and a model error is handled after the launch).
+    const recorded = !config.model && !config.skipResume ? kiroRecordedConversation(opts) : null;
+    if (recorded) {
+      const model = await readKiroV2SavedModel(kiroV2SessionsDir(), recorded);
+      if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Model = { key, id: recorded, model };
     }
   }
 
@@ -1273,10 +1286,18 @@ export class KiroBackend implements CliBackend {
       // TUI launch without its per-instance plan starts fresh instead, and says so.
       this.addLaunchWarning(t("kiro.tui_no_plan_fresh"));
     }
+    const resumed = lp.mode === "resume" && lp.id && (lp.engine === "v1" || lp.engine === "v2") ? { engine: lp.engine, id: lp.id } : null;
+    const fallbackModel = !config.model && resumed && config.instanceDir
+      ? this.retiredModelFallback(config, resumed, credentialProfile) : null;
+    this.launchModels = config.instanceDir
+      ? { instanceDir: config.instanceDir, ownModel: config.model ?? null, launchModel: config.model ?? fallbackModel, conversation: resumed?.id ?? null }
+      : null;
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("kiro-cli", model);
       cmd += ` --model ${shellQuote(model)}`;
+    } else if (fallbackModel) {
+      cmd += ` --model ${shellQuote(validateModel(fallbackModel))}`;
     }
     if (config.effort) {
       const effort = validateEffort(config.effort);
@@ -1437,6 +1458,39 @@ export class KiroBackend implements CliBackend {
       warnedUntaggedSteering.add(this.instanceDir);
       this.addLaunchWarning(t("kiro.untagged_steering"));
     }
+  }
+
+  /**
+   * #2648 steps 1 and 3: the model a resumed conversation is launched on instead of its saved one — a switch already
+   * recorded for it (step 2's restart, or an earlier launch), else its saved model when kiro's cached list no longer
+   * has it. Announced once per conversation. Null = launch as before. Only for an instance with no model of its own.
+   */
+  private retiredModelFallback(config: CliBackendConfig, resumed: { engine: "v1" | "v2"; id: string }, credentialProfile: string | null): string | null {
+    const records = readKiroModelRecords(config.instanceDir);
+    let entry = records.switched[resumed.id];
+    if (!entry) {
+      const known = readKiroKnownModels(getAgendHome());
+      if (!known) return null;
+      const prepared = this.preparedV2Model;
+      const saved = resumed.engine === "v1"
+        ? readKiroV1SavedModel({ id: resumed.id, workingDirectory: config.workingDirectory, dbPath: kiroV1DbPath(credentialProfile) })
+        : prepared && prepared.key === this.storeKey(config) && prepared.id === resumed.id ? prepared.model : null;
+      if (!saved || known.models.has(saved)) return null;
+      entry = records.switched[resumed.id] = { from: saved, to: known.defaultModel, announced: false };
+    }
+    if (!entry.announced) {
+      this.addLaunchWarning(t("kiro.retired_model_switched", config.instanceName, entry.from ?? t("kiro.retired_model_unknown"), entry.to));
+      entry.announced = true;
+    }
+    try { writeKiroModelRecords(config.instanceDir, records); } catch { /* the next launch decides again; at worst it says so again */ }
+    return entry.to;
+  }
+
+  /** #2648 steps 2 and 4: what a model error on this launch should do (records it); null before any launch. */
+  onModelError(): KiroModelErrorVerdict | null {
+    const m = this.launchModels;
+    if (!m) return null;
+    return decideKiroModelError(m.instanceDir, m, readKiroKnownModels(getAgendHome())?.defaultModel ?? KIRO_FALLBACK_MODEL);
   }
 
   private addLaunchWarning(message: string): void {

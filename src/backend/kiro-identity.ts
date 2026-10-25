@@ -310,6 +310,21 @@ export function kiroIdentityNeedsStore(opts: Omit<ResolveKiroIdentityOptions, "r
   return record.id === null || !heldBy(claimOf(p.claims, record.id), opts.instance);
 }
 
+/**
+ * #2648: the conversation this instance's record — else its pending adoption — names for this key, read-only (the
+ * small identity files only). What launch preparation reads ahead for; the resolver still decides the launch itself.
+ */
+export function kiroRecordedConversation(opts: { agendHome: string; instance: string; engine: RecordEngine; workingDirectory: string; credentialProfile: string | null }): string | null {
+  if (!OWNER_NAME.test(opts.instance)) return null;
+  const p = paths(opts.agendHome, opts.engine, opts.instance);
+  const read = readState(p.state, opts.instance);
+  const key = keyOf(opts.engine, opts.workingDirectory, opts.credentialProfile);
+  const record = read.kind === "ok" ? read.state.keys[key] : undefined;
+  if (record?.id) return record.id;
+  const pending = readPending(p.pending);
+  return pending !== "unreadable" && Object.hasOwn(pending, key) ? pending[key]! : null;
+}
+
 export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdentityDecision {
   const { instance, engine, workingDirectory, credentialProfile } = opts;
   if (!OWNER_NAME.test(instance)) return { mode: "legacy", reason: "the instance name cannot be recorded" };

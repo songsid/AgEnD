@@ -331,6 +331,8 @@ export interface IncidentEventSource {
   isCodexLivePane?(): Promise<boolean>;
   /** Existing occurrence count used to preserve Codex capacity history on restart. */
   getErrorPatternOccurrenceCount?(type: "model_error", pattern: RegExp): number;
+  /** #2648: kiro only — what a model error on its current launch should do (restart once, say once, or nothing). */
+  kiroModelError?(): import("./backend/kiro-retired-model.js").KiroModelErrorVerdict | null;
   /** Present on real daemons; hang buttons attach only when it returns one. */
   getHangDetector?(): { on(event: string, handler: (...args: any[]) => void): unknown } | null;
   /** `nudge_continue`: arm / drop the daemon's "tell the agent to keep going" for the error just reported. */
@@ -1335,8 +1337,24 @@ export class InstanceLifecycle {
         }
       }
 
+      // #2648: a kiro model error — the resumed conversation's saved model retired, or the instance's own model
+      // unavailable. Restart once on kiro's default (no model of its own), else say it once; never on every start.
+      const kiroVerdict = data.type === "model_error" && this.backendOf(name) === "kiro-cli" ? daemon.kiroModelError?.() ?? null : null;
+      if (kiroVerdict?.kind === "restart") {
+        this.ctx.logger.warn({ name, model: kiroVerdict.model }, "kiro model unavailable on a resumed conversation — restarting once on kiro's default model");
+        this.ctx.clearCancelButton(name);
+        this.ctx.restartSingleInstance(name).catch(err => this.ctx.logger.error({ err, name }, "kiro model-switch restart failed"));
+        return;
+      }
+      if (kiroVerdict?.kind === "quiet") {
+        this.ctx.logger.info({ name }, "kiro model unavailable — already said for this conversation and model");
+        return;
+      }
+
       const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
-      const incidentMessage = data.type === "model_error" && this.backendOf(name) === "claude-code"
+      const incidentMessage = kiroVerdict?.kind === "notify"
+        ? (kiroVerdict.configured ? t("kiro.model_unavailable_configured", name, kiroVerdict.configured) : t("kiro.model_unavailable_once", name))
+        : data.type === "model_error" && this.backendOf(name) === "claude-code"
         ? (() => {
           const liveModel = readStatuslineModel(this.ctx.dataDir, name);
           return liveModel
