@@ -7,7 +7,8 @@
 param(
     [switch]$Force,  # 強制重新執行所有階段
     [string]$InstallVersion = $env:AGEND_VERSION,
-    [string]$InstallRunId = ''  # 一行安裝指令給的這一次的代號：它讀 last.json 時，只認這一次寫的（#2650）
+    [string]$InstallRunId = '',  # 一行安裝指令給的這一次的代號：它讀 last.json 時，只認這一次寫的（#2650）
+    [string]$InitiatingSid = ''  # 一行安裝指令（還沒提升權限時）的 Windows 帳號 SID（#2650 第 5 項）
 )
 
 $ErrorActionPreference = "Stop"
@@ -181,15 +182,18 @@ function Register-ResumeAtLogon {
 function Clear-ResumeAtLogon {
     try { Remove-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -ErrorAction Stop } catch { }
 }
-# 要重新開機時：登記接續，說明會發生什麼，問一次要不要現在重開。
+# 要重新開機時：登記接續，說明會發生什麼，問一次要不要現在重開。接續的登記和進度都在這個 Windows 帳號底下，
+# 所以要說清楚重新開機後要用哪個帳號登入（#2650 第 5 項）。
 function Request-Reboot([string]$why) {
     Write-Warn $why
     $registered = Register-ResumeAtLogon
+    $account = Get-InstallAccountName
     if ($registered) {
-        Write-Info "重新開機並登入 Windows 後，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。"
+        Write-Info "重新開機後，請用 Windows 帳號「$account」登入，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。"
     } else {
-        Write-Info "重新開機後，請再執行一次同一行安裝指令，會從中斷處繼續。"
+        Write-Info "重新開機後，請用 Windows 帳號「$account」登入，再執行一次同一行安裝指令，會從中斷處繼續。"
     }
+    Write-Info "用別的帳號登入不會接續：進度和自動接續只記在「$account」底下。"
     $reboot = Read-Host "  按 Enter 立刻重新開機；輸入 n 再按 Enter 先不重開"
     if ($reboot -notmatch '^\s*[nN]') { Restart-Computer -Force }
     if ($registered) { Write-Info "好的。之後你自己重新開機，登入後一樣會自動繼續。" }
@@ -362,6 +366,34 @@ function Test-WslNetwork([string]$distro) {
         Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
     }
     return (Resolve-NetResults (ConvertFrom-WslNetOutput $text $NET_WSL) 'wsl')
+}
+
+# ── 安裝給哪個 Windows 帳號（#2650 第 5 項）──────────────────
+# WSL 的 Linux、桌面捷徑、安裝進度、重新開機後的自動接續、瀏覽器，都屬於「執行這個安裝程式的帳號」。一般帳號在
+# 系統管理員確認視窗裡輸入另一個系統管理員的帳密時，這個安裝程式就會以那個帳號執行，東西全部裝到那個帳號底下，
+# 原本的使用者什麼都看不到。一行安裝指令把提升權限之前的帳號 SID 傳進來（-InitiatingSid）；和現在的帳號不同就
+# 停下來，說清楚兩個帳號，不安裝任何東西。直接以系統管理員執行這個腳本（沒有 -InitiatingSid）時沒有可比對的，照常安裝。
+function Get-CurrentSid { try { return [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { return $null } }
+function Get-AccountName([string]$sid) {
+    try { return (New-Object Security.Principal.SecurityIdentifier $sid).Translate([Security.Principal.NTAccount]).Value } catch { return $sid }
+}
+function Get-InstallAccountName {
+    try { return [Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { }
+    if ($env:USERNAME) { return $env:USERNAME }
+    return '?'
+}
+# 回傳 $null（同一個帳號，或沒有可比對的），或 @{ Started; Running }：兩個帳號的名稱。
+function Get-InstallIdentityMismatch([string]$initiatingSid, [string]$currentSid) {
+    if ($initiatingSid -notmatch '^S-1-\d+(-\d+)+$' -or -not $currentSid) { return $null }
+    if ($initiatingSid -eq $currentSid) { return $null }
+    return @{ Started = (Get-AccountName $initiatingSid); Running = (Get-AccountName $currentSid) }
+}
+function Write-InstallIdentityMismatch($mismatch) {
+    Write-Err ("安裝是從 Windows 帳號「{0}」開始的，但系統管理員確認視窗用的是另一個帳號「{1}」。" -f $mismatch.Started, $mismatch.Running)
+    Write-Info ("這樣繼續的話，WSL、AgEnD、桌面捷徑和重新開機後的接續都會裝到「{0}」底下，「{1}」看不到也用不到。所以先停在這裡，沒有安裝或修改任何東西。" -f $mismatch.Running, $mismatch.Started)
+    Write-Info "可以這樣做："
+    Write-Info ("  - 要給「{0}」用：請公司的 IT 人員暫時讓這個帳號有系統管理員權限，再用它執行同一行安裝指令。" -f $mismatch.Started)
+    Write-Info ("  - 要給「{0}」用：登出，用「{0}」登入 Windows，再執行同一行安裝指令。" -f $mismatch.Running)
 }
 
 # 安裝位置：系統碟有 20 GB 以上就用它（通常是 SSD），否則用可用空間最大、至少 5 GB 的本機磁碟。$disks 的每一項有 Root 和 Free。
@@ -1815,6 +1847,12 @@ Write-Host ""
 if (-not (Check-Admin)) {
     Write-Err "此腳本需要以「系統管理員身分」執行！"
     Write-Info "請右鍵點擊 PowerShell →「以系統管理員身分執行」"
+    Read-Host "按 Enter 結束"; exit 1
+}
+
+$identityMismatch = Get-InstallIdentityMismatch $InitiatingSid (Get-CurrentSid)
+if ($identityMismatch) {
+    Write-InstallIdentityMismatch $identityMismatch
     Read-Host "按 Enter 結束"; exit 1
 }
 
