@@ -7,7 +7,8 @@
 param(
     [switch]$Force,  # 強制重新執行所有階段
     [string]$InstallVersion = $env:AGEND_VERSION,
-    [string]$InstallRunId = ''  # 一行安裝指令給的這一次的代號：它讀 last.json 時，只認這一次寫的（#2650）
+    [string]$InstallRunId = '',  # 一行安裝指令給的這一次的代號：它讀 last.json 時，只認這一次寫的（#2650）
+    [string]$InitiatingSid = ''  # 一行安裝指令（還沒提升權限時）的 Windows 帳號 SID（#2650 第 5 項）
 )
 
 $ErrorActionPreference = "Stop"
@@ -211,19 +212,219 @@ function Register-ResumeAtLogon {
 function Clear-ResumeAtLogon {
     try { Remove-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -ErrorAction Stop } catch { }
 }
-# 要重新開機時：登記接續，說明會發生什麼，問一次要不要現在重開。
+# 要重新開機時：登記接續，說明會發生什麼，問一次要不要現在重開。接續的登記和進度都在這個 Windows 帳號底下，
+# 所以要說清楚重新開機後要用哪個帳號登入（#2650 第 5 項）。
 function Request-Reboot([string]$why) {
     Write-Warn $why
     $registered = Register-ResumeAtLogon
+    $account = Get-InstallAccountName
     if ($registered) {
-        Write-Info "重新開機並登入 Windows 後，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。"
+        Write-Info "重新開機後，請用 Windows 帳號「$account」登入，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。"
     } else {
-        Write-Info "重新開機後，請再執行一次同一行安裝指令，會從中斷處繼續。"
+        Write-Info "重新開機後，請用 Windows 帳號「$account」登入，再執行一次同一行安裝指令，會從中斷處繼續。"
     }
+    Write-Info "用別的帳號登入不會接續：進度和自動接續只記在「$account」底下。"
     $reboot = Read-Host "  按 Enter 立刻重新開機；輸入 n 再按 Enter 先不重開"
     if ($reboot -notmatch '^\s*[nN]') { Restart-Computer -Force }
     if ($registered) { Write-Info "好的。之後你自己重新開機，登入後一樣會自動繼續。" }
     exit 0
+}
+
+# ── 網路檢查：安裝真正要連的地方，Windows 和 WSL 分開檢查（#2650 第 8 項）──────────
+# 以前只連一次 Google，連不上就整個停下來：Google 被擋、但需要的網站都能連的公司網路會被誤擋；反過來，Windows 的瀏覽器
+# 走公司 proxy 能連，WSL 裡的 curl/apt/npm 卻不行時，檢查通過了，後面的下載才失敗或一直等。現在：
+# - Windows 這邊：連 songsid.github.io（安裝指令與重新開機後的接續都從這裡下載，必須能連）和 GitHub（WSL 更新的備案，
+#   連不上只警告）。
+# - WSL 這邊（Ubuntu 好了之後、安裝 AgEnD 之前）：AgEnD 的安裝程式、npm、Node.js、nvm 必須能連；Ubuntu 套件庫和各家
+#   AI 後端的網站連不上只警告。
+# 每個網址最多試 2 次、每次 10 秒（WSL 裡的同時檢查）；回應任何 HTTP 狀態碼都算連得上。連不上時分清楚原因（DNS、逾時、連線被拒、
+# HTTPS 憑證、proxy），說明 proxy 和公司憑證要怎麼設定；必須的連不上時先問要不要繼續，預設不繼續。proxy 的帳密不寫進
+# 畫面或安裝紀錄。
+$NET_WINDOWS = @(
+    @{ Host = 'songsid.github.io'; Why = 'AgEnD 安裝程式'; Required = $true }
+    @{ Host = 'github.com'; Why = 'WSL 更新（備案）'; Required = $false }
+    @{ Host = 'raw.githubusercontent.com'; Why = 'Ubuntu 映像檔清單'; Required = $false }
+)
+$NET_WSL = @(
+    @{ Host = 'songsid.github.io'; Why = 'AgEnD 安裝程式'; Required = $true }
+    @{ Host = 'registry.npmjs.org'; Why = 'npm 套件'; Required = $true }
+    @{ Host = 'nodejs.org'; Why = 'Node.js'; Required = $true }
+    @{ Host = 'raw.githubusercontent.com'; Why = 'nvm'; Required = $true }
+    @{ Host = 'archive.ubuntu.com'; Why = 'Ubuntu 套件庫'; Required = $false }
+    @{ Host = 'cli.kiro.dev'; Why = 'Kiro CLI'; Required = $false }
+    @{ Host = 'claude.ai'; Why = 'Claude Code'; Required = $false }
+    @{ Host = 'chatgpt.com'; Why = 'Codex'; Required = $false }
+    @{ Host = 'antigravity.google'; Why = 'Antigravity'; Required = $false }
+)
+# 一個連線錯誤的原因：'dns'、'timeout'、'refused'、'tls'、'proxy' 或 'other'。$err 是例外（或它的訊息）。
+function Get-NetFailureKind($err) {
+    $status = ''
+    $text = ''
+    try { $e = $err.Exception; while ($e) { if ($e -is [Net.WebException]) { $status = [string]$e.Status }; $text += ' ' + $e.Message; $e = $e.InnerException } } catch { }
+    if (-not $text) { $text = [string]$err }
+    if ($status -eq 'ProxyNameResolutionFailure' -or $text -match '\(407\)|Proxy Authentication|proxy') { return 'proxy' }
+    if ($status -eq 'NameResolutionFailure' -or $text -match 'could not be resolved|No such host|Name or service not known|nodename nor servname|無法解析') { return 'dns' }
+    if ($status -in 'TrustFailure', 'SecureChannelFailure' -or $text -match 'SSL|TLS|certificate|trust relationship|憑證') { return 'tls' }
+    if ($status -eq 'Timeout' -or $text -match 'timed out|timeout|逾時') { return 'timeout' }
+    if ($status -eq 'ConnectFailure' -or $text -match 'actively refused|Connection refused|unable to connect|無法連線') { return 'refused' }
+    return 'other'
+}
+# Windows 這邊連一個網址：$null（連得上：任何 HTTP 回應都算），或原因（Get-NetFailureKind）。
+function Test-WindowsEndpoint([string]$hostName, [int]$tries = 2, [int]$timeoutSec = 10) {
+    $kind = 'other'
+    for ($i = 1; $i -le $tries; $i++) {
+        try {
+            $null = Invoke-WebRequest -Uri "https://$hostName/" -Method Head -TimeoutSec $timeoutSec -UseBasicParsing -ErrorAction Stop
+            return $null
+        } catch {
+            $resp = $null; try { $resp = $_.Exception.Response } catch { }
+            # 407 是 proxy 要登入，不是網站的回應：算 proxy 問題，不算連得上（Prism 審查）。
+            $code = 0; if ($resp) { try { $code = [int]$resp.StatusCode } catch { } }
+            if ($code -eq 407) { return 'proxy' }
+            if ($code -gt 0) { return $null }                                   # 其他 HTTP 回應（403、404、405、3xx 都算）：連得上
+            $kind = Get-NetFailureKind $_
+        }
+    }
+    return $kind
+}
+# Windows 用的 proxy（給 https://$hostName/ 的），沒有就 $null。只回傳主機和連接埠，帳密絕不帶出來。
+function Get-WindowsProxy([string]$hostName = 'songsid.github.io') {
+    try {
+        $uri = [Uri]"https://$hostName/"
+        $p = [Net.WebRequest]::GetSystemWebProxy().GetProxy($uri)
+        if ($p -and $p.Host -and $p.Host -ne $uri.Host) { return ('{0}:{1}' -f $p.Host, $p.Port) }
+    } catch { }
+    return $null
+}
+function Format-NetFailure([string]$kind) {
+    switch ($kind) {
+        'dns' { return '找不到這個網址（DNS）' }
+        'timeout' { return '逾時' }
+        'refused' { return '連線被拒或被防火牆擋住' }
+        'tls' { return 'HTTPS 憑證不被信任（常見於公司會檢查加密連線的網路）' }
+        'proxy' { return 'proxy 擋住或需要登入' }
+        'curl' { return 'WSL 裡沒有 curl，無法檢查' }
+    }
+    return '連不上'
+}
+# 依原因說明怎麼做。$where：'windows' 或 'wsl'；$proxy：Windows 用的 proxy（或 $null）。
+function Write-NetAdvice([string[]]$kinds, [string]$where, $proxy) {
+    if ($kinds -contains 'tls') {
+        Write-Info "  HTTPS 憑證的問題：公司網路常用自己的憑證檢查加密連線。請向 IT 人員要公司的根憑證（.crt），"
+        if ($where -eq 'wsl') {
+            Write-Info "  放到 Ubuntu 的 /usr/local/share/ca-certificates/ 再執行 update-ca-certificates；Node.js 另外設定 NODE_EXTRA_CA_CERTS 指向這個檔案。"
+        } else {
+            Write-Info "  或確認 Windows 已安裝它（IT 通常會統一安裝）。請不要關掉憑證檢查。"
+        }
+    }
+    if ($proxy) {
+        Write-Info "  Windows 透過 proxy（$proxy）上網。"
+        if ($where -eq 'wsl') {
+            Write-Info "  WSL 不一定會跟著用：可以在 Ubuntu 的 /etc/environment 加上 http_proxy=http://$proxy 和 https_proxy=http://$proxy，"
+            Write-Info "  或請 IT 人員協助（需要帳密的 proxy，請不要把密碼寫進共用的檔案）。"
+        }
+    } elseif ($kinds -contains 'proxy') {
+        Write-Info "  看起來有 proxy 擋住，或要先登入：請確認 proxy 設定，或請 IT 人員協助。"
+    }
+    if ($kinds -contains 'dns' -or $kinds -contains 'timeout' -or $kinds -contains 'refused') {
+        if ($where -eq 'wsl') {
+            Write-Info "  Windows 連得上、WSL 連不上時，常見原因是 VPN 或 WSL 的 DNS 設定：可以先中斷 VPN 再試，或請 IT 人員協助。"
+        } else {
+            Write-Info "  請確認網路正常（飯店或公司的登入頁要先登入）、防火牆沒有擋住這些網址，或換一個網路（例如手機熱點）再試。"
+        }
+    }
+}
+# 印出檢查結果並決定要不要繼續：必須的都連得上（或使用者明確回答 y）回傳 $true。$results：@{ Host; Why; Required; Kind }。
+function Resolve-NetResults($results, [string]$where) {
+    $failed = @($results | Where-Object { $_.Kind })
+    $required = @($failed | Where-Object { $_.Required })
+    $label = if ($where -eq 'wsl') { 'WSL 裡' } else { 'Windows' }
+    if ($failed.Count -eq 0) { Write-Ok "$label 的網路連線正常（需要的網站都連得上）"; return $true }
+    foreach ($r in $failed) {
+        $line = "{0} 連不上 {1}（{2}）：{3}" -f $label, $r.Host, $r.Why, (Format-NetFailure $r.Kind)
+        if ($r.Required) { Write-Err $line } else { Write-Warn ($line + "；只有用到時才需要") }
+    }
+    Write-NetAdvice @($failed | ForEach-Object { $_.Kind }) $where (Get-WindowsProxy)
+    if ($required.Count -eq 0) { return $true }
+    $answer = Read-Host "  安裝需要上面這些網站，現在多半會失敗。還是要繼續嗎？(y/N)"
+    return (([string]$answer) -match '^\s*[yY]\s*$')
+}
+function Test-WindowsNetwork {
+    Write-Info "檢查網路連線（安裝需要的網站）..."
+    $jobs = @($NET_WINDOWS | ForEach-Object { @{ Host = $_.Host; Why = $_.Why; Required = $_.Required; Kind = (Test-WindowsEndpoint $_.Host) } })
+    return (Resolve-NetResults $jobs 'windows')
+}
+# WSL 裡同時檢查（curl，每個最多 2 次、每次 10 秒），一行一個結果：NET|主機|curl 結束碼。腳本裡沒有雙引號（5.1 傳參數的問題）。
+function Get-WslNetScript($endpoints) {
+    $hosts = ($endpoints | ForEach-Object { $_.Host }) -join ' '
+    return @(
+        'command -v curl >/dev/null 2>&1 || { echo NET_NO_CURL; exit 0; }'
+        ('for h in ' + $hosts + '; do ( c=1; for i in 1 2; do curl -sS -o /dev/null -m 10 https://$h/ 2>/dev/null; c=$?; [ $c -eq 0 ] || [ $c -eq 22 ] && break; done; echo NET\|$h\|$c ) & done; wait')
+    ) -join "`n"
+}
+# curl 的結束碼 → 原因（0、22 是有 HTTP 回應）。
+function Get-CurlFailureKind([int]$code) {
+    switch ($code) {
+        { $_ -in 0, 22 } { return $null }
+        { $_ -in 5, 97 } { return 'proxy' }
+        6 { return 'dns' }
+        7 { return 'refused' }
+        28 { return 'timeout' }
+        { $_ -in 35, 51, 53, 54, 58, 59, 60, 66, 77, 80, 83, 90, 91 } { return 'tls' }
+    }
+    return 'other'
+}
+function ConvertFrom-WslNetOutput([string]$text, $endpoints) {
+    if ($text -match 'NET_NO_CURL') { return @($endpoints | ForEach-Object { @{ Host = $_.Host; Why = $_.Why; Required = $false; Kind = 'curl' } }) }
+    $codes = @{}
+    foreach ($m in [regex]::Matches($text, '(?m)^NET\|([A-Za-z0-9.-]+)\|(\d+)\s*$')) { $codes[$m.Groups[1].Value] = [int]$m.Groups[2].Value }
+    return @($endpoints | ForEach-Object {
+        $k = if ($codes.ContainsKey($_.Host)) { Get-CurlFailureKind $codes[$_.Host] } else { 'other' }
+        @{ Host = $_.Host; Why = $_.Why; Required = $_.Required; Kind = $k }
+    })
+}
+function Test-WslNetwork([string]$distro) {
+    Write-Info "檢查 WSL 裡的網路連線（安裝需要的網站）..."
+    $text = ''
+    $file, $wslFile = New-WslScriptFile (Get-WslNetScript $NET_WSL)
+    $prevEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $probe = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--', 'bash', $wslFile) -TimeoutSeconds 60
+        if ($probe.Code -eq 0) { $text = $probe.Text }
+    } catch { $text = '' } finally {
+        $ErrorActionPreference = $prevEAP
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+    }
+    return (Resolve-NetResults (ConvertFrom-WslNetOutput $text $NET_WSL) 'wsl')
+}
+
+# ── 安裝給哪個 Windows 帳號（#2650 第 5 項）──────────────────
+# WSL 的 Linux、桌面捷徑、安裝進度、重新開機後的自動接續、瀏覽器，都屬於「執行這個安裝程式的帳號」。一般帳號在
+# 系統管理員確認視窗裡輸入另一個系統管理員的帳密時，這個安裝程式就會以那個帳號執行，東西全部裝到那個帳號底下，
+# 原本的使用者什麼都看不到。一行安裝指令把提升權限之前的帳號 SID 傳進來（-InitiatingSid）；和現在的帳號不同就
+# 停下來，說清楚兩個帳號，不安裝任何東西。直接以系統管理員執行這個腳本（沒有 -InitiatingSid）時沒有可比對的，照常安裝。
+function Get-CurrentSid { try { return [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { return $null } }
+function Get-AccountName([string]$sid) {
+    try { return (New-Object Security.Principal.SecurityIdentifier $sid).Translate([Security.Principal.NTAccount]).Value } catch { return $sid }
+}
+function Get-InstallAccountName {
+    try { return [Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { }
+    if ($env:USERNAME) { return $env:USERNAME }
+    return '?'
+}
+# 回傳 $null（同一個帳號，或沒有可比對的），或 @{ Started; Running }：兩個帳號的名稱。
+function Get-InstallIdentityMismatch([string]$initiatingSid, [string]$currentSid) {
+    if ($initiatingSid -notmatch '^S-1-\d+(-\d+)+$' -or -not $currentSid) { return $null }
+    if ($initiatingSid -eq $currentSid) { return $null }
+    return @{ Started = (Get-AccountName $initiatingSid); Running = (Get-AccountName $currentSid) }
+}
+function Write-InstallIdentityMismatch($mismatch) {
+    Write-Err ("安裝是從 Windows 帳號「{0}」開始的，但系統管理員確認視窗用的是另一個帳號「{1}」。" -f $mismatch.Started, $mismatch.Running)
+    Write-Info ("這樣繼續的話，WSL、AgEnD、桌面捷徑和重新開機後的接續都會裝到「{0}」底下，「{1}」看不到也用不到。所以先停在這裡，沒有安裝或修改任何東西。" -f $mismatch.Running, $mismatch.Started)
+    Write-Info "可以這樣做："
+    Write-Info ("  - 要給「{0}」用：請公司的 IT 人員暫時讓這個帳號有系統管理員權限，再用它執行同一行安裝指令。" -f $mismatch.Started)
+    Write-Info ("  - 要給「{0}」用：登出，用「{0}」登入 Windows，再執行同一行安裝指令。" -f $mismatch.Running)
 }
 
 # 安裝位置：系統碟有 20 GB 以上就用它（通常是 SSD），否則用可用空間最大、至少 5 GB 的本機磁碟。$disks 的每一項有 Root 和 Free。
@@ -1800,6 +2001,12 @@ if (-not (Check-Admin)) {
     Read-Host "按 Enter 結束"; exit 1
 }
 
+$identityMismatch = Get-InstallIdentityMismatch $InitiatingSid (Get-CurrentSid)
+if ($identityMismatch) {
+    Write-InstallIdentityMismatch $identityMismatch
+    Read-Host "按 Enter 結束"; exit 1
+}
+
 # 使用這個視窗的小提醒（#1853：不熟主控台的人最常卡在這幾件事）
 Write-Host "  ── 使用這個視窗前，先看這幾點 ──" -ForegroundColor Yellow
 Write-Info "  複製：用滑鼠選取文字，再按右鍵（或 Enter）。"
@@ -1851,13 +2058,10 @@ if (-not $Force -and -not (Test-Path $ProgressFile)) {
     }
 }
 
-# 網路檢查
-Write-Info "檢查網路連線..."
-try {
-    $null = Invoke-WebRequest -Uri "https://www.google.com" -TimeoutSec 10 -UseBasicParsing
-    Write-Ok "網路連線正常"
-} catch {
-    Write-Err "無法連線到網路！請確認網路後重試"
+# 網路檢查：安裝真正要連的網站（見 Test-WindowsNetwork）。WSL 裡的另外在 Ubuntu 好了之後檢查。
+if (-not (Test-WindowsNetwork)) {
+    Write-Info "已停止，沒有改動任何東西。網路好了之後再執行同一行安裝指令。"
+    Set-InstallFailure 'network'
     Read-Host "按 Enter 結束"; exit 1
 }
 
@@ -2062,6 +2266,15 @@ ws.Run "wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'sleep infinity'", 0, False
 "@
 [IO.File]::WriteAllText($vbsPath, $vbsContent, (New-Object System.Text.UTF8Encoding $false))
 Write-Ok "開機啟動已設定（Windows 登入後自動啟動 WSL）"
+
+# WSL 裡的網路：還有後端或 AgEnD 要下載時才檢查（Windows 連得上不代表 WSL 也連得上，例如公司 proxy、VPN）。
+if (-not ((Stage-Done 2) -and (Stage-Done 4))) {
+    if (-not (Test-WslNetwork $UBUNTU_DISTRO)) {
+        Write-Info "已停止。網路設定好之後再執行同一行安裝指令，會從這一步繼續。"
+        Set-InstallFailure 'network'
+        Read-Host "按 Enter 結束"; exit 1
+    }
+}
 
 # ═══════════════════════════════════════════════════════════
 # 階段 2: 安裝 AI 後端（可多選）+ PATH 設定

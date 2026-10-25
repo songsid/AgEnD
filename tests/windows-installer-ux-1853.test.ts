@@ -52,7 +52,7 @@ describe("the installer's long steps and console guards (static)", () => {
     for (const line of ["複製：用滑鼠選取文字，再按右鍵（或 Enter）。", "貼上：在視窗裡按一下右鍵。", "請不要按 Ctrl+C：在這個視窗裡，它不是「複製」，而是「停止」。",
       "自動安裝時點到視窗也沒關係，不會讓安裝暫停。", "登入時請不要按 Ctrl+C：它會直接關掉登入程式。", "要貼上 Bot Token：在視窗裡按一下右鍵。",
       "設定時請不要按 Ctrl+C：它會直接結束設定。"]) expect(text).toContain(line);
-    expect(text.indexOf("使用這個視窗前，先看這幾點")).toBeLessThan(text.indexOf("檢查網路連線"));
+    expect(text.indexOf("使用這個視窗前，先看這幾點")).toBeLessThan(text.indexOf("if (-not (Test-WindowsNetwork))"));   // the network check (#2650 item 8)
   });
   it("still UTF-8 with a BOM (its Chinese renders in Windows PowerShell 5.1)", () => {
     expect([...readFileSync(INSTALLER).subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);

@@ -119,6 +119,8 @@ function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec
         }
         $runIndex = [array]::IndexOf($installerArgs, '-InstallRunId')
         if ($runIndex -ge 0 -and $installerArgs[$runIndex + 1] -match '^[0-9a-f]{32}$') { $versionArg += " -InstallRunId '$($installerArgs[$runIndex + 1])'" }
+        $sidIndex = [array]::IndexOf($installerArgs, '-InitiatingSid')
+        if ($sidIndex -ge 0 -and $installerArgs[$sidIndex + 1] -match '^S-1-\d+(-\d+)+$') { $versionArg += " -InitiatingSid '$($installerArgs[$sidIndex + 1])'" }
         $declinedError = { $e = $args[0].Exception; while ($e) { if ($e.NativeErrorCode -eq 1223) { return $true }; $e = $e.InnerException }; return $false }
         $wt = $null
         if ($terminal -ne 'conhost') { $wt = Get-Command -Name 'wt.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -215,7 +217,12 @@ function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec
             Invoke-InstallDownload -Uri "$base/install-agend.ps1" -OutFile $tmp -TimeoutSec 120
         } catch {
             Write-Host "AgEnD: the download failed: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Check your internet connection, then run the same command again."
+            # Say what kind of failure it was (#2650 item 8): a proxy or a company certificate needs IT, not a retry.
+            $msg = "$($_.Exception.Message) $($_.Exception.InnerException.Message)"
+            if ($msg -match '\(407\)|[Pp]roxy') { Write-Host "A proxy blocked it or wants a sign-in. Check the proxy settings, or ask your IT team." }
+            elseif ($msg -match 'SSL|TLS|[Cc]ertificate|trust relationship') { Write-Host "The HTTPS certificate was not trusted: company networks often inspect HTTPS. Ask your IT team; do not turn certificate checks off." }
+            elseif ($msg -match 'timed out|[Tt]imeout') { Write-Host "It timed out: the network is slow or a login page (hotel, office) is waiting. Check it, then run the same command again." }
+            else { Write-Host "Check your internet connection, then run the same command again." }
             Write-BootstrapLog ("download failed: " + $_.Exception.Message)
             return
         }
@@ -260,6 +267,12 @@ function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec
         } else {
             Write-Host "AgEnD: the installer needs Administrator rights (it enables WSL). Approve the Windows prompt;"
             Write-Host "it opens in a new window, and this one waits for it."
+            # Who started it (#2650 item 5): WSL, the shortcuts and the resume after a restart belong to the account the
+            # installer runs as. If the prompt is answered with another administrator's account, the installer sees this SID
+            # differ from its own and stops, naming both accounts, instead of installing everything for the other one.
+            $sid = $null
+            try { $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { }
+            if ($sid -match '^S-1-\d+(-\d+)+$') { $installerArgs += @('-InitiatingSid', $sid) }
             $terminal = 'auto'
             if ($env:AGEND_INSTALL_TERMINAL) { $terminal = $env:AGEND_INSTALL_TERMINAL.Trim().ToLowerInvariant() }
             $result = Start-ElevatedInstaller $shell $installerArgs $tmp $terminal
