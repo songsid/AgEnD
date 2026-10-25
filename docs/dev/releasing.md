@@ -95,7 +95,9 @@ So a beta never moves `latest`.
    - A patch release adds a short section to the current page, or nothing.
 7. **Docs pass.** Compare the version's merged PRs against `docs/`:
    - features (`docs/features.md`);
-   - install (`docs/getting-started.md`);
+   - install: the README's Quick Start (`README.md`, `README.zh-TW.md` "開始用")
+     and the Windows install page (`website/src/pages/install-windows.astro`
+     and its `zh-tw` copy);
    - upgrade (`docs/upgrade-<x.y>.md`);
    - the config reference (`docs/configuration.md`);
    - the CLI reference (`docs/cli.md`).
@@ -157,8 +159,8 @@ So a beta never moves `latest`.
     - Sync `website/src/content` with `docs/`, the install pages
       (`website/src/pages/install-windows.astro` and its `zh-tw` copy), what's
       new, and the version on the home page.
-    - The PR is approved with HOLD. The leader merges it only after the npm
-      release (813e85d2).
+    - The PR is approved with HOLD. The leader releases the HOLD only after
+      the npm release (813e85d2); the coordinator then merges it.
 11. **Runtime pins.** `publish.yml` runs
     `node scripts/release/check-runtime-pins.mjs <packed .tgz>` before
     `npm publish`. The packed manifest must pin every shipped
@@ -174,8 +176,8 @@ So a beta never moves `latest`.
       creates a full GitHub release, without `--prerelease`, with the release
       notes as its text.
 13. **After.**
-    - Merge the website PR and confirm the **Deploy Website** workflow
-      succeeded.
+    - The leader releases the website PR's HOLD, the coordinator merges it,
+      and the leader confirms the **Deploy Website** workflow succeeded.
     - Update the host and check its logs.
     - Close the version's issues.
     - Announce the release.
