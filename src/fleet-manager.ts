@@ -1067,6 +1067,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private workingRecovery: WorkingRecoveryCoordinator | null = null;
   private workingRecoveryTimer: ReturnType<typeof setInterval> | null = null;
   private workingRecoveryCause: RecoveryCause = "unknown_interruption";
+  private workingRecoveryGroup = this.managerBootId;
 
   private recoveryEnabled(name: string): boolean {
     const own = this.fleetConfig?.instances[name]?.resume_interrupted_work;
@@ -1106,8 +1107,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const deferredAdvisories = rows.filter(row => row.outcome === "deferred"
           && (this.daemons.get(row.instance)?.getWorkingRecoveryState?.().background ?? null) === null)
           .map(row => `${row.instance} (${row.reason})`);
-        store.summary(group, () => outbox.admitSystemNotice(general, `working-recovery-summary:${group}`,
+        const posted = store.summary(group, () => outbox.admitSystemNotice(general, `working-recovery-summary:${group}`,
           `[system:working-recovery-summary] Observed cause: unknown interruption${this.workingRecoveryCause === "unknown_interruption" ? "" : `; prior requested action: ${this.workingRecoveryCause}`}. ${rows.length} interrupted instances; continuation queued ${rows.filter(r => r.outcome === "admitted").length}, excluded ${rows.filter(r => r.outcome === "excluded").length}, still deferred ${rows.filter(r => r.outcome === "deferred").length}. ${rows.filter(r => r.reason === "advisory_background_unknown").length ? `Advisory, background unknown: ${rows.filter(r => r.reason === "advisory_background_unknown").map(r => r.instance).join(", ")}. ` : ""}${deferredAdvisories.length ? `Deferred advisory candidates (background unknown; all other gates still apply): ${deferredAdvisories.join(", ")}. ` : ""}Details are in the Log. Deferred work remains eligible; no action or confirmation is requested.`));
+        if (posted) {
+          const counts = { interrupted: rows.length, queued: rows.filter(row => row.outcome === "admitted").length,
+            excluded: rows.filter(row => row.outcome === "excluded").length, deferred: rows.filter(row => row.outcome === "deferred").length };
+          const requestedAction = this.workingRecoveryCause === "unknown_interruption" ? null : this.workingRecoveryCause;
+          this.logger.info({ group, ...counts, observedCause: "unknown_interruption", requestedAction }, "Interrupted work recovery summary queued for General");
+          this.eventLog?.insert(general, "working_state", { reason: "recovery_summary", group, ...counts,
+            observedCause: "unknown_interruption", requestedAction,
+            message: `Interrupted work summary queued for General: ${counts.interrupted} interrupted; ${counts.queued} queued, ${counts.excluded} excluded, ${counts.deferred} deferred.` });
+        }
       },
       log: (episode, outcome, reason) => {
         const requestedAction = this.workingRecoveryCause === "unknown_interruption" ? null : this.workingRecoveryCause;
@@ -2703,7 +2713,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         lastActivityAt: this.lastActivity.get(name) ?? null, references, totalReferences, unavailable });
       if (!entry) return;
       if (reason === "cancelled") outbox.workingRecovery.cancel(name, observation.configuration, observation.sessionId);
-      if (entry.prior) outbox.workingRecovery.discover(name, entry.prior);
+      if (entry.prior) outbox.workingRecovery.discover(name, entry.prior, this.workingRecoveryGroup);
       const state = entry.current.observation.executionState ?? "unknown";
       const counts = { tasks: entry.current.references.filter(r => r.kind === "task").length,
         owed: entry.current.references.filter(r => r.kind === "owed").length,
@@ -20938,8 +20948,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** Signal-handler continuation, after successful graceful shutdown only. */
   noteRequestedShutdown(): void {
     const progress = readUpdateProgress(this.dataDir)?.progress;
-    const update = progress && updateProgressOperation(progress) === "update"
-      && ["installed", "stopping", "starting"].includes(progress.stage);
+    // Host CLI updates carry a generic marker with no chat progress target.
+    const update = progress ? updateProgressOperation(progress) === "update"
+      && ["installed", "stopping", "starting"].includes(progress.stage) : isUpdateInProgress(this.dataDir);
     this.recordWorkingRestartIntent(update ? "update" : "manual_restart");
   }
 
@@ -22798,6 +22809,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return;
     }
 
+    this.workingRecoveryGroup = randomUUID();
     this.recordWorkingRestartIntent("manual_restart");
     this.workingRecovery?.reset();
     this.logger.info(`Graceful restart: waiting for ${instanceNames.length} instances to idle...`);

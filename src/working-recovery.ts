@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
-import type { WorkingStateSnapshot, WorkingStateReference } from "./working-state-journal.js";
+import { hasInterruptedExecution, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
 import type { MemoryPressureSnapshot } from "./memory-pressure.js";
 
 export const WORKING_RECOVERY_KIND = "working_recovery";
@@ -30,6 +30,7 @@ export interface RecoveryLive {
 }
 export interface RecoveryCard { uuid: string; version: number; assignee: string | null; status: string }
 export type RecoveryVerdict = { outcome: "deferred" | "excluded"; reason: string } | { outcome: "ready"; tasks: WorkingStateReference[]; advisory: boolean };
+const taskMetadataOnly = (snapshot: WorkingStateSnapshot) => !hasInterruptedExecution(snapshot) && !snapshot.observation.turn;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 export function buildWorkingRecoveryPrompt(tasks: WorkingStateReference[], cause: RecoveryCause, advisory: boolean): string {
@@ -51,6 +52,7 @@ export function recoveryKey(instance: string, snapshot: WorkingStateSnapshot): s
 /** Stage 3 owns task-only episodes. The legacy turn/obligation owners remain intact until stage 4. */
 export function decideWorkingRecovery(episode: RecoveryEpisode, live: RecoveryLive | null, enabled: boolean,
   card: (id: string) => RecoveryCard | undefined | null): RecoveryVerdict {
+  if (!hasInterruptedExecution(episode.snapshot)) return { outcome: "excluded", reason: "not_working_at_interruption" };
   if (!enabled) return { outcome: "deferred", reason: "opted_out" };
   const snapshot = episode.snapshot, previous = snapshot.observation;
   if (previous.turn?.cancelled || previous.turn?.completionDelivered) return { outcome: "excluded", reason: "turn_terminal" };
@@ -71,8 +73,7 @@ export function decideWorkingRecovery(episode: RecoveryEpisode, live: RecoveryLi
     if (ref.kind !== "task") continue; // waiting on another agent never authorizes a resend
     const current = card(ref.id);
     if (current === null) return { outcome: "deferred", reason: "task_store_unavailable" };
-    if (!current || current.assignee !== episode.instance || ["done", "cancelled", "open"].includes(current.status)) continue;
-    if (current.status !== "claimed") return { outcome: "deferred", reason: "task_waiting" };
+    if (!current || current.assignee !== episode.instance || current.status !== "claimed") continue;
     if (current.version !== ref.version) return { outcome: "excluded", reason: "task_changed" };
     tasks.push(ref);
   }
@@ -120,19 +121,45 @@ export class WorkingRecoveryStore {
       { configuration: string; session_id: string | null } | undefined;
     return !!row && row.configuration === snapshot.observation.configuration && row.session_id === snapshot.observation.sessionId;
   }
-  discover(instance: string, snapshot: WorkingStateSnapshot): void {
+  discover(instance: string, snapshot: WorkingStateSnapshot, group = snapshot.managerBootId): void {
+    if (!hasInterruptedExecution(snapshot)) {
+      if (snapshot.reason === "before_stop" && snapshot.observation.executionState === "idle" && !snapshot.observation.turn) {
+        this.db.transaction(() => {
+          const current = this.get(instance);
+          if (!current || current.outcome === "admitted") return;
+          this.db.prepare("DELETE FROM working_recovery_episodes WHERE instance_name=? AND episode_key=?").run(instance, current.key);
+          this.db.prepare("DELETE FROM working_recovery_receipts WHERE episode_key=? AND outcome='excluded'").run(current.key);
+        })();
+      }
+      return;
+    }
     const key = recoveryKey(instance, snapshot);
     this.db.transaction(() => {
+      let current = this.get(instance);
+      // Pre-fix task-only idle rows never proved an interruption. Remove only
+      // their no-input decisions; admitted/uncertain deliveries keep their fence.
+      if (current && current.outcome !== "admitted" && taskMetadataOnly(current.snapshot)) {
+        this.db.prepare("DELETE FROM working_recovery_episodes WHERE instance_name=? AND episode_key=?").run(instance, current.key);
+        this.db.prepare("DELETE FROM working_recovery_receipts WHERE episode_key=? AND outcome='excluded'").run(current.key);
+        current = null;
+      }
       const receipt = this.db.prepare("SELECT outcome,reason FROM working_recovery_receipts WHERE episode_key=?").get(key) as { outcome: string; reason: string } | undefined;
-      const current = this.get(instance);
-      if (current?.key === key) return;
+      if (current?.key === key) {
+        // Same durable work, new fleet-start interval: keep the episode/receipt,
+        // but an earlier summary must not consume this restart's summary.
+        if (current.outcome === "deferred" && current.group !== group) {
+          this.db.prepare("UPDATE working_recovery_episodes SET episode_group=? WHERE instance_name=? AND episode_key=?")
+            .run(group, instance, key);
+        }
+        return;
+      }
       // An admitted/uncertain delivery is owned by the outbox, never replaced by a new candidate.
       if (current?.outcome === "admitted" && current.deliveryId) {
         const delivery = this.db.prepare("SELECT state FROM deliveries WHERE delivery_id=?").get(current.deliveryId) as { state: string } | undefined;
         if (!delivery || !["delivered", "failed", "cancelled"].includes(delivery.state)) return;
       }
       this.db.prepare(`INSERT OR REPLACE INTO working_recovery_episodes VALUES(?,?,?,?,?,?,NULL)`)
-        .run(instance, key, snapshot.managerBootId, JSON.stringify(snapshot), receipt?.outcome ?? "deferred", receipt?.reason ?? "awaiting_stability");
+        .run(instance, key, group, JSON.stringify(snapshot), receipt?.outcome ?? "deferred", receipt?.reason ?? "awaiting_stability");
     })();
   }
   get(instance: string): RecoveryEpisode | null {
@@ -154,6 +181,11 @@ export class WorkingRecoveryStore {
     this.db.transaction(() => {
       const current = this.get(episode.instance);
       if (current?.key !== episode.key || current.outcome === "admitted") return;
+      if (reason === "not_working_at_interruption" && taskMetadataOnly(episode.snapshot)) {
+        this.db.prepare("DELETE FROM working_recovery_episodes WHERE instance_name=? AND episode_key=?").run(episode.instance, episode.key);
+        this.db.prepare("DELETE FROM working_recovery_receipts WHERE episode_key=? AND outcome='excluded'").run(episode.key);
+        return; // An old idle card must not poison a later genuinely working interval with the same task version.
+      }
       this.db.prepare("UPDATE working_recovery_episodes SET outcome=?,reason=? WHERE instance_name=? AND episode_key=?").run(outcome, reason, episode.instance, episode.key);
       if (outcome === "excluded") {
         this.db.prepare("INSERT OR IGNORE INTO working_recovery_receipts VALUES(?,?,?)").run(episode.key, outcome, reason);
@@ -236,7 +268,8 @@ export class WorkingRecoveryCoordinator {
     }
     const rows = this.deps.store.list();
     for (const group of new Set(rows.map(row => row.group))) {
-      const members = rows.filter(row => row.group === group);
+      const members = rows.filter(row => row.group === group && hasInterruptedExecution(row.snapshot));
+      if (!members.length) continue;
       // Finish the paced admission sweep before the single summary, so every
       // advisory admission in that sweep is named, rather than only its first row.
       if (members.some(row => row.outcome === "deferred" && this.verdict(row).outcome === "ready")) continue;

@@ -242,3 +242,64 @@ describe("real outbox episode admission across process replacement", () => {
     expect(outbox.get(claimed.deliveryId)?.state).toBe("reconciliation_pending");
   });
 });
+
+
+describe("2026-10-25 real update shapes", () => {
+  it("old claimed/blocked cards cannot create an episode for an idle instance", () => {
+    const f = fixture(), idle = snapshot(); idle.observation = { ...idle.observation, executionState: "idle" };
+    f.store.discover("idle-worker", idle, "replacement-manager");
+    expect(f.store.get("idle-worker")).toBeNull();
+    expect(decideWorkingRecovery(episode(idle), live(), true, card)).toEqual({ outcome: "excluded", reason: "not_working_at_interruption" });
+  });
+  it("an idle stop keeps an admitted or ambiguous delivery fenced", () => {
+    const f = fixture(); f.store.admit(f.store.get("worker")!, () => "ambiguous-delivery");
+    const before = f.store.get("worker"), idle = snapshot();
+    idle.observation = { ...idle.observation, executionState: "idle" };
+    f.store.discover("worker", idle, "replacement-manager");
+    expect(f.store.get("worker")).toEqual(before);
+  });
+  it("an authoritative idle shutdown retires an earlier deferred working candidate", () => {
+    const f = fixture(), idle = snapshot(); idle.observation = { ...idle.observation, executionState: "idle" };
+    expect(f.store.get("worker")).not.toBeNull();
+    f.store.discover("worker", idle, "replacement-manager");
+    expect(f.store.get("worker")).toBeNull();
+    expect(f.admissions).toEqual([]);
+  });
+  it("already persisted idle episodes are excluded without input or a summary", () => {
+    const f = fixture(), idle = snapshot(); idle.observation = { ...idle.observation, executionState: "idle" };
+    f.db.prepare("UPDATE working_recovery_episodes SET snapshot_json=?,episode_key=? WHERE instance_name='worker'")
+      .run(JSON.stringify(idle), recoveryKey("worker", idle));
+    f.coordinator.ready(); f.coordinator.tick(); f.time(120_000); f.coordinator.tick();
+    expect(f.store.get("worker")).toBeNull();
+    expect(f.logs.some(line => line.endsWith("excluded:not_working_at_interruption"))).toBe(true);
+    expect(f.admissions).toEqual([]); expect(f.summaries).toEqual([]);
+    f.store.discover("worker", snapshot(), "genuine-work");
+    expect(f.store.get("worker")).toMatchObject({ outcome: "deferred", reason: "awaiting_stability" });
+  });
+  it("an old excluded idle row does not fence later genuine work with the same task version", () => {
+    const f = fixture(), idle = snapshot(); idle.observation = { ...idle.observation, executionState: "idle" };
+    const key = recoveryKey("worker", idle);
+    f.db.prepare("UPDATE working_recovery_episodes SET snapshot_json=?,episode_key=?,outcome='excluded',reason='native_reengaged' WHERE instance_name='worker'")
+      .run(JSON.stringify(idle), key);
+    f.db.prepare("INSERT INTO working_recovery_receipts VALUES(?,'excluded','native_reengaged')").run(key);
+    f.store.discover("worker", snapshot(), "genuine-work");
+    expect(f.store.get("worker")).toMatchObject({ key, outcome: "deferred", reason: "awaiting_stability", group: "genuine-work" });
+  });
+  it.each(["review", "blocked", "done", "cancelled", "open"])("skips a %s sibling card while continuing the unchanged claimed card", status => {
+    const ref = { kind: "task", id: "finished-old-card", version: 3, status: "review" } as const;
+    for (const references of [[...snapshot().references, ref], [ref, ...snapshot().references]]) {
+      const s = snapshot({ references, totalReferences: 2 });
+      expect(decideWorkingRecovery(episode(s), live(), true, id => id === ref.id
+        ? { uuid: id, version: 99, assignee: "worker", status } : card()))
+        .toMatchObject({ outcome: "ready", tasks: [snapshot().references[0]] });
+    }
+  });
+  it("a deferred episode keeps its key but gets this boot's one summary after an earlier summary", () => {
+    const f = fixture(); f.enabled(false); f.coordinator.ready(); f.coordinator.tick(); f.time(120_000); f.coordinator.tick();
+    const previous = f.store.get("worker")!; expect(f.summaries).toHaveLength(1);
+    f.store.discover("worker", previous.snapshot, "new-manager");
+    expect(f.store.get("worker")).toMatchObject({ key: previous.key, group: "new-manager", outcome: "deferred" });
+    f.coordinator.tick(); f.coordinator.tick(); expect(f.summaries).toHaveLength(2);
+    expect(f.summaries[1]).toContain("new-manager:"); expect(f.admissions).toEqual([]);
+  });
+});

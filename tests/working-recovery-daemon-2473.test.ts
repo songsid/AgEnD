@@ -33,7 +33,7 @@ function fixture() {
   const markTurn = vi.spyOn(daemon, "markTurnStarted");
   const outbox = new DeliveryOutbox(join(dir, "outbox.db"), "manager"); stores.push(outbox); daemon.setDeliveryOutboxPort(outbox);
   const snapshot: any = { version: 1, managerBootId: "old-manager", observedAt: 1, lastActivityAt: 1, reason: "before_stop",
-    observation: daemon.getWorkingStateObservation(), references: [{ kind: "task", id: "task", version: 1, status: "claimed" }], totalReferences: 1, unavailable: [] };
+    observation: { ...daemon.getWorkingStateObservation(), executionState: "working" }, references: [{ kind: "task", id: "task", version: 1, status: "claimed" }], totalReferences: 1, unavailable: [] };
   outbox.observeWorkingState("worker", snapshot); outbox.workingRecovery.discover("worker", snapshot);
   const episode = outbox.workingRecovery.get("worker")! as RecoveryEpisode;
   outbox.admitWorkingRecovery(episode, "private recovery continuation");

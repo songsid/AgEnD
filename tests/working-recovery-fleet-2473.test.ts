@@ -17,7 +17,7 @@ import { Scheduler } from "../src/scheduler/index.js";
 import { recoveryKey } from "../src/working-recovery.js";
 import { EventLog } from "../src/event-log.js";
 import { installFleetProcessHandlers } from "../src/fleet-process-handlers.js";
-import { beginUpdateProgress, setUpdateProgressStage } from "../src/update-marker.js";
+import { beginUpdateProgress, markUpdateInProgress, setUpdateProgressStage } from "../src/update-marker.js";
 const roots: string[] = [], fleets: any[] = [];
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
@@ -60,7 +60,7 @@ function fixture() {
   const created = board.createCards(actor, { cards: [{ title: "private task text", assignee: "worker" }] }).cards[0];
   board.moveCard(actor, created.code, "claimed"); const card = board.findCard(created.uuid);
   const old: any = { version: 1, managerBootId: "previous-manager", observedAt: 1, reason: "before_stop", lastActivityAt: 1,
-    observation: d.getWorkingStateObservation(), references: [{ kind: "task", id: card.uuid, version: card.version, status: card.status }], totalReferences: 1, unavailable: [] };
+    observation: { ...d.getWorkingStateObservation(), executionState: "working" }, references: [{ kind: "task", id: card.uuid, version: card.version, status: card.status }], totalReferences: 1, unavailable: [] };
   fm.deliveryOutbox.observeWorkingState("worker", old);
   fm.onDaemonReady("worker", d.bootId); // real publication discovers the retained prior snapshot
   const stable = async () => { fm.startupComplete = true; fm.workingRecovery.ready(); fm.workingRecovery.tick(); await vi.advanceTimersByTimeAsync(120_000); fm.workingRecovery.tick(); };
@@ -72,7 +72,7 @@ function fixture() {
   return { fm, d, card, board, paste, enter, stable, dispatch, pressure: (v: string) => { level = v; } };
 }
 describe("#2473 manager recovery wiring", () => {
-  it.each(["manual_restart", "update"])("records completed SIGTERM shutdown intent as %s", async cause => {
+  it.each(["manual_restart", "update", "host_update"])("records completed SIGTERM shutdown intent as %s", async cause => {
     const f = fixture(); f.fm.daemons.delete("general");
     f.d.stop = vi.fn(async () => {});
     vi.spyOn(f.fm.memoryPressure, "sample").mockReturnValue({ level: "normal" });
@@ -80,13 +80,41 @@ describe("#2473 manager recovery wiring", () => {
       beginUpdateProgress(f.fm.dataDir, { adapterId: "fixture", chatId: "chat", messageId: "message" });
       setUpdateProgressStage(f.fm.dataDir, "stopping");
     }
+    if (cause === "host_update") markUpdateInProgress(f.fm.dataDir);
     const events = new Map<string, (...args: any[]) => any>();
     const runtime = { on: (event: string, fn: (...args: any[]) => any) => events.set(event, fn), exit: vi.fn() };
     installFleetProcessHandlers({ dataDir: f.fm.dataDir, manager: f.fm, runtime: runtime as any,
       describeSignal: () => "inert SIGTERM", console: { log: vi.fn(), error: vi.fn() } });
     await events.get("SIGTERM")!();
     expect(f.d.stop).toHaveBeenCalledOnce(); expect(runtime.exit).toHaveBeenCalledWith(0);
-    expect(f.fm.deliveryOutbox.workingRecovery.beginRun("next-manager", 123, Date.now())).toBe(cause);
+    expect(f.fm.deliveryOutbox.workingRecovery.beginRun("next-manager", 123, Date.now())).toBe(cause === "host_update" ? "update" : cause);
+  });
+  it("the current manager gets its General summary despite a summary from the previous manager lifetime", async () => {
+    const f = fixture(), outbox = f.fm.deliveryOutbox, store = outbox.workingRecovery;
+    // The outbox stamps its manager ID, so seed the prior's actual previous-run
+    // shape explicitly rather than passing an ignored managerBootId to observe().
+    const prior = outbox.getWorkingState("worker").prior;
+    prior.managerBootId = "previous-manager";
+    outbox.db.prepare("UPDATE working_state_journal SET prior_json=? WHERE instance_name='worker'").run(JSON.stringify(prior));
+    outbox.db.prepare("DELETE FROM working_recovery_episodes WHERE instance_name='worker'").run();
+    store.summary("previous-manager", () => {});
+    f.fm.lastActivity.set("worker", 12345);
+    f.fm.observeWorkingState("worker", "published");
+    expect(store.get("worker").group).toBe(f.fm.managerBootId);
+    const info = vi.spyOn(f.fm.logger, "info").mockImplementation(() => {});
+    await f.stable(); f.fm.workingRecovery.tick();
+    const notices = f.fm.deliveryOutbox.listPending().filter((r: any) => r.sourceKey?.startsWith("working-recovery-summary:"));
+    expect(notices).toHaveLength(1); expect(notices[0].sourceKey).toBe(`working-recovery-summary:${f.fm.managerBootId}`);
+    expect(info.mock.calls.filter((args: any[]) => args[1] === "Interrupted work recovery summary queued for General")).toHaveLength(1);
+    expect(f.fm.eventLog.query({ instance: "general", type: "working_state" }).filter((e: any) => e.payload.reason === "recovery_summary")).toHaveLength(1);
+  });
+  it("a Claude replacement remains session_unknown until its existing checkpoint proves a session", () => {
+    const f = fixture(); expect(f.d.getWorkingRecoveryState().sessionId).toBe("owned-session");
+    f.d.beginSpawn(); f.d.endSpawn();
+    expect(f.d.getWorkingRecoveryState().sessionId).toBeNull();
+    expect(f.fm.workingRecovery.verdict(f.fm.deliveryOutbox.workingRecovery.get("worker"))).toMatchObject({ outcome: "deferred", reason: "session_unknown" });
+    f.d.saveSessionId();
+    expect(f.d.getWorkingRecoveryState().sessionId).toBe("owned-session");
   });
   it("SIGUSR2 reaches the real in-process restart entry and refreshes its requested cause", async () => {
     const f = fixture(); f.fm.configPath = join(f.fm.dataDir, "fleet.yaml"); f.fm.daemons.delete("general");
@@ -182,6 +210,7 @@ describe("#2473 manager recovery wiring", () => {
     f.fm.daemons.delete("general");
     f.d.stop = vi.fn(async () => { f.d.publishWorkingState("before_stop"); });
     vi.spyOn(f.fm.memoryPressure, "sample").mockReturnValue({ level: "normal" });
+    f.d.instanceState = "working";
     await f.fm.stopAll();
     const prior = outbox.getWorkingState("worker")?.prior;
     expect(prior?.references).toEqual([{ kind: "task", id: f.card.uuid, version: f.card.version, status: "claimed" }]);

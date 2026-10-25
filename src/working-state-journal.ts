@@ -85,10 +85,17 @@ function bounded(input: WorkingStateSnapshot): WorkingStateSnapshot {
   return value;
 }
 
+/** Task cards describe ownership, not proof that execution was interrupted. */
+export function hasInterruptedExecution(s: WorkingStateSnapshot): boolean {
+  const turn = s.observation.turn;
+  return ["working", "stuck"].includes(s.observation.executionState ?? "")
+    && !turn?.cancelled && !turn?.completionDelivered;
+}
+
 function notable(s: WorkingStateSnapshot): boolean {
   const turn = s.observation.turn;
   return s.totalReferences > 0 || s.observation.backgroundWork === true || (!!turn && !turn.cancelled && !turn.completionDelivered)
-    || (s.observation.executionState === "working" && !turn?.cancelled && !turn?.completionDelivered);
+    || hasInterruptedExecution(s);
 }
 
 /** Two bounded snapshots per instance: latest, plus first unconsumed interruption. */
@@ -131,8 +138,15 @@ export class WorkingStateJournal {
       if (previous && comparable(previous.current) === comparable(snapshot)
         && !(boundary && previous.current.reason !== snapshot.reason)) return null;
       let prior = previous?.prior ?? null;
+      // Idle task metadata is still observable, but cannot hide later genuine
+      // work. Keep legacy-owned turns and the continuation-marker inheritance above.
+      if (prior && !hasInterruptedExecution(prior) && !prior.observation.turn && hasInterruptedExecution(snapshot)) prior = null;
       if (!prior && previous?.current.managerBootId !== snapshot.managerBootId && previous && notable(previous.current)) prior = previous.current;
       if (!prior && boundary && notable(snapshot)) prior = snapshot;
+      // A later graceful stop is authoritative: work that reached idle before
+      // it stopped was not interrupted by this stop. Marker inheritance above
+      // remains available as metadata, and durable delivery receipts are separate.
+      if (snapshot.reason === "before_stop" && snapshot.observation.executionState === "idle" && !snapshot.observation.turn) prior = snapshot;
       const revision = (previous?.revision ?? 0) + 1;
       this.db.prepare(`INSERT INTO working_state_journal(instance_name,revision,current_json,prior_json) VALUES(?,?,?,?)
         ON CONFLICT(instance_name) DO UPDATE SET revision=excluded.revision,current_json=excluded.current_json,prior_json=excluded.prior_json`)

@@ -33,6 +33,44 @@ function deliver(o: DeliveryOutbox, target: string) {
 }
 
 describe("#2473 stage 1: atomic metadata, no recovery", () => {
+  it("idle before_stop with August-style claimed/blocked cards records metadata, not interrupted work", () => {
+    const { outbox, path } = store();
+    const idle = snapshot({ reason: "before_stop", references: [
+      { kind: "task", id: "old-claimed", version: 1, status: "claimed" },
+      { kind: "task", id: "old-blocked", version: 1, status: "blocked" },
+    ], totalReferences: 2 });
+    idle.observation = { ...idle.observation, executionState: "idle", turn: null };
+    const entry = outbox.observeWorkingState("worker", idle)!;
+    outbox.workingRecovery.discover("worker", entry.prior!, "after-update");
+    expect(outbox.workingRecovery.get("worker")).toBeNull();
+    const { outbox: next } = store(path, "after-update"); next.observeWorkingState("worker", idle);
+    next.workingRecovery.discover("worker", next.getWorkingState("worker")!.prior!, "after-update");
+    expect(next.workingRecovery.get("worker")).toBeNull();
+    expect(next.getWorkingState("worker")?.current.references).toHaveLength(2);
+  });
+  it("a later idle graceful stop supersedes an earlier working prior without losing its continuation marker", () => {
+    const { outbox, path } = store(); const working = snapshot({ reason: "before_stop" });
+    working.observation = { ...working.observation, turn: null, sessionId: "same-session", recoveryDeliveryId: "confirmed-work" };
+    outbox.observeWorkingState("worker", working);
+    const idle = snapshot({ reason: "before_stop" }); idle.observation = { ...working.observation, executionState: "idle" };
+    const stopped = outbox.observeWorkingState("worker", idle)!;
+    expect(stopped.prior?.observation).toMatchObject({ executionState: "idle", recoveryDeliveryId: "confirmed-work" });
+    const { outbox: next } = store(path, "replacement-manager");
+    next.observeWorkingState("worker", { ...idle, reason: "published" });
+    next.workingRecovery.discover("worker", next.getWorkingState("worker")!.prior!, "replacement-manager");
+    expect(next.workingRecovery.get("worker")).toBeNull();
+  });
+  it("an older idle prior cannot mask a later working shutdown", () => {
+    const { outbox } = store(); const idle = snapshot({ reason: "before_stop", references: [
+      { kind: "task", id: "old-card", version: 1, status: "claimed" },
+    ], totalReferences: 1 });
+    idle.observation = { ...idle.observation, executionState: "idle", turn: null };
+    outbox.observeWorkingState("worker", idle);
+    const full = { ...idle, managerBootId: outbox.managerBootId };
+    (outbox as any).db.prepare("UPDATE working_state_journal SET prior_json=? WHERE instance_name='worker'").run(JSON.stringify(full));
+    const working = snapshot({ reason: "before_stop" });
+    expect(outbox.observeWorkingState("worker", working)?.prior?.observation.executionState).toBe("working");
+  });
   it("survives reopening the same outbox and records a prior run without consuming it", () => {
     const { outbox: a, path } = store(); a.observeWorkingState("worker", snapshot());
     const { outbox: b } = store(path, "manager-b");

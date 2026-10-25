@@ -152,7 +152,7 @@ if (phase === 'create') {
   checked('recovery episode, receipt, cancellation, run and summary rows populated before downgrade', () => {
     const store = outbox.workingRecovery;
     const snapshot = { ...state.workingJournal.current,
-      observation: { ...state.workingJournal.current.observation, sessionId: 'scratch-owned-session', turn: null } };
+      observation: { ...state.workingJournal.current.observation, executionState: 'working', sessionId: 'scratch-owned-session', turn: null } };
     store.beginRun('scratch-recovery-boot', 42, 100);
     store.requested('scratch-recovery-boot', 'manual_restart');
     store.cancel('scratch-cancelled', snapshot.observation.configuration, snapshot.observation.sessionId);
