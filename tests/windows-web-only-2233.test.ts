@@ -32,8 +32,10 @@ describe("#2233 the installer names Web only and says what was set up (static)",
   });
   it("the command handed to wsl has no double quote (Windows PowerShell 5.1 drops embedded quotes from native arguments)", () => {
     const fn = text.slice(text.indexOf("function Get-FleetConnections"), text.indexOf("function Test-WslLogin"));
-    const script = /bash -lc '([^']*)'/.exec(fn)?.[1];
-    expect(script).toBe("export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend validate --connections");
+    expect(fn).toContain("Invoke-AgendInWsl $distro 'root' 'agend validate --connections'");
+    const prelude = /return \('([^']*)' \+ \$command\)/.exec(text)?.[1];
+    expect(prelude).toBe('export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ');
+    const script = prelude + 'agend validate --connections';
     expect(script).not.toContain('"');
   });
   it("stays UTF-8 with a BOM (Windows PowerShell 5.1 reads it as ANSI otherwise)", () => {
@@ -78,8 +80,10 @@ $PSNativeCommandArgumentPassing = '${mode}'
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
+foreach ($a in $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|RESTART_FN)$'},$false)){. ([scriptblock]::Create($a.Extent.Text))}
+. ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($RESTART_FN))
 Write-Output ("R=" + (Get-FleetConnections 'Ubuntu'))`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, env: { ...process.env, HOME: dir, USERPROFILE: dir, PATH: `${bin}:${process.env.PATH}` } });
   if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
   return /R=(\S+)/.exec(r.stdout)?.[1] ?? `?${r.stdout}${r.stderr}`;
 }

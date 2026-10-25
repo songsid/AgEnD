@@ -43,8 +43,9 @@ describe("static", () => {
   it("failure kinds where the installer gives up: download (WSL update), service; the end writes a done receipt", () => {
     expect(inst).toMatch(/'failed' \{ Set-InstallFailure 'download'; Read-Host/);
     expect(inst).toMatch(/AgEnD 服務沒有安裝成功[^\n]*\n\s+Set-InstallFailure 'service'/);
-    expect(inst).toMatch(/Save-InstallReceipt 'done' @\(\$skippedLogins/);
-    expect(inst.indexOf("Save-InstallReceipt 'done'")).toBeLessThan(inst.indexOf("Remove-Item $ProgressFile -Force"));
+    expect(inst).toMatch(/if \((?:\$script:InstallerReady) -and \$missingBackends\.Count -eq 0\) \{ Save-InstallReceipt 'done'/);
+    expect(inst).toContain("elseif ($missingBackends.Count -gt 0) { Set-InstallFailure 'backend' } else { Set-InstallFailure 'service' }");
+    expect(inst.indexOf("Save-InstallReceipt 'done'")).toBeLessThan(inst.lastIndexOf("Remove-Item -LiteralPath $ProgressFile -Force"));
   });
   it("the setup and dashboard code boxes are not written through the logged helpers", () => {
     expect(inst).toMatch(/Write-Host \("  │   設定碼：  " \+ \$spaced/);

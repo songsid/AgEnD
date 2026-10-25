@@ -56,13 +56,26 @@ function underPty(script: string, timeoutMs = 8000): { status: number | null; ou
   if (r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT") return null;
   return { status: r.status, out: r.stdout };
 }
+// Generate the actual outer private-session wrapper; UNATTENDED_INSTALL no longer detaches a second time.
+const hasPwsh = spawnSync('pwsh',['-NoProfile','-Command','1']).status === 0;
+function ownedWrapper(script: string): string {
+  const path = join(dir, `owned-${Math.random().toString(36).slice(2)}.sh`);
+  writeFileSync(path, script);
+  const installer=join(import.meta.dirname,'..','website','public','install-agend.ps1');
+  const command=`$t=$null;$e=$null;$ast=[System.Management.Automation.Language.Parser]::ParseFile('${installer}',[ref]$t,[ref]$e);$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-OwnedWslStepScript'},$true);. ([scriptblock]::Create($f.Extent.Text));Get-OwnedWslStepScript '${path}' '${path}.cancel' 5`;
+  const result=spawnSync('pwsh',['-NoProfile','-NonInteractive','-Command',command],{encoding:'utf8',timeout:15000});
+  if(result.status!==0)throw Error(result.stderr);
+  return result.stdout;
+}
 const hasPython = spawnSync("python3", ["-c", "import pty"]).status === 0;
 
 describe("install-agend.ps1: a backend's install never waits on /dev/tty", () => {
   it("the installer has the wrapper, and every backend's install goes through it", () => {
     expect(template).toBeTruthy();
     expect(template).toContain("__AGEND_INSTALL__");
-    expect(template).toMatch(/setsid -w bash -c "\$\(declare -f agend_install\); agend_install" <\/dev\/null/);
+    expect(template).toContain('agend_install </dev/null');
+    expect(PS1).toContain('setsid timeout --signal=TERM --kill-after=2s ');
+    expect(PS1).toContain('New-WslScriptFile (Get-OwnedWslStepScript $wslFile');
     expect(PS1).toContain(`$cmd = $UNATTENDED_INSTALL.Replace('__AGEND_INSTALL__', "$BACKEND_PATH; $nodePrep$($b.Install)")`);
     expect(PS1).not.toMatch(/\$cmd = "\$BACKEND_PATH; \$nodePrep\$\(\$b\.Install\)"/);
   });
@@ -76,8 +89,8 @@ describe("install-agend.ps1: a backend's install never waits on /dev/tty", () =>
     expect(underPty(`bash ${fake}\n`, 3000)).toBeNull();
   });
 
-  it.skipIf(!hasPython)("through the wrapper, the same installer under the same terminal finishes at once", () => {
-    const r = underPty(template!.replace("__AGEND_INSTALL__", `bash ${fake}`));
+  it.skipIf(!hasPython || !hasPwsh)("through the wrapper, the same installer under the same terminal finishes at once", () => {
+    const r = underPty(ownedWrapper(template!.replace("__AGEND_INSTALL__", `bash ${fake}`)));
     expect(r).not.toBeNull();
     expect(r!.status).toBe(0);
     expect(r!.out).toContain("installed");
@@ -90,8 +103,8 @@ describe("install-agend.ps1: a backend's install never waits on /dev/tty", () =>
     expect(r!.out).toContain("installed");
   });
 
-  it.skipIf(!hasPython)("the wrapper keeps the install's exit code, so a failed install still reads as failed", () => {
-    const r = underPty(template!.replace("__AGEND_INSTALL__", "echo partial; exit 3"));
+  it.skipIf(!hasPython || !hasPwsh)("the wrapper keeps the install's exit code, so a failed install still reads as failed", () => {
+    const r = underPty(ownedWrapper(template!.replace("__AGEND_INSTALL__", "echo partial; exit 3")));
     expect(r).toEqual({ status: 3, out: expect.stringContaining("partial") });
   });
 });

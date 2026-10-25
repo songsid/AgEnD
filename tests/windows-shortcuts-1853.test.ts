@@ -245,7 +245,7 @@ Write-Output ("RECORD=" + (Get-Content -Raw -LiteralPath (Join-Path (Get-AgendSh
     chmodSync(join(bin, "wsl.exe"), 0o755);
     const { out } = withHelpers(`$null = Invoke-OpenDashboard 'Ubuntu-22.04' 'han'`, bin);
     const line = out.match(/執行：(wsl .*)$/m)![1]!;
-    expect(line.startsWith("wsl -d Ubuntu-22.04 -u han -- timeout --signal=TERM --kill-after=2s 25 bash -lc '")).toBe(true);
+    expect(line.startsWith("wsl -d Ubuntu-22.04 -u han -- bash -lc '")).toBe(true);
     expect(line).not.toContain('"');                                          // Windows PowerShell 5.1 would split it
     expect(runPrinted(line)).toContain("INERT_START_OK start");
   });
