@@ -1,5 +1,6 @@
 # Logging stand-in for muse's Meta provider (Responses-style SSE). Behaviour per request from /home/rh/audit/mockmode:
-#   text (default) | tool (a muse.bash call; args from /home/rh/audit/mockargs) | 429 | 500
+#   text (default) | tool (a muse.bash call; args from /home/rh/audit/mockargs) | 429 | 402 | 500 | 401
+#   | slow (the main agent's text reply never completes: one "." a second, so the process can be lost mid-stream)
 import json, sys, time, os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 SENT = set()
@@ -64,6 +65,11 @@ class H(BaseHTTPRequestHandler):
             ev("response.output_item.added", {"output_index": 0, "item": {**msg, "content": [], "status": "in_progress"}})
             ev("response.content_part.added", {"item_id": "msg_1", "output_index": 0, "content_index": 0, "part": {"type": "output_text", "text": "", "annotations": []}})
             ev("response.output_text.delta", {"item_id": "msg_1", "output_index": 0, "content_index": 0, "delta": text})
+            if m == "slow" and not reminder:
+                for _ in range(600):
+                    time.sleep(1)
+                    try: ev("response.output_text.delta", {"item_id": "msg_1", "output_index": 0, "content_index": 0, "delta": "."})
+                    except Exception: return
             ev("response.output_text.done", {"item_id": "msg_1", "output_index": 0, "content_index": 0, "text": text})
             ev("response.content_part.done", {"item_id": "msg_1", "output_index": 0, "content_index": 0, "part": msg["content"][0]})
             ev("response.output_item.done", {"output_index": 0, "item": msg})

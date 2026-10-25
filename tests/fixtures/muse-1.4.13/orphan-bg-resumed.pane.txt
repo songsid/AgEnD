@@ -1,0 +1,36 @@
+
+
+  Muse Code 1.4.13
+
+  resumed session 01a1732f-152b-7e02-b829-b34fd51272fa
+
+❯ please do the long thing
+
+◆ Backgrounded sleep 300 · 1s · ctrl+o
+
+  (↓ to view terminals)
+
+◆ mock reply ok
+
+  warning: the previous run of this session ended abnormally around 2026-10-25 13:10 UTC (no clean shutdown was
+  recorded). It was resumed cleanly.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

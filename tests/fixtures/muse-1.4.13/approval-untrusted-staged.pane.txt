@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.13
+
+❯ please run the command
+
+◆ Calling tools (7s · esc to interrupt)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Would you like to run the following command?
+
+  $ ls -la
+  Stage 1/1
+  Current argv: ["ls","-la"]
+
+⟩ 1. Allow this stage once (y)
+  2. Always allow in this workspace: ls ... (p)
+  3. Abort the entire command (esc)
+Change approval defaults in /permissions
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
