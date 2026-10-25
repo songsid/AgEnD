@@ -68,7 +68,7 @@ it("actual CLI callback prints source/requester/full summary and uses the inspec
   expect(yes.client.mock.calls[1][1]).toEqual({ action: "confirm", ticket: { id: "same", generation: "original", fingerprint: "effect" } });
 });
 function form() {
-  const elements = new Map<string, any>(); const $ = (id: string) => { if (!elements.has(id)) elements.set(id, { disabled: false, value: "", addEventListener: vi.fn() }); return elements.get(id); };
+  const elements = new Map<string, any>(); const $ = (id: string) => { if (!elements.has(id)) elements.set(id, { dataset: {}, disabled: false, value: "", addEventListener: vi.fn() }); return elements.get(id); };
   $("token").value = "secret-sentinel"; const timers: (() => Promise<void>)[] = []; let outcome = "pending", fail = false;
   const api = vi.fn(async (path: string, _options?: any) => {
     if (path === "api/settings/pending") return { ok: true, body: [] };

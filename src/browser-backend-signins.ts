@@ -35,6 +35,7 @@ export class BrowserBackendSignIns {
   private closed = false;
   private refreshInFlight: Promise<void> | null = null;
   private refreshed = false;
+  private checklistRevision = 0;
 
   constructor(private readonly deps: BrowserBackendSignInDeps) {
     const old = readPendingBackendSignIns(deps.dataDir);
@@ -64,22 +65,31 @@ export class BrowserBackendSignIns {
   }
   async refresh(owner: object, force = false): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
-    if ((!this.refreshed || force) && !this.refreshInFlight) {
-      this.refreshInFlight = (async () => {
-        const installed = await this.deps.installed();
-        if (!this.current(owner)) return;
-        for (const backend of [...this.record.selected]) {
-          const status = !installed.includes(backend) ? "not_installed" : !structuredSignInSupported(backend)
-            ? "console_only" : await this.deps.checkAuth(backend);
-          if (!this.current(owner)) return;
-          this.states[backend] = status;
-          if (status === "valid") this.record.pending = this.record.pending.filter(value => value !== backend);
-          else this.record.pending = [...new Set([...this.record.pending, backend])];
-        }
-        this.persist(); this.refreshed = true;
-      })().finally(() => { this.refreshInFlight = null; });
-    }
-    await this.refreshInFlight;
+    do {
+      if ((!this.refreshed || force) && !this.refreshInFlight) {
+        const revision = this.checklistRevision, selected = [...this.record.selected];
+        const current = () => this.current(owner) && revision === this.checklistRevision;
+        this.refreshInFlight = (async () => {
+          const installed = await this.deps.installed();
+          if (!current()) return;
+          const checked: BrowserBackendSignInSnapshot["states"] = {};
+          for (const backend of selected) {
+            const status = !installed.includes(backend) ? "not_installed" : !structuredSignInSupported(backend)
+              ? "console_only" : await this.deps.checkAuth(backend);
+            if (!current()) return;
+            checked[backend] = status;
+          }
+          // Publish the whole scan only while it still owns this checklist.
+          Object.assign(this.states, checked);
+          this.record.pending = selected.filter(backend => checked[backend] !== "valid");
+          this.persist(); this.refreshed = true;
+        })().finally(() => { this.refreshInFlight = null; });
+      }
+      force = false;
+      await this.refreshInFlight;
+      if (!this.current(owner)) throw new Error("signin_session_expired");
+      // A select or completed login superseded the scan: join one fresh scan.
+    } while (!this.refreshed);
     return this.snapshot(owner);
   }
   async select(owner: object, values: unknown): Promise<BrowserBackendSignInSnapshot> {
@@ -88,6 +98,8 @@ export class BrowserBackendSignIns {
     if (!selected) throw new Error("invalid_signin_checklist");
     if (this.run && !selected.includes(this.run.backend)) await this.cancel(owner);
     if (!this.current(owner)) throw new Error("signin_session_expired");
+    this.checklistRevision++;
+    for (const backend of this.record.selected) if (!selected.includes(backend)) delete this.states[backend];
     const prior = this.record.selected;
     this.record = { version: 1, selected, pending: selected.filter(backend => !prior.includes(backend) || this.record.pending.includes(backend)) };
     this.persist(); this.refreshed = false;
@@ -103,6 +115,7 @@ export class BrowserBackendSignIns {
       checkAuth: () => this.deps.checkAuth(backend),
       changed: event => {
         if (event.phase === "done" && this.current(owner) && this.run?.session === session) {
+          this.checklistRevision++; this.refreshed = false;
           this.states[backend] = "valid";
           this.record.pending = this.record.pending.filter(value => value !== backend);
           this.persist();
@@ -111,6 +124,7 @@ export class BrowserBackendSignIns {
       },
     });
     const run: Run = { session, owner, backend }; this.run = run; // reserve before the installed await
+    this.checklistRevision++; this.refreshed = false;
     this.record.pending = [...new Set([...this.record.pending, backend])]; this.skipped.delete(backend); this.persist();
     const installed = await this.deps.installed();
     if (!this.current(owner) || this.run !== run) { await session.cancel(); throw new Error("signin_session_expired"); }
