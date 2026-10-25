@@ -313,7 +313,7 @@ Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[
     }
     const calls = readFileSync(join(w.dir, "wsl-calls.txt"), "utf8").trim().split("\n");
     expect(calls.length).toBeGreaterThanOrEqual(3);                                  // restart, status, the dashboard's sign-in
-    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root -- timeout --signal=TERM --kill-after=2s 25 bash -lc /);
+    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root -- timeout --signal=TERM --kill-after=2s (?:25|355) bash -lc /);
   });
   it("UTF-16LE base64 is what -EncodedCommand reads: Chinese comes through", () => {
     const r = spawnSync("pwsh", ["-NoProfile", "-EncodedCommand", encodePowershell("Write-Output '重新啟動 OK'")], { encoding: "utf8" });

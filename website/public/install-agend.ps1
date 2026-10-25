@@ -689,7 +689,7 @@ function Find-ExistingAgend {
 function Invoke-AgendRepair([string]$distro, [string]$user, [string]$version) {
     $pin = if ($version -match '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$') { 'AGEND_VERSION=beta ' } else { '' }
     $cmd = Get-WslAgendCommand ('set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash')
-    $code = Invoke-Watched -Label "修復 AgEnD" -Usually "通常需要 1–3 分鐘" -UpperMinutes 15 -File 'wsl.exe' -Arguments @('-d', $distro, '-u', $user, '--', 'bash', '-lc', $cmd)
+    $code = Invoke-WslStep -Label "修復 AgEnD" -Usually "通常需要 1–3 分鐘" -UpperMinutes 15 -Distro $distro -User $user -Script $cmd
     if ($code -ne 0) { return $false }
     $after = Invoke-AgendInWsl $distro $user 'agend --version'
     return ($after.Code -eq 0)
@@ -1290,12 +1290,12 @@ function Confirm-StopInstall($proc, [string]$CancellationFile = '') {
 }
 
 # 把一段 bash 腳本寫到沒有空白的 ProgramData 路徑（LF、UTF-8 無 BOM），回傳 Windows 路徑和 WSL 裡的路徑。
-function New-WslScriptFile([string]$Script) {
+function New-WslScriptFile([string]$Script, [string]$Distro = $UBUNTU_DISTRO) {
     $dir = Join-Path $env:ProgramData 'AgEnD-install'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $file = Join-Path $dir ('step-' + [Guid]::NewGuid().ToString('N') + '.sh')
     [IO.File]::WriteAllText($file, ($Script -replace "`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
-    $pathResult = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'wslpath', '-u', $file)
+    $pathResult = Invoke-BoundedWsl -Arguments @('-d', $Distro, '-u', 'root', '--', 'wslpath', '-u', $file)
     if ($pathResult.Code -ne 0) { throw 'WSL path conversion failed; no step was started.' }
     $wslFile = $pathResult.Text.Trim()
     if (-not $wslFile.StartsWith('/')) { throw 'WSL path conversion returned an invalid path.' }
@@ -1346,15 +1346,15 @@ function Assert-NoPendingWslCancellation {
     foreach ($suffix in @('', '.boot', '.done', '.done.tmp')) { Remove-Item -LiteralPath ($pending + $suffix) -Force -ErrorAction SilentlyContinue }
 }
 function Invoke-WslStep {
-    param([string]$Label, [string]$Usually, [string]$Script, [double]$UpperMinutes = 0, [scriptblock]$OnLine = $null, [int]$TimeoutSeconds = 1800, [int]$NoProgressSeconds = 300)
+    param([string]$Label, [string]$Usually, [string]$Script, [double]$UpperMinutes = 0, [scriptblock]$OnLine = $null, [int]$TimeoutSeconds = 1800, [int]$NoProgressSeconds = 300, [string]$Distro = $UBUNTU_DISTRO, [string]$User = $AGEND_USER)
     Assert-NoPendingWslCancellation
-    $file, $wslFile = New-WslScriptFile $Script
+    $file, $wslFile = New-WslScriptFile $Script -Distro $Distro
     $cancel = "$file.cancel"; $wrapper = $null
     try {
-        $wrapper, $wslWrapper = New-WslScriptFile (Get-OwnedWslStepScript $wslFile "$wslFile.cancel" $TimeoutSeconds)
+        $wrapper, $wslWrapper = New-WslScriptFile (Get-OwnedWslStepScript $wslFile "$wslFile.cancel" $TimeoutSeconds) -Distro $Distro
         # Setup deliberately waits for a person; its host still has an absolute TTL.
         if ($OnLine) { $NoProgressSeconds = 0 }
-        return (Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $OnLine -TimeoutSeconds ($TimeoutSeconds + 30) -NoProgressSeconds $NoProgressSeconds -CancellationFile $cancel -File 'wsl.exe' -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', $wslWrapper))
+        return (Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $OnLine -TimeoutSeconds ($TimeoutSeconds + 30) -NoProgressSeconds $NoProgressSeconds -CancellationFile $cancel -File 'wsl.exe' -Arguments @('-d', $Distro, '-u', $User, '--', 'bash', $wslWrapper))
     } finally {
         if ((Test-Path -LiteralPath $cancel) -and -not (Test-Path -LiteralPath "$cancel.done")) {
             if ($ProgressFile) { Add-Content -LiteralPath $ProgressFile -Value ("PENDING_WSL_CANCEL=" + $cancel) }
@@ -1363,92 +1363,6 @@ function Invoke-WslStep {
             foreach ($f in @($file, $wrapper, $cancel, "$cancel.boot", "$cancel.done", "$cancel.done.tmp")) { if ($f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue } }
         }
     }
-}
-
-
-# #2650: merge only installer-owned INI keys. Keep comments, unknown sections and all unrelated values.
-function Merge-InstallIni([string]$Text, [System.Collections.IDictionary]$Updates) {
-    $newline = if ($Text.Contains("`r`n")) { "`r`n" } else { "`n" }
-    $lines = [Collections.Generic.List[string]]::new()
-    $section = ''; $seenSections = @{}; $seenKeys = @{}
-    $flush = {
-        if ($Updates.Contains($section)) {
-            foreach ($key in $Updates[$section].Keys) {
-                $id = "$section/$key"
-                if (-not $seenKeys.ContainsKey($id)) { $lines.Add("$key=$($Updates[$section][$key])"); $seenKeys[$id] = $true }
-            }
-        }
-    }
-    foreach ($line in @($Text -split '\r?\n')) {
-        if ($line -match '^\s*\[([^\]]+)\]\s*(?:[#;].*)?$') {
-            & $flush
-            $section = $Matches[1].Trim().ToLowerInvariant(); $seenSections[$section] = $true
-        }
-        $next = $line
-        if ($Updates.Contains($section) -and $line -match '^\s*([^#;=]+?)\s*=') {
-            $key = $Matches[1].Trim().ToLowerInvariant()
-            if ($Updates[$section].Contains($key)) {
-                $comment = [regex]::Match($line, '\s+[#;].*$').Value
-                $canonical = @($Updates[$section].Keys | Where-Object { $_.ToLowerInvariant() -eq $key })[0]
-                $next = "$canonical=$($Updates[$section][$canonical])$comment"
-                $seenKeys["$section/$key"] = $true
-            }
-        }
-        $lines.Add($next)
-    }
-    & $flush
-    foreach ($name in $Updates.Keys) {
-        if (-not $seenSections.ContainsKey($name)) {
-            $lines.Add(''); $lines.Add("[$name]")
-            foreach ($key in $Updates[$name].Keys) { $lines.Add("$key=$($Updates[$name][$key])") }
-        }
-    }
-    return (($lines -join $newline).TrimEnd("`r", "`n") + $newline)
-}
-function Write-MergedWindowsWslConfig([string]$Path) {
-    $old = if (Test-Path -LiteralPath $Path) { [IO.File]::ReadAllText($Path) } else { '' }
-    $next = Merge-InstallIni $old ([ordered]@{ general = [ordered]@{ instanceIdleTimeout = '-1' }; wsl2 = [ordered]@{ vmIdleTimeout = '-1' } })
-    if ($next -ceq $old) { return }
-    if (Test-Path -LiteralPath $Path) {
-        $backup = $Path + '.agend-backup-' + [Guid]::NewGuid().ToString('N')
-        [IO.File]::Copy($Path, $backup, $false)
-        Write-Info "原有 WSL 設定已備份：$backup"
-    }
-    $temp = $Path + '.agend-' + [Guid]::NewGuid().ToString('N') + '.tmp'
-    try {
-        [IO.File]::WriteAllText($temp, $next, (New-Object Text.UTF8Encoding $false))
-        Move-Item -LiteralPath $temp -Destination $Path -Force -ErrorAction Stop
-    } finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
-}
-function ConvertFrom-WslConfigSnapshot([string]$Encoded) {
-    try {
-        $text = (New-Object Text.UTF8Encoding $false, $true).GetString([Convert]::FromBase64String($Encoded))
-        if ($text.Contains([string][char]0)) { throw 'NUL is not an INI character' }
-        return $text
-    } catch { throw '/etc/wsl.conf is not UTF-8 text; convert it or move it aside, then rerun. No settings were replaced.' }
-}
-function Get-MergedLinuxWslConfigScript([string]$Text, [string]$ExpectedBase64 = '') {
-    if (-not $ExpectedBase64) { $ExpectedBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text)) }
-    if ($ExpectedBase64 -notmatch '^[A-Za-z0-9+/=]*$') { throw 'Invalid WSL configuration snapshot.' }
-    $next = Merge-InstallIni $Text ([ordered]@{ boot = [ordered]@{ systemd = 'true' }; interop = [ordered]@{ appendWindowsPath = 'false' }; user = [ordered]@{ default = 'root' } })
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($next))
-    $nonce = [Guid]::NewGuid().ToString('N')
-    return (@(
-        'set -eu'
-        'file=/etc/wsl.conf'
-        '[ ! -L "$file" ] || { echo "Refusing to replace symlinked /etc/wsl.conf" >&2; exit 1; }'
-        ('temp=/etc/.agend-wsl-' + $nonce)
-        'trap ''rm -f -- "$temp"'' EXIT'
-        # Match the read snapshot immediately before making a backup or replacing the file.
-        ('expected=' + $ExpectedBase64)
-        'actual=; if [ -e "$file" ]; then actual=$(base64 -w0 -- "$file"); fi'
-        '[ "$actual" = "$expected" ] || { echo "WSL config changed; rerun installer to merge the latest settings" >&2; exit 1; }'
-        ('if [ -e "$file" ]; then cp -p -- "$file" "$file.agend-backup-' + $nonce + '"; echo "WSL config backup: $file.agend-backup-' + $nonce + '"; fi')
-        ("printf '%s' '" + $encoded + "' | base64 -d > " + '"$temp"')
-        'if [ -e "$file" ]; then chmod --reference="$file" "$temp"; else chmod 644 "$temp"; fi'
-        'mv -f -- "$temp" "$file"'
-        'echo WSL_CONF_OK'
-    ) -join "`n")
 }
 
 
@@ -1463,7 +1377,7 @@ function Get-VerifiedAgendVersion([string]$Expected = '') {
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($js))
     $command = 'node -e ''eval(Buffer.from(process.argv[1],String.fromCharCode(98,97,115,101,54,52)).toString())'' ' + $encoded
     $r = Invoke-AgendInWsl $UBUNTU_DISTRO $AGEND_USER $command
-    if ($r.Code -ne 0) { return $null }
+    if ($r.Code -ne 0) { Write-Warn "AgEnD/Node/tmux/SQLite 驗證未通過（結束碼 $($r.Code)），此步驟不會標記完成。"; return $null }
     $m = [regex]::Match($r.Text, '(?m)^AGEND_VERSION=([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\r?$')
     if (-not $m.Success -or ($Expected -and $m.Groups[1].Value -cne $Expected)) { return $null }
     return $m.Groups[1].Value
@@ -1481,7 +1395,7 @@ function Test-InstallerReady {
     # No auth code/token is requested or printed; only local service and HTTP health are checked.
     $js = 'const cp=require("child_process"),p=require("path"),fs=require("fs"),m=require("module"); const root=cp.execFileSync("npm",["root","-g"],{encoding:"utf8",timeout:5000}).trim(); const r=m.createRequire(p.join(root,"@songsid/agend/package.json")); const cfg=r("js-yaml").load(fs.readFileSync(p.join(process.env.AGEND_HOME||p.join(require("os").homedir(),".agend"),"fleet.yaml"),"utf8")); const port=cfg.health_port??19280; if(!Number.isInteger(port)||port<1||port>65535)throw Error("Invalid dashboard port"); (async()=>{for(let i=0;i<10;i++){try{const h=await fetch("http://127.0.0.1:"+port+"/health",{signal:AbortSignal.timeout(3000)});const body=await h.json();const ui=await fetch("http://127.0.0.1:"+port+"/",{signal:AbortSignal.timeout(3000)});if(h.ok&&body.status==="ok"&&body.startupComplete===true&&ui.ok)return;}catch{}await new Promise(r=>setTimeout(r,1000));}process.exitCode=1;})();'
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($js))
-    $script = $AGEND_ENV + 'systemctl --user is-active --quiet com.agend.fleet || exit $?; node -e ''eval(Buffer.from(process.argv[1],String.fromCharCode(98,97,115,101,54,52)).toString())'' ' + $encoded
+    $script = $AGEND_ENV + 'systemctl --user is-active com.agend.fleet || exit $?; node -e ''eval(Buffer.from(process.argv[1],String.fromCharCode(98,97,115,101,54,52)).toString())'' ' + $encoded
     $code = Invoke-WslStep -Label '確認服務與儀表板就緒' -Usually '通常需要幾秒到 1 分鐘' -UpperMinutes 1 -TimeoutSeconds 90 -NoProgressSeconds 90 -Script $script
     return ($code -eq 0)
 }
@@ -1953,6 +1867,7 @@ if ($installedVersion) {
     Write-Info "  [WSL] 執行 AgEnD 官方安裝腳本（含 nvm + Node.js $NODE_VERSION + 編譯工具）..."
     $scriptLines = @(
         '#!/bin/bash'
+        'set -e'
         'export HOME=/root'
         '# 官方安裝腳本（non-interactive piped 不會觸發 quickstart）'
         (Get-AgendInstallCommand $AgendInstallVersion)
@@ -2104,4 +2019,4 @@ Write-Info "正在打開 AgEnD 網頁儀表板..."
 $null = Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER -BackendSignins $browserSignins
 
 Read-Host "按 Enter 結束"
-
+if (-not $script:InstallerReady -or $missingBackends.Count -gt 0) { exit 1 }

@@ -85,7 +85,7 @@ function Stage-Done {return $false}
 function Mark-Stage($s){if($s -ne 4){throw 'Wrong stage'};Write-Host ('VERIFIED='+$script:installed)}
 function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$Script)
   if($Script -eq 'apt-get install -y -qq tmux'){return 0}
-  Write-Host ('INSTALL='+$Script.Split([char]10)[3])
+  Write-Host ('INSTALL='+$Script)
   if($Script -match 'AGEND_VERSION=beta bash'){$script:installed='2.3.2-beta.5'}
   elseif($Script -match 'AGEND_VERSION=2.3.2-beta.4 bash'){$script:installed='2.3.2-beta.4'}
   elseif($Script -match 'install.sh \\| (AGEND_VERSION=latest )?bash'){$script:installed='2.3.1'}

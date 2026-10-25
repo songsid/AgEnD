@@ -116,6 +116,11 @@ foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Lan
 $script:OnWindows = $false
 $env:LOCALAPPDATA = Join-Path $env:TMPDIR 'localappdata'
 function Get-InstalledWslVersion { return [version]'2.6.3.0' }
+# Exercise repair decisions while keeping the owned-step transport inert.
+function Invoke-WslStep { param($Label,$Usually,$UpperMinutes,$Distro,$User,$Script)
+    & wsl.exe -d $Distro -u $User -- bash -lc $Script | Out-Host
+    return $LASTEXITCODE
+}
 ${body}`);
   const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, env: { ...process.env, TMPDIR: dir, PATH: `${bin}:${process.env.PATH}` } });
   if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
