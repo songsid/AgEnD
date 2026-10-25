@@ -53,6 +53,10 @@ export class BrowserBackendSignIns {
     // final safe reason (or done) proves that finish has settled the writer.
     return view.phase === "done" || (view.phase === "failed" && !!view.reason);
   }
+  private loginMayWrite(backend: OnboardingBackend): boolean {
+    return this.lock.current?.backend === backend || (this.run?.backend === backend
+      && (!this.terminal(this.run) || this.run.session.view(this.run.owner).reason === "cleanup_failed"));
+  }
   get ready(): boolean {
     return this.terminal(this.run) && this.run?.session.view(this.run.owner).reason !== "cleanup_failed"
       && this.record.pending.every(backend => this.skipped.has(backend));
@@ -75,7 +79,7 @@ export class BrowserBackendSignIns {
           const checked: BrowserBackendSignInSnapshot["states"] = {};
           for (const backend of selected) {
             const status = !installed.includes(backend) ? "not_installed" : !structuredSignInSupported(backend)
-              ? "console_only" : await this.deps.checkAuth(backend);
+              ? "console_only" : this.loginMayWrite(backend) ? "unknown" : await this.deps.checkAuth(backend);
             if (!current()) return;
             checked[backend] = status;
           }
@@ -114,10 +118,12 @@ export class BrowserBackendSignIns {
       lock: this.lock, current: () => this.current(owner), transport: this.deps.transport(backend),
       checkAuth: () => this.deps.checkAuth(backend),
       changed: event => {
-        if (event.phase === "done" && this.current(owner) && this.run?.session === session) {
+        if ((event.phase === "done" || (event.phase === "failed" && event.reason))
+          && this.current(owner) && this.run?.session === session) {
           this.checklistRevision++; this.refreshed = false;
-          this.states[backend] = "valid";
-          this.record.pending = this.record.pending.filter(value => value !== backend);
+          this.states[backend] = event.phase === "done" ? "valid" : "unknown";
+          this.record.pending = event.phase === "done" ? this.record.pending.filter(value => value !== backend)
+            : [...new Set([...this.record.pending, backend])];
           this.persist();
         }
         this.deps.changed?.(event);

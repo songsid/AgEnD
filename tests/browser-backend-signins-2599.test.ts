@@ -103,6 +103,19 @@ it("an older invalid auth scan cannot overwrite a subsequently verified login", 
   expect(readPendingBackendSignIns(h.dir).pending).not.toContain("codex");
 });
 
+it("passive refresh cannot certify the old credentials while confirmed re-login is in flight", async () => {
+  const h = rig(); h.state.auth = "valid"; await h.c.select(h.owner, ["codex"]);
+  const started = deferred(); h.transport.start.mockImplementation(async () => { await started.promise; h.state.auth = "invalid"; throw new Error("new login failed"); });
+  const login = h.c.begin(h.owner, "codex", true); await vi.waitFor(() => expect(h.transport.start).toHaveBeenCalled());
+  try {
+    const during = await h.c.refresh(h.owner, true);
+    expect(during.pending).toEqual(["codex"]); expect(during.states.codex).toBe("unknown");
+    expect(readPendingBackendSignIns(h.dir).pending).toEqual(["codex"]);
+  } finally { started.resolve(); await login; }
+  const failed = h.c.snapshot(h.owner); expect(failed.login?.reason).toBe("transport_failed"); expect(failed.ready).toBe(false); expect(failed.pending).toEqual(["codex"]);
+  expect((await h.c.refresh(h.owner)).pending).toEqual(["codex"]);
+});
+
 function nativeRig() {
   const native: TerminalBackend = { start: vi.fn(async () => {}), sendInput: vi.fn(async () => {}), resize: vi.fn(async () => {}), capture: vi.fn(async () => "pane"), paneStatus: vi.fn(async () => ({ alive: true })), kill: vi.fn(async () => {}) };
   const env = { HOME: temp(), PATH: "/stub/bin", LANG: "en_US.UTF-8", AGEND_INSTANCE: "live-must-not-inherit", TMUX: "live", BASH_ENV: "/unsafe", ANTHROPIC_API_KEY: "synthetic-no-credential" };
