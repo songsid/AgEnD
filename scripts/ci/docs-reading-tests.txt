@@ -1,0 +1,15 @@
+# Tests that read the repository docs/, root README*.md, or website content
+# pages. Text-only CI runs this list instead of the four shards.
+# One path per line. tests/docs-reading-tests-list.test.ts fails if a test
+# reads those trees and is missing here.
+tests/changelog-fragments.test.ts
+tests/command-surface-docs-1148.test.ts
+tests/docs-reading-tests-list.test.ts
+tests/effect-click-sparks-example.test.ts
+tests/fleet-docs-link-1844.test.ts
+tests/no-wsl-shutdown-advice.test.ts
+tests/stale-forwards-guidance-1780.test.ts
+tests/web-appearance-copy-2056.test.ts
+tests/web-authority-s2a-1939.test.ts
+tests/web-command-copy-1655.test.ts
+tests/website-notes.test.ts

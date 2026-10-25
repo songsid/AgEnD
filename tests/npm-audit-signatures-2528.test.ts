@@ -12,7 +12,7 @@ const wf = yaml.load(readFileSync(join(ROOT, ".github/workflows/npm-audit-signat
   permissions: Record<string, string>;
   jobs: {
     signatures: {
-      steps: Array<{ name?: string; run?: string; uses?: string; "working-directory"?: string; "continue-on-error"?: boolean }>;
+      steps: Array<{ name?: string; run?: string; uses?: string; if?: string; "working-directory"?: string; "continue-on-error"?: boolean }>;
     };
   };
 };
@@ -104,15 +104,15 @@ describe("npm audit signatures (#2528 PR 2)", () => {
   });
 
   it("installs with --ignore-scripts and verifies root then website", () => {
-    const runs = wf.jobs.signatures.steps.filter(s => s.run);
-    expect(runs.map(s => s.run)).toEqual([
+    const real = wf.jobs.signatures.steps.filter(s => s.if === "steps.changes.outputs.deps == 'true'" && s.run);
+    expect(real.map(s => s.run)).toEqual([
       "npm ci --ignore-scripts",
       "bash scripts/ci/audit-signatures.sh .",
       "npm ci --ignore-scripts",
       "bash scripts/ci/audit-signatures.sh website",
     ]);
-    expect(runs[2]!["working-directory"]).toBe("website");
-    expect(runs.every(s => s["continue-on-error"] !== true)).toBe(true);
+    expect(real[2]!["working-directory"]).toBe("website");
+    expect(wf.jobs.signatures.steps.every(s => s["continue-on-error"] !== true)).toBe(true);
   });
 
   it("pins checkout and setup-node to 40-char SHAs", () => {

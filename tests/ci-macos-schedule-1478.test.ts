@@ -78,9 +78,9 @@ describe("CI admission and cancellation", () => {
   const aggregate = ci.jobs.build.steps.find(step => step.name === "Check all jobs succeeded")!;
   function runAggregate(result = "success", extra: Record<string, string> = {}) {
     return execFileSync("/bin/bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", aggregate.run!], {
-      encoding: "utf8", env: { PATH: process.env.PATH, DOCS_ONLY: "false", CHANGELOG: "success",
+      encoding: "utf8", env: { PATH: process.env.PATH, CHANGELOG: "success",
         ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success",
-        SMOKE: result, ROLLBACK: "success", ...extra },
+        DOCS_TESTS: "success", SMOKE: result, ROLLBACK: "success", ...extra },
       stdio: "pipe",
     });
   }

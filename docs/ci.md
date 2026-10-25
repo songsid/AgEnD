@@ -17,10 +17,37 @@ the test steps and supported Node/npm versions stay the same.
 
 The CI workflow still runs CHANGELOG guards, the GitHub Actions SHA-pin guard,
 typecheck/build, four unit shards, integration tests and the Node 20 preinstall
-rollback smoke. Only a PR that changes nothing but `changes/` fragments skips
-typecheck/build and the tests (the CHANGELOG guards and the pin guard still
-check it); a change under `docs/` or to a root `*.md` runs everything, because
-tests read those files (#1932). macOS is included on all `v*` tags, including prereleases.
+rollback smoke. On a pull request, `detect-changes` classifies the diff against
+the merge-base (`scripts/ci/detect-changes.sh`) and skips the heavy steps the
+change cannot affect. The jobs themselves always run and report success, so the
+merge gate never sees `skipped` (a job-level skip on a matrix cell would leave
+that required name pending). An unreadable or empty diff, and every non-PR
+event (push to main, tags, schedule, `workflow_dispatch`), run the full suite
+(fail closed). CodeQL is unchanged (GitHub default setup).
+
+- **text-only** — only `docs/**`, `changes/**`, root `*.md`, and
+  `website/src/content/**`. CHANGELOG guards, the pin guard, Gitleaks, and the
+  tests in `scripts/ci/docs-reading-tests.txt` run. The four shards,
+  integration, typecheck/build and install-smoke skip their heavy steps. A
+  test that reads `docs/`, a root README, or website content pages and is
+  missing from that list fails `tests/docs-reading-tests-list.test.ts`. Any
+  `src/`, `tests/`, `scripts/`, workflow, package or lockfile path means it is
+  not text-only.
+- **packaging** — `package.json`, a lockfile, `launcher/`,
+  install/update/service code and scripts, any `scripts/**` path, and any
+  `.github/**` path. `install-smoke` and the Node 20 rollback smoke run their
+  real steps.
+- **deps** — `package.json` or a lockfile (root or `website/`), or any
+  `.github/**` path. `npm-audit-signatures` and `dependency-review` run their
+  real step.
+- **src** — any `src/**`, `scripts/**`, or `.github/**` path.
+  `data-downgrade` runs its real step.
+
+A change to a gated job's own workflow, action or scripts turns that job on:
+`.github/**` runs the full suite (packaging, deps and src true, text-only
+false). `scripts/**` sets src and packaging.
+
+macOS is included on all `v*` tags, including prereleases.
 Weekly CI runs Monday at 03:17 UTC; the npm proof runs at 03:37 UTC. Weekly
 failures need investigation but are not a prerequisite for a PR or branch push.
 
@@ -95,7 +122,7 @@ A local composite stays `./.github/actions/…`; its own remote `uses:` are
 pinned too. A floating tag (`@v4`, `@v4.4.0`, `@main`) or a short SHA fails
 the `actions-pinned` job in `ci.yml`: that job runs `npm ci --ignore-scripts`
 then `scripts/ci/assert-actions-pinned.mjs` on every event, including a
-docs-only PR. The guard parses YAML with the lockfile's `js-yaml@4.3.2`.
+text-only PR. The guard parses YAML with the lockfile's `js-yaml@4.3.2`.
 The `build` aggregate fails unless that job is `success`.
 
 ### How pins are updated
@@ -134,17 +161,20 @@ and on `website/` after `npm ci --ignore-scripts`. Invalid signatures, invalid
 attestations, mixed findings, and command or parse failures fail the job.
 Missing-only findings are printed and do not fail (npm 10 itself exits 1 for
 missing as well as invalid; the wrapper applies that report-only policy).
-The job does not run package
-lifecycle scripts: `esbuild` / `lightningcss` postinstall and any native
-`install` (for example `better-sqlite3` in the test jobs) stay in `ci.yml` and
-`deploy-website.yml`, which still run a full `npm ci`.
+On a pull request the real `npm ci` and `npm audit signatures` steps run only
+when the diff sets `deps` (`package.json`, a lockfile, or any `.github/**`
+path); otherwise the job still reports success. Push to main always runs them. The job does not run
+package lifecycle scripts: `esbuild` / `lightningcss` postinstall and any
+native `install` (for example `better-sqlite3` in the test jobs) stay in
+`ci.yml` and `deploy-website.yml`, which still run a full `npm ci`.
 
 ## Dependency review on PRs (#2528)
 
 `dependency-review.yml` runs `actions/dependency-review-action` on pull
-requests into `main` and `release/**`. GitHub diffs the PR against its
-base; this is not a full-tree audit of `main`. Config:
-`.github/dependency-review-config.yml`.
+requests into `main` and `release/**`. The action itself runs only when the
+diff sets `deps` (`package.json`, a lockfile, or any `.github/**` path);
+otherwise the job still reports success. GitHub diffs the PR against its base; this is not a
+full-tree audit of `main`. Config: `.github/dependency-review-config.yml`.
 
 The check **fails** the PR when any of these appear in that diff:
 

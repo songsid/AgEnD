@@ -1,46 +1,22 @@
 /**
- * Regressions for the detect-changes step in ci.yml's detect-changes job.
+ * Regressions for scripts/ci/detect-changes.sh (ci.yml's detect-changes job).
  *
- * Tests run the bash fragment that classifies a PR as docs-only or full.  The
- * key bugs being guarded (Prism review of #1392):
+ *   P3a — pipefail+SIGPIPE fail-open: the old `git diff | grep -q` treated a
+ *         large src/ change as docs-only.
+ *   P3b — git failure fail-open: a bad SHA ran the fast path.
  *
- *   P3a — pipefail+SIGPIPE fail-open: the old `git diff | grep -q` caused git
- *         to receive SIGPIPE when grep exited early on a large diff; with
- *         `pipefail` the pipeline exit was 141, which the `if` evaluated as
- *         false → else-branch → docs-only=true for any large src/ change.
- *
- *   P3b — git failure fail-open: a bad/missing SHA produced `git diff` exit 1,
- *         same SIGPIPE / non-zero propagation → docs-only=true.
- *
- * The fix (captured here): collect the diff into a variable first:
- *   if ! diff_files=$(git diff …); then echo "docs-only=false"; exit 0; fi
- * Then grep on the variable (no pipes to git).
+ * Fail closed: unreadable diffs and non-pull_request events run the full suite
+ * (text-only=false, packaging/deps/src=true).
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, rm as rmAsync, writeFileSync } from "node:fs";
+import { mkdtempSync, rm as rmAsync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
-import { readFileSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 
 const ROOT = join(import.meta.dirname ?? import.meta.url.replace(/\/[^/]+$/, ""), "..");
-
-// Extract the detect-changes run script from ci.yml.
-// Substitute the github.event_name expression to "pull_request" so the
-// early-exit for push events does not fire.
-const rawScript = (() => {
-  const ci = yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as {
-    jobs: { "detect-changes": { steps: Array<{ id?: string; run?: string }> } };
-  };
-  const step = ci.jobs["detect-changes"].steps.find(s => s.id === "check");
-  if (!step?.run) throw new Error("detect-changes 'check' step not found in ci.yml");
-  return step.run;
-})();
-
-// Replace the github expression with the literal "pull_request" so tests can
-// exercise the PR classification path without a real Actions context.
-const SCRIPT = rawScript.replace(/"\$\{\{ github\.event_name \}\}"/g, '"pull_request"');
+const SCRIPT = join(ROOT, "scripts", "ci", "detect-changes.sh");
 
 const dirs: string[] = [];
 
@@ -57,31 +33,46 @@ afterAll(async () => {
   );
 });
 
-/** Run the detect-changes script with given BASE/HEAD SHAs in a git repo. */
-function run(repoDir: string, baseSha: string, headSha: string): { docsOnly: boolean; exitCode: number } {
+type Flags = {
+  docsOnly: boolean;
+  textOnly: boolean;
+  packaging: boolean;
+  deps: boolean;
+  src: boolean;
+  exitCode: number;
+};
+
+function flag(output: string, name: string): boolean {
+  const m = output.match(new RegExp(`^${name}=(true|false)$`, "m"));
+  return m?.[1] === "true";
+}
+
+/** Run detect-changes.sh with given BASE/HEAD SHAs in a git repo. */
+function run(repoDir: string, baseSha: string, headSha: string, eventName = "pull_request"): Flags {
   const githubOutput = join(repoDir, "github_output.txt");
   writeFileSync(githubOutput, "");
-  const result = spawnSync(
-    "bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", SCRIPT],
-    {
-      cwd: repoDir,
-      env: {
-        ...process.env,
-        BASE_SHA: baseSha,
-        HEAD_SHA: headSha,
-        GITHUB_OUTPUT: githubOutput,
-        HOME: repoDir,
-        GIT_CONFIG_NOSYSTEM: "1",
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        PATH: process.env.PATH,
-      },
-      encoding: "utf8",
-    }
-  );
+  const result = spawnSync("bash", ["--noprofile", "--norc", SCRIPT], {
+    cwd: repoDir,
+    env: {
+      ...process.env,
+      EVENT_NAME: eventName,
+      BASE_SHA: baseSha,
+      HEAD_SHA: headSha,
+      GITHUB_OUTPUT: githubOutput,
+      HOME: repoDir,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      PATH: process.env.PATH,
+    },
+    encoding: "utf8",
+  });
   const output = readFileSync(githubOutput, "utf8");
-  const match = output.match(/^docs-only=(true|false)$/m);
   return {
-    docsOnly: match?.[1] === "true",
+    docsOnly: flag(output, "docs-only"),
+    textOnly: flag(output, "text-only"),
+    packaging: flag(output, "packaging"),
+    deps: flag(output, "deps"),
+    src: flag(output, "src"),
     exitCode: result.status ?? 1,
   };
 }
@@ -124,7 +115,7 @@ function makeRepo() {
   // removes their repositories. Scratch fixtures must own all their work.
   git("config", "gc.auto", "0");
   git("config", "maintenance.auto", "false");
-  return { dir, git, commit, run: (b: string, h: string) => run(dir, b, h) };
+  return { dir, git, commit, run: (b: string, h: string, event?: string) => run(dir, b, h, event) };
 }
 
 describe("detect-changes: docs-only classification", () => {
@@ -285,5 +276,145 @@ describe("P3b regression: git failure is fail-closed (not fail-open)", () => {
     const result = r.run("", "");
     expect(result.exitCode).toBe(0);
     expect(result.docsOnly).toBe(false);
+    expect(result.packaging).toBe(true);
+    expect(result.deps).toBe(true);
+    expect(result.src).toBe(true);
+  });
+});
+
+describe("detect-changes: text-only / packaging / deps / src", () => {
+  it("ci.yml's detect-changes job runs the script and publishes the four flags", () => {
+    const ci = yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as {
+      jobs: { "detect-changes": { outputs: Record<string, string>; steps: Array<{ id?: string; run?: string }> } };
+    };
+    const job = ci.jobs["detect-changes"];
+    for (const k of ["docs-only", "text-only", "packaging", "deps", "src"]) {
+      expect(job.outputs[k]).toBe(`\${{ steps.check.outputs.${k} }}`);
+    }
+    expect(job.steps.find(s => s.id === "check")?.run).toContain("scripts/ci/detect-changes.sh");
+  });
+
+  it("docs/ and a root README are text-only, not packaging", () => {
+    const r = makeRepo();
+    const base = r.commit("init", { "src/a.ts": "1\n", "docs/cli.md": "v1\n", "README.md": "v1\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("docs", { "docs/cli.md": "v2\n", "README.md": "v2\n" });
+    const out = r.run(base, head);
+    expect(out).toMatchObject({ textOnly: true, packaging: false, deps: false, src: false, docsOnly: false, exitCode: 0 });
+  });
+
+  it("website content pages are text-only; website src/components are not", () => {
+    const r = makeRepo();
+    const base = r.commit("init", { "website/src/content/docs/docs/web-guide.md": "a\n", "website/src/components/x.ts": "a\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const content = r.commit("content", { "website/src/content/docs/docs/web-guide.md": "b\n" });
+    expect(r.run(base, content).textOnly).toBe(true);
+    const mixed = r.commit("comp", { "website/src/components/x.ts": "b\n" });
+    expect(r.run(base, mixed).textOnly).toBe(false);
+  });
+
+  it("a changelog fragment is both docs-only and text-only", () => {
+    const r = makeRepo();
+    const base = r.commit("init", { "src/a.ts": "1\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("frag", { "changes/100.md": "x\n", "changes/100.zh-TW.md": "y\n" });
+    expect(r.run(base, head)).toMatchObject({ docsOnly: true, textOnly: true, packaging: false, src: false });
+  });
+
+  it("src/** sets src and is not text-only", () => {
+    const r = makeRepo();
+    const base = r.commit("init", { "src/a.ts": "1\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("src", { "src/a.ts": "2\n" });
+    expect(r.run(base, head)).toMatchObject({ src: true, textOnly: false, packaging: false, deps: false });
+  });
+
+  it("package.json sets packaging and deps", () => {
+    const r = makeRepo();
+    const base = r.commit("init", { "package.json": "{}\n", "src/a.ts": "1\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("pkg", { "package.json": "{\"a\":1}\n" });
+    expect(r.run(base, head)).toMatchObject({ packaging: true, deps: true, src: false, textOnly: false });
+  });
+
+  it("launcher/ is packaging, not deps", () => {
+    const r = makeRepo();
+    const base = r.commit("init", { "launcher/agend": "1\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("launch", { "launcher/agend": "2\n" });
+    expect(r.run(base, head)).toMatchObject({ packaging: true, deps: false, textOnly: false });
+  });
+
+  it.each(["push", "schedule", "workflow_dispatch"])("%s events run the full suite even for a docs-only tree", (event) => {
+    const r = makeRepo();
+    const base = r.commit("init", { "docs/a.md": "1\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("docs", { "docs/a.md": "2\n" });
+    expect(r.run(base, head, event)).toMatchObject({
+      textOnly: false, packaging: true, deps: true, src: true, docsOnly: false, exitCode: 0,
+    });
+  });
+
+  it("an empty diff is fail-closed (full suite)", () => {
+    const r = makeRepo();
+    const sha = r.commit("init", { "src/a.ts": "1\n" });
+    expect(r.run(sha, sha)).toMatchObject({
+      textOnly: false, packaging: true, deps: true, src: true, docsOnly: false, exitCode: 0,
+    });
+  });
+
+  it("package-lock.json and website/package.json set packaging and deps", () => {
+    const r = makeRepo();
+    const base = r.commit("init", { "package-lock.json": "{}\n", "website/package.json": "{}\n" });
+    r.git("checkout", "-q", "-b", "pr");
+    const lock = r.commit("lock", { "package-lock.json": "{\"a\":1}\n" });
+    expect(r.run(base, lock)).toMatchObject({ packaging: true, deps: true, textOnly: false, src: false });
+    const site = r.commit("site", { "website/package.json": "{\"a\":1}\n" });
+    expect(r.run(base, site)).toMatchObject({ packaging: true, deps: true, textOnly: false });
+  });
+
+  it("src/service- and launcher/ are packaging; tests/ and workflows are not text-only", () => {
+    const r = makeRepo();
+    const base = r.commit("init", {
+      "src/service-installer.ts": "1\n",
+      "launcher/agend": "1\n",
+      "tests/a.test.ts": "1\n",
+      ".github/workflows/ci.yml": "name: CI\n",
+    });
+    r.git("checkout", "-q", "-b", "pr");
+    const svc = r.commit("svc", { "src/service-installer.ts": "2\n" });
+    expect(r.run(base, svc)).toMatchObject({ packaging: true, src: true, deps: false, textOnly: false });
+    const launch = r.commit("launch", { "launcher/agend": "2\n" });
+    expect(r.run(base, launch)).toMatchObject({ packaging: true, deps: false, textOnly: false });
+    const tests = r.commit("tests", { "tests/a.test.ts": "2\n" });
+    expect(r.run(base, tests).textOnly).toBe(false);
+    const wf = r.commit("wf", { ".github/workflows/ci.yml": "name: CI\non: push\n" });
+    expect(r.run(base, wf).textOnly).toBe(false);
+  });
+
+  it("a .github/workflows/data-downgrade.yml diff runs the full suite (src, packaging, deps)", () => {
+    const r = makeRepo();
+    const base = r.commit("init", {
+      "src/a.ts": "1\n",
+      ".github/workflows/data-downgrade.yml": "name: old\n",
+    });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("wf", { ".github/workflows/data-downgrade.yml": "name: new\n" });
+    expect(r.run(base, head)).toMatchObject({
+      src: true, packaging: true, deps: true, textOnly: false, docsOnly: false, exitCode: 0,
+    });
+  });
+
+  it("a scripts/data-downgrade-phase.mjs diff sets src", () => {
+    const r = makeRepo();
+    const base = r.commit("init", {
+      "src/a.ts": "1\n",
+      "scripts/data-downgrade-phase.mjs": "1\n",
+    });
+    r.git("checkout", "-q", "-b", "pr");
+    const head = r.commit("script", { "scripts/data-downgrade-phase.mjs": "2\n" });
+    expect(r.run(base, head)).toMatchObject({
+      src: true, packaging: true, deps: false, textOnly: false, exitCode: 0,
+    });
   });
 });
