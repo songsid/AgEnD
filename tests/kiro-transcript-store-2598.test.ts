@@ -97,6 +97,48 @@ describe("the store follows the launch's engine (#2598 B1)", () => {
   });
 });
 
+describe("the v2 session file is attached before work is admitted (#2617 review)", () => {
+  // Production: the daemon awaits initialize(), admits work, and polls first on a 2 s timer. A reply written in that
+  // gap is new, not history.
+  it("progress written between initialize() and the first poll is reported, once", async () => {
+    const f = fixture();
+    const say = f.session("ours");
+    const s = f.source({ engine: "v2", sessionId: "ours" });
+    await s.initialize();
+    say("first admitted reply");
+    expect(await texts(s)).toEqual(["first admitted reply"]);
+  });
+
+  it("and the history already in the file is not replayed", async () => {
+    const f = fixture();
+    f.session("ours"); // holds "history"
+    const s = f.source({ engine: "v2", sessionId: "ours" });
+    await s.initialize();
+    expect(await texts(s)).toEqual([]);
+  });
+
+  it("a fresh launch (no id) attaches the directory's newest at initialize too", async () => {
+    const f = fixture();
+    const say = f.session("newest", { updatedAt: Date.now() });
+    const s = f.source({ engine: "v2", sessionId: null });
+    await s.initialize();
+    say("early reply");
+    expect(await texts(s)).toEqual(["early reply"]);
+  });
+
+  it("reset() re-attaches at the boundary as of the reset", async () => {
+    const f = fixture();
+    const say = f.session("ours");
+    const s = f.source({ engine: "v2", sessionId: "ours" });
+    await s.initialize();
+    say("before reset");
+    s.reset();
+    await s.initialize();
+    say("after reset");
+    expect(await texts(s)).toEqual(["after reset"]);
+  });
+});
+
 describe("a resumed launch follows its own conversation, not the directory's newest", () => {
   it("v2: a newer sibling session in the same directory is not read", async () => {
     const f = fixture();

@@ -862,10 +862,16 @@ export class KiroSessionSource implements TranscriptSource {
     this.lease ??= this.lane.acquire();
     const lease = this.lease, generation = this.generation;
     if (!this.needsBaseline) return Promise.resolve();
-    if (this.launch()?.engine === "v2") {
-      // The TUI's store is files: nothing in the sqlite store to baseline (and nothing there is ours).
-      this.needsBaseline = false;
-      this.ready = Promise.resolve();
+    const launch = this.launch();
+    if (launch?.engine === "v2") {
+      // The TUI's store is files: nothing in the sqlite store to baseline (and nothing there is ours). The session file
+      // is attached now, before the daemon admits work — attached at the first timer poll instead, anything written
+      // in between would be taken for history (#2617 review).
+      this.ready = this.resolveActiveSession(launch.sessionId).then(async active => {
+        if (generation !== this.generation || this.lease !== lease) return;
+        if (active) await this.attach(active, generation);
+        if (generation === this.generation) this.needsBaseline = false;
+      }, () => {});
       return this.ready;
     }
     this.ready = lease.read({ workingDirectory: this.workingDirectory, dbPath: this.dbPath, createdAt: this.createdAt, baseline: true, conversationId: this.v1Pin() }).then(reply => {
@@ -991,6 +997,29 @@ export class KiroSessionSource implements TranscriptSource {
     return { jsonlPath: chosen.jsonlPath, createdAtMs: chosen.createdAtMs };
   }
 
+  /**
+   * Follow a newly chosen session file. Our own fresh session (created after this source) is read from the start; an
+   * older one is attached at its last line boundary — its content is history. If that boundary cannot be read now,
+   * nothing is attached and the next poll tries again (#1283 review): never offset 0, which would replay it all.
+   */
+  private async attach(active: { jsonlPath: string; createdAtMs: number }, generation: number): Promise<"from-start" | "at-end" | "not-attached"> {
+    if (active.createdAtMs >= this.createdAt) {
+      this.currentFile = active.jsonlPath;
+      this.byteOffset = 0;
+      this.skipping = false;
+      this.pendingLong = null;
+      return "from-start";
+    }
+    let offset: number;
+    try { offset = await lastLineBoundary(active.jsonlPath); } catch { return "not-attached"; }
+    if (generation !== this.generation) return "not-attached";
+    this.currentFile = active.jsonlPath;
+    this.byteOffset = offset;
+    this.skipping = false;
+    this.pendingLong = null;
+    return "at-end";
+  }
+
   async poll(): Promise<TranscriptEvents> {
     // Current Kiro stores the primary session in SQLite; JSONL is now mostly
     // used for subagents. Keep the legacy path as a compatibility fallback.
@@ -1008,24 +1037,9 @@ export class KiroSessionSource implements TranscriptSource {
     if (generation !== this.generation || !active) return EMPTY;
 
     if (active.jsonlPath !== this.currentFile) {
-      if (active.createdAtMs >= this.createdAt) {
-        this.currentFile = active.jsonlPath;
-        this.byteOffset = 0; // our own fresh session — observable from the start
-        this.skipping = false;
-        this.pendingLong = null;
-      } else {
-        // An older session is attached at its last line boundary. If that cannot be read now, nothing is adopted
-        // and the next poll tries again (#1283 review) — never offset 0, which would replay the whole session.
-        let offset: number;
-        try { offset = await lastLineBoundary(active.jsonlPath); } catch { return EMPTY; }
-        if (generation !== this.generation) return EMPTY;
-        this.currentFile = active.jsonlPath;
-        this.byteOffset = offset;
-        this.skipping = false;
-        this.pendingLong = null;
-        return EMPTY;
-      }
+      if (await this.attach(active, generation) !== "from-start") return EMPTY;
     }
+    if (this.currentFile === null) return EMPTY;
 
     // #1218 P0: bounded looks, as the other JSONL sources. Kiro's nesting needs the whole record: a long line is read
     // whole up to WHOLE_LINE_MAX_BYTES (as every line was before), and skipped beyond it.
