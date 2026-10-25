@@ -642,7 +642,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       if (replyReference?.messageId) {
         try {
           const ref = await msg.fetchReference();
-          replyToText = ref.content || ref.embeds?.[0]?.description || undefined;
+          // #2646: a reply to a forward — the forward's own content and embeds are empty; what it carries is in its
+          // messageSnapshots (the same shapes the outer message reads above). Its text and image attachments come
+          // from there. The forward itself still addresses nothing (#2577): only this explicit reply does.
+          const refSnapshots = [...((ref as any).messageSnapshots?.values?.() ?? [])].map((value: any) => value?.message ?? value);
+          const forwardedText = refSnapshots.flatMap((snapshot: any) => [
+            snapshot?.content,
+            ...(snapshot?.embeds ?? []).flatMap((e: any) => [e?.title, e?.description]),
+          ]).filter((part: unknown): part is string => typeof part === "string" && part.length > 0).join("\n");
+          for (const snapshot of refSnapshots) collectImageEmbeds(snapshot?.embeds);
+          replyToText = ref.content || forwardedText || ref.embeds?.[0]?.description || undefined;
           // #2551: who the reply answers (a bot's reply to our bot's message is addressed to it), and whether that
           // message itself answered a bot or this sender — then this is a chain of bots answering each other, not one
           // hop. Its own reply target: the user it pinged, else read once (a reply to a deleted message: not a chain).
@@ -652,7 +661,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             if (!parent) { try { parent = (await ref.fetchReference()).author ?? null; } catch { parent = null; } }
             replyToChain = !!parent && (parent.bot === true || parent.id === userId);
           }
-          for (const att of ref.attachments?.values() ?? []) {
+          const refAttachments = [ref.attachments, ...refSnapshots.map((snapshot: any) => snapshot?.attachments)]
+            .flatMap((list: any) => [...(list?.values?.() ?? [])]);
+          for (const att of refAttachments) {
             if (!att.contentType?.startsWith("image/")) continue;
             if (!attachments.some(existing => existing.fileId === att.id)) {
               attachments.push({

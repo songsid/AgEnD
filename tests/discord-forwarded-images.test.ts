@@ -415,4 +415,63 @@ describe("Discord forwarded message images", () => {
 
     expect(got.text).toBe("forwarded words");
   });
+
+  // #2646: a reply to a FORWARD — the forward's own content/embeds are empty; its body is in messageSnapshots.
+  function forwardRef(snapshot: Record<string, unknown>, shape: "discordjs" | "api" = "discordjs") {
+    return {
+      content: "", embeds: [], attachments: new FakeCollection<any>(), author: { id: "forwarder" },
+      reference: { type: MessageReferenceType.Forward, channelId: "elsewhere", messageId: "orig" },
+      messageSnapshots: new FakeCollection<any>().set("s", shape === "api" ? { message: snapshot } : snapshot),
+    };
+  }
+
+  it.each(["discordjs", "api"] as const)("a reply to a forward carries the forwarded text and its images (%s snapshot shape, #2646)", async shape => {
+    const atts = new FakeCollection<any>()
+      .set("fwd-photo", fakeAttachment("fwd-photo", "https://cdn.example/forwarded.png"))
+      .set("fwd-doc", fakeAttachment("fwd-doc", "https://cdn.example/notes.pdf", "application/pdf"));
+    const got = await inbound(fakeMessage({
+      content: "<@self-bot> what does this say?",
+      reference: { type: MessageReferenceType.Default, messageId: "the-forward" },
+      fetchReference: async () => forwardRef({ content: "the forwarded words", embeds: [], attachments: atts }, shape),
+    }));
+    expect(got.replyTo).toBe("the-forward");
+    expect(got.replyToText).toBe("the forwarded words");
+    expect(got.replyToAuthorId).toBe("forwarder");          // the reply answers whoever forwarded it
+    expect(got.replyToChain).toBeUndefined();               // a forward's Forward reference is not a reply chain
+    expect(got.attachments).toEqual([{ kind: "photo", fileId: "fwd-photo", mime: "image/png", size: 123, filename: "forwarded.png" }]);
+    expect((adapter as any).attachmentUrls.get("fwd-photo")).toBe("https://cdn.example/forwarded.png");
+    expect((adapter as any).attachmentUrls.has("fwd-doc")).toBe(false);
+    expect(got.text).toBe("<@self-bot> what does this say?");   // the reply's own text is untouched
+  });
+
+  it("a reply to a forwarded embed carries the embed's title and description, and a forwarded image embed as a photo (#2646)", async () => {
+    const got = await inbound(fakeMessage({
+      content: "<@self-bot> summarise",
+      id: "reply-1",
+      reference: { type: MessageReferenceType.Default, messageId: "the-forward" },
+      fetchReference: async () => forwardRef({ content: "", attachments: new FakeCollection<any>(), embeds: [
+        { title: "Release notes", description: "2.3.2 is out" },
+        { type: "image", url: "https://cdn.example/shot.png" },
+      ] }),
+    }));
+    expect(got.replyToText).toBe("Release notes\n2.3.2 is out");
+    expect(got.attachments).toEqual([expect.objectContaining({ kind: "photo", fileId: "embed-img-reply-1-0", filename: "shot.png" })]);
+  });
+
+  it("a forward with its own comment keeps the comment as the reply-to text (#2646)", async () => {
+    const ref = { ...forwardRef({ content: "forwarded body", embeds: [], attachments: new FakeCollection<any>() }), content: "fyi" };
+    const got = await inbound(fakeMessage({ content: "<@self-bot> ?", reference: { type: MessageReferenceType.Default, messageId: "f" }, fetchReference: async () => ref }));
+    expect(got.replyToText).toBe("fyi");
+  });
+
+  it("ClassicBot: the @mentioned reply to a forward is delivered, with the forwarded text as its reply-to (#2646)", async () => {
+    const got = await inbound(fakeMessage({
+      content: "<@self-bot> what does this say?", mentions: { users: new FakeCollection<any>().set("self-bot", { id: "self-bot" }) },
+      reference: { type: MessageReferenceType.Default, messageId: "the-forward" },
+      fetchReference: async () => forwardRef({ content: "the forwarded words", embeds: [], attachments: new FakeCollection<any>() }),
+    }));
+    const fm = await classic(got, false);
+    expect(fm.forwardToClassicInstance).toHaveBeenCalledOnce();
+    expect(ClassicChannelManager.logMessage).toHaveBeenCalledWith("classic-room", expect.any(String), expect.any(String), expect.any(Date), "the forwarded words");
+  });
 });
