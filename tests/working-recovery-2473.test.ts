@@ -251,6 +251,20 @@ describe("2026-10-25 real update shapes", () => {
     expect(f.store.get("idle-worker")).toBeNull();
     expect(decideWorkingRecovery(episode(idle), live(), true, card)).toEqual({ outcome: "excluded", reason: "not_working_at_interruption" });
   });
+  it("an idle stop keeps an admitted or ambiguous delivery fenced", () => {
+    const f = fixture(); f.store.admit(f.store.get("worker")!, () => "ambiguous-delivery");
+    const before = f.store.get("worker"), idle = snapshot();
+    idle.observation = { ...idle.observation, executionState: "idle" };
+    f.store.discover("worker", idle, "replacement-manager");
+    expect(f.store.get("worker")).toEqual(before);
+  });
+  it("an authoritative idle shutdown retires an earlier deferred working candidate", () => {
+    const f = fixture(), idle = snapshot(); idle.observation = { ...idle.observation, executionState: "idle" };
+    expect(f.store.get("worker")).not.toBeNull();
+    f.store.discover("worker", idle, "replacement-manager");
+    expect(f.store.get("worker")).toBeNull();
+    expect(f.admissions).toEqual([]);
+  });
   it("already persisted idle episodes are excluded without input or a summary", () => {
     const f = fixture(), idle = snapshot(); idle.observation = { ...idle.observation, executionState: "idle" };
     f.db.prepare("UPDATE working_recovery_episodes SET snapshot_json=?,episode_key=? WHERE instance_name='worker'")

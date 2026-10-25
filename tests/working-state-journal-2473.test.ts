@@ -48,6 +48,18 @@ describe("#2473 stage 1: atomic metadata, no recovery", () => {
     expect(next.workingRecovery.get("worker")).toBeNull();
     expect(next.getWorkingState("worker")?.current.references).toHaveLength(2);
   });
+  it("a later idle graceful stop supersedes an earlier working prior without losing its continuation marker", () => {
+    const { outbox, path } = store(); const working = snapshot({ reason: "before_stop" });
+    working.observation = { ...working.observation, turn: null, sessionId: "same-session", recoveryDeliveryId: "confirmed-work" };
+    outbox.observeWorkingState("worker", working);
+    const idle = snapshot({ reason: "before_stop" }); idle.observation = { ...working.observation, executionState: "idle" };
+    const stopped = outbox.observeWorkingState("worker", idle)!;
+    expect(stopped.prior?.observation).toMatchObject({ executionState: "idle", recoveryDeliveryId: "confirmed-work" });
+    const { outbox: next } = store(path, "replacement-manager");
+    next.observeWorkingState("worker", { ...idle, reason: "published" });
+    next.workingRecovery.discover("worker", next.getWorkingState("worker")!.prior!, "replacement-manager");
+    expect(next.workingRecovery.get("worker")).toBeNull();
+  });
   it("an older idle prior cannot mask a later working shutdown", () => {
     const { outbox } = store(); const idle = snapshot({ reason: "before_stop", references: [
       { kind: "task", id: "old-card", version: 1, status: "claimed" },

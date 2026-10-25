@@ -98,7 +98,8 @@ describe("#2473 manager recovery wiring", () => {
     outbox.db.prepare("UPDATE working_state_journal SET prior_json=? WHERE instance_name='worker'").run(JSON.stringify(prior));
     outbox.db.prepare("DELETE FROM working_recovery_episodes WHERE instance_name='worker'").run();
     store.summary("previous-manager", () => {});
-    f.fm.observeWorkingState("worker", "before_stop");
+    f.fm.lastActivity.set("worker", 12345);
+    f.fm.observeWorkingState("worker", "published");
     expect(store.get("worker").group).toBe(f.fm.managerBootId);
     const info = vi.spyOn(f.fm.logger, "info").mockImplementation(() => {});
     await f.stable(); f.fm.workingRecovery.tick();

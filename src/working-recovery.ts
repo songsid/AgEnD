@@ -122,7 +122,17 @@ export class WorkingRecoveryStore {
     return !!row && row.configuration === snapshot.observation.configuration && row.session_id === snapshot.observation.sessionId;
   }
   discover(instance: string, snapshot: WorkingStateSnapshot, group = snapshot.managerBootId): void {
-    if (!hasInterruptedExecution(snapshot)) return;
+    if (!hasInterruptedExecution(snapshot)) {
+      if (snapshot.reason === "before_stop" && snapshot.observation.executionState === "idle" && !snapshot.observation.turn) {
+        this.db.transaction(() => {
+          const current = this.get(instance);
+          if (!current || current.outcome === "admitted") return;
+          this.db.prepare("DELETE FROM working_recovery_episodes WHERE instance_name=? AND episode_key=?").run(instance, current.key);
+          this.db.prepare("DELETE FROM working_recovery_receipts WHERE episode_key=? AND outcome='excluded'").run(current.key);
+        })();
+      }
+      return;
+    }
     const key = recoveryKey(instance, snapshot);
     this.db.transaction(() => {
       let current = this.get(instance);

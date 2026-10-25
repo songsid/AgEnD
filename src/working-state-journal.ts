@@ -143,6 +143,10 @@ export class WorkingStateJournal {
       if (prior && !hasInterruptedExecution(prior) && !prior.observation.turn && hasInterruptedExecution(snapshot)) prior = null;
       if (!prior && previous?.current.managerBootId !== snapshot.managerBootId && previous && notable(previous.current)) prior = previous.current;
       if (!prior && boundary && notable(snapshot)) prior = snapshot;
+      // A later graceful stop is authoritative: work that reached idle before
+      // it stopped was not interrupted by this stop. Marker inheritance above
+      // remains available as metadata, and durable delivery receipts are separate.
+      if (snapshot.reason === "before_stop" && snapshot.observation.executionState === "idle" && !snapshot.observation.turn) prior = snapshot;
       const revision = (previous?.revision ?? 0) + 1;
       this.db.prepare(`INSERT INTO working_state_journal(instance_name,revision,current_json,prior_json) VALUES(?,?,?,?)
         ON CONFLICT(instance_name) DO UPDATE SET revision=excluded.revision,current_json=excluded.current_json,prior_json=excluded.prior_json`)
