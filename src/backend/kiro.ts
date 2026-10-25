@@ -28,6 +28,7 @@ import { t } from "../locale.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
 import type { KiroLogLaunch } from "../kiro-log-gate.js";
+import type { KiroTranscriptLaunch } from "../transcript-sources.js";
 
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
@@ -1841,6 +1842,16 @@ export class KiroBackend implements CliBackend {
   }
 
   logLaunch(): KiroLogLaunch | null { return this.builtLaunch ? { ...this.builtLaunch } : null; }
+
+  /**
+   * #2598 B1: the store is the launch's engine's (v1 = the classic sqlite store, v2 = the TUI's session files), and the
+   * conversation is the one the launch resumed by id. A fresh or legacy-mode launch owns no id yet.
+   */
+  transcriptLaunch(): KiroTranscriptLaunch | null {
+    const built = this.builtLaunch, plan = this.activePlan;
+    if (!built) return null;
+    return { engine: built.engine, sessionId: plan?.mode === "resume" && plan.id ? plan.id : null };
+  }
 
   getSessionId(): string | null {
     // Kiro manages sessions internally via SQLite keyed by working directory.

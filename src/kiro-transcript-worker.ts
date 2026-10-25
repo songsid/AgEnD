@@ -13,6 +13,7 @@ parentPort?.on("message", (message: KiroWorkerRequest | { close: number }) => {
     reader = new KiroDbReader(input.workingDirectory, input.dbPath, input.createdAt, false);
     readers.set(owner, reader);
   }
+  reader.pin(input.conversationId ?? null);
   if (input.cursor) reader.restore(input.cursor);
   if (input.baseline) reader.baseline();
   const events = input.baseline ? { toolUses: [], toolResults: [], assistantTexts: [] } : reader.read();

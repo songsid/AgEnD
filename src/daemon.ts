@@ -2665,6 +2665,7 @@ export class Daemon extends EventEmitter {
         this.config.backend ?? "claude-code",
         this.config.working_directory,
         this.credentialProfileStore(),
+        () => this.backend?.transcriptLaunch?.() ?? null,
       ));
       const transcriptMonitor = this.transcriptMonitor;
       const transcriptFence = this.launchFenceEpoch;

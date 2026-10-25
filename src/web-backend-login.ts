@@ -17,6 +17,8 @@ import type { LoginChat, LoginStartOptions, WebLoginSink } from "./login-control
 import { LOGIN_BACKEND_ALIASES, LOGIN_FLOWS } from "./login-flows.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS } from "./backend/credential-profile.js";
 import type { AvailabilityState } from "./backend-availability.js";
+import { linkableLoginUrl } from "./login-url.js";
+export { linkableLoginUrl, LOGIN_LINK_HOSTS } from "./login-url.js";
 
 /** How long the dialog's "go ahead" stays valid after the pre-check (chat's buttons expire as stale too). */
 export const WEB_LOGIN_CONFIRM_TTL_MS = 5 * 60_000;
@@ -26,26 +28,6 @@ export const WEB_LOGIN_KEEP_ENDED_MS = 10 * 60_000;
 export const WEB_LOGIN_WATCH_MS = 5_000;
 const MAX_LINES = 20;
 const MAX_LINE_CHARS = 2000;
-
-/**
- * The provider hosts a sign-in link may point at to be offered as a link; any other URL is shown as text only. The
- * CLI's own output is what is matched, and a page that turns whatever it printed into a link is a phishing aid.
- */
-export const LOGIN_LINK_HOSTS: Readonly<Record<string, readonly string[]>> = {
-  "codex": ["openai.com"],
-  "grok": ["x.ai"],
-  "kiro-cli": ["amazonaws.com", "awsapps.com", "aws.amazon.com", "kiro.dev"],
-  "claude-code": ["anthropic.com", "claude.ai", "claude.com"],
-};
-
-/** An https URL on one of the backend's own hosts (or a subdomain of one). */
-export function linkableLoginUrl(backend: string, url: string): boolean {
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return false; }
-  if (parsed.protocol !== "https:" || parsed.username || parsed.password) return false;
-  const host = parsed.hostname.toLowerCase();
-  return (LOGIN_LINK_HOSTS[backend] ?? []).some(domain => host === domain || host.endsWith(`.${domain}`));
-}
 
 /** Whether the dashboard can run this sign-in (the same rule as chat's /login: a reviewed flow, profiles where chat signs them in). */
 export function dashboardSignInSupported(backend: string, profile?: string | null): boolean {

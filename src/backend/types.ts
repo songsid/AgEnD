@@ -1,5 +1,6 @@
 import { measureSyncWork } from "../sync-work-attribution.js";
 import type { KiroLogLaunch } from "../kiro-log-gate.js";
+import type { KiroTranscriptLaunch } from "../transcript-sources.js";
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -624,6 +625,11 @@ export interface CliBackend {
    * profile — or null (none, or the last build threw). For the Log's reason only: it never selects what is read.
    */
   logLaunch?(): KiroLogLaunch | null;
+  /**
+   * #2598 B1 (kiro): which conversation store the running launch writes, and the conversation it owns, for the
+   * transcript monitor. Null before any launch was built.
+   */
+  transcriptLaunch?(): KiroTranscriptLaunch | null;
 
   /**
    * Whether the launch the last buildCommand produced can paint an
