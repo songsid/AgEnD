@@ -82,6 +82,27 @@ it("revocation during installed probe cannot create a login child", async () => 
   await expect(begin).rejects.toThrow("signin_session_expired"); expect(h.transport.start).not.toHaveBeenCalled();
 });
 
+it.each([{ values: [] }, { values: ["kiro-cli"] }])("a held auth refresh follows the new checklist, never persisting stale IDs: $values", async ({ values }) => {
+  const h = rig(), auth = deferred<"invalid">(); h.checkAuth.mockReturnValueOnce(auth.promise);
+  const refresh = h.c.refresh(h.owner); await vi.waitFor(() => expect(h.checkAuth).toHaveBeenCalledOnce());
+  const selected = h.c.select(h.owner, values); await Promise.resolve(); auth.resolve("invalid");
+  const both = Promise.all([refresh, selected]); await expect(both).resolves.toHaveLength(2); const results = await both;
+  for (const view of results) { expect(view.selected).toEqual(values); expect(view.pending).toEqual(values); expect(Object.keys(view.states)).toEqual(values); }
+  expect(readPendingBackendSignIns(h.dir)).toEqual({ version: 1, selected: values, pending: values });
+  expect((await h.c.refresh(h.owner)).pending).toEqual(values); expect(h.transport.start).not.toHaveBeenCalled();
+});
+
+it("an older invalid auth scan cannot overwrite a subsequently verified login", async () => {
+  const h = rig(), auth = deferred<"invalid">(); h.checkAuth.mockReturnValueOnce(auth.promise);
+  const refresh = h.c.refresh(h.owner); await vi.waitFor(() => expect(h.checkAuth).toHaveBeenCalledOnce());
+  await h.c.begin(h.owner, "codex"); h.state.auth = "valid"; h.state.pane = "";
+  h.transport.status.mockResolvedValue({ alive: false }); await vi.advanceTimersByTimeAsync(500);
+  expect(h.c.snapshot(h.owner).login?.phase).toBe("done");
+  auth.resolve("invalid"); const current = await refresh;
+  expect(current.states.codex).toBe("valid"); expect(current.pending).not.toContain("codex");
+  expect(readPendingBackendSignIns(h.dir).pending).not.toContain("codex");
+});
+
 function nativeRig() {
   const native: TerminalBackend = { start: vi.fn(async () => {}), sendInput: vi.fn(async () => {}), resize: vi.fn(async () => {}), capture: vi.fn(async () => "pane"), paneStatus: vi.fn(async () => ({ alive: true })), kill: vi.fn(async () => {}) };
   const env = { HOME: temp(), PATH: "/stub/bin", LANG: "en_US.UTF-8", AGEND_INSTANCE: "live-must-not-inherit", TMUX: "live", BASH_ENV: "/unsafe", ANTHROPIC_API_KEY: "synthetic-no-credential" };
