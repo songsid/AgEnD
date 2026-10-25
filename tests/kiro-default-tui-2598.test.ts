@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_INSTANCE_CONFIG, loadFleetConfig, newInstanceKiroUi } from "../src/config.js";
+import { autoGeneralInstanceConfig, DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, loadFleetConfig, newInstanceKiroUi } from "../src/config.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "../src/kiro-engine-status.js";
 import { draftWebOnly } from "../src/quickstart-api.js";
 import { newQuickstartFleet } from "../src/quickstart.js";
@@ -105,10 +105,25 @@ describe("every creation path writes a new kiro instance's engine", () => {
     expect(newQuickstartFleet([], [], "codex").defaults).not.toHaveProperty("kiro_ui");
   });
 
-  it("a General the fleet creates for a connection, and a topic bound to a new directory, use the same rule (source pins)", () => {
+  it("the General the fleet creates for a connection runs the fleet's engine (runtime values, #2621 review)", () => {
+    const ui = (defaults: Record<string, unknown>) => autoGeneralInstanceConfig(defaults as never, "/g", "tg").kiro_ui;
+    // A new kiro fleet from agend setup / quickstart: its General is TUI, not the built-in legacy.
+    expect(ui(newQuickstartFleet([], [], "kiro-cli").defaults)).toBe("tui");
+    expect(ui({ backend: "kiro-cli" })).toBe("tui");
+    expect(ui({ backend: "kiro-cli", kiro_ui: "legacy" })).toBe("legacy");
+    expect(ui({ backend: "codex" }), "not kiro: the built-in value, as before").toBe(DEFAULT_INSTANCE_CONFIG.kiro_ui);
+    expect(autoGeneralInstanceConfig({}, "/g", "tg")).toMatchObject({ working_directory: "/g", general_topic: true, channel_id: "tg" });
     const fm = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8");
-    expect(fm).toContain("const newKiroUi = newInstanceKiroUi(undefined, fleet.defaults);");
-    expect(fm).toContain("...(newKiroUi ? { kiro_ui: newKiroUi } : {}),");
+    expect(fm).toContain("fleet.instances[name] = autoGeneralInstanceConfig(fleet.defaults, generalDir, need.adapterId);");
+  });
+
+  it("create_instance in a new kiro fleet (defaults.kiro_ui: tui): the instance loads as tui", async () => {
+    const instances = await create("", "defaults:\n  backend: kiro-cli\n  kiro_ui: tui\n");
+    expect(instances["k-t902"]).not.toHaveProperty("kiro_ui"); // inherited, not written over
+    expect(getEffectiveInstanceDefaults({ backend: "kiro-cli", kiro_ui: "tui" } as never).kiro_ui).toBe("tui");
+  });
+
+  it("a topic bound to a new directory uses the same rule (source pin; its entry carries no built-in defaults)", () => {
     const tc = readFileSync(new URL("../src/topic-commands.ts", import.meta.url), "utf8");
     expect(tc).toContain("if (newKiroUi) this.ctx.fleetConfig.instances[instanceName].kiro_ui = newKiroUi;");
   });

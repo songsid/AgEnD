@@ -78,6 +78,26 @@ export function newInstanceKiroUi(
   return (backend ?? defaults?.backend ?? "claude-code") === "kiro-cli" && defaults?.kiro_ui === undefined ? "tui" : undefined;
 }
 
+/**
+ * The General the fleet creates for a connection that has none. It is written whole (built-in defaults included), so
+ * its kiro_ui is set from the fleet's own: a new kiro instance's (newInstanceKiroUi), else the fleet default's — never
+ * the built-in legacy over a fleet default of tui (#2621 review).
+ */
+export function autoGeneralInstanceConfig(
+  defaults: { backend?: string; kiro_ui?: InstanceConfig["kiro_ui"] } | undefined,
+  workingDirectory: string,
+  channelId: string,
+): InstanceConfig {
+  const kiroUi = newInstanceKiroUi(undefined, defaults) ?? defaults?.kiro_ui;
+  return {
+    ...DEFAULT_INSTANCE_CONFIG,
+    working_directory: workingDirectory,
+    general_topic: true,
+    channel_id: channelId,
+    ...(kiroUi ? { kiro_ui: kiroUi } : {}),
+  } as InstanceConfig;
+}
+
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
   auto_pause_after: 0, // minutes; 0 = disabled (opt-in)
   mcp_auto_restart: true, // restart (idle-gated) when the MCP server dies
