@@ -6,7 +6,8 @@
 
 param(
     [switch]$Force,  # 強制重新執行所有階段
-    [string]$InstallVersion = $env:AGEND_VERSION
+    [string]$InstallVersion = $env:AGEND_VERSION,
+    [string]$InstallRunId = ''  # 一行安裝指令給的這一次的代號：它讀 last.json 時，只認這一次寫的（#2650）
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,11 +22,98 @@ $NODE_VERSION = "22"  # LTS 穩定版，AgEnD 需要 22+
 
 function Write-Step($num, $total, $msg) {
     Write-Host "`n[$num/$total] $msg" -ForegroundColor Cyan
+    Write-InstallLog "[$num/$total] $msg"
+    Set-InstallStage ([string]$num)
 }
-function Write-Ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green }
-function Write-Warn($msg) { Write-Host "  [!!] $msg" -ForegroundColor Yellow }
-function Write-Err($msg) { Write-Host "  [X] $msg" -ForegroundColor Red }
-function Write-Info($msg) { Write-Host "  $msg" -ForegroundColor White }
+function Write-Ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green; Write-InstallLog "  [OK] $msg" }
+function Write-Warn($msg) { Write-Host "  [!!] $msg" -ForegroundColor Yellow; Write-InstallLog "  [!!] $msg" }
+function Write-Err($msg) {
+    Write-Host "  [X] $msg" -ForegroundColor Red; Write-InstallLog "  [X] $msg"
+    # 第一次出錯時說一次安裝紀錄在哪裡：視窗關掉以後，回報問題就附上這個檔案。
+    if ($script:InstallLog -and -not $script:InstallLogShown) {
+        $script:InstallLogShown = $true
+        Write-Host "  安裝紀錄（回報問題時請附上這個檔案）：$($script:InstallLog)" -ForegroundColor Yellow
+    }
+}
+function Write-Info($msg) { Write-Host "  $msg" -ForegroundColor White; Write-InstallLog "  $msg" }
+
+# ── 安裝紀錄與結果檔（#2650 第 9 項）──────────────────────────
+# 視窗關掉以後還要能回報問題：畫面上說的話、長步驟裡子程式的每一行輸出，都寫進 %LOCALAPPDATA%\AgEnD\install-logs 裡
+# 這一次的紀錄檔，寫之前先遮掉設定碼、登入碼、token 和網址裡的驗證參數（Protect-LogText）。設定碼與儀表板登入碼的大框
+# 直接用 Write-Host 印，本來就不進紀錄。每個紀錄檔最多 5 MB，只留最近 10 個。
+# 結果檔 last.json 記這一次的紀錄檔、目前階段（Write-Step 更新）、結果（running／failed／done）和失敗種類
+# （Set-InstallFailure）；一行安裝指令（install.ps1）在安裝程式結束、失敗或視窗被關掉時讀它，說出停在哪一步和紀錄檔的位置。
+# 寫紀錄失敗絕不影響安裝。
+$INSTALL_LOG_MAX_BYTES = 5MB
+$INSTALL_LOG_KEEP = 10
+$script:InstallLog = $null; $script:InstallLogShown = $false; $script:InstallLogFull = $false
+$script:InstallStage = 'start'; $script:InstallFailure = $null; $script:InstallRunId = ''
+function Get-InstallLogDir {
+    if (-not $env:LOCALAPPDATA) { return $null }
+    return (Join-Path (Join-Path $env:LOCALAPPDATA 'AgEnD') 'install-logs')
+}
+function Protect-LogText([string]$text) {
+    $t = $text
+    $t = $t -replace '(?i)([?&#](?:code|token|state|key|sig|signature|secret|password|access_token|id_token|refresh_token|auth)=)[^&#\s]+', '$1[hidden]'
+    $t = $t -replace '\b\d{6,}:[A-Za-z0-9_-]{30,}', '[hidden token]'
+    $t = $t -replace '[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}', '[hidden token]'
+    $t = $t -replace '\b(?:sk-|gh[pousr]_|xox[abpr]-|AKIA)[A-Za-z0-9_-]{12,}', '[hidden token]'
+    $t = $t -replace '(?i)\b(authorization)(\s*[:=]\s*).+$', '$1$2[hidden]'
+    $t = $t -replace '(?i)\b(token|password|passwd|secret|api[ _-]?key)(\s*[:=]\s*)(?!\[hidden)\S+', '$1$2[hidden]'
+    $t = $t -replace '(?i)\b(bearer)(\s+)(?!\[hidden)\S+', '$1$2[hidden]'
+    # code: 後面的值：錯誤碼（數字、0x…）留著，診斷要用；其他（登入碼、設定碼）遮掉。
+    $t = $t -replace '(?i)\b(code)(\s*[:=]\s*)(?!\[hidden|0x[0-9a-f]+\b|-?\d+\b)\S+', '$1$2[hidden]'
+    $t = $t -replace '\b[A-Z0-9]{4}-[A-Z0-9]{4,5}\b', '[hidden code]'
+    return $t
+}
+function Write-InstallLog([string]$text) {
+    if (-not $script:InstallLog -or $script:InstallLogFull) { return }
+    try {
+        $line = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') + ' ' + (Protect-LogText $text) + "`r`n"
+        $size = 0; try { $size = (Get-Item -LiteralPath $script:InstallLog -ErrorAction Stop).Length } catch { }
+        if ($size + $line.Length * 3 -gt $INSTALL_LOG_MAX_BYTES) {
+            $script:InstallLogFull = $true
+            $line = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') + " [log reached $INSTALL_LOG_MAX_BYTES bytes; later lines are not kept]`r`n"
+        }
+        [IO.File]::AppendAllText($script:InstallLog, $line, (New-Object System.Text.UTF8Encoding $true))
+    } catch { }
+}
+function Save-InstallReceipt([string]$outcome, [string[]]$pendingSignIns = @()) {
+    $dir = Get-InstallLogDir
+    if (-not $dir) { return }
+    if ($outcome -eq 'done') { $script:InstallFailure = $null }
+    try {
+        $receipt = [ordered]@{
+            run = $script:InstallRunId; outcome = $outcome; stage = $script:InstallStage; failure = $script:InstallFailure
+            log = $script:InstallLog; pendingSignIns = @($pendingSignIns); time = (Get-Date).ToUniversalTime().ToString('o')
+        } | ConvertTo-Json -Compress
+        $file = Join-Path $dir 'last.json'
+        [IO.File]::WriteAllText("$file.tmp", $receipt, (New-Object System.Text.UTF8Encoding $false))
+        Move-Item -LiteralPath "$file.tmp" -Destination $file -Force
+    } catch { }
+}
+# 進到新的一步：上一步重試成功前記下的失敗種類不再算數。
+function Set-InstallStage([string]$stage) { $script:InstallStage = $stage; $script:InstallFailure = $null; Save-InstallReceipt 'running' }
+# 失敗的種類：network、download、wsl、backend、agend、auth、service、setup、error（沒預料到的錯誤）。
+function Set-InstallFailure([string]$kind) {
+    $script:InstallFailure = $kind
+    Write-InstallLog "FAILED stage=$($script:InstallStage) kind=$kind"
+    Save-InstallReceipt 'failed'
+}
+function Start-InstallLog([string]$runId) {
+    if ($runId -match '^[0-9a-f]{32}$') { $script:InstallRunId = $runId }
+    $dir = Get-InstallLogDir
+    if (-not $dir) { return }
+    try {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        @(Get-ChildItem -LiteralPath $dir -Filter 'install-*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending |
+            Select-Object -Skip ($INSTALL_LOG_KEEP - 1)) | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        $script:InstallLog = Join-Path $dir ('install-' + (Get-Date).ToString('yyyyMMdd-HHmmss') + '-' + $PID + '.log')
+        $os = try { [Environment]::OSVersion.VersionString } catch { '?' }
+        Write-InstallLog ("AgEnD installer started; PowerShell {0}; {1}; {2}; requested version '{3}'; Force={4}" -f $PSVersionTable.PSVersion, $os, $env:PROCESSOR_ARCHITECTURE, $InstallVersion, [bool]$Force)
+        Save-InstallReceipt 'running'
+    } catch { $script:InstallLog = $null }
+}
 
 function Stage-Done($stage) {
     if ($Force) { return $false }
@@ -711,6 +799,98 @@ function Write-ShortcutResult($made) {
     return $false
 }
 
+# ── WSL 安裝前檢查（#2650 第 7 項）─────────────────────────
+# 在動任何東西之前先看清楚：Windows 組建（WSL 2 需要 Windows 10 2004，組建 19041 以上，或 Windows 11）、架構（x64 或
+# ARM64；ARM64 要裝 ARM64 版的 WSL）、兩個 Windows 功能（Microsoft-Windows-Subsystem-Linux 和 VirtualMachinePlatform，
+# 各看各的），以及虛擬化（BIOS/UEFI 裡的 Intel VT-x / AMD-V）。缺哪個功能就只啟用哪個；DISM 的結束碼要是 0 或 3010
+# （成功、需要重新開機），啟用後再讀一次兩個功能的狀態，確定真的啟用（或等重新開機生效）才說已啟用。
+$WSL_MIN_BUILD = 19041
+$WSL_FEATURES = @('Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform')
+function Get-WindowsBuild {
+    try { return [int](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).BuildNumber } catch { }
+    try { return [Environment]::OSVersion.Version.Build } catch { return $null }
+}
+# 'x64'、'arm64'，或其他（例如 32 位元的 x86：不支援）。看作業系統的架構，不看這個 PowerShell 行程的。
+function Get-WindowsArch {
+    $a = $null
+    try { $a = [string][System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture } catch { }
+    if (-not $a) { $a = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { [string]$env:PROCESSOR_ARCHITECTURE } }
+    switch -regex ($a) { '^(X64|AMD64)$' { return 'x64' } '^ARM64$' { return 'arm64' } }
+    return $a.ToLowerInvariant()
+}
+# 一個 Windows 功能的狀態：'Enabled'、'EnablePending'（已啟用，重新開機後生效）、'Disabled'（含 DisablePending），或
+# 'Unknown'（讀不到：例如這台電腦沒有 DISM 的 PowerShell 模組）。
+function Get-WslFeatureState([string]$name) {
+    try {
+        $f = Get-WindowsOptionalFeature -Online -FeatureName $name -ErrorAction Stop
+        switch ([string]$f.State) { 'Enabled' { return 'Enabled' } 'EnablePending' { return 'EnablePending' } default { return 'Disabled' } }
+    } catch { return 'Unknown' }
+}
+# 虛擬化：$true（已經有 hypervisor 在跑，或 BIOS/UEFI 已開）、$false（明確沒開），或 $null（看不出來，不下結論）。
+function Test-Virtualization {
+    try { if ((Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).HypervisorPresent) { return $true } } catch { }
+    try {
+        $v = @(Get-CimInstance Win32_Processor -ErrorAction Stop | ForEach-Object { $_.VirtualizationFirmwareEnabled })
+        if ($v -contains $true) { return $true }
+        if ($v.Count -gt 0 -and $v -contains $false) { return $false }
+    } catch { }
+    return $null
+}
+function Get-WslPreflight {
+    $features = [ordered]@{}
+    foreach ($n in $WSL_FEATURES) { $features[$n] = Get-WslFeatureState $n }
+    return @{ Build = (Get-WindowsBuild); Arch = (Get-WindowsArch); Features = $features; Virtualization = (Test-Virtualization) }
+}
+# 組建和架構不行就說明並回傳 $false（不要再往下做）；虛擬化看起來沒開只警告（偵測不一定準，虛擬機裡尤其如此）。
+function Test-WslPreflight($pre) {
+    if ($pre.Build -and $pre.Build -lt $WSL_MIN_BUILD) {
+        Write-Err ("這台電腦的 Windows 太舊（組建 {0}）：WSL 2 需要 Windows 10 2004（組建 {1}）以上，或 Windows 11。" -f $pre.Build, $WSL_MIN_BUILD)
+        Write-Info "  請先用 Windows Update 更新 Windows，再執行同一行安裝指令。"
+        return $false
+    }
+    if ($pre.Arch -ne 'x64' -and $pre.Arch -ne 'arm64') {
+        Write-Err ("這台電腦的 Windows 是 {0} 版：WSL 2 只支援 64 位元（x64 或 ARM64）的 Windows。" -f $pre.Arch)
+        return $false
+    }
+    if ($pre.Virtualization -eq $false) { Write-VirtualizationHint }
+    return $true
+}
+function Write-VirtualizationHint {
+    Write-Warn "這台電腦的虛擬化看起來沒有開啟，WSL 2 需要它。"
+    Write-Info "  請到 BIOS/UEFI 設定裡開啟 Intel VT-x（Intel Virtualization Technology）或 AMD-V（SVM Mode），存檔後重新開機。"
+    Write-Info "  在虛擬機裡執行時，需要虛擬機軟體開啟「巢狀虛擬化」。公司電腦請洽 IT 人員。"
+}
+# 啟用缺少的功能。回傳 'ready'（兩個都已啟用）、'reboot'（剛啟用或等待生效，要重新開機），或 'failed'（原因已說明）。
+# $features：Get-WslPreflight 讀到的狀態。
+function Enable-WslFeatures($features) {
+    $needReboot = $false
+    foreach ($n in $WSL_FEATURES) {
+        $state = $features[$n]
+        if ($state -eq 'Enabled') { continue }
+        if ($state -eq 'EnablePending') { $needReboot = $true; continue }
+        $label = if ($n -eq 'VirtualMachinePlatform') { '啟用虛擬機器平台' } else { '啟用 WSL 功能' }
+        $code = Invoke-Watched -Label $label -Usually "通常需要 1–3 分鐘" -UpperMinutes 5 -Encoding oem -File "dism.exe" -Arguments @("/online", "/enable-feature", "/featurename:$n", "/all", "/norestart")
+        if ($code -eq 3010) { $needReboot = $true }
+        elseif ($code -ne 0) {
+            Write-Err ("{0} 沒有成功（DISM 結束碼 {1}）。" -f $label, $code)
+            Write-Info "  可能是公司的原則不允許，或 Windows 元件損壞。請洽 IT 人員，或先執行 Windows Update 後再試同一行安裝指令。"
+            return 'failed'
+        } else { $needReboot = $true }
+    }
+    # 再讀一次：DISM 說成功不算數，要 Windows 自己說已啟用（或等重新開機）。讀不到（Unknown）就相信結束碼。
+    foreach ($n in $WSL_FEATURES) {
+        if ($features[$n] -eq 'Enabled') { continue }
+        $now = Get-WslFeatureState $n
+        if ($now -eq 'Disabled') {
+            Write-Err ("{0} 還是沒有啟用。" -f $n)
+            Write-Info "  可能是公司的原則不允許。請洽 IT 人員；或打開「開啟或關閉 Windows 功能」手動勾選後重新開機，再執行同一行安裝指令。"
+            return 'failed'
+        }
+    }
+    if ($needReboot) { return 'reboot' }
+    return 'ready'
+}
+
 # ── WSL 更新：已經是 2 以上就不強制更新（#1853：使用者在共用對外 IP 的辦公室實測）──────────
 # GitHub 對沒登入的請求，每個 IP 每小時只給 60 次（超過回 403/429）；很多人共用一個對外 IP 時，wsl --update --web-download
 # 和下面的 MSI 備案都會被擋。所以：已安裝的 WSL（Store／MSI 版裝在 %ProgramFiles%\WSL\wsl.exe）版本 2.0.0 以上就略過更新；
@@ -747,7 +927,7 @@ function Write-DownloadFailure([string]$kind) {
             Write-Warn "連不上 GitHub（逾時、連線失敗，或被防火牆擋住）。"
             Write-Info "請確認網路正常後再執行同一行安裝指令，或換一個網路（例如手機熱點）再試。"
         }
-        default { Write-Info "請稍後再執行同一行安裝指令；也可以手動到 https://github.com/microsoft/WSL/releases 下載 x64 的 .msi 安裝。" }
+        default { Write-Info ("請稍後再執行同一行安裝指令；也可以手動到 https://github.com/microsoft/WSL/releases 下載 {0} 的 .msi 安裝。" -f (Get-WindowsArch)) }
     }
 }
 # 第 1 階段的 WSL 更新。回傳：skipped（已是 2 以上）、updated、usable（更新失敗但現有的 WSL 可用）、reboot（MSI 要求重開機）、
@@ -778,15 +958,17 @@ function Invoke-WslUpdateStage {
     Write-Warn "wsl --update 失敗，從 GitHub 下載最新版 WSL..."
     try {
         $release = Invoke-RestMethod "https://api.github.com/repos/microsoft/WSL/releases/latest" -TimeoutSec 30
-        $msiAsset = $release.assets | Where-Object { $_.name -match "x64\.msi$" } | Select-Object -First 1
+        # 依這台電腦的架構選 MSI：ARM64 的 Windows 裝 x64 版不能用（#2650 第 7 項）。
+        $arch = Get-WindowsArch
+        $msiAsset = $release.assets | Where-Object { $_.name -match "\.$arch\.msi$" } | Select-Object -First 1
         if (-not $msiAsset) {
-            Write-Err "找不到 MSI 下載連結"
-            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 x64 .msi 安裝"
+            Write-Err "找不到 $arch 的 MSI 下載連結"
+            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 $arch 的 .msi 安裝"
             return 'failed'
         }
         $wslMsi = "$env:TEMP\wsl-latest.msi"
         Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
-        Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing
+        Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing -TimeoutSec 1800
         $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
         Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
         if ($msiCode -eq 3010) { return 'reboot' }
@@ -975,6 +1157,7 @@ function Invoke-SetupAndService([string]$BackendSignins = '', $Backends = $null)
         $code = Invoke-WslStep -Label "安裝並啟動 AgEnD 服務" -Usually "通常不到 1 分鐘" -UpperMinutes 3 -Script ($AGEND_ENV + 'if systemctl --user is-active --quiet com.agend.fleet; then echo "AgEnD service is already running"; else agend install; fi')
         if ($code -eq 0) { return $true }
         Write-Err "AgEnD 服務沒有安裝成功（結束碼 $code）。設定已經存好，不用重新設定。"
+        Set-InstallFailure 'service'
         $again = Read-Host "  按 Enter 再試一次；輸入 n 再按 Enter 結束"
         if ($again -match '^\s*[nN]') { return $false }
     }
@@ -1265,6 +1448,7 @@ function Invoke-Watched {
     $printLine = {
         param([string]$line)
         & $clearStatus; Write-Host ("    " + $line) -ForegroundColor DarkGray
+        Write-InstallLog ("    " + $line)
         if ($OnLine) { & $OnLine $line }
     }
     $emit = {
@@ -1558,6 +1742,15 @@ function Get-MergedLinuxWslConfigScript([string]$Text, [string]$ExpectedBase64 =
 
 # Validate before any WSL, network, registry or installation action.
 $AgendInstallVersion = Get-SavedInstallVersion $InstallVersion $Force.IsPresent
+Start-InstallLog $InstallRunId
+# 沒有被接住的錯誤：記進安裝紀錄、說明停在哪裡，而不是只丟出一段 PowerShell 錯誤就結束（#2650 第 9 項）。
+trap {
+    Write-InstallLog ("unexpected error: " + $_.Exception.Message + " " + ($_.InvocationInfo.PositionMessage -replace "`r?`n", ' '))
+    Set-InstallFailure 'error'
+    Write-Err ("安裝程式遇到沒有預料到的錯誤，已經停下來：" + $_.Exception.Message)
+    Write-Info "之後再執行同一行安裝指令，會從還沒完成的步驟繼續。"
+    Read-Host "按 Enter 結束"; exit 1
+}
 
 Clear-Host
 Write-Host "=" * 43 -ForegroundColor Magenta
@@ -1669,25 +1862,30 @@ if (Stage-Done 1) {
 if ($wslStageVerified) {
     Write-Ok "WSL 發行版已重新確認，保留"
 } else {
-    # ── 1a: 檢查 WSL 功能是否已啟用 ──
-    Write-Info "檢查 WSL 功能狀態..."
-    $wslFeatureEnabled = $false
-    try {
-        $feature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -ErrorAction SilentlyContinue
-        if ($feature -and $feature.State -eq "Enabled") { $wslFeatureEnabled = $true }
-    } catch {
+    # ── 1a: 安裝前檢查（組建、架構、兩個 Windows 功能、虛擬化），缺哪個功能就啟用哪個（見 Get-WslPreflight）──
+    Write-Info "檢查這台電腦能不能用 WSL 2..."
+    $preflight = Get-WslPreflight
+    Write-Info ("Windows 組建 {0}，{1}；WSL 功能：{2}；虛擬機器平台：{3}" -f $preflight.Build, $preflight.Arch, $preflight.Features['Microsoft-Windows-Subsystem-Linux'], $preflight.Features['VirtualMachinePlatform'])
+    if (-not (Test-WslPreflight $preflight)) { Read-Host "按 Enter 結束"; exit 1 }
+    $featureStates = @($preflight.Features.Values)
+    if ($featureStates -contains 'Unknown') {
+        # 讀不到功能狀態（沒有 DISM 的 PowerShell 模組）：沿用以前的判斷，wsl --status 能用就當作已啟用。
         $statusOut = wsl --status 2>&1 | Out-String
-        if ($statusOut -notmatch "Usage" -and $statusOut -notmatch "引數") { $wslFeatureEnabled = $true }
+        if ($statusOut -match "Usage" -or $statusOut -match "引數") {
+            foreach ($n in $WSL_FEATURES) { if ($preflight.Features[$n] -eq 'Unknown') { $preflight.Features[$n] = 'Disabled' } }
+        }
     }
-
-    if (-not $wslFeatureEnabled) {
-        Write-Info "正在啟用 WSL 功能..."
-        $null = Invoke-Watched -Label "啟用 WSL 功能" -Usually "通常需要 1–3 分鐘" -UpperMinutes 5 -Encoding oem -File "dism.exe" -Arguments @("/online", "/enable-feature", "/featurename:Microsoft-Windows-Subsystem-Linux", "/all", "/norestart")
-        $null = Invoke-Watched -Label "啟用虛擬機器平台" -Usually "通常需要 1–3 分鐘" -UpperMinutes 5 -Encoding oem -File "dism.exe" -Arguments @("/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart")
-        Write-Ok "WSL 功能已啟用"
-
-        Mark-Stage "1a"
-        Request-Reboot "WSL 功能剛啟用，需要重新開機才能繼續"
+    if (@($preflight.Features.Values | Where-Object { $_ -ne 'Enabled' -and $_ -ne 'Unknown' }).Count -gt 0) {
+        Write-Info "正在啟用 WSL 需要的 Windows 功能..."
+        switch (Enable-WslFeatures $preflight.Features) {
+            'failed' { Read-Host "按 Enter 結束"; exit 1 }
+            'reboot' {
+                Write-Ok "WSL 需要的 Windows 功能已啟用，重新開機後生效"
+                Mark-Stage "1a"
+                Request-Reboot "WSL 功能剛啟用，需要重新開機才能繼續"
+            }
+            default { Write-Ok "WSL 功能已啟用" }
+        }
     } else {
         Write-Ok "WSL 功能已啟用"
     }
@@ -1696,7 +1894,7 @@ if ($wslStageVerified) {
     switch (Invoke-WslUpdateStage) {
         'reboot' { Request-Reboot "WSL 已安裝，需要重新開機才能生效" }
         'verify-reboot' { Mark-Stage "1b"; Request-Reboot "WSL 安裝完成，但還需要重新開機才能使用" }
-        'failed' { Read-Host "按 Enter 結束"; exit 1 }
+        'failed' { Set-InstallFailure 'download'; Read-Host "按 Enter 結束"; exit 1 }
     }
 
     # ── 1c: 設定 WSL 預設版本為 2 ──
@@ -1751,6 +1949,16 @@ if ($wslStageVerified) {
             }
         } else {
             $null = Invoke-Watched -Label "下載並安裝 $UBUNTU_DISTRO" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")
+            # 較舊的 WSL 不認得 --location，或安裝沒有成功：和另外安裝時一樣，改用官方映像檔匯入（#2650 第 7 項）。
+            $afterFresh = Get-WslDistroNames
+            if ($null -ne $afterFresh -and $afterFresh -notcontains $UBUNTU_DISTRO) {
+                Write-Warn "$UBUNTU_DISTRO 沒有用這個方式裝好，改用官方的 Ubuntu 映像檔..."
+                if (-not (Install-AgendDistro $UBUNTU_DISTRO $wslPath)) {
+                    Write-Err "$UBUNTU_DISTRO 沒有安裝成功。"
+                    Write-Info "  請確認網路正常，再執行同一行安裝指令。"
+                    Read-Host "按 Enter 結束"; exit 1
+                }
+            }
         }
 
         # 驗證
@@ -1764,10 +1972,11 @@ if ($wslStageVerified) {
             Read-Host "按 Enter 結束"; exit 1
         } else {
             Write-Err "Ubuntu 安裝失敗！"
+            if ((Test-Virtualization) -eq $false) { Write-VirtualizationHint }
             Write-Info "可能原因："
             Write-Info "  - 需要重新開機（請重開機後再執行同一行安裝指令）"
             Write-Info "  - 網路問題（無法下載 Ubuntu）"
-            Write-Info "  - Windows 版本太舊（需要 Win10 2004 以上或 Win11）"
+            Write-Info "  - BIOS/UEFI 的虛擬化沒有開啟，或公司的安全性原則不允許虛擬機器平台"
             Read-Host "按 Enter 結束"; exit 1
         }
     }
@@ -2077,6 +2286,7 @@ Write-Info "    agend web               # 取得儀表板的一次性登入碼"
 Write-Info ("    手動啟動：" + (Get-AgendStartHint $UBUNTU_DISTRO $AGEND_USER))
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
+Save-InstallReceipt 'done' @($skippedLogins | ForEach-Object { [string]$_.Key })
 
 # 清除進度檔與自動接續的登記
 $missingBackends = @($selected | Where-Object { -not (Get-InstalledBackend $_) })

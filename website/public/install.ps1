@@ -26,6 +26,50 @@
     }
     $installVersion = Resolve-AgendInstallVersion ([string]$env:AGEND_VERSION)
 
+    # The support files (#2650 item 9). The installer keeps a redacted log of what it showed in
+    # %LOCALAPPDATA%\AgEnD\install-logs and a receipt, last.json, with this run's id, its stage, its outcome and the kind of
+    # failure. This window cannot see the elevated one, so when it ends badly - a nonzero code, a closed window - it reads
+    # the receipt and says which stage stopped and where the log is. What happens before the installer runs (a declined
+    # or blocked approval, a removed download) goes to bootstrap.log in the same folder.
+    $logDir = $null
+    if ($env:LOCALAPPDATA) { $logDir = Join-Path (Join-Path $env:LOCALAPPDATA 'AgEnD') 'install-logs' }
+    $runId = [Guid]::NewGuid().ToString('N')
+    function Write-BootstrapLog([string]$text) {
+        if (-not $logDir) { return }
+        try {
+            $null = New-Item -ItemType Directory -Path $logDir -Force
+            $file = Join-Path $logDir 'bootstrap.log'
+            if ((Test-Path -LiteralPath $file) -and (Get-Item -LiteralPath $file).Length -gt 1MB) { Remove-Item -LiteralPath $file -Force }
+            [IO.File]::AppendAllText($file, ((Get-Date).ToString('yyyy-MM-dd HH:mm:ss') + " [$runId] " + $text + "`r`n"))
+        } catch { }
+    }
+    function Show-SupportFile([string]$path) {
+        if ($path) { Write-Host "AgEnD: support file (attach it when you report the problem): $path" -ForegroundColor Yellow }
+    }
+    # This run's receipt, or $null (none, unreadable, or written by another run).
+    function Read-InstallReceipt {
+        if (-not $logDir) { return $null }
+        try {
+            $r = [IO.File]::ReadAllText((Join-Path $logDir 'last.json')) | ConvertFrom-Json
+            if ([string]$r.run -eq $runId) { return $r }
+        } catch { }
+        return $null
+    }
+    # What the elevated launch error was: 'declined' (the UAC prompt was answered No), 'blocked' (a security policy:
+    # AppLocker, WDAC, Software Restriction or an administrator's rule), 'quarantined' (antivirus took the file) or 'failed'.
+    function Get-LaunchFailure($err) {
+        $e = $err.Exception
+        while ($e) {
+            switch ($e.NativeErrorCode) {
+                1223 { return 'declined' }
+                { $_ -in 1260, 4551, 786 } { return 'blocked' }
+                { $_ -in 225, 226 } { return 'quarantined' }
+            }
+            $e = $e.InnerException
+        }
+        return 'failed'
+    }
+
     # The elevated window. With Windows Terminal (wt.exe, its app alias) it opens there, not in the old console host,
     # whose fonts and encodings handle Chinese poorly; AGEND_INSTALL_TERMINAL=conhost keeps the old window. wt.exe hands
     # the tab to WindowsTerminal.exe and returns at once, so it cannot report the installer's exit code: a small wrapper
@@ -43,6 +87,8 @@
             $version = Resolve-AgendInstallVersion $installerArgs[$versionIndex + 1]
             $versionArg = " -InstallVersion '$version'"
         }
+        $runIndex = [array]::IndexOf($installerArgs, '-InstallRunId')
+        if ($runIndex -ge 0 -and $installerArgs[$runIndex + 1] -match '^[0-9a-f]{32}$') { $versionArg += " -InstallRunId '$($installerArgs[$runIndex + 1])'" }
         $declinedError = { $e = $args[0].Exception; while ($e) { if ($e.NativeErrorCode -eq 1223) { return $true }; $e = $e.InnerException }; return $false }
         $wt = $null
         if ($terminal -ne 'conhost') { $wt = Get-Command -Name 'wt.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -55,8 +101,7 @@
                 "`$started = $(& $sq $started); `$cancel = $(& $sq $cancel); `$done = $(& $sq $done)",
                 "try { `$f = [IO.File]::Open(`$started, 'CreateNew', 'Write'); `$b = [Text.Encoding]::ASCII.GetBytes([string]`$PID); `$f.Write(`$b, 0, `$b.Length); `$f.Close() } catch { return }",
                 "if (Test-Path -LiteralPath `$cancel) { return }",
-                "& $(& $sq $tmp)$force$versionArg",
-                "`$c = `$LASTEXITCODE; if (`$null -eq `$c) { `$c = 0 }",
+                "`$c = `$null; try { & $(& $sq $tmp)$force$versionArg; `$c = `$LASTEXITCODE } catch { Write-Host `$_; `$c = 1 }; if (`$null -eq `$c) { `$c = 0 }",
                 "[IO.File]::WriteAllText(`$done + '.tmp', [string]`$c); Move-Item -LiteralPath (`$done + '.tmp') -Destination `$done -Force"
             )
             $launched = $false
@@ -70,6 +115,7 @@
                 $launched = $true
             } catch {
                 if (& $declinedError $_) { return @{ Outcome = 'declined'; Code = $null } }
+                Write-BootstrapLog ("Windows Terminal launch failed: " + $_.Exception.Message)
                 Write-Host "AgEnD: Windows Terminal could not open the installer ($($_.Exception.Message)); using a PowerShell window." -ForegroundColor Yellow
             }
             if ($launched) {
@@ -111,7 +157,7 @@
             $proc = Start-Process -FilePath $shell -ArgumentList $quoted -Verb RunAs -Wait -PassThru
             return @{ Outcome = 'done'; Code = $proc.ExitCode }
         } catch {
-            return @{ Outcome = 'declined'; Code = $null }
+            return @{ Outcome = (Get-LaunchFailure $_); Code = $null; Error = $_.Exception.Message }
         }
     }
 
@@ -140,6 +186,7 @@
         } catch {
             Write-Host "AgEnD: the download failed: $($_.Exception.Message)" -ForegroundColor Red
             Write-Host "Check your internet connection, then run the same command again."
+            Write-BootstrapLog ("download failed: " + $_.Exception.Message)
             return
         }
 
@@ -150,10 +197,12 @@
         if ($bytes.Length -lt 1024 -or -not $bom -or $text -notmatch 'function Check-Admin') {
             Write-Host "AgEnD: the downloaded file is not the AgEnD installer ($($bytes.Length) bytes). Nothing was run." -ForegroundColor Red
             Write-Host "Try again later, or download install-agend.ps1 from the install page and run it by hand."
+            Write-BootstrapLog ("downloaded file rejected: $($bytes.Length) bytes")
             return
         }
+        $validatedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmp).Hash
 
-        $installerArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp)
+        $installerArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp, '-InstallRunId', $runId)
         if ($installVersion) { $installerArgs += @('-InstallVersion', $installVersion) }
         if ($env:AGEND_INSTALL_FORCE -match '^(1|true|yes)$') { $installerArgs += '-Force' }
 
@@ -161,6 +210,17 @@
         if ($onWindows) {
             $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
             $admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        }
+
+        # Antivirus or a proxy may remove or replace the file after the check above: run only the bytes that were checked.
+        $nowHash = $null
+        try { $nowHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmp -ErrorAction Stop).Hash } catch { }
+        if ($nowHash -ne $validatedHash) {
+            Write-Host "AgEnD: the downloaded installer was removed or changed before it could run (often antivirus or a security tool). Nothing was installed." -ForegroundColor Red
+            Write-Host "Do not turn protection off. Ask your IT team whether install-agend.ps1 from songsid.github.io may run, then run the same command again."
+            Write-BootstrapLog 'downloaded installer removed or changed before it ran (quarantine?)'
+            Show-SupportFile $(if ($logDir) { Join-Path $logDir 'bootstrap.log' })
+            return
         }
 
         if (-not $onWindows -or $admin) {
@@ -173,19 +233,50 @@
             $terminal = 'auto'
             if ($env:AGEND_INSTALL_TERMINAL) { $terminal = $env:AGEND_INSTALL_TERMINAL.Trim().ToLowerInvariant() }
             $result = Start-ElevatedInstaller $shell $installerArgs $tmp $terminal
-            if ($result.Outcome -eq 'declined') {
-                Write-Host "AgEnD: Administrator approval was declined, so nothing was installed." -ForegroundColor Yellow
-                Write-Host "Run the same command again and choose Yes, or open PowerShell as Administrator and paste it there."
+            if ($result.Outcome -ne 'done' -and $result.Outcome -ne 'closed') {
+                Write-BootstrapLog ("elevated launch: " + $result.Outcome + $(if ($result.Error) { ': ' + $result.Error }))
+                switch ($result.Outcome) {
+                    'declined' {
+                        Write-Host "AgEnD: Administrator approval was declined, so nothing was installed." -ForegroundColor Yellow
+                        Write-Host "Run the same command again and choose Yes, or open PowerShell as Administrator and paste it there."
+                        return
+                    }
+                    'blocked' {
+                        Write-Host "AgEnD: a Windows security policy on this computer blocked the installer ($($result.Error)). Nothing was installed." -ForegroundColor Red
+                        Write-Host "This is usually set by your organisation (AppLocker, WDAC or similar). Do not try to turn it off; ask your IT team to allow the AgEnD installer."
+                    }
+                    'quarantined' {
+                        Write-Host "AgEnD: antivirus stopped the installer ($($result.Error)). Nothing was installed." -ForegroundColor Red
+                        Write-Host "Do not turn protection off. Ask your IT team whether install-agend.ps1 from songsid.github.io may run, then run the same command again."
+                    }
+                    default {
+                        Write-Host "AgEnD: Windows could not start the installer as Administrator ($($result.Error)). Nothing was installed." -ForegroundColor Red
+                        Write-Host "Open PowerShell as Administrator and paste the same command there, or ask your IT team for help."
+                    }
+                }
+                Show-SupportFile $(if ($logDir) { Join-Path $logDir 'bootstrap.log' })
                 return
             }
             if ($result.Outcome -eq 'closed') {
                 Write-Host "AgEnD: the installer window was closed before it finished." -ForegroundColor Yellow
                 Write-Host "Run the same command again: it carries on where it stopped."
+                $receipt = Read-InstallReceipt
+                if ($receipt) { Write-Host "AgEnD: it was at stage $($receipt.stage)."; Show-SupportFile ([string]$receipt.log) }
                 return
             }
             $code = $result.Code
         }
-        if ($code -ne 0) { Write-Host "AgEnD: the installer ended with code $code. See its window for why." -ForegroundColor Yellow }
+        $receipt = Read-InstallReceipt
+        # A receipt that says done is the installer's own word; a stale exit code from its last native command is not.
+        if ($receipt -and $receipt.outcome -eq 'done') { $code = 0 }
+        if ($code -ne 0) {
+            Write-Host "AgEnD: the installer ended with code $code. See its window for why." -ForegroundColor Yellow
+            if ($receipt) {
+                $why = ''; if ($receipt.failure) { $why = " ($($receipt.failure))" }
+                Write-Host "AgEnD: it stopped at stage $($receipt.stage)$why. Running the same command again carries on from there."
+                Show-SupportFile ([string]$receipt.log)
+            }
+        }
         else { Write-Host "AgEnD: the installer finished. If it asked you to restart Windows, run the same command again afterwards." }
     } finally {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
