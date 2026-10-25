@@ -35,6 +35,11 @@ export const OFFICE_SHARE_LIMITS = {
 } as const;
 /** "All offices": every stored office (and whoever is in none); otherwise a stored office's id. */
 export const ALL_OFFICES = "all";
+/**
+ * An office's members after the share's cut, when every one it named is out of the share: a team no chart has (a team's
+ * name has no control character), so the page finds nobody — never [], which the page reads as everyone.
+ */
+export const NOBODY = "team:\u0000";
 
 /** An ended (or unknown) share's page: the same words whichever it is. */
 export const ENDED_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>AgEnD Office</title></head>`
@@ -224,6 +229,8 @@ export class OfficeShareView {
   readonly offices: Office[] | null;
   readonly scope: ReadonlySet<string>;
   private readonly people: Array<Record<string, unknown>>;
+  /** fleet.yaml's teams with someone shown, each with only its shown members. */
+  private readonly teams: Array<{ name: string; members: string[] }>;
 
   constructor(private readonly share: Pick<OfficeShare, "office" | "text">, private readonly src: OfficeShareSource) {
     const status = src.status();
@@ -242,6 +249,7 @@ export class OfficeShareView {
       this.offices = one ? [one] : null;
       this.scope = new Set(one ? officeMembers(one, chart).filter(n => chart.names.includes(n)) : []);
     }
+    this.teams = teams.map(t => ({ name: t.name, members: t.members.filter(n => this.scope.has(n)) })).filter(t => t.members.length);
     this.people = known.filter(i => this.scope.has(i.name as string)).map(i => {
       const out: Record<string, unknown> = {};
       for (const k of PERSON_FIELDS) if (Object.prototype.hasOwnProperty.call(i, k) && i[k] !== undefined) out[k] = i[k];
@@ -254,8 +262,7 @@ export class OfficeShareView {
   /** The status frame as the page's app store takes it, and the chart's structure (no descriptions, threads or info). */
   state(): Record<string, unknown> {
     const org = this.src.org();
-    const teams = (Array.isArray(org.teams) ? org.teams : []).filter(isObj).map(t => ({ name: t.name, members: strings(t.members).filter(n => this.scope.has(n)) }))
-      .filter(t => typeof t.name === "string" && t.members.length);
+    const teams = this.teams;
     const traffic = this.src.traffic();
     const among = (v: unknown) => isObj(v) && typeof v.from === "string" && typeof v.to === "string" && this.scope.has(v.from) && this.scope.has(v.to);
     return {
@@ -267,21 +274,52 @@ export class OfficeShareView {
     };
   }
 
-  /** /ui/offices's answer, the shared office (or all) only. */
+  /**
+   * /ui/offices's answer, the shared office (or all) only, each cut to the share (#2637 review): its members only those
+   * shown (an instance, or a team with someone shown; NOBODY when none is), and a seat kept for someone not shown keeps
+   * its place but not the name. The stored offices are never changed.
+   */
   officeList(): { rev: number; offices: Office[]; readable: boolean } {
-    return { rev: this.src.offices().rev, offices: this.offices ?? [], readable: true };
+    const teams = new Set(this.teams.map(t => t.name));
+    const cut = (o: Office): Office => {
+      const members = o.members.filter(m => (m.startsWith("team:") ? teams.has(m.slice(5)) : this.scope.has(m)));
+      const out: Office = { ...o, members: o.members.length && !members.length ? [NOBODY] : members };
+      if (o.layout) {
+        out.layout = { ...o.layout, seats: o.layout.seats.map(({ instance, ...seat }) => (instance !== undefined && this.scope.has(instance) ? { ...seat, instance } : seat)) };
+      }
+      return out;
+    };
+    return { rev: this.src.offices().rev, offices: (this.offices ?? []).map(cut), readable: true };
   }
 
   /** /ui/office-acts's answer: the acts of the people shown, in a shown office, without their line unless shared. */
   acts(): { acts: OfficeAct[]; now: number } {
     const ids = new Set((this.offices ?? []).map(o => o.id));
     const acts = this.src.acts().filter(a => this.scope.has(a.instance) && ids.has(a.office)).map(a => {
-      if (this.share.text) return a;
-      const { say: _say, ...rest } = a;
-      void _say;
-      return rest;
+      // Walking to someone not shown (#2637 review): the act stays, without whom it walks to.
+      const { say, person, ...rest } = a;
+      return { ...rest, ...(person !== undefined && this.scope.has(person) ? { person } : {}), ...(this.share.text && say !== undefined ? { say } : {}) };
     });
     return { acts, now: Date.now() };
+  }
+
+  /**
+   * A pack's answer as this share gets it (#2637 review): its manifest's instance names cut to the share — `byInstance`
+   * only for people shown, a furniture item's `activeFor` only them (none left: [], which watches nobody, never the
+   * missing key, which watches everyone). A copy: the kept pack is never changed.
+   */
+  pack(answer: unknown): unknown {
+    if (!isObj(answer) || !isObj(answer.manifest)) return answer;
+    const manifest: Record<string, unknown> = { ...answer.manifest };
+    if (isObj(manifest.byInstance)) manifest.byInstance = Object.fromEntries(Object.entries(manifest.byInstance).filter(([k]) => this.scope.has(k)));
+    if (Array.isArray(manifest.furniture)) {
+      manifest.furniture = manifest.furniture.map(f => {
+        if (!isObj(f) || f.activeFor === undefined) return f;
+        const names = (Array.isArray(f.activeFor) ? f.activeFor : [f.activeFor]).filter((n): n is string => typeof n === "string" && this.scope.has(n));
+        return { ...f, activeFor: names };
+      });
+    }
+    return { ...answer, manifest };
   }
 
   /** The packs the shown offices are drawn in (a pack no shown office names is not offered). */
@@ -309,7 +347,7 @@ export interface OfficeShareGateway {
  *   /o/<t>/offices                          OfficeShareView.officeList()
  *   /o/<t>/office-acts                      OfficeShareView.acts()
  *   /o/<t>/office-skins                     the packs the shown offices use
- *   /o/<t>/office-skins/<id>                one of them (?v=<sha>: immutable)
+ *   /o/<t>/office-skins/<id>                one of them, its instance names cut to the share (never cached)
  *   /o/<t>/office-skins/<id>/img/<sha>.png  its picture (immutable)
  *   /o/<t>/js/<file>.js                     `script` (the page's modules; 404 while there are none)
  *
@@ -405,8 +443,8 @@ export function createOfficeShareGateway(opts: {
     if (one) {
       const pack = used.has(one[1]!) ? skins.get(one[1]!) : null;
       if (!pack) return empty(res, 404);
-      const sha = isObj(pack) && typeof pack.sha === "string" ? pack.sha : null;
-      return json(pack, sha && url.searchParams.get("v") === sha ? "public, max-age=31536000, immutable" : "no-store");
+      // Never cached: what it names follows who is shown now (view.pack).
+      return json(view.pack(pack));
     }
     const picture = /^\/office-skins\/([A-Za-z0-9_-]{1,40})\/img\/([0-9a-f]{32})\.png$/.exec(rest);
     if (picture) {

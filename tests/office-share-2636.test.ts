@@ -5,7 +5,7 @@
  */
 import { request } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { ALL_OFFICES, ENDED_PAGE, OFFICE_SHARE_LIMITS, OfficeShareLimiter, OfficeShareView, OfficeShares, createOfficeShareGateway, hashShareToken, shareMaxMinutes,
+import { ALL_OFFICES, ENDED_PAGE, NOBODY, OFFICE_SHARE_LIMITS, OfficeShareLimiter, OfficeShareView, OfficeShares, createOfficeShareGateway, hashShareToken, shareMaxMinutes,
   type OfficeShareGateway, type OfficeShareSource } from "../src/office-share.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { validateFleetConfig } from "../src/config-validator.js";
@@ -173,6 +173,73 @@ describe("OfficeShareView (#2636)", () => {
   });
 });
 
+describe("instance names outside the share stay out (#2637 review)", () => {
+  const office: Office = { id: "mix", name: "Mix", skin: "pack1", members: ["dev-a", "ghost", "ops-bot", "team:dev", "team:ops"],
+    layout: { seats: [{ id: "s1", x: 1, y: 2, instance: "ghost" }, { id: "s2", x: 3, y: 4, instance: "dev-a" }, { id: "s3", x: 5, y: 6 }], waypoints: [], edges: [] } };
+  const mixed = (over: Partial<OfficeShareSource> = {}) => source({ offices: () => ({ rev: 1, offices: [office, { id: "solo", name: "Solo", skin: "pixel", members: ["ghost"] }] }), ...over });
+
+  it("an office's members and seats name only who is shown; the stored office is unchanged", () => {
+    const before = JSON.stringify(office);
+    const v = new OfficeShareView({ office: "mix", text: false }, mixed());
+    const [o] = v.officeList().offices;
+    expect(o!.members).toEqual(["dev-a", "ops-bot", "team:dev", "team:ops"]);
+    expect(o!.layout!.seats).toEqual([{ id: "s1", x: 1, y: 2 }, { id: "s2", x: 3, y: 4, instance: "dev-a" }, { id: "s3", x: 5, y: 6 }]);
+    expect(JSON.stringify(v.officeList())).not.toContain("ghost");
+    expect(JSON.stringify(office)).toBe(before);
+  });
+
+  it("a team with nobody shown is not named, and an office left with nobody finds nobody (never everyone)", () => {
+    const v = new OfficeShareView({ office: ALL_OFFICES, text: false }, mixed({ hidden: n => n === "ghost" || n === "ops-bot" }));
+    const [mix, solo] = v.officeList().offices;
+    expect(mix!.members).toEqual(["dev-a", "team:dev"]);
+    expect(solo!.members).toEqual([NOBODY]);
+  });
+
+  it("an act walking to someone not shown keeps going, without the name", () => {
+    const acts = () => [{ instance: "dev-a", office: "mix", person: "ghost", pose: "working" as const, since: 1, until: 2, state: "idle" },
+      { instance: "dev-b", office: "mix", person: "dev-a", since: 1, until: 2, state: "idle" }];
+    const v = new OfficeShareView({ office: "mix", text: true }, mixed({ acts }));
+    expect(v.acts().acts).toEqual([{ instance: "dev-a", office: "mix", pose: "working", since: 1, until: 2, state: "idle" },
+      { instance: "dev-b", office: "mix", person: "dev-a", since: 1, until: 2, state: "idle" }]);
+  });
+
+  it("a pack's byInstance and activeFor name only who is shown (none left: [], which watches nobody); the kept pack is unchanged", () => {
+    const kept = { id: "pack1", sha: "s", manifest: { id: "pack1", byInstance: { "dev-a": "fox", ghost: "cat", "ops-bot": "owl" },
+      furniture: [{ id: "f1", activeFor: "ghost" }, { id: "f2", activeFor: ["dev-a", "ghost"] }, { id: "f3" }] }, files: {} };
+    const before = JSON.stringify(kept);
+    const v = new OfficeShareView({ office: "eng", text: false }, source());
+    const out = v.pack(kept) as { manifest: Record<string, unknown> };
+    expect(out.manifest.byInstance).toEqual({ "dev-a": "fox" });
+    expect(out.manifest.furniture).toEqual([{ id: "f1", activeFor: [] }, { id: "f2", activeFor: ["dev-a"] }, { id: "f3" }]);
+    expect(JSON.stringify(kept)).toBe(before);
+  });
+
+  it("through the gateway too: /offices, /office-acts and a pack carry no outside name", async () => {
+    const shares = new OfficeShares({ ...clock(), ...noTimer });
+    const skins = { list: () => ({ packs: [{ id: "pack1" }] }), picture: () => null,
+      get: () => ({ id: "pack1", sha: "s", manifest: { id: "pack1", byInstance: { "dev-a": "fox", ghost: "cat", "ops-bot": "owl" } }, files: {} }) };
+    const acts = () => [{ instance: "dev-a", office: "mix", person: "ghost", since: 1, until: 2, state: "idle" }];
+    const gw = createOfficeShareGateway({ shares, source: mixed({ skins, acts, offices: () => ({ rev: 1, offices: [{ ...office, members: ["team:dev"] }] }) }) });
+    try {
+      const base = await gw.listen();
+      gw.setHost("abc.trycloudflare.com");
+      const r = shares.create({ office: "mix", owner: "o", exists: () => true });
+      if (!r.ok) throw new Error(r.error);
+      for (const path of ["offices", "office-acts", "office-skins/pack1"]) {
+        const body = await new Promise<string>((resolve, reject) => {
+          const req = request(new URL(`/o/${r.token}/${path}`, base), { headers: { host: "abc.trycloudflare.com" } }, res => {
+            const c: Buffer[] = []; res.on("data", d => c.push(d)); res.on("end", () => resolve(Buffer.concat(c).toString()));
+          });
+          req.on("error", reject); req.end();
+        });
+        expect(body, path).toContain("dev-a");
+        expect(body, path).not.toContain("ghost");
+        expect(body, path).not.toContain("ops-bot");
+      }
+    } finally { gw.close(); }
+  });
+});
+
 describe("the share gateway (#2636)", () => {
   const HOST = "abc-def.trycloudflare.com";
   let gw: OfficeShareGateway | null = null;
@@ -239,7 +306,7 @@ describe("the share gateway (#2636)", () => {
     expect(pic.headers["cache-control"]).toContain("immutable");
     expect(pic.body).toBe("png-pack1");
     expect((await get(`/o/${r.token}/office-skins/pack2`)).status).toBe(404);
-    expect((await get(`/o/${r.token}/office-skins/pack1?v=sha-pack1`)).headers["cache-control"]).toContain("immutable");
+    expect((await get(`/o/${r.token}/office-skins/pack1?v=sha-pack1`)).headers["cache-control"]).toBe("no-store");
   });
 
   it("an unknown, revoked or expired link: its page says it ended, its reads are empty 404s", async () => {
