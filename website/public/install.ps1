@@ -43,6 +43,8 @@
             $version = Resolve-AgendInstallVersion $installerArgs[$versionIndex + 1]
             $versionArg = " -InstallVersion '$version'"
         }
+        $sidIndex = [array]::IndexOf($installerArgs, '-InitiatingSid')
+        if ($sidIndex -ge 0 -and $installerArgs[$sidIndex + 1] -match '^S-1-\d+(-\d+)+$') { $versionArg += " -InitiatingSid '$($installerArgs[$sidIndex + 1])'" }
         $declinedError = { $e = $args[0].Exception; while ($e) { if ($e.NativeErrorCode -eq 1223) { return $true }; $e = $e.InnerException }; return $false }
         $wt = $null
         if ($terminal -ne 'conhost') { $wt = Get-Command -Name 'wt.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -170,6 +172,12 @@
         } else {
             Write-Host "AgEnD: the installer needs Administrator rights (it enables WSL). Approve the Windows prompt;"
             Write-Host "it opens in a new window, and this one waits for it."
+            # Who started it (#2650 item 5): WSL, the shortcuts and the resume after a restart belong to the account the
+            # installer runs as. If the prompt is answered with another administrator's account, the installer sees this SID
+            # differ from its own and stops, naming both accounts, instead of installing everything for the other one.
+            $sid = $null
+            try { $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { }
+            if ($sid -match '^S-1-\d+(-\d+)+$') { $installerArgs += @('-InitiatingSid', $sid) }
             $terminal = 'auto'
             if ($env:AGEND_INSTALL_TERMINAL) { $terminal = $env:AGEND_INSTALL_TERMINAL.Trim().ToLowerInvariant() }
             $result = Start-ElevatedInstaller $shell $installerArgs $tmp $terminal
