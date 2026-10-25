@@ -120,13 +120,6 @@ export const COMMANDS: readonly CommandSpec[] = [
       classic: { refuse: ["profile.general_only"] }, none: { refuse: ["profile.general_only"] } },
     telegram: tgGeneralOnly(FLEET_ADMIN, "profile"),
   },
-  // #2636: Office share links — General, a fleet admin (the link goes privately: ephemeral on Discord, a DM on Telegram).
-  {
-    name: "office_share", slash: true, denied: NOT_AUTHORIZED,
-    scopes: { general: { level: "fleet-admin" }, fleet: { refuse: ["office_share.general_only"] },
-      classic: { refuse: ["office_share.general_only"] }, none: { refuse: ["office_share.general_only"] } },
-    telegram: tgGeneralOnly(FLEET_ADMIN, "office_share"),
-  },
   // ── ClassicBot lifecycle ──
   {
     name: "start", slash: true, denied: NOT_AUTHORIZED,
@@ -238,7 +231,7 @@ export const TELEGRAM_MENUS = {
   fleet: {
     scopes: ["general", "fleet"],
     names: ["status", "sysinfo", "web", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
-      "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility", "office_share"],
+      "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility"],
   },
   /**
    * Every other chat (`default` and `all_group_chats`): ClassicBot private chats and groups, the ones with an agent and

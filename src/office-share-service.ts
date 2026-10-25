@@ -170,17 +170,3 @@ export class OfficeShareService {
     return stopping;
   }
 }
-
-/** What a person is told when a share could not be made (en / zh-TW), by refusal and reason. */
-export function officeShareRefusalText(r: { error: OfficeShareRefusal; reason?: string }, lang: "en" | "zh-TW"): string {
-  const zh = lang === "zh-TW";
-  switch (r.error) {
-    case "disabled": return zh ? "這個 fleet 已關閉辦公室分享連結（web.office_share.enabled: false）。" : "Office share links are off on this fleet (web.office_share.enabled: false).";
-    case "office": return zh ? "找不到這間辦公室。" : "There is no such office.";
-    case "duration": return zh ? "時間要在 15 分鐘到上限（預設 24 小時）之間。" : "The time must be from 15 minutes up to the limit (24 hours by default).";
-    case "too_many": return zh ? "同時最多 10 個分享連結：先撤銷一個。" : "At most 10 share links can be open at once: revoke one first.";
-    case "tunnel":
-      if (r.reason === "rate-limited") return zh ? "Cloudflare 目前限制新的臨時通道，請過幾分鐘再試。" : "Cloudflare is limiting new quick tunnels right now. Try again in a few minutes.";
-      return zh ? `分享連結的通道沒有啟動（${r.reason ?? "unknown"}），請稍後再試。` : `The share link's tunnel did not start (${r.reason ?? "unknown"}). Try again later.`;
-  }
-}

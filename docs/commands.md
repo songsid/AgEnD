@@ -36,7 +36,6 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok). | Admin |
 | 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
 | 🔒 `/tips advanced on` | Fleet-wide manual unlock of the advanced tips tier (independent of the per-user dismiss-count unlock). Currently has no visible effect while the beginner-only rollout stage is active — see the `/tips` row above. | Admin |
-| 🔒 `/office_share [office\|all] [30m\|1h\|…\|24h] [text]` | A read-only link to the live Office view for people outside the fleet, with no sign-in, until it ends (1 hour by default, 15 minutes to `web.office_share.max_hours`). The link comes privately (Discord: an ephemeral reply; Telegram: a DM, or no link); General hears who made it. `list` shows the open ones, `revoke <id\|all>` ends them. General topic only. See [web dashboard](web-dashboard.md#office-share-links). | Admin |
 | 🔒 `/visibility [full\|summary\|hidden]` | How bot-to-bot (cross-instance) messages appear in instance topics: `full` posts the whole message (the default, as before), `summary` one line per message, `hidden` nothing. With a mode it sets the fleet default and saves it to `fleet.yaml` (`defaults.cross_instance_visibility`); with none it shows the current setting and which instances have their own. Delivery and the Mirror Topic are never affected. General topic only. See [features](features.md#bot-to-bot-message-visibility). | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
@@ -96,7 +95,6 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/profile [seconds]` | Record the running fleet’s CPU profile without restarting (default 60 s, maximum 1,800 s). General only; completion posts the local path and size, not the file. An active recording refuses another request and reports seconds left. | Fleet admin on the General topic’s owner adapter |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
-| 🔒 `/office_share [args]` | A read-only, time-limited link to the live Office view (`list`, `revoke <id\|all>`); General only | Admin |
 | 🔒 `/visibility [mode]` | Show, or set (`mode: full\|summary\|hidden`), how bot-to-bot messages appear in instance channels; saved to `fleet.yaml` | Admin |
 | 🔒 `/login [backend] [cancel]` | Remote CLI sign-in, installing the CLI first when it is missing (sign-in: `claude-code`/`codex`/`kiro-cli`/`grok`; install only: `opencode`, `muse`; an absent `antigravity` can be installed, but its sign-in is refused — no isolated login sub-command) | Admin |
 | 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |

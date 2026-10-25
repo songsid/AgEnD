@@ -1,8 +1,8 @@
 /**
  * #2636 part 3: Office share links on the dashboard and in General — GET / POST /ui/office-share and DELETE
  * /ui/office-share/<id|all> (an admin session on the dashboard reached directly only; never the public link; refusals
- * say why, a 429 included), the notice in General, and /office_share's words (make, list, revoke; a link goes only
- * privately: no DM, no link). A real FleetManager with a fake share tunnel: no process, no network.
+ * say why, a 429 included) and the notice in General. No chat command (the user, #2636 follow-up): every chat surface
+ * refuses to know it. A real FleetManager with a fake share tunnel: no process, no network.
  */
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -131,63 +131,51 @@ describe("/ui/office-share (#2636)", () => {
     } finally { await g.stop(); }
   });
 
-  it("never over the public link: not routed there, and refused by the handler too", async () => {
-    for (const [m, p] of [["GET", "/ui/office-share"], ["POST", "/ui/office-share"], ["DELETE", "/ui/office-share/all"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
+  it("over the public link (the user's choice): a fleet admin's session lists, makes and revokes; read-only and guest sessions never", async () => {
+    for (const [m, p] of [["GET", "/ui/office-share"], ["POST", "/ui/office-share"], ["DELETE", "/ui/office-share/all"], ["DELETE", "/ui/office-share/a1b2c3d4"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
+    for (const [m, p] of [["PUT", "/ui/office-share"], ["DELETE", "/ui/office-share/x"], ["GET", "/ui/office-share/a1b2c3d4"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
     const f = await fleet();
     try {
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
       const { bindGatewayRequest } = await import("../src/web-request-context.js");
-      const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/office-share", headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}` }, destroy() {}, resume() {} });
-      bindGatewayRequest(req as never, { surface: "gateway", named: false, exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
-      let status = 0, body = "";
-      const res = { headersSent: false, setHeader() {}, writeHead(s: number) { status = s; return res; }, end(b?: string) { body = b ?? ""; } };
-      expect(handleWebRequest(req as never, res as never, new URL("https://x.trycloudflare.com/ui/office-share"), f.fm)).toBe(true);
-      expect([status, JSON.parse(body).error]).toEqual([403, "office_share_not_over_public_link"]);
+      const HOST = "x.trycloudflare.com", EXPOSURE = "e".repeat(32);
+      const session = (tier: "admin" | "read" | "guest") => f.fm.webSessions.create({ tier, surface: "gateway", exposureId: EXPOSURE, label: "t", tokenEpoch: tokenEpoch(f.fm.webToken),
+        ...(tier === "guest" ? { owner: { adapterId: "discord", userId: "7" } } : { owner: { adapterId: "discord", userId: "1" } }) }).sessionId;
+      const call = (sid: string, method: string, path: string, body?: unknown) => new Promise<{ status: number; body: any }>(resolve => {
+        let code = 0;
+        const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end(b: string) { resolve({ status: code, body: b ? JSON.parse(String(b)) : null }); } };
+        const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: HOST, cookie: `__Host-agend_session=${sid}`, origin: `https://${HOST}`, "x-agend-csrf": csrfTokenFor(sid), "content-type": "application/json" }, destroy() {}, resume() {} });
+        bindGatewayRequest(req as never, { surface: "gateway", named: false, exposureId: EXPOSURE, expectedOrigin: `https://${HOST}`, isCurrent: () => true });
+        expect(handleWebRequest(req as never, res, new URL(`https://${HOST}${path}`), f.fm)).toBe(true);
+        if (body !== undefined) setImmediate(() => { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); });
+      });
+      const admin = session("admin");
+      const made = await call(admin, "POST", "/ui/office-share", { office: "hq" });
+      expect(made.status).toBe(200);
+      expect(made.body.url).toMatch(/^https:\/\/s1\.trycloudflare\.com\/o\/[A-Za-z0-9_-]{43}$/);   // its own tunnel, not this link's host
+      expect(made.body.share.owner).toBe("person:discord:1");
+      expect(f.notices.join("\n")).not.toContain("trycloudflare");
+      expect((await call(admin, "GET", "/ui/office-share")).body.shares).toHaveLength(1);
+      for (const tier of ["read", "guest"] as const) {
+        const sid = session(tier);
+        expect((await call(sid, "GET", "/ui/office-share")).status, tier).toBe(403);
+        expect((await call(sid, "POST", "/ui/office-share", { office: "hq" })).status, tier).toBe(403);
+        expect((await call(sid, "DELETE", "/ui/office-share/all")).status, tier).toBe(403);
+      }
+      expect(f.fm.officeShares.list()).toHaveLength(1);
+      expect((await call(admin, "DELETE", `/ui/office-share/${made.body.share.id}`)).status).toBe(200);
+      expect(f.fm.officeShares.list()).toEqual([]);
     } finally { await f.stop(); }
-  });
+  }, 30_000);
 });
 
-describe("/office_share (#2636)", () => {
-  const actor = { adapterId: "discord", userId: "42" };
-  it("makes a link (office by id or name, a time, text), lists, revokes; an unknown office says how to use it", async () => {
-    const f = await fleet();
-    try {
-      const cmd = (args: string) => f.fm.officeShareCommand(args, actor);
-      const a = await cmd("HQ 2h text");
-      expect(a.made.share.id).toMatch(/^[0-9a-f]{8}$/);
-      expect(f.notices).toEqual([]);                                             // the caller tells General, once delivered
-      expect(a.text).toMatch(/https:\/\/s1\.trycloudflare\.com\/o\/[A-Za-z0-9_-]{43}/);
-      expect(f.fm.officeShares.list()[0]).toMatchObject({ office: "hq", text: true, owner: "person:discord:42" });
-      expect(f.fm.officeShares.list()[0].expiresAt - f.fm.officeShares.list()[0].createdAt).toBe(120 * 60_000);
-      const b = await cmd("");
-      expect(f.fm.officeShares.list().map((s: { office: string }) => s.office).sort()).toEqual(["all", "hq"]);
-      expect((await cmd("list")).text).toContain(a.made.share.id);
-      expect((await cmd("nowhere")).text).toContain("/office_share");
-      expect((await cmd(`revoke ${b.made.share.id}`)).text).toContain("1");
-      expect((await cmd("revoke all")).text).toContain("1");
-      expect(f.fm.officeShares.list()).toEqual([]);
-      expect((await cmd("revoke x")).text).toContain("/office_share");
-      expect(f.notices.filter(n => n.includes("trycloudflare"))).toEqual([]);   // General never sees a URL
-    } finally { await f.stop(); }
-  });
-
-  it("Telegram: the link only by DM — when the DM fails, no link is left open", async () => {
-    const f = await fleet();
-    try {
-      const said: string[] = [];
-      const adapter = { sendText: async (_c: string, text: string) => { said.push(text); return { messageId: "1" }; }, sendDirect: async () => { throw new Error("blocked"); } };
-      f.fm.adapters = new Map([["tg", adapter]]);
-      vi.spyOn(f.fm, "fleetAdminGate").mockReturnValue("ok");
-      await f.fm.runOfficeShareCommand({ source: "telegram", adapterId: "tg", userId: "42", chatId: "-100", threadId: "1" }, "all");
-      expect(f.fm.officeShares.list()).toEqual([]);
-      expect(said.join("\n")).not.toContain("trycloudflare");
-      expect(said.at(-1)).toContain("private");
-      expect(f.notices).toEqual([]);                                             // no link, so General hears of none
-      adapter.sendDirect = async () => ({ messageId: "2" }) as never;
-      await f.fm.runOfficeShareCommand({ source: "telegram", adapterId: "tg", userId: "42", chatId: "-100", threadId: "1" }, "all");
-      expect(f.fm.officeShares.list()).toHaveLength(1);
-      expect(said.join("\n")).not.toContain("trycloudflare");
-      expect(f.notices).toHaveLength(1);                                         // delivered: now General hears it
-    } finally { await f.stop(); }
+describe("no chat command (#2636 follow-up: the button only)", () => {
+  it("no /office_share in the command table, the Discord menu, Telegram's menus or General's typed forms", async () => {
+    const { COMMANDS, TELEGRAM_MENUS } = await import("../src/command-table.js");
+    expect(COMMANDS.some(c => /office/i.test(c.name))).toBe(false);
+    expect(Object.values(TELEGRAM_MENUS).flatMap((m: any) => m.names).some((n: string) => /office/i.test(n))).toBe(false);
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["src/channel/adapters/discord.ts", "src/topic-commands.ts", "src/fleet-manager.ts", "src/fleet-context.ts"]) {
+      expect(readFileSync(join(process.cwd(), f), "utf8"), f).not.toMatch(/office[_-]share"|OfficeShareSlash|runOfficeShareCommand|officeShareCommand/);
+    }
   });
 });

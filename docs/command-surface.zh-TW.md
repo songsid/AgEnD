@@ -25,7 +25,6 @@
 | 命令 | 選單 | General | Fleet topic | Classic | 未註冊 guild channel |
 |---|---|---|---|---|---|
 | `/profile` | ✓ | H:F | R | R | R |
-| `/office_share` | ✓ | H:F | R | R | R |
 | `/start` | ✓ | R | R | R | H:start |
 | `/stop` | ✓ | R | R | H:C | R |
 | `/chat` | ✓ | R | R | H:A | R |
@@ -59,7 +58,6 @@
 | 命令 | 選單 G/T | 選單 Classic | General | Fleet topic | Classic private | Classic group | 未註冊 private/group |
 |---|---|---|---|---|---|---|---|---|
 | `/profile` | ✓ | — | H:F | R:G | P | S/P | S/R |
-| `/office_share` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/start` | — | ✓ | P | P | R:active | R:active | H:start |
 | `/stop` | — | ✓ | P | P | H:C | H:C | R(C) |
 | `/chat` | — | — | P | P | P | S/P | S/R |

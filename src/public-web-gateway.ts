@@ -58,6 +58,10 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // page, the old /ui/tasks create and update included: the handlers refuse a write over the public link too
   // (confirming, sending back and assigning are the person's authority, never carried here).
   if (method === "GET" && /^\/ui\/tasks\/cards\/[^/]+$/.test(path)) return true;
+  // #2636 follow-up (the user's choice): Office share links — list, make, revoke — for an admin session over the link too
+  // (the handler refuses read-only sessions and guests; the share itself runs on its own tunnel, never this one).
+  if ((method === "GET" || method === "POST") && path === "/ui/office-share") return true;
+  if (method === "DELETE" && /^\/ui\/office-share\/(?:[0-9a-f]{8}|all)$/.test(path)) return true;
   // #2478 (the user's request): global search, an admin's (the handler refuses a guest, and web.search.public_link: false).
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) return true;
   // #1827: the person's own name (a profile edit, which the public link may make).

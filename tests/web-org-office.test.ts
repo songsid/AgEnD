@@ -592,10 +592,13 @@ describe("the Office view on the page", () => {
       await p.unmount(); delete document.body.dataset.tier; document.body.dataset.publicLink = "1"; await office(); expect(editBtn()).toBeNull();
       await p.unmount(); delete document.body.dataset.publicLink; await office(); expect(editBtn()?.textContent.trim()).toBe("Edit offices");
     });
-    it("#2636: Share… offered as Edit offices is (an admin session, never a read-only one, a guest page or the public link)", async () => {
+    it("#2636: Share… for an admin session, here or over the public link (the user's choice) — never a read-only one or a guest page", async () => {
       const share = () => p.root.querySelector(".oo-share");
       auth(false); await office(); expect(share()).toBeNull();
-      await p.unmount(); auth(true); document.body.dataset.publicLink = "1"; await office(); expect(share()).toBeNull();
+      await p.unmount(); auth(true); document.body.dataset.tier = "guest"; await office(); expect(share()).toBeNull();
+      await p.unmount(); delete document.body.dataset.tier; document.body.dataset.publicLink = "1"; await office();
+      expect(share()?.textContent.trim()).toBe("Share…");
+      expect(editBtn()).toBeNull();                                            // editing the offices stays local
       await p.unmount(); delete document.body.dataset.publicLink; await office(); expect(share()?.textContent.trim()).toBe("Share…");
       share().click(); await settle(3);
       expect(p.root.querySelector(".os-form")).not.toBeNull();

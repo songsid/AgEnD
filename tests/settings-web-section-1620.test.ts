@@ -295,6 +295,9 @@ describe("#2307 fixed public link settings and write-only token", () => {
     const w = await open();
     expect(w.$("publicTunnelToken")).toBeNull();
     expect(sent.filter(s => s.path.startsWith("/api/settings/public-tunnel-token"))).toHaveLength(0);
+    // #2636 follow-up (the user's choice): the Office share links card, with its Revoke, is an admin's over the link too.
+    expect(p.root.querySelector(".os-card")).not.toBeNull();
+    expect(sent.some(s => s.method === "GET" && s.path === "/ui/office-share")).toBe(true);
   });
 });
 

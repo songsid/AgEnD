@@ -1354,7 +1354,9 @@ function WebSection({ ctx, staged, part = "all" }) {
       ${named || f.autoOpen ? html`<label class=${fc("check", "autoOpen")}><input id="publicAutoOpen" type="checkbox" checked=${f.autoOpen} onChange=${(e) => set("autoOpen")(e.target.checked)} /><span>${tn("publicAutoOpen")}</span><${Impact} schema=${schema} field="web.public_link.auto_open" /></label>
       <p class="note">${tn("publicAutoOpenHint")}</p><${Feedback} error=${errors.autoOpen} />` : null}
     </section>`) : null}
-    ${has("access") && !overPublicLink ? html`<${PublicTunnelToken} /><${OfficeSharesCard} /><${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
+    ${has("access") && !overPublicLink ? html`<${PublicTunnelToken} />` : null}
+    ${has("access") ? html`<${OfficeSharesCard} />` : null}
+    ${has("access") && !overPublicLink ? html`<${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
     ${has("chat") ? lock(html`<section class="card"><h3>${tn("webChat")}</h3>
       <label class=${fc("check", "echo")}><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
       <p class="note">${tn("webEchoHint")}</p>

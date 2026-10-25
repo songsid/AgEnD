@@ -18,7 +18,7 @@ register("oshare", {
     e_disabled: "Office share links are off on this fleet (web.office_share.enabled: false).", e_office: "That office no longer exists.",
     e_duration: "That is longer than this fleet allows (web.office_share.max_hours).", e_too_many: "At most 10 share links can be open at once: revoke one first.",
     e_rate: "Cloudflare is limiting new quick tunnels right now. Try again in a few minutes.", e_tunnel: "The share link's tunnel did not start ({0}). Try again later.",
-    cardTitle: "Office share links", cardHint: "Read-only links to the live Office view, made from Fleet → Org chart → Office → Share… or /office_share in General. Each ends at its time; revoke one to end it now.",
+    cardTitle: "Office share links", cardHint: "Read-only links to the live Office view, made from Fleet → Org chart → Office → Share…. Each ends at its time; revoke one to end it now.",
   },
   "zh-TW": {
     share: "分享…", title: "分享辦公室", lead: "拿到連結的人都能即時觀看這間辦公室（只有名稱與狀態），直到連結結束，不需要登入。",
@@ -29,7 +29,7 @@ register("oshare", {
     e_disabled: "這個 fleet 已關閉辦公室分享連結（web.office_share.enabled: false）。", e_office: "這間辦公室已不存在。",
     e_duration: "超過這個 fleet 允許的時間（web.office_share.max_hours）。", e_too_many: "同時最多 10 個分享連結：先撤銷一個。",
     e_rate: "Cloudflare 目前限制新的臨時通道，請過幾分鐘再試。", e_tunnel: "分享連結的通道沒有啟動（{0}），請稍後再試。",
-    cardTitle: "辦公室分享連結", cardHint: "即時辦公室畫面的唯讀連結，可在 Fleet → 組織圖 → 辦公室 → 分享… 或在 General 用 /office_share 建立。每個連結到時間就結束；撤銷可立即結束。",
+    cardTitle: "辦公室分享連結", cardHint: "即時辦公室畫面的唯讀連結，可在 Fleet → 組織圖 → 辦公室 → 分享… 建立。每個連結到時間就結束；撤銷可立即結束。",
   },
 });
 const to = (k, ...v) => t(`oshare.${k}`, ...v);
@@ -126,7 +126,7 @@ export function ShareDialog({ offices = [], current = null, get = globalThis.fet
   <//>`;
 }
 
-/** Settings → Access & security: the open share links, with Revoke (made from the Office's Share…, or /office_share). */
+/** Settings → Access & security: the open share links, with Revoke (made from the Office's Share…). */
 export function OfficeSharesCard({ get = globalThis.fetch }) {
   const [rev, setRev] = useState(0);
   const d = useShares(get, rev);

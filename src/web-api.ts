@@ -629,8 +629,9 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 /**
  * #2636: Office share links — GET /ui/office-share (the open ones, and whether this fleet offers them), POST { office,
  * minutes?, text? } (a new one; answers its URL once its tunnel is up, or why not), DELETE /ui/office-share/<id|all>.
- * An admin session on the dashboard reached directly only: never the CLI token, never the public link (the design: no
- * share is made from it; its gateway does not route these either). The person is asked again once the body is in.
+ * An admin session only — on the dashboard reached directly, or (the user, #2636 follow-up) a fleet admin signed in over
+ * the /web public link: the same check either way. Never the CLI token, a read-only session or a guest. The share's own
+ * tunnel and gateway stay apart from /web's. The person is asked again once the body is in.
  */
 function handleOfficeShare(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const service = ctx.officeShares;
@@ -638,7 +639,6 @@ function handleOfficeShare(req: IncomingMessage, res: ServerResponse, url: URL, 
   const one = /^\/ui\/office-share\/([0-9a-f]{8}|all)$/.exec(path);
   const known = (method === "GET" && path === "/ui/office-share") || (method === "POST" && path === "/ui/office-share") || (method === "DELETE" && !!one);
   if (!known) { json(res, 404, { error: "not found" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "office_share_not_over_public_link" }); return true; }
   const who = (): { person: string; name: string } | { status: number } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401 };

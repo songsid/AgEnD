@@ -34,7 +34,7 @@
 //   ("+N", in its corner, never over its name); there idle and asleep people say nothing, at most a few speak (calls
 //   first, then work), no bubble covers a name tag, and the tags show on hover or focus only. "Hide paused and stopped"
 //   (per browser) leaves the sleepers out.
-// - Share… (#2636; an admin on the dashboard reached directly): a link anyone can open to watch an office live, read-only,
+// - Share… (#2636; an admin, on the dashboard reached directly or over the public link): a link anyone can open to watch an office live, read-only,
 //   until it ends (office-share-dialog.js; the page it opens is office-share-page.js).
 // - Edit layout (an admin, a stored office on a zones skin): fleet-office-layout.js, saved as the office's overrides.
 //   An editing session (#2513 review) is bound to the office it opened on, that office's style (the pack's id and sha)
@@ -434,6 +434,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, opening
   const [stored, setStored] = useState([]);
   const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
   const [canEdit, setCanEdit] = useState(false);                      // an admin session (never a guest or the public link)
+  const [canShare, setCanShare] = useState(false);                    // #2636: an admin session, here or over the public link
   const [editing, setEditing] = useState(false);
   const [choice, setChoice] = useState(() => opening ?? store.choice());
   const [filter, setFilter] = useState(() => store.filter());
@@ -522,13 +523,15 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, opening
     return () => { if (off) off(); };
   }, [lease, store]);
   // Whether this page may edit the offices: an admin session (the host asks again on every save), never a guest page or
-  // the public link (whose sessions the host refuses outright).
+  // the public link (whose sessions the host refuses outright). #2636 follow-up (the user's choice): Share… is an admin
+  // session's here or over the public link (the host asks again too); never a guest's or a read-only one's.
   useEffect(() => {
     const body = globalThis.document?.body;
-    if (!body || body.dataset.tier === "guest" || body.dataset.publicLink === "1") return undefined;
+    if (!body || body.dataset.tier === "guest") return undefined;
+    const overLink = body.dataset.publicLink === "1";
     let live = true;
     const auth = globalThis.AgendAuth;
-    if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) setCanEdit(v === true); }, () => {});
+    if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) { setCanEdit(v === true && !overLink); setCanShare(v === true); } }, () => {});
     return () => { live = false; };
   }, []);
   // The stage's width (the grid wraps at it), and the theme (the tokens the canvas reads).
@@ -1154,7 +1157,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, opening
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview) setEditing(true); }} disabled=${!!layout || overview}
         title=${overview ? to("overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
       ${canLayout ? html`<button type="button" class="btn btn-sm oo-layout" onClick=${openLayout}>${t("orgl.edit")}</button>` : null}
-      ${canEdit ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
+      ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
     </div>
     ${editing && !overview ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}

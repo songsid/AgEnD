@@ -5,7 +5,7 @@
  * end shares, and a tunnel that goes away ends them all. No process and no network: a fake tunnel manager.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OfficeShareService, officeShareRefusalText, type OfficeShareServiceDeps } from "../src/office-share-service.js";
+import { OfficeShareService, type OfficeShareServiceDeps } from "../src/office-share-service.js";
 import type { OfficeShareSource } from "../src/office-share.js";
 
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(), spawn: () => { throw Error("no processes"); } }));
@@ -74,7 +74,7 @@ describe("the share tunnel (#2636)", () => {
     expect(r.manager.start).toHaveBeenCalledTimes(2);
   });
 
-  it("a 429 ends that share with \"try again later\", and nothing retries", async () => {
+  it("a 429 ends that share (the page says to try again later), and nothing retries", async () => {
     const r = rig({}, { fail: "rate-limited" }); live.push(r.svc);
     const p = r.svc.create({ office: "hq", owner: "discord:1" });
     await r.release();
@@ -83,8 +83,6 @@ describe("the share tunnel (#2636)", () => {
     expect(r.svc.list()).toEqual([]);
     await new Promise(res => setTimeout(res, 20));
     expect(r.manager.start).toHaveBeenCalledTimes(1);
-    expect(officeShareRefusalText(m as never, "en")).toBe("Cloudflare is limiting new quick tunnels right now. Try again in a few minutes.");
-    expect(officeShareRefusalText(m as never, "zh-TW")).toContain("請過幾分鐘再試");
   });
 
   it("refuses while turned off; turning it off, an owner no longer an admin or an office deleted ends shares", async () => {
@@ -118,11 +116,4 @@ describe("the share tunnel (#2636)", () => {
     expect(r.manager.start).toHaveBeenCalledTimes(2);
   });
 
-  it("refusals say what to do, in both languages", () => {
-    for (const error of ["disabled", "office", "duration", "too_many"] as const) {
-      expect(officeShareRefusalText({ error }, "en")).toMatch(/\S/);
-      expect(officeShareRefusalText({ error }, "zh-TW")).toMatch(/[一-鿿]/);
-    }
-    expect(officeShareRefusalText({ error: "tunnel", reason: "unreachable" }, "en")).toContain("Try again later");
-  });
 });

@@ -23,7 +23,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
-import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService, officeShareRefusalText } from "./office-share-service.js";
+import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { ALL_OFFICES, type OfficeShare } from "./office-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
@@ -3691,78 +3691,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       data.userId, adapterId, data.options?.seconds as string | number | undefined, data.respond);
   }
 
-  /** #2636: /office_share in General — the Discord slash answers privately (its reply is ephemeral). */
-  private async handleOfficeShareSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
-    const route = this.routing.resolve(data.channelId);
-    if (route?.kind !== "general") { await data.respond(t("office_share.general_only")); return; }
-    if (this.fleetAdminGate(data.userId, adapterId) !== "ok") { await data.respond(t("not_authorized")); return; }
-    const reply = await this.officeShareCommand(String(data.options?.args ?? ""), { adapterId, userId: data.userId });
-    await data.respond(reply.text);
-    if (reply.made) this.officeShareNotice("created", reply.made.who, reply.made.share, 1);   // handed over: now General hears it
-  }
-
-  /** #2636: typed /office_share in Telegram's General — a new link goes by DM (never into the topic). */
-  async runOfficeShareCommand(msg: InboundMessage, args?: string): Promise<void> {
-    if (msg.source !== "telegram") return;
-    const adapterId = msg.adapterId ?? this.getPrimaryAdapterId();
-    const adapter = adapterId ? this.adapters.get(adapterId) : this.adapter;
-    if (!adapter || !adapterId) return;
-    const say = (text: string) => adapter.sendText(msg.chatId, text, { threadId: msg.threadId, allowedMentions: { parse: [] } }).catch(() => {});
-    if (this.fleetAdminGate(msg.userId, adapterId) !== "ok") { await say(t("not_authorized")); return; }
-    const reply = await this.officeShareCommand(args ?? "", { adapterId, userId: msg.userId });
-    if (!reply.made) { await say(reply.text); return; }
-    if (await this.tryNoticeDm(adapter, msg.userId, reply.text)) {
-      this.officeShareNotice("created", reply.made.who, reply.made.share, 1);
-      await say(t("office_share.sent_by_dm"));
-      return;
-    }
-    // No private way to hand it over: it is not handed out at all (and General never heard of it).
-    this.officeShares.revoke(reply.made.share.id);
-    await say(t("office_share.dm_failed"));
-  }
-
-  /**
-   * #2636: what /office_share does, from either platform (the caller checked General and the admin):
-   * `[office|all] [15m|1h|…|24h] [text]` makes a link; `list`; `revoke <id|all>`. `made`: a new share (its URL is in
-   * `text`, which is the caller's to deliver privately; General hears of it from the caller, once it is delivered).
-   */
-  private async officeShareCommand(args: string, actor: { adapterId: string; userId: string }): Promise<{ text: string; made?: { share: OfficeShare; who: string } }> {
-    const svc = this.officeShares;
-    const words = args.trim().split(/\s+/).filter(Boolean);
-    const lang = getLocale();
-    const offices = this.officeStore.list().offices;
-    const nameOf = (id: string) => (id === ALL_OFFICES ? t("office_share.all") : offices.find(o => o.id === id)?.name ?? id);
-    const who = this.webPerson({ adapterId: actor.adapterId, userId: actor.userId }).name;
-    if (words[0]?.toLowerCase() === "list") {
-      const list = svc.list();
-      if (!list.length) return { text: t("office_share.none") };
-      return { text: [t("office_share.list_head"), ...list.map(sh => `• ${sh.id} — ${nameOf(sh.office)} · ${Math.max(1, Math.round((sh.expiresAt - Date.now()) / 60_000))} min${sh.text ? ` · ${t("office_share.with_text")}` : ""}`)].join("\n") };
-    }
-    if (words[0]?.toLowerCase() === "revoke") {
-      const id = (words[1] ?? "").toLowerCase();
-      if (!/^(?:[0-9a-f]{8}|all)$/.test(id)) return { text: t("office_share.usage") };
-      const before = id === "all" ? null : svc.list().find(sh => sh.id === id) ?? null;
-      const n = svc.revoke(id);
-      if (n) this.officeShareNotice("revoked", who, before, n);
-      return { text: n ? t("office_share.revoked", n) : t("office_share.no_such", id) };
-    }
-    let minutes: number | undefined, text = false;
-    const rest: string[] = [];
-    for (const w of words) {
-      const d = /^(\d{1,4})(m|min|h)$/i.exec(w);
-      if (d) { minutes = Number(d[1]) * (d[2]!.toLowerCase() === "h" ? 60 : 1); continue; }
-      if (w.toLowerCase() === "text") { text = true; continue; }
-      rest.push(w);
-    }
-    const wanted = rest.join(" ");
-    const lower = wanted.toLowerCase();
-    const office = !wanted || lower === "all" ? ALL_OFFICES : offices.find(o => o.id === wanted || o.name.toLowerCase() === lower)?.id;
-    if (!office) return { text: officeShareRefusalText({ error: "office" }, lang) + "\n" + t("office_share.usage") };
-    const made = await svc.create({ office, owner: webPersonKey({ adapterId: actor.adapterId, userId: actor.userId }), text, ...(minutes !== undefined ? { minutes } : {}) });
-    if (!made.ok) return { text: officeShareRefusalText(made, lang) };
-    return { text: t("office_share.made", nameOf(office), made.url, Math.round((made.share.expiresAt - made.share.createdAt) / 60_000)), made: { share: made.share, who } };
-  }
-
   /** Typed /profile belongs only to Telegram's General dispatcher. */
   async runProfileCommand(msg: InboundMessage, seconds?: string): Promise<void> {
     if (msg.source !== "telegram") return;
@@ -5297,8 +5225,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleUpdateSlash(data, adapterId);
     } else if (data.command === "profile") {
       await this.handleProfileSlash(data, adapterId);
-    } else if (data.command === "office_share") {
-      await this.handleOfficeShareSlash(data, adapterId);
     } else if (data.command === "doctor") {
       await data.respond(await this.runBackendDoctor());
     } else if (data.command === "visibility") {

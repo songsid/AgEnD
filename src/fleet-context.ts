@@ -83,8 +83,6 @@ export interface FleetContext {
   isFleetStopping(): boolean;
   /** Telegram-only General command; owns admin/route checks and completion notice. */
   runProfileCommand?(msg: InboundMessage, seconds?: string): Promise<void>;
-  /** #2636: typed /office_share in Telegram's General. */
-  runOfficeShareCommand?(msg: InboundMessage, args?: string): Promise<void>;
   /**
    * #1346: the adapter that owns an instance's topic. Text commands resolve
    * permission and replies through the owner, never the adapter whose copy

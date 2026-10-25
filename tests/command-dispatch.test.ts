@@ -95,7 +95,6 @@ const EXPECTED: Record<string, Row> = {
   login: everywhere(FLEET_ADMIN),
   update: everywhere(FLEET_ADMIN),
   profile: { general: FLEET_ADMIN, fleet: refuse("profile.general_only"), classic: refuse("profile.general_only"), none: refuse("profile.general_only") },
-  office_share: { general: FLEET_ADMIN, fleet: refuse("office_share.general_only"), classic: refuse("office_share.general_only"), none: refuse("office_share.general_only") },   // #2636
   doctor: everywhere(FLEET_ADMIN),
   dashboard: everywhere(FLEET_ADMIN),
   visibility: everywhere(FLEET_ADMIN),
@@ -182,7 +181,6 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean;
   anyFm.handleRestartSlash = marks("restart");
   anyFm.handleUpdateSlash = marks("update");
   anyFm.handleProfileSlash = marks("profile");
-  anyFm.handleOfficeShareSlash = marks("office_share");
   anyFm.handleTipsSlash = marks("tips");
   anyFm.handleVisibilitySlash = marks("visibility");
   anyFm.runBackendDoctor = async () => { reached.push("doctor"); return "ok:doctor"; };
@@ -381,7 +379,7 @@ describe("the lock emoji is generated from the table", () => {
   it("is on exactly the commands that ask for more than 'anyone' somewhere", () => {
     const locked = COMMANDS.filter(isLocked).map(c => c.name).sort();
     expect(locked).toEqual(
-      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "backend", "office_share", "pause", "profile", "restart", "save", "status", "stop", "update", "visibility", "wake"].sort(),
+      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "backend", "pause", "profile", "restart", "save", "status", "stop", "update", "visibility", "wake"].sort(),
     );
     for (const spec of COMMANDS) expect(slashLock(spec.name), spec.name).toBe(isLocked(spec) ? "🔒 " : "");
     expect(slashLock("not-a-command")).toBe("");
