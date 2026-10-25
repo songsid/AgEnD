@@ -193,7 +193,7 @@ describe("no workflow fetches the published package from the registry by name", 
     expect(String(steps[at].with!.version)).toBe("2.1.12");
     const consumer = steps.findIndex(s => s.env?.[envName] === `\${{ steps.${id}.outputs.tarball }}`);
     expect(consumer).toBeGreaterThan(at);
-    // The docs-only guard of ci.yml's rollback job covers the fetch too: a docs-only head downloads nothing.
+    // The packaging/src guard of the fetch covers the install too: a skipped head downloads nothing.
     expect(steps[at].if).toBe(steps[consumer].if);
   });
 });

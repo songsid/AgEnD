@@ -24,68 +24,32 @@ permissions:
   contents: read
 
 jobs:
-  # ── docs-only guard ──────────────────────────────────────────────────────────
-  # Detect whether this run touches only changelog fragments (#1932). The result is
-  # consumed by every downstream job so none of them repeat the diff. Running
-  # as its own job avoids a checkout + diff in each parallel shard.
-  #
-  # We use a job output rather than paths-ignore so the `build` check always
-  # exists and can satisfy the gate even for a pure docs commit. paths-ignore
-  # would make the check missing and the gate would block.
+  # ── path gating ──────────────────────────────────────────────────────────────
+  # Classify the PR diff once. Downstream jobs skip their heavy steps from these
+  # outputs and still report success, so gate-merge.sh never sees `skipped`.
+  # Job-level `if:` on a matrix cell would leave that required name pending.
+  # Push/tag/schedule/workflow_dispatch and unreadable diffs run the full suite.
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
       docs-only: ${{ steps.check.outputs.docs-only }}
+      text-only: ${{ steps.check.outputs.text-only }}
+      packaging: ${{ steps.check.outputs.packaging }}
+      deps: ${{ steps.check.outputs.deps }}
+      src: ${{ steps.check.outputs.src }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Detect whether this is a changelog-fragment-only change
+      - name: Classify the PR diff
         id: check
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           # For pull_request events github.sha is the synthetic merge commit,
           # not the PR branch head. Use the PR head SHA for an accurate diff.
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          # A push to main/release always runs the full suite — the gate needs CI.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "docs-only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Collect the diff once and hold it in a variable. This avoids
-          # SIGPIPE on the git side when grep exits early (pipefail would
-          # otherwise see git's non-zero exit and fail-open, treating any
-          # large diff as docs-only). A git failure is fail-closed: run full CI.
-          if ! diff_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA"); then
-            echo "docs-only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Write to a temp file and grep the file directly. When grep exits
-          # early after a -q match, it simply stops reading — no echo or printf
-          # process is left behind to receive SIGPIPE. A diff larger than the
-          # pipe buffer would cause echo "$diff_files" | grep -q to SIGPIPE
-          # and fail-open (docs-only=true) for any large src/ change.
-          _diff_f=$(mktemp)
-          trap 'rm -f "$_diff_f"' EXIT
-          printf '%s\n' "$diff_files" > "$_diff_f"
-          # .github/** changes must always run the full suite.
-          if grep -qE '^\.github/' "$_diff_f"; then
-            echo "docs-only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Only changelog fragments skip the suite: the changelog job (always run) checks them. docs/ and the root
-          # *.md files are read by tests (docs/cli.zh-TW.md's command table, the READMEs, docs/web-guide …), so a
-          # change there runs the full suite too — #1929 changed a row a test pins, and merged with the shards skipped
-          # (#1932). A fragment is a file the assembler takes (scripts/changelog-assemble.mjs FRAGMENT_NAME):
-          # changes/README.md and anything else under changes/ is not one, and a test pins the README (#1933 review).
-          # The output keeps its name: setup and the shards key on it.
-          if grep -qvE '^changes/[0-9]+(-[a-z0-9][a-z0-9-]*)?(\.zh-TW)?\.md$' "$_diff_f"; then
-            echo "docs-only=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "docs-only=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash scripts/ci/detect-changes.sh
 
   # ── changelog guards (no install needed) ────────────────────────────────────
   # Runs unconditionally: docs/changes/ PRs can add unpaired fragments or edit
@@ -128,19 +92,23 @@ jobs:
 
   # ── setup: install, typecheck, build — shared across all shards ─────────────
   # Always runs so gate-merge.sh always sees a `success` result (not `skipped`).
-  # For docs-only PRs the heavy steps are skipped via a step condition and the
+  # For text-only PRs the heavy steps are skipped via a step condition and the
   # job succeeds immediately.
   setup:
     runs-on: ubuntu-latest
     needs: detect-changes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip typecheck and build on a text-only PR
+        if: needs.detect-changes.outputs.text-only == 'true'
+        run: echo "Text-only PR — typecheck and build skipped."
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.text-only != 'true'
         with:
           node-version: 22
           cache: npm
       - name: Install, typecheck and build
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.text-only != 'true'
         run: |
           npm ci
           npx tsc --noEmit
@@ -152,7 +120,7 @@ jobs:
           npm run build
 
   # ── test shards ──────────────────────────────────────────────────────────────
-  # Always runs; each shard skips heavy work for docs-only PRs and exits 0 so
+  # Always runs; each shard skips heavy work for text-only PRs and exits 0 so
   # the gate always sees `success`.
   test-shard:
     runs-on: ubuntu-latest
@@ -163,30 +131,38 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip shard on a text-only PR
+        if: needs.detect-changes.outputs.text-only == 'true'
+        run: echo "Text-only PR — shard ${{ matrix.shard }}/4 skipped."
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.text-only != 'true'
         with:
           node-version: 22
           cache: npm
       - name: Run test shard ${{ matrix.shard }}/4
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.text-only != 'true'
         run: |
           npm ci
           npm run build
           npx vitest run --shard=${{ matrix.shard }}/4
 
   # ── integration tests (serial, real-resource) ────────────────────────────────
-  # Always runs; skips heavy work for docs-only PRs.
+  # Always runs; skips heavy work for text-only PRs.
   test-integration:
     runs-on: ubuntu-latest
     needs: [detect-changes, setup]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip integration on a text-only PR
+        if: needs.detect-changes.outputs.text-only == 'true'
+        run: echo "Text-only PR — integration skipped."
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.text-only != 'true'
         with:
           node-version: 22
           cache: npm
       - name: Run integration tests
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.text-only != 'true'
         run: |
           npm ci
           npm run build
@@ -195,6 +171,32 @@ jobs:
           # host scheduler contention from turning diagnostic timing into flakes.
           npm run test:integration
 
+  # ── tests that read docs ─────────────────────────────────────────────────────
+  # Always runs. Heavy work only on text-only PRs, where the four shards skip.
+  docs-tests:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip when shards already cover these tests
+        if: needs.detect-changes.outputs.text-only != 'true'
+        run: echo "Not text-only — the four shards run the docs-reading tests."
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.text-only == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Run tests that read docs
+        if: needs.detect-changes.outputs.text-only == 'true'
+        run: |
+          npm ci
+          mapfile -t files < <(grep -vE '^[[:space:]]*(#|$)' scripts/ci/docs-reading-tests.txt)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "scripts/ci/docs-reading-tests.txt listed no tests" >&2
+            exit 1
+          fi
+          npx vitest run "${files[@]}"
+
   # ── aggregate ────────────────────────────────────────────────────────────────
   # The gate requires a check named exactly "build". This job aggregates every
   # upstream job; it fails when any upstream job fails. All upstream jobs always
@@ -202,22 +204,22 @@ jobs:
   # never `skipped`.
   build:
     runs-on: ubuntu-latest
-    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, install-smoke, node20-rollback-smoke]
+    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, docs-tests, install-smoke, node20-rollback-smoke]
     if: always()
     steps:
       - name: Check all jobs succeeded
         env:
-          DOCS_ONLY: ${{ needs.detect-changes.outputs.docs-only }}
           CHANGELOG: ${{ needs.changelog.result }}
           ACTIONS_PINNED: ${{ needs.actions-pinned.result }}
           SETUP: ${{ needs.setup.result }}
           SHARD: ${{ needs.test-shard.result }}
           INTEGRATION: ${{ needs.test-integration.result }}
+          DOCS_TESTS: ${{ needs.docs-tests.result }}
           SMOKE: ${{ needs.install-smoke.result }}
           ROLLBACK: ${{ needs.node20-rollback-smoke.result }}
         run: |
           set -euo pipefail
-          # changelog and the SHA-pin guard always run; verify them first regardless of docs-only.
+          # changelog and the SHA-pin guard always run.
           if [ "$CHANGELOG" != "success" ]; then
             echo "changelog job failed (result=$CHANGELOG)" >&2
             exit 1
@@ -226,12 +228,8 @@ jobs:
             echo "actions-pinned job failed (result=$ACTIONS_PINNED)" >&2
             exit 1
           fi
-          if [ "$DOCS_ONLY" = "true" ]; then
-            echo "Docs-only change — changelog passed, heavy steps skipped. build passes."
-            exit 0
-          fi
           failed=()
-          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "docs-tests:$DOCS_TESTS" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
             name="${name_result%%:*}"
             result="${name_result##*:}"
             if [ "$result" != "success" ]; then
@@ -369,15 +367,16 @@ jobs:
         node: ['22.14.0', '22', '24', '26']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip unless packaging changed
+        if: needs.detect-changes.outputs.packaging != 'true'
+        run: echo "Not a packaging change — skipping install smoke."
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.packaging == 'true'
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - name: Skip on docs-only PRs
-        if: needs.detect-changes.outputs.docs-only == 'true'
-        run: echo "Docs-only — skipping install smoke."
       - name: Pack and install globally
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         run: |
           npm ci
           npm run build
@@ -389,10 +388,10 @@ jobs:
           npm install --global --prefix "$SMOKE_PREFIX" "./$TGZ"
           echo "$SMOKE_PREFIX/bin" >> "$GITHUB_PATH"
       - name: agend --version
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         run: agend --version
       - name: Verify incompatible runtime is rejected before native open
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         env:
           SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
         run: |
@@ -433,7 +432,7 @@ jobs:
           console.log('Production runtime guard: all boundary cases correct');
           JS
       - name: better-sqlite3 in-memory open
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         env:
           SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
         run: |
@@ -468,14 +467,18 @@ jobs:
     needs: [setup, detect-changes]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip unless packaging changed
+        if: needs.detect-changes.outputs.packaging != 'true'
+        run: echo "Not a packaging change — skipping Node 20 rollback smoke."
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.packaging == 'true'
         with:
           node-version: '22'
           cache: npm
       # Two tarballs of this build: as released (pinning its bundled Node), and the same package WITHOUT the pins — what
       # a host no runtime covers gets (#1450): there an old Node must be refused, and npm must roll the upgrade back.
       - name: Pack tarballs on Node 22 (pinned, and without a runtime)
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         run: |
           npm ci
           npm run build
@@ -488,18 +491,18 @@ jobs:
           echo "TGZ=pinned-$TGZ" >> "$GITHUB_ENV"
           echo "TGZ_NORUNTIME=noruntime-$TGZ" >> "$GITHUB_ENV"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         with:
           node-version: '20'
       # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per run.
       - name: Published 2.1.12 tarball (cached, integrity-checked)
         id: baseline-tarball
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         uses: ./.github/actions/published-agend-tarball
         with:
           version: 2.1.12
       - name: Rollback proof — Node 20 is refused a package with no runtime for it; 2.1.12 stays
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         env:
           BASELINE_TGZ: ${{ steps.baseline-tarball.outputs.tarball }}
         run: |
@@ -521,7 +524,7 @@ jobs:
           [ "$AFTER" = "2.1.12" ] || { echo "ROLLBACK FAILED: version is $AFTER, expected 2.1.12" >&2; exit 1; }
           echo "Rollback confirmed: 2.1.12 is still installed after a refused upgrade on Node 20"
       - name: Bundled install — Node 20 installs the pinned package, which runs on its own Node
-        if: needs.detect-changes.outputs.docs-only != 'true'
+        if: needs.detect-changes.outputs.packaging == 'true'
         run: |
           set -euo pipefail
           PREFIX="$RUNNER_TEMP/node20-rollback-prefix"

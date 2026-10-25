@@ -20,17 +20,32 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Classify the PR diff
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/ci/detect-changes.sh
+      - name: Skip when src/ did not change
+        if: steps.changes.outputs.src != 'true'
+        run: echo "Not a src change — data-downgrade skipped."
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.changes.outputs.src == 'true'
         with:
           node-version: '20'
       # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per run.
       - name: Published 2.1.12 tarball (cached, integrity-checked)
         id: baseline-tarball
+        if: steps.changes.outputs.src == 'true'
         uses: ./.github/actions/published-agend-tarball
         with:
           version: 2.1.12
       - name: Install the published baseline in an isolated prefix
         id: baseline
+        if: steps.changes.outputs.src == 'true'
         env:
           BASELINE_PREFIX: ${{ runner.temp }}/agend-downgrade-baseline
           BASELINE_TGZ: ${{ steps.baseline-tarball.outputs.tarball }}
@@ -41,12 +56,14 @@ jobs:
           GOT="$(node -p 'require(process.argv[1]).version' "$BASELINE_PREFIX/lib/node_modules/@songsid/agend/package.json")"
           [ "$GOT" = 2.1.12 ] || { echo "::error::the baseline installed $GOT, expected 2.1.12"; exit 1; }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.changes.outputs.src == 'true'
         with:
           node-version: '22'
           cache: npm
       # The version #2483's Mac recovery advice and #2481's auto-restore go back to: 2.2.6 must read what 2.3 wrote.
       - name: Published 2.2.6 tarball (cached, integrity-checked)
         id: baseline226-tarball
+        if: steps.changes.outputs.src == 'true'
         uses: ./.github/actions/published-agend-tarball
         with:
           version: 2.2.6
@@ -54,6 +71,7 @@ jobs:
       # is the one that runs it: <prefix>/lib/node_modules/@songsid/agend/node_modules/@songsid/agend-node-linux-x64.
       - name: Install published 2.2.6 in an isolated prefix (its own bundled Node)
         id: baseline226
+        if: steps.changes.outputs.src == 'true'
         env:
           BASELINE_PREFIX: ${{ runner.temp }}/agend-downgrade-baseline-226
           BASELINE_TGZ: ${{ steps.baseline226-tarball.outputs.tarball }}
@@ -67,13 +85,16 @@ jobs:
           [ -x "$NODE" ] || { echo "::error::2.2.6's bundled Node is missing at $NODE"; exit 1; }
           echo "node=$NODE" >> "$GITHUB_OUTPUT"
       - name: Build current stores
+        if: steps.changes.outputs.src == 'true'
         run: npm ci && npm run build
       - name: Published 2.3.1 validator (cached, integrity-checked)
         id: baseline231-tarball
+        if: steps.changes.outputs.src == 'true'
         uses: ./.github/actions/published-agend-tarball
         with:
           version: 2.3.1
       - name: Office on/off validates on both rollback targets
+        if: steps.changes.outputs.src == 'true'
         env:
           BASELINE_TGZ: ${{ steps.baseline231-tarball.outputs.tarball }}
           VALIDATOR_PREFIX: ${{ runner.temp }}/agend-office-validator-231
@@ -85,10 +106,12 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/node_modules" "$VALIDATOR_PREFIX/package/node_modules"
           node scripts/check-office-config-downgrade.mjs "$VALIDATOR_PREFIX/package" "$BASELINE226"
       - name: A failed probe fails the workflow step
+        if: steps.changes.outputs.src == 'true'
         shell: bash
         run: node scripts/check-data-downgrade-workflow.mjs
       - name: Current Node 22 → published 2.1.12 Node 20 → current Node 22
         id: roundtrip
+        if: steps.changes.outputs.src == 'true'
         shell: bash
         env:
           OLD_NODE: ${{ steps.baseline.outputs.node }}
@@ -96,13 +119,14 @@ jobs:
         run: node scripts/check-data-downgrade.mjs "$OLD_PACKAGE" "$OLD_NODE" 2.1.12 | tee data-downgrade.json
       - name: Current Node 22 → published 2.2.6 (bundled Node 22) → current Node 22
         id: roundtrip-226
+        if: steps.changes.outputs.src == 'true'
         shell: bash
         env:
           OLD_NODE: ${{ steps.baseline226.outputs.node }}
           OLD_PACKAGE: ${{ runner.temp }}/agend-downgrade-baseline-226/lib/node_modules/@songsid/agend
         run: node scripts/check-data-downgrade.mjs "$OLD_PACKAGE" "$OLD_NODE" 2.2.6 | tee data-downgrade-226.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
+        if: always() && steps.changes.outputs.src == 'true'
         with:
           name: data-downgrade-result
           path: |
