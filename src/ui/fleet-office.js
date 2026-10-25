@@ -426,10 +426,11 @@ function People({ nodes, pinned, onChange }) {
 /**
  * The view: `view` buildOrgView's answer; `traffic` the live items (null: Live is off); `q` the Find box's needle;
  * `lease` the tab's (its reads); `onOpen(name)` what a desk opens (the canvas's: the chat; none: a desk opens nothing,
- * as on a share link's page, #2636); `assetUrl(path)` where a skin pack's picture is read (the share's address);
+ * as on a share link's page, #2636); `assetUrl(path)` where a skin pack's picture is read (the share's address), and
+ * `assetImage(url)` how (the share's, which waits out a 429, #2662; none: the loader's own);
  * `opening` the office it opens on (the share's), instead of the one this browser chose last.
  */
-export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, opening }) {
+export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening }) {
   const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
   const [stored, setStored] = useState([]);
   const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
@@ -585,7 +586,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, opening
     if (!want.length) return undefined;
     let live = true;
     const get = lease ? (path, o) => lease.fetch(path, o) : undefined;
-    for (const [k, pk] of want) loadPackSkin(pk.id, pk.sha, { ...(get ? { fetch: get } : {}), ...(assetUrl ? { url: assetUrl } : {}) }).then((sk) => { if (live) setPackSkins((m) => new Map(m).set(k, sk)); });
+    for (const [k, pk] of want) loadPackSkin(pk.id, pk.sha, { ...(get ? { fetch: get } : {}), ...(assetUrl ? { url: assetUrl } : {}), ...(assetImage ? { image: assetImage } : {}) }).then((sk) => { if (live) setPackSkins((m) => new Map(m).set(k, sk)); });
     return () => { live = false; };
   }, [neededKey]);
   const loading = !!packInfo && !packSkins.has(packKey);

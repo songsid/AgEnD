@@ -16,7 +16,8 @@
  *   cost, context, description, thread, last reply or what it waits on). An instance whose cross_instance_visibility is
  *   "hidden" is never in it. An agent's `say` (office_set, the only text an agent wrote) only when the share says so.
  * - Limits: OFFICE_SHARE_LIMITS — links, lifetime, and per share requests and bytes a minute (every viewer comes from
- *   127.0.0.1 through the tunnel: the limit is the share's, never an address's).
+ *   127.0.0.1 through the tunnel: the limit is the share's, never an address's); its pack pictures a minute of their own,
+ *   sized by the packs it shows (#2662).
  * - Kept in memory only: a restart ends every share (the quick tunnel's host changes anyway).
  */
 import { createHash, randomBytes } from "node:crypto";
@@ -34,6 +35,12 @@ export const OFFICE_SHARE_LIMITS = {
   requestsPerMinute: 120, bytesPerMinute: 16 * 1024 * 1024,
   /** The page's static files (its code, the same for every share), all shares together. */
   staticRequestsPerMinute: 1200, staticBytesPerMinute: 64 * 1024 * 1024,
+  /**
+   * #2662: a share's pack pictures (immutable, content-addressed: a browser reads each once) have their own minute, never
+   * the 120 above: `pictureLoads` times what the shown packs hold (their files and bytes, as the host lists them), so a
+   * viewer's first look at every room never reaches it, and at least the floors here.
+   */
+  pictureLoads: 2, pictureRequestsFloor: 240, pictureBytesFloor: 16 * 1024 * 1024,
 } as const;
 /** "All offices": every stored office (and whoever is in none); otherwise a stored office's id. */
 export const ALL_OFFICES = "all";
@@ -167,18 +174,30 @@ export class OfficeShares {
   }
 }
 
+export interface OfficeShareRate { requests: number; bytes: number }
 /** Per key (a share's id): requests and bytes in a sliding minute (monotonic, memory only). */
 export class OfficeShareLimiter {
   private readonly seen = new Map<string, Array<[number, number]>>();
   constructor(private readonly now: () => number = () => performance.now(),
-    private readonly limits: { requests: number; bytes: number } = { requests: OFFICE_SHARE_LIMITS.requestsPerMinute, bytes: OFFICE_SHARE_LIMITS.bytesPerMinute }) {}
-  /** A request arrives: false when the key has had its requests or bytes this minute. */
-  admit(id: string): boolean {
+    private readonly limits: OfficeShareRate = { requests: OFFICE_SHARE_LIMITS.requestsPerMinute, bytes: OFFICE_SHARE_LIMITS.bytesPerMinute }) {}
+  /** A request arrives: false when the key has had its requests or bytes this minute (`limits`: this key's, #2662). */
+  admit(id: string, limits: OfficeShareRate = this.limits): boolean {
     const list = this.window(id);
-    if (list.length >= this.limits.requests) return false;
-    if (list.reduce((sum, [, b]) => sum + b, 0) >= this.limits.bytes) return false;
+    if (list.length >= limits.requests) return false;
+    if (list.reduce((sum, [, b]) => sum + b, 0) >= limits.bytes) return false;
     list.push([this.now(), 0]);
     return true;
+  }
+  /**
+   * #2662: whole seconds (1–60) until admit() would let the key in again — when enough of this minute's requests, and of
+   * its bytes, have left it. For Retry-After.
+   */
+  retryAfter(id: string, limits: OfficeShareRate = this.limits): number {
+    const list = this.window(id);
+    let bytes = list.reduce((sum, [, b]) => sum + b, 0), i = 0;
+    while (i < list.length && (list.length - i >= limits.requests || bytes >= limits.bytes)) bytes -= list[i++]![1];
+    const at = i > 0 ? list[i - 1]![0] + MINUTE_MS : this.now();
+    return Math.min(60, Math.max(1, Math.ceil((at - this.now()) / 1000)));
   }
   /** What the admitted request answered, in bytes. */
   sent(id: string, bytes: number): void {
@@ -217,7 +236,7 @@ export interface OfficeShareSource {
   /** cross_instance_visibility "hidden" now. */
   hidden(name: string): boolean;
   /** The skin packs the host keeps (web-office-skins.ts). */
-  skins?: { list(): { packs: Array<{ id: string }> } & Record<string, unknown>; get(id: string): unknown; picture(id: string, sha: string): Buffer | null };
+  skins?: { list(): { packs: Array<{ id: string; files?: number; bytes?: number }> } & Record<string, unknown>; get(id: string): unknown; picture(id: string, sha: string): Buffer | null };
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -313,12 +332,18 @@ export class OfficeShareView {
   /**
    * A pack's answer as this share gets it (#2637 review): its manifest's instance names cut to the share — `byInstance`
    * only for people shown, a furniture item's `activeFor` only them (none left: [], which watches nobody, never the
-   * missing key, which watches everyone). A copy: the kept pack is never changed.
+   * missing key, which watches everyone). #2662: and only the character sets someone shown wears (theirs in `byInstance`,
+   * and `default` for everyone else), with `files` only the pictures it still names: the page loads what is drawn, not
+   * every set of a fleet-sized pack. A copy: the kept pack is never changed.
    */
   pack(answer: unknown): unknown {
     if (!isObj(answer) || !isObj(answer.manifest)) return answer;
     const manifest: Record<string, unknown> = { ...answer.manifest };
     if (isObj(manifest.byInstance)) manifest.byInstance = Object.fromEntries(Object.entries(manifest.byInstance).filter(([k]) => this.scope.has(k)));
+    if (isObj(manifest.characters)) {
+      const worn = new Set(["default", ...Object.values(isObj(manifest.byInstance) ? manifest.byInstance : {}).filter((v): v is string => typeof v === "string")]);
+      manifest.characters = Object.fromEntries(Object.entries(manifest.characters).filter(([k]) => worn.has(k)));
+    }
     if (Array.isArray(manifest.furniture)) {
       manifest.furniture = manifest.furniture.map(f => {
         if (!isObj(f) || f.activeFor === undefined) return f;
@@ -326,13 +351,39 @@ export class OfficeShareView {
         return { ...f, activeFor: names };
       });
     }
-    return { ...answer, manifest };
+    if (!isObj(answer.files)) return { ...answer, manifest };
+    const named = new Set<string>();
+    const walk = (v: unknown): void => {
+      if (typeof v === "string") named.add(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (isObj(v)) Object.values(v).forEach(walk);
+    };
+    walk(manifest);
+    return { ...answer, manifest, files: Object.fromEntries(Object.entries(answer.files).filter(([src]) => named.has(src))) };
   }
+
 
   /** The packs the shown offices are drawn in (a pack no shown office names is not offered). */
   skinIds(): Set<string> {
     return new Set((this.offices ?? []).map(o => o.skin));
   }
+}
+
+/**
+ * #2662: a share's minute of pack pictures — OFFICE_SHARE_LIMITS.pictureLoads times the files and bytes of the packs its
+ * offices are drawn in (the host's own count of each), at least the floors. Read from the stored offices and the pack
+ * list only (cheap: it is asked before a picture is admitted).
+ */
+export function sharePictureRate(share: Pick<OfficeShare, "office">, offices: Office[], packs: Array<{ id: string; files?: number; bytes?: number }>): OfficeShareRate {
+  const used = new Set((share.office === ALL_OFFICES ? offices : offices.filter(o => o.id === share.office)).map(o => o.skin));
+  let files = 0, bytes = 0;
+  for (const p of packs) {
+    if (!used.has(p.id)) continue;
+    if (typeof p.files === "number" && Number.isFinite(p.files) && p.files > 0) files += p.files;
+    if (typeof p.bytes === "number" && Number.isFinite(p.bytes) && p.bytes > 0) bytes += p.bytes;
+  }
+  const L = OFFICE_SHARE_LIMITS;
+  return { requests: Math.max(L.pictureRequestsFloor, L.pictureLoads * files), bytes: Math.max(L.pictureBytesFloor, L.pictureLoads * bytes) };
 }
 
 // ── The gateway ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -373,6 +424,8 @@ export function createOfficeShareGateway(opts: {
   /** A static file of the page by its path (`/assets/…`, `/ui/js/…`), or null. */
   statics?(path: string): { body: Buffer; type: string } | null;
   staticLimiter?: OfficeShareLimiter;
+  /** #2662: the shares' pack pictures, each share's minute sized by its packs (sharePictureRate). */
+  pictureLimiter?: OfficeShareLimiter;
   create?: typeof createServer;
   marker?: string;
 }): OfficeShareGateway {
@@ -381,8 +434,9 @@ export function createOfficeShareGateway(opts: {
   const limiter = opts.limiter ?? new OfficeShareLimiter();
   const staticLimiter = opts.staticLimiter
     ?? new OfficeShareLimiter(undefined, { requests: OFFICE_SHARE_LIMITS.staticRequestsPerMinute, bytes: OFFICE_SHARE_LIMITS.staticBytesPerMinute });
-  const tooMany = (res: ServerResponse): void => {
-    res.writeHead(429, { "Content-Length": "0", "Cache-Control": "no-store", "Retry-After": "60" });
+  const pictureLimiter = opts.pictureLimiter ?? new OfficeShareLimiter();
+  const tooMany = (res: ServerResponse, seconds = 60): void => {
+    res.writeHead(429, { "Content-Length": "0", "Cache-Control": "no-store", "Retry-After": String(seconds) });
     res.end();
   };
   const sockets = new Set<Socket>();
@@ -413,7 +467,7 @@ export function createOfficeShareGateway(opts: {
     if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/ui/js/")) {
       const file = opts.statics?.(url.pathname) ?? null;
       if (!file) return empty(res, 404);
-      if (!staticLimiter.admit("static")) return tooMany(res);
+      if (!staticLimiter.admit("static")) return tooMany(res, staticLimiter.retryAfter("static"));
       staticLimiter.sent("static", file.body.length);
       res.writeHead(200, { "Content-Type": file.type, "Content-Length": String(file.body.length), "Cache-Control": "no-cache" });
       res.end(method === "HEAD" ? undefined : file.body);
@@ -430,11 +484,15 @@ export function createOfficeShareGateway(opts: {
       res.end(method === "HEAD" ? undefined : ENDED_PAGE);
       return;
     }
-    if (!limiter.admit(share.id)) return tooMany(res);
+    // #2662: a pack's picture counts in the share's minute of pictures (sized by the packs it shows), anything else in its 120.
+    const picture = /^\/office-skins\/([A-Za-z0-9_-]{1,40})\/img\/([0-9a-f]{32})\.png$/.exec(rest);
+    const lim = picture ? pictureLimiter : limiter;
+    const rate = picture ? sharePictureRate(share, opts.source.offices().offices, opts.source.skins?.list().packs ?? []) : undefined;
+    if (!lim.admit(share.id, rate)) return tooMany(res, lim.retryAfter(share.id, rate));
     // Every read below is synchronous: the share found above is the share answered.
     const send = (status: number, type: string, body: Buffer | string, cache = "no-store", csp = "default-src 'none'; sandbox"): void => {
       const bytes = typeof body === "string" ? Buffer.from(body) : body;
-      limiter.sent(share.id, bytes.length);
+      lim.sent(share.id, bytes.length);
       res.writeHead(status, { "Content-Type": type, "Content-Length": String(bytes.length), "Cache-Control": cache, "Content-Security-Policy": csp });
       res.end(method === "HEAD" ? undefined : bytes);
     };
@@ -462,7 +520,6 @@ export function createOfficeShareGateway(opts: {
       // Never cached: what it names follows who is shown now (view.pack).
       return json(view.pack(pack));
     }
-    const picture = /^\/office-skins\/([A-Za-z0-9_-]{1,40})\/img\/([0-9a-f]{32})\.png$/.exec(rest);
     if (picture) {
       const bytes = used.has(picture[1]!) ? skins.picture(picture[1]!, picture[2]!) : null;
       return bytes ? send(200, "image/png", bytes, "public, max-age=31536000, immutable") : empty(res, 404);

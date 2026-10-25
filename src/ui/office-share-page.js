@@ -46,6 +46,54 @@ export function shareLease(base, timers = globalThis) {
   });
 }
 
+/** #2662: how many times a picture refused for the share's minute (429) is asked for, in all. */
+export const IMAGE_ATTEMPTS = 4;
+/**
+ * #2662: pictures read at once. All offices may name a thousand; asked all together they would open more connections
+ * than the share's gateway keeps (32, for everyone watching) — a browser on HTTP/2 to the tunnel does not hold back.
+ */
+export const IMAGE_PARALLEL = 6;
+let reading = 0;
+const queued = [];
+async function inTurn(job) {
+  while (reading >= IMAGE_PARALLEL) await new Promise((go) => queued.push(go));
+  reading++;
+  try { return await job(); } finally { reading--; queued.shift()?.(); }
+}
+/**
+ * #2662: a skin pack's picture on the share (loadPackSkin's `image`): read with fetch, IMAGE_PARALLEL at a time, so a
+ * 429 (the share's minute of pictures, shared by everyone watching) is seen and waited out — its Retry-After (1–60 s),
+ * up to IMAGE_ATTEMPTS in all — instead of drawn as missing. The picture, or null (not found, or still refused after the
+ * last attempt).
+ */
+export async function shareImage(url, { fetch: get = globalThis.fetch, timers = globalThis, decode = blobImage } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    let r, blob = null;
+    try {
+      r = await inTurn(async () => {
+        const answer = await get(url, { method: "GET" });
+        if (answer.ok) blob = await answer.blob();
+        return answer;
+      });
+    } catch { return null; }
+    if (r.ok) { try { return await decode(blob); } catch { return null; } }
+    if (r.status !== 429 || attempt >= IMAGE_ATTEMPTS) return null;
+    const after = Number.parseInt(r.headers?.get?.("Retry-After") ?? "", 10);
+    const seconds = Number.isFinite(after) ? Math.min(60, Math.max(1, after)) : 60;
+    await new Promise((resolve) => timers.setTimeout(resolve, seconds * 1000));
+  }
+}
+/** A PNG's bytes as an image to draw (the page's CSP allows blob: pictures). */
+function blobImage(blob) {
+  return new Promise((resolve) => {
+    if (typeof Image !== "function") { resolve(null); return; }
+    const src = URL.createObjectURL(blob), im = new Image();
+    im.onload = () => { URL.revokeObjectURL(src); resolve(im); };
+    im.onerror = () => { URL.revokeObjectURL(src); resolve(null); };
+    im.src = src;
+  });
+}
+
 /** The share's /state into the app store's shape (the status frame's, as app-store.js takes it). */
 export function appFromState(d) {
   const instances = Array.isArray(d && d.instances) ? d.instances : [];
@@ -100,7 +148,7 @@ export function SharePage({ base, timers = globalThis, pollMs = POLL_MS }) {
     </header>
     ${state.phase === "offline" ? html`<p class="note share-note" role="status">${to("offline")}</p>` : null}
     ${view ? html`<div class="share-stage"><${Office} view=${view} traffic=${items} lease=${lease} assetUrl=${(p) => shareUrl(base, p) || p}
-      opening=${state.office === "all" ? ALL_ID : state.office || undefined} /></div>`
+      assetImage=${(url) => shareImage(url, { fetch: (...a) => timers.fetch(...a), timers })} opening=${state.office === "all" ? ALL_ID : state.office || undefined} /></div>`
       : html`<p class="muted share-loading" role="status">${to("loading")}</p>`}
   </main>`;
 }
