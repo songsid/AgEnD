@@ -210,6 +210,13 @@ describe("#2599 structured login: authority, episode and cleanup", () => {
     await h.session.start();
     expect(h.transport.close).toHaveBeenCalledOnce(); expect(h.view().reason).toBe("transport_failed");
   });
+  it("a cancel from the starting observer is rechecked before invoking the native transport", async () => {
+    const h = harness();
+    h.changed.mockImplementation(event => { if (event.phase === "starting") void h.session.cancel(); });
+    await h.session.start();
+    expect(h.transport.start).not.toHaveBeenCalled();
+    expect(h.view().reason).toBe("cancelled"); expect(h.lock.isHeld).toBe(false);
+  });
   it("ambiguous input failure ends the attempt and is never retried", async () => {
     const h = harness("claude-code"); await h.session.start(); h.transport.write.mockRejectedValue(new Error("ambiguous"));
     expect(await h.act({ kind: "code", value: "synthetic_code" })).toBe("ended");

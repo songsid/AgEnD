@@ -188,6 +188,7 @@ export class StructuredSignIn {
       if (!this.current()) { await this.finish(this.lostReason()); return; }
       if (auth === "valid" && !confirmedRelogin) { await this.finish(); return; }
       this.setPhase("starting");
+      if (!this.current()) { await this.finish(this.lostReason()); return; }
       this.transportTouched = true;
       this.startInFlight = this.deps.transport.start({ argv: [...ARGV[this.backend]],
         ...(confirmedRelogin && this.backend === "kiro-cli" ? { logoutArgv: ["kiro-cli", "logout"] } : {}) }, this.abort.signal);
