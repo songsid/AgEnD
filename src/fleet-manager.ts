@@ -3698,6 +3698,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.fleetAdminGate(data.userId, adapterId) !== "ok") { await data.respond(t("not_authorized")); return; }
     const reply = await this.officeShareCommand(String(data.options?.args ?? ""), { adapterId, userId: data.userId });
     await data.respond(reply.text);
+    if (reply.made) this.officeShareNotice("created", reply.made.who, reply.made.share, 1);   // handed over: now General hears it
   }
 
   /** #2636: typed /office_share in Telegram's General — a new link goes by DM (never into the topic). */
@@ -3710,18 +3711,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.fleetAdminGate(msg.userId, adapterId) !== "ok") { await say(t("not_authorized")); return; }
     const reply = await this.officeShareCommand(args ?? "", { adapterId, userId: msg.userId });
     if (!reply.made) { await say(reply.text); return; }
-    if (await this.tryNoticeDm(adapter, msg.userId, reply.text)) { await say(t("office_share.sent_by_dm")); return; }
-    // No private way to hand it over: it is not handed out at all.
-    this.officeShares.revoke(reply.made);
+    if (await this.tryNoticeDm(adapter, msg.userId, reply.text)) {
+      this.officeShareNotice("created", reply.made.who, reply.made.share, 1);
+      await say(t("office_share.sent_by_dm"));
+      return;
+    }
+    // No private way to hand it over: it is not handed out at all (and General never heard of it).
+    this.officeShares.revoke(reply.made.share.id);
     await say(t("office_share.dm_failed"));
   }
 
   /**
    * #2636: what /office_share does, from either platform (the caller checked General and the admin):
-   * `[office|all] [15m|1h|…|24h] [text]` makes a link; `list`; `revoke <id|all>`. `made`: a new share's id (its URL is
-   * in `text`, which is the caller's to deliver privately).
+   * `[office|all] [15m|1h|…|24h] [text]` makes a link; `list`; `revoke <id|all>`. `made`: a new share (its URL is in
+   * `text`, which is the caller's to deliver privately; General hears of it from the caller, once it is delivered).
    */
-  private async officeShareCommand(args: string, actor: { adapterId: string; userId: string }): Promise<{ text: string; made?: string }> {
+  private async officeShareCommand(args: string, actor: { adapterId: string; userId: string }): Promise<{ text: string; made?: { share: OfficeShare; who: string } }> {
     const svc = this.officeShares;
     const words = args.trim().split(/\s+/).filter(Boolean);
     const lang = getLocale();
@@ -3755,8 +3760,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!office) return { text: officeShareRefusalText({ error: "office" }, lang) + "\n" + t("office_share.usage") };
     const made = await svc.create({ office, owner: webPersonKey({ adapterId: actor.adapterId, userId: actor.userId }), text, ...(minutes !== undefined ? { minutes } : {}) });
     if (!made.ok) return { text: officeShareRefusalText(made, lang) };
-    this.officeShareNotice("created", who, made.share, 1);
-    return { text: t("office_share.made", nameOf(office), made.url, Math.round((made.share.expiresAt - made.share.createdAt) / 60_000)), made: made.share.id };
+    return { text: t("office_share.made", nameOf(office), made.url, Math.round((made.share.expiresAt - made.share.createdAt) / 60_000)), made: { share: made.share, who } };
   }
 
   /** Typed /profile belongs only to Telegram's General dispatcher. */

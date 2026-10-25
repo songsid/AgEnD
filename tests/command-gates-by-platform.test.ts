@@ -144,6 +144,7 @@ async function rig(): Promise<Rig> {
   tc.sendSysInfo = async () => { reached.push("sysinfo"); };
   tc.handleTipsCommand = async () => { reached.push("tips"); };     // entry only: its `on|off` arguments are gated inside
   any.startCpuProfile = async () => { reached.push("profile"); return { seconds: 60, done: new Promise(() => {}) }; };
+  any.officeShareCommand = async () => { reached.push("office_share"); return { text: "ok:office_share" }; };
   any.cancelInstance = () => { reached.push("cancel"); return true; };
   any.promptLoginBackends = async () => { reached.push("login"); };
   any.startLoginSession = async () => { reached.push("login"); return "ok"; };
@@ -235,6 +236,7 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "restart", text: "/restart x", label: "restart", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },   // "x" is no mode: an admin gets the usage line, nobody restarts
   { name: "login", text: "/login", label: "login", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
   { name: "profile", text: "/profile", label: "profile", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "office_share", text: "/office_share list", label: "office_share", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },   // #2636
   { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
   { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
   { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },

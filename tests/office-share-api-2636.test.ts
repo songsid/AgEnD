@@ -154,15 +154,16 @@ describe("/office_share (#2636)", () => {
     try {
       const cmd = (args: string) => f.fm.officeShareCommand(args, actor);
       const a = await cmd("HQ 2h text");
-      expect(a.made).toMatch(/^[0-9a-f]{8}$/);
+      expect(a.made.share.id).toMatch(/^[0-9a-f]{8}$/);
+      expect(f.notices).toEqual([]);                                             // the caller tells General, once delivered
       expect(a.text).toMatch(/https:\/\/s1\.trycloudflare\.com\/o\/[A-Za-z0-9_-]{43}/);
       expect(f.fm.officeShares.list()[0]).toMatchObject({ office: "hq", text: true, owner: "person:discord:42" });
       expect(f.fm.officeShares.list()[0].expiresAt - f.fm.officeShares.list()[0].createdAt).toBe(120 * 60_000);
       const b = await cmd("");
       expect(f.fm.officeShares.list().map((s: { office: string }) => s.office).sort()).toEqual(["all", "hq"]);
-      expect((await cmd("list")).text).toContain(a.made);
+      expect((await cmd("list")).text).toContain(a.made.share.id);
       expect((await cmd("nowhere")).text).toContain("/office_share");
-      expect((await cmd(`revoke ${b.made}`)).text).toContain("1");
+      expect((await cmd(`revoke ${b.made.share.id}`)).text).toContain("1");
       expect((await cmd("revoke all")).text).toContain("1");
       expect(f.fm.officeShares.list()).toEqual([]);
       expect((await cmd("revoke x")).text).toContain("/office_share");
@@ -181,10 +182,12 @@ describe("/office_share (#2636)", () => {
       expect(f.fm.officeShares.list()).toEqual([]);
       expect(said.join("\n")).not.toContain("trycloudflare");
       expect(said.at(-1)).toContain("private");
+      expect(f.notices).toEqual([]);                                             // no link, so General hears of none
       adapter.sendDirect = async () => ({ messageId: "2" }) as never;
       await f.fm.runOfficeShareCommand({ source: "telegram", adapterId: "tg", userId: "42", chatId: "-100", threadId: "1" }, "all");
       expect(f.fm.officeShares.list()).toHaveLength(1);
       expect(said.join("\n")).not.toContain("trycloudflare");
+      expect(f.notices).toHaveLength(1);                                         // delivered: now General hears it
     } finally { await f.stop(); }
   });
 });
