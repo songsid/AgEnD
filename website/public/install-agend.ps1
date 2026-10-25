@@ -1872,6 +1872,7 @@ if (-not $Force -and -not (Test-Path $ProgressFile)) {
 # 網路檢查：安裝真正要連的網站（見 Test-WindowsNetwork）。WSL 裡的另外在 Ubuntu 好了之後檢查。
 if (-not (Test-WindowsNetwork)) {
     Write-Info "已停止，沒有改動任何東西。網路好了之後再執行同一行安裝指令。"
+    Set-InstallFailure 'network'
     Read-Host "按 Enter 結束"; exit 1
 }
 
@@ -2070,6 +2071,7 @@ Write-Ok "開機啟動已設定（Windows 登入後自動啟動 WSL）"
 if (-not ((Stage-Done 2) -and (Stage-Done 4))) {
     if (-not (Test-WslNetwork $UBUNTU_DISTRO)) {
         Write-Info "已停止。網路設定好之後再執行同一行安裝指令，會從這一步繼續。"
+        Set-InstallFailure 'network'
         Read-Host "按 Enter 結束"; exit 1
     }
 }

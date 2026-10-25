@@ -36,13 +36,13 @@ describe("static", () => {
     const gate = c.indexOf("if (-not (Test-WindowsNetwork)) {");
     expect(gate).toBeGreaterThan(c.indexOf("$identityMismatch") > 0 ? c.indexOf("$identityMismatch") : c.indexOf("if (-not (Check-Admin))"));
     expect(gate).toBeLessThan(c.indexOf("Clear-ResumeAtLogon\nStart-FreshProgress"));
-    expect(c.slice(gate)).toMatch(/^if \(-not \(Test-WindowsNetwork\)\) \{\n[^\n]+\n\s+Read-Host "按 Enter 結束"; exit 1\n\}/);
+    expect(c.slice(gate)).toMatch(/^if \(-not \(Test-WindowsNetwork\)\) \{\n[^\n]+\n\s+Set-InstallFailure 'network'\n\s+Read-Host "按 Enter 結束"; exit 1\n\}/);
   });
   it("the WSL check runs after WSL is ready and before stage 2, unless backends and AgEnD are both done", () => {
     const gate = c.indexOf("if (-not ((Stage-Done 2) -and (Stage-Done 4))) {");
     expect(gate).toBeGreaterThan(c.indexOf('Write-Ok "WSL 已就緒"'));
     expect(gate).toBeLessThan(c.indexOf('Write-Step 2 $TOTAL "安裝 AI 後端"'));
-    expect(c.slice(gate)).toMatch(/^[^\n]+\n\s+if \(-not \(Test-WslNetwork \$UBUNTU_DISTRO\)\) \{\n[^\n]+\n\s+Read-Host "按 Enter 結束"; exit 1\n\s+\}\n\}/);
+    expect(c.slice(gate)).toMatch(/^[^\n]+\n\s+if \(-not \(Test-WslNetwork \$UBUNTU_DISTRO\)\) \{\n[^\n]+\n\s+Set-InstallFailure 'network'\n\s+Read-Host "按 Enter 結束"; exit 1\n\s+\}\n\}/);
   });
   it("install.ps1's download has a deadline and names proxy, certificate and timeout failures; still ASCII", () => {
     const boot = readFileSync(BOOTSTRAP, "utf8");
