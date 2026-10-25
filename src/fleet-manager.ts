@@ -44,6 +44,7 @@ import { join, dirname, basename, delimiter, isAbsolute, relative, resolve as re
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { CLASSIC_CHANNEL_KIRO_UI } from "./backend/kiro-engine-ledger.js";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps, type KiroMigrationPlan } from "./kiro-migrate.js";
 import { fleetLabel } from "./fleet-label.js";
 import {
@@ -20724,6 +20725,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       ...this.fleetConfig?.defaults,
       working_directory: workDir,
       lightweight: true,
+      // #2598 D8: a ClassicBot channel stays on classic kiro unless the fleet default says otherwise.
+      kiro_ui: this.fleetConfig?.defaults?.kiro_ui ?? CLASSIC_CHANNEL_KIRO_UI,
       tool_progress: toolProgress ?? "off",
       reply_completion_guard: replyCompletionGuard ?? true,
       ...(backend ? { backend } : {}),

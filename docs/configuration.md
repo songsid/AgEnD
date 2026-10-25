@@ -242,7 +242,7 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 | `channel_id` | string | — | Bound channel adapter ID (for multi-channel) |
 | `general_topic` | boolean | `false` | Mark as General dispatcher instance |
 | `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `muse` |
-| `kiro_ui` | `"legacy"` \| `"tui"` | `"legacy"` | Kiro-only launch mode. `legacy` runs on kiro's v1 engine and `tui` on its v2 engine; both are pinned on every launch so a kiro-cli default or saved setting cannot move an instance to another engine (#1109). `"v3"` is refused by validation until Kiro's v3 interface can run unattended (#849). |
+| `kiro_ui` | `"legacy"` \| `"tui"` | per instance (#2598) | Kiro-only launch mode. Unset, a new instance runs `tui` (`create_instance` writes it), an instance already launched on `legacy` stays `legacy`, and ClassicBot channels run `legacy`; move a classic instance with `migrate_kiro_instance`, never by editing this. `legacy` runs on kiro's v1 engine and `tui` on its v2 engine; both are pinned on every launch so a kiro-cli default or saved setting cannot move an instance to another engine (#1109). `"v3"` is refused by validation until Kiro's v3 interface can run unattended (#849). |
 | `model` | string | — | Model override (format depends on backend) |
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `resume_interrupted_work` | boolean | inherited | Override automatic task-work continuation for this instance. `false` leaves interrupted work deferred and keeps journal observations. Takes effect without restarting the instance. |

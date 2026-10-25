@@ -1198,6 +1198,7 @@ export class KiroBackend implements CliBackend {
     // V3 has a different engine and no verified completion signal yet (#1144).
     this.replyGuardOptedIn = false;
     this.builtLaunch = null;
+    // The daemon resolves an unset kiro_ui per instance (defaultKiroUi, #2598); unset here is a direct caller: classic.
     const ui = config.kiroUi ?? "legacy";
     // #2598 B3: never back onto an older engine than this instance has run on — that resumes the frozen copy and loses
     // everything done since. Before any probe: no kiro-cli flag or version changes the answer.

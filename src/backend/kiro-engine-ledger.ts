@@ -45,6 +45,19 @@ export function kiroLedgerPath(agendHome: string = getAgendHome()): string {
   return join(agendHome, "kiro-engine-ledger.json");
 }
 
+/**
+ * #2598: the kiro_ui an instance launches on when its config sets none. New instances get the TUI (kiro 3.0 drops
+ * classic); an instance this ledger shows launched on classic keeps classic, so an upgrade never moves an existing
+ * conversation to another engine behind the user's back (that move is migrate_kiro_instance's, with its history).
+ */
+export function defaultKiroUi(instance: string, agendHome: string = getAgendHome()): "legacy" | "tui" {
+  const ledger = readKiroLedger(kiroLedgerPath(agendHome));
+  return Object.hasOwn(ledger, instance) && ledger[instance]!.lastLaunch.ui === "legacy" ? "legacy" : "tui";
+}
+
+/** #2598 D8: ClassicBot channels stay on classic until their own move is decided (they have no per-channel kiro_ui). */
+export const CLASSIC_CHANNEL_KIRO_UI = "legacy" as const;
+
 let agendVersionCache: string | undefined;
 export function agendVersion(): string {
   if (agendVersionCache === undefined) {

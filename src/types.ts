@@ -159,8 +159,9 @@ export interface InstanceConfig {
   backend?: string;
   /**
    * Kiro CLI interface/engine profile. Only used when backend is "kiro-cli".
-   * "legacy" preserves AgEnD's current --legacy-ui launch; "tui" uses Kiro's
-   * default UI; "v3" opts into the experimental next-generation agent.
+   * "legacy" is kiro's classic UI/v1 engine; "tui" its TUI/v2 engine; "v3" the
+   * next-generation agent (refused by validation). Unset: per instance (#2598,
+   * defaultKiroUi) — tui for a new instance, legacy for one launched on legacy.
    */
   kiro_ui?: "legacy" | "tui" | "v3";
   /**

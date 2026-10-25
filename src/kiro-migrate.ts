@@ -15,6 +15,7 @@ import type { FleetConfig, InstanceConfig } from "./types.js";
 import { armKiroTuiMigration, disarmKiroTuiMigration, inspectKiroTuiMigration, type KiroTuiMigration } from "./backend/kiro-identity.js";
 import { instanceCredentialProfile } from "./backend/credential-profile.js";
 import { t } from "./locale.js";
+import { defaultKiroUi } from "./backend/kiro-engine-ledger.js";
 
 export interface KiroMigrateDeps {
   agendHome: string;
@@ -40,7 +41,7 @@ function target(deps: KiroMigrateDeps, name: string): { inst: InstanceConfig; wo
   if (!inst) return t("kiro_migrate.not_fleet_instance", name);
   const backend = inst.backend ?? fleet?.defaults?.backend ?? "claude-code";
   if (backend !== "kiro-cli") return t("kiro_migrate.not_kiro", name, backend);
-  const ui = inst.kiro_ui ?? "legacy";
+  const ui = inst.kiro_ui ?? defaultKiroUi(name, deps.agendHome);
   if (ui !== "legacy") return t("kiro_migrate.not_legacy", name, ui);
   if (typeof inst.working_directory !== "string" || !inst.working_directory) return t("kiro_migrate.no_directory", name);
   return {

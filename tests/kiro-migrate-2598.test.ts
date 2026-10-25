@@ -162,7 +162,7 @@ describe("no bare --resume under the TUI (B3)", () => {
 
 describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () => {
   function deps(over: Partial<KiroMigrateDeps> & { inst?: Record<string, unknown>; running?: boolean } = {}) {
-    const fleet = { defaults: {}, instances: { wiki: { backend: "kiro-cli", working_directory: cwd, ...(over.inst ?? {}) } } } as unknown as FleetConfig;
+    const fleet = { defaults: {}, instances: { wiki: { backend: "kiro-cli", working_directory: cwd, kiro_ui: "legacy", ...(over.inst ?? {}) } } } as unknown as FleetConfig;
     const saved: string[] = [];
     const restart = vi.fn(async () => {});
     const d: KiroMigrateDeps = {
@@ -214,7 +214,7 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
     const judged = planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     expect(await applyKiroMigration(d, judged.plan)).toEqual({ ok: false, text: t("kiro_migrate.save_failed", "wiki", "disk full") });
-    expect(fleet.instances.wiki.kiro_ui).toBeUndefined();
+    expect(fleet.instances.wiki.kiro_ui).toBe("legacy");
     expect(inspectKiroTuiMigration(ident())).toEqual({ kind: "ready", classicId: "classic-1" });
   });
 
@@ -242,8 +242,8 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
     let out;
     try { out = await applyKiroMigration(d, judged.plan); } finally { chmodSync(dir, 0o700); }
     expect(out).toEqual({ ok: false, text: t("kiro_migrate.refused_unreadable", "wiki") });
-    expect(fleet.instances.wiki.kiro_ui).toBeUndefined();
-    expect(saved).toEqual(["tui", "undefined"]);
+    expect(fleet.instances.wiki.kiro_ui).toBe("legacy");
+    expect(saved).toEqual(["tui", "legacy"]);
   });
 });
 
@@ -259,7 +259,7 @@ describe("FleetManager glue: the request posts a Confirm in General; only the cl
   async function fm() {
     const { FleetManager } = await import("../src/fleet-manager.js");
     const f = Object.create(FleetManager.prototype) as Record<string, any>;
-    const fleet = { defaults: {}, instances: { wiki: { backend: "kiro-cli", working_directory: cwd }, general: { general_topic: true, topic_id: 7 } } };
+    const fleet = { defaults: {}, instances: { wiki: { backend: "kiro-cli", working_directory: cwd, kiro_ui: "legacy" }, general: { general_topic: true, topic_id: 7 } } };
     const posted: any[] = [];
     Object.assign(f, {
       fleetConfig: fleet,
@@ -288,7 +288,7 @@ describe("FleetManager glue: the request posts a Confirm in General; only the cl
     expect(await f.requestKiroMigration("wiki", false)).toEqual({ ok: true, text: t("kiro_migrate.requested"), classic_conversation: "classic-1" });
     expect(posted[0]).toMatchObject({ prefix: "kiro-migrate:", instanceName: "wiki", chatId: "-100", threadId: "7" });
     expect(posted[0].message).toContain("classic-1");
-    expect(fleet.instances.wiki).not.toHaveProperty("kiro_ui");
+    expect(fleet.instances.wiki).toHaveProperty("kiro_ui", "legacy");
     expect(f.saveFleetConfig).not.toHaveBeenCalled();
     expect(await f.requestKiroMigration("wiki", false)).toMatchObject({ ok: true }); // asking again still changes nothing
     expect(inspectKiroTuiMigration(ident())).toEqual({ kind: "ready", classicId: "classic-1" });
@@ -315,7 +315,7 @@ describe("FleetManager glue: the request posts a Confirm in General; only the cl
     expect(await f.handleKiroMigrateCallback(click("confirm"), "tg")).toBe(true);
     f.consumeNonceCallback = vi.fn(() => ({ entry: { instanceName: "wiki", messageId: "m" }, action: "cancel" }));
     expect(await f.handleKiroMigrateCallback(click("cancel"), "tg")).toBe(true);
-    expect(fleet.instances.wiki).not.toHaveProperty("kiro_ui");
+    expect(fleet.instances.wiki).toHaveProperty("kiro_ui", "legacy");
     expect(f.restartSingleInstance).not.toHaveBeenCalled();
     expect(f.retireNonceButtons).toHaveBeenCalledWith(expect.anything(), "m", t("kiro_migrate.cancelled", "wiki"));
   });

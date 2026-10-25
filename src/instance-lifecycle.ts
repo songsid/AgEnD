@@ -2478,6 +2478,11 @@ export class InstanceLifecycle {
           && !isModelCompatible(instanceConfig.backend, instanceConfig.model)) {
         delete instanceConfig.model;
       }
+      // #2598: a new kiro instance is written with its engine, the TUI (kiro 3.0 drops classic) — explicit, so nothing
+      // that later reads the engine ledger under its name (a predecessor's classic launches) can put it on classic.
+      if ((instanceConfig.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code") === "kiro-cli" && !instanceConfig.kiro_ui) {
+        instanceConfig.kiro_ui = "tui";
+      }
       createdConfig = instanceConfig;
       const beforeCreate = structuredClone(this.ctx.fleetConfig);
       const persist = (): void => {

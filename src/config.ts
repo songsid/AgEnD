@@ -73,7 +73,8 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
   reply_triggers: DEFAULT_REPLY_TRIGGERS,
   reply_completion_guard: true, // detect and recover a human turn that ended without a delivered reply
 
-  kiro_ui: "legacy",
+  // No kiro_ui here (#2598): unset resolves per instance — the TUI for a new one, classic for one already launched on
+  // classic (defaultKiroUi) — and ClassicBot channels stay classic (CLASSIC_CHANNEL_KIRO_UI).
   terminal: {
     enabled: true,
     columns: 120,
