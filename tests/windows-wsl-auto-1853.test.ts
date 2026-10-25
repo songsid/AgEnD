@@ -142,7 +142,7 @@ Write-Output 'NOT-REACHED'`;
     const yes = withHelpers(stubs, "\n");
     expect(readFileSync(join(yes.dir, "reg.txt"), "utf8")).toBe('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce|AgEnDInstallResume|powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"\n');
     expect(readFileSync(join(yes.dir, "reboot.txt"), "utf8")).toBe("reboot\n");
-    expect(yes.out).toContain("重新開機並登入 Windows 後，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。");
+    expect(yes.out).toMatch(/重新開機後，請用 Windows 帳號「[^」]+」登入，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。/);   // the account to log in with (#2650 item 5)
     expect(yes.out).not.toContain("NOT-REACHED");
     const no = withHelpers(stubs, "n\n");
     expect(() => readFileSync(join(no.dir, "reboot.txt"), "utf8")).toThrow();
@@ -154,7 +154,7 @@ Write-Output 'NOT-REACHED'`;
 function Test-Path { param($Path) $true }
 function Restart-Computer { param([switch]$Force) }
 Request-Reboot 'x'`, "n\n");
-    expect(out).toContain("重新開機後，請再執行一次同一行安裝指令，會從中斷處繼續。");
+    expect(out).toMatch(/重新開機後，請用 Windows 帳號「[^」]+」登入，再執行一次同一行安裝指令，會從中斷處繼續。/);
     expect(out).not.toContain("登入後一樣會自動繼續");
   });
   it("progress: -Force starts fresh, so a -Force run that changed the distro and was interrupted resumes on the new one (#2238 review)", () => {
