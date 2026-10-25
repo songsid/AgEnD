@@ -20,6 +20,36 @@ $NODE_VERSION = "22"  # LTS 穩定版，AgEnD 需要 22+
 
 # ── 輔助函式 ─────────────────────────────────────────────
 
+# Stream only installer-owned downloads; both response wait and byte progress are bounded.
+function New-InstallDownloadRequest([string]$Uri) { return [Net.WebRequest]::CreateHttp($Uri) }
+function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec = 120, [double]$NoProgressSeconds = 60) {
+    $request = New-InstallDownloadRequest $Uri
+    $response = $null; $inputStream = $null; $outputStream = $null; $complete = $false
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $wait = {
+        $operation = $args[0]
+        $left = [Math]::Min($NoProgressSeconds, $TimeoutSec - $clock.Elapsed.TotalSeconds)
+        if ($left -le 0 -or -not $operation.Wait([int][Math]::Max(1, $left * 1000))) { throw 'Download exceeded its operation or no-progress deadline; rerun after checking the network.' }
+        return $operation.GetAwaiter().GetResult()
+    }
+    try {
+        $response = & $wait ($request.GetResponseAsync())
+        $inputStream = $response.GetResponseStream()
+        $outputStream = [IO.File]::Open($OutFile, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $buffer = New-Object byte[] 65536
+        while ($true) {
+            $count = & $wait ($inputStream.ReadAsync($buffer, 0, $buffer.Length))
+            if ($count -eq 0) { break }
+            $outputStream.Write($buffer, 0, $count)
+        }
+        $complete = $true
+    } finally {
+        $request.Abort()
+        if ($outputStream) { $outputStream.Dispose() }; if ($inputStream) { $inputStream.Dispose() }; if ($response) { $response.Dispose() }
+        if (-not $complete) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
+    }
+}
+
 function Write-Step($num, $total, $msg) {
     Write-Host "`n[$num/$total] $msg" -ForegroundColor Cyan
     Write-InstallLog "[$num/$total] $msg"
@@ -333,10 +363,14 @@ function Get-UbuntuWslImage([string]$version = 'Ubuntu-24.04') {
 function Install-AgendDistro([string]$name, [string]$location) {
     $version = Get-InstalledWslVersion
     if ($version -and $version -ge $WSL_NAME_MIN) {
-        $null = Invoke-Watched -Label "下載並安裝 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "Ubuntu-24.04", "--name", $name, "--location", $location, "--no-launch")
+        $installCode = Invoke-Watched -Label "下載並安裝 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "Ubuntu-24.04", "--name", $name, "--location", $location, "--no-launch")
         $after = Get-WslDistroNames
         if ($null -eq $after) { Write-Err "裝完之後讀不到 Linux 清單，無法確認 $name 有沒有裝好；沒有再做任何事。"; return $false }
-        if ($after -contains $name) { return $true }
+        if ($after -contains $name) {
+            if ($installCode -notin @(0,3010)) { Write-Err "Linux 安裝結束碼 $installCode，尚未標記完成；請重新執行以驗證現況。"; return $false }
+            return $true
+        }
+        if ($installCode -eq 124) { Write-Err 'Linux installation timed out; check WSL before retrying.'; return $false }
         Write-Warn "WSL 沒有用 $name 這個名稱裝好，改用官方的 Ubuntu 映像檔匯入..."
     }
     $image = Get-UbuntuWslImage
@@ -346,13 +380,13 @@ function Install-AgendDistro([string]$name, [string]$location) {
     try {
         Write-Info "正在下載官方的 Ubuntu 24.04（幾百 MB，請稍候）..."
         $ProgressPreference = 'SilentlyContinue'    # Windows PowerShell 5.1 的下載進度列會讓下載慢很多
-        try { Invoke-WebRequest -Uri $image.Url -OutFile $file -UseBasicParsing -TimeoutSec 1800 } catch { Write-Err "下載 Ubuntu 失敗：$_"; return $false }
+        try { Invoke-InstallDownload -Uri $image.Url -OutFile $file -TimeoutSec 1800 } catch { Write-Err "下載 Ubuntu 失敗：$_"; return $false }
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash
         if ($hash -ne $image.Sha256) { Write-Err "下載的 Ubuntu 和官方的檢查碼不符，沒有安裝。"; return $false }
         New-Item -ItemType Directory -Path $location -Force | Out-Null
-        $null = Invoke-Watched -Label "匯入 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 1–3 分鐘" -UpperMinutes 10 -Encoding utf16 -File "wsl.exe" -Arguments @("--import", $name, $location, $file, "--version", "2")
+        $importCode = Invoke-Watched -Label "匯入 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 1–3 分鐘" -UpperMinutes 10 -Encoding utf16 -File "wsl.exe" -Arguments @("--import", $name, $location, $file, "--version", "2")
         $after = Get-WslDistroNames
-        return ($null -ne $after -and $after -contains $name)
+        return ($importCode -in @(0,3010) -and $null -ne $after -and $after -contains $name)
     } finally {
         $ProgressPreference = $prevProgress
         Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
@@ -968,7 +1002,7 @@ function Invoke-WslUpdateStage {
         }
         $wslMsi = "$env:TEMP\wsl-latest.msi"
         Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
-        Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing -TimeoutSec 1800
+        Invoke-InstallDownload -Uri $msiAsset.browser_download_url -OutFile $wslMsi -TimeoutSec 1800
         $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
         Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
         if ($msiCode -eq 3010) { return 'reboot' }
@@ -1870,7 +1904,7 @@ if ($wslStageVerified) {
     $featureStates = @($preflight.Features.Values)
     if ($featureStates -contains 'Unknown') {
         # 讀不到功能狀態（沒有 DISM 的 PowerShell 模組）：沿用以前的判斷，wsl --status 能用就當作已啟用。
-        $statusOut = wsl --status 2>&1 | Out-String
+        $statusProbe = Invoke-BoundedWsl -Arguments @('--status'); $statusOut = $statusProbe.Text
         if ($statusOut -match "Usage" -or $statusOut -match "引數") {
             foreach ($n in $WSL_FEATURES) { if ($preflight.Features[$n] -eq 'Unknown') { $preflight.Features[$n] = 'Disabled' } }
         }
@@ -2286,10 +2320,11 @@ Write-Info "    agend web               # 取得儀表板的一次性登入碼"
 Write-Info ("    手動啟動：" + (Get-AgendStartHint $UBUNTU_DISTRO $AGEND_USER))
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
-Save-InstallReceipt 'done' @($skippedLogins | ForEach-Object { [string]$_.Key })
 
 # 清除進度檔與自動接續的登記
 $missingBackends = @($selected | Where-Object { -not (Get-InstalledBackend $_) })
+if ($script:InstallerReady -and $missingBackends.Count -eq 0) { Save-InstallReceipt 'done' @($skippedLogins | ForEach-Object { [string]$_.Key }) }
+elseif ($missingBackends.Count -gt 0) { Set-InstallFailure 'backend' } else { Set-InstallFailure 'service' }
 if ($script:InstallerReady -and $missingBackends.Count -eq 0) { Remove-Item -LiteralPath $ProgressFile -Force -ErrorAction SilentlyContinue }
 else { Write-Info "安裝進度已保留；再次執行相同指令，會重試缺少的後端或服務檢查。" }
 Clear-ResumeAtLogon

@@ -28,6 +28,25 @@ ${body}`);
 function scratch<T>(body:(f:ReturnType<typeof fixture>)=>T):T {const f=fixture();try{return body(f)}finally{f.close()}}
 
 describe.skipIf(!pwsh)('bounded resumable Windows stages, all WSL/backend/service calls stubbed',()=>{
+ it.each(['ok','headers','body'])('download byte/response deadlines abort and remove partial files: %s',mode=>scratch(f=>{
+  const out=f.run(`$script:aborted=$false;$script:disposed=$false
+$script:stream=[IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes('download bytes'))
+${mode==='body'?"$script:stream=[pscustomobject]@{};$script:stream|Add-Member ScriptMethod ReadAsync {param($b,$o,$n);return ([Threading.Tasks.TaskCompletionSource[int]]::new()).Task};$script:stream|Add-Member ScriptMethod Dispose {}":''}
+$response=[pscustomobject]@{};$response|Add-Member ScriptMethod GetResponseStream {return $script:stream};$response|Add-Member ScriptMethod Dispose {$script:disposed=$true}
+$script:responseTask=${mode==='headers'?"([Threading.Tasks.TaskCompletionSource[object]]::new()).Task":"[Threading.Tasks.Task]::FromResult($response)"}
+$request=[pscustomobject]@{};$request|Add-Member ScriptMethod GetResponseAsync {return $script:responseTask};$request|Add-Member ScriptMethod Abort {$script:aborted=$true}
+function New-InstallDownloadRequest {return $request}
+try{Invoke-InstallDownload -Uri 'https://stub.invalid/file' -OutFile '${f.dir}/download' -TimeoutSec 2 -NoProgressSeconds 0.05;Write-Output 'DONE'}catch{Write-Output ('FAILED='+$_)}
+Write-Output ('ABORTED='+$script:aborted+' EXISTS='+(Test-Path '${f.dir}/download'))`);
+  expect(out).toContain('ABORTED=True');expect(out).toContain(mode==='ok'?'DONE':'no-progress deadline');
+  expect(existsSync(join(f.dir,'download'))).toBe(mode==='ok');
+  if(mode==='ok')expect(readFileSync(join(f.dir,'download'),'utf8')).toBe('download bytes');
+ }));
+ it('bootstrap and installer use identical download deadline helpers',()=>{
+  const bootstrap=readFileSync(resolve('website/public/install.ps1'),'utf8');
+  const helper=(s:string)=>s.slice(s.indexOf('function New-InstallDownloadRequest'),s.indexOf('\n}\n',s.indexOf('function Invoke-InstallDownload('))+3);
+  expect(helper(source)).toBe(helper(bootstrap));
+ });
  it.each([['exit 3',3],['sleep 10',124]])('bounded native probe returns its outcome: %s',(command,code)=>scratch(f=>{
   writeFileSync(join(f.bin,'wsl.exe'),`#!/bin/sh\n${command}\n`);
   const out=f.run(`$r=Invoke-BoundedWsl -Arguments @('--probe') -TimeoutSeconds 1; Write-Output ('CODE='+$r.Code)`);
@@ -67,7 +86,7 @@ $null=Get-VerifiedAgendVersion`);
  }));
  it('a failed curl cannot be hidden by a successful empty installer shell',()=>scratch(f=>{
   const command=f.run(`Get-AgendInstallCommand 'beta'`).trim();
-  for(const [name,code]of [['curl',22],['bash',0]]){writeFileSync(join(f.bin,name),`#!/bin/sh\nexit ${code}\n`);chmodSync(join(f.bin,name),0o755)}
+  for(const [name,code]of [['curl',22],['bash',0]] as const){writeFileSync(join(f.bin,name),`#!/bin/sh\nexit ${code}\n`);chmodSync(join(f.bin,name),0o755)}
   const result=spawnSync('/bin/bash',['-c',command],{env:{PATH:`${f.bin}:/usr/bin:/bin`,HOME:f.dir},timeout:3000});
   expect(result.status).toBe(22);
  }));
@@ -95,6 +114,10 @@ Write-Output ('READY='+(Test-InstallerReady))`);
   const start=source.indexOf('$scriptLines = @(',source.indexOf('安裝 tmux...'));
   expect(source.slice(start,start+100)).toContain("'set -e'");
  });
+ it('a registered Linux name cannot hide a failed install exit',()=>scratch(f=>{
+  const out=f.run(`$WSL_NAME_MIN=[version]'2.4.4';function Get-InstalledWslVersion{return [version]'3.0'};function Invoke-Watched{return 7};function Get-WslDistroNames{return @('Scratch')};Write-Output ('OK='+(Install-AgendDistro 'Scratch' '/scratch/location'))`);
+  expect(out).toContain('OK=False');expect(out).toContain('結束碼 7');
+ }));
  it('a partial backend failure stays retryable; rerun preserves successes and retries only missing CLI',()=>scratch(f=>{
   const a=source.indexOf('$savedBackends = Get-ProgressValue'),b=source.indexOf('# Progress IDs stay compatible',a);
   const stage=source.slice(a,b);writeFileSync(join(f.dir,'stage.ps1'),stage);

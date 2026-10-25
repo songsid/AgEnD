@@ -91,7 +91,7 @@ const imageStubs = (o: { badHash?: boolean; noList?: boolean } = {}) => `
 function Invoke-RestMethod { param($Uri, $TimeoutSec, [switch]$UseBasicParsing)
   ${o.noList ? "throw 'offline'" : ""}
   return [pscustomobject]@{ ModernDistributions = [pscustomobject]@{ Ubuntu = @([pscustomobject]@{ Name = 'Ubuntu-24.04'; Amd64Url = [pscustomobject]@{ Url = 'https://releases.ubuntu.com/24.04.5/ubuntu-24.04.5-wsl-amd64.wsl'; Sha256 = '0x${o.badHash ? "00" + imageHash.slice(2) : imageHash.toUpperCase()}' } }) } } }
-function Invoke-WebRequest { param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec) Add-Content (Join-Path $env:TMPDIR 'downloads.txt') $Uri; [IO.File]::WriteAllText($OutFile, '${IMAGE}') }
+function Invoke-InstallDownload { param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec) Add-Content (Join-Path $env:TMPDIR 'downloads.txt') $Uri; [IO.File]::WriteAllText($OutFile, '${IMAGE}') }
 `;
 
 describe.skipIf(!pwsh)("with pwsh: choosing and installing AgEnD's own Ubuntu", { timeout: 90_000 }, () => {

@@ -17,6 +17,36 @@
 & {
     $ErrorActionPreference = 'Stop'
 
+# Stream only installer-owned downloads; both response wait and byte progress are bounded.
+function New-InstallDownloadRequest([string]$Uri) { return [Net.WebRequest]::CreateHttp($Uri) }
+function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec = 120, [double]$NoProgressSeconds = 60) {
+    $request = New-InstallDownloadRequest $Uri
+    $response = $null; $inputStream = $null; $outputStream = $null; $complete = $false
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $wait = {
+        $operation = $args[0]
+        $left = [Math]::Min($NoProgressSeconds, $TimeoutSec - $clock.Elapsed.TotalSeconds)
+        if ($left -le 0 -or -not $operation.Wait([int][Math]::Max(1, $left * 1000))) { throw 'Download exceeded its operation or no-progress deadline; rerun after checking the network.' }
+        return $operation.GetAwaiter().GetResult()
+    }
+    try {
+        $response = & $wait ($request.GetResponseAsync())
+        $inputStream = $response.GetResponseStream()
+        $outputStream = [IO.File]::Open($OutFile, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $buffer = New-Object byte[] 65536
+        while ($true) {
+            $count = & $wait ($inputStream.ReadAsync($buffer, 0, $buffer.Length))
+            if ($count -eq 0) { break }
+            $outputStream.Write($buffer, 0, $count)
+        }
+        $complete = $true
+    } finally {
+        $request.Abort()
+        if ($outputStream) { $outputStream.Dispose() }; if ($inputStream) { $inputStream.Dispose() }; if ($response) { $response.Dispose() }
+        if (-not $complete) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
+    }
+}
+
     function Resolve-AgendInstallVersion([string]$value) {
         if ($value -eq '') { return '' }
         if ($value.Length -gt 128 -or -not [regex]::IsMatch($value, '\A(?:beta|latest|(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)\z')) {
@@ -182,7 +212,7 @@
     try {
         Write-Host "AgEnD: downloading the installer from $base/install-agend.ps1 ..."
         try {
-            Invoke-WebRequest -UseBasicParsing -Uri "$base/install-agend.ps1" -OutFile $tmp
+            Invoke-InstallDownload -Uri "$base/install-agend.ps1" -OutFile $tmp -TimeoutSec 120
         } catch {
             Write-Host "AgEnD: the download failed: $($_.Exception.Message)" -ForegroundColor Red
             Write-Host "Check your internet connection, then run the same command again."

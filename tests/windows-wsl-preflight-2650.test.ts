@@ -40,7 +40,7 @@ describe("static", () => {
     expect(fresh).toMatch(/^[^\n]+\n\s+\$afterFresh = Get-WslDistroNames\n\s+if \(\$null -ne \$afterFresh -and \$afterFresh -notcontains \$UBUNTU_DISTRO\) \{\n[^\n]+\n\s+if \(-not \(Install-AgendDistro \$UBUNTU_DISTRO \$wslPath\)\) \{/);
   });
   it("the WSL MSI download has a deadline", () => {
-    expect(code).toMatch(/Invoke-WebRequest -Uri \$msiAsset\.browser_download_url -OutFile \$wslMsi -UseBasicParsing -TimeoutSec \d+/);
+    expect(code).toMatch(/Invoke-InstallDownload -Uri \$msiAsset\.browser_download_url -OutFile \$wslMsi -TimeoutSec \d+/);
   });
 });
 
@@ -149,8 +149,8 @@ function Get-WindowsArch { return '${arch}' }
 function Get-FileVersionString { return $null }
 function Invoke-Watched { param($Label, $Usually, $File, [string[]]$Arguments, $UpperMinutes, $Encoding, $OnLine) if ($File -eq 'msiexec.exe') { return 0 }; return 1 }
 function Invoke-RestMethod { return [PSCustomObject]@{ tag_name = '2.6.1'; assets = @(${assets.map(a => `[PSCustomObject]@{ name = '${a}'; browser_download_url = 'https://example.invalid/${a}' }`).join(", ")}) } }
-function Invoke-WebRequest { param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec) $script:urls += "$Uri timeout=$TimeoutSec" }
-function wsl { $global:LASTEXITCODE = 0 }
+function Invoke-InstallDownload { param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec) $script:urls += "$Uri timeout=$TimeoutSec" }
+function Invoke-BoundedWsl {return @{Code=0;Text=''}}
 $r = Invoke-WslUpdateStage
 Write-Output ('RESULT=' + $r + ' URLS=' + ($script:urls -join ','))`);
     const both = ["wsl.2.6.1.0.x64.msi", "wsl.2.6.1.0.arm64.msi"];

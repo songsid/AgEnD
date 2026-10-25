@@ -59,7 +59,7 @@ function Invoke-Watched { param($Label, $Usually, $File, [string[]]$Arguments, $
   if ($OnLine) { foreach ($l in @(${(o.lines ?? []).map(l => `'${l}'`).join(",")})) { & $OnLine $l } }
   $c = $script:codes[0]; $script:codes.RemoveAt(0); return $c }
 function Invoke-RestMethod { $script:log += 'github-api'; ${o.rest && o.rest !== "ok" ? `throw '${o.rest}'` : `return [PSCustomObject]@{ tag_name = '2.6.1'; assets = @([PSCustomObject]@{ name = 'wsl.2.6.1.0.x64.msi'; browser_download_url = 'https://example.invalid/wsl.msi' }) }`} }
-function Invoke-WebRequest { $script:log += 'download' }
+function Invoke-InstallDownload { $script:log += 'download' }
 function Invoke-BoundedWsl { return @{Code=${o.verify ?? 0};Text=''} }
 $r = Invoke-WslUpdateStage
 Write-Output ("RESULT=" + $r + " LOG=" + ($script:log -join ' | '))`);
