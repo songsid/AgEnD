@@ -1284,6 +1284,83 @@ function Invoke-WslStep {
     }
 }
 
+
+# #2650: merge only installer-owned INI keys. Keep comments, unknown sections and all unrelated values.
+function Merge-InstallIni([string]$Text, [System.Collections.IDictionary]$Updates) {
+    $newline = if ($Text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $lines = [Collections.Generic.List[string]]::new()
+    $section = ''; $seenSections = @{}; $seenKeys = @{}
+    $flush = {
+        if ($Updates.Contains($section)) {
+            foreach ($key in $Updates[$section].Keys) {
+                $id = "$section/$key"
+                if (-not $seenKeys.ContainsKey($id)) { $lines.Add("$key=$($Updates[$section][$key])"); $seenKeys[$id] = $true }
+            }
+        }
+    }
+    foreach ($line in @($Text -split '\r?\n')) {
+        if ($line -match '^\s*\[([^\]]+)\]\s*(?:[#;].*)?$') {
+            & $flush
+            $section = $Matches[1].Trim().ToLowerInvariant(); $seenSections[$section] = $true
+        }
+        $next = $line
+        if ($Updates.Contains($section) -and $line -match '^\s*([^#;=]+?)\s*=') {
+            $key = $Matches[1].Trim().ToLowerInvariant()
+            if ($Updates[$section].Contains($key)) {
+                $comment = [regex]::Match($line, '\s+[#;].*$').Value
+                $canonical = @($Updates[$section].Keys | Where-Object { $_.ToLowerInvariant() -eq $key })[0]
+                $next = "$canonical=$($Updates[$section][$canonical])$comment"
+                $seenKeys["$section/$key"] = $true
+            }
+        }
+        $lines.Add($next)
+    }
+    & $flush
+    foreach ($name in $Updates.Keys) {
+        if (-not $seenSections.ContainsKey($name)) {
+            $lines.Add(''); $lines.Add("[$name]")
+            foreach ($key in $Updates[$name].Keys) { $lines.Add("$key=$($Updates[$name][$key])") }
+        }
+    }
+    return (($lines -join $newline).TrimEnd("`r", "`n") + $newline)
+}
+function Write-MergedWindowsWslConfig([string]$Path) {
+    $old = if (Test-Path -LiteralPath $Path) { [IO.File]::ReadAllText($Path) } else { '' }
+    $next = Merge-InstallIni $old ([ordered]@{ general = [ordered]@{ instanceIdleTimeout = '-1' }; wsl2 = [ordered]@{ vmIdleTimeout = '-1' } })
+    if ($next -ceq $old) { return }
+    if (Test-Path -LiteralPath $Path) {
+        $backup = $Path + '.agend-backup-' + [Guid]::NewGuid().ToString('N')
+        [IO.File]::Copy($Path, $backup, $false)
+        Write-Info "原有 WSL 設定已備份：$backup"
+    }
+    $temp = $Path + '.agend-' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        [IO.File]::WriteAllText($temp, $next, (New-Object Text.UTF8Encoding $false))
+        Move-Item -LiteralPath $temp -Destination $Path -Force -ErrorAction Stop
+    } finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+}
+function Get-MergedLinuxWslConfigScript([string]$Text) {
+    $next = Merge-InstallIni $Text ([ordered]@{ boot = [ordered]@{ systemd = 'true' }; interop = [ordered]@{ appendWindowsPath = 'false' }; user = [ordered]@{ default = 'root' } })
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($next))
+    $nonce = [Guid]::NewGuid().ToString('N')
+    return (@(
+        'set -eu'
+        'file=/etc/wsl.conf'
+        '[ ! -L "$file" ] || { echo "Refusing to replace symlinked /etc/wsl.conf" >&2; exit 1; }'
+        ('temp=/etc/.agend-wsl-' + $nonce)
+        'trap ''rm -f -- "$temp"'' EXIT'
+        # Match the read snapshot immediately before making a backup or replacing the file.
+        ('expected=' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text)))
+        'actual=; if [ -e "$file" ]; then actual=$(base64 -w0 -- "$file"); fi'
+        '[ "$actual" = "$expected" ] || { echo "WSL config changed; rerun installer to merge the latest settings" >&2; exit 1; }'
+        ('if [ -e "$file" ]; then cp -p -- "$file" "$file.agend-backup-' + $nonce + '"; echo "WSL config backup: $file.agend-backup-' + $nonce + '"; fi')
+        ("printf '%s' '" + $encoded + "' | base64 -d > " + '"$temp"')
+        'if [ -e "$file" ]; then chmod --reference="$file" "$temp"; else chmod 644 "$temp"; fi'
+        'mv -f -- "$temp" "$file"'
+        'echo WSL_CONF_OK'
+    ) -join "`n")
+}
+
 # ── 開始 ─────────────────────────────────────────────────
 
 # Validate before any WSL, network, registry or installation action.
@@ -1509,48 +1586,21 @@ if ($wslState -eq 'ready') {
 
 # 防護：設定 wsl.conf（systemd + 關閉 Windows PATH + 預設 root）
 Write-Info "正在設定 WSL 環境防護..."
-$wslConfScript = @'
-#!/bin/bash
-cat > /etc/wsl.conf << 'EOF'
-[boot]
-systemd=true
+# Read exact bytes without introducing a PowerShell output newline.
+$encodedConf = (wsl -d $UBUNTU_DISTRO -u root -- bash -c 'if [ -L /etc/wsl.conf ]; then exit 1; elif [ -e /etc/wsl.conf ]; then base64 -w0 /etc/wsl.conf; fi' 2>$null | Out-String).Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Cannot safely read /etc/wsl.conf; no settings were replaced.' }
+$currentConf = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedConf))
+$confCode = Invoke-WslStep -Label "合併 WSL 設定（保留原有設定）" -Usually "通常幾秒鐘" -UpperMinutes 1 -Script (Get-MergedLinuxWslConfigScript $currentConf)
+if ($confCode -ne 0) { throw "WSL config merge failed (exit $confCode); review the error above and rerun." }
+Write-Ok "WSL 環境設定已合併：啟用 systemd、關閉 Windows PATH、預設使用 root；其他設定保留"
+Write-Info "正在重啟選定的 Linux 讓設定生效..."
+wsl --terminate $UBUNTU_DISTRO 2>$null
+Start-Sleep -Seconds 2
 
-[interop]
-appendWindowsPath=false
-
-[user]
-default=root
-EOF
-echo "WSL_CONF_OK"
-'@
-$prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-$wslConfScript | wsl -d $UBUNTU_DISTRO -u root -- tee /tmp/setup-wslconf.sh > $null 2>&1
-$confResult = wsl -d $UBUNTU_DISTRO -u root -- bash /tmp/setup-wslconf.sh 2>&1
-$ErrorActionPreference = $prevEAP
-if ($confResult -match "WSL_CONF_OK") {
-    Write-Ok "WSL 環境防護已設定："
-    Write-Info "  - systemd 已啟用（服務管理）"
-    Write-Info "  - Windows PATH 污染已關閉（避免版本衝突）"
-    Write-Info "  - 預設使用者設為 root"
-
-    # 重啟 WSL 讓設定生效
-    Write-Info "正在重啟 WSL 讓設定生效..."
-    wsl --terminate $UBUNTU_DISTRO 2>$null
-    Start-Sleep -Seconds 2
-}
-
-# 防護：.wslconfig（防止 WSL 自動停止）
-Write-Info "正在設定 .wslconfig（防止 WSL 自動停止）..."
-$wslConfigFilePath = "$env:USERPROFILE\.wslconfig"
-$wslConfigContent = @"
-[general]
-instanceIdleTimeout=-1
-
-[wsl2]
-vmIdleTimeout=-1
-"@
-[IO.File]::WriteAllText($wslConfigFilePath, $wslConfigContent, (New-Object System.Text.UTF8Encoding $false))
-Write-Ok ".wslconfig 已設定（WSL 不會因關閉 terminal 而停止）"
+# Merge the Windows-wide file too: never discard memory/swap/network settings.
+Write-Info "正在合併 .wslconfig（保留原有的記憶體、網路等設定）..."
+Write-MergedWindowsWslConfig "$env:USERPROFILE\.wslconfig"
+Write-Ok ".wslconfig 已合併；原有設定保留"
 
 # 防護：開機自動啟動 WSL（VBS 腳本放到 Startup 資料夾）
 Write-Info "正在設定開機自動啟動 WSL..."
