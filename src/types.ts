@@ -600,3 +600,5 @@ export type RawFleetConfig = Record<string, unknown> & {
   defaults?: FleetDefaults;
   instances?: Record<string, Partial<InstanceConfig> & Record<string, unknown>>;
 };
+
+// proof: src CI path gating; close unmerged
