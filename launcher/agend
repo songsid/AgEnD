@@ -108,3 +108,5 @@ if [ -e "$receipt" ] || [ -e "$node" ] || [ -L "$node" ]; then
   refuse "its bundled Node ($node) is missing, incomplete or changed since it was verified, and there is no node on PATH" "$repair"
 fi
 refuse "its bundled Node is not installed and there is no node on PATH" "$repair" 127
+
+# proof: packaging CI path gating; close unmerged
