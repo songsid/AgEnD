@@ -26,9 +26,9 @@ describe("shortcuts and the fast path (static)", () => {
     const at = code.indexOf("$existing = Find-ExistingAgend");
     expect(code.slice(at - 120, at)).toMatch(/if \(-not \$Force -and -not \(Test-Path \$ProgressFile\)\) \{\n\s*$/);
     expect(at).toBeGreaterThan(code.indexOf("if (-not (Check-Admin))"));            // after the admin check …
-    expect(at).toBeLessThan(code.indexOf('Write-Info "檢查網路連線..."'));          // … before the network check, so before anything is installed
+    expect(at).toBeLessThan(code.indexOf("if (-not (Test-WindowsNetwork))"));          // … before the network check, so before anything is installed
     expect(at).toBeLessThan(code.indexOf("Write-Step 1 $TOTAL"));
-    const block = code.slice(at, code.indexOf('Write-Info "檢查網路連線..."'));
+    const block = code.slice(at, code.indexOf("if (-not (Test-WindowsNetwork))"));
     expect(block).toMatch(/\$made = @\(Install-AgendShortcuts \$existing\.Distro \$existing\.User\)\n\s*\$null = Write-ShortcutResult \$made/);
     expect(block).toMatch(/Read-Host "按 Enter 結束"; exit 0/);
     expect(block).not.toMatch(/Invoke-WslStep|wsl --install|agend setup|Mark-Stage/);

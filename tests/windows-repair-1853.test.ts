@@ -156,7 +156,7 @@ describe.skipIf(!pwsh)("with pwsh: finding and repairing a broken AgEnD", { time
 
 describe("the fast path repairs first, then only offers the shortcuts (static)", () => {
   it("broken: the repair before anything else; a failed one stops, saying the data is kept", () => {
-    const fast = code.slice(code.indexOf("$existing = Find-ExistingAgend"), code.indexOf('Write-Info "檢查網路連線..."'));
+    const fast = code.slice(code.indexOf("$existing = Find-ExistingAgend"), code.indexOf("if (-not (Test-WindowsNetwork))"));
     const repair = fast.indexOf("if ($existing.Broken) {");
     expect(repair).toBeGreaterThan(-1);
     expect(repair).toBeLessThan(fast.indexOf("$prior = Get-InstallRecordConflict"));

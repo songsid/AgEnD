@@ -136,10 +136,15 @@
     try {
         Write-Host "AgEnD: downloading the installer from $base/install-agend.ps1 ..."
         try {
-            Invoke-WebRequest -UseBasicParsing -Uri "$base/install-agend.ps1" -OutFile $tmp
+            Invoke-WebRequest -UseBasicParsing -Uri "$base/install-agend.ps1" -OutFile $tmp -TimeoutSec 120
         } catch {
             Write-Host "AgEnD: the download failed: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Check your internet connection, then run the same command again."
+            # Say what kind of failure it was (#2650 item 8): a proxy or a company certificate needs IT, not a retry.
+            $msg = "$($_.Exception.Message) $($_.Exception.InnerException.Message)"
+            if ($msg -match '\(407\)|[Pp]roxy') { Write-Host "A proxy blocked it or wants a sign-in. Check the proxy settings, or ask your IT team." }
+            elseif ($msg -match 'SSL|TLS|[Cc]ertificate|trust relationship') { Write-Host "The HTTPS certificate was not trusted: company networks often inspect HTTPS. Ask your IT team; do not turn certificate checks off." }
+            elseif ($msg -match 'timed out|[Tt]imeout') { Write-Host "It timed out: the network is slow or a login page (hotel, office) is waiting. Check it, then run the same command again." }
+            else { Write-Host "Check your internet connection, then run the same command again." }
             return
         }
 
