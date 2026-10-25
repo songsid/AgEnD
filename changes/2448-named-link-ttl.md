@@ -1,4 +1,0 @@
----
-section: Added
----
-- **A fixed-hostname public link can stay open longer, and reopen after a restart.** With `web.public_link.hostname` set (a Cloudflare named tunnel), `ttl_minutes` now accepts up to 10080 (7 days), or `0` for no expiry: the link stays open until it is closed or AgEnD stops. The new `web.public_link.auto_open` (off by default, fixed hostname only) reopens the link after AgEnD starts, for the admin who last opened it with `/web`, with the same readiness check; nothing is posted and no sign-in code is sent, so a phone's home-screen shortcut works again after a restart and still needs a code to sign in. Close or `/web revoke` stops it until the next `/web`; a failed reopen is retried twice and then reported once to that admin by DM. A quick tunnel keeps 1–480 minutes, and Settings → Web refuses a longer lifetime, `0` or `auto_open` without a hostname.

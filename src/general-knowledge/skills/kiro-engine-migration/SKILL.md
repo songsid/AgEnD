@@ -51,9 +51,22 @@ The user has already been shown the plain notice in this topic. When they ask, e
 
 - Never start, restart, recreate or replace a stopped kiro instance to "try again". It will refuse the same way.
 - Never change `kiro_ui` or `backend` to get an instance running. A different engine starts a different
-  conversation, and the move cannot be undone.
+  conversation, and the move cannot be undone. The one way an instance changes engine is the move below.
 - Never run `kiro-cli` yourself, and never delete or edit anything under `~/.kiro` or kiro's data directory.
 - Never reply to the `[system:kiro-incompat]` notice itself. It is information, not a request.
+
+## Moving an instance from classic to the TUI engine (#2598)
+
+kiro-cli 3.0 drops the classic engine (`kiro_ui: legacy`), so classic instances are being moved to the TUI engine,
+**one batch at a time and only with the user's OK for that batch**. The move is `migrate_kiro_instance` (a
+coordinator-level tool; you do not have it). It carries the conversation: the instance's classic conversation is
+resumed once under the TUI and becomes its own. A fleet admin confirms each move in this General topic: a
+"Move it / Cancel" prompt. Explain it if asked; never press it on the user's behalf.
+
+- After the move, `kiro_engine_status` shows `kiro_ui: tui` and `engine_floor: "tui"`.
+- It is one-way. AgEnD refuses to launch a moved instance on classic again, because that would resume the frozen
+  classic copy and lose everything done since. A refusal that names the engine floor means someone set `kiro_ui`
+  back. The fix is to set it to `tui` again, never to remove the floor.
 
 ## One kiro agent per instance (#906)
 

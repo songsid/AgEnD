@@ -54,6 +54,7 @@ import {
   GetEffortArgs,
   ClosePollArgs,
   KiroEngineStatusArgs,
+  MigrateKiroInstanceArgs,
   GetUsageArgs,
   GetCacheReportArgs,
   GetUsageReportArgs,
@@ -1101,6 +1102,17 @@ const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
   respond(status);
 };
 
+/** #2598 B2: ask for a fleet admin's Confirm on a kiro classic → TUI move; the move itself runs on the click. */
+const migrateKiroInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(MigrateKiroInstanceArgs, rawArgs, "migrate_kiro_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const fm = ctx as unknown as { requestKiroMigration?(name: string, startFresh: boolean): Promise<{ ok: true; text: string; classic_conversation: string | null } | { ok: false; error: string }> };
+  if (!fm.requestKiroMigration) { respond(null, "migrate_kiro_instance is not available here"); return; }
+  const result = await fm.requestKiroMigration(v.data.name, v.data.start_fresh === true);
+  if (!result.ok) { respond(null, result.error); return; }
+  respond({ status: "awaiting_admin_confirmation", name: v.data.name, classic_conversation: result.classic_conversation, note: result.text });
+};
+
 /** #1823: close one of the caller's own polls before its deadline; its results then go out as at the deadline. */
 const closePoll: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(ClosePollArgs, rawArgs, "close_poll");
@@ -1543,7 +1555,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
               // happen when the agent reaches for it.
               conversation_carried_over: carried || !switchLosesConversation,
               ...(carried
-                ? { conversation_note: "The conversation was copied into the new profile and resumed there (the old profile keeps its own copy). The next reply re-reads it from a cold cache: one slower, full-price turn." }
+                ? { conversation_note: "The conversation was copied into the new profile and resumed there (the old profile keeps its own copy). The switch does not by itself make the prompt cache cold: within the same cache scope (organization, and workspace where the provider isolates them) an unchanged model and prompt prefix are usually reused. The next reply may rebuild it (one slower, full-price turn) when the scope, the model or the profile's settings differ, or the cache has expired." }
                 : switchLosesConversation
                 ? { handover_chars: handoverChars, ...(carry?.result && !carry.result.carried ? { carry_failed: carry.result.reason } : {}) }
                 : { conversation_note: `${backendAfter} keeps its history outside the login, so it is shared across profiles; switching back to a profile returns to the same history.` }),
@@ -2322,6 +2334,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["get_effort", getEffort],
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
+  ["migrate_kiro_instance", migrateKiroInstance],
   ["get_usage", getUsage],
   ["get_cache_report", getCacheReport],
   ["get_usage_report", getUsageReport],

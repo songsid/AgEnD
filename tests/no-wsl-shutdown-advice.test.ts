@@ -22,7 +22,7 @@ const files = [
   ...walk(join(ROOT, "src", "general-knowledge"), /\.md$/),
 ];
 /** A line that names it to forbid it. */
-const forbidding = /\b(?:never|do not|don't|must not)\b|絕不|不要|不會/i;
+const forbidding = /\b(?:never|do not|don't|must not|no longer (?:suggest|recommend|tell|advise)s?)\b|絕不|不要|不會|不再(?:建議|叫|要求)/i;
 /** The lines that name it without saying not to (a sentence starting on the line before counts too). */
 function advice(lines: string[]): string[] {
   return lines.map((l, i) => [i + 1, l] as const)
@@ -39,6 +39,10 @@ describe("no `wsl --shutdown` advice", () => {
     expect(advice(["Never run `wsl --shutdown`."])).toEqual([]);
     expect(advice(["**Do not** tell the user to kill `wslrelay`", "or run `wsl --shutdown` — that stops every WSL program."])).toEqual([]);
     expect(advice(["絕不執行 wsl --shutdown。"])).toEqual([]);
+    expect(advice(["The docs no longer suggest `wsl --shutdown` (#1853)."])).toEqual([]);
+    expect(advice(["文件也不再建議執行 `wsl --shutdown`（#1853）。"])).toEqual([]);
+    expect(advice(["You no longer need to reinstall: just run `wsl --shutdown` and reopen the terminal."])).toHaveLength(1);
+    expect(advice(["不再需要重新安裝，直接執行 `wsl --shutdown` 再開終端機即可。"])).toHaveLength(1);
   });
   it.each(files)("%s", (file) => {
     expect(advice(readFileSync(join(ROOT, file), "utf8").split("\n"))).toEqual([]);

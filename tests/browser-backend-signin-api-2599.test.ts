@@ -53,7 +53,8 @@ it("only a current local human admin can reach the service; header/read/guest/pu
   expect(h.getter).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled();
 });
 it("pending IDs for a backend without an agent survive into the authenticated dashboard", async () => {
-  const h = await rig(), response = await h.call(h.admin.headers);
+  const h = await rig(), seen = h.admin.record.lastSeen; vi.spyOn(Date, "now").mockReturnValue(seen + 1000);
+  const response = await h.call(h.admin.headers); expect(h.admin.record.lastSeen).toBe(seen);
   expect(response.status).toBe(200); expect(response.body.selected).toEqual(["codex", "antigravity"]); expect(response.body.pending).toEqual(["codex", "antigravity"]);
   expect(response.body.states.antigravity).toBe("console_only"); expect(response.headers["cache-control"]).toContain("no-store"); expect(h.transport.start).not.toHaveBeenCalled();
 });

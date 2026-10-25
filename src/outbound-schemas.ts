@@ -378,6 +378,11 @@ export const KiroEngineStatusArgs = z.object({
   name: NonEmptyString.optional().describe("One kiro instance. Omit for every kiro instance in the fleet."),
 });
 
+export const MigrateKiroInstanceArgs = z.object({
+  name: NonEmptyString.describe("The kiro instance to move from classic (kiro_ui: legacy) to the TUI engine."),
+  start_fresh: z.boolean().optional().describe("Allow the move when the instance has no classic conversation on record to carry (it then starts an empty TUI conversation). Default false: refused."),
+});
+
 export const GetUsageArgs = z.object({
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });

@@ -242,7 +242,7 @@ agent 可以用泡泡下方的一個 emoji 回應網頁聊天的訊息，而不�
 
 ## 點對點 Agent 協作 (Peer-to-peer agent collaboration)
 
-Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕並傳訊；建立、啟動或喚醒 instance 則需要對應的管理工具權限。見[工具權限組](features.zh-TW.md#工具權限組合-tool-profiles)。
+Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕並傳訊。建立、啟動，或明確喚醒 instance（`wake_instance`）則需要含管理工具的權限組。不過 worker 的 `send_to_instance` 仍可能間接喚醒暫停中的收件者：投遞時會用和 `/wake` 相同的方式喚醒目標（見[自動暫停與喚醒](#自動暫停與喚醒-auto-pause--wake)）。見[工具權限組](features.zh-TW.md#工具權限組合-tool-profiles)。
 
 **核心 MCP 工具：**
 
@@ -718,7 +718,16 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 `kiro_ui` 決定 kiro instance 的啟動方式：`legacy`（預設）以 kiro 的 legacy UI 搭配 v1 agent 引擎執行（`--legacy-ui --agent-engine=v1`），`tui` 則以它的終端機 UI 搭配 v2 引擎執行（`--tui --agent-engine=v2`）。每次啟動都會明確帶上這兩個旗標，所以 kiro-cli 的預設值或儲存的設定都無法把 instance 換到另一個引擎上，否則它的對話不會跟過去。如果安裝的 kiro-cli 已經跑不了 instance 固定使用的組合，AgEnD 會拒絕啟動並說明原因，而不是讓 kiro 自己挑（#1109）。`kiro_ui: v3` 在 kiro 的 v3 介面能無人值守執行之前，都會被驗證擋下（#849）。
 
-`kiro_engine_status`（除了 `minimal` 以外每種權限組合都有的唯讀工具）會針對每個 kiro instance 和 ClassicBot 頻道，顯示它的 `kiro_ui`、下次啟動會用的引擎旗標（或 kiro-cli 會拒絕的原因）、歷次啟動紀錄（每次變動時的 kiro-cli 和 AgEnD 版本）、它的 V3 session，以及它的憑證 profile。它讀的是 AgEnD 在上次啟動時記錄的內容，自己從不執行 kiro-cli。
+`kiro_engine_status`（除了 `minimal` 以外每種權限組合都有的唯讀工具）會針對每個 kiro instance 和 ClassicBot 頻道，顯示它的 `kiro_ui`、下次啟動會用的引擎旗標（或 kiro-cli 會拒絕的原因）、歷次啟動紀錄（每次變動時的 kiro-cli 和 AgEnD 版本）、它的 V3 session，以及它的憑證 profile。它讀的是 AgEnD 在上次啟動時記錄的內容，自己從不執行 kiro-cli。它也會顯示 `engine_floor`（見下）。
+
+**從經典引擎搬到 TUI（`migrate_kiro_instance`，#2598）。** kiro-cli 3.0 拿掉了經典引擎。手動設 `kiro_ui: tui` 會讓 instance 在空的 TUI 對話上啟動。`migrate_kiro_instance`（coordinator 與 full 權限組合才有）一次搬一個 fleet instance，並帶著它的對話：
+- 它會在 General 貼出「搬過去／取消」提示，fleet admin 在那裡確認之前什麼都不會變。
+- 確認後，AgEnD 會設定 `kiro_ui: tui`，把 instance 的經典對話預備為它的 TUI 對話，並重啟執行中的 instance。第一次 TUI 啟動會接續那個對話一次（kiro 因此把整段歷史複製到它的 session 檔），並登記為 instance 自己的對話。
+- 結果會貼在 General 和該 instance 的 topic。
+- 沒有經典對話紀錄的 instance 會被拒絕，除非加上 `start_fresh: true`。
+- 目前還不搬 ClassicBot 頻道。
+
+搬移是單向的。instance 在 TUI 上執行過之後，AgEnD 就不會再用經典引擎啟動它（`engine_floor: "tui"`），因為那會接回凍結的經典副本，失去之後做的一切。TUI 啟動也不再使用 kiro 的單純 `--resume`：它會從任一引擎挑出資料夾裡最新的對話。沒有自己的對話紀錄時（較舊的 kiro-cli），TUI 啟動會開新對話並說明。
 
 ## agend quickstart
 

@@ -156,8 +156,11 @@ left untouched; the switch copies, never moves.
 - `conversation_carried_over: true` — the copy succeeded and the agent resumed
   the same conversation on the new account. The reply also carries
   `conversation_note`: relay it. It says the old copy is still there and
-  warns that the next turn re-reads the full history from a cold cache — one
-  slower, full-price turn on the new subscription.
+  notes that the switch does not by itself make the prompt cache cold: within
+  the same cache scope (organization, and workspace where the provider isolates
+  them) an unchanged model and prompt prefix are usually reused. The next turn
+  may rebuild it (one slower, full-price turn) when the scope, the model or the
+  profile's settings differ, or the cache has expired. Don't promise either.
 
 - `conversation_carried_over: false` + `carry_failed: "<reason>"` — the copy
   could not be made. Common reasons: no session id recorded, not enough free
