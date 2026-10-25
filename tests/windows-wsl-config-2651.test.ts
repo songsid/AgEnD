@@ -65,6 +65,15 @@ if($once -cne $twice){throw 'Merge not idempotent'}
     expect(backups).toHaveLength(existing?1:0);
     if(existing)expect(readFileSync(join(dir,'etc',backups[0]),'utf8')).toBe(before);
   }));
+  it.each([
+    Buffer.from([0xff,0xfe,0x23,0x00,0x61,0x00]),
+    Buffer.from([0x23,0x20,0xe9,0x0a]),
+    Buffer.from([0x23,0x00,0x61]),
+  ])('refuses non-UTF-8/binary config clearly before any write: %s', bytes => scratch((_,run) => {
+    const out=run(`try { ConvertFrom-WslConfigSnapshot '${bytes.toString('base64')}'; throw 'BAD_ACCEPTED' } catch { if($_ -match 'BAD_ACCEPTED'){throw}; Write-Output $_ }`);
+    expect(out).toContain('/etc/wsl.conf is not UTF-8 text');expect(out).toContain('No settings were replaced');
+    expect(out).not.toContain('WSL config changed');
+  }));
   it('refuses a changed read snapshot before creating a backup or replacing current settings', () => scratch((dir,run) => {
     mkdirSync(join(dir,'etc'));const file=join(dir,'etc/wsl.conf');writeFileSync(file,'[boot]\ncommand=new edit\n');
     const script=run(`Get-MergedLinuxWslConfigScript '[boot]'`).replaceAll('/etc/',`${dir}/etc/`);

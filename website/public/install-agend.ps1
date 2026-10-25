@@ -1339,7 +1339,16 @@ function Write-MergedWindowsWslConfig([string]$Path) {
         Move-Item -LiteralPath $temp -Destination $Path -Force -ErrorAction Stop
     } finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
 }
-function Get-MergedLinuxWslConfigScript([string]$Text) {
+function ConvertFrom-WslConfigSnapshot([string]$Encoded) {
+    try {
+        $text = (New-Object Text.UTF8Encoding $false, $true).GetString([Convert]::FromBase64String($Encoded))
+        if ($text.Contains([string][char]0)) { throw 'NUL is not an INI character' }
+        return $text
+    } catch { throw '/etc/wsl.conf is not UTF-8 text; convert it or move it aside, then rerun. No settings were replaced.' }
+}
+function Get-MergedLinuxWslConfigScript([string]$Text, [string]$ExpectedBase64 = '') {
+    if (-not $ExpectedBase64) { $ExpectedBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text)) }
+    if ($ExpectedBase64 -notmatch '^[A-Za-z0-9+/=]*$') { throw 'Invalid WSL configuration snapshot.' }
     $next = Merge-InstallIni $Text ([ordered]@{ boot = [ordered]@{ systemd = 'true' }; interop = [ordered]@{ appendWindowsPath = 'false' }; user = [ordered]@{ default = 'root' } })
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($next))
     $nonce = [Guid]::NewGuid().ToString('N')
@@ -1350,7 +1359,7 @@ function Get-MergedLinuxWslConfigScript([string]$Text) {
         ('temp=/etc/.agend-wsl-' + $nonce)
         'trap ''rm -f -- "$temp"'' EXIT'
         # Match the read snapshot immediately before making a backup or replacing the file.
-        ('expected=' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text)))
+        ('expected=' + $ExpectedBase64)
         'actual=; if [ -e "$file" ]; then actual=$(base64 -w0 -- "$file"); fi'
         '[ "$actual" = "$expected" ] || { echo "WSL config changed; rerun installer to merge the latest settings" >&2; exit 1; }'
         ('if [ -e "$file" ]; then cp -p -- "$file" "$file.agend-backup-' + $nonce + '"; echo "WSL config backup: $file.agend-backup-' + $nonce + '"; fi')
@@ -1589,8 +1598,8 @@ Write-Info "正在設定 WSL 環境防護..."
 # Read exact bytes without introducing a PowerShell output newline.
 $encodedConf = (wsl -d $UBUNTU_DISTRO -u root -- bash -c 'if [ -L /etc/wsl.conf ]; then exit 1; elif [ -e /etc/wsl.conf ]; then base64 -w0 /etc/wsl.conf; fi' 2>$null | Out-String).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot safely read /etc/wsl.conf; no settings were replaced.' }
-$currentConf = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedConf))
-$confCode = Invoke-WslStep -Label "合併 WSL 設定（保留原有設定）" -Usually "通常幾秒鐘" -UpperMinutes 1 -Script (Get-MergedLinuxWslConfigScript $currentConf)
+$currentConf = ConvertFrom-WslConfigSnapshot $encodedConf
+$confCode = Invoke-WslStep -Label "合併 WSL 設定（保留原有設定）" -Usually "通常幾秒鐘" -UpperMinutes 1 -Script (Get-MergedLinuxWslConfigScript $currentConf $encodedConf)
 if ($confCode -ne 0) { throw "WSL config merge failed (exit $confCode); review the error above and rerun." }
 Write-Ok "WSL 環境設定已合併：啟用 systemd、關閉 Windows PATH、預設使用 root；其他設定保留"
 Write-Info "正在重啟選定的 Linux 讓設定生效..."
