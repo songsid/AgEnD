@@ -154,7 +154,8 @@ export class StructuredSignIn {
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private deadline: ReturnType<typeof setTimeout> | null = null;
   private unknownAt: number | null = null;
-  private promptUsed = false;
+  private readonly answered = new Set<SignInPrompt["phase"]>();
+  private get promptUsed(): boolean { return this.answered.has(this.prompt.phase); }
   private expiresAt = Infinity;
   private pendingActions = 0;
 
@@ -218,7 +219,7 @@ export class StructuredSignIn {
   private observe(pane: string): SignInPrompt {
     const next = structuredSignInPrompt(this.backend, pane);
     if (JSON.stringify(next) !== JSON.stringify(this.prompt)) {
-      this.prompt = next; this.promptUsed = false; this.revision++;
+      this.prompt = next; this.revision++;
     }
     this.setPhase(next.phase === "success" ? "checking" : next.phase);
     return next;
@@ -291,7 +292,7 @@ export class StructuredSignIn {
           text = "\x15" + value + "\r"; // replace a prefilled prompt; literal bytes only
         }
         if (text === null) return "invalid";
-        this.promptUsed = true; // before the async write: ambiguous input is never retried
+        this.answered.add(prompt.phase); // before the async write; redraws never re-arm an answered phase
         this.revision++;
         await this.deps.transport.write(text, this.abort.signal);
         if (!this.current()) { await this.finish(this.lostReason()); return "ended"; }
