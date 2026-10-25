@@ -22,6 +22,9 @@ import { PublicLinkAutoOpen } from "./public-link-auto-open.js";
 import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from "./public-link-owner.js";
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
+import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
+import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService, officeShareRefusalText } from "./office-share-service.js";
+import { ALL_OFFICES, type OfficeShare } from "./office-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
 import { withinBudget } from "./monotonic-budget.js";
@@ -1596,6 +1599,50 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly officeSkinWrites = new OfficeWriteLimiter(undefined, { perWindow: 10, windowMs: 60_000 });
   /** How often a person may save the offices (PUT /ui/offices); memory only, as the appearance limiter. */
   readonly officeWrites = new OfficeWriteLimiter();
+  private officeSharesInstance?: OfficeShareService;
+  /**
+   * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of
+   * their own (a manager and lease of its own: never the fleet's one tunnel lane nor the public link's preview tunnel).
+   */
+  get officeShares(): OfficeShareService {
+    return (this.officeSharesInstance ??= new OfficeShareService({
+      source: {
+        status: () => this.getUiStatus(),
+        org: () => this.orgChart(),
+        offices: () => this.officeStore.list(),
+        acts: () => this.officeActs.live(),
+        traffic: () => this.trafficSnapshot(),
+        needs: () => this.needsYouItems().map(i => i.instance),
+        hidden: name => crossInstanceVisibility(this.fleetConfig, name) === "hidden",
+        skins: this.officeSkins,
+      },
+      manager: new ManagedTunnel({ dataDir: join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR), log: () => this.logger.warn("Office share tunnel cleanup requires attention") }),
+      ensure: signal => ensureCloudflared({ dataDir: this.dataDir, pinnedOnly: true, signal }),
+      provider: binary => new CloudflaredProvider({ binaryName: binary, protocol: this.fleetConfig?.web?.public_link?.protocol ?? "http2" }),
+      config: () => this.fleetConfig?.web?.office_share,
+      officeExists: id => this.officeStore.list().offices.some(o => o.id === id),
+      ownerCurrent: owner => this.officeShareOwnerCurrent(owner),
+      changed: () => this.emitSseEvent("office_shares", {}),
+      log: (event, detail) => this.logger.info({ event, ...(detail ? { detail } : {}) }, "Office share link"),
+    }));
+  }
+  /**
+   * #2636: a share made or ended — said in General, as a sign-in is (who, which office, for how long; never its URL).
+   * `share` null with `count`: "Revoke all".
+   */
+  officeShareNotice(event: "created" | "revoked", who: string, share: OfficeShare | null, count: number): void {
+    const office = !share ? "" : share.office === ALL_OFFICES ? t("office_share.all") : this.officeStore.list().offices.find(o => o.id === share.office)?.name ?? share.office;
+    const minutes = share ? Math.round((share.expiresAt - share.createdAt) / 60_000) : 0;
+    const text = event === "created" ? t("office_share.created_notice", who, office, minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`)
+      : share ? t("office_share.revoked_notice", who, office) : t("office_share.revoked_all_notice", who, count);
+    this.notifyFleetError(text, { throttle: false });
+  }
+  /** A share's owner: a person (`person:<adapter>:<user>`) still a fleet admin there; the host's own admin session stays. */
+  private officeShareOwnerCurrent(owner: string): boolean {
+    const m = /^person:([^:]+):(.+)$/.exec(owner);
+    if (!m) return owner === "admin-session";
+    return this.hasFleetAdmins(m[1]) && this.isFleetAdmin(m[2]!, m[1]);
+  }
   private officeActsInstance?: OfficeActs;
   /** #2578: the agents' acts in the Office view (office_view / office_set), memory only; every change is `office_acts`. */
   get officeActs(): OfficeActs {
@@ -3194,8 +3241,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.tightenInstanceDirectories();
 
-    // #1723: the public link's preview tunnel keeps its own lease beside it; a leftover one is reaped the same way.
-    for (const leaseDir of [this.dataDir, join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR)]) {
+    // #1723: the public link's preview tunnel keeps its own lease beside it; a leftover one is reaped the same way (and
+    // #2636's Office share tunnel's).
+    for (const leaseDir of [this.dataDir, join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR), join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR)]) {
       void reapStaleTunnel(leaseDir)
         .then(outcome => {
           if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
@@ -3641,6 +3689,74 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const route = this.routing.resolve(data.channelId);
     await this.handleGeneralProfile(route?.kind === "general" ? route.name : undefined,
       data.userId, adapterId, data.options?.seconds as string | number | undefined, data.respond);
+  }
+
+  /** #2636: /office_share in General — the Discord slash answers privately (its reply is ephemeral). */
+  private async handleOfficeShareSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    const route = this.routing.resolve(data.channelId);
+    if (route?.kind !== "general") { await data.respond(t("office_share.general_only")); return; }
+    if (this.fleetAdminGate(data.userId, adapterId) !== "ok") { await data.respond(t("not_authorized")); return; }
+    const reply = await this.officeShareCommand(String(data.options?.args ?? ""), { adapterId, userId: data.userId });
+    await data.respond(reply.text);
+  }
+
+  /** #2636: typed /office_share in Telegram's General — a new link goes by DM (never into the topic). */
+  async runOfficeShareCommand(msg: InboundMessage, args?: string): Promise<void> {
+    if (msg.source !== "telegram") return;
+    const adapterId = msg.adapterId ?? this.getPrimaryAdapterId();
+    const adapter = adapterId ? this.adapters.get(adapterId) : this.adapter;
+    if (!adapter || !adapterId) return;
+    const say = (text: string) => adapter.sendText(msg.chatId, text, { threadId: msg.threadId, allowedMentions: { parse: [] } }).catch(() => {});
+    if (this.fleetAdminGate(msg.userId, adapterId) !== "ok") { await say(t("not_authorized")); return; }
+    const reply = await this.officeShareCommand(args ?? "", { adapterId, userId: msg.userId });
+    if (!reply.made) { await say(reply.text); return; }
+    if (await this.tryNoticeDm(adapter, msg.userId, reply.text)) { await say(t("office_share.sent_by_dm")); return; }
+    // No private way to hand it over: it is not handed out at all.
+    this.officeShares.revoke(reply.made);
+    await say(t("office_share.dm_failed"));
+  }
+
+  /**
+   * #2636: what /office_share does, from either platform (the caller checked General and the admin):
+   * `[office|all] [15m|1h|…|24h] [text]` makes a link; `list`; `revoke <id|all>`. `made`: a new share's id (its URL is
+   * in `text`, which is the caller's to deliver privately).
+   */
+  private async officeShareCommand(args: string, actor: { adapterId: string; userId: string }): Promise<{ text: string; made?: string }> {
+    const svc = this.officeShares;
+    const words = args.trim().split(/\s+/).filter(Boolean);
+    const lang = getLocale();
+    const offices = this.officeStore.list().offices;
+    const nameOf = (id: string) => (id === ALL_OFFICES ? t("office_share.all") : offices.find(o => o.id === id)?.name ?? id);
+    const who = this.webPerson({ adapterId: actor.adapterId, userId: actor.userId }).name;
+    if (words[0]?.toLowerCase() === "list") {
+      const list = svc.list();
+      if (!list.length) return { text: t("office_share.none") };
+      return { text: [t("office_share.list_head"), ...list.map(sh => `• ${sh.id} — ${nameOf(sh.office)} · ${Math.max(1, Math.round((sh.expiresAt - Date.now()) / 60_000))} min${sh.text ? ` · ${t("office_share.with_text")}` : ""}`)].join("\n") };
+    }
+    if (words[0]?.toLowerCase() === "revoke") {
+      const id = (words[1] ?? "").toLowerCase();
+      if (!/^(?:[0-9a-f]{8}|all)$/.test(id)) return { text: t("office_share.usage") };
+      const before = id === "all" ? null : svc.list().find(sh => sh.id === id) ?? null;
+      const n = svc.revoke(id);
+      if (n) this.officeShareNotice("revoked", who, before, n);
+      return { text: n ? t("office_share.revoked", n) : t("office_share.no_such", id) };
+    }
+    let minutes: number | undefined, text = false;
+    const rest: string[] = [];
+    for (const w of words) {
+      const d = /^(\d{1,4})(m|min|h)$/i.exec(w);
+      if (d) { minutes = Number(d[1]) * (d[2]!.toLowerCase() === "h" ? 60 : 1); continue; }
+      if (w.toLowerCase() === "text") { text = true; continue; }
+      rest.push(w);
+    }
+    const wanted = rest.join(" ");
+    const lower = wanted.toLowerCase();
+    const office = !wanted || lower === "all" ? ALL_OFFICES : offices.find(o => o.id === wanted || o.name.toLowerCase() === lower)?.id;
+    if (!office) return { text: officeShareRefusalText({ error: "office" }, lang) + "\n" + t("office_share.usage") };
+    const made = await svc.create({ office, owner: webPersonKey({ adapterId: actor.adapterId, userId: actor.userId }), text, ...(minutes !== undefined ? { minutes } : {}) });
+    if (!made.ok) return { text: officeShareRefusalText(made, lang) };
+    this.officeShareNotice("created", who, made.share, 1);
+    return { text: t("office_share.made", nameOf(office), made.url, Math.round((made.share.expiresAt - made.share.createdAt) / 60_000)), made: made.share.id };
   }
 
   /** Typed /profile belongs only to Telegram's General dispatcher. */
@@ -5177,6 +5293,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleUpdateSlash(data, adapterId);
     } else if (data.command === "profile") {
       await this.handleProfileSlash(data, adapterId);
+    } else if (data.command === "office_share") {
+      await this.handleOfficeShareSlash(data, adapterId);
     } else if (data.command === "doctor") {
       await data.respond(await this.runBackendDoctor());
     } else if (data.command === "visibility") {
@@ -20945,6 +21063,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const settingsControlStopped = settingsControl?.close();
     this.publicLinkAutoOpen?.stop();
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
+    const sharesStopped = this.officeSharesInstance?.close();   // #2636: every Office share ends, and its tunnel
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
     const needsStopped = this.stopNeedsYou();
@@ -20978,6 +21097,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
     await publicStopped;
+    await sharesStopped?.catch(() => {});
     await profileStopped;
     await needsStopped;
     await settingsControlStopped;

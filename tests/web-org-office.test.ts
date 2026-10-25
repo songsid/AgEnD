@@ -592,6 +592,14 @@ describe("the Office view on the page", () => {
       await p.unmount(); delete document.body.dataset.tier; document.body.dataset.publicLink = "1"; await office(); expect(editBtn()).toBeNull();
       await p.unmount(); delete document.body.dataset.publicLink; await office(); expect(editBtn()?.textContent.trim()).toBe("Edit offices");
     });
+    it("#2636: Share… offered as Edit offices is (an admin session, never a read-only one, a guest page or the public link)", async () => {
+      const share = () => p.root.querySelector(".oo-share");
+      auth(false); await office(); expect(share()).toBeNull();
+      await p.unmount(); auth(true); document.body.dataset.publicLink = "1"; await office(); expect(share()).toBeNull();
+      await p.unmount(); delete document.body.dataset.publicLink; await office(); expect(share()?.textContent.trim()).toBe("Share…");
+      share().click(); await settle(3);
+      expect(p.root.querySelector(".os-form")).not.toBeNull();
+    });
     it("add an office, name it, pick a team and one instance, choose Studio: saved with the rev read, and shown in the switcher", async () => {
       offices = { rev: 4, offices: [{ id: "ops", name: "Ops room", members: [], layout: { seats: [{ id: "s1", x: 10, y: 10 }], waypoints: [], edges: [] } }] };
       auth(true); await office();

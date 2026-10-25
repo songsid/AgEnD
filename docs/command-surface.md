@@ -25,6 +25,7 @@ Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 comma
 | Command | Menu | General | Fleet topic | Classic | Unregistered guild channel |
 |---|---|---|---|---|---|
 | `/profile` | ✓ | H:F | R | R | R |
+| `/office_share` | ✓ | H:F | R | R | R |
 | `/start` | ✓ | R | R | R | H:start |
 | `/stop` | ✓ | R | R | H:C | R |
 | `/chat` | ✓ | R | R | H:A | R |
@@ -58,6 +59,7 @@ Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 comma
 | Command | Menu G/T | Menu Classic | General | Fleet topic | Classic private | Classic group | Unregistered private/group |
 |---|---|---|---|---|---|---|---|---|
 | `/profile` | ✓ | — | H:F | R:G | P | S/P | S/R |
+| `/office_share` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/start` | — | ✓ | P | P | R:active | R:active | H:start |
 | `/stop` | — | ✓ | P | P | H:C | H:C | R(C) |
 | `/chat` | — | — | P | P | P | S/P | S/R |

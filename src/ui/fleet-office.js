@@ -34,6 +34,8 @@
 //   ("+N", in its corner, never over its name); there idle and asleep people say nothing, at most a few speak (calls
 //   first, then work), no bubble covers a name tag, and the tags show on hover or focus only. "Hide paused and stopped"
 //   (per browser) leaves the sleepers out.
+// - Share… (#2636; an admin on the dashboard reached directly): a link anyone can open to watch an office live, read-only,
+//   until it ends (office-share-dialog.js; the page it opens is office-share-page.js).
 // - Edit layout (an admin, a stored office on a zones skin): fleet-office-layout.js, saved as the office's overrides.
 //   An editing session (#2513 review) is bound to the office it opened on, that office's style (the pack's id and sha)
 //   and the list and rev read then: a re-read of the offices meanwhile (the stream) changes the view, never the session,
@@ -67,6 +69,7 @@ import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
+import { ShareButton } from "./office-share-dialog.js";
 import { applyOverrides } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
@@ -1151,6 +1154,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, opening
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview) setEditing(true); }} disabled=${!!layout || overview}
         title=${overview ? to("overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
       ${canLayout ? html`<button type="button" class="btn btn-sm oo-layout" onClick=${openLayout}>${t("orgl.edit")}</button>` : null}
+      ${canEdit ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
+        get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
     </div>
     ${editing && !overview ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}
       ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}

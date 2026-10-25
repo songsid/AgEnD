@@ -2513,3 +2513,22 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .share-loading, .share-page > .note { padding: var(--s-4); }
 .share-ended { align-items: center; justify-content: center; padding: var(--s-6); text-align: center; }
 @media (max-width: 640px) { .share-head .share-note { margin-left: 0; flex-basis: 100%; } }
+
+/* #2636: Office share links — the Share… dialog and the open links (office-share-dialog.js; Settings → Access & security). */
+.os { display: flex; flex-direction: column; gap: var(--s-3); }
+.os > p { margin: 0; }
+.os-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); align-items: end; }
+.os-form .check, .os-form .note { grid-column: 1 / -1; margin: 0; }
+.os-made { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.os-url { flex: 1 1 260px; min-width: 0; min-height: 40px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: var(--bg); color: var(--text); font-size: var(--fs-sm); outline: none; }
+.os-url:focus { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); }
+.os-made .note { flex-basis: 100%; margin: 0; }
+.os-head { margin: var(--s-2) 0 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text-2); }
+.os-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.os-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); }
+.os-what { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.os-all { margin-top: var(--s-2); }
+.os-none { margin: 0; }
+.os-form .os-err { grid-column: 1 / -1; margin: 0; padding: var(--s-2) var(--s-3); border: 1px solid var(--danger); border-radius: var(--r-sm); }
+@media (max-width: 480px) { .os-form { grid-template-columns: 1fr; } }

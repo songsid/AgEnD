@@ -435,6 +435,15 @@ export interface WebApiContext {
   readonly officeWrites?: OfficeWriteLimiter;
   /** #2578: the agents' live acts in the Office view (office_set); absent: /ui/office-acts is not offered. */
   readonly officeActs?: Pick<OfficeActs, "live">;
+  /** #2636: Office share links (office-share-service.ts): the open ones, making and ending one. */
+  readonly officeShares?: {
+    enabled(): boolean;
+    list(): import("./office-share.js").OfficeShare[];
+    create(opts: { office: string; minutes?: number; text?: boolean; owner: string }): Promise<import("./office-share-service.js").OfficeShareMade>;
+    revoke(id: string): number;
+  };
+  /** #2636: a share was made or ended from the page — said in General (who, which office, until when). */
+  officeShareNotice?(event: "created" | "revoked", who: string, share: import("./office-share.js").OfficeShare | null, count: number): void;
   /** #2513: the Office view's uploaded skin packs (web-office-skins/); absent: /ui/office-skins is not offered. */
   readonly officeSkins?: OfficeSkinStore;
   /** How often a person may upload or delete a skin pack (absent: no limit). */
@@ -613,6 +622,71 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   })().catch((err) => {
     ctx.logger.error({ err: (err as Error).message }, "App icon request failed");
     try { json(res, 500, { error: "app_icon_failed", detail: "App icon request failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * #2636: Office share links — GET /ui/office-share (the open ones, and whether this fleet offers them), POST { office,
+ * minutes?, text? } (a new one; answers its URL once its tunnel is up, or why not), DELETE /ui/office-share/<id|all>.
+ * An admin session on the dashboard reached directly only: never the CLI token, never the public link (the design: no
+ * share is made from it; its gateway does not route these either). The person is asked again once the body is in.
+ */
+function handleOfficeShare(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const service = ctx.officeShares;
+  if (!service) { json(res, 404, { error: "Office share links are not kept on this fleet" }); return true; }
+  const one = /^\/ui\/office-share\/([0-9a-f]{8}|all)$/.exec(path);
+  const known = (method === "GET" && path === "/ui/office-share") || (method === "POST" && path === "/ui/office-share") || (method === "DELETE" && !!one);
+  if (!known) { json(res, 404, { error: "not found" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "office_share_not_over_public_link" }); return true; }
+  const who = (): { person: string; name: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    if (verdict.via !== "session" || verdict.session?.tier !== "admin") return { status: 403 };
+    const owner = verdict.session.owner;
+    return { person: owner ? webPersonKey(owner) : "admin-session", name: owner ? ctx.webPerson?.(owner)?.name ?? owner.userId : "admin" };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "office_share_needs_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  res.setHeader("Cache-Control", "no-store");
+  if (method === "GET") {
+    // Each with its office's name as it is now (Settings' card has no office list of its own).
+    const names = new Map((ctx.officeStore?.list().offices ?? []).map(o => [o.id, o.name]));
+    json(res, 200, { enabled: service.enabled(), shares: service.list().map(s => ({ ...s, ...(names.has(s.office) ? { office_name: names.get(s.office) } : {}) })) });
+    return true;
+  }
+  if (method === "DELETE") {
+    const id = one![1]!;
+    const before = id === "all" ? null : service.list().find(s => s.id === id) ?? null;
+    const n = service.revoke(id);
+    if (n) ctx.officeShareNotice?.("revoked", first.name, before, n);
+    json(res, n ? 200 : 404, n ? { revoked: n } : { error: "not_found" });
+    return true;
+  }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.office !== "string"
+      || (body.minutes !== undefined && typeof body.minutes !== "number") || (body.text !== undefined && typeof body.text !== "boolean")) {
+      json(res, 400, { error: "office (string), minutes? (number), text? (boolean)" });
+      return;
+    }
+    const made = await service.create({ office: body.office, owner: now.person, ...(typeof body.minutes === "number" ? { minutes: body.minutes } : {}),
+      ...(typeof body.text === "boolean" ? { text: body.text } : {}) });
+    if (!made.ok) {
+      const status = made.error === "disabled" ? 404 : made.error === "tunnel" ? 503 : made.error === "too_many" ? 409 : 400;
+      json(res, status, { error: made.error, ...(made.reason ? { reason: made.reason } : {}) });
+      return;
+    }
+    ctx.officeShareNotice?.("created", now.name, made.share, 1);
+    json(res, 200, { share: made.share, url: made.url });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, "Office share failed");
+    try { json(res, 500, { error: "Office share failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -1927,6 +2001,7 @@ export function handleWebRequest(
   }
 
   if (path === "/ui/office-skins" || path.startsWith("/ui/office-skins/")) return handleOfficeSkins(req, res, url, ctx, path, method);
+  if (path === "/ui/office-share" || path.startsWith("/ui/office-share/")) return handleOfficeShare(req, res, url, ctx, path, method);
 
   // ── #1630: avatars and Discord server emoji, same-origin (the page never loads a platform's CDN; img-src stays 'self') ──
 

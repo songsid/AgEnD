@@ -530,6 +530,7 @@ const PROFILE_RE = /^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/;
 const RESTART_RE = /^\/restart(?:@[A-Za-z0-9_]*)?(?:\s+(.*))?$/i;
 const LEGACY_INSTALL_RE = /^\/install[-_]cli(?:@\S+)?(?:\s+([\s\S]*))?$/;
 const VISIBILITY_RE = /^\/visibility(?:@\S+)?(?:\s+([\s\S]*))?$/i;
+const OFFICE_SHARE_RE = /^\/office[_-]share(?:@\S+)?(?:\s+([\s\S]*))?$/i;
 /** `/name` or `/name@bot`. */
 const bare = (name: string) => (text: string) => text === `/${name}` || text.startsWith(`/${name}@`);
 /** `/name`, `/name@bot`, or `/name <args>`. */
@@ -555,6 +556,7 @@ const GENERAL_FORMS: TypedForms = [
   // #1569: /web is the same command — recognized here as /dashboard, so the gate, refusals and handler are one path.
   ["dashboard", text => withArgs("dashboard")(text) || withArgs("web")(text)],
   ["visibility", text => VISIBILITY_RE.test(text)],
+  ["office_share", (text, source) => source === "telegram" && OFFICE_SHARE_RE.test(text)],
 ];
 const INSTANCE_FORMS: TypedForms = [
   ["tips", withArgs("tips")],
@@ -677,6 +679,11 @@ export class TopicCommands {
 
     if (command === "profile") {
       await this.ctx.runProfileCommand?.(msg, text.match(PROFILE_RE)![1]?.trim());
+      return true;
+    }
+
+    if (command === "office_share") {
+      await this.ctx.runOfficeShareCommand?.(msg, text.match(OFFICE_SHARE_RE)![1]?.trim());
       return true;
     }
 

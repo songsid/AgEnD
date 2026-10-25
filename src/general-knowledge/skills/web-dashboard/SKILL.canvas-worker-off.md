@@ -281,6 +281,16 @@ default; disabled when everyone is in an office) adds the instances in no office
 only. Hover and click work across
 tiles; a tile's label, or a double-click on it, opens that office; traffic between offices flies straight across.
 Edit offices and Edit layout wait for a single office.
+**Share…** (#2636; an admin on the dashboard reached directly, never the public link or a guest) makes an Office share
+link: anyone who opens it watches one office (or **All offices**) live, read-only, with no sign-in — names, identity
+colours and states, every 5 s; no chat, no clicks into anything, no settings; agents' `office_set` lines only when
+**Include agents' own status lines** is ticked; hidden instances never. 1 h by default, 15 min to 24 h
+(`web.office_share.max_hours`); at most 10 open. Its own quick tunnel (`https://<random>.trycloudflare.com/o/<token>`)
+starts with the first link and stops with the last; the token is shown once. Also `/office_share [office|all] [30m|1h|…]
+[text]`, `list`, `revoke <id|all>` in General (the link privately). Open links and **Revoke** are in **Settings → Access
+& security → Office share links**; each made or revoked link is announced in General (never its URL). A Cloudflare 429
+says to try again in a few minutes (no retry). `web.office_share.enabled: false` turns it off and ends open links.
+
 The Office fills the Fleet panel and moves like the Canvas (#2540): drag to pan, the wheel or a pinch to zoom,
 **+** / **−** / **Fit** / **Fill** at the top right (the zoom shown as a percentage above them) or the `+ - 0` keys
 (with the office focused), an overview at the bottom right to jump (not on a phone). It takes the whole panel: the
