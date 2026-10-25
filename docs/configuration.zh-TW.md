@@ -751,6 +751,6 @@ web:
 
 登入控制必須使用這台電腦上仍有效的 setup cookie，透過 `--tunnel` 一律拒絕。重新整理會接回同一次嘗試；畫面重繪不會讓已回答的提示再次接受輸入，若 CLI 重問，請取消再重試。若無法確認程序已關閉，setup 會拒絕交接；請在主機關閉該 setup 的登入程序，再重新執行 setup。寫入設定仍需要原有的主機確認。
 
-`agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。能力資訊宣告支援 setup 與儀表板登入清單；Windows 安裝順序會在 #2599 的後續階段調整。
+`agend setup --backend-signin-capabilities` 只輸出安裝程式用的能力 JSON，不開啟 setup，也不清除完成標記。Windows 安裝程式只有在版本 1 的 setup、dashboard、installer 能力旗標都成立時才使用新流程：先安裝 AgEnD，再於 setup 頁面登入後端。舊版套件保留主控台備援。已有設定的安裝會用 `agend web --code --backend-signins kiro-cli,claude-code,codex` 開啟儀表板清單，單純導覽不會啟動登入。安裝進度 ID 維持相容；最後狀態會重新檢查登入，略過的後端不會被說成已登入。Antigravity 仍為明確的主控台備援，尚未啟用被動裝置驗證橋接。
 
 直接連線的儀表板也只有目前有效的本機管理員 session 可操作登入；agent 的 header token、唯讀 session、訪客與公開連結，都不能讀取提示或送出答案。Kiro、Claude、Codex 的預設帳號使用具名控制；憑證設定檔保留原有流程。遇到不支援的畫面，可明確選擇 **改用主控台備援**。頂端狀態列可重新開啟進行中的嘗試。成功登入後會沿用原有的預設帳號 agent 恢復流程；若只是確認原有憑證仍有效，不會重新啟動正在執行的 agent。登入、安裝、舊版與 profile 流程共用同一個寫入保留名額。

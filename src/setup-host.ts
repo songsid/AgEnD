@@ -106,7 +106,7 @@ export interface SetupHostOptions {
   /** Fixed canonical IDs selected by the installer; no executable or environment from the client. */
   backendSignIns?: OnboardingBackend[];
   /** Inert backend seam for setup HTTP/browser proofs. */
-  signInDeps?: Pick<BrowserBackendSignInDeps, "installed" | "checkAuth" | "transport">;
+  signInDeps?: Pick<BrowserBackendSignInDeps, "installed" | "checkAuth" | "transport" | "checkConsoleAuth">;
 }
 
 /**
@@ -187,6 +187,7 @@ export class SetupHost {
         && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs,
       installed: this.opts.signInDeps?.installed ?? (async () => detectWizardBackends()),
       checkAuth: this.opts.signInDeps?.checkAuth ?? (backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!)),
+      checkConsoleAuth: this.opts.signInDeps ? this.opts.signInDeps.checkConsoleAuth : () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
       transport: this.opts.signInDeps?.transport ?? (() => createStructuredSignInTransport()),
       changed: event => this.log(`Backend sign-in: ${JSON.stringify(event)}`),
     });
