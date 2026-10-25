@@ -14,7 +14,7 @@ export interface BrowserBackendSignInDeps {
   checkAuth(backend: StructuredBackend): Promise<AuthCheckResult>;
   transport(backend: StructuredBackend): StructuredSignInTransport;
   lock?: LoginWindowLock;
-  changed?(event: { backend: StructuredBackend; phase: string; reason?: string }): void;
+  changed?(event: { backend: StructuredBackend; phase: string; reason?: string }, owner: object): void;
 }
 export interface BrowserBackendSignInSnapshot {
   selected: OnboardingBackend[];
@@ -107,7 +107,7 @@ export class BrowserBackendSignIns {
           this.record.pending = this.record.pending.filter(value => value !== backend);
           this.persist();
         }
-        this.deps.changed?.(event);
+        this.deps.changed?.(event, owner);
       },
     });
     const run: Run = { session, owner, backend }; this.run = run; // reserve before the installed await

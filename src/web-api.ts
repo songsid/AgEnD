@@ -352,6 +352,7 @@ export interface WebApiContext {
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
   readonly webBackendLogins?: import("./web-backend-login.js").WebBackendLogins;
+  readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
   /** #2233: Settings → Agents' sign-in list (FleetManager.backendSignInTargets). */
   backendSignInTargets?(): import("./web-backend-login.js").SignInTarget[];
   readonly dataDir: string;
@@ -894,6 +895,58 @@ function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL,
       answer(service.trialStop(route![1]!, now.actor));
     }
   })().catch(() => { try { json(res, 500, { error: "trial_request_failed" }); } catch { /* response ended */ } });
+  return true;
+}
+
+/** #2599: the same closed browser controls as setup, for a current local human admin. */
+function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  const reading = req.method === "GET";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "sign_in_not_over_public_link" }); return true; }
+  const who = () => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+  };
+  const owner = who();
+  if (!owner) { json(res, 403, { error: "sign_in_needs_a_local_admin" }); return true; }
+  if (!["GET", "POST"].includes(req.method ?? "") || [...url.searchParams.keys()].length) { json(res, 404, { error: "not_found" }); return true; }
+  const service = ctx.browserBackendSignIns;
+  if (!service) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
+  void (async () => {
+    let result;
+    if (reading) result = await service.refresh(owner);
+    else {
+      let bytes: Buffer; try { bytes = await readBoundedWebBody(req, 8192); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
+      if (!permitWebContinuation(req, res, ctx) || who() !== owner) return;
+      let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
+      const parsed = z.discriminatedUnion("operation", [
+        z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(["kiro-cli", "claude-code", "codex", "antigravity"])).max(4) }),
+        z.strictObject({ operation: z.literal("start"), backend: z.enum(["kiro-cli", "claude-code", "codex"]), relogin: z.boolean().optional() }),
+        z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
+          z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
+          z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
+        ]) }),
+        z.strictObject({ operation: z.literal("skip"), backend: z.enum(["kiro-cli", "claude-code", "codex", "antigravity"]) }),
+        z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
+      ]).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
+      const action = parsed.data;
+      if (action.operation === "select") result = await service.select(owner, action.backends);
+      else if (action.operation === "start") result = await service.begin(owner, action.backend, action.relogin === true);
+      else if (action.operation === "input") result = await service.input(owner, action.id, action.revision, action.action);
+      else if (action.operation === "skip") result = await service.skip(owner, action.backend);
+      else if (action.operation === "cancel") result = await service.cancel(owner);
+      else result = await service.refresh(owner, true);
+    }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
+    json(res, 200, result);
+  })().catch(error => {
+    const code = error instanceof Error ? error.message : "";
+    const safe = /^(?:signin_(?:session_expired|console_only|cleanup_failed|action_(?:stale|invalid|ended|busy))|invalid_signin_(?:action|checklist))$/.test(code) ? code : "signin_failed";
+    if (!res.destroyed && !res.writableEnded) json(res, safe === "signin_cleanup_failed" || safe === "signin_failed" ? 503 : 409, { error: safe });
+  });
   return true;
 }
 
@@ -2091,6 +2144,7 @@ export function handleWebRequest(
   // Canvas effects are absent from the public gateway manifest and independently refused above.
   if (path === "/ui/effect-trials" || path.startsWith("/ui/effect-trials/")) return handleEffectTrials(req, res, url, ctx, path, method);
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
+  if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
   if (path === "/ui/effects" || path.startsWith("/ui/effects/")) return handleEffects(req, res, url, ctx, path, method);
 

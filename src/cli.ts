@@ -2403,7 +2403,7 @@ program
   .option("--backend-signin-capabilities", "Print installer sign-in capabilities without starting setup")
   .action(async (opts: { reset?: boolean; port?: string; tunnel?: boolean; backendSignins?: string; backendSigninCapabilities?: boolean }) => {
     if (opts.backendSigninCapabilities) {
-      console.log(JSON.stringify({ version: 1, setup: true, dashboard: false, backends: ["kiro-cli", "claude-code", "codex"], console: ["antigravity"] }));
+      console.log(JSON.stringify({ version: 1, setup: true, dashboard: true, backends: ["kiro-cli", "claude-code", "codex"], console: ["antigravity"] }));
       return;
     }
     const { onboardingBackends } = await import("./backend-signin-pending.js");
