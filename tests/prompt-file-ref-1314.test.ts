@@ -228,6 +228,19 @@ describe("the fleet tells the instance's topic about the fallback", () => {
     expect(text).toContain("/proj/prompts/role.md");
     expect(text).toContain("/home/u/.agend/prompts/role.md");
   });
+
+  it("#1934: the warning promises no removal version — the fallback is still implemented", () => {
+    try {
+      setLocale("en");
+      const en = t("prompt_file.fleet_dir_fallback", "systemPrompt", "/a", "/b");
+      expect(en).toContain("A later release will remove this fallback.");
+      expect(en).not.toMatch(/\b2\.\d/);
+      setLocale("zh-TW");
+      const zh = t("prompt_file.fleet_dir_fallback", "systemPrompt", "/a", "/b");
+      expect(zh).toContain("之後的版本會移除這個退回機制。");
+      expect(zh).not.toMatch(/\b2\.\d/);
+    } finally { setLocale("en"); }
+  });
 });
 
 describe("Prism #1321 review", () => {

@@ -1555,7 +1555,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
               // happen when the agent reaches for it.
               conversation_carried_over: carried || !switchLosesConversation,
               ...(carried
-                ? { conversation_note: "The conversation was copied into the new profile and resumed there (the old profile keeps its own copy). The next reply re-reads it from a cold cache: one slower, full-price turn." }
+                ? { conversation_note: "The conversation was copied into the new profile and resumed there (the old profile keeps its own copy). The switch does not by itself make the prompt cache cold: within the same cache scope (organization, and workspace where the provider isolates them) an unchanged model and prompt prefix are usually reused. The next reply may rebuild it (one slower, full-price turn) when the scope, the model or the profile's settings differ, or the cache has expired." }
                 : switchLosesConversation
                 ? { handover_chars: handoverChars, ...(carry?.result && !carry.result.carried ? { carry_failed: carry.result.reason } : {}) }
                 : { conversation_note: `${backendAfter} keeps its history outside the login, so it is shared across profiles; switching back to a profile returns to the same history.` }),

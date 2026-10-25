@@ -648,7 +648,10 @@ the new one's start, AgEnD copies the session's transcript (`projects/<dir>/<ses
 file history into the new profile, then dates the copy as the newest so the relaunch's `--continue` picks it.
 - The old profile keeps its own copy, so switching back returns to the same conversation (with the turns added
   meanwhile).
-- The next reply re-reads the conversation from a cold cache: one slower, full-price turn.
+- The switch does not by itself make the prompt cache cold. Within the same cache scope (the organization, and the
+  workspace on providers that isolate workspaces) an unchanged model and prompt prefix are usually reused. The next
+  reply may rebuild the cache (one slower, full-price turn) when the scope, the model or the profile's settings differ,
+  or the cache has expired.
 - The reply says `conversation_carried_over: true`.
 - Settings and the login stay per profile; other transcripts in either profile are left as they are. Project auto-memory is shared as described above (an existing non-empty profile memory folder is preserved).
 

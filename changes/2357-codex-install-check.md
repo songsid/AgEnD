@@ -1,4 +1,0 @@
----
-section: Fixed
----
-- **Codex: an install missing `codex-code-mode-host` is now reported instead of leaving the instance silent (#2357).** A codex binary copied without the helper the official package ships next to it starts and takes messages. On an account where code mode is the only tool path, though, every tool call then fails, AgEnD's reply included, and the pane shows only `⚠ N warnings · f2 to view`. AgEnD now finds the problem in three places. `agend doctor` shows a **Codex package** row. Each codex launch sends a notification when the helper is missing or not executable; the launch is not blocked. When Codex records that exact tool failure in its session rollout, the same notification is sent once per launch. The check only reads the package layout and never runs codex. The fix is to reinstall Codex with the full official package.

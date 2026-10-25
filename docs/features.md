@@ -242,7 +242,7 @@ When you reply to a message in the web chat, its echo to Discord or Telegram is 
 
 ## Peer-to-peer agent collaboration
 
-Instances collaborate through the tools their profiles allow. Ordinary workers can discover and message peers; creating, starting or waking instances requires the appropriate orchestration permission. See [tool profiles](features.md#tool-profiles).
+Instances collaborate through the tools their profiles allow. Ordinary workers can discover and message peers. Creating, starting, or explicitly waking an instance (`wake_instance`) needs a profile with the orchestration tools. A worker's `send_to_instance` can still wake a paused recipient indirectly: delivery wakes the target the same way `/wake` does (see [auto-pause and wake](#auto-pause--wake)). See [tool profiles](features.md#tool-profiles).
 
 **Core MCP tools:**
 
