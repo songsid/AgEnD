@@ -363,7 +363,7 @@ function Get-UbuntuWslImage([string]$version = 'Ubuntu-24.04') {
 function Install-AgendDistro([string]$name, [string]$location) {
     $version = Get-InstalledWslVersion
     if ($version -and $version -ge $WSL_NAME_MIN) {
-        $installCode = Invoke-Watched -Label "下載並安裝 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "Ubuntu-24.04", "--name", $name, "--location", $location, "--no-launch")
+        $installCode = Invoke-Watched -Label "下載並安裝 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "Ubuntu-24.04", "--name", $name, "--location", $location, "--no-launch")
         $after = Get-WslDistroNames
         if ($null -eq $after) { Write-Err "裝完之後讀不到 Linux 清單，無法確認 $name 有沒有裝好；沒有再做任何事。"; return $false }
         if ($after -contains $name) {
@@ -384,7 +384,7 @@ function Install-AgendDistro([string]$name, [string]$location) {
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash
         if ($hash -ne $image.Sha256) { Write-Err "下載的 Ubuntu 和官方的檢查碼不符，沒有安裝。"; return $false }
         New-Item -ItemType Directory -Path $location -Force | Out-Null
-        $importCode = Invoke-Watched -Label "匯入 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 1–3 分鐘" -UpperMinutes 10 -Encoding utf16 -File "wsl.exe" -Arguments @("--import", $name, $location, $file, "--version", "2")
+        $importCode = Invoke-Watched -Label "匯入 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 1–3 分鐘" -UpperMinutes 10 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--import", $name, $location, $file, "--version", "2")
         $after = Get-WslDistroNames
         return ($importCode -in @(0,3010) -and $null -ne $after -and $after -contains $name)
     } finally {
@@ -1003,7 +1003,7 @@ function Invoke-WslUpdateStage {
         $wslMsi = "$env:TEMP\wsl-latest.msi"
         Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
         Invoke-InstallDownload -Uri $msiAsset.browser_download_url -OutFile $wslMsi -TimeoutSec 1800
-        $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
+        $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
         Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
         if ($msiCode -eq 3010) { return 'reboot' }
         if ($msiCode -ne 0) {
@@ -1679,7 +1679,7 @@ function Resolve-RequestedAgendVersion([string]$Requested) {
 }
 function Test-InstallerReady {
     # No auth code/token is requested or printed; only local service and HTTP health are checked.
-    $js = 'const cp=require("child_process"),p=require("path"),fs=require("fs"),m=require("module"); const root=cp.execFileSync("npm",["root","-g"],{encoding:"utf8",timeout:5000}).trim(); const r=m.createRequire(p.join(root,"@songsid/agend/package.json")); const cfg=r("js-yaml").load(fs.readFileSync(p.join(process.env.AGEND_HOME||p.join(require("os").homedir(),".agend"),"fleet.yaml"),"utf8")); const port=cfg.health_port??19280; if(!Number.isInteger(port)||port<1||port>65535)throw Error("Invalid dashboard port"); (async()=>{for(let i=0;i<10;i++){try{const h=await fetch("http://127.0.0.1:"+port+"/health",{signal:AbortSignal.timeout(3000)});const body=await h.json();const ui=await fetch("http://127.0.0.1:"+port+"/",{signal:AbortSignal.timeout(3000)});if(h.ok&&body.status==="ok"&&body.startupComplete===true&&ui.ok)return;}catch{}await new Promise(r=>setTimeout(r,1000));}process.exitCode=1;})();'
+    $js = 'const cp=require("child_process"),p=require("path"),fs=require("fs"),m=require("module"); const root=cp.execFileSync("npm",["root","-g"],{encoding:"utf8",timeout:5000}).trim(); const r=m.createRequire(p.join(root,"@songsid/agend/package.json")); const cfg=r("js-yaml").load(fs.readFileSync(p.join(process.env.AGEND_HOME||p.join(require("os").homedir(),".agend"),"fleet.yaml"),"utf8")); const port=cfg.health_port??19280; if(!Number.isInteger(port)||port<1||port>65535)throw Error("Invalid dashboard port"); (async()=>{for(let i=0;i<10;i++){try{const h=await fetch("http://127.0.0.1:"+port+"/health",{signal:AbortSignal.timeout(3000)});const body=await h.json();const ui=await fetch("http://127.0.0.1:"+port+"/",{signal:AbortSignal.timeout(3000)});if((h.ok||h.status===503)&&(body.status==="ok"||body.status==="degraded")&&body.startupComplete===true&&ui.ok){for(const problem of (Array.isArray(body.problems)?body.problems:[]).slice(0,16)){if(typeof problem==="string")console.log("AgEnD warning: "+problem.replace(/[\r\n]/g," ").slice(0,512));}return;}}catch{}await new Promise(r=>setTimeout(r,1000));}process.exitCode=1;})();'
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($js))
     $script = $AGEND_ENV + 'systemctl --user is-active com.agend.fleet || exit $?; node -e ''eval(Buffer.from(process.argv[1],String.fromCharCode(98,97,115,101,54,52)).toString())'' ' + $encoded
     $code = Invoke-WslStep -Label '確認服務與儀表板就緒' -Usually '通常需要幾秒到 1 分鐘' -UpperMinutes 1 -TimeoutSeconds 90 -NoProgressSeconds 90 -Script $script
@@ -1982,7 +1982,7 @@ if ($wslStageVerified) {
                 Read-Host "按 Enter 結束"; exit 1
             }
         } else {
-            $null = Invoke-Watched -Label "下載並安裝 $UBUNTU_DISTRO" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")
+            $null = Invoke-Watched -Label "下載並安裝 $UBUNTU_DISTRO" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")
             # 較舊的 WSL 不認得 --location，或安裝沒有成功：和另外安裝時一樣，改用官方映像檔匯入（#2650 第 7 項）。
             $afterFresh = Get-WslDistroNames
             if ($null -ne $afterFresh -and $afterFresh -notcontains $UBUNTU_DISTRO) {

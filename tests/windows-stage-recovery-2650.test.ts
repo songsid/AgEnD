@@ -109,6 +109,19 @@ Write-Output ('READY='+(Test-InstallerReady))`);
   const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:3000,env:{HOME:f.dir,PATH:`${f.bin}:/usr/bin:/bin`}});
   expect(result.status,result.stderr).toBe(status);
  }));
+ it.each([['degraded',503,0],['down',503,1],['unrecognised',200,1]])('degraded is usable with warnings; down or invalid health stays blocked: %s', (status,http,exit)=>scratch(f=>{
+  const out=f.run(`function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$TimeoutSeconds,$NoProgressSeconds,$Script);Write-Host ('PROGRAM='+($Script.Split(' ')[-1]));return 1};$null=Test-InstallerReady`);
+  const program=Buffer.from(out.match(/PROGRAM=(\S+)/)![1],'base64').toString();
+  const stub=`(()=>{const cp=require('child_process'),m=require('module'),fs=require('fs');cp.execFileSync=()=>'/scratch/global';m.createRequire=()=>()=>({load:()=>({})});fs.readFileSync=()=>'';global.fetch=async url=>({ok:url.endsWith('/health')?${http}===200:true,status:${http},json:async()=>({status:${JSON.stringify(status)},startupComplete:true,problems:['host memory pressure is elevated']})});global.setTimeout=fn=>{fn();return {}};})();`;
+  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:3000,env:{HOME:f.dir,PATH:`${f.bin}:/usr/bin:/bin`}});
+  expect(result.status,result.stderr).toBe(exit);
+  if(status==='degraded')expect(result.stdout).toContain('AgEnD warning: host memory pressure is elevated');
+ }));
+ it('quiet MSI/import/no-launch installs keep an absolute deadline without an output-idle deadline',()=>{
+  const calls=source.split('\n').filter(line=>line.includes('Invoke-Watched -Label')&&(line.includes('-File "msiexec.exe"')||line.includes('-Arguments @("--import"')||(line.includes('-Arguments @("--install"')&&line.includes('"--no-launch"'))));
+  expect(calls).toHaveLength(4);
+  for(const line of calls){expect(line).toContain('-TimeoutSeconds 1800');expect(line).toContain('-NoProgressSeconds 0')}
+ });
  it('a failed or incomplete final handover exits nonzero',()=>{
   expect(source).toMatch(/if \(-not \$script:InstallerReady -or \$missingBackends\.Count -gt 0\) \{ exit 1 \}/);
   const start=source.indexOf('$scriptLines = @(',source.indexOf('安裝 tmux...'));
