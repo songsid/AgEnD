@@ -73,7 +73,7 @@ const samples: Record<string, Record<string, unknown>> = {
   delete_team: { name: "team" }, list_teams: {}, update_team: { name: "team" },
   describe_instance: { name: "peer" }, list_instances: {}, start_instance: { name: "peer" },
   restart_instance: { name: "peer" }, pause_instance: { name: "peer" }, wake_instance: { name: "peer" },
-  stop_instance: { name: "peer" }, get_fleet_status: {}, get_effort: {}, kiro_engine_status: {}, close_poll: { poll_id: "a".repeat(32) },
+  stop_instance: { name: "peer" }, get_fleet_status: {}, get_effort: {}, kiro_engine_status: {}, migrate_kiro_instance: { name: "peer" }, close_poll: { poll_id: "a".repeat(32) },
   get_usage: {}, get_cache_report: { window: "24h" }, get_usage_report: { range: "today" }, get_web_settings: {}, set_web_settings: { change: { what: "restore_defaults" } }, list_models: {}, get_instance_logs: { name: "peer" }, get_fleet_config: {},
   update_instance_config: { name: "peer", config: {} }, update_fleet_defaults: { defaults: {} },
   create_instance: {}, delete_instance: { name: "peer" }, replace_instance: { name: "peer" },

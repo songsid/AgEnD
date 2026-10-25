@@ -109,6 +109,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Get the reasoning-effort setting for an instance: the level in force, the levels its CLI backend accepts, and whether changing it takes effect immediately or needs a restart. Defaults to yourself."],
   ["kiro_engine_status", schemas.KiroEngineStatusArgs,
     "Show what each kiro instance runs on and whether the installed kiro-cli can still run it: its kiro_ui, the engine flags the next launch would use (or why kiro-cli refuses it), its recorded launches (kiro-cli and AgEnD versions per change), and its V3 session. Read-only. Use it to explain a kiro incompatibility or the kiro engine move to the user."],
+  ["migrate_kiro_instance", schemas.MigrateKiroInstanceArgs,
+    "Ask to move one kiro instance from the classic engine (kiro_ui: legacy) to the TUI engine, carrying its conversation: its classic conversation is resumed once under the TUI, recorded as its own, and the instance restarts. One-way: afterwards AgEnD refuses classic launches of it. Nothing changes when you call it: a Confirm prompt is posted in General, and a fleet admin's click there makes the move (and its outcome is posted there and in the instance's topic). Refused for a non-kiro, non-classic or already-moved instance, and for one with no classic conversation unless start_fresh is true. Fleet instances only (not ClassicBot channels). Only when the user asked for this instance to be moved."],
   ["get_usage", schemas.GetUsageArgs,
     "Get AI subscription usage for the CLI backends logged in on this machine (Claude/Codex/Muse/Grok/Kiro/Antigravity). Returns per-provider metrics — use it to notice you are close to a limit and warn the user."],
   ["get_cache_report", schemas.GetCacheReportArgs,

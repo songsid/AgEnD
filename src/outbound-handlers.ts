@@ -54,6 +54,7 @@ import {
   GetEffortArgs,
   ClosePollArgs,
   KiroEngineStatusArgs,
+  MigrateKiroInstanceArgs,
   GetUsageArgs,
   GetCacheReportArgs,
   GetUsageReportArgs,
@@ -1099,6 +1100,17 @@ const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
     return;
   }
   respond(status);
+};
+
+/** #2598 B2: ask for a fleet admin's Confirm on a kiro classic → TUI move; the move itself runs on the click. */
+const migrateKiroInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(MigrateKiroInstanceArgs, rawArgs, "migrate_kiro_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const fm = ctx as unknown as { requestKiroMigration?(name: string, startFresh: boolean): Promise<{ ok: true; text: string; classic_conversation: string | null } | { ok: false; error: string }> };
+  if (!fm.requestKiroMigration) { respond(null, "migrate_kiro_instance is not available here"); return; }
+  const result = await fm.requestKiroMigration(v.data.name, v.data.start_fresh === true);
+  if (!result.ok) { respond(null, result.error); return; }
+  respond({ status: "awaiting_admin_confirmation", name: v.data.name, classic_conversation: result.classic_conversation, note: result.text });
 };
 
 /** #1823: close one of the caller's own polls before its deadline; its results then go out as at the deadline. */
@@ -2322,6 +2334,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["get_effort", getEffort],
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
+  ["migrate_kiro_instance", migrateKiroInstance],
   ["get_usage", getUsage],
   ["get_cache_report", getCacheReport],
   ["get_usage_report", getUsageReport],

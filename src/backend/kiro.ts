@@ -17,6 +17,7 @@ import {
 import {
   type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
   kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
+  kiroEngineFloor,
 } from "./kiro-identity.js";
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
@@ -797,6 +798,9 @@ interface KiroInstanceLaunch {
   agentConfirmed: boolean;
 }
 
+/** #2598 B3: engines in the order a conversation can move between them (never back). */
+const KIRO_ENGINE_RANK: Record<"legacy" | "tui" | "v3", number> = { legacy: 1, tui: 2, v3: 3 };
+
 /** Binary generations already told they cannot isolate (once each). */
 const warnedNoInstanceAgentKeys = new Set<string>();
 /** Instances already told about an untagged steering file (once each). */
@@ -1195,6 +1199,12 @@ export class KiroBackend implements CliBackend {
     this.replyGuardOptedIn = false;
     this.builtLaunch = null;
     const ui = config.kiroUi ?? "legacy";
+    // #2598 B3: never back onto an older engine than this instance has run on — that resumes the frozen copy and loses
+    // everything done since. Before any probe: no kiro-cli flag or version changes the answer.
+    const floor = kiroEngineFloor(getAgendHome(), config.instanceName);
+    if (floor && KIRO_ENGINE_RANK[ui] < KIRO_ENGINE_RANK[floor === "v2" ? "tui" : "v3"]) {
+      throw new UnsupportedCliError(t("kiro.engine_floor", config.instanceName, ui, floor === "v2" ? "tui" : "v3"));
+    }
     // Every launch re-reads the binary generation: a crash-respawn reuses this
     // backend, and kiro-cli may have replaced itself in place since the last
     // launch (an auto-update to a release without this instance's engine).
@@ -1252,11 +1262,16 @@ export class KiroBackend implements CliBackend {
       // the newest conversation in the directory from ANY engine and convert a classic one into a new V3 copy.
       const id = resolveKiroV3Resume(config.instanceName, config.workingDirectory, credentialProfile, { skipResume: config.skipResume });
       if (id) cmd += ` --resume-id ${shellQuote(id)}`;
-    } else if (!config.skipResume) {
-      // Legacy mode, classic/TUI: the boolean form — kiro resumes the directory's newest conversation. Not isolated
+    } else if (!config.skipResume && ui === "legacy") {
+      // Legacy mode, classic: the boolean form — kiro resumes the directory's newest conversation. Not isolated
       // between instances sharing the directory (#1410); an instance launches like this only without the
       // per-instance plan (an old kiro-cli, or a conversation store AgEnD could not read on adoption).
       cmd += " --resume";
+    } else if (!config.skipResume && ui === "tui") {
+      // #2598 B3: never the boolean form under the TUI — it takes the directory's newest conversation from EITHER
+      // engine, and on a classic one makes a TUI fork of it (the wrong conversation, possibly another instance's). A
+      // TUI launch without its per-instance plan starts fresh instead, and says so.
+      this.addLaunchWarning(t("kiro.tui_no_plan_fresh"));
     }
     if (config.model) {
       const model = validateModel(config.model);

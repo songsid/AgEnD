@@ -743,7 +743,16 @@ kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a 
 
 `kiro_ui` picks how a kiro instance is launched: `legacy` (the default) runs kiro's legacy UI on its v1 agent engine (`--legacy-ui --agent-engine=v1`), `tui` its terminal UI on the v2 engine (`--tui --agent-engine=v2`). Both are pinned on every launch, so a kiro-cli default or saved setting cannot move an instance to another engine — its conversation would not come along. When the installed kiro-cli can no longer run what an instance is pinned to, AgEnD refuses to start it and says why rather than letting kiro pick (#1109). `kiro_ui: v3` is refused by validation until kiro's v3 interface can run unattended (#849).
 
-`kiro_engine_status` (a read-only tool every profile except `minimal` has) shows, for each kiro instance and ClassicBot channel, its `kiro_ui`, the engine flags its next launch would use or why kiro-cli would refuse it, its recorded launches (kiro-cli and AgEnD versions per change), its V3 session and its credential profile. It reads what AgEnD recorded at the last launch and never runs kiro-cli itself.
+`kiro_engine_status` (a read-only tool every profile except `minimal` has) shows, for each kiro instance and ClassicBot channel, its `kiro_ui`, the engine flags its next launch would use or why kiro-cli would refuse it, its recorded launches (kiro-cli and AgEnD versions per change), its V3 session and its credential profile. It reads what AgEnD recorded at the last launch and never runs kiro-cli itself. It also shows `engine_floor` (see below).
+
+**Moving from classic to the TUI (`migrate_kiro_instance`, #2598).** kiro-cli 3.0 drops the classic engine. Setting `kiro_ui: tui` by hand would start the instance on an empty TUI conversation. `migrate_kiro_instance` (coordinator and full tool sets) moves one fleet instance and carries its conversation:
+- It posts a **Move it / Cancel** prompt in General, and nothing changes until a fleet admin confirms it there.
+- On the confirm, AgEnD sets `kiro_ui: tui`, arms the instance's classic conversation as its TUI conversation and restarts a running instance. The first TUI launch resumes that conversation once, which makes kiro copy the whole history into its session files, and records it as the instance's own.
+- The outcome is posted in General and in the instance's topic.
+- An instance with no classic conversation on record is refused unless `start_fresh: true` is given.
+- ClassicBot channels are not moved by it yet.
+
+The move is one-way. Once an instance has run on the TUI, AgEnD refuses to launch it on classic again (`engine_floor: "tui"`), because that would resume the frozen classic copy and lose everything done since. A TUI launch never uses kiro's plain `--resume`, which takes the directory's newest conversation from either engine. Without its own conversation on record (an older kiro-cli), a TUI launch starts fresh and says so.
 
 ## agend quickstart
 
