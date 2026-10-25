@@ -21,7 +21,10 @@ describe("the installer ends on the dashboard (static)", () => {
   it("the shortcut is made and the dashboard opened, after the progress is cleared; console commands only under 進階", () => {
     expect(ending).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
     // #2650 item 10: a dashboard that does not open names the two ways back to it (neither reinstalls).
-    expect(ending).toMatch(/if \(-not \(Invoke-OpenDashboard \$UBUNTU_DISTRO \$AGEND_USER -BackendSignins \$browserSignins\)\) \{\n\s+Write-Info "安裝已經完成，設定都保留著。之後要打開儀表板：按兩下桌面上的「AgEnD 儀表板」，或再貼一次同一行安裝指令（不會重新安裝，會問你要不要打開儀表板）。"\n\}/);
+    expect(ending).toContain('if (-not (Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER -BackendSignins $browserSignins))');
+    expect(ending).toContain('if ($script:InstallerReady -and $missingBackends.Count -eq 0)');
+    expect(ending).toContain('安裝已經完成，設定都保留著。之後要打開儀表板：');
+    expect(ending).toContain('再貼一次同一行安裝指令會從沒完成的步驟繼續');
     expect(ending.indexOf("Invoke-OpenDashboard $UBUNTU_DISTRO")).toBeGreaterThan(ending.indexOf("Clear-ResumeAtLogon"));
     const advanced = ending.indexOf("── 進階（需要用主控台時才看）──");
     expect(advanced).toBeGreaterThan(ending.indexOf("日常使用："));

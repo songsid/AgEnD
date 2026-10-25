@@ -83,6 +83,18 @@ if($TimeoutSeconds -ne 90 -or $Script -notmatch 'systemctl --user is-active'){th
 Write-Output ('READY='+(Test-InstallerReady))`);
   expect(out).toContain(`READY=${code===0?'True':'False'}`);
  }));
+ it.each([[true,true,0],[false,true,1],[true,false,1]])('the generated HTTP proof requires finished startup and a working dashboard: %s/%s', (complete,uiOk,status)=>scratch(f=>{
+  const out=f.run(`function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$TimeoutSeconds,$NoProgressSeconds,$Script);Write-Host ('PROGRAM='+($Script.Split(' ')[-1]));return 1};$null=Test-InstallerReady`);
+  const program=Buffer.from(out.match(/PROGRAM=(\S+)/)![1],'base64').toString();
+  const stub=`(()=>{const cp=require('child_process'),m=require('module'),fs=require('fs');cp.execFileSync=()=>'/scratch/global';m.createRequire=()=>()=>({load:()=>({health_port:12345})});fs.readFileSync=()=>'';global.fetch=async url=>{if(!url.startsWith('http://127.0.0.1:12345/'))throw Error('Forbidden URL');return {ok:url.endsWith('/health')||${uiOk},json:async()=>({status:'ok',startupComplete:${complete}})}};global.setTimeout=fn=>{fn();return {}};})();`;
+  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:3000,env:{HOME:f.dir,PATH:`${f.bin}:/usr/bin:/bin`}});
+  expect(result.status,result.stderr).toBe(status);
+ }));
+ it('a failed or incomplete final handover exits nonzero',()=>{
+  expect(source).toMatch(/if \(-not \$script:InstallerReady -or \$missingBackends\.Count -gt 0\) \{ exit 1 \}/);
+  const start=source.indexOf('$scriptLines = @(',source.indexOf('安裝 tmux...'));
+  expect(source.slice(start,start+100)).toContain("'set -e'");
+ });
  it('a partial backend failure stays retryable; rerun preserves successes and retries only missing CLI',()=>scratch(f=>{
   const a=source.indexOf('$savedBackends = Get-ProgressValue'),b=source.indexOf('# Progress IDs stay compatible',a);
   const stage=source.slice(a,b);writeFileSync(join(f.dir,'stage.ps1'),stage);
