@@ -70,6 +70,7 @@ function machine(o: { onPath?: Record<string, number>; inHomeLocalBin?: string[]
   const wsl = `#!/bin/sh
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 shift
+[ "$1" != timeout ] || { shift; shift; shift; shift; }
 [ "$1 $2" = "bash -c" ] || { echo "unexpected: $*" >&2; exit 9; }
 probe=$(printf '%s' "$3" | ${join(TOOLS, "sed")} 's#/root/#${home}/#g')
 exec /usr/bin/env -i HOME='${home}' PATH='${bin}:${TOOLS}' ${join(TOOLS, "bash")} -c "$probe"
@@ -92,7 +93,8 @@ function installed(key: string, m: ReturnType<typeof machine>, extraPath = ""): 
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-InstalledBackend' }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(ALL_BACKENDS|BACKEND_PROBE)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
+foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(ALL_BACKENDS|BACKEND_PROBE|WSL_COMMAND_FN)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
+. ([scriptblock]::Create($WSL_COMMAND_FN))
 $UBUNTU_DISTRO = 'AgEnD-Ubuntu'
 $b = $ALL_BACKENDS | Where-Object { $_.Key -eq '${key}' }
 $r = Get-InstalledBackend $b

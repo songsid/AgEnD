@@ -15,7 +15,7 @@ import { afterAll, describe, expect, it } from "vitest";
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
 const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
-const ending = code.slice(code.indexOf("全部安裝完成！"));
+const ending = code.slice(code.indexOf('if ($script:InstallerReady) { Write-Host "  服務與儀表板已就緒"'));
 
 describe("the installer ends on the dashboard (static)", () => {
   it("the shortcut is made and the dashboard opened, after the progress is cleared; console commands only under 進階", () => {
@@ -76,7 +76,7 @@ Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, bin);
     expect(out).toContain("儀表板登入碼：  K 7 Q M - 3 X R D");
     expect(out).toContain("RESULT=True");
     // The user AgEnD was installed as, and its own home — never a hard-coded root.
-    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u han -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
+    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u han -- timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
   });
   it("AgEnD not running: says so and how to start it; nothing opened", () => {
     const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
@@ -104,7 +104,7 @@ Write-Output ("RESULT=" + $r + " EAP=" + $ErrorActionPreference)`, bin);
   it("Windows PowerShell 5.1's boundary, modelled: the native stderr arrives as an error record under Stop — still the message, never a throw", () => {
     // 5.1 wraps a redirected native stderr line in a NativeCommandError record that ErrorActionPreference=Stop turns
     // into a terminating error; pwsh 7.2+ does not. A wsl.exe *function* writing that record reproduces it here.
-    const { out, dir } = withHelpers(`function wsl.exe { $global:LASTEXITCODE = 1; Write-Error -Message 'Web token not found. Is the fleet running?' -ErrorId NativeCommandError }
+    const { out, dir } = withHelpers(`function Invoke-BoundedWsl {return @{Code=1;Text='Web token not found. Is the fleet running?'}}
 function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
 function Read-Host { param($p) Add-Content (Join-Path $env:TMPDIR 'waited.txt') $p }
 $ErrorActionPreference = 'Stop'
@@ -115,7 +115,7 @@ try { $r = Invoke-OpenDashboard 'Ubuntu-24.04' -Wait; Write-Output ("RESULT=" + 
     expect(() => readFileSync(join(dir, "opened.txt"))).toThrow();
   });
   it("5.1's boundary, modelled: stderr noise as an error record, then the sign-in and exit 0 — still opens the page", () => {
-    const { out, dir } = withHelpers(`function wsl.exe { Write-Error -Message 'nvm: a warning' -ErrorId NativeCommandError; "Sign-in page: http://localhost:19280/signin"; "Code:         K7QM-3XRD   (works once, valid ~5 min)"; $global:LASTEXITCODE = 0 }
+    const { out, dir } = withHelpers(`function Invoke-BoundedWsl {return @{Code=0;Text="Sign-in page: http://localhost:19280/signin\`nCode:         K7QM-3XRD   (works once, valid ~5 min)\`nnvm: a warning"}}
 function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
 function Set-Clipboard { param($Value) Add-Content (Join-Path $env:TMPDIR 'clip.txt') $Value }
 $ErrorActionPreference = 'Stop'
@@ -157,6 +157,6 @@ Write-Output ("NEW-SHORTCUT-OFF-WINDOWS=[" + (@(Install-AgendShortcuts 'Ubuntu-2
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("儀表板登入碼：  K 7 Q M - 3 X R D");
     expect(r.stdout).toMatch(/登入頁已在瀏覽器打開|請自己在瀏覽器打開：http:\/\/localhost:19280\/signin/);
-    expect(readFileSync(join(bin, "args.txt"), "utf8")).toMatch(/^-d Ubuntu-22\.04 -u root -- bash -lc /);
+    expect(readFileSync(join(bin, "args.txt"), "utf8")).toMatch(/^-d Ubuntu-22\.04 -u root -- timeout --signal=TERM --kill-after=2s 25 bash -lc /);
   });
 });

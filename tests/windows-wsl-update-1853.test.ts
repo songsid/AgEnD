@@ -60,7 +60,7 @@ function Invoke-Watched { param($Label, $Usually, $File, [string[]]$Arguments, $
   $c = $script:codes[0]; $script:codes.RemoveAt(0); return $c }
 function Invoke-RestMethod { $script:log += 'github-api'; ${o.rest && o.rest !== "ok" ? `throw '${o.rest}'` : `return [PSCustomObject]@{ tag_name = '2.6.1'; assets = @([PSCustomObject]@{ name = 'wsl.2.6.1.0.x64.msi'; browser_download_url = 'https://example.invalid/wsl.msi' }) }`} }
 function Invoke-WebRequest { $script:log += 'download' }
-function wsl { $global:LASTEXITCODE = ${o.verify ?? 0} }
+function Invoke-BoundedWsl { return @{Code=${o.verify ?? 0};Text=''} }
 $r = Invoke-WslUpdateStage
 Write-Output ("RESULT=" + $r + " LOG=" + ($script:log -join ' | '))`);
   const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000 });

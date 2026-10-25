@@ -138,7 +138,7 @@ describe.skipIf(!pwsh)("with pwsh: finding and repairing a broken AgEnD", { time
     const log = calls(bin).trim().split("\n");
     // #2286 review: never the old version itself — it may predate the installer that repairs (#2264).
     expect(log[0]).toBe(`-d AgEnD -u root -- bash -lc ${PRELUDE}set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | AGEND_VERSION=beta bash`);
-    expect(log[1]).toBe(`-d AgEnD -u root -- bash -lc ${PRELUDE}agend --version`);
+    expect(log[1]).toBe(`-d AgEnD -u root -- timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend --version`);
     expect(log[0]).not.toContain('"');
   });
   it("a stable version, no version found, or one that is not a version: the installer's default (latest), never the text pasted in", () => {

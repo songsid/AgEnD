@@ -79,12 +79,12 @@ try{Get-InstallResumeCommand 'beta;bad';throw 'Unsafe accepted'}catch{if($_ -mat
   });
   it('fresh stage installs beta.x in stub WSL; latest/unset/exact stay scoped to the installer bash', () => {
     const out = run(`
-$UBUNTU_DISTRO='Private'; $NODE_VERSION='22'
-$stage=$ast.FindAll({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.StartsWith('if (Stage-Done 4)')},$true)[0]
+$UBUNTU_DISTRO='Private'; $NODE_VERSION='22'; $ProgressFile=Join-Path $env:TMPDIR 'progress'; $installedVersion=$null
+$stage=$ast.FindAll({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.StartsWith('if ($installedVersion)')},$true)[0]
 function Stage-Done {return $false}
 function Mark-Stage($s){if($s -ne 4){throw 'Wrong stage'};Write-Host ('VERIFIED='+$script:installed)}
 function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$Script)
-  if($Script -eq 'apt-get install -y -qq tmux || true'){return 0}
+  if($Script -eq 'apt-get install -y -qq tmux'){return 0}
   Write-Host ('INSTALL='+$Script.Split([char]10)[3])
   if($Script -match 'AGEND_VERSION=beta bash'){$script:installed='2.3.2-beta.5'}
   elseif($Script -match 'AGEND_VERSION=2.3.2-beta.4 bash'){$script:installed='2.3.2-beta.4'}
@@ -92,11 +92,12 @@ function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$Script)
   else{throw 'Unexpected install script'}
   return 0
 }
-function wsl {if(($args -join ' ') -notmatch 'agend --version'){throw 'Unexpected WSL'};return $script:installed}
+function Resolve-RequestedAgendVersion {return $script:installed}
+function Get-VerifiedAgendVersion($expected){if($expected -cne $script:installed){throw 'Wrong expected version'};return $script:installed}
 foreach($v in @('beta','latest','','2.3.2-beta.4')){$AgendInstallVersion=$v;. ([scriptblock]::Create($stage.Extent.Text))}`);
     expect(out).toContain('VERIFIED=2.3.2-beta.5'); expect(out).toContain('VERIFIED=2.3.2-beta.4');
     expect(out.match(/VERIFIED=2.3.1/g)).toHaveLength(2);
-    expect(out).toContain('install.sh | AGEND_VERSION=beta bash || true');
+    expect(out).toContain('install.sh | AGEND_VERSION=beta bash');
   });
   it.each(['terminal','conhost'])('explicit argument survives %s elevation with an empty child environment', mode => {
     const out = run(`

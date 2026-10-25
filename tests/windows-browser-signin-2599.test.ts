@@ -31,7 +31,8 @@ ${body}`);
 }
 it('installs AgEnD before sign-in, preserves stage IDs and independently verifies final auth',()=>{
  expect(source.indexOf('Write-Step 3 $TOTAL "安裝 AgEnD"')).toBeLessThan(source.indexOf('Write-Step 4 $TOTAL "準備瀏覽器登入"'));
- expect(source).toContain('if (Stage-Done 4)');
+ expect(source).toContain('(Stage-Done 4)');
+ expect(source).toContain('Get-VerifiedAgendVersion $savedVersion');
  expect(source).toContain('Mark-Stage 4');
  expect(source).toContain('$signedIn = @($selected | Where-Object { Test-WslLogin $_.Key })');
  expect(source).toContain('if ($skippedLogins.Count -eq 0) { Mark-Stage 3 }');
@@ -79,7 +80,7 @@ Write-Output ('OK='+(Invoke-SetupAndService -BackendSignins 'codex'))`);
   expect(out).toContain('OK=False');
  });
  it('resumed dashboard receives only canonical IDs in a fixed native command; default shortcuts stay unchanged',()=>{
-  const out=run(`function wsl.exe {Write-Host ('ARGS='+($args -join '|'));$global:LASTEXITCODE=0;Write-Output 'Sign-in page: http://localhost:19280/signin?next=checklist';Write-Output 'Code: ABCD-EFGH'}
+  const out=run(`function Invoke-BoundedWsl {param($Arguments);Write-Host ('ARGS='+($Arguments -join '|'));return @{Code=0;Text="Sign-in page: http://localhost:19280/signin?next=checklist\`nCode: ABCD-EFGH"}}
 function Set-Clipboard($Value){}
 function Start-Process($FilePath){Write-Host ('OPEN='+$FilePath)}
 $ok=Invoke-OpenDashboard 'Scratch' 'operator' -BackendSignins 'kiro-cli,codex'

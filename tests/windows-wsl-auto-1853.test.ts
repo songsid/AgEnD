@@ -45,9 +45,9 @@ describe("the WSL stage decides for itself (static)", () => {
     expect(body.match(/\} elseif \(\$wslState -eq 'declined'\) \{\n\s*Write-WslDeclined\n\s*Read-Host "按 Enter 結束"; exit 1/g)).toHaveLength(2);
   });
   it("wsl --shutdown runs in one place only, after an explicit y (the installer's rule)", () => {
-    expect(code.match(/wsl(?:\.exe)? --shutdown/g)).toHaveLength(1);
+    expect(code.match(/Invoke-BoundedWsl -Arguments @\('--shutdown'\)/g)).toHaveLength(1);
     const fn = code.slice(code.indexOf("function Wait-WslRoot"), code.indexOf("function Write-WslDeclined"));
-    expect(fn).toMatch(/if \(\(\[string\]\$answer\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{ return 'declined' \}\n[^\n]*\n\s*wsl --shutdown/);
+    expect(fn).toMatch(/if \(\(\[string\]\$answer\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{ return 'declined' \}\n[^\n]*\n\s*\$null = Invoke-BoundedWsl -Arguments @\('--shutdown'\)/);
     expect(body).toMatch(/Write-Ok "Linux 版本：\$UBUNTU_DISTRO"/);
     expect(body).toMatch(/安裝位置：\{0\}（可用 \{1\} GB）/);
   });
@@ -100,7 +100,7 @@ Write-Output ("D=" + ($null -eq (Select-InstallDrive @(${disk("C:\\", 2)}, ${dis
   });
   // A wsl stub: answers root's echo with WSL_OK once `okAfter` echo calls have failed (Infinity: never), logs every call.
   const wslStub = (okAfter: number) => `$script:calls = @(); $script:echoes = 0
-function wsl { $script:calls += ($args -join ' '); if ($args[0] -like '--*') { return }; $script:echoes++; if ($script:echoes -gt ${okAfter === Infinity ? 999 : okAfter}) { 'WSL_OK' } else { 'Error: 0x8007019e' } }`;
+function Invoke-BoundedWsl {param($Arguments); $script:calls += (($Arguments | Where-Object {$_ -ne '--'}) -join ' '); if ($Arguments[0] -like '--*') { return @{Code=0;Text=''} }; $script:echoes++; if ($script:echoes -gt ${okAfter === Infinity ? 999 : okAfter}) { return @{Code=0;Text='WSL_OK'} } else { return @{Code=1;Text='Error: 0x8007019e'} } }`;
   const ASK = "要重新啟動整個 WSL 嗎？這會停掉這台電腦上所有的 Linux（包括其他發行版和裡面正在跑的程式）。(y/N)";
   it("root init that fails is retried after restarting only this Linux — never a first-run window, nothing asked", () => {
     const { out } = withHelpers(`${wslStub(1)}

@@ -127,7 +127,7 @@ describe.skipIf(!pwsh)("with pwsh: the restart shortcut", { timeout: 90_000 }, (
   it("y: exactly agend restart, then agend status, in the given Linux as the given user", () => {
     const bin = fakeWsl({ status: "worker  running  claude-code" });
     const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0))`, bin, "y\n");
-    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend status\n`);
+    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han -- timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han -- timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
     expect(out).toContain("AgEnD 正在重新啟動。");
     expect(out).toContain("worker  running  claude-code");
     expect(out).toContain("RESULT=restarted");
@@ -156,7 +156,7 @@ if ($e2.Count) { throw "parse errors" }`, bin);
     const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "restart-agend.ps1")], { encoding: "utf8", timeout: 60_000, input: "y\n\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)");
-    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend status\n`);
+    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han -- timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han -- timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
   });
 });
 
@@ -169,7 +169,7 @@ function Get-InstalledWslVersion { return [version]'2.6.1.0' }
 $r = Find-ExistingAgend
 Write-Output ("FOUND=" + $r.Distro + "/" + $r.User)`, bin);
     expect(out).toContain("FOUND=Debian-AgEnD/han");
-    expect(calls(bin).split("\n")[0]).toBe(`-d Debian-AgEnD -u han -- bash -lc ${PRELUDE}${PROBE}`);
+    expect(calls(bin).split("\n")[0]).toBe(`-d Debian-AgEnD -u han -- timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}${PROBE}`);
   });
   it("a clean Windows (no record, no Store WSL): nothing found, and wsl.exe never asked", () => {
     const bin = fakeWsl({ found: ["Ubuntu-24.04"] });
@@ -245,7 +245,7 @@ Write-Output ("RECORD=" + (Get-Content -Raw -LiteralPath (Join-Path (Get-AgendSh
     chmodSync(join(bin, "wsl.exe"), 0o755);
     const { out } = withHelpers(`$null = Invoke-OpenDashboard 'Ubuntu-22.04' 'han'`, bin);
     const line = out.match(/執行：(wsl .*)$/m)![1]!;
-    expect(line.startsWith("wsl -d Ubuntu-22.04 -u han -- bash -lc '")).toBe(true);
+    expect(line.startsWith("wsl -d Ubuntu-22.04 -u han -- timeout --signal=TERM --kill-after=2s 25 bash -lc '")).toBe(true);
     expect(line).not.toContain('"');                                          // Windows PowerShell 5.1 would split it
     expect(runPrinted(line)).toContain("INERT_START_OK start");
   });
