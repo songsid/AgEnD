@@ -28,6 +28,8 @@ On Windows, run this in PowerShell instead. It sets up WSL 2 and Ubuntu, then in
 powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
 ```
 
+For a fresh Windows beta install, run `$env:AGEND_VERSION = 'beta'` in the same PowerShell window before the one-liner above. You can also choose `latest` or an exact version such as `2.3.2-beta.5`. Unset uses latest; elevation and reboot resume preserve the choice. For an existing installation, use `agend update --beta`.
+
 Already have Node and tmux:
 
 ```bash

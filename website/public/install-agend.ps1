@@ -5,7 +5,8 @@
 # ═══════════════════════════════════════════════════════════
 
 param(
-    [switch]$Force  # 強制重新執行所有階段
+    [switch]$Force,  # 強制重新執行所有階段
+    [string]$InstallVersion = $env:AGEND_VERSION
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,6 +47,35 @@ function Start-FreshProgress([bool]$force) {
     if ($force -and (Test-Path $ProgressFile)) { Remove-Item -LiteralPath $ProgressFile -Force -ErrorAction SilentlyContinue }
 }
 
+function Resolve-AgendInstallVersion([string]$value) {
+    if ($value -eq '') { return '' }
+    if ($value.Length -gt 128 -or -not [regex]::IsMatch($value, '\A(?:beta|latest|(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)\z')) {
+        throw 'AGEND_VERSION must be beta, latest, or an exact semantic version (for example 2.3.2-beta.5).'
+    }
+    return $value
+}
+
+# Explicit input wins; a manual resume without the environment uses the saved choice. -Force ignores old progress.
+function Get-SavedInstallVersion([string]$requested, [bool]$force) {
+    if ($requested -ne '') { return (Resolve-AgendInstallVersion $requested) }
+    if ($force) { return '' }
+    return (Resolve-AgendInstallVersion ([string](Get-ProgressValue 'AGEND_VERSION' '[^\r\n]*')))
+}
+function Save-InstallVersion([string]$version) {
+    $version = Resolve-AgendInstallVersion $version
+    if ($version) { Add-Content -Path $ProgressFile -Value ("AGEND_VERSION=" + $version) }
+}
+function Get-AgendInstallCommand([string]$version) {
+    $version = Resolve-AgendInstallVersion $version
+    $pin = ''; if ($version) { $pin = "AGEND_VERSION=$version " }
+    return ('curl -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash || true')
+}
+function Get-InstallResumeCommand([string]$version) {
+    $version = Resolve-AgendInstallVersion $version
+    if (-not $version) { return $RESUME_COMMAND }
+    return ('powershell -ExecutionPolicy ByPass -c "$env:AGEND_VERSION=' + "'$version'; " + 'irm https://songsid.github.io/AgEnD/install.ps1 | iex"')
+}
+
 # ── 重新開機後自動接續、自動選擇（#1853：使用者核准的第 ② 步）──────────────
 # 需要重新開機時，登記一個「登入後執行一次」（HKCU RunOnce）：登入後自動再跑同一行安裝指令，從中斷處繼續。
 # 每次安裝程式一開始就先清掉它，只在要重新開機前才登記，所以完成或失敗都不會留下舊的登記。Windows 執行它之前也會先刪掉它。
@@ -56,7 +86,7 @@ $RESUME_COMMAND = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.gi
 function Register-ResumeAtLogon {
     try {
         if (-not (Test-Path $RESUME_KEY)) { New-Item -Path $RESUME_KEY -Force | Out-Null }
-        Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value $RESUME_COMMAND
+        Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value (Get-InstallResumeCommand $AgendInstallVersion)
         return $true
     } catch { return $false }
 }
@@ -1256,6 +1286,9 @@ function Invoke-WslStep {
 
 # ── 開始 ─────────────────────────────────────────────────
 
+# Validate before any WSL, network, registry or installation action.
+$AgendInstallVersion = Get-SavedInstallVersion $InstallVersion $Force.IsPresent
+
 Clear-Host
 Write-Host "=" * 43 -ForegroundColor Magenta
 Write-Host "   AgEnD 自動安裝程式 v3.0（多 AI 後端）" -ForegroundColor Magenta
@@ -1340,6 +1373,8 @@ if ((Test-Path $ProgressFile) -and -not $Force) {
     Write-Info "如需全部重新安裝：用一行指令安裝的，先執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行指令；直接執行腳本的，請執行 .\install-agend.ps1 -Force"
     Write-Host ""
 }
+
+Save-InstallVersion $AgendInstallVersion
 
 $TOTAL = 5
 
@@ -1631,7 +1666,7 @@ if (Stage-Done 4) {
         '#!/bin/bash'
         'export HOME=/root'
         '# 官方安裝腳本（non-interactive piped 不會觸發 quickstart）'
-        'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash || true'
+        (Get-AgendInstallCommand $AgendInstallVersion)
         '# 確保 nvm 設定寫入 .bashrc 和 .profile'
         'if ! grep -q "NVM_DIR" /root/.bashrc 2>/dev/null; then printf "\nexport NVM_DIR=\"/root/.nvm\"\n[ -s \"\$NVM_DIR/nvm.sh\" ] && source \"\$NVM_DIR/nvm.sh\"\n" >> /root/.bashrc; fi'
         'if ! grep -q "NVM_DIR" /root/.profile 2>/dev/null; then printf "\nexport NVM_DIR=\"/root/.nvm\"\n[ -s \"\$NVM_DIR/nvm.sh\" ] && source \"\$NVM_DIR/nvm.sh\"\n" >> /root/.profile; fi'

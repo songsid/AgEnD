@@ -67,10 +67,10 @@ describe.skipIf(!pwsh)("with pwsh: both scripts parse; the one-liner downloads, 
   // A stub install-agend.ps1: UTF-8 with BOM, over 1 KiB, with the installer's own marker; it records how it was run.
   const ZH = "AgEnD 一鍵安裝腳本";
   const stub = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from([
-    "param([switch]$Force)",
+    "param([switch]$Force, [string]$InstallVersion)",
     "function Check-Admin { $true }",
     `$zh = '${ZH}'`,
-    "@{ args = @($args); force = [bool]$Force; file = $PSCommandPath; zh = $zh } | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath $env:STUB_OUT",
+    "@{ args = @($args); force = [bool]$Force; version = $InstallVersion; file = $PSCommandPath; zh = $zh } | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath $env:STUB_OUT",
     "exit 7",
     "#" + "x".repeat(1200),
     "",
@@ -102,6 +102,18 @@ describe.skipIf(!pwsh)("with pwsh: both scripts parse; the one-liner downloads, 
       { AGEND_INSTALL_BASE: `http://127.0.0.1:${port}`, AGEND_INSTALL_SHELL: "pwsh", STUB_OUT: out, TMPDIR: dir, ...env });
     return { r, out, dir, ran: existsSync(out) ? JSON.parse(readFileSync(out, "utf8").replace(/^﻿/, "")) : null };
   }
+
+  it.each(['beta', 'latest', '2.3.2-beta.5'])('passes validated AGEND_VERSION=%s explicitly to the downloaded installer', async version => {
+    mode = "stub";
+    const { ran } = await oneLiner({ AGEND_VERSION: version });
+    expect(ran).toMatchObject({ version, force: false });
+  });
+  it('rejects an invalid version before downloading or dispatching the installer', async () => {
+    const { ran, r } = await oneLiner({ AGEND_VERSION: 'beta; whoami' });
+    expect(ran).toBeNull();
+    expect(r.stderr).toContain('AGEND_VERSION must be');
+    expect(r.stderr).not.toContain('beta; whoami');
+  });
 
   it("downloads the installer, runs it in its own PowerShell (-ExecutionPolicy Bypass -File <temp>), then cleans up", async () => {
     mode = "stub";

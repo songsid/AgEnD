@@ -8,6 +8,7 @@ const ps1 = `${base}install-agend.ps1`;
 const enHref = `${base}install-windows/`;
 const homeHref = `${base}zh-tw/`;
 const oneLiner = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"';
+const betaLine = "$env:AGEND_VERSION = 'beta'";
 const forceLine = "$env:AGEND_INSTALL_FORCE = '1'";
 const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
 ---
@@ -37,6 +38,9 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         開啟 PowerShell（按 <kbd class="font-mono">Win+X</kbd> →「終端機」），貼上這一行後按 Enter：
       </p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLiner}</pre>
+      <p class="text-sm text-text-secondary mt-3">全新安裝要試用 beta，先在同一個 PowerShell 視窗執行以下指令，再貼上面的安裝指令：</p>
+      <pre class="mt-3 bg-raised border border-border rounded-lg p-4"><code>{betaLine}</code></pre>
+      <p class="text-sm text-text-secondary mt-2"><code>AGEND_VERSION</code> 只接受 <code>beta</code>、<code>latest</code> 或完整版本號（例如 <code>2.3.2-beta.5</code>）。未設定時安裝 latest；系統管理員重新啟動與重新開機接續都會保留選擇。這不會切換已安裝的 AgEnD 版本；既有安裝請用 <code>agend update --beta</code>。不想讓之後的新安裝沿用 beta，可執行 <code>Remove-Item Env:AGEND_VERSION</code>。</p>
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
         <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行：裝有 Windows Terminal 時在它裡面開（中文顯示正常），沒有的話是 PowerShell 視窗；你貼上指令的那個視窗會等它，最後告訴你結果。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> 只對這一個指令有效，不會改動你的執行原則，也不需要解除封鎖檔案。</li>

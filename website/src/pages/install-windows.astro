@@ -7,6 +7,7 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 const ps1 = `${base}install-agend.ps1`;
 const zhHref = `${base}zh-tw/install-windows/`;
 const oneLiner = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"';
+const betaLine = "$env:AGEND_VERSION = 'beta'";
 const forceLine = "$env:AGEND_INSTALL_FORCE = '1'";
 const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
 ---
@@ -36,6 +37,9 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         Open PowerShell (press <kbd class="font-mono">Win+X</kbd> → <i>Terminal</i>), paste this line and press Enter:
       </p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLiner}</pre>
+      <p class="text-sm text-text-secondary mt-3">To try the beta on a fresh install, run this in the same PowerShell window before the installation line above:</p>
+      <pre class="mt-3 bg-raised border border-border rounded-lg p-4"><code>{betaLine}</code></pre>
+      <p class="text-sm text-text-secondary mt-2"><code>AGEND_VERSION</code> accepts only <code>beta</code>, <code>latest</code>, or an exact version such as <code>2.3.2-beta.5</code>. Unset installs latest; elevation and reboot resume keep your choice. This does not switch an existing installation; use <code>agend update --beta</code> for that. Run <code>Remove-Item Env:AGEND_VERSION</code> to clear the choice for later fresh installs.</p>
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
         <li>• Windows asks once for <b class="text-text-primary">Administrator</b> approval, because the installer enables WSL. Choose <i>Yes</i>: the installer opens in a new window — in Windows Terminal when it is installed (it shows Chinese text properly), otherwise in a PowerShell window. The window you pasted into waits and says how it ended. Already in an Administrator PowerShell? It runs right there.</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> applies to that one command only. Your execution policy is not changed, and there is no file to unblock.</li>

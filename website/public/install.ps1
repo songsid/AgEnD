@@ -17,6 +17,15 @@
 & {
     $ErrorActionPreference = 'Stop'
 
+    function Resolve-AgendInstallVersion([string]$value) {
+        if ($value -eq '') { return '' }
+        if ($value.Length -gt 128 -or -not [regex]::IsMatch($value, '\A(?:beta|latest|(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)\z')) {
+            throw 'AGEND_VERSION must be beta, latest, or an exact semantic version (for example 2.3.2-beta.5).'
+        }
+        return $value
+    }
+    $installVersion = Resolve-AgendInstallVersion ([string]$env:AGEND_VERSION)
+
     # The elevated window. With Windows Terminal (wt.exe, its app alias) it opens there, not in the old console host,
     # whose fonts and encodings handle Chinese poorly; AGEND_INSTALL_TERMINAL=conhost keeps the old window. wt.exe hands
     # the tab to WindowsTerminal.exe and returns at once, so it cannot report the installer's exit code: a small wrapper
@@ -28,6 +37,12 @@
     # creating it and writing its PID). A declined UAC prompt is final; any other wt failure falls back to the
     # old window. Returns @{ Outcome = 'done' | 'declined' | 'closed'; Code }.
     function Start-ElevatedInstaller([string]$shell, [string[]]$installerArgs, [string]$tmp, [string]$terminal, [int]$startTimeoutSec = 90, [int]$claimGraceSec = 10) {
+        $versionArg = ''
+        $versionIndex = [array]::IndexOf($installerArgs, '-InstallVersion')
+        if ($versionIndex -ge 0) {
+            $version = Resolve-AgendInstallVersion $installerArgs[$versionIndex + 1]
+            $versionArg = " -InstallVersion '$version'"
+        }
         $declinedError = { $e = $args[0].Exception; while ($e) { if ($e.NativeErrorCode -eq 1223) { return $true }; $e = $e.InnerException }; return $false }
         $wt = $null
         if ($terminal -ne 'conhost') { $wt = Get-Command -Name 'wt.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -40,7 +55,7 @@
                 "`$started = $(& $sq $started); `$cancel = $(& $sq $cancel); `$done = $(& $sq $done)",
                 "try { `$f = [IO.File]::Open(`$started, 'CreateNew', 'Write'); `$b = [Text.Encoding]::ASCII.GetBytes([string]`$PID); `$f.Write(`$b, 0, `$b.Length); `$f.Close() } catch { return }",
                 "if (Test-Path -LiteralPath `$cancel) { return }",
-                "& $(& $sq $tmp)$force",
+                "& $(& $sq $tmp)$force$versionArg",
                 "`$c = `$LASTEXITCODE; if (`$null -eq `$c) { `$c = 0 }",
                 "[IO.File]::WriteAllText(`$done + '.tmp', [string]`$c); Move-Item -LiteralPath (`$done + '.tmp') -Destination `$done -Force"
             )
@@ -139,6 +154,7 @@
         }
 
         $installerArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp)
+        if ($installVersion) { $installerArgs += @('-InstallVersion', $installVersion) }
         if ($env:AGEND_INSTALL_FORCE -match '^(1|true|yes)$') { $installerArgs += '-Force' }
 
         $admin = $false

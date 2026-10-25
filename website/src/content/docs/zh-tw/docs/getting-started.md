@@ -28,6 +28,8 @@ curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
 ```
 
+Windows 全新安裝要試用 beta：先在同一個 PowerShell 視窗執行 `$env:AGEND_VERSION = 'beta'`，再執行上面的安裝指令。也接受 `latest` 或完整版本號，例如 `2.3.2-beta.5`。未設定時使用 latest；取得系統管理員權限和重新開機接續時都會保留選擇。已安裝的 AgEnD 請用 `agend update --beta`。
+
 已經有 Node 和 tmux：
 
 ```bash
