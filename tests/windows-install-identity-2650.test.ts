@@ -27,7 +27,7 @@ describe("static", () => {
     const c = code(INSTALLER);
     const check = c.indexOf("$identityMismatch = Get-InstallIdentityMismatch $InitiatingSid (Get-CurrentSid)");
     expect(check).toBeGreaterThan(c.indexOf("if (-not (Check-Admin))"));
-    for (const later of ["$existing = Find-ExistingAgend", "Clear-ResumeAtLogon\nStart-FreshProgress", "Write-Step 1 $TOTAL", "Invoke-WebRequest -Uri \"https://www.google.com\""]) {
+    for (const later of ["$existing = Find-ExistingAgend", "Clear-ResumeAtLogon\nStart-FreshProgress", "Write-Step 1 $TOTAL", "if (-not (Test-WindowsNetwork))"]) {
       expect(c.indexOf(later)).toBeGreaterThan(check);
     }
     expect(c.slice(check)).toMatch(/^\$identityMismatch = [^\n]+\nif \(\$identityMismatch\) \{\n\s+Write-InstallIdentityMismatch \$identityMismatch\n\s+Read-Host "按 Enter 結束"; exit 1\n\}/);
