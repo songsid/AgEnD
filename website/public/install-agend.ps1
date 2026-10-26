@@ -1936,8 +1936,11 @@ function Invoke-WslStep {
         # Setup deliberately waits for a person; its host still has an absolute TTL.
         if ($OnLine) { $NoProgressSeconds = 0 }
         $capture = @{ Text = ''; OnLine = $OnLine }
+        # GetNewClosure runs the block in a new module scope that cannot see this script's functions when the installer
+        # is run as a script file (install.ps1 does): bind the one it calls as a variable first.
+        $protect = ${function:Protect-LogText}
         $captureLine = { param($line)
-            $capture.Text = ($capture.Text + (Protect-LogText ([string]$line)) + "`n")
+            $capture.Text = ($capture.Text + (& $protect ([string]$line)) + "`n")
             if ($capture.Text.Length -gt 8192) { $capture.Text = $capture.Text.Substring($capture.Text.Length - 8192) }
             if ($capture.OnLine) { & $capture.OnLine $line }
         }.GetNewClosure()
