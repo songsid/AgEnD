@@ -1,0 +1,850 @@
+[
+ {
+  "key": "/work/kiro-classic",
+  "conversation_id": "9c2ec2a7-adb2-4b1d-966d-507458f777c5",
+  "created_at": 1793026252815,
+  "updated_at": 1793026258523,
+  "value": {
+   "conversation_id": "9c2ec2a7-adb2-4b1d-966d-507458f777c5",
+   "next_message": null,
+   "history": [
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello one"
+       }
+      },
+      "timestamp": "2026-10-26T22:50:52.804989879+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "d04fcf29-da13-4949-8fcc-8a8b9905aa18",
+       "content": "mock reply 1"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "d04fcf29-da13-4949-8fcc-8a8b9905aa18",
+      "request_start_timestamp_ms": 1793026252805,
+      "stream_end_timestamp_ms": 1793026252805,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 111730
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 2317
+       },
+       {
+        "secs": 0,
+        "nanos": 212
+       },
+       {
+        "secs": 0,
+        "nanos": 183
+       },
+       {
+        "secs": 0,
+        "nanos": 271
+       }
+      ],
+      "user_prompt_length": 167,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    },
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello two"
+       }
+      },
+      "timestamp": "2026-10-26T22:50:58.511231519+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "5c5ec4f8-ccad-47c6-9496-65f037b528f2",
+       "content": "mock reply 2"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "5c5ec4f8-ccad-47c6-9496-65f037b528f2",
+      "request_start_timestamp_ms": 1793026258511,
+      "stream_end_timestamp_ms": 1793026258513,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 1971068
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 5371
+       },
+       {
+        "secs": 0,
+        "nanos": 149
+       },
+       {
+        "secs": 0,
+        "nanos": 169
+       },
+       {
+        "secs": 0,
+        "nanos": 118
+       }
+      ],
+      "user_prompt_length": 167,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    }
+   ],
+   "valid_history_range": [
+    0,
+    1
+   ],
+   "transcript": [
+    "> hello one",
+    "mock reply 1\n[Tool uses: none]",
+    "> hello two",
+    "mock reply 2\n[Tool uses: none]"
+   ],
+   "context_message_length": 1958,
+   "latest_summary": null,
+   "model_info": {
+    "model_id": "auto",
+    "context_window_tokens": 200000
+   },
+   "file_line_tracker": {},
+   "mcp_enabled": true,
+   "mcp_last_checked": [
+    2026,
+    299,
+    14,
+    50,
+    41,
+    809009389,
+    0,
+    0,
+    0
+   ],
+   "mcp_server_versions": {},
+   "mcp_disabled_due_to_api_failure": false,
+   "user_turn_metadata": {
+    "continuation_id": "57471e2d-c51f-4425-81da-1ef067ea0134",
+    "requests": [],
+    "usage_info": []
+   }
+  }
+ },
+ {
+  "key": "/work/kiro-classic",
+  "conversation_id": "b6492827-cd02-4288-98dd-f0964c8ec99f",
+  "created_at": 1793026269662,
+  "updated_at": 1793026301376,
+  "value": {
+   "conversation_id": "b6492827-cd02-4288-98dd-f0964c8ec99f",
+   "next_message": null,
+   "history": [
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello one"
+       }
+      },
+      "timestamp": "2026-10-26T22:50:52.804989879+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "d04fcf29-da13-4949-8fcc-8a8b9905aa18",
+       "content": "mock reply 1"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "d04fcf29-da13-4949-8fcc-8a8b9905aa18",
+      "request_start_timestamp_ms": 1793026252805,
+      "stream_end_timestamp_ms": 1793026252805,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 111730
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 2317
+       },
+       {
+        "secs": 0,
+        "nanos": 212
+       },
+       {
+        "secs": 0,
+        "nanos": 183
+       },
+       {
+        "secs": 0,
+        "nanos": 271
+       }
+      ],
+      "user_prompt_length": 167,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    },
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello two"
+       }
+      },
+      "timestamp": "2026-10-26T22:50:58.511231519+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "5c5ec4f8-ccad-47c6-9496-65f037b528f2",
+       "content": "mock reply 2"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "5c5ec4f8-ccad-47c6-9496-65f037b528f2",
+      "request_start_timestamp_ms": 1793026258511,
+      "stream_end_timestamp_ms": 1793026258513,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 1971068
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 5371
+       },
+       {
+        "secs": 0,
+        "nanos": 149
+       },
+       {
+        "secs": 0,
+        "nanos": 169
+       },
+       {
+        "secs": 0,
+        "nanos": 118
+       }
+      ],
+      "user_prompt_length": 167,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    },
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello three"
+       }
+      },
+      "timestamp": "2026-10-26T22:51:41.287631618+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "f547b78c-b27b-43d3-aa41-b9e3da6e6a6c",
+       "content": "mock reply 4"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "f547b78c-b27b-43d3-aa41-b9e3da6e6a6c",
+      "request_start_timestamp_ms": 1793026301288,
+      "stream_end_timestamp_ms": 1793026301288,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 57667
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 1858
+       },
+       {
+        "secs": 0,
+        "nanos": 140
+       },
+       {
+        "secs": 0,
+        "nanos": 105
+       },
+       {
+        "secs": 0,
+        "nanos": 216
+       }
+      ],
+      "user_prompt_length": 169,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    }
+   ],
+   "valid_history_range": [
+    0,
+    2
+   ],
+   "transcript": [
+    "> hello one",
+    "mock reply 1\n[Tool uses: none]",
+    "> hello two",
+    "mock reply 2\n[Tool uses: none]",
+    "> /compact",
+    "> hello three",
+    "mock reply 4\n[Tool uses: none]"
+   ],
+   "context_message_length": 2357,
+   "latest_summary": [
+    "mock reply 3",
+    {
+     "request_id": null,
+     "context_usage_percentage": null,
+     "message_id": "eefe3f91-4da6-4fb6-9060-d1cef72635ea",
+     "request_start_timestamp_ms": 1793026269581,
+     "stream_end_timestamp_ms": 1793026269582,
+     "time_to_first_chunk": {
+      "secs": 0,
+      "nanos": 64164
+     },
+     "time_between_chunks": [
+      {
+       "secs": 0,
+       "nanos": 1842
+      },
+      {
+       "secs": 0,
+       "nanos": 105
+      },
+      {
+       "secs": 0,
+       "nanos": 189
+      },
+      {
+       "secs": 0,
+       "nanos": 105
+      }
+     ],
+     "user_prompt_length": 874,
+     "response_size": 12,
+     "chat_conversation_type": "NotToolUse",
+     "tool_use_ids_and_names": [],
+     "model_id": "auto",
+     "message_meta_tags": [
+      "Compact"
+     ],
+     "total_tokens": null,
+     "uncached_input_tokens": null,
+     "output_tokens": null,
+     "cache_read_input_tokens": null,
+     "cache_write_input_tokens": null,
+     "stop_reason": null,
+     "refusal": null
+    }
+   ],
+   "model_info": {
+    "model_id": "auto",
+    "context_window_tokens": 200000
+   },
+   "file_line_tracker": {},
+   "mcp_enabled": true,
+   "mcp_last_checked": [
+    2026,
+    299,
+    14,
+    50,
+    41,
+    809009389,
+    0,
+    0,
+    0
+   ],
+   "mcp_server_versions": {},
+   "mcp_disabled_due_to_api_failure": false,
+   "user_turn_metadata": {
+    "continuation_id": "d438d3cb-e0ff-4532-a334-0a2754379d96",
+    "requests": [],
+    "usage_info": []
+   }
+  }
+ },
+ {
+  "key": "/work/kiro-classic",
+  "conversation_id": "2cf8d31d-3b87-43b6-aa3f-d7dc3a3a36bf",
+  "created_at": 1793026307104,
+  "updated_at": 1793026315822,
+  "value": {
+   "conversation_id": "2cf8d31d-3b87-43b6-aa3f-d7dc3a3a36bf",
+   "next_message": null,
+   "history": [
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello one"
+       }
+      },
+      "timestamp": "2026-10-26T22:50:52.804989879+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "d04fcf29-da13-4949-8fcc-8a8b9905aa18",
+       "content": "mock reply 1"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "d04fcf29-da13-4949-8fcc-8a8b9905aa18",
+      "request_start_timestamp_ms": 1793026252805,
+      "stream_end_timestamp_ms": 1793026252805,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 111730
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 2317
+       },
+       {
+        "secs": 0,
+        "nanos": 212
+       },
+       {
+        "secs": 0,
+        "nanos": 183
+       },
+       {
+        "secs": 0,
+        "nanos": 271
+       }
+      ],
+      "user_prompt_length": 167,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    },
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello two"
+       }
+      },
+      "timestamp": "2026-10-26T22:50:58.511231519+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "5c5ec4f8-ccad-47c6-9496-65f037b528f2",
+       "content": "mock reply 2"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "5c5ec4f8-ccad-47c6-9496-65f037b528f2",
+      "request_start_timestamp_ms": 1793026258511,
+      "stream_end_timestamp_ms": 1793026258513,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 1971068
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 5371
+       },
+       {
+        "secs": 0,
+        "nanos": 149
+       },
+       {
+        "secs": 0,
+        "nanos": 169
+       },
+       {
+        "secs": 0,
+        "nanos": 118
+       }
+      ],
+      "user_prompt_length": 167,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    },
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello three"
+       }
+      },
+      "timestamp": "2026-10-26T22:51:41.287631618+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "f547b78c-b27b-43d3-aa41-b9e3da6e6a6c",
+       "content": "mock reply 4"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "f547b78c-b27b-43d3-aa41-b9e3da6e6a6c",
+      "request_start_timestamp_ms": 1793026301288,
+      "stream_end_timestamp_ms": 1793026301288,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 57667
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 1858
+       },
+       {
+        "secs": 0,
+        "nanos": 140
+       },
+       {
+        "secs": 0,
+        "nanos": 105
+       },
+       {
+        "secs": 0,
+        "nanos": 216
+       }
+      ],
+      "user_prompt_length": 169,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    },
+    {
+     "user": {
+      "additional_context": "",
+      "env_context": {
+       "env_state": {
+        "operating_system": "linux",
+        "current_working_directory": "/work/kiro-classic",
+        "environment_variables": []
+       }
+      },
+      "content": {
+       "Prompt": {
+        "prompt": "hello four"
+       }
+      },
+      "timestamp": "2026-10-26T22:51:55.732055479+08:00",
+      "images": null
+     },
+     "assistant": {
+      "Response": {
+       "message_id": "230a5e82-f8de-4bc0-8bfa-3c6455a01476",
+       "content": "mock reply 6"
+      }
+     },
+     "request_metadata": {
+      "request_id": null,
+      "context_usage_percentage": null,
+      "message_id": "230a5e82-f8de-4bc0-8bfa-3c6455a01476",
+      "request_start_timestamp_ms": 1793026315732,
+      "stream_end_timestamp_ms": 1793026315732,
+      "time_to_first_chunk": {
+       "secs": 0,
+       "nanos": 132686
+      },
+      "time_between_chunks": [
+       {
+        "secs": 0,
+        "nanos": 2216
+       },
+       {
+        "secs": 0,
+        "nanos": 108
+       },
+       {
+        "secs": 0,
+        "nanos": 118
+       },
+       {
+        "secs": 0,
+        "nanos": 93
+       }
+      ],
+      "user_prompt_length": 168,
+      "response_size": 12,
+      "chat_conversation_type": "NotToolUse",
+      "tool_use_ids_and_names": [],
+      "model_id": "auto",
+      "message_meta_tags": [],
+      "total_tokens": null,
+      "uncached_input_tokens": null,
+      "output_tokens": null,
+      "cache_read_input_tokens": null,
+      "cache_write_input_tokens": null,
+      "stop_reason": null,
+      "refusal": null
+     }
+    }
+   ],
+   "valid_history_range": [
+    0,
+    3
+   ],
+   "transcript": [
+    "> hello one",
+    "mock reply 1\n[Tool uses: none]",
+    "> hello two",
+    "mock reply 2\n[Tool uses: none]",
+    "> /compact",
+    "> hello three",
+    "mock reply 4\n[Tool uses: none]",
+    "> /compact",
+    "> hello four",
+    "mock reply 6\n[Tool uses: none]"
+   ],
+   "context_message_length": 2357,
+   "latest_summary": [
+    "mock reply 5",
+    {
+     "request_id": null,
+     "context_usage_percentage": null,
+     "message_id": "3620d99b-13de-4d98-ae95-262cbcd53b9e",
+     "request_start_timestamp_ms": 1793026307024,
+     "stream_end_timestamp_ms": 1793026307024,
+     "time_to_first_chunk": {
+      "secs": 0,
+      "nanos": 69498
+     },
+     "time_between_chunks": [
+      {
+       "secs": 0,
+       "nanos": 2337
+      },
+      {
+       "secs": 0,
+       "nanos": 205
+      },
+      {
+       "secs": 0,
+       "nanos": 102
+      },
+      {
+       "secs": 0,
+       "nanos": 205
+      }
+     ],
+     "user_prompt_length": 1193,
+     "response_size": 12,
+     "chat_conversation_type": "NotToolUse",
+     "tool_use_ids_and_names": [],
+     "model_id": "auto",
+     "message_meta_tags": [
+      "Compact"
+     ],
+     "total_tokens": null,
+     "uncached_input_tokens": null,
+     "output_tokens": null,
+     "cache_read_input_tokens": null,
+     "cache_write_input_tokens": null,
+     "stop_reason": null,
+     "refusal": null
+    }
+   ],
+   "model_info": {
+    "model_id": "auto",
+    "context_window_tokens": 200000
+   },
+   "file_line_tracker": {},
+   "mcp_enabled": true,
+   "mcp_last_checked": [
+    2026,
+    299,
+    14,
+    50,
+    41,
+    809009389,
+    0,
+    0,
+    0
+   ],
+   "mcp_server_versions": {},
+   "mcp_disabled_due_to_api_failure": false,
+   "user_turn_metadata": {
+    "continuation_id": "c22c456e-d528-46a0-bb9e-2e930856f78d",
+    "requests": [],
+    "usage_info": []
+   }
+  }
+ }
+]

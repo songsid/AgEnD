@@ -20,7 +20,10 @@
  *    newest conversation for the directory is claimed and recorded before the launch. An unreadable store then is
  *    legacy mode — the old command, not isolated, nothing recorded — and the next launch tries again. A claim this
  *    instance completed whose record could not be written is taken up again on the retry, never given up.
- *  - A recorded conversation is resumed by id while its claim is held (and not abandoned), without reading the store.
+ *  - A recorded conversation is resumed by id while its claim is held (and not abandoned). Classic kiro's /compact
+ *    goes on in a new conversation (#2714), so on v1 the store is read for where it went: the record follows only
+ *    proven compaction successors (followCompaction); an unreadable store, or a successor that is ambiguous or not
+ *    this instance's, keeps what was proven and says why. A claim that is not held starts fresh and says why.
  *  - A fresh start never resumes. The conversation its launch made is taken up on a later launch only on evidence it
  *    is new — CREATED after the mark (an update proves nothing), absent from the mark's list, not given up, unclaimed
  *    or claimed by this very take-up, the only one — and with no sibling waiting on the same store and directory.
@@ -71,6 +74,20 @@ export type KiroStoreRead =
      * Asked only of take-up candidates.
      */
     createdAt(id: string): number | null | "unreadable";
+    /**
+     * #2714: the links a compaction leaves, on an engine whose /compact continues the conversation under a NEW id —
+     * classic (v1; verified offline on 2.34.0, and on 2.22.0 in the issue). Absent where the id survives a compaction
+     * (the TUI's V2: its one session log holds every Compaction record, tests/fixtures/kiro-2.30.0-compact-pane).
+     */
+    compaction?: {
+      /**
+       * The conversations kiro continued `id` in: each carries a compaction summary, was created no earlier than `id`
+       * was last written, and its transcript starts with `id`'s whole (non-empty) transcript. Same store key.
+       */
+      successorsOf(id: string): string[] | "unreadable";
+      /** Whether `id` carries a compaction summary: it continues some earlier conversation. */
+      summarized(id: string): boolean | "unreadable";
+    };
   }
   | { kind: "unreadable"; detail: string };
 
@@ -114,18 +131,54 @@ export function listKiroV1Sessions(workingDirectory: string, dbPath: string): Ki
     const rows = db.prepare(`SELECT conversation_id AS id, updated_at AS at FROM conversations_v2 INDEXED BY ${V1_INDEX} WHERE key IN (?, ?, ?)`)
       .all(a, b, c) as Array<{ id: unknown; at: unknown }>;
     const sessions = rows.filter(r => typeof r.id === "string").map(r => ({ id: r.id as string, updatedAt: Number(r.at) || 0 }));
+    const query = <T>(ask: (reader: Database.Database) => T): T | "unreadable" => {
+      let reader: Database.Database | null = null;
+      try {
+        reader = new Database(dbPath, { readonly: true, fileMustExist: true });
+        return ask(reader);
+      } catch { return "unreadable"; } finally { try { reader?.close(); } catch { /* closed */ } }
+    };
     return {
       kind: "ok",
       sessions,
-      createdAt: (id: string) => {
-        let reader: Database.Database | null = null;
-        try {
-          reader = new Database(dbPath, { readonly: true, fileMustExist: true });
-          const row = reader.prepare("SELECT created_at AS at FROM conversations_v2 WHERE key IN (?, ?, ?) AND conversation_id = ? LIMIT 1")
-            .get(a, b, c, id) as { at: unknown } | undefined;
-          const at = Number(row?.at);
-          return Number.isFinite(at) && at > 0 ? at : null;
-        } catch { return "unreadable" as const; } finally { try { reader?.close(); } catch { /* closed */ } }
+      createdAt: (id: string) => query(reader => {
+        const row = reader.prepare("SELECT created_at AS at FROM conversations_v2 WHERE key IN (?, ?, ?) AND conversation_id = ? LIMIT 1")
+          .get(a, b, c, id) as { at: unknown } | undefined;
+        const at = Number(row?.at);
+        return Number.isFinite(at) && at > 0 ? at : null;
+      }),
+      compaction: {
+        successorsOf: (id: string) => {
+          // A successor was written after `id` was (the index's updated_at): only those rows' values are ever read.
+          const from = sessions.find(s => s.id === id);
+          const later = from ? sessions.filter(s => s.id !== id && s.updatedAt >= from.updatedAt).map(s => s.id) : [];
+          if (later.length === 0) return [];
+          // The transcripts compared as SQLite's minified JSON text: kiro appends to it and never trims it (606
+          // entries kept, 2.34.0), so a continuation's array text starts with the whole earlier one but its "]".
+          // A later compaction continues it too (C extends B extends A): only the first hop counts — a continuation
+          // that continues another continuation of `id` is that one's successor, not `id`'s.
+          // The "," where the earlier "]" stood is what makes it longer by whole entries: never the same array, never
+          // an entry extended in place, and never a continuation of an empty transcript ("[]" is followed by no ",").
+          const extends_ = (x: string, y: string) => `json_type(${y}.t) = 'array' AND json_type(${x}.t) = 'array'
+            AND substr(${x}.t, 1, length(${y}.t) - 1) = substr(${y}.t, 1, length(${y}.t) - 1)
+            AND substr(${x}.t, length(${y}.t), 1) = ',' AND ${x}.created >= ${y}.at`;
+          return query(reader => (reader.prepare(`
+            WITH a AS (SELECT key, updated_at AS at, json_extract(value, '$.transcript') AS t FROM conversations_v2
+                       WHERE key IN (?, ?, ?) AND conversation_id = ? AND json_valid(value)),
+                 b AS (SELECT conversation_id AS id, key, created_at AS created, updated_at AS at, json_extract(value, '$.transcript') AS t
+                       FROM conversations_v2
+                       WHERE key IN (?, ?, ?) AND conversation_id IN (SELECT value FROM json_each(?)) AND json_valid(value)
+                         AND json_type(value, '$.latest_summary') IS NOT NULL AND json_type(value, '$.latest_summary') != 'null'),
+                 s AS (SELECT b.* FROM a JOIN b ON b.key = a.key WHERE ${extends_("b", "a")})
+            SELECT s.id AS id FROM s WHERE NOT EXISTS (SELECT 1 FROM s AS m WHERE m.id != s.id AND ${extends_("s", "m")})`)
+            .all(a, b, c, id, a, b, c, JSON.stringify(later)) as Array<{ id: unknown }>)
+            .flatMap(r => typeof r.id === "string" ? [r.id] : []));
+        },
+        summarized: (id: string) => query(reader => {
+          const row = reader.prepare("SELECT json_type(value, '$.latest_summary') AS summary FROM conversations_v2 WHERE key IN (?, ?, ?) AND conversation_id = ? AND json_valid(value) LIMIT 1")
+            .get(a, b, c, id) as { summary: unknown } | undefined;
+          return typeof row?.summary === "string" && row.summary !== "null";
+        }),
       },
     };
   } catch (err) {
@@ -154,8 +207,23 @@ export class KiroIdentityError extends Error {
 export type KiroIdentityDecision =
   /** Not isolated: the old command, nothing recorded. */
   | { mode: "legacy"; reason: string }
-  | { mode: "resume"; id: string; agentConfirmed: boolean }
-  | { mode: "fresh"; notice?: "shared-directory" | "claimed-conversation" | "unknown-peers" };
+  | {
+    mode: "resume"; id: string; agentConfirmed: boolean;
+    /** #2714: the recorded conversation was compacted into `id`; these are the ids it moved on from, oldest first. */
+    followed?: string[];
+    /** #2714: why a compaction successor of `id` that looked like this instance's was not taken up. */
+    kept?: KiroCompactionKept;
+  }
+  | {
+    mode: "fresh"; notice?: "shared-directory" | "claimed-conversation" | "unknown-peers";
+    /** #2714: the recorded conversation this fresh start gave up, and why (its claim was not this instance's). */
+    lost?: { id: string; claim: "missing" | "incomplete" | "other-owner" | "abandoned" };
+  };
+
+export type KiroCompactionKept =
+  | { reason: "unreadable" }
+  | { reason: "ambiguous"; from: string; candidates: string[] }
+  | { reason: "not-ours"; from: string; candidate: string };
 
 export interface ResolveKiroIdentityOptions {
   instance: string;
@@ -407,6 +475,41 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
     return { mode: "fresh" };
   };
 
+  /**
+   * #2714: classic kiro's /compact goes on in a NEW conversation, so the recorded one is followed to where kiro kept
+   * writing — hop by hop, each hop proven by the store's compaction links and taken only when it is the one
+   * successor, never given up by this instance, and unclaimed or already its own. Short of that, what was proven so far
+   * is resumed (the recorded id at worst) and the decision says why. Successors are claimed first, the record is
+   * written next, and only then are the ids moved on from marked given up: a failure in between leaves claims this
+   * instance holds, which the retry follows again.
+   */
+  const followCompaction = (from: KeyRecord & { id: string }): Extract<KiroIdentityDecision, { mode: "resume" }> => {
+    const resume = { mode: "resume" as const, id: from.id, agentConfirmed: from.agentConfirmed };
+    if (engine !== "v1") return resume; // the TUI's V2 keeps the id through a compaction: no store read
+    const store = opts.readStore();
+    if (store.kind === "unreadable") return { ...resume, kept: { reason: "unreadable" } };
+    if (!store.compaction) return resume;
+    const chain: string[] = [];
+    const seen = new Set([from.id, ...from.abandoned]);
+    let at = from.id;
+    let kept: KiroCompactionKept | undefined;
+    while (chain.length < 64) {
+      const next = store.compaction.successorsOf(at);
+      if (next === "unreadable") { kept = { reason: "unreadable" }; break; }
+      if (next.length === 0) break;
+      if (next.length > 1) { kept = { reason: "ambiguous", from: at, candidates: [...next].sort() }; break; }
+      const id = next[0]!;
+      const c = SAFE_ID.test(id) && !seen.has(id) ? claimOf(p.claims, id) : "incomplete";
+      if (!heldBy(c, instance) && !(c === null && claim(p.claims, id, instance))) { kept = { reason: "not-ours", from: at, candidate: id }; break; }
+      chain.push(id); seen.add(id); at = id;
+    }
+    if (chain.length === 0) return kept ? { ...resume, kept } : resume;
+    const movedOn = [from.id, ...chain.slice(0, -1)];
+    if (!save({ ...from, id: at, abandoned: [...new Set([...from.abandoned, ...movedOn])] })) throw new KiroIdentityError(`cannot write ${p.state}`);
+    for (const old of movedOn) abandonClaim(p.claims, old, instance);
+    return { ...resume, id: at, followed: movedOn, ...(kept ? { kept } : {}) };
+  };
+
   // An adoption under way for THIS key (recorded before its claim; see below) is settled before anything else —
   // whether there is no state file yet or other keys have been written since. It is never forgotten or bypassed:
   //  - an explicit fresh start gives its conversation up for good (claim marked, id listed abandoned);
@@ -481,10 +584,14 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   if (read.kind === "bad" || !record || opts.skipResume) return startFresh();
 
   if (record.id) {
-    // Resumed only while the claim is really held: a state alone never re-creates one. No store read.
-    return heldBy(claimOf(p.claims, record.id), instance)
-      ? { mode: "resume", id: record.id, agentConfirmed: record.agentConfirmed }
-      : startFresh();
+    // Resumed only while the claim is really held: a state alone never re-creates one.
+    const held = claimOf(p.claims, record.id);
+    if (!heldBy(held, instance)) {
+      const fresh = startFresh();
+      return { ...fresh, lost: { id: record.id, claim: held === null ? "missing" : held === "incomplete" ? "incomplete"
+        : held.owner !== instance ? "other-owner" : "abandoned" } };
+    }
+    return followCompaction(record as KeyRecord & { id: string });
   }
 
   // A fresh start is on record: take up the conversation that launch made, if — and only if — that is certain.
@@ -518,12 +625,57 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
         && (engine === "v2" || r.credentialProfile === credentialProfile));
     });
   })();
-  if (candidates.length !== 1 || siblingWaiting) return startFresh(store);
-  const pick = candidates[0]!.id;
-  if (!heldBy(claimOf(p.claims, pick), instance) && !claim(p.claims, pick, instance)) return startFresh(store);
+  // #2714: a fresh launch that compacted made one conversation per /compact; they count as one, its newest.
+  const chain = store.compaction ? compactionChain(candidates.map(s => s.id), store.compaction) : candidates.map(s => [s.id]);
+  if (chain === "unreadable") return { mode: "fresh" }; // deferred, the mark kept, as for a creation time
+  if (chain.length !== 1 || siblingWaiting) return startFresh(store);
+  const ids = chain[0]!;
+  for (const id of ids) if (!heldBy(claimOf(p.claims, id), instance) && !claim(p.claims, id, instance)) return startFresh(store);
+  const pick = ids[ids.length - 1]!;
   // A fresh launch carried --agent, so the conversation it made already runs as the instance's agent.
-  save({ ...record, id: pick, agentConfirmed: true });
-  return { mode: "resume", id: pick, agentConfirmed: true };
+  // Recorded before anything is given up: a failed write refuses the launch and keeps every claim held, so the retry
+  // finds the same chain (#2719 review). A single conversation keeps the old forgiving write: its claim alone re-finds it.
+  if (!save({ ...record, id: pick, abandoned: [...new Set([...record.abandoned, ...ids.slice(0, -1)])], agentConfirmed: true }) && ids.length > 1) {
+    throw new KiroIdentityError(`cannot write ${p.state}`);
+  }
+  for (const old of ids.slice(0, -1)) abandonClaim(p.claims, old, instance);
+  return { mode: "resume", id: pick, agentConfirmed: true, ...(ids.length > 1 ? { followed: ids.slice(0, -1) } : {}) };
+}
+
+/**
+ * #2714: take-up candidates grouped by compaction, each group oldest first. A candidate that continues an earlier
+ * conversation (it carries a summary) without continuing another candidate continues one from before the mark —
+ * another instance's, or one given up — so it and what continues it are never this launch's. What is left is one
+ * group only when it is a plain chain from one root (one successor per hop); otherwise each candidate stays apart.
+ */
+function compactionChain(ids: string[], links: NonNullable<Extract<KiroStoreRead, { kind: "ok" }>["compaction"]>): string[][] | "unreadable" {
+  const next = new Map<string, string[]>();
+  const hasPredecessor = new Set<string>();
+  for (const id of ids) {
+    const s = links.successorsOf(id);
+    if (s === "unreadable") return "unreadable";
+    const within = s.filter(x => x !== id && ids.includes(x));
+    next.set(id, within);
+    for (const x of within) hasPredecessor.add(x);
+  }
+  const own: string[] = [];
+  const foreign: string[] = [];
+  for (const root of ids.filter(id => !hasPredecessor.has(id))) {
+    const summarized = links.summarized(root);
+    if (summarized === "unreadable") return "unreadable";
+    (summarized ? foreign : own).push(root);
+  }
+  const notOurs = new Set<string>();
+  while (foreign.length) {
+    const id = foreign.pop()!;
+    if (!notOurs.has(id)) { notOurs.add(id); foreign.push(...next.get(id)!); }
+  }
+  const kept = ids.filter(id => !notOurs.has(id));
+  const apart = kept.map(id => [id]);
+  if (own.length !== 1 || kept.some(id => next.get(id)!.length > 1)) return apart;
+  const walk = [own[0]!];
+  while (walk.length < kept.length && next.get(walk[walk.length - 1]!)!.length === 1) walk.push(next.get(walk[walk.length - 1]!)![0]!);
+  return walk.length === kept.length && kept.every(id => walk.includes(id)) ? [walk] : apart;
 }
 
 /** Whether `id` is recorded as already running as the instance's agent. */

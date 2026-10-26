@@ -1084,11 +1084,24 @@ interface KiroInstanceLaunch {
   engine: "v1" | "v2" | "v3" | null;
   credentialProfile: string | null;
   mode: "legacy" | "resume" | "fresh";
-  /** Legacy mode's launch warning, if any. */
+  /** Legacy mode's launch warning, if any — or, #2714, why a recorded conversation was given up. */
   reason: string | null;
+  /** #2714: for the log and the Log tab only — a compaction followed, or why one was not. */
+  notes?: string[];
   agent: string | null;
   id?: string;
   agentConfirmed: boolean;
+}
+
+/** #2714: what a resume decision says about a compaction, for the log and the Log tab. */
+function kiroCompactionNotes(decision: Extract<KiroIdentityDecision, { mode: "resume" }>): string[] {
+  const notes: string[] = [];
+  if (decision.followed?.length) notes.push(t("kiro.compaction_followed", decision.followed[0]!, decision.id));
+  const kept = decision.kept;
+  if (kept?.reason === "unreadable") notes.push(t("kiro.compaction_kept_unreadable", decision.id));
+  else if (kept?.reason === "ambiguous") notes.push(t("kiro.compaction_kept_ambiguous", decision.id, kept.from, kept.candidates.join(", ")));
+  else if (kept?.reason === "not-ours") notes.push(t("kiro.compaction_kept_not_ours", decision.id, kept.from, kept.candidate));
+  return notes;
 }
 
 /** #2598 B3: engines in the order a conversation can move between them (never back). */
@@ -1615,6 +1628,7 @@ export class KiroBackend implements CliBackend {
     const prepared = this.launchPlan && this.launchPlan.cwd === config.workingDirectory && this.launchPlan.skipResume === !!config.skipResume;
     const lp = prepared ? this.launchPlan! : this.planInstanceLaunch(config);
     if (!prepared && lp.reason) this.addLaunchWarning(lp.reason);
+    if (!prepared) this.quietLaunchNotes.push(...lp.notes ?? []);
     this.launchPlan = null;
     this.activePlan = lp;
     this.activeSpec = lp.mode === "legacy" ? null : this.agentSpec(config);
@@ -1743,6 +1757,9 @@ export class KiroBackend implements CliBackend {
     return warning;
   }
 
+  private quietLaunchNotes: string[] = [];
+  consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
   private shouldWarnUnsupportedEffort(): boolean {
     if (!this.compatibilityCacheKey) {
       if (this.warnedUnsupportedEffort) return false;
@@ -1783,6 +1800,7 @@ export class KiroBackend implements CliBackend {
     this.preparedV2Store = null;
     this.launchPlan = plan;
     if (plan.reason) this.addLaunchWarning(plan.reason);
+    this.quietLaunchNotes.push(...plan.notes ?? []);
     const spec = this.agentSpec(config);
     const root = dirname(this.instanceDir);
     if (plan.mode === "legacy") {
@@ -1941,10 +1959,12 @@ export class KiroBackend implements CliBackend {
       });
     }
     if (decision.mode === "legacy") return legacy(t("kiro.identity_legacy", decision.reason));
-    return decision.mode === "resume"
-      ? { ...base, mode: "resume", id: decision.id, agent, agentConfirmed: decision.agentConfirmed, reason: null }
-      : { ...base, mode: "fresh", agent, agentConfirmed: true,
-        reason: decision.notice ? t(`kiro.upgrade_${decision.notice.replaceAll("-", "_")}`) : null };
+    if (decision.mode === "resume") {
+      return { ...base, mode: "resume", id: decision.id, agent, agentConfirmed: decision.agentConfirmed, reason: null, notes: kiroCompactionNotes(decision) };
+    }
+    const reasons = [decision.notice ? t(`kiro.upgrade_${decision.notice.replaceAll("-", "_")}`) : null,
+      decision.lost ? t("kiro.claim_lost", decision.lost.id, t(`kiro.claim_lost_${decision.lost.claim.replaceAll("-", "_")}`)) : null];
+    return { ...base, mode: "fresh", agent, agentConfirmed: true, reason: reasons.filter(r => r !== null).join("\n") || null };
   }
 
   /**
