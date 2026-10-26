@@ -23,7 +23,7 @@ describe("#2675 reading kiro V3's Question card", () => {
   it.each(CAPTURES)("%s at %s columns: the basic card — question, options, the typed-answer row, the cursor", (version, width) => {
     expect(readKiroQuestionCard(qPane(`${version}-${width}-40-question`))).toEqual({
       kind: "question", identity: "Question\nWhich branch should I use?\noptions\n1. main\n2. release", title: "Question",
-      question: "Which branch should I use?", page: "options", freeText: true, cursor: 0, typed: null,
+      question: "Which branch should I use?", page: "options", freeText: true, cursor: 0, typed: null, rowWidth: Number(width),
       options: [{ n: 1, title: "main", recommended: false, description: null }, { n: 2, title: "release", recommended: false, description: null }],
     });
   });
@@ -75,6 +75,14 @@ describe("#2675 reading kiro V3's MCP input card", () => {
     expect(url.rows).toContain("Host: example.invalid");
     expect(url.rows).toContain("URL: (shown in the instance pane)");
     expect(JSON.stringify(url)).not.toContain("example.invalid/authorize");
+  });
+
+  it("a URL that wraps: every row of it is masked, up to the next action (#2677 review)", () => {
+    const wrapped = mcpPane("mcp-80-20-url-2.34.0").replace(/^(\s*URL: .*)$/m, "$1\n   continued-path?token=SECRETTAIL123\n   &more=SECRETTAIL456");
+    const url = readKiroMcpInputCard(wrapped)!;
+    expect(url).not.toBeNull();
+    expect(JSON.stringify(url)).not.toContain("SECRETTAIL");
+    expect(url.rows).toEqual(readKiroMcpInputCard(mcpPane("mcp-80-20-url-2.34.0"))!.rows);
   });
 
   it.each(["mcp-120-13-form-esc-2.34.0", "mcp-120-19-after-turn-2.34.0", "mcp-120-21-url-esc-2.34.0", "mcp-120-30-question-2.34.0"])("%s: no input card", name => {
@@ -176,7 +184,8 @@ class FakeQuestionCard {
         body.push(`${this.page === "options" && i === this.cursor ? " ❯ " : "   "}${i + 1}. ${o.title}${o.recommended ? " (recommended)" : ""}`);
         if (o.description) body.push(`      ${o.description}`);
       });
-      if (this.page === "free") body.push(` ❯ ${this.typed.slice(-80)}`);
+      // The typed-answer row is clipped at the card's edge (120 columns here): a long answer shows its end.
+      if (this.page === "free") body.push(` ❯ ${this.typed.slice(-114)}`);
       else if (this.freeText) body.push(`${this.cursor === this.options.length ? " ❯ " : "   "}Type a different answer…`);
     }
     const head = this.question === null ? HEAD : HEAD.map(row => row === " How should I deploy this change?" ? ` ${this.question}` : row);
@@ -260,7 +269,7 @@ describe("#2675 answering the Question card from the chat", () => {
     expect(card.answers).toEqual(["release, but only after the freeze"]);
   });
 
-  it("a long typed answer is checked against the end the row shows", async () => {
+  it("a long typed answer: a full row clipped at the card's edge that is its end", async () => {
     const card = new FakeQuestionCard();
     const long = "word ".repeat(60).trim();
     expect(await ask(card, { kind: "text", text: long })).toEqual({ outcome: "answered" });
@@ -332,6 +341,31 @@ describe("#2675 answering the Question card from the chat", () => {
     const typed = new FakeQuestionCard();
     typed.deaf = "Enter";
     expect(await ask(typed, { kind: "text", text: "release" })).toEqual({ outcome: "stopped", step: "the card did not close" });
+  });
+
+  it("a paste that landed only in part (room left on the row): not the answer — no Enter (#2677 review)", async () => {
+    const card = new FakeQuestionCard();
+    card.paste = (t: string) => { card.keys.push(`paste:${t}`); card.page = "free"; card.typed = t.slice(0, 3); return true; };
+    expect(await ask(card, { kind: "text", text: "release only after review" })).toMatchObject({ outcome: "stopped", step: "the typed answer did not show" });
+    expect(card.keys).toEqual(["paste:release only after review"]);
+    expect(card.answers).toEqual([]);
+  });
+
+  it("a screen that cannot be read after the submit is not an answer (#2677 review)", async () => {
+    const card = new FakeQuestionCard();
+    card.deaf = "Escape";   // the card stays open…
+    const identity = read(card.render())!.identity;
+    const harness = io(card);
+    const readPane = harness.io.read;
+    let failing = false;
+    harness.io.read = async () => (failing ? null : readPane());   // …and every capture after the key fails
+    const sendKey = harness.io.key;
+    harness.io.key = async (key: RemoteCardKey) => { const ok = await sendKey(key); failing = true; return ok; };
+    expect(await answerRemoteCard(harness.io, read, identity, { kind: "skip" })).toEqual({ outcome: "stopped", step: "the card did not close" });
+    // …nor is a screen that cannot be read before the first key.
+    const blind = io(new FakeQuestionCard());
+    blind.io.read = async () => null;
+    expect(await answerRemoteCard(blind.io, read, identity, { kind: "option", n: 2 })).toEqual({ outcome: "stopped", step: "reading the screen" });
   });
 
   it("a typed answer that does not show: no Enter", async () => {
@@ -467,6 +501,28 @@ describe("#2675 in the daemon: posted once the card holds still, retired when it
     expect(keys).toEqual([]);
   });
 
+  it("a read that started before a newer one finishes late: it neither retires the newer card nor brings its own back (#2677 review)", async () => {
+    let now = 1_000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const A = qPane("2.34.0-120-50-question-rich"), B = qPane("2.34.0-120-40-question");
+      let release!: (pane: string) => void;
+      let next: () => Promise<string> = () => new Promise(resolve => { release = resolve; });
+      const { daemon } = daemonFor({ capturePane: () => next(), isWindowAlive: async () => true });
+      const events: Array<[string, unknown]> = [];
+      daemon.on("remote_card", e => events.push(["card", (e as { card: RemoteCard }).card.identity]));
+      daemon.on("remote_card_gone", e => events.push(["gone", (e as { identity: string }).identity]));
+      const late = daemon.probeBlockingDialog();          // its capture starts at 1000 and is held
+      next = async () => B;
+      now = 2_000; await daemon.probeBlockingDialog();
+      now = 4_000; await daemon.probeBlockingDialog();    // B posted
+      release(A);
+      await late;
+      now = 9_000; await daemon.probeBlockingDialog();
+      expect(events).toEqual([["card", readKiroQuestionCard(B)!.identity]]);
+    } finally { clock.mockRestore(); }
+  });
+
   it("a card that closes before it was posted is never posted, nor retired", async () => {
     let screen = mcpPane("mcp-120-10-form-2.34.0");
     const { daemon } = daemonFor({ capturePane: async () => screen, isWindowAlive: async () => true });
@@ -477,6 +533,17 @@ describe("#2675 in the daemon: posted once the card holds still, retired when it
     screen = mcpPane("mcp-120-13-form-esc-2.34.0");
     await daemon.probeBlockingDialog();
     expect(events).toEqual([]);
+  });
+
+  it("a capture that fails after the submit: not answered, though the card stays open (#2677 review)", async () => {
+    const card = new FakeQuestionCard();
+    card.deaf = "Escape";
+    let failing = false;
+    const { daemon } = daemonFor({
+      capturePane: async () => { if (failing) throw new Error("capture failed"); return card.render(); }, isWindowAlive: async () => true,
+      sendSpecialKey: async (k: RemoteCardKey) => { failing = true; return card.key(k); },
+    });
+    expect(await daemon.answerRemoteCard(read(card.render())!.identity, { kind: "skip" })).toEqual({ outcome: "stopped", step: "the card did not close" });
   });
 
   it("answerRemoteCard keys the live card through the tmux primitives, and never logs the typed answer", async () => {

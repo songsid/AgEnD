@@ -1511,6 +1511,8 @@ export class Daemon extends EventEmitter {
   private dialogParkedReported = false;
   /** #2675: the card on screen that a person can answer from the chat — what it asks, since when, and whether it was posted. */
   private remoteCardShown: { identity: string; since: number; posted: boolean } | null = null;
+  /** #2675: when (performance.now, taken before its capture) the newest read the card tracker used was started. */
+  private remoteCardReadAt = -Infinity;
   /** #2675: an answer from the chat is being keyed in (one at a time). */
   private remoteCardAnswering = false;
   /**
@@ -3972,7 +3974,7 @@ export class Daemon extends EventEmitter {
         // a new one.
         if (!answersBackedOff) this.dialogAnswers = null;
         this.trackDialogParked(blockingSeen);
-        this.trackRemoteCard(blockingSeen, pane);
+        this.trackRemoteCard(blockingSeen, pane, captureMono);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
         this.evaluateErrorPatterns(pane, patterns, readyPattern, Date.now(), busyPattern);
@@ -8103,11 +8105,11 @@ export class Daemon extends EventEmitter {
         && this.hasAutoDialogClaim(dialog)
         && dialogs.some(other => other !== dialog && Daemon.dialogMatches(other, pane))) continue;
       this.trackDialogParked(dialog);
-      this.trackRemoteCard(dialog, pane);
+      this.trackRemoteCard(dialog, pane, probeMono);
       return { state: "dialog", dialog };
     }
     this.trackDialogParked(null);
-    this.trackRemoteCard(null, pane);
+    this.trackRemoteCard(null, pane, probeMono);
     return { state: "clear" };
   }
 
@@ -8337,9 +8339,13 @@ export class Daemon extends EventEmitter {
    * #2675: a held card a person can answer from the chat (the dialog's remoteCard reader) is posted once it has stayed
    * the same card for REMOTE_CARD_STABLE_MS — `remote_card` with what it asks; the fleet posts it with its buttons. When
    * it closes or another card replaces it, `remote_card_gone` retires that post. Moving through the card (ours or the
-   * person's in the pane) is the same card: its identity has no cursor.
+   * person's in the pane) is the same card: its identity has no cursor. `readAt` is when the pane's capture was started
+   * (performance.now): a read that started before the newest one used here finishes late and says nothing about now —
+   * it may neither retire a newer card nor bring an older one back (#2677 review).
    */
-  private trackRemoteCard(dialog: RuntimeDialog | null, pane: string): void {
+  private trackRemoteCard(dialog: RuntimeDialog | null, pane: string, readAt: number): void {
+    if (readAt < this.remoteCardReadAt) return;
+    this.remoteCardReadAt = readAt;
     const card = dialog?.remoteCard?.(pane) ?? null;
     const shown = this.remoteCardShown;
     if (shown && shown.identity !== card?.identity) {
@@ -8367,7 +8373,8 @@ export class Daemon extends EventEmitter {
     try {
       const outcome = await answerRemoteCard({
         locked: fn => this.paneWriteLock.run(fn),
-        read: () => this.tmux === tmux ? tmux.capturePane().catch(() => "") : Promise.resolve(""),
+        // An unreadable screen (a failed capture, another spawn's pane) is unknown — never "the card closed".
+        read: () => this.tmux === tmux ? tmux.capturePane().catch(() => null) : Promise.resolve(null),
         key: key => this.tmux !== tmux ? Promise.resolve(false) : key === "Space" ? tmux.sendKeys(" ") : tmux.sendSpecialKey(key),
         paste: text => this.tmux !== tmux ? Promise.resolve(false) : tmux.pasteBuffer(text),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),

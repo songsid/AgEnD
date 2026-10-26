@@ -12,7 +12,8 @@ export type RemoteCardKey = "Up" | "Down" | "Enter" | "Escape" | "Space";
 export interface RemoteCardIo {
   /** Run `fn` holding the pane write lock. */
   locked<T>(fn: () => Promise<T>): Promise<T>;
-  read(): Promise<string>;
+  /** The pane, or null when it could not be read (a failed capture, another spawn): unknown, never "no card". */
+  read(): Promise<string | null>;
   key(key: RemoteCardKey): Promise<boolean>;
   /** Bracketed paste, no Enter. */
   paste(text: string): Promise<boolean>;
@@ -67,20 +68,39 @@ export function remoteCardTypedText(text: string): string {
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
 
+/**
+ * The typed-answer row shows the whole answer: exactly it, or — when the answer is longer than the row — a full row
+ * (it reaches the card's right edge, so it was clipped there) that is the answer's start or its end. A row with a
+ * part of the answer and room to spare is a paste that did not all land.
+ */
+function typedIsAll(card: RemoteQuestionCard, text: string): boolean {
+  const shown = squash(card.typed ?? ""), want = squash(text);
+  if (!shown) return false;
+  if (shown === want) return true;
+  const full = (card.typed ?? "").trimEnd().length >= card.rowWidth - TYPED_ROW_SLACK;
+  return full && want.length > shown.length && (want.startsWith(shown) || want.endsWith(shown));
+}
+/** How far short of the card's width a clipped typed-answer row may end (its ` ❯ ` and the TUI's padding and cursor). */
+const TYPED_ROW_SLACK = 8;
+
 export async function answerRemoteCard(
   io: RemoteCardIo,
   readCard: (pane: string) => RemoteCard | null,
   identity: string,
   action: RemoteCardAction,
 ): Promise<RemoteCardOutcome> {
-  const current = async () => readCard(await io.read());
-  /** Poll until `done` holds for the card read (null: no card); false after the wait. */
+  /** The card on screen (null: none), or undefined when the screen could not be read — which proves nothing. */
+  const current = async (): Promise<RemoteCard | null | undefined> => {
+    const pane = await io.read();
+    return pane === null ? undefined : readCard(pane);
+  };
+  /** Poll until `done` holds for a card actually read (null: no card); false after the wait. Unread screens never count. */
   const waitFor = async (done: (card: RemoteCard | null) => boolean, ms = STEP_WAIT_MS): Promise<RemoteCard | null | false> => {
     const until = io.now() + ms;
     for (;;) {
       await io.sleep(STEP_SETTLE_MS);
       const card = await current();
-      if (done(card)) return card;
+      if (card !== undefined && done(card)) return card;
       if (io.now() >= until) return false;
     }
   };
@@ -90,12 +110,13 @@ export async function answerRemoteCard(
     if (!card || card.identity !== identity || !check(card)) return false;
     return io.key(key);
   });
-  const ours = (card: RemoteCard | null): card is RemoteCard => card !== null && card.identity === identity;
+  const ours = (card: RemoteCard | null | undefined): card is RemoteCard => card != null && card.identity === identity;
   /** After the submitting key: the card closed, or another card is there. */
   const closed = async (): Promise<RemoteCardOutcome> =>
     (await waitFor(card => !ours(card), RESULT_WAIT_MS)) === false ? { outcome: "stopped", step: "the card did not close" } : { outcome: "answered" };
 
   const first = await current();
+  if (first === undefined) return { outcome: "stopped", step: "reading the screen" };
   if (!ours(first)) return { outcome: "stale" };
 
   if (first.kind === "input") {
@@ -132,8 +153,7 @@ export async function answerRemoteCard(
         return io.paste(text);
       });
       if (!pasted) return { outcome: "stopped", step: "typing the answer" };
-      const shows = (card: RemoteCard | null) => ours(card) && card.kind === "question" && card.page === "freetext"
-        && !!card.typed && squash(text).includes(squash(card.typed));
+      const shows = (card: RemoteCard | null) => ours(card) && card.kind === "question" && card.page === "freetext" && typedIsAll(card, text);
       if (await waitFor(shows) === false) return { outcome: "stopped", step: "the typed answer did not show" };
       if (!await press(card => shows(card), "Enter")) return { outcome: "stopped", step: "submitting the typed answer" };
       return closed();

@@ -406,12 +406,12 @@ export function kiroQuestionCardActive(pane: string): boolean {
 }
 
 /** #2675: the live card's rows — the header row, the body between it and the key hints' divider, and the key hints. */
-function kiroCardRows(pane: string, headerAt: (rows: string[], last: number) => number): { header: string; body: string[]; footer: string } | null {
+function kiroCardRows(pane: string, headerAt: (rows: string[], last: number) => number): { header: string; body: string[]; footer: string; width: number } | null {
   const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
   let last = rows.length - 1;
   while (last >= 0 && !rows[last].trim()) last--;
   const header = headerAt(rows, last);
-  return header < 0 ? null : { header: rows[header].trim(), body: rows.slice(header + 1, last - 1), footer: rows[last].trim() };
+  return header < 0 ? null : { header: rows[header].trim(), body: rows.slice(header + 1, last - 1), footer: rows[last].trim(), width: rows[last - 1].trim().length };
 }
 
 const KIRO_QUESTION_OPTION_ROW = /^ (❯| ) (\d+)\. (.*?)( \(recommended\))?$/;
@@ -471,7 +471,7 @@ export function readKiroQuestionCard(pane: string): RemoteQuestionCard | null {
   const titles = options.map(option => `${option.n}. ${option.title}`).join("\n");
   return {
     kind: "question", identity: `${card.header}\n${question.join("\n")}\n${page === "suboptions" ? "sub" : "options"}\n${titles}`,
-    title: card.header, question: question.join("\n").trim(), page: typing ? "freetext" : page, options, freeText, cursor, typed,
+    title: card.header, question: question.join("\n").trim(), page: typing ? "freetext" : page, options, freeText, cursor, typed, rowWidth: card.width,
   };
 }
 
@@ -489,7 +489,13 @@ export function readKiroMcpInputCard(pane: string): RemoteInputCard | null {
     return -1;
   });
   if (!card) return null;
-  const body = card.body.slice(1).map(row => /^\s*URL: /.test(row) ? row.replace(/URL: .*$/, "URL: (shown in the instance pane)") : row);
+  // The URL row is masked, and so is every row after it up to the next action row: a long URL wraps (#2677 review).
+  let inUrl = false;
+  const body = card.body.slice(1).flatMap(row => {
+    if (/^\s*URL: /.test(row)) { inUrl = true; return [row.replace(/URL: .*$/, "URL: (shown in the instance pane)")]; }
+    if (inUrl && KIRO_MCP_INPUT_ACTIONS.has(row.replace(/^ ❯ /, "   ").trim())) inUrl = false;
+    return inUrl ? [] : [row];
+  });
   const strip = (row: string) => row.replace(/^ ❯ /, "   ").trim();
   const cursorRow = body.find(row => /^\s*❯\s+\S/.test(row));
   if (!cursorRow) return null;
