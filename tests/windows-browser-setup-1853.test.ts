@@ -74,7 +74,7 @@ Write-Output ("DONE=" + $r.Done + " SHOWN=" + $r.Shown + " ALREADY=" + $r.Alread
     expect(out).toContain("設定碼：  K 7 Q M - 3 X R D");
     expect(out).toContain("設定頁已在瀏覽器打開。");
     expect(out).toContain("設定頁網址：http://127.0.0.1:19280/s/ab12/");          // #2650 item 10: printed even when it opened
-    expect(out).toContain("設定碼已複製：在網頁的輸入框按 Ctrl+V（或右鍵 → 貼上）。");
+    expect(out).toContain("設定碼已複製到剪貼簿：在網頁的輸入框按 Ctrl+V 或右鍵貼上，不必自己打");
     expect(out).toContain("DONE=True SHOWN=True ALREADY=False");
   });
   it("the page closed unfinished: not done, but it was shown (the installer offers it again)", () => {

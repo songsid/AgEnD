@@ -48,7 +48,11 @@ describe("static", () => {
     expect(inst.indexOf("Save-InstallReceipt 'done'")).toBeLessThan(inst.lastIndexOf("Remove-Item -LiteralPath $ProgressFile -Force"));
   });
   it("the setup and dashboard code boxes are not written through the logged helpers", () => {
-    expect(inst).toMatch(/Write-Host \("  │   設定碼：  " \+ \$spaced/);
+    expect(inst).toMatch(/\$label = "設定碼：  " \+ \$spaced/);
+    expect(inst).toMatch(/Write-Host \("  \|   " \+ \$label/);
+    expect(inst).toMatch(/Write-Host \("  " \+ \$label\)/);
+    const show = inst.slice(inst.indexOf("function Show-SetupCode"), inst.indexOf("\n}\n", inst.indexOf("function Show-SetupCode")));
+    expect(show).not.toMatch(/Write-(Wrapped|Info|Ok|Warn|InstallLog)[^\n]*\$(label|spaced|code)\b/);   // the code never reaches the log
     expect(inst).toMatch(/Write-Host \("  │   儀表板登入碼：  " \+ \$spaced/);
   });
   it("install.ps1 stays ASCII and checks the file's hash again right before it runs it", () => {
