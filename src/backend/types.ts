@@ -509,6 +509,13 @@ export interface CliBackend {
   readSteerComposerText?(pane: string): string | null;
 
   /**
+   * #2676: when that row text is a collapsed paste (kiro TUI: a long paste shown as `42 lines ▸`), the number of lines it
+   * names — 1 for a one-line paste shown only by its length; else null. A pre-Enter check matches it against its own
+   * payload's line count.
+   */
+  readSteerComposerPasteLines?(text: string): number | null;
+
+  /**
    * Whether every submission needs a defensive second Enter. Some TUIs swallow
    * Enter while still processing a paste (a startup redraw, or a large paste on
    * a slow host) while emitting output that looks like a successful idle→busy

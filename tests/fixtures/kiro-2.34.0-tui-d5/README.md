@@ -21,3 +21,9 @@ B4 passes for native steer and the captured queue behavior; AgEnD's version allo
 The candidate fixes the pinned exported-session exclusion, holds both picker headers, adds 2.34.0 TUI steering evidence, and makes a TUI forensic scan explicitly unreadable instead of falsely checking classic history. Full engine-aware TUI forensic scanning is still outstanding. Batch 2 remains **NO-GO** on the full B1 criteria; these captures do not claim live validation of an unshipped fix or of a model-outage screen.
 
 The target's final read-only schema check confirmed that `AssistantMessage.data.content[]` embeds `{kind:"toolUse",data:{toolUseId,name,input}}` blocks (474 at that observation). Results arrive separately as `{kind:"ToolResults",data:{message_id,content,results:{<toolUseId>:{tool:null|object,result:...}}}}`. Regression records retain those field names with synthetic values; returned output must not be traversed as a fresh tool call.
+
+## B1 forensic completion follow-up
+
+`forensic.jsonl` is an **offline reconstruction**, not copied conversation text: it preserves the three record kinds, the `text.data` string, `toolUse.data.input` object and plural `ToolResults.data.results` map confirmed by the authorized D5 read-only schema inspection. All message ids, content, tool inputs and timestamps are synthetic. The nested returned envelope is a negative control; only assistant-authored text/tool inputs are scanned.
+
+The follow-up forensic reader reads only the durable owned pin and its matching metadata/JSONL. It never discovers a same-cwd sibling or falls back to the frozen classic row. The raw Log gate remains closed: launch-root equality and the currently selected pane session (after `/clear` or `/chat load`) are still not observed. A forensic verdict concerns the **recorded owned session's snapshot**, not proof of the pane's current session. V3 still has no supported stable forensic store.

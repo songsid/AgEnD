@@ -130,6 +130,21 @@ export function readKiroComposerText(pane: string): string | null {
   return c?.mode === "text" ? c.text : null;
 }
 
+/**
+ * #2676: a collapsed paste on the composer's row. The TUI shows a paste of more than 10 lines or 500 characters as one
+ * chip (2.34.0 tui.js: `n>1 ? "${n} lines" : "${r} chars"`, then `▸`, then the `Press Tab to expand` hint):
+ *
+ *   `›  42 lines ▸   Press Tab to expand`   → 42
+ *   `›  657 chars ▸   Press Tab to expand`  → 1 (one line, shown only by its length)
+ *
+ * `text` is the row's text (readKiroComposerText). Null when it is not such a chip.
+ */
+export function readKiroCollapsedPasteLines(text: string): number | null {
+  const m = /^(\d+) (lines|chars) ▸(?:[ \t]+Press Tab to expand)?$/.exec(text.trim());
+  if (!m) return null;
+  return m[2] === "lines" ? Number(m[1]) : 1;
+}
+
 export interface KiroCliCompatibility {
   version?: string;
   supportsLegacyUi: boolean;
@@ -1273,6 +1288,11 @@ export class KiroBackend implements CliBackend {
 
   readSteerComposerText(pane: string): string | null {
     return this.activeUi === "legacy" ? null : readKiroComposerText(pane);
+  }
+
+  /** #2676: the line count a collapsed paste chip on the composer's row names (readKiroCollapsedPasteLines). */
+  readSteerComposerPasteLines(text: string): number | null {
+    return this.activeUi === "legacy" ? null : readKiroCollapsedPasteLines(text);
   }
 
   /**

@@ -11,8 +11,7 @@ import { ensureAgendHome } from "./agend-home.js";
  * triggers a verification warning; retention expiry also makes a real message
  * unverifiable, so this is not proof that the receiver fabricated the turn.
  *
- * Only kiro has a reader here: its conversation store
- * (`~/.local/share/kiro-cli/data.sqlite3`, conversations_v2) is on disk.
+ * Kiro classic uses conversations_v2 in data.sqlite3; TUI uses the owned, pinned session JSONL.
  * Claude jsonl / Codex rollouts / other backends are per-backend follow-ups.
  *
  * Everything query-side is read-only: the kiro store opens readonly and the
@@ -23,7 +22,8 @@ import { ensureAgendHome } from "./agend-home.js";
 import { t } from "./locale.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { kiroEngineFloor } from "./backend/kiro-identity.js";
+import { kiroEngineFloor, kiroOwnedConversation } from "./backend/kiro-identity.js";
+import { readKiroTuiAssistantTexts } from "./kiro-tui-forensic.js";
 import { credentialStoreHomeForInstance } from "./backend/credential-profile.js";
 import { deepMergeGeneric, getEffectiveInstanceDefaults } from "./config.js";
 import { DeliveryOutbox, deliveryStatusSelector } from "./delivery-outbox.js";
@@ -211,13 +211,17 @@ export function scanKiroInstanceForForgedEnvelopes(opts: {
    * data.sqlite3, not the shared store.
    */
   storeHome?: string;
+  /** Engine-selected TUI read; no SQLite fallback. */
+  tui?: { sessionsDir?: string; sessionId: string; stillOwned: () => boolean };
   alreadyReportedIds?: Set<string>;
 }): KiroForgedScanResult {
   const base = {
     instanceName: opts.instanceName, conversationId: null, checked: 0, delivered: 0, unverifiable: 0, findings: [],
   };
   const kiroDbPath = opts.kiroDbPath ?? kiroStoreDbPath(opts.storeHome);
-  const convo = readKiroAssistantTexts(opts.workingDirectory, kiroDbPath);
+  const convo = opts.tui
+    ? readKiroTuiAssistantTexts(opts.tui)
+    : readKiroAssistantTexts(opts.workingDirectory, kiroDbPath);
   if (convo.kind === "unreadable") {
     return { ...base, status: "unreadable-store", reason: convo.reason };
   }
@@ -324,6 +328,8 @@ export function executeForgedEnvelopeScan(opts: {
   outboxDbPath: string;
   dataDir: string;
   kiroDbOverride?: string;
+  /** Explicit TUI root for offline rigs; never changes the engine selection. */
+  kiroSessionsOverride?: string;
   alreadyReportedIds?: Set<string>;
 }): ScanCommandResult {
   const reported = opts.alreadyReportedIds ?? new Set<string>();
@@ -344,12 +350,11 @@ export function executeForgedEnvelopeScan(opts: {
       });
       continue;
     }
-    // D5 found that the legacy-only scanner can call a frozen classic row "clean" after a TUI move.
-    // Do not open another engine's store. A current-session/root-aware TUI scanner is a separate proof.
-    if (target.kiroUi === "tui" || target.kiroUi === "v3" || kiroEngineFloor(opts.dataDir, target.name)) {
+    const floor = kiroEngineFloor(opts.dataDir, target.name);
+    if (target.kiroUi === "v3" || floor === "v3") {
       unreadable++;
       rows.push({ instance: target.name, backend: target.backend, status: "unreadable-store",
-        reason: "TUI/v3 forged-envelope scanning is not implemented; the classic conversation is frozen and cannot verify new turns.", findings: [] });
+        reason: "V3 has no supported stable forensic session store; no TUI or classic fallback is permitted.", findings: [] });
       continue;
     }
     if (!target.workingDirectory) {
@@ -363,11 +368,24 @@ export function executeForgedEnvelopeScan(opts: {
       });
       continue;
     }
-    // A profiled instance writes its transcript to its own store, not the
-    // shared one — scan the store its CLI actually uses.
+    // Profiles relocate classic SQLite only; V2 uses its shared session root and profile-specific ownership key.
     const storeHome = opts.kiroDbOverride
       ? undefined
       : credentialStoreHomeForInstance(opts.dataDir, target.backend, target.backendOptions?.[target.backend]);
+    let tui: Parameters<typeof scanKiroInstanceForForgedEnvelopes>[0]["tui"];
+    if (target.kiroUi === "tui" || floor === "v2") {
+      const identity = { agendHome: opts.dataDir, instance: target.name, engine: "v2" as const,
+        workingDirectory: target.workingDirectory, credentialProfile: typeof target.backendOptions?.[target.backend]?.credential_profile === "string"
+          ? target.backendOptions[target.backend]!.credential_profile as string : null };
+      const sessionId = kiroOwnedConversation(identity);
+      if (!sessionId) {
+        unreadable++;
+        rows.push({ instance: target.name, backend: target.backend, status: "unreadable-store",
+          reason: "No owned, pinned TUI session is recorded for this directory and credential profile; the classic conversation is frozen.", findings: [] });
+        continue;
+      }
+      tui = { sessionId, sessionsDir: opts.kiroSessionsOverride, stillOwned: () => kiroOwnedConversation(identity) === sessionId };
+    }
     const result = scanKiroInstanceForForgedEnvelopes({
       instanceName: target.name,
       workingDirectory: target.workingDirectory,
@@ -375,6 +393,7 @@ export function executeForgedEnvelopeScan(opts: {
       knownInstances: opts.knownInstances,
       ...(opts.kiroDbOverride ? { kiroDbPath: opts.kiroDbOverride } : {}),
       ...(storeHome ? { storeHome } : {}),
+      ...(tui ? { tui } : {}),
       alreadyReportedIds: reported,
     });
     for (const f of result.findings) reported.add(f.messageId);
