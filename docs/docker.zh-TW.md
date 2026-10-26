@@ -1,115 +1,360 @@
-# 用 Docker 執行 AgEnD
+# 在 Docker 中執行 AgEnD：給 agent 的操作手冊
 
-這是安裝 AgEnD 的第二種方式：`docker compose up` 就會在容器裡得到一個可用的 fleet。適合試用、展示，或不想在機器上裝 Node.js
-和 tmux 的情況。要長期使用的伺服器，仍建議走一般安裝（systemd 或 launchd 服務）。
+這份文件寫給 AI agent：替使用者在 Docker 中架設 AgEnD，並持續維護。請依序執行每個步驟，每個指令都要親自執行並確認結果，再進行下一步。
+告訴使用者你做了什麼、需要他們提供什麼。這裡的做法不需要修改 AgEnD 本身：映像檔安裝的是 npm 上發佈的套件。
 
-映像檔裡有 AgEnD、Node.js 和 tmux，但沒有任何 AI CLI。第一次啟動時，會把 `fleet.yaml` 用到的 CLI 安裝到 home volume，之後啟動就不必再裝。
+完成後會有一個容器執行整個 AgEnD fleet，由 Docker 監管。它具備：
+- 非 root 使用者（uid 1000），tini 為 PID 1；
+- AgEnD 的資料、每個 AI CLI 的安裝與登入都放在具名 volume；
+- 儀表板在主機的 `127.0.0.1:19280`。
 
-> **映像檔還沒有發佈。** 在 `ghcr.io/songsid/agend` 發佈之前，請在這個 repository 的 checkout 用 `docker/build-from-checkout.sh` 建置，如下。
-> 建置的機器需要 Node.js 22。直接 `docker compose build` 會安裝 npm 上的版本，它可能還沒有容器支援。
+要長期使用的伺服器，仍建議一般安裝（`install.sh`、systemd 或 launchd 服務）。Docker 適合試用、展示，或不想在機器上裝 Node.js 和 tmux 的情況。
 
-## 快速開始
+## Agent 守則
 
-```bash
-git clone https://github.com/songsid/AgEnD.git && cd AgEnD/docker
-cp .env.example .env          # 選填：instance 名稱、後端、聊天平台
-./build-from-checkout.sh      # 映像檔發佈前需要（發佈後可略過）
-docker compose up -d          # 第一次啟動會安裝 CLI；用 docker compose logs -f 觀看
+- **絕不在容器裡執行 `agend update`、`agend restart`、`agend stop` 或 `agend install`，也絕不在 fleet 的聊天裡用 `/update`。**
+  容器沒有 systemd。更新只會換掉容器裡的 AgEnD，不會換掉它所依據的映像檔，所以下次啟動容器時就會退回原版本。`restart`、`stop`、`install` 需要容器沒有的服務管理員。請改用[維護](#維護)裡的 `docker compose` 指令。
+- token 與 API key 只放在 `.env`，絕不放進 `fleet.yaml`、`compose.yaml` 或聊天裡。
+- 發佈的連接埠保持在 `127.0.0.1`，除非使用者刻意要求其他位址；那時也要把主機名稱加進 `fleet.yaml` 的 `web.allowed_hosts`。
+
+## 1. 詢問使用者
+
+| 問題 | 為什麼重要 |
+|---|---|
+| 要用哪些 AI 後端？（`claude-code`、`codex`、`kiro-cli`、`grok`、`opencode`、`antigravity`、`muse`） | 步驟 4 只安裝這些 |
+| 是否固定某個 CLI 版本？ | `claude-code` 與 `kiro-cli` 的安裝程式能指定版本；其他會安裝最新版 |
+| 只用網頁，還是也接 Telegram 或 Discord？ | 步驟 5 的 `fleet.yaml`；頻道需要 bot token、群組或伺服器 id、使用者 id |
+| 主機作業系統：Linux，或 macOS / Windows（WSL）上的 Docker Desktop？ | WSL 有 bind mount 陷阱（見[疑難排解](#疑難排解)） |
+| CPU 架構（`uname -m`：`x86_64` 或 `aarch64`）？ | kiro-cli 的固定版本壓縮檔依架構區分 |
+| AgEnD 版本：`latest`（穩定版）、`beta` 或指定版本？ | 步驟 2 的 `AGEND_VERSION` |
+
+確認 Docker 可用：`docker compose version` 必須是 v2.24 以上。
+
+## 2. 寫入檔案
+
+建立一個資料夾（例如 `~/agend-docker`），把下面四個檔案原樣寫進去。
+
+<!-- file: Dockerfile -->
+```dockerfile
+# AgEnD + tmux on Node 22. No AI CLI is baked in: they are installed into the home volume (step 4).
+FROM node:22-bookworm-slim
+ARG AGEND_VERSION=latest
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tmux git curl ca-certificates procps xz-utils unzip less tini socat bash \
+ && rm -rf /var/lib/apt/lists/*
+RUN npm install -g "@songsid/agend@${AGEND_VERSION}" && npm cache clean --force
+# The base image's uid-1000 user, renamed: a bind mount owned by a typical host user matches it.
+RUN groupmod -n agend node \
+ && usermod -l agend -d /home/agend -m -c AgEnD node \
+ && mkdir -p /work && chown agend:agend /work
+COPY --chmod=755 entrypoint.sh /usr/local/bin/agend-entrypoint
+# The CLIs' own self-updates stay off, so a pinned version stays and updates go through this runbook.
+ENV HOME=/home/agend \
+    PATH=/home/agend/.local/bin:/home/agend/.opencode/bin:/home/agend/.grok/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    DISABLE_AUTOUPDATER=1 KIRO_NO_AUTO_UPDATE=1 OPENCODE_DISABLE_AUTOUPDATE=1 \
+    TERM=xterm-256color LANG=C.UTF-8
+USER agend
+WORKDIR /home/agend
+VOLUME ["/home/agend", "/work"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 CMD curl -fsS http://127.0.0.1:19280/health >/dev/null || exit 1
+# tini as PID 1 reaps the CLIs' children: without it, a killed CLI stays a zombie that still holds its session lock.
+ENTRYPOINT ["tini", "--", "agend-entrypoint"]
+```
+
+<!-- file: entrypoint.sh -->
+```sh
+#!/bin/sh
+# With arguments: run them (installs, one-off commands). Without: run the fleet in the foreground.
+set -eu
+if [ "$#" -gt 0 ]; then exec "$@"; fi
+if [ ! -f "$HOME/.agend/fleet.yaml" ]; then
+  echo "agend-entrypoint: no ~/.agend/fleet.yaml yet (runbook step 5)" >&2
+  sleep 30; exit 78
+fi
+# AgEnD's dashboard listens on 127.0.0.1 inside the container, which a published port cannot reach.
+# socat forwards the container's port 19380 to it.
+socat TCP-LISTEN:19380,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:19280 &
+exec agend fleet start
+```
+
+<!-- file: compose.yaml -->
+```yaml
+name: agend
+services:
+  agend:
+    build:
+      context: .
+      args:
+        AGEND_VERSION: ${AGEND_VERSION:-latest}
+    image: agend-local:${AGEND_VERSION:-latest}
+    restart: unless-stopped
+    # The fleet stops its instances gracefully before it exits.
+    stop_grace_period: 2m
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "127.0.0.1:${AGEND_PORT:-19280}:19380"
+    volumes:
+      - agend-home:/home/agend
+      - agend-work:/work
+volumes:
+  agend-home:
+  agend-work:
+```
+
+<!-- file: .env -->
+```sh
+# AgEnD version for the image: latest, beta, or an exact version (2.3.1).
+AGEND_VERSION=latest
+# Host port of the dashboard.
+AGEND_PORT=19280
+# Chat platform tokens, only if the person wants a channel (step 5):
+# TELEGRAM_BOT_TOKEN=
+# DISCORD_BOT_TOKEN=
+# API keys, if a CLI signs in with a key instead of a login (step 7):
+# ANTHROPIC_API_KEY=
+# OPENAI_API_KEY=
+# XAI_API_KEY=
+```
+
+接著建置映像檔，輸出最後會出現 `naming to … agend-local:<version>`：
+
+```sh
+docker compose build
+```
+
+## 3. 檢查映像檔
+
+```sh
+docker compose run --rm agend sh -c 'id; agend --version; tmux -V'
+```
+
+應看到 `uid=1000(agend)`、AgEnD 版本與 tmux 版本。
+
+## 4. 安裝 AI CLI
+
+依使用者選的後端，每個執行一行。每行都裝進 home volume，之後重新啟動或更新映像檔都會保留。把 `<version>` 換成固定版本，或用不指定版本的寫法。
+
+| 後端 | 安裝（不指定版本） | 固定版本 |
+|---|---|---|
+| claude-code | `curl -fsSL https://claude.ai/install.sh \| bash` | `curl -fsSL https://claude.ai/install.sh \| bash -s <version>` |
+| kiro-cli | `curl -fsSL https://cli.kiro.dev/install \| bash` | 見下方 |
+| codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| CODEX_NON_INTERACTIVE=1 sh` | ❌ |
+| grok | `curl -fsSL https://x.ai/cli/install.sh \| bash` | ❌ |
+| opencode | `curl -fsSL https://opencode.ai/install \| bash` | ❌ |
+| antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | ❌ |
+| muse | `mkdir -p ~/.local/bin && curl -fsSL https://api.meta.ai/muse-launcher.sh -o ~/.local/bin/muse && chmod +x ~/.local/bin/muse && MUSE_LAUNCHER_INSTALL=1 ~/.local/bin/muse` | ❌ |
+
+每一行都在映像檔裡執行：
+
+```sh
+docker compose run --rm agend sh -c 'curl -fsSL https://claude.ai/install.sh | bash'
+```
+
+固定 kiro-cli 版本時，把 `V` 設為版本、`ARCH` 設為 `x86_64` 或 `aarch64`：
+
+```sh
+docker compose run --rm agend sh -c 'set -e; V=2.34.0; ARCH=x86_64; D="$HOME/.local/share/agend-cli/kiro-cli/$V"
+  mkdir -p "$D" "$HOME/.local/bin"
+  curl -fsSL "https://prod.download.cli.kiro.dev/stable/$V/kirocli-$ARCH-linux.tar.xz" | tar -xJ -C "$D"
+  for b in "$D"/kirocli/bin/*; do ln -sf "$b" "$HOME/.local/bin/$(basename "$b")"; done'
+```
+
+檢查每個 CLI，固定版本的必須印出該版本：
+
+```sh
+docker compose run --rm agend sh -c 'claude --version; kiro-cli --version'
+```
+
+安裝程式會從各廠商網站下載，所以這一步需要網路。某個安裝失敗時，輸出會說明原因：修正它，或在 `fleet.yaml` 不放那個後端。
+
+## 5. 寫入第一份 `fleet.yaml`
+
+先寫在其他檔案旁邊，再以容器使用者的身分複製進 volume（AgEnD 要求檔案屬於該使用者）。
+
+<!-- file: fleet.yaml -->
+```yaml
+# One instance per backend the person chose. working_directory is in the work volume.
+instances:
+  dev:
+    backend: claude-code
+    working_directory: /work/dev
+```
+
+- **kiro-cli instance：** 另外設定 `kiro_ui: tui`。
+- **多個 instance：** 每個一段，名稱不可重複。
+- **Telegram 或 Discord 頻道：** 加上下面這段。token 放在 `.env` 的 `TELEGRAM_BOT_TOKEN` 或 `DISCORD_BOT_TOKEN`。`allowed_users` 填使用者的數字 id。AgEnD 第一次啟動時會建立 General instance。
+
+```yaml
+channels:
+  - type: telegram            # or discord
+    mode: topic
+    bot_token_env: TELEGRAM_BOT_TOKEN
+    group_id: "-1001234567890"  # the Telegram forum group, or the Discord guild id
+    access:
+      mode: locked
+      allowed_users: ["123456789"]
+```
+
+```sh
+docker compose run --rm -T agend sh -c 'mkdir -p ~/.agend && chmod 700 ~/.agend && cat > ~/.agend/fleet.yaml' < fleet.yaml
+docker compose run --rm agend agend validate
+```
+
+`agend validate` 必須沒有錯誤。只用網頁的 fleet 會警告沒有設定頻道和 General，這是預期的。
+
+## 6. 啟動並驗證
+
+```sh
+docker compose up -d
+```
+
+等到 healthy（第一次啟動可能要一分鐘）：
+
+```sh
+until curl -fsS http://127.0.0.1:19280/health >/dev/null; do sleep 3; done; docker compose ps
+```
+
+檢查 fleet 與 instance：
+
+```sh
+docker compose exec agend tmux list-windows -t agend
+docker compose logs --tail 50 agend
+```
+
+每個 instance 有一個 tmux 視窗。接著給使用者儀表板的登入代碼：
+
+```sh
 docker compose exec agend agend web --code
 ```
 
-打開 `http://localhost:19280/` 輸入代碼。側邊欄會有你的 instance（預設 `dev`，Claude Code）。登入它的 CLI（見下方），就能在聊天裡和它對話。
+它會印出一次性代碼（約 5 分鐘有效）和 `http://localhost:19280/signin`。若 `AGEND_PORT` 不是 19280，請替換網址裡的連接埠。使用者打開網址、輸入代碼，在網頁聊天傳訊息給某個 instance；收到回覆就代表整條路徑正常。若 CLI 還沒登入，instance 會說明：請先做步驟 7。
 
-## 啟動時會做什麼
+## 7. 登入 CLI
 
-1. **只在第一次：** 還沒有 `~/.agend/fleet.yaml` 時，會依 `.env` 寫一份：一個名為 `AGEND_INSTANCE` 的 instance，在 `/work/<name>`
-   執行 `AGEND_BACKEND`。除非設定了聊天平台（見下方），否則只用網頁。之後不會再改寫。要修改時，先複製出來，編輯後以容器使用者寫回：
-   `docker compose exec -T agend cat .agend/fleet.yaml > fleet.yaml`，再執行
-   `docker compose exec -T agend sh -c 'cat > .agend/fleet.yaml' < fleet.yaml` 和 `docker compose restart`。
-2. **每次：** `fleet.yaml` 用到、但還沒安裝的後端，會用該後端自己的安裝程式安裝到 home volume。記錄會列出每個 CLI，以及能在不啟動 CLI 的情況下讀到的版本。
-3. fleet 在前景啟動，由 Docker 的重新啟動政策（`restart: unless-stopped`）維持運作。
+每個後端任選一種方式：
 
-某個 CLI 安裝失敗時，記錄會說明原因；fleet 仍會啟動，那個 instance 會像一般安裝一樣回報缺少 CLI。
+| 後端 | `/login`（聊天或儀表板） | `.env` 的 API key | 容器裡的 shell |
+|---|:-:|:-:|:-:|
+| claude-code | ✅ | ✅ | ✅ |
+| codex | ✅ | ✅ | ✅ |
+| kiro-cli | ✅ | ❌ | ✅ |
+| grok | ✅ | ✅ | ✅ |
+| opencode | ❌ | ✅ | ✅ |
+| antigravity | ❌ | ❌ | ✅ |
+| muse | ❌ | ❌ | ✅ |
 
-## 登入
+API key：
+- claude-code：`ANTHROPIC_API_KEY` 或 `CLAUDE_CODE_OAUTH_TOKEN`；
+- codex：`OPENAI_API_KEY`；
+- grok：`XAI_API_KEY`；
+- opencode：各 provider 自己的 key。
 
-**儀表板：** `docker compose exec agend agend web --code` 會印出 `http://localhost:19280/` 的一次性代碼。有聊天平台時，也可以在 General 傳 `/web`。
+- **`/login`：** 在 General，或在儀表板替後端登入。瀏覽器與 device code 流程都和一般安裝一樣。
+- **API key：** 加到 `.env`，然後執行 `docker compose up -d`（會重新讀取 `.env`）。
+- **shell：** `docker compose exec -it agend claude`（或 `codex`、`kiro-cli`、`grok` 等），使用者依該 CLI 自己的流程登入。
 
-**CLI**，任選一種：
-- 在 General 用 `/login`，或在儀表板替後端登入：瀏覽器與 device code 流程都和一般安裝一樣。
-- 在容器裡開 shell：`docker compose exec -it agend claude`（或 `codex`、`kiro-cli`、`grok` 等），依 CLI 自己的流程登入。
-- 在 `.env` 放 API key：`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`XAI_API_KEY` 等。
+登入資料保存在 home volume。
 
-## 聊天平台（選填）
+## 維護
 
-在第一次啟動前，於 `.env` 設定：
+### 更新 AgEnD
 
-```bash
-AGEND_CHANNEL=telegram          # 或 discord
-AGEND_GROUP_ID=-1001234567890   # Telegram 論壇群組，或 Discord 伺服器 id
-AGEND_ADMIN_IDS=123456789       # 你的使用者 id；只有這些人能進來
-TELEGRAM_BOT_TOKEN=…            # 或 DISCORD_BOT_TOKEN
+1. 在 `.env` 設定新版本（`AGEND_VERSION=2.3.2`），或保留 `latest` 取得最新穩定版。
+2. 重新建置並重建容器：
+
+```sh
+docker compose build --pull --no-cache
+docker compose up -d
+docker compose exec agend agend --version
 ```
 
-Token 只放在 `.env`（每次啟動讀取），不會寫進 `fleet.yaml`。之後要加平台，請依 [設定](configuration.zh-TW.md#channel) 編輯 `fleet.yaml`。
+volume 會保留 `fleet.yaml`、資料庫、CLI 與登入。**絕不**在容器裡用 `agend update` 或 `/update`，原因見[守則](#agent-守則)。fleet 每天的「有新版本」通知會寫 `/update`；這種安裝請改用上面的步驟更新。
 
-## 設定（`.env`）
+### 重新啟動、停止、啟動
 
-| 變數 | 預設 | 作用 |
-|---|---|---|
-| `AGEND_INSTANCE` | `dev` | 第一次啟動：instance 名稱 |
-| `AGEND_BACKEND` | `claude-code` | 第一次啟動：它的後端（`claude-code`、`codex`、`kiro-cli`、`grok`、`opencode`、`antigravity`、`muse`） |
-| `AGEND_CLI_VERSIONS` | — | 固定版本，例如 `claude-code=2.1.300,kiro-cli=2.34.0`。已安裝但版本不同的 CLI 會依固定版本重新安裝 |
-| `AGEND_CHANNEL`、`AGEND_GROUP_ID`、`AGEND_ADMIN_IDS` | — | 第一次啟動：Telegram 或 Discord 頻道 |
-| `AGEND_PORT` | `19280` | 儀表板在主機上的連接埠 |
-| `AGEND_TAG` | `latest` | 映像檔標籤：`latest`、`beta` 或版本號 |
-
-只有 `claude-code` 和 `kiro-cli` 的安裝程式能指定版本；其他後端會安裝最新版，記錄會註明沒有套用固定版本。映像檔關閉了各 CLI 的自動更新，固定的版本不會被換掉。
-
-## 資料放在哪裡
-
-| Volume | 掛載位置 | 內容 |
-|---|---|---|
-| `agend-home` | `/home/agend` | `~/.agend`（fleet.yaml、資料庫、instance 狀態），以及每個 CLI 的安裝、登入和設定 |
-| `agend-work` | `/work` | instance 的工作目錄 |
-
-兩者都是具名 volume：`docker compose down` 會保留，`docker compose down -v` 會刪除。備份 home volume：
-`docker run --rm -v agend_agend-home:/h -v "$PWD":/b alpine tar czf /b/agend-home.tgz -C /h .`。
-
-也可以用 bind mount，但目錄必須屬於 uid 1000（映像檔的 `agend` 使用者）。建議用具名 volume：在 WSL 上，bind mount 的目錄重新啟動後可能變成 root 所有。
-若啟動失敗並顯示「must be owned and writable by uid 1000」，記錄裡會印出修正用的指令。
-
-## 更新、重新啟動、停止
-
-| 一般安裝 | 容器 |
+| 要做的事 | 指令 |
 |---|---|
-| `agend update`、`/update` | `docker compose pull && docker compose up -d`（在容器裡兩者都會拒絕並提示這行）。映像檔發佈前：`git pull`、`./build-from-checkout.sh`、`docker compose up -d` |
-| `agend restart`、`/restart` | 相同：fleet 結束後由 Docker 重新啟動 |
-| `agend stop` | `docker compose stop`（在容器裡 `agend stop` 會拒絕：Docker 會再啟動它） |
-| `agend install`（安裝服務） | 不需要：由 Docker 的重新啟動政策監管 fleet |
-| `agend logs`、`fleet.log` | `docker compose logs -f`，以及 `~/.agend` 裡的檔案 |
-| `tmux attach -t agend` | `docker compose exec -it agend tmux attach -t agend` |
+| 重新啟動 fleet | `docker compose restart` |
+| 停止 | `docker compose stop` |
+| 再次啟動 | `docker compose up -d` |
+| 移除容器（保留資料） | `docker compose down` |
 
-每日的更新檢查會用 `docker compose` 那一行告訴你有新版本。
+### 升級或固定 CLI 版本
 
-## 容器裡能用什麼
+再執行一次步驟 4 的安裝行（指定新版本或不指定），然後 `docker compose restart`。用 `docker compose exec agend <cli> --version` 確認。
 
-| | 一般安裝 | 容器 | 說明 |
-|---|:-:|:-:|---|
-| 網頁儀表板與網頁聊天 | ✅ | ✅ | |
-| Telegram / Discord | ✅ | ✅ | ¹ |
-| 由 AgEnD 安裝 Claude Code、Codex、kiro-cli、Grok、OpenCode、Antigravity、Muse | ✅ | ✅ | 第一次啟動時安裝到 home volume |
-| 透過 `/login` 或儀表板登入 CLI | ✅ | ✅ | ¹ |
-| 固定 CLI 版本 | ❌ | ✅ | `AGEND_CLI_VERSIONS`；僅 claude-code 與 kiro-cli |
-| `agend update` / `/update` | ✅ | ❌ | 改為更新映像檔 |
-| systemd / launchd 服務 | ✅ | ❌ | 由 Docker 的重新啟動政策監管 fleet |
-| 在 instance 的工作中使用 `sudo` | ✅ | ❌ | 容器以一般使用者執行 |
-| 預設可從其他機器連到儀表板 | ❌ | ❌ | 兩者都只在本機監聽；named tunnel，或有聊天平台時的公開連結，兩者都能用 ¹；或刻意把容器連接埠發佈到其他位址，並把名稱加入 `web.allowed_hosts` |
+### 新增後端或 instance
 
-¹ 與一般安裝是同一份程式碼。容器的端對端檢查涵蓋網頁聊天；bot token、廠商登入與 tunnel 不在其中（沒有使用真實帳號）。
+先安裝它的 CLI（步驟 4），再把 instance 加進 `fleet.yaml`。依步驟 5 再複製一次，執行 `docker compose run --rm agend agend validate`，然後 `docker compose restart`。
+
+要編輯正在使用的檔案，先複製出來：
+
+```sh
+docker compose exec -T agend cat .agend/fleet.yaml > fleet.yaml
+```
+
+### 記錄
+
+```sh
+docker compose logs -f agend                          # the fleet's own output
+docker compose exec agend tail -n 200 .agend/daemon.log   # the detailed log
+docker compose exec agend ls .agend/instances/        # each instance's logs are in its folder
+```
+
+### 觀看或操作 instance
+
+```sh
+docker compose exec -it agend tmux attach -t agend
+```
+
+用 `Ctrl-b d` 離開。instance 正在工作時，不要在它的視窗裡打字。
+
+### 備份與還原
+
+在停止時備份。每個指令都以 root 身分在映像檔裡執行，volume 掛載在服務掛載的位置，並寫到目前的資料夾：
+
+```sh
+docker compose stop
+docker compose run --rm --user root -v "$PWD":/b --entrypoint tar agend czf /b/agend-home.tgz -C /home/agend .
+docker compose run --rm --user root -v "$PWD":/b --entrypoint tar agend czf /b/agend-work.tgz -C /work .
+docker compose up -d
+```
+
+還原時（例如在新機器上，用同樣四個檔案），先建置映像檔（步驟 2），再執行：
+
+```sh
+docker compose run --rm --user root -v "$PWD":/b --entrypoint sh agend -c 'tar xzf /b/agend-home.tgz -C /home/agend && tar xzf /b/agend-work.tgz -C /work && chown -R 1000:1000 /home/agend /work'
+docker compose up -d
+```
+
+## Docker 裡能用什麼
+
+| | 一般安裝 | Docker（本手冊） |
+|---|:-:|:-:|
+| 網頁儀表板與網頁聊天 | ✅ | ✅ |
+| Telegram / Discord | ✅ | ✅ |
+| 七個後端都能安裝並執行 | ✅ | ✅ |
+| claude-code、codex、kiro-cli、grok 用 `/login` | ✅ | ✅ |
+| `agend update` / `/update` | ✅ | ❌ |
+| `agend restart` / `stop` / `install` | ✅ | ❌ |
+| systemd / launchd 服務 | ✅ | ❌ |
+| 在 instance 的工作中使用 `sudo` | ✅ | ❌ |
+| 預設可從其他機器連到儀表板 | ❌ | ❌ |
+
+Docker 為 ❌ 的項目，請改用上面的 compose 指令。容器以一般使用者執行，沒有 sudo。
 
 ## 疑難排解
 
-- **儀表板打不開。** 第一次啟動後，`docker compose ps` 應顯示容器為 healthy（安裝 CLI 可能要幾分鐘）。確認連接埠：`.env` 的 `AGEND_PORT` 必須和你開的網址一致。
-- **「must be owned and writable by uid 1000」。** bind mount 或由 root 建立的 volume。執行記錄印出的指令，或改用 `compose.yaml` 的具名 volume。
-- **某個 CLI 沒裝起來。** 記錄那一行會說明原因。安裝程式會從各廠商網站下載，所以第一次啟動需要網路。
+- **`agend-entrypoint: no ~/.agend/fleet.yaml yet`：** 跳過了步驟 5。寫入檔案後執行 `docker compose up -d`。
+- **儀表板打不開：**
+  - 檢查 `docker compose ps`（是否 healthy）與 `docker compose logs agend`。
+  - 網址的連接埠必須是 `AGEND_PORT`。
+  - 轉送程式必須在執行：`docker compose exec agend pgrep -a socat`。fleet 啟動期間記錄裡出現幾行 `socat … Connection refused` 是正常的：儀表板還沒開始監聽。
+- **啟動時出現「requires an owned real AGEND_HOME」或權限錯誤：** home volume 或 bind mount 不屬於 uid 1000。修正一次即可：
+  `docker compose run --rm --user root --entrypoint chown agend -R 1000:1000 /home/agend /work`。
+- **在 WSL 上，Windows 重新開機後 bind mount 的資料夾變成 root 所有。** 改用 `compose.yaml` 的具名 volume，不要用 bind mount。
+- **更新映像檔後 CLI 顯示「not installed」：** 只有 volume 保存 CLI。確認 compose 專案沒變：volume 以 `compose.yaml` 的 `name:` 命名（`agend_agend-home`）。或再做一次步驟 4。
+- **instance 一直要求登入：** 做步驟 7。device code 登入需要使用者在瀏覽器打開連結。
+- **WSL 上的 Docker Desktop 建置時出現 `docker-credential-desktop.exe: exec format error`：** 從 Windows 端建置，或把 `DOCKER_CONFIG` 指向一個 `config.json` 內容為 `{}` 的資料夾。

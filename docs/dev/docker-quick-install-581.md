@@ -76,3 +76,30 @@ A job after the npm publish in `publish.yml`, gated on an explicit input until t
             ghcr.io/songsid/agend:${{ needs.publish.outputs.version }}
             ghcr.io/songsid/agend:${{ needs.publish.outputs.channel }}   # latest or beta, as on npm
 ```
+
+## The runbook, verified on its own (2026-10-26)
+
+The user asked for one document an agent follows: [docker.md](../docker.md). It needs no container-mode code: it uses
+the published npm package, and a `socat` forwarder for the dashboard, which listens only on 127.0.0.1.
+
+The run extracted the four files and fleet.yaml from the runbook's `<!-- file: … -->` blocks verbatim, then ran the
+runbook's commands in order. The only deviations were this host's:
+- everything named `agend-dq-*`;
+- host port 19381;
+- claude pointed at a local mock Anthropic API (no real account).
+
+It finished with exit 0, and everything was removed afterwards.
+
+| Runbook step | Result |
+|---|---|
+| 2: build from npm `latest` (2.3.1) | ✅ |
+| 3: the image runs as uid 1000 with AgEnD and tmux | ✅ |
+| 4: claude-code (unpinned, 2.1.310) and kiro-cli pinned 2.34.0 (tarball) install into the volume | ✅ |
+| 5: fleet.yaml copied in as the container user; `agend validate` has no errors | ✅ |
+| 6: `up -d` → healthy; tmux windows; `agend web --code`; browser round trip | ✅ 0.75 s |
+| `docker compose restart` → round trip | ✅ |
+| CLI pin change (claude-code → 2.1.296) + restart → round trip | ✅ |
+| AgEnD update by rebuild (`AGEND_VERSION=2.3.2-beta.11`) → `agend --version` 2.3.2-beta.11, the CLI kept, round trip | ✅ |
+| Logs (`docker compose logs`, `.agend/daemon.log`, instance folders) | ✅ |
+| Back up both volumes, `down -v`, restore, `up -d` → round trip | ✅ |
+| The forwarder (`pgrep -a socat`) | ✅ |
