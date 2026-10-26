@@ -48,7 +48,8 @@ Survey for board card M-2020, 2026-10-26. Decision 67ddcabc applies: legacy keep
 | `/session-id` | ❌ | ✅ | ✅ | tui + V3 lists |
 | `/title` (terminal title) | ❌ | ✅ | ✅ | tui + V3 lists |
 | `/transcript` ($PAGER), `/copy` | ❌ | ✅ | ✅ | tui + V3 lists; takes over the pane |
-| `/fullscreen`, `/kvim` (Neovim), `/settings`, `/verbosity` | ❌ | ✅ | ✅ | tui list; V3 has all but `/verbosity` |
+| `/fullscreen`, `/kvim` (Neovim), `/settings` | ❌ | ✅ | ✅ | tui + V3 lists |
+| `/verbosity` | ❌ | ✅ | ❌ | tui list; not in the V3 palette (offline) |
 | `/memories` (repo-scoped memory) | ❌ | ❌ | ✅ | V3 list; tui.js `kasOnly`, flag `memory` |
 | `/sessions` dashboard | ❌ | ❌ | ✅ | V3 list; tui says "available on the V3" |
 | `/spec` (spec mode, spec tasks) | ❌ | ❌ | ✅ | V3 list; `--mode spec` |
@@ -57,7 +58,7 @@ Survey for board card M-2020, 2026-10-26. Decision 67ddcabc applies: legacy keep
 | `/powers`, `/config`, `/upgrade-agent` | ❌ | ❌ | ✅ | V3 list |
 | `/workflow*` | ❌ | ❌ | ✅ | tui.js `kasOnly`, flag `workflows`; not in the offline V3 palette |
 | Cloud sessions (`--cloud`, `--repo`) | ❌ | ❌ | ✅ | `chat --help`: "V3/KAS only" |
-| Steer a running turn | ❌ | ✅ | ✅ | composer "Type to steer"; AgEnD steers tui on 2.27.1/2.28.0/2.34.0 and V3 on 2.27.1 (`KIRO_STEER_VERIFIED`). Legacy has no steer command or prompt mode (`/help --legacy`); kiro's embedded doc index has a "mid-turn-steering" page, not verified live on legacy |
+| Steer a running turn, as AgEnD drives it | ❌ | ✅ | ✅ | composer "Type to steer"; AgEnD steers tui on 2.27.1/2.28.0/2.34.0 and V3 on 2.27.1 (`KIRO_STEER_VERIFIED`) and never on legacy. Whether legacy can steer natively is **unverified**: it has no steer command in `/help --legacy`, but kiro's embedded doc index has a "mid-turn-steering" page |
 | Queue the next message (Ctrl+S) | ❌ | ✅ | ✅ | "Ctrl+S to queue" on the busy composer |
 | `!cmd` shell escape | ✅ | ✅ | ✅ | tui/V3 run it in a PTY and forward keys; "can't be queued" |
 | Agent's question card (`question_request`) | ❌ | ❌ | ✅ | #2592; only the KAS client registers `userInput` |
