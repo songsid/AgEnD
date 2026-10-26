@@ -1347,18 +1347,46 @@ function Show-HostConfirm([string]$id, [bool]$opened) {
     Write-Host ("    " + (Get-HostConfirmCommand $id)) -ForegroundColor Cyan
     Write-Host ""
 }
+# 一行字照視窗寬度自己換行（中日韓文字佔兩格），續行縮排對齊；不讓主控台把尾巴折到第 0 欄（使用者實測：約 95 欄的視窗）。
+function Split-DisplayLines([string]$text, [int]$width) {
+    $lines = @(); $cur = ''; $curW = 0
+    foreach ($ch in $text.ToCharArray()) {
+        $cw = Get-DisplayWidth ([string]$ch)
+        if ($curW + $cw -gt $width -and $cur) { $lines += $cur; $cur = ''; $curW = 0 }
+        $cur += $ch; $curW += $cw
+    }
+    if ($cur -or -not $lines.Count) { $lines += $cur }
+    return ,$lines
+}
+function Write-Wrapped([string]$prefix, [string]$text, [string]$color = 'White') {
+    $w = Get-StatusWidth
+    $indent = ' ' * (Get-DisplayWidth $prefix)
+    $parts = Split-DisplayLines $text ([Math]::Max(10, $w - (Get-DisplayWidth $prefix)))
+    for ($i = 0; $i -lt $parts.Count; $i++) { Write-Host ($(if ($i -eq 0) { $prefix } else { $indent }) + $parts[$i]) -ForegroundColor $color }
+    Write-InstallLog ($prefix + $text)
+}
 function Show-SetupCode([string]$code, [bool]$copied, [bool]$opened, [string]$url) {
     $spaced = ($code.ToCharArray() | ForEach-Object { [string]$_ }) -join ' '
+    $label = "設定碼：  " + $spaced
+    $w = Get-StatusWidth
+    # 框線只用 ASCII（┌─┐ 在中文字型的主控台會佔兩格，框就散掉）；放得下才畫，放不下就單獨一行印出設定碼。
+    $inner = (Get-DisplayWidth $label) + 6
     Write-Host ""
-    Write-Host "  ┌──────────────────────────────────────┐" -ForegroundColor Green
-    Write-Host ("  │   設定碼：  " + $spaced + "    │") -ForegroundColor Green
-    Write-Host "  └──────────────────────────────────────┘" -ForegroundColor Green
+    if ($inner + 4 -le $w) {
+        $rule = "  +" + ('-' * $inner) + "+"
+        Write-Host $rule -ForegroundColor Green
+        Write-Host ("  |   " + $label + (' ' * ($inner - 3 - (Get-DisplayWidth $label))) + "|") -ForegroundColor Green
+        Write-Host $rule -ForegroundColor Green
+    } else {
+        Write-Host ("  " + $label) -ForegroundColor Green
+    }
+    if ($copied) { Write-Wrapped "  " "（設定碼已複製到剪貼簿：在網頁的輸入框按 Ctrl+V 或右鍵貼上，不必自己打）" 'Green' }
     if ($opened) { Write-Ok "設定頁已在瀏覽器打開。" } else { Write-Warn "瀏覽器沒有自動打開，請自己打開下面的網址。" }
     # #2650 第 10 項：網址一定印出來。瀏覽器開到別的視窗、別的帳號，或分頁被關掉時，都可以複製它重新打開。
     Write-Host ("  設定頁網址：" + $url) -ForegroundColor White                   # Write-Host：不進安裝紀錄檔（網址含這次設定的路徑）
-    if ($copied) { Write-Ok "設定碼已複製：在網頁的輸入框按 Ctrl+V（或右鍵 → 貼上）。" } else { Write-Info "在網頁的輸入框輸入上面的設定碼。" }
-    Write-Info "在網頁上選擇 Discord 或 Telegram 並貼上 Bot Token，或選「Web only (no bot)」只用網頁；最後按完成。這個視窗會等你，不用在這裡打字。"
-    Write-Info "設定頁最多開 15 分鐘（10 分鐘沒有操作也會關閉）。關掉了也沒關係：回到這個視窗按 Enter 就會重新打開，已經完成的後端登入不用重來。"
+    if (-not $copied) { Write-Wrapped "  " "在網頁的輸入框輸入上面的設定碼。" }
+    Write-Wrapped "  " "在網頁上選擇 Discord 或 Telegram 並貼上 Bot Token，或選「Web only (no bot)」只用網頁；最後按完成。這個視窗會等你，不用在這裡打字。"
+    Write-Wrapped "  " "設定頁最多開 15 分鐘（10 分鐘沒有操作也會關閉）。關掉了也沒關係：回到這個視窗按 Enter 就會重新打開，已經完成的後端登入不用重來。"
     Write-Host ""
 }
 # 設定頁關掉的原因，說給人聽（agend setup 印的英文原因 → 中文）。不認得的原因只說「關閉了」。
@@ -1406,9 +1434,10 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
             }
             $opened = Open-InBrowser $setupSeen.Url
             Show-SetupCode $setupSeen.Code $copied $opened $setupSeen.Url
+            $script:WatchQuiet = $true
         }
     }
-    $exit = & $Run $hook
+    try { $exit = & $Run $hook } finally { $script:WatchQuiet = $false }
     return @{ Exit = $exit; Done = $setupSeen.Done; Already = $setupSeen.Already; Shown = $setupSeen.Shown; Stopped = $setupSeen.Stopped }
 }
 
@@ -1932,7 +1961,10 @@ function Invoke-Watched {
                     }
                 }
             }
-            if ($live) {
+            if ($live -and $script:WatchQuiet) {
+                # 設定頁開著、設定碼在畫面上：不再每 250 毫秒重畫一行（畫面會閃、選不到設定碼，使用者實測），只清掉一次。
+                if ($st.Shown) { & $clearStatus }
+            } elseif ($live) {
                 $tick++
                 $w = Get-StatusWidth
                 $line = "  " + $spin[$tick % 4] + " " + (& $beatText)
