@@ -286,7 +286,8 @@ describe("on the host, rollback-safe (as #2665's night places)", () => {
     const ov = { pack: "sofapack", door: [5, 5], seatFor: SEATFOR };
     expect(s.replace([OFFICE(ov), { id: "plain", name: "Plain", skin: "pixel", members: [] }], 0).ok).toBe(true);
     const doc = JSON.parse(readFileSync(join(d, "web-offices.json"), "utf8"));
-    expect(doc.offices[0].overrides).toEqual({ pack: "sofapack", door: [5, 5] });
+    expect(doc.offices[0]).not.toHaveProperty("overrides");                                     // #2706: beside the offices too
+    expect(doc.overrides).toEqual({ room: { pack: "sofapack", door: [5, 5] } });
     expect(doc.seatFor).toEqual({ room: SEATFOR });
     expect(doc).not.toHaveProperty("furnitureNight");
     expect(olderReads(doc).map((o: any) => o.id)).toEqual(["room", "plain"]);
@@ -294,13 +295,13 @@ describe("on the host, rollback-safe (as #2665's night places)", () => {
     expect(new OfficeStore(d).list().offices[0].overrides).toEqual(ov);
     expect(s.list().offices[0].overrides).toEqual(ov);
   });
-  it("an older host's save (no key) reads back without them, the office kept; one that no longer checks is left out alone", () => {
+  it("an older host's save (no keys) reads back without its layout, the office kept; one that no longer checks is left out alone", () => {
     const { d, s } = store();
     expect(s.replace([OFFICE({ pack: "sofapack", seatFor: SEATFOR })], 0).ok).toBe(true);
     const doc = JSON.parse(readFileSync(join(d, "web-offices.json"), "utf8"));
-    expect(doc.offices[0].overrides).toEqual({ pack: "sofapack" });
+    expect(doc.overrides).toEqual({ room: { pack: "sofapack" } });
     writeFileSync(join(d, "web-offices.json"), JSON.stringify({ version: 1, rev: doc.rev + 1, offices: olderReads(doc) }));
-    expect(new OfficeStore(d).list().offices).toEqual([OFFICE({ pack: "sofapack" })]);
+    expect(new OfficeStore(d).list().offices).toEqual([{ id: "room", name: "Room", skin: "sofapack", members: [] }]);   // #2706
     // A broken reservation beside a good night place: the night place and the office stay.
     writeFileSync(join(d, "web-offices.json"), JSON.stringify({ ...doc, furnitureNight: { room: {} }, seatFor: { room: { lounge: { 0: { for: "x" } } } } }));
     expect(new OfficeStore(d).list().offices).toEqual([OFFICE({ pack: "sofapack", furnitureNight: {} })]);

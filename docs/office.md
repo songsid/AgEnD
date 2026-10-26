@@ -345,7 +345,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 
 | What | Where |
 |---|---|
-| Stored offices | `web-offices.json` in the AgEnD home (night places and seat reservations are kept beside the offices in the same file) |
+| Stored offices | `web-offices.json` in the AgEnD home (each office's layout, night places and seat reservations are kept beside the office list in the same file, by office id) |
 | Skin packs | `web-office-skins/<id>/` (`pack.json`, the pictures; a previous version in `pack.prev.json`) |
 | A deleted pack's kept previous version | `web-office-skins/.kept-<id>/` |
 | Agents' pack changes | `web-office-skins/.agent-changes.log` (the log); `.agent-changes.json` (the approval mode) |
@@ -356,8 +356,8 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 ## Upgrading and rolling back
 
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
-- **Rolling back within 2.3.2.** Night places and seat reservations are kept beside the offices, so a host rolled back to an earlier 2.3.2 beta still reads every office, only without those. A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id.
-- **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. **2.3.1 doesn't show an office that has a saved layout (Edit layout), and if someone saves the offices there, that office is gone for good.** Before rolling back to 2.3.1, don't save offices on it, or note your layouts down first.
+- **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (**not released yet**), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.
+- **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.2.6 has no Office. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. Every office's layout (Edit layout, night places, seat reservations) is kept beside the office list, where 2.3.1 doesn't look: there every office shows, without its layout, and a save on 2.3.1 drops the layouts for good. **Not released yet:** this needs the fix for #2706. On 2.3.2-beta.11 or earlier, the layout is inside the office's entry, so 2.3.1 doesn't show that office at all, and a save there deletes it. Either way, keep a copy of `web-offices.json` before rolling back if the layouts matter.
 
 ## Versions
 
@@ -377,3 +377,4 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Night places in Edit layout; share links load every pack picture | 2.3.2-beta.9 |
 | Phone layout; seat reservations; agents managing skin packs (`office_pack_access`) | 2.3.2-beta.11 |
 | Furniture `activeOn` and `hides` | **Not released yet** (after 2.3.2-beta.11) |
+| Offices with a layout survive a rollback to 2.3.1 (#2706) | **Not released yet** (after 2.3.2-beta.11) |

@@ -32,6 +32,16 @@ The same three phases also run with the published **2.2.6** as the old side, on 
 
 As with 2.1.12, its task prune knows no projects (below), and a normalized config rewrite loses fields it does not know.
 
+## The Office (2.3.1 and 2.2.6)
+
+`scripts/check-office-config-downgrade.mjs` (in `data-downgrade.yml`) runs against the published **2.3.1** and **2.2.6** packages. It checks the following:
+- **fleet.yaml:** `office_access` and `office_pack_access` are stored outside `dashboard`. Both versions' validators accept the file, an old load and rewrite keeps the keys, and the current permission checks see them again on return.
+- **Stored offices (`web-offices.json`):** 2.2.6 has no Office and never reads the file. 2.3.1 accepts only `id`, `name`, `skin`, `members` and `layout` in an office's entry, drops any entry with another key when it reads the file, and rewrites the whole file from what it read on its next save. Everything newer is therefore kept beside the office list, by office id: Edit layout's `overrides` (#2706), night places (`furnitureNight`, #2665) and seat reservations (`seatFor`, #2691). The check writes an office with every part of a layout, then reads and saves it with the 2.3.1 store. Every office survives; only its layout is left out, because 2.3.1's save doesn't keep the maps beside the office list.
+- **Within 2.3.2:** a beta before #2706 reads overrides only inside the entry, so after a rollback to it an office shows without its layout, and a save there drops the layout.
+- **Skin packs** (`web-office-skins/`) are new in 2.3.2. 2.3.1 ignores the folder and draws an office in a pack, or in Cozy, as Desks.
+
+Returning can't rebuild a layout that an older version's save dropped. Keep a copy of `web-offices.json` before rolling back if the layouts matter.
+
 ## Findings
 
 | Area | Observed result | Limit / evidence |

@@ -157,22 +157,24 @@ describe("on the host, rollback-safe", () => {
     const ov = { pack: "nightpack", furniture: { lamp: [710, 110] }, furnitureNight: { sleeper: [800, 500] } };
     expect(s.replace([OFFICE(ov), { id: "plain", name: "Plain", skin: "pixel", members: [] }], 0).ok).toBe(true);
     const doc = JSON.parse(readFileSync(join(d, "web-offices.json"), "utf8"));
-    expect(doc.offices[0].overrides).toEqual({ pack: "nightpack", furniture: { lamp: [710, 110] } });
+    expect(doc.offices[0]).not.toHaveProperty("overrides");                                     // #2706: beside the offices too
+    expect(doc.overrides).toEqual({ room: { pack: "nightpack", furniture: { lamp: [710, 110] } } });
     expect(doc.furnitureNight).toEqual({ room: { sleeper: [800, 500] } });
     expect(olderReads(doc).map((o: any) => o.id)).toEqual(["room", "plain"]);
     expect(new OfficeStore(d).list().offices[0].overrides).toEqual(ov);
     expect(s.list().offices[0].overrides).toEqual(ov);
   });
-  it("no night places: no key beside the offices; an older host's save (no key) reads back without them, the office kept", () => {
+  it("no night places: no key beside the offices; an older host's save (no keys) reads back without its layout, the office kept", () => {
     const { d, s } = store();
     expect(s.replace([OFFICE({ pack: "nightpack", door: [5, 5] })], 0).ok).toBe(true);
     expect(JSON.parse(readFileSync(join(d, "web-offices.json"), "utf8"))).not.toHaveProperty("furnitureNight");
     expect(s.replace([OFFICE({ pack: "nightpack", furnitureNight: { napper: [9, 9] } })], 1).ok).toBe(true);
     const doc = JSON.parse(readFileSync(join(d, "web-offices.json"), "utf8"));
-    expect(doc.offices[0].overrides).toEqual({ pack: "nightpack" });
+    expect(doc.overrides).toEqual({ room: { pack: "nightpack" } });
     const older = { version: 1, rev: doc.rev + 1, offices: olderReads(doc) };                  // what an older host writes back
     writeFileSync(join(d, "web-offices.json"), JSON.stringify(older));
-    expect(new OfficeStore(d).list().offices).toEqual([OFFICE({ pack: "nightpack" })]);
+    // #2706: the overrides were beside the office as well, so an older host's save leaves it without its layout.
+    expect(new OfficeStore(d).list().offices).toEqual([{ id: "room", name: "Room", skin: "nightpack", members: [] }]);
   });
   it("a night place that no longer checks is left out on read, the office kept; a write naming an item without a night is refused", () => {
     const { d, s } = store();

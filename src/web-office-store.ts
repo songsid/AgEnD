@@ -32,6 +32,17 @@
  *   { version: 1, rev, offices: [ … ], furnitureNight: { … }, seatFor: { "<office id>": { "<area>": { "<slot>": { for, lend } } } } }
  *
  * — each read back on its own: reservations that no longer check leave the night places (and the office) in.
+ *
+ * #2706: the rest of an office's overrides are kept beside it too, by office id, never in its entry — 2.3.1 refuses an
+ * entry with an `overrides` key, drops that office on read, and its next save deletes it. So 2.3.1 (and a host before
+ * #2513) keeps every office, only without its layout —
+ *
+ *   { version: 1, rev, offices: [ { id, name, skin, members } … ], overrides: { "<office id>": { pack, seats, … } }, furnitureNight: { … }, seatFor: { … } }
+ *
+ * — and a 2.3.2 beta before #2706 reads every office the same way (it looks for overrides in the entry only). Read
+ * here, an office's overrides come from beside it, else (a file a beta before #2706 wrote) from its entry, and the next
+ * write moves them beside it. Overrides that do not check leave the office in, without them (and so without its night
+ * places and reservations, which go on them).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -154,29 +165,34 @@ export function checkOffices(raw: unknown, packOf?: OverridePack): OfficeCheck {
 }
 
 type State = { rev: number; offices: Office[] } | "unreadable";
-/** The overrides kept beside the offices on disk, never inside them (#2665 night places, #2691 seat reservations). */
+/** The overrides parts kept beside the offices on disk, apart from the rest (#2665 night places, #2691 seat reservations). */
 const BESIDE = ["furnitureNight", "seatFor"] as const;
 type Beside = (typeof BESIDE)[number];
-type OnDisk = { offices: Office[] } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
-/** #2665: what goes on disk — the offices without those overrides, and each beside them by office id (none: no key). */
+type OnDisk = { offices: Office[]; overrides?: Record<string, LayoutOverrides> } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
+/**
+ * #2665/#2706: what goes on disk — the offices without their overrides; beside them, by office id, each office's
+ * overrides without those parts, and each part on its own (none: no key).
+ */
 function onDisk(offices: Office[]): OnDisk {
   const out: OnDisk = { offices: [] };
   out.offices = offices.map(o => {
-    if (!o.overrides || !BESIDE.some(k => o.overrides![k] !== undefined)) return o;
-    const rest: LayoutOverrides = { ...o.overrides };
+    if (!o.overrides) return o;
+    const { overrides, ...entry } = o, rest: LayoutOverrides = { ...overrides };
     for (const k of BESIDE) {
       if (rest[k] === undefined) continue;
       ((out[k] ??= {}) as Record<string, unknown>)[o.id] = rest[k];
       delete rest[k];
     }
-    return { ...o, overrides: rest };
+    (out.overrides ??= {})[o.id] = rest;
+    return entry;
   });
   return out;
 }
+const own = (side: unknown, id: string): boolean => isObj(side) && Object.prototype.hasOwnProperty.call(side, id);
 /** #2665: a stored office with its `key` overrides (kept beside it on disk, in `side`) back on its overrides. */
 function withBeside(raw: unknown, key: Beside, side: unknown): unknown {
-  if (!isObj(raw) || !isObj(side) || typeof raw.id !== "string" || !Object.prototype.hasOwnProperty.call(side, raw.id) || !isObj(raw.overrides)) return raw;
-  return { ...raw, overrides: { ...raw.overrides, [key]: side[raw.id] } };
+  if (!isObj(raw) || typeof raw.id !== "string" || !own(side, raw.id) || !isObj(raw.overrides)) return raw;
+  return { ...raw, overrides: { ...raw.overrides, [key]: (side as Record<string, unknown>)[raw.id] } };
 }
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -192,15 +208,21 @@ export class OfficeStore {
     try { body = readFileSync(this.path, "utf8"); }
     catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, offices: [] } : "unreadable"); }
     try {
-      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown } & { [K in Beside]?: unknown };
+      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; overrides?: unknown } & { [K in Beside]?: unknown };
       if (doc.version !== 1 || !Number.isSafeInteger(doc.rev) || !Array.isArray(doc.offices)) return (this.state = "unreadable");
       const offices: Office[] = [], ids = new Set<string>();
       const read = (raw: unknown): Office | null => {
         try { return office(raw, "office"); } catch (err) { if (!(err instanceof Refused)) throw err; return null; }
       };
       for (const raw of doc.offices.slice(0, OFFICE_LIMITS.offices)) {
+        // #2706: the office first, without overrides; then its overrides (beside it, else in its entry: a beta before
+        // #2706 wrote them there), left out when they do not check, the office kept.
+        if (!isObj(raw)) continue;
+        const { overrides: inEntry, ...entry } = raw;
+        let cur: unknown = entry, o = read(entry);
+        const ov = typeof raw.id === "string" && own(doc.overrides, raw.id) ? (doc.overrides as Record<string, unknown>)[raw.id] : inEntry;
+        if (o && ov !== undefined) { const next = { ...entry, overrides: ov }, r = read(next); if (r) { cur = next; o = r; } }
         // Each kept beside put back in turn: one that does not check is left out, the office and the rest kept.
-        let cur = raw, o = read(raw);
         for (const k of BESIDE) {
           const next = o ? withBeside(cur, k, doc[k]) : cur;
           if (next === cur) continue;
