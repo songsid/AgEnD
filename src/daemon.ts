@@ -8,7 +8,7 @@ import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorkt
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { COMPACT_WATCH_TIMEOUT_MS, launchIdentity } from "./compact-watch.js";
 import { KIRO_COMPACT_PANE_LINES, KiroCompactPaneFollower } from "./kiro-compact-pane.js";
-import { proveKiroSessionId, readKiroSessionIdAnnouncement } from "./kiro-session-proof.js";
+import { clearKiroSessionProof, proveKiroSessionId, readKiroSessionIdAnnouncement, recordKiroSessionProof } from "./kiro-session-proof.js";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -11640,12 +11640,18 @@ export class Daemon extends EventEmitter {
           const message = t("kiro.session_id_mismatch", verdict.pinned, verdict.observed);
           this.logger.warn({ pinned: verdict.pinned, observed: verdict.observed }, "kiro /session-id does not match the pinned conversation");
           this.emit("backend_launch_warning", { name: this.name, message });
+          clearKiroSessionProof(this.instanceDir);
         } else if (verdict.kind === "unread") {
           const message = t("kiro.session_id_unread");
           this.logger.warn("kiro /session-id did not print an id; not guessing from files");
           this.emit("backend_launch_warning", { name: this.name, message });
+          clearKiroSessionProof(this.instanceDir);
         } else if (verdict.kind === "match" || verdict.kind === "fresh") {
           this.logger.info({ id: verdict.id, kind: verdict.kind }, "kiro /session-id on the pane");
+          try { recordKiroSessionProof(this.instanceDir, { sessionId: verdict.id, kind: verdict.kind }); }
+          catch (err) { this.logger.warn({ err, id: verdict.id }, "kiro /session-id was proven on the pane but could not be recorded"); }
+        } else {
+          clearKiroSessionProof(this.instanceDir);
         }
       }
       if (!live() || !proof.titleCommand) return;

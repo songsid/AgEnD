@@ -6,11 +6,14 @@
  * readiness are stubs.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { t } from "../src/locale.js";
+import { readKiroSessionProof, recordKiroSessionProof } from "../src/kiro-session-proof.js";
+import { KiroBackend } from "../src/backend/kiro.js";
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 
 const dirs: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -59,7 +62,7 @@ function rig(opts: {
   daemon.on("backend_launch_warning", (w: { name: string; message: string; quiet?: boolean }) => {
     warnings.push(w.message); events.push(w);
   });
-  return { daemon, capturePane, pasteBuffer, sendSpecialKey, deleteBackward, warnings, events, logger };
+  return { daemon, capturePane, pasteBuffer, sendSpecialKey, deleteBackward, warnings, events, logger, instanceDir: join(dir, "worker") };
 }
 
 async function run(daemon: any): Promise<void> {
@@ -76,6 +79,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
     expect(r.pasteBuffer).toHaveBeenCalledWith("/session-id", expect.objectContaining({ timeoutMs: 1_000 }));
     expect(r.sendSpecialKey).toHaveBeenCalledWith("Enter", 1_000);
     expect(r.warnings).toEqual([]);
+    expect(readKiroSessionProof(r.instanceDir)).toMatchObject({ sessionId: "conv-1", kind: "match", source: "/session-id" });
   });
 
   it("fresh: no pin, kiro named an id — logged, not a file-store guess, title still sent", async () => {
@@ -86,6 +90,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
     await run(r.daemon);
     expect(r.pasteBuffer.mock.calls.map((c: string[]) => c[0])).toEqual(["/session-id", "/title worker"]);
     expect(r.warnings).toEqual([]);
+    expect(readKiroSessionProof(r.instanceDir)).toMatchObject({ sessionId: "fresh-id", kind: "fresh" });
   });
 
   it("mismatch: the pin and the pane disagree — warning is not quiet, title still sent, pin not rewritten", async () => {
@@ -97,6 +102,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
       expect.objectContaining({ pinned: "conv-1", observed: "other-b" }),
       "kiro /session-id does not match the pinned conversation",
     );
+    expect(readKiroSessionProof(r.instanceDir)).toBeNull();
   });
 
   it("unread: /session-id typed, no announcement — warning is not quiet, files not guessed, title still sent", async () => {
@@ -104,6 +110,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
     await run(r.daemon);
     expect(r.pasteBuffer.mock.calls.map((c: string[]) => c[0])).toEqual(["/session-id", "/title worker"]);
     expect(r.events).toEqual([{ name: "worker", message: t("kiro.session_id_unread") }]);
+    expect(readKiroSessionProof(r.instanceDir)).toBeNull();
   });
 
   it("Session ID: none with a pin is a mismatch", async () => {
@@ -160,4 +167,40 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
     expect(r.pasteBuffer).not.toHaveBeenCalled();
     expect(r.warnings).toEqual([]);
   });
+
+  it("mismatch clears a stale proof rather than leaving the old id proven", async () => {
+    const r = rig({ panes: [idle, announced("other-b")] });
+    recordKiroSessionProof(r.instanceDir, { sessionId: "conv-1", kind: "match", provenAt: 1 });
+    await run(r.daemon);
+    expect(readKiroSessionProof(r.instanceDir)).toBeNull();
+  });
+});
+
+describe("holds: trust, question, MCP — never typed even if readiness says ready", () => {
+  function kiroTui(): KiroBackend {
+    const instanceDir = mkdtempSync(join(tmpdir(), "kiro-proof-hold-"));
+    dirs.push(instanceDir);
+    const b = new KiroBackend(instanceDir, TEST_KIRO_COMPAT);
+    b.buildCommand({ workingDirectory: instanceDir, instanceDir, instanceName: "worker", mcpServers: {}, kiroUi: "tui" });
+    return b;
+  }
+  const fixture = (rel: string) => readFileSync(join(import.meta.dirname, "fixtures", rel), "utf8");
+
+  for (const [label, rel] of [
+    ["question card", "kiro-question-2592/2.34.0-120-40-question.pane.txt"],
+    ["MCP input card", "kiro-2.34.0-audit/mcp-120-10-form-2.34.0.pane.txt"],
+    ["trust-all-tools", "kiro-2.34.0-audit/t2-trust-120-2.34.0.pane.txt"],
+  ] as const) {
+    it(`${label} is not written`, async () => {
+      const kb = kiroTui();
+      const r = rig({ panes: [fixture(rel)], readiness: () => "ready" });
+      r.daemon.backend.getRuntimeDialogs = () => kb.getRuntimeDialogs();
+      r.daemon.backend.getReadyPattern = () => kb.getReadyPattern();
+      r.daemon.backend.getBusyPattern = () => kb.getBusyPattern();
+      await run(r.daemon);
+      expect(r.pasteBuffer).not.toHaveBeenCalled();
+      expect(r.warnings).toEqual([]);
+      expect(readKiroSessionProof(r.instanceDir)).toBeNull();
+    });
+  }
 });

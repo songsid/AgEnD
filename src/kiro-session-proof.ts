@@ -3,6 +3,8 @@
  * `/session-id` and `/title` into an idle composer. The session id is kiro's own
  * announcement (tui.js `showSessionId`), compared with the pin from #2617. A
  * mismatch is logged and surfaced; the pin is never replaced by a file-store guess.
+ * A match (or a fresh launch that named an id) is recorded as proven in the
+ * instance dir — that file is not an identity claim.
  * Legacy has no these commands: it keeps the tmux window name.
  *
  * Live 2.34.0 tui.js:
@@ -10,7 +12,12 @@
  *                   or `Session ID: none`
  *   updateTitle   → showAlert(`Title set: ${title}`)
  */
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { writeFileAtomic } from "./backend/kiro-engine-ledger.js";
+
 export const KIRO_SESSION_ID_COMMAND = "/session-id";
+export const KIRO_SESSION_PROOF_FILE = "kiro-session-proof.json";
 
 /** Same shape kiro-identity uses for conversation ids. */
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
@@ -58,4 +65,55 @@ export function kiroTitleCommand(instanceName: string): string | null {
   const name = instanceName.trim();
   if (!name || /[\n\r]/.test(name)) return null;
   return `/title ${name}`;
+}
+
+export interface KiroSessionProofRecord {
+  version: 1;
+  sessionId: string;
+  kind: "match" | "fresh";
+  source: "/session-id";
+  provenAt: number;
+}
+
+function proofPath(instanceDir: string): string {
+  return join(instanceDir, KIRO_SESSION_PROOF_FILE);
+}
+
+/** Persist kiro's own `/session-id` as proven. Does not write identity claims. */
+export function recordKiroSessionProof(
+  instanceDir: string,
+  rec: { sessionId: string; kind: "match" | "fresh"; provenAt?: number },
+): KiroSessionProofRecord {
+  if (!SAFE_ID.test(rec.sessionId) || rec.sessionId === "none") {
+    throw new Error("kiro session proof refuses this id");
+  }
+  const written: KiroSessionProofRecord = {
+    version: 1,
+    sessionId: rec.sessionId,
+    kind: rec.kind,
+    source: "/session-id",
+    provenAt: rec.provenAt ?? Date.now(),
+  };
+  mkdirSync(instanceDir, { recursive: true, mode: 0o700 });
+  writeFileAtomic(proofPath(instanceDir), JSON.stringify(written) + "\n");
+  return written;
+}
+
+/** This launch did not prove an id — drop a stale proof from an earlier launch. */
+export function clearKiroSessionProof(instanceDir: string): void {
+  rmSync(proofPath(instanceDir), { force: true });
+}
+
+export function readKiroSessionProof(instanceDir: string): KiroSessionProofRecord | null {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(proofPath(instanceDir), "utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    const rec = parsed as Partial<KiroSessionProofRecord>;
+    if (rec.version !== 1 || (rec.kind !== "match" && rec.kind !== "fresh")) return null;
+    if (rec.source !== "/session-id" || typeof rec.sessionId !== "string" || typeof rec.provenAt !== "number") return null;
+    if (!SAFE_ID.test(rec.sessionId) || rec.sessionId === "none") return null;
+    return { version: 1, sessionId: rec.sessionId, kind: rec.kind, source: "/session-id", provenAt: rec.provenAt };
+  } catch {
+    return null;
+  }
 }
