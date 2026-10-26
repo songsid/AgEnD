@@ -110,24 +110,36 @@ function readKiroComposer(pane: string): { mode: SteerComposerMode; text: string
   const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
   const at = findKiroComposerRow(rows);
   if (!at) return null;
-  const row = rows[at.index]!, continued = at.continued;
+  let row = rows[at.index]!;
   // A placeholder is one row: with continuation rows below it, this is typed text — unless its first row is another
-  // mode's placeholder, which is then not ours to read.
-  if (continued > 0) {
-    if (/^›[ \t]+(?:Kiro is working\b|ask a question or describe a task\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b)/.test(row)) return null;
-    return { mode: "text", text: row.replace(/^›[ \t]+/, "") };
+  // mode's placeholder. #2682: a narrow pane word-wraps a placeholder onto indented rows; joined, a COMPLETE known form
+  // reads as itself (an idle placeholder is then idle, not unreadable); anything else stays unreadable.
+  if (at.continued > 0) {
+    if (!/^›[ \t]+(?:Kiro is working\b|ask a question or describe a task\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b)/.test(row)) {
+      return { mode: "text", text: row.replace(/^›[ \t]+/, "") };
+    }
+    row = [row, ...rows.slice(at.index + 1, at.index + 1 + at.continued).map(r => r.trim())].join(" ");
+    const mode = kiroPlaceholderMode(row);
+    return mode ? { mode, text: row.replace(/^›[ \t]+/, "") } : null;
   }
-  const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
   const text = row.replace(/^›[ \t]+/, "");
-  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return { mode: "steer", text };
-  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return { mode: "queue", text };
-  const idle = String.raw`^›[ \t]+ask a question or describe a task`;
-  if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
-    || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
-    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return { mode: "idle", text };
+  const mode = kiroPlaceholderMode(row);
+  if (mode) return { mode, text };
   // Other placeholders (and anything the ASCII glyph set paints) are not typed text.
   if (/^›[ \t]+(?:Kiro is working\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b|ask a question or describe a task (?:\.|enter\b))/.test(row)) return null;
   return { mode: "text", text };
+}
+
+/** The empty composer's mode from its whole placeholder (`›  …`, one row or wrapped rows joined); null when it is none. */
+function kiroPlaceholderMode(row: string): "steer" | "queue" | "idle" | null {
+  const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
+  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return "steer";
+  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return "queue";
+  const idle = String.raw`^›[ \t]+ask a question or describe a task`;
+  if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
+    || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
+    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return "idle";
+  return null;
 }
 
 export function readKiroSteerComposer(pane: string): SteerComposerMode | null {
@@ -204,21 +216,19 @@ export function kiroLegacyPromptAtBottom(rows: string[]): string | null {
 
 /**
  * #2682: what the busy turn nearest above kiro's footer is: "shell" — a `!` command still running (its `  › !` row with
- * only its indented output and `• Running...` below), "agent" — kiro's own row of a turn (a bullet, the spinner) or
- * another user row first, "unknown" — no footer, or only indented rows up to the top of the pane.
+ * only its output and `• Running...` below), "agent" — positive evidence of the agent's turn first (another user row,
+ * one of kiro's bullets, its spinner), "unknown" — no footer, or nothing that says either up to the top of the pane.
+ * Everything else is passed over, never taken as evidence: the footer and its notes however they wrap, dividers, the
+ * tray and tips, indented output.
  */
 function kiroBusyTurn(rows: string[], composer: number): "shell" | "agent" | "unknown" {
-  const divider = (row: string | undefined) => row !== undefined && /^─{20,}$/.test(row);
   let d = composer - 1;
-  while (d >= 0 && composer - d <= 8 && !divider(rows[d])) d--;
-  if (d < 0 || !divider(rows[d])) return "unknown";
-  // the footer's own note between two dividers (` Trust All Tools active, … · /quit to exit`)
-  if (/^ \S/.test(rows[d - 1] ?? "") && divider(rows[d - 2])) d -= 2;
+  while (d >= 0 && composer - d <= 8 && !/^─{20,}$/.test(rows[d]!)) d--;
+  if (d < 0) return "unknown";
   for (let r = d - 1; r >= 0; r--) {
     const row = rows[r]!;
-    if (row === "" || row === "• Running...") continue;                       // also the tray (` ◇ …`) and tips: indented
     if (/^ {2}› !/.test(row)) return "shell";
-    if (/^ {2}› /.test(row) || /^\S/.test(row)) return "agent";
+    if (/^ {2}› /.test(row) || /^• (?!Running\.\.\.$)\S/.test(row) || /^\S[ \t]+(?:Thinking|Working)(?:\.{3}|…)/.test(row)) return "agent";
   }
   return "unknown";
 }

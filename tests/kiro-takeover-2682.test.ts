@@ -87,6 +87,9 @@ describe("a busy composer's input reaches the agent's turn only when that turn i
     const noUserRow = at("kiro-steer-1405", "2.27.1-tui-steer-pending").replace(/^ {2}› .*$/gm, "");
     expect(noUserRow).toContain("• Shell sleep 20");
     expect(kiroBusyTurnTakesInput(noUserRow)).toBe(true);
+    const spinnerOnly = at("kiro-2.34.0-busy-insert-2676", "tui-busy-steer").replace(/^ {2}› .*$/gm, "");
+    expect(spinnerOnly).toMatch(/^\S Thinking\.\.\. \(esc to cancel\)$/m);
+    expect(kiroBusyTurnTakesInput(spinnerOnly)).toBe(true);                                   // kiro's spinner row
     const bangWithTray = fx("tui-bang-running").replace(/^• Running\.\.\.$/m, "• Running...\n ◇ 1 message queued · ctrl+x expand");
     expect(kiroBusyTurnTakesInput(bangWithTray)).toBe(false);
     expect(kiroTakeoverActive(bangWithTray, "tui")).toBe(true);
@@ -120,6 +123,42 @@ function launched(root: string, kiroUi: "tui" | "legacy", skipPermissions = true
   b.buildCommand({ workingDirectory: join(root, "work"), instanceDir, instanceName: "worker", mcpServers: {}, kiroUi, skipPermissions } as any);
   return b;
 }
+
+describe("#2685 review: layouts that wrap", () => {
+  const wrapFooter = (pane: string) => pane.replace(/^ Trust All Tools active, confirmations are off · \/quit to exit$/m,
+    " Trust All Tools active, confirmations are off\n · /quit to exit");
+  it("a footer note wrapped onto two rows is passed over: a running `!` is still one, an agent turn still the agent's", () => {
+    const bang = wrapFooter(fx("tui-bang-running"));
+    expect(bang).toContain(" · /quit to exit\n");
+    expect(kiroBusyTurnTakesInput(bang)).toBe(false);
+    expect(kiroTakeoverActive(bang, "tui")).toBe(true);
+    const agent = wrapFooter(at("kiro-2.34.0-busy-insert-2676", "tui-busy-steer"));
+    expect(agent).toContain(" · /quit to exit\n");
+    expect(kiroBusyTurnTakesInput(agent)).toBe(true);
+    expect(kiroTakeoverActive(agent, "tui")).toBe(false);
+  });
+  it("dividers and footer rows are never evidence of the agent's turn: only output up to the top stays unknown", () => {
+    const onlyChrome = "─".repeat(40) + "\n  some output\n" + "─".repeat(40) + "\n Trust All Tools active\n" + "─".repeat(40)
+      + "\nMock Model\n~/work\n›  Kiro is working · 3s · Type to steer · Ctrl+S to queue\n";
+    expect(kiroBusyTurnTakesInput(onlyChrome)).toBe(false);
+    expect(kiroTakeoverActive(onlyChrome, "tui")).toBe(false);
+  });
+  it("a whole known placeholder wrapped onto two rows reads as itself; an unknown, goal or tray one stays unreadable", () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-2682-")); roots.push(root);
+    const tui = launched(root, "tui");
+    const idle = fx("tui-idle-after-transcript");
+    const row = "›  ask a question or describe a task ↵";
+    expect(idle).toContain(row);
+    const with_ = (r: string) => idle.replace(row, r);
+    expect(tui.idleComposerReady(with_("›  ask a question or describe a task ↵ · exit plan mode: shift+tab"))).toBe(true);   // the control
+    expect(tui.idleComposerReady(with_("›  ask a question or describe a task ↵ · exit plan mode:\n  shift+tab"))).toBe(true);
+    expect(tui.idleComposerReady(with_("›  ask a question or describe a\n  task ↵"))).toBe(true);
+    expect(tui.readSteerComposer(with_("›  Kiro is working · 3s · Type to steer ·\n  Ctrl+S to queue"))).toBe("steer");
+    for (const r of ["›  ask a question or describe a task ↵ · exit plan mode:\n  something else", "›  Goal Paused: tidy up\n  the docs",
+      "›  Editing queued message 1\n  of 2", "›  Kiro is working · 3s\n  · Type to steer"]) expect(tui.idleComposerReady(with_(r)), r).toBe(false);
+    expect(tui.readSteerComposer(with_("› a draft that\n  wraps"))).toBe("text");                                          // typed text
+  });
+});
 
 describe("the backend's hold and its idle input gate", () => {
   it("the takeover hold is the last runtime dialog: holds deliveries, blocks input, never keyed; read for this launch's engine", () => {
