@@ -1,0 +1,8 @@
+#!/bin/sh
+# systemd for the test's Linux: the AgEnD user service is "active" while the fake fleet runs.
+running() { ps -eo args | grep -q '[f]ake-fleet.mjs'; }
+for a in "$@"; do case "$a" in
+  is-active) running; exit $?;;
+  start|restart|enable) running || (node /opt/stubs/fake-fleet.mjs "${AGEND_HOME:-$HOME/.agend}" "$(sed -n 's/^health_port:[[:space:]]*\([0-9]*\).*/\1/p' "${AGEND_HOME:-$HOME/.agend}/fleet.yaml" | head -n 1)" </dev/null >/dev/null 2>&1 &); exit 0;;
+esac; done
+exit 0

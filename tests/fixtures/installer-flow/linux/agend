@@ -1,0 +1,19 @@
+#!/bin/bash
+# A fake `agend` for the installer flow test, behaving like the published 2.3.1 where the installer depends on it.
+home=${AGEND_HOME:-$HOME/.agend}; mkdir -p "$home"
+port() { sed -n 's/^health_port:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$home/fleet.yaml" 2>/dev/null | head -n 1; }
+case "$1" in
+  --version|-v) echo "${AGEND_FAKE_VERSION:-2.3.1}";;
+  setup)
+    shift
+    [ "$1" = --backend-signin-capabilities ] && { echo "error: unknown option '--backend-signin-capabilities'" >&2; exit 1; }
+    [ -e "$home/.setup-complete" ] && { echo "Setup has already been completed. Use \`agend setup --reset\` to run it again." >&2; exit 1; }
+    p=$(port); p=${p:-19280}
+    exec node /opt/stubs/fake-setup.mjs "$home" "$p";;
+  start|install|restart) exec node /opt/stubs/fake-fleet.mjs "$home" "$(port)" </dev/null >/dev/null 2>&1 &
+    sleep 0.5; echo "AgEnD started";;
+  ls|status) echo "general  running  web";;
+  validate) echo '{"connections":[{"type":"web"}]}';;
+  web) echo "Sign-in page: http://127.0.0.1:$(port)/signin"; echo "Code: ABCD-EFGH";;
+  *) echo "agend (test): $*";;
+esac

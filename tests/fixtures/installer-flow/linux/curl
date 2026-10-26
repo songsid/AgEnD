@@ -1,0 +1,15 @@
+#!/bin/bash
+# Canned downloads for the installer flow test: no network. Each "installer" drops a fake CLI where the real one goes.
+url=; for a in "$@"; do case "$a" in http*) url=$a;; esac; done
+cli() { printf '#!/bin/sh\ncase "$1" in --version|-v) echo "%s";; login) [ "$2" = status ] && exit 0; echo "signed in"; exit 0;; auth) [ "$2" = status ] && echo "{\\"loggedIn\\": true}"; exit 0;; whoami) echo "{\\"account\\":\\"t\\"}";; models) echo ok;; *) echo "%s $*";; esac\n' "$2" "$1"; }
+# A download the test made fail (a file /tmp/fail-<name> in the container): the installer must report it, not hang.
+for n in kiro claude antigravity codex; do case "$url" in *"$n"*) [ -e "/tmp/fail-$n" ] && { echo "curl: (22) The requested URL returned error: 503" >&2; exit 22; };; esac; done
+case "$url" in
+  https://cli.kiro.dev/install) echo "mkdir -p /root/.local/bin; cat > /root/.local/bin/kiro-cli <<'X'"; cli kiro-cli "kiro-cli 2.34.0"; echo "X"; echo "chmod +x /root/.local/bin/kiro-cli";;
+  https://claude.ai/install.sh) echo "mkdir -p /root/.local/bin; cat > /root/.local/bin/claude <<'X'"; cli claude "2.1.310 (Claude Code)"; echo "X"; echo "chmod +x /root/.local/bin/claude";;
+  https://antigravity.google/cli/install.sh) echo "mkdir -p /root/.local/bin; cat > /root/.local/bin/agy <<'X'"; cli agy "1.4.7"; echo "X"; echo "chmod +x /root/.local/bin/agy";;
+  https://chatgpt.com/codex/install.sh) echo "mkdir -p /root/.local/bin; cat > /root/.local/bin/codex <<'X'"; cli codex "codex-cli 0.164.0"; echo "X"; echo "chmod +x /root/.local/bin/codex"; echo 'echo "Codex CLI 0.164.0 installed successfully."';;
+  https://songsid.github.io/AgEnD/install.sh) echo "sh /opt/stubs/agend-install.sh";;
+  *raw.githubusercontent.com/nvm-sh/*) echo "mkdir -p /root/.nvm; echo 'nvm() { :; }' > /root/.nvm/nvm.sh";;
+  *) echo "curl (test): no canned answer for $url" >&2; exit 22;;
+esac

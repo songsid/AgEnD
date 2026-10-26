@@ -1,0 +1,4 @@
+#!/bin/sh
+# The test's "Windows" paths are the host's own POSIX paths, mounted at the same place in the container.
+[ "$1" = -u ] || [ "$1" = -a ] && shift
+printf '%s\n' "$1"

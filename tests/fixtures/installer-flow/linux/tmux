@@ -1,0 +1,3 @@
+#!/bin/sh
+[ "$1" = -V ] && { echo "tmux 3.4"; exit 0; }
+exit 0

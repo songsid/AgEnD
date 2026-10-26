@@ -1,0 +1,4 @@
+#!/bin/sh
+# npm, except `npm view` (no registry here): the version the test publishes.
+[ "$1" = view ] && { echo "\"${AGEND_FAKE_VERSION:-2.3.1}\""; exit 0; }
+exec /usr/local/bin/npm "$@"
