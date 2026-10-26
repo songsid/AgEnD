@@ -1,6 +1,3 @@
-                             ⢀⣴⣶⣶⣦⡀⠀⠀⠀⠀⢀⣴⣶⣦⣄⡀   ⢀⣴⣶⣶⣦⡀   ⢀⣴⣶⣶⣶⣶⣶⣶⣶⣶⣶⣦⣄⡀       ⢀⣠⣴⣶⣶⣶⣶⣶⣦⣄⡀
-                            ⢰⣿⠋⠁⠈⠙⣿⡆⠀⢀⣾⡿⠁  ⠈⢻⡆ ⢰⣿⠋⠁⠈⠙⣿⡆ ⢰⣿⠋⠁        ⠈⠙⠻⣦     ⣴⡿⠟⠋⠁   ⠈⠙⠻⢿⣦
-                            ⢸⣿⠀⠀⠀⠀⣿⣇⣴⡿⠋⠀⠀  ⢀⣼⠇ ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⢠⣤⣤⣤⣤⣄    ⣿⡆   ⣼⡟⠀⠀⠀ ⣀⣀⣀    ⢻⣧
                             ⢸⣿⠀⠀⠀⠀⣿⡿⠋⠀⠀  ⢀⣾⡿⠁  ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⢸⣿⠉⠉⠉⣿⡇   ⣿⡇  ⣼⡟⠀⠀ ⣰⡿⠟⠛⠻⢿⣆⠀⠀ ⢻⣧
                             ⢸⣿⠀⠀⠀⠀⠙⠁⠀⠀ ⢀⣼⡟⠁    ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⢸⣿⣶⣶⡶⠋⠀   ⣿⠇ ⢰⣿⠀⠀⠀⢰⣿⠀⠀⠀  ⣿⡆⠀⠀ ⣿⡆
                             ⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀ ⠹⣷⡀     ⢸⣿⠀⠀⠀⠀⣿⡇⠀⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀   ⣠⣼⠟  ⢸⣿⠀⠀ ⢸⣿⠀⠀⠀⠀ ⣿⡇⠀⠀ ⣿⡇
@@ -10,10 +7,12 @@
                             ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇  ⠸⣿⣄⡀⢀⣠⣿⠇ ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇    ⠻⣷⣦⣄⡀   ⢀⣠⣴⣾⠟
                              ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁    ⠈⠻⠿⠿⠟⠁   ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁     ⠀⠀⠈⠙⠻⠿⠿⠿⠿⠟⠋⠁
 
-                      An early release of Kiro CLI V3 is now available! Try it out: kiro-cli --v3
-                                             https://kiro.dev/docs/cli/v3/
+                                                 Welcome to Kiro CLI V3!
+                             Upgrade your V2 agent configurations to V3 with /upgrade-agent
+                                              https://kiro.dev/docs/cli/v3/
+                                Prefer the previous experience? Launch with kiro-cli --v2
 
-               Tip: Press Ctrl+G to open the full-screen monitor of subagent activity; Ctrl+G or q exits.
+                   Tip: Want a simpler, lighter-weight terminal with all the same features? Try /lite!
 
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -21,23 +20,19 @@
  ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.
    It brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.
    Note: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › • Session ID: quoted-1
+      Resume with: kiro-cli --resume-id quoted-1
 
- ctrl+o to expand
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  Trust All Tools active, confirmations are off · /quit to exit
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-kiro_default · Claude Opus 4.7 · xhigh · ◔ 3%
-/tmp/k234/work/t2-2.34.0-120
+Mock Model
+/tmp/k2683/work
 (master)
 
-Session ID: old-id
-Resume with: kiro-cli --resume-id old-id
-Session ID: conv-owned-1
-Resume with: kiro-cli --resume-id conv-owned-1
-
-›  ask a question or describe a task ↵
-                                                                                                     /copy to clipboard
+› draft from the person
 
 
 

@@ -1,5 +1,5 @@
 /**
- * M-2025: `/session-id` announcement and `/title` confirmation on kiro tui/V3.
+ * M-2025: `/session-id` and `/title` on kiro tui/V3, read off live 2.34.0 panes (#2683).
  * The pin is compared with kiro's own pane text. A mismatch is never repaired
  * by listing session files.
  */
@@ -7,15 +7,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { KiroBackend } from "../src/backend/kiro.js";
+import { KiroBackend, readKiroCommandComposer, readKiroSessionIdAlert } from "../src/backend/kiro.js";
 import {
   KIRO_SESSION_ID_COMMAND,
   clearKiroSessionProof,
   kiroTitleCommand,
   proveKiroSessionId,
-  readKiroSessionIdAnnouncement,
   readKiroSessionProof,
-  readKiroTitleSetAlert,
   recordKiroSessionProof,
 } from "../src/kiro-session-proof.js";
 import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
@@ -23,47 +21,105 @@ import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-const idle = "›  ask a question or describe a task ↵";
-const pane = (body: string) => `${body}\n\n${idle}\n`;
+const fx = (rel: string) => readFileSync(join(import.meta.dirname, "fixtures", rel), "utf8");
+const sid = (name: string) => fx(`kiro-session-id-2681/${name}.pane.txt`);
+/** Replace one row of a captured pane, verbatim. */
+const swap = (pane: string, from: string, to: string) => {
+  expect(pane.split("\n")).toContain(from);
+  return pane.split("\n").map(row => row === from ? to : row).join("\n");
+};
 
-describe("readKiroSessionIdAnnouncement", () => {
-  it("reads the id kiro announces", () => {
-    expect(readKiroSessionIdAnnouncement(pane(
-      "Session ID: conv-owned-1\nResume with: kiro-cli --resume-id conv-owned-1",
-    ))).toBe("conv-owned-1");
+describe("#2683 readKiroSessionIdAlert: only kiro's alert right above the footer", () => {
+  it("reads the live 2.34.0 alert on tui and V3", () => {
+    expect(readKiroSessionIdAlert(sid("tui-session-id-alert"))).toBe("mock-session-id");
+    expect(readKiroSessionIdAlert(sid("v3-session-id-alert"))).toBe("mock-session-id");
   });
 
-  it("reads none", () => {
-    expect(readKiroSessionIdAnnouncement(pane("Session ID: none"))).toBe("none");
+  it("no alert: ready, the menu, the alert gone, /title's answer, a quoted user turn", () => {
+    for (const name of ["tui-ready", "v3-ready", "tui-session-id-menu", "v3-session-id-menu", "tui-session-id-alert-gone",
+      "tui-title-disabled", "v3-quoted-history", "v3-draft"]) {
+      expect(readKiroSessionIdAlert(sid(name)), name).toBeNull();
+    }
   });
 
-  it("takes the last announcement when an older one is still in view", () => {
-    expect(readKiroSessionIdAnnouncement(pane(
-      "Session ID: old-id\nResume with: kiro-cli --resume-id old-id\nSession ID: new-id",
-    ))).toBe("new-id");
+  it("Session ID: none alone, right above the divider (derived from the live alert)", () => {
+    const rows = sid("tui-session-id-alert").split("\n");
+    rows.splice(rows.indexOf("• Session ID: mock-session-id"), 2, "• Session ID: none");
+    expect(readKiroSessionIdAlert(rows.join("\n"))).toBe("none");
+    rows.splice(rows.indexOf("• Session ID: none") + 1, 0, "");
+    expect(readKiroSessionIdAlert(rows.join("\n"))).toBeNull();
   });
 
-  it("returns null when the announcement is not on the pane", () => {
-    expect(readKiroSessionIdAnnouncement(pane("kiro_default · Claude Opus 4.7"))).toBeNull();
+  it("the two lines must name the same id, verbatim", () => {
+    const alert = sid("tui-session-id-alert");
+    expect(readKiroSessionIdAlert(swap(alert, "• Session ID: mock-session-id", "• Session ID: other-id"))).toBeNull();
+    expect(readKiroSessionIdAlert(swap(alert, "• Session ID: mock-session-id", "  › • Session ID: mock-session-id"))).toBeNull();
+    expect(readKiroSessionIdAlert(swap(alert, "  Resume with: kiro-cli --resume-id mock-session-id",
+      "  Resume with: kiro-cli --resume-id mock-session-id extra"))).toBeNull();
   });
 
-  it("hold panes (question, MCP, trust) are not a session-id announcement", () => {
-    const fx = (rel: string) => readFileSync(join(import.meta.dirname, "fixtures", rel), "utf8");
-    expect(readKiroSessionIdAnnouncement(fx("kiro-question-2592/2.34.0-120-40-question.pane.txt"))).toBeNull();
-    expect(readKiroSessionIdAnnouncement(fx("kiro-2.34.0-audit/mcp-120-10-form-2.34.0.pane.txt"))).toBeNull();
-    expect(readKiroSessionIdAnnouncement(fx("kiro-2.34.0-audit/t2-trust-120-2.34.0.pane.txt"))).toBeNull();
-    expect(readKiroSessionIdAnnouncement(fx("kiro-2.34.0-audit/t2-ready-120-2.34.0.pane.txt"))).toBeNull();
+  it("the same lines higher up the chat are not the alert", () => {
+    const rows = sid("tui-session-id-alert").split("\n");
+    const at = rows.indexOf("• Session ID: mock-session-id");
+    rows.splice(at + 2, 0, "• a later answer");
+    expect(readKiroSessionIdAlert(rows.join("\n"))).toBeNull();
   });
 
-  it("2.34.0 composed panes: last Session ID: line, none, and Title set:", () => {
-    const fx = (rel: string) => readFileSync(join(import.meta.dirname, "fixtures", "kiro-session-id-2681", rel), "utf8");
-    expect(readKiroSessionIdAnnouncement(fx("tui-session-id.pane.txt"))).toBe("conv-owned-1");
-    expect(readKiroSessionIdAnnouncement(fx("tui-session-id-none.pane.txt"))).toBe("none");
-    expect(readKiroSessionIdAnnouncement(fx("tui-session-id-last.pane.txt"))).toBe("conv-owned-1");
-    expect(readKiroTitleSetAlert(fx("tui-title-set.pane.txt"))).toBe("agend-dev-grok-t1");
-    expect(readKiroSessionIdAnnouncement(fx("tui-title-set.pane.txt"))).toBeNull();
+  it("no footer divider within 8 rows of the box: no alert is read", () => {
+    const pane = ["• Session ID: conv-1", "  Resume with: kiro-cli --resume-id conv-1", "x",
+      ...Array(8).fill("filler"), "›  ask a question or describe a task ↵", ""].join("\n");
+    expect(readKiroSessionIdAlert(pane)).toBeNull();
   });
 
+  it("without the trust banner, the footer's only divider is the anchor", () => {
+    const rows = sid("tui-session-id-alert").split("\n");
+    const banner = rows.findIndex(row => row.startsWith(" Trust All Tools active"));
+    rows.splice(banner, 2);
+    expect(readKiroSessionIdAlert(rows.join("\n"))).toBe("mock-session-id");
+  });
+
+  it("hold panes (question, MCP, trust) and a takeover are never an alert", () => {
+    expect(readKiroSessionIdAlert(fx("kiro-question-2592/2.34.0-120-40-question.pane.txt"))).toBeNull();
+    expect(readKiroSessionIdAlert(fx("kiro-2.34.0-audit/mcp-120-10-form-2.34.0.pane.txt"))).toBeNull();
+    expect(readKiroSessionIdAlert(fx("kiro-2.34.0-audit/t2-trust-120-2.34.0.pane.txt"))).toBeNull();
+    expect(readKiroSessionIdAlert(fx("kiro-2.34.0-takeover-2682/tui-editor-vi.pane.txt"))).toBeNull();
+  });
+});
+
+describe("#2683 readKiroCommandComposer: empty, a one-row draft, or unreadable", () => {
+  it("empty only on the idle placeholder", () => {
+    for (const name of ["tui-ready", "v3-ready", "tui-session-id-alert", "v3-session-id-alert", "tui-title-disabled", "v3-quoted-history"]) {
+      expect(readKiroCommandComposer(sid(name)), name).toBe("");
+    }
+  });
+
+  it("reads our command past kiro's command menu, and a command with an argument", () => {
+    expect(readKiroCommandComposer(sid("tui-session-id-menu"))).toBe("/session-id");
+    expect(readKiroCommandComposer(sid("v3-session-id-menu"))).toBe("/session-id");
+    expect(readKiroCommandComposer(sid("tui-title-typed"))).toBe("/title agend-x");
+  });
+
+  it("a person's draft is its own text, never empty", () => {
+    expect(readKiroCommandComposer(sid("v3-draft"))).toBe("draft from the person");
+    expect(readKiroCommandComposer(sid("v3-menu-partial"))).toBe("/se");
+  });
+
+  it("a busy composer, a wrapped draft, a takeover, a dialog: unreadable", () => {
+    expect(readKiroCommandComposer(fx("kiro-2.34.0-takeover-2682/tui-bang-running.pane.txt"))).toBeNull();
+    expect(readKiroCommandComposer(fx("kiro-2.34.0-takeover-2682/tui-editor-vi.pane.txt"))).toBeNull();
+    expect(readKiroCommandComposer(fx("kiro-2.34.0-audit/t2-trust-120-2.34.0.pane.txt"))).toBeNull();
+    const wrapped = swap(sid("v3-draft"), "› draft from the person", "› draft from the person\n  and its second row");
+    expect(readKiroCommandComposer(wrapped)).toBeNull();
+  });
+
+  it("a menu without the box row above it is not read", () => {
+    const rows = sid("v3-session-id-menu").split("\n");
+    rows[rows.indexOf("› /session-id")] = "  › /session-id";
+    expect(readKiroCommandComposer(rows.join("\n"))).toBeNull();
+  });
+});
+
+describe("tui.js contract", () => {
   it("2.34.0 tui.js: /session-id and /title are alerts, not chat turns", () => {
     const src = readFileSync(join(import.meta.dirname, "fixtures/kiro-session-id-2681/tui.js-showSessionId-updateTitle.txt"), "utf8");
     expect(src).toContain("announceSystem(r,!0,1e4)");
@@ -153,10 +209,6 @@ describe("title command", () => {
     expect(kiroTitleCommand("a\nb")).toBeNull();
   });
 
-  it("reads kiro's Title set alert", () => {
-    expect(readKiroTitleSetAlert(pane("Title set: agend-dev-grok-t1"))).toBe("agend-dev-grok-t1");
-    expect(readKiroTitleSetAlert(pane(idle))).toBeNull();
-  });
 });
 
 describe("KiroBackend.sessionProof", () => {
@@ -180,6 +232,8 @@ describe("KiroBackend.sessionProof", () => {
         pinned: null,
         sessionIdCommand: "/session-id",
         titleCommand: "/title agend-dev-grok-t1",
+        readComposer: readKiroCommandComposer,
+        readSessionIdAlert: readKiroSessionIdAlert,
       });
       (b as unknown as { activePlan: { mode: string; id: string } }).activePlan = { mode: "resume", id: "sess_abc" };
       expect(b.sessionProof()?.pinned).toBe("sess_abc");

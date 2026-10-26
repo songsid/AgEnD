@@ -155,6 +155,61 @@ export function readKiroComposerText(pane: string): string | null {
 }
 
 /**
+ * #2683: the composer as a one-line housekeeping command (`/session-id`, `/title …`) sees it: `""` when it is
+ * positively empty (the idle placeholder, nothing else), the typed text of a single-row draft, or null for anything
+ * else (busy, another mode, wrapped text, no composer). A typed slash command opens kiro's command menu below the box
+ * (live 2.34.0, tui and V3; tests/fixtures/kiro-session-id-2681):
+ *
+ *   `› /session-id`
+ *   `/session-id    Print the current session ID`
+ *   `──────…`
+ *   ` esc to cancel · ↵ to select`
+ *
+ * and its `›` row is read past that menu. Enter there runs the highlighted entry, the command itself.
+ */
+export function readKiroCommandComposer(pane: string): string | null {
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+  let i = rows.length - 1;
+  while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]!))) i--;
+  if (i >= 2 && /^ esc to cancel · .*↵ to select$/.test(rows[i]!) && /^─{20,}$/.test(rows[i - 1]!)) {
+    let r = i - 2, entries = 0;
+    while (r >= 0 && entries < 12 && /^\/[\w-]+ {2,}\S/.test(rows[r]!)) { r--; entries++; }
+    const row = rows[r];
+    return entries > 0 && row !== undefined && /^›[ \t]+\/\S/.test(row) ? row.replace(/^›[ \t]+/, "") : null;
+  }
+  const at = findKiroComposerRow(rows);
+  if (!at || at.continued > 0) return null;
+  const c = readKiroComposer(pane);
+  return c?.mode === "idle" ? "" : c?.mode === "text" ? c.text : null;
+}
+
+/**
+ * #2683: kiro's own answer to `/session-id`, where only that answer is painted: the alert at the bottom of the chat,
+ * on the rows right above the footer (the divider within 8 rows above the composer, and the trust banner's divider
+ * above that one when it is shown). Live 2.34.0, tui and V3 (tests/fixtures/kiro-session-id-2681):
+ *
+ *   `• Session ID: <id>`
+ *   `  Resume with: kiro-cli --resume-id <id>`      (the same id)
+ *
+ * or `• Session ID: none` alone. It is a transient alert (10 s), not a turn. The same lines anywhere else (a quoted
+ * user row is `  › …`, an answer scrolls up) are not read; an agent answer that ends with them would sit in the same
+ * place, which is why the daemon also requires that the alert was not there before it typed the command. Null when no
+ * such alert is shown.
+ */
+export function readKiroSessionIdAlert(pane: string): string | null {
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+  const at = findKiroComposerRow(rows);
+  if (!at) return null;
+  let d = at.index - 1;
+  while (d >= 0 && at.index - d <= 8 && !/^─{20,}$/.test(rows[d]!)) d--;
+  if (d < 0 || !/^─{20,}$/.test(rows[d]!)) return null;
+  if (d >= 2 && /^ \S/.test(rows[d - 1]!) && /^─{20,}$/.test(rows[d - 2]!)) d -= 2;   // ` Trust All Tools active …`
+  if (rows[d - 1] === "• Session ID: none") return "none";
+  const id = /^ {2}Resume with: kiro-cli --resume-id ([A-Za-z0-9][A-Za-z0-9_.-]{0,199})$/.exec(rows[d - 1] ?? "")?.[1];
+  return id !== undefined && id !== "none" && rows[d - 2] === `• Session ID: ${id}` ? id : null;
+}
+
+/**
  * #2676: a collapsed paste on the composer's row. The TUI shows a paste of more than 10 lines or 500 characters as one
  * chip (2.34.0 tui.js: `n>1 ? "${n} lines" : "${r} chars"`, then `▸`, then the `Press Tab to expand` hint):
  *
@@ -2299,6 +2354,8 @@ export class KiroBackend implements CliBackend {
       pinned,
       sessionIdCommand: KIRO_SESSION_ID_COMMAND,
       titleCommand: this.activeInstance ? kiroTitleCommand(this.activeInstance) : null,
+      readComposer: readKiroCommandComposer,
+      readSessionIdAlert: readKiroSessionIdAlert,
     };
   }
 

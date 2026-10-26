@@ -1,30 +1,24 @@
-# kiro-cli 2.34.0 `/session-id` and `/title` (#2684, survey #2681 candidates 5 and 10)
+# kiro-cli 2.34.0 `/session-id` and `/title` (#2684, #2683; survey #2681 candidates 5 and 10)
 
-These fixtures are the **parse contract** for M-2025. The announcement strings are verbatim from live 2.34.0 `tui.js` (`sha256 fb15bdf3bd1d495bb6a51e39530f7b82985c3b49f54603dc29b69eaecf9019b7`, same hash as `../kiro-2.34.0-audit/`). The surrounding chrome is the already-audited TUI composer `../kiro-2.34.0-audit/t2-ready-120-2.34.0.pane.txt` (120 columns). The announcement is placed immediately above the idle composer.
-
-## Why not a live tmux capture
-
-Three isolated attempts (scratch HOME, `unshare -rn`, private tmux socket `k2681`, host `kiro-cli` 2.34.0, dummy social token, no account, no live fleet instance) did not reach the composer:
-
-1. First-run HOME stopped at Builder ID sign-in. `/session-id` would have been typed into the login menu.
-2. Esc after the login screen did not leave a `data.sqlite3` the seeder could find.
-3. A seeded `data.sqlite3` plus `KIRO_MOCK_ACP=true` plus the audit-rig `patch-tui.py` (scratch copy of `tui.js` only) died immediately: `error: missing field 'oauth_flow' at line 1 column 177`. 2.34.0's BuilderIdToken now requires `oauth_flow`; the dummy `{access_token, provider, profile_arn}` shape that older audits used is no longer enough. The 2.34.0 audit workspace `/tmp/k234` is gone, and `seed.py` is not in the committed rig.
-
-Host `tui.js` was not patched. No account was used.
-
-## tui.js contract (not a conversation turn)
-
-`tui.js-showSessionId-updateTitle.txt` is the `showSessionId` and `updateTitle` methods, copied verbatim:
-
-- `/session-id` → `announceSystem(r, true, 10000)` with `Session ID: ${id}\nResume with: kiro-cli --resume-id ${id}` or `Session ID: none`. On TUI, `announceSystem` is `showTransientAlert` (`transientAlert` state, 10s). It is not a user or assistant message, so it does not land in the session jsonl (`Prompt` / `AssistantMessage`) and cannot arm the reply guard.
-- `/title <name>` → `showAlert(\`Title set: ${title}\`)` on success, or the disabled / empty errors. OSC title is not in `tmux capture-pane`.
-
-AgEnD therefore types these only on an idle, verified composer (same gates as a kiro delivery). The pane parser reads the last `Session ID:` line; `"none"` is special.
+Offline captures of the real 2.34.0 TUI (`--tui --agent-engine=v2 --trust-all-tools`) and V3 (`--v3 --trust-all-tools`) at 120 columns, on the TUI's own mock agent, made 2026-10-26.
+- Rig: `../kiro-2.34.0-audit/rig/`. It sets `KIRO_MOCK_ACP=true` and `KIRO_TEST_MODE=1`, uses an isolated HOME under `unshare -rn` and a private tmux socket. No account was used, and the host's kiro is untouched.
+- The mock agent's session id is `mock-session-id`.
+- The scratch path is shortened to `/tmp/k2683/work`.
+- `/session-id` was also pasted on V3 the way the daemon sends it (`tmux paste-buffer -p`): the frames were the same.
 
 | File | What it shows |
 |---|---|
-| `tui.js-showSessionId-updateTitle.txt` | Verbatim 2.34.0 methods. |
-| `tui-session-id.pane.txt` | Ready composer plus `Session ID: conv-owned-1`. |
-| `tui-session-id-none.pane.txt` | Ready composer plus `Session ID: none`. |
-| `tui-session-id-last.pane.txt` | Two announcements; the parser must take the last id. |
-| `tui-title-set.pane.txt` | Ready composer plus `Title set: agend-dev-grok-t1`. |
+| `tui-ready`, `v3-ready` | The idle composer after the trust-all prompt. |
+| `tui-session-id-menu`, `v3-session-id-menu` | `/session-id` typed into the box. kiro's command menu opens below it: `/session-id    Print the current session ID`, then a divider, then ` esc to cancel · ↵ to select`. Enter runs the command. |
+| `tui-session-id-alert`, `v3-session-id-alert` | 0.4 s after Enter. The box is empty again, and the alert sits right above the footer's top divider: `• Session ID: mock-session-id` and `  Resume with: kiro-cli --resume-id mock-session-id`. |
+| `tui-session-id-alert-gone` | 12 s later. The alert is a transient (10 s) and is gone. |
+| `tui-title-typed`, `tui-title-disabled` | `/title agend-x` (no menu for a command with an argument). Its answer is `• Terminal title is disabled — enable via /settings display`, kiro's default. |
+| `v3-quoted-history` | A user turn that quotes the alert's two lines. A user row is `  › …`, indented, above blank rows, so it is not the alert. |
+| `v3-draft` | A person's one-row draft in the box. |
+| `v3-menu-partial` | A person's `/se`: the menu lists `/session-id`, `/sessions` and `/settings`, and its hint adds `↑↓ to navigate`. |
+
+`tui.js-showSessionId-updateTitle.txt` holds the `showSessionId` and `updateTitle` methods, copied verbatim from live 2.34.0 `tui.js` (`sha256 fb15bdf3…019b7`, the same hash as `../kiro-2.34.0-audit/`):
+- `/session-id` calls `announceSystem(r, true, 10000)`. On the TUI that is a transient alert. It is not a user or assistant message, so it never lands in the session jsonl.
+- `Session ID: none` is printed when the TUI has no session. The mock always has one, so this repo's tests derive that frame from the alert frame.
+
+Two other frames in the tests are derived from these captures rather than captured: the `none` alert, and an agent answer that ends with the alert's lines.

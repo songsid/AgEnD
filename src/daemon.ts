@@ -9,7 +9,7 @@ import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorkt
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { COMPACT_WATCH_TIMEOUT_MS, launchIdentity } from "./compact-watch.js";
 import { KIRO_COMPACT_PANE_LINES, KiroCompactPaneFollower } from "./kiro-compact-pane.js";
-import { clearKiroSessionProof, proveKiroSessionId, readKiroSessionIdAnnouncement, recordKiroSessionProof } from "./kiro-session-proof.js";
+import { clearKiroSessionProof, proveKiroSessionId, recordKiroSessionProof } from "./kiro-session-proof.js";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -11634,10 +11634,20 @@ export class Daemon extends EventEmitter {
 
   /**
    * M-2025: after a tui/V3 launch is ready, type `/session-id` and `/title` once
-   * each, only into an idle verified composer, under the pane-write lock, with
-   * the same fences as {@link ensureBackendAgent}. Does not touch the delivery
-   * epoch. A mismatch with the #2617 pin is surfaced; the pin is never replaced
-   * by a file-store guess. Legacy backends return null from sessionProof().
+   * each, under the pane-write lock, with the same fences as {@link ensureBackendAgent}.
+   * Does not touch the delivery epoch. A mismatch with the #2617 pin is surfaced;
+   * the pin is never replaced by a file-store guess. Legacy backends return null
+   * from sessionProof().
+   *
+   * #2683: these are AgEnD's own housekeeping, so unlike a delivery (which may join
+   * a person's draft) each one goes only into a composer the final capture shows
+   * positively EMPTY; Enter only once a capture shows exactly the command in the box;
+   * and it counts as run only once the box is empty again — a command left in the
+   * box stops here (it is taken back when the box shows exactly it), and nothing
+   * else is typed after it. The id is taken only from kiro's `/session-id` alert
+   * (readSessionIdAlert) on a capture after the command ran, and never when that
+   * alert was already on the final capture before it was typed: an announcement
+   * that was there before is not an answer to this request.
    */
   private async ensureKiroSessionProof(): Promise<void> {
     let proof: ReturnType<NonNullable<CliBackend["sessionProof"]>> | null = null;
@@ -11652,6 +11662,8 @@ export class Daemon extends EventEmitter {
     const deadline = performance.now() + Daemon.AGENT_SWITCH_BUDGET_MS;
     const live = () => { this.startupAdmission?.(); return fenced() && performance.now() < deadline; };
     if (!live()) return;
+    // A proof belongs to the launch that read it: an earlier launch's never stands for this one.
+    try { clearKiroSessionProof(this.instanceDir); } catch { /* recorded again below only on a fresh match */ }
     const TIMEOUT = Symbol("deadline");
     const within = <T>(work: Promise<T>): Promise<T | typeof TIMEOUT> => {
       const left = deadline - performance.now();
@@ -11660,64 +11672,98 @@ export class Daemon extends EventEmitter {
       return Promise.race([work, new Promise<typeof TIMEOUT>(r => { timer = setTimeout(() => r(TIMEOUT), left); })])
         .finally(() => clearTimeout(timer));
     };
-    const capture = () => within(tmux.capturePane().catch(() => null));
-    const pasteOnce = async (command: string): Promise<boolean> => {
-      const wrote = await within(this.paneWriteLock.run(async () => {
-        if (!live()) return false;
+    const capture = async (): Promise<string | null> => {
+      const pane = await within(tmux.capturePane().catch(() => null));
+      return pane === TIMEOUT ? null : pane;
+    };
+    const pause = (ms: number) => within(new Promise(r => setTimeout(r, ms)));
+    const op = Daemon.AGENT_SWITCH_TMUX_OP_MS;
+    const box = async (): Promise<string | null> => {
+      const pane = await capture();
+      return pane === null ? null : proof.readComposer(pane);
+    };
+    /**
+     * Our command, and only it, is in the box: take it back — also past the deadline, on its own bounded capture.
+     * Anything else there is left as it is.
+     */
+    const takeBack = async (command: string): Promise<void> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const pane = await Promise.race([tmux.capturePane().catch(() => null), new Promise<null>(r => { timer = setTimeout(() => r(null), op); })])
+        .finally(() => clearTimeout(timer));
+      if (pane !== null && fenced() && proof.readComposer(pane) === command) await tmux.deleteBackward(command.length, op);
+    };
+    /**
+     * "ran": typed, Enter, and the box is empty again; `after` then read the pane with the capture from before the
+     * paste, still under the lock. "stuck": typed but not run — nothing more may be typed. null: nothing typed.
+     */
+    const typeOnce = async <T>(command: string, after: (before: string) => Promise<T>): Promise<{ ran: true; value: T } | "stuck" | null> => {
+      const wrote = await within(this.paneWriteLock.run(async (): Promise<{ ran: true; value: T } | "stuck" | null> => {
+        if (!live()) return null;
         const readiness = await within(this.paneReadinessForDelivery(windowId));
-        if (readiness !== "ready" || !live()) return false;
-        const final = await capture();
-        if (final === TIMEOUT || final === null || !live()) return false;
-        if (this.inputTransientInPane(final) || !this.paneAuthoritativelyIdle(final)) return false;
-        if (deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return false;
-        const op = Daemon.AGENT_SWITCH_TMUX_OP_MS;
-        const pasted = await tmux.pasteBuffer(command, { guard: live, timeoutMs: op });
-        if (!pasted) return false;
-        await new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_PASTE_SETTLE_MS));
-        if (live()) return tmux.sendSpecialKey("Enter", op);
-        if (fenced()) await tmux.deleteBackward(command.length, op);
-        return false;
+        if (readiness !== "ready" || !live()) return null;
+        const before = await capture();
+        if (before === null || !live()) return null;
+        if (this.inputTransientInPane(before) || !this.paneAuthoritativelyIdle(before)) return null;
+        if (proof.readComposer(before) !== "") return null;               // a draft, or a box that cannot be read
+        if (deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return null;
+        if (!await tmux.pasteBuffer(command, { guard: live, timeoutMs: op })) return "stuck";
+        let shown: string | null = null;
+        for (let i = 0; i < 4 && live() && shown !== command; i++) {
+          await pause(i === 0 ? Daemon.AGENT_SWITCH_PASTE_SETTLE_MS : Daemon.AGENT_SWITCH_POLL_MS);
+          shown = await box();
+        }
+        if (shown !== command || !live()) { await takeBack(command); return "stuck"; }
+        if (!await tmux.sendSpecialKey("Enter", op)) { await takeBack(command); return "stuck"; }
+        let left: string | null = command;
+        for (let i = 0; i < 6 && left !== ""; i++) {
+          await pause(Daemon.AGENT_SWITCH_POLL_MS);
+          if (!fenced()) return "stuck";
+          left = await box();
+        }
+        if (left !== "") { await takeBack(command); return "stuck"; }
+        return { ran: true, value: await after(before) };
       }));
-      return wrote === true;
+      return wrote === TIMEOUT ? "stuck" : wrote;
     };
     try {
-      const sidWrote = await pasteOnce(proof.sessionIdCommand);
-      if (!live()) return;
-      // Unread/mismatch are about kiro's announcement after we typed /session-id.
-      // A composer that never went idle is not unread — we never asked.
-      if (sidWrote) {
-        let observed = null as ReturnType<typeof readKiroSessionIdAnnouncement>;
-        const until = performance.now() + 8_000;
-        while (live() && performance.now() < until && observed === null) {
+      const sid = await typeOnce(proof.sessionIdCommand, async (before) => {
+        if (proof.readSessionIdAlert(before) !== null) return null;    // already there: ours cannot be told apart
+        for (let i = 0; i < 6 && live(); i++) {
           const pane = await capture();
-          if (pane === TIMEOUT || pane === null || !live()) break;
-          observed = readKiroSessionIdAnnouncement(pane);
-          if (observed !== null) break;
-          await within(new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_POLL_MS)));
+          if (pane === null) break;
+          const id = proof.readSessionIdAlert(pane);
+          if (id !== null) return id;
+          await pause(Daemon.AGENT_SWITCH_POLL_MS);
         }
-        if (!live()) return;
-        const verdict = proveKiroSessionId(proof.pinned, observed);
+        return null;
+      });
+      if (!live()) return;
+      if (sid === "stuck") {
+        this.logger.warn("kiro /session-id did not run from an empty composer; /title is not typed after it");
+        return;
+      }
+      // Unread/mismatch are about kiro's answer after we ran /session-id.
+      // A composer that never read empty is not unread — we never asked.
+      if (sid) {
+        const verdict = proveKiroSessionId(proof.pinned, sid.value);
         if (verdict.kind === "mismatch") {
           const message = t("kiro.session_id_mismatch", verdict.pinned, verdict.observed);
           this.logger.warn({ pinned: verdict.pinned, observed: verdict.observed }, "kiro /session-id does not match the pinned conversation");
           this.emit("backend_launch_warning", { name: this.name, message });
-          clearKiroSessionProof(this.instanceDir);
         } else if (verdict.kind === "unread") {
           const message = t("kiro.session_id_unread");
-          this.logger.warn("kiro /session-id did not print an id; not guessing from files");
+          this.logger.warn("kiro /session-id did not answer on the pane; not guessing from files");
           this.emit("backend_launch_warning", { name: this.name, message });
-          clearKiroSessionProof(this.instanceDir);
         } else if (verdict.kind === "match" || verdict.kind === "fresh") {
           this.logger.info({ id: verdict.id, kind: verdict.kind }, "kiro /session-id on the pane");
           try { recordKiroSessionProof(this.instanceDir, { sessionId: verdict.id, kind: verdict.kind }); }
           catch (err) { this.logger.warn({ err, id: verdict.id }, "kiro /session-id was proven on the pane but could not be recorded"); }
-        } else {
-          clearKiroSessionProof(this.instanceDir);
         }
       }
       if (!live() || !proof.titleCommand) return;
-      const titled = await pasteOnce(proof.titleCommand);
-      if (titled) this.logger.info({ title: proof.titleCommand }, "kiro /title sent for this instance");
+      const titled = await typeOnce(proof.titleCommand, async () => true);
+      if (titled && titled !== "stuck") this.logger.info({ title: proof.titleCommand }, "kiro /title sent for this instance");
+      else if (titled === "stuck") this.logger.warn({ title: proof.titleCommand }, "kiro /title did not run from an empty composer");
     } catch (err) {
       this.startupAdmission?.();
       this.logger.warn({ err }, "kiro /session-id or /title after launch failed — the pin was not guessed from files");

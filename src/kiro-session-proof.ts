@@ -10,7 +10,10 @@
  * Live 2.34.0 tui.js:
  *   showSessionId → announceSystem(`Session ID: ${id}\nResume with: kiro-cli --resume-id ${id}`)
  *                   or `Session ID: none`
- *   updateTitle   → showAlert(`Title set: ${title}`)
+ *   updateTitle   → showAlert(`Title set: ${title}`), or `Terminal title is disabled …` (the default)
+ * The pane readers live with kiro's other layout readers (backend/kiro.ts: readKiroCommandComposer,
+ * readKiroSessionIdAlert); the daemon types each command only into a positively empty composer and
+ * takes the id only from an alert that was not on the pane before it typed (#2683).
  */
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -23,8 +26,6 @@ export const KIRO_SESSION_PROOF_FILE = "kiro-session-proof.json";
 /** Same shape kiro-identity uses for conversation ids. */
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
 
-const TITLE_SET = /Title set:\s*(.+?)\s*$/m;
-
 export type KiroObservedSessionId = string | "none";
 
 export type KiroSessionIdProof =
@@ -33,21 +34,6 @@ export type KiroSessionIdProof =
   | { kind: "none" }
   | { kind: "mismatch"; pinned: string; observed: KiroObservedSessionId }
   | { kind: "unread" };
-
-/** The id kiro announced on the pane, or null when the announcement is not in view. */
-export function readKiroSessionIdAnnouncement(pane: string): KiroObservedSessionId | null {
-  let last: string | null = null;
-  for (const m of pane.matchAll(/Session ID:\s*([A-Za-z0-9][A-Za-z0-9_.-]{0,199})\b/g)) last = m[1] ?? null;
-  if (last === "none") return "none";
-  if (last && SAFE_ID.test(last)) return last;
-  return null;
-}
-
-/** The title kiro confirmed it set, or null. */
-export function readKiroTitleSetAlert(pane: string): string | null {
-  const m = TITLE_SET.exec(pane);
-  return m ? m[1]!.trim() : null;
-}
 
 /**
  * Compare the pane's `/session-id` with the launch pin. `unread` and `mismatch`

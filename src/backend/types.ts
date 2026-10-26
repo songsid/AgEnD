@@ -94,6 +94,13 @@ export interface BackendSessionProof {
   sessionIdCommand: string;
   /** `/title <instance name>`, or null when the name cannot be sent. */
   titleCommand: string | null;
+  /**
+   * #2683: the composer as a one-line command sees it: `""` when positively empty, the typed text of a one-row draft,
+   * or null when it cannot be read (busy, another mode, no composer). Only `""` admits a command.
+   */
+  readComposer(pane: string): string | null;
+  /** #2683: the id in kiro's `/session-id` alert (`"none"` included), only where that alert is painted; else null. */
+  readSessionIdAlert(pane: string): string | null;
 }
 
 export interface CliBackendConfig {
@@ -842,7 +849,7 @@ export interface CliBackend {
   agentSwitch?(): BackendAgentSwitch | null;
   /**
    * Optional (M-2025): after a tui/V3 launch, type `/session-id` (compare with `pinned`)
-   * and `/title` on an idle composer. Null on engines that have no these commands.
+   * and `/title` into a positively empty composer. Null on engines that have no these commands.
    */
   sessionProof?(): BackendSessionProof | null;
   /** Optional: where this launch's instructions live, when not the backend's usual file (kiro's agent, #906). */
