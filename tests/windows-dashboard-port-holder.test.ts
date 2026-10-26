@@ -19,10 +19,15 @@ beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string; portproxy?: Array<[string, number, string, number]>; race?: string; lateRace?: string }) {
+function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string; portproxy?: Array<[string, number, string, number]>; race?: string; lateRace?: string; aside?: boolean }) {
   const dir = mkdtempSync(join(tmpdir(), "agend-ports-")); dirs.push(dir);
   const home = join(dir, "root"); mkdirSync(join(home, ".agend"), { recursive: true });
   if (o.fleet !== undefined) writeFileSync(join(home, ".agend", "fleet.yaml"), o.fleet);
+  // Copies kept aside by earlier runs (any name an earlier run could have used): never touched.
+  if (o.aside) {
+    for (let pid = 1; pid <= 64; pid++) writeFileSync(join(home, ".agend", `.fleet-seed-prev.${pid}`), "foreign: kept\n");
+    mkdirSync(join(home, ".agend", ".fleet-seed.kept01")); writeFileSync(join(home, ".agend", ".fleet-seed.kept01", "fleet.yaml"), "foreign: kept\n");
+  }
   const progress = join(dir, "progress"); writeFileSync(progress, o.progress ?? "");
   // A writer that lands right after the seed's comparison: a `cat` that, once, writes a configured fleet.yaml after reading.
   const shims = join(dir, "shims"); mkdirSync(shims);
@@ -62,7 +67,7 @@ Write-Output ('NETSH=' + ($script:netshCalls -join ' | '))`);
   const env = { ...process.env }; delete env.AGEND_HOME;
   const r = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", `& '${script}'`], { encoding: "utf8", timeout: 60_000, env });
   const fleet = join(home, ".agend", "fleet.yaml");
-  return { out: `${r.stdout}${r.stderr}`, fleet: existsSync(fleet) ? readFileSync(fleet, "utf8") : null, progress: readFileSync(progress, "utf8"), files: readdirSync(join(home, ".agend")).sort() };
+  return { out: `${r.stdout}${r.stderr}`, fleet: existsSync(fleet) ? readFileSync(fleet, "utf8") : null, progress: readFileSync(progress, "utf8"), files: readdirSync(join(home, ".agend")).sort(), home };
 }
 
 describe("stage 5 picks a port pair free on Windows and in Linux, and gives it to AgEnD", () => {
@@ -149,6 +154,16 @@ describe("stage 5 picks a port pair free on Windows and in Linux, and gives it t
     if (!hasPwsh) return;
     const r = select({ fleet: "health_port: 19280\n", windows: { 19280: "wslrelay" } });
     expect(r.fleet).toBe("health_port: 19282\n"); expect(r.files).toEqual(["fleet.yaml"]);
+  });
+
+  it("copies an earlier run kept aside are never overwritten or removed (#2723 review r2): the replacement uses a fresh directory", () => {
+    if (!hasPwsh) return;
+    const r = select({ fleet: "health_port: 19280\n", windows: { 19280: "wslrelay" }, aside: true });
+    expect(r.fleet).toBe("health_port: 19282\n");
+    const kept = r.files.filter(f => f.startsWith(".fleet-seed"));
+    expect(kept).toHaveLength(65);                                          // 64 old-style files + the kept directory, nothing new
+    for (const f of kept.filter(f => f.startsWith(".fleet-seed-prev."))) expect(readFileSync(join(r.home, ".agend", f), "utf8")).toBe("foreign: kept\n");
+    expect(readFileSync(join(r.home, ".agend", ".fleet-seed.kept01", "fleet.yaml"), "utf8")).toBe("foreign: kept\n");
   });
 
   it("nothing free in the whole range: stops (no port), with how to find who holds it", () => {
