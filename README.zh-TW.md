@@ -130,6 +130,8 @@ agend start                     # 3. 啟動 fleet 🎉（quickstart 已安裝成
 
 打開 Telegram 或 Discord，傳訊息給你的 bot，就能用手機開始工作。也可以打開網頁儀表板 `http://localhost:19280/`。要登入，在這台機器上執行 `agend web --code`，或傳 `/web` 給你的 bot。
 
+或用 Docker：在 [`docker/`](docker/) 執行 `docker compose up`，就會在容器裡跑起整個 fleet，第一次啟動時自動安裝需要的 CLI。詳見 [用 Docker 執行 AgEnD](docs/docker.zh-TW.md)。
+
 > **用 Discord？** `agend quickstart` 也支援 Discord，已內建，不用另外安裝。詳見 [Discord 設定說明](docs/features.zh-TW.md#discord-adapter)。
 
 ## 運作原理
@@ -199,6 +201,7 @@ graph LR
 - [功能](docs/features.zh-TW.md) — 功能詳細說明
 - [CLI 參考](docs/cli.zh-TW.md) — 所有指令與選項
 - [Configuration](docs/configuration.zh-TW.md) — fleet.yaml 完整設定參考
+- [用 Docker 執行 AgEnD](docs/docker.zh-TW.md) — 容器快速安裝
 - [Security](docs/SECURITY.zh-TW.md) — 信任模型與安全強化
 - [開發環境設定](docs/development.md) — 開發 AgEnD 本身
 

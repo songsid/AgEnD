@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **AgEnD with Docker: `docker compose up` gives you a working fleet in a container (#581).** It is a second quick-install path; a systemd or launchd service on a server you keep stays the recommended one. The image holds AgEnD, Node.js and tmux. On its first start it installs the AI CLIs your `fleet.yaml` uses into its home volume. You can pin claude-code and kiro-cli versions. It runs as a normal user, with Docker's restart policy as the supervisor. The dashboard is on `http://localhost:19280/`; get a sign-in code with `docker compose exec agend agend web --code`. Inside the container, `agend update` and `/update` point you to `docker compose pull && docker compose up -d`, and `agend restart` lets Docker start the fleet again. The image is not published yet: build it from `docker/` as described in [AgEnD with Docker](docs/docker.md).
