@@ -224,7 +224,7 @@ export function kiroLegacyPromptAtBottom(rows: string[]): string | null {
 function kiroBusyTurn(rows: string[], composer: number): "shell" | "agent" | "unknown" {
   let d = composer - 1;
   while (d >= 0 && composer - d <= 8 && !/^─{20,}$/.test(rows[d]!)) d--;
-  if (d < 0) return "unknown";
+  if (d < 0 || !/^─{20,}$/.test(rows[d]!)) return "unknown";                     // no footer divider within reach
   for (let r = d - 1; r >= 0; r--) {
     const row = rows[r]!;
     if (/^ {2}› !/.test(row)) return "shell";

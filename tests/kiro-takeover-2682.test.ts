@@ -137,6 +137,14 @@ describe("#2685 review: layouts that wrap", () => {
     expect(kiroBusyTurnTakesInput(agent)).toBe(true);
     expect(kiroTakeoverActive(agent, "tui")).toBe(false);
   });
+  it("no footer divider within reach of the composer is unknown — never a walk from an arbitrary row (r2)", () => {
+    // a `!cat` just above, an older agent bullet further up, no divider in the 8 rows over the composer
+    const pane = ["• an older answer", "  › !cat", ...Array.from({ length: 9 }, (_, i) => `  output ${i}`),
+      "›  Kiro is working · 3s · Type to steer · Ctrl+S to queue"].join("\n");
+    expect(kiroBusyTurnTakesInput(pane)).toBe(false);
+    expect(kiroBusyTurnTakesInput(pane.replace("  › !cat", "  › hello"))).toBe(false);          // unknown either way
+  });
+
   it("dividers and footer rows are never evidence of the agent's turn: only output up to the top stays unknown", () => {
     const onlyChrome = "─".repeat(40) + "\n  some output\n" + "─".repeat(40) + "\n Trust All Tools active\n" + "─".repeat(40)
       + "\nMock Model\n~/work\n›  Kiro is working · 3s · Type to steer · Ctrl+S to queue\n";
