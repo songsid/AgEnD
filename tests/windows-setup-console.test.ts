@@ -66,5 +66,5 @@ $null = Invoke-Watched -Label 'wait' -Usually 'x' -File 'sh' -Arguments @('-c', 
 Write-Output ('DRAWS=' + $script:draws)`);
     expect(count(true)).toContain("DRAWS=0");
     expect(count(false)).toMatch(/DRAWS=([4-9]|\d\d)/);
-  });
+  }, 30_000);                                                                // two pwsh starts; slow on a capped CPU
 });
