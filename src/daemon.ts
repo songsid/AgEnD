@@ -1,3 +1,4 @@
+import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
 import type { RecoveryLive } from "./working-recovery.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
@@ -1400,6 +1401,26 @@ export class Daemon extends EventEmitter {
   logTranscriptPath(): string | null { return this.transcriptMonitor?.currentPath() ?? null; }
   /** #1218 (kiro): the launch this daemon's backend last built, for the Log's reason only (kiro-log-gate.ts). */
   logLaunch(): KiroLogLaunch | null { return this.backend?.logLaunch?.() ?? null; }
+  async kiroMigrationIdle(): Promise<boolean> {
+    const tmux = this.tmux, owner = this.interactionOwner();
+    if (!tmux || this.spawning || this.runtimeMonitorsFrozen || this.processStatus !== "running") return false;
+    const pane = await tmux.capturePane(2000).catch(() => null);
+    return pane !== null && tmux === this.tmux && sameInteractionOwner(owner, this.interactionOwner())
+      && this.processStatus === "running" && !this.spawning && !this.runtimeMonitorsFrozen && this.paneAuthoritativelyIdle(pane);
+  }
+  /** One read-only migration observation. Never types into a pane or selects a picker. */
+  async kiroMigrationObservation(): Promise<{ sessionId: string; model: string; transcript: string } | null> {
+    const tmux = this.tmux, owner = this.interactionOwner(), backend = this.backend;
+    if (!tmux || backend?.binaryName !== "kiro-cli" || this.processStatus !== "running" || this.spawning || this.runtimeMonitorsFrozen) return null;
+    const pane = await tmux.capturePane(2000).catch(() => null);
+    if (pane === null || tmux !== this.tmux || !sameInteractionOwner(owner, this.interactionOwner())
+      || this.processStatus !== "running" || this.spawning || this.runtimeMonitorsFrozen || !this.paneAuthoritativelyIdle(pane)
+      || backend.readSteerComposer?.(pane) !== "idle") return null;
+    const launch = backend.transcriptLaunch?.(), path = this.logTranscriptPath();
+    // Agent switching is separately disabled for saved-agent resumes; it is not an observation API.
+    const model = readActiveKiroModel(pane);
+    return launch?.engine === "v2" && launch.sessionId && model && path ? { sessionId: launch.sessionId, model, transcript: path } : null;
+  }
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();

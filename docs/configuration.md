@@ -279,6 +279,8 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 | `context_guardian.grace_period_ms` | number | — | Deprecated compatibility field: ignored, with a validation warning. |
 | `context_guardian.max_age_hours` | number | — | Deprecated compatibility field: ignored, with a validation warning. |
 
+A confirmed `migrate_kiro_instance` now checks idle state, Kiro 2.34+ and the current model, carries the conversation, archives the frozen classic duplicate, then verifies a plain restart with the same id/model and V2 transcript/forensic readers. Its General prompt warns about sudo and interactive-password use. Queued work waits during verification; a failure leaves the instance stopped and error-paused, with a notice in General and its topic. Explicitly moving an instance without classic history still requires `start_fresh`; a failed carry never falls back to fresh.
+
 The context guardian monitors CLI status for the dashboard and logs. It does not
 rotate or restart sessions based on context usage or session age; context limits
 are handled by each CLI's own compaction. The legacy fields above have no built-in

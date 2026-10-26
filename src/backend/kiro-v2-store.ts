@@ -1,11 +1,12 @@
+import type { KiroMigrationVerificationInput } from "./kiro-migration-verify.js";
 import { Worker } from "node:worker_threads";
 import { performance } from "node:perf_hooks";
 import type { KiroClassicArchiveInput, KiroCarryPreparation } from "./kiro-classic-archive.js";
 
 export const KIRO_V2_STORE_BUDGET_MS = 15_000;
 export const KIRO_V2_STORE_QUEUE_LIMIT = 64;
-export interface KiroV2StoreInput { keys: string[]; sessionsDir: string; carry?: Omit<KiroClassicArchiveInput, "sessionId">; }
-export type KiroV2StoreReply = { kind: "ok"; sessions: Array<{ id: string; updatedAt: number; createdAt: number | null }>; diagnostics: { reads: number; hits: number }; carry?: KiroCarryPreparation }
+export interface KiroV2StoreInput { keys: string[]; sessionsDir: string; carry?: Omit<KiroClassicArchiveInput, "sessionId">; migration?: KiroMigrationVerificationInput; }
+export type KiroV2StoreReply = { kind: "ok"; sessions: Array<{ id: string; updatedAt: number; createdAt: number | null }>; diagnostics: { reads: number; hits: number }; carry?: KiroCarryPreparation; verification?: { forensic: string } }
   | { kind: "unreadable"; detail: string };
 export interface KiroV2StoreRequest { id: number; deadlineAt: number; input: KiroV2StoreInput; }
 interface Isolate {

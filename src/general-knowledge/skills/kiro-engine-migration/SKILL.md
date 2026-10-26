@@ -63,6 +63,16 @@ coordinator-level tool; you do not have it). It carries the conversation: the in
 resumed once under the TUI and becomes its own. A fleet admin confirms each move in this General topic: a
 "Move it / Cancel" prompt. Explain it if asked; never press it on the user's behalf.
 
+The Confirm prompt warns about sudo/interactive passwords and explains both launches. AgEnD requires an idle
+instance, a supported Kiro 2.34+ version and a known model. It carries once, verifies the owned V2 reader, then does
+an ordinary restart: while the target CLI is stopped, it archives the exact frozen classic rows before removing
+the duplicate from Kiro's index. It verifies the same conversation/model and attached V2 transcript again, and
+reports the forensic verdict in General and the instance's topic. Queued work waits until this finishes. Failure
+stops and error-pauses the instance; inspect the cause before an explicit retry. Never use a fresh conversation
+or classic as a recovery shortcut. Archives are private and restorable with `agend kiro restore-classic` (see CLI docs).
+The raw Log-history gate remains closed: the verification proves the launched/pinned reader, not ongoing pane
+session identity after `/chat` or `/clear`.
+
 - After the move, `kiro_engine_status` shows `kiro_ui: tui` and `engine_floor: "tui"`.
 - It is one-way. AgEnD refuses to launch a moved instance on classic again, because that would resume the frozen
   classic copy and lose everything done since. A refusal that names the engine floor means someone set `kiro_ui`

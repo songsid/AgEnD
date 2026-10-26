@@ -334,6 +334,8 @@ templates:
 | `cost_guard` | object | — | 每 instance 花費守衛（覆蓋預設值） |
 | `worktree_source` | string | — | 原始 repo 路徑（使用 branch 參數時自動設定） |
 
+確認 `migrate_kiro_instance` 後，會先檢查閒置狀態、Kiro 2.34 以上版本與目前模型，再帶入對話、備份並移出凍結的 classic 副本，接著做一般重啟，驗證相同 id／模型及 V2 逐字紀錄與鑑識讀取器。General 的確認提示會提醒 sudo 與互動式密碼的差異。驗證期間佇列工作會等待；失敗時 instance 會停止並留下錯誤暫停狀態，在 General 及該 topic 通知。沒有 classic 歷史時，明確搬移仍須指定 `start_fresh`；帶入失敗絕不自動改開新對話。
+
 ### restart_policy
 
 | 欄位 | 型別 | 預設 | 說明 |

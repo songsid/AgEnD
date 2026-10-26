@@ -1119,6 +1119,21 @@ export function readActiveKiroAgent(pane: string, ui: "legacy" | "tui" | "v3"): 
   return null;
 }
 
+/** Model on the proven live TUI status/composer pair, never a model quoted in history. */
+export function readActiveKiroModel(pane: string, expectedAgent?: string): string | null {
+  const agent = readActiveKiroAgent(pane, "tui");
+  if (!agent || expectedAgent !== undefined && agent !== expectedAgent) return null;
+  const rows = pane.split("\n");
+  let input = rows.length - 1;
+  while (input >= 0 && !/^\s*›/.test(rows[input]!)) input--;
+  for (let i = input - 1; i >= 0; i--) {
+    if (RULE_ROW.test(rows[i]!)) continue;
+    const model = rows[i]!.trim().split(" · ")[1];
+    return model && /^[A-Za-z0-9_.:/-]{1,128}$/.test(model) ? model : null;
+  }
+  return null;
+}
+
 export function planKiroLaunch(ui: "legacy" | "tui" | "v3", compat: KiroCliCompatibility): KiroLaunchPlan {
   const version = compat.version ?? "of unknown version";
   if (ui === "v3") return { kind: "launch", ui, flags: ["--v3"] };

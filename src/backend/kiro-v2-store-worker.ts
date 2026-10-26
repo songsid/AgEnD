@@ -1,3 +1,4 @@
+import { verifyKiroMigrationStore } from "./kiro-migration-verify.js";
 import { parentPort } from "node:worker_threads";
 import { performance } from "node:perf_hooks";
 import { readdirSync, readFileSync, statSync, type Stats } from "node:fs";
@@ -71,7 +72,10 @@ function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): Kiro
 parentPort?.on("message", ({ id, input, deadlineAt }: KiroV2StoreRequest) => {
   let reply: KiroV2StoreReply;
   try {
-    if (input.carry) {
+    if (input.migration) {
+      if (performance.now() >= deadlineAt) throw new Error("Kiro verification timed out");
+      reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 }, verification: verifyKiroMigrationStore(input.migration) };
+    } else if (input.carry) {
       const checkpoint = () => { if (performance.now() >= deadlineAt) throw new Error("Kiro carry archive timed out"); };
       checkpoint();
       reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 }, carry: prepareKiroCarryForLaunch(input.carry, checkpoint) };
