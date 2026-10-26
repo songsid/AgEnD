@@ -1,8 +1,9 @@
 # ── installer-flow test overrides (tests/windows-installer-flow.test.ts) ──
 # Injected into a copy of install-agend.ps1 just before its main body ("# ── 開始"), which then runs as a script file the
-# way install.ps1 runs it. Only Windows itself is replaced here — its admin token, build, features, registry, disks,
-# shortcuts, browser and network — never the installer's own WSL, backend, port or setup logic. A new Windows-only call
-# the installer starts making shows up as a failure of this test, not as a silent stub.
+# way install.ps1 runs it. Replaced here: Windows itself — its admin token, build, features, registry, disks, shortcuts,
+# browser and network — and one Linux-side check, the internet reachability probe (Test-WslNetwork: the test's Linux has
+# no network on purpose). Never the installer's own WSL, backend, port or setup logic. A new Windows-only call the
+# installer starts making shows up as a failure of this test, not as a silent stub.
 function Check-Admin { $true }
 function Test-LiveConsole { $env:AGEND_FLOW_LIVE -eq '1' }
 function Get-CurrentSid { 'S-1-5-21-1-2-3-1001' }
@@ -10,7 +11,7 @@ function Clear-Host { }
 function Read-Host { param($Prompt) $q = $env:AGEND_FLOW_ANSWERS; $a = ''; if (Test-Path $q) { $all = @(Get-Content -LiteralPath $q); if ($all.Count) { $a = $all[0]; Set-Content -LiteralPath $q -Value @($all | Select-Object -Skip 1) } }; Add-Content -LiteralPath ($q + '.asked') -Value ([string]$Prompt + ' => ' + $a); $a }
 # Windows itself (not what this test is about): a current, capable, connected Windows 11.
 function Test-WindowsNetwork { $true }
-function Test-WslNetwork([string]$distro) { $true }
+function Test-WslNetwork([string]$distro) { $true }   # excluded boundary: real internet reachability (see above)
 function Get-WindowsBuild { 22631 }
 function Get-WindowsArch { 'x64' }
 function Get-WslFeatureState([string]$name) { 'Enabled' }

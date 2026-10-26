@@ -12,7 +12,7 @@ echo "$*" >> "$state/calls.log"
 # wsl.exe's own messages are UTF-16LE unless WSL_UTF8=1 (as the real one); the Linux side's output is passed as it is.
 say() { if [ "${WSL_UTF8:-}" = 1 ]; then printf '%s\n' "$1"; else printf '%s\r\n' "$1" | iconv -f UTF-8 -t UTF-16LE; fi; }
 distros() { [ -f "$state/distros" ] && while IFS= read -r d; do say "$d"; done < "$state/distros"; }
-distro=; user=root
+distro=; user=root; mode=
 while [ $# -gt 0 ]; do
   case "$1" in
     -d|--distribution) distro=$2; shift 2;;
@@ -29,13 +29,15 @@ while [ $# -gt 0 ]; do
       shift; name=Ubuntu-24.04
       while [ $# -gt 0 ]; do case "$1" in -d|--distribution|--name) name=$2; shift 2;; *) shift;; esac; done
       grep -qx "$name" "$state/distros" 2>/dev/null || echo "$name" >> "$state/distros"; say "Installing: $name"; exit 0;;
-    --exec|-e) shift; exec docker exec -i -u "$user" -e WSL_DISTRO_NAME="$distro" "$ctr" "$@";;
+    --exec|-e) shift; mode=exec; break;;
     --) shift; break;;
     *) break;;
   esac
 done
+# Either way a command runs only in a registered Linux (an unregistered -d is refused, as the real wsl.exe does).
 [ -n "$distro" ] && ! grep -qx "$distro" "$state/distros" 2>/dev/null && { say "There is no distribution with the supplied name." >&2; exit 1; }
 [ $# -eq 0 ] && exit 0
+[ "${mode:-}" = exec ] && exec docker exec -i -u "$user" -e WSL_DISTRO_NAME="$distro" "$ctr" "$@"
 line=
 for a in "$@"; do case "$a" in *[[:space:]\"]*) a=${a//\"/\\\"}; line="$line \"$a\"";; *) line="$line $a";; esac; done
 exec docker exec -i -u "$user" -e WSL_DISTRO_NAME="$distro" "$ctr" bash -c "${line# }"

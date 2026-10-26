@@ -8,8 +8,8 @@
  *   - a port held on Windows' side (another Linux's WSL relay) — #2723.
  *   - a resumed run that could not change its backends — #2720.
  * The Linux side is one container (node:22-bookworm, no network) with canned installers and a fake `agend` (setup page,
- * fleet health); Windows itself is replaced by tests/fixtures/installer-flow/overrides.ps1, injected before the main
- * body. A "person" finishes the setup page once the installer has opened it. Needs docker and pwsh; in CI both must be
+ * fleet health); Windows itself — and the Linux internet reachability probe, which needs real internet — is replaced by
+ * tests/fixtures/installer-flow/overrides.ps1, injected before the main body. A "person" finishes the setup page once the installer has opened it. Needs docker and pwsh; in CI both must be
  * there (it fails rather than skips).
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -93,6 +93,10 @@ describe("the Windows installer, stages 1–5 as a script file against a fake Wi
     expect(f.exec("cat /root/.agend/fleet.yaml")).toMatch(/^health_port: 19280\n/);
     // Every argument list handed to wsl.exe used --exec (a `--` one would have been re-parsed by the shell).
     expect(calls(f).split("\n").filter(l => / -u \S+ -- /.test(l))).toEqual([]);
+    // The fake runs a command only in a registered Linux, through --exec as through `--` (#2733 review).
+    const wsl = (args: string[]) => spawnSync(join(f.dir, "bin", "wsl.exe"), args, { env: { ...process.env, AGEND_FAKE_WSL_STATE: f.state, AGEND_FAKE_WSL_CONTAINER: f.ctr } }).status;
+    expect([wsl(["-d", "MissingDistro", "-u", "root", "--exec", "true"]), wsl(["-d", "MissingDistro", "-u", "root", "--", "true"])]).toEqual([1, 1]);
+    expect([wsl(["-d", "Ubuntu-24.04", "-u", "root", "--exec", "true"]), wsl(["-d", "Ubuntu-24.04", "-u", "root", "--", "true"])]).toEqual([0, 0]);
   });
 
   it("caught here: the backend probe through `--` again (#2720) reads every backend as missing", async () => {
