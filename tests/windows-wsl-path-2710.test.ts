@@ -89,6 +89,13 @@ Get-WslFailureMessage 'WSL config merge failed' @{Code=19;Text='config changed; 
     expect(out).toContain('exit 19'); expect(out).toContain('config changed; retry');
     const log = readFileSync(join(dir,'install.log'),'utf8'); expect(log).not.toContain('private-value'); expect(log).toContain('token=[hidden]');
   }));
+  it('the real setup observer still sees completion through the diagnostic capture callback', () => scratch((run, dir) => {
+    const out = run(`function New-WslScriptFile {return @('${dir}/owned-step.sh', '/scratch/step.sh')}
+function Invoke-Watched {param($OnLine);& $OnLine 'Setup complete';return 0}
+$r=Invoke-BrowserSetup {param($hook);Invoke-WslStep -Label 'setup' -Script 'stub' -OnLine $hook}
+Write-Output ('DONE='+$r.Done+' EXIT='+$r.Exit)`);
+    expect(out).toContain('DONE=True EXIT=0');
+  }));
   it('a failed streamed WSL step keeps output/exit while forwarding the original observer once', () => scratch((run, dir) => {
     const out = run(`$script:seen=@();function New-WslScriptFile {return @('${dir}/owned-step.sh', '/scratch/step.sh')}
 function Invoke-Watched {param($OnLine);& $OnLine 'linux config merge error';return 42}
