@@ -873,6 +873,9 @@ img.amb-p { object-fit: contain; }
 .st-link:hover { text-decoration-thickness: 2px; }
 .prompt .acts { display: flex; gap: var(--s-2); margin-top: var(--s-2); align-items: center; flex-wrap: wrap; }
 .prompt .wait { font-size: var(--fs-xs); color: var(--text-3); }
+/* #2675: a prompt's typed answer. 16px keeps iOS from zooming in on focus (#1612). */
+.prompt .prompt-text { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
+.prompt .prompt-text input { flex: 1; min-width: 0; font-size: 16px; }
 .work-bar { display: flex; gap: var(--s-2); align-items: center; padding: 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
 .work-bar .lbl { flex: 1; min-width: 0; }
 .work-bar .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: pulse 1.2s ease-in-out infinite; flex-shrink: 0; }

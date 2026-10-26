@@ -229,6 +229,10 @@ export interface LifecycleContext {
   notifyInstanceTopic(name: string, text: string): boolean | void;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
+  /** #2675: a card the CLI shows in place of its composer: put it to the people who talk to the instance, with its answers. */
+  postRemoteCard?(name: string, card: import("./backend/types.js").RemoteCard): Promise<void>;
+  /** #2675: that card is gone from the screen: its post's buttons collapse. */
+  retireRemoteCard?(name: string, identity: string | null): void;
   /** #1386: an instance's interaction observation, pause or wake changed ("Needs you" recomputes at once, not at its tick). */
   onAttentionChanged?(name: string): void;
   /**
@@ -1243,6 +1247,14 @@ export class InstanceLifecycle {
       }
       await this.ctx.notifyInteractivePrompt(name, data.kind);
     }, this.ctx.logger, `daemon.interactive_prompt[${name}]`));
+
+    daemon.on("remote_card", safeHandler(async (data: { name: string; card: import("./backend/types.js").RemoteCard }) => {
+      this.ctx.eventLog?.insert(name, "remote_card", { kind: data.card.kind });
+      await this.ctx.postRemoteCard?.(name, data.card);
+    }, this.ctx.logger, `daemon.remote_card[${name}]`));
+    daemon.on("remote_card_gone", safeHandler((data: { name: string; identity: string }) => {
+      this.ctx.retireRemoteCard?.(name, data.identity);
+    }, this.ctx.logger, `daemon.remote_card_gone[${name}]`));
 
     daemon.on("pty_error", safeHandler(async (data: {
       name: string;

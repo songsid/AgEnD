@@ -1,0 +1,20 @@
+// Drive the real sequencer against a live (offline mock) kiro V3 card in the private tmux socket k234.
+import { execFileSync } from "node:child_process";
+import { readKiroMcpInputCard, readKiroQuestionCard } from "../src/backend/kiro.js";
+import { answerRemoteCard, type RemoteCardAction } from "../src/remote-card-answer.js";
+const [session, json] = process.argv.slice(2);
+const tmux = (...args: string[]) => execFileSync("tmux", ["-L", "k234", ...args], { encoding: "utf8" });
+const read = (pane: string) => readKiroQuestionCard(pane) ?? readKiroMcpInputCard(pane);
+const pane = () => { try { return tmux("capture-pane", "-p", "-t", session); } catch { return null; } };
+const card = read(pane() ?? "");
+if (!card) { console.log(JSON.stringify({ error: "no card" })); process.exit(2); }
+const keys: string[] = [];
+const outcome = await answerRemoteCard({
+  locked: fn => fn(),
+  read: async () => pane(),
+  key: async k => { keys.push(k); tmux("send-keys", "-t", session, k === "Space" ? " " : k); return true; },
+  paste: async t => { keys.push("paste"); tmux("set-buffer", "-b", "e2e", "--", t); tmux("paste-buffer", "-p", "-d", "-b", "e2e", "-t", session); return true; },
+  sleep: ms => new Promise(r => setTimeout(r, ms)),
+  now: () => performance.now(),
+}, read, card.identity, JSON.parse(json) as RemoteCardAction);
+console.log(JSON.stringify({ card: card.kind === "question" ? { page: card.page, cursor: card.cursor, options: card.options.map(o => o.title) } : { mode: card.mode, cursor: card.cursorRow }, keys, outcome }));
