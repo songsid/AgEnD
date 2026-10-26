@@ -201,7 +201,7 @@ function io(card: { key(k: RemoteCardKey): boolean; paste?(t: string): boolean; 
     unlockedKeys,
     io: {
       locked: async <T,>(fn: () => Promise<T>) => { locked++; try { return await fn(); } finally { locked--; } },
-      read: async () => { onRead?.(locked > 0); return card.render(); },
+      read: async (): Promise<string | null> => { onRead?.(locked > 0); return card.render(); },
       key: async (k: RemoteCardKey) => { if (!locked) unlockedKeys.push(k); const ok = card.key(k); onKey?.(++sent); return ok; },
       paste: async (t: string) => { if (!locked) unlockedKeys.push("paste"); return card.paste!(t); },
       sleep: async (ms: number) => { clock += ms; },
