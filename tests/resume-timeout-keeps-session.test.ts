@@ -1,3 +1,4 @@
+import { t } from "../src/locale.js";
 import { KIRO_AMBIGUOUS_RESUME_SCREEN } from "../src/backend/kiro.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync } from "node:fs";
@@ -6,7 +7,7 @@ import { join } from "node:path";
 import pino from "pino";
 import { Daemon } from "../src/daemon.js";
 import type { Logger } from "../src/logger.js";
-import type { CliBackend } from "../src/backend/types.js";
+import { ResumeBlockedError, type CliBackend } from "../src/backend/types.js";
 import type { TmuxManager } from "../src/tmux-manager.js";
 
 /**
@@ -142,12 +143,21 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
     d["backend"]!.resumeBlockedPattern = () => KIRO_AMBIGUOUS_RESUME_SCREEN;
     const lost = vi.fn(); d.on("context_lost", lost);
     for (let i = 0; i < 5; i++) {
-      await expect(d["spawnClaudeWindow"]()).rejects.toThrow(/ambiguous session id.*session kept/);
+      await expect(d["spawnClaudeWindow"]()).rejects.toThrow(t("inst.kiro_resume_ambiguous"));
       expect(sessionExists()).toBe(true); expect(setAside()).toHaveLength(0);
       expect(d["skipResume"]).toBe(false);
     }
     expect(lost).not.toHaveBeenCalled();
     expect(d["bumpUnprovenResumeFailures"]()).toBe(1);
+  });
+
+  it("respawn stops with the retained-session remedy and a non-incompatibility cause", () => {
+    const d = makeDaemon(); armForFailedResume(d);
+    const reason = t("inst.kiro_resume_ambiguous"), remedy = t("inst.kiro_resume_ambiguous_remedy");
+    const ended = vi.fn(); d["publishWorkingState"] = vi.fn(); d.on("supervision_ended", ended);
+    expect(d["stopOnUnsupportedCliRespawn"](new ResumeBlockedError(reason, remedy))).toBe(true);
+    expect(d["healthCheckPaused"]).toBe(true);
+    expect(ended).toHaveBeenCalledWith(expect.objectContaining({ reason, remedy, cause: "resume_blocked" }));
   });
 
   it("the ambiguity screen tolerates terminal wrapping but does not classify missing sessions as blocked", () => {

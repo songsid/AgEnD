@@ -64,6 +64,11 @@ export class UnsupportedCliError extends Error {
   }
 }
 
+/** A retained conversation cannot be selected safely. Stop without retry; this is not a CLI/engine incompatibility. */
+export class ResumeBlockedError extends UnsupportedCliError {
+  constructor(message: string, readonly remedy: string) { super(message); this.name = "ResumeBlockedError"; }
+}
+
 /** See CliBackend.agentSwitch. */
 export interface BackendAgentSwitch {
   agent: string;

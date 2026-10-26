@@ -13,7 +13,7 @@ import { DeliveryOutbox, DURABLE_DELIVERY_MAX_AGE_MS, SYSTEM_NOTICE_KIND, SYSTEM
 import { FleetManager } from "../src/fleet-manager.js";
 import { InstanceLifecycle, type IncidentEventSource, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { setLocale, t } from "../src/locale.js";
-import { UnsupportedCliError } from "../src/backend/types.js";
+import { UnsupportedCliError, ResumeBlockedError } from "../src/backend/types.js";
 import { BackendOutageTracker } from "../src/backend-outage.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "../src/kiro-engine-status.js";
 import { recordKiroLaunch } from "../src/backend/kiro-engine-ledger.js";
@@ -121,6 +121,22 @@ describe("General hears a kiro incompatibility", () => {
     } finally { cleanup(); }
   });
 
+  it.each(["en", "zh-TW"] as const)("retained-session ambiguity has its own localized remedy and no General incompatibility notice: %s", async locale => {
+    setLocale(locale);
+    const { fm, outbox, cleanup } = makeFleet({ general: { general_topic: true }, a: {} });
+    const reason = t("inst.kiro_resume_ambiguous"), remedy = t("inst.kiro_resume_ambiguous_remedy");
+    vi.spyOn(fm, "startInstance").mockRejectedValue(new ResumeBlockedError(reason, remedy));
+    const incompat = vi.spyOn(fm, "queueKiroIncompatNotice");
+    try {
+      await (fm as any).startInstancesWithConcurrency([["a", {}]], false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect((fm as any).notifyFleetError).toHaveBeenCalledWith(t("fleet.resume_blocked", "a", reason, remedy));
+      expect(reason).toContain(locale === "en" ? "classic and V2" : "classic 與 V2");
+      expect(remedy).toContain(locale === "en" ? "duplicate store entry" : "重複紀錄");
+      expect(incompat).not.toHaveBeenCalled(); expect(notices(outbox)).toEqual([]);
+    } finally { cleanup(); }
+  });
+
   it("the same refusal again the same day is not sent again", async () => {
     const { fm, outbox, cleanup } = makeFleet({ general: { general_topic: true }, a: {} });
     try {
@@ -176,6 +192,7 @@ describe("General hears a kiro incompatibility", () => {
     lifecycle.attachIncidentHandlers("kiro-a", daemon);
     vi.useRealTimers();
     daemon.emit("supervision_ended", { name: "kiro-a", reason: "crash retries exhausted", remedy: "x" });
+    daemon.emit("supervision_ended", { name: "kiro-a", reason: t("inst.kiro_resume_ambiguous"), remedy: t("inst.kiro_resume_ambiguous_remedy"), cause: "resume_blocked" });
     daemon.emit("supervision_ended", { name: "kiro-a", reason: REASON, remedy: "x", cause: "cli_unsupported" });
     await new Promise(r => setImmediate(r));
     expect(queueKiroIncompatNotice.mock.calls).toEqual([["kiro-a", REASON]]);
