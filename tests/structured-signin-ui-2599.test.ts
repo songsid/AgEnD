@@ -1,7 +1,7 @@
 import { createContext, runInContext } from "node:vm";
 import { readFileSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
-const source = readFileSync(new URL("../src/ui/structured-signin.js", import.meta.url), "utf8").replace("export function mountStructuredSignIns", "function mountStructuredSignIns");
+const source = readFileSync(new URL("../src/ui/structured-signin.js", import.meta.url), "utf8").replace(/^export /gm, "");
 afterEach(() => vi.restoreAllMocks());
 function browser() {
   function element(tag: string): any {

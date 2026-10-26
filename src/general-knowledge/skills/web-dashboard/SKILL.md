@@ -577,6 +577,11 @@ connections are off (and the setup wizard); while those have unsaved changes, th
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
 **Create and start**.
 
+**First setup, before any fleet** (`agend setup`, the page the Windows installer opens): the same steps on its own
+page, in English or 繁體中文 (the browser's language; the button at the top switches). The working directory may be
+left empty: the agent then gets its own folder, `~/.agend/workspaces/<name>`, shown under the field and created
+when the host confirms; a directory that is entered must be absolute.
+
 ## Look
 
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in

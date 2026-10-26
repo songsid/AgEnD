@@ -1,3 +1,5 @@
+import { SETUP_CODE_STRINGS, SETUP_FORM_STRINGS, setupI18nRuntime } from "./setup-i18n.js";
+
 /**
  * The pre-fleet form, inline.
  *
@@ -33,27 +35,35 @@ export const SETUP_CODE_PAGE_HTML = `<!DOCTYPE html>
   button { width: 100%; margin-top: 12px; padding: 12px; border: 1px solid #2563eb; border-radius: 6px; background: #2563eb; color: #fff; font-size: 15px; cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
   .err { color: #dc2626; font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .lang { display: flex; justify-content: flex-end; }
+  .lang button { width: auto; margin: 0; padding: 4px 10px; border-color: #e5e7eb; background: #fff; color: #111827; font-size: 13px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Set up AgEnD</h1>
-  <p>Enter the setup code shown in the terminal where you ran <code>agend setup</code>.</p>
+  <div class="lang"><button id="lang" type="button" data-i18n="otherLang" data-i18n-label="langTitle">中文</button></div>
+  <h1 data-i18n="title">Set up AgEnD</h1>
+  <p id="lead">Enter the setup code shown in the terminal where you ran <code>agend setup</code>.</p>
   <form id="f">
     <input id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" autofocus>
-    <button id="go" type="submit">Continue</button>
+    <button id="go" type="submit" data-i18n="continue">Continue</button>
   </form>
   <div class="err" id="msg"></div>
 </main>
 <script>
 (() => {
   "use strict";
+  ${setupI18nRuntime(SETUP_CODE_STRINGS)}
+  show(document.getElementById("lead"), el => {
+    const [before, after] = tr("lead").split("{0}"), command = document.createElement("code");
+    command.textContent = "agend setup"; el.replaceChildren(before, command, after ?? "");
+  });
   const msg = document.getElementById("msg");
   const go = document.getElementById("go");
   document.getElementById("f").addEventListener("submit", async (event) => {
     event.preventDefault();
     go.disabled = true;
-    msg.textContent = "";
+    show(msg, el => { el.textContent = ""; });
     let res;
     try {
       res = await fetch("open", {
@@ -62,13 +72,14 @@ export const SETUP_CODE_PAGE_HTML = `<!DOCTYPE html>
         body: JSON.stringify({ code: document.getElementById("code").value }),
       });
     } catch {
-      msg.textContent = "Could not reach the setup page.";
+      show(msg, el => { el.textContent = tr("unreachable"); });
       go.disabled = false;
       return;
     }
     if (res.ok) { location.reload(); return; }
     let body = null; try { body = await res.json(); } catch {}
-    msg.textContent = (body && body.error) || "That code was not accepted.";
+    const error = body && body.error;
+    show(msg, el => { el.textContent = error ? trHost(error) : tr("notAccepted"); });
     // A spent budget ends the page; there is nothing useful left to type into.
     if (res.status !== 410) go.disabled = false;
   });
@@ -101,51 +112,54 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   .msg { font-size: 13px; }
   .ok { color: #059669; } .err { color: #dc2626; }
   pre { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; font-size: 12px; overflow: auto; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  #lang { padding: 4px 10px; font-size: 13px; flex: none; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Set up AgEnD</h1>
-  <div class="sub" id="intro">This page is open only while setup is running. It closes itself when you finish, or after 15 minutes.</div>
+  <div class="top"><h1 data-i18n="title">Set up AgEnD</h1><button id="lang" type="button" data-i18n="otherLang" data-i18n-label="langTitle">中文</button></div>
+  <div class="sub" id="intro" data-i18n="intro">This page is open only while setup is running. It closes itself when you finish, or after 15 minutes.</div>
   <div class="sub msg" id="ttlMsg" role="status"></div>
 
-  <div class="step" id="setupSignins" aria-label="AI backend sign-ins"></div>
+  <div class="step" id="setupSignins" aria-label="AI backend sign-ins" data-i18n-label="signinsLabel"></div>
 
   <div class="step">
-    <h2>1 · Agent</h2>
-    <label for="backend">Backend</label>
+    <h2 data-i18n="stepAgent">1 · Agent</h2>
+    <label for="backend" data-i18n="backend">Backend</label>
     <select id="backend"></select>
     <div class="sub" id="backendHint"></div>
-    <label for="dir">Working directory (absolute path)</label>
-    <input id="dir" placeholder="/home/you/projects/app">
-    <label for="name">First agent name</label>
+    <label for="dir" data-i18n="dir">Working directory (optional)</label>
+    <input id="dir" placeholder="/home/you/projects/app" data-i18n-placeholder="dirPlaceholder" aria-describedby="dirHint">
+    <div class="sub" id="dirHint"></div>
+    <label for="name" data-i18n="name">First agent name</label>
     <input id="name" value="agent-1">
   </div>
 
   <div class="step">
-    <h2>2 · Platform</h2>
+    <h2 data-i18n="stepPlatform">2 · Platform</h2>
     <div class="row">
       <button id="pickTelegram" class="primary">Telegram</button>
       <button id="pickDiscord">Discord</button>
-      <button id="pickWeb">Web only (no bot)</button>
+      <button id="pickWeb" data-i18n="webOnly">Web only (no bot)</button>
     </div>
     <div class="sub" id="platformHint">Create a bot with @BotFather, then add it to a group.</div>
   </div>
 
   <div class="step" id="credStep">
-    <h2>3 · Credentials</h2>
-    <label for="token">Bot token</label>
+    <h2 data-i18n="stepCredentials">3 · Credentials</h2>
+    <label for="token" data-i18n="token">Bot token</label>
     <input id="token" type="password" placeholder="123456:ABC-DEF…">
-    <div class="sub">Written to ~/.agend/.env and never shown again.</div>
-    <label for="tokenEnv">Environment variable</label>
+    <div class="sub" data-i18n="tokenNote">Written to ~/.agend/.env and never shown again.</div>
+    <label for="tokenEnv" data-i18n="tokenEnv">Environment variable</label>
     <input id="tokenEnv" value="AGEND_BOT_TOKEN">
-    <div class="row"><button id="verify">Verify</button><span class="msg" id="verifyMsg"></span></div>
+    <div class="row"><button id="verify" data-i18n="verify">Verify</button><span class="msg" id="verifyMsg"></span></div>
     <div id="platformFields"></div>
   </div>
 
   <div class="step">
-    <h2>4 · Review and start</h2>
-    <div class="row"><button id="preview">Show what will be written</button></div>
+    <h2 data-i18n="stepReview">4 · Review and start</h2>
+    <div class="row"><button id="preview" data-i18n="preview">Show what will be written</button></div>
     <pre id="planOut" hidden></pre>
     <div class="row"><button id="finish" class="primary" disabled>Create and start AgEnD</button><span class="msg" id="finishMsg"></span></div>
   </div>
@@ -153,8 +167,9 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 <script>
 (() => {
   "use strict";
+  ${setupI18nRuntime(SETUP_FORM_STRINGS)}
   const $ = (id) => document.getElementById(id);
-  const state = { platform: "telegram", identity: null, guilds: [], offset: 0, plan: null };
+  const state = { platform: "telegram", identity: null, guilds: [], offset: 0, plan: null, workspaces: null };
   // Relative to the page's own directory, which is /s/<sid>/. An absolute path
   // would leave that namespace and 404 — the sid is where this page lives, not
   // a prefix bolted on to it.
@@ -163,31 +178,37 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     let body = null; try { body = await res.json(); } catch {}
     return { ok: res.ok, status: res.status, body };
   };
+  // A line of this page in its language: a key and its values, or (host) the host's own words, translated when known.
+  const say = (id, key, ...values) => show($(id), el => { el.textContent = tr(key, ...values); });
+  const sayHost = (id, text, fallback) => show($(id), el => { el.textContent = text ? trHost(text) : tr(fallback); });
+
+  // #2726: no directory is the agent's own workspace, <AGEND_HOME>/workspaces/<name> — said under the field, by name.
+  const showDirHint = () => show($("dirHint"), el => {
+    const name = $("name").value.trim();
+    el.textContent = state.workspaces && name ? tr("dirDefault", state.workspaces + "/" + name) : tr("dirDefaultName");
+  });
 
   async function loadEnvironment() {
     const res = await api("api/settings/quickstart/environment");
     if (formFrozen) return;
     const backends = res.body?.backends || [];
+    if (typeof res.body?.workspaces_dir === "string") { state.workspaces = res.body.workspaces_dir; showDirHint(); }
     $("backend").innerHTML = "";
     for (const name of backends.length ? backends : ["claude-code"]) {
       const opt = document.createElement("option"); opt.value = name; opt.textContent = name; $("backend").append(opt);
     }
-    $("backendHint").textContent = backends.length
-      ? "Found on this host: " + backends.join(", ")
-      : "No backend CLI found on this host — install one first.";
+    if (backends.length) say("backendHint", "backendFound", backends.join(", "));
+    else say("backendHint", "backendNone");
   }
 
   function setPlatform(platform) {
     if (formFrozen) return;
     state.platform = platform;
-    state.identity = null; $("verifyMsg").textContent = "";
+    state.identity = null; say("verifyMsg", "");
     $("pickTelegram").className = platform === "telegram" ? "primary" : "";
     $("pickDiscord").className = platform === "discord" ? "primary" : "";
     $("pickWeb").className = platform === "web" ? "primary" : "";
-    $("platformHint").textContent = platform === "telegram"
-      ? "Create a bot with @BotFather, then add it to a group."
-      : platform === "discord" ? "Create an application in the Discord developer portal and invite the bot to your server."
-      : "No bot: you use AgEnD from its web dashboard (chat, sign-ins, settings). Discord or Telegram can be added later in Settings.";
+    say("platformHint", platform === "telegram" ? "hintTelegram" : platform === "discord" ? "hintDiscord" : "hintWeb");
     // #2233: web only has no credentials step — no token, no admin id, nothing to verify.
     $("credStep").hidden = platform === "web";
     state.plan = null; $("planOut").hidden = true; $("finish").disabled = true;
@@ -199,47 +220,48 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     if (formFrozen) return;
     const host = $("platformFields"); host.innerHTML = "";
     if (state.platform === "web") return;
-    const field = (id, labelText, hint) => {
-      const label = document.createElement("label"); label.textContent = labelText; label.htmlFor = id;
+    const field = (id, labelKey, hintKey) => {
+      const label = document.createElement("label"); label.htmlFor = id; show(label, el => { el.textContent = tr(labelKey); });
       const input = document.createElement("input"); input.id = id;
       host.append(label, input);
-      if (hint) { const h = document.createElement("div"); h.className = "sub"; h.textContent = hint; host.append(h); }
+      if (hintKey) { const h = document.createElement("div"); h.className = "sub"; show(h, el => { el.textContent = tr(hintKey); }); host.append(h); }
       return input;
     };
     if (state.platform === "discord") {
       const guild = document.createElement("select"); guild.id = "guild";
-      const label = document.createElement("label"); label.textContent = "Server (guild)"; label.htmlFor = "guild";
+      const label = document.createElement("label"); label.htmlFor = "guild"; show(label, el => { el.textContent = tr("guild"); });
       host.append(label, guild);
       for (const g of state.guilds) { const opt = document.createElement("option"); opt.value = g.id; opt.textContent = g.name + " (" + g.id + ")"; guild.append(opt); }
-      field("general", "General channel id");
-      field("admin", "Your Discord user id", "Becomes the first allowed user.");
+      field("general", "general");
+      field("admin", "discordAdmin", "firstAllowed");
     } else {
-      field("group", "Group id", "Or post any message in the group and press Detect.");
+      field("group", "group", "groupHint");
       const row = document.createElement("div"); row.className = "row";
-      const detect = document.createElement("button"); detect.id = "detect"; detect.textContent = "Detect from a message";
+      const detect = document.createElement("button"); detect.id = "detect"; show(detect, el => { el.textContent = tr("detect"); });
       detect.onclick = detectGroup; row.append(detect);
       const msg = document.createElement("span"); msg.className = "msg"; msg.id = "detectMsg"; row.append(msg);
       host.append(row);
-      field("admin", "Your Telegram user id", "Becomes the first allowed user.");
+      field("admin", "telegramAdmin", "firstAllowed");
     }
   }
 
   async function detectGroup() {
     if (formFrozen) return;
-    $("detectMsg").textContent = "Waiting for a message in the group…";
+    say("detectMsg", "detectWaiting");
     const res = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "await-telegram-start", token: $("token").value.trim(), offset: state.offset }) });
     if (formFrozen) return;
-    if (!res.ok) { $("detectMsg").textContent = res.body?.error || "Failed."; return; }
+    if (!res.ok) { sayHost("detectMsg", res.body?.error, "failed"); return; }
     state.offset = res.body.offset;
     if (res.body.found) {
       $("group").value = String(res.body.found.groupId);
       $("admin").value = String(res.body.found.userId);
-      $("detectMsg").textContent = "Found.";
-    } else $("detectMsg").textContent = "No group message yet — post one and press Detect again.";
+      say("detectMsg", "detectFound");
+    } else say("detectMsg", "detectNone");
   }
 
   function input() {
     // #2233: the agent alone; a web-only setup carries no connection field at all.
+    // #2726: an empty directory is sent as it is — the host gives the agent its own workspace.
     if (state.platform === "web") return { web_only: true, backend: $("backend").value, working_directory: $("dir").value.trim(), instance_name: $("name").value.trim() };
     return {
       platform: state.platform,
@@ -256,14 +278,16 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 
   $("verify").onclick = async () => {
     if (formFrozen) return;
-    $("verifyMsg").textContent = "Asking the provider…";
+    say("verifyMsg", "verifying");
     const token = $("token").value.trim();
     const res = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "verify", platform: state.platform, token }) });
     if (formFrozen) return;
-    state.identity = res.body?.identity || { valid: false };
-    $("verifyMsg").className = "msg " + (state.identity.valid ? "ok" : "err");
-    $("verifyMsg").textContent = state.identity.valid ? "✓ " + (state.identity.username || "verified") : "✗ " + (state.identity.reason || "rejected");
-    if (state.identity.valid && state.platform === "discord") {
+    const identity = state.identity = res.body?.identity || { valid: false };
+    show($("verifyMsg"), el => {
+      el.className = "msg " + (identity.valid ? "ok" : "err");
+      el.textContent = identity.valid ? "✓ " + (identity.username || tr("verified")) : "✗ " + (identity.reason ? trHost(identity.reason) : tr("rejected"));
+    });
+    if (identity.valid && state.platform === "discord") {
       const guilds = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token }) });
       if (formFrozen) return;
       state.guilds = guilds.body?.guilds || [];
@@ -275,10 +299,10 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     if (formFrozen) return;
     const res = await api("api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(input()) });
     if (formFrozen) return;
-    if (!res.ok) { $("planOut").hidden = false; $("planOut").textContent = res.body?.error || "Failed."; return; }
+    if (!res.ok) { $("planOut").hidden = false; sayHost("planOut", res.body?.error, "failed"); return; }
     state.plan = res.body;
     $("planOut").hidden = false;
-    $("planOut").textContent = JSON.stringify(res.body, null, 2);
+    show($("planOut"), el => { el.textContent = JSON.stringify(res.body, null, 2); });
     $("finish").disabled = !(state.platform === "web" || state.identity?.valid);
   };
 
@@ -288,13 +312,16 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   let pollGeneration = 0;
   // #2650 item 10: how long this page has left, counted here from the host's own remaining time (no polling: a request
   // would keep an idle page open). After it, the page says it has closed and how to reopen it, instead of freezing.
-  const REOPEN = "Reopen it where you started setup: in the Windows installer, press Enter in its window; otherwise run agend setup again on the computer running AgEnD.";
   let closesAt = null, handedOver = false, pageClosed = false;
+  const setFinishLabel = (key) => show($("finish"), el => { el.textContent = tr(key); });
+  // finishMsg: a key of this page, or the host's words; with its colour.
+  const finishSay = (cls, key, ...values) => show($("finishMsg"), el => { el.className = cls; el.textContent = tr(key, ...values); });
+  const finishHost = (text, fallback) => show($("finishMsg"), el => { el.className = "msg err"; el.textContent = text ? trHost(text) : tr(fallback); });
   const closePage = () => {
     if (handedOver || pageClosed) return;
     pageClosed = true; pollGeneration++; freezeFields(true); $("finish").disabled = true;
-    $("ttlMsg").className = "sub msg err"; $("ttlMsg").textContent = "This setup page has closed.";
-    $("finishMsg").className = "msg err"; $("finishMsg").textContent = "This setup page has closed. " + REOPEN + " Backends you already signed in stay signed in.";
+    show($("ttlMsg"), el => { el.className = "sub msg err"; el.textContent = tr("closed"); });
+    show($("finishMsg"), el => { el.className = "msg err"; el.textContent = tr("closedFinish", tr("reopen")); });
   };
   const showRemaining = () => {
     if (closesAt === null || handedOver || pageClosed) return;
@@ -302,9 +329,10 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     if (left <= 0) { closePage(); return; }
     const total = Math.ceil(left / 1000), text = Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
     const soon = left <= 3 * 60_000;
-    $("ttlMsg").className = soon ? "sub msg err" : "sub msg";
-    $("ttlMsg").textContent = "This page closes in " + text + " at the latest (sooner after 10 minutes without activity)."
-      + (soon ? " Finish soon. If it closes first: " + REOPEN : "");
+    show($("ttlMsg"), el => {
+      el.className = soon ? "sub msg err" : "sub msg";
+      el.textContent = soon ? tr("closesSoon", tr("closesIn", text), tr("reopen")) : tr("closesIn", text);
+    });
     setTimeout(showRemaining, 1000);
   };
   const trackRemaining = (status) => {
@@ -317,39 +345,45 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     formFrozen = frozen;
     for (const field of document.querySelectorAll("main input, main select, #verify, #preview, #pickTelegram, #pickDiscord, #pickWeb, #detect")) field.disabled = frozen;
   };
-  const restoreEditing = (message) => {
+  const restoreEditing = (render) => {
     if (pageClosed) return;                       // a late answer never reopens a closed page (#2653 review)
     pollGeneration++; approvedSetup = false; submission = null; state.identity = null;
-    freezeFields(false); $("finish").disabled = true; $("finish").textContent = "Create and start AgEnD";
-    $("finishMsg").className = "msg err"; $("finishMsg").textContent = message;
+    freezeFields(false); $("finish").disabled = true; setFinishLabel("finish");
+    render();
   };
   for (const field of document.querySelectorAll("main input, main select")) field.addEventListener("input", () => {
-    approvedSetup = false; submission = null; $("finish").textContent = "Create and start AgEnD";
+    approvedSetup = false; submission = null; setFinishLabel("finish");
   });
+  // A host confirmation that did not apply: its outcome in this page's language (by its reason), else the host's words.
+  const outcomeText = (pending) => {
+    const reason = pending.outcome?.reason_code;
+    if (reason && I18N.en["outcome_" + reason]) return tr("outcome_" + reason);
+    return pending.outcome?.message ? trHost(pending.outcome.message) : tr("notApplied");
+  };
   const watchPending = (pendingId) => {
     if (pageClosed) return;                       // a late pending list or commit answer: the page stays closed
     const generation = ++pollGeneration;
     freezeFields(true); $("finish").disabled = true;
     // #2650 item 1: the page asks; a person at the computer running AgEnD approves. Nothing on this page can.
-    const ask = "Approve this on the computer running AgEnD. The Windows installer opens a confirmation window for it, and shows a command to paste if no window appears. Otherwise run there: agend settings confirm " + pendingId;
-    $("finishMsg").className = "msg"; $("finishMsg").textContent = ask;
+    const ask = () => finishSay("msg", "approveHost", pendingId);
+    ask();
     let misses = 0;
     const poll = async () => {
       if (generation !== pollGeneration) return;
       try {
         const result = await api("api/settings/pending/" + pendingId);
         if (generation !== pollGeneration) return;
-        if (misses) { misses = 0; $("finishMsg").className = "msg"; $("finishMsg").textContent = ask; }
-        if (!result.ok) { restoreEditing("Setup confirmation is no longer available. Review and enter the token again."); return; }
+        if (misses) { misses = 0; ask(); }
+        if (!result.ok) { restoreEditing(() => finishSay("msg err", "confirmGone")); return; }
         const pending = result.body;
         if (pending.state === "pending" || pending.state === "applying") { setTimeout(poll, 1000); return; }
-        if (pending.state !== "applied") { restoreEditing(pending.outcome?.message || "Change was not applied. Review and enter the token again."); return; }
-        approvedSetup = true; submission = null; $("finish").disabled = false; $("finish").textContent = "Start AgEnD";
-        $("finishMsg").textContent = "Configuration confirmed. Select Start AgEnD to finish setup.";
+        if (pending.state !== "applied") { restoreEditing(() => show($("finishMsg"), el => { el.className = "msg err"; el.textContent = outcomeText(pending); })); return; }
+        approvedSetup = true; submission = null; $("finish").disabled = false; setFinishLabel("start");
+        finishSay("msg", "confirmed");
       } catch {
         if (generation !== pollGeneration) return;
         // #2650 item 10: a lost connection is said, not waited out silently; the pending confirmation keeps its id.
-        if (++misses === 5) { $("finishMsg").className = "msg err"; $("finishMsg").textContent = "Lost contact with the setup page; still trying. If this stays, the page has closed. " + REOPEN; }
+        if (++misses === 5) show($("finishMsg"), el => { el.className = "msg err"; el.textContent = tr("lostContact", tr("reopen")); });
         setTimeout(poll, misses < 5 ? 1000 : 3000);
       }
     };
@@ -358,15 +392,15 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   $("finish").onclick = async () => {
     if (pageClosed) return;
     if ($("setupSignins").dataset.ready === "false") {
-      $("finishMsg").textContent = "Finish backend sign-in or choose Sign in later before continuing."; return;
+      finishSay($("finishMsg").className, "finishSignins"); return;
     }
     $("finish").disabled = true;
     try {
       if (approvedSetup) {
         const finished = await api("setup/finish", { method: "POST" });
-        if (!finished.ok) { restoreEditing(finished.body?.error || "Confirmation is no longer current."); return; }
-        handedOver = true; $("ttlMsg").textContent = "";
-        $("finishMsg").textContent = state.platform === "web" ? "AgEnD is starting. Its dashboard link shows here once it is up." : "AgEnD is starting. Continue in the channel you configured.";
+        if (!finished.ok) { restoreEditing(() => finishHost(finished.body?.error, "notCurrent")); return; }
+        handedOver = true; show($("ttlMsg"), el => { el.textContent = ""; });
+        finishSay($("finishMsg").className, state.platform === "web" ? "startingWeb" : "startingChat");
         if (finished.body?.watch !== false) waitForFleet();
         return;
       }
@@ -374,13 +408,13 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       // a terminal outcome receives a new key and requires secret reentry.
       submission ||= { key: crypto.randomUUID(), body: JSON.stringify(state.platform === "web" ? input() : Object.assign({}, input(), { token: $("token").value.trim() })) };
       freezeFields(true);
-      $("finishMsg").textContent = "Requesting host confirmation…";
+      finishSay($("finishMsg").className, "requesting");
       const commit = await api("api/settings/quickstart/commit", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": submission.key }, body: submission.body });
-      if (!commit.ok) { restoreEditing(commit.body?.error || "Failed."); return; }
-      if (commit.body?.result !== "pending_confirmation" || !commit.body.pending_change?.id) { restoreEditing("Expected a pending host confirmation."); return; }
+      if (!commit.ok) { restoreEditing(() => finishHost(commit.body?.error, "failed")); return; }
+      if (commit.body?.result !== "pending_confirmation" || !commit.body.pending_change?.id) { restoreEditing(() => finishSay("msg err", "expectedPending")); return; }
       $("token").value = ""; submission = null;
       watchPending(commit.body.pending_change.id);
-    } catch { if (pageClosed) return; $("finishMsg").textContent = "Connection failed. Retry to find the same confirmation."; $("finish").disabled = false; }
+    } catch { if (pageClosed) return; finishSay($("finishMsg").className, "connectionFailed"); $("finish").disabled = false; }
   };
   // Same-cookie reloads rediscover an unresolved consent request without a secret.
   const status = api("setup/status").then(result => { if (result.ok) trackRemaining(result.body); return result; });
@@ -390,8 +424,8 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     if (pending) { watchPending(pending.id); return; }
     status.then(current => {
       if (pageClosed || !current.ok || !current.body?.finish_ready || submission || pollGeneration) return;
-      approvedSetup = true; freezeFields(true); $("finish").disabled = false; $("finish").textContent = "Start AgEnD";
-      $("finishMsg").textContent = "Configuration confirmed. Select Start AgEnD to finish setup.";
+      approvedSetup = true; freezeFields(true); $("finish").disabled = false; setFinishLabel("start");
+      finishSay($("finishMsg").className, "confirmed");
     }).catch(() => {});
   }).catch(() => {});
 
@@ -403,23 +437,19 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       try {
         const res = await fetch("/health", { cache: "no-store" });
         if (res.status) {
-          $("finishMsg").className = "msg ok";
           // #1519 P7: the fleet answers on this address now — its dashboard is here too.
-          const link = document.createElement("a"); link.href = "/"; link.textContent = location.origin + "/";
-          if (state.platform === "web") {
-            // #2233: no bot — the dashboard is where AgEnD is used; its sign-in code comes from the machine.
-            $("finishMsg").textContent = "AgEnD is up. Open its dashboard: ";
-            $("finishMsg").append(link, " — sign in with the code from agend web --code on the machine running AgEnD. Sign your agents' CLIs in from Settings → Agents → Sign-ins.");
-            return;
-          }
-          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up, or open its dashboard: ";
-          $("finishMsg").append(link, " (sign in with agend web --code on the machine running AgEnD, or send /web to your bot).");
+          // #2233: with no bot, the dashboard is where AgEnD is used; its sign-in code comes from the machine.
+          show($("finishMsg"), el => {
+            el.className = "msg ok";
+            const link = document.createElement("a"); link.href = "/"; link.textContent = location.origin + "/";
+            const [before, after] = tr(state.platform === "web" ? "upWeb" : "upChat").split("{0}");
+            el.textContent = before; el.append(link, after ?? "");
+          });
           return;
         }
       } catch { /* not listening yet */ }
       if (Date.now() > deadline) {
-        $("finishMsg").className = "msg err";
-        $("finishMsg").textContent = "AgEnD has not come up within 60 seconds. Run \`agend start\` on the machine itself and check fleet.log — this page cannot tell you any more.";
+        finishSay("msg err", "notUp");
         return;
       }
       setTimeout(tick, 1000);
@@ -430,6 +460,9 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   $("pickTelegram").onclick = () => setPlatform("telegram");
   $("pickDiscord").onclick = () => setPlatform("discord");
   $("pickWeb").onclick = () => setPlatform("web");
+  $("name").addEventListener("input", showDirHint);
+  setFinishLabel("finish");
+  showDirHint();
   loadEnvironment();
   setPlatform("telegram");
 })();

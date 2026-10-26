@@ -6,7 +6,7 @@
 // one runs, on which device, and may cancel it. The stream's `backend_login` event carries nothing — it only says to
 // read again. Starting is two steps, as in chat: check (the server keeps what it found) and start (with its id).
 import { html, useEffect, useState, useRef } from "/assets/app-html.js";
-import { t, register } from "/assets/app-i18n.js";
+import { t, register, lang, onLang } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { closeDialog, shellStore, showDialog } from "/assets/app-shell.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -217,13 +217,14 @@ export function BrowserSignInDialog({ backend, backends, onClose }) {
   const root = useRef(null), close = onClose || closeDialog;
   useEffect(() => {
     let cards, last = "";
-    cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", changed: next => {
+    cards = mountStructuredSignIns(root.current, { endpoint: "/ui/browser-backend-signins", lang, changed: next => {
       if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
       else if (!next.selected.includes(backend)) void cards.addBackend(backend);
       const signature = JSON.stringify([next.login, next.pending]);
       if (signature !== last) { last = signature; void refreshSignIn(); }
     } });
-    return () => cards.dispose();
+    const unlisten = onLang(() => cards.relabel());
+    return () => { unlisten(); cards.dispose(); };
   }, [backend, backends]);
   const fallback = async (chosen = backend) => {
     const result = await post("/ui/browser-backend-signins", { operation: "cancel" });

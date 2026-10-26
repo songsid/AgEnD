@@ -3,7 +3,7 @@ import { setNoticeMode } from "./notice-delivery.js";
 import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
-import { agentConflict, draftQuickstart, draftWebOnly, newConnectionConflict, planQuickstart, validateWizardInput, webOnlyConflict, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
+import { agentConflict, draftQuickstart, draftWebOnly, newConnectionConflict, planQuickstart, validateWizardInput, webOnlyConflict, withExistingAgent, withWorkingDirectory, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { channelWithDefaults } from "./config.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
@@ -147,7 +147,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!cfg || validateWizardInput(patch)) throw new SettingsConfirmationError(400, "invalid_quickstart");
     if (webOnlyConflict(cfg)) throw new SettingsConfirmationError(409, "connection_exists");
     if (agentConflict(patch as WizardPlanInput, cfg)) throw new SettingsConfirmationError(409, "agent_conflict");
-    const draft = draftWebOnly(cfg, patch as WizardPlanInput);
+    const draft = draftWebOnly(cfg, withWorkingDirectory(patch) as WizardPlanInput);
     before.fleet = structuredClone(cfg); after.fleet = draft;
     return { diff: scoped(settingsChangeDiff(before.fleet, draft, { operation: `${operation} instance ${patch.instance_name} (web only)`, force: true })) };
   } else if (path === "/api/settings/quickstart/commit") {
@@ -157,8 +157,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     // #1519 P1 (S1): a new connection only — one that would take another's id or token env is refused, not proposed.
     if (newConnectionConflict(patch as WizardPlanInput, { channels })) throw new SettingsConfirmationError(409, "connection_exists");
     if (agentConflict(patch as WizardPlanInput, cfg)) throw new SettingsConfirmationError(409, "agent_conflict");
-    const plan = planQuickstart(withExistingAgent(patch as WizardPlanInput, cfg), { channels, has_fleet: !!Object.keys(cfg.instances).length, backends: [] });
-    const draft = draftQuickstart(cfg, patch as WizardPlanInput, plan);
+    const input = withWorkingDirectory(patch) as WizardPlanInput;
+    const plan = planQuickstart(withExistingAgent(input, cfg), { channels, has_fleet: !!Object.keys(cfg.instances).length, backends: [] });
+    const draft = draftQuickstart(cfg, input, plan);
     const normalizedBefore = structuredClone(cfg); normalizedBefore.channels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []); delete normalizedBefore.channel;
     const what = patch.connection_only === true ? `connection ${plan.channel_id}` : `instance ${patch.instance_name}`;
     before.fleet = normalizedBefore; after.fleet = draft;
