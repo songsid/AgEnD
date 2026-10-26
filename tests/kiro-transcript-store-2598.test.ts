@@ -48,7 +48,7 @@ function fixture() {
     sources.push(s);
     return s;
   };
-  return { db, row, session, source };
+  return { db, row, session, source, sessionsDir };
 }
 // The session files carry tool uses (what the source reports from them); the sqlite rows carry responses.
 const line = (name: string) => JSON.stringify({ version: "v1", kind: "AssistantMessage", data: { content: [{ kind: "toolUse", data: { toolUseId: name, name, input: {} } }] } });
@@ -98,6 +98,14 @@ describe("the store follows the launch's engine (#2598 B1)", () => {
     say("D5 new tool");
     expect(await texts(s)).toEqual(follows ? ["D5 new tool"] : []);
     expect(await texts(s)).toEqual([]);
+  });
+
+  it("reads the real 2.34.0 ToolResults record once without treating returned content as new tool calls", async () => {
+    const f=fixture();f.session("ours",{subagent:true,exported:true});
+    const source=f.source({engine:"v2",sessionId:"ours"});await source.initialize();
+    appendFileSync(join(f.sessionsDir,"ours.jsonl"),JSON.stringify({version:"v1",kind:"ToolResults",data:{message_id:"result",content:"",results:{first:{tool:null,result:{kind:"toolUse",data:{name:"quoted output"}}},second:{tool:null,result:"done"}}}})+"\n");
+    const events=await source.poll();expect(events.toolResults).toHaveLength(2);expect(events.toolUses).toEqual([]);
+    expect((await source.poll()).toolResults).toEqual([]);
   });
 
   it("v1 launch: the sqlite store only — a stray session file in the directory is another engine's", async () => {

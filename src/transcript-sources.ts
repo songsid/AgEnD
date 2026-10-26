@@ -1086,6 +1086,17 @@ function collectKiroEvents(node: unknown, out: TranscriptEvents, depth = 0): voi
     out.toolUses.push({ name: String(d.name ?? "unknown"), input: d.input });
     return;
   }
+  if (obj.kind === "ToolResults" && obj.data && typeof obj.data === "object") {
+    // 2.34.0 TUI emits one outer result map, not nested kind:toolResult blocks. Returned content is data,
+    // never another tool call: stop walking here even when an output happens to resemble a transcript record.
+    const results = (obj.data as Record<string, unknown>).results;
+    if (results && typeof results === "object" && !Array.isArray(results)) {
+      for (const result of Object.values(results)) {
+        if (result && typeof result === "object" && Object.hasOwn(result, "result")) out.toolResults.push({ name: "toolResult" });
+      }
+    }
+    return;
+  }
   if (obj.kind === "toolResult" && obj.data && typeof obj.data === "object") {
     out.toolResults.push({ name: "toolResult" });
     return;
