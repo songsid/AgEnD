@@ -1,4 +1,5 @@
 import { getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
+import { listKiroV1Sessions } from "./backend/kiro-identity.js";
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
 import { SEPARATE_FEATURE_KEYS, hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
@@ -2310,6 +2311,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         throw new Error(t("kiro_migrate.verification_failed"));
       },
       stop: async name => { try { await this.stopInstance(name); } finally { writePausedMarker(this.getInstanceDir(name), Date.now(), "error"); } },
+      readClassicStore: (workingDirectory, credentialProfile) => listKiroV1Sessions(workingDirectory, kiroV1DbPath(credentialProfile)),
     };
   }
 

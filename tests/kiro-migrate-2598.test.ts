@@ -175,6 +175,7 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
       preflight: vi.fn(async () => "claude-sonnet-4.6"),
       verify: vi.fn(async () => ({ forensic: "clean" })),
       stop: vi.fn(async () => {}),
+      readClassicStore: () => store([]),
       ...over,
     };
     return { d, fleet, saved, restart };
@@ -270,7 +271,7 @@ describe("FleetManager glue: the request posts a Confirm in General; only the cl
       kiroMigrateDeps: () => ({ agendHome: home, fleetConfig: () => fleet, saveFleetConfig: () => f.saveFleetConfig(),
         status: () => "running", reserve: () => ({ current: () => true, release() {} }),
         preflight: async () => "claude-sonnet-4.6", verify: async () => ({ forensic: "clean" }),
-        stop: async () => {}, restart: async (name: string) => f.restartSingleInstance(name, { explicit: true }) }),
+        stop: async () => {}, restart: async (name: string) => f.restartSingleInstance(name, { explicit: true }), readClassicStore: () => store([]) }),
       pendingKiroMigrations: new Map(),
       logger: { info() {}, warn() {}, error() {}, debug() {} },
       eventLog: { insert: vi.fn() },
