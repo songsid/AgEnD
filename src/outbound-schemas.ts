@@ -13,6 +13,11 @@ const NonEmptyString = z.string().min(1);
 
 const MessageFormat = z.enum(["text", "markdown"]);
 
+// zod 4.6 requires seconds in an offset datetime (RFC 3339); 4.3 accepted "2026-07-26T14:00+08:00".
+// Schedules keep accepting the minute form, and the pattern listed to agents stays the 4.3 one (#2670).
+const OFFSET_DATETIME = /^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$/;
+const OneShotAt = z.stringFormat("date-time", OFFSET_DATETIME, { error: "Invalid ISO datetime" });
+
 // Internal routing metadata, filled by the daemon/fleet rather than the model.
 // Only channel-addressing schemas accept it; mcp-tools omits it from listings.
 const ChannelAddressFields = {
@@ -77,7 +82,7 @@ export const ValidateConfigArgs = z.object({});
 export const CreateScheduleArgs = z.object({
   cron: NonEmptyString.optional()
     .describe("Recurring cron expression, e.g. '0 7 * * *'. Mutually exclusive with at."),
-  at: z.string().datetime({ offset: true }).optional()
+  at: OneShotAt.optional()
     .describe("One-shot ISO-8601 datetime with offset, e.g. '2026-07-26T14:00:00+08:00'. Mutually exclusive with cron."),
   message: NonEmptyString.describe("Message to inject when triggered"),
   target: z.string().optional()
@@ -99,7 +104,7 @@ export const ListSchedulesArgs = z.object({
 export const UpdateScheduleArgs = z.object({
   id: NonEmptyString.describe("Schedule ID"),
   cron: NonEmptyString.optional().describe("New recurring cron expression; clears at"),
-  at: z.string().datetime({ offset: true }).optional().describe("New one-shot ISO datetime; clears cron"),
+  at: OneShotAt.optional().describe("New one-shot ISO datetime; clears cron"),
   message: z.string().optional().describe("New message"),
   target: z.string().optional().describe("New target instance"),
   label: z.string().optional().describe("New label"),

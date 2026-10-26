@@ -75,7 +75,7 @@
     "smol-toml": "1.9.0",
     "undici": "6.29.1",
     "yaml": "^2.9.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "optionalDependencies": {
     "@songsid/agend-node-darwin-arm64": "22.23.4",

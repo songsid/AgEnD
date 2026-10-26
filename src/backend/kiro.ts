@@ -22,7 +22,7 @@ import {
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
@@ -66,10 +66,13 @@ export const KIRO_TESTED_MAX = "2.34.0";
  * queued message mid-tool — has been captured (tests/fixtures/kiro-steer-1405, 2026-10-08: 2.27.1 `--tui
  * --agent-engine=v2` and `--v3`, 2.28.0 `--tui --agent-engine=v2`; identical rows on all three). Any other version,
  * 2.28.0's v3, the legacy UI and an undetected version all deliver a steer as an ordinary message after the turn.
+ * 2.34.0 TUI was checked on the user-authorized #2598 D5 run (tests/fixtures/kiro-2.34.0-tui-d5):
+ * native steer during a read-only tool, a fleet message queued mid-tool, and a native queue entry in the busy turn.
  */
 export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | "v3">>> = {
   "2.27.1": ["tui", "v3"],
   "2.28.0": ["tui"],
+  "2.34.0": ["tui"],
 };
 
 /**
@@ -187,18 +190,21 @@ const warnedVersionGateCacheKeys = new Set<string>();
  * This broad test is only a safety hold: it must never select an option or
  * claim a service outage. A ready prompt below the picker makes it history.
  */
+const KIRO_MODEL_PICKER_HEADER = /^\s*Select model(?: \(type to search\):|:\s+type to search)\s*$/m;
+
 function kiroModelPickerAtTail(pane: string): boolean {
   const lines = pane.replace(/\r/g, "").split("\n");
   let pickerIndex = -1;
   for (let index = lines.length - 1; index >= 0; index--) {
-    if (/^\s*Select model \(type to search\):\s*$/.test(lines[index])) {
+    if (KIRO_MODEL_PICKER_HEADER.test(lines[index])) {
       pickerIndex = index;
       break;
     }
   }
   if (pickerIndex < 0) return false;
   const tail = lines.slice(pickerIndex + 1);
-  if (tail.some(line => /^\s*\d+%[^\n]*[!❯>]\s+\S/.test(line))) return false;
+  const composer = readKiroSteerComposer(tail.join("\n"));
+  if (tail.some(line => /^\s*\d+%[^\n]*[!❯>]\s+\S/.test(line)) || (composer !== null && composer !== "text")) return false;
   return tail.some(line => /^\s*[>❯›]\s*\*?\s*\S/.test(line));
 }
 
@@ -420,6 +426,111 @@ export function kiroQuestionCardActive(pane: string): boolean {
   return body.filter(row => /^\s*❯\s+\S/.test(row)).length === 1;
 }
 
+/** #2675: the live card's rows — the header row, the body between it and the key hints' divider, and the key hints. */
+function kiroCardRows(pane: string, headerAt: (rows: string[], last: number) => number): { header: string; body: string[]; footer: string; width: number } | null {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let last = rows.length - 1;
+  while (last >= 0 && !rows[last].trim()) last--;
+  const header = headerAt(rows, last);
+  return header < 0 ? null : { header: rows[header].trim(), body: rows.slice(header + 1, last - 1), footer: rows[last].trim(), width: rows[last - 1].trim().length };
+}
+
+const KIRO_QUESTION_OPTION_ROW = /^ (❯| ) (\d+)\. (.*?)( \(recommended\))?$/;
+const KIRO_QUESTION_SUBOPTION_ROW = /^ (❯| ) \[(✓| )\] (.*)$/;
+const KIRO_QUESTION_FREE_ROW = /^ (❯| ) (Type a different answer…|or type feedback to request changes)$/;
+
+/**
+ * #2675: the live Question card (see kiroQuestionCardActive), read for a person to answer from the chat: the question,
+ * the numbered options (`(recommended)` and the description row under one), the typed-answer row, and where the `❯`
+ * is (tui.js `A0`; tests/fixtures/kiro-question-2592). On a sub-options page the rows are the `[✓]` boxes; while an
+ * answer is being typed the last row is `❯ <text>`. A row the shapes above do not account for is a wrapped title (the
+ * card's own indent) or description (deeper), joined to the row it continues; one before any option belongs to the
+ * question. Null when the card is not live, or when it is in a shape this reader does not know.
+ */
+export function readKiroQuestionCard(pane: string): RemoteQuestionCard | null {
+  if (!kiroQuestionCardActive(pane)) return null;
+  const card = kiroCardRows(pane, (rows, last) => {
+    let top = last - 2;
+    while (top >= 0 && !/^─{3,}$/.test(rows[top].trim())) top--;
+    return top + 1;
+  });
+  if (!card) return null;
+  const page: RemoteQuestionCard["page"] = /space to toggle/.test(card.footer) ? "suboptions" : "options";
+  const question: string[] = [];
+  const options: RemoteCardOption[] = [];
+  let cursor: number | null = null, freeText = false, typed: string | null = null, freeRow = false;
+  for (const row of card.body) {
+    const option = page === "options" ? KIRO_QUESTION_OPTION_ROW.exec(row) : null;
+    const sub = page === "suboptions" ? KIRO_QUESTION_SUBOPTION_ROW.exec(row) : null;
+    const free = page === "options" ? KIRO_QUESTION_FREE_ROW.exec(row) : null;
+    if (freeRow) return null;   // nothing follows the typed-answer row
+    if (option && Number(option[2]) === options.length + 1) {
+      if (option[1] === "❯") cursor = options.length;
+      options.push({ n: options.length + 1, title: option[3], recommended: option[4] !== undefined, description: null });
+    } else if (sub) {
+      if (sub[1] === "❯") cursor = options.length;
+      options.push({ n: options.length + 1, title: sub[3], recommended: false, description: null, checked: sub[2] === "✓" });
+    } else if (free) {
+      freeText = true; freeRow = true;
+      if (free[1] === "❯") cursor = options.length;
+    } else if (page === "options" && options.length > 0 && /^ ❯ /.test(row)) {
+      freeText = true; freeRow = true; typed = row.slice(3);
+    } else if (!row.trim()) {
+      continue;
+    } else if (options.length === 0) {
+      question.push(row.replace(/^ /, ""));
+    } else {
+      const lastOption = options[options.length - 1];
+      if (/^ {5,}\S/.test(row)) lastOption.description = lastOption.description === null ? row.trim() : `${lastOption.description} ${row.trim()}`;
+      else if (lastOption.description === null) lastOption.title = `${lastOption.title} ${row.trim()}`;
+      else return null;
+    }
+  }
+  if (options.length === 0 || question.length === 0) return null;
+  const typing = typed !== null;
+  if (typing ? cursor !== null : cursor === null) return null;
+  const titles = options.map(option => `${option.n}. ${option.title}`).join("\n");
+  return {
+    kind: "question", identity: `${card.header}\n${question.join("\n")}\n${page === "suboptions" ? "sub" : "options"}\n${titles}`,
+    title: card.header, question: question.join("\n").trim(), page: typing ? "freetext" : page, options, freeText, cursor, typed, rowWidth: card.width,
+  };
+}
+
+const KIRO_MCP_INPUT_ACTIONS = new Set(["Submit", "Decline", "Open in browser", "Copy URL", "I'll open it myself", "Cancel"]);
+
+/**
+ * #2675: the live MCP `Input requested` card (see kiroMcpInputRequestActive), read for the chat: the server, the body
+ * as painted, with the `URL:` row masked (a sign-in link stays in the pane), its action rows, and the `❯` row. Its
+ * identity is the server, the mode, the message's first row and the actions: moving or filling in a field keeps it.
+ */
+export function readKiroMcpInputCard(pane: string): RemoteInputCard | null {
+  if (!kiroMcpInputRequestActive(pane)) return null;
+  const card = kiroCardRows(pane, (rows, last) => {
+    for (let index = last - 2; index >= 1; index--) if (KIRO_MCP_INPUT_HEADER.test(rows[index])) return index;
+    return -1;
+  });
+  if (!card) return null;
+  // The URL row is masked, and so is every row after it up to the next action row: a long URL wraps (#2677 review).
+  let inUrl = false;
+  const body = card.body.slice(1).flatMap(row => {
+    if (/^\s*URL: /.test(row)) { inUrl = true; return [row.replace(/URL: .*$/, "URL: (shown in the instance pane)")]; }
+    if (inUrl && KIRO_MCP_INPUT_ACTIONS.has(row.replace(/^ ❯ /, "   ").trim())) inUrl = false;
+    return inUrl ? [] : [row];
+  });
+  const strip = (row: string) => row.replace(/^ ❯ /, "   ").trim();
+  const cursorRow = body.find(row => /^\s*❯\s+\S/.test(row));
+  if (!cursorRow) return null;
+  return {
+    kind: "input", server: card.header.replace(/^Input requested · /, ""),
+    mode: /ctrl\+s to submit/.test(card.footer) ? "form" : "url",
+    rows: body.map(row => row.replace(/^ ❯ /, "   ").replace(/^ {3}/, "")).filter(row => row.trim()),
+    actions: body.map(strip).filter(row => KIRO_MCP_INPUT_ACTIONS.has(row)),
+    cursorRow: strip(cursorRow),
+    // The focused field paints extra rows (its value, its caret) and a typed value changes its row: neither is another request.
+    identity: `${card.header}\n${/ctrl\+s to submit/.test(card.footer) ? "form" : "url"}\n${strip(body[0] ?? "")}\n${body.map(strip).filter(row => KIRO_MCP_INPUT_ACTIONS.has(row)).join("|")}`,
+  };
+}
+
 /**
  * Kiro's service-unavailable path opens the same picker as `/model`, but only
  * the former needs incident escalation. The runtime scanner and delivery gate
@@ -432,7 +543,7 @@ export function kiroUnavailableModelPickerActive(pane: string): boolean {
   const lines = pane.replace(/\r/g, "").split("\n");
   let pickerIndex = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (/^\s*Select model \(type to search\):\s*$/.test(lines[i])) {
+    if (KIRO_MODEL_PICKER_HEADER.test(lines[i])) {
       pickerIndex = i;
       break;
     }
@@ -1896,7 +2007,7 @@ export class KiroBackend implements CliBackend {
         // picker. Its choices range across credit multipliers and capability
         // tiers, so this must be a human decision, never an automatic Enter or
         // Escape. The ordinary /model menu alone is intentionally not matched.
-        pattern: /^\s*Select model \(type to search\):\s*$/m,
+        pattern: KIRO_MODEL_PICKER_HEADER,
         keys: [],
         description: "Kiro model unavailable — choose a replacement model in the instance pane",
         blocksDelivery: true,
@@ -1908,7 +2019,7 @@ export class KiroBackend implements CliBackend {
         // Any active /model picker owns stdin, even if a future Kiro release
         // changes the exact warning, credit wording or row layout. Keep this
         // after the verified-outage case: it never labels /model as an outage.
-        pattern: /^\s*Select model \(type to search\):\s*$/m,
+        pattern: KIRO_MODEL_PICKER_HEADER,
         keys: [],
         description: "Kiro model picker — manual selection required",
         blocksDelivery: true,
@@ -1925,6 +2036,8 @@ export class KiroBackend implements CliBackend {
         holdOnly: true,
         inputBlocked: true,
         isActive: kiroMcpInputRequestActive,
+        requestIdentity: pane => readKiroMcpInputCard(pane)?.identity ?? null,
+        remoteCard: readKiroMcpInputCard,
       },
       {
         // #2592: the agent's question to the user owns stdin until the person answers or cancels it.
@@ -1935,6 +2048,8 @@ export class KiroBackend implements CliBackend {
         holdOnly: true,
         inputBlocked: true,
         isActive: kiroQuestionCardActive,
+        requestIdentity: pane => readKiroQuestionCard(pane)?.identity ?? null,
+        remoteCard: readKiroQuestionCard,
       },
       ...kiroTrustPromptDialogs(this.activeTrustAll),
       ...kiroWorkspaceTrustDialogs(this.activeTrustAll),

@@ -283,6 +283,58 @@ export function probeCliVersion(binaryPath: string, env?: NodeJS.ProcessEnv): st
   } catch { return undefined; }
 }
 
+/** #2675: one row of a card's list — an option, or a sub-option on a sub-options page. `n` counts from 1. */
+export interface RemoteCardOption {
+  n: number;
+  title: string;
+  recommended: boolean;
+  description: string | null;
+  /** Sub-options page only: whether its box is ticked. */
+  checked?: boolean;
+}
+
+/**
+ * #2675: a question a CLI shows in place of its composer (kiro V3's agent Question card), read from the pane so that a
+ * person can answer it from the chat. `identity` is what is being asked — the title, the question and the rows' titles —
+ * never the cursor, a tick or a typed answer, so moving through the card does not make it another card.
+ */
+export interface RemoteQuestionCard {
+  kind: "question";
+  identity: string;
+  /** `Question`, or `<name> > Question`. */
+  title: string;
+  question: string;
+  /** options: the numbered options; suboptions: an option's `[✓]` rows; freetext: a typed answer is being written. */
+  page: "options" | "suboptions" | "freetext";
+  options: RemoteCardOption[];
+  /** The card offers a typed answer (`Type a different answer…` or its feedback variant). */
+  freeText: boolean;
+  /** The `❯` row: an index into options, options.length for the typed-answer row; null on the freetext page. */
+  cursor: number | null;
+  /** freetext page: what the typed-answer row shows (a long answer is clipped at the card's edge). */
+  typed: string | null;
+  /** The card's width in columns (its dividers'): how long a typed-answer row clipped at the edge is. */
+  rowWidth: number;
+}
+
+/**
+ * #2675: an MCP server's request for input (kiro V3's `Input requested` card). Only declining or cancelling it is done
+ * from the chat: its fields and links stay in the pane. `rows` is the card's body with the URL row masked.
+ */
+export interface RemoteInputCard {
+  kind: "input";
+  identity: string;
+  server: string;
+  mode: "form" | "url";
+  rows: string[];
+  /** The rows that are actions (Submit, Decline, Open in browser, …), in order. */
+  actions: string[];
+  /** The text of the `❯` row. */
+  cursorRow: string;
+}
+
+export type RemoteCard = RemoteQuestionCard | RemoteInputCard;
+
 /** A dialog that may appear at runtime and needs auto-dismissal via key sequences. */
 export interface RuntimeDialog {
   /** Pattern to detect the dialog in PTY output. */
@@ -336,6 +388,11 @@ export interface RuntimeDialog {
    * human choice.
    */
   inputBlocked?: boolean;
+  /**
+   * #2675: read the live card for a person to answer from the chat (null when it is not live). Only hold-only dialogs
+   * carry one; the daemon answers it on a verified cursor, one key at a time, never with `keys`.
+   */
+  remoteCard?(pane: string): RemoteCard | null;
   /** Optional static presentation category; only structural predicates qualify. */
   interactionKind?: InteractionKind;
   /**
