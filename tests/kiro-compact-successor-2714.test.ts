@@ -283,6 +283,17 @@ describe("a fresh start that compacted before its first restart (take-up)", () =
     expect([claimFile(A), claimFile(B), claimFile(C)]).toEqual(["worker\nabandoned\n", "worker\nabandoned\n", "worker\n"]);
   });
 
+  it("a take-up whose record cannot be written refuses the launch, gives nothing up, and the retry takes the same chain", () => {
+    fresh();
+    store(CAPTURED.map(r => later(r, 0)));
+    const instances = join(home(), "kiro-identity", "instances");
+    chmodSync(instances, 0o500);
+    try { expect(() => resolve()).toThrow(KiroIdentityError); } finally { chmodSync(instances, 0o700); }
+    expect([claimFile(A), claimFile(B), claimFile(C)]).toEqual(["worker\n", "worker\n", "worker\n"]);
+    expect(resolve()).toEqual({ mode: "resume", id: C, agentConfirmed: true, followed: [A, B] });
+    expect([claimFile(A), claimFile(B), claimFile(C)]).toEqual(["worker\nabandoned\n", "worker\nabandoned\n", "worker\n"]);
+  });
+
   it("another instance's compaction (its predecessor is from before the mark) is never taken: only the own one", () => {
     store([row(CAPTURED[0]!, { created: 10, updated: 20 })]); // X's A, before this fresh start
     fresh();

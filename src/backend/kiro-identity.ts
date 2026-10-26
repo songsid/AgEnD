@@ -633,7 +633,11 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   for (const id of ids) if (!heldBy(claimOf(p.claims, id), instance) && !claim(p.claims, id, instance)) return startFresh(store);
   const pick = ids[ids.length - 1]!;
   // A fresh launch carried --agent, so the conversation it made already runs as the instance's agent.
-  save({ ...record, id: pick, abandoned: [...new Set([...record.abandoned, ...ids.slice(0, -1)])], agentConfirmed: true });
+  // Recorded before anything is given up: a failed write refuses the launch and keeps every claim held, so the retry
+  // finds the same chain (#2719 review). A single conversation keeps the old forgiving write: its claim alone re-finds it.
+  if (!save({ ...record, id: pick, abandoned: [...new Set([...record.abandoned, ...ids.slice(0, -1)])], agentConfirmed: true }) && ids.length > 1) {
+    throw new KiroIdentityError(`cannot write ${p.state}`);
+  }
   for (const old of ids.slice(0, -1)) abandonClaim(p.claims, old, instance);
   return { mode: "resume", id: pick, agentConfirmed: true, ...(ids.length > 1 ? { followed: ids.slice(0, -1) } : {}) };
 }
