@@ -325,6 +325,17 @@ export function kiroRecordedConversation(opts: { agendHome: string; instance: st
   return pending !== "unreadable" && Object.hasOwn(pending, key) ? pending[key]! : null;
 }
 
+/** Read-only forensic pin: a completed record AND its live claim, never a pending adoption or directory guess. */
+export function kiroOwnedConversation(opts: { agendHome: string; instance: string; engine: RecordEngine; workingDirectory: string; credentialProfile: string | null }): string | null {
+  if (!OWNER_NAME.test(opts.instance)) return null;
+  const p = paths(opts.agendHome, opts.engine, opts.instance);
+  const read = readState(p.state, opts.instance);
+  const record = read.kind === "ok" ? read.state.keys[keyOf(opts.engine, opts.workingDirectory, opts.credentialProfile)] : undefined;
+  return record?.id && record.engine === opts.engine && kiroCanonicalDirectory(record.workingDirectory) === kiroCanonicalDirectory(opts.workingDirectory)
+    && record.credentialProfile === opts.credentialProfile && !record.abandoned.includes(record.id)
+    && heldBy(claimOf(p.claims, record.id), opts.instance) ? record.id : null;
+}
+
 export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdentityDecision {
   const { instance, engine, workingDirectory, credentialProfile } = opts;
   if (!OWNER_NAME.test(instance)) return { mode: "legacy", reason: "the instance name cannot be recorded" };
