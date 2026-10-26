@@ -7,8 +7,11 @@ import { join } from "node:path";
 const rotation = vi.hoisted(() => ({ pending: [] as Array<() => void>, calls: [] as string[], order: [] as string[], hang: true }));
 vi.mock("../src/logger.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/logger.js")>();
+  const pino = (await import("pino")).default;
   return {
     ...real,
+    // #2725: a file mock replaces the shared one (tests/setup-test-logger.ts), so it keeps the logger's sink itself.
+    createLogger: (level: string = "info") => pino({ level }, { write() {} }) as ReturnType<typeof real.createLogger>,
     rotateLogIfNeededAsync: vi.fn((path: string) => {
       rotation.calls.push(path);
       rotation.order.push("rotate:start");

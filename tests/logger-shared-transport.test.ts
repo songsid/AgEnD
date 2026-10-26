@@ -2,6 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+// This file tests the real shared transport (#2725 opts every other file out of it). It never moves AGEND_HOME, so the
+// transport writes into the run's own test home, which outlives every test.
+vi.unmock("../src/logger.js");
 import { createLogger } from "../src/logger.js";
 import { FleetManager } from "../src/fleet-manager.js";
 

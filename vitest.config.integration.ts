@@ -18,7 +18,7 @@ export default defineConfig({
   test: {
     globals: true,
     globalSetup: ["./tests/setup-process-guard-global.ts"],
-    setupFiles: ["./tests/setup-process-guard.ts"],
+    setupFiles: ["./tests/setup-process-guard.ts", "./tests/setup-test-logger.ts"],
     fileParallelism: false,
     testTimeout: 30_000,
     include: [

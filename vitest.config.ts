@@ -38,7 +38,7 @@ export default defineConfig({
   test: {
     globals: true,
     globalSetup: ["./tests/setup-process-guard-global.ts"],
-    setupFiles: ["./tests/setup-process-guard.ts"],
+    setupFiles: ["./tests/setup-process-guard.ts", "./tests/setup-test-logger.ts"],
     testTimeout: 10000,
     exclude: [
       "**/node_modules/**",
