@@ -204,7 +204,7 @@ export const SETUP_HOST_MESSAGES: ReadonlyArray<readonly [string, string]> = [
   ["Setup confirmation unavailable.", "無法取得設定確認。"],
   // The wizard's validation (quickstart-api.ts validateWizardInput, validateWebOnlyInput).
   ["working_directory must be an absolute path, or empty for the agent's own workspace", "工作目錄必須是絕對路徑，或留空讓 agent 使用自己的資料夾"],
-  ["instance_name must be [A-Za-z0-9._-]", "agent 名稱只能用英文字母、數字和 . _ -"],
+  ["instance_name must be [A-Za-z0-9._-], and not only dots", "agent 名稱只能用英文字母、數字和 . _ -，而且不能只有句點"],
   ["backend must be a known backend", "請選擇一個支援的後端"],
   ["{0} does not apply to a web-only setup", "只用網頁的設定不使用 {0}"],
   ["platform must be telegram or discord", "平台必須是 Telegram 或 Discord"],

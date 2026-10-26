@@ -49,6 +49,13 @@ describe("#2726 validation: none, or an absolute path", () => {
       }
     }
   });
+  it("(review) a name of only dots is refused on both paths: its workspace would be the workspaces folder or AGEND_HOME", () => {
+    for (const base of [WEB, BOT]) for (const name of [".", "..", "..."]) {
+      expect(validateWizardInput({ ...base, instance_name: name } as never), `${JSON.stringify(base.instance_name)}→${name}`).toBe("instance_name must be [A-Za-z0-9._-], and not only dots");
+    }
+    expect(validateWizardInput({ ...BOT, instance_name: "..", existing_agent: true })).toBe("instance_name must be [A-Za-z0-9._-], and not only dots");
+    for (const name of ["a.", ".a", "a..b", "agent-1"]) expect(validateWizardInput({ ...WEB, instance_name: name } as never), name).toBeNull();
+  });
   it("an existing agent is not asked for one, whatever the field holds", () => {
     expect(validateWizardInput({ ...BOT, existing_agent: true, working_directory: "relative" })).toBeNull();
   });
@@ -106,6 +113,17 @@ describe("#2726 on the real SetupHost (web only)", () => {
     expect(written.instances["agent-1"].working_directory).toBe(given);
     expect(existsSync(given)).toBe(false);
     expect(existsSync(join(h.dir, "workspaces", "agent-1"))).toBe(false);
+  });
+  it("(review) a name of only dots never reaches AGEND_HOME: refused by the plan and the commit, nothing made there", async () => {
+    const h = await harness();
+    for (const name of [".", ".."]) {
+      for (const route of ["plan", "commit"]) {
+        const r = await setupHttp(h.port, h.path + `api/settings/quickstart/${route}`, "POST", { ...WEB, instance_name: name }, h.cookie);
+        expect(r.status, `${route} ${name}`).toBe(400);
+      }
+    }
+    expect((await setupHttp(h.port, h.path + "api/settings/pending", "GET", undefined, h.cookie)).body).toEqual([]);
+    expect([existsSync(join(h.dir, ".git")), existsSync(join(h.dir, "workspaces")), existsSync(join(h.dir, "fleet.yaml"))]).toEqual([false, false, false]);
   });
   it("a relative directory is refused before anything is proposed", async () => {
     const h = await harness();

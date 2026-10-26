@@ -455,9 +455,17 @@ const CONNECTION_FIELDS = ["platform", "token", "token_env", "token_env_generate
 function validateWebOnlyInput(input: Partial<WizardPlanInput> & { token?: unknown }): string | null {
   const extra = CONNECTION_FIELDS.find(field => input[field as keyof typeof input] !== undefined);
   if (extra) return `${extra} does not apply to a web-only setup`;
-  if (!input.instance_name || !/^[A-Za-z0-9._-]{1,128}$/.test(input.instance_name)) return "instance_name must be [A-Za-z0-9._-]";
+  if (instanceNameInvalid(input.instance_name)) return "instance_name must be [A-Za-z0-9._-], and not only dots";
   if (!input.backend || !KNOWN_BACKENDS.includes(input.backend)) return "backend must be a known backend";
   return workingDirectoryInvalid(input.working_directory);
+}
+
+/**
+ * An agent's name: a path segment of its own. Only dots (`.`, `..`) are refused (#2726 review): its workspace,
+ * <AGEND_HOME>/workspaces/<name>, would be the workspaces folder or AGEND_HOME itself.
+ */
+function instanceNameInvalid(name: unknown): boolean {
+  return typeof name !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(name) || /^\.+$/.test(name);
 }
 
 /** #2726: a directory, when one is given, is an absolute path; none (absent or empty) is the agent's own workspace. */
@@ -499,7 +507,7 @@ export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tok
   if (!(opts.tokenEnvOptional && input.token_env === undefined) && (!input.token_env || !TOKEN_ENV_PATTERN.test(input.token_env))) return "token_env must be an UPPER_SNAKE env var name";
   if (input.channel_id !== undefined && (typeof input.channel_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(input.channel_id))) return "channel_id must be [A-Za-z0-9_-], up to 32 characters";
   if (!input.connection_only) {
-    if (!input.instance_name || !/^[A-Za-z0-9._-]{1,128}$/.test(input.instance_name)) return "instance_name must be [A-Za-z0-9._-]";
+    if (instanceNameInvalid(input.instance_name)) return "instance_name must be [A-Za-z0-9._-], and not only dots";
     // An existing agent keeps its own directory and backend: neither is asked for.
     if (!input.existing_agent) {
       if (!input.backend || !KNOWN_BACKENDS.includes(input.backend)) return "backend must be a known backend";
