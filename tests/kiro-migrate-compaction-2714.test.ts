@@ -105,6 +105,42 @@ describe("judging the move: the conversation carried is where the classic one we
   });
 });
 
+describe("a long chain is followed to its end (#2721 review: no hop budget)", () => {
+  /** A conversation and `n` compactions of it, each continuing the one before. */
+  const chain = (n: number): Row[] => {
+    const base = CAPTURED[0]!;
+    return Array.from({ length: n + 1 }, (_, i) => ({
+      key: base.key, conversation_id: i ? `hop-${i}` : A, created_at: base.created_at + i * 1000, updated_at: base.created_at + i * 1000 + 500,
+      value: { ...base.value, conversation_id: i ? `hop-${i}` : A, latest_summary: i ? ["summary", {}] : null,
+        transcript: Array.from({ length: i + 2 }, (_, k) => k ? `> turn ${k}` : "> start") },
+    }));
+  };
+  for (const n of [64, 65, 80]) {
+    it(`${n} compactions since the launch: the plan carries hop-${n}, and applying arms it`, async () => {
+      compactedSinceLaunch(chain(n));
+      const { d } = deps();
+      const judged = planKiroMigration(d, "wiki", false);
+      if (!judged.ok) throw new Error(judged.error);
+      expect(judged.plan.classicId).toBe(`hop-${n}`);
+      expect(judged.plan.compactedFrom).toHaveLength(n);
+      expect((await applyKiroMigration(d, judged.plan)).ok).toBe(true);
+      expect(v2Pending()).toBe(`hop-${n}`);
+    });
+  }
+  it("links that loop back (never kiro's, but no budget stops it) end at the revisit, refused as not this instance's", () => {
+    compactedSinceLaunch([CAPTURED[0]!]);
+    const real = listKiroV1Sessions(cwd, db) as Extract<KiroStoreRead, { kind: "ok" }>;
+    const loop: Record<string, string> = { [A]: "L1", L1: "L2", L2: A };
+    const readClassicStore = (): KiroStoreRead => ({ ...real, compaction: { successorsOf: id => [loop[id]!], summarized: () => true } });
+    expect(planKiroMigration(deps({ readClassicStore }).d, "wiki", false))
+      .toEqual({ ok: false, error: t("kiro_migrate.refused_compaction", "wiki", "L2", t("kiro_migrate.compaction_not_ours", "L2", A)) });
+  });
+  it("the classic launch follows the same long chain", () => {
+    compactedSinceLaunch(chain(65));
+    expect(classicLaunch()).toMatchObject({ mode: "resume", id: "hop-65" });
+  });
+});
+
 describe("applying the move", () => {
   it("records the walk as a classic launch would, then arms C: the TUI launch resumes C", async () => {
     compactedSinceLaunch();

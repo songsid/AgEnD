@@ -681,7 +681,9 @@ function followClassicCompaction(claims: string, statePath: string, instance: st
   const seen = new Set([from.id, ...from.abandoned]);
   let at = from.id;
   let kept: KiroCompactionKept | undefined;
-  while (chain.length < 64) {
+  // No hop budget (#2721 review): a cap would stop short of where kiro went on without saying so. The walk ends anyway —
+  // every hop is an id not seen before (a revisit is refused as not this instance's), and the store has finitely many.
+  for (;;) {
     const next = store.compaction.successorsOf(at);
     if (next === "unreadable") { kept = { reason: "unreadable" }; break; }
     if (next.length === 0) break;
