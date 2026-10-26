@@ -167,6 +167,9 @@ describe("the routes", () => {
       const bad = await put(admin, { offices: [{ ...OPS, layout: { seats: [{ id: "s", x: -5, y: 0 }] } }], rev: 0 });
       expect([bad.status, JSON.parse(bad.body)]).toEqual([400, { error: "offices_invalid", detail: "offices[0].layout.seats[0].x: a number from 0 to 20000" }]);
       expect(JSON.parse((await put(admin, { offices: [], extra: 1 })).body)).toEqual({ error: "offices_invalid", detail: 'unknown key "extra"' });
+      // #2708 review: an office id an object already has a meaning for, sent by hand.
+      const proto = await raw(f.port, "PUT", "/ui/offices", admin, '{"offices":[{"id":"__proto__","name":"P","skin":"studio","members":[]}],"rev":0}');
+      expect([proto.status, JSON.parse(proto.body)]).toEqual([400, { error: "offices_invalid", detail: "offices[0].id: not __proto__, constructor or prototype" }]);
       expect((await put(admin, { offices: [], rev: "1" })).status).toBe(400);
       const ok = await put(admin, { offices: [OPS], rev: 0 });
       expect([ok.status, JSON.parse(ok.body)]).toEqual([200, { rev: 1, offices: [OPS] }]);

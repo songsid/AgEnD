@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { OfficeStore } from "../src/web-office-store.js";
+import { OfficeStore, officesOnDisk } from "../src/web-office-store.js";
 import { checkSkinPack } from "../src/ui/fleet-office-pack.js";
 
 const STRIP = (src: string) => ({ src, frames: 1, w: 16, h: 16 });
@@ -111,5 +111,34 @@ describe("per part: a broken map drops only itself", () => {
     put(d, { ...file(d), seatFor: { laid: { desks: { 0: { for: "x" } } } } });
     const { seatFor: _s, ...rest } = OV;
     expect(new OfficeStore(d).list().offices).toEqual([{ ...LAID, overrides: rest }]);
+  });
+});
+
+describe("office ids an object already has (#2708 review)", () => {
+  const ROGUE = (id: string) => ({ ...LAID, id });
+  it("the maps beside the offices have no prototype: an office called __proto__ keeps every part on disk", () => {
+    const disk = officesOnDisk([ROGUE("__proto__"), ROGUE("ops")] as never) as any;
+    const json = JSON.parse(JSON.stringify(disk));
+    for (const k of ["overrides", "furnitureNight", "seatFor"]) expect(Object.keys(json[k])).toEqual(["__proto__", "ops"]);
+    expect(json.overrides.ops).toEqual(json.overrides["__proto__"]);
+    expect(({} as any).pack).toBeUndefined();                                   // nothing reached Object.prototype
+  });
+  it("a write naming __proto__, constructor or prototype is refused, saying where; nothing written", () => {
+    const { d, s } = store();
+    for (const id of ["__proto__", "constructor", "prototype"]) {
+      expect(s.replace([PLAIN, ROGUE(id)], 0)).toEqual({ ok: false, status: 400, error: "offices_invalid", detail: "offices[1].id: not __proto__, constructor or prototype" });
+    }
+    expect(() => readFileSync(join(d, "web-offices.json"))).toThrow();
+  });
+  it("a hand-edited file: such an office is left out on read; the others keep their overrides; no prototype is touched", () => {
+    const { d, s } = store();
+    expect(s.replace([LAID], 0).ok).toBe(true);
+    const doc = file(d);
+    // As typed by hand: "__proto__" as a plain key in each map (JSON.parse makes it an own key).
+    const text = JSON.stringify({ ...doc, offices: [{ ...LAID_BARE, id: "__proto__" }, { ...LAID_BARE, id: "constructor" }, ...doc.offices] })
+      .replace('"overrides":{', `"overrides":{"__proto__":${JSON.stringify(doc.overrides.laid)},"constructor":${JSON.stringify(doc.overrides.laid)},`);
+    writeFileSync(join(d, "web-offices.json"), text);
+    expect(new OfficeStore(d).list().offices).toEqual([LAID]);
+    expect(({} as any).pack).toBeUndefined();
   });
 });

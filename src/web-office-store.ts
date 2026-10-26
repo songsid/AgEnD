@@ -67,6 +67,8 @@ export type OfficeCheck = { ok: true; offices: Office[] } | { ok: false; status:
 export type OfficeWrite = { ok: true; rev: number; offices: Office[] } | { ok: false; status: 400 | 409 | 413 | 503; error: string; detail?: string };
 
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
+/** #2708 review: ids an object already has a meaning for — never an office's (its overrides are kept in maps by office id). */
+const INHERITED_IDS = new Set(["__proto__", "constructor", "prototype"]);
 const POINT_ID = /^[A-Za-z0-9_.:-]{1,64}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
@@ -138,6 +140,7 @@ function office(v: unknown, at: string, packOf?: OverridePack): Office {
   keysIn(v, ["id", "name", "skin", "members", "layout", "overrides"], at);
   if (typeof v.id !== "string" || !ID.test(v.id)) throw new Refused(`${at}.id`, "1–40 letters, digits, _ or -");
   if (v.id === AUTO_OFFICE_ID) throw new Refused(`${at}.id`, `"${AUTO_OFFICE_ID}" is the page's own office`);
+  if (INHERITED_IDS.has(v.id)) throw new Refused(`${at}.id`, "not __proto__, constructor or prototype");
   const skin = v.skin === undefined ? "pixel" : typeof v.skin === "string" && ID.test(v.skin) ? v.skin : null;
   if (skin === null) throw new Refused(`${at}.skin`, "1–40 letters, digits, _ or -");
   const members = list(v.members ?? [], OFFICE_LIMITS.members, `${at}.members`).map((m, i) => text(m, OFFICE_LIMITS.member, `${at}.members[${i}]`));
@@ -171,19 +174,20 @@ type Beside = (typeof BESIDE)[number];
 type OnDisk = { offices: Office[]; overrides?: Record<string, LayoutOverrides> } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
 /**
  * #2665/#2706: what goes on disk — the offices without their overrides; beside them, by office id, each office's
- * overrides without those parts, and each part on its own (none: no key).
+ * overrides without those parts, and each part on its own (none: no key). The maps have no prototype (#2708 review), so
+ * an id is always an own key; exported for tests.
  */
-function onDisk(offices: Office[]): OnDisk {
+export function officesOnDisk(offices: Office[]): OnDisk {
   const out: OnDisk = { offices: [] };
   out.offices = offices.map(o => {
     if (!o.overrides) return o;
     const { overrides, ...entry } = o, rest: LayoutOverrides = { ...overrides };
     for (const k of BESIDE) {
       if (rest[k] === undefined) continue;
-      ((out[k] ??= {}) as Record<string, unknown>)[o.id] = rest[k];
+      ((out[k] ??= Object.create(null)) as Record<string, unknown>)[o.id] = rest[k];
       delete rest[k];
     }
-    (out.overrides ??= {})[o.id] = rest;
+    (out.overrides ??= Object.create(null) as Record<string, LayoutOverrides>)[o.id] = rest;
     return entry;
   });
   return out;
@@ -254,7 +258,7 @@ export class OfficeStore {
     const checked = checkOffices(raw, opts.packOf ?? this.packOf);
     if (!checked.ok) return checked;
     const rev = s.rev + 1;
-    try { atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, ...onDisk(checked.offices) }, null, 2) + "\n", { mode: 0o600 }); }
+    try { atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, ...officesOnDisk(checked.offices) }, null, 2) + "\n", { mode: 0o600 }); }
     catch (err) { return { ok: false, status: 503, error: "offices_write_failed", detail: (err as Error).message }; }
     this.state = { rev, offices: checked.offices };
     return { ok: true, rev, offices: clone(checked.offices) };
