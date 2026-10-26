@@ -22,7 +22,8 @@ import {
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type BackendLaunchWarning, type BackendSessionProof, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { KIRO_SESSION_ID_COMMAND, kiroTitleCommand } from "../kiro-session-proof.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
@@ -2070,6 +2071,21 @@ export class KiroBackend implements CliBackend {
     const built = this.builtLaunch, plan = this.activePlan;
     if (!built) return null;
     return { engine: built.engine, sessionId: plan?.mode === "resume" && plan.id ? plan.id : null };
+  }
+
+  /**
+   * M-2025: `/session-id` and `/title` exist on tui and V3 only. Legacy keeps
+   * the tmux window name and the sqlite lookup.
+   */
+  sessionProof(): BackendSessionProof | null {
+    const ui = this.activeUi;
+    if (ui !== "tui" && ui !== "v3") return null;
+    const pinned = this.transcriptLaunch()?.sessionId ?? null;
+    return {
+      pinned,
+      sessionIdCommand: KIRO_SESSION_ID_COMMAND,
+      titleCommand: this.activeInstance ? kiroTitleCommand(this.activeInstance) : null,
+    };
   }
 
   getSessionId(): string | null {

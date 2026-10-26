@@ -8,6 +8,7 @@ import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorkt
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { COMPACT_WATCH_TIMEOUT_MS, launchIdentity } from "./compact-watch.js";
 import { KIRO_COMPACT_PANE_LINES, KiroCompactPaneFollower } from "./kiro-compact-pane.js";
+import { proveKiroSessionId, readKiroSessionIdAnnouncement } from "./kiro-session-proof.js";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -11566,6 +11567,92 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * M-2025: after a tui/V3 launch is ready, type `/session-id` and `/title` once
+   * each, only into an idle verified composer, under the pane-write lock, with
+   * the same fences as {@link ensureBackendAgent}. Does not touch the delivery
+   * epoch. A mismatch with the #2617 pin is surfaced; the pin is never replaced
+   * by a file-store guess. Legacy backends return null from sessionProof().
+   */
+  private async ensureKiroSessionProof(): Promise<void> {
+    let proof: ReturnType<NonNullable<CliBackend["sessionProof"]>> | null = null;
+    try { proof = this.backend?.sessionProof?.() ?? null; } catch { proof = null; }
+    const tmux = this.tmux;
+    if (!proof || !tmux || !this.backend) return;
+    const windowId = tmux.getWindowId();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, phase = this.pauseWakeState;
+    const fenced = () => !this.startupAborted && !this.deliveryWritesStopping && !this.fatalStartupBlocked
+      && (phase === "active" || phase === "waking") && this.pauseWakeState === phase
+      && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && this.tmux === tmux;
+    const deadline = performance.now() + Daemon.AGENT_SWITCH_BUDGET_MS;
+    const live = () => { this.startupAdmission?.(); return fenced() && performance.now() < deadline; };
+    if (!live()) return;
+    const TIMEOUT = Symbol("deadline");
+    const within = <T>(work: Promise<T>): Promise<T | typeof TIMEOUT> => {
+      const left = deadline - performance.now();
+      if (left <= 0) { work.catch(() => {}); return Promise.resolve(TIMEOUT); }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([work, new Promise<typeof TIMEOUT>(r => { timer = setTimeout(() => r(TIMEOUT), left); })])
+        .finally(() => clearTimeout(timer));
+    };
+    const capture = () => within(tmux.capturePane().catch(() => null));
+    const pasteOnce = async (command: string): Promise<boolean> => {
+      const wrote = await within(this.paneWriteLock.run(async () => {
+        if (!live()) return false;
+        const readiness = await within(this.paneReadinessForDelivery(windowId));
+        if (readiness !== "ready" || !live()) return false;
+        const final = await capture();
+        if (final === TIMEOUT || final === null || !live()) return false;
+        if (this.inputTransientInPane(final) || !this.paneAuthoritativelyIdle(final)) return false;
+        if (deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return false;
+        const op = Daemon.AGENT_SWITCH_TMUX_OP_MS;
+        const pasted = await tmux.pasteBuffer(command, { guard: live, timeoutMs: op });
+        if (!pasted) return false;
+        await new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_PASTE_SETTLE_MS));
+        if (live()) return tmux.sendSpecialKey("Enter", op);
+        if (fenced()) await tmux.deleteBackward(command.length, op);
+        return false;
+      }));
+      return wrote === true;
+    };
+    try {
+      const sidWrote = await pasteOnce(proof.sessionIdCommand);
+      if (!live()) return;
+      // Unread/mismatch are about kiro's announcement after we typed /session-id.
+      // A composer that never went idle is not unread — we never asked.
+      if (sidWrote) {
+        let observed = null as ReturnType<typeof readKiroSessionIdAnnouncement>;
+        const until = performance.now() + 8_000;
+        while (live() && performance.now() < until && observed === null) {
+          const pane = await capture();
+          if (pane === TIMEOUT || pane === null || !live()) break;
+          observed = readKiroSessionIdAnnouncement(pane);
+          if (observed !== null) break;
+          await within(new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_POLL_MS)));
+        }
+        if (!live()) return;
+        const verdict = proveKiroSessionId(proof.pinned, observed);
+        if (verdict.kind === "mismatch") {
+          const message = t("kiro.session_id_mismatch", verdict.pinned, verdict.observed);
+          this.logger.warn({ pinned: verdict.pinned, observed: verdict.observed }, "kiro /session-id does not match the pinned conversation");
+          this.emit("backend_launch_warning", { name: this.name, message });
+        } else if (verdict.kind === "unread") {
+          const message = t("kiro.session_id_unread");
+          this.logger.warn("kiro /session-id did not print an id; not guessing from files");
+          this.emit("backend_launch_warning", { name: this.name, message });
+        } else if (verdict.kind === "match" || verdict.kind === "fresh") {
+          this.logger.info({ id: verdict.id, kind: verdict.kind }, "kiro /session-id on the pane");
+        }
+      }
+      if (!live() || !proof.titleCommand) return;
+      const titled = await pasteOnce(proof.titleCommand);
+      if (titled) this.logger.info({ title: proof.titleCommand }, "kiro /title sent for this instance");
+    } catch (err) {
+      this.startupAdmission?.();
+      this.logger.warn({ err }, "kiro /session-id or /title after launch failed — the pin was not guessed from files");
+    }
+  }
+
+  /**
    * Startup budget for this launch: the backend's override (resume-aware), never
    * below a user-configured startup_timeout_ms; undefined = trySpawn's default.
    */
@@ -11707,6 +11794,8 @@ export class Daemon extends EventEmitter {
     // deliveries — and outside the spawn gate, which it does not need.
     this.startupAdmission?.();
     if (ready) await this.ensureBackendAgent();
+    this.startupAdmission?.();
+    if (ready) await this.ensureKiroSessionProof();
     this.startupAdmission?.();
     return ready;
   }
