@@ -188,7 +188,8 @@ function kiroModelPickerAtTail(pane: string): boolean {
   }
   if (pickerIndex < 0) return false;
   const tail = lines.slice(pickerIndex + 1);
-  if (tail.some(line => /^\s*\d+%[^\n]*[!❯>]\s+\S/.test(line)) || readKiroSteerComposer(tail.join("\n")) !== null) return false;
+  const composer = readKiroSteerComposer(tail.join("\n"));
+  if (tail.some(line => /^\s*\d+%[^\n]*[!❯>]\s+\S/.test(line)) || (composer !== null && composer !== "text")) return false;
   return tail.some(line => /^\s*[>❯›]\s*\*?\s*\S/.test(line));
 }
 

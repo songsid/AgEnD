@@ -77,6 +77,7 @@ describe('2.34.0 TUI D5 picker capture',()=>{
     expect(ordinary.isActive?.(TUI_D5_PICKER)).toBe(true);
     expect(ordinary.holdOnly).toBe(true);expect(ordinary.keys).toEqual([]);
     expect(ordinary.isActive?.(TUI_D5_PICKER+'\n'+TUI_D5_IDLE)).toBe(false);
+    expect(ordinary.isActive?.('Select model:   type to search\n› claude-sonnet-4.6 1.30x credits model\n')).toBe(true);
     expect(ordinary.isActive?.(TUI_D5_PICKER.replace('Select model:   type to search','Select a tool:'))).toBe(false);
     const outage=backend.getRuntimeDialogs().find(d=>d.description.includes('model unavailable'))!;
     expect(outage.isActive?.(TUI_D5_PICKER)).toBe(false);
