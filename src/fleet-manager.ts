@@ -282,7 +282,6 @@ import { ONBOARDING_BACKENDS, readPendingBackendSignIns } from "./backend-signin
 import { structuredSignInSupported } from "./structured-signin.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
-import { inContainer, webListenHost } from "./container.js";
 import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteCardPrompt, REMOTE_CARD_TEXT_MAX } from "./remote-card-prompt.js";
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
@@ -3824,7 +3823,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(gate === "disabled" ? t("update.disabled", this.adminListKey(adapterId)) : t("not_authorized"));
       return;
     }
-    if (inContainer()) { await data.respond(t("update.container")); return; }   // #581: update the image instead
     const messageId = await data.respond(t("update.progress.preparing", 0));
     const adapter = this.adapters.get(adapterId) ?? this.adapter;
     if (messageId && adapter) {
@@ -23375,8 +23373,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           // link preview looked bad. Version + /update instruction is enough.
           // From the install's own channel tag, this is what /update installs — even a stable the release pointed the
           // tag at (2.2.0 on @alpha / @beta): the plain /update text, never "/update stays on … use --stable" (#1928).
-          // #581: a container is updated by pulling its image; /update refuses there.
-          const key = inContainer() ? "update.available_container" : fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
+          const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
           this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         }
       }
@@ -24044,7 +24041,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         }
         setTimeout(() => {
           if (this.healthServer !== server || this.shuttingDown) { settled(); return; }
-          server.listen(port, webListenHost(), () => markListening(true));
+          server.listen(port, "127.0.0.1", () => markListening(true));
         }, 1500);
         return;
       }
@@ -24053,7 +24050,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       settled();
     });
 
-    this.healthServer.listen(port, webListenHost(), () => markListening());
+    this.healthServer.listen(port, "127.0.0.1", () => markListening());
     return listening;
   }
 

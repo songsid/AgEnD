@@ -23,7 +23,6 @@ import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t, getLocale } from "./locale.js";
-import { inContainer } from "./container.js";
 import { commandSpec, decideCommand, telegramMenu, type TelegramMenu } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import type { ChannelConfig } from "./types.js";
@@ -1747,7 +1746,6 @@ export class TopicCommands {
       return;
     }
 
-    if (inContainer()) { await adapter.sendText(chatId, t("update.container"), { threadId }); return; }   // #581: update the image
     const sent = await adapter.sendText(chatId, t("update.progress.preparing", 0), { threadId });
     this.ctx.beginUpdateProgress?.(adapter, chatId, threadId, sent.messageId);
 

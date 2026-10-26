@@ -1,4 +1,4 @@
 ---
 section: Added
 ---
-- **用 Docker 執行 AgEnD：`docker compose up` 就能在容器裡得到可用的 fleet（#581）。** 這是第二種快速安裝方式；要長期使用的伺服器，仍建議用 systemd 或 launchd 服務。映像檔包含 AgEnD、Node.js 和 tmux。第一次啟動時，會把 `fleet.yaml` 用到的 AI CLI 安裝到 home volume。claude-code 與 kiro-cli 可以固定版本。它以一般使用者執行，由 Docker 的重新啟動政策監管。儀表板在 `http://localhost:19280/`，用 `docker compose exec agend agend web --code` 取得登入代碼。在容器裡，`agend update` 與 `/update` 會改提示 `docker compose pull && docker compose up -d`，`agend restart` 則讓 Docker 重新啟動 fleet。映像檔尚未發佈：請依 [用 Docker 執行 AgEnD](docs/docker.zh-TW.md) 在 checkout 用 `docker/build-from-checkout.sh` 建置。
+- **在 Docker 中執行 AgEnD 的操作手冊（#581）。** [在 Docker 中執行 AgEnD](docs/docker.zh-TW.md) 是寫給 agent 看的：交給 General 或任何 agent，它就會替你在容器裡架設 AgEnD 並持續維護。內容包含要詢問的問題、Dockerfile 與 compose（非 root、具名 volume、儀表板在 `127.0.0.1:19280`）、安裝與固定 AI CLI 版本、第一份 fleet.yaml、驗證、以重建映像檔更新、升級 CLI、備份、記錄與疑難排解。General agent 會有一個指向它的 `docker-install` skill。AgEnD 本身沒有任何 Docker 專屬的程式。

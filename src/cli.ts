@@ -79,7 +79,6 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
 import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
 import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
-import { containerRefusal, inContainer, restartInContainer } from "./container.js";
 import { DIRECT_FLEET_START_ENV, redirectsToService, startedByServiceManager } from "./service-owner.js";
 import { handOff, shouldHandOff } from "./launchd-handoff.js";
 
@@ -357,7 +356,6 @@ fleet
   .argument("[instance]", "Specific instance to stop")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (instance?: string, opts?: { yes?: boolean }) => {
-    if (!instance && containerRefusal("stop")) { console.error(containerRefusal("stop")); process.exit(1); }   // #581
     if (!instance && redirectToService("stop", opts?.yes ? ["--yes"] : [], false)) return;
     if (instance) recordInstanceControl(DATA_DIR, "instance-stop", instance);
     else if (!gateFleetControl(DATA_DIR, "fleet-stop", { yes: opts?.yes })) process.exit(1);
@@ -1308,38 +1306,6 @@ access
     console.log("Share this code with the user. It expires in 10 minutes.");
   });
 
-// === Container (#581) ===
-program
-  .command("container")
-  .description("Container image helpers (run by the image's entrypoint)")
-  .command("prepare")
-  .description("First start: write fleet.yaml from the environment; install the CLIs fleet.yaml needs into the home volume")
-  .action(async () => {
-    if (!inContainer()) {
-      console.error("agend container prepare runs only in AgEnD's container image (AGEND_CONTAINER=1); on a host, use agend setup and /login.");
-      process.exit(1);
-    }
-    const { pinnedLayoutVersion, prepareContainer } = await import("./container-prepare.js");
-    const { probeBackendVersion, resolveBackendBinary } = await import("./backend-availability.js");
-    const { spawn } = await import("./child-process.js");
-    const ok = await prepareContainer({
-      env: process.env, dataDir: DATA_DIR, log: line => console.log(`agend container: ${line}`),
-      find: backend => resolveBackendBinary(backend),
-      run: (command, env) => new Promise(resolve => {
-        const child = spawn("bash", ["-c", command], { env, stdio: ["ignore", "inherit", "inherit"] });
-        const timer = setTimeout(() => child.kill("SIGTERM"), 10 * 60_000);
-        child.on("error", () => { clearTimeout(timer); resolve(127); });
-        child.on("exit", code => { clearTimeout(timer); resolve(code ?? 1); });
-      }),
-      version: async (backend, binary) => {
-        const probed = await probeBackendVersion(backend, binary);
-        if (probed) return probed;
-        try { return pinnedLayoutVersion(realpathSync(binary)); } catch { return null; }
-      },
-    });
-    if (!ok) process.exit(1);
-  });
-
 // === Update + Reload ===
 program
   .command("update")
@@ -1351,9 +1317,6 @@ program
   .option("--force", "Force reinstall and restart even when already up to date")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (opts: { version?: string; alpha?: boolean; beta?: boolean; stable?: boolean; force?: boolean; yes?: boolean }) => {
-    // #581: the container image is updated by pulling it.
-    const inImage = containerRefusal("update");
-    if (inImage) { console.error(inImage); process.exit(1); }
     if ([opts.alpha, opts.beta, opts.stable].filter(Boolean).length > 1) {
       console.error("  --alpha, --beta and --stable choose different channels; pass one.");
       process.exit(1);
@@ -1804,8 +1767,6 @@ program
   .addOption(new Option("--activate").hideHelp())
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
-    const inImage = containerRefusal("install");   // #581
-    if (inImage) { console.error(inImage); process.exit(1); }
     if (process.argv.includes("--activate")) {
       console.error(t("cli.install_activate_removed"));
     }
@@ -1976,8 +1937,6 @@ program
   .description("Stop the AgEnD service or detached fleet")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (opts: { yes?: boolean }) => {
-    const inImage = containerRefusal("stop");   // #581
-    if (inImage) { console.error(inImage); process.exit(1); }
     if (!gateFleetControl(DATA_DIR, "stop", { yes: opts.yes })) process.exit(1);
     // #2481: a deliberate stop — the start attempts so far are not a crash loop.
     { const { clearStartAttempts } = await import("./start-failure.js"); clearStartAttempts(DATA_DIR); }
@@ -2110,15 +2069,6 @@ program
       process.exit(1);
     }
     if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
-    // #581: in the container, Docker's restart policy restarts the fleet once it exits.
-    if (inContainer()) {
-      let pid = NaN;
-      try { pid = Number(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim()); } catch { /* reported below */ }
-      const outcome = restartInContainer(pid, { commandLine: readProcessCommandLine, isFleet: isFleetStartCommandLine });
-      (outcome.ok ? console.log : console.error)(outcome.message);
-      if (!outcome.ok) process.exitCode = 1;
-      return;
-    }
     // #1450 C6: what the restarted fleet must run, by this package's own selection (C2) — decided before anything stops.
     const guard = await import("./restart-guard.js");
     const guardDeps = {
