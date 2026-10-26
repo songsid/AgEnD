@@ -1,0 +1,6 @@
+Sanitized user-reported Windows diagnostic (2026-10-26; Windows build 26100 x64, WSL 2.6.1.0):
+
+PS> wsl -d AgEnD -u root -- wslpath -u C:\ProgramData
+wslpath: C:ProgramData
+
+Installer context: separate AgEnD Ubuntu 24.04 installed successfully, root echo passed, then path conversion failed at environment protection. No account, home path or machine identifier retained.

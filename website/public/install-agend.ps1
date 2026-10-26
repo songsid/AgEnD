@@ -448,7 +448,11 @@ function Get-LocalDisks {
 # 回傳 'ready'、'failed'（試過了還是不行），或 'declined'（不同意重新啟動整個 WSL）。
 function Test-WslRoot([string]$distro) {
     $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--', 'echo', 'WSL_OK')
-    return ($r.Code -eq 0 -and $r.Text -match 'WSL_OK')
+    if ($r.Code -ne 0 -or $r.Text -notmatch 'WSL_OK') {
+        Write-Warn (Get-WslFailureMessage "WSL root probe failed ($distro)" $r)
+        return $false
+    }
+    return $true
 }
 function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) {
     for ($i = 1; $i -le $tries; $i++) {
@@ -794,26 +798,27 @@ function Complete-LoginStage($backends) {
 # 「啟動 AgEnD」指令也用同一個組法，貼上就能用。
 $WSL_COMMAND_FN = @'
 function Invoke-BoundedWsl {
-param([string[]]$Arguments, [int]$TimeoutSeconds = 30)
-$sep = [array]::IndexOf($Arguments, '--')
+param([string[]]$Arguments, [int]$TimeoutSeconds=30)
+$sep=[array]::IndexOf($Arguments, '--')
 if ($sep -ge 0 -and $Arguments.Length -gt ($sep + 1) -and $Arguments[$sep + 1] -eq 'bash') {
-$Arguments = @($Arguments[0..$sep]) + @('timeout', '--signal=TERM', '--kill-after=2s', [string]([Math]::Max(1, $TimeoutSeconds - 5))) + @($Arguments[($sep + 1)..($Arguments.Length - 1)])
+$Arguments=@($Arguments[0..$sep]) + @('timeout', '--signal=TERM', '--kill-after=2s', [string]([Math]::Max(1, $TimeoutSeconds - 5))) + @($Arguments[($sep + 1)..($Arguments.Length - 1)])
 }
-$p = New-Object Diagnostics.Process
-$p.StartInfo.FileName = 'wsl.exe'
-$p.StartInfo.Arguments = (@($Arguments | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' ')
-$p.StartInfo.UseShellExecute = $false; $p.StartInfo.CreateNoWindow = $true
-$p.StartInfo.StandardOutputEncoding = [Text.Encoding]::UTF8; $p.StartInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
-$p.StartInfo.RedirectStandardOutput = $true; $p.StartInfo.RedirectStandardError = $true; $p.StartInfo.RedirectStandardInput = $true
+$p=New-Object Diagnostics.Process
+$p.StartInfo.FileName='wsl.exe'
+$p.StartInfo.Arguments=(@($Arguments | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' ')
+$p.StartInfo.UseShellExecute=$false;$p.StartInfo.CreateNoWindow=$true
+$p.StartInfo.EnvironmentVariables['WSL_UTF8']='1'
+$p.StartInfo.StandardOutputEncoding=[Text.Encoding]::UTF8;$p.StartInfo.StandardErrorEncoding=[Text.Encoding]::UTF8
+$p.StartInfo.RedirectStandardOutput=$true;$p.StartInfo.RedirectStandardError=$true;$p.StartInfo.RedirectStandardInput=$true
 try {
-$null = $p.Start(); $p.StandardInput.Close()
-$out = $p.StandardOutput.ReadToEndAsync(); $err = $p.StandardError.ReadToEndAsync()
+$null=$p.Start();$p.StandardInput.Close()
+$out=$p.StandardOutput.ReadToEndAsync();$err=$p.StandardError.ReadToEndAsync()
 if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
-$p.Kill(); $null = $p.WaitForExit(10000)
-return @{Code=124;Text='WSL timed out; check it before retrying.'}
+$p.Kill();$null=$p.WaitForExit(10000)
+return @{Code=124;Text='WSL timed out;check it before retrying.'}
 }
 if (-not $out.Wait(1000) -or -not $err.Wait(1000)) { return @{Code=1;Text='WSL output did not close.'} }
-$text = $out.Result + $err.Result
+$text=$out.Result + $err.Result
 if ($text.Length -gt 1MB) { return @{Code=1;Text='WSL output exceeded its limit.'} }
 return @{Code=$p.ExitCode;Text=$text}
 } catch { return @{Code=-1;Text=[string]$_} }
@@ -1776,17 +1781,39 @@ function Confirm-StopInstall($proc, [string]$CancellationFile = '') {
     return $false
 }
 
-# 把一段 bash 腳本寫到沒有空白的 ProgramData 路徑（LF、UTF-8 無 BOM），回傳 Windows 路徑和 WSL 裡的路徑。
+# Failures must retain WSL's exit code and output in both the screen error and the redacted install log.
+function Get-WslFailureMessage([string]$Operation, $Result) {
+    $detail = Protect-LogText ([string]$Result.Text)
+    $detail = ($detail -replace "`0", '').Trim()
+    if (-not $detail) { $detail = '(no output)' }
+    if ($detail.Length -gt 8192) { $detail = $detail.Substring(0, 8192) + ' [truncated]' }
+    $message = "$Operation (exit $($Result.Code)): $detail"
+    Write-InstallLog $message
+    return $message
+}
+# `--` still runs a Linux shell: C:\ProgramData becomes C:ProgramData. --exec preserves the literal argv.
+function ConvertTo-WslScriptPath([string]$File, [string]$Distro) {
+    $r = Invoke-BoundedWsl -Arguments @('-d', $Distro, '-u', 'root', '--exec', 'wslpath', '-u', $File)
+    if ($r.Code -ne 0) { throw (Get-WslFailureMessage 'WSL path conversion failed; no step was started' $r) }
+    $path = $r.Text.Trim()
+    if (-not $path.StartsWith('/') -or $path -match '[\r\n\x00]') {
+        throw (Get-WslFailureMessage 'WSL path conversion returned an invalid path; no step was started' $r)
+    }
+    return $path
+}
+# LF, UTF-8 without BOM. Remove the unused file if conversion fails before any Linux step starts.
 function New-WslScriptFile([string]$Script, [string]$Distro = $UBUNTU_DISTRO) {
     $dir = Join-Path $env:ProgramData 'AgEnD-install'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $file = Join-Path $dir ('step-' + [Guid]::NewGuid().ToString('N') + '.sh')
-    [IO.File]::WriteAllText($file, ($Script -replace "`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
-    $pathResult = Invoke-BoundedWsl -Arguments @('-d', $Distro, '-u', 'root', '--', 'wslpath', '-u', $file)
-    if ($pathResult.Code -ne 0) { throw 'WSL path conversion failed; no step was started.' }
-    $wslFile = $pathResult.Text.Trim()
-    if (-not $wslFile.StartsWith('/')) { throw 'WSL path conversion returned an invalid path.' }
-    return @($file, $wslFile)
+    try {
+        [IO.File]::WriteAllText($file, ($Script -replace "`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
+        $wslFile = ConvertTo-WslScriptPath $file $Distro
+        return @($file, $wslFile)
+    } catch {
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+        throw
+    }
 }
 # 在 WSL 裡以 root 執行一段 bash 腳本，作為長步驟（見 Invoke-Watched）。
 function Get-OwnedWslStepScript([string]$ScriptPath, [string]$CancellationPath, [int]$Seconds) {
@@ -1835,13 +1862,22 @@ function Assert-NoPendingWslCancellation {
 function Invoke-WslStep {
     param([string]$Label, [string]$Usually, [string]$Script, [double]$UpperMinutes = 0, [scriptblock]$OnLine = $null, [int]$TimeoutSeconds = 1800, [int]$NoProgressSeconds = 300, [string]$Distro = $UBUNTU_DISTRO, [string]$User = $AGEND_USER)
     Assert-NoPendingWslCancellation
+    $script:LastWslStepResult = @{ Code = -1; Text = '' }
     $file, $wslFile = New-WslScriptFile $Script -Distro $Distro
     $cancel = "$file.cancel"; $wrapper = $null
     try {
         $wrapper, $wslWrapper = New-WslScriptFile (Get-OwnedWslStepScript $wslFile "$wslFile.cancel" $TimeoutSeconds) -Distro $Distro
         # Setup deliberately waits for a person; its host still has an absolute TTL.
         if ($OnLine) { $NoProgressSeconds = 0 }
-        return (Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $OnLine -TimeoutSeconds ($TimeoutSeconds + 30) -NoProgressSeconds $NoProgressSeconds -CancellationFile $cancel -File 'wsl.exe' -Arguments @('-d', $Distro, '-u', $User, '--', 'bash', $wslWrapper))
+        $capture = @{ Text = ''; OnLine = $OnLine }
+        $captureLine = { param($line)
+            $capture.Text = ($capture.Text + [string]$line + "`n")
+            if ($capture.Text.Length -gt 8192) { $capture.Text = $capture.Text.Substring($capture.Text.Length - 8192) }
+            if ($capture.OnLine) { & $capture.OnLine $line }
+        }.GetNewClosure()
+        $code = Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $captureLine -TimeoutSeconds ($TimeoutSeconds + 30) -NoProgressSeconds $NoProgressSeconds -CancellationFile $cancel -File 'wsl.exe' -Arguments @('-d', $Distro, '-u', $User, '--', 'bash', $wslWrapper)
+        $script:LastWslStepResult = @{ Code = $code; Text = $capture.Text }
+        return $code
     } finally {
         if ((Test-Path -LiteralPath $cancel) -and -not (Test-Path -LiteralPath "$cancel.done")) {
             if ($ProgressFile) { Add-Content -LiteralPath $ProgressFile -Value ("PENDING_WSL_CANCEL=" + $cancel) }
@@ -2138,7 +2174,7 @@ if ($wslStageVerified) {
 
     # ── 1c: 設定 WSL 預設版本為 2 ──
     $defaultVersion = Invoke-BoundedWsl -Arguments @('--set-default-version', '2')
-    if ($defaultVersion.Code -ne 0) { throw 'Could not set the WSL default version to 2.' }
+    if ($defaultVersion.Code -ne 0) { throw (Get-WslFailureMessage 'Could not set the WSL default version to 2' $defaultVersion) }
 
     # ── 1d: 這台電腦已經有哪些 Linux（只看清單，不啟動任何一個）──
     # 之前裝過 AgEnD 專用的就沿用；有 Ubuntu 就問（建議另外裝一個）；都沒有就照常安裝 $UBUNTU_DISTRO。
@@ -2243,10 +2279,10 @@ Write-Info "正在設定 WSL 環境防護..."
 # Read exact bytes without introducing a PowerShell output newline.
 $confRead = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-c', 'if [ -L /etc/wsl.conf ]; then exit 1; elif [ -e /etc/wsl.conf ]; then base64 -w0 /etc/wsl.conf; fi')
 $encodedConf = $confRead.Text.Trim()
-if ($confRead.Code -ne 0) { throw 'Cannot safely read /etc/wsl.conf; no settings were replaced.' }
+if ($confRead.Code -ne 0) { throw (Get-WslFailureMessage 'Cannot safely read /etc/wsl.conf; no settings were replaced' $confRead) }
 $currentConf = ConvertFrom-WslConfigSnapshot $encodedConf
 $confCode = Invoke-WslStep -Label "合併 WSL 設定（保留原有設定）" -Usually "通常幾秒鐘" -UpperMinutes 1 -Script (Get-MergedLinuxWslConfigScript $currentConf $encodedConf)
-if ($confCode -ne 0) { throw "WSL config merge failed (exit $confCode); review the error above and rerun." }
+if ($confCode -ne 0) { throw (Get-WslFailureMessage 'WSL config merge failed; rerun the installer' $script:LastWslStepResult) }
 Write-Ok "WSL 環境設定已合併：啟用 systemd、關閉 Windows PATH、預設使用 root；其他設定保留"
 Write-Info "正在重啟選定的 Linux 讓設定生效..."
 $null = Invoke-BoundedWsl -Arguments @('--terminate', $UBUNTU_DISTRO)

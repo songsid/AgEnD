@@ -4,26 +4,27 @@
 
 $WSL_COMMAND_FN = @'
 function Invoke-BoundedWsl {
-param([string[]]$Arguments, [int]$TimeoutSeconds = 30)
-$sep = [array]::IndexOf($Arguments, '--')
+param([string[]]$Arguments, [int]$TimeoutSeconds=30)
+$sep=[array]::IndexOf($Arguments, '--')
 if ($sep -ge 0 -and $Arguments.Length -gt ($sep + 1) -and $Arguments[$sep + 1] -eq 'bash') {
-$Arguments = @($Arguments[0..$sep]) + @('timeout', '--signal=TERM', '--kill-after=2s', [string]([Math]::Max(1, $TimeoutSeconds - 5))) + @($Arguments[($sep + 1)..($Arguments.Length - 1)])
+$Arguments=@($Arguments[0..$sep]) + @('timeout', '--signal=TERM', '--kill-after=2s', [string]([Math]::Max(1, $TimeoutSeconds - 5))) + @($Arguments[($sep + 1)..($Arguments.Length - 1)])
 }
-$p = New-Object Diagnostics.Process
-$p.StartInfo.FileName = 'wsl.exe'
-$p.StartInfo.Arguments = (@($Arguments | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' ')
-$p.StartInfo.UseShellExecute = $false; $p.StartInfo.CreateNoWindow = $true
-$p.StartInfo.StandardOutputEncoding = [Text.Encoding]::UTF8; $p.StartInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
-$p.StartInfo.RedirectStandardOutput = $true; $p.StartInfo.RedirectStandardError = $true; $p.StartInfo.RedirectStandardInput = $true
+$p=New-Object Diagnostics.Process
+$p.StartInfo.FileName='wsl.exe'
+$p.StartInfo.Arguments=(@($Arguments | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' ')
+$p.StartInfo.UseShellExecute=$false;$p.StartInfo.CreateNoWindow=$true
+$p.StartInfo.EnvironmentVariables['WSL_UTF8']='1'
+$p.StartInfo.StandardOutputEncoding=[Text.Encoding]::UTF8;$p.StartInfo.StandardErrorEncoding=[Text.Encoding]::UTF8
+$p.StartInfo.RedirectStandardOutput=$true;$p.StartInfo.RedirectStandardError=$true;$p.StartInfo.RedirectStandardInput=$true
 try {
-$null = $p.Start(); $p.StandardInput.Close()
-$out = $p.StandardOutput.ReadToEndAsync(); $err = $p.StandardError.ReadToEndAsync()
+$null=$p.Start();$p.StandardInput.Close()
+$out=$p.StandardOutput.ReadToEndAsync();$err=$p.StandardError.ReadToEndAsync()
 if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
-$p.Kill(); $null = $p.WaitForExit(10000)
-return @{Code=124;Text='WSL timed out; check it before retrying.'}
+$p.Kill();$null=$p.WaitForExit(10000)
+return @{Code=124;Text='WSL timed out;check it before retrying.'}
 }
 if (-not $out.Wait(1000) -or -not $err.Wait(1000)) { return @{Code=1;Text='WSL output did not close.'} }
-$text = $out.Result + $err.Result
+$text=$out.Result + $err.Result
 if ($text.Length -gt 1MB) { return @{Code=1;Text='WSL output exceeded its limit.'} }
 return @{Code=$p.ExitCode;Text=$text}
 } catch { return @{Code=-1;Text=[string]$_} }
