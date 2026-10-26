@@ -46,6 +46,16 @@ describe("readKiroSteerComposer — real panes", () => {
   });
 });
 
+describe('2.34.0 TUI D5 native steer and queue captures',()=>{
+  const live=(name:string)=>readFileSync(new URL(`./fixtures/kiro-2.34.0-tui-d5/${name}.pane.txt`,import.meta.url),'utf8');
+  it('reads the real busy, pending and idle rows',()=>{
+    expect(readKiroSteerComposer(live('busy-steer'))).toBe('steer');
+    expect(readKiroSteerComposer(live('steer-pending'))).toBe('steer');
+    expect(readKiroSteerComposer(live('queue-pending'))).toBe('queue');
+    expect(readKiroSteerComposer(live('idle'))).toBe('idle');
+  });
+});
+
 describe("readKiroSteerComposer — the live run's panes (tests/fixtures/kiro-steer-1405, real account, 2026-10-08)", () => {
   const live = (name: string) => readFileSync(join(import.meta.dirname, "fixtures", "kiro-steer-1405", `${name}.pane.txt`), "utf8");
   it("steer, queue and idle on 2.27.1 TUI, 2.27.1 v3 and 2.28.0 TUI — busy, a pending tray above, the turn over", () => {
@@ -162,8 +172,8 @@ describe("KiroBackend.supportsSteer — the launch decides (production buildComm
   };
 
   it("the front-ends a live run verified steer (2.27.1 TUI and v3, 2.28.0 TUI); they read their composer", () => {
-    expect(KIRO_STEER_VERIFIED).toEqual({ "2.27.1": ["tui", "v3"], "2.28.0": ["tui"] });
-    for (const [version, ui] of [["kiro-cli 2.27.1", "tui"], ["kiro-cli 2.27.1", "v3"], ["kiro-cli 2.28.0", "tui"]] as const) {
+    expect(KIRO_STEER_VERIFIED).toEqual({ "2.27.1": ["tui", "v3"], "2.28.0": ["tui"], "2.34.0": ["tui"] });
+    for (const [version, ui] of [["kiro-cli 2.27.1", "tui"], ["kiro-cli 2.27.1", "v3"], ["kiro-cli 2.28.0", "tui"], ["kiro-cli 2.34.0", "tui"]] as const) {
       const b = launched(version, ui);
       expect(b.supportsSteer(), `${version} ${ui}`).toBe(true);
       expect(b.readSteerComposer(TUI_BUSY)).toBe("steer");

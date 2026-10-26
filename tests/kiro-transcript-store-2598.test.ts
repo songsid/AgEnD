@@ -35,9 +35,9 @@ function fixture() {
   const row = (id: string, texts: string[], updatedAt = old) => db.prepare(
     "INSERT OR REPLACE INTO conversations_v2 VALUES (?, ?, ?, ?, ?)",
   ).run(cwd, id, JSON.stringify({ history: texts.map(t => ({ user: { content: {} }, assistant: { Response: { message_id: t, content: t } } })) }), old, updatedAt);
-  const session = (id: string, opts: { cwd?: string; updatedAt?: number } = {}) => {
+  const session = (id: string, opts: { cwd?: string; updatedAt?: number; subagent?: boolean; exported?: boolean } = {}) => {
     writeFileSync(join(sessionsDir, `${id}.json`), JSON.stringify({
-      session_id: id, cwd: opts.cwd ?? cwd,
+      session_id: id, cwd: opts.cwd ?? cwd, session_created_reason: opts.subagent ? "subagent" : "interactive", exported_from_v1: opts.exported ?? false,
       created_at: new Date(old).toISOString(), updated_at: new Date(opts.updatedAt ?? old).toISOString(),
     }));
     writeFileSync(join(sessionsDir, `${id}.jsonl`), line("history") + "\n");
@@ -84,6 +84,20 @@ describe("the store follows the launch's engine (#2598 B1)", () => {
     expect(await texts(s), "history is the baseline, not news").toEqual([]);
     say("tui reply");
     expect(await texts(s)).toEqual(["tui reply"]);
+  });
+
+  it.each([
+    ["owned migrated export", "ours", true, true],
+    ["unpinned export", null, true, false],
+    ["ordinary child", "ours", false, false],
+    ["different owned id", "other", true, false],
+  ] as const)("real D5 subagent metadata: %s", async (_label, pin, exported, follows) => {
+    const f = fixture(); f.row("ours", ["frozen classic"]);
+    const say = f.session("ours", { subagent: true, exported });
+    const s = f.source({ engine: "v2", sessionId: pin }); await s.initialize();
+    say("D5 new tool");
+    expect(await texts(s)).toEqual(follows ? ["D5 new tool"] : []);
+    expect(await texts(s)).toEqual([]);
   });
 
   it("v1 launch: the sqlite store only — a stray session file in the directory is another engine's", async () => {
