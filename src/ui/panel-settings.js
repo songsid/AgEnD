@@ -9,7 +9,8 @@
 // - Not the Apply: confirming hands the staged changes to the app's runner (settings-apply.js) before the first write.
 //   This panel renders that operation from the store, and finds it again when it mounts.
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { t, lang } from "/assets/app-i18n.js";
+import { hostText } from "/assets/setup-host-text.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { DevicePrefs, PanelHeader, PendingChanges, setTitle } from "/assets/app-shell.js";
@@ -55,7 +56,8 @@ const tn = (k, ...v) => t(`settings.${k}`, ...v);
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
 const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff_too_large", "session_required", "admin_required", "settings_changed",
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
-export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", String(code)));
+// #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
+export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
 const ICONS = { preferences: "user", look: "palette", agents: "bot", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 

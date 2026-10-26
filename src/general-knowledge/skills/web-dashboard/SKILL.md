@@ -575,7 +575,8 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `prev
 connections are off (and the setup wizard); while those have unsaved changes, the editor only reads.
 
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
-**Create and start**.
+**Create and start**. The directory may be left empty: the agent gets its own folder, `~/.agend/workspaces/<name>`
+(shown under the field); one that is entered must be absolute.
 
 **First setup, before any fleet** (`agend setup`, the page the Windows installer opens): the same steps on its own
 page, in English or 繁體中文 (the browser's language; the button at the top switches). The working directory may be

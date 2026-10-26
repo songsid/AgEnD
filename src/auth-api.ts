@@ -123,6 +123,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "side-panel.js",
     // #1665: the host-kept preferences and their browser cache.
     "app-prefs.js",
+    // #2726: the setup host's words and codes in both languages (static tables, no data), for the Setup wizard and Apply.
+    "setup-host-text.js",
     // #1629: static session-bound owner preference client; every data route remains session-gated.
     "owner-effect-prefs.js", "feature-flags.js", "effect-display-metadata.js",
     // #1629: static host runtime closure; effect data stays behind session/epoch routes.

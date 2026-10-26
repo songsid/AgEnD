@@ -8,7 +8,8 @@
 // Stop, the 2-minute limit or leaving the page each retire what was asked before — an answer about A never lands after
 // B, nor after A again (an older A), nor once the page is gone.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { t, lang } from "/assets/app-i18n.js";
+import { hostText } from "/assets/setup-host-text.js";
 import { useTypedText } from "/assets/text-undo.js";
 import { api } from "./settings-confirm.js";
 import { Select } from "./settings-dialogs.js";
@@ -129,6 +130,6 @@ export function DiscordServerPicker({ idPrefix, token, bot, invite, portal, guil
       ${channels && channels.list && channels.list.length
         ? html`<${Select} id=${`${idPrefix}-gen`} value=${channel} onChange=${pickChannel} options=${["", ...channels.list.map((c) => ({ value: c.id, label: `#${c.name}` }))]} />`
         : html`<input id=${`${idPrefix}-gen`} type="text" value=${channelText} onInput=${(e) => pickChannel(onChannelText(e.target.value))} />`}
-      ${channels && channels.error ? html`<p class="feedback warning">${channels.error}</p>` : null}</div>
+      ${channels && channels.error ? html`<p class="feedback warning">${hostText(channels.error, lang())}</p>` : null}</div>
   </div>`;
 }

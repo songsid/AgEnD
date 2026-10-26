@@ -407,9 +407,11 @@ describe("the wizard's first step", () => {
     await openWizard();
     btn(d(), "A new agent").click(); await settle(2);
     expect([d().querySelector("#wz-name")?.value ?? null, d().querySelector("label[for=wz-name]")?.textContent ?? null]).toEqual(["agent-2", "New agent name"]);
+    // #2726: none is the agent's own workspace; one that is given is absolute.
+    const wd = d().querySelector("#wz-wd"); wd.value = "w/new"; fire(wd, "input"); await settle(2);
     btn(d(), "Next").click(); await settle(2);
-    expect(d().querySelector(".feedback.error")?.textContent ?? null).toBe("Enter an absolute working directory.");
-    const wd = d().querySelector("#wz-wd"); wd.value = "/w/new"; fire(wd, "input"); await settle(2);
+    expect(d().querySelector(".feedback.error")?.textContent ?? null).toBe("A working directory must be an absolute path, or leave it empty.");
+    wd.value = "/w/new"; fire(wd, "input"); await settle(2);
     const [plan] = await toPlan();
     expect(plan).toEqual({ platform: "telegram", admin_user_id: "42", backend: "claude-code", working_directory: "/w/new", instance_name: "agent-2" });
   });

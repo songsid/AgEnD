@@ -600,7 +600,9 @@ describe("the wizard in the panel", () => {
   let wizard: any, runner: any, store: any, tr: (k: string, ...a: unknown[]) => string;
   const tn = (k: string, ...a: unknown[]) => tr(`settings.${k}`, ...a);
   const JOB = "44444444-4444-4444-8444-444444444444";
-  let env: { backends: string[]; channels: unknown[]; has_fleet: boolean };
+  let env: { backends: string[]; channels: unknown[]; has_fleet: boolean; workspaces_dir?: string };
+  let planOverride: { status: number; body: unknown } | null = null;
+  let verifyRefusal: string | null = null, channelsRefusal: string | null = null;
   const sent: Array<{ path: string; method: string; headers: Record<string, string>; body: any }> = [];
   let commitAnswer: { ok: boolean; status: number; body: unknown } = { ok: true, status: 200, body: { ok: true, secret_mode_ok: true } };
   let applyStatus = 202;
@@ -613,6 +615,7 @@ describe("the wizard in the panel", () => {
       const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
       if (path === "/api/settings/quickstart/environment") return json(env);
       if (path === "/api/settings/quickstart/probe" && init.body && JSON.parse(init.body).action === "guilds") return json({ ok: true, guilds: [{ id: "111", name: "One" }, { id: "222", name: "Two" }] });
+      if (path === "/api/settings/quickstart/probe" && init.body && JSON.parse(init.body).action === "channels" && channelsRefusal) return json({ ok: false, error: channelsRefusal }, 409);
       if (path === "/api/settings/quickstart/probe" && init.body && JSON.parse(init.body).action === "channels") {
         const guild = JSON.parse(init.body).guild_id;
         const answer = json({ ok: true, channels: guild === "111" ? [{ id: "101", name: "general" }] : [{ id: "201", name: "random" }] });
@@ -623,6 +626,7 @@ describe("the wizard in the panel", () => {
         const answer = json({ ok: true, found: { groupId: -100111, userId: 7 }, offset: 1 });
         return detectHold ? detectHold.then(() => answer) : answer;
       }
+      if (path === "/api/settings/quickstart/probe" && verifyRefusal) return json({ error: verifyRefusal }, 400);
       if (path === "/api/settings/quickstart/probe") {
         const answer = json({ identity: { valid: true, username: "bot_one" } });
         return probeHold ? probeHold.then(() => answer) : answer;
@@ -630,6 +634,7 @@ describe("the wizard in the panel", () => {
       if (path === "/api/settings/quickstart/plan" && planHold) { const hold = planHold; return hold.then(() => json({
         channel: { type: "telegram" }, instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code", channel_id: "telegram" },
         channel_id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", env_keys: ["AGEND_TELEGRAM_TOKEN"], warnings: [] })); }
+      if (path === "/api/settings/quickstart/plan" && planOverride) return json(planOverride.body, planOverride.status);
       if (path === "/api/settings/quickstart/plan") return json({
         channel: { type: "telegram", group_id: "-100123", access: { mode: "locked", allowed_users: ["42"] } },
         instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code", channel_id: "telegram" },
@@ -657,7 +662,7 @@ describe("the wizard in the panel", () => {
   let planHold: Promise<void> | null = null;
   let detectHold: Promise<void> | null = null;
   let channelsHold: Promise<void> | null = null;
-  afterEach(() => { probeHold = null; planHold = null; detectHold = null; channelsHold = null; });                 // a test that stopped early leaves none behind
+  afterEach(() => { probeHold = null; planHold = null; detectHold = null; channelsHold = null; planOverride = null; verifyRefusal = null; channelsRefusal = null; });                 // a test that stopped early leaves none behind
   const mountWizard = async () => {
     const onClose = vi.fn();
     await p.mount(h(wizard.SetupWizard, { onClose }));
@@ -699,6 +704,64 @@ describe("the wizard in the panel", () => {
     const user = platform === "discord" ? "987654321012345678" : "42";
     await type("wz-user", user); await next();
     expect(sent.filter(r => r.path === "/api/settings/quickstart/plan").map(r => r.body.admin_user_id)).toEqual([user]);
+  });
+
+  it("#2726 the directory may stay empty: the agent's own workspace is shown under the field, the server fills it in; a relative one is refused", async () => {
+    env = { ...env, workspaces_dir: "/root/.agend/workspaces" };
+    await mountWizard();
+    expect(p.root.querySelector("label[for=wz-wd]")?.textContent).toBe("Working directory (optional)");
+    expect(field("wz-wd-note").textContent).toBe("Leave it empty and the agent gets its own folder, /root/.agend/workspaces/agent-1, which AgEnD creates. A path you enter must be absolute.");
+    await type("wz-name", "helper");
+    expect(field("wz-wd-note").textContent).toContain("/root/.agend/workspaces/helper,");
+    await type("wz-wd", "relative/app"); await next();
+    expect(p.root.querySelector(".feedback.error")?.textContent).toBe(tn("wizardNeedDir"));
+    expect(p.root.textContent).toContain(tn("wizardStep", 1, 4));
+    await type("wz-wd", ""); await next();
+    expect(p.root.textContent).toContain(tn("wizardStep", 2, 4));
+    await next(); await type("wz-user", "42"); await type("wz-token", "123456:ABC");
+    button(tn("wizardVerify")).click(); await settle(8);
+    await next();
+    expect(sent.filter(r => r.path === "/api/settings/quickstart/plan").map(r => r.body.working_directory)).toEqual([""]);
+  });
+
+  it("#2726 in 繁體中文: the field and its default, and the host's refusal and warning in the page's language", async () => {
+    (await import("/assets/app-i18n.js")).setLang("zh-TW", { persist: false });
+    env = { ...env, workspaces_dir: "/root/.agend/workspaces" };
+    await mountWizard();
+    expect(p.root.querySelector("label[for=wz-wd]")?.textContent).toBe("工作目錄（選填）");
+    expect(field("wz-wd-note").textContent).toBe("留空的話，agent 會有自己的資料夾 /root/.agend/workspaces/agent-1，由 AgEnD 建立。若要填寫，必須是絕對路徑。");
+    planOverride = { status: 409, body: { error: 'an agent called "agent-1" already exists — connect it as an existing agent, or choose another name' } };
+    await type("wz-wd", "/tmp/app"); await next(); await next();
+    await type("wz-user", "42"); await type("wz-token", "123456:ABC");
+    button(tn("wizardVerify")).click(); await settle(8);
+    await next();
+    expect(p.root.querySelector(".feedback.error")?.textContent).toBe("已經有名為「agent-1」的 agent —— 請把它當作既有的 agent 連接，或換一個名稱");
+    planOverride = { status: 200, body: { channel: { type: "telegram" }, instance: { name: "agent-1", working_directory: "/root/.agend/workspaces/agent-1", backend: "codex", channel_id: "telegram" },
+      channel_id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", env_keys: ["AGEND_TELEGRAM_TOKEN"], warnings: ["codex was not found on this host; the agent will fail to start until it is installed."] } };
+    await next();
+    await vi.waitFor(() => expect(p.root.querySelector(".feedback.warning")?.textContent).toBe("這台主機上找不到 codex；安裝之前，agent 會無法啟動。"));
+    expect(p.root.textContent).toContain("/root/.agend/workspaces/agent-1");
+    const { applyErrorText } = await import("/ui/js/panel-settings.js");
+    expect(applyErrorText("invalid_quickstart")).toBe("伺服器拒絕了它（這份設定無效。請檢查後再試一次。）");
+    expect(applyErrorText("something_new")).toBe("伺服器拒絕了它（something_new）");
+  });
+
+  it("#2726 in 繁體中文: a refused Verify and the Discord channel list's error are said in the page's language", async () => {
+    (await import("/assets/app-i18n.js")).setLang("zh-TW", { persist: false });
+    await mountWizard();
+    await type("wz-wd", "/tmp/app"); await next(); await next();
+    verifyRefusal = "Token verification is not permitted over a public link";
+    await type("wz-token", "123456:ABC"); button(tn("wizardVerify")).click(); await settle(8);
+    await vi.waitFor(() => expect(p.root.textContent).toContain("公開連結不能驗證 token"));
+    await p.unmount();
+    verifyRefusal = null; channelsRefusal = "Discord replied 403";
+    await mountWizard();
+    await type("wz-wd", "/tmp/app"); await next();
+    button("Discord").click(); await settle(); await next();
+    await type("wz-token", "123456:ABC"); button(tn("wizardVerify")).click(); await settle(8);
+    await vi.waitFor(() => expect(field("wz-guild")).not.toBeNull());
+    const guild = field("wz-guild"); guild.value = "111"; fire(guild, "change"); fire(guild, "input"); await settle(8);
+    await vi.waitFor(() => expect(p.root.querySelector(".feedback.warning")?.textContent).toBe("Discord 回應 403"));
   });
 
   it("is four steps, with one flow whether or not a fleet exists", async () => {

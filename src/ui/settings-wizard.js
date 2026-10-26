@@ -3,7 +3,8 @@
 // to the ordinary Apply: the app's runner (settings-apply.js) posts the apply and watches its job, with the same
 // progress, deadline and restart recovery as every other change.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { t, lang } from "/assets/app-i18n.js";
+import { hostText } from "/assets/setup-host-text.js";
 import { useTypedText } from "/assets/text-undo.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -16,6 +17,8 @@ import { DiscordServerPicker } from "./settings-discord.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const STEPS = 4;
+// #2726: the host's words (English) or code, in the page's language.
+const said = (text) => hostText(text, lang());
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }).catch(() => ({ ok: false, status: 0, body: { error: tn("failed") } }));
 
 export function SetupWizard({ ctx, onClose }) {
@@ -83,14 +86,15 @@ export function SetupWizard({ ctx, onClose }) {
     if (!lease.current()) return;
     if (rev.current !== at) { setBusy(""); return; }
     setBusy("");
-    if (!res.ok) { setErr((res.body && res.body.error) || tn("applyFailed")); return; }
+    if (!res.ok) { setErr(said(res.body && res.body.error) || tn("applyFailed")); return; }
     if (res.body.found) setW((x) => ({ ...x, offset: res.body.offset, group_id: String(res.body.found.groupId), admin_user_id: String(res.body.found.userId) }));
     else { setW((x) => ({ ...x, offset: res.body.offset })); setErr(tn("wizardNoStartYet")); }
   };
   const next = async () => {
     setErr("");
     if (w.step === 1) {
-      if (w.agent !== "existing" && !w.working_directory.startsWith("/")) { setErr(tn("wizardNeedDir")); return; }
+      // #2726: none is the agent's own workspace (the server fills it in); one that is given is absolute.
+      if (w.agent !== "existing" && w.working_directory && !w.working_directory.startsWith("/")) { setErr(tn("wizardNeedDir")); return; }
       setW({ ...w, step: 2 }); return;
     }
     if (w.step === 2) { setW({ ...w, step: 3 }); return; }
@@ -104,7 +108,7 @@ export function SetupWizard({ ctx, onClose }) {
       if (!lease.current()) return;
       setBusy("");
       if (rev.current !== at) return;
-      if (!res.ok) { setErr((res.body && res.body.error) || tn("applyFailed")); return; }
+      if (!res.ok) { setErr(said(res.body && res.body.error) || tn("applyFailed")); return; }
       setW((x) => ({ ...x, plan: res.body, step: 4 }));
       return;
     }
@@ -140,7 +144,8 @@ export function SetupWizard({ ctx, onClose }) {
         <p class="note">${tn("wizardAgentExistingNote")}</p></div>` : html`${which}<div class="field"><label for="wz-be">${tn("wizardBackend")}</label>
         <${Select} id="wz-be" value=${w.backend} onChange=${set("backend")} options=${w.env.backends && w.env.backends.length ? w.env.backends : BACKENDS} />
         <p class="note">${w.env.backends && w.env.backends.length ? tn("wizardBackendFound", w.env.backends.join(", ")) : tn("wizardBackendNone")}</p></div>
-      <div class="field"><label for="wz-wd">${tn("workingDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" value=${dirText} onInput=${(e) => set("working_directory")(onDirText(e.target.value))} /></div>
+      <div class="field"><label for="wz-wd">${tn("wizardDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" aria-describedby="wz-wd-note" value=${dirText} onInput=${(e) => set("working_directory")(onDirText(e.target.value))} />
+        <p class="note" id="wz-wd-note">${w.env.workspaces_dir && w.instance_name ? tn("wizardDirDefault", `${w.env.workspaces_dir}/${w.instance_name}`) : tn("wizardDirDefaultName")}</p></div>
       <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${nameText} onInput=${(e) => set("instance_name")(onNameText(e.target.value))} /></div>`;
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
@@ -169,7 +174,7 @@ export function SetupWizard({ ctx, onClose }) {
       ${w.plan.instance && w.plan.instance.topic ? html`<p class="feedback warning">${w.plan.instance.topic.to == null
         ? tn("wizardTopicNotCarried", w.plan.instance.topic.from) : tn("wizardTopicGeneral")}</p>` : null}
       <${Drawer} title=${tn("advancedSection")}><${TokenEnvNote} name=${w.plan.token_env} /></${Drawer}>
-      ${(w.plan.warnings || []).map((x, i) => html`<p key=${i} class="feedback warning">${x}</p>`)}`;
+      ${(w.plan.warnings || []).map((x, i) => html`<p key=${i} class="feedback warning">${said(x)}</p>`)}`;
   }
   return html`<${Dialog} title=${tn("wizardTitle")} onClose=${onClose} wide=${true} busy=${busy === tn("wizardCommitting")}
     actions=${html`<button type="button" class="btn" disabled=${w.step === 1 || !!busy} onClick=${() => setW({ ...w, step: w.step - 1 })}>${tn("wizardBack")}</button>

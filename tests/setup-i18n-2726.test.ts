@@ -8,7 +8,9 @@ import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { SETUP_CODE_PAGE_HTML, SETUP_FORM_HTML } from "../src/setup-form.js";
-import { SETUP_CODE_STRINGS, SETUP_FORM_STRINGS, SETUP_HOST_CODES, SETUP_HOST_MESSAGES, setupI18nRuntime } from "../src/setup-i18n.js";
+import { SETUP_CODE_STRINGS, SETUP_FORM_STRINGS, setupI18nRuntime } from "../src/setup-i18n.js";
+// @ts-expect-error — a JS module of the app, with no types
+import { HOST_CODES as SETUP_HOST_CODES, HOST_MESSAGES as SETUP_HOST_MESSAGES, hostText } from "../src/ui/shared/setup-host-text.js";
 // @ts-expect-error — a JS module of the app, with no types
 import { SIGNIN_STRINGS, mountStructuredSignIns } from "../src/ui/structured-signin.js";
 import { agentConflict, newConnectionConflict, validateWizardInput, webOnlyConflict } from "../src/quickstart-api.js";
@@ -30,7 +32,7 @@ describe("#2726 the dictionaries", () => {
     for (const table of [SETUP_CODE_STRINGS, SETUP_FORM_STRINGS, SIGNIN_STRINGS] as Record<string, Record<string, string>>[]) {
       for (const [key, text] of Object.entries(table.en!)) expect(holes(table["zh-TW"]![key]!), key).toBe(holes(text));
     }
-    for (const [en, zh] of SETUP_HOST_MESSAGES) { expect(holes(zh), en).toBe(holes(en)); expect(zh, en).toMatch(CJK); }
+    for (const [en, zh] of SETUP_HOST_MESSAGES as [string, string][]) { expect(holes(zh), en).toBe(holes(en)); expect(zh, en).toMatch(CJK); }
   });
   it("every key a page uses is in its dictionary (markup and script)", () => {
     for (const [html, table] of [[SETUP_CODE_PAGE_HTML, SETUP_CODE_STRINGS], [SETUP_FORM_HTML, SETUP_FORM_STRINGS]] as const) {
@@ -81,6 +83,7 @@ describe("#2726 every message the host can answer with has its 繁體中文", ()
     const literals = new Set<string>();
     for (const m of src("setup-host.ts").matchAll(/this\.deny\(res, \d+, "([^"]+)"\)/g)) literals.add(m[1]!);
     for (const m of src("quickstart-api.ts").matchAll(/\berror: "([^"]+)"/g)) literals.add(m[1]!);
+    for (const m of src("provider-probe.ts").matchAll(/\berror: "([^"]+)"/g)) literals.add(m[1]!);   // the Discord channel list (the wizard's picker)
     expect(literals.size).toBeGreaterThan(15);
     for (const text of literals) {
       // The sign-in endpoints' codes are said by the sign-in cards (structured-signin.js), in both languages.
@@ -98,6 +101,24 @@ describe("#2726 every message the host can answer with has its 繁體中文", ()
     for (const code of ["invalid_quickstart", "agent_conflict", "connection_exists"]) expect(src("settings-effect.ts")).toContain(`"${code}"`);
     expect(zh.trHost("Unauthorized")).toBe("Unauthorized");
     expect(zh.trHost("a. b")).toBe("a. b");
+  });
+});
+
+describe("#2726 one table for the setup pages and the dashboard (src/ui/shared/setup-host-text.js)", () => {
+  it("pasted into both setup pages as it is: no imports, no closing tag; served to the dashboard at /assets", () => {
+    const module = src("ui/shared/setup-host-text.js");
+    expect(module).not.toMatch(/^import /m); expect(module).not.toContain("</");
+    for (const html of [SETUP_CODE_PAGE_HTML, SETUP_FORM_HTML]) { expect(script(html)).toContain("function hostText(text, lang)"); expect(script(html)).not.toMatch(/^export /m); }
+    expect(src("auth-api.ts")).toContain('"setup-host-text.js"');
+    for (const file of ["ui/settings-wizard.js", "ui/settings-token.js", "ui/panel-settings.js", "ui/settings-discord.js"]) expect(src(file)).toContain('import { hostText } from "/assets/setup-host-text.js";');
+  });
+  it("hostText: codes are words in both languages, the host's words in 繁體中文, anything else as it came", () => {
+    expect(hostText("invalid_quickstart", "en")).toBe("This setup is not valid. Review it and try again.");
+    expect(hostText("invalid_quickstart", "zh-TW")).toBe("這份設定無效。請檢查後再試一次。");
+    expect(hostText("guild id must be numeric", "zh-TW")).toBe("伺服器 id 必須是數字");
+    expect(hostText("codex was not found on this host; the agent will fail to start until it is installed.", "zh-TW")).toBe("這台主機上找不到 codex；安裝之前，agent 會無法啟動。");
+    expect(hostText("codex was not found on this host; the agent will fail to start until it is installed.", "en")).toBe("codex was not found on this host; the agent will fail to start until it is installed.");
+    expect([hostText("Unauthorized", "zh-TW"), hostText(undefined, "zh-TW"), hostText("constructor", "zh-TW"), hostText("toString", "en")]).toEqual(["Unauthorized", undefined, "constructor", "toString"]);
   });
 });
 

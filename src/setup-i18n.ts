@@ -7,9 +7,11 @@
  * dashboard opened afterwards on this address keeps it), else the browser's language; a toggle on the page changes it.
  * The wording is the dashboard's where it already says the same thing (settings-strings.js wizard*).
  *
- * What the host says (its errors) is English: SETUP_HOST_MESSAGES gives each one the page can show in 繁體中文, by
- * the exact English text with {0}-style holes. One it does not know is shown as it came.
+ * What the host says (its errors) is English, or a code: src/ui/shared/setup-host-text.js says each one the page can show
+ * in both languages — the same module the dashboard's Setup wizard uses. One it does not know is shown as it came.
  */
+
+import { readFileSync } from "node:fs";
 
 export type SetupLang = "en" | "zh-TW";
 type Table = Record<string, string>;
@@ -185,90 +187,9 @@ export const SETUP_FORM_STRINGS: Record<SetupLang, Table> = {
   },
 };
 
-/**
- * Everything the host can answer the setup pages with, English → 繁體中文. `{0}`, `{1}` are the parts that vary (a name,
- * a count). Kept to the exact wording of the host (setup-host.ts, quickstart-api.ts, token-env-name.ts, provider
- * probes, the confirmation gate's codes); tests/setup-i18n-2726.test.ts drives each source and checks it is here.
- */
-export const SETUP_HOST_MESSAGES: ReadonlyArray<readonly [string, string]> = [
-  // The code page (setup-host.ts redeem / afterFailure / the cookie gate).
-  ["incorrect — {0} attempts left", "代碼不正確 —— 還可以再試 {0} 次"],
-  ["incorrect — {0} attempt left", "代碼不正確 —— 還可以再試 {0} 次"],
-  ["too many failed attempts — run `agend setup` again on the host", "錯誤次數太多 —— 請在主機上再執行一次 `agend setup`"],
-  ["enter the setup code", "請輸入設定代碼"],
-  ["enter the setup code first", "請先輸入設定代碼"],
-  ["cross-site request rejected", "已拒絕跨站請求"],
-  ["not found", "找不到"],
-  // Finishing (setup-host.ts finishSetup / status).
-  ["Setup changed; review and confirm again.", "設定已改變；請重新檢查並再確認一次。"],
-  ["Setup confirmation unavailable.", "無法取得設定確認。"],
-  // The wizard's validation (quickstart-api.ts validateWizardInput, validateWebOnlyInput).
-  ["working_directory must be an absolute path, or empty for the agent's own workspace", "工作目錄必須是絕對路徑，或留空讓 agent 使用自己的資料夾"],
-  ["instance_name must be [A-Za-z0-9._-], and not only dots", "agent 名稱只能用英文字母、數字和 . _ -，而且不能只有句點"],
-  ["backend must be a known backend", "請選擇一個支援的後端"],
-  ["{0} does not apply to a web-only setup", "只用網頁的設定不使用 {0}"],
-  ["platform must be telegram or discord", "平台必須是 Telegram 或 Discord"],
-  ["token_env must be an UPPER_SNAKE env var name", "環境變數名稱只能用大寫英文字母、數字和底線（例如 AGEND_BOT_TOKEN）"],
-  ["{0} must be numeric", "{0} 必須是數字"],
-  ["Your Discord user ID is required: enter 17–20 digits, without a leading zero.", "Discord 使用者 ID 必填：請輸入 17–20 位數字，開頭不能是 0。"],
-  ["Your Telegram user ID is required: enter 1–20 positive digits, without a leading zero.", "Telegram 使用者 ID 必填：請輸入 1–20 位正整數字，開頭不能是 0。"],
-  // Conflicts (agentConflict, newConnectionConflict, webOnlyConflict, token-env-name.ts).
-  ["an agent called \"{0}\" already exists — connect it as an existing agent, or choose another name", "已經有名為「{0}」的 agent —— 請把它當作既有的 agent 連接，或換一個名稱"],
-  ["there is no agent called \"{0}\"", "沒有名為「{0}」的 agent"],
-  ["a connection called \"{0}\" already exists — a new connection never replaces one", "已經有名為「{0}」的連線 —— 新的連線不會取代既有的連線"],
-  ["this fleet already has a chat connection — add the agent with New agent instead", "這個 fleet 已經有聊天連線 —— 請改用「新增 Agent」加入 agent"],
-  ["{0} is reserved", "{0} 是保留名稱"],
-  ["{0} already holds the token of the \"{1}\" connection — a new connection never replaces one; use Replace token on that connection", "{0} 已經存著「{1}」連線的 token —— 新的連線不會取代它；請在那個連線上用「更換 token」"],
-  ["{0} is no longer free (it was taken after this setup was planned) — plan it again", "{0} 已被使用（在這次設定規劃之後）—— 請重新產生一次"],
-  ["the data dir's .env cannot be read: {0}", "無法讀取資料目錄的 .env：{0}"],
-  // Requests and writes (quickstart-api.ts handlers).
-  ["token required", "請輸入 bot token"],
-  ["invalid JSON", "請求內容不是有效的 JSON"],
-  ["bad request", "請求無效"],
-  ["unknown probe", "不支援的檢查"],
-  ["fleet not loaded", "設定尚未載入"],
-  ["another secret operation is still running", "另一個寫入 token 的操作還在進行中"],
-  ["setup cleanup failed; inspect configuration on the host", "設定的復原失敗；請在主機上檢查設定"],
-  ["setup was not committed", "設定沒有寫入"],
-  ["Token verification is not permitted over a public link", "公開連結不能驗證 token"],
-  ["This bot token is already being polled by the running fleet. Enter the group id by hand, or stop AgEnD first.", "執行中的 fleet 正在使用這個 bot token。請手動輸入群組 id，或先停止 AgEnD。"],
-  ["Another process is already reading this bot's updates. Stop it, or enter the group id by hand.", "另一個程式正在讀取這個 bot 的訊息。請停止它，或手動輸入群組 id。"],
-  ["Discord replied {0}", "Discord 回應 {0}"],
-  ["Telegram replied {0}", "Telegram 回應 {0}"],
-];
+/** #2726: the host's words and codes in both languages — one module, shared with the dashboard (pasted in below). */
+const HOST_TEXT = readFileSync(new URL("./ui/shared/setup-host-text.js", import.meta.url), "utf8").replace(/^export /gm, "");
 
-/**
- * What the host answers with a code instead of words (the confirmation gate, settings-http-confirmation.ts and
- * settings-effect.ts; the finish step): said in words in both languages. In the form's table as `host_<code>`.
- */
-export const SETUP_HOST_CODES: Record<SetupLang, Table> = {
-  en: {
-    invalid_quickstart: "This setup is not valid. Select Show what will be written to see what is wrong.",
-    connection_exists: "That connection already exists — a new connection never replaces one.",
-    agent_conflict: "That agent name is taken, or that agent does not exist.",
-    too_many_pending_changes: "Too many changes are waiting for confirmation. Deal with them on the host first.",
-    idempotency_key_reused: "This request was already sent with different content. Review it and send it again.",
-    settings_confirmation_unavailable: "Host confirmation is not available right now. Try again shortly.",
-    session_required: "This setup session has ended. Reopen setup on the host.",
-    invalid_json: "The request was not valid JSON.",
-    invalid_settings_body: "The request was not valid.",
-    signin_cleanup_failed: "The login process could not be confirmed closed. Close it on the host and restart setup before retrying.",
-  },
-  "zh-TW": {
-    invalid_quickstart: "這份設定無效。請按「顯示將寫入的內容」查看哪裡有問題。",
-    connection_exists: "這個連線已存在 —— 新的連線不會取代既有的連線。",
-    agent_conflict: "這個 agent 名稱已被使用，或那個 agent 不存在。",
-    too_many_pending_changes: "等待確認的變更太多。請先在主機上處理它們。",
-    idempotency_key_reused: "這個請求已經用不同的內容送出過。請重新檢查後再送出。",
-    settings_confirmation_unavailable: "目前無法要求主機確認。請稍後再試。",
-    session_required: "這個設定工作階段已結束。請在主機上重新開啟設定。",
-    invalid_json: "請求內容不是有效的 JSON。",
-    invalid_settings_body: "請求無效。",
-    signin_cleanup_failed: "無法確認登入程序已關閉。請在主機上關閉它，並重新開始設定後再試。",
-  },
-};
-const hostCodes = (lang: SetupLang): Table => Object.fromEntries(Object.entries(SETUP_HOST_CODES[lang]).map(([code, text]) => ["host_" + code, text]));
-for (const lang of ["en", "zh-TW"] as const) Object.assign(SETUP_FORM_STRINGS[lang], hostCodes(lang));
 
 /**
  * The few lines both pages run first: the dictionary (JSON, `<` escaped so no string can end the script), the language,
@@ -276,8 +197,8 @@ for (const lang of ["en", "zh-TW"] as const) Object.assign(SETUP_FORM_STRINGS[la
  * `applyLang`. Plain script, no `${` and no template literal: it is pasted into the pages' own template strings.
  */
 export function setupI18nRuntime(strings: Record<SetupLang, Table>): string {
-  const tables = JSON.stringify({ en: strings.en, "zh-TW": strings["zh-TW"], host: SETUP_HOST_MESSAGES }).replace(/</g, "\\u003c");
-  return "const I18N = " + tables + ";\n" + String.raw`
+  const tables = JSON.stringify({ en: strings.en, "zh-TW": strings["zh-TW"] }).replace(/</g, "\\u003c");
+  return "const I18N = " + tables + ";\n" + HOST_TEXT + String.raw`
   let LANG = (() => {
     try { const chosen = localStorage.getItem("agend_lang"); if (chosen === "en" || chosen === "zh-TW") return chosen; } catch { /* none kept */ }
     return typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
@@ -287,19 +208,8 @@ export function setupI18nRuntime(strings: Record<SetupLang, Table>): string {
     values.forEach((value, i) => { text = text.split("{" + i + "}").join(String(value)); });
     return text;
   };
-  // The host's own words (English) in this page's language, a code it answers with in words; anything else as it came.
-  const trHost = (text) => {
-    if (typeof text !== "string") return text;
-    if (I18N.en["host_" + text]) return tr("host_" + text);
-    if (LANG === "en") return text;
-    for (const [en, zh] of I18N.host) {
-      const holes = [...en.matchAll(/\{(\d)\}/g)].map(m => m[1]);
-      const pattern = new RegExp("^" + en.split(/\{\d\}/).map(part => part.replace(/[.*+?^$|()[\]{}\\]/g, "\\$&")).join("(.+?)") + "$");
-      const found = pattern.exec(text);
-      if (found) { let out = zh; holes.forEach((hole, i) => { out = out.split("{" + hole + "}").join(found[i + 1]); }); return out; }
-    }
-    return text;
-  };
+  // The host's own words or code in this page's language (setup-host-text.js); anything else as it came.
+  const trHost = (text) => hostText(text, LANG);
   // A text that is redrawn in the new language when it changes: its last render per element.
   const shown = new Map();
   const show = (element, render) => { if (!element) return; shown.set(element, render); render(element); };

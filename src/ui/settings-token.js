@@ -4,7 +4,8 @@
 // lives in this field's state only: never in storage, a URL, a label or the page's other state, and the server never
 // hands it back — afterwards a connection shows "Token set · @bot".
 import { html, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { t, lang } from "/assets/app-i18n.js";
+import { hostText } from "/assets/setup-host-text.js";
 import { useTypedText } from "/assets/text-undo.js";
 import { Icon } from "/assets/ui-icons.js";
 import { api } from "./settings-confirm.js";
@@ -24,7 +25,7 @@ export async function verifyBotToken(platform, token) {
     .catch(() => ({ ok: false, body: {} }));
   // A Discord bot's invite and portal page come with it (#1519 P3).
   if (res.ok && res.body && res.body.identity) return { ...res.body.identity, invite: res.body.invite_url || null, portal: res.body.portal_url || null };
-  return { valid: false, reason: (res.body && res.body.error) || tn("verifyFailed") };
+  return { valid: false, reason: hostText(res.body && res.body.error, lang()) || tn("verifyFailed") };
 }
 
 /** A bot's name as it is addressed: @name, once. */
