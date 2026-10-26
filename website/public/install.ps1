@@ -116,7 +116,10 @@ function Resolve-AgendWslDrive([string]$value) {
     # without .code and a process that is gone, or a .started still empty after a short grace (the wrapper died between
     # creating it and writing its PID). A declined UAC prompt is final; any other wt failure falls back to the
     # old window. Returns @{ Outcome = 'done' | 'declined' | 'closed'; Code }.
-    function Start-ElevatedInstaller([string]$shell, [string[]]$installerArgs, [string]$tmp, [string]$terminal, [int]$startTimeoutSec = 90, [int]$claimGraceSec = 10) {
+    # -AlreadyElevated (this window is already Administrator, but is not Windows Terminal): the same Windows Terminal
+    # launch without RunAs (a window started from an elevated process is elevated), and 'inline' instead of a second
+    # window when Windows Terminal is absent or does not start, so the caller runs the installer here as before.
+    function Start-ElevatedInstaller([string]$shell, [string[]]$installerArgs, [string]$tmp, [string]$terminal, [int]$startTimeoutSec = 90, [int]$claimGraceSec = 10, [switch]$AlreadyElevated) {
         $versionArg = ''
         $versionIndex = [array]::IndexOf($installerArgs, '-InstallVersion')
         if ($versionIndex -ge 0) {
@@ -151,7 +154,8 @@ function Resolve-AgendWslDrive([string]$value) {
                 # with spaces) and the wrapper path are quoted.
                 $path = '"' + ($wrapper -replace ';', '\;') + '"'
                 $shellArg = '"' + ($shell -replace ';', '\;') + '"'
-                $null = Start-Process -FilePath $wt.Source -ArgumentList @('-w', 'new', $shellArg, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $path) -Verb RunAs
+                $verb = @{}; if (-not $AlreadyElevated) { $verb = @{ Verb = 'RunAs' } }
+                $null = Start-Process -FilePath $wt.Source -ArgumentList @('-w', 'new', $shellArg, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $path) @verb
                 $launched = $true
             } catch {
                 if (& $declinedError $_) { return @{ Outcome = 'declined'; Code = $null } }
@@ -191,6 +195,7 @@ function Resolve-AgendWslDrive([string]$value) {
                 Write-Host "AgEnD: the installer did not start in Windows Terminal; using a PowerShell window." -ForegroundColor Yellow
             }
         }
+        if ($AlreadyElevated) { return @{ Outcome = 'inline'; Code = $null } }
         # Start-Process joins its arguments with spaces: the temporary path is quoted for a user name with spaces.
         $quoted = $installerArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
         try {
@@ -270,9 +275,23 @@ function Resolve-AgendWslDrive([string]$value) {
         }
 
         if (-not $onWindows -or $admin) {
-            # Already Administrator (or not Windows: tests): run it here, in this window.
-            & $shell @installerArgs
-            $code = $LASTEXITCODE
+            # Already Administrator (or not Windows: tests): run it here, in this window -- unless this is the old console
+            # window (no WT_SESSION) and Windows Terminal is installed: then it opens there, as an elevated launch would
+            # (a user resumed from an Administrator PowerShell and got the narrow old window; 2026-10-27).
+            # AGEND_INSTALL_TERMINAL=conhost keeps it here.
+            $result = $null
+            $terminal = 'auto'
+            if ($env:AGEND_INSTALL_TERMINAL) { $terminal = $env:AGEND_INSTALL_TERMINAL.Trim().ToLowerInvariant() }
+            if ($onWindows -and -not $env:WT_SESSION -and $terminal -ne 'conhost') { $result = Start-ElevatedInstaller $shell $installerArgs $tmp $terminal -AlreadyElevated }
+            if ($result -and $result.Outcome -eq 'done') { $code = $result.Code }
+            elseif ($result -and $result.Outcome -eq 'closed') {
+                Write-Host "AgEnD: the installer window was closed before it finished." -ForegroundColor Yellow
+                Write-Host "Run the same command again: it carries on where it stopped."
+                return
+            } else {
+                & $shell @installerArgs
+                $code = $LASTEXITCODE
+            }
         } else {
             Write-Host "AgEnD: the installer needs Administrator rights (it enables WSL). Approve the Windows prompt;"
             Write-Host "it opens in a new window, and this one waits for it."

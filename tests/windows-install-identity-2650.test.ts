@@ -36,9 +36,11 @@ describe("static", () => {
     const boot = readFileSync(BOOTSTRAP, "utf8");
     expect(/^[\x00-\x7f]*$/.test(boot)).toBe(true);
     const c = code(BOOTSTRAP);
-    const elevate = c.slice(c.indexOf("if (-not $onWindows -or $admin)"));
+    const admin = c.slice(c.indexOf("if (-not $onWindows -or $admin)"), c.indexOf("Write-Host \"AgEnD: the installer needs Administrator rights"));
+    const elevate = c.slice(c.indexOf("Write-Host \"AgEnD: the installer needs Administrator rights"));
+    expect(admin).not.toContain("-InitiatingSid");                                   // already admin (WT or here): no SID
     const add = elevate.indexOf("$installerArgs += @('-InitiatingSid', $sid)");
-    expect(add).toBeGreaterThan(elevate.indexOf("} else {"));
+    expect(add).toBeGreaterThan(0);
     expect(add).toBeLessThan(elevate.indexOf("$result = Start-ElevatedInstaller"));
     expect(c).toMatch(/\$sid = \[Security\.Principal\.WindowsIdentity\]::GetCurrent\(\)\.User\.Value/);
   });

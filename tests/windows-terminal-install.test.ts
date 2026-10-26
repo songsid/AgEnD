@@ -65,7 +65,7 @@ ${body}`);
  * The installer is a stub that records how it was run and ends with code 7. The temporary directory has a space and a
  * semicolon in its name: the quoting and wt's own ';' are part of what is checked.
  */
-function elevated(wt: "run" | "start-and-close" | "empty-claim" | "partial-code" | "live-owner" | "nothing" | "declined" | "fail" | "absent", extra = "", env: Record<string, string> = {}, shell = "pwsh") {
+function elevated(wt: "run" | "start-and-close" | "empty-claim" | "partial-code" | "live-owner" | "nothing" | "declined" | "fail" | "absent", extra = "", env: Record<string, string> = {}, shell = "pwsh", flags = "") {
   return run(BOOTSTRAP, `
 $base = Join-Path $env:TMPDIR 'a b;c'; New-Item -ItemType Directory -Path $base -Force | Out-Null
 $tmp = Join-Path $base 'install-agend-x.ps1'
@@ -89,7 +89,7 @@ function Start-Process { param($FilePath, $ArgumentList, $Verb, [switch]$Wait, [
   return [pscustomobject]@{ ExitCode = 3 }
 }
 ${extra}
-$r = Start-ElevatedInstaller '${shell}' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp, '-Force') $tmp $env:TERMINAL_MODE 2 1
+$r = Start-ElevatedInstaller '${shell}' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp, '-Force') $tmp $env:TERMINAL_MODE 2 1 ${flags}
 Write-Output ("OUTCOME=" + $r.Outcome + " CODE=" + $r.Code)
 foreach ($c in $script:calls) { Write-Output ("CALL " + $c) }
 Write-Output ("RAN=" + $(if (Test-Path (Join-Path $env:TMPDIR 'ran.txt')) { (Get-Content -Raw (Join-Path $env:TMPDIR 'ran.txt')).Trim() } else { 'no' }))
@@ -97,6 +97,26 @@ Write-Output ("LEFT=" + ((Get-ChildItem -LiteralPath $base -Name | Sort-Object) 
 }
 
 describe.skipIf(!pwsh)("with pwsh: the elevated launch (install.ps1)", { timeout: 90_000 }, () => {
+  // 2026-10-27: a resume from an Administrator PowerShell ran in that old console window (narrow, CJK broken).
+  it("already Administrator, outside Windows Terminal: the same Windows Terminal launch without RunAs, the code back", () => {
+    const { out } = elevated("run", "", {}, "pwsh", "-AlreadyElevated");
+    expect(out).toContain("OUTCOME=done CODE=7");
+    expect(out).toMatch(/CALL start \/stub\/wt\.exe \| -w new "pwsh" [^|]*\|  \| wait=False/);       // no Verb
+  });
+  it("already Administrator, Windows Terminal absent or failing: 'inline' (run here as before), never a second window", () => {
+    for (const wt of ["absent", "fail"] as const) {
+      const { out } = elevated(wt, "", {}, "pwsh", "-AlreadyElevated");
+      expect(out, wt).toContain("OUTCOME=inline");
+      expect(out, wt).not.toMatch(/CALL start pwsh/);
+      expect(out, wt).toContain("RAN=no");
+    }
+  });
+  it("the bootstrap uses it only when already admin, outside Windows Terminal, and not asked for the old window", () => {
+    const boot = readFileSync(BOOTSTRAP, "utf8");
+    const at = boot.indexOf("if (-not $onWindows -or $admin) {"), admin = boot.slice(at, boot.indexOf("Write-Host \"AgEnD: the installer needs Administrator rights", at));
+    expect(admin).toContain("if ($onWindows -and -not $env:WT_SESSION -and $terminal -ne 'conhost') { $result = Start-ElevatedInstaller $shell $installerArgs $tmp $terminal -AlreadyElevated }");
+    expect(admin).toMatch(/\} else \{\s*& \$shell @installerArgs/);                                      // otherwise inline, as before
+  });
   it("Windows Terminal present: wt.exe -w new <shell> … -File \"<wrapper>\" (';' escaped), and the installer's exit code comes back through <tmp>.code", () => {
     const { out } = elevated("run");
     expect(out).toContain("OUTCOME=done CODE=7");
