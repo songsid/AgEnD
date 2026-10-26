@@ -117,3 +117,20 @@ describe("the share tunnel (#2636)", () => {
   });
 
 });
+
+describe("an ended share's limiter keys (#2662 review)", () => {
+  it("the page's and the pictures' minute of an ended share are forgotten; an open share's are kept", async () => {
+    let made: { limiter?: { admit(id: string, l?: { requests: number; bytes: number }): boolean }; pictureLimiter?: { admit(id: string, l?: { requests: number; bytes: number }): boolean } } = {};
+    const createGateway = ((opts: typeof made) => { made = opts; return { listen: async () => new URL("http://127.0.0.1:12345"), setHost: () => {}, close: () => {}, readinessMarker: "stub" }; }) as never;
+    const r = rig({ createGateway }); live.push(r.svc);
+    const p = r.svc.create({ office: "hq", owner: "discord:1" });
+    await r.release();
+    const a = await p, b = await r.svc.create({ office: "hq", owner: "discord:1" });
+    if (!a.ok || !b.ok) throw new Error("refused");
+    const one = { requests: 1, bytes: 1e9 };
+    for (const lim of [made.limiter!, made.pictureLimiter!]) for (const id of [a.share.id, b.share.id]) { expect(lim.admit(id, one)).toBe(true); expect(lim.admit(id, one)).toBe(false); }
+    r.svc.revoke(a.share.id);
+    expect([made.limiter!.admit(a.share.id, one), made.pictureLimiter!.admit(a.share.id, one)], "ended: forgotten").toEqual([true, true]);
+    expect([made.limiter!.admit(b.share.id, one), made.pictureLimiter!.admit(b.share.id, one)], "still open: kept").toEqual([false, false]);
+  });
+});

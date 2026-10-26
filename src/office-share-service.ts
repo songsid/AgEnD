@@ -58,6 +58,8 @@ export class OfficeShareService {
   private abort: AbortController | null = null;
   private unsubscribe: (() => void) | undefined;
   private readonly limiter = new OfficeShareLimiter();
+  /** #2662: the shares' pack pictures, each share's own minute — kept here so an ended share's key goes with it. */
+  private readonly pictureLimiter = new OfficeShareLimiter();
 
   constructor(private readonly deps: OfficeShareServiceDeps) {
     this.shares = deps.shares ?? new OfficeShares({ changed: list => this.onChanged(list) });
@@ -97,7 +99,7 @@ export class OfficeShareService {
 
   private onChanged(list: OfficeShare[]): void {
     const open = new Set(list.map(s => s.id));
-    for (const id of this.known) if (!open.has(id)) this.limiter.forget(id);
+    for (const id of this.known) if (!open.has(id)) { this.limiter.forget(id); this.pictureLimiter.forget(id); }
     this.known = open;
     // While any is open, who may still have it is asked again every SWEEP_MS (an admin removed, the feature turned
     // off, an office deleted end theirs without anyone looking).
@@ -119,7 +121,7 @@ export class OfficeShareService {
     await this.stopping?.catch(() => {});
     const abort = this.abort = new AbortController();
     const gateway = (this.deps.createGateway ?? createOfficeShareGateway)({
-      shares: this.shares, source: this.deps.source, limiter: this.limiter, statics: officeShareStatic,
+      shares: this.shares, source: this.deps.source, limiter: this.limiter, pictureLimiter: this.pictureLimiter, statics: officeShareStatic,
       page: () => ({ body: OFFICE_SHARE_PAGE, csp: OFFICE_SHARE_PAGE_CSP }),
     });
     this.gateway = gateway;

@@ -125,7 +125,7 @@ describe("an All-offices share of fleet-sized packs (#2662)", () => {
     const reads = seen.filter(s => !s.path.includes("/img/")).length;
     for (let i = reads; i < OFFICE_SHARE_LIMITS.requestsPerMinute; i++) expect((await second(`/o/${made.token}/offices`)).status).toBe(200);
     expect((await second(`/o/${made.token}/offices`)).status).toBe(429);
-  });
+  }, 60_000);                // ~2,000 real loopback requests: about 1 s alone; room for a loaded host (#2662 review)
 
   it("a share shows only the sets its people wear: the rest of a pack is never fetched", async () => {
     const people = ["atlas", "quill", "sage"];
