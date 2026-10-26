@@ -1,0 +1,48 @@
+[
+  {
+    "version": "2.3.1",
+    "old": {
+      "status": 401,
+      "path": "/ui",
+      "ready": false
+    },
+    "fixed": {
+      "status": 200,
+      "path": "/signin",
+      "ready": true
+    },
+    "generatedProgram": {
+      "oldExit": 1,
+      "fixedExit": 0
+    },
+    "requestCounts": {
+      "/": 11,
+      "/ui": 11,
+      "/signin": 2,
+      "/health": 12
+    }
+  },
+  {
+    "version": "2.3.2-beta.11",
+    "old": {
+      "status": 401,
+      "path": "/ui",
+      "ready": false
+    },
+    "fixed": {
+      "status": 200,
+      "path": "/signin",
+      "ready": true
+    },
+    "generatedProgram": {
+      "oldExit": 1,
+      "fixedExit": 0
+    },
+    "requestCounts": {
+      "/": 11,
+      "/ui": 11,
+      "/signin": 2,
+      "/health": 12
+    }
+  }
+]

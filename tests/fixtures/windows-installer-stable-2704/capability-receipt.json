@@ -1,0 +1,12 @@
+[
+  {
+    "SetupCommand": "agend setup",
+    "BrowserSignIn": false,
+    "Package": "stable"
+  },
+  {
+    "SetupCommand": "agend setup --backend-signins codex",
+    "BrowserSignIn": true,
+    "Package": "beta"
+  }
+]
