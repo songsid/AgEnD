@@ -1402,7 +1402,7 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
             $setupSeen.Shown = $true
             $copied = Set-SetupClipboard $setupSeen.Code
             if (-not (Wait-SetupPageReachable $setupSeen.Url)) {
-                Write-Warn "從 Windows 還連不到設定頁。仍會打開它；若顯示「連線已重設」，等幾秒再重新整理。一直如此時，可能是另一個 Linux 佔著這個連接埠：在 PowerShell 執行 netstat -ano | findstr :19280 查看。"
+                Write-Warn "從 Windows 還連不到設定頁。仍會打開它；若顯示「連線已重設」，等幾秒再重新整理。一直如此時，可能是另一個 Linux 佔著這個連接埠：在 PowerShell 執行 netstat -ano 查看那個連接埠。"
             }
             $opened = Open-InBrowser $setupSeen.Url
             Show-SetupCode $setupSeen.Code $copied $opened $setupSeen.Url
@@ -1451,45 +1451,74 @@ function Get-BrowserSetupCommand([string]$BackendSignins = '') {
     if ($BackendSignins -cnotmatch '^(kiro-cli|claude-code|codex|antigravity)(,(kiro-cli|claude-code|codex|antigravity)){0,3}\z') { throw 'Invalid backend selection' }
     return ('agend setup --backend-signins ' + $BackendSignins)
 }
-# ── 儀表板連接埠在 Windows 這邊被誰佔著（使用者實測，2026-10-26）──
+# ── AgEnD 的連接埠：先找一組 Windows 和 Linux 都能用的（使用者實測，2026-10-26）──
+# AgEnD 用兩個相鄰的連接埠：health_port（儀表板、/health，也是設定頁）和 health_port+1（web 預覽，預設值）。
 # 另一個 Linux（例如之前裝過 AgEnD 的那個）的 WSL localhost 轉送（wslrelay.exe）可能還佔著 Windows 的 127.0.0.1:19280：
-# 瀏覽器連到的是那個 Linux，那裡沒有東西在聽，就顯示「連線已重設」。設定開始前先看清楚；只在使用者同意後停掉那一個
-# Linux，絕不停掉整個 WSL。
+# 瀏覽器連到的是那個 Linux，那裡沒有東西在聽，就顯示「連線已重設」。所以設定開始前，從 19280 起一組一組試（P 和 P+1）：
+# Windows 沒有程式在聽、不在 Windows 保留的範圍、Linux（所有發行版共用一個網路）裡也沒有程式在聽，就用它，寫進
+# fleet.yaml 的 health_port（設定頁和之後的 fleet 都照它；2.3.1 起都支援），也記進進度檔。已經設定好的 fleet.yaml 不改。
+$AGEND_PORT_FIRST = 19280
+$AGEND_PORT_TRIES = 20
 function Get-WindowsPortListener([int]$port) {
     try { $c = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop) | Select-Object -First 1 } catch { return $null }
     if (-not $c) { return $null }
     $name = ''; try { $name = [string](Get-Process -Id $c.OwningProcess -ErrorAction Stop).ProcessName } catch { }
     return @{ Pid = [int]$c.OwningProcess; Name = $name }
 }
-function Get-RunningOtherDistros([string]$ours) {
-    $r = Invoke-BoundedWsl -Arguments @('--list', '--running', '--quiet')
-    if ($r.Code -ne 0) { return @() }
-    return @($r.Text -split '\r?\n' | ForEach-Object { ($_ -replace "`0", '').Trim() } | Where-Object { $_ -and $_ -ne $ours })
+# Windows 保留給 Hyper-V/WinNAT 等的連接埠範圍（netsh 讀不到就當作沒有）。
+function Get-ExcludedPortRanges {
+    $text = ''
+    try { $text = (& netsh.exe int ipv4 show excludedportrange protocol=tcp 2>$null) -join "`n" } catch { return @() }
+    return @([regex]::Matches($text, '(?m)^\s*(\d+)\s+(\d+)') | ForEach-Object { @{ Start = [int]$_.Groups[1].Value; End = [int]$_.Groups[2].Value } })
 }
-function Resolve-DashboardPortHolder([int]$port = 19280) {
-    $holder = Get-WindowsPortListener $port
-    if (-not $holder) { return $true }
-    if ($holder.Name -ne 'wslrelay') {
-        Write-Err ("Windows 上的 {0} 連接埠被「{1}」（PID {2}）佔用；AgEnD 的設定頁和儀表板都要用它。" -f $port, $holder.Name, $holder.Pid)
-        Write-Info "請先關閉那個程式，再執行同一行安裝指令；會從這一步繼續。"
-        return $false
+function Test-PortExcluded([int]$port, $ranges) {
+    foreach ($r in @($ranges)) { if ($port -ge $r.Start -and $port -le $r.End) { return $true } }
+    return $false
+}
+# Linux 裡有沒有程式在聽（連得上就是有）。讀不到時當作不能用。
+function Test-WslPortFree([int]$port) {
+    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', ('if (exec 3<>/dev/tcp/127.0.0.1/' + $port + ') 2>/dev/null; then echo PORT_BUSY; else echo PORT_FREE; fi'))
+    return ($r.Code -eq 0 -and $r.Text -match 'PORT_FREE')
+}
+# 這個 Linux 裡的 fleet.yaml：沒有（None）、只有安裝程式寫的 health_port 一行（Seeded），或已經設定好的（Configured，連同它的 health_port）。
+function Get-AgendPortConfig {
+    $script = 'f=${AGEND_HOME:-$HOME/.agend}/fleet.yaml; [ -f "$f" ] || { echo CFG_NONE; exit 0; }; p=$(sed -n "s/^health_port:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p" "$f" | head -n 1); if [ "$(grep -cv "^[[:space:]]*$" "$f")" = 1 ] && [ -n "$p" ]; then echo "CFG_SEEDED=$p"; else echo "CFG_CONFIGURED=${p:-19280}"; fi'
+    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', $script)
+    if ($r.Code -ne 0) { return $null }
+    if ($r.Text -match 'CFG_NONE') { return @{ State = 'none'; Port = $null } }
+    if ($r.Text -match 'CFG_SEEDED=(\d+)') { return @{ State = 'seeded'; Port = [int]$Matches[1] } }
+    if ($r.Text -match 'CFG_CONFIGURED=(\d+)') { return @{ State = 'configured'; Port = [int]$Matches[1] } }
+    return $null
+}
+function Select-AgendPorts {
+    $cfg = Get-AgendPortConfig
+    if ($null -eq $cfg) { Write-Err "讀不到這個 Linux 裡的 AgEnD 設定，先停在這裡。"; return $null }
+    if ($cfg.State -eq 'configured') { return $cfg.Port }   # 已經設定好的 fleet 不改它的連接埠
+    $ranges = Get-ExcludedPortRanges
+    $saved = Get-ProgressValue 'AGEND_PORT' '\d+'
+    $candidates = @()
+    if ($cfg.State -eq 'seeded') { $candidates += $cfg.Port }
+    if ($saved) { $candidates += [int]$saved }
+    for ($i = 0; $i -lt $AGEND_PORT_TRIES; $i++) { $candidates += ($AGEND_PORT_FIRST + 2 * $i) }
+    foreach ($p in @($candidates | Select-Object -Unique)) {
+        if ($p -lt 1024 -or $p -gt 65534) { continue }
+        $why = $null
+        foreach ($q in @($p, ($p + 1))) {
+            if (Test-PortExcluded $q $ranges) { $why = "Windows 保留了 $q"; break }
+            $h = Get-WindowsPortListener $q
+            if ($h) { $why = ("Windows 上的 {0} 被「{1}」佔用" -f $q, $h.Name); break }
+            if (-not (Test-WslPortFree $q)) { $why = "Linux 裡的 $q 已有程式在用"; break }
+        }
+        if ($why) { Write-Info ("  連接埠 {0}/{1} 不能用（{2}），試下一組..." -f $p, ($p + 1), $why); continue }
+        $seed = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', ('umask 077; d=${AGEND_HOME:-$HOME/.agend}; mkdir -p "$d" && printf ''health_port: %s\n'' ' + $p + ' > "$d/fleet.yaml"'))
+        if ($seed.Code -ne 0) { Write-Err "寫不進 AgEnD 的設定檔，先停在這裡。"; return $null }
+        Add-Content -LiteralPath $ProgressFile -Value ('AGEND_PORT=' + $p)
+        if ($p -ne $AGEND_PORT_FIRST) { Write-Ok ("AgEnD 的儀表板改用連接埠 {0}（預覽 {1}）" -f $p, ($p + 1)) }
+        return $p
     }
-    $others = @(Get-RunningOtherDistros $UBUNTU_DISTRO)
-    # 沒有其他 Linux 在執行：多半是這個 Linux 自己的轉送；打開設定頁之前的連線測試會再確認。
-    if ($others.Count -eq 0) { return $true }
-    Write-Warn ("Windows 上的 {0} 連接埠被另一個 Linux 的轉送佔著（執行中：{1}）。它可能是之前裝過 AgEnD 的 Linux；不停掉它，瀏覽器會連到那裡，顯示「連線已重設」。" -f $port, ($others -join '、'))
-    foreach ($d in $others) {
-        $answer = Read-Host ("  要停止「{0}」嗎？只停這一個 Linux（裡面正在跑的程式會結束），檔案不會被刪除。(y/N)" -f $d)
-        if (([string]$answer) -notmatch '^\s*[yY]\s*$') { continue }
-        $null = Invoke-BoundedWsl -Arguments @('--terminate', $d)
-        Start-Sleep -Seconds 2
-        if (-not (Get-WindowsPortListener $port)) { Write-Ok ("已停止 {0}，{1} 連接埠已釋放" -f $d, $port); return $true }
-    }
-    if (Get-WindowsPortListener $port) {
-        Write-Err ("{0} 連接埠仍被佔用。可以在 PowerShell 執行 wsl --terminate <那個 Linux 的名稱>，再執行同一行安裝指令。" -f $port)
-        return $false
-    }
-    return $true
+    Write-Err ("從 {0} 起找不到兩個相鄰都能用的連接埠。" -f $AGEND_PORT_FIRST)
+    Write-Info "可以在 PowerShell 執行 netstat -ano | findstr :19280 看是誰佔著，關掉它之後再執行同一行安裝指令。"
+    return $null
 }
 function Invoke-SetupAndService([string]$BackendSignins = '', $Backends = $null) {
     $configured = $false
@@ -2644,7 +2673,7 @@ if ((Stage-Done 5) -and (Test-InstallerReady)) {
     Write-Host ""
     Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram 並貼上 Bot Token；或選「Web only (no bot)」，不用 Bot、只用網頁儀表板。"
     Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
-    if (-not (Resolve-DashboardPortHolder 19280)) {
+    if ($null -eq (Select-AgendPorts)) {
         Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
         Read-Host "按 Enter 結束"; exit 1
     }
