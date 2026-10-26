@@ -176,12 +176,12 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
   });
 });
 
-describe("holds: trust, question, MCP — never typed even if readiness says ready", () => {
-  function kiroTui(): KiroBackend {
+describe("holds: trust, question, MCP, takeover — never typed even if readiness says ready", () => {
+  function kiroUi(ui: "tui" | "v3"): KiroBackend {
     const instanceDir = mkdtempSync(join(tmpdir(), "kiro-proof-hold-"));
     dirs.push(instanceDir);
     const b = new KiroBackend(instanceDir, TEST_KIRO_COMPAT);
-    b.buildCommand({ workingDirectory: instanceDir, instanceDir, instanceName: "worker", mcpServers: {}, kiroUi: "tui" });
+    b.buildCommand({ workingDirectory: instanceDir, instanceDir, instanceName: "worker", mcpServers: {}, kiroUi: ui });
     return b;
   }
   const fixture = (rel: string) => readFileSync(join(import.meta.dirname, "fixtures", rel), "utf8");
@@ -190,9 +190,12 @@ describe("holds: trust, question, MCP — never typed even if readiness says rea
     ["question card", "kiro-question-2592/2.34.0-120-40-question.pane.txt"],
     ["MCP input card", "kiro-2.34.0-audit/mcp-120-10-form-2.34.0.pane.txt"],
     ["trust-all-tools", "kiro-2.34.0-audit/t2-trust-120-2.34.0.pane.txt"],
+    ["tui editor", "kiro-2.34.0-takeover-2682/tui-editor-vi.pane.txt"],
+    ["focused /kvim", "kiro-2.34.0-takeover-2682/tui-kvim-focused.pane.txt"],
+    ["tui !vim", "kiro-2.34.0-takeover-2682/tui-bang-vi-insert.pane.txt"],
   ] as const) {
     it(`${label} is not written`, async () => {
-      const kb = kiroTui();
+      const kb = kiroUi("tui");
       const r = rig({ panes: [fixture(rel)], readiness: () => "ready" });
       r.daemon.backend.getRuntimeDialogs = () => kb.getRuntimeDialogs();
       r.daemon.backend.getReadyPattern = () => kb.getReadyPattern();
@@ -203,4 +206,16 @@ describe("holds: trust, question, MCP — never typed even if readiness says rea
       expect(readKiroSessionProof(r.instanceDir)).toBeNull();
     });
   }
+
+  it("V3 editor takeover is not written", async () => {
+    const kb = kiroUi("v3");
+    const r = rig({ panes: [fixture("kiro-2.34.0-takeover-2682/v3-editor-vi.pane.txt")], readiness: () => "ready" });
+    r.daemon.backend.getRuntimeDialogs = () => kb.getRuntimeDialogs();
+    r.daemon.backend.getReadyPattern = () => kb.getReadyPattern();
+    r.daemon.backend.getBusyPattern = () => kb.getBusyPattern();
+    await run(r.daemon);
+    expect(r.pasteBuffer).not.toHaveBeenCalled();
+    expect(r.warnings).toEqual([]);
+    expect(readKiroSessionProof(r.instanceDir)).toBeNull();
+  });
 });
