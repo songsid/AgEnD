@@ -50,6 +50,7 @@ import { parseReplyButtons, replyButtonsFallbackText } from "./reply-buttons.js"
 import { HangDetector } from "./hang-detector.js";
 import { writeSecretFile } from "./secret-file.js";
 import { PaneWriteLock } from "./pane-write-lock.js";
+import { answerRemoteCard, type RemoteCardAction, type RemoteCardOutcome } from "./remote-card-answer.js";
 import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
 import { buildFleetInstructions } from "./instructions.js";
 import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, BTW_INBOUND_PREFIX,
@@ -735,6 +736,8 @@ export type OwnSwitchOutcome =
   | { outcome: "not_sent" };
 /** A blocking dialog still on screen this long after first being seen is reported for a human. */
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
+/** #2675: a card a person can answer from the chat is posted once it has been on screen, unchanged, this long. */
+const REMOTE_CARD_STABLE_MS = 1_500;
 /** #1691: a prompt no table knows must sit unchanged this long (monotonic) before it holds deliveries and is reported. */
 export const UNRECOGNISED_PROMPT_STABLE_MS = 60_000;
 /** #1691: the rows under a prompt a backend without a composer reader shows its ready chrome in (status bar, hint). */
@@ -1506,6 +1509,10 @@ export class Daemon extends EventEmitter {
   private dialogParkedKey: string | null = null;
   private dialogParkedInteractionEpisode: number | null = null;
   private dialogParkedReported = false;
+  /** #2675: the card on screen that a person can answer from the chat — what it asks, since when, and whether it was posted. */
+  private remoteCardShown: { identity: string; since: number; posted: boolean } | null = null;
+  /** #2675: an answer from the chat is being keyed in (one at a time). */
+  private remoteCardAnswering = false;
   /**
    * #1691: the prompt at the bottom of the pane that no backend table knows — its block, since when (performance.now)
    * it has been unchanged, and whether that has lasted UNRECOGNISED_PROMPT_STABLE_MS. Updated by the runtime scan.
@@ -3965,6 +3972,7 @@ export class Daemon extends EventEmitter {
         // a new one.
         if (!answersBackedOff) this.dialogAnswers = null;
         this.trackDialogParked(blockingSeen);
+        this.trackRemoteCard(blockingSeen, pane);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
         this.evaluateErrorPatterns(pane, patterns, readyPattern, Date.now(), busyPattern);
@@ -8095,9 +8103,11 @@ export class Daemon extends EventEmitter {
         && this.hasAutoDialogClaim(dialog)
         && dialogs.some(other => other !== dialog && Daemon.dialogMatches(other, pane))) continue;
       this.trackDialogParked(dialog);
+      this.trackRemoteCard(dialog, pane);
       return { state: "dialog", dialog };
     }
     this.trackDialogParked(null);
+    this.trackRemoteCard(null, pane);
     return { state: "clear" };
   }
 
@@ -8321,6 +8331,59 @@ export class Daemon extends EventEmitter {
     this.logger.warn({ dialog: dialog.description, attempts: episode.ignored, holdsDeliveries },
       "Runtime dialog is ignoring AgEnD's answer — reporting for a human");
     this.emit("dialog_answer_ignored", { name: this.name, description: dialog.description, attempts: episode.ignored, holdsDeliveries });
+  }
+
+  /**
+   * #2675: a held card a person can answer from the chat (the dialog's remoteCard reader) is posted once it has stayed
+   * the same card for REMOTE_CARD_STABLE_MS — `remote_card` with what it asks; the fleet posts it with its buttons. When
+   * it closes or another card replaces it, `remote_card_gone` retires that post. Moving through the card (ours or the
+   * person's in the pane) is the same card: its identity has no cursor.
+   */
+  private trackRemoteCard(dialog: RuntimeDialog | null, pane: string): void {
+    const card = dialog?.remoteCard?.(pane) ?? null;
+    const shown = this.remoteCardShown;
+    if (shown && shown.identity !== card?.identity) {
+      this.remoteCardShown = null;
+      if (shown.posted) this.emit("remote_card_gone", { name: this.name, identity: shown.identity });
+    }
+    if (!card) return;
+    if (!this.remoteCardShown) { this.remoteCardShown = { identity: card.identity, since: performance.now(), posted: false }; return; }
+    if (this.remoteCardShown.posted || performance.now() - this.remoteCardShown.since < REMOTE_CARD_STABLE_MS) return;
+    this.remoteCardShown.posted = true;
+    this.logger.info({ kind: card.kind }, "A card a person can answer from the chat is on screen — posting it");
+    this.emit("remote_card", { name: this.name, card });
+  }
+
+  /**
+   * #2675: answer the card on screen from the chat, as the person chose: only while it is the card they saw
+   * (`identity`), on a verified cursor, under the pane write lock (remote-card-answer.ts). Never logs the answer.
+   */
+  async answerRemoteCard(identity: string, action: RemoteCardAction): Promise<RemoteCardOutcome> {
+    const tmux = this.tmux;
+    const readers = this.runtimeDialogs().filter(dialog => dialog.remoteCard);
+    if (!tmux || readers.length === 0) return { outcome: "stale" };
+    if (this.remoteCardAnswering) return { outcome: "refused", reason: "another answer to this card is being keyed in" };
+    this.remoteCardAnswering = true;
+    try {
+      const outcome = await answerRemoteCard({
+        locked: fn => this.paneWriteLock.run(fn),
+        read: () => this.tmux === tmux ? tmux.capturePane().catch(() => "") : Promise.resolve(""),
+        key: key => this.tmux !== tmux ? Promise.resolve(false) : key === "Space" ? tmux.sendKeys(" ") : tmux.sendSpecialKey(key),
+        paste: text => this.tmux !== tmux ? Promise.resolve(false) : tmux.pasteBuffer(text),
+        sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+        now: () => performance.now(),
+      }, pane => {
+        for (const dialog of readers) {
+          const card = dialog.remoteCard!(pane);
+          if (card) return card;
+        }
+        return null;
+      }, identity, action);
+      this.logger.info({ action: action.kind, ...outcome }, "Answered a card from the chat");
+      return outcome;
+    } finally {
+      this.remoteCardAnswering = false;
+    }
   }
 
   /**
