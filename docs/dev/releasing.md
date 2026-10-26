@@ -27,7 +27,10 @@ So a beta never moves `latest`.
    - an entry in `src/agent-whats-new.ts` when a tool parameter an agent
      sees changes. Instances that were already running are told about it
      once.
-2. **Main CI is green on the candidate SHA.**
+2. **Main CI is green on the candidate SHA.** Dispatch CodeQL on it too:
+   `gh workflow run codeql.yml -R songsid/AgEnD --ref main -f sha=<candidate sha>`.
+   A beta does not wait for the result (decision 36195467). Read it before the
+   stable, and fix or dismiss what it reports.
 3. **The user gives an explicit go.** It must be a Discord, Telegram or
    web-verified receipt, never a plain "via web" message. The leader then
    delegates the release to the coordinator and forwards the receipt. The
@@ -169,6 +172,11 @@ So a beta never moves `latest`.
     the publish fails. Run it on `npm pack` output before tagging so it does
     not fail on the tag.
 12. **Release.**
+    - **CodeQL is green on the release commit.** Dispatch it on that SHA
+      (`gh workflow run codeql.yml -R songsid/AgEnD --ref main -f sha=<sha>`)
+      and wait for the run to pass: every `Analyze (*)` job and the
+      **Open alerts** job. CodeQL does not run on PRs; this run and the
+      nightly one are its only scans ([ci.md](../ci.md#codeql)).
     - The user gives an explicit go, as for a beta.
     - The coordinator bumps the version and pushes the tag. `publish.yml`
       publishes the package to `latest`.

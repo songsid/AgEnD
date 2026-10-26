@@ -485,12 +485,11 @@ these hold:
 5. **CI passed in full on the exact head.** Every required check has a run, and
    every run (the latest of each name) is completed with `success`. A skipped
    or neutral run does not count. The required checks are
-   `GATE_REQUIRED_CHECKS` (default: `main`'s gate, `build`, `scan`, `CodeQL`,
-   `Analyze (javascript-typescript)` and `Analyze (actions)`) plus any that a
-   ruleset on the base branch requires. Into `release/**` or a `feat/*`
-   feature branch, CodeQL and `Analyze (*)` may be absent (GitHub's default
-   setup does not run there), but a failed one still blocks. A feature branch's
-   code gets CodeQL when it lands on `main` through its own PR.
+   `GATE_REQUIRED_CHECKS` (default: `build` and `scan`, on every base branch)
+   plus any that a ruleset on the base branch requires. CodeQL is not one: it
+   runs nightly and before a release ([ci.md](ci.md#codeql)). A CodeQL or
+   `Analyze (*)` run that is present and did not succeed still blocks, like any
+   other check.
 
 It then retargets open PRs based on this branch to this PR's base, and
 squash-merges with `--match-head-commit`. It deletes the branch only when no

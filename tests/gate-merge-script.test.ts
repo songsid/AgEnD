@@ -162,8 +162,8 @@ type State = {
   truncateCommits?: boolean;
 };
 
-// main's gate: every required check, green.
-const REQUIRED = ["build", "scan", "CodeQL", "Analyze (javascript-typescript)", "Analyze (actions)"];
+// The gate's default required checks, green. CodeQL is not one: it runs nightly and before a release.
+const REQUIRED = ["build", "scan"];
 const green = (ok: (name: string, id?: number) => unknown, from: number) => REQUIRED.map((name, i) => ok(name, from + i));
 
 function world() {
@@ -476,8 +476,8 @@ describe("gate-merge: merge-synced and green", { timeout: 30_000 }, () => {
     ["a run still going", (w: ReturnType<typeof world>) => [w.ok("build", 1), { id: 2, name: "scan", status: "in_progress", conclusion: null }], /scan=in_progress/],
     ["skipped is not success", (w: ReturnType<typeof world>) => [{ id: 2, name: "build", status: "completed", conclusion: "skipped" }], /build=skipped/],
     ["no runs at all", () => [], /build=missing/],
-    // Prism #1334 r1: only some jobs registered so far — the rest of main's gate has not run.
-    ["only scan registered, green", (w: ReturnType<typeof world>) => [w.ok("scan", 2)], /build=missing,CodeQL=missing,Analyze \(javascript-typescript\)=missing,Analyze \(actions\)=missing/],
+    // Prism #1334 r1: only some jobs registered so far — the rest of the gate has not run.
+    ["only scan registered, green", (w: ReturnType<typeof world>) => [w.ok("scan", 2)], /^BLOCKED CI on \S+: build=missing$/],
     ["everything but build", (w: ReturnType<typeof world>) => green(w.ok, 1).filter((r: any) => r.name !== "build"), /^BLOCKED CI on \S+: build=missing$/],
     ["an older green run, the latest red", (w: ReturnType<typeof world>) => [w.ok("build", 1), { id: 9, name: "build", status: "completed", conclusion: "failure" }], /build=failure/],
   ])("%s → BLOCKED", (_label, runs, why) => {
@@ -508,72 +508,29 @@ describe("gate-merge: merge-synced and green", { timeout: 30_000 }, () => {
     expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED the rules of main are unreadable/);
   });
 
-  // ── #gate-1348: CodeQL optional for release/** base ──────────────────────────────────────────────────────────
-
-  it("release/* base + only build+scan green (no CodeQL) → WOULD_MERGE (#gate-1348)", () => {
-    const w = world();
-    // Set PR base to release/2.1 — fetch also needs the ref; push it on origin.
-    w.sh(w.dev, "checkout", "-q", "main");
-    w.sh(w.dev, "push", "-q", "origin", "HEAD:refs/heads/release/2.1");
-    w.state.prs[7]!.baseRefName = "release/2.1";
-    // Only build and scan are present (no CodeQL/Analyze).
-    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
-    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
-    expect(r.status, r.stderr).toBe(0);
-    expect(r.lines).toEqual([`WOULD_MERGE ${w.approved}`]);
-  });
-
-  it("release/* base + no build → BLOCKED even without CodeQL (#gate-1348)", () => {
-    const w = world();
-    w.sh(w.dev, "checkout", "-q", "main");
-    w.sh(w.dev, "push", "-q", "origin", "HEAD:refs/heads/release/2.1");
-    w.state.prs[7]!.baseRefName = "release/2.1";
-    // scan only — no build.
-    w.state.checkRuns[w.approved] = [w.ok("scan", 2)];
-    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
-    expect(r.status).toBe(1);
-    expect(r.line).toMatch(/^BLOCKED CI on \S+: build=missing/);
-  });
-
-  // ── #2347: a PR into a feature branch (feat/*) is gated like release/** — CodeQL's default setup never runs there ──
+  // ── CodeQL left PRs (user 2026-10-26: nightly + before a release); the gate requires build and scan on every base ──
   const baseOn = (w: ReturnType<typeof world>, branch: string) => {
     w.sh(w.dev, "checkout", "-q", "main");
     w.sh(w.dev, "push", "-q", "origin", `HEAD:refs/heads/${branch}`);
     w.state.prs[7]!.baseRefName = branch;
   };
-  it.each(["feat/2.4-settings", "feat/other"])("%s base + build and scan green, no CodeQL → WOULD_MERGE (#2347)", branch => {
+  it.each(["main", "release/2.1", "feat/2.4-settings", "featured/x"])("%s base + build and scan green, no CodeQL → WOULD_MERGE", branch => {
     const w = world();
-    baseOn(w, branch);
+    if (branch !== "main") baseOn(w, branch);
     w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
     const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
     expect([r.status, r.lines], r.stderr).toEqual([0, [`WOULD_MERGE ${w.approved}`]]);
   });
-  it("feat/* base: no build → BLOCKED; a present failed CodeQL still → BLOCKED (#2347)", () => {
+  it.each(["main", "release/2.1", "feat/2.4-settings"])("%s base: no build → BLOCKED; a present failed CodeQL or Analyze still → BLOCKED", branch => {
     const w = world();
-    baseOn(w, "feat/2.4-settings");
+    if (branch !== "main") baseOn(w, branch);
     w.state.checkRuns[w.approved] = [w.ok("scan", 2)];
-    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on \S+: build=missing/);
-    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2), { ...w.ok("CodeQL", 3), conclusion: "failure" }];
-    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
-    expect([r.status, r.line]).toEqual([1, expect.stringMatching(/^BLOCKED CI on \S+: .*CodeQL/)]);
-  });
-  it.each(["featured/x", "hotfix/feat/x", "featx"])("%s (not a feat/* base) without CodeQL → still BLOCKED (#2347)", branch => {
-    const w = world();
-    baseOn(w, branch);
-    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
-    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
-    expect([r.status, r.line]).toEqual([1, expect.stringMatching(/^BLOCKED CI on \S+: .*CodeQL=missing/)]);
-  });
-
-  it("main base + no CodeQL → still BLOCKED (base=main behaviour unchanged) (#gate-1348 mutation)", () => {
-    // Mutation check: removing the release check makes the release-base test above pass for main too,
-    // but this test ensures the original main behaviour is kept.
-    const w = world();
-    // base is main (the default in world()); provide build+scan only.
-    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
-    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
-    expect(r.status).toBe(1);
-    expect(r.line).toMatch(/CodeQL=missing/);
+    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on \S+: build=missing\n?$/);
+    for (const name of ["CodeQL", "Analyze (javascript-typescript)"]) {
+      w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2), { ...w.ok(name, 3), conclusion: "failure" }];
+      const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+      expect([r.status, r.lines]).toEqual([1, [`BLOCKED CI on ${w.approved}: ${name}=failure`]]);
+    }
   });
 
   it("a re-run: the older run failed, the latest passed → merged", () => {
@@ -585,7 +542,7 @@ describe("gate-merge: merge-synced and green", { timeout: 30_000 }, () => {
   it("more runs than one page holds → BLOCKED (a partial list never passes)", () => {
     const w = world();
     w.state.totalCount = 101;
-    expect(w.run(["7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on .*101 check-runs, read 5/);
+    expect(w.run(["7", w.approved, "xmsg-approve-1"]).line).toMatch(new RegExp(`^BLOCKED CI on .*101 check-runs, read ${REQUIRED.length}`));
   });
 });
 
@@ -998,11 +955,11 @@ describe("gate workflow 1480: exact main CI and private single-squash revert", {
     w.state.createAppliedButFails = false; const r = w.post();
     expect(r.line).toMatch(/^REVERT_PENDING #99 /); expect(w.writes(r.calls)).toEqual([]);
   });
-  it.each(["failed CI", "skipped CI", "missing CodeQL", "changed head", "retargeted", "original now green"])("%s revert cannot be landed", kind => {
+  it.each(["failed CI", "skipped CI", "missing scan", "changed head", "retargeted", "original now green"])("%s revert cannot be landed", kind => {
     const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/); const p = w.state.prs[99]!;
     w.state.checkRuns[p.headRefOid] = green(w.ok, 20);
     if(kind === "failed CI" || kind === "skipped CI") w.state.checkRuns[p.headRefOid]!.push({id:99,name:"extra",status:"completed",conclusion:kind === "failed CI" ? "failure" : "skipped"});
-    if(kind === "missing CodeQL") w.state.checkRuns[p.headRefOid] = green(w.ok,20).filter((r:any) => r.name !== "CodeQL");
+    if(kind === "missing scan") w.state.checkRuns[p.headRefOid] = green(w.ok,20).filter((r:any) => r.name !== "scan");
     if(kind === "changed head") p.headRefOid = w.approved;
     if(kind === "retargeted") p.baseRefName = "feature";
     if(kind === "original now green") w.ci("completed","success");
