@@ -20,7 +20,7 @@ import { t } from "../src/locale.js";
 import type { FleetConfig } from "../src/types.js";
 
 let root: string;
-beforeEach(() => { root = mkdtempSync(join(tmpdir(), "kiro-verified-")); vi.stubEnv("AGEND_HOME", root); });
+beforeEach(() => { root = mkdtempSync(join(tmpdir(), "kiro-verified-")); vi.stubEnv("AGEND_HOME", root); vi.stubEnv("XDG_DATA_HOME", join(root, "xdg")); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 const id = "6ca8be1a-6ec5-4cfc-9a2a-ea586133c27e", model = "claude-sonnet-4.6";
 function fixture() {
