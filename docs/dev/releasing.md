@@ -172,13 +172,16 @@ So a beta never moves `latest`.
     the publish fails. Run it on `npm pack` output before tagging so it does
     not fail on the tag.
 12. **Release.**
-    - **CodeQL is green on the release commit.** Dispatch it on that SHA
+    - The user gives an explicit go, as for a beta.
+    - The coordinator commits the version bump. That commit is the release
+      commit; nothing lands between it and the tag.
+    - **CodeQL is green on the release commit.** The leader dispatches it on
+      that exact SHA
       (`gh workflow run codeql.yml -R songsid/AgEnD --ref main -f sha=<sha>`)
-      and wait for the run to pass: every `Analyze (*)` job and the
+      and waits for the run to pass: every `Analyze (*)` job and the
       **Open alerts** job. CodeQL does not run on PRs; this run and the
       nightly one are its only scans ([ci.md](../ci.md#codeql)).
-    - The user gives an explicit go, as for a beta.
-    - The coordinator bumps the version and pushes the tag. `publish.yml`
+    - The coordinator tags that same SHA and pushes the tag. `publish.yml`
       publishes the package to `latest`.
     - The leader verifies `latest` on the registry (no-cache, as above) and
       creates a full GitHub release, without `--prerelease`, with the release

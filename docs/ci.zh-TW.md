@@ -23,6 +23,8 @@ CodeQL 不在 PR 或 main push 上跑，merge gate 也不等它（使用者 2026
 
 結果以啟動執行的 ref 上傳到 code scanning。分析失敗，或 **Open alerts** job 發現該 ref 仍有未處理的 CodeQL alert 時，這次執行就會失敗；請在 code scanning 修掉或 dismiss。GitHub 的 CodeQL default setup 必須保持關閉：開著時，GitHub 會拒收這份 workflow 的上傳。
 
+從 default setup 切換時（只做一次）：關掉 default setup，在 `main` 上 dispatch 這份 workflow，確認 `refs/heads/main` 最新的 analyses 來自 `.github/workflows/codeql.yml:analyze`（`gh api 'repos/songsid/AgEnD/code-scanning/analyses?ref=refs/heads/main'`）。舊設定（`dynamic/github-code-scanning/codeql:analyze`）的 analyses 不會再更新，只由它們回報的 alert 永遠不會關閉。請在 Security → Code scanning → Tool status 刪除這份過時的設定，或透過 API 刪除它的 analyses。
+
 - **text-only** — 只有 `docs/**`、`changes/**`、根目錄 `*.md`、以及 `website/src/content/**`。CHANGELOG guards、釘選檢查、Gitleaks，以及 `scripts/ci/docs-reading-tests.txt` 裡的測試會跑。四個 shard、integration、typecheck/build 與 install-smoke 跳過重步驟。測試若讀了 `docs/`、根目錄 README 或 website 內容頁，卻不在這份清單，`tests/docs-reading-tests-list.test.ts` 會失敗。任何 `src/`、`tests/`、`scripts/`、workflow、package 或 lockfile 路徑都不是 text-only。
 - **packaging** — `package.json`、lockfile、`launcher/`，install／update／service 的程式與腳本，以及任何 `scripts/**` 或 `.github/**` 路徑。`install-smoke` 與 Node 20 rollback smoke 跑真正的步驟。
 - **deps** — `package.json` 或 lockfile（根目錄或 `website/`），或任何 `.github/**` 路徑。`npm-audit-signatures` 與 `dependency-review` 跑真正的步驟。

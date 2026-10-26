@@ -41,6 +41,15 @@ alerts still open on that ref; fix or dismiss them in code scanning. GitHub's
 CodeQL default setup must stay off: while it is on, GitHub refuses this
 workflow's uploads.
 
+Switching from default setup, once: turn default setup off, dispatch the
+workflow on `main`, and check that the newest analyses on `refs/heads/main`
+come from `.github/workflows/codeql.yml:analyze`
+(`gh api 'repos/songsid/AgEnD/code-scanning/analyses?ref=refs/heads/main'`).
+Analyses from the old configuration (`dynamic/github-code-scanning/codeql:analyze`)
+are no longer updated, so an alert only they report never closes. Delete
+that stale configuration under Security → Code scanning → Tool status, or
+delete its analyses through the API.
+
 - **text-only** — only `docs/**`, `changes/**`, root `*.md`, and
   `website/src/content/**`. CHANGELOG guards, the pin guard, Gitleaks, and the
   tests in `scripts/ci/docs-reading-tests.txt` run. The four shards,

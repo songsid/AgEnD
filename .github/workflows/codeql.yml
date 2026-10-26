@@ -29,8 +29,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Resolve the input once, so every language scans the same commit even if a
+  # branch or tag moves while the run is going.
+  commit:
+    name: Commit
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+      - name: Resolve the scanned commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   analyze:
     name: Analyze (${{ matrix.language }})
+    needs: commit
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -43,10 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.sha || github.sha }}
-      - name: Resolve the scanned commit
-        id: commit
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          ref: ${{ needs.commit.outputs.sha }}
       - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           languages: ${{ matrix.language }}
@@ -55,7 +68,7 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
           ref: ${{ github.ref }}
-          sha: ${{ steps.commit.outputs.sha }}
+          sha: ${{ needs.commit.outputs.sha }}
 
   open-alerts:
     name: Open alerts
@@ -71,7 +84,9 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          alerts="$(gh api --paginate "repos/$REPO/code-scanning/alerts?tool_name=CodeQL&state=open&ref=$REF&per_page=100" \
+          # -X GET -f sends the fields as an encoded query string (a ref may hold "#" or "&").
+          alerts="$(gh api --paginate -X GET "repos/$REPO/code-scanning/alerts" \
+            -f tool_name=CodeQL -f state=open -f ref="$REF" -f per_page=100 \
             --jq '.[] | "#\(.number) \(.rule.id) \(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)"')"
           if [ -n "$alerts" ]; then
             printf '%s\n' "$alerts"
