@@ -361,7 +361,7 @@ describe("what the page says when it is done", () => {
     // link is worth offering — the dashboard binds loopback, so a phone cannot
     // open it either.
     expect(JSON.parse(res.body)).toMatchObject({ starting: true, watch: false });
-    const form = readFileSync(new URL("../src/setup-form.ts", import.meta.url), "utf8");
+    const form = readFileSync(new URL("../src/setup-form.ts", import.meta.url), "utf8") + readFileSync(new URL("../src/setup-i18n.ts", import.meta.url), "utf8");
     expect(form).toContain("Talk to it in the channel you just set up");
     expect(form).not.toContain("Open /settings from the link");
   });

@@ -165,10 +165,9 @@ esac
     const r = spawnSync("bash", [join(dir, "net.sh")], { encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     expect(r.status).toBe(0);
     const calls = readFileSync(join(dir, "calls"), "utf8").trim().split("\n");
-    expect(calls.filter(c => c.includes("songsid.github.io"))).toHaveLength(1);
-    expect(calls.filter(c => c.includes("raw.githubusercontent.com"))).toHaveLength(1);
-    expect(calls.filter(c => c.includes("registry.npmjs.org"))).toHaveLength(2);
-    expect(calls.filter(c => c.includes("cli.kiro.dev"))).toHaveLength(2);
+    for (const [host, count] of [["songsid.github.io", 1], ["raw.githubusercontent.com", 1], ["registry.npmjs.org", 2], ["cli.kiro.dev", 2]] as const) {
+      expect(calls.filter(c => c === `https://${host}/`)).toHaveLength(count);
+    }
     const parsed = run(`
 $text = @'
 ${r.stdout}

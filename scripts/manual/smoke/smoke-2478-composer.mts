@@ -35,10 +35,10 @@ async function ellipsisVisible(page: any): Promise<{ visible: boolean; target: s
   const target = (await page.$(".composer-ph")) ? ".composer-ph" : "#msgIn";
   const el = await page.$(target);
   const a = await el.screenshot();
-  await page.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(target)}); e.style.textOverflow = "clip"; })()`);   // CSSOM, test-only
+  await page.evaluate((selector: string) => { document.querySelector<HTMLElement>(selector)!.style.textOverflow = "clip"; }, target);   // CSSOM, test-only
   await page.evaluate(`(() => { const e = document.querySelector("#msgIn"); e.style.setProperty("text-overflow", "clip"); })()`);
   const b = await el.screenshot();
-  await page.evaluate(`(() => { for (const s of [${JSON.stringify(target)}, "#msgIn"]) { const e = document.querySelector(s); e.style.textOverflow = ""; } })()`);
+  await page.evaluate((selectors: string[]) => { for (const s of selectors) document.querySelector<HTMLElement>(s)!.style.textOverflow = ""; }, [target, "#msgIn"]);
   return { visible: !a.equals(b), target };
 }
 for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "desk", theme: "light", lang: "en" }] as const) {

@@ -17,7 +17,9 @@ import { gatewayRequestContext } from "./web-request-context.js";
  * idempotency key and the same disk-backed recovery across a restart.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { ensureWorkspaceGit, getAgendHome } from "./paths.js";
 import type { SecretWriteResult } from "./secret-file.js";
 import { SecretStore } from "./secret-store.js";
 import { discordBotPortalUrl, discordInviteUrl } from "./discord-permissions.js";
@@ -67,6 +69,8 @@ export interface WizardEnvironment {
   has_fleet: boolean;
   /** #1519 P7: the agents already configured — the wizard offers to connect one instead of overwriting it. */
   agents?: Array<{ name: string; working_directory: string | null; backend: string | null }>;
+  /** #2726: where a new agent's directory goes when none is given — `<this>/<agent name>` (defaultWorkingDirectory). */
+  workspaces_dir?: string;
 }
 
 export interface WizardPlanInput {
@@ -97,6 +101,7 @@ export interface WizardPlanInput {
    */
   token_env_generated?: boolean;
   backend: string;
+  /** #2726: empty or absent for a new agent — its own workspace (defaultWorkingDirectory). */
   working_directory: string;
   instance_name: string;
   group_id?: string;
@@ -145,6 +150,33 @@ export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "ex
   const exists = !!cfg && Object.hasOwn(cfg.instances ?? {}, input.instance_name);
   if (input.existing_agent) return exists ? null : `there is no agent called "${input.instance_name}"`;
   return exists ? `an agent called "${input.instance_name}" already exists — connect it as an existing agent, or choose another name` : null;
+}
+
+/**
+ * #2726: the directory a new agent gets when none is given — the one the fleet makes for an agent created without one
+ * (create_instance) and the loader gives an entry that has none: `<AGEND_HOME>/workspaces/<name>`.
+ */
+export function defaultWorkingDirectory(instanceName: string): string {
+  return join(getAgendHome(), "workspaces", instanceName);
+}
+
+/**
+ * #2726: a new agent's input with its directory filled in — the one asked for, else its own workspace — so the plan,
+ * the host confirmation's diff and the write all show the same path. An existing agent (#1519 P7) and a connection-only
+ * input are left as they are: neither is given a directory here.
+ */
+export function withWorkingDirectory<T extends Partial<Pick<WizardPlanInput, "instance_name" | "existing_agent" | "connection_only" | "working_directory">>>(input: T): T {
+  if (input.connection_only || input.existing_agent || input.working_directory || !input.instance_name) return input;
+  return { ...input, working_directory: defaultWorkingDirectory(input.instance_name) };
+}
+
+/**
+ * #2726: make a defaulted workspace as create_instance does (private, with its own git) once its agent is written. Best
+ * effort: the agent's start creates a directory that is still missing.
+ */
+function prepareDefaultWorkspace(asked: unknown, body: Pick<WizardPlanInput, "instance_name" | "working_directory">): void {
+  if (asked || body.working_directory !== defaultWorkingDirectory(body.instance_name)) return;
+  try { mkdirSync(body.working_directory, { recursive: true, mode: 0o700 }); ensureWorkspaceGit(body.working_directory); } catch { /* best effort */ }
 }
 
 /**
@@ -423,10 +455,23 @@ const CONNECTION_FIELDS = ["platform", "token", "token_env", "token_env_generate
 function validateWebOnlyInput(input: Partial<WizardPlanInput> & { token?: unknown }): string | null {
   const extra = CONNECTION_FIELDS.find(field => input[field as keyof typeof input] !== undefined);
   if (extra) return `${extra} does not apply to a web-only setup`;
-  if (!input.instance_name || !/^[A-Za-z0-9._-]{1,128}$/.test(input.instance_name)) return "instance_name must be [A-Za-z0-9._-]";
+  if (instanceNameInvalid(input.instance_name)) return "instance_name must be [A-Za-z0-9._-], and not only dots";
   if (!input.backend || !KNOWN_BACKENDS.includes(input.backend)) return "backend must be a known backend";
-  if (!input.working_directory || !input.working_directory.startsWith("/")) return "working_directory must be an absolute path";
-  return null;
+  return workingDirectoryInvalid(input.working_directory);
+}
+
+/**
+ * An agent's name: a path segment of its own. Only dots (`.`, `..`) are refused (#2726 review): its workspace,
+ * <AGEND_HOME>/workspaces/<name>, would be the workspaces folder or AGEND_HOME itself.
+ */
+function instanceNameInvalid(name: unknown): boolean {
+  return typeof name !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(name) || /^\.+$/.test(name);
+}
+
+/** #2726: a directory, when one is given, is an absolute path; none (absent or empty) is the agent's own workspace. */
+function workingDirectoryInvalid(value: unknown): string | null {
+  if (value === undefined || value === "") return null;
+  return typeof value === "string" && value.startsWith("/") ? null : "working_directory must be an absolute path, or empty for the agent's own workspace";
 }
 
 /** #2233: why this fleet cannot take a web-only setup, or null — it already has a chat connection (add agents there). */
@@ -462,11 +507,12 @@ export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tok
   if (!(opts.tokenEnvOptional && input.token_env === undefined) && (!input.token_env || !TOKEN_ENV_PATTERN.test(input.token_env))) return "token_env must be an UPPER_SNAKE env var name";
   if (input.channel_id !== undefined && (typeof input.channel_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(input.channel_id))) return "channel_id must be [A-Za-z0-9_-], up to 32 characters";
   if (!input.connection_only) {
-    if (!input.instance_name || !/^[A-Za-z0-9._-]{1,128}$/.test(input.instance_name)) return "instance_name must be [A-Za-z0-9._-]";
+    if (instanceNameInvalid(input.instance_name)) return "instance_name must be [A-Za-z0-9._-], and not only dots";
     // An existing agent keeps its own directory and backend: neither is asked for.
     if (!input.existing_agent) {
       if (!input.backend || !KNOWN_BACKENDS.includes(input.backend)) return "backend must be a known backend";
-      if (!input.working_directory || !input.working_directory.startsWith("/")) return "working_directory must be an absolute path";
+      const directory = workingDirectoryInvalid(input.working_directory);
+      if (directory) return directory;
     }
   }
   for (const [field, value] of Object.entries({
@@ -482,7 +528,7 @@ export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tok
  * #2233: write a web-only setup — the agent only. No secret is written and no connection is touched, so no .env lease;
  * the config write and its undo are the same ones the bot path uses.
  */
-function commitWebOnly(req: IncomingMessage, res: ServerResponse, ctx: QuickstartApiContext, cfg: FleetConfig, body: WizardPlanInput): void {
+function commitWebOnly(req: IncomingMessage, res: ServerResponse, ctx: QuickstartApiContext, cfg: FleetConfig, body: WizardPlanInput, asked: unknown): void {
   const conflict = webOnlyConflict(cfg) ?? agentConflict(body, cfg);
   if (conflict) return json(res, 409, { error: conflict });
   const draft = draftWebOnly(cfg, body);
@@ -505,6 +551,7 @@ function commitWebOnly(req: IncomingMessage, res: ServerResponse, ctx: Quickstar
     if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" });
     return json(res, err instanceof SettingsExecutionError ? 409 : 500, { error: "setup was not committed" });
   }
+  prepareDefaultWorkspace(asked, body);
   ctx.logger.info({ instance: body.instance_name, web_only: true }, "settings: quickstart committed (web only)");
   const plan = { web_only: true, instance: { name: body.instance_name, working_directory: body.working_directory, backend: body.backend }, env_keys: [], warnings: [] as string[] };
   json(res, 200, { ok: true, plan, warnings: plan.warnings });
@@ -529,6 +576,7 @@ export function handleQuickstartRequest(
       channels: wizardChannels(cfg),
       agents: Object.entries(cfg?.instances ?? {}).map(([name, inst]) => ({
         name, working_directory: (inst as { working_directory?: string }).working_directory ?? null, backend: (inst as { backend?: string }).backend ?? null })),
+      workspaces_dir: join(getAgendHome(), "workspaces"),
     } satisfies WizardEnvironment);
     return true;
   }
@@ -568,6 +616,7 @@ export function handleQuickstartRequest(
       catch { return json(res, 400, { error: "invalid JSON" }); }
       const invalid = validateWizardInput(body, { tokenEnvOptional: true });
       if (invalid) return json(res, 400, { error: invalid });
+      body = withWorkingDirectory(body);
       if (body.web_only) {
         const conflict = webOnlyConflict(cfg) ?? agentConflict(body, cfg);
         if (conflict) return json(res, 409, { error: conflict });
@@ -601,7 +650,9 @@ export function handleQuickstartRequest(
       catch { return json(res, 400, { error: "invalid JSON" }); }
       const invalid = validateWizardInput(body);
       if (invalid) return json(res, 400, { error: invalid });
-      if (body.web_only) { commitWebOnly(req, res, ctx, cfg, body); return; }
+      const asked = body.working_directory;
+      body = withWorkingDirectory(body);
+      if (body.web_only) { commitWebOnly(req, res, ctx, cfg, body, asked); return; }
       if (!body.token) return json(res, 400, { error: "token required" });
 
       const summary = wizardChannels(cfg);
@@ -662,6 +713,7 @@ export function handleQuickstartRequest(
         if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" });
         return json(res, err instanceof SettingsExecutionError ? 409 : 500, { error: "setup was not committed" });
       } finally { lease.release(); }
+      if (agent && !body.existing_agent) prepareDefaultWorkspace(asked, body);
       ctx.logger.info({ instance: agent ? body.instance_name : null, connection: plan.channel_id, platform: body.platform }, "settings: quickstart committed");
       // No apply here: the page starts the ordinary job so the wizard's last
       // step has the same progress, deadline and restart recovery as everything

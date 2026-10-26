@@ -40,6 +40,10 @@ Runner 自建唯一 scratch AGEND_HOME，依序執行三階段；每階段關閉
 
 回到新版也無法重建舊版儲存時丟掉的配置。若配置很重要，降版前請先備份 `web-offices.json`。
 
+## 設定頁的預設目錄（2.3.1 與 2.2.6）
+
+從 #2726 起，設定頁可以不填 agent 的工作目錄。這時 agent 會使用自己的工作區，而 fleet.yaml 會寫入完整路徑：`working_directory: <AGEND_HOME>/workspaces/<名稱>`。每個版本建立沒有指定目錄的 agent 時，寫入的都是同樣的形式。`scripts/check-setup-workdir-downgrade.mjs`（在 `data-downgrade.yml` 中）會照設定頁的方式寫出這份設定，「只用網頁」和接 bot 兩種都寫。接著檢查已發佈的 **2.3.1** 和 **2.2.6** 的驗證器接受這個檔案，而且它們的載入器讀到的是同一個資料夾。
+
 ## 結果
 
 | 範圍 | 實測 | 限制／證據 |

@@ -145,13 +145,13 @@ describe("the command asks before it builds anything", () => {
 });
 
 describe("the page stops watching after a minute", () => {
-  const form = readFileSync(new URL("../src/setup-form.ts", import.meta.url), "utf8");
+  // #2726: the page's words are in setup-i18n.ts.
+  const form = readFileSync(new URL("../src/setup-form.ts", import.meta.url), "utf8") + readFileSync(new URL("../src/setup-i18n.ts", import.meta.url), "utf8");
 
   it("caps the wait and sends the person back to the machine", () => {
     expect(form).toContain("Date.now() + 60_000");
     expect(form).toContain("has not come up within 60 seconds");
-    // Escaped in the page's template literal, hence the backslashes here.
-    expect(form).toContain("\\`agend start\\` on the machine itself");
+    expect(form).toContain("`agend start` on the machine itself");
     // Never a dashboard link: it binds loopback, so a phone cannot open it.
     expect(form).not.toContain("Open /settings");
   });

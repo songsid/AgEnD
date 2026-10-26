@@ -35,8 +35,8 @@ describe("#1655 advertises /web while keeping the old alias", () => {
   it("server refusal and first-run messages use /web", () => {
     for (const text of [LOGIN_REFUSED_MESSAGE, CODE_REQUEST_REFUSED_MESSAGE, WEB_TOKEN_INVALID_MESSAGE,
       dashboardLines(19280)[1]]) webCopy(text);
-    for (const file of ["src/setup-form.ts", "src/cli.ts", "src/fleet-manager.ts"]) {
-      const marker = file.endsWith("setup-form.ts") ? "or send /web to your bot"
+    for (const file of ["src/setup-i18n.ts", "src/cli.ts", "src/fleet-manager.ts"]) {
+      const marker = file.endsWith("setup-i18n.ts") ? "or send /web to your bot"
         : file.endsWith("cli.ts") ? "or /web in your chat channel" : "open it with /web or `agend web`";
       expect(source(file)).toContain(marker);
     }
