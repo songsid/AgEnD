@@ -635,6 +635,8 @@ export interface CliBackend {
 
   /** A retained session is positively present but blocked (for example duplicate-store ambiguity). Never abandon it. */
   resumeBlockedPattern?(): RegExp;
+  /** A carried conversation may never silently fall back to a fresh one, even on other startup failures. */
+  retainedResumeBlock?(): { reason: string; remedy: string } | null;
 
   /**
    * #1217: a dialog the CLI shows in answer to its quit command that must not

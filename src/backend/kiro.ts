@@ -17,15 +17,16 @@ import {
 import {
   type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
   kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroRecordedConversation, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
-  kiroEngineFloor,
+  kiroEngineFloor, kiroCarryCandidate,
 } from "./kiro-identity.js";
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, ResumeBlockedError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
+import { sharedKiroV2StoreLane } from "./kiro-v2-store.js";
 import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict, type KiroModelRecords, type KiroModelSwitch } from "./kiro-retired-model.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
@@ -1310,6 +1311,7 @@ export class KiroBackend implements CliBackend {
   /** #2648: the saved model of the v2 conversation this instance has recorded, read in prepareLaunch (off the loop). */
   private preparedV2Model: { key: string; id: string; model: string | null } | null = null;
   private storePreparation = 0;
+  private preparedCarry: { key: string; error: string | null } | null = null;
   private storeKey(config: CliBackendConfig): string {
     return JSON.stringify([config.instanceName, config.workingDirectory, kiroCanonicalDirectory(config.workingDirectory), config.kiroUi,
       resolveCredentialProfile(config.backendOptions), !!config.skipResume, getAgendHome(), kiroV2SessionsDir(), kiroCanonicalDirectory(kiroV2SessionsDir())]);
@@ -1328,6 +1330,7 @@ export class KiroBackend implements CliBackend {
     const preparation = ++this.storePreparation;
     this.preparedV2Store = null;
     this.preparedV2Model = null;
+    this.preparedCarry = null;
     if (!config || config.kiroUi !== "tui") return;
     if (!this.fixedCompatibility) this.compatibility = cachedKiroCliCompatibility(this.binaryPath).compatibility;
     const key = this.storeKey(config);
@@ -1335,6 +1338,21 @@ export class KiroBackend implements CliBackend {
     if (plan.kind !== "launch" || !plan.flags.includes("--agent-engine=v2") || !this.compatibility.supportsInstanceAgent) return;
     const opts = { instance: config.instanceName, engine: "v2" as const, workingDirectory: config.workingDirectory,
       credentialProfile: resolveCredentialProfile(config.backendOptions), skipResume: config.skipResume, agendHome: getAgendHome() };
+    if (!config.skipResume && this.needsCarryPreparation()) {
+      try {
+        this.preparedCarry = { key, error: null };
+        if (kiroCarryCandidate(opts)) {
+          const reply = await sharedKiroV2StoreLane.read({ keys: [], sessionsDir: kiroV2SessionsDir(), carry: {
+            ...opts, sessionsDir: kiroV2SessionsDir(), dbPath: kiroV1DbPath(opts.credentialProfile),
+          } });
+          if (preparation !== this.storePreparation || key !== this.storeKey(config)) return;
+          this.preparedCarry = { key, error: reply.kind === "unreadable" ? reply.detail : null };
+          if (reply.kind === "unreadable") return;
+          if (reply.carry?.archivePath) this.addLaunchWarning(t("kiro.archive_done", reply.carry.archivePath));
+          if (reply.carry?.repaired) this.addLaunchWarning(t("kiro.carry_pin_repaired"));
+        }
+      } catch (err) { this.preparedCarry = { key, error: (err as Error).message }; return; }
+    }
     if (kiroIdentityNeedsStore(opts)) {
       const store = await listKiroV2Sessions(config.workingDirectory, kiroV2SessionsDir());
       if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Store = { key, store };
@@ -1346,6 +1364,22 @@ export class KiroBackend implements CliBackend {
       const model = await readKiroV2SavedModel(kiroV2SessionsDir(), recorded);
       if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Model = { key, id: recorded, model };
     }
+  }
+
+  private needsCarryPreparation(): boolean {
+    const v = /(?:^|\s)(\d+)\.(\d+)\.(\d+)/.exec(this.compatibility.version ?? "");
+    return !!v && (Number(v[1]) > 2 || (Number(v[1]) === 2 && Number(v[2]) >= 34));
+  }
+
+  private assertCarryPrepared(config: CliBackendConfig): void {
+    if (config.kiroUi !== "tui" || config.skipResume || !this.needsCarryPreparation()) return;
+    const opts = { agendHome: getAgendHome(), instance: config.instanceName, workingDirectory: config.workingDirectory,
+      credentialProfile: resolveCredentialProfile(config.backendOptions) };
+    let required: boolean;
+    try { required = !!kiroCarryCandidate(opts); }
+    catch (err) { throw new ResumeBlockedError(t("kiro.archive_failed", (err as Error).message), t("kiro.archive_remedy")); }
+    if (this.preparedCarry?.key === this.storeKey(config) && this.preparedCarry.error) throw new ResumeBlockedError(t("kiro.archive_failed", this.preparedCarry.error), t("kiro.archive_remedy"));
+    if (required && this.preparedCarry?.key !== this.storeKey(config)) throw new ResumeBlockedError(t("kiro.archive_failed", "carry preparation is missing"), t("kiro.archive_remedy"));
   }
 
   constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
@@ -1424,6 +1458,16 @@ export class KiroBackend implements CliBackend {
 
   resumeBlockedPattern(): RegExp { return KIRO_AMBIGUOUS_RESUME_SCREEN; }
 
+  retainedResumeBlock(): { reason: string; remedy: string } | null {
+    const plan = this.activePlan;
+    if (!plan || plan.engine !== "v2" || plan.mode !== "resume" || !plan.id || !this.activeInstance) return null;
+    let carried = true;
+    try { carried = kiroCarryCandidate({ agendHome: getAgendHome(), instance: this.activeInstance, workingDirectory: plan.cwd, credentialProfile: plan.credentialProfile })?.id === plan.id; }
+    catch { /* lost ownership proof is also a hold, never authority to discard history */ }
+    return carried ? { reason: t("kiro.carry_resume_failed"), remedy: t("kiro.archive_remedy") } : null;
+  }
+
+
   retriesResumeOnStartupFailure(): boolean {
     // A resume miss is far more often "the backend was slow" than "the session
     // is broken"; one more attempt before abandoning the conversation is cheap.
@@ -1459,6 +1503,7 @@ export class KiroBackend implements CliBackend {
     // V3 has a different engine and no verified completion signal yet (#1144).
     this.replyGuardOptedIn = false;
     this.builtLaunch = null;
+    this.assertCarryPrepared(config);
     const ui = config.kiroUi ?? "legacy";
     // #2598 B3: never back onto an older engine than this instance has run on — that resumes the frozen copy and loses
     // everything done since. Before any probe: no kiro-cli flag or version changes the answer.
@@ -1634,6 +1679,7 @@ export class KiroBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
+    this.assertCarryPrepared(config);
     // WORKAROUND: kiro-cli ignores the "env" block of an MCP server entry — the server subprocess inherits the fleet
     // manager's env, with a stale AGEND_SOCKET_PATH from whichever daemon wrote last. Each server therefore runs
     // through a wrapper script that exports this instance's env and execs the real server.

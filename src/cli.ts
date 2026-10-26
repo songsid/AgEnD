@@ -557,6 +557,31 @@ delivery
     }
   });
 
+const kiroRecovery = program.command("kiro").description("Kiro conversation recovery");
+kiroRecovery.command("restore-classic")
+  .description("Restore a verified frozen classic archive without overwriting existing rows; the instance must be stopped")
+  .requiredOption("--instance <name>", "The original owning fleet instance")
+  .requiredOption("--archive <path>", "Private archive written by the carried-session repair")
+  .option("-y, --yes", "Confirm when run from a fleet agent session")
+  .action(async (opts: { instance: string; archive: string; yes?: boolean }) => {
+    if (!gateFleetControl(DATA_DIR, "kiro-restore-classic", { yes: opts.yes })) { process.exitCode = 1; return; }
+    try {
+      const { resolveScanTarget } = await import("./forged-envelope-scan.js");
+      const { kiroV1DbPath, kiroV2SessionsDir } = await import("./backend/kiro.js");
+      const { resolveCredentialProfile } = await import("./backend/credential-profile.js");
+      const { kiroClassicArchiveMetadata, restoreKiroClassicArchive } = await import("./backend/kiro-classic-archive.js");
+      const config = loadRawFleetConfig(FLEET_CONFIG_PATH);
+      if (!config.instances || !Object.hasOwn(config.instances, opts.instance)) throw new Error("Unknown fleet instance");
+      const target = resolveScanTarget(opts.instance, config.instances[opts.instance], config.defaults ?? {});
+      if (target.backend !== "kiro-cli" || !target.workingDirectory) throw new Error("The instance is not a configured Kiro instance");
+      const profile = resolveCredentialProfile(target.backendOptions?.["kiro-cli"]);
+      const archive = kiroClassicArchiveMetadata(opts.archive);
+      restoreKiroClassicArchive({ agendHome: DATA_DIR, instance: opts.instance, workingDirectory: target.workingDirectory,
+        credentialProfile: profile, sessionId: archive.sessionId, sessionsDir: kiroV2SessionsDir(), dbPath: kiroV1DbPath(profile) }, opts.archive);
+      console.log("Classic archive restored. No engine was changed; the duplicate may block a TUI restart until repaired again.");
+    } catch (err) { console.error(`Classic archive restore refused: ${(err as Error).message}`); process.exitCode = 1; }
+  });
+
 delivery
   .command("scan-forged-envelopes")
   .description("Detect fabricated peer envelopes in a kiro receiver's own transcript (#995)")

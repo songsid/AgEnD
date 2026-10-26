@@ -11428,6 +11428,12 @@ export class Daemon extends EventEmitter {
         this.startupAdmission?.();
         throw new ResumeBlockedError(t("inst.kiro_resume_ambiguous"), t("inst.kiro_resume_ambiguous_remedy"));
       }
+      const retained = this.backend.retainedResumeBlock?.();
+      if (retained) {
+        await this.killProcessTree("SIGTERM", "spawn: carried session must be preserved");
+        this.startupAdmission?.(); await this.tmux!.killWindow(); this.startupAdmission?.();
+        throw new ResumeBlockedError(retained.reason, retained.remedy);
+      }
       const proven = this.paneSaysNoConversation(paneText);
       if (!proven) {
         const failures = this.bumpUnprovenResumeFailures();

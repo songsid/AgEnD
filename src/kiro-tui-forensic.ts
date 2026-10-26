@@ -12,7 +12,7 @@ const LINE_MAX_BYTES = 4 * 1024 * 1024;
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 /** Refuse symlinks/devices/foreign files and read exactly the size observed at open, not an unbounded live tail. */
-function snapshot(path: string, maxBytes: number): { text: string; unchanged: () => boolean } {
+export function snapshotKiroTuiFile(path: string, maxBytes: number): { text: string; unchanged: () => boolean } {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const before = fstatSync(fd);
@@ -56,13 +56,13 @@ export function readKiroTuiAssistantTexts(opts: {
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/.test(opts.sessionId) || !opts.stillOwned()) throw new Error("TUI session ownership is not proven");
     // Same V2 root convention as kiroV2SessionsDir; credential profiles relocate classic only.
     const root = opts.sessionsDir ?? join(process.env.KIRO_HOME?.trim() || join(homedir(), ".kiro"), "sessions", "cli");
-    const metadata = snapshot(join(root, `${opts.sessionId}.json`), META_MAX_BYTES);
+    const metadata = snapshotKiroTuiFile(join(root, `${opts.sessionId}.json`), META_MAX_BYTES);
     const meta: unknown = JSON.parse(metadata.text);
     if (!plain(meta) || meta.session_id !== opts.sessionId
       || (meta.session_created_reason === "subagent" && meta.exported_from_v1 !== true)) {
       throw new Error("TUI metadata does not match the owned pin, or is an ordinary child session");
     }
-    const transcript = snapshot(join(root, `${opts.sessionId}.jsonl`), KIRO_FORENSIC_MAX_BYTES);
+    const transcript = snapshotKiroTuiFile(join(root, `${opts.sessionId}.jsonl`), KIRO_FORENSIC_MAX_BYTES);
     const texts: string[] = [];
     let records = 0;
     for (const line of transcript.text.split("\n")) {

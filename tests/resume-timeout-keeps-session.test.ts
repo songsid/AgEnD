@@ -151,6 +151,12 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
     expect(d["bumpUnprovenResumeFailures"]()).toBe(1);
   });
 
+  it("an explicitly protected carried session never falls fresh on another startup failure", async () => {
+    const d = makeDaemon(); armForFailedResume(d);
+    d["backend"]!.retainedResumeBlock = () => ({ reason: "carried history kept", remedy: "repair first" });
+    for (let i = 0; i < 5; i++) await expect(d["spawnClaudeWindow"]()).rejects.toThrow("carried history kept");
+    expect(sessionExists()).toBe(true); expect(setAside()).toHaveLength(0); expect(d["skipResume"]).toBe(false);
+  });
   it("respawn stops with the retained-session remedy and a non-incompatibility cause", () => {
     const d = makeDaemon(); armForFailedResume(d);
     const reason = t("inst.kiro_resume_ambiguous"), remedy = t("inst.kiro_resume_ambiguous_remedy");
