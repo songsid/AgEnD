@@ -1866,14 +1866,23 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ol-corridors { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .ol-msg { flex-basis: 100%; margin: 0; }
 @media (max-width: 640px) {
-  /* A phone: the bars at the column's narrower padding; the stage at least most of a screen; no overview (as the canvas). */
+  /* A phone: the bars at the column's narrower padding; no overview (as the canvas). #2689: the stage takes the panel's
+     height that is left under the bars (the column, .oc-office and .oo grow into it) and no more, so zoomed in the
+     scene's bottom is on screen: a floor fixed to the window (100dvh less a guess at the bars) put it under the tab bar
+     once the bars wrapped. Its own floor is low enough for a 375 × 667 phone with the Office bar on five rows (215 px
+     left); only a shorter screen scrolls the panel (on the bars: the stage's touches are its own). */
   .oc-office > .oc-bar { padding: var(--s-2) var(--s-3); }
   .oc-office > .oc-legend { margin: 0 var(--s-3) var(--s-2); }
   .oo > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
-  .oo-stage { min-height: max(300px, calc(100dvh - 300px)); }
+  .oo-stage { min-height: 200px; }
   .oo-pick .tb-select { max-width: 150px; }
   .oo-mini { display: none; }
   .oo-zoom .icon-btn { width: 40px; height: 40px; }
+  /* #2689: a column of the label and five 40 px buttons (~240 px) is taller than that stage: a row along its top
+     instead, out of fullscreen (there the stage is the screen, and the office switcher is on the left of its top). */
+  .oo:not(.fs) .oo-zoom { flex-direction: row; }
+  .oo:not(.fs) .oo-zoom-pct { display: flex; align-items: center; padding: 0 6px; border-bottom: 0; border-right: 1px solid var(--border); }
+  .oo:not(.fs) .oo-zoom .icon-btn + .icon-btn { border-top: 0; border-left: 1px solid var(--border); }
 }
 /* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
 @media (max-width: 479px) {
