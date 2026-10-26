@@ -8477,10 +8477,10 @@ export class Daemon extends EventEmitter {
    * #2676: whether the box can show this payload as this delivery's paste before the Enter (steerPasteIsOurs): its
    * first line, or a collapsed paste's line count. A one-line payload kiro would collapse (over 500 characters) shows only
    * a character count, which kiro's own normalisation (tabs widened) makes no proof: it waits for the idle prompt.
+   * kiro measures after widening each tab to its 2-column stop, so a tab is counted as 2 here (at most what it becomes).
    */
   private composerCanShowPaste(formatted: string): boolean {
-    const text = formatted.replace(/\r\n?/g, "\n");
-    return text.includes("\n") || text.length <= KIRO_COLLAPSE_CHARS;
+    return /[\r\n]/.test(formatted) || formatted.replace(/\t/g, "  ").length <= KIRO_COLLAPSE_CHARS;
   }
 
   /**
@@ -8513,9 +8513,10 @@ export class Daemon extends EventEmitter {
     if (first === "") return false;
     const row = norm(shown);
     // #2676: a long paste is collapsed to a chip naming its line count (kiro TUI: more than 10 lines or 500 characters);
-    // it is this paste when that count is exactly this payload's, split as kiro splits it.
+    // it is this paste when that count is exactly this payload's as kiro counts it. tmux pastes every LF as CR (no -r),
+    // so a CRLF arrives as CR CR, and kiro turns each CR into a line break: every CR and every LF is one.
     const collapsed = this.backend?.readSteerComposerPasteLines?.(shown);
-    if (collapsed != null) return collapsed > 1 && collapsed === formatted.split(/\r\n|\r|\n/).length;
+    if (collapsed != null) return collapsed > 1 && collapsed === formatted.split(/\r|\n/).length;
     // The marker line holds nothing but the marker: the row is exactly it.
     if (/^\[agend-(?:delivery|human)-id:[^\]\s]+\]$/.test(first)) return row === first;
     // #2676: a first line wider than the box is word-wrapped onto indented rows (live, 2.34.0): the row is its start, cut

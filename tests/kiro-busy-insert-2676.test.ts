@@ -81,6 +81,12 @@ describe("is it this paste? (Daemon.steerPasteIsOurs on a kiro TUI backend)", ()
     expect(ours(fx("tui-collapsed-lines-in-box"), `${lines}\nmore`)).toBe(false);
     expect(ours(fx("tui-collapsed-chars-in-box"), "x".repeat(657))).toBe(false);
   });
+  it("…counted as kiro counts: tmux pastes LF as CR, so each CRLF is two breaks (12 CRLF lines are 23)", () => {
+    const crlf = Array.from({ length: 12 }, (_, i) => `l${i}`).join("\r\n");
+    const chip = (n: number) => fx("tui-collapsed-lines-in-box").replace("42 lines", `${n} lines`);
+    expect(ours(chip(23), crlf)).toBe(true);
+    expect(ours(chip(12), crlf)).toBe(false);
+  });
 });
 
 // ── delivery ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -283,5 +289,7 @@ describe("not typed into the busy box: it waits for the idle prompt, as before",
     expect(can("x".repeat(501))).toBe(false);
     expect(can(`${"x".repeat(600)}\nsecond line`)).toBe(true);                // a line count proves it
     expect(can(`${"x".repeat(600)}\r\n`)).toBe(true);
+    expect(can(`a${"\t".repeat(250)}`)).toBe(false);                            // 251 raw, 501 once kiro widens the tabs
+    expect(can(`a${"\t".repeat(249)}`)).toBe(true);
   });
 });
