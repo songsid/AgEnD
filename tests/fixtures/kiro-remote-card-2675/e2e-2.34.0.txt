@@ -1,0 +1,78 @@
+== ready
+/tmp/k234/work/e2675 ·
+(master)
+›  ask a question or describe a task ↵
+                                                                               /sessions to resume · /copy to clipboard
+== 1 option 2
+{"card":{"page":"options","cursor":0,"options":["Staged rollout","All at once","Choose components"]},"keys":["Down","Enter"],"outcome":{"outcome":"answered"}}
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+/tmp/k234/work/e2675 ·
+(master)
+›  Kiro is working · 3s · Type to steer · Ctrl+S to queue
+== 2 typed answer
+{"card":{"page":"options","cursor":0,"options":["main","release"]},"keys":["paste","Enter"],"outcome":{"outcome":"answered"}}
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+/tmp/k234/work/e2675 ·
+(master)
+›  Kiro is working · 3s · Type to steer · Ctrl+S to queue
+== 3 sub-options only web
+{"card":{"page":"options","cursor":0,"options":["Staged rollout","All at once","Choose components"]},"keys":["Down","Down","Enter"],"outcome":{"outcome":"suboptions"}}
+{"card":{"page":"suboptions","cursor":0,"options":["api","web"]},"keys":["Space","Enter"],"outcome":{"outcome":"answered"}}
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+/tmp/k234/work/e2675 ·
+(master)
+›  Kiro is working · 3s · Type to steer · Ctrl+S to queue
+== 4 skip
+{"card":{"page":"options","cursor":0,"options":["main","release"]},"keys":["Escape"],"outcome":{"outcome":"answered"}}
+Mock Model
+/tmp/k234/work/e2675 ·
+(master)
+›  ask a question or describe a task ↵
+                                                                               /sessions to resume · /copy to clipboard
+== 5 input form: decline
+{"card":{"mode":"form","cursor":"Favourite colour (required)"},"keys":["Down","Down","Down","Enter"],"outcome":{"outcome":"answered"}}
+Mock Model
+/tmp/k234/work/e2675 ·
+(master)
+›  Kiro is working · 3s · Type to steer · Ctrl+S to queue
+== 6 input url (cursor on Copy URL): decline
+{"card":{"mode":"url","cursor":"Copy URL"},"keys":["Down","Down","Enter"],"outcome":{"outcome":"answered"}}
+Mock Model
+/tmp/k234/work/e2675 ·
+(master)
+›  Kiro is working · 3s · Type to steer · Ctrl+S to queue
+== 7 input url: cancel
+{"card":{"mode":"url","cursor":"Copy URL"},"keys":["Escape"],"outcome":{"outcome":"answered"}}
+Mock Model
+/tmp/k234/work/e2675 ·
+(master)
+›  Kiro is working · 3s · Type to steer · Ctrl+S to queue
+== transcript
+  › ask one
+• How should I deploy this change?
+  › All at once
+• Cancelled
+  › ask two
+• Which branch should I use?
+  › release, but only after the freeze
+• Cancelled
+  › ask three
+• How should I deploy this change?
+  › Choose components [web]
+• Cancelled
+  › ask four
+• Which branch should I use?
+  Cancelled
+  › tool five
+• Cancelled
+  › tool six
+• Cancelled
+  › tool seven
+== end
+/tmp/k234/work/e2675 ·
+(master)
+›  ask a question or describe a task ↵
+                                                                               /sessions to resume · /copy to clipboard

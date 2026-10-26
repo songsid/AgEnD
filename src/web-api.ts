@@ -492,7 +492,8 @@ export interface WebApiContext {
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
-  clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
+  /** `text`: #2675 — the typed answer, for the one action the page shows a text box for. */
+  clickWebPrompt?(instance: string, nonce: string, action: string, text?: string): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
   clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
@@ -2059,12 +2060,12 @@ export function handleWebRequest(
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
       if (!body || typeof body !== "object") { json(res, 400, { error: "instance, nonce and action required" }); return; }
-      const { instance, nonce, action } = body;
-      if (typeof instance !== "string" || typeof nonce !== "string" || typeof action !== "string") {
+      const { instance, nonce, action, text } = body;
+      if (typeof instance !== "string" || typeof nonce !== "string" || typeof action !== "string" || (text !== undefined && typeof text !== "string")) {
         json(res, 400, { error: "instance, nonce and action required" });
         return;
       }
-      const r = await click(instance, nonce, action);
+      const r = text === undefined ? await click(instance, nonce, action) : await click(instance, nonce, action, text);
       // 409: answered elsewhere first, expired, or never open — the page drops the buttons on `gone`.
       json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {

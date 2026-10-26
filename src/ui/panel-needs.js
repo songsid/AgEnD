@@ -196,7 +196,7 @@ function NeedsItem({ item, nowMs, owner }) {
       <div class="n-title"><strong>${reasonText(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
       ${detailOf(item) ? html`<p class="n-detail">${detailOf(item)}</p>` : null}
       <div class="n-actions">
-        ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
+        ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
         ${item.type === "delivery" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}

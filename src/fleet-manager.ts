@@ -278,6 +278,7 @@ import { ONBOARDING_BACKENDS, readPendingBackendSignIns } from "./backend-signin
 import { structuredSignInSupported } from "./structured-signin.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
+import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteCardPrompt, REMOTE_CARD_TEXT_MAX } from "./remote-card-prompt.js";
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
@@ -289,7 +290,8 @@ import { presentationState, interactionSummary, sameInteractionOwner } from "./i
 import type { WorkingStateObservation, WorkingStateReason, WorkingStateReference } from "./working-state-journal.js";
 import { describeSelfOom } from "./session-oom.js";
 import { assertNoSessionOomStop, readSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry, SessionOomStoppedError, sessionOomStopHint, type SessionOomRetry } from "./session-oom-stop.js";
-import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
+import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot, RemoteCard } from "./backend/types.js";
+import type { RemoteCardAction, RemoteCardOutcome } from "./remote-card-answer.js";
 import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
@@ -774,11 +776,13 @@ interface NonceButtonEntry {
    * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
-  web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
+  web?: { text: string; actions: Array<{ id: string; label: string; input?: true }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
   /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
   createdAt?: number;
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
   assistFor?: { owner: string | null; episode: number | null };
+  /** card-answer only (#2675): the card it offers, as it was read — what is asked and the rows the buttons name. */
+  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }> };
 }
 
 
@@ -894,6 +898,13 @@ interface PendingBackendSelect extends BackendMenuPlace {
   timer: ReturnType<typeof setTimeout>;
 }
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
+/** #2675: a card a CLI shows in place of its composer (kiro V3's Question / MCP input), posted with its answers. */
+const REMOTE_CARD_CALLBACK_PREFIX = "card-answer:";
+const REMOTE_CARD_CALLBACK_RE = /^card-answer:([0-9a-f]{32}):(opt-\d{1,2}|sub-all|sub-\d{1,2}|back|skip|decline|cancel|text)$/;
+/** A posted card's buttons stay this long; the card itself waits in the pane for as long as it takes. */
+const REMOTE_CARD_TIMEOUT_MS = 12 * 60 * 60_000;
+/** A reply already taken as a card's answer is remembered this long, so another bot's copy of it is dropped (#2675). */
+const REMOTE_CARD_TAKEN_TTL_MS = 10 * 60_000;
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
 const OOM_RETRY_CALLBACK_PREFIX = "oom-retry:";
 /** #1386: how long a paused instance's marker reason is reused before it is read again (transitions drop it at once). */
@@ -912,6 +923,7 @@ const KIRO_MIGRATE_TIMEOUT_MS = 10 * 60_000;
  */
 const WEB_MIRRORED_PROMPT_PREFIXES: ReadonlySet<string> = new Set([
   HANG_CALLBACK_PREFIX, EXIT_RESTART_CALLBACK_PREFIX, OOM_RETRY_CALLBACK_PREFIX, INTERACTIVE_ASSIST_CALLBACK_PREFIX,
+  REMOTE_CARD_CALLBACK_PREFIX,
 ]);
 /**
  * Where a reply goes on a fleet with no chat platform (web track C4): it is "sent" by being shown in the
@@ -1365,6 +1377,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * adapter emits — whatever fields its payload carries — can claim a dashboard click's authority.
    */
   private readonly webPromptClicks = new WeakSet<AdapterCallbackData>();
+  /** #2675: a dashboard click's typed answer, for the click it came with. */
+  private readonly webPromptTexts = new WeakMap<AdapterCallbackData, string>();
+  /** #2675: the nonce of each instance's posted card. */
+  private readonly remoteCardPosts = new Map<string, string>();
+  /** #2675: replies taken as a card's answer (`<chatId>|<messageId>` → monotonic expiry), so another bot's copy is dropped. */
+  private readonly takenCardReplies = new Map<string, number>();
   /** The web clicks consumeNonceCallback actually claimed (the others were refused or lost a race). */
   private readonly webPromptClaims = new WeakSet<AdapterCallbackData>();
 
@@ -9985,6 +10003,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         messageId: msg.messageId, userId: msg.userId, ...(msg.username ? { username: msg.username } : {}), text: msg.text ?? "",
       })) return;
     }
+    // #2675: a reply to a posted question card is its typed answer (judged by who may talk to that instance), not a
+    // message for the instance — which could not take one while its card is up anyway.
+    if (await this.takeRemoteCardReply(msg)) return;
 
     // Access control — classic channels are open to all, others require an allowed
     // user. This runs before the dedup claim, and is judged by the adapter that
@@ -14244,8 +14265,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
+    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
+    /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
+    webInput?: { action: string; label: string } | null;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
     // callback_data cap still holds, with two prefixes tied at the longest:
@@ -14315,7 +14338,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.web = {
           text: web.text,
           ...(links ? { links } : {}),
-          actions: opts.choices.map(c => ({ id: c.action, label: c.label })),
+          actions: [...opts.choices.map(c => ({ id: c.action, label: c.label })), ...(opts.webInput ? [{ id: opts.webInput.action, label: opts.webInput.label, input: true as const }] : [])],
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
         this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
@@ -14512,6 +14535,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleClearConfirmation(data, adapterId, adapter)) return true;
     if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return true;
     if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return true;
+    if (await this.handleRemoteCardClick(data, adapterId, adapter)) return true;
     if (await this.handleClassicBackendSelection(data)) return true;
     if (await this.handleModelSelection(data, adapterId)) return true;
     if (await this.handleEffortSelection(data, adapterId)) return true;
@@ -14966,8 +14990,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
 
-  async clickWebPrompt(instance: string, nonce: string, action: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
-    if (!/^[0-9a-f]{32}$/.test(nonce) || !/^[a-z][a-z-]{0,23}$/.test(action)) return { status: 400, error: "Malformed prompt answer" };
+  async clickWebPrompt(instance: string, nonce: string, action: string, text?: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
+    if (!/^[0-9a-f]{32}$/.test(nonce) || !/^[a-z][a-z0-9-]{0,23}$/.test(action)) return { status: 400, error: "Malformed prompt answer" };
+    // #2675: only an action the page shows a text box for takes text, and it must say something.
+    const input = this.pendingNonceButtons.get(nonce)?.web?.actions.find(a => a.id === action)?.input === true;
+    if (input !== (text !== undefined) || (input && (!text!.trim() || text!.length > REMOTE_CARD_TEXT_MAX))) return { status: 400, error: "Malformed prompt answer" };
     const entry = this.pendingNonceButtons.get(nonce);
     // Unknown is the same answer as answered or expired: the page drops the buttons either way.
     if (!entry || !entry.web) return { status: 409, error: "This prompt is no longer open" };
@@ -14984,6 +15011,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ack: n => { if (notice === undefined && n) notice = n; },
     };
     this.webPromptClicks.add(data);
+    if (text !== undefined) this.webPromptTexts.set(data, text);
     await this.dispatchAdapterCallback(data, entry.adapterId, entry.adapter);
     if (this.webPromptClaims.has(data)) return { status: 200 };
     return { status: 409, error: notice ?? "This prompt is no longer open" };
@@ -16173,6 +16201,147 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
     }
     return true;
+  }
+
+  // ── #2675: a card a CLI shows in place of its composer, answered from the chat ─────────────────────────────────
+
+  /**
+   * Where an instance's card is put to people: its own place — its topic, or its ClassicBot room — or, on a fleet with
+   * no chat platform, the dashboard. Never General: the answer is the instance's conversation.
+   */
+  private remoteCardPlace(instanceName: string): { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string } | null {
+    const web = this.webOnlyPromptPlace();
+    if (web) return web;
+    const room = this.classicChannels?.getChannelIdByInstance(instanceName);
+    if (room) {
+      const adapterId = this.classicChannels?.getAdapterIdByInstance(instanceName) ?? this.getPrimaryAdapterId();
+      const adapter = adapterId ? this.worlds.get(adapterId)?.adapter : undefined;
+      return adapter && adapterId ? { adapter, adapterId, chatId: room } : null;
+    }
+    const adapterId = this.getInstanceAdapterId(instanceName);
+    const adapter = adapterId ? this.worlds.get(adapterId)?.adapter : undefined;
+    const chatId = this.getGroupIdForInstance(instanceName);
+    const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    if (!adapter || !adapterId || !chatId || topicId == null) return null;
+    return { adapter, adapterId, chatId, threadId: String(topicId) };
+  }
+
+  /**
+   * The daemon saw a card held still on `instanceName`'s screen (remote_card): put it to the people who talk to that
+   * instance, with a button per answer. A card already posted for the instance is retired first (the daemon said it
+   * was gone; this is the fallback).
+   */
+  async postRemoteCard(instanceName: string, card: RemoteCard): Promise<void> {
+    this.retireRemoteCard(instanceName, null, t("card.answered_in_pane"));
+    const place = this.remoteCardPlace(instanceName);
+    if (!place) {
+      this.logger.warn({ instanceName }, "A card is waiting on screen but the instance has no place to post it — the parked notice stands");
+      return;
+    }
+    const prompt = remoteCardPrompt(instanceName, card);
+    const nonce = await this.postNonceButtonPrompt({
+      prefix: REMOTE_CARD_CALLBACK_PREFIX, alertType: "interactive_prompt", instanceName, ...place,
+      message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
+      expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
+      extra: { remoteCard: { identity: card.identity, kind: card.kind, options: card.kind === "question" ? card.options.map(o => ({ n: o.n, title: o.title })) : [] } },
+    });
+    if (nonce) this.remoteCardPosts.set(instanceName, nonce);
+  }
+
+  /**
+   * The card is gone from the screen (remote_card_gone, `identity`; null: whichever is posted): its buttons collapse to
+   * `text` if nobody answered them here.
+   */
+  retireRemoteCard(instanceName: string, identity: string | null, text = t("card.answered_in_pane")): void {
+    const nonce = this.remoteCardPosts.get(instanceName);
+    if (!nonce) return;
+    const entry = this.pendingNonceButtons.get(nonce);
+    if (entry && identity !== null && entry.remoteCard?.identity !== identity) return;
+    this.remoteCardPosts.delete(instanceName);
+    if (!entry) return;
+    this.pendingNonceButtons.delete(nonce);
+    if (entry.timer) clearTimeout(entry.timer);
+    void this.retireNonceButtons(entry, entry.messageId ?? "", text);
+  }
+
+  /** Who may answer an instance's card: whoever may already talk to it there (a ClassicBot room is open to all). */
+  private mayAnswerRemoteCard(userId: string, entry: NonceButtonEntry): boolean {
+    if (this.classicChannels?.getChannelIdByInstance(entry.instanceName) === entry.chatId) return true;
+    const am = this.worlds.get(entry.adapterId)?.accessManager ?? this.accessManager;
+    return !am || am.isAllowed(userId);
+  }
+
+  /** A click on a card's button (platform or dashboard). */
+  private async handleRemoteCardClick(data: AdapterCallbackData, callbackAdapterId: string, receivingAdapter?: ChannelAdapter): Promise<boolean> {
+    if (!data.callbackData.startsWith(REMOTE_CARD_CALLBACK_PREFIX)) return false;
+    // A typed answer from the dashboard must come with its text; refused before the claim, so the buttons stay.
+    const match = REMOTE_CARD_CALLBACK_RE.exec(data.callbackData);
+    if (match?.[2] === "text" && remoteCardAction("text", this.webPromptTexts.get(data)) === null) {
+      data.ack?.(t("buttons.stale_notice"));
+      return true;
+    }
+    const claimed = this.consumeNonceCallback(REMOTE_CARD_CALLBACK_PREFIX, REMOTE_CARD_CALLBACK_RE, data, callbackAdapterId, receivingAdapter,
+      undefined, (userId, entry) => this.mayAnswerRemoteCard(userId, entry));
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const action = remoteCardAction(claimed.action, this.webPromptTexts.get(data));
+    const who = this.webPromptClicks.has(data) ? t("card.someone_on_dashboard") : (data.username ?? data.userId ?? "?");
+    await this.answerRemoteCardFor(claimed.entry, action, who, data.messageId, data.editClicked);
+    return true;
+  }
+
+  /**
+   * An inbound message that replies to a posted question card, by someone who may answer it: its text is the typed
+   * answer, and the message goes no further (true). Another bot's copy of a reply already taken is dropped (true).
+   */
+  private async takeRemoteCardReply(msg: InboundMessage): Promise<boolean> {
+    if (msg.isBotMessage || !msg.replyTo) return false;
+    const now = performance.now();
+    for (const [key, until] of this.takenCardReplies) if (until <= now) this.takenCardReplies.delete(key);
+    const key = `${msg.chatId}|${msg.messageId}`;
+    if (this.takenCardReplies.has(key)) return true;
+    for (const [nonce, entry] of this.pendingNonceButtons) {
+      if (entry.prefix !== REMOTE_CARD_CALLBACK_PREFIX || entry.remoteCard?.kind !== "question") continue;
+      // By place, whichever of the fleet's bots received the reply (a sibling's copy can arrive first, #2680 review), on
+      // the post's own platform; who may answer is judged by the post's world (mayAnswerRemoteCard), as Needs you does.
+      if (entry.chatId !== msg.chatId || entry.messageId !== msg.replyTo || entry.adapter.type !== msg.source) continue;
+      if (!msg.userId || !this.mayAnswerRemoteCard(msg.userId, entry)) return false;   // not theirs to answer: it is just a message
+      const action = remoteCardAction("text", msg.text ?? "");
+      if (!action) return false;
+      this.pendingNonceButtons.delete(nonce);
+      if (entry.timer) clearTimeout(entry.timer);
+      this.webPromptGone(entry);
+      this.takenCardReplies.set(key, now + REMOTE_CARD_TAKEN_TTL_MS);
+      await this.answerRemoteCardFor(entry, action, msg.username ?? msg.userId, entry.messageId ?? msg.replyTo);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Key a claimed answer into the instance's card (the daemon checks it is still that card and walks a verified
+   * cursor), then collapse the post to what happened. When the card is still waiting and was not answered — refused
+   * or stopped part-way — it is posted again, so it can still be answered from here.
+   */
+  private async answerRemoteCardFor(entry: NonceButtonEntry, action: RemoteCardAction | null, who: string, messageId: string,
+    editClicked?: (text: string) => Promise<void>): Promise<void> {
+    if (this.remoteCardPosts.get(entry.instanceName) === entry.nonce) this.remoteCardPosts.delete(entry.instanceName);
+    const daemon = this.daemons.get(entry.instanceName);
+    const card = entry.remoteCard;
+    let outcome: RemoteCardOutcome;
+    if (!card || !action) outcome = { outcome: "refused", reason: "malformed" };
+    else if (!daemon?.answerRemoteCard) outcome = { outcome: "stale" };
+    else {
+      try { outcome = await daemon.answerRemoteCard(card.identity, action); }
+      catch (err) {
+        this.logger.warn({ err: (err as Error)?.message, instanceName: entry.instanceName }, "Answering a card from the chat failed");
+        outcome = { outcome: "stopped", step: "error" };
+      }
+    }
+    this.eventLog?.insert(entry.instanceName, "remote_card_answer", { action: action?.kind ?? null, outcome: outcome.outcome });
+    const choice = card && action ? remoteCardChoiceLabel(card, action) : "?";
+    await this.retireNonceButtons(entry, messageId, remoteCardOutcomeText(entry.instanceName, who, choice, outcome), editClicked);
+    if (outcome.outcome === "refused" || outcome.outcome === "stopped") daemon?.repostRemoteCard?.();
   }
 
   // ── Cancel button ────────────────────────────────────────────────────

@@ -25,7 +25,7 @@ export interface NeedsYouItem {
   since: number;
   /** prompt: the nonce the web answers through POST /ui/prompt, its buttons, and where the buttons are. */
   nonce?: string;
-  actions?: Array<{ id: string; label: string }>;
+  actions?: Array<{ id: string; label: string; input?: true }>;
   promptAt?: { adapterId: string; chatId: string; threadId?: string; messageId?: string };
   /** delivery: the outbox row; Acknowledge offered. */
   deliveryId?: string;
@@ -44,7 +44,7 @@ export interface NeedsYouItem {
 }
 
 export type NeedsYouReason =
-  | "hang" | "exited" | "assist"                                    // prompt
+  | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "auth_paused" | "crashed"                                       // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
@@ -56,7 +56,7 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
-  actions: Array<{ id: string; label: string }>;
+  actions: Array<{ id: string; label: string; input?: true }>;
   createdAt: number;
   adapterId: string;
   chatId: string;
@@ -129,6 +129,7 @@ const PROMPT_REASON: Record<string, NeedsYouReason> = {
   "exit-restart:": "exited",
   "oom-retry:": "exited",
   "interactive-assist:": "assist",
+  "card-answer:": "question",   // #2675: a card the CLI shows in place of its composer, posted with its answers
 };
 
 const INTERACTION_REASON: Record<string, NeedsYouReason> = {
@@ -164,8 +165,9 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     if (inst.state === "awaiting_input" && inst.interaction) {
       const episode = inst.interaction.episode ?? null;
       const owner = inst.interaction.owner ?? null;
-      const folded = inputs.prompts.some(p => p.prefix === "interactive-assist:" && p.instance === inst.name
-        && p.assistFor !== undefined && p.assistFor.episode === episode && p.assistFor.owner === owner);
+      // #2675: a posted card is the wait itself (it is on screen while its prompt is open).
+      const folded = inputs.prompts.some(p => p.instance === inst.name && (p.prefix === "card-answer:"
+        || (p.prefix === "interactive-assist:" && p.assistFor !== undefined && p.assistFor.episode === episode && p.assistFor.owner === owner)));
       if (!folded) {
         items.push({
           id: `awaiting:${inst.name}:${owner ?? "-"}:${episode ?? "-"}`, type: "awaiting_input", instance: inst.name,

@@ -208,11 +208,12 @@ export function createChatStore(deps) {
     deps.setTimeout(() => { if (s.prompts[d.nonce] === p) { delete s.prompts[d.nonce]; changed(p.instance); } }, 60000);
     changed(p.instance);
   }
-  async function answerPrompt(p, action) {
+  /** `text`: #2675 — the typed answer, for an action the prompt shows a text box for. */
+  async function answerPrompt(p, action, text) {
     if (p.busy || p.resolved) return;
     p.busy = true; changed(p.instance);
     let r;
-    try { r = await api("POST", "/ui/prompt", { instance: p.instance, nonce: p.nonce, action }); }
+    try { r = await api("POST", "/ui/prompt", { instance: p.instance, nonce: p.nonce, action, ...(text !== undefined ? { text } : {}) }); }
     catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     if (r && r.answered) return;   // the outcome arrives as prompt_resolved
     const latest = s.prompts[p.nonce];

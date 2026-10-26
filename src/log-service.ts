@@ -63,7 +63,7 @@ export const LOG_EVENT_TYPES: ReadonlySet<string> = new Set([
   "mcp_died", "mcp_recovered", "mcp_auto_restart", "message_failed", "pty_error", "pty_recovered",
   "backend_unreachable", "startup_backend_unreachable", "backend_launch_warning", "clear_action", "normal_exit_action",
   "reply_drop_detected", "reply_drop_recovered", "reply_drop_unrecovered", "supervision_ended", "tmux_server_crash",
-  "malformed_tool_call", "health_check_error", "context_lost",
+  "malformed_tool_call", "health_check_error", "context_lost", "remote_card", "remote_card_answer",
 ]);
 
 export type LogAnswer =

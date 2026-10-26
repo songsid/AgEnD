@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **A kiro V3 instance's question now reaches you in the chat, and you can answer it there (#2675).** When the agent asks a question, or an MCP server asks for input, kiro V3 puts a card in place of its input box. Until now only someone at the terminal could see or answer it, and messages waited behind it. AgEnD now posts the card to the instance's channel and web chat. A question gets one button per option, sub-option choices and Skip. To answer in your own words, reply to the post, or use the web chat's answer box. An MCP input request can be declined or cancelled from the chat; its fields and sign-in links stay at the terminal. AgEnD keys your answer in one checked step at a time: it stops, and says so, if the card changed or a key did not take. Once the card closes, delivery resumes. These cards exist only in kiro V3: legacy and tui (V2) never show them.
