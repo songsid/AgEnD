@@ -233,6 +233,9 @@ export class OfficeSkinStore {
     for (const id of kept) {
       // The id uploaded again meanwhile (a host before #2692 sees it free): that pack is the one; the old previous goes.
       if (packs.has(id) || existsSync(join(this.dir, id))) { if (packs.has(id)) try { rmSync(join(this.dir, keptDir(id)), { recursive: true, force: true }); } catch { /* next time */ } continue; }
+      // A pack.json there is a deleted version's that a crash left (remove's, or restore's before its rename): never
+      // read, and gone before anything renames the directory back as the pack's (#2696 review).
+      try { rmSync(join(this.dir, keptDir(id), "pack.json"), { force: true }); } catch { /* next time; put() removes it too */ }
       const prev = read(keptDir(id), PREVIOUS_FILE, id);
       if (prev) { previous.set(id, prev); away.add(id); }
     }
@@ -328,7 +331,8 @@ export class OfficeSkinStore {
     const keep = current ?? previous!, written: string[] = [], back = !current && s.away.has(r.id);
     if (back) {
       if (existsSync(home)) return refuse(409, "skin_exists", `"${r.id}" is kept already: delete it first`);
-      try { renameSync(join(this.dir, keptDir(r.id)), home); } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
+      try { rmSync(join(this.dir, keptDir(r.id), "pack.json"), { force: true }); renameSync(join(this.dir, keptDir(r.id)), home); }
+      catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
       s.away.delete(r.id);
     }
     try {

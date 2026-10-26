@@ -498,6 +498,18 @@ describe("replace: atomic, one previous version kept, restore", () => {
       expect([existsSync(join(skinsDir(dir), "snug")), existsSync(join(skinsDir(dir), ".kept-snug", PREVIOUS_FILE))]).toEqual([false, true]);
     });
 
+    it("a deleted version's pack.json a crash left in .kept-snug is cleared when read, so a later put-back crash cannot bring it back (#2696 review)", async () => {
+      const { dir, skins } = await deletedKeeping();
+      const v2 = skins.records().previous.get("snug")!;                                    // any record will do as the stale file
+      writeFileSync(join(skinsDir(dir), ".kept-snug", "pack.json"), JSON.stringify({ ...v2, manifest: MANIFEST() }));
+      const s = new OfficeSkinStore(dir);
+      expect([s.list().packs, existsSync(join(skinsDir(dir), ".kept-snug", "pack.json")), s.records().previous.has("snug")]).toEqual([[], false, true]);
+      // A put-back that crashed between its rename and the swap: snug/ holds only the previous, moved out again when read.
+      renameSync(join(skinsDir(dir), ".kept-snug"), join(skinsDir(dir), "snug"));
+      const after = new OfficeSkinStore(dir);
+      expect([after.list().packs, after.records().previous.has("snug")]).toEqual([[], true]);
+    });
+
     it("the id uploaded again where .kept-snug is not read (an older host): that pack is the one, the old previous goes", async () => {
       const { dir, v1 } = await deletedKeeping();
       // An older host's add(): the pack's own directory, its pictures and pack.json (it never looks at .kept-snug).
