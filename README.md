@@ -201,6 +201,7 @@ graph LR
 - [Features](docs/features.md) — detailed feature documentation
 - [CLI Reference](docs/cli.md) — all commands and options
 - [Configuration](docs/configuration.md) — fleet.yaml complete reference
+- [Office guide](docs/office.md) — the pixel Office view: offices, skin packs, layouts, share links
 - [AgEnD in Docker](docs/docker.md) — a runbook an agent follows to set up and maintain AgEnD in Docker
 - [Security](docs/SECURITY.md) — trust model and hardening
 - [Development Setup](docs/development.md) — working on AgEnD itself

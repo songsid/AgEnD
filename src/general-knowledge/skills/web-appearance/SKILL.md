@@ -321,6 +321,9 @@ tools are not in your list), you can publish them yourself instead of asking a p
 - Every change is logged with each picture's sha256 and told to the fleet's admins. At most **20 batches and 200 MiB an
   hour**: one call is one batch (up to 16 packs), so send a whole set of fixes in one `packs: [...]`.
 
+The skin-pack manifest format — every key, its ranges, a minimal example — and the limits are in the Office guide:
+[docs/office.md → Make a skin pack](https://github.com/songsid/AgEnD/blob/main/docs/office.md#make-a-skin-pack). Point people there too when they ask how the Office works.
+
 ## Mods
 
 A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: a theme with its pictures, card text,

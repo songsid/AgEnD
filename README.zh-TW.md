@@ -201,6 +201,7 @@ graph LR
 - [功能](docs/features.zh-TW.md) — 功能詳細說明
 - [CLI 參考](docs/cli.zh-TW.md) — 所有指令與選項
 - [Configuration](docs/configuration.zh-TW.md) — fleet.yaml 完整設定參考
+- [辦公室指南](docs/office.zh-TW.md) — 像素辦公室畫面：辦公室、外觀包、配置、分享連結
 - [在 Docker 中執行 AgEnD](docs/docker.zh-TW.md) — 讓 agent 架設並維護 Docker 版 AgEnD 的操作手冊
 - [Security](docs/SECURITY.zh-TW.md) — 信任模型與安全強化
 - [開發環境設定](docs/development.md) — 開發 AgEnD 本身

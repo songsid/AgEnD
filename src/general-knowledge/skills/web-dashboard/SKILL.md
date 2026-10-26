@@ -264,6 +264,10 @@ Click a team header to fold it. **Find** dims everything that doesn't match. A c
 and backend; clicking it opens the chat. List mode adds the description, model, a link to the Discord thread or
 Telegram topic, and **Open chat**.
 
+**The Office guide** (`docs/office.md` in the AgEnD repository; `docs/office.zh-TW.md` in Traditional Chinese) is the one page for people: setting up offices, the
+skin-pack manifest format and its limits, Edit layout and seat reservations, bedtime, share links, agents' office and
+pack tools, and rolling back. Point people there for more than the summary below; it marks what is not released yet.
+
 **Office** (the third view, remembered per device) draws the same fleet as a pixel office: a room per team, a desk
 per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
 with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
