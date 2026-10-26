@@ -27,10 +27,12 @@ describe("the existing-Ubuntu choice (static)", () => {
     const stage = body.slice(body.indexOf("$names = Get-WslDistroNames"), body.indexOf('Add-Content -Path $ProgressFile -Value "DISTRO=$UBUNTU_DISTRO"'));
     expect(stage).toMatch(/\$agendDistro = \$situation\.Agend/);
     // #2279 review: an unreadable list stops stage 1 before any choice, install or reuse.
-    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
+    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*if \(Clear-MissingWslTarget \$names\) \{ \$UBUNTU_DISTRO = 'Ubuntu-24\.04'; \$AgendWslDrive = Resolve-AgendWslDrive \$WslDrive; Save-WslDrive \$AgendWslDrive \}\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
     expect(stage).toMatch(/if \(\$situation\.State -eq 'reuse'\) \{ \$choice = 'reuse' \} elseif \(\$situation\.State -eq 'ubuntu'\) \{ \$choice = Read-DistroChoice \$installedDistroName \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO = Get-FreeAgendDistroName \$names \}/);
-    expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ "\$\(\$disk\.Root\)WSL\\\$UBUNTU_DISTRO" \}/);
+    expect(stage).toMatch(/\$leaf = if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO \} else \{ 'Ubuntu' \}/);
+    expect(stage).toMatch(/\$location = Get-WslInstallLocation \(Get-LocalDisks\) \(\$env:SystemDrive \+ '\\'\) \$UBUNTU_DISTRO \$leaf \$AgendWslDrive/);
+    expect(stage).toMatch(/\$disk = \$location\.Disk; \$wslPath = \$location\.Path/);
     expect(stage).toMatch(/if \(-not \(Install-AgendDistro \$UBUNTU_DISTRO \$wslPath\)\) \{/);
     expect(stage).not.toMatch(/wsl -d \$name -u root -- echo/);                     // no more starting each Ubuntu to see if it is there
     // The chosen name is saved with the progress, and the end of the install records it (install.json) and makes the shortcuts.

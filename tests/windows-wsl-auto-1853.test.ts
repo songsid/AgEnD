@@ -37,8 +37,10 @@ describe("the WSL stage decides for itself (static)", () => {
     expect(code).toMatch(/\$RESUME_COMMAND = 'powershell -ExecutionPolicy ByPass -c "irm https:\/\/songsid\.github\.io\/AgEnD\/install\.ps1 \| iex"'/);
     expect(code).toMatch(/\$RESUME_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce'/);
   });
-  it("no version or disk to type, no 'got it?', and Ubuntu's first-run window is never opened", () => {
-    expect(body).not.toMatch(/請輸入數字 \(預設 1\)|請輸入數字選擇|了解了嗎/);
+  it("fixed Linux version, persisted conditional drive choice, and no Ubuntu first-run window", () => {
+    expect(body).toContain('Get-WslInstallLocation (Get-LocalDisks)');
+    expect(code).toContain('if ($eligible.Count -eq 1) { return $eligible[0] }');
+    expect(body).not.toMatch(/了解了嗎/);
     expect(body).not.toMatch(/Start-Process "wsl\.exe"/);
     expect(body).not.toMatch(/請完成後輸入 exit/);
     expect(body.match(/\$wslState = Wait-WslRoot \$UBUNTU_DISTRO\n\s*if \(\$wslState -eq 'ready'\) \{/g)).toHaveLength(2);
