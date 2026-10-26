@@ -1,0 +1,96 @@
+# CodeQL runs nightly and on demand, never on PRs or main pushes (user
+# 2026-10-26). It replaces GitHub's CodeQL default setup, which must be off:
+# GitHub refuses advanced-workflow uploads while default setup is on.
+#
+# Before tagging a release, dispatch it on the candidate:
+#   gh workflow run codeql.yml -R songsid/AgEnD --ref main -f sha=<candidate sha>
+# Results are uploaded against the ref the run was dispatched from (main), for
+# that commit. The run is red when an analysis fails, or when CodeQL alerts on
+# that ref stay open after the upload ("Open alerts" job). Fix or dismiss an
+# alert in code scanning to clear it.
+name: CodeQL
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # 03:00 Asia/Taipei
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit to scan (full SHA, tag or branch). Empty = the tip of the ref you dispatch from.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Every run uploads to the same ref; let them finish in order.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Resolve the input once, so every language scans the same commit even if a
+  # branch or tag moves while the run is going.
+  commit:
+    name: Commit
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+      - name: Resolve the scanned commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: commit
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions, python]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.commit.outputs.sha }}
+      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:${{ matrix.language }}
+          ref: ${{ github.ref }}
+          sha: ${{ needs.commit.outputs.sha }}
+
+  open-alerts:
+    name: Open alerts
+    needs: analyze
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: read
+    steps:
+      - name: Fail while CodeQL alerts are open on this ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          # -X GET -f sends the fields as an encoded query string (a ref may hold "#" or "&").
+          alerts="$(gh api --paginate -X GET "repos/$REPO/code-scanning/alerts" \
+            -f tool_name=CodeQL -f state=open -f ref="$REF" -f per_page=100 \
+            --jq '.[] | "#\(.number) \(.rule.id) \(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)"')"
+          if [ -n "$alerts" ]; then
+            printf '%s\n' "$alerts"
+            echo "::error::$(printf '%s\n' "$alerts" | wc -l) open CodeQL alert(s) on $REF; fix or dismiss them in code scanning"
+            exit 1
+          fi
+          echo "No open CodeQL alerts on $REF."

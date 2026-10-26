@@ -34,7 +34,7 @@ describe("the existing-Ubuntu choice (static)", () => {
     expect(stage).toMatch(/\$location = Get-WslInstallLocation \(Get-LocalDisks\) \(\$env:SystemDrive \+ '\\'\) \$UBUNTU_DISTRO \$leaf \$AgendWslDrive/);
     expect(stage).toMatch(/\$disk = \$location\.Disk; \$wslPath = \$location\.Path/);
     expect(stage).toMatch(/if \(-not \(Install-AgendDistro \$UBUNTU_DISTRO \$wslPath\)\) \{/);
-    expect(stage).not.toMatch(/wsl -d \$name -u root -- echo/);                     // no more starting each Ubuntu to see if it is there
+    expect(stage).not.toMatch(/wsl -d \$name -u root --exec echo/);                     // no more starting each Ubuntu to see if it is there
     // The chosen name is saved with the progress, and the end of the install records it (install.json) and makes the shortcuts.
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"/);
     expect(body).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);

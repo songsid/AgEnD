@@ -247,7 +247,7 @@ function exactCi(head) {
   requireThat(Array.isArray(rules), 'rules unreadable');
   const d = api(`commits/${head}/check-runs?per_page=100`);
   requireThat(Array.isArray(d.check_runs) && Number.isInteger(d.total_count) && d.total_count <= d.check_runs.length, 'revert CI incomplete');
-  const required = new Set((process.env.GATE_REQUIRED_CHECKS ?? 'build,scan,CodeQL,Analyze (javascript-typescript),Analyze (actions)').split(',').map(s => s.trim()).filter(Boolean));
+  const required = new Set((process.env.GATE_REQUIRED_CHECKS ?? 'build,scan').split(',').map(s => s.trim()).filter(Boolean));
   for (const r of rules) if (r.type === 'required_status_checks') for (const c of r.parameters?.required_status_checks ?? []) if (c.context) required.add(c.context);
   const latest = new Map();
   for (const r of d.check_runs) { requireThat(typeof r.name === 'string' && Number.isSafeInteger(r.id), 'invalid check'); if (!latest.has(r.name) || latest.get(r.name).id < r.id) latest.set(r.name, r); }

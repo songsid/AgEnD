@@ -41,14 +41,14 @@
 #   usage error                   exit 2
 #
 # Environment: GATE_REPO (default songsid/AgEnD), GATE_APPROVER (default agend-reviewer,claude-fable-), GATE_REMOTE (default
-# origin), GATE_REQUIRED_CHECKS (comma-separated; default main's gate: build, scan, CodeQL,
-# Analyze (javascript-typescript), Analyze (actions)).
+# origin), GATE_REQUIRED_CHECKS (comma-separated; default build, scan). CodeQL is not a PR check: it runs nightly and
+# before a release (.github/workflows/codeql.yml).
 set -uo pipefail
 
 REPO="${GATE_REPO:-songsid/AgEnD}"
 APPROVER="${GATE_APPROVER-agend-reviewer,claude-fable-}"
 REMOTE="${GATE_REMOTE:-origin}"
-REQUIRED_CHECKS="${GATE_REQUIRED_CHECKS-build,scan,CodeQL,Analyze (javascript-typescript),Analyze (actions)}"
+REQUIRED_CHECKS="${GATE_REQUIRED_CHECKS-build,scan}"
 DRY_RUN=0
 DELIVERY_JSON=""
 
@@ -213,20 +213,10 @@ if [ "$rc" -eq 1 ]; then
 fi
 
 # ── 5. CI on the exact head ─────────────────────────────────────────────────────────────────────────────────────
-# GitHub's CodeQL default setup does not run on release/** branches, so CodeQL and Analyze(*)
-# are optional there: their absence does not block, but a present FAILURE still does.
-# The same holds for feature branches (feat/*, e.g. feat/2.4-settings): default setup scans only PRs into the default
-# branch, so a PR into a feature branch never gets CodeQL. The feature branch's code is scanned whole when it lands on
-# main through its own PR, which keeps main's full gate.
-# build and scan are required regardless of base branch.
-# Only applies when GATE_REQUIRED_CHECKS is not set by the caller (i.e. using the default).
-EFFECTIVE_CHECKS="$REQUIRED_CHECKS"
-if { [[ "$BASE_REF" == release/* ]] || [[ "$BASE_REF" == feat/* ]]; } && [ -z "${GATE_REQUIRED_CHECKS+x}" ]; then
-  EFFECTIVE_CHECKS="build,scan"
-fi
+# The same required checks for every base branch. Any present check that did not succeed still blocks, whatever its name.
 RULES="$(gh api "repos/$REPO/rules/branches/$BASE_REF" 2>/dev/null)" || blocked "the rules of $BASE_REF are unreadable"
 RUNS="$(gh api "repos/$REPO/commits/$HEAD/check-runs?per_page=100" 2>/dev/null)" || blocked "check-runs for $HEAD unreadable"
-CI="$(printf '%s' "$RUNS" | REQUIRED_CHECKS="$EFFECTIVE_CHECKS" RULES="$RULES" node -e '
+CI="$(printf '%s' "$RUNS" | REQUIRED_CHECKS="$REQUIRED_CHECKS" RULES="$RULES" node -e '
   let s = ""; process.stdin.on("data", c => s += c).on("end", () => {
     const out = m => { process.stdout.write(m); process.exit(0); };
     let d, rules;

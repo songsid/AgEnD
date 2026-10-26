@@ -81,7 +81,7 @@ Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, bin);
     expect(out).toContain("登入頁網址：http://localhost:19280/signin");       // #2650 item 10: even when the browser opened
     expect(out).toContain("RESULT=True");
     // The user AgEnD was installed as, and its own home — never a hard-coded root.
-    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u han -- timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
+    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
   });
   it("AgEnD not running: says so and how to start it; nothing opened", () => {
     const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
@@ -162,6 +162,6 @@ Write-Output ("NEW-SHORTCUT-OFF-WINDOWS=[" + (@(Install-AgendShortcuts 'Ubuntu-2
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("儀表板登入碼：  K 7 Q M - 3 X R D");
     expect(r.stdout).toContain("登入頁網址：http://localhost:19280/signin");
-    expect(readFileSync(join(bin, "args.txt"), "utf8")).toMatch(/^-d Ubuntu-22\.04 -u root -- timeout --signal=TERM --kill-after=2s 25 bash -lc /);
+    expect(readFileSync(join(bin, "args.txt"), "utf8")).toMatch(/^-d Ubuntu-22\.04 -u root --exec timeout --signal=TERM --kill-after=2s 25 bash -lc /);
   });
 });

@@ -130,7 +130,7 @@ Write-Output ('READY='+(Test-InstallerReady))`);
  it.each([[0,true],[124,false]])('the merged WSL network probe has a finite host-side wait and honours its exit: %s',(code,ok)=>scratch(f=>{
   const out=f.run(`$NET_WSL=@(@{Host='stub.invalid';Why='stub';Required=$true})
 function New-WslScriptFile {param($Script);[IO.File]::WriteAllText('${f.dir}/network.sh',$Script);return @('${f.dir}/network.sh','/scratch/network.sh')}
-function Invoke-BoundedWsl {param($Arguments,$TimeoutSeconds);if($TimeoutSeconds -ne 60 -or ($Arguments -join ' ') -cne '-d Scratch -u root -- bash /scratch/network.sh'){throw 'Unbounded/wrong probe'};return @{Code=${code};Text='NET|stub.invalid|0'}}
+function Invoke-BoundedWsl {param($Arguments,$TimeoutSeconds);if($TimeoutSeconds -ne 60 -or ($Arguments -join ' ') -cne '-d Scratch -u root --exec bash /scratch/network.sh'){throw 'Unbounded/wrong probe'};return @{Code=${code};Text='NET|stub.invalid|0'}}
 function Resolve-NetResults($jobs,$side){return @($jobs|Where-Object {$_.Kind}).Count -eq 0}
 Write-Output ('OK='+(Test-WslNetwork 'Scratch'))`);
   expect(out).toContain(`OK=${ok?'True':'False'}`);

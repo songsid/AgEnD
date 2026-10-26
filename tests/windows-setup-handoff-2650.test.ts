@@ -97,7 +97,7 @@ foreach ($c in $cases) { $p = Get-SetupPrompt $c; Write-Output ("CASE$i=" + $(if
 Write-Output ("SHOWN=" + $r.Shown + " DONE=" + $r.Done)`);
     const calls = started!.trim().split("\n");
     expect(calls).toHaveLength(1);                                                  // the same id twice: one window
-    expect(calls[0]).toMatch(/^wsl\.exe -d Ubuntu-24\.04 -u root -- bash -lc "[^"]*agend settings confirm 0123456789abcdef0123456789abcdef; echo; read -r -p 'Press Enter to close this window\. ' _"$/);
+    expect(calls[0]).toMatch(/^wsl\.exe -d Ubuntu-24\.04 -u root --exec bash -lc "[^"]*agend settings confirm 0123456789abcdef0123456789abcdef; echo; read -r -p 'Press Enter to close this window\. ' _"$/);
     expect(calls[0]).not.toContain("--yes");
     expect(out).toContain("已經另外打開一個「AgEnD setup confirmation」視窗：看過裡面列出的內容，沒問題就輸入 y 再按 Enter。");
     expect(out).toContain(`wsl -d Ubuntu-24.04 -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm ${ID}'`);

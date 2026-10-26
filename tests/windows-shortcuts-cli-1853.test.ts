@@ -270,7 +270,7 @@ Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[
     const lnk = readFileSync(join(local, "lnk.txt"), "utf8");
     expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
     expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
-    expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} -- timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; set -f; IFS=; d=\${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
+    expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} --exec timeout --signal=TERM --kill-after=2s 25 bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; set -f; IFS=; d=\${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
   });
   it("an install.json for another Linux: the unconfirmed script changes nothing and says which; confirmed, it repoints", () => {
     const w = scratchWindows();
@@ -313,7 +313,7 @@ Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[
     }
     const calls = readFileSync(join(w.dir, "wsl-calls.txt"), "utf8").trim().split("\n");
     expect(calls.length).toBeGreaterThanOrEqual(3);                                  // restart, status, the dashboard's sign-in
-    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root -- timeout --signal=TERM --kill-after=2s (?:25|355) bash -lc /);
+    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root --exec timeout --signal=TERM --kill-after=2s (?:25|355) bash -lc /);
   });
   it("UTF-16LE base64 is what -EncodedCommand reads: Chinese comes through", () => {
     const r = spawnSync("pwsh", ["-NoProfile", "-EncodedCommand", encodePowershell("Write-Output '重新啟動 OK'")], { encoding: "utf8" });

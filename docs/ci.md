@@ -23,7 +23,32 @@ change cannot affect. The jobs themselves always run and report success, so the
 merge gate never sees `skipped` (a job-level skip on a matrix cell would leave
 that required name pending). An unreadable or empty diff, and every non-PR
 event (push to main, tags, schedule, `workflow_dispatch`), run the full suite
-(fail closed). CodeQL is unchanged (GitHub default setup).
+(fail closed).
+
+## CodeQL
+
+CodeQL does not run on PRs or main pushes, and the merge gate does not wait
+for it (user, 2026-10-26). `.github/workflows/codeql.yml` scans
+`javascript-typescript`, `actions` and `python`:
+
+- nightly at 03:00 Asia/Taipei (19:00 UTC), on `main`;
+- on demand before a release, for a candidate commit:
+  `gh workflow run codeql.yml -R songsid/AgEnD --ref main -f sha=<sha>`.
+
+Results land in code scanning against the ref the run started from. The run
+fails when an analysis fails, or when its **Open alerts** job finds CodeQL
+alerts still open on that ref; fix or dismiss them in code scanning. GitHub's
+CodeQL default setup must stay off: while it is on, GitHub refuses this
+workflow's uploads.
+
+Switching from default setup, once: turn default setup off, dispatch the
+workflow on `main`, and check that the newest analyses on `refs/heads/main`
+come from `.github/workflows/codeql.yml:analyze`
+(`gh api 'repos/songsid/AgEnD/code-scanning/analyses?ref=refs/heads/main'`).
+Analyses from the old configuration (`dynamic/github-code-scanning/codeql:analyze`)
+are no longer updated, so an alert only they report never closes. Delete
+that stale configuration under Security → Code scanning → Tool status, or
+delete its analyses through the API.
 
 - **text-only** — only `docs/**`, `changes/**`, root `*.md`, and
   `website/src/content/**`. CHANGELOG guards, the pin guard, Gitleaks, and the

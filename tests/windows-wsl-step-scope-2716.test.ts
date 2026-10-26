@@ -18,13 +18,15 @@ const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-
 let hasPwsh = false;
 beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { stdio: "ignore" }); hasPwsh = true; } catch { hasPwsh = false; } });
 const dirs: string[] = [];
+/** A secret-shaped value built at run time, so no secret-like literal sits in the source (gitleaks). */
+const SECRET = "c".repeat(24);
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 function runAsScriptFile(body: string): { status: number | null; out: string } {
   const dir = mkdtempSync(join(tmpdir(), "agend-wslstep-")); dirs.push(dir);
   const bin = join(dir, "bin"); mkdirSync(bin);
   const wsl = join(bin, "wsl.exe");
-  writeFileSync(wsl, "#!/bin/sh\necho 'linux says hello'\necho 'token=abc123def456'\nexit 0\n");
+  writeFileSync(wsl, `#!/bin/sh\necho 'linux says hello'\necho 'token=${SECRET}'\nexit 0\n`);
   chmodSync(wsl, 0o755);
   const script = join(dir, "t.ps1");
   writeFileSync(script, `$ErrorActionPreference = 'Stop'
@@ -61,7 +63,7 @@ Write-Output ('TEXT=' + ($script:LastWslStepResult.Text -replace "\`n", '|'))`);
     expect(r.out).toContain("token=[hidden]");
     const text = r.out.split("\n").find(l => l.startsWith("TEXT=")) ?? "";
     expect(text).toContain("token=[hidden]");
-    expect(text).not.toContain("abc123def456");
+    expect(text).not.toContain(SECRET);
   });
 
   it("a caller's OnLine hook still sees every raw line (the browser sign-in reads its URL this way)", () => {
@@ -73,7 +75,7 @@ Write-Output ('CODE=' + $code)
 Write-Output ('SEEN=' + ($seen -join '|'))`);
     expect(r.out).not.toMatch(/is not recognized/);
     expect(r.out).toContain("CODE=0");
-    expect(r.out).toContain("SEEN=linux says hello|token=abc123def456");
+    expect(r.out).toContain(`SEEN=linux says hello|token=${SECRET}`);
   });
 
   it("no scriptblock in the installers is made with .GetNewClosure() over a call to one of their own functions", () => {
