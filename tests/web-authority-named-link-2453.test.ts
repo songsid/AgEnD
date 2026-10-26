@@ -198,7 +198,8 @@ describe("the fleet: a named-link session authorized, and the link's end", () =>
       const deps = h.s.sessionAuthorizationRequests().deps;
       const tapped = deps.authorize(rec.handle, "named_link");
       const ask = deps.text.ask({ label: "phone", peer: "named_link", askedAt: Date.now(), until: Date.now() + 1000 });
-      expect([tapped.ok, h.s.webAuthority({ session: rec, gateway: true, peer: "named_link" }).authority.kind, ask.includes(HOST), ask.includes("the internet")]).toEqual([true, "web-verified", true, true]);
+      expect([tapped.ok, h.s.webAuthority({ session: rec, gateway: true, peer: "named_link" }).authority.kind, ask.includes("the internet")]).toEqual([true, "web-verified", true]);
+      expect(ask).toContain(`over your named link ${HOST} (the internet)`);
     } finally { h.close(); }
   });
   // Fable's #2464 review: the option off then on again with nothing reading authority in between must not bring a

@@ -51,9 +51,10 @@ describe("the wizard never overwrites an agent", () => {
       .toMatchObject({ working_directory: "/w/x", backend: "codex" });
   });
 
-  it("existing_agent must be a boolean; a new agent still needs its backend and directory", () => {
+  it("existing_agent must be a boolean; a new agent still needs its backend, and a directory it is given is absolute", () => {
     expect(validateWizardInput({ ...NEW, existing_agent: "yes" as never }) ?? "").toMatch(/existing_agent must be a boolean/);
-    expect(validateWizardInput({ ...NEW, instance_name: "beta", working_directory: "" }) ?? "").toMatch(/working_directory/);
+    expect(validateWizardInput({ ...NEW, instance_name: "beta", working_directory: "relative" }) ?? "").toMatch(/working_directory/);
+    expect(validateWizardInput({ ...NEW, instance_name: "beta", working_directory: "" }), "#2726: none is its own workspace").toBeNull();
   });
 });
 

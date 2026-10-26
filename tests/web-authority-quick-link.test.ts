@@ -225,8 +225,9 @@ describe("the fleet: a quick-link session authorized, and the link's end", () =>
       const deps = h.s.sessionAuthorizationRequests().deps;
       const tapped = deps.authorize(rec.handle, "quick_link");
       const ask = deps.text.ask({ label: "phone", peer: "quick_link", askedAt: Date.now(), until: Date.now() + 1000 });
-      expect([tapped.ok, h.s.webAuthority({ session: rec, gateway: true, peer: "quick_link" }).authority.kind, ask.includes(QUICK), ask.includes("the internet"), ask.includes("temporary public link")])
-        .toEqual([true, "web-verified", true, true, true]);
+      expect([tapped.ok, h.s.webAuthority({ session: rec, gateway: true, peer: "quick_link" }).authority.kind, ask.includes("the internet"), ask.includes("temporary public link")])
+        .toEqual([true, "web-verified", true, true]);
+      expect(ask).toContain(`over the temporary public link ${QUICK} (the internet)`);
     } finally { h.close(); }
   });
   for (const readWhileOff of [false, true]) it(`off → on through Settings saves, ${readWhileOff ? "read" : "nothing read"} while off: the old session needs a new Confirm`, () => {

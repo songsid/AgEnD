@@ -42,6 +42,10 @@ As with 2.1.12, its task prune knows no projects (below), and a normalized confi
 
 Returning can't rebuild a layout that an older version's save dropped. Keep a copy of `web-offices.json` before rolling back if the layouts matter.
 
+## The setup page's default directory (2.3.1 and 2.2.6)
+
+From #2726 the setup page may leave an agent's working directory empty. The agent then gets its own workspace, and fleet.yaml is written with that path spelled out: `working_directory: <AGEND_HOME>/workspaces/<name>`. Every release writes that same shape for an agent created without a directory. `scripts/check-setup-workdir-downgrade.mjs` (in `data-downgrade.yml`) writes it the way the setup page does, for Web only and with a bot. It then checks that the published **2.3.1** and **2.2.6** validators accept the file and that their loaders read the same folder.
+
 ## Findings
 
 | Area | Observed result | Limit / evidence |

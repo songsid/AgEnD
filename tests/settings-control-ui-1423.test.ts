@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsControlServer, requestSettingsConfirmation, settingsSocketPath, type SettingsInspection } from "../src/settings-control.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SETUP_FORM_HTML } from "../src/setup-form.js";
+import { SETUP_FORM_STRINGS, setupI18nRuntime } from "../src/setup-i18n.js";
 const roots: string[] = [], servers: SettingsControlServer[] = [], stores: SettingsConfirmationStore[] = [];
 afterEach(async () => { for (const store of stores.splice(0)) store.close(); for (const server of servers.splice(0)) await server.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function directory() { const root = mkdtempSync(join(tmpdir(), "agend-test-settings-control-")); roots.push(root); return root; }
@@ -77,8 +78,9 @@ function form() {
     return { ok: true, body: { watch: false } };
   });
   const state = { identity: { valid: true } }; let serial = 0;
-  const context = createContext({ $, api, state, input: () => ({ platform: "telegram" }), document: { querySelectorAll: () => [$("token")] },
+  const context = createContext({ $, api, state, input: () => ({ platform: "telegram" }), document: { querySelectorAll: () => [$("token")], getElementById: $ },
     crypto: { randomUUID: () => "key-" + ++serial }, setTimeout: (fn: any) => timers.push(fn), waitForFleet: vi.fn() });
+  runInContext(setupI18nRuntime(SETUP_FORM_STRINGS), context);   // #2726: the page's words (tr, show) come first
   const begin = SETUP_FORM_HTML.indexOf("  let approvedSetup = false;"), end = SETUP_FORM_HTML.indexOf("  // The host is gone;", begin);
   expect(begin).toBeGreaterThan(0); runInContext(SETUP_FORM_HTML.slice(begin, end), context);
   return { $, api, timers, failNext: () => { fail = true; }, outcome: (next: string) => { outcome = next; } };

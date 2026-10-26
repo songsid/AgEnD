@@ -156,8 +156,8 @@ describe("kiro-cli 2.34.0: the precheck's hard findings are not on AgEnD's path"
   it("the three unhinted strings exist only in 2.34.0's kiro-cli-chat, beside the flag help, the agent and the uninstaller", () => {
     const hits = fixture("kiro-cli-chat-precheck-hits.strings.txt");
     for (const s of ["'Trust this workspace?'", "'The previous response was interrupted.", "'Are you sure you want to continue uninstalling Kiro CLI?'"]) {
-      expect(hits).toMatch(new RegExp(`## 2\\.34\\.0 kiro-cli-chat ${s.replace(/[.?*()[\]]/g, "\\$&")}[^\\n]*count 1`));
-      expect(hits).toMatch(new RegExp(`## 2\\.33\\.1 kiro-cli-chat ${s.replace(/[.?*()[\]]/g, "\\$&")}[^\\n]*count 0`));
+      expect(hits).toMatch(new RegExp(`## 2\\.34\\.0 kiro-cli-chat ${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^\\n]*count 1`));
+      expect(hits).toMatch(new RegExp(`## 2\\.33\\.1 kiro-cli-chat ${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^\\n]*count 0`));
     }
     expect(hits).toContain("TRUST_WORKSPACESkip the \"Trust this workspace?\" prompt");
     expect(hits).toContain("Uninstalling is only supported for the kiro-cli binary");

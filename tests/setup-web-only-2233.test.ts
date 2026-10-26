@@ -76,9 +76,9 @@ describe("#2233 web-only validation and draft (pure)", () => {
   it("valid: name, backend and an absolute directory; anything else refused with what is wrong", () => {
     expect(validateWizardInput(WEB as never)).toBeNull();
     expect(validateWizardInput({ ...WEB, web_only: "yes" } as never)).toBe("web_only must be a boolean");
-    expect(validateWizardInput({ ...WEB, working_directory: "relative" } as never)).toBe("working_directory must be an absolute path");
+    expect(validateWizardInput({ ...WEB, working_directory: "relative" } as never)).toBe("working_directory must be an absolute path, or empty for the agent's own workspace");
     expect(validateWizardInput({ ...WEB, backend: "gemini-cli" } as never)).toBe("backend must be a known backend");
-    expect(validateWizardInput({ ...WEB, instance_name: "a b" } as never)).toBe("instance_name must be [A-Za-z0-9._-]");
+    expect(validateWizardInput({ ...WEB, instance_name: "a b" } as never)).toBe("instance_name must be [A-Za-z0-9._-], and not only dots");
     expect(validateWizardInput({ ...WEB, token_env: "X" } as never)).toBe("token_env does not apply to a web-only setup");
   });
   it("only while the fleet has no connection; the draft adds the agent bound to none and leaves everything else", () => {

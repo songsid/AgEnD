@@ -226,6 +226,17 @@ connection, so AgEnD is used from its web dashboard (sign in with
 (Settings → Agents → Sign-ins). Discord or Telegram can be added later from
 Settings. The host confirmation (`agend settings confirm <id>`) is the same.
 
+**Working directory** is optional (#2726). If you leave it empty, the agent gets its own folder,
+`~/.agend/workspaces/<agent name>` (under `AGEND_HOME` when that is set). This is the folder `create_instance`
+makes for an agent created without a directory. The page shows the path under the field. The folder is created
+private (mode 700) with its own git repository once you confirm, and fleet.yaml records the full path. A directory
+you enter must be an absolute path. Connecting an agent you already have never changes its directory.
+
+The setup page and the code page come in English and 繁體中文 (#2726). They use your browser's language unless
+you pick the other one with the button at the top. The choice is kept in this browser as the dashboard's own
+language setting, so the dashboard opened afterwards on the same address keeps it. The host's error messages are
+shown in the chosen language too.
+
 ### Setting up from a phone
 
 `agend setup --tunnel` asks you to confirm first, every time — there is no flag

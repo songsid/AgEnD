@@ -180,6 +180,10 @@ agend setup --tunnel            # ……並公開出去，讓手機也能開
 
 **Web only (no bot)**（#2233）是 Telegram、Discord 之外的第三個選項：不用 bot token、不用管理員 ID、也沒有要驗證的東西。它只寫入第一個 agent、不建立聊天連線，所以 AgEnD 從網頁儀表板使用（在機器上用 `agend web --code` 取得登入碼），後端 CLI 也在那裡登入（設定 → Agent → 登入）。之後可以在設定加上 Discord 或 Telegram。主機確認（`agend settings confirm <id>`）一樣要做。
 
+**工作目錄**可以不填（#2726）。留空的話，agent 會有自己的資料夾 `~/.agend/workspaces/<agent 名稱>`（有設 `AGEND_HOME` 時在它底下）。這就是 `create_instance` 在建立沒有指定目錄的 agent 時用的資料夾，頁面會在欄位下方顯示這個路徑。你確認之後，資料夾會以私有權限（mode 700）建立，並有自己的 git repository；fleet.yaml 會寫入完整路徑。要自己填的話，必須是絕對路徑。連接既有的 agent 時，不會更動它的目錄。
+
+設定頁和輸入代碼的頁面都有英文和繁體中文（#2726）。預設跟隨瀏覽器的語言，也可以用頁面上方的按鈕切換。選擇會以儀表板自己的語言設定存在這個瀏覽器裡，所以之後在同一個網址打開儀表板也會沿用。主機回覆的錯誤訊息也會以選擇的語言顯示。
+
 `--tunnel` 每次都要你親口確認，沒有旗標或設定可以預先答應；沒有終端的執行直接拒絕，不當作你同意了。手機設定走 Cloudflare 通道，你打進去的 bot token 會經過 Cloudflare 的邊緣——不能接受就回機器上設。
 
 ### 儀表板登入與 session

@@ -93,7 +93,7 @@ jobs:
         uses: ./.github/actions/published-agend-tarball
         with:
           version: 2.3.1
-      - name: Office on/off validates on both rollback targets
+      - name: Office on/off and the setup page's default directory validate on both rollback targets
         if: steps.changes.outputs.src == 'true'
         env:
           BASELINE_TGZ: ${{ steps.baseline231-tarball.outputs.tarball }}
@@ -105,6 +105,7 @@ jobs:
           tar -xzf "$BASELINE_TGZ" -C "$VALIDATOR_PREFIX"
           ln -s "$GITHUB_WORKSPACE/node_modules" "$VALIDATOR_PREFIX/package/node_modules"
           node scripts/check-office-config-downgrade.mjs "$VALIDATOR_PREFIX/package" "$BASELINE226"
+          node scripts/check-setup-workdir-downgrade.mjs "$VALIDATOR_PREFIX/package" "$BASELINE226"
       - name: A failed probe fails the workflow step
         if: steps.changes.outputs.src == 'true'
         shell: bash

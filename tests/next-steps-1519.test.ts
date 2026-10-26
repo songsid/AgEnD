@@ -114,7 +114,7 @@ describe("agend setup", () => {
     const form = SRC("setup-form.ts");
     expect(form).toContain('link.href = "/"; link.textContent = location.origin + "/";');
     // The page may be open on a phone through a tunnel: "this machine" would be the phone (#1550 review).
-    expect(form).toContain("sign in with agend web --code on the machine running AgEnD, or send /web to your bot");
+    expect(SRC("setup-i18n.ts")).toContain("sign in with agend web --code on the machine running AgEnD, or send /web to your bot");   // #2726: the page's words
   });
 });
 

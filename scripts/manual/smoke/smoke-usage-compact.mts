@@ -170,19 +170,27 @@ for (const c of CASES) {
 
   // #2478 (Prism r1): the last line keyboard-focused — its straight bar stays clear of the group's rounded, clipping
   // corner (no taper), and nothing full-width is drawn along its bottom for the corner to round.
-  await p.page.evaluate(`(() => { const gs = document.querySelectorAll(${JSON.stringify(`${SCOPE[c.device]} .u-cgroup`)}); const rows = gs.length ? gs[gs.length - 1].querySelectorAll(".u-crow") : [];
-    document.querySelectorAll("[data-smoke-last]").forEach((e) => e.removeAttribute("data-smoke-last")); if (rows.length) rows[rows.length - 1].setAttribute("data-smoke-last", "1"); })()`);
+  await p.page.evaluate((selector: string) => {
+    const gs = document.querySelectorAll(selector), rows = gs.length ? gs[gs.length - 1].querySelectorAll(".u-crow") : [];
+    document.querySelectorAll("[data-smoke-last]").forEach(e => e.removeAttribute("data-smoke-last"));
+    if (rows.length) rows[rows.length - 1].setAttribute("data-smoke-last", "1");
+  }, `${SCOPE[c.device]} .u-cgroup`);
   const lastSel = `${SCOPE[c.device]} .u-crow[data-smoke-last]`;
   await p.page.locator(lastSel).first().focus();
   await p.page.keyboard.press("Shift+Tab"); await p.page.keyboard.press("Tab");     // keyboard focus: :focus-visible
   await p.page.waitForTimeout(200);
-  const lastFocus = await p.page.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(lastSel)}); if (!row) return null;
-    const g = row.closest(".u-cgroup"), rr = row.getBoundingClientRect(), gr = g.getBoundingClientRect(), b = getComputedStyle(row, "::before");
+  const lastFocus = await p.page.evaluate((selector: string) => {
+    const row = document.querySelector(selector); if (!row) return null;
+    const g = row.closest(".u-cgroup")!, rr = row.getBoundingClientRect(), gr = g.getBoundingClientRect(), b = getComputedStyle(row, "::before");
     const rad = parseFloat(getComputedStyle(g).borderBottomLeftRadius) || 0, left = rr.left + parseFloat(b.left), bottom = rr.bottom - parseFloat(b.bottom), top = rr.top + parseFloat(b.top);
-    // Inside the rounded clip: a point within rad of the corner must lie in the corner's circle.
-    const inClip = (x, y) => { const dx = Math.max(0, gr.left + rad - x), dy = Math.max(0, y - (gr.bottom - rad)); return dx * dx + dy * dy <= rad * rad + 0.5; };
+    // Keep callbacks anonymous: tsx's named-function helper is unavailable inside the page.
+    const corners = [[left, bottom], [left + 3, bottom], [left, top]].map(([x, y]) => {
+      const dx = Math.max(0, gr.left + rad - x), dy = Math.max(0, y - (gr.bottom - rad));
+      return dx * dx + dy * dy <= rad * rad + 0.5;
+    });
     return { focused: document.activeElement === row && row.matches(":focus-visible"), bar: b.content !== "none" && b.width === "3px", radius: rad,
-      corners: [inClip(left, bottom), inClip(left + 3, bottom), inClip(left, top)], shadow: getComputedStyle(row).boxShadow, lastInGroup: Math.abs(rr.bottom - gr.bottom) < 2 }; })()`) as any;
+      corners, shadow: getComputedStyle(row).boxShadow, lastInGroup: Math.abs(rr.bottom - gr.bottom) < 2 };
+  }, lastSel) as any;
   ck.lastFocusBarClear = !!lastFocus && lastFocus.focused && lastFocus.bar && lastFocus.lastInGroup && lastFocus.corners.every(Boolean) && lastFocus.shadow === "none";
   if (!ck.lastFocusBarClear) console.error("lastFocus", JSON.stringify(lastFocus));
   await p.page.locator(lastSel).first().screenshot({ path: shotPath(SMOKE, name, "2c-last-focus") }).catch(() => {});
