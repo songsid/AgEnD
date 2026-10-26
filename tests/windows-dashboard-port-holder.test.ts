@@ -19,7 +19,7 @@ beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string; portproxy?: Array<[string, number, string, number]> }) {
+function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string; portproxy?: Array<[string, number, string, number]>; race?: string }) {
   const dir = mkdtempSync(join(tmpdir(), "agend-ports-")); dirs.push(dir);
   const home = join(dir, "root"); mkdirSync(join(home, ".agend"), { recursive: true });
   if (o.fleet !== undefined) writeFileSync(join(home, ".agend", "fleet.yaml"), o.fleet);
@@ -33,7 +33,7 @@ $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}',
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -match '^(Get-PortProxyRule|Get-WindowsPortListener|Get-ExcludedPortRanges|Test-PortExcluded|Test-WslPortFree|Get-AgendPortConfig|Select-AgendPorts|Get-ProgressValue|Write-(Err|Warn|Info|Ok)|Write-InstallLog|Protect-LogText)$' }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
 foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$AGEND_PORT_(FIRST|TRIES)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
 $UBUNTU_DISTRO = 'AgEnD-Ubuntu-24.04'; $ProgressFile = '${progress}'
-$script:listeners = @{ ${listeners} }; $script:wsl = @()
+$script:listeners = @{ ${listeners} }; $script:wsl = @(); $script:race = ${o.race === undefined ? "$null" : `'${o.race.replace(/'/g, "''")}'`}
 function Get-NetTCPConnection { param($State, $LocalPort, $ErrorAction) if (-not $script:listeners.ContainsKey([int]$LocalPort)) { throw 'none' }; [PSCustomObject]@{ OwningProcess = [int]$LocalPort } }
 function Get-Process { param($Id, $ErrorAction) [PSCustomObject]@{ ProcessName = $script:listeners[[int]$Id] } }
 $script:netshCalls = @()
@@ -42,6 +42,8 @@ function Invoke-BoundedWsl {
   param([string[]]$Arguments)
   $s = $Arguments[-1]; $script:wsl += $s
   if ($Arguments[4] -ne '--exec') { throw ('not --exec: ' + ($Arguments -join ' ')) }
+  # A config that appears (or changes) after the installer looked at it, before it writes: written by the last port probe.
+  if ($script:race -and $s -match '/dev/tcp/') { [IO.File]::WriteAllText('${home}/.agend/fleet.yaml', $script:race); $script:race = $null }
   if ($s -match '/dev/tcp/127\\.0\\.0\\.1/(\\d+)') { if (@(${(o.linuxBusy ?? []).join(",")}) -contains [int]$Matches[1]) { return @{ Code = 0; Text = 'PORT_BUSY' } } else { return @{ Code = 0; Text = 'PORT_FREE' } } }
   # Only the scratch Linux: never this host's own AGEND_HOME.
   $out = (& env -i "HOME=${home}" "PATH=/usr/bin:/bin" bash -c $s 2>&1) -join "\`n"; return @{ Code = $LASTEXITCODE; Text = $out }
@@ -109,6 +111,22 @@ describe("stage 5 picks a port pair free on Windows and in Linux, and gives it t
     if (!hasPwsh) return;
     const r = select({ windows: { 19280: "svchost" }, portproxy: [["0.0.0.0", 8080, "172.20.64.3", 8080]] });
     expect(r.out).toContain("PORT=19282"); expect(r.out).toContain("被「svchost」佔用");
+  });
+
+  it("a configured fleet.yaml that appears after the check, before the write, is never overwritten (#2723 review): its port is used", () => {
+    if (!hasPwsh) return;
+    const configured = "health_port: 19400\ndefaults: {}\ninstances:\n  general: {}\n";
+    const r = select({ race: configured });
+    expect(r.fleet).toBe(configured);
+    expect(r.out).toContain("PORT=19400");
+  });
+
+  it("an earlier seed edited after the check: never overwritten — it is a configured fleet now, so its own port stands", () => {
+    if (!hasPwsh) return;
+    const edited = "health_port: 19280\nweb: { preview: false }\n";
+    const r = select({ fleet: "health_port: 19280\n", windows: { 19280: "wslrelay" }, race: edited });
+    expect(r.fleet).toBe(edited);
+    expect(r.out).toContain("PORT=19280");
   });
 
   it("nothing free in the whole range: stops (no port), with how to find who holds it", () => {

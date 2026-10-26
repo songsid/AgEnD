@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer, type RequestListener, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -30,7 +30,7 @@ Write-Output ('REACHABLE=' + (Wait-SetupPageReachable '${url}' ${seconds}))`);
     p.on("close", () => resolve({ out, ms: Date.now() - started }));
   });
 }
-const listen = (handler: Parameters<typeof createServer>[0]) => new Promise<number>(resolve => {
+const listen = (handler: RequestListener) => new Promise<number>(resolve => {
   const s = createServer(handler); servers.push(s); s.listen(0, "127.0.0.1", () => resolve((s.address() as { port: number }).port));
 });
 
