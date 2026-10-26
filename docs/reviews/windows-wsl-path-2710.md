@@ -39,7 +39,7 @@ The earlier pwsh shims stubbed `New-WslScriptFile` itself or returned canned nat
 | `install.ps1` | Downloads/launches the Windows script; no Windows path sent to a Linux command | Unchanged |
 | Shared desktop shortcuts | Linux shell snippets, no raw Windows-path argument | Same commands; explicit UTF-8 native diagnostics |
 
-Failed conversion, invalid returned paths, root probes, default-version changes and config reads retain exit/output through a bounded, redacted diagnostic formatter. The config-merge exception includes the final streamed step output; the complete stream still goes to the existing install log. The original setup observer runs exactly once per line. Native probes explicitly request `WSL_UTF8=1` so WSL's own error messages are readable too. The shared shortcut template stays identical, including its existing command-size guard.
+Failed conversion, invalid returned paths, root probes, default-version changes and config reads retain exit/output through a bounded, redacted diagnostic formatter. The config-merge exception includes the final streamed step output (redacted before retaining/truncating the tail); the complete stream still goes to the existing install log. The original setup observer runs exactly once per line. Native probes explicitly request `WSL_UTF8=1` so WSL's own error messages are readable too. The shared shortcut template stays identical, including its existing command-size guard.
 
 ## Compatibility and proof
 
@@ -47,7 +47,7 @@ The change runs before npm installation and adds no AgEnD command, flag, API, co
 
 In one disposable networkless PowerShell 7.4.2 container (Node 22.22.2, 1 CPU, 1 GiB, private HOME; all WSL/backends stubbed):
 
-- New path/diagnostic tests: 13 pass, including the original failing shell-mode diagnostic, literal spaces/Unicode/metacharacters, fresh/rerun paths, simulated first-launch failure output, exit 1/37/124, malformed output and redaction.
+- New path/diagnostic tests: 14 pass, including the original failing shell-mode diagnostic, literal spaces/Unicode/metacharacters, fresh/rerun paths, simulated first-launch failure output, exit 1/37/124, malformed output and redaction.
 - WSL-root, shortcut, browser-sign-in and readiness focused cases pass. The shortcut's unchanged 30,000-character ceiling is retained.
 - The exec-to-shell reverse mutation fails the path-preservation/rerun cases; restored afterwards.
 - Both actual published packages **2.3.1** and **2.3.2-beta.11** pass the current generated readiness program with their actual inert auth handlers (`/signin` 200, program exit 0). `/ui` remains protected. The original pre-#2707 program still fails as expected (401, exit 1).

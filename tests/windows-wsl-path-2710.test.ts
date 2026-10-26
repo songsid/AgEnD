@@ -89,6 +89,18 @@ Get-WslFailureMessage 'WSL config merge failed' @{Code=19;Text='config changed; 
     expect(out).toContain('exit 19'); expect(out).toContain('config changed; retry');
     const log = readFileSync(join(dir,'install.log'),'utf8'); expect(log).not.toContain('private-value'); expect(log).toContain('token=[hidden]');
   }));
+  it('redacts before retaining a bounded tail, while the original observer still receives raw input', () => scratch((run, dir) => {
+    const out = run(`$script:observed=$null;$raw='token=private-value '+('x'*8177)
+function New-WslScriptFile {return @('${dir}/owned-step.sh', '/scratch/step.sh')}
+function Invoke-Watched {param($OnLine);& $OnLine $raw;return 42}
+$code=Invoke-WslStep -Label 'stub' -Script 'never' -OnLine {param($line);$script:observed=$line}
+Write-Output ('RAW_UNCHANGED='+($script:observed -ceq $raw))
+Write-Output ('BOUNDED='+($script:LastWslStepResult.Text.Length -le 8192))
+Write-Output (Get-WslFailureMessage 'WSL config merge failed' $script:LastWslStepResult)`);
+    expect(out).toContain('RAW_UNCHANGED=True'); expect(out).toContain('BOUNDED=True'); expect(out).toContain('exit 42');
+    expect(out).not.toContain('private-value');
+    expect(readFileSync(join(dir, 'install.log'), 'utf8')).not.toContain('private-value');
+  }));
   it('the real setup observer still sees completion through the diagnostic capture callback', () => scratch((run, dir) => {
     const out = run(`function New-WslScriptFile {return @('${dir}/owned-step.sh', '/scratch/step.sh')}
 function Invoke-Watched {param($OnLine);& $OnLine 'Setup complete';return 0}

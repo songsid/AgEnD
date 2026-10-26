@@ -1871,7 +1871,7 @@ function Invoke-WslStep {
         if ($OnLine) { $NoProgressSeconds = 0 }
         $capture = @{ Text = ''; OnLine = $OnLine }
         $captureLine = { param($line)
-            $capture.Text = ($capture.Text + [string]$line + "`n")
+            $capture.Text = ($capture.Text + (Protect-LogText ([string]$line)) + "`n")
             if ($capture.Text.Length -gt 8192) { $capture.Text = $capture.Text.Substring($capture.Text.Length - 8192) }
             if ($capture.OnLine) { & $capture.OnLine $line }
         }.GetNewClosure()
