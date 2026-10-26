@@ -26,7 +26,7 @@ $ProgressFile=Join-Path $env:USERPROFILE '.agend-install-progress'
 ${body}`);
     return execFileSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', test], {
       encoding:'utf8', timeout:20_000,
-      env:{...process.env, HOME:home, USERPROFILE:home, TMPDIR:home, AGEND_VERSION:''},
+      env:{...process.env, HOME:home, USERPROFILE:home, TMPDIR:home, AGEND_VERSION:'', AGEND_WSL_DRIVE:''},
     });
   } finally { rmSync(home,{recursive:true,force:true}); }
 }
@@ -99,10 +99,10 @@ foreach($v in @('beta','latest','','2.3.2-beta.4')){$AgendInstallVersion=$v;. ([
     expect(out.match(/VERIFIED=2.3.1/g)).toHaveLength(2);
     expect(out).toContain('install.sh | AGEND_VERSION=beta bash');
   });
-  it.each(['terminal','conhost'])('explicit argument survives %s elevation with an empty child environment', mode => {
+  it.each(['terminal','conhost'])('explicit version and drive arguments survive %s elevation with an empty child environment', mode => {
     const out = run(`
 $tmp=Join-Path $env:TMPDIR 'stub-installer.ps1'
-Set-Content $tmp 'param([switch]$Force,[string]$InstallVersion); if($env:AGEND_VERSION){throw "Environment leaked"}; [IO.File]::WriteAllText((Join-Path $env:TMPDIR "version.txt"),$InstallVersion)'
+Set-Content $tmp 'param([switch]$Force,[string]$InstallVersion,[string]$WslDrive); if($env:AGEND_VERSION){throw "Environment leaked"}; [IO.File]::WriteAllText((Join-Path $env:TMPDIR "version.txt"),($InstallVersion+"|"+$WslDrive))'
 function Get-Command {param($Name,$CommandType);return @{Source='stub-wt'}}
 function Start-Process {param($FilePath,$ArgumentList,$Verb,[switch]$Wait,[switch]$PassThru)
  if($FilePath -eq 'stub-wt'){
@@ -113,9 +113,9 @@ function Start-Process {param($FilePath,$ArgumentList,$Verb,[switch]$Wait,[switc
  & pwsh @ArgumentList
  return @{ExitCode=0}
 }
-$r=Start-ElevatedInstaller 'pwsh' @('-NoProfile','-File',$tmp,'-Force','-InstallVersion','beta') $tmp '${mode === 'terminal' ? 'auto' : 'conhost'}' 2 1
+$r=Start-ElevatedInstaller 'pwsh' @('-NoProfile','-File',$tmp,'-Force','-InstallVersion','beta','-WslDrive','D:\\') $tmp '${mode === 'terminal' ? 'auto' : 'conhost'}' 2 1
 Write-Output ('RESULT='+$r.Outcome)
 Write-Output ('VERSION='+[IO.File]::ReadAllText((Join-Path $env:TMPDIR 'version.txt')))` , bootstrap);
-    expect(out).toContain('RESULT=done'); expect(out).toContain('VERSION=beta');
+    expect(out).toContain('RESULT=done'); expect(out).toContain('VERSION=beta|D:\\');
   });
 });

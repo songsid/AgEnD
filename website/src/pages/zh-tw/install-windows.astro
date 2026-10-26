@@ -41,6 +41,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       <p class="text-sm text-text-secondary mt-3">全新安裝要試用 beta，先在同一個 PowerShell 視窗執行以下指令，再貼上面的安裝指令：</p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4"><code>{betaLine}</code></pre>
       <p class="text-sm text-text-secondary mt-2"><code>AGEND_VERSION</code> 只接受 <code>beta</code>、<code>latest</code> 或完整版本號（例如 <code>2.3.2-beta.5</code>）。未設定時安裝 latest；系統管理員重新啟動與重新開機接續都會保留選擇。這不會切換已安裝的 AgEnD 版本；既有安裝請用 <code>agend update --beta</code>。不想讓之後的新安裝沿用 beta，可執行 <code>Remove-Item Env:AGEND_VERSION</code>。</p>
+      <p class="text-sm text-text-secondary mt-2">新安裝的 Linux 若要略過磁碟選單，可在一行指令前設定 <code>$env:AGEND_WSL_DRIVE = 'D:'</code>。只接受本機磁碟代號，而且必須有至少 5 GB 可用空間；取得系統管理員權限與重新開機接續都會保留選擇。重試時優先沿用已儲存的預定位置；既有 Linux 只會沿用，不會因為這個設定而搬移。之後不想沿用時可執行 <code>Remove-Item Env:AGEND_WSL_DRIVE</code>。</p>
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
         <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行：裝有 Windows Terminal 時在它裡面開（中文顯示正常），沒有的話是 PowerShell 視窗；你貼上指令的那個視窗會等它，最後告訴你結果。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> 只對這一個指令有效，不會改動你的執行原則，也不需要解除封鎖檔案。</li>
@@ -87,7 +88,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
     </p>
     <div class="mb-14 rounded-xl border border-border bg-surface p-6">
       <ol class="space-y-3 text-sm text-text-secondary">
-        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 不用選：系統碟有 20 GB 以上可用空間就裝在系統碟（否則裝在可用空間最大的本機磁碟），安裝 Ubuntu-24.04，並顯示裝在哪裡。如果電腦裡已經有 Ubuntu，會讓你選：另外安裝一個 AgEnD 專用的 Ubuntu，名稱是 <code class="font-mono text-accent">AgEnD</code>（建議，你原本的完全不動）；或用原本的那個（會修改它的設定，並說明改什麼）；直接按 Enter 就結束、不動任何東西。之後再執行時會沿用這個 AgEnD 專用的 Linux，不會再裝第三個。已經是 2 以上的 WSL 不會再更新；較舊的會先透過 Microsoft Store 更新，GitHub 只是備案（很多人共用同一個對外網路時，GitHub 可能暫時拒絕下載；安裝程式會說明狀況，現有的 WSL 能用時就繼續）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
+        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 安裝 Ubuntu-24.04。如果有兩個以上可用空間至少 5 GB 的本機磁碟，會列出可用空間並讓你選擇安裝位置，標示建議的預設值（系統碟有至少 20 GB 時用系統碟，否則選空間最大的磁碟）；直接按 Enter 就採用預設。只有一個符合條件的磁碟時不會詢問。安裝前會記住位置，重試與重新開機接續都沿用；如果你已移除上次安裝的 Linux，會清掉舊位置並讓你重新選擇。如果電腦裡已經有 Ubuntu，會讓你選：另外安裝一個 AgEnD 專用的 Ubuntu，名稱是 <code class="font-mono text-accent">AgEnD</code>（建議，你原本的完全不動）；或用原本的那個（會修改它的設定，並說明改什麼）；直接按 Enter 就結束、不動任何東西。之後再執行時會沿用這個 AgEnD 專用的 Linux，不會再裝第三個。已經是 2 以上的 WSL 不會再更新；較舊的會先透過 Microsoft Store 更新，GitHub 只是備案（很多人共用同一個對外網路時，GitHub 可能暫時拒絕下載；安裝程式會說明狀況，現有的 WSL 能用時就繼續）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
         <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI）：
           <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
             <li>Kiro CLI（免費，需 AWS Builder ID / GitHub / Google）</li>

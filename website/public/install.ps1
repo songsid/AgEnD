@@ -54,7 +54,13 @@ function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec
         }
         return $value
     }
+function Resolve-AgendWslDrive([string]$value) {
+    if (-not $value) { return '' }
+    if ($value -notmatch '\A([A-Za-z])(?::[\\/]?)?\z') { throw 'AGEND_WSL_DRIVE must be a local drive letter, for example D:.' }
+    return ($Matches[1].ToUpperInvariant() + ':\')
+}
     $installVersion = Resolve-AgendInstallVersion ([string]$env:AGEND_VERSION)
+    $wslDrive = Resolve-AgendWslDrive ([string]$env:AGEND_WSL_DRIVE)
 
     # The support files (#2650 item 9). The installer keeps a redacted log of what it showed in
     # %LOCALAPPDATA%\AgEnD\install-logs and a receipt, last.json, with this run's id, its stage, its outcome and the kind of
@@ -117,6 +123,8 @@ function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec
             $version = Resolve-AgendInstallVersion $installerArgs[$versionIndex + 1]
             $versionArg = " -InstallVersion '$version'"
         }
+        $driveIndex = [array]::IndexOf($installerArgs, '-WslDrive')
+        if ($driveIndex -ge 0) { $drive = Resolve-AgendWslDrive $installerArgs[$driveIndex + 1]; $versionArg += " -WslDrive '$drive'" }
         $runIndex = [array]::IndexOf($installerArgs, '-InstallRunId')
         if ($runIndex -ge 0 -and $installerArgs[$runIndex + 1] -match '^[0-9a-f]{32}$') { $versionArg += " -InstallRunId '$($installerArgs[$runIndex + 1])'" }
         $sidIndex = [array]::IndexOf($installerArgs, '-InitiatingSid')
@@ -241,6 +249,7 @@ function Invoke-InstallDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec
 
         $installerArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $tmp, '-InstallRunId', $runId)
         if ($installVersion) { $installerArgs += @('-InstallVersion', $installVersion) }
+        if ($wslDrive) { $installerArgs += @('-WslDrive', $wslDrive) }
         if ($env:AGEND_INSTALL_FORCE -match '^(1|true|yes)$') { $installerArgs += '-Force' }
 
         $admin = $false

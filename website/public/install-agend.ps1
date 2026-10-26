@@ -7,6 +7,7 @@
 param(
     [switch]$Force,  # 強制重新執行所有階段
     [string]$InstallVersion = $env:AGEND_VERSION,
+    [string]$WslDrive = $env:AGEND_WSL_DRIVE,
     [string]$InstallRunId = '',  # 一行安裝指令給的這一次的代號：它讀 last.json 時，只認這一次寫的（#2650）
     [string]$InitiatingSid = ''  # 一行安裝指令（還沒提升權限時）的 Windows 帳號 SID（#2650 第 5 項）
 )
@@ -157,7 +158,9 @@ function Mark-Stage($stage) { Add-Content -Path $ProgressFile -Value "STAGE_${st
 # 進度檔裡某個鍵最後一次存的值（沒有就 $null）。用最後一筆：同一個鍵可能存過不只一次（#2238 審查）。
 function Get-ProgressValue([string]$key, [string]$pattern = '\S+') {
     if (-not (Test-Path $ProgressFile)) { return $null }
-    $all = [regex]::Matches((Get-Content $ProgressFile -Raw), "(?m)^$key=($pattern)\s*$")
+    $content = Get-Content $ProgressFile -Raw
+    if ($null -eq $content) { return $null }
+    $all = [regex]::Matches($content, "(?m)^$key=($pattern)\s*$")
     if ($all.Count -eq 0) { return $null }
     return $all[$all.Count - 1].Groups[1].Value
 }
@@ -433,11 +436,76 @@ function Select-InstallDrive($disks, [string]$systemDrive) {
     if ($sys -and $sys.Free -ge 20GB) { return $sys }
     return (@($disks | Where-Object { $_.Free -ge 5GB } | Sort-Object -Property Free -Descending) | Select-Object -First 1)
 }
+# Only a local drive letter crosses the elevated launch boundary; never interpolate an arbitrary path.
+function Resolve-AgendWslDrive([string]$value) {
+    if (-not $value) { return '' }
+    if ($value -notmatch '\A([A-Za-z])(?::[\\/]?)?\z') { throw 'AGEND_WSL_DRIVE must be a local drive letter, for example D:.' }
+    return ($Matches[1].ToUpperInvariant() + ':\')
+}
+function Get-SavedWslDrive([string]$requested, [bool]$force) {
+    if ($requested) { return (Resolve-AgendWslDrive $requested) }
+    if ($force) { return '' }
+    return (Resolve-AgendWslDrive ([string](Get-ProgressValue 'AGEND_WSL_DRIVE' '[^\r\n]+')))
+}
+function Save-WslDrive([string]$drive) {
+    if ($drive) { Add-Content -LiteralPath $ProgressFile -Value ('AGEND_WSL_DRIVE=' + (Resolve-AgendWslDrive $drive)) }
+}
+# A recorded installed distro that has been removed is different from a not-yet-created planned install.
+function Clear-MissingWslTarget($names) {
+    if ($null -eq $names) { return $false }
+    $prior = Get-ProgressValue 'DISTRO' '[^\r\n]+'
+    if (-not $prior -or $names -contains $prior) { return $false }
+    $keep = @([IO.File]::ReadAllLines($ProgressFile) | Where-Object { $_ -notmatch '^(DISTRO=|WSL_INSTALL_(PATH|DISTRO)=|AGEND_WSL_DRIVE=|STAGE_1_DONE$)' })
+    [IO.File]::WriteAllLines($ProgressFile, $keep)
+    Write-Warn "上次選定的 Linux「$prior」已不存在；這次會重新選擇安裝位置，不會沿用舊位置。"
+    return $true
+}
+function Read-InstallDrive($disks, [string]$systemDrive, [string]$requested = '') {
+    $eligible = @($disks | Where-Object { $_.Free -ge 5GB -and $_.Root -match '\A[A-Za-z]:\\\z' } | Sort-Object Root)
+    if (-not $eligible.Count) { throw '找不到可用空間 5 GB 以上的本機磁碟。請清出空間後再執行安裝。' }
+    $requested = Resolve-AgendWslDrive $requested
+    if ($requested) {
+        $found = @($eligible | Where-Object { $_.Root -ieq $requested })
+        if (-not $found.Count) { throw "AGEND_WSL_DRIVE 指定的 $requested 不是可用空間至少 5 GB 的本機磁碟。請修正後重試。" }
+        return $found[0]
+    }
+    if ($eligible.Count -eq 1) { return $eligible[0] }
+    $recommended = Select-InstallDrive $eligible $systemDrive
+    $default = 1
+    Write-Info '請選擇 WSL 安裝位置（建議選擇 SSD 磁碟）：'
+    for ($i = 0; $i -lt $eligible.Count; $i++) {
+        $mark = ''; if ($eligible[$i].Root -ieq $recommended.Root) { $default = $i + 1; $mark = '（預設）' }
+        Write-Info ("  [{0}] {1} — 可用 {2} GB {3}" -f ($i + 1), $eligible[$i].Root, [math]::Round($eligible[$i].Free / 1GB, 1), $mark)
+    }
+    while ($true) {
+        $answer = "$(Read-Host "  請輸入編號；直接按 Enter 使用 [$default]")".Trim()
+        if (-not $answer) { return $eligible[$default - 1] }
+        $index = 0
+        if ([int]::TryParse($answer, [ref]$index) -and $index -ge 1 -and $index -le $eligible.Count) { return $eligible[$index - 1] }
+        Write-Warn "請輸入 1 到 $($eligible.Count) 的編號，或直接按 Enter 使用預設。"
+    }
+}
+function Get-WslInstallLocation($disks, [string]$systemDrive, [string]$distro, [string]$leaf, [string]$requestedDrive = '') {
+    $prior = Get-ProgressValue 'WSL_INSTALL_PATH' '[^\r\n]+'
+    if ($prior) {
+        $owner = Get-ProgressValue 'WSL_INSTALL_DISTRO' '[^\r\n]+'
+        $drive = if ($prior -match '\A([A-Za-z]:\\)WSL\\[A-Za-z0-9.-]+\z') { $Matches[1] } else { '' }
+        if (-not $drive -or $owner -cne $distro -or $prior -ine ($drive + 'WSL\' + $leaf)) { throw '已儲存的 WSL 安裝位置不符合這次的 Linux；沒有安裝任何東西，請檢查安裝進度。' }
+        $disk = Read-InstallDrive $disks $systemDrive $drive
+        return @{ Path = $prior; Disk = $disk }
+    }
+    $disk = Read-InstallDrive $disks $systemDrive $requestedDrive
+    $location = $disk.Root + 'WSL\' + $leaf
+    # Save before any download/install. Reboots and retries retain the full location, not a new automatic pick.
+    Add-Content -LiteralPath $ProgressFile -Value @(('WSL_INSTALL_DISTRO=' + $distro), ('WSL_INSTALL_PATH=' + $location))
+    return @{ Path = $location; Disk = $disk }
+}
+
 function Get-LocalDisks {
     try {
         return @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop | ForEach-Object { [PSCustomObject]@{ Root = ($_.DeviceID + '\'); Free = [double]$_.FreeSpace } })
     } catch {
-        return @(Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free } | ForEach-Object { [PSCustomObject]@{ Root = $_.Root; Free = [double]$_.Free } })
+        return @(Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -and -not $_.DisplayRoot } | ForEach-Object { [PSCustomObject]@{ Root = $_.Root; Free = [double]$_.Free } })
     }
 }
 
@@ -488,10 +556,9 @@ $DISTRO_LIST_URL = 'https://raw.githubusercontent.com/microsoft/WSL/master/distr
 # 回傳名稱陣列（可能是空的），或 $null：讀不到（#2279 審查）。讀不到絕不能當成「沒有 Linux」——那會不問就安裝、
 # 甚至改到原本的 Ubuntu。wsl --list 失敗時（有的版本在一個都沒有時也回非 0）改讀 WSL 自己的登記（HKCU 的 Lxss），兩者都讀不到才是 $null。
 function Get-WslDistroNames {
-    $prev = $env:WSL_UTF8; $prevEnc = [Console]::OutputEncoding
+    $prev = $env:WSL_UTF8
     try {
         $env:WSL_UTF8 = '1'
-        try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
         $r = Invoke-BoundedWsl -Arguments @('--list', '--quiet')
         $out = @($r.Text -split '\r?\n' | ForEach-Object { ($_ -replace "`0", '').Trim() } | Where-Object { $_ })
         if ($r.Code -eq 0) { return ,$out }
@@ -499,7 +566,6 @@ function Get-WslDistroNames {
         # wsl.exe 不能執行：改讀登記
     } finally {
         if ($null -eq $prev) { Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue } else { $env:WSL_UTF8 = $prev }
-        try { [Console]::OutputEncoding = $prevEnc } catch { }
     }
     # 先存進變數再用 , 回傳：空陣列（確定一個都沒有）直接 return 會被攤開成沒有輸出，變成 $null（#2279 審查）。
     $registered = Get-WslRegisteredNames
@@ -2014,6 +2080,7 @@ function Get-MergedLinuxWslConfigScript([string]$Text, [string]$ExpectedBase64 =
 
 # Validate before any WSL, network, registry or installation action.
 $AgendInstallVersion = Get-SavedInstallVersion $InstallVersion $Force.IsPresent
+$AgendWslDrive = Get-SavedWslDrive $WslDrive $Force.IsPresent
 Start-InstallLog $InstallRunId
 # 沒有被接住的錯誤：記進安裝紀錄、說明停在哪裡，而不是只丟出一段 PowerShell 錯誤就結束（#2650 第 9 項）。
 trap {
@@ -2116,6 +2183,7 @@ if ((Test-Path $ProgressFile) -and -not $Force) {
 }
 
 Save-InstallVersion $AgendInstallVersion
+Save-WslDrive $AgendWslDrive
 
 $TOTAL = 5
 
@@ -2130,7 +2198,8 @@ if (Stage-Done 1) {
     if (Get-InstalledWslVersion) {
         $currentNames = Get-WslDistroNames
         if ($null -eq $currentNames) { throw 'Cannot verify the saved WSL stage; no Linux distributions were changed.' }
-        $wslStageVerified = $currentNames -contains $UBUNTU_DISTRO
+        if (Clear-MissingWslTarget $currentNames) { $UBUNTU_DISTRO = 'Ubuntu-24.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive; Save-WslDrive $AgendWslDrive }
+        $wslStageVerified = (Stage-Done 1) -and $currentNames -contains $UBUNTU_DISTRO
     }
     if (-not $wslStageVerified) { Clear-InstallStage 1 }
 }
@@ -2179,6 +2248,7 @@ if ($wslStageVerified) {
     # ── 1d: 這台電腦已經有哪些 Linux（只看清單，不啟動任何一個）──
     # 之前裝過 AgEnD 專用的就沿用；有 Ubuntu 就問（建議另外裝一個）；都沒有就照常安裝 $UBUNTU_DISTRO。
     $names = Get-WslDistroNames
+    if (Clear-MissingWslTarget $names) { $UBUNTU_DISTRO = 'Ubuntu-24.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive; Save-WslDrive $AgendWslDrive }
     $situation = Get-DistroSituation $names
     if ($situation.State -eq 'unknown') {
         Write-Err "讀不到這台電腦上的 Linux 清單。為了不動到你原本的 Linux，先停在這裡，沒有安裝或修改任何東西。"
@@ -2202,14 +2272,9 @@ if ($wslStageVerified) {
         $UBUNTU_DISTRO = $installedDistroName
     } else {
         if ($choice -eq 'separate') { $UBUNTU_DISTRO = Get-FreeAgendDistroName $names }
-        # 安裝位置見 Select-InstallDrive，不必再輸入數字。
-        $disk = Select-InstallDrive (Get-LocalDisks) ($env:SystemDrive + '\')
-        if (-not $disk) {
-            Write-Err "找不到可用空間 5 GB 以上的本機磁碟，無法安裝 Linux"
-            Write-Info "請先清出一些空間，再執行同一行安裝指令"
-            Read-Host "按 Enter 結束"; exit 1
-        }
-        $wslPath = if ($choice -eq 'separate') { "$($disk.Root)WSL\$UBUNTU_DISTRO" } else { "$($disk.Root)WSL\Ubuntu" }
+        $leaf = if ($choice -eq 'separate') { $UBUNTU_DISTRO } else { 'Ubuntu' }
+        $location = Get-WslInstallLocation (Get-LocalDisks) ($env:SystemDrive + '\') $UBUNTU_DISTRO $leaf $AgendWslDrive
+        $disk = $location.Disk; $wslPath = $location.Path
         Write-Ok "Linux 版本：$UBUNTU_DISTRO"
         Write-Ok ("安裝位置：{0}（可用 {1} GB）" -f $wslPath, [math]::Round($disk.Free / 1GB, 1))
         Write-Host ""
