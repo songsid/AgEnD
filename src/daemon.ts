@@ -898,6 +898,19 @@ const FIRST_DELIVERY_WINDOW_MS = 5_000;
 const NATIVE_QUEUE_PASTE_VERIFY_MS = 2_000;
 /** #1405: how long a steer's paste gets to show in a mode-switched composer before its one Enter (captures included). */
 const STEER_PASTE_VISIBLE_MS = 2_000;
+/**
+ * #2676: the longest one-line paste kiro's TUI composer still shows as typed text; longer, it collapses to a
+ * `N chars ▸` chip (2.34.0 tui.js: more than 10 lines or 500 characters collapse).
+ */
+const KIRO_COLLAPSE_CHARS = 500;
+
+/**
+ * #1405/#2676: whether a mode-switched composer in `mode` may take a busy hand-off: a steer only on "steer", an ordinary
+ * message on "steer" or "queue" (kiro takes either into its tray), and "idle" — the turn over — only where `allowIdle`.
+ */
+function composerModeAdmits(mode: SteerComposerMode | null, allowIdle: boolean, steerOnly: boolean): boolean {
+  return mode === "steer" || (!steerOnly && mode === "queue") || (allowIdle && mode === "idle");
+}
 
 /** `promise`'s value if it settles within `ms`, else undefined — the late answer is dropped, never awaited (#1405). */
 async function withinMs<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
@@ -2303,6 +2316,11 @@ export class Daemon extends EventEmitter {
     // turn on "idle"). Accepted, not read; labelled with what the composer showed.
     if (verdict.proof?.startsWith("steer-composer-")) {
       this.finishDurableDelivery(delivery, "delivered", `steer-accepted; composer emptied (${verdict.proof.slice("steer-composer-".length)})`, verdict);
+      return;
+    }
+    // #2676: an ordinary message typed into that busy composer, proven the same way: taken into the CLI's tray.
+    if (verdict.proof?.startsWith("handoff-composer-")) {
+      this.finishDurableDelivery(delivery, "delivered", `composer-handoff-accepted; composer emptied (${verdict.proof.slice("handoff-composer-".length)})`, verdict);
       return;
     }
     // A backend whose input row cannot be read: all that vouched for this delivery is that the pane printed something
@@ -7503,6 +7521,7 @@ export class Daemon extends EventEmitter {
     let windowId = this.getWindowId();
 
     const supportsQueuedInput = this.backend?.supportsQueuedInput?.() === true;
+    const composerQueue = !opts?.steer && this.composerTakesBusyInput() && this.composerCanShowPaste(formatted);
     let handingOffToNativeQueue = false;
 
     // If the CLI is busy, either hand the complete submission to its native input
@@ -7518,11 +7537,13 @@ export class Daemon extends EventEmitter {
       // press Enter at once. A dialog painted a moment ago is still "busy" to
       // the silence gate, so the probe is mandatory here; "dialog"/"unknown"
       // fall through to the wait.
-      const canHandOff = (supportsQueuedInput || opts?.steer)
+      // #2676: an ordinary message goes into a mode-switched composer (kiro TUI) mid-turn too, on a launch whose busy
+      // composer AgEnD drives, by the steer path's own gates and proof — when its box can show it is this paste.
+      const canHandOff = (supportsQueuedInput || opts?.steer || composerQueue)
         && readiness === "busy"
         && (await this.probeBlockingDialog()).state === "clear"
         && await this.hasPositiveDeliveryInput(true)
-        && (!opts?.steer || (this.launchTakesSteer() && await this.steerComposerAdmits(false)));
+        && ((!opts?.steer && !composerQueue) || (this.launchTakesSteer() && await this.steerComposerAdmits(false, opts?.steer === true)));
       if (canHandOff) {
         // Native queue (codex), or an explicit /steer: hand the complete
         // paste+Enter transaction to the busy CLI now. For steer this is the
@@ -7531,7 +7552,9 @@ export class Daemon extends EventEmitter {
         // busy input (see steerMessage).
         handingOffToNativeQueue = true;
         this.logger.debug(
-          opts?.steer ? "CLI busy — steering into the running turn" : "CLI busy — handing message to backend-native input queue",
+          opts?.steer ? "CLI busy — steering into the running turn"
+            : composerQueue ? "CLI busy — typing message into the busy composer"
+            : "CLI busy — handing message to backend-native input queue",
         );
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
@@ -7618,8 +7641,8 @@ export class Daemon extends EventEmitter {
         // #1405: a launch that no longer takes a steer is not the one the gate saw — redo from the top (bounded), where
         // the gate sends it down the idle path. The composer can also have changed mode since (the user's Ctrl+S), or
         // the turn ended.
-        if (handingOffToNativeQueue && opts?.steer && !this.launchTakesSteer()) return "spawn-started";
-        if (handingOffToNativeQueue && opts?.steer && !(await this.steerComposerAdmits(true))) return "dialog";
+        if (handingOffToNativeQueue && (opts?.steer || composerQueue) && !this.launchTakesSteer()) return "spawn-started";
+        if (handingOffToNativeQueue && (opts?.steer || composerQueue) && !(await this.steerComposerAdmits(true, opts?.steer === true))) return "dialog";
         // #829: a CLI that restores a cancelled prompt into its input box would
         // have this message pasted onto it and both submitted as one. Clear it
         // first, or do not write at all. From here every await is fenced: a
@@ -8428,14 +8451,36 @@ export class Daemon extends EventEmitter {
    * while a fresh capture reads its composer as "steer" — or "idle" once the turn has ended (`allowIdle`, the pre-write
    * re-check). "queue" (the user's choice), text in the box, or a screen it cannot read: not now — the caller waits for
    * the idle prompt as for any message. AgEnD never switches the mode. Backends without the reader are not asked.
+   * #2676: an ordinary message (`steerOnly` false) goes in on "queue" too — kiro takes it into the same tray either way,
+   * held for the turn's end instead of steered into it.
    */
-  private async steerComposerAdmits(allowIdle: boolean): Promise<boolean> {
+  private async steerComposerAdmits(allowIdle: boolean, steerOnly = true): Promise<boolean> {
     const read = this.backend?.readSteerComposer;
     if (!read) return true;
     if (!this.tmux) return false;
     let mode: SteerComposerMode | null;
     try { mode = read.call(this.backend, await this.tmux.capturePane()); } catch { return false; }
-    return mode === "steer" || (allowIdle && mode === "idle");
+    return composerModeAdmits(mode, allowIdle, steerOnly);
+  }
+
+  /**
+   * #2676: whether an ordinary message may be typed into this CLI's busy composer — a mode-switched one (kiro TUI) on a
+   * launch whose busy composer AgEnD drives (the same evidence as a steer: KIRO_STEER_VERIFIED). The legacy UI, an
+   * unlisted version and every backend without the reader answer false; claude and codex hand off by
+   * supportsQueuedInput instead.
+   */
+  private composerTakesBusyInput(): boolean {
+    return !!this.backend?.readSteerComposer && this.backend.supportsSteer?.() === true;
+  }
+
+  /**
+   * #2676: whether the box can show this payload as this delivery's paste before the Enter (steerPasteIsOurs): its
+   * first line, or a collapsed paste's line count. A one-line payload kiro would collapse (over 500 characters) shows only
+   * a character count, which kiro's own normalisation (tabs widened) makes no proof: it waits for the idle prompt.
+   */
+  private composerCanShowPaste(formatted: string): boolean {
+    const text = formatted.replace(/\r\n?/g, "\n");
+    return text.includes("\n") || text.length <= KIRO_COLLAPSE_CHARS;
   }
 
   /**
@@ -8467,9 +8512,15 @@ export class Daemon extends EventEmitter {
     const first = norm(formatted.split("\n").find(line => line.trim() !== "") ?? "");
     if (first === "") return false;
     const row = norm(shown);
+    // #2676: a long paste is collapsed to a chip naming its line count (kiro TUI: more than 10 lines or 500 characters);
+    // it is this paste when that count is exactly this payload's, split as kiro splits it.
+    const collapsed = this.backend?.readSteerComposerPasteLines?.(shown);
+    if (collapsed != null) return collapsed > 1 && collapsed === formatted.split(/\r\n|\r|\n/).length;
     // The marker line holds nothing but the marker: the row is exactly it.
     if (/^\[agend-(?:delivery|human)-id:[^\]\s]+\]$/.test(first)) return row === first;
-    return row === first || row.startsWith(`${first} `);
+    // #2676: a first line wider than the box is word-wrapped onto indented rows (live, 2.34.0): the row is its start, cut
+    // at a word boundary.
+    return row === first || row.startsWith(`${first} `) || first.startsWith(`${row} `);
   }
 
   /**
@@ -9195,14 +9246,15 @@ export class Daemon extends EventEmitter {
       }
       // #1405: on that same last capture a mode-switched composer (kiro TUI) must still read "steer" — or "idle", the
       // turn over. "queue", text in the box or an unreadable row: not written; handled as the unread box above.
-      if (handingOffToNativeQueue && steer && this.backend?.readSteerComposer
-        && pasteBaseline?.steerComposer !== "steer" && pasteBaseline?.steerComposer !== "idle") {
+      // #2676: an ordinary message typed into it (every other hand-off there) may also find "queue".
+      if (handingOffToNativeQueue && this.backend?.readSteerComposer
+        && !composerModeAdmits(pasteBaseline?.steerComposer ?? null, true, steer)) {
         if (!verdict.durableBeginCommitted) return "handoff-box-unread";
-        return this.failDelivery(verdict, status, "paste", "steer-composer-not-steering");
+        return this.failDelivery(verdict, status, "paste", steer ? "steer-composer-not-steering" : "composer-not-empty");
       }
       // …and the launch must still take a steer (see launchTakesSteer). Not written: before the durable begin the row
-      // is retried, as a steer the gate will then send down the idle path.
-      if (handingOffToNativeQueue && steer && !this.launchTakesSteer()) {
+      // is retried, as a steer the gate will then send down the idle path (#2676: so is a message typed into the box).
+      if (handingOffToNativeQueue && (steer || this.backend?.readSteerComposer) && !this.launchTakesSteer()) {
         verdict.fenced = !verdict.durableBeginCommitted;
         return false;
       }
@@ -9334,7 +9386,8 @@ export class Daemon extends EventEmitter {
       // #1405: a steer into a mode-switched composer (kiro TUI) is proven by the box alone — before the Enter it must
       // positively hold typed text, and after it be the empty placeholder again. The empty placeholder here means the
       // paste never reached the box; an unreadable box (a failed or late capture, a dialog) proves nothing: no Enter.
-      const steerComposerProof = handingOffToNativeQueue && steer && !!this.backend?.readSteerComposer && tmuxAtWrite !== null;
+      // #2676: an ordinary message typed into the busy box is proven the same way.
+      const steerComposerProof = handingOffToNativeQueue && !!this.backend?.readSteerComposer && tmuxAtWrite !== null;
       let humanComposerOwned = false;
       let steerEnterDeadline = Infinity;
       if (steerComposerProof) {
@@ -9430,8 +9483,8 @@ export class Daemon extends EventEmitter {
               if (probe?.state === "clear" && performance.now() <= deadline && steerCurrent() && this.getWindowId() === windowId) {
                 if (humanComposerOwned) signature.humanPositive?.(after === "steer" ? "composer-empty-steer"
                   : after === "queue" ? "composer-empty-queue" : "composer-empty-idle");
-                verdict.phase = "steer-accepted";
-                verdict.proof = `steer-composer-${after}`;
+                verdict.phase = steer ? "steer-accepted" : "composer-accepted";
+                verdict.proof = `${steer ? "steer" : "handoff"}-composer-${after}`;
                 if (status) this.emit("message_confirmed", status); // ✅ taken from the box
                 return true;
               }

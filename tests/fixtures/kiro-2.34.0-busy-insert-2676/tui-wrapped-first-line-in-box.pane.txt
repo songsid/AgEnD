@@ -1,0 +1,40 @@
+                            ⢸⣿⠀⠀⠀⠀⣿⡇⠹⣷⡀  ⠀⠈⢻⡇  ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⠀⣿⡇⠹⣷⡀  ⠀⠈⢻⡇   ⢻⣧⠀⠀⠀ ⠉⠉⠉    ⣼⡟
+                            ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇  ⠸⣿⣄⡀⢀⣠⣿⠇ ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇    ⠻⣷⣦⣄⡀   ⢀⣠⣴⣾⠟
+                             ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁    ⠈⠻⠿⠿⠟⠁   ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁     ⠀⠀⠈⠙⠻⠿⠿⠿⠿⠟⠋⠁
+
+                      An early release of Kiro CLI V3 is now available! Try it out: kiro-cli --v3
+                                             https://kiro.dev/docs/cli/v3/
+
+                  Tip: Save a conversation with /chat save <path> and reload it later with /chat load.
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › third long task
+
+
+ ◇ 3 messages queued · ctrl+x expand
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+~/k2676-work
+(master)
+
+› [user:jeff via discord, id:123456789012345678] please look at the failing build on main and tell me which commit broke
+  it, then check whether the windows installer change is related to the network timeout we saw yesterday afternoon
+  (message_id: 1234 | chat: 999)
+
+
+
+
+
+
+
+
+
+

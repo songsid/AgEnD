@@ -280,7 +280,7 @@ Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕
 
 每筆紀錄也會說明它怎麼被投遞、到了 CLI 之後怎麼了（#1201）：
 - `delivery_mode`：`steer`（插進進行中的回合）或 `idle_queue`（作為下一則訊息），與 `send_to_instance` 回報的一致。
-- `submission_mode`：最近一次嘗試的寫入方式：`idle_submit`、`steer`、`native_queue_handoff`（交給忙碌中 CLI 自己的佇列）或 `raw_paste`。
+- `submission_mode`：最近一次嘗試的寫入方式：`idle_submit`、`steer`、`native_queue_handoff`（交給忙碌中 CLI 自己的佇列，或打進忙碌中 kiro TUI 的輸入框，#2676）或 `raw_paste`。
 - `consumed_at` / `consumed_via`：steer 或交給原生佇列的訊息，早在模型讀到之前就已被 CLI 收進輸入；Claude Code 會在下一個工具結束時或回合結束時才取用。當 CLI 的 transcript（claude-code、codex）顯示這則投遞自己的 marker 被取用，就記下時間，以及它是作為自己的回合（`turn`）還是併入進行中的回合（`mid_turn`）。這也是唯一能把 `uncertain` 變成 `delivered` 的情況；此時尚未寄給寄件者的失敗通知會被撤回。找不到 marker 絕不改變任何紀錄。
 - `waiting_reason`（#1641）：在 `queued` 或 `retry_wait` 的紀錄上，以文字說明目標為什麼沒有接收（「CLI 看起來卡住了。」、已暫停、有對話框、登入失敗），只是單純排在後面時為 null。常駐的目標若有排隊中的工作因為這類原因等了 30 分鐘，會在它的主題通知一次。
 

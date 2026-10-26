@@ -1,0 +1,4 @@
+---
+section: Changed
+---
+- **A message to a busy kiro goes in within seconds, not after the turn (#2676).** On a kiro TUI launch whose busy input box AgEnD already steers, an ordinary message is now typed into that box right away, the way claude-code and codex take one into their queues. `/steer` is no longer needed for that. kiro takes the message in either mode: `Type to steer` folds it into the running turn, and `Type to queue` sends it as the next turn. AgEnD never switches the mode. The checks are the same as for a steer: the box is empty before the paste and shows this message before the single Enter, and the message counts as delivered once the box is empty again. A long message, which kiro collapses to `42 lines ▸`, is matched by its line count. A single line over 500 characters, and the legacy UI (which drops an Enter typed during a turn), still wait for the idle prompt.
