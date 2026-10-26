@@ -14,6 +14,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale } from "../src/locale.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
 import { remoteCardAction, remoteCardPrompt } from "../src/remote-card-prompt.js";
+import type { RemoteCardOutcome } from "../src/remote-card-answer.js";
 
 const Q = (name: string) => readKiroQuestionCard(readFileSync(join(import.meta.dirname, "fixtures", "kiro-question-2592", `${name}.pane.txt`), "utf-8"))!;
 const MCP = (name: string) => readKiroMcpInputCard(readFileSync(join(import.meta.dirname, "fixtures", "kiro-2.34.0-audit", `${name}.pane.txt`), "utf-8"))!;
@@ -102,7 +103,7 @@ describe("#2675 the fleet: post, click, reply, dashboard, retire", () => {
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "agend-2675-")); });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  function setup(answer = vi.fn(async () => ({ outcome: "answered" as const }))) {
+  function setup(answer = vi.fn(async (_identity: string, _action: unknown): Promise<RemoteCardOutcome> => ({ outcome: "answered" }))) {
     const adapter = {
       id: "telegram-main", type: "telegram",
       sendText: vi.fn().mockResolvedValue({ messageId: "n", chatId: "fleet-group" }),
@@ -206,7 +207,7 @@ describe("#2675 the fleet: post, click, reply, dashboard, retire", () => {
   });
 
   it("an answer that did not take: the post says so, and the daemon posts the card again", async () => {
-    const { fm, adapter, repost } = setup(vi.fn(async () => ({ outcome: "stopped" as const, step: "moving to option 2" })));
+    const { fm, adapter, repost } = setup(vi.fn(async (): Promise<RemoteCardOutcome> => ({ outcome: "stopped", step: "moving to option 2" })));
     await fm.postRemoteCard("worker", RICH());
     await (fm as any).dispatchAdapterCallback(click("opt-2", nonceOf(adapter)), "telegram-main", adapter);
     expect(adapter.editMessageRemoveButtons).toHaveBeenCalledWith("fleet-group", "card-msg", expect.stringMatching(/^Could not confirm that answer on worker's screen/), "worker-topic");
@@ -214,7 +215,7 @@ describe("#2675 the fleet: post, click, reply, dashboard, retire", () => {
   });
 
   it("stale (answered in the pane first): told, not reposted", async () => {
-    const { fm, adapter, repost } = setup(vi.fn(async () => ({ outcome: "stale" as const })));
+    const { fm, adapter, repost } = setup(vi.fn(async (): Promise<RemoteCardOutcome> => ({ outcome: "stale" })));
     await fm.postRemoteCard("worker", RICH());
     await (fm as any).dispatchAdapterCallback(click("opt-2", nonceOf(adapter)), "telegram-main", adapter);
     expect(adapter.editMessageRemoveButtons).toHaveBeenCalledWith("fleet-group", "card-msg", "This question to worker was already answered or has changed.", "worker-topic");
@@ -237,5 +238,20 @@ describe("#2675 the fleet: post, click, reply, dashboard, retire", () => {
     await fm.postRemoteCard("worker", SUB());
     expect(adapter.editMessageRemoveButtons).toHaveBeenCalledTimes(1);
     expect(fm.listWebPrompts()).toHaveLength(1);
+  });
+});
+
+describe("#2675 the recorded run against kiro 2.34.0's own V3 card (tests/fixtures/kiro-remote-card-2675)", () => {
+  const run = readFileSync(join(import.meta.dirname, "fixtures", "kiro-remote-card-2675", "e2e-2.34.0.txt"), "utf-8");
+  it("every case was keyed on a verified cursor and answered", () => {
+    const results = run.split("\n").filter(l => l.startsWith("{")).map(l => JSON.parse(l) as { keys: string[]; outcome: { outcome: string } });
+    expect(results.map(r => [r.keys.join(","), r.outcome.outcome])).toEqual([
+      ["Down,Enter", "answered"], ["paste,Enter", "answered"], ["Down,Down,Enter", "suboptions"], ["Space,Enter", "answered"],
+      ["Escape", "answered"], ["Down,Down,Down,Enter", "answered"], ["Down,Down,Enter", "answered"], ["Escape", "answered"],
+    ]);
+  });
+  it("kiro took exactly those answers", () => {
+    const transcript = run.slice(run.indexOf("== transcript"));
+    for (const answer of ["  › All at once", "  › release, but only after the freeze", "  › Choose components [web]"]) expect(transcript).toContain(`${answer}\n`);
   });
 });

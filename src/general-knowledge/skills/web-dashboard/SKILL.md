@@ -196,6 +196,9 @@ tab title. Items, grouped by instance, oldest first:
 - the instance: "Paused: sign-in needed", "Crashed";
 - deliveries from the last 24 h: "Could not confirm delivery", "Delivery failed" (source → target · kind).
 
+"Asking you a question" is a kiro V3 question card, posted to the instance's chat with a button per answer and a box
+for answering in words (on Discord/Telegram: reply to the post); an MCP input request offers Decline / Cancel and is
+filled in at the terminal (View).
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 "Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
