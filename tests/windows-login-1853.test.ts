@@ -27,7 +27,7 @@ describe("stage 3 signs in through each backend's own login (static)", () => {
   it("the login commands and checks are the fleet /login's; no bare CLI, no Ctrl+D to type", () => {
     expect(code).toMatch(/'kiro' \{ return 'kiro-cli login' \}/);
     expect(code).toMatch(/'claude' \{ return 'claude auth login' \}/);
-    expect(code).toMatch(/'codex' \{ return 'codex login' \}/);
+    expect(code).toMatch(/'codex' \{ return 'codex login --device-auth' \}/);
     expect(stage3).not.toMatch(/bash -lc "\$BACKEND_PATH; (claude|codex|agy)"/);
     expect(stage3).not.toMatch(/Ctrl\+D|\/quit 離開/);
     expect(stage3).toMatch(/if \(Test-WslLogin \$b\.Key\) \{ Write-Ok \("\{0\} 已經登入，跳過" -f \$b\.Name\); continue \}/);
@@ -94,16 +94,28 @@ foreach ($k in @('kiro', 'antigravity')) {
     expect(run('{"loggedIn": false}')).toBe(1);
     expect(run("")).toBe(1);
   });
-  it.skipIf(!bash)("the URL wrapper hands the whole URL to explorer.exe and never fails the CLI", () => {
+  it.skipIf(!bash)("the URL wrapper hands the whole URL to Windows' Start-Process (through the environment), explorer.exe only as a last resort, and never fails the CLI", () => {
     const { out, dir } = withHelpers(`Write-Output (Get-OpenUrlScript)`, { SystemRoot: "C:\\Windows" });
-    const fake = join(dir, "explorer.sh");
-    writeFileSync(fake, `#!/bin/sh\nprintf '%s\\n' "$@" > '${join(dir, "args.txt")}'\nexit 1\n`); chmodSync(fake, 0o755);
-    const script = out.trim().replace("/usr/local/bin/agend-open-url", join(dir, "open-url")).replace("/usr/local/bin/agend-open-url", join(dir, "open-url"))
-      .replace("'/mnt/c/Windows/explorer.exe'", `'${fake}'`);
+    const ps = join(dir, "powershell.sh"), explorer = join(dir, "explorer.sh");
+    const script = out.trim().split("/usr/local/bin/agend-open-url").join(join(dir, "open-url"))
+      .replace("'/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'", `'${ps}'`)
+      .replace("'/mnt/c/Windows/explorer.exe'", `'${explorer}'`);
     expect(spawnSync("bash", ["-c", script]).status).toBe(0);
-    const url = "https://example.test/oauth?client=a&state=b c";
-    expect(spawnSync(join(dir, "open-url"), [url]).status).toBe(0);              // explorer.exe's exit 1 is not the CLI's failure
-    expect(readFileSync(join(dir, "args.txt"), "utf8")).toBe(url + "\n");
+    // A long URL with &, quotes and spaces, as an OAuth URL can be.
+    const url = "https://example.test/oauth?client=a&state=b c&q='x'&" + "p=" + "z".repeat(900);
+    const open = (psCode: number) => {
+      writeFileSync(ps, `#!/bin/sh\nprintf '%s\\n' "$*" > '${join(dir, "ps-args.txt")}'\nprintf '%s' "$AGEND_OPEN_URL" > '${join(dir, "ps-url.txt")}'\nprintf '%s' "$WSLENV" > '${join(dir, "ps-wslenv.txt")}'\nexit ${psCode}\n`); chmodSync(ps, 0o755);
+      writeFileSync(explorer, `#!/bin/sh\nprintf '%s' "$1" > '${join(dir, "explorer-url.txt")}'\nexit 1\n`); chmodSync(explorer, 0o755);
+      rmSync(join(dir, "explorer-url.txt"), { force: true });
+      return spawnSync(join(dir, "open-url"), [url], { env: { PATH: "/usr/bin:/bin" } }).status;
+    };
+    expect(open(0)).toBe(0);
+    expect(readFileSync(join(dir, "ps-url.txt"), "utf8")).toBe(url);                       // the whole URL, untouched
+    expect(readFileSync(join(dir, "ps-args.txt"), "utf8")).toBe("-NoProfile -NonInteractive -Command Start-Process -FilePath $env:AGEND_OPEN_URL\n");
+    expect(readFileSync(join(dir, "ps-wslenv.txt"), "utf8")).toBe("AGEND_OPEN_URL");       // carried across to Windows
+    expect(existsSync(join(dir, "explorer-url.txt"))).toBe(false);                          // explorer.exe not used
+    expect(open(1)).toBe(0);                                                                // PowerShell failed: explorer.exe, still exit 0
+    expect(readFileSync(join(dir, "explorer-url.txt"), "utf8")).toBe(url);
   });
 });
 

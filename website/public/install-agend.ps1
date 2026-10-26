@@ -680,11 +680,17 @@ function Get-WindowsExplorerWslPath {
     $root = $env:SystemRoot; if (-not $root) { $root = 'C:\Windows' }
     return ('/mnt/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/') + '/explorer.exe')
 }
+function Get-WindowsPowerShellWslPath {
+    $root = $env:SystemRoot; if (-not $root) { $root = 'C:\Windows' }
+    return ('/mnt/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/') + '/System32/WindowsPowerShell/v1.0/powershell.exe')
+}
 function Get-LoginCommand([string]$key) {
     switch ($key) {
         'kiro' { return 'kiro-cli login' }
         'claude' { return 'claude auth login' }
-        'codex' { return 'codex login' }
+        # --device-auth: a code shown here and entered in the browser. Plain `codex login` waits on 127.0.0.1:1455 inside WSL,
+        # which only works when WSL forwards localhost to Windows (the browser sign-in uses --device-auth too).
+        'codex' { return 'codex login --device-auth' }
         'antigravity' { return 'agend_agy_login' }
     }
     return $null
@@ -754,6 +760,10 @@ function Get-OpenUrlScript {
         "cat > /usr/local/bin/agend-open-url <<'SH'"
         '#!/bin/sh'
         '# AgEnD 安裝程式：在 Windows 的瀏覽器打開網址（登入用）。'
+        '# 網址交給 Windows 的 Start-Process（經由環境變數，任何字元都原樣到達）。explorer.exe 曾把 Codex 的登入網址開成'
+        '# 「文件」資料夾（使用者實測），只在前兩種都打不開時才用它。'
+        'if command -v wslview >/dev/null 2>&1 && wslview "$1" >/dev/null 2>&1; then exit 0; fi'
+        ('AGEND_OPEN_URL="$1" WSLENV="${WSLENV:+$WSLENV:}AGEND_OPEN_URL" ' + "'" + (Get-WindowsPowerShellWslPath) + "'" + " -NoProfile -NonInteractive -Command 'Start-Process -FilePath `$env:AGEND_OPEN_URL' >/dev/null 2>&1 && exit 0")
         ("'" + (Get-WindowsExplorerWslPath) + "' " + '"$1" >/dev/null 2>&1')
         'exit 0'
         'SH'
