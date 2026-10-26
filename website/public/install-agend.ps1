@@ -680,11 +680,17 @@ function Get-WindowsExplorerWslPath {
     $root = $env:SystemRoot; if (-not $root) { $root = 'C:\Windows' }
     return ('/mnt/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/') + '/explorer.exe')
 }
+function Get-WindowsPowerShellWslPath {
+    $root = $env:SystemRoot; if (-not $root) { $root = 'C:\Windows' }
+    return ('/mnt/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/') + '/System32/WindowsPowerShell/v1.0/powershell.exe')
+}
 function Get-LoginCommand([string]$key) {
     switch ($key) {
         'kiro' { return 'kiro-cli login' }
         'claude' { return 'claude auth login' }
-        'codex' { return 'codex login' }
+        # --device-auth: a code shown here and entered in the browser. Plain `codex login` waits on 127.0.0.1:1455 inside WSL,
+        # which only works when WSL forwards localhost to Windows (the browser sign-in uses --device-auth too).
+        'codex' { return 'codex login --device-auth' }
         'antigravity' { return 'agend_agy_login' }
     }
     return $null
@@ -754,6 +760,10 @@ function Get-OpenUrlScript {
         "cat > /usr/local/bin/agend-open-url <<'SH'"
         '#!/bin/sh'
         '# AgEnD 安裝程式：在 Windows 的瀏覽器打開網址（登入用）。'
+        '# 網址交給 Windows 的 Start-Process（經由環境變數，任何字元都原樣到達）。explorer.exe 曾把 Codex 的登入網址開成'
+        '# 「文件」資料夾（使用者實測），只在前兩種都打不開時才用它。'
+        'if command -v wslview >/dev/null 2>&1 && wslview "$1" >/dev/null 2>&1; then exit 0; fi'
+        ('AGEND_OPEN_URL="$1" WSLENV="${WSLENV:+$WSLENV:}AGEND_OPEN_URL" ' + "'" + (Get-WindowsPowerShellWslPath) + "'" + " -NoProfile -NonInteractive -Command 'Start-Process -FilePath `$env:AGEND_OPEN_URL' >/dev/null 2>&1 && exit 0")
         ("'" + (Get-WindowsExplorerWslPath) + "' " + '"$1" >/dev/null 2>&1')
         'exit 0'
         'SH'
@@ -1363,6 +1373,17 @@ function Get-SetupStopText([string]$reason) {
 # 跑一次設定頁。$Run 收到一個每行呼叫的 hook，回傳結束碼。結果：Done（完成、AgEnD 已啟動）、Already（之前就設定好了）、
 # Shown（設定頁有沒有出現過）、Stopped（設定頁關掉的原因，沒有就是 $null）。設定頁要求主機確認時，每個確認編號開一次
 # 確認視窗（同一個設定頁最多 5 次），並印出可以自己貼的指令。
+# 設定頁是 WSL 裡印出的網址：WSL 的 localhost 轉送要過一下子才接上新開的連接埠，太早打開，瀏覽器會顯示「連線已重設」
+# （使用者實測）。打開之前先從 Windows 這邊試連，得到任何 HTTP 回應（包括 404）就算連得到；連不到最多等 $seconds 秒。
+function Wait-SetupPageReachable([string]$url, [int]$seconds = 20) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ($clock.Elapsed.TotalSeconds -lt $seconds) {
+        try { $null = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 -MaximumRedirection 0 -ErrorAction Stop; return $true }
+        catch { if ($_.Exception.Response) { return $true } }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
 function Invoke-BrowserSetup([scriptblock]$Run) {
     $setupSeen = @{ Url = $null; Code = $null; Shown = $false; Done = $false; Already = $false; Stopped = $null; Confirms = @() }
     $hook = {
@@ -1380,6 +1401,9 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
         if ($setupSeen.Url -and $setupSeen.Code -and -not $setupSeen.Shown) {
             $setupSeen.Shown = $true
             $copied = Set-SetupClipboard $setupSeen.Code
+            if (-not (Wait-SetupPageReachable $setupSeen.Url)) {
+                Write-Warn "從 Windows 還連不到設定頁。仍會打開它；若顯示「連線已重設」，等幾秒再重新整理。一直如此時，可能是另一個 Linux 佔著這個連接埠：在 PowerShell 執行 netstat -ano 查看那個連接埠。"
+            }
             $opened = Open-InBrowser $setupSeen.Url
             Show-SetupCode $setupSeen.Code $copied $opened $setupSeen.Url
         }
@@ -1426,6 +1450,110 @@ function Get-BrowserSetupCommand([string]$BackendSignins = '') {
     if (-not $BackendSignins) { return 'agend setup' }
     if ($BackendSignins -cnotmatch '^(kiro-cli|claude-code|codex|antigravity)(,(kiro-cli|claude-code|codex|antigravity)){0,3}\z') { throw 'Invalid backend selection' }
     return ('agend setup --backend-signins ' + $BackendSignins)
+}
+# ── AgEnD 的連接埠：先找一組 Windows 和 Linux 都能用的（使用者實測，2026-10-26）──
+# AgEnD 用兩個相鄰的連接埠：health_port（儀表板、/health，也是設定頁）和 health_port+1（web 預覽，預設值）。
+# 另一個 Linux（例如之前裝過 AgEnD 的那個）的 WSL localhost 轉送（wslrelay.exe）可能還佔著 Windows 的 127.0.0.1:19280：
+# 瀏覽器連到的是那個 Linux，那裡沒有東西在聽，就顯示「連線已重設」。所以設定開始前，從 19280 起一組一組試（P 和 P+1）：
+# Windows 沒有程式在聽、不在 Windows 保留的範圍、Linux（所有發行版共用一個網路）裡也沒有程式在聽，就用它，寫進
+# fleet.yaml 的 health_port（設定頁和之後的 fleet 都照它；2.3.1 起都支援），也記進進度檔。已經設定好的 fleet.yaml 不改。
+$AGEND_PORT_FIRST = 19280
+$AGEND_PORT_TRIES = 20
+function Get-WindowsPortListener([int]$port) {
+    try { $c = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop) | Select-Object -First 1 } catch { return $null }
+    if (-not $c) { return $null }
+    $name = ''; try { $name = [string](Get-Process -Id $c.OwningProcess -ErrorAction Stop).ProcessName } catch { }
+    return @{ Pid = [int]$c.OwningProcess; Name = $name }
+}
+# Windows 的連接埠轉送規則（netsh interface portproxy，由 svchost 的 iphlpsvc 監聽）：常見的是以前為 WSL 設的、指向已經不在的
+# WSL IP 的規則，連過去就是「連線已重設」（使用者實測）。只讀，絕不自動刪除。回傳 @{ ListenAddress; Target } 或 $null。
+function Get-PortProxyRule([int]$port) {
+    $text = ''
+    try { $text = (& netsh.exe interface portproxy show v4tov4 2>$null) -join "`n" } catch { return $null }
+    foreach ($m in [regex]::Matches($text, '(?m)^\s*(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$')) {
+        if ([int]$m.Groups[2].Value -eq $port) { return @{ ListenAddress = $m.Groups[1].Value; Target = ($m.Groups[3].Value + ':' + $m.Groups[4].Value) } }
+    }
+    return $null
+}
+# Windows 保留給 Hyper-V/WinNAT 等的連接埠範圍（netsh 讀不到就當作沒有）。
+function Get-ExcludedPortRanges {
+    $text = ''
+    try { $text = (& netsh.exe int ipv4 show excludedportrange protocol=tcp 2>$null) -join "`n" } catch { return @() }
+    return @([regex]::Matches($text, '(?m)^\s*(\d+)\s+(\d+)') | ForEach-Object { @{ Start = [int]$_.Groups[1].Value; End = [int]$_.Groups[2].Value } })
+}
+function Test-PortExcluded([int]$port, $ranges) {
+    foreach ($r in @($ranges)) { if ($port -ge $r.Start -and $port -le $r.End) { return $true } }
+    return $false
+}
+# Linux 裡有沒有程式在聽（連得上就是有）。讀不到時當作不能用。
+function Test-WslPortFree([int]$port) {
+    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', ('if (exec 3<>/dev/tcp/127.0.0.1/' + $port + ') 2>/dev/null; then echo PORT_BUSY; else echo PORT_FREE; fi'))
+    return ($r.Code -eq 0 -and $r.Text -match 'PORT_FREE')
+}
+# 這個 Linux 裡的 fleet.yaml：沒有（None）、只有安裝程式寫的 health_port 一行（Seeded），或已經設定好的（Configured，連同它的 health_port）。
+function Get-AgendPortConfig {
+    $script = 'f=${AGEND_HOME:-$HOME/.agend}/fleet.yaml; [ -f "$f" ] || { echo CFG_NONE; exit 0; }; p=$(sed -n "s/^health_port:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p" "$f" | head -n 1); if [ "$(grep -cv "^[[:space:]]*$" "$f")" = 1 ] && [ -n "$p" ]; then echo "CFG_SEEDED=$p"; else echo "CFG_CONFIGURED=${p:-19280}"; fi'
+    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', $script)
+    if ($r.Code -ne 0) { return $null }
+    if ($r.Text -match 'CFG_NONE') { return @{ State = 'none'; Port = $null } }
+    if ($r.Text -match 'CFG_SEEDED=(\d+)') { return @{ State = 'seeded'; Port = [int]$Matches[1] } }
+    if ($r.Text -match 'CFG_CONFIGURED=(\d+)') { return @{ State = 'configured'; Port = [int]$Matches[1] } }
+    return $null
+}
+function Select-AgendPorts {
+    $cfg = Get-AgendPortConfig
+    if ($null -eq $cfg) { Write-Err "讀不到這個 Linux 裡的 AgEnD 設定，先停在這裡。"; return $null }
+    if ($cfg.State -eq 'configured') { return $cfg.Port }   # 已經設定好的 fleet 不改它的連接埠
+    $ranges = Get-ExcludedPortRanges
+    $saved = Get-ProgressValue 'AGEND_PORT' '\d+'
+    $candidates = @()
+    if ($cfg.State -eq 'seeded') { $candidates += $cfg.Port }
+    if ($saved) { $candidates += [int]$saved }
+    for ($i = 0; $i -lt $AGEND_PORT_TRIES; $i++) { $candidates += ($AGEND_PORT_FIRST + 2 * $i) }
+    foreach ($p in @($candidates | Select-Object -Unique)) {
+        if ($p -lt 1024 -or $p -gt 65534) { continue }
+        $why = $null
+        foreach ($q in @($p, ($p + 1))) {
+            if (Test-PortExcluded $q $ranges) { $why = "Windows 保留了 $q"; break }
+            $h = Get-WindowsPortListener $q
+            if ($h) {
+                $rule = if ($h.Name -eq 'svchost') { Get-PortProxyRule $q } else { $null }
+                if ($rule) {
+                    $why = ("Windows 的連接埠轉送規則（portproxy）把 {0} 轉到 {1}" -f $q, $rule.Target)
+                    Write-Info ("  若那條規則已經沒用，可以用系統管理員 PowerShell 刪除：netsh interface portproxy delete v4tov4 listenport={0} listenaddress={1}" -f $q, $rule.ListenAddress)
+                } else { $why = ("Windows 上的 {0} 被「{1}」佔用" -f $q, $h.Name) }
+                break
+            }
+            if (-not (Test-WslPortFree $q)) { $why = "Linux 裡的 $q 已有程式在用"; break }
+        }
+        if ($why) { Write-Info ("  連接埠 {0}/{1} 不能用（{2}），試下一組..." -f $p, ($p + 1), $why); continue }
+        # 只寫安裝程式自己的那一行，絕不蓋掉別的設定（#2723 審查）。沒有檔案：用 noclobber 建立。有我們上次寫的那一行：先把
+        # 檔案原子地改名移開（rename），確認移開的就是那一行，再用 noclobber 建立新的——檢查之後才出現的設定，要嘛還在原位
+        # （我們的建立失敗），要嘛就是被移開的那一份（用 ln 放回原位，ln 不會覆蓋；放不回去就留在旁邊的目錄裡並說出位置）。
+        # 別人的內容一律不刪。
+        $prior = if ($cfg.State -eq 'seeded') { [string]$cfg.Port } else { '' }
+        $write = 'umask 077; d=${AGEND_HOME:-$HOME/.agend}; f="$d/fleet.yaml"; mkdir -p "$d" || exit 1; ' +
+            ('if [ -z "' + $prior + '" ]; then set -C; printf ''health_port: %s\n'' ' + $p + ' > "$f" 2>/dev/null || exit 9; exit 0; fi; ') +
+            # 移開的那一份放進新建、只屬於這一次的目錄（mktemp -d）：目的地一定還不存在，舊的備份不會被蓋掉（#2723 審查）。
+            'k=$(mktemp -d "$d/.fleet-seed.XXXXXX") || exit 1; a="$k/fleet.yaml"; mv "$f" "$a" 2>/dev/null || { rmdir "$k"; exit 9; }; ' +
+            ('if [ "$(cat "$a")" != "health_port: ' + $prior + '" ]; then if ln "$a" "$f" 2>/dev/null; then rm -f "$a"; rmdir "$k"; else echo "KEPT_ASIDE=$a"; fi; exit 9; fi; ') +
+            ('if ( set -C; printf ''health_port: %s\n'' ' + $p + ' > "$f" ) 2>/dev/null; then rm -f "$a"; rmdir "$k"; exit 0; fi; ') +
+            'rm -f "$a"; rmdir "$k"; exit 9'
+        $seed = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', $write)
+        if ($seed.Code -eq 9) {
+            if ($seed.Text -match 'KEPT_ASIDE=(\S+)') { Write-Warn ("AgEnD 的設定檔在檢查之後被別的程式改寫了；那一份原封不動保存在 {0}。" -f $Matches[1]) }
+            $now = Get-AgendPortConfig
+            if ($now -and $now.State -eq 'configured') { Write-Info ("AgEnD 的設定檔剛剛已經建立，沿用它的連接埠 {0}" -f $now.Port); return $now.Port }
+            Write-Err "AgEnD 的設定檔在檢查之後被改動了，為了不蓋掉它，先停在這裡。請再執行同一行安裝指令。"; return $null
+        }
+        if ($seed.Code -ne 0) { Write-Err "寫不進 AgEnD 的設定檔，先停在這裡。"; return $null }
+        Add-Content -LiteralPath $ProgressFile -Value ('AGEND_PORT=' + $p)
+        if ($p -ne $AGEND_PORT_FIRST) { Write-Ok ("AgEnD 的儀表板改用連接埠 {0}（預覽 {1}）" -f $p, ($p + 1)) }
+        return $p
+    }
+    Write-Err ("從 {0} 起找不到兩個相鄰都能用的連接埠。" -f $AGEND_PORT_FIRST)
+    Write-Info "可以在 PowerShell 執行 netstat -ano | findstr :19280 看是誰佔著，關掉它之後再執行同一行安裝指令。"
+    return $null
 }
 function Invoke-SetupAndService([string]$BackendSignins = '', $Backends = $null) {
     $configured = $false
@@ -1519,6 +1647,24 @@ function Get-SavedBackends {
         if ($saved) { return $saved }
     }
     return "1"  # 向後相容：預設 Kiro CLI
+}
+# 接續安裝時的後端：列出上次選的，按 Enter 沿用，或輸入新的清單（一直失敗的後端不會把安裝卡住）。沒有互動式主控台時
+# （無人值守）沿用上次的選擇，不問。
+function Select-ResumeBackends([string]$saved) {
+    $selected = @(Resolve-Backends $saved)
+    Write-Info ("上次選擇的後端：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
+    if (Test-LiveConsole) {
+        foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }
+        while ($true) {
+            $sel = Read-Host "  直接按 Enter 沿用上次的選擇，或輸入新的數字（例：1,2）"
+            if ([string]::IsNullOrWhiteSpace($sel)) { break }
+            $picked = @(Resolve-Backends $sel)
+            if ($picked.Count -gt 0) { $selected = $picked; break }
+            Write-Warn "沒有可用的編號，請重新輸入，或直接按 Enter 沿用上次的選擇。"
+        }
+    }
+    Write-Info "已能執行的保留，只重試缺少或損壞的後端。"
+    return ,$selected
 }
 function Resolve-Backends($csv) {
     $ids = @($csv -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
@@ -2398,20 +2544,7 @@ if ((Stage-Done 2) -and $missingBackends.Count -eq 0) {
 } else {
     Clear-InstallStage 2
     if ($savedBackends -and -not $Force) {
-        $selected = Resolve-Backends $savedBackends
-        Write-Info ("上次選擇的後端：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
-        # A resume may change the choice (a backend that keeps failing must not trap the install); unattended keeps it.
-        if (Test-LiveConsole) {
-            foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }
-            while ($true) {
-                $sel = Read-Host "  直接按 Enter 沿用上次的選擇，或輸入新的數字（例：1,2）"
-                if ([string]::IsNullOrWhiteSpace($sel)) { break }
-                $picked = @(Resolve-Backends $sel)
-                if ($picked.Count -gt 0) { $selected = $picked; break }
-                Write-Warn "沒有可用的編號，請重新輸入，或直接按 Enter 沿用上次的選擇。"
-            }
-        }
-        Write-Info "已能執行的保留，只重試缺少或損壞的後端。"
+        $selected = Select-ResumeBackends $savedBackends
     } else {
         Write-Info "請選擇要安裝的 AI 後端（可多選，用逗號分隔）："
         foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }
@@ -2580,6 +2713,10 @@ if ((Stage-Done 5) -and (Test-InstallerReady)) {
     Write-Host ""
     Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram 並貼上 Bot Token；或選「Web only (no bot)」，不用 Bot、只用網頁儀表板。"
     Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
+    if ($null -eq (Select-AgendPorts)) {
+        Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
+        Read-Host "按 Enter 結束"; exit 1
+    }
     if (-not (Invoke-SetupAndService -BackendSignins $browserSignins -Backends $selected)) {
         Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
         Read-Host "按 Enter 結束"; exit 1
