@@ -102,7 +102,7 @@ Write-Output ("D=" + ($null -eq (Select-InstallDrive @(${disk("C:\\", 2)}, ${dis
   });
   // A wsl stub: answers root's echo with WSL_OK once `okAfter` echo calls have failed (Infinity: never), logs every call.
   const wslStub = (okAfter: number) => `$script:calls = @(); $script:echoes = 0
-function Invoke-BoundedWsl {param($Arguments); $script:calls += (($Arguments | Where-Object {$_ -ne '--'}) -join ' '); if ($Arguments[0] -like '--*') { return @{Code=0;Text=''} }; $script:echoes++; if ($script:echoes -gt ${okAfter === Infinity ? 999 : okAfter}) { return @{Code=0;Text='WSL_OK'} } else { return @{Code=1;Text='Error: 0x8007019e'} } }`;
+function Invoke-BoundedWsl {param($Arguments); $script:calls += (($Arguments | Where-Object {$_ -ne '--' -and $_ -ne '--exec'}) -join ' '); if ($Arguments[0] -like '--*') { return @{Code=0;Text=''} }; $script:echoes++; if ($script:echoes -gt ${okAfter === Infinity ? 999 : okAfter}) { return @{Code=0;Text='WSL_OK'} } else { return @{Code=1;Text='Error: 0x8007019e'} } }`;
   const ASK = "要重新啟動整個 WSL 嗎？這會停掉這台電腦上所有的 Linux（包括其他發行版和裡面正在跑的程式）。(y/N)";
   it("root init that fails is retried after restarting only this Linux — never a first-run window, nothing asked", () => {
     const { out } = withHelpers(`${wslStub(1)}

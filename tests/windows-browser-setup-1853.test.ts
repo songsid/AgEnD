@@ -146,7 +146,7 @@ describe.skipIf(!pwsh)("with pwsh: stage 5's decisions (#2235 review: done only 
   });
   it("no page: the console quickstart runs on the console (its prompt shown, its input read) and counts only when it exits 0", () => {
     const { out } = stage5Run([[], []], [0], ["", ""], [1, 0], "first\nsecond\n");
-    expect(out).toContain(`CHOICE-PROMPT> ANSWER=first ARGS=-d Ubuntu-24.04 -u root -- bash -lc ${agendEnv}agend quickstart\n`);
+    expect(out).toContain(`CHOICE-PROMPT> ANSWER=first ARGS=-d Ubuntu-24.04 -u root --exec bash -lc ${agendEnv}agend quickstart\n`);
     expect(out).toContain("CHOICE-PROMPT> ANSWER=second");
     expect(out).toContain("主控台的設定沒有完成（結束碼 1）。");                // one exit code, never its output
     expect(out).toContain("RESULT=True LOG=setup,ask:,setup,ask:,service:0,quickstart:1,quickstart:0\n");

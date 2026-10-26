@@ -5,7 +5,7 @@
 $WSL_COMMAND_FN = @'
 function Invoke-BoundedWsl {
 param([string[]]$Arguments, [int]$TimeoutSeconds=30)
-$sep=[array]::IndexOf($Arguments, '--')
+$sep=[array]::IndexOf($Arguments, '--exec')
 if ($sep -ge 0 -and $Arguments.Length -gt ($sep + 1) -and $Arguments[$sep + 1] -eq 'bash') {
 $Arguments=@($Arguments[0..$sep]) + @('timeout', '--signal=TERM', '--kill-after=2s', [string]([Math]::Max(1, $TimeoutSeconds - 5))) + @($Arguments[($sep + 1)..($Arguments.Length - 1)])
 }
@@ -57,7 +57,7 @@ function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$
   $prevEAP = $ErrorActionPreference
   try {
       $ErrorActionPreference = 'Continue'
-      $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', $user, '--', 'bash', '-lc', (Get-WslAgendCommand $command))
+      $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', $user, '--exec', 'bash', '-lc', (Get-WslAgendCommand $command))
       $text = $r.Text; $exit = $r.Code
   } catch {
       $text = "$_"; $exit = 1
@@ -94,7 +94,7 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
       $ErrorActionPreference = 'Continue'
       try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
       $limit = if ($command -match '^agend (restart|start)( |$)') { 360 } else { 30 }
-      return (Invoke-BoundedWsl -TimeoutSeconds $limit -Arguments @('-d', $distro, '-u', $user, '--', 'bash', '-lc', (Get-WslAgendCommand $command)))
+      return (Invoke-BoundedWsl -TimeoutSeconds $limit -Arguments @('-d', $distro, '-u', $user, '--exec', 'bash', '-lc', (Get-WslAgendCommand $command)))
   } catch {
       return @{ Code = -1; Text = "$_" }
   } finally {

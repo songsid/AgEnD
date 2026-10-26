@@ -68,7 +68,7 @@ function machine(o: { onPath?: Record<string, number>; inHomeLocalBin?: string[]
   // `wsl -d … -u root -- bash -c <probe>`: the probe runs in the scratch Linux — its /root is `home`, its PATH is
   // `bin` and the tools, and nothing else from this host's environment.
   const wsl = `#!/bin/sh
-while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+while [ "$#" -gt 0 ] && [ "$1" != "--" ] && [ "$1" != "--exec" ]; do shift; done
 shift
 [ "$1" != timeout ] || { shift; shift; shift; shift; }
 [ "$1 $2" = "bash -c" ] || { echo "unexpected: $*" >&2; exit 9; }

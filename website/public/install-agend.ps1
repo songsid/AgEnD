@@ -393,7 +393,7 @@ function Test-WslNetwork([string]$distro) {
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $probe = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--', 'bash', $wslFile) -TimeoutSeconds 60
+        $probe = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--exec', 'bash', $wslFile) -TimeoutSeconds 60
         if ($probe.Code -eq 0) { $text = $probe.Text }
     } catch { $text = '' } finally {
         $ErrorActionPreference = $prevEAP
@@ -515,7 +515,7 @@ function Get-LocalDisks {
 # 不開 Ubuntu 的設定視窗：那個視窗會要你建立 Linux 使用者和密碼，而我們本來就以 root 執行。
 # 回傳 'ready'、'failed'（試過了還是不行），或 'declined'（不同意重新啟動整個 WSL）。
 function Test-WslRoot([string]$distro) {
-    $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--', 'echo', 'WSL_OK')
+    $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--exec', 'echo', 'WSL_OK')
     if ($r.Code -ne 0 -or $r.Text -notmatch 'WSL_OK') {
         Write-Warn (Get-WslFailureMessage "WSL root probe failed ($distro)" $r)
         return $false
@@ -791,7 +791,7 @@ function Get-FleetConnections([string]$distro) {
     return 'unknown'
 }
 function Test-WslLogin([string]$key) {
-    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-lc', ('export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; if ' + (Get-LoginCheck $key) + '; then echo LOGIN_OK; else echo LOGIN_NO; fi'))
+    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-lc', ('export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; if ' + (Get-LoginCheck $key) + '; then echo LOGIN_OK; else echo LOGIN_NO; fi'))
     return ($r.Code -eq 0 -and $r.Text -match 'LOGIN_OK')
 }
 
@@ -832,7 +832,7 @@ function Invoke-LoginStage($backends) {
             Write-Host ""
             $loginFile, $loginWsl = New-WslScriptFile (Get-LoginScript $b.Key)
             # 登入程式直接接在這個視窗上；不能在函式裡直接執行 wsl，它的輸出會進到函式的回傳值。
-            try { Start-Process -FilePath 'wsl.exe' -NoNewWindow -Wait -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', $loginWsl)) } catch { }
+            try { Start-Process -FilePath 'wsl.exe' -NoNewWindow -Wait -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', $loginWsl)) } catch { }
             Remove-Item -LiteralPath $loginFile -Force -ErrorAction SilentlyContinue
             if (Test-WslLogin $b.Key) {
                 Write-Ok ("{0} 登入成功" -f $b.Name)
@@ -865,7 +865,7 @@ function Complete-LoginStage($backends) {
 $WSL_COMMAND_FN = @'
 function Invoke-BoundedWsl {
 param([string[]]$Arguments, [int]$TimeoutSeconds=30)
-$sep=[array]::IndexOf($Arguments, '--')
+$sep=[array]::IndexOf($Arguments, '--exec')
 if ($sep -ge 0 -and $Arguments.Length -gt ($sep + 1) -and $Arguments[$sep + 1] -eq 'bash') {
 $Arguments=@($Arguments[0..$sep]) + @('timeout', '--signal=TERM', '--kill-after=2s', [string]([Math]::Max(1, $TimeoutSeconds - 5))) + @($Arguments[($sep + 1)..($Arguments.Length - 1)])
 }
@@ -917,7 +917,7 @@ function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$
   $prevEAP = $ErrorActionPreference
   try {
       $ErrorActionPreference = 'Continue'
-      $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', $user, '--', 'bash', '-lc', (Get-WslAgendCommand $command))
+      $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', $user, '--exec', 'bash', '-lc', (Get-WslAgendCommand $command))
       $text = $r.Text; $exit = $r.Code
   } catch {
       $text = "$_"; $exit = 1
@@ -954,7 +954,7 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
       $ErrorActionPreference = 'Continue'
       try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
       $limit = if ($command -match '^agend (restart|start)( |$)') { 360 } else { 30 }
-      return (Invoke-BoundedWsl -TimeoutSeconds $limit -Arguments @('-d', $distro, '-u', $user, '--', 'bash', '-lc', (Get-WslAgendCommand $command)))
+      return (Invoke-BoundedWsl -TimeoutSeconds $limit -Arguments @('-d', $distro, '-u', $user, '--exec', 'bash', '-lc', (Get-WslAgendCommand $command)))
   } catch {
       return @{ Code = -1; Text = "$_" }
   } finally {
@@ -1320,7 +1320,7 @@ function Open-HostConfirmWindow([string]$id) {
     if ($id -cnotmatch '^[0-9a-f]{32}\z') { return $false }
     $script = 'printf ''\033]0;AgEnD setup confirmation\007''; export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm ' + $id + '; echo; read -r -p ''Press Enter to close this window. '' _'
     try {
-        $null = Start-Process -FilePath 'wsl.exe' -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-lc', $script))
+        $null = Start-Process -FilePath 'wsl.exe' -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-lc', $script))
         return $true
     } catch { return $false }
 }
@@ -1398,7 +1398,7 @@ function Invoke-ConsoleQuickstart {
     Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
     try {
         $p = Start-Process -FilePath 'wsl.exe' -NoNewWindow -Wait -PassThru `
-            -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-lc', ($AGEND_ENV + 'agend quickstart')))
+            -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-lc', ($AGEND_ENV + 'agend quickstart')))
         if ($null -eq $p.ExitCode) { return 1 }
         return [int]$p.ExitCode
     } catch { return 1 }
@@ -1504,7 +1504,9 @@ function Save-Backends($csv) { Add-Content -Path $ProgressFile -Value "BACKENDS=
 $BACKEND_PROBE = 'set -f; IFS=; export PATH=/root/.local/bin:$HOME/.local/bin:$HOME/.claude/local:$PATH; p=$(command -v __BIN__ 2>/dev/null) || p=; l=; if [ x$p = x ]; then [ -s $HOME/.nvm/nvm.sh ] && . $HOME/.nvm/nvm.sh >/dev/null 2>&1; n=$(npm prefix -g 2>/dev/null) || n=; if [ x$n != x ] && [ -x $n/bin/__BIN__ ]; then mkdir -p $HOME/.local/bin && ln -sf $n/bin/__BIN__ $HOME/.local/bin/__BIN__ && p=$HOME/.local/bin/__BIN__ && l=$n/bin/__BIN__; fi; fi; [ x$p != x ] || exit 1; v=$($p --version 2>/dev/null </dev/null) || exit 1; v=$(head -n 1 <<<$v); [ x$v != x ] || exit 1; echo KEPT\|$v\|$p\|$l'
 # 回傳 @{ Version; Path; LinkedFrom }（已裝好且能執行），否則 $null。
 function Get-InstalledBackend($b) {
-    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-c', $BACKEND_PROBE.Replace('__BIN__', $b.Bin))
+    # --exec: `--` hands the line to the distro's shell, which expands $p, $(…) and $HOME in the probe before bash -c runs
+    # it, so every backend read as missing (live: Codex installed, exit 0, then "尚未安裝成功"). --exec keeps the argv.
+    $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', $BACKEND_PROBE.Replace('__BIN__', $b.Bin))
     if ($r.Code -ne 0) { return $null }
     $out = $r.Text
     $m = [regex]::Match($out, '(?m)^KEPT\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]*)\r?$')
@@ -1916,7 +1918,7 @@ function Assert-NoPendingWslCancellation {
     $closed = Test-Path -LiteralPath "$pending.done"
     if (-not $closed -and (Test-Path -LiteralPath "$pending.boot")) {
         $priorBoot = [IO.File]::ReadAllText("$pending.boot").Trim()
-        $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'cat', '/proc/sys/kernel/random/boot_id')
+        $r = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'cat', '/proc/sys/kernel/random/boot_id')
         $nowBoot = $r.Text.Trim()
         $closed = $r.Code -eq 0 -and $priorBoot -match '^[a-f0-9-]{36}$' -and $nowBoot -match '^[a-f0-9-]{36}$' -and $priorBoot -cne $nowBoot
     }
@@ -1944,7 +1946,7 @@ function Invoke-WslStep {
             if ($capture.Text.Length -gt 8192) { $capture.Text = $capture.Text.Substring($capture.Text.Length - 8192) }
             if ($capture.OnLine) { & $capture.OnLine $line }
         }.GetNewClosure()
-        $code = Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $captureLine -TimeoutSeconds ($TimeoutSeconds + 30) -NoProgressSeconds $NoProgressSeconds -CancellationFile $cancel -File 'wsl.exe' -Arguments @('-d', $Distro, '-u', $User, '--', 'bash', $wslWrapper)
+        $code = Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $captureLine -TimeoutSeconds ($TimeoutSeconds + 30) -NoProgressSeconds $NoProgressSeconds -CancellationFile $cancel -File 'wsl.exe' -Arguments @('-d', $Distro, '-u', $User, '--exec', 'bash', $wslWrapper)
         $script:LastWslStepResult = @{ Code = $code; Text = $capture.Text }
         return $code
     } finally {
@@ -2345,7 +2347,7 @@ if ($wslState -eq 'ready') {
 # 防護：設定 wsl.conf（systemd + 關閉 Windows PATH + 預設 root）
 Write-Info "正在設定 WSL 環境防護..."
 # Read exact bytes without introducing a PowerShell output newline.
-$confRead = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-c', 'if [ -L /etc/wsl.conf ]; then exit 1; elif [ -e /etc/wsl.conf ]; then base64 -w0 /etc/wsl.conf; fi')
+$confRead = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', 'if [ -L /etc/wsl.conf ]; then exit 1; elif [ -e /etc/wsl.conf ]; then base64 -w0 /etc/wsl.conf; fi')
 $encodedConf = $confRead.Text.Trim()
 if ($confRead.Code -ne 0) { throw (Get-WslFailureMessage 'Cannot safely read /etc/wsl.conf; no settings were replaced' $confRead) }
 $currentConf = ConvertFrom-WslConfigSnapshot $encodedConf
@@ -2396,8 +2398,20 @@ if ((Stage-Done 2) -and $missingBackends.Count -eq 0) {
 } else {
     Clear-InstallStage 2
     if ($savedBackends -and -not $Force) {
-        Write-Info "接續上次選擇的後端；已能執行的保留，只重試缺少或損壞的後端。"
         $selected = Resolve-Backends $savedBackends
+        Write-Info ("上次選擇的後端：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
+        # A resume may change the choice (a backend that keeps failing must not trap the install); unattended keeps it.
+        if (Test-LiveConsole) {
+            foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }
+            while ($true) {
+                $sel = Read-Host "  直接按 Enter 沿用上次的選擇，或輸入新的數字（例：1,2）"
+                if ([string]::IsNullOrWhiteSpace($sel)) { break }
+                $picked = @(Resolve-Backends $sel)
+                if ($picked.Count -gt 0) { $selected = $picked; break }
+                Write-Warn "沒有可用的編號，請重新輸入，或直接按 Enter 沿用上次的選擇。"
+            }
+        }
+        Write-Info "已能執行的保留，只重試缺少或損壞的後端。"
     } else {
         Write-Info "請選擇要安裝的 AI 後端（可多選，用逗號分隔）："
         foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }
