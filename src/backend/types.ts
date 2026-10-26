@@ -561,6 +561,19 @@ export interface CliBackend {
   isDeliveryInputReadyPane?(pane: string): boolean;
 
   /**
+   * #2682: whether this screen positively shows the CLI's own idle input box, asked before an idle delivery. False
+   * (another program owns the pane, a frame it cannot read) makes the delivery wait. Absent: not asked.
+   */
+  idleComposerReady?(pane: string): boolean;
+
+  /**
+   * #2682: for a busy composer (readSteerComposer "steer"/"queue"), whether typed input reaches the CLI's own turn —
+   * false when a command started from the composer owns the keystrokes (kiro's `!cmd`) or the turn cannot be seen. A busy
+   * hand-off (steer, #2676) is admitted only on true. Absent: not asked.
+   */
+  busyTurnTakesInput?(pane: string): boolean;
+
+  /**
    * A structural reader for the CLI's live input box (#1200, claude-code): what the box holds right now, or null when the
    * current screen has no box it can vouch for (a dialog, an unknown layout). Unlike `getBottomReadyPattern` it reads
    * the box as a region — the rows between its own frame — so the transcript above and the footer below are never

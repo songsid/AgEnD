@@ -1,0 +1,40 @@
+
+~
+~
+~                                                     NVIM v0.11.4
+~
+~                                     Nvim is open source and freely distributable
+~                                               https://neovim.io/#chat
+~
+~                                    type  :help nvim<Enter>       if you are new!
+~                                    type  :checkhealth<Enter>     to optimize Nvim
+~                                    type  :q<Enter>               to exit
+~                                    type  :help<Enter>            for help
+~
+~                                   type  :help news<Enter> to see changes in v0.11
+~
+~                                            Help poor children in Uganda!
+~                                    type  :help iccf<Enter>       for information
+~
+[No Name]                                                                                             0,0-1          All
+
+── Neovim · focused · Ctrl+\ to chat · :q to close ─────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+~/k2682-work
+(master)
+
+›  ask a question or describe a task ↵
+                                                                                                     /copy to clipboard
+
+
+

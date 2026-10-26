@@ -1,0 +1,40 @@
+╭─────────────────────────────── Did you know? ────────────────────────────────╮
+│                                                                              │
+│ Include file contents inline with @file.txt or browse directories with @src/ │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+All tools are now trusted (!). Kiro will execute tools without asking for confirmation.
+Agents can sometimes do unexpected things so understand the risks.
+
+Learn more at https://kiro.dev/docs/cli/chat/security/#using-tools-trust-all-safely
+
+
+
+4% !> hello
+
+> mock reply one
+
+ ▸ Time: 0s
+
+4% !> /editor
+
+
+Empty content from editor, not submitting.
+
+
+
+4% !> /reply
+
+
+No changes made in editor, not submitting.
+
+
+
+4% !> !sleep 12; echo SLEPT
+
+[agend-delivery-id:lg] typed during legacy bang
+SLEPT
+
+4% !> [agend-delivery-id:lg] typed during legacy bang
+
