@@ -66,10 +66,13 @@ export const KIRO_TESTED_MAX = "2.34.0";
  * queued message mid-tool — has been captured (tests/fixtures/kiro-steer-1405, 2026-10-08: 2.27.1 `--tui
  * --agent-engine=v2` and `--v3`, 2.28.0 `--tui --agent-engine=v2`; identical rows on all three). Any other version,
  * 2.28.0's v3, the legacy UI and an undetected version all deliver a steer as an ordinary message after the turn.
+ * 2.34.0 TUI was checked on the user-authorized #2598 D5 run (tests/fixtures/kiro-2.34.0-tui-d5):
+ * native steer during a read-only tool, a fleet message queued mid-tool, and a native queue entry in the busy turn.
  */
 export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | "v3">>> = {
   "2.27.1": ["tui", "v3"],
   "2.28.0": ["tui"],
+  "2.34.0": ["tui"],
 };
 
 /**
@@ -172,18 +175,21 @@ const warnedVersionGateCacheKeys = new Set<string>();
  * This broad test is only a safety hold: it must never select an option or
  * claim a service outage. A ready prompt below the picker makes it history.
  */
+const KIRO_MODEL_PICKER_HEADER = /^\s*Select model(?: \(type to search\):|:\s+type to search)\s*$/m;
+
 function kiroModelPickerAtTail(pane: string): boolean {
   const lines = pane.replace(/\r/g, "").split("\n");
   let pickerIndex = -1;
   for (let index = lines.length - 1; index >= 0; index--) {
-    if (/^\s*Select model \(type to search\):\s*$/.test(lines[index])) {
+    if (KIRO_MODEL_PICKER_HEADER.test(lines[index])) {
       pickerIndex = index;
       break;
     }
   }
   if (pickerIndex < 0) return false;
   const tail = lines.slice(pickerIndex + 1);
-  if (tail.some(line => /^\s*\d+%[^\n]*[!❯>]\s+\S/.test(line))) return false;
+  const composer = readKiroSteerComposer(tail.join("\n"));
+  if (tail.some(line => /^\s*\d+%[^\n]*[!❯>]\s+\S/.test(line)) || (composer !== null && composer !== "text")) return false;
   return tail.some(line => /^\s*[>❯›]\s*\*?\s*\S/.test(line));
 }
 
@@ -406,12 +412,12 @@ export function kiroQuestionCardActive(pane: string): boolean {
 }
 
 /** #2675: the live card's rows — the header row, the body between it and the key hints' divider, and the key hints. */
-function kiroCardRows(pane: string, headerAt: (rows: string[], last: number) => number): { header: string; body: string[]; footer: string } | null {
+function kiroCardRows(pane: string, headerAt: (rows: string[], last: number) => number): { header: string; body: string[]; footer: string; width: number } | null {
   const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
   let last = rows.length - 1;
   while (last >= 0 && !rows[last].trim()) last--;
   const header = headerAt(rows, last);
-  return header < 0 ? null : { header: rows[header].trim(), body: rows.slice(header + 1, last - 1), footer: rows[last].trim() };
+  return header < 0 ? null : { header: rows[header].trim(), body: rows.slice(header + 1, last - 1), footer: rows[last].trim(), width: rows[last - 1].trim().length };
 }
 
 const KIRO_QUESTION_OPTION_ROW = /^ (❯| ) (\d+)\. (.*?)( \(recommended\))?$/;
@@ -471,7 +477,7 @@ export function readKiroQuestionCard(pane: string): RemoteQuestionCard | null {
   const titles = options.map(option => `${option.n}. ${option.title}`).join("\n");
   return {
     kind: "question", identity: `${card.header}\n${question.join("\n")}\n${page === "suboptions" ? "sub" : "options"}\n${titles}`,
-    title: card.header, question: question.join("\n").trim(), page: typing ? "freetext" : page, options, freeText, cursor, typed,
+    title: card.header, question: question.join("\n").trim(), page: typing ? "freetext" : page, options, freeText, cursor, typed, rowWidth: card.width,
   };
 }
 
@@ -489,7 +495,13 @@ export function readKiroMcpInputCard(pane: string): RemoteInputCard | null {
     return -1;
   });
   if (!card) return null;
-  const body = card.body.slice(1).map(row => /^\s*URL: /.test(row) ? row.replace(/URL: .*$/, "URL: (shown in the instance pane)") : row);
+  // The URL row is masked, and so is every row after it up to the next action row: a long URL wraps (#2677 review).
+  let inUrl = false;
+  const body = card.body.slice(1).flatMap(row => {
+    if (/^\s*URL: /.test(row)) { inUrl = true; return [row.replace(/URL: .*$/, "URL: (shown in the instance pane)")]; }
+    if (inUrl && KIRO_MCP_INPUT_ACTIONS.has(row.replace(/^ ❯ /, "   ").trim())) inUrl = false;
+    return inUrl ? [] : [row];
+  });
   const strip = (row: string) => row.replace(/^ ❯ /, "   ").trim();
   const cursorRow = body.find(row => /^\s*❯\s+\S/.test(row));
   if (!cursorRow) return null;
@@ -516,7 +528,7 @@ export function kiroUnavailableModelPickerActive(pane: string): boolean {
   const lines = pane.replace(/\r/g, "").split("\n");
   let pickerIndex = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (/^\s*Select model \(type to search\):\s*$/.test(lines[i])) {
+    if (KIRO_MODEL_PICKER_HEADER.test(lines[i])) {
       pickerIndex = i;
       break;
     }
@@ -1975,7 +1987,7 @@ export class KiroBackend implements CliBackend {
         // picker. Its choices range across credit multipliers and capability
         // tiers, so this must be a human decision, never an automatic Enter or
         // Escape. The ordinary /model menu alone is intentionally not matched.
-        pattern: /^\s*Select model \(type to search\):\s*$/m,
+        pattern: KIRO_MODEL_PICKER_HEADER,
         keys: [],
         description: "Kiro model unavailable — choose a replacement model in the instance pane",
         blocksDelivery: true,
@@ -1987,7 +1999,7 @@ export class KiroBackend implements CliBackend {
         // Any active /model picker owns stdin, even if a future Kiro release
         // changes the exact warning, credit wording or row layout. Keep this
         // after the verified-outage case: it never labels /model as an outage.
-        pattern: /^\s*Select model \(type to search\):\s*$/m,
+        pattern: KIRO_MODEL_PICKER_HEADER,
         keys: [],
         description: "Kiro model picker — manual selection required",
         blocksDelivery: true,

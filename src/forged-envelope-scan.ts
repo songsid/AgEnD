@@ -23,6 +23,7 @@ import { ensureAgendHome } from "./agend-home.js";
 import { t } from "./locale.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { kiroEngineFloor } from "./backend/kiro-identity.js";
 import { credentialStoreHomeForInstance } from "./backend/credential-profile.js";
 import { deepMergeGeneric, getEffectiveInstanceDefaults } from "./config.js";
 import { DeliveryOutbox, deliveryStatusSelector } from "./delivery-outbox.js";
@@ -252,6 +253,7 @@ export interface ScanTargetConfig {
   backend: string;
   workingDirectory?: string;
   backendOptions?: Record<string, Record<string, unknown>>;
+  kiroUi?: InstanceConfig["kiro_ui"];
 }
 
 /**
@@ -275,6 +277,7 @@ export function resolveScanTarget(
     backend,
     workingDirectory: merged.working_directory,
     backendOptions: merged.backend_options,
+    ...(merged.kiro_ui ? { kiroUi: merged.kiro_ui } : {}),
   };
 }
 
@@ -339,6 +342,14 @@ export function executeForgedEnvelopeScan(opts: {
         note: "transcript source is a per-backend follow-up (#995)",
         findings: [],
       });
+      continue;
+    }
+    // D5 found that the legacy-only scanner can call a frozen classic row "clean" after a TUI move.
+    // Do not open another engine's store. A current-session/root-aware TUI scanner is a separate proof.
+    if (target.kiroUi === "tui" || target.kiroUi === "v3" || kiroEngineFloor(opts.dataDir, target.name)) {
+      unreadable++;
+      rows.push({ instance: target.name, backend: target.backend, status: "unreadable-store",
+        reason: "TUI/v3 forged-envelope scanning is not implemented; the classic conversation is frozen and cannot verify new turns.", findings: [] });
       continue;
     }
     if (!target.workingDirectory) {

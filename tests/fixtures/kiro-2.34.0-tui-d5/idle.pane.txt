@@ -1,0 +1,8 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+agend-audit-2598 · claude-sonnet-4.6 · high · ◑ 35%
+/scratch/agend-wiki
+
+›  ask a question or describe a task ↵
+                                                                                                     /copy to clipboard

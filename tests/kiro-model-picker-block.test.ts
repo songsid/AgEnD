@@ -68,6 +68,22 @@ function makeDaemon(pane = BLOCKED) {
   return { daemon, screen, tmux, logger };
 }
 
+const TUI_D5_PICKER = readFileSync(new URL('./fixtures/kiro-2.34.0-tui-d5/model-picker.pane.txt', import.meta.url), 'utf8');
+const TUI_D5_IDLE = readFileSync(new URL('./fixtures/kiro-2.34.0-tui-d5/idle.pane.txt', import.meta.url), 'utf8');
+describe('2.34.0 TUI D5 picker capture',()=>{
+  it('holds the actual TUI picker without calling it an outage; idle makes it history',()=>{
+    const ordinary=backend.getRuntimeDialogs().find(d=>d.description==='Kiro model picker — manual selection required')!;
+    expect(ordinary.pattern.test(TUI_D5_PICKER)).toBe(true);
+    expect(ordinary.isActive?.(TUI_D5_PICKER)).toBe(true);
+    expect(ordinary.holdOnly).toBe(true);expect(ordinary.keys).toEqual([]);
+    expect(ordinary.isActive?.(TUI_D5_PICKER+'\n'+TUI_D5_IDLE)).toBe(false);
+    expect(ordinary.isActive?.('Select model:   type to search\n› claude-sonnet-4.6 1.30x credits model\n')).toBe(true);
+    expect(ordinary.isActive?.(TUI_D5_PICKER.replace('Select model:   type to search','Select a tool:'))).toBe(false);
+    const outage=backend.getRuntimeDialogs().find(d=>d.description.includes('model unavailable'))!;
+    expect(outage.isActive?.(TUI_D5_PICKER)).toBe(false);
+  });
+});
+
 describe("Kiro model-unavailable picker", () => {
   const dialog = backend.getRuntimeDialogs()
     .find(candidate => candidate.description.includes("model unavailable"));

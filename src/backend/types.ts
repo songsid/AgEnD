@@ -311,8 +311,10 @@ export interface RemoteQuestionCard {
   freeText: boolean;
   /** The `❯` row: an index into options, options.length for the typed-answer row; null on the freetext page. */
   cursor: number | null;
-  /** freetext page: what the typed-answer row shows (it may be the scrolled end of a long answer). */
+  /** freetext page: what the typed-answer row shows (a long answer is clipped at the card's edge). */
   typed: string | null;
+  /** The card's width in columns (its dividers'): how long a typed-answer row clipped at the edge is. */
+  rowWidth: number;
 }
 
 /**
