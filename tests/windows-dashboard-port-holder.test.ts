@@ -8,7 +8,7 @@
  * installer's own bash under a scratch HOME, except the /dev/tcp port probe, answered from a list. Script-file run.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -19,11 +19,18 @@ beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string; portproxy?: Array<[string, number, string, number]>; race?: string }) {
+function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string; portproxy?: Array<[string, number, string, number]>; race?: string; lateRace?: string }) {
   const dir = mkdtempSync(join(tmpdir(), "agend-ports-")); dirs.push(dir);
   const home = join(dir, "root"); mkdirSync(join(home, ".agend"), { recursive: true });
   if (o.fleet !== undefined) writeFileSync(join(home, ".agend", "fleet.yaml"), o.fleet);
   const progress = join(dir, "progress"); writeFileSync(progress, o.progress ?? "");
+  // A writer that lands right after the seed's comparison: a `cat` that, once, writes a configured fleet.yaml after reading.
+  const shims = join(dir, "shims"); mkdirSync(shims);
+  if (o.lateRace !== undefined) {
+    writeFileSync(join(dir, "late.yaml"), o.lateRace); writeFileSync(join(dir, "late.trigger"), "");
+    writeFileSync(join(shims, "cat"), `#!/bin/sh\n/bin/cat "$@"; rc=$?\nif [ -e '${dir}/late.trigger' ]; then rm -f '${dir}/late.trigger'; /bin/cp '${dir}/late.yaml' '${home}/.agend/fleet.yaml'; fi\nexit $rc\n`);
+    chmodSync(join(shims, "cat"), 0o755);
+  }
   const listeners = Object.entries(o.windows ?? {}).map(([p, n]) => `${p} = '${n}'`).join("; ");
   const netsh = (o.excluded ?? []).map(([a, b]) => `     ${a}     ${b}`).join("`n");
   const proxy = (o.portproxy ?? []).map(([la, lp, ca, cp]) => `${la}         ${lp}        ${ca}     ${cp}`).join("`n");
@@ -46,7 +53,7 @@ function Invoke-BoundedWsl {
   if ($script:race -and $s -match '/dev/tcp/') { [IO.File]::WriteAllText('${home}/.agend/fleet.yaml', $script:race); $script:race = $null }
   if ($s -match '/dev/tcp/127\\.0\\.0\\.1/(\\d+)') { if (@(${(o.linuxBusy ?? []).join(",")}) -contains [int]$Matches[1]) { return @{ Code = 0; Text = 'PORT_BUSY' } } else { return @{ Code = 0; Text = 'PORT_FREE' } } }
   # Only the scratch Linux: never this host's own AGEND_HOME.
-  $out = (& env -i "HOME=${home}" "PATH=/usr/bin:/bin" bash -c $s 2>&1) -join "\`n"; return @{ Code = $LASTEXITCODE; Text = $out }
+  $out = (& env -i "HOME=${home}" "PATH=${shims}:/usr/bin:/bin" bash -c $s 2>&1) -join "\`n"; return @{ Code = $LASTEXITCODE; Text = $out }
 }
 $p = Select-AgendPorts
 Write-Output ('PORT=' + $p)
@@ -55,7 +62,7 @@ Write-Output ('NETSH=' + ($script:netshCalls -join ' | '))`);
   const env = { ...process.env }; delete env.AGEND_HOME;
   const r = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", `& '${script}'`], { encoding: "utf8", timeout: 60_000, env });
   const fleet = join(home, ".agend", "fleet.yaml");
-  return { out: `${r.stdout}${r.stderr}`, fleet: existsSync(fleet) ? readFileSync(fleet, "utf8") : null, progress: readFileSync(progress, "utf8") };
+  return { out: `${r.stdout}${r.stderr}`, fleet: existsSync(fleet) ? readFileSync(fleet, "utf8") : null, progress: readFileSync(progress, "utf8"), files: readdirSync(join(home, ".agend")).sort() };
 }
 
 describe("stage 5 picks a port pair free on Windows and in Linux, and gives it to AgEnD", () => {
@@ -127,6 +134,21 @@ describe("stage 5 picks a port pair free on Windows and in Linux, and gives it t
     const r = select({ fleet: "health_port: 19280\n", windows: { 19280: "wslrelay" }, race: edited });
     expect(r.fleet).toBe(edited);
     expect(r.out).toContain("PORT=19280");
+  });
+
+  it("a config written right after the seed's comparison, before the new seed lands (#2723 review r1): kept, its port used, nothing left aside", () => {
+    if (!hasPwsh) return;
+    const configured = "health_port: 19400\ndefaults: {}\ninstances:\n  general: {}\n";
+    const r = select({ fleet: "health_port: 19280\n", windows: { 19280: "wslrelay" }, lateRace: configured });
+    expect(r.fleet).toBe(configured);
+    expect(r.out).toContain("PORT=19400");
+    expect(r.files).toEqual(["fleet.yaml"]);                        // the earlier seed moved aside is ours: removed
+  });
+
+  it("the earlier seed replaced cleanly: no aside file left behind", () => {
+    if (!hasPwsh) return;
+    const r = select({ fleet: "health_port: 19280\n", windows: { 19280: "wslrelay" } });
+    expect(r.fleet).toBe("health_port: 19282\n"); expect(r.files).toEqual(["fleet.yaml"]);
   });
 
   it("nothing free in the whole range: stops (no port), with how to find who holds it", () => {

@@ -1527,15 +1527,20 @@ function Select-AgendPorts {
             if (-not (Test-WslPortFree $q)) { $why = "Linux 裡的 $q 已有程式在用"; break }
         }
         if ($why) { Write-Info ("  連接埠 {0}/{1} 不能用（{2}），試下一組..." -f $p, ($p + 1), $why); continue }
-        # 只寫安裝程式自己的那一行，絕不蓋掉別的設定（#2723 審查）：沒有檔案時用 noclobber 建立；有的話，只有內容還是
-        # 我們上次寫的那一行才換掉。判斷之後才出現的、或被改過的 fleet.yaml 原樣保留，改用它的連接埠。
+        # 只寫安裝程式自己的那一行，絕不蓋掉別的設定（#2723 審查）。沒有檔案：用 noclobber 建立。有我們上次寫的那一行：先把
+        # 檔案原子地改名移開（rename），確認移開的就是那一行，再用 noclobber 建立新的——檢查之後才出現的設定，要嘛還在原位
+        # （我們的建立失敗），要嘛就是被移開的那一份（用 ln 放回原位，ln 不會覆蓋；放不回去就留在旁邊並說出位置）。
+        # 別人的內容一律不刪。
         $prior = if ($cfg.State -eq 'seeded') { [string]$cfg.Port } else { '' }
         $write = 'umask 077; d=${AGEND_HOME:-$HOME/.agend}; f="$d/fleet.yaml"; mkdir -p "$d" || exit 1; ' +
             ('if [ -z "' + $prior + '" ]; then set -C; printf ''health_port: %s\n'' ' + $p + ' > "$f" 2>/dev/null || exit 9; exit 0; fi; ') +
-            ('[ "$(cat "$f" 2>/dev/null)" = "health_port: ' + $prior + '" ] || exit 9; t=$(mktemp "$d/.fleet-seed.XXXXXX") || exit 1; ') +
-            ('printf ''health_port: %s\n'' ' + $p + ' > "$t" && mv -f "$t" "$f" || { rm -f "$t"; exit 1; }')
+            'a="$d/.fleet-seed-prev.$$"; mv "$f" "$a" 2>/dev/null || exit 9; ' +
+            ('if [ "$(cat "$a")" != "health_port: ' + $prior + '" ]; then if ln "$a" "$f" 2>/dev/null; then rm -f "$a"; else echo "KEPT_ASIDE=$a"; fi; exit 9; fi; ') +
+            ('if ( set -C; printf ''health_port: %s\n'' ' + $p + ' > "$f" ) 2>/dev/null; then rm -f "$a"; exit 0; fi; ') +
+            'rm -f "$a"; exit 9'
         $seed = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', $write)
         if ($seed.Code -eq 9) {
+            if ($seed.Text -match 'KEPT_ASIDE=(\S+)') { Write-Warn ("AgEnD 的設定檔在檢查之後被別的程式改寫了；那一份原封不動保存在 {0}。" -f $Matches[1]) }
             $now = Get-AgendPortConfig
             if ($now -and $now.State -eq 'configured') { Write-Info ("AgEnD 的設定檔剛剛已經建立，沿用它的連接埠 {0}" -f $now.Port); return $now.Port }
             Write-Err "AgEnD 的設定檔在檢查之後被改動了，為了不蓋掉它，先停在這裡。請再執行同一行安裝指令。"; return $null
