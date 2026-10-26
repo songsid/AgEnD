@@ -132,12 +132,15 @@ describe("real store/transcript proof", () => {
   });
 });
 
+const d5Idle = readFileSync("tests/fixtures/kiro-2.34.0-tui-d5/idle.pane.txt", "utf8");
+const d5Picker = readFileSync("tests/fixtures/kiro-2.34.0-tui-d5/model-picker.pane.txt", "utf8");
+const realPane = (agent: string) => d5Idle.replace("agend-audit-2598", agent);
 function fakeDaemon(agent: string, transcript: string, pane?: string) {
   const d = Object.create(Daemon.prototype) as any;
   const owner = { bootId: "test", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 };
   Object.assign(d, { processStatus: "running", spawning: false, runtimeMonitorsFrozen: false, interactionOwner: () => owner,
     backend: { binaryName: "kiro-cli", transcriptLaunch: () => ({ engine: "v2", sessionId: id }), readSteerComposer: () => "idle", agentSwitch: () => ({ agent }) },
-    tmux: { capturePane: vi.fn(async () => pane ?? `${agent} · ${model} · 23%\n›\n`) },
+    tmux: { capturePane: vi.fn(async () => pane ?? realPane(agent)) },
     logTranscriptPath: () => transcript, paneAuthoritativelyIdle: () => true,
   }); return { d, owner };
 }
@@ -145,11 +148,26 @@ describe("actual daemon and fleet boundaries, native operations stubbed", () => 
   it("the live bottom pair provides the model; stale ownership and picker/history screens do not", async () => {
     const { d, owner } = fakeDaemon("our-agent", "/scratch/owned.jsonl");
     expect(await d.kiroMigrationObservation()).toEqual({ sessionId: id, model, transcript: "/scratch/owned.jsonl" });
-    d.tmux.capturePane = async () => { owner.spawnGeneration++; return `our-agent · ${model} · 23%\n›\n`; };
+    d.tmux.capturePane = async () => { owner.spawnGeneration++; return realPane("our-agent"); };
     // The real owner reader supplies snapshots, not a reference to a mutable tracker.
     d.interactionOwner = () => ({ ...owner }); expect(await d.kiroMigrationObservation()).toBeNull();
-    expect(kiro.readActiveKiroModel(`our-agent · ${model} · 23%\n›\nSelect model:\n❯ other`, "our-agent")).toBeNull();
-    expect(kiro.readActiveKiroModel(`other · ${model} · 23%\n›\n`, "our-agent")).toBeNull();
+    expect(kiro.readActiveKiroModel(d5Picker)).toBeNull();
+    expect(kiro.readActiveKiroModel(realPane("other"), "our-agent")).toBeNull();
+  });
+  it("the captured D5 idle footer verifies, while busy, picker, modal and history controls refuse", async () => {
+    const { d } = fakeDaemon("agend-audit-2598", "/scratch/owned.jsonl", d5Idle);
+    expect(kiro.readKiroSteerComposer(d5Idle)).toBe("idle");
+    expect(kiro.readActiveKiroAgent(d5Idle, "tui")).toBeNull(); // action reader remains unchanged
+    expect(kiro.readActiveKiroModel(d5Idle)).toBe(model);
+    expect(await d.kiroMigrationObservation()).toEqual({ sessionId: id, model, transcript: "/scratch/owned.jsonl" });
+    for (const pane of [d5Picker, readFileSync("tests/fixtures/kiro-2.34.0-tui-d5/busy-steer.pane.txt", "utf8"), d5Idle + "\nPermission required\n", d5Idle.replace("/scratch/agend-wiki", "Select model:")]) {
+      d.tmux.capturePane = async () => pane;
+      expect(kiro.readActiveKiroModel(pane)).toBeNull(); expect(await d.kiroMigrationObservation()).toBeNull();
+    }
+    const branch = d5Idle.replace("/scratch/agend-wiki", "/scratch/agend-wiki\n(main)");
+    expect(kiro.readActiveKiroModel(branch)).toBe(model);
+    expect(kiro.readActiveKiroModel(d5Idle.replace("/scratch/agend-wiki", "(main)\n/scratch/agend-wiki"))).toBe(model);
+    expect(kiro.readActiveKiroModel(d5Idle.replace("/scratch/agend-wiki", ""))).toBeNull();
   });
   it("saved-agent resumes verify with the production agent-switch feature disabled", async () => {
     const f = fixture(); armKiroTuiMigration(f.identity); await f.d.restart("wiki");
