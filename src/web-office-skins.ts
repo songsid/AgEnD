@@ -9,6 +9,10 @@
  *
  *   <dataDir>/web-office-skins/<pack-id>/pack.prev.json the version it replaced (#2692: one, for a restore), its pictures
  *                                                      beside the current ones'
+ *   <dataDir>/web-office-skins/.kept-<pack-id>/         a pack deleted keeping its previous version: pack.prev.json and its
+ *                                                      pictures, out of the pack's own directory (#2694 follow-up) — a
+ *                                                      host before #2692 skips the name (never an id) and never removes it,
+ *                                                      so there the id is free to upload again and nothing is left stuck
  *
  * Directories 0700, files 0600. An upload is written into a hidden directory first and renamed into place whole, so a
  * pack is there entirely or not at all; a delete renames it away before removing it. A replace (#2692) writes the new
@@ -40,6 +44,9 @@ export const SKIN_WIRE_BYTES = Math.ceil((SKIN_LIMITS.packBytes * 4) / 3) + SKIN
 export const SKIN_DISK_BYTES = 2 * SKIN_LIMITS.packs * SKIN_LIMITS.packBytes;
 /** #2692: a pack's previous version, beside its pack.json (a host before #2692 reads neither the file nor a directory without pack.json). */
 export const PREVIOUS_FILE = "pack.prev.json";
+/** A deleted pack's kept previous version: its own directory, never the pack's (a host before #2692 would find the id taken, yet no pack to delete). */
+export const keptDir = (id: string) => `.kept-${id}`;
+const KEPT = /^\.kept-([A-Za-z0-9_-]{1,40})$/;
 
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const FILE_ID = /^[0-9a-f]{32}$/;
@@ -170,8 +177,11 @@ function recordOk(raw: unknown, dirName: string): { record: SkinRecord; pack: Ch
 }
 
 type Kept = { record: SkinRecord; pack: CheckedPack; text: string };
-/** `previous` (#2692): each pack's one kept previous version — also a deleted pack's, when it was deleted keeping it. */
-type State = { packs: Map<string, Kept>; previous: Map<string, Kept> } | "unreadable";
+/**
+ * `previous` (#2692): each pack's one kept previous version — also a deleted pack's, when it was deleted keeping it;
+ * `away`: the ids whose previous is such a deleted pack's, kept in keptDir(id).
+ */
+type State = { packs: Map<string, Kept>; previous: Map<string, Kept>; away: Set<string> } | "unreadable";
 const summaryOf = (r: SkinRecord): SkinSummary => ({ id: r.id, name: r.name, sha: r.sha, bytes: r.bytes, files: Object.keys(r.files).length, uploaded_at: r.uploaded_at });
 /** The pictures a record keeps, by their file id (one id may serve several names). */
 const pictureIds = (r: SkinRecord | undefined): Set<string> => new Set(r ? Object.values(r.files).map(f => f.id) : []);
@@ -193,26 +203,40 @@ export class OfficeSkinStore {
     if (this.state) return this.state;
     let names: string[];
     try { names = readdirSync(this.dir); }
-    catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { packs: new Map(), previous: new Map() } : "unreadable"); }
-    const packs = new Map<string, Kept>(), previous = new Map<string, Kept>();
-    const read = (n: string, file: string): Kept | null => {
+    catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { packs: new Map(), previous: new Map(), away: new Set() } : "unreadable"); }
+    const packs = new Map<string, Kept>(), previous = new Map<string, Kept>(), away = new Set<string>(), kept: string[] = [], stray: string[] = [];
+    const read = (dir: string, file: string, id = dir): Kept | null => {
       try {
-        const text = readFileSync(join(this.dir, n, file), "utf8");
-        const ok = recordOk(JSON.parse(text), n);
+        const text = readFileSync(join(this.dir, dir, file), "utf8");
+        const ok = recordOk(JSON.parse(text), id);
         return ok ? { ...ok, text } : null;
       } catch { return null; }
     };
     for (const n of names.sort()) {
       // An upload or a delete a restart cut short: never offered, removed.
       if (/^\.(?:up|rm)-[0-9a-f]{16}$/.test(n)) { try { rmSync(join(this.dir, n), { recursive: true, force: true }); } catch { /* next time */ } continue; }
+      const k = KEPT.exec(n);
+      if (k) { kept.push(k[1]!); continue; }
       if (!ID.test(n)) continue;
       const prev = read(n, PREVIOUS_FILE);
+      // A deleted pack's previous left in the pack's own directory (as #2692 first kept it): moved out below.
+      if (prev && !existsSync(join(this.dir, n, "pack.json"))) { stray.push(n); continue; }
       if (prev) previous.set(n, prev);
       if (packs.size >= SKIN_LIMITS.packs) continue;
       const ok = read(n, "pack.json");
       if (ok) packs.set(n, ok);
     }
-    return (this.state = { packs, previous });
+    for (const n of stray) {
+      if (kept.includes(n)) continue;
+      try { renameSync(join(this.dir, n), join(this.dir, keptDir(n))); kept.push(n); } catch { /* left as it is: not offered */ }
+    }
+    for (const id of kept) {
+      // The id uploaded again meanwhile (a host before #2692 sees it free): that pack is the one; the old previous goes.
+      if (packs.has(id) || existsSync(join(this.dir, id))) { if (packs.has(id)) try { rmSync(join(this.dir, keptDir(id)), { recursive: true, force: true }); } catch { /* next time */ } continue; }
+      const prev = read(keptDir(id), PREVIOUS_FILE, id);
+      if (prev) { previous.set(id, prev); away.add(id); }
+    }
+    return (this.state = { packs, previous, away });
   }
 
   readable(): boolean { return this.load() !== "unreadable"; }
@@ -299,8 +323,14 @@ export class OfficeSkinStore {
       s.packs.set(r.id, { record: r, pack: checked.pack, text });
       return { ok: true, rev: this.rev(), pack: summaryOf(r), replaced: null };
     }
-    // In place: a kept pack replaced, or a deleted one whose previous version was kept (that previous stays).
-    const keep = current ?? previous!, written: string[] = [];
+    // In place: a kept pack replaced, or a deleted one whose previous version was kept (that previous stays: its
+    // directory comes back as the pack's first).
+    const keep = current ?? previous!, written: string[] = [], back = !current && s.away.has(r.id);
+    if (back) {
+      if (existsSync(home)) return refuse(409, "skin_exists", `"${r.id}" is kept already: delete it first`);
+      try { renameSync(join(this.dir, keptDir(r.id)), home); } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
+      s.away.delete(r.id);
+    }
     try {
       for (const [id, bytes] of checked.pictures) {
         const at = join(home, `${id}.png`);
@@ -314,20 +344,21 @@ export class OfficeSkinStore {
     } catch (err) {
       try { if (current) { if (previous) atomicWriteFileSync(join(home, PREVIOUS_FILE), previous.text, { mode: 0o600 }); else rmSync(join(home, PREVIOUS_FILE), { force: true }); } } catch { /* read back as it is */ }
       for (const at of written) { try { rmSync(at, { force: true }); } catch { /* removed with the pack */ } }
+      if (back) { try { renameSync(home, join(this.dir, keptDir(r.id))); s.away.add(r.id); } catch { /* moved out on the next load */ } }
       return refuse(503, "skin_write_failed", (err as Error).message);
     }
     s.packs.set(r.id, { record: r, pack: checked.pack, text });
     if (current) s.previous.set(r.id, current);
-    this.sweep(r.id, r, current ? current.record : keep.record);
+    this.sweep(home, r, current ? current.record : keep.record);
     return { ok: true, rev: this.rev(), pack: summaryOf(r), replaced: current ? summaryOf(current.record) : null };
   }
 
-  /** Remove the pictures of a pack's directory that neither its current nor its previous version names. */
-  private sweep(id: string, ...keep: Array<SkinRecord | undefined>): void {
+  /** Remove the pictures of a pack's directory (`dir`) that neither its current nor its previous version names. */
+  private sweep(dir: string, ...keep: Array<SkinRecord | undefined>): void {
     const ids = new Set(keep.flatMap(r => [...pictureIds(r)]));
     let names: string[] = [];
-    try { names = readdirSync(join(this.dir, id)); } catch { return; }
-    for (const n of names) if (/^[0-9a-f]{32}\.png$/.test(n) && !ids.has(n.slice(0, 32))) { try { rmSync(join(this.dir, id, n), { force: true }); } catch { /* next time */ } }
+    try { names = readdirSync(dir); } catch { return; }
+    for (const n of names) if (/^[0-9a-f]{32}\.png$/.test(n) && !ids.has(n.slice(0, 32))) { try { rmSync(join(dir, n), { force: true }); } catch { /* next time */ } }
   }
 
   /**
@@ -341,10 +372,25 @@ export class OfficeSkinStore {
     if (!previous) return refuse(404, "skin_no_previous", `"${id}" has no previous version kept`);
     if (!current && s.packs.size >= SKIN_LIMITS.packs) return refuse(409, "skins_quota", `at most ${SKIN_LIMITS.packs} packs`);
     const home = join(this.dir, id);
-    try {
-      this.hooks.beforeSwap?.(id);
-      atomicWriteFileSync(join(home, "pack.json"), previous.text, { mode: 0o600 });       // the swap
-    } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
+    if (!current && s.away.has(id)) {
+      // A deleted pack's kept previous: its pack.json written in its own directory, which then becomes the pack's in one rename.
+      const away = join(this.dir, keptDir(id));
+      if (existsSync(home)) return refuse(409, "skin_exists", `"${id}" is kept already: delete it first`);
+      try {
+        this.hooks.beforeSwap?.(id);
+        atomicWriteFileSync(join(away, "pack.json"), previous.text, { mode: 0o600 });
+        renameSync(away, home);                                                             // the swap
+      } catch (err) {
+        try { rmSync(join(away, "pack.json"), { force: true }); } catch { /* not read in a kept directory */ }
+        return refuse(503, "skin_write_failed", (err as Error).message);
+      }
+      s.away.delete(id);
+    } else {
+      try {
+        this.hooks.beforeSwap?.(id);
+        atomicWriteFileSync(join(home, "pack.json"), previous.text, { mode: 0o600 });       // the swap
+      } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
+    }
     try { if (current) atomicWriteFileSync(join(home, PREVIOUS_FILE), current.text, { mode: 0o600 }); else rmSync(join(home, PREVIOUS_FILE), { force: true }); }
     catch { /* the previous file still names the restored version: restoring again changes nothing */ }
     s.packs.set(id, previous);
@@ -354,8 +400,10 @@ export class OfficeSkinStore {
 
   /**
    * Remove a pack (DELETE /ui/office-skins/<id>). Offices naming it are drawn in a built-in style until it is back. Its
-   * previous version goes with it — unless `keepPrevious` (#2692), which removes only the current one (pack.json), so a
-   * restore can bring the previous back. A deleted pack's kept previous is removed by deleting it again.
+   * previous version goes with it — unless `keepPrevious` (#2692), which removes only the current one, so a restore can
+   * bring the previous back: the pack's directory is renamed to keptDir(id) at once (gone for every reader, an older
+   * host's too, the id free there), then its pack.json and the current version's own pictures are removed. A deleted
+   * pack's kept previous is removed by deleting it again.
    */
   remove(id: string, opts: { keepPrevious?: boolean } = {}): { ok: true; rev: string; removed: SkinSummary | null; previous_kept: boolean } | SkinRefusal {
     const s = this.load();
@@ -363,15 +411,17 @@ export class OfficeSkinStore {
     const current = ID.test(id) ? s.packs.get(id) : undefined, previous = ID.test(id) ? s.previous.get(id) : undefined;
     if (!current && !previous) return refuse(404, "skin_unknown");
     if (opts.keepPrevious && previous && current) {
-      try { rmSync(join(this.dir, id, "pack.json")); } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
-      s.packs.delete(id);
-      this.sweep(id, previous.record);
+      const away = join(this.dir, keptDir(id));
+      try { rmSync(away, { recursive: true, force: true }); renameSync(join(this.dir, id), away); } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
+      try { rmSync(join(away, "pack.json"), { force: true }); } catch { /* never read in a kept directory */ }
+      s.packs.delete(id); s.away.add(id);
+      this.sweep(away, previous.record);
       return { ok: true, rev: this.rev(), removed: summaryOf(current.record), previous_kept: true };
     }
     if (opts.keepPrevious && !current) return refuse(404, "skin_unknown", `"${id}" is deleted already; its previous version is kept`);
     const gone = join(this.dir, `.rm-${randomBytes(8).toString("hex")}`);
-    try { renameSync(join(this.dir, id), gone); } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
-    s.packs.delete(id); s.previous.delete(id);
+    try { renameSync(join(this.dir, current ? id : keptDir(id)), gone); } catch (err) { return refuse(503, "skin_write_failed", (err as Error).message); }
+    s.packs.delete(id); s.previous.delete(id); s.away.delete(id);
     try { rmSync(gone, { recursive: true, force: true }); } catch { /* removed on the next load */ }
     return { ok: true, rev: this.rev(), removed: current ? summaryOf(current.record) : null, previous_kept: false };
   }

@@ -62,14 +62,53 @@ export const mib = (bytes: number) => `${(bytes / MiB).toFixed(bytes < 10 * MiB 
 
 // ── Layout overrides against a pack ──
 
-/** One office's override entry that does not fit a pack: `entry` is what is dropped ("seats.desks", "furniture.rack"). */
+/**
+ * One office's override entry that does not fit a pack: `entry` is what is dropped — "seats.desks", "furniture.rack",
+ * "furnitureNight.rack", one seat's reservation "seatFor.desks.0" (#2691), or "seatFor.desks" for an area's empty
+ * reservation map. "overrides" (UNDROPPABLE) when the layout fails as a whole but no single entry does: never dropped.
+ */
 export interface OverrideConflict { office: string; name: string; entry: string; rule: string }
-const onlyEntry = (ov: LayoutOverrides, kind: "seats" | "furniture" | "furnitureNight", key: string): LayoutOverrides =>
-  ({ pack: ov.pack, [kind]: Object.fromEntries([[key, (ov[kind] as Record<string, unknown>)[key]]]) } as LayoutOverrides);
+/** A conflict no exact drop clears: the change is refused even with drop_invalid_overrides (never a whole layout lost). */
+export const UNDROPPABLE = "overrides";
+export const undroppable = (conflicts: readonly OverrideConflict[]) => conflicts.some(c => c.entry === UNDROPPABLE);
+
+/**
+ * Every entry of an office's overrides, each on its own (with `pack`): one per area's seats, item's place and item's
+ * night place, one per seat's reservation (seatFor.<area>.<slot>; an area's empty map is one entry too), and any other
+ * key whole (the door, the walkable graph). Every key there is, not a list of kinds: a key added later is checked too.
+ */
+function entriesOf(ov: LayoutOverrides): Array<{ entry: string; only: LayoutOverrides }> {
+  const out: Array<{ entry: string; only: LayoutOverrides }> = [], pack = ov.pack;
+  const one = (entry: string, rest: Record<string, unknown>) => out.push({ entry, only: { pack, ...rest } as LayoutOverrides });
+  for (const [kind, v] of Object.entries(ov as unknown as Record<string, unknown>)) {
+    if (kind === "pack") continue;
+    if (kind === "seatFor" && isObj(v)) {
+      for (const [area, slots] of Object.entries(v)) {
+        const keys = isObj(slots) ? Object.keys(slots) : [];
+        if (!keys.length) one(`seatFor.${area}`, { seatFor: { [area]: slots } });
+        for (const slot of keys) one(`seatFor.${area}.${slot}`, { seatFor: { [area]: { [slot]: (slots as Record<string, unknown>)[slot] } } });
+      }
+    } else if (isObj(v)) for (const key of Object.keys(v)) one(`${kind}.${key}`, { [kind]: { [key]: v[key] } });
+    else one(kind, { [kind]: v });
+  }
+  return out;
+}
+/** `ov` with `entry` (an entriesOf one) taken out; empty maps go with it. */
+function without(ov: Record<string, any>, entry: string): void {
+  const [kind, key, slot] = entry.split(".") as [string, string | undefined, string | undefined];
+  if (key === undefined) { delete ov[kind]; return; }
+  if (!isObj(ov[kind])) return;
+  if (slot !== undefined) {
+    if (isObj(ov[kind][key])) { delete ov[kind][key][slot]; if (!Object.keys(ov[kind][key]).length) delete ov[kind][key]; }
+  } else delete ov[kind][key];
+  if (!Object.keys(ov[kind]).length) delete ov[kind];
+}
 
 /**
  * Each stored office whose overrides were made on `pack` (overrides.pack: the ones PUT /ui/offices checks against it),
- * put on it entry by entry (applyOverrides — an area's seats, an item's place, an item's night place): what does not fit.
+ * put on it whole (applyOverrides, as that save does — every entry, the reservations too), and where that fails entry
+ * by entry: what does not fit. When the entries found are dropped the rest must fit whole; if not (a rule between
+ * entries), the office's conflict is UNDROPPABLE instead, and the change is refused.
  */
 export function overrideConflicts(offices: readonly Office[], pack: CheckedPack): OverrideConflict[] {
   const out: OverrideConflict[] = [];
@@ -78,29 +117,27 @@ export function overrideConflicts(offices: readonly Office[], pack: CheckedPack)
     if (!ov || ov.pack !== pack.id) continue;
     const whole = applyOverrides(pack, ov);
     if (whole.ok) continue;
-    let found = false;
-    for (const kind of ["seats", "furniture", "furnitureNight"] as const) {
-      for (const key of Object.keys(ov[kind] ?? {})) {
-        const one = applyOverrides(pack, onlyEntry(ov, kind, key));
-        if (!one.ok) { found = true; out.push({ office: o.id, name: o.name, entry: `${kind}.${key}`, rule: one.error.replace(/^overrides\./, "") }); }
-      }
+    const mine: OverrideConflict[] = [];
+    for (const { entry, only } of entriesOf(ov)) {
+      const r = applyOverrides(pack, only);
+      if (!r.ok) mine.push({ office: o.id, name: o.name, entry, rule: r.error.replace(/^overrides\./, "") });
     }
-    if (!found) out.push({ office: o.id, name: o.name, entry: "overrides", rule: whole.error.replace(/^overrides\./, "") });
+    const left = JSON.parse(JSON.stringify(ov)) as Record<string, any>;
+    for (const c of mine) without(left, c.entry);
+    out.push(...(mine.length && applyOverrides(pack, left as LayoutOverrides).ok ? mine
+      : [{ office: o.id, name: o.name, entry: UNDROPPABLE, rule: whole.error.replace(/^overrides\./, "") }]));
   }
   return out;
 }
-/** The offices with exactly those entries dropped (an office left with nothing but `pack` loses its overrides). */
+/** The offices with exactly those entries dropped (an office left with nothing but `pack` loses its overrides). An UNDROPPABLE conflict is never passed here. */
 export function dropConflicts(offices: readonly Office[], conflicts: readonly OverrideConflict[]): Office[] {
+  if (undroppable(conflicts)) throw new Error("dropConflicts: an undroppable conflict");
   return offices.map(o => {
     const mine = conflicts.filter(c => c.office === o.id);
     if (!mine.length || !o.overrides) return o;
     const { overrides: _gone, ...bare } = o;
-    if (mine.some(c => c.entry === "overrides")) return bare;
     const ov = JSON.parse(JSON.stringify(o.overrides)) as Record<string, any>;
-    for (const c of mine) {
-      const k = c.entry.indexOf("."), kind = c.entry.slice(0, k), key = c.entry.slice(k + 1);
-      if (isObj(ov[kind])) { delete ov[kind][key]; if (!Object.keys(ov[kind]).length) delete ov[kind]; }
-    }
+    for (const c of mine) without(ov, c.entry);
     return Object.keys(ov).some(k => k !== "pack") ? { ...o, overrides: ov as LayoutOverrides } : bare;
   });
 }
@@ -121,6 +158,8 @@ export function dropsText(conflicts: readonly OverrideConflict[]): string {
   const more = conflicts.length > DROPS_SHOWN ? ` ${t("office_packs.drops_more", conflicts.length - DROPS_SHOWN)}` : "";
   return t("office_packs.drops", conflicts.length, listed + more);
 }
+const DROP_HINT = "Fix the pack, or send drop_invalid_overrides: true to drop exactly those entries.";
+const UNDROPPABLE_HINT = "Those entries cannot be dropped one by one (the layout fails as a whole), so drop_invalid_overrides does not apply: fix the pack, or the office's layout on the Office page.";
 const conflictText = (c: readonly OverrideConflict[]) => c.map(x => `office "${x.name}" (${x.office}): ${x.rule}`).join("; ");
 
 // ── The rate limit: batches and bytes ──
@@ -406,9 +445,9 @@ export class OfficePackTools {
     const offices = this.deps.offices.list().offices;
     const packs = items.map(c => ({ c, conflicts: overrideConflicts(offices, c.pack), replaces: current.get(c.record.id) }));
     const bad = packs.filter(p => p.conflicts.length);
-    if (bad.length && !drop) {
+    if (bad.length && (!drop || bad.some(p => undroppable(p.conflicts)))) {
       const conflicts = bad.flatMap(p => p.conflicts.map(x => ({ pack: p.c.record.id, ...x })));
-      return { ok: false, answer: refuse("overrides_invalid", `A stored office's layout overrides would no longer fit — ${bad.map(p => `${p.c.record.id}: ${conflictText(p.conflicts)}`).join(" | ")}. Fix the pack, or send drop_invalid_overrides: true to drop exactly those entries.`, { conflicts }) };
+      return { ok: false, answer: refuse("overrides_invalid", `A stored office's layout overrides would no longer fit — ${bad.map(p => `${p.c.record.id}: ${conflictText(p.conflicts)}`).join(" | ")}. ${undroppable(conflicts) ? UNDROPPABLE_HINT : DROP_HINT}`, { conflicts }) };
     }
     return { ok: true, packs };
   }
@@ -488,7 +527,7 @@ export class OfficePackTools {
         if (!prev || !pack) return no("skin_no_previous", `"${change.id}" has no previous version kept.`);
         if (!current.has(change.id) && current.size >= SKIN_LIMITS.packs) return no("skins_quota", `at most ${SKIN_LIMITS.packs} packs`);
         const conflicts = overrideConflicts(this.deps.offices.list().offices, pack);
-        if (conflicts.length && !change.drop) return no("overrides_invalid", `A stored office's layout overrides would no longer fit the restored version — ${conflictText(conflicts)}. Send drop_invalid_overrides: true to drop exactly those entries.`, { conflicts });
+        if (conflicts.length && (!change.drop || undroppable(conflicts))) return no("overrides_invalid", `A stored office's layout overrides would no longer fit the restored version — ${conflictText(conflicts)}. ${undroppable(conflicts) ? UNDROPPABLE_HINT : "Send drop_invalid_overrides: true to drop exactly those entries."}`, { conflicts });
         return { packs: [{ id: change.id, name: prev.name, files: Object.keys(prev.files).length, bytes: prev.bytes, replaces: current.get(change.id)?.sha ?? null }], drops: conflicts };
       }
       case "style": {
@@ -522,7 +561,7 @@ export class OfficePackTools {
         for (const c of change.items) {
           const before = this.deps.offices.list();
           const conflicts = overrideConflicts(before.offices, c.pack);
-          if (conflicts.length && !change.drop) return done(refuse("overrides_invalid", `${c.record.id}: ${conflictText(conflicts)}`, { conflicts, applied }))!;
+          if (conflicts.length && (!change.drop || undroppable(conflicts))) return done(refuse("overrides_invalid", `${c.record.id}: ${conflictText(conflicts)}`, { conflicts, applied }))!;
           let wrote: number | null = null;
           if (conflicts.length) {
             const w = this.deps.offices.replace(dropConflicts(before.offices, conflicts), before.rev, { packOf: id => (id === c.pack.id ? c.pack : this.deps.skins.pack(id)) });

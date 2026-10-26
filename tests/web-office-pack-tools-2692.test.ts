@@ -13,7 +13,7 @@
  * Isolation: temp directories; no child process; the fleet's own handlers with its config set in memory.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -305,6 +305,66 @@ describe("the offices' layout overrides against the new pack", () => {
     // And the offices save again (PUT /ui/offices checks every office against the kept pack).
     expect(offices.replace(now, offices.rev())).toMatchObject({ ok: true });
   });
+
+  // #2694 follow-up (Fable's P3 d): seat reservations (#2691, overrides.seatFor) are dropped one seat at a time — an
+  // upload breaking one used to drop the office's whole layout.
+  describe("seat reservations (seatFor)", () => {
+    const RES = { pack: "snug", door: [600, 710], seats: { lounge: [[780, 280]] },
+      seatFor: { desks: { 0: { for: ["alpha"], lend: false }, 1: { for: ["beta"], lend: true } }, lounge: { 0: { for: ["gamma"], lend: false } } } };
+    /** v1 without its lounge (everyone's default the desks). */
+    const NO_LOUNGE = () => { const m: any = MANIFEST(); delete m.areas.lounge; m.stateZones = { working: "desks", default: "desks" }; return { manifest: m, files: PICTURES(5) }; };
+    const setUp = async (overrides: unknown) => {
+      const x = tools({ approval: "apply" });
+      expect(await send(x.t, "office_pack_upload", [SOURCE()])).toMatchObject({ applied: [{ id: "snug" }] });
+      putOffices(x.offices, [{ id: "res", name: "Res", skin: "snug", members: [], overrides }] as never);
+      return x;
+    };
+    const resOf = (offices: InstanceType<typeof OfficeStore>) => offices.list().offices.find(o => o.id === "res")!.overrides;
+
+    it("a seat gone from an area: refused naming the office and that reservation; dropped, only it goes, and the offices save again", async () => {
+      const { t, offices, skins, dir } = await setUp(RES);
+      const v2 = SOURCE({ desks: 1, seed: 3 });
+      const refused = await send(t, "office_pack_upload", [v2]) as any;
+      expect(refused).toMatchObject({ error: "overrides_invalid", message: expect.stringMatching(/office "Res" \(res\): seatFor\.desks\.1: a seat the area has \(it has 1\)/) });
+      expect(refused.conflicts.map((c: any) => c.entry)).toEqual(["seatFor.desks.1"]);
+      expect(skins.get("snug")!.manifest).toEqual(MANIFEST());
+      expect(await send(t, "office_pack_upload", [v2], { drop_invalid_overrides: true })).toMatchObject({ applied: [{ id: "snug", dropped_overrides: [{ office: "res", entry: "seatFor.desks.1" }] }] });
+      const kept = { ...RES, seatFor: { desks: { 0: { for: ["alpha"], lend: false } }, lounge: { 0: { for: ["gamma"], lend: false } } } };
+      expect(resOf(offices)).toEqual(kept);
+      expect(offices.replace(offices.list().offices, offices.rev())).toMatchObject({ ok: true });       // PUT /ui/offices against the new pack
+      expect(resOf(new OfficeStore(dir, id => skins.pack(id)))).toEqual(kept);                           // and so on disk (beside the offices)
+    });
+
+    it("an area gone: its seats and each of its reservations are named and dropped; the rest of the layout stays", async () => {
+      const { t, offices } = await setUp(RES);
+      const r = await send(t, "office_pack_check", [NO_LOUNGE()]) as any;
+      expect(r.conflicts.map((c: any) => c.entry)).toEqual(["seats.lounge", "seatFor.lounge.0"]);
+      expect(await send(t, "office_pack_upload", [NO_LOUNGE()], { drop_invalid_overrides: true })).toMatchObject({ applied: [{ dropped_overrides: [{ entry: "seats.lounge" }, { entry: "seatFor.lounge.0" }] }] });
+      expect(resOf(offices)).toEqual({ pack: "snug", door: [600, 710], seatFor: { desks: RES.seatFor.desks } });
+      expect(offices.replace(offices.list().offices, offices.rev())).toMatchObject({ ok: true });
+    });
+
+    it("an area's empty reservation map, its area gone, is one entry (Prism's #2693 P3 shape)", async () => {
+      const { t, offices } = await setUp({ pack: "snug", door: [600, 710], seatFor: { lounge: {} } });
+      const r = await send(t, "office_pack_check", [NO_LOUNGE()]) as any;
+      expect(r.conflicts.map((c: any) => [c.entry, c.rule])).toEqual([["seatFor.lounge", "seatFor.lounge: an area the pack defines"]]);
+      await send(t, "office_pack_upload", [NO_LOUNGE()], { drop_invalid_overrides: true });
+      expect(resOf(offices)).toEqual({ pack: "snug", door: [600, 710] });
+    });
+
+    it("a pack that keeps every reserved seat is no conflict; a restore is checked the same way", async () => {
+      const { t, offices } = await setUp(RES);
+      expect(await send(t, "office_pack_check", [SOURCE({ desks: 2, seed: 4 })])).toMatchObject({ result: "PACK OK", packs: [{ id: "snug" }] });
+      await send(t, "office_pack_upload", [NO_LOUNGE()], { drop_invalid_overrides: true });
+      // Back to the version with the lounge: the reservations left fit it, so nothing else is dropped.
+      expect(t.handle("alpha", "office_pack_restore", { id: "snug" })).toMatchObject({ applied: { restored: "snug" } });
+      expect(resOf(offices)).toEqual({ pack: "snug", door: [600, 710], seatFor: { desks: RES.seatFor.desks } });
+    });
+
+    it("never the whole layout: a conflict no single entry explains is refused even with drop_invalid_overrides", () => {
+      expect(() => dropConflicts(OFFICES as never, [{ office: "ops", name: "Ops", entry: "overrides", rule: "x" }])).toThrow(/undroppable/);
+    });
+  });
 });
 
 describe("the notice names what a change drops", () => {
@@ -386,6 +446,70 @@ describe("replace: atomic, one previous version kept, restore", () => {
     expect(t.handle("alpha", "office_pack_delete", { id: "snug" })).toMatchObject({ applied: { deleted: "snug", previous_kept: false } });
     expect([skins.list().packs, (t.handle("alpha", "office_pack_list", {}) as any).deleted]).toEqual([[], []]);
     expect(t.handle("alpha", "office_pack_delete", { id: "snug" })).toMatchObject({ error: "skin_unknown" });
+  });
+
+  // #2694 follow-up (Fable's P3 e): a pack deleted keeping its previous version is kept out of the pack's own directory,
+  // so a host before #2692 (which sees the id free) can upload it again and nothing is left it can neither use nor delete.
+  describe("a deleted pack's kept previous lives in .kept-<id>", () => {
+    const skinsDir = (dir: string) => join(dir, "web-office-skins");
+    const deletedKeeping = async () => {
+      const x = tools({ approval: "apply" });
+      await send(x.t, "office_pack_upload", [SOURCE()]);
+      await send(x.t, "office_pack_upload", [SOURCE({ seed: 3 })]);
+      const v1 = x.skins.records().previous.get("snug")!.sha;
+      expect(x.t.handle("alpha", "office_pack_delete", { id: "snug", keep_previous: true })).toMatchObject({ applied: { previous_kept: true } });
+      return { ...x, v1 };
+    };
+    const files = (dir: string) => readdirSync(dir).sort();
+
+    it("the pack's directory is gone (the id free); its previous and that version's pictures only, in .kept-snug, read back after a restart", async () => {
+      const { dir, skins, v1 } = await deletedKeeping();
+      expect(existsSync(join(skinsDir(dir), "snug"))).toBe(false);
+      const kept = join(skinsDir(dir), ".kept-snug");
+      const v1Pictures = Object.values(skins.records().previous.get("snug")!.files).map(f => `${f.id}.png`);
+      expect(files(kept)).toEqual([...new Set(v1Pictures)].concat(PREVIOUS_FILE).sort());
+      const again = new OfficeSkinStore(dir);
+      expect([again.list().packs, again.records().previous.get("snug")!.sha]).toEqual([[], v1]);
+    });
+
+    it("restore makes it the pack again (its own directory, no previous); an upload of the id brings the kept previous back with it", async () => {
+      const a = await deletedKeeping();
+      expect(a.t.handle("alpha", "office_pack_restore", { id: "snug" })).toMatchObject({ applied: { restored: "snug" } });
+      expect([existsSync(join(skinsDir(a.dir), ".kept-snug")), files(join(skinsDir(a.dir), "snug")).includes(PREVIOUS_FILE), a.skins.get("snug")!.sha]).toEqual([false, false, a.v1]);
+      expect(new OfficeSkinStore(a.dir).get("snug")!.sha).toBe(a.v1);
+      const b = await deletedKeeping();
+      expect(await send(b.t, "office_pack_upload", [SOURCE({ seed: 7 })])).toMatchObject({ applied: [{ id: "snug" }] });
+      expect([existsSync(join(skinsDir(b.dir), ".kept-snug")), b.skins.records().previous.get("snug")!.sha]).toEqual([false, b.v1]);
+      expect(new OfficeSkinStore(b.dir).records().previous.get("snug")!.sha).toBe(b.v1);
+      expect(b.t.handle("alpha", "office_pack_restore", { id: "snug" })).toMatchObject({ applied: { restored: "snug" } });
+    });
+
+    it("deleting it again removes the kept previous", async () => {
+      const { dir, t } = await deletedKeeping();
+      expect(t.handle("alpha", "office_pack_delete", { id: "snug" })).toMatchObject({ applied: { previous_kept: false } });
+      expect(files(skinsDir(dir)).filter(n => !n.startsWith(".agent-changes"))).toEqual([]);              // the change log stays
+    });
+
+    it("the layout #2692 first wrote (pack.prev.json alone in snug/) is moved out when read", async () => {
+      const { dir } = await deletedKeeping();
+      renameSync(join(skinsDir(dir), ".kept-snug"), join(skinsDir(dir), "snug"));
+      const s = new OfficeSkinStore(dir);
+      expect([s.list().packs, s.records().previous.has("snug")]).toEqual([[], true]);
+      expect([existsSync(join(skinsDir(dir), "snug")), existsSync(join(skinsDir(dir), ".kept-snug", PREVIOUS_FILE))]).toEqual([false, true]);
+    });
+
+    it("the id uploaded again where .kept-snug is not read (an older host): that pack is the one, the old previous goes", async () => {
+      const { dir, v1 } = await deletedKeeping();
+      // An older host's add(): the pack's own directory, its pictures and pack.json (it never looks at .kept-snug).
+      const c = checkSkinUpload({ manifest: MANIFEST(), files: Object.fromEntries([...PICTURES(11)].map(([k, b]) => [k, b.toString("base64")])) }, "web", 5);
+      if (!c.ok) throw new Error(c.error);
+      mkdirSync(join(skinsDir(dir), "snug"));
+      for (const [id, bytes] of c.pictures) writeFileSync(join(skinsDir(dir), "snug", `${id}.png`), bytes);
+      writeFileSync(join(skinsDir(dir), "snug", "pack.json"), JSON.stringify(c.record));
+      const s = new OfficeSkinStore(dir);
+      expect([s.get("snug")!.sha, s.records().previous.has("snug"), existsSync(join(skinsDir(dir), ".kept-snug"))]).toEqual([c.record.sha, false, false]);
+      expect(c.record.sha).not.toBe(v1);
+    });
   });
 
   it("office_set_style points a stored office at a pack or a built-in style; its overrides must fit", async () => {

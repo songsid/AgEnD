@@ -50,9 +50,10 @@ describe("what's new for agents, upgrading to and from 2.2.5", () => {
     expect(plan && "silent" in plan ? plan.silent : plan).toEqual(idsUpTo("2.2.5"));
   });
 
-  it("every entry after 2.2.5 is for 2.3.0 stable (a beta `since` would hide it from a 2.2.x install updating to 2.3.0)", () => {
-    // After 2.3.0 has shipped, entries for later versions are expected: update this check then.
-    expect(AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.5")! > 0 && e.since !== "2.3.0").map(e => `${e.id} (${e.since})`)).toEqual([]);
+  it("every entry after 2.2.5 is for 2.3.0 stable (a beta `since` would hide it from a 2.2.x install updating to 2.3.0), or after 2.3.1", () => {
+    // 2.3.0 and 2.3.1 have shipped: a later entry may name the beta that brings it (#2692: 2.3.2-beta.11) — newer than
+    // every published stable, so an install on any of them is told on its update. Never one between 2.2.5 and 2.3.1.
+    expect(AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.5")! > 0 && e.since !== "2.3.0" && compareVersions(e.since, "2.3.1")! <= 0).map(e => `${e.id} (${e.since})`)).toEqual([]);
   });
 });
 
