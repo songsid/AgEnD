@@ -19,23 +19,25 @@ beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string }) {
+function select(o: { windows?: Record<number, string>; excluded?: Array<[number, number]>; linuxBusy?: number[]; fleet?: string; progress?: string; portproxy?: Array<[string, number, string, number]> }) {
   const dir = mkdtempSync(join(tmpdir(), "agend-ports-")); dirs.push(dir);
   const home = join(dir, "root"); mkdirSync(join(home, ".agend"), { recursive: true });
   if (o.fleet !== undefined) writeFileSync(join(home, ".agend", "fleet.yaml"), o.fleet);
   const progress = join(dir, "progress"); writeFileSync(progress, o.progress ?? "");
   const listeners = Object.entries(o.windows ?? {}).map(([p, n]) => `${p} = '${n}'`).join("; ");
   const netsh = (o.excluded ?? []).map(([a, b]) => `     ${a}     ${b}`).join("`n");
+  const proxy = (o.portproxy ?? []).map(([la, lp, ca, cp]) => `${la}         ${lp}        ${ca}     ${cp}`).join("`n");
   const script = join(dir, "t.ps1");
   writeFileSync(script, `$t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -match '^(Get-WindowsPortListener|Get-ExcludedPortRanges|Test-PortExcluded|Test-WslPortFree|Get-AgendPortConfig|Select-AgendPorts|Get-ProgressValue|Write-(Err|Warn|Info|Ok)|Write-InstallLog|Protect-LogText)$' }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
+foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -match '^(Get-PortProxyRule|Get-WindowsPortListener|Get-ExcludedPortRanges|Test-PortExcluded|Test-WslPortFree|Get-AgendPortConfig|Select-AgendPorts|Get-ProgressValue|Write-(Err|Warn|Info|Ok)|Write-InstallLog|Protect-LogText)$' }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
 foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$AGEND_PORT_(FIRST|TRIES)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
 $UBUNTU_DISTRO = 'AgEnD-Ubuntu-24.04'; $ProgressFile = '${progress}'
 $script:listeners = @{ ${listeners} }; $script:wsl = @()
 function Get-NetTCPConnection { param($State, $LocalPort, $ErrorAction) if (-not $script:listeners.ContainsKey([int]$LocalPort)) { throw 'none' }; [PSCustomObject]@{ OwningProcess = [int]$LocalPort } }
 function Get-Process { param($Id, $ErrorAction) [PSCustomObject]@{ ProcessName = $script:listeners[[int]$Id] } }
-function netsh.exe { "Start Port    End Port\`n----------    --------\`n${netsh}" }
+$script:netshCalls = @()
+function netsh.exe { $script:netshCalls += ($args -join ' '); if ($args[0] -eq 'interface') { "Listen on ipv4:             Connect to ipv4:\`n\`nAddress         Port        Address         Port\`n--------------- ----------  --------------- ----------\`n${proxy}" } else { "Start Port    End Port\`n----------    --------\`n${netsh}" } }
 function Invoke-BoundedWsl {
   param([string[]]$Arguments)
   $s = $Arguments[-1]; $script:wsl += $s
@@ -46,7 +48,8 @@ function Invoke-BoundedWsl {
 }
 $p = Select-AgendPorts
 Write-Output ('PORT=' + $p)
-Write-Output ('PROBES=' + @($script:wsl | Where-Object { $_ -match '/dev/tcp' }).Count)`);
+Write-Output ('PROBES=' + @($script:wsl | Where-Object { $_ -match '/dev/tcp' }).Count)
+Write-Output ('NETSH=' + ($script:netshCalls -join ' | '))`);
   const env = { ...process.env }; delete env.AGEND_HOME;
   const r = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", `& '${script}'`], { encoding: "utf8", timeout: 60_000, env });
   const fleet = join(home, ".agend", "fleet.yaml");
@@ -90,6 +93,22 @@ describe("stage 5 picks a port pair free on Windows and in Linux, and gives it t
     const moved = select({ fleet: "health_port: 19280\n", progress: "AGEND_PORT=19280\n", windows: { 19280: "wslrelay" } });
     expect(moved.out).toContain("PORT=19282");
     expect(moved.fleet).toBe("health_port: 19282\n");
+  });
+
+  it("an old Windows port forwarding rule (portproxy, svchost) on 19280: named with its target, the delete command shown, never run — the next pair is used", () => {
+    if (!hasPwsh) return;
+    const r = select({ windows: { 19280: "svchost" }, portproxy: [["0.0.0.0", 19280, "172.20.64.3", 19280]] });
+    expect(r.out).toContain("PORT=19282");
+    expect(r.out).toContain("portproxy）把 19280 轉到 172.20.64.3:19280");
+    expect(r.out).toContain("netsh interface portproxy delete v4tov4 listenport=19280 listenaddress=0.0.0.0");
+    expect(r.out).not.toMatch(/NETSH=.*delete/);                     // shown to the person, never run
+    expect(r.fleet).toBe("health_port: 19282\n");
+  });
+
+  it("svchost without a matching rule: named as it is", () => {
+    if (!hasPwsh) return;
+    const r = select({ windows: { 19280: "svchost" }, portproxy: [["0.0.0.0", 8080, "172.20.64.3", 8080]] });
+    expect(r.out).toContain("PORT=19282"); expect(r.out).toContain("被「svchost」佔用");
   });
 
   it("nothing free in the whole range: stops (no port), with how to find who holds it", () => {

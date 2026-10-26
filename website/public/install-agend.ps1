@@ -1465,6 +1465,16 @@ function Get-WindowsPortListener([int]$port) {
     $name = ''; try { $name = [string](Get-Process -Id $c.OwningProcess -ErrorAction Stop).ProcessName } catch { }
     return @{ Pid = [int]$c.OwningProcess; Name = $name }
 }
+# Windows 的連接埠轉送規則（netsh interface portproxy，由 svchost 的 iphlpsvc 監聽）：常見的是以前為 WSL 設的、指向已經不在的
+# WSL IP 的規則，連過去就是「連線已重設」（使用者實測）。只讀，絕不自動刪除。回傳 @{ ListenAddress; Target } 或 $null。
+function Get-PortProxyRule([int]$port) {
+    $text = ''
+    try { $text = (& netsh.exe interface portproxy show v4tov4 2>$null) -join "`n" } catch { return $null }
+    foreach ($m in [regex]::Matches($text, '(?m)^\s*(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$')) {
+        if ([int]$m.Groups[2].Value -eq $port) { return @{ ListenAddress = $m.Groups[1].Value; Target = ($m.Groups[3].Value + ':' + $m.Groups[4].Value) } }
+    }
+    return $null
+}
 # Windows 保留給 Hyper-V/WinNAT 等的連接埠範圍（netsh 讀不到就當作沒有）。
 function Get-ExcludedPortRanges {
     $text = ''
@@ -1506,7 +1516,14 @@ function Select-AgendPorts {
         foreach ($q in @($p, ($p + 1))) {
             if (Test-PortExcluded $q $ranges) { $why = "Windows 保留了 $q"; break }
             $h = Get-WindowsPortListener $q
-            if ($h) { $why = ("Windows 上的 {0} 被「{1}」佔用" -f $q, $h.Name); break }
+            if ($h) {
+                $rule = if ($h.Name -eq 'svchost') { Get-PortProxyRule $q } else { $null }
+                if ($rule) {
+                    $why = ("Windows 的連接埠轉送規則（portproxy）把 {0} 轉到 {1}" -f $q, $rule.Target)
+                    Write-Info ("  若那條規則已經沒用，可以用系統管理員 PowerShell 刪除：netsh interface portproxy delete v4tov4 listenport={0} listenaddress={1}" -f $q, $rule.ListenAddress)
+                } else { $why = ("Windows 上的 {0} 被「{1}」佔用" -f $q, $h.Name) }
+                break
+            }
             if (-not (Test-WslPortFree $q)) { $why = "Linux 裡的 $q 已有程式在用"; break }
         }
         if ($why) { Write-Info ("  連接埠 {0}/{1} 不能用（{2}），試下一組..." -f $p, ($p + 1), $why); continue }
@@ -1612,6 +1629,24 @@ function Get-SavedBackends {
         if ($saved) { return $saved }
     }
     return "1"  # 向後相容：預設 Kiro CLI
+}
+# 接續安裝時的後端：列出上次選的，按 Enter 沿用，或輸入新的清單（一直失敗的後端不會把安裝卡住）。沒有互動式主控台時
+# （無人值守）沿用上次的選擇，不問。
+function Select-ResumeBackends([string]$saved) {
+    $selected = @(Resolve-Backends $saved)
+    Write-Info ("上次選擇的後端：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
+    if (Test-LiveConsole) {
+        foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }
+        while ($true) {
+            $sel = Read-Host "  直接按 Enter 沿用上次的選擇，或輸入新的數字（例：1,2）"
+            if ([string]::IsNullOrWhiteSpace($sel)) { break }
+            $picked = @(Resolve-Backends $sel)
+            if ($picked.Count -gt 0) { $selected = $picked; break }
+            Write-Warn "沒有可用的編號，請重新輸入，或直接按 Enter 沿用上次的選擇。"
+        }
+    }
+    Write-Info "已能執行的保留，只重試缺少或損壞的後端。"
+    return ,$selected
 }
 function Resolve-Backends($csv) {
     $ids = @($csv -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
@@ -2491,20 +2526,7 @@ if ((Stage-Done 2) -and $missingBackends.Count -eq 0) {
 } else {
     Clear-InstallStage 2
     if ($savedBackends -and -not $Force) {
-        $selected = Resolve-Backends $savedBackends
-        Write-Info ("上次選擇的後端：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
-        # A resume may change the choice (a backend that keeps failing must not trap the install); unattended keeps it.
-        if (Test-LiveConsole) {
-            foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }
-            while ($true) {
-                $sel = Read-Host "  直接按 Enter 沿用上次的選擇，或輸入新的數字（例：1,2）"
-                if ([string]::IsNullOrWhiteSpace($sel)) { break }
-                $picked = @(Resolve-Backends $sel)
-                if ($picked.Count -gt 0) { $selected = $picked; break }
-                Write-Warn "沒有可用的編號，請重新輸入，或直接按 Enter 沿用上次的選擇。"
-            }
-        }
-        Write-Info "已能執行的保留，只重試缺少或損壞的後端。"
+        $selected = Select-ResumeBackends $savedBackends
     } else {
         Write-Info "請選擇要安裝的 AI 後端（可多選，用逗號分隔）："
         foreach ($b in $ALL_BACKENDS) { Write-Info ("  {0}. {1}（{2}）" -f $b.Id, $b.Name, $b.Note) }

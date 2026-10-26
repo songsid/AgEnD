@@ -64,7 +64,11 @@ describe("the backend probe reaches bash with its argv intact (--exec, not --)",
     expect(probe(old)).toContain("FOUND=none");
   });
 
-  it("no `wsl … -- bash -c <script>` is left in the installer", () => {
-    expect(SOURCE).not.toMatch(/'--',\s*'bash',\s*'-c'/);
+  it("no wsl.exe argument list goes through `--` (the distro's shell) in the installer or the shortcut code", () => {
+    const shortcuts = readFileSync(join(import.meta.dirname, "..", "templates", "windows-shortcuts.ps1"), "utf8");
+    for (const [name, text] of [["install-agend.ps1", SOURCE], ["windows-shortcuts.ps1", shortcuts]] as const) {
+      // -d <distro> -u <user> '--' …: every such array is passed to wsl.exe as argv; only --exec keeps it.
+      expect(text.match(/'-u',\s*[^,]+,\s*'--',/g) ?? [], name).toEqual([]);
+    }
   });
 });

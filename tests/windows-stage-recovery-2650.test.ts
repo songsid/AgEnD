@@ -179,6 +179,7 @@ Write-Output ('KEPT='+(Test-Path -LiteralPath $ProgressFile))`);
   const out=f.run(`'STAGE_5_DONE' | Set-Content -LiteralPath $ProgressFile
 function Test-InstallerReady {return $${ready}}
 function Invoke-SetupAndService {return $true}
+function Select-AgendPorts {return 19280}
 function Invoke-AgendInWsl {return @{Code=0;Text=''}}
 function Start-Sleep {}
 $browserSignins='';$service=$ast.FindAll({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.StartsWith('if ((Stage-Done 5)')},$true)[0]
