@@ -73,8 +73,9 @@ Survey for board card M-2020, 2026-10-26. Decision 67ddcabc applies: legacy keep
 - **Launch.** Every engine is pinned on every launch (`--legacy-ui --agent-engine=v1`, `--tui --agent-engine=v2`, `--v3`). Moving between engines is one-way and admin-confirmed (`migrate_kiro_instance`, #2618). New instances default to tui (#2621).
 - **Transcripts** are read from the engine's own store, by the pinned id (#2617).
 - **Steer** on tui (2.27.1, 2.28.0, 2.34.0) and V3 (2.27.1 only).
+- **Busy insert** on tui on 2.34.0 (#2678, 9252bcee): a message for a busy kiro TUI goes into its box within seconds, as on claude and codex.
 - **Held for a person:**
-  - the model picker and model-unavailable outage picker (captured under legacy only);
+  - the model picker: on legacy, and on tui since #2674 (a0ea8449), which captured the real 2.34.0 tui picker ("Select model: type to search") and holds both title forms. The model-unavailable outage picker is still captured under legacy only;
   - trust prompts;
   - V3 workspace trust;
   - V3 question and MCP cards. #2675 posts these to the chat to be answered: #2677 is merged, and #2680 is in review.
@@ -88,7 +89,7 @@ Value is for the person running the fleet. Effort: S is under a day, M is about 
 |---|---|---|---|---|---|---|
 | 1 | **Read `/compact`'s result on V3** too, so the Compact quick action reports done or failed | V3 | Medium: today V3 compactions are unconfirmed | S | low (capture V3's line) | already works |
 | 2 | **Steer verified for V3 on 2.34.0** (B4), so V3 instances can be steered mid-turn | V3 | High once instances move to V3 | S–M | needs one real-account capture (D5) | not available: legacy waits for idle, as today |
-| 3 | **Model-picker holds captured under tui and V3** (B6), so an outage picker is never typed into | tui, V3 | High (safety) | S–M | needs a real outage or mock capture | already covered |
+| 3 | **The remaining model-picker holds** (B6): V3's picker, and the tui outage picker. The tui `/model` picker is held since #2674 | V3, tui (outage only) | High (safety) | S–M | needs a real outage or mock capture | already covered |
 | 4 | **Full-screen takeover guard**: while `/transcript` ($PAGER), `/editor`, `/reply`, `/kvim` or `/fullscreen` owns the pane, hold deliveries and show "waiting at its terminal" | all (`/editor`, `/reply` exist on legacy too) | Medium: a paste into $PAGER or vi is lost, or worse | M | the shapes vary by $PAGER and $EDITOR; key off kiro's own rows | the same guard covers legacy's `/editor` and `/reply` |
 | 5 | **`/session-id` as identity proof** after a launch or resume, instead of inferring the session from files | tui, V3 | Medium: makes resume-by-id (#2617) checkable | S | low; read-only command | legacy keeps the sqlite lookup |
 | 6 | **`/rewind` from the chat** ("undo the last turn") | tui, V3 | Medium | M | high: it forks into a new session, so the identity changes and the transcript pin must move (as #2617 did) | none; legacy's Checkpoint restores files, not turns. Say so in the UI |
@@ -106,7 +107,7 @@ Not recommended: `/spawn` and `/switch` (tui only, refused on V3). They start ag
 1. **Interactive prompts from the agent's own shell commands (sudo, ssh passwords).** Under tui the agent's commands run detached, with no tty (#2598 B7, #1110). A `sudo` needing a password hangs the tool call instead of painting `[sudo] password for …` in the pane, so AgEnD's interactive-prompt detector has nothing to see. Legacy paints the prompt in the pane, and AgEnD tells a person. This is D7 on #2598: instances that need sudo should stay on legacy, or use passwordless sudo for the specific commands.
 2. **`!cmd` takes over input.** On tui and V3, a `!` command runs in a PTY and forwards keystrokes until it exits, and it can't be queued. A delivery pasted meanwhile goes into the command. AgEnD has no hold for this yet; it belongs to candidate 4.
 3. **Fewer submission proofs.** Legacy has the bottom-ready gate and the stranded-input proof. Tui relies on output silence plus the busy row (#2598 B5): no known failure, but less assurance.
-4. **Holds captured only on legacy:** the model picker and the outage picker (#2598 B6, candidate 3).
+4. **Holds not yet captured off legacy:** the model-unavailable outage picker on tui, and V3's model picker (#2598 B6, candidate 3). The tui `/model` picker itself is held since #2674.
 5. **Legacy-only commands with no tui/V3 equivalent:** `/todos`, `/experiment` (Thinking, Checkpoint, Delegate), `/issue`, `/logdump`. None of them is used by AgEnD today.
 6. **V3-only prompts.** Workspace trust, question cards, MCP input and approval scope pages never appear on tui. Code must not assume V3's handling on tui, and tui must not wait for them.
 
