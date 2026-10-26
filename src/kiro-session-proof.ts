@@ -12,9 +12,10 @@
  *                   or `Session ID: none`
  *   updateTitle   → showAlert(`Title set: ${title}`)
  */
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./backend/kiro-engine-ledger.js";
+import { ensureInstanceDir } from "./private-dir.js";
 
 export const KIRO_SESSION_ID_COMMAND = "/session-id";
 export const KIRO_SESSION_PROOF_FILE = "kiro-session-proof.json";
@@ -94,7 +95,7 @@ export function recordKiroSessionProof(
     source: "/session-id",
     provenAt: rec.provenAt ?? Date.now(),
   };
-  mkdirSync(instanceDir, { recursive: true, mode: 0o700 });
+  ensureInstanceDir(instanceDir);
   writeFileAtomic(proofPath(instanceDir), JSON.stringify(written) + "\n");
   return written;
 }
