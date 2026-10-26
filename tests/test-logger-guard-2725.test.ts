@@ -66,6 +66,16 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
     });
   }
 
+  it("a scratch home made INSIDE the run's test home (#2727 review r3) is still a scratch home: refused", async () => {
+    dir = mkdtempSync(join(process.env.AGEND_TEST_GUARD_DIR!, "scratch-"));
+    vi.stubEnv("AGEND_HOME", dir);
+    vi.resetModules();
+    const { createLogger } = await vi.importActual<typeof import("../src/logger.js")>("../src/logger.js");
+    expect(() => createLogger("silent")).toThrow(/#2725: a test built a real logger transport writing .*scratch-.*daemon\.log/);
+    await settle();
+    expect(tree(dir)).not.toContain("daemon.log");
+  });
+
   it("the real transport into this run's own test home is still built (the opt-in logger-shared-transport uses it)", async () => {
     vi.resetModules();
     const { createLogger } = await vi.importActual<typeof import("../src/logger.js")>("../src/logger.js");
@@ -80,7 +90,11 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
       symlinkSync(outside, join(home, "link"));
       const t = (destination: string) => ({ targets: [{ options: { destination } }, { options: { destination: 1 } }] });
       expect(strayTransportFiles(t(join(home, "daemon.log")), home)).toEqual([]);
-      expect(strayTransportFiles(t(join(home, "sub", "daemon.log")), home)).toEqual([]);
+      expect(strayTransportFiles(t(join(home, "sub", "daemon.log")), home), "inside the home is not enough: a test may remove sub/").toHaveLength(1);
+      expect(strayTransportFiles(t(join(home, "other.log")), home), "only the run's daemon.log").toHaveLength(1);
+      expect(strayTransportFiles(t(join(home, ".", "daemon.log")), home), "the same file, spelled differently").toEqual([]);
+      symlinkSync(home, join(outside, "home-link"));
+      expect(strayTransportFiles(t(join(outside, "home-link", "daemon.log")), home), "the same file through a symlink to the home").toEqual([]);
       expect(strayTransportFiles(t(join(outside, "daemon.log")), home)).toEqual([join(outside, "daemon.log")]);
       expect(strayTransportFiles(t(join(home, "..", "x", "daemon.log")), home)).toHaveLength(1);
       expect(strayTransportFiles(t(join(home, "link", "daemon.log")), home), "a symlink out of the home is out").toHaveLength(1);

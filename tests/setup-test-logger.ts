@@ -9,8 +9,8 @@
  *    before) writing to a sink: no transport, no worker, no file. Everything else in logger.ts is the real module.
  *  - A file that needs the real transport (it tests the transport itself) gets it back by any means it likes —
  *    `vi.unmock("../src/logger.js")`, its own mock, importActual — and the tripwire (tests/support/test-logger-tripwire.ts) still holds it: a pino
- *    transport whose file would land outside this run's own test home (AGEND_TEST_GUARD_DIR, which outlives every
- *    test) throws when it is built, so no late writer can ever reach a scratch directory, whatever the mock looks like.
+ *    transport writing any file but this run's own `<test home>/daemon.log` (AGEND_TEST_GUARD_DIR outlives every
+ *    test; a directory made inside it may not) throws when it is built, so no late writer can ever reach a scratch directory, whatever the mock looks like.
  *
  * What a child process logs (`spawnSync(node …)`) is that process's own logger: untouched.
  */
