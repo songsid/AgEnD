@@ -1,3 +1,4 @@
+import { KIRO_AMBIGUOUS_RESUME_SCREEN } from "../src/backend/kiro.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -132,6 +133,28 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
 
     expect(sessionExists(), "the conversation is still there for the fleet's retry").toBe(true);
     expect(setAside(), "and nothing was set aside yet").toHaveLength(0);
+  });
+
+  it("the real migrated Kiro ambiguity never abandons its pin, even beyond the retry bound", async () => {
+    const d = makeDaemon();
+    const error = 'Error: Session id "6ca8be1a-6ec5-4cfc-9a2a-ea586133c27e" is ambiguous (2 matches).\nUse a longer prefix or the full id from --list-sessions.';
+    armForFailedResume(d, { paneText: error });
+    d["backend"]!.resumeBlockedPattern = () => KIRO_AMBIGUOUS_RESUME_SCREEN;
+    const lost = vi.fn(); d.on("context_lost", lost);
+    for (let i = 0; i < 5; i++) {
+      await expect(d["spawnClaudeWindow"]()).rejects.toThrow(/ambiguous session id.*session kept/);
+      expect(sessionExists()).toBe(true); expect(setAside()).toHaveLength(0);
+      expect(d["skipResume"]).toBe(false);
+    }
+    expect(lost).not.toHaveBeenCalled();
+    expect(d["bumpUnprovenResumeFailures"]()).toBe(1);
+  });
+
+  it("the ambiguity screen tolerates terminal wrapping but does not classify missing sessions as blocked", () => {
+    expect(KIRO_AMBIGUOUS_RESUME_SCREEN.test('Error: Session id "6ca8be1a-6ec5-4cfc-9a2a-ea586133c27e" is ambiguous (2 matches).')).toBe(true);
+    expect(KIRO_AMBIGUOUS_RESUME_SCREEN.test('Error: Session id "6ca8be1a-6ec5-4cfc-9a2a-\nea586133c27e" is ambiguous (2 mat\nches).')).toBe(true);
+    expect(KIRO_AMBIGUOUS_RESUME_SCREEN.test('No conversation found to resume')).toBe(false);
+    expect(KIRO_AMBIGUOUS_RESUME_SCREEN.test('Session id is invalid')).toBe(false);
   });
 
   it("starts fresh only after repeated unproven failures, and says the context is lost", async () => {

@@ -11394,6 +11394,15 @@ export class Daemon extends EventEmitter {
       if (attemptedResume) {
       let paneText: string | undefined;
       try { paneText = await this.tmux?.capturePaneWithHistory(50); } catch { /* pane may be gone */ }
+      if (paneText && this.backend.resumeBlockedPattern?.().test(paneText)) {
+        // #2598: a duplicate id proves the conversation exists. The generic retry escape hatch must not
+        // abandon that pin or turn a store-selection error into a fresh conversation, even after many retries.
+        await this.killProcessTree("SIGTERM", "spawn: retained session is blocked");
+        this.startupAdmission?.();
+        await this.tmux!.killWindow();
+        this.startupAdmission?.();
+        throw new UnsupportedCliError("CLI resume is blocked by an ambiguous session id — session kept; resolve the duplicate stores before retrying");
+      }
       const proven = this.paneSaysNoConversation(paneText);
       if (!proven) {
         const failures = this.bumpUnprovenResumeFailures();

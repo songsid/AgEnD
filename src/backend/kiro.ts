@@ -1150,6 +1150,12 @@ export const KIRO_REQUEST_LIMIT_SCREEN = new RegExp(
   "m",
 );
 
+/** #2598: Kiro 2.34 lists a carried UUID in both V2 and classic; this proves presence, not a missing session. */
+export const KIRO_AMBIGUOUS_RESUME_SCREEN = new RegExp(
+  wrapTolerant('Error: Session id "') + '[A-Za-z0-9_.\\n-]{1,256}' + wrapTolerant('" is ambiguous (')
+  + "\\d+" + wrapTolerant(" matches)."), "m",
+);
+
 /** Startup budget for a `--resume` launch (60% first output, 40% ready). */
 export const KIRO_RESUME_STARTUP_BUDGET_MS = 60_000;
 
@@ -1306,6 +1312,8 @@ export class KiroBackend implements CliBackend {
   getStartupBudgetMs(ctx: { resume: boolean }): number | undefined {
     return ctx.resume ? KIRO_RESUME_STARTUP_BUDGET_MS : undefined;
   }
+
+  resumeBlockedPattern(): RegExp { return KIRO_AMBIGUOUS_RESUME_SCREEN; }
 
   retriesResumeOnStartupFailure(): boolean {
     // A resume miss is far more often "the backend was slow" than "the session

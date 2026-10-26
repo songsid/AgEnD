@@ -615,6 +615,9 @@ export interface CliBackend {
    */
   resumeMissingPattern?(): RegExp;
 
+  /** A retained session is positively present but blocked (for example duplicate-store ambiguity). Never abandon it. */
+  resumeBlockedPattern?(): RegExp;
+
   /**
    * #1217: a dialog the CLI shows in answer to its quit command that must not
    * be answered by a stray key (Claude's "Background work is running": Enter
