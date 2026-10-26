@@ -171,6 +171,10 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
       saveFleetConfig: () => { saved.push(String(fleet.instances.wiki.kiro_ui)); },
       status: () => over.running === false ? "stopped" : "running",
       restart,
+      reserve: () => ({ current: () => true, release: vi.fn() }),
+      preflight: vi.fn(async () => "claude-sonnet-4.6"),
+      verify: vi.fn(async () => ({ forensic: "clean" })),
+      stop: vi.fn(async () => {}),
       ...over,
     };
     return { d, fleet, saved, restart };
@@ -191,7 +195,7 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
     if (!judged.ok) throw new Error(judged.error);
     expect(kiroMigrationPrompt(judged.plan, true)).toContain("classic-1");
     const out = await applyKiroMigration(d, judged.plan);
-    expect(out).toEqual({ ok: true, text: `${t("kiro_migrate.done", "wiki")} ${t("kiro_migrate.done_carry", "classic-1")}` });
+    expect(out).toEqual({ ok: true, text: t("kiro_migrate.verified", "wiki", "classic-1", "claude-sonnet-4.6", "clean") });
     expect(fleet.instances.wiki.kiro_ui).toBe("tui");
     expect(saved).toEqual(["tui"]);
     expect(restart).toHaveBeenCalledWith("wiki");
@@ -199,13 +203,13 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
     expect(launch("v2", ["tui-newer"], { launchedBefore: false })).toMatchObject({ mode: "resume", id: "classic-1" });
   });
 
-  it("a stopped instance is not started: the move happens at its next start", async () => {
+  it("a stopped instance is started and verified after explicit Confirm", async () => {
     launch("v1", ["classic-1"]);
     const { d, restart } = deps({ running: false });
     const judged = planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
-    expect((await applyKiroMigration(d, judged.plan)).text).toContain(t("kiro_migrate.done_next_start", "wiki"));
-    expect(restart).not.toHaveBeenCalled();
+    expect((await applyKiroMigration(d, judged.plan)).ok).toBe(true);
+    expect(restart).toHaveBeenCalledTimes(2);
   });
 
   it("fleet.yaml cannot be saved: nothing changes, nothing is armed", async () => {
@@ -263,6 +267,10 @@ describe("FleetManager glue: the request posts a Confirm in General; only the cl
     const posted: any[] = [];
     Object.assign(f, {
       fleetConfig: fleet,
+      kiroMigrateDeps: () => ({ agendHome: home, fleetConfig: () => fleet, saveFleetConfig: () => f.saveFleetConfig(),
+        status: () => "running", reserve: () => ({ current: () => true, release() {} }),
+        preflight: async () => "claude-sonnet-4.6", verify: async () => ({ forensic: "clean" }),
+        stop: async () => {}, restart: async (name: string) => f.restartSingleInstance(name, { explicit: true }) }),
       pendingKiroMigrations: new Map(),
       logger: { info() {}, warn() {}, error() {}, debug() {} },
       eventLog: { insert: vi.fn() },
@@ -302,11 +310,21 @@ describe("FleetManager glue: the request posts a Confirm in General; only the cl
     expect(await f.handleKiroMigrateCallback(click("confirm"), "tg")).toBe(true);
     expect(fleet.instances.wiki).toHaveProperty("kiro_ui", "tui");
     expect(f.restartSingleInstance).toHaveBeenCalledWith("wiki", { explicit: true });
-    const text = `${t("kiro_migrate.done", "wiki")} ${t("kiro_migrate.done_carry", "classic-1")}`;
+    const text = t("kiro_migrate.verified", "wiki", "classic-1", "claude-sonnet-4.6", "clean");
     expect(f.notifyFleetError).toHaveBeenCalledWith(text);
     expect(f.notifyInstanceTopic).toHaveBeenCalledWith("wiki", text);
   });
 
+  it("failed verification is announced in General and the instance topic too", async () => {
+    launch("v1", ["classic-1"]);
+    const { f } = await fm(); const original = f.kiroMigrateDeps;
+    f.kiroMigrateDeps = () => ({ ...original(), verify: async () => { throw new Error("verification failed"); } });
+    await f.requestKiroMigration("wiki", false);
+    f.consumeNonceCallback = vi.fn(() => ({ entry: { instanceName: "wiki", messageId: "m" }, action: "confirm" }));
+    await f.handleKiroMigrateCallback(click("confirm"), "tg");
+    expect(f.notifyFleetError).toHaveBeenCalledWith(expect.stringContaining("verification failed"));
+    expect(f.notifyInstanceTopic).toHaveBeenCalledWith("wiki", expect.stringContaining("verification failed"));
+  });
   it("Cancel, or a click the nonce check refuses (not a fleet admin): nothing changes", async () => {
     launch("v1", ["classic-1"]);
     const { f, fleet } = await fm();

@@ -23,6 +23,12 @@ export interface KiroMigrateDeps {
   saveFleetConfig(): void;
   status(name: string): string;
   restart(name: string): Promise<void>;
+  /** Reserve both deliveries and competing restart requests for this whole workflow. */
+  reserve(name: string): { current(): boolean; release(): void };
+  /** Fresh idle observation, supported version and the unchanged model to preserve. */
+  preflight(name: string, plan: KiroMigrationPlan): Promise<string>;
+  verify(name: string, id: string, model: string, archived: boolean): Promise<{ forensic: string }>;
+  stop(name: string): Promise<void>;
 }
 
 /** What a confirmed move will do; checked again when the admin confirms. */
@@ -70,7 +76,9 @@ export function kiroMigrationPrompt(plan: KiroMigrationPlan, running: boolean): 
     t("kiro_migrate.prompt_title", plan.name),
     plan.classicId ? t("kiro_migrate.prompt_carry", plan.classicId) : t("kiro_migrate.prompt_fresh"),
     t("kiro_migrate.prompt_one_way"),
-    running ? t("kiro_migrate.prompt_restart") : t("kiro_migrate.prompt_next_start"),
+    t("kiro_migrate.prompt_verify"),
+    t("kiro_migrate.prompt_sudo"),
+    running ? t("kiro_migrate.prompt_restart") : t("kiro_migrate.prompt_start_verify"),
   ].join("\n");
 }
 
@@ -87,29 +95,60 @@ export async function applyKiroMigration(deps: KiroMigrateDeps, plan: KiroMigrat
   if (found.workingDirectory !== plan.workingDirectory || found.credentialProfile !== plan.credentialProfile || again.classicId !== plan.classicId) {
     return { ok: false, text: t("kiro_migrate.changed", plan.name) };
   }
-  const { inst } = found;
-  const before = inst.kiro_ui;
-  const restoreConfig = (): void => { if (before === undefined) delete inst.kiro_ui; else inst.kiro_ui = before; };
-  inst.kiro_ui = "tui";
-  try { deps.saveFleetConfig(); } catch (err) {
-    restoreConfig();
-    return { ok: false, text: t("kiro_migrate.save_failed", plan.name, (err as Error).message) };
-  }
-  const opts = { agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile };
-  let armed: KiroTuiMigration;
-  try { armed = armKiroTuiMigration(opts); } catch { armed = { kind: "refused", reason: "unreadable" }; }
-  if (armed.kind === "refused" || armed.classicId !== plan.classicId) {
-    if (armed.kind === "ready" && armed.classicId) disarmKiroTuiMigration(opts);
-    restoreConfig();
-    try { deps.saveFleetConfig(); } catch { /* the running classic CLI is untouched; the next save writes it again */ }
-    return { ok: false, text: armed.kind === "refused" ? refusal(plan.name, armed) : t("kiro_migrate.changed", plan.name) };
-  }
-  const carried = plan.classicId ? t("kiro_migrate.done_carry", plan.classicId) : t("kiro_migrate.done_fresh");
-  if (deps.status(plan.name) !== "running") return { ok: true, text: `${t("kiro_migrate.done_next_start", plan.name)} ${carried}` };
+  let lease: ReturnType<KiroMigrateDeps["reserve"]>;
+  try { lease = deps.reserve(plan.name); } catch (err) { return { ok: false, text: t("kiro_migrate.failed", plan.name, (err as Error).message) }; }
+  let switched = false;
+  const configuredModel = found.inst.model;
+  const current = () => {
+    if (!lease.current()) throw new Error(t("kiro_migrate.superseded"));
+    const config = deps.fleetConfig(), inst = config?.instances[plan.name];
+    if (!inst || inst.model !== configuredModel || (inst.backend ?? config?.defaults?.backend ?? "claude-code") !== "kiro-cli"
+      || (inst.kiro_ui ?? "legacy") !== (switched ? "tui" : "legacy") || inst.working_directory !== plan.workingDirectory
+      || instanceCredentialProfile(inst as never, config?.defaults as never, "kiro-cli") !== plan.credentialProfile) throw new Error(t("kiro_migrate.superseded"));
+  };
   try {
-    await deps.restart(plan.name);
+    const model = await deps.preflight(plan.name, plan); current();
+    // The idle/version check awaited: re-check the original pin before any write.
+    const checked = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile });
+    if (checked.kind !== "ready" || checked.classicId !== plan.classicId || found.inst.kiro_ui && found.inst.kiro_ui !== "legacy") throw new Error(t("kiro_migrate.changed", plan.name));
+    const inst = deps.fleetConfig()!.instances[plan.name];
+    const before = inst.kiro_ui;
+    const restoreConfig = (): void => { if (before === undefined) delete inst.kiro_ui; else inst.kiro_ui = before; };
+    inst.kiro_ui = "tui";
+    try { deps.saveFleetConfig(); } catch (err) {
+      restoreConfig();
+      return { ok: false, text: t("kiro_migrate.save_failed", plan.name, (err as Error).message) };
+    }
+    const opts = { agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile };
+    let armed: KiroTuiMigration;
+    try { armed = armKiroTuiMigration(opts); } catch { armed = { kind: "refused", reason: "unreadable" }; }
+    if (armed.kind === "refused" || armed.classicId !== plan.classicId) {
+      if (armed.kind === "ready" && armed.classicId) disarmKiroTuiMigration(opts);
+      restoreConfig();
+      try { deps.saveFleetConfig(); } catch (err) {
+        // The accepted disk config may still say TUI without an adoption: persist a stop instead of risking fresh.
+        switched = true; throw err;
+      }
+      return { ok: false, text: armed.kind === "refused" ? refusal(plan.name, armed) : t("kiro_migrate.changed", plan.name) };
+    }
+    switched = true;
+    current(); await deps.restart(plan.name); current();
+    if (!plan.classicId) {
+      // Explicit startFresh remains an explicit new conversation, never an automatic fallback.
+      return { ok: true, text: `${t("kiro_migrate.done", plan.name)} ${t("kiro_migrate.done_fresh")}` };
+    }
+    await deps.verify(plan.name, plan.classicId, model, false); current();
+    // The second ordinary restart stops our CLI, archives its frozen classic row in launch preparation,
+    // then must resume the exact same V2 id. No picker and no model prompt are submitted.
+    await deps.restart(plan.name); current();
+    const verified = await deps.verify(plan.name, plan.classicId, model, true); current();
+    return { ok: true, text: t("kiro_migrate.verified", plan.name, plan.classicId, model, verified.forensic) };
   } catch (err) {
-    return { ok: true, text: `${t("kiro_migrate.done_restart_failed", plan.name, (err as Error).message)} ${carried}` };
-  }
-  return { ok: true, text: `${t("kiro_migrate.done", plan.name)} ${carried}` };
+    let reason = (err as Error).message;
+    // Never roll a carried conversation back to its now-frozen classic copy.
+    if (switched && lease.current()) {
+      try { await deps.stop(plan.name); } catch { reason += " " + t("kiro_migrate.stop_unconfirmed"); }
+    }
+    return { ok: false, text: t("kiro_migrate.failed", plan.name, reason) };
+  } finally { lease.release(); }
 }

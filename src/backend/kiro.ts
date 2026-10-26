@@ -1120,6 +1120,26 @@ export function readActiveKiroAgent(pane: string, ui: "legacy" | "tui" | "v3"): 
   return null;
 }
 
+/** Model on Kiro 2.34's live footer (status, cwd, optional branch, blank, idle composer).
+ * Separate from readActiveKiroAgent: do not widen the disabled agent-switch action's reader.
+ */
+export function readActiveKiroModel(pane: string, expectedAgent?: string): string | null {
+  if (readKiroSteerComposer(pane) !== "idle") return null;
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, "")), at = findKiroComposerRow(rows);
+  if (!at) return null;
+  let cwd = false, branch = false;
+  // Footer only. Never search backwards through arbitrary output or a model picker for a matching model.
+  for (let i = at.index - 1; i >= Math.max(0, at.index - 8); i--) {
+    const row = rows[i]!;
+    if (!row.trim() || RULE_ROW.test(row)) continue;
+    if (!branch && /^\s*\([^()\r\n]{1,128}\)\s*$/.test(row)) { branch = true; continue; }
+    if (!cwd && /^\s*(?:\/[^\x00-\x1f]*|~(?:\/[^\x00-\x1f]*)?)\s*$/.test(row)) { cwd = true; continue; }
+    const status = /^\s*(\S+) · ([A-Za-z0-9_.:/-]{1,128}) · .+$/.exec(row);
+    return cwd && status && (expectedAgent === undefined || status[1] === expectedAgent) ? status[2]! : null;
+  }
+  return null;
+}
+
 export function planKiroLaunch(ui: "legacy" | "tui" | "v3", compat: KiroCliCompatibility): KiroLaunchPlan {
   const version = compat.version ?? "of unknown version";
   if (ui === "v3") return { kind: "launch", ui, flags: ["--v3"] };

@@ -848,7 +848,7 @@ export class KiroSessionSource implements TranscriptSource {
 
   constructor(
     private workingDirectory: string,
-    private sessionsDir = join(homedir(), ".kiro", "sessions", "cli"),
+    private sessionsDir = join(process.env.KIRO_HOME?.trim() || join(homedir(), ".kiro"), "sessions", "cli"),
     now = Date.now(),
     private dbPath = kiroStoreDbPath(),
     private lane: KiroDbLane = sharedKiroTranscriptLane,
@@ -857,6 +857,7 @@ export class KiroSessionSource implements TranscriptSource {
     this.createdAt = now;
     void this.initialize();
   }
+  currentPath(): string | null { return this.currentFile; }
   initialize(): Promise<void> {
     if (this.ready) return this.ready;
     this.lease ??= this.lane.acquire();

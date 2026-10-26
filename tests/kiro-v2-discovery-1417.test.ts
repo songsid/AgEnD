@@ -89,6 +89,7 @@ describe("real private worker, exact JSON metadata semantics", () => {
       if (name === "node:perf_hooks") return { performance: { now: () => 0 } };
       if (name === "node:fs") return { readdirSync: () => ["mine.json"], readFileSync: read, statSync: stat };
       if (name === "node:path") return { join };
+      if (name === "./kiro-migration-verify.js") return { verifyKiroMigrationStore: () => { throw new Error("metadata discovery must not verify a migration"); } };
       if (name === "./kiro-classic-archive.js") return { prepareKiroCarryForLaunch: () => { throw new Error("metadata discovery must not mutate a store"); } };
       throw new Error("unexpected worker dependency: " + name);
     };

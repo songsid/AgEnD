@@ -1,3 +1,6 @@
+import { getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
+import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
+import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
 import { hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
 import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
@@ -544,6 +547,8 @@ const CANCEL_BTN_RETRY_INTERVAL_MS = 5 * 60_000;
 const CARRY_LARGE_BYTES = 256 * 1024 * 1024;
 /** restartSingleInstance's options. `carry` (#1753): a credential-profile switch; its outcome is written into `result`. */
 export interface RestartOpts {
+  /** Internal ownership of a complete migration workflow. Never supplied by tool input. */
+  kiroMigration?: symbol;
   freshStart?: boolean;
   explicit?: boolean;
   /** Internal receipt captured when an OOM action was offered. */
@@ -1365,6 +1370,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
   /** #2598 B2: the kiro moves waiting on a fleet admin's Confirm in General, by prompt nonce. */
   private pendingKiroMigrations = new Map<string, KiroMigrationPlan>();
+  private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
   /** When the fleet first saw an instance crashed, for its "Needs you" age; cleared when it is not. */
@@ -2157,12 +2163,72 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private kiroMigrateDeps(): KiroMigrateDeps {
+    let token: symbol | undefined;
+    const current = (name: string) => {
+      const run = this.kiroMigrationRuns.get(name);
+      return !!token && run?.token === token && !this.shuttingDown
+        && (this.explicitStopGeneration.get(name) ?? 0) === run.stopGeneration;
+    };
     return {
-      agendHome: getAgendHome(),
-      fleetConfig: () => this.fleetConfig,
-      saveFleetConfig: () => this.saveFleetConfig(),
+      agendHome: getAgendHome(), fleetConfig: () => this.fleetConfig, saveFleetConfig: () => this.saveFleetConfig(),
       status: name => this.getInstanceStatus(name),
-      restart: name => this.restartSingleInstance(name, { explicit: true }),
+      reserve: name => {
+        if (this.kiroMigrationRuns.has(name) || this.restartsInFlight.has(name) || this.stopsInFlight.has(name)) throw new Error(t("kiro_migrate.in_progress"));
+        token = Symbol(name);
+        this.kiroMigrationRuns.set(name, { token, stopGeneration: this.explicitStopGeneration.get(name) ?? 0 });
+        return { current: () => current(name), release: () => {
+          if (this.kiroMigrationRuns.get(name)?.token === token) this.kiroMigrationRuns.delete(name);
+          this.scheduleDeliveryOutboxPump();
+        } };
+      },
+      preflight: async (name, plan) => {
+        const compat = getCachedKiroCliCompatibility(resolveBinary("kiro-cli"));
+        if (!compat.supportsTui || !compat.supportsInstanceAgent || !compat.agentEngines?.includes("v2")
+          || !/^2\.(?:3[4-9]|[4-9]\d|\d{3,})\./.test(compat.version ?? "")) throw new Error(t("kiro_migrate.version_required"));
+        const daemon = this.daemons.get(name);
+        if (this.getInstanceStatus(name) === "running" && (!daemon || !await daemon.kiroMigrationIdle())) throw new Error(t("kiro_migrate.idle_required"));
+        if (!current(name) || daemon && this.daemons.get(name) !== daemon) throw new Error(t("kiro_migrate.superseded"));
+        const inst = this.fleetConfig?.instances[name];
+        const model = daemon?.getModelOverride() ?? inst?.model ?? (plan.classicId ? readKiroV1SavedModel({ id: plan.classicId,
+          workingDirectory: plan.workingDirectory, dbPath: kiroV1DbPath(plan.credentialProfile) }) : undefined);
+        if (!model && plan.classicId) throw new Error(t("kiro_migrate.model_unknown"));
+        return model ?? "";
+      },
+      restart: async name => {
+        if (!current(name)) throw new Error(t("kiro_migrate.superseded"));
+        const run = this.kiroMigrationRuns.get(name)!;
+        const expected = run.stopGeneration + 1;
+        // This restart owns exactly one stop. A person's concurrent stop must not be hidden by the workflow.
+        try { await this.restartSingleInstance(name, { explicit: true, kiroMigration: token }); }
+        finally {
+          // Even a failed replacement owns its completed stop; retain authority to clean up/pause it.
+          if (this.kiroMigrationRuns.get(name) === run && this.explicitStopGeneration.get(name) === expected) run.stopGeneration = expected;
+        }
+        if (this.explicitStopGeneration.get(name) !== expected) throw new Error(t("kiro_migrate.superseded"));
+      },
+      verify: async (name, id, model, archived) => {
+        const daemon = this.daemons.get(name), deadline = performance.now() + 60_000;
+        if (!daemon) throw new Error(t("kiro_migrate.verification_failed"));
+        while (performance.now() < deadline) {
+          if (!current(name) || this.daemons.get(name) !== daemon) throw new Error(t("kiro_migrate.superseded"));
+          const observed = await daemon.kiroMigrationObservation();
+          if (observed) {
+            if (observed.sessionId !== id || observed.model !== model || resolvePath(observed.transcript) !== resolvePath(kiroV2SessionsDir(), id + ".jsonl")) throw new Error(t("kiro_migrate.verification_failed"));
+            const inst = this.fleetConfig!.instances[name];
+            const reply = await sharedKiroV2StoreLane.read({ keys: [], sessionsDir: kiroV2SessionsDir(), migration: {
+              agendHome: getAgendHome(), instance: name, workingDirectory: inst.working_directory!, credentialProfile: instanceCredentialProfile(inst, this.fleetConfig?.defaults, "kiro-cli"),
+              sessionId: id, sessionsDir: kiroV2SessionsDir(), dbPath: kiroV1DbPath(instanceCredentialProfile(inst, this.fleetConfig?.defaults, "kiro-cli")),
+              model, archived, outboxDbPath: join(this.dataDir, "delivery-outbox.db"), knownInstances: Object.keys(this.fleetConfig!.instances),
+            } });
+            if (!current(name) || this.daemons.get(name) !== daemon) throw new Error(t("kiro_migrate.superseded"));
+            if (reply.kind !== "ok" || !reply.verification) throw new Error(reply.kind === "unreadable" ? reply.detail : t("kiro_migrate.verification_failed"));
+            return reply.verification;
+          }
+          await new Promise(r => setTimeout(r, 500));
+        }
+        throw new Error(t("kiro_migrate.verification_failed"));
+      },
+      stop: async name => { try { await this.stopInstance(name); } finally { writePausedMarker(this.getInstanceDir(name), Date.now(), "error"); } },
     };
   }
 
@@ -2217,7 +2283,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const outcome = await applyKiroMigration(this.kiroMigrateDeps(), plan);
     this.logger.info({ name: plan.name, ok: outcome.ok, classicId: plan.classicId }, "kiro classic → TUI move");
     this.notifyFleetError(outcome.text);
-    if (outcome.ok) this.notifyInstanceTopic(plan.name, outcome.text);
+    this.notifyInstanceTopic(plan.name, outcome.text);
     return true;
   }
 
@@ -6373,6 +6439,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
+    const migration = this.kiroMigrationRuns?.get(name);
+    if (migration && migration.token !== opts?.kiroMigration) throw new Error(t("kiro_migrate.in_progress"));
     if (opts?.recoveryCurrent && !opts.recoveryCurrent()) throw new Error(t("exit.expired", name));
     const retry = opts?.explicit ? opts.sessionOomRetry ?? captureSessionOomRetry(this.getInstanceDir(name)) : undefined;
     if (opts?.sessionOomRetry) {
@@ -6427,7 +6495,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   isInstanceRestarting(name: string): boolean {
-    return this.restartsInFlight.has(name);
+    return this.restartsInFlight.has(name) || this.kiroMigrationRuns?.has(name) === true;
   }
 
   /** InstanceLifecycleContext: an explicit wake joins the restart in flight. */
