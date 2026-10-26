@@ -1373,6 +1373,17 @@ function Get-SetupStopText([string]$reason) {
 # 跑一次設定頁。$Run 收到一個每行呼叫的 hook，回傳結束碼。結果：Done（完成、AgEnD 已啟動）、Already（之前就設定好了）、
 # Shown（設定頁有沒有出現過）、Stopped（設定頁關掉的原因，沒有就是 $null）。設定頁要求主機確認時，每個確認編號開一次
 # 確認視窗（同一個設定頁最多 5 次），並印出可以自己貼的指令。
+# 設定頁是 WSL 裡印出的網址：WSL 的 localhost 轉送要過一下子才接上新開的連接埠，太早打開，瀏覽器會顯示「連線已重設」
+# （使用者實測）。打開之前先從 Windows 這邊試連，得到任何 HTTP 回應（包括 404）就算連得到；連不到最多等 $seconds 秒。
+function Wait-SetupPageReachable([string]$url, [int]$seconds = 20) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ($clock.Elapsed.TotalSeconds -lt $seconds) {
+        try { $null = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 -MaximumRedirection 0 -ErrorAction Stop; return $true }
+        catch { if ($_.Exception.Response) { return $true } }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
 function Invoke-BrowserSetup([scriptblock]$Run) {
     $setupSeen = @{ Url = $null; Code = $null; Shown = $false; Done = $false; Already = $false; Stopped = $null; Confirms = @() }
     $hook = {
@@ -1390,6 +1401,9 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
         if ($setupSeen.Url -and $setupSeen.Code -and -not $setupSeen.Shown) {
             $setupSeen.Shown = $true
             $copied = Set-SetupClipboard $setupSeen.Code
+            if (-not (Wait-SetupPageReachable $setupSeen.Url)) {
+                Write-Warn "從 Windows 還連不到設定頁（WSL 的 localhost 轉送還沒接上）。仍會打開它；若顯示「連線已重設」，等幾秒再重新整理。"
+            }
             $opened = Open-InBrowser $setupSeen.Url
             Show-SetupCode $setupSeen.Code $copied $opened $setupSeen.Url
         }
