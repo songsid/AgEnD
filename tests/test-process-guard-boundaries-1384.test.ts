@@ -271,7 +271,8 @@ describe("deliberate Codex smoke runner separation", () => {
       expect(integration.slice(integration.indexOf("exclude:"))).toContain(`"${file}"`);
       expect(unit).toContain(`"${file}"`);
     }
-    expect(integration).toContain('setupFiles: ["./tests/setup-process-guard.ts"]');
+    // The normal guard stays on for integration (#2725 added the shared test logger beside it).
+    expect(integration).toMatch(/setupFiles: \[[^\]]*"\.\/tests\/setup-process-guard\.ts"/);
     const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
     expect(pkg.scripts["test:codex-e2e"]).toBe("vitest run --config vitest.config.codex-e2e.ts");
   });
