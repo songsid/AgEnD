@@ -279,19 +279,24 @@ describe("§2 the conversation identity", () => {
     expect(resolveAs("a")).toMatchObject({ mode: "resume", id: "c1" });
   });
 
-  it("an owned conversation resumes by its exact id without reading the store (an unreadable store does not matter)", () => {
+  it("an owned conversation resumes by its exact id; an unreadable store does not matter (#2714: v1 looks, says it could not)", () => {
     store.read = ok(["c1", 10]);
     resolveAs("a");
     store.read = { kind: "unreadable", detail: "x" }; store.reads = 0;
-    expect(resolveAs("a")).toEqual({ mode: "resume", id: "c1", agentConfirmed: false });
-    expect(store.reads).toBe(0);
+    expect(resolveAs("a")).toEqual({ mode: "resume", id: "c1", agentConfirmed: false, kept: { reason: "unreadable" } });
+    expect(store.reads).toBe(1); // only for a compaction successor (classic forks the id on /compact)
+    store.read = ok(["t1", 10]);
+    resolveAs("b", { engine: "v2" });
+    store.read = { kind: "unreadable", detail: "x" }; store.reads = 0;
+    expect(resolveAs("b", { engine: "v2" })).toEqual({ mode: "resume", id: "t1", agentConfirmed: false });
+    expect(store.reads).toBe(0); // the TUI's V2 keeps its id through a compaction: never read
   });
 
   it("an owned id whose claim is no longer this instance's is not resumed", () => {
     store.read = ok(["c1", 10]);
     resolveAs("a");
     writeFileSync(join(home(), "kiro-identity", "claims", "v1", "c1"), "someone-else\n");
-    expect(resolveAs("a")).toEqual({ mode: "fresh" });
+    expect(resolveAs("a")).toEqual({ mode: "fresh", lost: { id: "c1", claim: "other-owner" } });
   });
 
   it("an abandoned id stays abandoned even when the fresh mark could not list it (store unreadable then)", () => {
