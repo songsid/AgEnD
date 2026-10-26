@@ -172,6 +172,17 @@ describe("#2675 the fleet: post, click, reply, dashboard, retire", () => {
     expect(answer).toHaveBeenCalledTimes(1);
   });
 
+  it("through the inbound handler: the reply answers the card and is not delivered to the instance", async () => {
+    const { fm, adapter, answer } = setup();
+    const deliver = vi.spyOn(fm as any, "deliverToInstance");
+    await fm.postRemoteCard("worker", RICH());
+    await (fm as any).handleInboundMessage({ source: "telegram", adapterId: "telegram-main", chatId: "fleet-group", threadId: "worker-topic",
+      messageId: "m10", replyTo: "card-msg", userId: "alice", username: "alice", text: "release", timestamp: new Date() });
+    expect(answer).toHaveBeenCalledWith(RICH().identity, { kind: "text", text: "release" });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(adapter.editMessageRemoveButtons).toHaveBeenCalledWith("fleet-group", "card-msg", "✅ alice answered: an answer in words", "worker-topic");
+  });
+
   it("an MCP input card takes no reply as an answer", async () => {
     const { fm, answer } = setup();
     await fm.postRemoteCard("worker", URL_CARD());

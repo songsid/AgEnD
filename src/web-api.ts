@@ -2065,7 +2065,7 @@ export function handleWebRequest(
         json(res, 400, { error: "instance, nonce and action required" });
         return;
       }
-      const r = await click(instance, nonce, action, text);
+      const r = text === undefined ? await click(instance, nonce, action) : await click(instance, nonce, action, text);
       // 409: answered elsewhere first, expired, or never open — the page drops the buttons on `gone`.
       json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
