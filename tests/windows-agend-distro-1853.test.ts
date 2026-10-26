@@ -27,7 +27,7 @@ describe("the existing-Ubuntu choice (static)", () => {
     const stage = body.slice(body.indexOf("$names = Get-WslDistroNames"), body.indexOf('Add-Content -Path $ProgressFile -Value "DISTRO=$UBUNTU_DISTRO"'));
     expect(stage).toMatch(/\$agendDistro = \$situation\.Agend/);
     // #2279 review: an unreadable list stops stage 1 before any choice, install or reuse.
-    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
+    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*if \(Clear-MissingWslTarget \$names\) \{ \$UBUNTU_DISTRO = 'Ubuntu-24\.04'; \$AgendWslDrive = Resolve-AgendWslDrive \$WslDrive; Save-WslDrive \$AgendWslDrive \}\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
     expect(stage).toMatch(/if \(\$situation\.State -eq 'reuse'\) \{ \$choice = 'reuse' \} elseif \(\$situation\.State -eq 'ubuntu'\) \{ \$choice = Read-DistroChoice \$installedDistroName \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO = Get-FreeAgendDistroName \$names \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ "\$\(\$disk\.Root\)WSL\\\$UBUNTU_DISTRO" \}/);
