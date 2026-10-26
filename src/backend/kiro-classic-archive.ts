@@ -2,6 +2,7 @@
  * Only an owned, complete carried V2 copy permits this. Never called while its CLI is alive.
  * Production launch preparation runs this work on the existing bounded V2 worker lane.
  */
+import { isDeepStrictEqual } from "node:util";
 import Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
@@ -73,9 +74,17 @@ function ownedFile(path: string): void {
   if (!st.isFile() || (process.getuid && st.uid !== process.getuid())) throw new Error("Store or archive is not an owned real file");
 }
 function privateDirectory(path: string): void {
-  mkdirSync(path, { recursive: true, mode: 0o700 });
+  const existed = existsSync(path);
+  if (!existed) mkdirSync(path, { mode: 0o700 });
   const st = lstatSync(path);
   if (!st.isDirectory() || (process.getuid && st.uid !== process.getuid()) || (st.mode & 0o077)) throw new Error("Archive directory is not private and owned");
+  {
+    // Repeat on retry too: a previous failed sync may have left a visible but non-durable directory.
+    // Persist the directory itself AND its name in the parent before SQLite can remove the source.
+    for (const dir of [path, resolve(path, "..")]) {
+      const fd = openSync(dir, constants.O_RDONLY); try { fsyncSync(fd); } finally { closeSync(fd); }
+    }
+  }
 }
 function readArchive(path: string): Archive {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -91,7 +100,8 @@ function writeArchive(input: KiroClassicArchiveInput, rows: ArchivedRow[]): stri
   const payload: Payload = { version: 1, instance: input.instance, directory: kiroCanonicalDirectory(input.workingDirectory), profile: input.credentialProfile,
     sessionId: input.sessionId, dbPath: resolve(input.dbPath), rows };
   const archive: Archive = { payload, sha256: hash(JSON.stringify(payload)) };
-  const root = join(input.agendHome, "kiro-classic-archives", hash(input.instance).slice(0, 32)); privateDirectory(root);
+  const base = join(input.agendHome, "kiro-classic-archives"); privateDirectory(base);
+  const root = join(base, hash(input.instance).slice(0, 32)); privateDirectory(root);
   const path = join(root, `${input.sessionId}-${archive.sha256}.json`), temp = `${path}.${randomUUID()}.tmp`;
   const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
   try { writeFileSync(fd, JSON.stringify(archive) + "\n"); fsyncSync(fd); } finally { closeSync(fd); }
@@ -116,7 +126,79 @@ function proveOwnedCarry(input: KiroClassicArchiveInput, allowAbandoned = false)
     || !state || state.version !== "v1" || !state.conversation_metadata || state.rts_model_state?.conversation_id !== input.sessionId) throw new Error("No complete matching carried V2 copy is proven");
   const read = readKiroTuiAssistantTexts({ sessionId: input.sessionId, sessionsDir: input.sessionsDir, stillOwned: current });
   if (read.kind !== "ok" || !metadata.unchanged()) throw new Error("The carried V2 transcript is incomplete, changed or unreadable");
+  proveClassicHistoryCoverage(input);
 }
+/** Kiro 2.34 preserves each classic assistant message_id and converts every history pair into two JSONL records.
+ * Match the entire frozen prefix (user text, assistant text/tool inputs and tool outputs), not just readable syntax.
+ * Unknown classic formats fail closed; original non-message metadata remains in the exact restorable archive.
+ */
+export function proveClassicHistoryCoverage(input: KiroClassicArchiveInput): void {
+  ownedFile(input.dbPath);
+  const db = new Database(input.dbPath, { readonly: true, fileMustExist: true, timeout: 200 });
+  let values: Buffer[];
+  try {
+    const keys = kiroDirectoryKeys(input.workingDirectory), where = `key IN (${keys.map(() => "?").join(",")}) AND conversation_id=?`;
+    const sizes = db.prepare(`SELECT length(CAST(value AS BLOB)) AS n FROM conversations_v2 WHERE ${where}`).all(...keys, input.sessionId) as { n: number }[];
+    if (sizes.reduce((n, r) => n + r.n, 0) > MAX_ROW_BYTES) throw new Error("Classic history exceeds the coverage limit");
+    values = (db.prepare(`SELECT CAST(value AS BLOB) AS value FROM conversations_v2 WHERE ${where}`).all(...keys, input.sessionId) as { value: Buffer }[]).map(r => r.value);
+  } finally { db.close(); }
+  if (!values.length) {
+    const root = join(input.agendHome, "kiro-classic-archives", hash(input.instance).slice(0, 32));
+    for (const name of readdirSync(root)) {
+      if (!name.startsWith(input.sessionId + "-") || !name.endsWith(".json")) continue;
+      const archive = readArchive(join(root, name)).payload;
+      if (archive.instance === input.instance && archive.sessionId === input.sessionId && archive.directory === kiroCanonicalDirectory(input.workingDirectory)
+        && archive.profile === input.credentialProfile && archive.dbPath === resolve(input.dbPath)) values.push(...archive.rows.map(r => Buffer.from(r.valueBase64, "base64")));
+    }
+    if (!values.length) throw new Error("No frozen source or verified archive proves complete history coverage");
+  }
+  const log = snapshotKiroTuiFile(join(input.sessionsDir, input.sessionId + ".jsonl"), 64 * 1024 * 1024);
+  const records = log.text.split("\n").filter(line => line.trim()).map(line => JSON.parse(line));
+  const fail = () => { throw new Error("The carried V2 copy does not cover the complete frozen classic history"); };
+  for (const bytes of values) {
+    const classic = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (classic.conversation_id !== input.sessionId || !Array.isArray(classic.history) || !classic.history.length || classic.next_message != null) fail();
+    for (let i = 0; i < classic.history.length; i++) {
+      const turn = classic.history[i], user = turn?.user?.content, assistant = turn?.assistant;
+      const u = records[i * 2], a = records[i * 2 + 1];
+      const response = assistant?.Response, tool = assistant?.ToolUse, body = response ?? tool;
+      if (!body || response && tool || !body.message_id || a?.kind !== "AssistantMessage" || a.data?.message_id !== body.message_id || !Array.isArray(a.data.content)) fail();
+      const expected: unknown[] = [];
+      if (typeof body.content !== "string") fail();
+      if (body.content || response) expected.push({ kind: "text", data: body.content });
+      if (tool) {
+        if (!Array.isArray(tool.tool_uses)) fail();
+        for (const call of tool.tool_uses) {
+          if (!call || typeof call.id !== "string" || typeof call.name !== "string" || !call.args || typeof call.args !== "object") fail();
+          expected.push({ kind: "toolUse", data: { toolUseId: call.id, name: call.name, input: call.args } });
+        }
+      }
+      // Tool blocks may carry extra upstream metadata; compare the message-bearing fields exactly.
+      const actual = a.data.content.map((b: any) => b.kind === "toolUse" ? { kind: b.kind, data: { toolUseId: b.data?.toolUseId, name: b.data?.name, input: b.data?.input } } : b);
+      if (!isDeepStrictEqual(actual, expected) || !u?.data || (turn.user.images != null && (!Array.isArray(turn.user.images) || turn.user.images.length))) fail();
+      if (user?.Prompt && typeof user.Prompt.prompt === "string") {
+        if (u.kind !== "Prompt" || !isDeepStrictEqual(u.data.content, [{ kind: "text", data: user.Prompt.prompt }])) fail();
+      } else if (Array.isArray((user?.ToolUseResults ?? user?.CancelledToolUses)?.tool_use_results)) {
+        if (u.kind !== "ToolResults" || !u.data.results || typeof u.data.results !== "object") fail();
+        const cancelled = user?.CancelledToolUses;
+        const results = (user.ToolUseResults ?? cancelled).tool_use_results;
+        if (cancelled && (typeof cancelled.prompt !== "string" || !Array.isArray(u.data.content)
+          || !u.data.content.some((b: any) => b.kind === "text" && b.data === cancelled.prompt))) fail();
+        if (Object.keys(u.data.results).length !== results.length) fail();
+        for (const result of results) {
+          let converted: unknown;
+          if (cancelled) converted = "Cancelled";
+          else if (result.status === "Success") converted = { Success: { items: result.content } };
+          else if (result.status === "Error" && Array.isArray(result.content) && result.content.every((x: any) => typeof x.Text === "string")) converted = { Error: { Custom: result.content.map((x: any) => x.Text).join("\n") } };
+          else fail();
+          if (!isDeepStrictEqual(u.data.results[result.tool_use_id]?.result, converted)) fail();
+        }
+      } else fail();
+    }
+  }
+  if (!log.unchanged()) fail();
+}
+
 /** An abandoned pin is recoverable only while every later unowned same-cwd alternative remains empty. Leave all of them untouched. */
 function proveNoReplacementWork(input: KiroClassicArchiveInput): void {
   const original = JSON.parse(snapshotKiroTuiFile(join(input.sessionsDir, `${input.sessionId}.json`), 8 * 1024 * 1024).text);

@@ -559,7 +559,7 @@ Optional existing host GitHub CLI login: choose `--submit` during collection, re
 
 ### Restore a frozen Kiro classic archive
 
-A carried classic → TUI conversation has the same UUID in both Kiro stores. Before its next pinned TUI launch, AgEnD verifies the owned V2 copy, checks that the instance's Kiro process has stopped, and archives only that UUID's exact classic `conversations_v2` rows for its working directory. The archive is private (`0600`), includes the original bytes/timestamps and SHA256, is fsynced and read back before deletion, and lives under `AGEND_HOME/kiro-classic-archives/`. The shared database transaction uses `BEGIN IMMEDIATE` and a busy timeout. Other conversations, V2 files and credentials are untouched; empty replacement sessions are not deleted.
+A carried classic → TUI conversation has the same UUID in both Kiro stores. Before its next pinned TUI launch, AgEnD verifies the owned V2 copy covers every frozen history pair (user text, assistant message IDs/text/tool inputs and tool results), checks that the instance's Kiro process has stopped, and archives only that UUID's exact classic `conversations_v2` rows for its working directory. The archive is private (`0600`), includes the original bytes/timestamps and SHA256, is fsynced and read back before deletion, and lives under `AGEND_HOME/kiro-classic-archives/`. The shared database transaction uses `BEGIN IMMEDIATE` and a busy timeout. Other conversations, V2 files and credentials are untouched; empty replacement sessions are not deleted.
 
 To recover the archived classic data, stop the target instance first, then run:
 

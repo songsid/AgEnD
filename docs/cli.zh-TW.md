@@ -386,7 +386,7 @@ agend bug-report --draft report.json --approve <SHA256>
 
 ### 還原凍結的 Kiro classic 備份
 
-從 classic 帶到 TUI 的對話，在兩個 Kiro store 會有相同 UUID。下次以固定 id 啟動 TUI 前，AgEnD 會驗證有所有權的 V2 副本、確認該 instance 的 Kiro 程序已停止，並只備份這個 UUID 在其工作目錄下的原始 classic `conversations_v2` 紀錄。備份為私人檔案（`0600`），包含原始位元組、時間戳與 SHA256；移除前會 fsync 並重新讀回驗證，存於 `AGEND_HOME/kiro-classic-archives/`。共享資料庫的交易使用 `BEGIN IMMEDIATE` 與等待鎖定的逾時限制。其他對話、V2 檔案及憑證都不動，也不會刪除空白的替代 session。
+從 classic 帶到 TUI 的對話，在兩個 Kiro store 會有相同 UUID。下次以固定 id 啟動 TUI 前，AgEnD 會驗證有所有權的 V2 副本涵蓋每一筆凍結的歷史對話（使用者文字、助理訊息 id／文字／工具輸入及工具結果）、確認該 instance 的 Kiro 程序已停止，並只備份這個 UUID 在其工作目錄下的原始 classic `conversations_v2` 紀錄。備份為私人檔案（`0600`），包含原始位元組、時間戳與 SHA256；移除前會 fsync 並重新讀回驗證，存於 `AGEND_HOME/kiro-classic-archives/`。共享資料庫的交易使用 `BEGIN IMMEDIATE` 與等待鎖定的逾時限制。其他對話、V2 檔案及憑證都不動，也不會刪除空白的替代 session。
 
 需要還原 classic 資料時，先停止該 instance，再執行：
 

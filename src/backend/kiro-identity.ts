@@ -344,6 +344,10 @@ export function kiroCarryCandidate(opts: { agendHome: string; instance: string; 
   if (read.kind !== "ok") return null;
   const classic = read.state.keys[keyOf("v1", opts.workingDirectory, opts.credentialProfile)];
   const tui = read.state.keys[keyOf("v2", opts.workingDirectory, opts.credentialProfile)];
+  for (const [record, engine] of [[classic, "v1"], [tui, "v2"]] as const) {
+    if (record && (record.engine !== engine || kiroCanonicalDirectory(record.workingDirectory) !== kiroCanonicalDirectory(opts.workingDirectory)
+      || record.credentialProfile !== opts.credentialProfile)) throw new KiroIdentityError("Carry ownership record does not match its engine, directory or profile");
+  }
   if (!classic?.id || !tui || (!tui.abandoned.includes(classic.id) && tui.id !== classic.id)) return null;
   if (tui.id && tui.id !== classic.id) return null; // an already-owned deliberate replacement is never overwritten
   if (!heldBy(claimOf(paths(opts.agendHome, "v1", opts.instance).claims, classic.id), opts.instance)) throw new KiroIdentityError("Original classic ownership is not proven; migration repair held");

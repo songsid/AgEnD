@@ -10,13 +10,22 @@ import { KiroBackend, kiroV1DbPath } from "../src/backend/kiro.js";
 import { kiroAgentName, kiroFleetTag } from "../src/backend/kiro-agent.js";
 import { sharedKiroV2StoreLane } from "../src/backend/kiro-v2-store.js";
 
+const fsTrace = vi.hoisted(() => ({ paths: new Map<number, string>(), syncs: [] as string[], fail: "" }));
+vi.mock("node:fs", async original => {
+  const fs = await original<typeof import("node:fs")>();
+  return { ...fs,
+    openSync: (...args: any[]) => { const fd = (fs.openSync as any)(...args); fsTrace.paths.set(fd, String(args[0])); return fd; },
+    closeSync: (fd: number) => { fsTrace.paths.delete(fd); return fs.closeSync(fd); },
+    fsyncSync: (fd: number) => { const path = fsTrace.paths.get(fd) ?? "unknown"; fsTrace.syncs.push(path); if (path === fsTrace.fail) throw new Error("directory fsync failed"); return fs.fsyncSync(fd); },
+  };
+});
 const roots: string[] = [];
 const psRoot = mkdtempSync(join(tmpdir(), "archive-ps-stub-")), savedPath = process.env.PATH;
 beforeAll(() => {
   writeFileSync(join(psRoot, "ps"), "#!/bin/sh\nprintf '1 offline-fixture\\n'\n"); chmodSync(join(psRoot, "ps"), 0o700);
   process.env.PATH = psRoot + ":" + savedPath;
 });
-afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { fsTrace.syncs = []; fsTrace.fail = ""; vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 afterAll(() => { sharedKiroV2StoreLane.close(); process.env.PATH = savedPath; rmSync(psRoot, { recursive: true, force: true }); });
 
 function fixture() {
@@ -27,7 +36,7 @@ function fixture() {
   const id = "6ca8be1a-6ec5-4cfc-9a2a-ea586133c27e", instance = "archive-test";
   const dbPath = kiroV1DbPath(null); mkdirSync(dirname(dbPath), { recursive: true });
   const db = new Database(dbPath); db.exec("CREATE TABLE conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(key,conversation_id))");
-  const raw = '{"conversation_id":"'+id+'","history":["原本的對話\\nexact bytes"],"unknown_field":true}';
+  const raw = JSON.stringify({ conversation_id: id, next_message: null, history: [{ user: { content: { Prompt: { prompt: "D5 prompt" } }, images: null }, assistant: { Response: { message_id: "classic-message-1", content: "D5 continuity history" } } }], unknown_field: "原本的對話\nexact bytes" });
   db.prepare("INSERT INTO conversations_v2 VALUES (?,?,?,?,?)").run(cwd, id, raw, 100, 200);
   db.prepare("INSERT INTO conversations_v2 VALUES (?,?,?,?,?)").run(cwd, "other-id", "other value", 101, 201);
   db.prepare("INSERT INTO conversations_v2 VALUES (?,?,?,?,?)").run("/other-cwd", id, "other folder", 102, 202); db.close();
@@ -39,7 +48,7 @@ function fixture() {
   const meta = { session_id: id, cwd, created_at: "2026-10-26T05:19:07Z", updated_at: "2026-10-26T05:49:16Z", session_created_reason: "subagent", exported_from_v1: true,
     session_state: { version: "v1", conversation_metadata: {}, rts_model_state: { conversation_id: id }, agent_name: kiroAgentName(instance, kiroFleetTag(home)) } };
   const saveMeta = () => writeFileSync(join(sessionsDir, id + ".json"), JSON.stringify(meta)); saveMeta();
-  writeFileSync(join(sessionsDir, id + ".jsonl"), JSON.stringify({ version: "v1", kind: "AssistantMessage", data: { content: [{ kind: "text", data: "D5 continuity history" }] } }) + "\n");
+  writeFileSync(join(sessionsDir, id + ".jsonl"), JSON.stringify({ version: "v1", kind: "Prompt", data: { content: [{ kind: "text", data: "D5 prompt" }] } }) + "\n" + JSON.stringify({ version: "v1", kind: "AssistantMessage", data: { message_id: "classic-message-1", content: [{ kind: "text", data: "D5 continuity history" }] } }) + "\n");
   const input: KiroClassicArchiveInput = { ...identity, sessionId: id, sessionsDir, dbPath };
   const rows = () => { const d = new Database(dbPath, { readonly: true }); try { return d.prepare("SELECT key,conversation_id AS id,hex(CAST(value AS BLOB)) AS value,created_at,updated_at FROM conversations_v2 ORDER BY key,conversation_id").all(); } finally { d.close(); } };
   const abandon = () => resolveKiroIdentity({ ...identity, engine: "v2", skipResume: true, readStore: () => store, launchedBefore: () => false });
@@ -150,5 +159,60 @@ describe("upgrade launch after ambiguous (2 matches) abandoned the pin", () => {
     const config = { instanceName: f.input.instance, instanceDir: join(f.root, "instance"), workingDirectory: f.input.workingDirectory, mcpServers: {}, kiroUi: "tui" as const };
     await b.prepareLaunch(config); expect(() => b.writeConfig(config)).toThrow(/kept/); expect(() => b.buildCommand(config)).toThrow(/kept/);
     expect(own(f)).toBeNull(); expect(f.rows()).toHaveLength(3);
+  });
+});
+
+describe("review: complete ownership, history and durable first archive", () => {
+  it.each([["v1", "engine"], ["v1", "credentialProfile"], ["v2", "engine"], ["v2", "workingDirectory"]])("refuses an inconsistent %s record's %s even with the original key and claim", (engine, field) => {
+    const f = fixture(), dir = join(f.input.agendHome, "kiro-identity", "instances"), path = join(dir, readdirSync(dir).find(n => n.endsWith(".json"))!);
+    const state = JSON.parse(readFileSync(path, "utf8"));
+    for (const record of Object.values(state.keys) as any[]) if (record.engine === engine) record[field] = field === "engine" ? "v3" : "different";
+    writeFileSync(path, JSON.stringify(state)); const before = f.rows();
+    expect(() => archiveKiroClassicCopy(f.input)).toThrow(/record/); expect(f.rows()).toEqual(before);
+  });
+  it("a valid JSONL prefix missing the last classic turn is not a complete carry", () => {
+    const f = fixture(), classic = JSON.parse(f.raw), db = new Database(f.input.dbPath);
+    classic.history.push({ user: { content: { Prompt: { prompt: "second prompt" } } }, assistant: { Response: { message_id: "last-classic-turn", content: "must be carried too" } } });
+    db.prepare("UPDATE conversations_v2 SET value=? WHERE key=? AND conversation_id=?").run(JSON.stringify(classic), f.input.workingDirectory, f.input.sessionId); db.close();
+    const before = f.rows(); expect(() => archiveKiroClassicCopy(f.input)).toThrow(/complete frozen/); expect(f.rows()).toEqual(before);
+  });
+  it("matching message ids alone cannot hide missing or changed assistant/user content", () => {
+    const f = fixture(), log = join(f.input.sessionsDir, f.input.sessionId + ".jsonl"), records = readFileSync(log, "utf8").trim().split("\n").map(x => JSON.parse(x));
+    records[1].data.content[0].data = "truncated answer"; writeFileSync(log, records.map(x => JSON.stringify(x)).join("\n") + "\n");
+    expect(() => archiveKiroClassicCopy(f.input)).toThrow(/complete frozen/); expect(f.rows()).toHaveLength(3);
+  });
+  it("complete tool inputs, success/error outputs and cancelled-tool prompts are covered", () => {
+    const f = fixture(), classic = JSON.parse(f.raw), log = join(f.input.sessionsDir, f.input.sessionId + ".jsonl");
+    const records = readFileSync(log, "utf8").trim().split("\n").map(x => JSON.parse(x));
+    const append = (user: any, assistant: any, userKind: string, userData: any, blocks: any[]) => {
+      classic.history.push({ user: { content: user }, assistant });
+      records.push({ version: "v1", kind: userKind, data: userData }, { version: "v1", kind: "AssistantMessage", data: { message_id: Object.values(assistant)[0] && (Object.values(assistant)[0] as any).message_id, content: blocks } });
+    };
+    const call = (n: number) => ({ id: "tool-" + n, name: "read_file", args: { path: "README.md" } });
+    const tool = (n: number) => ({ ToolUse: { message_id: "assistant-" + n, content: "", tool_uses: [call(n)] } });
+    const block = (n: number) => [{ kind: "toolUse", data: { toolUseId: call(n).id, name: call(n).name, input: call(n).args } }];
+    append({ Prompt: { prompt: "read it" } }, tool(2), "Prompt", { content: [{ kind: "text", data: "read it" }] }, block(2));
+    append({ ToolUseResults: { tool_use_results: [{ tool_use_id: "tool-2", status: "Success", content: [{ Text: "saved output" }] }] } }, tool(3), "ToolResults", { results: { "tool-2": { result: { Success: { items: [{ Text: "saved output" }] } } } } }, block(3));
+    append({ ToolUseResults: { tool_use_results: [{ tool_use_id: "tool-3", status: "Error", content: [{ Text: "read failed" }] }] } }, tool(4), "ToolResults", { results: { "tool-3": { result: { Error: { Custom: "read failed" } } } } }, block(4));
+    append({ CancelledToolUses: { prompt: "cancel and inspect", tool_use_results: [{ tool_use_id: "tool-4", status: "Error", content: [{ Text: "cancelled" }] }] } }, { Response: { message_id: "final-assistant", content: "done" } }, "ToolResults", { content: [{ kind: "text", data: "cancel and inspect" }], results: { "tool-4": { result: "Cancelled" } } }, [{ kind: "text", data: "done" }]);
+    const db = new Database(f.input.dbPath); db.prepare("UPDATE conversations_v2 SET value=? WHERE key=? AND conversation_id=?").run(JSON.stringify(classic), f.input.workingDirectory, f.input.sessionId); db.close();
+    const write = () => writeFileSync(log, records.map(x => JSON.stringify(x)).join("\n") + "\n"); write();
+    const saved = records[4].data.results["tool-2"].result.Success.items; records[4].data.results["tool-2"].result.Success.items = [];
+    write(); expect(() => archiveKiroClassicCopy(f.input)).toThrow(/complete frozen/); expect(f.rows()).toHaveLength(3);
+    records[4].data.results["tool-2"].result.Success.items = saved; write(); expect(archiveKiroClassicCopy(f.input)).toBeTruthy(); expect(f.rows()).toHaveLength(2);
+  });
+  it("first-use directory entries are synced through AGEND_HOME before deletion", () => {
+    const f = fixture(), base = join(f.input.agendHome, "kiro-classic-archives"); let checked = false;
+    archiveKiroClassicCopy(f.input, { checkpoint: () => {
+      if (!fsTrace.syncs.some(x => x.endsWith(".tmp"))) return;
+      const homeSync = fsTrace.syncs.indexOf(f.input.agendHome), baseSync = fsTrace.syncs.lastIndexOf(base), tempSync = fsTrace.syncs.findIndex(x => x.endsWith(".tmp"));
+      expect(homeSync).toBeGreaterThanOrEqual(0); expect(baseSync).toBeGreaterThan(homeSync); expect(tempSync).toBeGreaterThan(baseSync); checked = true;
+    } }); expect(checked).toBe(true);
+  });
+  it("failure to sync a newly created archive ancestor aborts before source deletion", () => {
+    const f = fixture(), before = f.rows(); fsTrace.fail = f.input.agendHome;
+    expect(() => archiveKiroClassicCopy(f.input)).toThrow(/directory fsync/); expect(f.rows()).toEqual(before);
+    fsTrace.fail = ""; fsTrace.syncs = [];
+    expect(archiveKiroClassicCopy(f.input)).toBeTruthy(); expect(fsTrace.syncs).toContain(f.input.agendHome);
   });
 });
