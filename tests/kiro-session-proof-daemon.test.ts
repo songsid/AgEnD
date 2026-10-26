@@ -75,7 +75,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
   it("match: types /session-id then /title into an idle composer, no warning", async () => {
     const r = rig({ panes: [idle, announced("conv-1")] });
     await run(r.daemon);
-    expect(r.pasteBuffer.mock.calls.map((c: string[]) => c[0])).toEqual(["/session-id", "/title worker"]);
+    expect(r.pasteBuffer.mock.calls.map((c) => c[0])).toEqual(["/session-id", "/title worker"]);
     expect(r.pasteBuffer).toHaveBeenCalledWith("/session-id", expect.objectContaining({ timeoutMs: 1_000 }));
     expect(r.sendSpecialKey).toHaveBeenCalledWith("Enter", 1_000);
     expect(r.warnings).toEqual([]);
@@ -88,7 +88,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
       proof: { pinned: null, sessionIdCommand: "/session-id", titleCommand: "/title worker" },
     });
     await run(r.daemon);
-    expect(r.pasteBuffer.mock.calls.map((c: string[]) => c[0])).toEqual(["/session-id", "/title worker"]);
+    expect(r.pasteBuffer.mock.calls.map((c) => c[0])).toEqual(["/session-id", "/title worker"]);
     expect(r.warnings).toEqual([]);
     expect(readKiroSessionProof(r.instanceDir)).toMatchObject({ sessionId: "fresh-id", kind: "fresh" });
   });
@@ -96,7 +96,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
   it("mismatch: the pin and the pane disagree — warning is not quiet, title still sent, pin not rewritten", async () => {
     const r = rig({ panes: [idle, announced("other-b")] });
     await run(r.daemon);
-    expect(r.pasteBuffer.mock.calls.map((c: string[]) => c[0])).toEqual(["/session-id", "/title worker"]);
+    expect(r.pasteBuffer.mock.calls.map((c) => c[0])).toEqual(["/session-id", "/title worker"]);
     expect(r.events).toEqual([{ name: "worker", message: t("kiro.session_id_mismatch", "conv-1", "other-b") }]);
     expect(r.logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ pinned: "conv-1", observed: "other-b" }),
@@ -108,7 +108,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
   it("unread: /session-id typed, no announcement — warning is not quiet, files not guessed, title still sent", async () => {
     const r = rig({ panes: [idle] });
     await run(r.daemon);
-    expect(r.pasteBuffer.mock.calls.map((c: string[]) => c[0])).toEqual(["/session-id", "/title worker"]);
+    expect(r.pasteBuffer.mock.calls.map((c) => c[0])).toEqual(["/session-id", "/title worker"]);
     expect(r.events).toEqual([{ name: "worker", message: t("kiro.session_id_unread") }]);
     expect(readKiroSessionProof(r.instanceDir)).toBeNull();
   });
@@ -141,7 +141,7 @@ describe("kiro /session-id and /title after a tui/V3 launch", () => {
       proof: { pinned: "conv-1", sessionIdCommand: "/session-id", titleCommand: null },
     });
     await run(r.daemon);
-    expect(r.pasteBuffer.mock.calls.map((c: string[]) => c[0])).toEqual(["/session-id"]);
+    expect(r.pasteBuffer.mock.calls.map((c) => c[0])).toEqual(["/session-id"]);
     expect(r.warnings).toEqual([]);
   });
 
