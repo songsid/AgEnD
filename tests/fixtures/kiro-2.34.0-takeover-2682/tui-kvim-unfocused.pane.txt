@@ -1,0 +1,40 @@
+XYZ pasted while kvim focused
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+[No Name] [+]                                                                                         1,29           All
+
+── Neovim · unsaved: [No Name] · Ctrl+\ to edit ────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+~/k2682-work
+(master)
+
+›  ask a question or describe a task ↵
+                                                                                                     /copy to clipboard
+
+
+

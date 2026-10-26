@@ -43,7 +43,7 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
-import { shellQuote, UnsupportedCliError } from "./backend/types.js";
+import { shellQuote, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -666,6 +666,8 @@ interface PaneEvidence {
   inputReadable: boolean;
   /** The composer's interrupt mode on this snapshot (CliBackend.readSteerComposer, #1405); null when not readable. */
   steerComposer: SteerComposerMode | null;
+  /** #2682: a busy composer's input reaches the CLI's own turn on this snapshot (Daemon.busyInputReachesTurn). */
+  busyInputReachesTurn: boolean;
 }
 
 /**
@@ -3704,6 +3706,11 @@ export class Daemon extends EventEmitter {
   private stopOnUnsupportedCliRespawn(err: unknown): boolean {
     if (!(err instanceof UnsupportedCliError)) return false;
     this.healthCheckPaused = true;
+    if (err instanceof ResumeBlockedError) {
+      this.logger.error({ reason: err.message }, "Not respawning: retained session needs store repair");
+      this.emitSupervisionEnded(err.message, err.remedy, undefined, "resume_blocked");
+      return true;
+    }
     this.logger.error({ reason: err.message }, "Not respawning: the installed CLI cannot run this instance as configured");
     this.emitSupervisionEnded(err.message, "Install a CLI version that supports this instance's configuration, then start it again.", undefined, "cli_unsupported");
     return true;
@@ -3722,7 +3729,7 @@ export class Daemon extends EventEmitter {
    * `crash_loop` already had this treatment; this is the same bridge for the other
    * four, carrying a human-readable cause and the operator's next step.
    */
-  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom" | "oom_unclear"): void {
+  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom" | "oom_unclear" | "resume_blocked"): void {
     this.publishWorkingState("supervision_ended");
     this.emit("supervision_ended", {
       name: this.name,
@@ -8534,9 +8541,16 @@ export class Daemon extends EventEmitter {
     const read = this.backend?.readSteerComposer;
     if (!read) return true;
     if (!this.tmux) return false;
-    let mode: SteerComposerMode | null;
-    try { mode = read.call(this.backend, await this.tmux.capturePane()); } catch { return false; }
-    return composerModeAdmits(mode, allowIdle, steerOnly);
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return false; }
+    return composerModeAdmits(read.call(this.backend, pane), allowIdle, steerOnly) && this.busyInputReachesTurn(pane);
+  }
+
+  /** #2682: a busy composer's typed input reaches the CLI's own turn (busyTurnTakesInput); an idle box, or no reader: yes. */
+  private busyInputReachesTurn(pane: string): boolean {
+    const mode = this.backend?.readSteerComposer?.(pane);
+    if (mode !== "steer" && mode !== "queue") return true;
+    return this.backend?.busyTurnTakesInput?.(pane) !== false;
   }
 
   /**
@@ -8726,6 +8740,16 @@ export class Daemon extends EventEmitter {
     if (transient.state === "unknown") { this.resetFooterFallback(); return "unknown"; }
     if (this.needsStartupInputProof()) {
       return await this.hasPositiveDeliveryInput() ? "ready" : "transient";
+    }
+    // #2682: a backend that can read its own idle input box (kiro's TUI) must show it before an idle paste. Anything
+    // else — another program owning the pane, a frame it cannot read, a capture that fails — is not one to type into.
+    if (this.backend?.idleComposerReady && this.tmux) {
+      try {
+        if (!this.backend.idleComposerReady(await this.tmux.capturePane())) return "busy";
+      } catch (err) {
+        this.logger.debug({ err }, "capture-pane failed during the composer check — treating the pane as not ready");
+        return "busy";
+      }
     }
     if (this.backend?.dropsEnterWhileBusy?.() !== true) return "ready";
     const prompt = this.backend.getBottomReadyPattern?.();
@@ -9325,7 +9349,7 @@ export class Daemon extends EventEmitter {
       // turn over. "queue", text in the box or an unreadable row: not written; handled as the unread box above.
       // #2676: an ordinary message typed into it (every other hand-off there) may also find "queue".
       if (handingOffToNativeQueue && this.backend?.readSteerComposer
-        && !composerModeAdmits(pasteBaseline?.steerComposer ?? null, true, steer)) {
+        && (!composerModeAdmits(pasteBaseline?.steerComposer ?? null, true, steer) || pasteBaseline?.busyInputReachesTurn === false)) {
         if (!verdict.durableBeginCommitted) return "handoff-box-unread";
         return this.failDelivery(verdict, status, "paste", steer ? "steer-composer-not-steering" : "composer-not-empty");
       }
@@ -10235,6 +10259,7 @@ export class Daemon extends EventEmitter {
       collapsedPastes: input?.collapsedPastes ?? 0,
       inputReadable: input != null,
       steerComposer: this.backend?.readSteerComposer?.(pane) ?? null,
+      busyInputReachesTurn: this.busyInputReachesTurn(pane),
     };
   }
 
@@ -11395,6 +11420,21 @@ export class Daemon extends EventEmitter {
       if (attemptedResume) {
       let paneText: string | undefined;
       try { paneText = await this.tmux?.capturePaneWithHistory(50); } catch { /* pane may be gone */ }
+      if (paneText && this.backend.resumeBlockedPattern?.().test(paneText)) {
+        // #2598: a duplicate id proves the conversation exists. The generic retry escape hatch must not
+        // abandon that pin or turn a store-selection error into a fresh conversation, even after many retries.
+        await this.killProcessTree("SIGTERM", "spawn: retained session is blocked");
+        this.startupAdmission?.();
+        await this.tmux!.killWindow();
+        this.startupAdmission?.();
+        throw new ResumeBlockedError(t("inst.kiro_resume_ambiguous"), t("inst.kiro_resume_ambiguous_remedy"));
+      }
+      const retained = this.backend.retainedResumeBlock?.();
+      if (retained) {
+        await this.killProcessTree("SIGTERM", "spawn: carried session must be preserved");
+        this.startupAdmission?.(); await this.tmux!.killWindow(); this.startupAdmission?.();
+        throw new ResumeBlockedError(retained.reason, retained.remedy);
+      }
       const proven = this.paneSaysNoConversation(paneText);
       if (!proven) {
         const failures = this.bumpUnprovenResumeFailures();

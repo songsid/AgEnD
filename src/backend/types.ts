@@ -64,6 +64,11 @@ export class UnsupportedCliError extends Error {
   }
 }
 
+/** A retained conversation cannot be selected safely. Stop without retry; this is not a CLI/engine incompatibility. */
+export class ResumeBlockedError extends UnsupportedCliError {
+  constructor(message: string, readonly remedy: string) { super(message); this.name = "ResumeBlockedError"; }
+}
+
 /** See CliBackend.agentSwitch. */
 export interface BackendAgentSwitch {
   agent: string;
@@ -570,6 +575,19 @@ export interface CliBackend {
   isDeliveryInputReadyPane?(pane: string): boolean;
 
   /**
+   * #2682: whether this screen positively shows the CLI's own idle input box, asked before an idle delivery. False
+   * (another program owns the pane, a frame it cannot read) makes the delivery wait. Absent: not asked.
+   */
+  idleComposerReady?(pane: string): boolean;
+
+  /**
+   * #2682: for a busy composer (readSteerComposer "steer"/"queue"), whether typed input reaches the CLI's own turn —
+   * false when a command started from the composer owns the keystrokes (kiro's `!cmd`) or the turn cannot be seen. A busy
+   * hand-off (steer, #2676) is admitted only on true. Absent: not asked.
+   */
+  busyTurnTakesInput?(pane: string): boolean;
+
+  /**
    * A structural reader for the CLI's live input box (#1200, claude-code): what the box holds right now, or null when the
    * current screen has no box it can vouch for (a dialog, an unknown layout). Unlike `getBottomReadyPattern` it reads
    * the box as a region — the rows between its own frame — so the transcript above and the footer below are never
@@ -623,6 +641,11 @@ export interface CliBackend {
    * phrasing AgEnD always used. Must match only the CLI's own message.
    */
   resumeMissingPattern?(): RegExp;
+
+  /** A retained session is positively present but blocked (for example duplicate-store ambiguity). Never abandon it. */
+  resumeBlockedPattern?(): RegExp;
+  /** A carried conversation may never silently fall back to a fresh one, even on other startup failures. */
+  retainedResumeBlock?(): { reason: string; remedy: string } | null;
 
   /**
    * #1217: a dialog the CLI shows in answer to its quit command that must not

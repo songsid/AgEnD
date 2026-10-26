@@ -1,0 +1,40 @@
+                            ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇  ⠸⣿⣄⡀⢀⣠⣿⠇ ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇    ⠻⣷⣦⣄⡀   ⢀⣠⣴⣾⠟
+                             ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁    ⠈⠻⠿⠿⠟⠁   ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁     ⠀⠀⠈⠙⠻⠿⠿⠿⠿⠟⠋⠁
+
+                      An early release of Kiro CLI V3 is now available! Try it out: kiro-cli --v3
+                                             https://kiro.dev/docs/cli/v3/
+
+           Tip: Start your message with ! to run a shell command without leaving the chat; Ctrl+C cancels it.
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ▸ Kiro CLI 3.0 launches at the end of October. If you have auto-updates on, you'll be upgraded to 3.0 automatically.
+   It brings cloud sessions, memory, workflows, an improved trust model, expanded hooks and specs.
+   Note: 3.0 doesn't support the legacy --classic experience or the legacy desktop app.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › hello there
+
+• Cancelled
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › q!
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › [agend-delivery-id:fs] message while fullscreen
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › !sleep 25; echo SLEPT
+
+• Running...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Mock Model
+~/k2682-work
+(master)
+
+›  Kiro is working · 2s · Type to steer · Ctrl+S to queue
+
+
+

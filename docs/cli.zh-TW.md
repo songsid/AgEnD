@@ -383,3 +383,15 @@ agend bug-report --draft report.json --approve <SHA256>
 兩個新檔的權限皆為 0600，不覆寫既有檔案或符號連結。JSON 審閱快照綁定確切標題、內文、完整 Markdown 與提交方式；修改後須重新核准。預填網址上限為編碼後 7,500 字元；超出時完整回報仍保存在本機，核准的預填內文會請你手動附檔，不會暗中刪除證據。請核對實際附上的檔案。
 
 若你要求使用主機既有的 GitHub CLI 登入，可在收集時加 `--submit`，審閱該提交方式及文字，核准時也加 `--submit`。只有核准後才檢查登入，不會代為登入或儲存 token。超出連結容量的回報須改用連結方式手動附檔。提交逾時或結果不明時，先查 GitHub 再決定是否重試。
+
+### 還原凍結的 Kiro classic 備份
+
+從 classic 帶到 TUI 的對話，在兩個 Kiro store 會有相同 UUID。下次以固定 id 啟動 TUI 前，AgEnD 會驗證有所有權的 V2 副本涵蓋每一筆凍結的歷史對話（使用者文字、助理訊息 id／文字／工具輸入及工具結果）、確認該 instance 的 Kiro 程序已停止，並只備份這個 UUID 在其工作目錄下的原始 classic `conversations_v2` 紀錄。備份為私人檔案（`0600`），包含原始位元組、時間戳與 SHA256；移除前會 fsync 並重新讀回驗證，存於 `AGEND_HOME/kiro-classic-archives/`。共享資料庫的交易使用 `BEGIN IMMEDIATE` 與等待鎖定的逾時限制。其他對話、V2 檔案及憑證都不動，也不會刪除空白的替代 session。
+
+需要還原 classic 資料時，先停止該 instance，再執行：
+
+```bash
+agend kiro restore-classic --instance <名稱> --archive '/備份通知中的路徑.json'
+```
+
+指令會驗證私人備份與目前設定的 instance／store；若 Kiro 仍在執行，或已有不同內容的紀錄，就拒絕還原。缺少的紀錄會按原始位元組還原。從 fleet agent 呼叫時須加上 `--yes`。這不會切換引擎，也不會移除單向的 TUI floor。還原 classic 副本可能再次造成 Kiro 的重複 UUID 問題，修復前請維持 instance 停止；不要切回已凍結的 classic 歷史。

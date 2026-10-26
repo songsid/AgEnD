@@ -112,7 +112,7 @@ import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
-import { CLI_ENV_TTL_MS, isModelCompatible, noteResolvedBinary, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, isModelCompatible, noteResolvedBinary, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, ResumeBlockedError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -6173,6 +6173,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private stopOnUnsupportedCli(name: string, err: unknown, what: string): boolean {
     if (!(err instanceof UnsupportedCliError)) return false;
+    if (err instanceof ResumeBlockedError) {
+      this.logger.error({ name, reason: err.message }, `Not starting ${what}: retained session needs store repair`);
+      void this.notifyFleetError(t("fleet.resume_blocked", name, err.message, err.remedy));
+      return true;
+    }
     this.logger.error({ name, reason: err.message }, `Not starting ${what}: the installed CLI cannot run it as configured`);
     this.queueUnsupportedCliNotice(name, err.message);
     this.queueKiroIncompatNotice(name, err.message);

@@ -710,6 +710,25 @@ Kiro 的 `--resume` 要先和它的後端來回一趟才會畫出任何東西，
 
 resume 預算、resume 重試和故障短路只針對 kiro（屬於後端能力）。延遲的自動啟動重試則適用於**所有**後端和所有無人值守的啟動路徑（fleet 啟動含 General、完整重啟、設定 reconcile）：啟動失敗後就永遠停在 `stopped`，本來就不是 kiro 才有的問題。明確執行的 `agend start` / API 啟動仍會同步回報錯誤。被自動暫停的 kiro instance 喚醒時，也使用同樣的 60 秒 resume 預算。
 
+### kiro 窗格裡有其他程式（#2682）
+
+kiro 把終端機交給其他程式時，AgEnD 會暫停投遞，不會往裡面打任何字。涵蓋以下情況：
+- `/editor`（legacy 另有 `/reply`）；
+- 用 `$PAGER` 開的 `/transcript`；
+- `!` 指令；
+- 取得焦點的 `/kvim` 面板。
+
+實例會顯示「Kiro's terminal is in use by another program (an editor, a pager or a ! command) — finish or close it in the instance pane」。kiro 自己的輸入列回來後，暫停的訊息才會送進去。
+
+**怎麼辨認。** 先看 kiro 自己畫的列：
+- 取得焦點的 `Neovim` 面板標題；
+- 正在執行的 `!` 指令；
+- kiro 的暫存檔 `kiro-editor-…/prompt.md`、`kiro-raw-…/conversation.md`，legacy 則是 `q_prompt_<uuid>.md`。
+
+接著才看該程式自己的最下面幾列：vi 的游標位置列與模式、less 的 `:` 和 `(END)`、`--More--`，以及 nano。`/fullscreen` 仍保留 kiro 的輸入框，不會暫停。
+
+**預設暫停（fail closed）。** 閒置時要投遞，畫面上必須看得到 kiro 的輸入列：TUI 的空白輸入框（或草稿），或 legacy 的 `4% !>` / `4% >` 提示列。其他畫面一律當作忙碌，訊息會等到輸入列回來才送。
+
 ### 工作區信任（kiro-cli V3）
 
 kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚未信任的資料夾裡，以及每次在你的家目錄啟動時都會問。instance 以 `--trust-all-tools` 執行時，AgEnD 會用 Enter 回答預設的 **Trust, continue**。如果游標已被移到 **Don't trust, exit**，AgEnD 不會按任何鍵。沒有 `--trust-all-tools` 時，這個提示會留在 instance 的終端機畫面，等你在那裡回答。

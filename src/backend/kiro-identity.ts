@@ -336,6 +336,41 @@ export function kiroOwnedConversation(opts: { agendHome: string; instance: strin
     && heldBy(claimOf(p.claims, record.id), opts.instance) ? record.id : null;
 }
 
+export interface KiroCarryCandidate { id: string; repair: boolean; since: number }
+/** The original classic owner identifies an incomplete carried migration; never choose a newest session. */
+export function kiroCarryCandidate(opts: { agendHome: string; instance: string; workingDirectory: string; credentialProfile: string | null }): KiroCarryCandidate | null {
+  const p = paths(opts.agendHome, "v2", opts.instance), read = readState(p.state, opts.instance);
+  if (read.kind === "bad") throw new KiroIdentityError("Kiro ownership record is unreadable; migration repair held");
+  if (read.kind !== "ok") return null;
+  const classic = read.state.keys[keyOf("v1", opts.workingDirectory, opts.credentialProfile)];
+  const tui = read.state.keys[keyOf("v2", opts.workingDirectory, opts.credentialProfile)];
+  for (const [record, engine] of [[classic, "v1"], [tui, "v2"]] as const) {
+    if (record && (record.engine !== engine || kiroCanonicalDirectory(record.workingDirectory) !== kiroCanonicalDirectory(opts.workingDirectory)
+      || record.credentialProfile !== opts.credentialProfile)) throw new KiroIdentityError("Carry ownership record does not match its engine, directory or profile");
+  }
+  if (!classic?.id || !tui || (!tui.abandoned.includes(classic.id) && tui.id !== classic.id)) return null;
+  if (tui.id && tui.id !== classic.id) return null; // an already-owned deliberate replacement is never overwritten
+  if (!heldBy(claimOf(paths(opts.agendHome, "v1", opts.instance).claims, classic.id), opts.instance)) throw new KiroIdentityError("Original classic ownership is not proven; migration repair held");
+  if (tui.id === classic.id && heldBy(claimOf(p.claims, classic.id), opts.instance)) return { id: classic.id, repair: false, since: tui.since };
+  const claim = claimOf(p.claims, classic.id);
+  if (tui.id !== null || !tui.abandoned.includes(classic.id) || !claim || claim === "incomplete" || claim.owner !== opts.instance) {
+    throw new KiroIdentityError("The carried V2 pin cannot be recovered without replacing another owner/session");
+  }
+  return { id: classic.id, repair: true, since: tui.since };
+}
+/** Only after external stopped-process and complete-owned-carry proofs. A failed state write leaves the old owner reserved. */
+export function reinstateKiroCarryPin(opts: { agendHome: string; instance: string; workingDirectory: string; credentialProfile: string | null }, id: string): void {
+  const candidate = kiroCarryCandidate(opts);
+  if (!candidate || candidate.id !== id) throw new KiroIdentityError("Carried session ownership changed before re-pin");
+  if (!candidate.repair) return;
+  const p = paths(opts.agendHome, "v2", opts.instance), read = readState(p.state, opts.instance);
+  if (read.kind !== "ok") throw new KiroIdentityError("Carried ownership record changed");
+  const key = keyOf("v2", opts.workingDirectory, opts.credentialProfile), previous = read.state.keys[key]!;
+  writeFileAtomic(join(p.claims, id), opts.instance + "\n");
+  writeFileAtomic(p.state, JSON.stringify({ ...read.state, keys: { ...read.state.keys, [key]: { ...previous, id,
+    abandoned: previous.abandoned.filter(old => old !== id), agentConfirmed: false } } }) + "\n");
+}
+
 export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdentityDecision {
   const { instance, engine, workingDirectory, credentialProfile } = opts;
   if (!OWNER_NAME.test(instance)) return { mode: "legacy", reason: "the instance name cannot be recorded" };

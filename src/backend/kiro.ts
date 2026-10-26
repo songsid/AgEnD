@@ -17,16 +17,17 @@ import {
 import {
   type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
   kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroRecordedConversation, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
-  kiroEngineFloor,
+  kiroEngineFloor, kiroCarryCandidate,
 } from "./kiro-identity.js";
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type BackendAgentSwitch, type BackendLaunchWarning, type BackendSessionProof, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type BackendLaunchWarning, type BackendSessionProof, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, ResumeBlockedError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { KIRO_SESSION_ID_COMMAND, kiroTitleCommand } from "../kiro-session-proof.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
+import { sharedKiroV2StoreLane } from "./kiro-v2-store.js";
 import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict, type KiroModelRecords, type KiroModelSwitch } from "./kiro-retired-model.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
@@ -92,33 +93,55 @@ export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | 
  * evidence of either an empty or a full box. The toggle key's label is whatever the user bound; it is read past, never
  * pressed.
  */
-function readKiroComposer(pane: string): { mode: SteerComposerMode; text: string } | null {
-  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+/** #2682: the takeover hold's key (RuntimeDialog.pattern); kiroTakeoverActive decides, this never matches a pane. */
+const KIRO_TAKEOVER_KEY = /(?!)kiro-takeover/;
+
+/** The composer's `›` row in `rows` and how many typed-text rows continue below it; null when there is none. */
+function findKiroComposerRow(rows: string[]): { index: number; continued: number } | null {
   let i = rows.length - 1;
-  while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]))) i--;
+  while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]!))) i--;
   // Typed text of more than one line continues below the `›` row, each row indented two spaces (live, 2.27.1 and
   // 2.28.0, TUI v2 and v3): the composer starts at the `›` row above them.
   let continued = 0;
   while (i >= 0 && /^ {2,19}\S/.test(rows[i]!)) { i--; continued++; }
   const row = rows[i];
-  if (row === undefined || !/^›[ \t]+\S/.test(row)) return null;
+  return row !== undefined && /^›[ \t]+\S/.test(row) ? { index: i, continued } : null;
+}
+
+function readKiroComposer(pane: string): { mode: SteerComposerMode; text: string } | null {
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+  const at = findKiroComposerRow(rows);
+  if (!at) return null;
+  let row = rows[at.index]!;
   // A placeholder is one row: with continuation rows below it, this is typed text — unless its first row is another
-  // mode's placeholder, which is then not ours to read.
-  if (continued > 0) {
-    if (/^›[ \t]+(?:Kiro is working\b|ask a question or describe a task\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b)/.test(row)) return null;
-    return { mode: "text", text: row.replace(/^›[ \t]+/, "") };
+  // mode's placeholder. #2682: a narrow pane word-wraps a placeholder onto indented rows; joined, a COMPLETE known form
+  // reads as itself (an idle placeholder is then idle, not unreadable); anything else stays unreadable.
+  if (at.continued > 0) {
+    if (!/^›[ \t]+(?:Kiro is working\b|ask a question or describe a task\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b)/.test(row)) {
+      return { mode: "text", text: row.replace(/^›[ \t]+/, "") };
+    }
+    row = [row, ...rows.slice(at.index + 1, at.index + 1 + at.continued).map(r => r.trim())].join(" ");
+    const mode = kiroPlaceholderMode(row);
+    return mode ? { mode, text: row.replace(/^›[ \t]+/, "") } : null;
   }
-  const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
   const text = row.replace(/^›[ \t]+/, "");
-  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return { mode: "steer", text };
-  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return { mode: "queue", text };
-  const idle = String.raw`^›[ \t]+ask a question or describe a task`;
-  if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
-    || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
-    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return { mode: "idle", text };
+  const mode = kiroPlaceholderMode(row);
+  if (mode) return { mode, text };
   // Other placeholders (and anything the ASCII glyph set paints) are not typed text.
   if (/^›[ \t]+(?:Kiro is working\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b|ask a question or describe a task (?:\.|enter\b))/.test(row)) return null;
   return { mode: "text", text };
+}
+
+/** The empty composer's mode from its whole placeholder (`›  …`, one row or wrapped rows joined); null when it is none. */
+function kiroPlaceholderMode(row: string): "steer" | "queue" | "idle" | null {
+  const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
+  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return "steer";
+  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return "queue";
+  const idle = String.raw`^›[ \t]+ask a question or describe a task`;
+  if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
+    || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
+    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return "idle";
+  return null;
 }
 
 export function readKiroSteerComposer(pane: string): SteerComposerMode | null {
@@ -144,6 +167,93 @@ export function readKiroCollapsedPasteLines(text: string): number | null {
   const m = /^(\d+) (lines|chars) ▸(?:[ \t]+Press Tab to expand)?$/.exec(text.trim());
   if (!m) return null;
   return m[2] === "lines" ? Number(m[1]) : 1;
+}
+
+/**
+ * #2682: another program owns kiro's pane, so a paste and an Enter would go into it instead of the chat (captured on
+ * 2.34.0, tests/fixtures/kiro-2.34.0-takeover-2682). Read from kiro's own rows first:
+ * - a focused `/kvim` panel: `── Neovim · focused · Ctrl+\ to chat · :q to close ──`, or `· the agent is waiting on you:`
+ *   (unfocused, `Neovim · Ctrl+\ to edit`, the composer has the keys again);
+ * - a running `!` command (tui, V3): its PTY takes every keystroke, while the composer still reads busy
+ *   (`Kiro is working · Type to steer`) — the nearest turn above kiro's footer is `  › !…`, with only its indented
+ *   output and `• Running...` below (kiroBusyTurn; a turn it cannot see is not called a takeover here, but no busy
+ *   input is typed into it either: KiroBackend.busyTurnTakesInput);
+ * - an editor or pager kiro started (`/editor`, `/transcript`, a full-screen `!vim`/`!less`): no composer row, kiro's
+ *   temp file `kiro-editor-XXXXXX/prompt.md` or `kiro-raw-XXXXXX/conversation.md` on screen;
+ * - legacy: a `!` command running from its prompt row (the bottom row is the prompt with `!…` after the marker: the
+ *   command took the terminal before kiro painted anything else), and its `/editor` and `/reply` temp file
+ *   `q_prompt_<uuid>.md` with no prompt row at the bottom;
+ * and, only where kiro's input row is not on screen (every engine; legacy's `/editor` and `/reply` run `$EDITOR`), the
+ * program's own bottom rows: vi/vim/nvim (`~` rows, its ruler, `-- INSERT --`), less (`:`, `(END)`), more
+ * (`--More--`), nano (`GNU nano` and `^X Exit`). `/fullscreen` is not a takeover: the same composer takes input.
+ */
+export function kiroTakeoverActive(pane: string, ui: "legacy" | "tui" | "v3"): boolean {
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+  if (ui === "legacy") {
+    const prompt = kiroLegacyPromptAtBottom(rows);
+    if (prompt !== null) return prompt.startsWith("!");
+    if (rows.some(row => /\/q_prompt_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.md\b/.test(row))) return true;
+    return fullScreenProgramAtBottom(rows);
+  }
+  if (rows.some(row => /^─+ Neovim · (?:focused · |the agent is waiting on you: )/.test(row))) return true;
+  const at = findKiroComposerRow(rows);
+  if (at) {
+    const mode = readKiroComposer(pane)?.mode;
+    return (mode === "steer" || mode === "queue") && kiroBusyTurn(rows, at.index) === "shell";
+  }
+  if (rows.some(row => /\/kiro-(?:editor|raw)-[A-Za-z0-9]{6}\/(?:prompt|conversation)\.md\b/.test(row))) return true;
+  return fullScreenProgramAtBottom(rows);
+}
+
+/**
+ * #2682: the legacy UI's prompt row as the last non-blank row — `4% !>` (trust-all) or `4% >`, with an optional
+ * `[agent]` prefix and mode glyph, as getBottomReadyPattern — and the text after its marker (a placeholder hint, a
+ * draft, or a `!` command it is running); null when the bottom row is not the prompt.
+ */
+export function kiroLegacyPromptAtBottom(rows: string[]): string | null {
+  const last = [...rows].reverse().find(row => row.trim() !== "");
+  const m = last === undefined ? null : /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯|>)(.*)$/.exec(last);
+  return m ? m[1]!.trim() : null;
+}
+
+/**
+ * #2682: what the busy turn nearest above kiro's footer is: "shell" — a `!` command still running (its `  › !` row with
+ * only its output and `• Running...` below), "agent" — positive evidence of the agent's turn first (another user row,
+ * one of kiro's bullets, its spinner), "unknown" — no footer, or nothing that says either up to the top of the pane.
+ * Everything else is passed over, never taken as evidence: the footer and its notes however they wrap, dividers, the
+ * tray and tips, indented output.
+ */
+function kiroBusyTurn(rows: string[], composer: number): "shell" | "agent" | "unknown" {
+  let d = composer - 1;
+  while (d >= 0 && composer - d <= 8 && !/^─{20,}$/.test(rows[d]!)) d--;
+  if (d < 0 || !/^─{20,}$/.test(rows[d]!)) return "unknown";                     // no footer divider within reach
+  for (let r = d - 1; r >= 0; r--) {
+    const row = rows[r]!;
+    if (/^ {2}› !/.test(row)) return "shell";
+    if (/^ {2}› /.test(row) || /^• (?!Running\.\.\.$)\S/.test(row) || /^\S[ \t]+(?:Thinking|Working)(?:\.{3}|…)/.test(row)) return "agent";
+  }
+  return "unknown";
+}
+
+/**
+ * #2682: whether a busy composer's typed input goes to kiro's own turn: only when that turn is seen to be the agent's.
+ * A `!` command's PTY would take it, and a turn it cannot see might be one.
+ */
+export function kiroBusyTurnTakesInput(pane: string): boolean {
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+  const at = findKiroComposerRow(rows);
+  return at !== null && kiroBusyTurn(rows, at.index) === "agent";
+}
+
+/** #2682: a full-screen editor or pager's own bottom rows (vi/vim/nvim, less, more, nano), whoever started it. */
+function fullScreenProgramAtBottom(rows: string[]): boolean {
+  const shown = rows.filter(row => row.trim() !== "");
+  const last = shown[shown.length - 1]?.trim() ?? "";
+  if (last === ":" || /\(END\)$/.test(last) || /^--More--/.test(last)) return true;                          // less, more
+  if (/^-- (?:INSERT|REPLACE|VISUAL(?: LINE| BLOCK)?) --/.test(last)) return true;                             // vi modes
+  if (/\s\d+,\d+(?:-\d+)?\s+(?:All|Top|Bot|\d+%)$/.test(last)) return true;                                     // vi ruler
+  if (shown.slice(-7, -1).filter(row => row === "~").length >= 3) return true;                                // vi's empty lines
+  return shown.slice(-2).some(row => /\^X Exit/.test(row)) && rows.some(row => /^\s*GNU nano\b/.test(row));   // nano
 }
 
 export interface KiroCliCompatibility {
@@ -1151,6 +1261,12 @@ export const KIRO_REQUEST_LIMIT_SCREEN = new RegExp(
   "m",
 );
 
+/** #2598: Kiro 2.34 lists a carried UUID in both V2 and classic; this proves presence, not a missing session. */
+export const KIRO_AMBIGUOUS_RESUME_SCREEN = new RegExp(
+  wrapTolerant('Error: Session id "') + '[A-Za-z0-9_.\\n-]{1,256}' + wrapTolerant('" is ambiguous (')
+  + "\\d+" + wrapTolerant(" matches)."), "m",
+);
+
 /** Startup budget for a `--resume` launch (60% first output, 40% ready). */
 export const KIRO_RESUME_STARTUP_BUDGET_MS = 60_000;
 
@@ -1196,6 +1312,7 @@ export class KiroBackend implements CliBackend {
   /** #2648: the saved model of the v2 conversation this instance has recorded, read in prepareLaunch (off the loop). */
   private preparedV2Model: { key: string; id: string; model: string | null } | null = null;
   private storePreparation = 0;
+  private preparedCarry: { key: string; error: string | null } | null = null;
   private storeKey(config: CliBackendConfig): string {
     return JSON.stringify([config.instanceName, config.workingDirectory, kiroCanonicalDirectory(config.workingDirectory), config.kiroUi,
       resolveCredentialProfile(config.backendOptions), !!config.skipResume, getAgendHome(), kiroV2SessionsDir(), kiroCanonicalDirectory(kiroV2SessionsDir())]);
@@ -1214,6 +1331,7 @@ export class KiroBackend implements CliBackend {
     const preparation = ++this.storePreparation;
     this.preparedV2Store = null;
     this.preparedV2Model = null;
+    this.preparedCarry = null;
     if (!config || config.kiroUi !== "tui") return;
     if (!this.fixedCompatibility) this.compatibility = cachedKiroCliCompatibility(this.binaryPath).compatibility;
     const key = this.storeKey(config);
@@ -1221,6 +1339,21 @@ export class KiroBackend implements CliBackend {
     if (plan.kind !== "launch" || !plan.flags.includes("--agent-engine=v2") || !this.compatibility.supportsInstanceAgent) return;
     const opts = { instance: config.instanceName, engine: "v2" as const, workingDirectory: config.workingDirectory,
       credentialProfile: resolveCredentialProfile(config.backendOptions), skipResume: config.skipResume, agendHome: getAgendHome() };
+    if (!config.skipResume && this.needsCarryPreparation()) {
+      try {
+        this.preparedCarry = { key, error: null };
+        if (kiroCarryCandidate(opts)) {
+          const reply = await sharedKiroV2StoreLane.read({ keys: [], sessionsDir: kiroV2SessionsDir(), carry: {
+            ...opts, sessionsDir: kiroV2SessionsDir(), dbPath: kiroV1DbPath(opts.credentialProfile),
+          } });
+          if (preparation !== this.storePreparation || key !== this.storeKey(config)) return;
+          this.preparedCarry = { key, error: reply.kind === "unreadable" ? reply.detail : null };
+          if (reply.kind === "unreadable") return;
+          if (reply.carry?.archivePath) this.addLaunchWarning(t("kiro.archive_done", reply.carry.archivePath));
+          if (reply.carry?.repaired) this.addLaunchWarning(t("kiro.carry_pin_repaired"));
+        }
+      } catch (err) { this.preparedCarry = { key, error: (err as Error).message }; return; }
+    }
     if (kiroIdentityNeedsStore(opts)) {
       const store = await listKiroV2Sessions(config.workingDirectory, kiroV2SessionsDir());
       if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Store = { key, store };
@@ -1232,6 +1365,22 @@ export class KiroBackend implements CliBackend {
       const model = await readKiroV2SavedModel(kiroV2SessionsDir(), recorded);
       if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Model = { key, id: recorded, model };
     }
+  }
+
+  private needsCarryPreparation(): boolean {
+    const v = /(?:^|\s)(\d+)\.(\d+)\.(\d+)/.exec(this.compatibility.version ?? "");
+    return !!v && (Number(v[1]) > 2 || (Number(v[1]) === 2 && Number(v[2]) >= 34));
+  }
+
+  private assertCarryPrepared(config: CliBackendConfig): void {
+    if (config.kiroUi !== "tui" || config.skipResume || !this.needsCarryPreparation()) return;
+    const opts = { agendHome: getAgendHome(), instance: config.instanceName, workingDirectory: config.workingDirectory,
+      credentialProfile: resolveCredentialProfile(config.backendOptions) };
+    let required: boolean;
+    try { required = !!kiroCarryCandidate(opts); }
+    catch (err) { throw new ResumeBlockedError(t("kiro.archive_failed", (err as Error).message), t("kiro.archive_remedy")); }
+    if (this.preparedCarry?.key === this.storeKey(config) && this.preparedCarry.error) throw new ResumeBlockedError(t("kiro.archive_failed", this.preparedCarry.error), t("kiro.archive_remedy"));
+    if (required && this.preparedCarry?.key !== this.storeKey(config)) throw new ResumeBlockedError(t("kiro.archive_failed", "carry preparation is missing"), t("kiro.archive_remedy"));
   }
 
   constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
@@ -1308,6 +1457,18 @@ export class KiroBackend implements CliBackend {
     return ctx.resume ? KIRO_RESUME_STARTUP_BUDGET_MS : undefined;
   }
 
+  resumeBlockedPattern(): RegExp { return KIRO_AMBIGUOUS_RESUME_SCREEN; }
+
+  retainedResumeBlock(): { reason: string; remedy: string } | null {
+    const plan = this.activePlan;
+    if (!plan || plan.engine !== "v2" || plan.mode !== "resume" || !plan.id || !this.activeInstance) return null;
+    let carried = true;
+    try { carried = kiroCarryCandidate({ agendHome: getAgendHome(), instance: this.activeInstance, workingDirectory: plan.cwd, credentialProfile: plan.credentialProfile })?.id === plan.id; }
+    catch { /* lost ownership proof is also a hold, never authority to discard history */ }
+    return carried ? { reason: t("kiro.carry_resume_failed"), remedy: t("kiro.archive_remedy") } : null;
+  }
+
+
   retriesResumeOnStartupFailure(): boolean {
     // A resume miss is far more often "the backend was slow" than "the session
     // is broken"; one more attempt before abandoning the conversation is cheap.
@@ -1343,6 +1504,7 @@ export class KiroBackend implements CliBackend {
     // V3 has a different engine and no verified completion signal yet (#1144).
     this.replyGuardOptedIn = false;
     this.builtLaunch = null;
+    this.assertCarryPrepared(config);
     const ui = config.kiroUi ?? "legacy";
     // #2598 B3: never back onto an older engine than this instance has run on — that resumes the frozen copy and loses
     // everything done since. Before any probe: no kiro-cli flag or version changes the answer.
@@ -1518,6 +1680,7 @@ export class KiroBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
+    this.assertCarryPrepared(config);
     // WORKAROUND: kiro-cli ignores the "env" block of an MCP server entry — the server subprocess inherits the fleet
     // manager's env, with a stale AGEND_SOCKET_PATH from whichever daemon wrote last. Each server therefore runs
     // through a wrapper script that exports this instance's env and execs the real server.
@@ -2054,7 +2217,38 @@ export class KiroBackend implements CliBackend {
       },
       ...kiroTrustPromptDialogs(this.activeTrustAll),
       ...kiroWorkspaceTrustDialogs(this.activeTrustAll),
+      {
+        // #2682: an editor, a pager, a `!` command or a focused /kvim owns the pane: a paste and an Enter would go into
+        // it. Last, so every dialog above keeps its own words; held for the person, never keyed.
+        pattern: KIRO_TAKEOVER_KEY,
+        keys: [],
+        description: "Kiro's terminal is in use by another program (an editor, a pager or a ! command) — finish or close it in the instance pane",
+        blocksDelivery: true,
+        holdOnly: true,
+        inputBlocked: true,
+        isActive: pane => kiroTakeoverActive(pane, this.activeUi),
+      },
     ];
+  }
+
+  /**
+   * #2682: kiro's own input row, read positively, before an idle delivery. TUI and V3: the composer reads "idle", or
+   * "text" (a draft, as before); busy, another mode (a goal, the tray being edited) or no composer at all — an unknown
+   * full-screen program, a blank frame — is not a screen to type into. Legacy: its prompt row is the bottom row (`4% !>`,
+   * or `4% >` without trust-all, live 2.34.0), not running a `!` command. Anything else: the delivery waits.
+   */
+  /** #2682: the busy composer's input reaches kiro's own turn (kiroBusyTurnTakesInput), not a `!` command's PTY. */
+  busyTurnTakesInput(pane: string): boolean {
+    return this.activeUi !== "legacy" && kiroBusyTurnTakesInput(pane);
+  }
+
+  idleComposerReady(pane: string): boolean {
+    if (this.activeUi === "legacy") {
+      const prompt = kiroLegacyPromptAtBottom(pane.split("\n").map(row => row.replace(/\s+$/, "")));
+      return prompt !== null && !prompt.startsWith("!");
+    }
+    const mode = readKiroSteerComposer(pane);
+    return mode === "idle" || mode === "text";
   }
 
   getContextUsage(): number | null {

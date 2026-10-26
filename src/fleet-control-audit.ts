@@ -33,7 +33,7 @@ export const ALLOW_TEST_ENV = "AGEND_ALLOW_TEST_FLEET_CONTROL";
 export type FleetControlAction =
   | "fleet-stop" | "fleet-restart" | "fleet-restart-reload"
   | "stop" | "restart" | "update"
-  | "instance-stop" | "instance-restart";
+  | "instance-stop" | "instance-restart" | "kiro-restore-classic";
 
 export interface CallerProcess { pid: number; command: string }
 
@@ -174,12 +174,14 @@ export function refusalMessage(action: FleetControlAction, reason: "agent-sessio
     return `Refusing \`agend ${commandOf(action)}\`: it was started from a test runner and would act on the real fleet. `
       + `Stub the call, or set ${ALLOW_TEST_ENV}=1 if this really targets a scratch fleet.`;
   }
+  if (action === "kiro-restore-classic") return `Refusing \`agend kiro restore-classic\` from fleet agent session "${instance}": it writes Kiro's shared database. Run again with --yes only for an authorized store restore.`;
   return `Refusing \`agend ${commandOf(action)}\`: it was started from the fleet agent session "${instance}", and this stops the whole fleet and every instance in it.\n`
     + `If that is what you mean, run it again with --yes. If you did not mean to run it at all, a backtick or $(...) inside a quoted shell argument may have executed it.`;
 }
 
 function commandOf(action: FleetControlAction): string {
   switch (action) {
+    case "kiro-restore-classic": return "kiro restore-classic";
     case "fleet-stop": return "fleet stop";
     case "fleet-restart": return "fleet restart";
     case "fleet-restart-reload": return "fleet restart --reload";

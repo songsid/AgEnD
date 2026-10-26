@@ -1,0 +1,40 @@
+│  doesn't support the legacy --classic experience or the legacy desktop app.  │
+│  Drop --agent-engine v1 and --legacy-ui to start using the TUI today. Learn  │
+│                     more: https://kiro.dev/docs/cli/v3/                      │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────── Try Lite Mode ────────────────────────────────╮
+│                                                                              │
+│              A streamlined UI with all the latest CLI features.              │
+│                      Run /lite to switch this session.                       │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────── Did you know? ────────────────────────────────╮
+│                                                                              │
+│     Enable workspace checkpoints to snapshot & restore changes. Just run     │
+│                 kiro-cli settings chat.enableCheckpoint true                 │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+4% > hello
+
+> mock reply one
+
+ ▸ Time: 0s
+
+4% > !sleep 8
+
+
+ ▸ Time: 0s
+
+4% > /editor
+
+
+Empty content from editor, not submitting.
+
+
+
+4% >

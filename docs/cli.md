@@ -556,3 +556,15 @@ One shared redactor covers credential formats/fields/headers/cookies and persona
 Both files are new, mode 0600; existing files/symlinks are not overwritten. The JSON review snapshot binds the exact title, issue body, full Markdown and delivery mode. An edit requires fresh approval. Links are capped at 7,500 encoded characters. Larger reports keep their complete redacted Markdown locally; the approved link body explicitly asks you to add that file manually rather than silently dropping evidence. Review the file you actually attach.
 
 Optional existing host GitHub CLI login: choose `--submit` during collection, review that delivery mode and exact text, then repeat `--submit` with `--draft`/`--approve`. Authentication is checked only after approval. AgEnD never logs in or stores a token. Overflow needs manual attachment and uses link mode. If creation times out or has an uncertain result, check GitHub before trying again.
+
+### Restore a frozen Kiro classic archive
+
+A carried classic → TUI conversation has the same UUID in both Kiro stores. Before its next pinned TUI launch, AgEnD verifies the owned V2 copy covers every frozen history pair (user text, assistant message IDs/text/tool inputs and tool results), checks that the instance's Kiro process has stopped, and archives only that UUID's exact classic `conversations_v2` rows for its working directory. The archive is private (`0600`), includes the original bytes/timestamps and SHA256, is fsynced and read back before deletion, and lives under `AGEND_HOME/kiro-classic-archives/`. The shared database transaction uses `BEGIN IMMEDIATE` and a busy timeout. Other conversations, V2 files and credentials are untouched; empty replacement sessions are not deleted.
+
+To recover the archived classic data, stop the target instance first, then run:
+
+```bash
+agend kiro restore-classic --instance <name> --archive '/path/from/the/archive-notice.json'
+```
+
+The command verifies the private archive and configured instance/store, refuses a live Kiro process or conflicting existing rows, and restores missing rows byte-for-byte. A call from a fleet agent needs `--yes`. This does not change the instance's engine or remove its one-way TUI floor. Restoring the classic copy can reintroduce Kiro's duplicate-UUID ambiguity, so leave the instance stopped until the duplicate is repaired again. Do not switch a migrated instance back to the frozen classic history.

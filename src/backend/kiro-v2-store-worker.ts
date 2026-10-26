@@ -4,6 +4,8 @@ import { readdirSync, readFileSync, statSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import type { KiroV2StoreInput, KiroV2StoreReply, KiroV2StoreRequest } from "./kiro-v2-store.js";
 
+import { prepareKiroCarryForLaunch } from "./kiro-classic-archive.js";
+
 const CACHE_LIMIT = 4096;
 const CACHE_BYTES = 4 * 1024 * 1024;
 let cacheBytes = 0;
@@ -67,6 +69,13 @@ function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): Kiro
   return { kind: "ok", sessions, diagnostics: { reads, hits } };
 }
 parentPort?.on("message", ({ id, input, deadlineAt }: KiroV2StoreRequest) => {
-  const reply = scan(input, deadlineAt);
+  let reply: KiroV2StoreReply;
+  try {
+    if (input.carry) {
+      const checkpoint = () => { if (performance.now() >= deadlineAt) throw new Error("Kiro carry archive timed out"); };
+      checkpoint();
+      reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 }, carry: prepareKiroCarryForLaunch(input.carry, checkpoint) };
+    } else reply = scan(input, deadlineAt);
+  } catch (err) { reply = { kind: "unreadable", detail: (err as Error).message }; }
   parentPort?.postMessage({ id, reply });
 });
