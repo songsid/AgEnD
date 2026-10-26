@@ -618,8 +618,20 @@ function Prompts({ name }) {
   if (!list.length) return null;
   return html`<div data-trust="permission" class="prompts" aria-live="polite">${list.map(p => html`<div key=${p.nonce} class=${`prompt${p.resolved ? " done" : ""}`} role="group" aria-label=${p.text}>
     <div class="txt">${p.resolved ? (p.outcome || t("chat.promptGone")) : textLinkSegments(p.text, p.links).map(sg => sg.href ? html`<a data-trust="link" class="st-link" href=${sg.href}>${sg.text}</a>` : sg.text)}</div>
-    ${p.resolved ? null : html`<div class="acts">${p.actions.map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
-      ${p.busy ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>`}</div>`)}</div>`;
+    ${p.resolved ? null : html`<div class="acts">${p.actions.filter(a => !a.input).map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
+      ${p.busy ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>`}
+    ${p.resolved ? null : p.actions.filter(a => a.input).map(a => html`<${PromptText} key=${a.id} p=${p} action=${a} />`)}</div>`)}</div>`;
+}
+
+/** #2675: a prompt's typed answer (a kiro question card's "answer in words"): a box and its send button. */
+function PromptText({ p, action }) {
+  const [text, setText] = useState("");
+  const send = (e) => { e.preventDefault(); if (text.trim() && !p.busy) store.answerPrompt(p, action.id, text); };
+  return html`<form class="prompt-text" onSubmit=${send}>
+    <input type="text" maxlength="4000" aria-label=${action.label} placeholder=${t("chat.promptTextPlaceholder")} value=${text} disabled=${!!p.busy}
+      onInput=${(e) => setText(e.currentTarget.value)} />
+    <button type="submit" class="btn" disabled=${!!p.busy || !text.trim()}>${t("chat.promptTextSend")}</button>
+  </form>`;
 }
 
 /** "<name> is working… 0:42", "looks stuck", "Stopping…", or what it waits on at its terminal. Text only. */

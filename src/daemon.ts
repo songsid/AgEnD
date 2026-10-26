@@ -8354,6 +8354,11 @@ export class Daemon extends EventEmitter {
     this.emit("remote_card", { name: this.name, card });
   }
 
+  /** #2675: the card's post was used up without answering it (refused, stopped part-way): post it again once it holds still. */
+  repostRemoteCard(): void {
+    this.remoteCardShown = null;
+  }
+
   /**
    * #2675: answer the card on screen from the chat, as the person chose: only while it is the card they saw
    * (`identity`), on a verified cursor, under the pane write lock (remote-card-answer.ts). Never logs the answer.
