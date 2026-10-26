@@ -37,7 +37,7 @@ function fixture() {
   const log = join(sessions, id + ".jsonl"), metaPath = join(sessions, id + ".json");
   const save = () => { writeFileSync(metaPath, JSON.stringify(meta)); writeFileSync(log, JSON.stringify({ version: "v1", kind: "Prompt", data: { content: [{ kind: "text", data: "D5 prompt" }] } }) + "\n" + JSON.stringify({ version: "v1", kind: "AssistantMessage", data: { message_id: "D5-assistant", content: [{ kind: "text", data: "D5 memory" }] } }) + "\n"); };
   const input = { ...identity, sessionId: id, dbPath, sessionsDir: sessions };
-  const fleet = { defaults: {}, instances: { wiki: { backend: "kiro-cli", working_directory: cwd, model } } } as FleetConfig;
+  const fleet = { defaults: {}, instances: { wiki: { backend: "kiro-cli", working_directory: cwd, model } } } as unknown as FleetConfig;
   const steps: string[] = []; let released = false, live = true;
   const verifyInput = (archived: boolean) => ({ ...input, archived, model, outboxDbPath: join(root, "absent-outbox.db"), knownInstances: ["wiki"] });
   const d: KiroMigrateDeps = {
@@ -76,7 +76,7 @@ describe("single-confirm verified migration", () => {
   });
   it.each([1, 2])("failed verification %s stops without a success claim or fresh/classic fallback", async failure => {
     const f = fixture(), original = f.d.verify; let calls = 0;
-    f.d.verify = vi.fn(async (...args) => { if (++calls === failure) throw new Error("wrong model or pin"); return original(...args); });
+    f.d.verify = vi.fn(async (name: string, session: string, expected: string, archived: boolean) => { if (++calls === failure) throw new Error("wrong model or pin"); return original(name, session, expected, archived); });
     const out = await applyKiroMigration(f.d, plan(f)); expect(out.ok).toBe(false); expect(out.text).toContain("wrong model or pin");
     expect(f.d.stop).toHaveBeenCalledOnce(); expect(f.d.restart).toHaveBeenCalledTimes(failure); expect(f.fleet.instances.wiki.kiro_ui).toBe("tui"); expect(f.released()).toBe(true);
   });
