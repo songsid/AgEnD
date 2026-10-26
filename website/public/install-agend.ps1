@@ -1527,7 +1527,19 @@ function Select-AgendPorts {
             if (-not (Test-WslPortFree $q)) { $why = "Linux 裡的 $q 已有程式在用"; break }
         }
         if ($why) { Write-Info ("  連接埠 {0}/{1} 不能用（{2}），試下一組..." -f $p, ($p + 1), $why); continue }
-        $seed = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', ('umask 077; d=${AGEND_HOME:-$HOME/.agend}; mkdir -p "$d" && printf ''health_port: %s\n'' ' + $p + ' > "$d/fleet.yaml"'))
+        # 只寫安裝程式自己的那一行，絕不蓋掉別的設定（#2723 審查）：沒有檔案時用 noclobber 建立；有的話，只有內容還是
+        # 我們上次寫的那一行才換掉。判斷之後才出現的、或被改過的 fleet.yaml 原樣保留，改用它的連接埠。
+        $prior = if ($cfg.State -eq 'seeded') { [string]$cfg.Port } else { '' }
+        $write = 'umask 077; d=${AGEND_HOME:-$HOME/.agend}; f="$d/fleet.yaml"; mkdir -p "$d" || exit 1; ' +
+            ('if [ -z "' + $prior + '" ]; then set -C; printf ''health_port: %s\n'' ' + $p + ' > "$f" 2>/dev/null || exit 9; exit 0; fi; ') +
+            ('[ "$(cat "$f" 2>/dev/null)" = "health_port: ' + $prior + '" ] || exit 9; t=$(mktemp "$d/.fleet-seed.XXXXXX") || exit 1; ') +
+            ('printf ''health_port: %s\n'' ' + $p + ' > "$t" && mv -f "$t" "$f" || { rm -f "$t"; exit 1; }')
+        $seed = Invoke-BoundedWsl -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-c', $write)
+        if ($seed.Code -eq 9) {
+            $now = Get-AgendPortConfig
+            if ($now -and $now.State -eq 'configured') { Write-Info ("AgEnD 的設定檔剛剛已經建立，沿用它的連接埠 {0}" -f $now.Port); return $now.Port }
+            Write-Err "AgEnD 的設定檔在檢查之後被改動了，為了不蓋掉它，先停在這裡。請再執行同一行安裝指令。"; return $null
+        }
         if ($seed.Code -ne 0) { Write-Err "寫不進 AgEnD 的設定檔，先停在這裡。"; return $null }
         Add-Content -LiteralPath $ProgressFile -Value ('AGEND_PORT=' + $p)
         if ($p -ne $AGEND_PORT_FIRST) { Write-Ok ("AgEnD 的儀表板改用連接埠 {0}（預覽 {1}）" -f $p, ($p + 1)) }
