@@ -188,6 +188,15 @@ describe("actual daemon and fleet boundaries, native operations stubbed", () => 
     await expect(fm.kiroMigrateDeps().stop("wiki")).rejects.toThrow("teardown unconfirmed");
     expect(hasPausedMarker(dir)).toBe(true); expect(readPauseReason(dir)).toBe("error");
   });
+  it("its own completed stop preserves cleanup authority when replacement startup fails", async () => {
+    const f = fixture(), fm = Object.create(FleetManager.prototype) as any;
+    Object.assign(fm, { kiroMigrationRuns: new Map(), restartsInFlight: new Map(), stopsInFlight: new Map(), explicitStopGeneration: new Map(),
+      shuttingDown: false, scheduleDeliveryOutboxPump: vi.fn(), restartSingleInstance: vi.fn(async () => { fm.explicitStopGeneration.set("wiki", 1); throw new Error("startup failed"); }) });
+    const deps = fm.kiroMigrateDeps(), lease = deps.reserve("wiki");
+    try { await expect(deps.restart("wiki")).rejects.toThrow("startup failed"); expect(lease.current()).toBe(true);
+      fm.explicitStopGeneration.set("wiki", 2); expect(lease.current()).toBe(false);
+    } finally { lease.release(); }
+  });
   it("production preflight uses a fresh idle pane and refuses an unreadable model", async () => {
     const f = fixture(), fm = Object.create(FleetManager.prototype) as any;
     vi.spyOn(backendTypes, "resolveBinary").mockReturnValue("stub-kiro-cli");

@@ -2199,9 +2199,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const run = this.kiroMigrationRuns.get(name)!;
         const expected = run.stopGeneration + 1;
         // This restart owns exactly one stop. A person's concurrent stop must not be hidden by the workflow.
-        await this.restartSingleInstance(name, { explicit: true, kiroMigration: token });
+        try { await this.restartSingleInstance(name, { explicit: true, kiroMigration: token }); }
+        finally {
+          // Even a failed replacement owns its completed stop; retain authority to clean up/pause it.
+          if (this.kiroMigrationRuns.get(name) === run && this.explicitStopGeneration.get(name) === expected) run.stopGeneration = expected;
+        }
         if (this.explicitStopGeneration.get(name) !== expected) throw new Error(t("kiro_migrate.superseded"));
-        run.stopGeneration = expected;
       },
       verify: async (name, id, model, archived) => {
         const daemon = this.daemons.get(name), deadline = performance.now() + 60_000;
