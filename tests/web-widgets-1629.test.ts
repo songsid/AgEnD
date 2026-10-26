@@ -442,7 +442,7 @@ describe("the routes", () => {
   it("GET /ui/themes carries the widgets; a person removes one from an admin session only; the agent's tool goes through the fleet", async () => {
     const f = await fleet();
     try {
-      expect(f.fm.handleWebThemeHttp("alpha", "set_web_widget", { slot: "details", spec: DETAILS, data: { prs: 1 } })).resolves.toMatchObject({ slot: "details" });
+      await expect(f.fm.handleWebThemeHttp("alpha", "set_web_widget", { slot: "details", spec: DETAILS, data: { prs: 1 } })).resolves.toMatchObject({ slot: "details" });
       await settle();
       const r = JSON.parse((await raw(f.port, "GET", "/ui/themes", f.session("read").read)).body);
       expect(r.widgets).toEqual({ alpha: { details: { spec: DETAILS, data: { prs: 1 }, by: "agent" } } });

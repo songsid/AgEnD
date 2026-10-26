@@ -12,7 +12,10 @@
  * It is a fleet-admin decision: migrate_kiro_instance only asks; the move runs on the admin's Confirm in General.
  */
 import type { FleetConfig, InstanceConfig } from "./types.js";
-import { armKiroTuiMigration, disarmKiroTuiMigration, inspectKiroTuiMigration, type KiroTuiMigration } from "./backend/kiro-identity.js";
+import {
+  armKiroTuiMigration, disarmKiroTuiMigration, followKiroClassicCompaction, inspectKiroTuiMigration, type KiroClassicCompaction,
+  type KiroStoreRead, type KiroTuiMigration,
+} from "./backend/kiro-identity.js";
 import { instanceCredentialProfile } from "./backend/credential-profile.js";
 import { t } from "./locale.js";
 
@@ -29,6 +32,8 @@ export interface KiroMigrateDeps {
   preflight(name: string, plan: KiroMigrationPlan): Promise<string>;
   verify(name: string, id: string, model: string, archived: boolean): Promise<{ forensic: string }>;
   stop(name: string): Promise<void>;
+  /** The classic (v1) store the instance launches with, for where a compaction went on (#2714). */
+  readClassicStore(workingDirectory: string, credentialProfile: string | null): KiroStoreRead;
 }
 
 /** What a confirmed move will do; checked again when the admin confirms. */
@@ -38,6 +43,8 @@ export interface KiroMigrationPlan {
   credentialProfile: string | null;
   /** The classic conversation carried over; null = the instance moves with a fresh conversation. */
   classicId: string | null;
+  /** #2714: the recorded classic ids it went on from through /compact (oldest first); classicId is where it is now. */
+  compactedFrom?: string[];
 }
 
 function target(deps: KiroMigrateDeps, name: string): { inst: InstanceConfig; workingDirectory: string; credentialProfile: string | null } | string {
@@ -60,6 +67,29 @@ function refusal(name: string, m: Extract<KiroTuiMigration, { kind: "refused" }>
   return t(`kiro_migrate.refused_${m.reason.replaceAll("-", "_")}`, name);
 }
 
+/**
+ * #2714: classic kiro's /compact goes on in a new conversation, and the record follows it only on the next classic
+ * launch. A compacted instance that has not restarted since would carry its pre-compaction copy, so the carried id is
+ * where the same proven walk ends (followKiroClassicCompaction). Anything it cannot prove refuses the move: the move
+ * is one-way, and carrying the recorded id would leave the newer conversation behind on the frozen engine.
+ * `apply` records the walk, as a classic launch would (only once the admin confirmed and the instance was checked).
+ */
+function carriedClassic(deps: KiroMigrateDeps, name: string, workingDirectory: string, credentialProfile: string | null, recorded: string, apply: boolean):
+  { ok: true; id: string; compactedFrom: string[] } | { ok: false; error: string } {
+  const walk = followKiroClassicCompaction({ agendHome: deps.agendHome, instance: name, workingDirectory, credentialProfile,
+    readStore: () => deps.readClassicStore(workingDirectory, credentialProfile), apply });
+  if (!walk) return { ok: true, id: recorded, compactedFrom: [] };
+  if (walk.kept) return { ok: false, error: t("kiro_migrate.refused_compaction", name, walk.id, compactionReason(walk)) };
+  return { ok: true, id: walk.id, compactedFrom: walk.followed };
+}
+
+function compactionReason(walk: KiroClassicCompaction): string {
+  const kept = walk.kept!;
+  return kept.reason === "unreadable" ? t("kiro_migrate.compaction_unreadable")
+    : kept.reason === "ambiguous" ? t("kiro_migrate.compaction_ambiguous", kept.from, kept.candidates.join(", "))
+      : t("kiro_migrate.compaction_not_ours", kept.from, kept.candidate);
+}
+
 /** Judge a request; nothing is written. `startFresh` allows moving an instance that has no classic conversation. */
 export function planKiroMigration(deps: KiroMigrateDeps, name: string, startFresh: boolean): { ok: true; plan: KiroMigrationPlan } | { ok: false; error: string } {
   const found = target(deps, name);
@@ -67,7 +97,10 @@ export function planKiroMigration(deps: KiroMigrateDeps, name: string, startFres
   const inspected = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: name, workingDirectory: found.workingDirectory, credentialProfile: found.credentialProfile });
   if (inspected.kind === "refused") return { ok: false, error: refusal(name, inspected) };
   if (!inspected.classicId && !startFresh) return { ok: false, error: t("kiro_migrate.no_classic", name) };
-  return { ok: true, plan: { name, workingDirectory: found.workingDirectory, credentialProfile: found.credentialProfile, classicId: inspected.classicId } };
+  const carried = inspected.classicId ? carriedClassic(deps, name, found.workingDirectory, found.credentialProfile, inspected.classicId, false) : null;
+  if (carried && !carried.ok) return carried;
+  return { ok: true, plan: { name, workingDirectory: found.workingDirectory, credentialProfile: found.credentialProfile, classicId: carried?.id ?? null,
+    ...(carried?.compactedFrom.length ? { compactedFrom: carried.compactedFrom } : {}) } };
 }
 
 /** The confirmation prompt's text. */
@@ -75,6 +108,7 @@ export function kiroMigrationPrompt(plan: KiroMigrationPlan, running: boolean): 
   return [
     t("kiro_migrate.prompt_title", plan.name),
     plan.classicId ? t("kiro_migrate.prompt_carry", plan.classicId) : t("kiro_migrate.prompt_fresh"),
+    ...(plan.compactedFrom?.length ? [t("kiro_migrate.prompt_compacted", plan.compactedFrom[0]!, plan.classicId!)] : []),
     t("kiro_migrate.prompt_one_way"),
     t("kiro_migrate.prompt_verify"),
     t("kiro_migrate.prompt_sudo"),
@@ -92,7 +126,9 @@ export async function applyKiroMigration(deps: KiroMigrateDeps, plan: KiroMigrat
   if (typeof found === "string") return { ok: false, text: found };
   const again = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: found.workingDirectory, credentialProfile: found.credentialProfile });
   if (again.kind === "refused") return { ok: false, text: refusal(plan.name, again) };
-  if (found.workingDirectory !== plan.workingDirectory || found.credentialProfile !== plan.credentialProfile || again.classicId !== plan.classicId) {
+  const judged = again.classicId ? carriedClassic(deps, plan.name, found.workingDirectory, found.credentialProfile, again.classicId, false) : null;
+  if (judged && !judged.ok) return { ok: false, text: judged.error };
+  if (found.workingDirectory !== plan.workingDirectory || found.credentialProfile !== plan.credentialProfile || (judged?.id ?? null) !== plan.classicId) {
     return { ok: false, text: t("kiro_migrate.changed", plan.name) };
   }
   let lease: ReturnType<KiroMigrateDeps["reserve"]>;
@@ -108,7 +144,14 @@ export async function applyKiroMigration(deps: KiroMigrateDeps, plan: KiroMigrat
   };
   try {
     const model = await deps.preflight(plan.name, plan); current();
-    // The idle/version check awaited: re-check the original pin before any write.
+    // The idle/version check awaited: re-check the original pin before any write. #2714: a compaction proven since
+    // the record was written is recorded first, as a classic launch would, so the pin checked and armed is where the
+    // conversation is now; one that cannot be proven any more refuses, and nothing is armed.
+    const pinned = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile });
+    if (pinned.kind === "ready" && pinned.classicId) {
+      const followed = carriedClassic(deps, plan.name, plan.workingDirectory, plan.credentialProfile, pinned.classicId, true);
+      if (!followed.ok) throw new Error(followed.error);
+    }
     const checked = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile });
     if (checked.kind !== "ready" || checked.classicId !== plan.classicId || found.inst.kiro_ui && found.inst.kiro_ui !== "legacy") throw new Error(t("kiro_migrate.changed", plan.name));
     const inst = deps.fleetConfig()!.instances[plan.name];

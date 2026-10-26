@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps } from "../src/kiro-migrate.js";
-import { armKiroTuiMigration, kiroOwnedConversation, resolveKiroIdentity } from "../src/backend/kiro-identity.js";
+import { armKiroTuiMigration, kiroOwnedConversation, listKiroV1Sessions, resolveKiroIdentity } from "../src/backend/kiro-identity.js";
 import { archiveKiroClassicCopy } from "../src/backend/kiro-classic-archive.js";
 import { verifyKiroMigrationStore } from "../src/backend/kiro-migration-verify.js";
 import { KiroSessionSource } from "../src/transcript-sources.js";
@@ -54,6 +54,7 @@ function fixture() {
       return verifyKiroMigrationStore(verifyInput(archived));
     }),
     stop: vi.fn(async () => { steps.push("stop"); }),
+    readClassicStore: () => listKiroV1Sessions(cwd, dbPath),
   };
   return { cwd, sessions, dbPath, identity, input, meta, metaPath, log, agent, save, fleet, d, steps, verifyInput,
     released: () => released, supersede: () => { live = false; } };

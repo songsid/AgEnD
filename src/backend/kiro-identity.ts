@@ -486,28 +486,8 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   const followCompaction = (from: KeyRecord & { id: string }): Extract<KiroIdentityDecision, { mode: "resume" }> => {
     const resume = { mode: "resume" as const, id: from.id, agentConfirmed: from.agentConfirmed };
     if (engine !== "v1") return resume; // the TUI's V2 keeps the id through a compaction: no store read
-    const store = opts.readStore();
-    if (store.kind === "unreadable") return { ...resume, kept: { reason: "unreadable" } };
-    if (!store.compaction) return resume;
-    const chain: string[] = [];
-    const seen = new Set([from.id, ...from.abandoned]);
-    let at = from.id;
-    let kept: KiroCompactionKept | undefined;
-    while (chain.length < 64) {
-      const next = store.compaction.successorsOf(at);
-      if (next === "unreadable") { kept = { reason: "unreadable" }; break; }
-      if (next.length === 0) break;
-      if (next.length > 1) { kept = { reason: "ambiguous", from: at, candidates: [...next].sort() }; break; }
-      const id = next[0]!;
-      const c = SAFE_ID.test(id) && !seen.has(id) ? claimOf(p.claims, id) : "incomplete";
-      if (!heldBy(c, instance) && !(c === null && claim(p.claims, id, instance))) { kept = { reason: "not-ours", from: at, candidate: id }; break; }
-      chain.push(id); seen.add(id); at = id;
-    }
-    if (chain.length === 0) return kept ? { ...resume, kept } : resume;
-    const movedOn = [from.id, ...chain.slice(0, -1)];
-    if (!save({ ...from, id: at, abandoned: [...new Set([...from.abandoned, ...movedOn])] })) throw new KiroIdentityError(`cannot write ${p.state}`);
-    for (const old of movedOn) abandonClaim(p.claims, old, instance);
-    return { ...resume, id: at, followed: movedOn, ...(kept ? { kept } : {}) };
+    const { id, followed, kept } = followClassicCompaction(p.claims, p.state, instance, from, opts.readStore(), next => save(next));
+    return { ...resume, id, ...(followed.length ? { followed } : {}), ...(kept ? { kept } : {}) };
   };
 
   // An adoption under way for THIS key (recorded before its claim; see below) is settled before anything else —
@@ -676,6 +656,72 @@ function compactionChain(ids: string[], links: NonNullable<Extract<KiroStoreRead
   const walk = [own[0]!];
   while (walk.length < kept.length && next.get(walk[walk.length - 1]!)!.length === 1) walk.push(next.get(walk[walk.length - 1]!)![0]!);
   return walk.length === kept.length && kept.every(id => walk.includes(id)) ? [walk] : apart;
+}
+
+export interface KiroClassicCompaction {
+  /** The conversation the instance goes on in: the last proven successor, or the recorded one. */
+  id: string;
+  /** The ids moved on from, oldest first; empty when nothing was followed. */
+  followed: string[];
+  kept?: KiroCompactionKept;
+}
+
+/**
+ * The walk itself (#2714): one successor per hop, each proven by the store's links, never given up by this instance,
+ * and unclaimed or its own. `record` (given) writes the moved record; without it nothing is claimed or written — a
+ * judgement of where the walk would end, which the written walk must then reach again. Written: successors are claimed
+ * first, the record next, and only then are the ids moved on from marked given up, so a failure in between leaves claims
+ * this instance holds, which the retry follows again.
+ */
+function followClassicCompaction(claims: string, statePath: string, instance: string, from: KeyRecord & { id: string }, store: KiroStoreRead,
+  record?: (next: KeyRecord) => boolean): KiroClassicCompaction {
+  if (store.kind === "unreadable") return { id: from.id, followed: [], kept: { reason: "unreadable" } };
+  if (!store.compaction) return { id: from.id, followed: [] };
+  const chain: string[] = [];
+  const seen = new Set([from.id, ...from.abandoned]);
+  let at = from.id;
+  let kept: KiroCompactionKept | undefined;
+  // No hop budget (#2721 review): a cap would stop short of where kiro went on without saying so. The walk ends anyway —
+  // every hop is an id not seen before (a revisit is refused as not this instance's), and the store has finitely many.
+  for (;;) {
+    const next = store.compaction.successorsOf(at);
+    if (next === "unreadable") { kept = { reason: "unreadable" }; break; }
+    if (next.length === 0) break;
+    if (next.length > 1) { kept = { reason: "ambiguous", from: at, candidates: [...next].sort() }; break; }
+    const id = next[0]!;
+    const c = SAFE_ID.test(id) && !seen.has(id) ? claimOf(claims, id) : "incomplete";
+    if (!heldBy(c, instance) && !(c === null && (!record || claim(claims, id, instance)))) { kept = { reason: "not-ours", from: at, candidate: id }; break; }
+    chain.push(id); seen.add(id); at = id;
+  }
+  const followed = chain.length ? [from.id, ...chain.slice(0, -1)] : [];
+  if (record && chain.length) {
+    if (!record({ ...from, id: at, abandoned: [...new Set([...from.abandoned, ...followed])] })) throw new KiroIdentityError(`cannot write ${statePath}`);
+    for (const old of followed) abandonClaim(claims, old, instance);
+  }
+  return { id: at, followed, ...(kept ? { kept } : {}) };
+}
+
+/**
+ * #2714 follow-up, for the classic → TUI move: where the classic conversation this instance holds went on after its
+ * compactions — the same walk a classic launch makes. `apply` false only judges (nothing claimed or written); true
+ * records the move as a classic launch would. null: it holds no classic conversation (inspectKiroTuiMigration says so).
+ * Throws KiroIdentityError when the move cannot be recorded.
+ */
+export function followKiroClassicCompaction(opts: { agendHome: string; instance: string; workingDirectory: string; credentialProfile: string | null;
+  readStore: () => KiroStoreRead; apply: boolean }): KiroClassicCompaction | null {
+  if (!OWNER_NAME.test(opts.instance)) return null;
+  const p = paths(opts.agendHome, "v1", opts.instance);
+  const read = readState(p.state, opts.instance);
+  if (read.kind !== "ok") return null;
+  const key = keyOf("v1", opts.workingDirectory, opts.credentialProfile);
+  const from = read.state.keys[key];
+  if (!from?.id || !heldBy(claimOf(p.claims, from.id), opts.instance)) return null;
+  return followClassicCompaction(p.claims, p.state, opts.instance, from as KeyRecord & { id: string }, opts.readStore(), opts.apply ? next => {
+    try {
+      writeFileAtomic(p.state, JSON.stringify({ ...read.state, keys: { ...read.state.keys, [key]: next } } satisfies StateFile) + "\n");
+      return true;
+    } catch { return false; }
+  } : undefined);
 }
 
 /** Whether `id` is recorded as already running as the instance's agent. */
