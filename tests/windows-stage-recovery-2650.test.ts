@@ -80,8 +80,8 @@ $null=Get-VerifiedAgendVersion`);
   const root=join(f.dir,'global');mkdirSync(join(root,'@songsid/agend/node_modules/better-sqlite3'),{recursive:true});
   writeFileSync(join(root,'@songsid/agend/package.json'),'{}');
   writeFileSync(join(root,'@songsid/agend/node_modules/better-sqlite3/index.js'),valid?'module.exports=class {prepare(q){if(q!=="select 1")throw Error("wrong query");return {get(){return {}}}}close(){}}':'throw Error("native module broken")');
-  const stub=`(()=>{const cp=require('child_process');cp.execFileSync=(bin,args)=>{if(bin==='npm'&&args.join(' ')==='root -g')return ${JSON.stringify(root)};if(bin==='tmux'&&args.join(' ')==='-V')return 'tmux 3.4';if(bin==='agend'&&args.join(' ')==='--version')return '2.3.2-beta.7';throw Error('Forbidden process '+bin)};})();`;
-  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:5000,env:{PATH:`${f.bin}:/usr/bin:/bin`,HOME:f.dir}});
+  const stub=`(()=>{const cp=require('child_process'),fixture=JSON.parse(process.env.AGEND_TEST_FIXTURE);cp.execFileSync=(bin,args)=>{if(bin==='npm'&&args.join(' ')==='root -g')return fixture.root;if(bin==='tmux'&&args.join(' ')==='-V')return 'tmux 3.4';if(bin==='agend'&&args.join(' ')==='--version')return '2.3.2-beta.7';throw Error('Forbidden process '+bin)};})();`;
+  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:5000,env:{PATH:`${f.bin}:/usr/bin:/bin`,HOME:f.dir,AGEND_TEST_FIXTURE:JSON.stringify({root})}});
   expect(result.status).toBe(valid?0:1);if(valid)expect(result.stdout).toContain('AGEND_VERSION=2.3.2-beta.7');
  }));
  it('a failed curl cannot be hidden by a successful empty installer shell',()=>scratch(f=>{
@@ -105,15 +105,15 @@ Write-Output ('READY='+(Test-InstallerReady))`);
  it.each([[true,true,0],[false,true,1],[true,false,1]])('the generated HTTP proof requires finished startup and a working dashboard: %s/%s', (complete,uiOk,status)=>scratch(f=>{
   const out=f.run(`function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$TimeoutSeconds,$NoProgressSeconds,$Script);Write-Host ('PROGRAM='+($Script.Split(' ')[-1]));return 1};$null=Test-InstallerReady`);
   const program=Buffer.from(out.match(/PROGRAM=(\S+)/)![1],'base64').toString();
-  const stub=`(()=>{const cp=require('child_process'),m=require('module'),fs=require('fs');cp.execFileSync=()=>'/scratch/global';m.createRequire=()=>()=>({load:()=>({health_port:12345})});fs.readFileSync=()=>'';global.fetch=async url=>{if(!url.startsWith('http://127.0.0.1:12345/'))throw Error('Forbidden URL');return {ok:url.endsWith('/health')||${uiOk},json:async()=>({status:'ok',startupComplete:${complete}})}};global.setTimeout=fn=>{fn();return {}};})();`;
-  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:3000,env:{HOME:f.dir,PATH:`${f.bin}:/usr/bin:/bin`}});
+  const stub=`(()=>{const cp=require('child_process'),m=require('module'),fs=require('fs'),fixture=JSON.parse(process.env.AGEND_TEST_FIXTURE);cp.execFileSync=()=>'/scratch/global';m.createRequire=()=>()=>({load:()=>({health_port:12345})});fs.readFileSync=()=>'';global.fetch=async url=>{if(!url.startsWith('http://127.0.0.1:12345/'))throw Error('Forbidden URL');return {ok:url.endsWith('/health')||fixture.uiOk,json:async()=>({status:'ok',startupComplete:fixture.complete})}};global.setTimeout=fn=>{fn();return {}};})();`;
+  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:3000,env:{HOME:f.dir,PATH:`${f.bin}:/usr/bin:/bin`,AGEND_TEST_FIXTURE:JSON.stringify({complete,uiOk})}});
   expect(result.status,result.stderr).toBe(status);
  }));
  it.each([['degraded',503,0],['down',503,1],['unrecognised',200,1]])('degraded is usable with warnings; down or invalid health stays blocked: %s', (status,http,exit)=>scratch(f=>{
   const out=f.run(`function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$TimeoutSeconds,$NoProgressSeconds,$Script);Write-Host ('PROGRAM='+($Script.Split(' ')[-1]));return 1};$null=Test-InstallerReady`);
   const program=Buffer.from(out.match(/PROGRAM=(\S+)/)![1],'base64').toString();
-  const stub=`(()=>{const cp=require('child_process'),m=require('module'),fs=require('fs');cp.execFileSync=()=>'/scratch/global';m.createRequire=()=>()=>({load:()=>({})});fs.readFileSync=()=>'';global.fetch=async url=>({ok:url.endsWith('/health')?${http}===200:true,status:${http},json:async()=>({status:${JSON.stringify(status)},startupComplete:true,problems:['host memory pressure is elevated']})});global.setTimeout=fn=>{fn();return {}};})();`;
-  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:3000,env:{HOME:f.dir,PATH:`${f.bin}:/usr/bin:/bin`}});
+  const stub=`(()=>{const cp=require('child_process'),m=require('module'),fs=require('fs'),fixture=JSON.parse(process.env.AGEND_TEST_FIXTURE);cp.execFileSync=()=>'/scratch/global';m.createRequire=()=>()=>({load:()=>({})});fs.readFileSync=()=>'';global.fetch=async url=>({ok:url.endsWith('/health')?fixture.http===200:true,status:fixture.http,json:async()=>({status:fixture.status,startupComplete:true,problems:['host memory pressure is elevated']})});global.setTimeout=fn=>{fn();return {}};})();`;
+  const result=spawnSync(process.execPath,['-e',stub+program],{encoding:'utf8',timeout:3000,env:{HOME:f.dir,PATH:`${f.bin}:/usr/bin:/bin`,AGEND_TEST_FIXTURE:JSON.stringify({status,http})}});
   expect(result.status,result.stderr).toBe(exit);
   if(status==='degraded')expect(result.stdout).toContain('AgEnD warning: host memory pressure is elevated');
  }));

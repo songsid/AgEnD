@@ -20,7 +20,9 @@ for (const id of ROUNDTRIPS) {
   assert.equal(typeof step.run, 'string');
   assert.ok(step.shell === undefined || step.shell === 'bash', 'Model only the workflow Linux bash shells');
   // The step names its own baseline (2.1.12 for roundtrip, 2.2.6 for roundtrip-226), so the runner can refuse the other.
-  assert.match(step.run, new RegExp(`check-data-downgrade\\.mjs "\\$OLD_PACKAGE" "\\$OLD_NODE" ${EXPECTED[id].replace(/\./g, '\\.')} \\|`), `${id} must pass its baseline`);
+  const baselineCalls = [...step.run.matchAll(/check-data-downgrade\.mjs "\$OLD_PACKAGE" "\$OLD_NODE" (\S+) \|/g)];
+  assert.equal(baselineCalls.length, 1, `${id} must name exactly one baseline probe`);
+  assert.equal(baselineCalls[0][1], EXPECTED[id], `${id} must pass its baseline`);
   const artifact = /\| tee (\S+)$/.exec(step.run.trim())?.[1];
   assert.ok(artifact, `${id} must tee its result to an artifact`);
   // Match GitHub's documented Linux shell behavior: unspecified is bash -e;

@@ -37,7 +37,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
       return { checked: box.checked, label: box.closest("label").textContent, marked: [...document.querySelectorAll("#vaSessions .s-va-named")].map(e => e.textContent),
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`) as any;
     ok(r, "rowOffByDefault", seen.checked === false);
-    ok(r, "rowNamesHost", seen.label.includes(HOST) && seen.label.includes(c.lang === "en" ? "Also over my named link" : "也允許透過我的固定網域"), seen.label);
+    ok(r, "rowNamesHost", seen.label === (c.lang === "en" ? `Also over my named link (${HOST})` : `也允許透過我的固定網域（${HOST}）`), seen.label);
     // Every case adds one named-link session to the same fixture: each one listed is marked, in the page's language.
     ok(r, "sessionMarked", seen.marked.length === results.length && seen.marked.every((m: string) => m === (c.lang === "en" ? "over your named link" : "透過你的固定網域")), seen.marked);
     ok(r, "noOverflow", !seen.overflow);
