@@ -16302,7 +16302,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.takenCardReplies.has(key)) return true;
     for (const [nonce, entry] of this.pendingNonceButtons) {
       if (entry.prefix !== REMOTE_CARD_CALLBACK_PREFIX || entry.remoteCard?.kind !== "question") continue;
-      if (entry.chatId !== msg.chatId || entry.messageId !== msg.replyTo || entry.adapterId !== msg.adapterId) continue;
+      // By place, whichever of the fleet's bots received the reply (a sibling's copy can arrive first, #2680 review), on
+      // the post's own platform; who may answer is judged by the post's world (mayAnswerRemoteCard), as Needs you does.
+      if (entry.chatId !== msg.chatId || entry.messageId !== msg.replyTo || entry.adapter.type !== msg.source) continue;
       if (!msg.userId || !this.mayAnswerRemoteCard(msg.userId, entry)) return false;   // not theirs to answer: it is just a message
       const action = remoteCardAction("text", msg.text ?? "");
       if (!action) return false;

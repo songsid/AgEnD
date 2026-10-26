@@ -173,15 +173,40 @@ describe("#2675 the fleet: post, click, reply, dashboard, retire", () => {
     expect(answer).toHaveBeenCalledTimes(1);
   });
 
-  it("through the inbound handler: the reply answers the card and is not delivered to the instance", async () => {
+  const inboundReply = (adapterId: string, messageId: string) => ({ source: "telegram", adapterId, chatId: "fleet-group", threadId: "worker-topic",
+    messageId, replyTo: "card-msg", userId: "alice", username: "alice", text: "release", timestamp: new Date() });
+
+  it("through the inbound handler: the reply answers the card and goes no further (its dedup key is never claimed)", async () => {
     const { fm, adapter, answer } = setup();
-    const deliver = vi.spyOn(fm as any, "deliverToInstance");
     await fm.postRemoteCard("worker", RICH());
-    await (fm as any).handleInboundMessage({ source: "telegram", adapterId: "telegram-main", chatId: "fleet-group", threadId: "worker-topic",
-      messageId: "m10", replyTo: "card-msg", userId: "alice", username: "alice", text: "release", timestamp: new Date() });
+    await (fm as any).handleInboundMessage(inboundReply("telegram-main", "m10"));
     expect(answer).toHaveBeenCalledWith(RICH().identity, { kind: "text", text: "release" });
-    expect(deliver).not.toHaveBeenCalled();
+    expect((fm as any).recentMessageIds.has("telegram:fleet-group:m10")).toBe(false);
     expect(adapter.editMessageRemoveButtons).toHaveBeenCalledWith("fleet-group", "card-msg", "✅ alice answered: an answer in words", "worker-topic");
+    // A plain message (no reply) does go on to the dedup claim: the check above can fail.
+    await (fm as any).handleInboundMessage({ ...inboundReply("telegram-main", "m11"), replyTo: undefined });
+    expect((fm as any).recentMessageIds.has("telegram:fleet-group:m11")).toBe(true);
+  });
+
+  it("a sibling bot's copy of the reply arriving first is the one taken; the posting bot's copy is then dropped (#2680 review)", async () => {
+    const { fm, adapter, answer } = setup();
+    const sibling = { ...adapter, id: "telegram-b", notifyAlert: vi.fn(), editMessageRemoveButtons: vi.fn().mockResolvedValue(undefined) };
+    fm.worlds.set("telegram-b", { id: "telegram-b", adapter: sibling, groupId: "fleet-group", channelConfig: { ...fm.fleetConfig!.channels![0], id: "telegram-b" },
+      accessManager: { isAllowed: (id: string) => id === "alice" } } as any);
+    await fm.postRemoteCard("worker", RICH());
+    await (fm as any).handleInboundMessage(inboundReply("telegram-b", "m12"));
+    expect(answer).toHaveBeenCalledTimes(1);
+    expect((fm as any).recentMessageIds.has("telegram:fleet-group:m12")).toBe(false);
+    await (fm as any).handleInboundMessage(inboundReply("telegram-main", "m12"));
+    expect(answer).toHaveBeenCalledTimes(1);
+    expect((fm as any).recentMessageIds.has("telegram:fleet-group:m12")).toBe(false);
+  });
+
+  it("a reply on another platform to a message id that happens to match: not the card's", async () => {
+    const { fm, answer } = setup();
+    await fm.postRemoteCard("worker", RICH());
+    expect(await (fm as any).takeRemoteCardReply({ ...inboundReply("discord-main", "m13"), source: "discord" })).toBe(false);
+    expect(answer).not.toHaveBeenCalled();
   });
 
   it("an MCP input card takes no reply as an answer", async () => {
