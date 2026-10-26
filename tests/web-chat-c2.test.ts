@@ -19,6 +19,15 @@ import { fire } from "./helpers/mini-dom.js";
  * fleet issued, never a path). Expectations are written out by hand.
  */
 
+// #2722: a FleetManager built on the scratch AGEND_HOME starts pino's transport, whose worker opens <scratch>/daemon.log
+// 100–300 ms later — after the test, while afterEach removes the directory (ENOTEMPTY; #1599, #1778). Nothing here reads
+// the log, so it is silent; the test that builds the fleet pins that nothing lands in the directory afterwards.
+vi.mock("../src/logger.js", async original => {
+  const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
+  return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
+});
+/** The directory's tree, for "nothing lands in it after the test's work" (#2722). */
+const tree = (d: string): string[] => readdirSync(d, { recursive: true }).map(String).sort();
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "c2-")); });
 afterEach(() => { vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); });
@@ -576,6 +585,9 @@ describe("deleting an instance stops serving its files", () => {
     any.statuslineWatcher = { unwatch() {} };
     await fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
     expect(fm.webFiles.read(served.id)).toBeNull();
+    const after = tree(dir);
+    await new Promise(r => setTimeout(r, 300));
+    expect(tree(dir), "nothing is written into the scratch home after the work (a late daemon.log: #2722)").toEqual(after);
   });
 });
 

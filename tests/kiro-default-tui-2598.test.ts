@@ -5,7 +5,7 @@
  * moving its conversation is migrate_kiro_instance's job. ClassicBot channels and any fleet default kiro_ui keep
  * deciding for themselves.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -18,6 +18,15 @@ import { buildFleetConfig, type WizardAnswers } from "../src/setup-wizard.js";
 import type { FleetConfig } from "../src/types.js";
 
 let home: string;
+// #2722: a FleetManager built on the scratch AGEND_HOME starts pino's transport, whose worker opens <scratch>/daemon.log
+// 100–300 ms later — after the test, while afterEach removes the directory (ENOTEMPTY; #1599, #1778). Nothing here reads
+// the log, so it is silent; the test that builds the fleet pins that nothing lands in the directory afterwards.
+vi.mock("../src/logger.js", async original => {
+  const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
+  return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
+});
+/** The directory's tree, for "nothing lands in it after the test's work" (#2722). */
+const tree = (d: string): string[] => readdirSync(d, { recursive: true }).map(String).sort();
 const savedHome = process.env.AGEND_HOME;
 beforeEach(() => { home = mkdtempSync(join(tmpdir(), "kiro-dtui-")); process.env.AGEND_HOME = home; });
 afterEach(() => {
@@ -76,6 +85,9 @@ describe("every creation path writes a new kiro instance's engine", () => {
 
   it("create_instance, kiro-cli → kiro_ui: tui in fleet.yaml", async () => {
     expect((await create("kiro-cli"))["k-t902"]!.kiro_ui).toBe("tui");
+    const after = tree(home);
+    await new Promise(r => setTimeout(r, 300));
+    expect(tree(home), "nothing is written into the scratch home after the work (a late daemon.log: #2722)").toEqual(after);
   });
   it("create_instance by the fleet default backend → tui; the existing unset entry beside it is left alone", async () => {
     const instances = await create("", "defaults:\n  backend: kiro-cli\n", "instances:\n  old:\n    working_directory: /tmp/old\n");
