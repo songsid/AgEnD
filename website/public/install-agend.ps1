@@ -1402,7 +1402,7 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
             $setupSeen.Shown = $true
             $copied = Set-SetupClipboard $setupSeen.Code
             if (-not (Wait-SetupPageReachable $setupSeen.Url)) {
-                Write-Warn "從 Windows 還連不到設定頁（WSL 的 localhost 轉送還沒接上）。仍會打開它；若顯示「連線已重設」，等幾秒再重新整理。"
+                Write-Warn "從 Windows 還連不到設定頁。仍會打開它；若顯示「連線已重設」，等幾秒再重新整理。一直如此時，可能是另一個 Linux 佔著這個連接埠：在 PowerShell 執行 netstat -ano | findstr :19280 查看。"
             }
             $opened = Open-InBrowser $setupSeen.Url
             Show-SetupCode $setupSeen.Code $copied $opened $setupSeen.Url
@@ -1450,6 +1450,46 @@ function Get-BrowserSetupCommand([string]$BackendSignins = '') {
     if (-not $BackendSignins) { return 'agend setup' }
     if ($BackendSignins -cnotmatch '^(kiro-cli|claude-code|codex|antigravity)(,(kiro-cli|claude-code|codex|antigravity)){0,3}\z') { throw 'Invalid backend selection' }
     return ('agend setup --backend-signins ' + $BackendSignins)
+}
+# ── 儀表板連接埠在 Windows 這邊被誰佔著（使用者實測，2026-10-26）──
+# 另一個 Linux（例如之前裝過 AgEnD 的那個）的 WSL localhost 轉送（wslrelay.exe）可能還佔著 Windows 的 127.0.0.1:19280：
+# 瀏覽器連到的是那個 Linux，那裡沒有東西在聽，就顯示「連線已重設」。設定開始前先看清楚；只在使用者同意後停掉那一個
+# Linux，絕不停掉整個 WSL。
+function Get-WindowsPortListener([int]$port) {
+    try { $c = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop) | Select-Object -First 1 } catch { return $null }
+    if (-not $c) { return $null }
+    $name = ''; try { $name = [string](Get-Process -Id $c.OwningProcess -ErrorAction Stop).ProcessName } catch { }
+    return @{ Pid = [int]$c.OwningProcess; Name = $name }
+}
+function Get-RunningOtherDistros([string]$ours) {
+    $r = Invoke-BoundedWsl -Arguments @('--list', '--running', '--quiet')
+    if ($r.Code -ne 0) { return @() }
+    return @($r.Text -split '\r?\n' | ForEach-Object { ($_ -replace "`0", '').Trim() } | Where-Object { $_ -and $_ -ne $ours })
+}
+function Resolve-DashboardPortHolder([int]$port = 19280) {
+    $holder = Get-WindowsPortListener $port
+    if (-not $holder) { return $true }
+    if ($holder.Name -ne 'wslrelay') {
+        Write-Err ("Windows 上的 {0} 連接埠被「{1}」（PID {2}）佔用；AgEnD 的設定頁和儀表板都要用它。" -f $port, $holder.Name, $holder.Pid)
+        Write-Info "請先關閉那個程式，再執行同一行安裝指令；會從這一步繼續。"
+        return $false
+    }
+    $others = @(Get-RunningOtherDistros $UBUNTU_DISTRO)
+    # 沒有其他 Linux 在執行：多半是這個 Linux 自己的轉送；打開設定頁之前的連線測試會再確認。
+    if ($others.Count -eq 0) { return $true }
+    Write-Warn ("Windows 上的 {0} 連接埠被另一個 Linux 的轉送佔著（執行中：{1}）。它可能是之前裝過 AgEnD 的 Linux；不停掉它，瀏覽器會連到那裡，顯示「連線已重設」。" -f $port, ($others -join '、'))
+    foreach ($d in $others) {
+        $answer = Read-Host ("  要停止「{0}」嗎？只停這一個 Linux（裡面正在跑的程式會結束），檔案不會被刪除。(y/N)" -f $d)
+        if (([string]$answer) -notmatch '^\s*[yY]\s*$') { continue }
+        $null = Invoke-BoundedWsl -Arguments @('--terminate', $d)
+        Start-Sleep -Seconds 2
+        if (-not (Get-WindowsPortListener $port)) { Write-Ok ("已停止 {0}，{1} 連接埠已釋放" -f $d, $port); return $true }
+    }
+    if (Get-WindowsPortListener $port) {
+        Write-Err ("{0} 連接埠仍被佔用。可以在 PowerShell 執行 wsl --terminate <那個 Linux 的名稱>，再執行同一行安裝指令。" -f $port)
+        return $false
+    }
+    return $true
 }
 function Invoke-SetupAndService([string]$BackendSignins = '', $Backends = $null) {
     $configured = $false
@@ -2604,6 +2644,10 @@ if ((Stage-Done 5) -and (Test-InstallerReady)) {
     Write-Host ""
     Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram 並貼上 Bot Token；或選「Web only (no bot)」，不用 Bot、只用網頁儀表板。"
     Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
+    if (-not (Resolve-DashboardPortHolder 19280)) {
+        Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
+        Read-Host "按 Enter 結束"; exit 1
+    }
     if (-not (Invoke-SetupAndService -BackendSignins $browserSignins -Backends $selected)) {
         Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
         Read-Host "按 Enter 結束"; exit 1
