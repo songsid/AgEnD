@@ -1,5 +1,6 @@
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
+import { sendPackSources } from "./web-office-pack-read.js";
 import type { RecoveryLive } from "./working-recovery.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
 import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
@@ -127,6 +128,10 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   delete_web_effect: "fleet_delete_web_effect",
   // #2578: its own character in the Office view — the args as they are (the fleet checks them).
   office_view: "fleet_office_view", office_set: "fleet_office_set",
+  // #2692: the skin packs — check and upload read the pack here (web-office-pack-read.ts) and send its bytes in parts.
+  office_pack_check: "fleet_office_pack_check", office_pack_upload: "fleet_office_pack_upload",
+  office_pack_delete: "fleet_office_pack_delete", office_pack_restore: "fleet_office_pack_restore",
+  office_pack_list: "fleet_office_pack_list", office_set_style: "fleet_office_set_style",
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
@@ -6966,6 +6971,8 @@ export class Daemon extends EventEmitter {
     // The fleet reads it at each tool call; kept current here for the next spawn's tool menu.
     if (typeof update.office_access === "boolean") this.config.office_access = update.office_access;
     else if (update.office_access === null) delete this.config.office_access;
+    if (typeof update.office_pack_access === "boolean") this.config.office_pack_access = update.office_pack_access;
+    else if (update.office_pack_access === null) delete this.config.office_pack_access;
     if (update.dashboard && typeof update.dashboard === "object" && !dashboardAccessProblem(update.dashboard)) this.config.dashboard = update.dashboard as InstanceConfig["dashboard"];
     else if (update.dashboard === null) delete this.config.dashboard;
     if (["trace", "debug", "info", "warn", "error"].includes(String(update.log_level))) {
@@ -10726,6 +10733,13 @@ export class Daemon extends EventEmitter {
             return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
           });
           reply(failed ? null : answer, failed);
+          return;
+        }
+        if (tool === "office_pack_check" || tool === "office_pack_upload") {
+          // #2692: the folder (or the manifest's files) is read here, on the agent's side; the fleet gets bytes in parts.
+          const answer = await sendPackSources(args, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name },
+            async (payload) => { const r = await ask(payload); return r.error ? { error: "fleet", message: r.error } : ((r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>); });
+          reply(answer, undefined);
           return;
         }
         if (tool === "upload_web_effect") {

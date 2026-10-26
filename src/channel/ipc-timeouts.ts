@@ -42,6 +42,9 @@ export const VERY_SLOW_TOOLS: ReadonlySet<string> = new Set([
   "deploy_template",
   "teardown_deployment",
   "checkout_repo",
+  // #2692: a skin-pack batch goes up in parts (up to 100 MiB of pictures), each answered before the next.
+  "office_pack_check",
+  "office_pack_upload",
 ]);
 
 export const DEFAULT_IPC_BUDGET_MS = 30_000;

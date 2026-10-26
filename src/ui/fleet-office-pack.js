@@ -24,6 +24,13 @@
 //     "areas": {                                      named zones: a rect [x, y, w, h] and its seats, in the order
 //       "desks":  { "rect": [40, 120, 620, 440], "seats": [[120, 220], [260, 220], …] },    they fill up
 //       "lounge": { "rect": [700, 120, 540, 260], "seats": [[760, 260], …] } },
+//                                                     a seat is [x, y], or (#2691) { "x": 760, "y": 260, "for":
+//                                                     ["atlas", …], "lend": false }: reserved for those instances
+//                                                     (names checked like byInstance's, ≤ 16, none twice) — whoever
+//                                                     of them comes to the area takes it first, and nobody else does
+//                                                     unless "lend" (default false) lends it while they are all
+//                                                     elsewhere (a borrower moves off when one comes). A checked
+//                                                     seat is { x, y } — plus, reserved, `for` and `lend`
 //     "stateZones": { "working": "desks", "idle": "lounge", "needs": "alert", "default": "lounge" },
 //                                                     the org chart's states (fleet-org.js ORG_STATES) → an area; a
 //                                                     state it does not name goes to "default", else the first area
@@ -103,6 +110,9 @@
 //     "seats": { "desks": [[120, 220], …] },          an area's seats: as many as the pack's, each inside the area's rect
 //     "furniture": { "rack": [1000, 150] },           an item's (x, y)
 //     "furnitureNight": { "elder": [300, 420] },      an item's night place (#2665: an item with a "night" only)
+//     "seatFor": { "desks": { "0": { "for": ["atlas"], "lend": false } } },
+//                                                     a seat's reservation by area and slot (#2691), in place of the
+//                                                     pack's own for that seat; "for": [] is none (lends nothing)
 //     "door": [640, 700],
 //     "waypoints": [{ "id": "hall", "x": 640, "y": 600 }, …], "edges": [["hall", "east"], …] }
 //                                                     the walkable graph, replaced whole (edges need waypoints)
@@ -112,8 +122,8 @@
 // seat outside its area, an area or furniture the pack does not have, or a seat count that differs (the host checks
 // that too, for a pack it keeps). A night place goes on the item's `night` (its x, y), so at bedtime (nightFurniture)
 // it is the office's, else the pack's night x/y, else the item's (moved) day place. The host keeps `furnitureNight`
-// beside the offices on disk, never inside them: an older host's stricter check would drop the office (#2665,
-// web-office-store.ts).
+// and `seatFor` (#2691) beside the offices on disk, never inside them: an older host's stricter check would drop the
+// office (#2665, web-office-store.ts).
 
 export const LOGICAL = { w: 1280, h: 720 };
 /** The people's depth: furniture below it is drawn under them, the rest over them. */
@@ -133,7 +143,7 @@ const RESERVED = new Set(["cozy"]);
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const SRC = /^[A-Za-z0-9._/-]{1,200}$/;
 const HEX = /^#[0-9a-f]{6}$/i;
-const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40 };
+const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40, seatFor: 16 };
 
 class Refused extends Error { constructor(at, why) { super(`${at}: ${why}`); } }
 /** `o[k]` when it is o's own property, else undefined: a name from a pack or a page never reaches Object.prototype. */
@@ -184,10 +194,33 @@ function walkOf(v, at, scale) {
   if (!w.walk) throw new Refused(`${at}.walk`, "required");
   return w;
 }
-/** Whose state an item's activeWhen watches (#2570): an instance's name, or a list of up to 8. */
-function names(v, at) {
+/** Whose state an item's activeWhen watches (#2570): an instance's name, or a list of up to `max` (8). */
+function names(v, at, max = 8) {
   const one = (s, here) => { if (typeof s !== "string" || !s || s.length > 200 || inherited(s) || /[\u0000-\u001f\u007f]/.test(s)) throw new Refused(here, "an instance's name"); return s; };
-  return Array.isArray(v) ? list(v, 8, at).map((s, i) => one(s, `${at}[${i}]`)) : [one(v, at)];
+  return Array.isArray(v) ? list(v, max, at).map((s, i) => one(s, `${at}[${i}]`)) : [one(v, at)];
+}
+/** Whom a seat is reserved for (#2691): instances' names (as names()), up to LIMIT.seatFor, none twice; `empty` may be []. */
+function owners(v, at, empty = false) {
+  const out = names(v, at, LIMIT.seatFor);
+  if (!out.length && !empty) throw new Refused(at, "at least one instance");
+  if (new Set(out).size !== out.length) throw new Refused(at, "a name twice");
+  return out;
+}
+/**
+ * A seat (#2691): [x, y], or { x, y, for, lend } — reserved for `for` (lent to anyone while they are all elsewhere when
+ * `lend`). Checked: { x, y }, with `for` and `lend` only when reserved, so a plain seat is what it always was.
+ */
+function seatOf(v, at, rect) {
+  let p = null, extra = {};
+  if (isObj(v)) {
+    keys(v, ["x", "y", "for", "lend"], at);
+    p = { x: num(v.x, 0, LOGICAL.w, `${at}.x`), y: num(v.y, 0, LOGICAL.h, `${at}.y`) };
+    if (v.lend !== undefined && typeof v.lend !== "boolean") throw new Refused(`${at}.lend`, "true or false");
+    if (v.lend !== undefined && v.for === undefined) throw new Refused(`${at}.lend`, "only with for");
+    if (v.for !== undefined) extra = { for: owners(v.for, `${at}.for`), lend: v.lend === true };
+  } else p = point(v, at);
+  if (p.x < rect.x || p.x > rect.x + rect.w || p.y < rect.y || p.y > rect.y + rect.h) throw new Refused(at, "outside its area's rect");
+  return { ...p, ...extra };
 }
 function strips(v, names, at, scale) {
   obj(v, at);
@@ -223,11 +256,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       if (!Array.isArray(a.rect) || a.rect.length !== 4) throw new Refused(`${at}.rect`, "[x, y, w, h]");
       const [rx, ry] = [num(a.rect[0], 0, LOGICAL.w, `${at}.rect[0]`), num(a.rect[1], 0, LOGICAL.h, `${at}.rect[1]`)];
       const rect = { x: rx, y: ry, w: num(a.rect[2], 1, LOGICAL.w - rx, `${at}.rect[2]`), h: num(a.rect[3], 1, LOGICAL.h - ry, `${at}.rect[3]`) };
-      const seats = list(a.seats, LIMIT.seats, `${at}.seats`).map((s, i) => {
-        const p = point(s, `${at}.seats[${i}]`);
-        if (p.x < rect.x || p.x > rect.x + rect.w || p.y < rect.y || p.y > rect.y + rect.h) throw new Refused(`${at}.seats[${i}]`, "outside its area's rect");
-        return p;
-      });
+      const seats = list(a.seats, LIMIT.seats, `${at}.seats`).map((s, i) => seatOf(s, `${at}.seats[${i}]`, rect));
       if (!seats.length) throw new Refused(`${at}.seats`, "at least one seat");
       areas[name] = { name, rect, seats };
     }
@@ -341,11 +370,17 @@ export function packStrips(pack) {
 // ── Layout overrides ──
 
 const OV_LIMIT = { areas: LIMIT.areas, seats: LIMIT.seats, furniture: LIMIT.furniture, waypoints: LIMIT.waypoints, edges: LIMIT.edges };
+/** A seat's slot in `seatFor` (#2691): its index in the area's order, as a key ("0", "1", …). */
+const SLOT = /^(0|[1-9][0-9]{0,2})$/;
+/** A seat's reservation as an override keeps it: { for, lend }, or null (not reserved). */
+const reservedOf = (s) => (s.for && s.for.length ? { for: [...s.for], lend: s.lend === true } : null);
+/** A seat with reservation `r` ({ for, lend }; for [] or null: none) in place of its own. */
+const reserve = (s, r) => { const { for: _f, lend: _l, ...p } = s; return r && r.for.length ? { ...p, for: [...r.for], lend: r.lend === true } : p; };
 /** An office's layout overrides, strictly (their shape and ranges): { ok: true, overrides } or { ok: false, error }. */
 export function checkLayoutOverrides(x) {
   try {
     obj(x, "overrides");
-    keys(x, ["pack", "seats", "furniture", "furnitureNight", "door", "waypoints", "edges"], "overrides");
+    keys(x, ["pack", "seats", "furniture", "furnitureNight", "seatFor", "door", "waypoints", "edges"], "overrides");
     if (typeof x.pack !== "string" || !ID.test(x.pack)) throw new Refused("overrides.pack", "1–40 letters, digits, _ or -");
     const out = { pack: x.pack };
     if (x.seats !== undefined) {
@@ -378,6 +413,26 @@ export function checkLayoutOverrides(x) {
         if (!nameOk(id)) throw new Refused(`overrides.furnitureNight.${id}`, "an item's id");
         const q = point(p, `overrides.furnitureNight.${id}`);
         out.furnitureNight[id] = [q.x, q.y];
+      }
+    }
+    if (x.seatFor !== undefined) {
+      obj(x.seatFor, "overrides.seatFor");
+      if (Object.keys(x.seatFor).length > OV_LIMIT.areas) throw new Refused("overrides.seatFor", `at most ${OV_LIMIT.areas} areas`);
+      out.seatFor = {};
+      for (const [area, slots] of Object.entries(x.seatFor)) {
+        const at = `overrides.seatFor.${area}`;
+        if (!nameOk(area)) throw new Refused(at, "an area's name");
+        obj(slots, at);
+        if (Object.keys(slots).length > OV_LIMIT.seats) throw new Refused(at, `at most ${OV_LIMIT.seats} seats`);
+        out.seatFor[area] = {};
+        for (const [slot, r] of Object.entries(slots)) {
+          const here = `${at}.${slot}`;
+          if (!SLOT.test(slot) || Number(slot) >= OV_LIMIT.seats) throw new Refused(here, `a seat's number, 0 to ${OV_LIMIT.seats - 1}`);
+          obj(r, here); keys(r, ["for", "lend"], here);
+          if (!Array.isArray(r.for)) throw new Refused(`${here}.for`, "a list");
+          if (r.lend !== undefined && typeof r.lend !== "boolean") throw new Refused(`${here}.lend`, "true or false");
+          out.seatFor[area][slot] = { for: owners(r.for, `${here}.for`, true), lend: r.lend === true };
+        }
       }
     }
     if (x.door !== undefined) { const q = point(x.door, "overrides.door"); out.door = [q.x, q.y]; }
@@ -422,8 +477,14 @@ export function applyOverrides(pack, ov) {
       const r = a.rect;
       areas[name] = { ...a, seats: pts.map(([x, y], i) => {
         if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) throw new Refused(`${at}[${i}]`, "outside its area's rect");
-        return { x, y };
+        return { ...a.seats[i], x, y };                                                     // its reservation kept (#2691)
       }) };
+    }
+    for (const [name, slots] of Object.entries(ov.seatFor || {})) {
+      const a = own(areas, name), at = `overrides.seatFor.${name}`;
+      if (!a) throw new Refused(at, "an area the pack defines");
+      for (const slot of Object.keys(slots)) if (!a.seats[Number(slot)]) throw new Refused(`${at}.${slot}`, `a seat the area has (it has ${a.seats.length})`);
+      areas[name] = { ...a, seats: a.seats.map((s, i) => { const v = own(slots, String(i)); return v ? reserve(s, v) : s; }) };
     }
     const fids = new Set(pack.furniture.map((f) => f.id));
     for (const id of Object.keys(ov.furniture || {})) if (!fids.has(id)) throw new Refused(`overrides.furniture.${id}`, "an item the pack has");
@@ -458,6 +519,26 @@ export function fitNight(pack, ov) {
 }
 
 /**
+ * #2691: overrides with only the reservations `pack` can take (an area it has, a seat that area has): a pack changed
+ * since drops that entry, never the rest of the layout (as fitNight; applyOverrides stays strict).
+ */
+export function fitSeatFor(pack, ov) {
+  if (!ov || !ov.seatFor || ov.pack !== pack.id) return ov;
+  let dropped = false;
+  const kept = {};
+  for (const [area, slots] of Object.entries(ov.seatFor)) {
+    const a = own(pack.areas, area);
+    const ok = Object.entries(slots).filter(([slot]) => a && !!a.seats[Number(slot)]);
+    // An area the pack no longer has is dropped even with no slots under it (`{}`: 0 kept of 0, yet applyOverrides refuses it).
+    if (!a || ok.length !== Object.keys(slots).length) dropped = true;
+    if (ok.length) kept[area] = Object.fromEntries(ok);
+  }
+  if (!dropped) return ov;
+  const { seatFor: _gone, ...rest } = ov;
+  return Object.keys(kept).length ? { ...rest, seatFor: kept } : rest;
+}
+
+/**
  * What an edited layout keeps as overrides: only the parts that differ from the pack's own (`edited` is a pack with
  * the same areas and furniture, positions moved); null when nothing does (the office goes back to the pack's).
  */
@@ -465,8 +546,13 @@ export function overridesBetween(pack, edited) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const ov = { pack: pack.id };
   for (const [name, a] of Object.entries(pack.areas)) {
-    const e = own(edited.areas, name);
-    if (e && !same(a.seats, e.seats)) (ov.seats ||= {})[name] = e.seats.map((s) => [s.x, s.y]);
+    const e = own(edited.areas, name), xy = (s) => [s.x, s.y];
+    if (e && !same(a.seats.map(xy), e.seats.map(xy))) (ov.seats ||= {})[name] = e.seats.map(xy);
+    // #2691: a seat whose reservation differs from the pack's (none where the pack has one: for []).
+    if (e) e.seats.forEach((s, i) => {
+      const was = a.seats[i] ? reservedOf(a.seats[i]) : null, now = reservedOf(s);
+      if (a.seats[i] && !same(was, now)) ((ov.seatFor ||= {})[name] ||= {})[String(i)] = now || { for: [], lend: false };
+    });
   }
   const at = new Map(pack.furniture.map((f) => [f.id, f]));
   for (const f of edited.furniture) { const o = at.get(f.id); if (o && (o.x !== f.x || o.y !== f.y)) (ov.furniture ||= {})[f.id] = [f.x, f.y]; }

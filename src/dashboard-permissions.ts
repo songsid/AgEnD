@@ -8,18 +8,20 @@
  * - `task_board`: the task board (`task`, and `agend task …`);
  * - `web_settings`: Settings → Web appearance for the person (`get_web_settings`, `set_web_settings`);
  * - `office` (#2578), stored separately as `office_access`: its own character in Fleet → Org chart → Office — walking, a speech bubble, a pose
- *   (`office_view`, `office_set`).
+ *   (`office_view`, `office_set`);
+ * - `office_packs` (#2692), stored separately as `office_pack_access`: the Office view's skin packs, which everyone on the
+ *   fleet sees — check, upload, replace, delete and restore them, and point a stored office at one (web-office-pack-tools.ts).
  *
  * Unset is allowed: a fleet that switches nothing off works as before, and the profile still decides what an agent
- * has — except for a feature in OFF_UNLESS_ON (`office`), which is off until a person sets it true. `false` takes the feature's tools away whatever the profile carries: refused at the fleet's checks
+ * has — except for a feature in OFF_UNLESS_ON (`office`, `office_packs`), which is off until a person sets it true. `false` takes the feature's tools away whatever the profile carries: refused at the fleet's checks
  * (tool-permissions.ts's sinks, read at each call — no restart) and left out of the agent's tool menu from its next
  * start (AGEND_DASHBOARD_OFF, read by mcp-server). Like a profile, policy protection for the resolved identity, not
  * isolation between same-uid agents with a shell.
  */
-export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings", "office"] as const;
+export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings", "office", "office_packs"] as const;
 export type DashboardFeature = typeof DASHBOARD_FEATURES[number];
 /** The features a person switches on (#2578): absent (or null) is off for these, never allowed. */
-export const OFF_UNLESS_ON: ReadonlySet<DashboardFeature> = new Set<DashboardFeature>(["office"]);
+export const OFF_UNLESS_ON: ReadonlySet<DashboardFeature> = new Set<DashboardFeature>(["office", "office_packs"]);
 /** What a feature is when nothing (not the instance, not the defaults) says: allowed, or off for OFF_UNLESS_ON. */
 export const dashboardFeatureDefault = (feature: string): boolean => !OFF_UNLESS_ON.has(feature as DashboardFeature);
 /** As written in fleet.yaml: each feature true (allowed), false (switched off) or absent (allowed; off for OFF_UNLESS_ON). */
@@ -46,7 +48,17 @@ export const DASHBOARD_FEATURE_TOOLS: Readonly<Record<DashboardFeature, readonly
   task_board: ["task"],
   web_settings: ["get_web_settings", "set_web_settings"],
   office: ["office_view", "office_set"],
+  // #2692: the skin packs (everyone's), and which pack a stored office is drawn in.
+  office_packs: ["office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style"],
 };
+/**
+ * The features kept beside `dashboard:`, under their own key on the defaults and on each instance (#2601): published
+ * rollback validators check `dashboard` as a closed map, so a feature added after them never goes inside it.
+ */
+export const SEPARATE_FEATURE_KEYS: Readonly<Partial<Record<DashboardFeature, string>>> = { office: "office_access", office_packs: "office_pack_access" };
+const SEPARATE: ReadonlyArray<[DashboardFeature, string]> = Object.entries(SEPARATE_FEATURE_KEYS) as Array<[DashboardFeature, string]>;
+/** The key a feature is written under: its own (SEPARATE_FEATURE_KEYS), else `dashboard.<feature>`. */
+export const featureConfigKey = (feature: string): string => SEPARATE_FEATURE_KEYS[feature as DashboardFeature] ?? `dashboard.${feature}`;
 
 const FEATURE_OF: ReadonlyMap<string, DashboardFeature> = new Map(
   DASHBOARD_FEATURES.flatMap((f) => DASHBOARD_FEATURE_TOOLS[f].map((tool) => [tool, f] as const)),
@@ -70,7 +82,7 @@ function refusalFor(off: readonly DashboardFeature[], tool: string): string | nu
   const feature = dashboardFeatureOf(tool);
   if (!feature || !off.includes(feature)) return null;
   if (OFF_UNLESS_ON.has(feature)) {
-    return `${tool} is not available to this instance: its dashboard feature "${feature}" is off until the person switches it on (${feature === "office" ? "office_access" : `dashboard.${feature}`}: true). `
+    return `${tool} is not available to this instance: its dashboard feature "${feature}" is off until the person switches it on (${featureConfigKey(feature)}: true). `
       + "Do not retry it; tell the person if you need it.";
   }
   return `${tool} is not available to this instance: the person switched its dashboard feature "${feature}" off (dashboard.${feature}: false). `
@@ -124,37 +136,50 @@ export function dashboardSwitches(value: unknown): DashboardAccess {
 
 /** Office lives beside dashboard so published rollback validators never see a new feature in that closed map. */
 export function officeAccessValue(config: any): unknown {
-  return config && Object.hasOwn(config, "office_access") ? config.office_access : config?.dashboard?.office;
+  return separateAccessValue(config, "office");
+}
+/** A separately kept feature's value (SEPARATE_FEATURE_KEYS): its own key, else a transitional `dashboard.<feature>`. */
+export function separateAccessValue(config: any, feature: DashboardFeature): unknown {
+  const key = SEPARATE_FEATURE_KEYS[feature];
+  if (!key) return config?.dashboard?.[feature];
+  return config && Object.hasOwn(config, key) ? config[key] : config?.dashboard?.[feature];
 }
 export function dashboardAccessOf(config: any): DashboardAccess {
-  const access = dashboardSwitches(config?.dashboard), office = officeAccessValue(config);
-  delete access.office;
-  if (typeof office === "boolean") access.office = office;
+  const access = dashboardSwitches(config?.dashboard);
+  for (const [feature] of SEPARATE) {
+    const value = separateAccessValue(config, feature);
+    delete access[feature];
+    if (typeof value === "boolean") access[feature] = value;
+  }
   return access;
 }
-/** Transitional dashboard.office input is accepted, but never written by a managed save. Canonical values win. */
+/** Transitional dashboard.<feature> input for a separate feature is accepted, but never written by a managed save. Canonical values win. */
 export function normalizeOfficeStorage(fleet: any): void {
   for (const config of [fleet?.defaults, ...Object.values(fleet?.instances ?? {})]) {
     if (!config || typeof config !== "object" || Array.isArray(config)) continue;
     const item = config as Record<string, any>;
-    if (!item.dashboard || typeof item.dashboard !== "object" || !Object.hasOwn(item.dashboard, "office")) continue;
-    if (!Object.hasOwn(item, "office_access") && typeof item.dashboard.office === "boolean") item.office_access = item.dashboard.office;
-    const { office: _office, ...dashboard } = item.dashboard;
-    item.dashboard = dashboard;
+    for (const [feature, key] of SEPARATE) {
+      if (!item.dashboard || typeof item.dashboard !== "object" || !Object.hasOwn(item.dashboard, feature)) continue;
+      if (!Object.hasOwn(item, key) && typeof item.dashboard[feature] === "boolean") item[key] = item.dashboard[feature];
+      const { [feature]: _gone, ...dashboard } = item.dashboard;
+      item.dashboard = dashboard;
+    }
   }
 }
 /** Accept an older Settings client, but project/save its Office edit using the canonical field. */
 export function officeInputPatch(value: Record<string, any>): Record<string, any> {
   const result = { ...value };
-  if (value.dashboard && typeof value.dashboard === "object" && !Array.isArray(value.dashboard) && Object.hasOwn(value.dashboard, "office")) {
-    const { office, ...dashboard } = value.dashboard;
-    result.dashboard = dashboard;
-    if (!Object.hasOwn(value, "office_access")) result.office_access = office;
+  for (const [feature, key] of SEPARATE) {
+    if (result.dashboard && typeof result.dashboard === "object" && !Array.isArray(result.dashboard) && Object.hasOwn(result.dashboard, feature)) {
+      const { [feature]: given, ...dashboard } = result.dashboard;
+      result.dashboard = dashboard;
+      if (!Object.hasOwn(value, key)) result[key] = given;
+    }
   }
   return result;
 }
 export function hasLegacyOffice(fleet: any): boolean {
-  return [fleet?.defaults, ...Object.values(fleet?.instances ?? {})].some((item: any) => item?.dashboard && Object.hasOwn(item.dashboard, "office"));
+  return [fleet?.defaults, ...Object.values(fleet?.instances ?? {})].some((item: any) => item?.dashboard && SEPARATE.some(([feature]) => Object.hasOwn(item.dashboard, feature)));
 }
 
 /**

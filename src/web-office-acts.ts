@@ -21,7 +21,7 @@
  * appearance limiter: checked before anything is validated, counted only once the act is in place; a refusal says when
  * the next call may come (cooldown_ms). office_view is not limited.
  */
-import { applyOverrides, fitNight, type CheckedPack } from "./ui/fleet-office-pack.js";
+import { applyOverrides, fitNight, fitSeatFor, type CheckedPack } from "./ui/fleet-office-pack.js";
 import type { Office } from "./web-office-store.js";
 import { OfficeSetArgs, OfficeViewArgs, validateArgs } from "./outbound-schemas.js";
 
@@ -87,7 +87,7 @@ export const officeWalks = (pack: CheckedPack | null): boolean => !!pack?.stateZ
 /** The spots of an office's skin: a kept zones pack's, with the office's overrides on it; a desks style's are none. */
 export function officeSpots(office: Pick<Office, "skin" | "overrides">, pack: CheckedPack | null): OfficeSpots {
   if (!pack || !officeWalks(pack)) return { seats: [], waypoints: [], npcs: [], door: null };
-  const applied = applyOverrides(pack, fitNight(pack, office.overrides ?? null));       // #2665: a night place the pack lost: left out
+  const applied = applyOverrides(pack, fitSeatFor(pack, fitNight(pack, office.overrides ?? null)));   // #2665/#2691: a night place or seat the pack lost: left out
   const p = applied.ok ? applied.pack : pack;
   return {
     seats: Object.values(p.areas).flatMap(a => a.seats.map((s, index) => ({ area: a.name, index, x: s.x, y: s.y }))),

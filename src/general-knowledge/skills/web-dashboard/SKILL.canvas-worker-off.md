@@ -266,7 +266,11 @@ in each (whole teams or single instances; none = everyone) and its style, and up
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four
-ways with `walkDown`, `walkUp` and `walkSide`, the side one mirrored for left). **Style** (per browser for the whole fleet, per office for a stored one): **Desks**,
+ways with `walkDown`, `walkUp` and `walkSide`, the side one mirrored for left). #2692: an agent with **Office skin
+packs** on (`office_pack_access`, Dashboard access) can check, upload, replace, delete and restore packs itself (one
+previous version kept per pack); **Agents changing packs** under the packs names those agents, sets whether their changes
+**Need my yes** (the default) or **Apply at once**, and approves or rejects the waiting ones (also from the notice's
+buttons in General); every change is logged and told in General. **Style** (per browser for the whole fleet, per office for a stored one): **Desks**,
 **Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state),
 **Cozy** (#2631: the same in a warm pixel-art office drawn as one picture; its notice board says a skin pack can
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
@@ -276,7 +280,10 @@ Cozy or a pack,
 waypoints (or Tab to one and use the arrow keys, Shift for 10), add or remove waypoints and join or unjoin
 corridors; an item that sleeps at bedtime (a pack's `night`) has a night handle too ("Item {id} (night)": its night
 picture faint, a moon, a line to its day place; on the day place while it sleeps in place) — drag it to give the item
-its own night place, **Back to the pack's night place** undoes it (#2665); **Save layout** keeps the moves as that
+its own night place, **Back to the pack's night place** undoes it (#2665); a selected seat has **Reserved for** (the
+office's members, several allowed) and **Lend when away** (#2691) — whoever it is for sits there first when they come
+to its area, nobody else does unless it is lent while they are all away (a borrower moves off when one comes), and a
+reserved seat's handle is ringed; a pack can reserve seats as well; **Save layout** keeps the moves as that
 office's overrides (the pack stays as uploaded), **Reset** goes back to the pack's own. While it is open the office picker and Edit offices wait (**Cancel** closes it); if someone
 saved the offices meanwhile, Save says so and keeps your layout — Save again puts it on the current list. A crowded area packs extra people into a tighter grid, then shows "+N" in its corner; there
 only calls and work get bubbles (a few at most) and name tags show on hover or focus. **Hide paused and stopped**

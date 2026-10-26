@@ -4,9 +4,10 @@
 // (PUT /ui/offices; a change made meanwhile is a 409: read again, nothing overwritten). A stored office's layout (seats,
 // paths) and its layout overrides (Edit layout, fleet-office-layout.js) are kept as they are. Skin packs (#2513): the
 // packs the host keeps are styles to choose; an admin uploads one here (its manifest.json and its PNGs, picked together
-// or as a folder — sent at once, checked by the host, which keeps it whole) or deletes one. Never offered to a guest,
+// or as a folder — sent at once, checked by the host, which keeps it whole) or deletes one; #2692: which agents may change
+// packs, whether their changes need the admin's yes, those waiting for it, and the newest log entries. Never offered to a guest,
 // the public link or a read-only session (the host refuses them too).
-import { html, useMemo, useState } from "/assets/app-html.js";
+import { html, useEffect, useMemo, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { SidePanel } from "/assets/side-panel.js";
 import { toast } from "/assets/ui-toast.js";
@@ -29,6 +30,11 @@ register("orge", {
     packsNone: "No skin packs yet.", upload: "Upload a skin pack", uploadFolder: "Upload a folder", uploading: "Uploading…", uploaded: "Skin pack “{0}” uploaded.",
     uploadFailed: "The skin pack was not uploaded: {0}", noManifest: "no manifest.json among the files", badManifest: "manifest.json is not JSON",
     removePack: "Delete {0}", removedPack: "Skin pack “{0}” deleted.", removeFailed: "The skin pack was not deleted ({0}).",
+    agentsTitle: "Agents changing packs", agentsLead: "Agents with Office skin packs switched on (Settings → agent) may check, upload, replace, delete and restore packs. Each change is logged and told to you in General.",
+    agentsNone: "No agent may change packs.", agentsAllowed: "May change packs: {0}", approval: "Their changes",
+    approvalApply: "Apply at once", approvalApprove: "Need my yes", pendingNone: "Nothing waits for your yes.",
+    approve: "Approve", reject: "Reject", decided: "Done: {0}", decideFailed: "Not done: {0}", recent: "Recent changes", refresh: "Refresh",
+    act_upload: "upload", act_delete: "delete", act_restore: "restore", act_style: "office style",
   },
   "zh-TW": {
     edit: "編輯辦公室", title: "辦公室", lead: "這個 fleet 的每個人在辦公室檢視中都會看到這些辦公室。沒有選任何成員的辦公室會顯示全部。",
@@ -45,6 +51,11 @@ register("orge", {
     packsNone: "還沒有外觀包。", upload: "上傳外觀包", uploadFolder: "上傳資料夾", uploading: "上傳中…", uploaded: "已上傳外觀包「{0}」。",
     uploadFailed: "外觀包沒有上傳：{0}", noManifest: "檔案中沒有 manifest.json", badManifest: "manifest.json 不是 JSON",
     removePack: "刪除 {0}", removedPack: "已刪除外觀包「{0}」。", removeFailed: "外觀包沒有刪除（{0}）。",
+    agentsTitle: "會改外觀包的 agent", agentsLead: "開啟「辦公室外觀包」的 agent（設定 → agent）可以檢查、上傳、取代、刪除與還原外觀包。每次變更都會記錄，並在 General 通知你。",
+    agentsNone: "沒有 agent 能改外觀包。", agentsAllowed: "可以改外觀包：{0}", approval: "它們的變更",
+    approvalApply: "直接套用", approvalApprove: "要我核准", pendingNone: "沒有等你核准的變更。",
+    approve: "核准", reject: "拒絕", decided: "完成：{0}", decideFailed: "沒有完成：{0}", recent: "最近的變更", refresh: "重新整理",
+    act_upload: "上傳", act_delete: "刪除", act_restore: "還原", act_style: "辦公室風格",
   },
 });
 const te = (k, ...v) => t(`orge.${k}`, ...v);
@@ -110,6 +121,46 @@ function Packs({ packs, store }) {
       : html`<p class="note" id="oePacksNone">${te("packsNone")}</p>`}
     <label class="btn btn-sm oe-upload">${te("upload")}<input type="file" class="sr-only oe-upload-files" multiple accept=".json,.png,application/json,image/png" onChange=${send} /></label>
     <label class="btn btn-sm oe-upload">${te("uploadFolder")}<input type="file" class="sr-only oe-upload-dir" webkitdirectory="" multiple onChange=${send} /></label>
+    ${msg ? html`<p class="note oe-pack-msg" role="status">${msg}</p>` : null}
+  </fieldset>`;
+}
+
+/**
+ * #2692: the agents that may change packs, the fleet's approval mode, the changes waiting for an admin's yes (approve /
+ * reject; judged again by the host on a yes) and the newest log entries. Read on opening, after each action, and when
+ * the packs change.
+ */
+function PackAgents({ store, packs }) {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const load = async () => { const c = await store.packChanges(); if (c) setD(c); };
+  useEffect(() => { void load(); }, [packs.map((p) => `${p.id}:${p.sha}`).join(",")]);
+  if (!d) return null;
+  const mode = async (approval) => {
+    setBusy(true); setMsg("");
+    try { const r = await store.setPackApproval(approval); if (r.ok && r.changes) setD(r.changes); else setMsg(te("decideFailed", r.error)); } finally { setBusy(false); }
+  };
+  const decide = async (id, decision) => {
+    setBusy(true); setMsg("");
+    try { const r = await store.decidePackChange(id, decision); setMsg(r.ok ? te("decided", r.text) : te("decideFailed", r.detail || r.error)); await load(); } finally { setBusy(false); }
+  };
+  const what = (v) => `${te(`act_${v.action}`)} ${v.action === "style" ? `${v.office} → ${v.style}` : v.packs.map((p) => p.name !== p.id ? `${p.name} (${p.id})` : p.id).join(", ")}`;
+  return html`<fieldset class="oe-packs oe-form oe-pack-agents" disabled=${busy}>
+    <legend class="oe-label">${te("agentsTitle")}</legend>
+    <p class="note">${te("agentsLead")}</p>
+    <p class="note" id="oePackAgents">${d.agents.length ? te("agentsAllowed", d.agents.join(", ")) : te("agentsNone")}</p>
+    <label class="oe-field"><span class="oe-label">${te("approval")}</span>
+      <select class="tb-select oe-pack-approval" value=${d.approval} onChange=${(e) => mode(e.target.value)}>
+        <option value="approve">${te("approvalApprove")}</option><option value="apply">${te("approvalApply")}</option></select></label>
+    ${d.pending.length ? html`<ul class="oe-pack-list">${d.pending.map((v) => html`<li key=${v.id} class="oe-pack oe-pack-pending" data-change=${v.id}>
+      <span>${v.instance}: ${what(v)}</span>
+      <button type="button" class="btn btn-sm btn-primary oe-pack-approve" onClick=${() => decide(v.id, "approve")}>${te("approve")}</button>
+      <button type="button" class="btn btn-sm oe-pack-reject" onClick=${() => decide(v.id, "reject")}>${te("reject")}</button></li>`)}</ul>`
+      : html`<p class="note">${te("pendingNone")}</p>`}
+    ${d.log.length ? html`<details class="oe-pack-log"><summary>${te("recent")}</summary><ul class="oe-pack-list">${d.log.slice(0, 10).map((e, i) => html`<li key=${i} class="oe-pack muted">
+      <span class="mono">${e.at.slice(0, 16).replace("T", " ")}</span> <span>${e.by}: ${e.action} ${e.pack}${e.outcome ? ` — ${e.outcome}` : ""}${e.approved_by ? ` (${e.approved_by})` : ""}</span></li>`)}</ul></details>` : null}
+    <button type="button" class="btn btn-sm oe-pack-refresh" onClick=${() => { void load(); }}>${te("refresh")}</button>
     ${msg ? html`<p class="note oe-pack-msg" role="status">${msg}</p>` : null}
   </fieldset>`;
 }
@@ -221,6 +272,7 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
     </fieldset>
     ${msg ? html`<p class="note oe-msg" role="status">${msg}</p>` : null}
     ${store.uploadSkin ? html`<${Packs} packs=${packs} store=${store} />` : null}
+    ${store.packChanges ? html`<${PackAgents} packs=${packs} store=${store} />` : null}
     ${conflict ? html`<div class="oe-conflict">
       <button type="button" class="btn btn-sm" id="oeKeepMine" onClick=${keepMine} disabled=${busy}>${te("keepMine")}</button>
       <button type="button" class="btn btn-sm" id="oeLoadTheirs" onClick=${loadTheirs} disabled=${busy}>${te("loadTheirs")}</button>

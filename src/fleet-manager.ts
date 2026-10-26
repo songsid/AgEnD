@@ -1,7 +1,7 @@
 import { getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
-import { hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
+import { SEPARATE_FEATURE_KEYS, hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
 import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
@@ -224,6 +224,7 @@ import { ThemeStore } from "./web-theme-store.js";
 import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { OfficeSkinStore } from "./web-office-skins.js";
 import { OfficeActs } from "./web-office-acts.js";
+import { OFFICE_PACK_TOOLS, OfficePackTools, type PackChangeView } from "./web-office-pack-tools.js";
 import { WebAppearance } from "./web-appearance.js";
 import { WebEffectLibrary } from "./web-effect-library.js";
 import { WebEffectTrials } from "./web-effect-trials.js";
@@ -919,6 +920,10 @@ const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 /** #2598 B2: a kiro classic → TUI move's Confirm in General. "kiro-migrate:" (13) + 32 hex + ":confirm" (8) = 53 bytes. */
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
+/** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
+const OFFICE_PACK_CALLBACK_PREFIX = "office-pack:";
+/** #2692: the skin-pack tools' IPC types (answered as web theme tools). */
+const OFFICE_PACK_IPC: ReadonlySet<string> = new Set(OFFICE_PACK_TOOLS.map(tool => `fleet_${tool}`));
 /** Long enough for an admin to read the prompt; the move is judged again on the click. */
 const KIRO_MIGRATE_TIMEOUT_MS = 10 * 60_000;
 /**
@@ -1689,6 +1694,82 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: acts => this.emitSseEvent("office_acts", { acts, now: Date.now() }),
     }));
   }
+  private officePackToolsInstance?: OfficePackTools;
+  /** #2692: the agents' skin-pack tools — their log, the admins' approval mode and the pending changes (memory only). */
+  get officePackTools(): OfficePackTools {
+    return (this.officePackToolsInstance ??= new OfficePackTools({
+      skins: this.officeSkins, offices: this.officeStore,
+      allowedAgents: () => this.officePackAgents(),
+      notice: (text, pending) => { void this.officePackNotice(text, pending); },
+      settled: (id, text) => this.settleOfficePackPrompt(id, text),
+      changed: what => {
+        if (what.skins !== undefined) this.emitSseEvent("office_skins", { rev: what.skins });
+        if (what.offices !== undefined) this.emitSseEvent("offices", { rev: what.offices });
+        if (what.changes) this.emitSseEvent("office_pack_changes", {});
+      },
+      logger: this.logger,
+    }));
+  }
+  /** #2692: the instances whose `office_packs` feature is on (their own switch, else the defaults'): the Office page lists them. */
+  private officePackAgents(): string[] {
+    const names = new Set([...Object.keys(this.fleetConfig?.instances ?? {}), ...(this.classicChannels?.getAll() ?? []).map(ch => ch.instanceName)]);
+    return [...names].filter(name => dashboardRefusalIn(this.fleetConfig, name, "office_pack_upload") === null);
+  }
+  /** #2692: the nonce of each pending pack change's prompt in General (its buttons are retired when it is decided). */
+  private readonly officePackPrompts = new Map<string, string>();
+  /**
+   * #2692: tell the fleet's admins of an agent's pack change — one short message in General (notifyFleetError, never a
+   * sign-in notice). A pending one comes with Approve / Reject (a fleet admin's, as a kiro move); where no General can
+   * carry buttons it is the plain message, and the Office page decides it.
+   */
+  private async officePackNotice(text: string, pending?: PackChangeView): Promise<void> {
+    if (!pending) { this.notifyFleetError(text, { throttle: false }); return; }
+    const general = this.findGeneralInstance();
+    const adapterId = general ? this.getInstanceAdapterId(general) : undefined;
+    const adapter = general ? this.getAdapterForInstance(general) : undefined;
+    const chatId = general ? this.getGroupIdForInstance(general) : undefined;
+    const topic = general ? String(this.fleetConfig?.instances[general]?.topic_id ?? "") : "";
+    if (general && adapterId && adapter && chatId) {
+      try {
+        const nonce = await this.postNonceButtonPromptOrThrow({
+          prefix: OFFICE_PACK_CALLBACK_PREFIX, alertType: "clear_confirm", instanceName: pending.instance, adapter, adapterId, chatId,
+          ...(topic ? { threadId: topic } : {}), message: text,
+          choices: [{ action: "approve", label: t("office_packs.approve_button") }, { action: "reject", label: t("office_packs.reject_button") }],
+          expiredText: t("office_packs.expired", ""), timeoutMs: Math.max(1_000, pending.expires_at - Date.now()),
+        });
+        if (this.officePackTools.pendingViews().some(v => v.id === pending.id)) this.officePackPrompts.set(pending.id, nonce);
+        else this.retireOfficePackNonce(nonce, t("office_packs.gone"));
+        return;
+      } catch (err) { this.logger.info({ err: (err as Error).message }, "Office pack approval prompt unavailable; the plain notice and the Office page remain"); }
+    }
+    this.notifyFleetError(text, { throttle: false });
+  }
+  private retireOfficePackNonce(nonce: string, text: string): void {
+    const entry = this.pendingNonceButtons.get(nonce);
+    if (!entry || entry.prefix !== OFFICE_PACK_CALLBACK_PREFIX) return;
+    this.pendingNonceButtons.delete(nonce); clearTimeout(entry.timer);
+    void this.retireNonceButtons(entry, entry.messageId ?? "", text);
+  }
+  /** #2692: a pending change was decided (here or on the page) or expired: its prompt says so and loses its buttons. */
+  private settleOfficePackPrompt(id: string, text: string): void {
+    const nonce = this.officePackPrompts.get(id);
+    this.officePackPrompts.delete(id);
+    if (nonce) this.retireOfficePackNonce(nonce, text);
+  }
+  /** #2692: Approve / Reject on a pending pack change. Any fleet admin (the default nonce authorization), in General. */
+  private async handleOfficePackCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(OFFICE_PACK_CALLBACK_PREFIX, /^office-pack:([0-9a-f]{32}):(approve|reject)$/, data, adapterId, adapter);
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const nonce = data.callbackData.slice(OFFICE_PACK_CALLBACK_PREFIX.length, OFFICE_PACK_CALLBACK_PREFIX.length + 32);
+    const id = [...this.officePackPrompts].find(([, n]) => n === nonce)?.[0];
+    if (id) this.officePackPrompts.delete(id);
+    const decided = id ? this.officePackTools.decide(id, action as "approve" | "reject", t("settings_confirm.admin_label", data.userId ?? "")) : null;
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, decided?.text ?? t("office_packs.gone"));
+    return true;
+  }
+
   /**
    * #2578: each instance's state as the org chart shows it (fleet-org.js orgState, from the same fields the status
    * frame and the Needs-you list carry) and its display name (resolveInstanceIdentity, as getUiStatus) — read once.
@@ -11463,7 +11544,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleetRequestId = msg.fleetRequestId as string | undefined;
     if (!ipc || !fleetRequestId) return;
     const type = String(msg.type);
-    const responseType = isCanvasWorkerTool(type.replace(/^fleet_/, "")) || type === "fleet_office_view" || type === "fleet_office_set" ? "fleet_web_theme_response"
+    const responseType = isCanvasWorkerTool(type.replace(/^fleet_/, "")) || type === "fleet_office_view" || type === "fleet_office_set" || OFFICE_PACK_IPC.has(type) ? "fleet_web_theme_response"
       : type.startsWith("fleet_schedule_") ? "fleet_schedule_response"
       : type.startsWith("fleet_decision_") ? "fleet_decision_response"
       : type === "fleet_task" ? "fleet_task_response"
@@ -11498,7 +11579,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       || type === "fleet_set_web_widget" || type === "fleet_remove_web_widget"
       || type === "fleet_set_web_ambient" || type === "fleet_clear_web_ambient"
       || type === "fleet_export_web_mod" || type === "fleet_propose_web_mod"
-      || type === "fleet_office_view" || type === "fleet_office_set") {
+      || type === "fleet_office_view" || type === "fleet_office_set"
+      // #2692: the skin packs (OFFICE_PACK_IPC), answered as web theme tools.
+      || type === "fleet_office_pack_check" || type === "fleet_office_pack_upload" || type === "fleet_office_pack_delete"
+      || type === "fleet_office_pack_restore" || type === "fleet_office_pack_list" || type === "fleet_office_set_style") {
       this.handleWebTheme(name, msg); return;
     }
   }
@@ -11519,6 +11603,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? this.appearanceTools.handle(instanceName, tool, args)
         : tool === "export_web_mod" || tool === "propose_web_mod" ? this.agentMods.handle(instanceName, tool, args)
         : tool === "office_view" || tool === "office_set" ? this.officeActs.handle(instanceName, tool, args)
+        : OFFICE_PACK_IPC.has(`fleet_${tool}`) ? this.officePackTools.handle(instanceName, tool, args)
         : this.webAppearance.handleTool(instanceName, tool, args);
       ipc.send({ type: "fleet_web_theme_response", fleetRequestId, result });
     } catch (err) {
@@ -11965,6 +12050,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
     if (tool === "export_web_mod" || tool === "propose_web_mod") return this.agentMods.handle(instance, tool, args);
     if (tool === "office_view" || tool === "office_set") return this.officeActs.handle(instance, tool, args);   // #2578
+    if (OFFICE_PACK_IPC.has(`fleet_${tool}`)) return this.officePackTools.handle(instance, tool, args);       // #2692
     return this.webAppearance.handleTool(instance, tool, args);
   }
 
@@ -12438,12 +12524,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     normalizeOfficeStorage(this.fleetConfig);
     explicitPatches = explicitPatches.flatMap(patch => {
       const path = patch.path;
-      if (path.at(-2) === "dashboard" && path.at(-1) === "office" && !patch.remove) {
-        return [{ ...patch, path: [...path.slice(0, -2), "office_access"] }, { path, remove: true }];
+      // #2601 (and #2692's office_packs): a separately kept feature is written under its own key, never in `dashboard`.
+      const separate = path.at(-2) === "dashboard" ? SEPARATE_FEATURE_KEYS[path.at(-1) as keyof typeof SEPARATE_FEATURE_KEYS] : undefined;
+      if (separate && !patch.remove) {
+        return [{ ...patch, path: [...path.slice(0, -2), separate] }, { path, remove: true }];
       }
-      if (path.at(-1) === "dashboard" && patch.value && typeof patch.value === "object" && Object.hasOwn(patch.value, "office")) {
-        const { office, ...dashboard } = patch.value as Record<string, unknown>;
-        return [{ ...patch, value: dashboard }, { path: [...path.slice(0, -1), "office_access"], value: office, remove: office === null }];
+      if (path.at(-1) === "dashboard" && patch.value && typeof patch.value === "object" && Object.keys(SEPARATE_FEATURE_KEYS).some(f => Object.hasOwn(patch.value as object, f))) {
+        const dashboard = { ...(patch.value as Record<string, unknown>) }, moved: RawConfigPatch[] = [];
+        for (const [feature, key] of Object.entries(SEPARATE_FEATURE_KEYS)) {
+          if (!Object.hasOwn(dashboard, feature)) continue;
+          const value = dashboard[feature];
+          delete dashboard[feature];
+          moved.push({ path: [...path.slice(0, -1), key!], value, remove: value === null });
+        }
+        return [{ ...patch, value: dashboard }, ...moved];
       }
       // #2581's DM choice was withdrawn: an old string is just "on", posted in the topic, and its route is dropped.
       if (patch.path.join(".") === "web.notify_login" && patch.value === "dm") return [{ ...patch, value: true }, { path: ["web", "notice_delivery", "login"], remove: true }];
@@ -12553,10 +12647,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const next = this.fleetConfig.instances[name] ?? (classicNames.has(name) ? getEffectiveInstanceDefaults(this.fleetConfig.defaults) : undefined);
       const previous = daemon.getConfigSnapshot?.();
       if (!next || !previous) continue;
-      if (isDeepStrictEqual(previous.dashboard, next.dashboard) && previous.office_access === next.office_access) continue;
+      if (isDeepStrictEqual(previous.dashboard, next.dashboard) && previous.office_access === next.office_access && previous.office_pack_access === next.office_pack_access) continue;
       // Only permissions are adopted here. Cold fields retain the live daemon's old snapshot, so reconcile still
       // detects that they require a restart. MCP menus also watch the raw file; this updates the next spawn's env.
-      daemon.applyConfigUpdate({ dashboard: next.dashboard ?? null, office_access: next.office_access ?? null });
+      daemon.applyConfigUpdate({ dashboard: next.dashboard ?? null, office_access: next.office_access ?? null, office_pack_access: next.office_pack_access ?? null });
       if (taskBoardSwitchedOn(previous.dashboard, next.dashboard)) {
         this.admitTaskBoardNotice(name, TASK_BOARD_ON_NOTICE, `task-board-on:${name}:${Date.now()}`);
       }
@@ -12610,9 +12704,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const patches: RawConfigPatch[] = [];
       const raw = this.rawFleetConfig as any;
       for (const [path, item] of [[ ["defaults"], raw.defaults ], ...Object.entries(raw.instances ?? {}).map(([name, value]) => [["instances", name], value])] as Array<[string[], any]>) {
-        if (!item?.dashboard || !Object.hasOwn(item.dashboard, "office")) continue;
-        patches.push({ path: [...path, "dashboard", "office"], remove: true });
-        if (!Object.hasOwn(item, "office_access") && typeof item.dashboard.office === "boolean") patches.push({ path: [...path, "office_access"], value: item.dashboard.office });
+        for (const [feature, key] of Object.entries(SEPARATE_FEATURE_KEYS)) {
+          if (!item?.dashboard || !Object.hasOwn(item.dashboard, feature)) continue;
+          patches.push({ path: [...path, "dashboard", feature], remove: true });
+          if (!Object.hasOwn(item, key!) && typeof item.dashboard[feature] === "boolean") patches.push({ path: [...path, key!], value: item.dashboard[feature] });
+        }
       }
       this.saveFleetConfig(patches);
       this.logger.info("Stored Office access outside dashboard for downgrade compatibility");
@@ -12827,7 +12923,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.compactWatchService?.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.effectToolsService?.forget(name); this.mods.forgetInstance(name); this.agentMods.forget(name); this.officeActsInstance?.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.effectToolsService?.forget(name); this.mods.forgetInstance(name); this.agentMods.forget(name); this.officeActsInstance?.forget(name); this.officePackToolsInstance?.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -14602,6 +14698,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
     if (await this.handleClassicApproval(data, adapterId, adapter)) return true;
     if (this.handleRetiredPromptButton(data, adapterId, adapter)) return true;

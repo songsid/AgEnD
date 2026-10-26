@@ -63,6 +63,8 @@ const WORKER: readonly string[] = [
   "export_web_mod", "propose_web_mod",
   // Its own character in the Office view (#2578): no target; off until a person switches office_access on.
   "office_view", "office_set",
+  // The Office view's skin packs (#2692): everyone's, so off until a person switches office_pack_access on for it.
+  "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
   "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
   // Its own schedules. Present here, but not a free hand: scheduleOpRefusal
   // limits a non-coordinator to schedules that target itself and that it
@@ -131,6 +133,8 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // Its own character in the Office view (#2578), as a worker's.
     "office_view", "office_set",
+    // The Office view's skin packs (#2692), as a worker's: off until a person switches office_pack_access on.
+    "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
     // #2056: Settings → Web appearance for the user (the page's own checks; a worker's are its own theme only).
     "get_web_settings", "set_web_settings",
   ],
@@ -143,6 +147,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient", "export_web_mod", "propose_web_mod",
     "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
     "office_view", "office_set",
+    "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status", "get_cache_report", "get_usage_report",
     // Self-scheduling, same scope as worker (#895).
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
@@ -279,6 +284,12 @@ export const IPC_TYPE_TOOLS: Readonly<Record<string, string>> = {
   fleet_delete_web_effect: "delete_web_effect",
   fleet_office_view: "office_view",
   fleet_office_set: "office_set",
+  fleet_office_pack_check: "office_pack_check",
+  fleet_office_pack_upload: "office_pack_upload",
+  fleet_office_pack_delete: "office_pack_delete",
+  fleet_office_pack_restore: "office_pack_restore",
+  fleet_office_pack_list: "office_pack_list",
+  fleet_office_set_style: "office_set_style",
 };
 
 /**
@@ -330,6 +341,12 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
   "effect-delete": "delete_web_effect",
   "office-view": "office_view",
   "office-set": "office_set",
+  "office-pack-check": "office_pack_check",
+  "office-pack-upload": "office_pack_upload",
+  "office-pack-delete": "office_pack_delete",
+  "office-pack-restore": "office_pack_restore",
+  "office-packs": "office_pack_list",
+  "office-style": "office_set_style",
 };
 
 /**

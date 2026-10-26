@@ -49,6 +49,12 @@ export const ALL_OFFICES = "all";
  * name has no control character), so the page finds nobody — never [], which the page reads as everyone.
  */
 export const NOBODY = "team:\u0000";
+/**
+ * #2691: whom a reserved seat is for after the share's cut, when every one it named is out of the share: a name no
+ * instance has (an instance's name never starts with the members' "team:"), so the seat stays reserved for someone
+ * away — never [], which is no reservation — and still passes the page's check of an instance's name.
+ */
+export const SOMEONE_ELSE = "team:";
 
 /** An ended (or unknown) share's page: the same words whichever it is. */
 export const ENDED_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>AgEnD Office</title></head>`
@@ -303,7 +309,8 @@ export class OfficeShareView {
   /**
    * /ui/offices's answer, the shared office (or all) only, each cut to the share (#2637 review): its members only those
    * shown (an instance, or a team with someone shown; NOBODY when none is), and a seat kept for someone not shown keeps
-   * its place but not the name. The stored offices are never changed.
+   * its place but not the name; #2691: a seat reserved for someone not shown keeps the reservation but not the name
+   * (cutOwners). The stored offices are never changed.
    */
   officeList(): { rev: number; offices: Office[]; readable: boolean } {
     const teams = new Set(this.teams.map(t => t.name));
@@ -312,6 +319,11 @@ export class OfficeShareView {
       const out: Office = { ...o, members: o.members.length && !members.length ? [NOBODY] : members };
       if (o.layout) {
         out.layout = { ...o.layout, seats: o.layout.seats.map(({ instance, ...seat }) => (instance !== undefined && this.scope.has(instance) ? { ...seat, instance } : seat)) };
+      }
+      if (o.overrides?.seatFor) {
+        const seatFor = Object.fromEntries(Object.entries(o.overrides.seatFor).map(([area, slots]) => [area,
+          Object.fromEntries(Object.entries(slots).map(([slot, r]) => [slot, { ...r, for: this.cutOwners(r.for) as string[] }]))]));
+        out.overrides = { ...o.overrides, seatFor };
       }
       return out;
     };
@@ -329,16 +341,29 @@ export class OfficeShareView {
     return { acts, now: Date.now() };
   }
 
+  /** #2691: a seat's owners cut to the share — those shown, else (all hidden) SOMEONE_ELSE; none stays none. */
+  private cutOwners(names: unknown): unknown {
+    if (!Array.isArray(names)) return names;
+    const shown = names.filter(n => typeof n === "string" && this.scope.has(n));
+    return shown.length || !names.length ? shown : [SOMEONE_ELSE];
+  }
+
   /**
    * A pack's answer as this share gets it (#2637 review): its manifest's instance names cut to the share — `byInstance`
    * only for people shown, a furniture item's `activeFor` only them (none left: [], which watches nobody, never the
    * missing key, which watches everyone). #2662: and only the character sets someone shown wears (theirs in `byInstance`,
    * and `default` for everyone else), with `files` only the pictures it still names: the page loads what is drawn, not
-   * every set of a fleet-sized pack. A copy: the kept pack is never changed.
+   * every set of a fleet-sized pack. #2691: a reserved seat's `for` cut as an office's (cutOwners). A copy: the kept
+   * pack is never changed.
    */
   pack(answer: unknown): unknown {
     if (!isObj(answer) || !isObj(answer.manifest)) return answer;
     const manifest: Record<string, unknown> = { ...answer.manifest };
+    // #2691: a seat reserved for someone not shown (cutOwners).
+    if (isObj(manifest.areas)) {
+      manifest.areas = Object.fromEntries(Object.entries(manifest.areas).map(([k, a]) => [k, !isObj(a) || !Array.isArray(a.seats) ? a
+        : { ...a, seats: a.seats.map(st => (isObj(st) && st.for !== undefined ? { ...st, for: this.cutOwners(typeof st.for === "string" ? [st.for] : st.for) } : st)) }]));
+    }
     if (isObj(manifest.byInstance)) manifest.byInstance = Object.fromEntries(Object.entries(manifest.byInstance).filter(([k]) => this.scope.has(k)));
     if (isObj(manifest.characters)) {
       const worn = new Set(["default", ...Object.values(isObj(manifest.byInstance) ? manifest.byInstance : {}).filter((v): v is string => typeof v === "string")]);

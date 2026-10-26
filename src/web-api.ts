@@ -26,6 +26,7 @@ import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
 import type { OfficeActs } from "./web-office-acts.js";
+import type { OfficePackTools } from "./web-office-pack-tools.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
@@ -444,6 +445,8 @@ export interface WebApiContext {
   };
   /** #2636: a share was made or ended from the page — said in General (who, which office, until when). */
   officeShareNotice?(event: "created" | "revoked", who: string, share: import("./office-share.js").OfficeShare | null, count: number): void;
+  /** #2692: the agents' skin-pack changes (approval mode, pending changes, log); absent: /ui/office-pack-changes is not offered. */
+  readonly officePackTools?: Pick<OfficePackTools, "changes" | "setApproval" | "decide">;
   /** #2513: the Office view's uploaded skin packs (web-office-skins/); absent: /ui/office-skins is not offered. */
   readonly officeSkins?: OfficeSkinStore;
   /** How often a person may upload or delete a skin pack (absent: no limit). */
@@ -774,6 +777,51 @@ function handleOfficeSkins(req: IncomingMessage, res: ServerResponse, url: URL, 
   })().catch(err => {
     ctx.logger.error({ err: (err as Error).message }, "Uploading a skin pack failed");
     try { json(res, 500, { error: "Uploading a skin pack failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * #2692: the agents' skin-pack changes, for the Office page (Edit offices → Skin packs) — an admin session only, never
+ * the CLI token, a guest or the public link (as uploading a pack by hand). GET { approval, agents, pending, log };
+ * POST { approval: "apply" | "approve" } sets the fleet's approval mode; POST /<id> { decision: "approve" | "reject" }
+ * decides a pending change (judged again on a yes). Every change is `office_pack_changes` on the stream.
+ */
+function handleOfficePackChanges(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const tools = ctx.officePackTools;
+  if (!tools) { json(res, 404, { error: "Pack changes are not kept on this fleet" }); return true; }
+  const one = /^\/ui\/office-pack-changes\/([0-9a-f]{32})$/.exec(path);
+  if (!(method === "GET" && path === "/ui/office-pack-changes") && !(method === "POST" && (path === "/ui/office-pack-changes" || one))) { json(res, 404, { error: "not found" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "pack_changes_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "pack_changes_need_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  if (method === "GET") { res.setHeader("Cache-Control", "private, no-store"); json(res, 200, tools.changes()); return true; }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "an object" }); return; }
+    if (!one) {
+      if (Object.keys(body).some(k => k !== "approval")) { json(res, 400, { error: "pack_changes_invalid", detail: "{ approval }" }); return; }
+      const r = tools.setApproval(body.approval, now.person);
+      if (!r.ok) { json(res, 400, { error: "pack_changes_invalid", detail: r.error }); return; }
+      json(res, 200, tools.changes());
+      return;
+    }
+    if (Object.keys(body).some(k => k !== "decision") || (body.decision !== "approve" && body.decision !== "reject")) { json(res, 400, { error: "pack_changes_invalid", detail: '{ decision: "approve" | "reject" }' }); return; }
+    const r = tools.decide(one[1]!, body.decision, now.person);
+    json(res, r.ok ? 200 : r.status, r.ok ? { text: r.text, ...(r.applied ? { applied: r.applied } : {}) } : { error: r.error, detail: r.text });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, "A pack change failed");
+    try { json(res, 500, { error: "A pack change failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -2002,6 +2050,7 @@ export function handleWebRequest(
   }
 
   if (path === "/ui/office-skins" || path.startsWith("/ui/office-skins/")) return handleOfficeSkins(req, res, url, ctx, path, method);
+  if (path === "/ui/office-pack-changes" || path.startsWith("/ui/office-pack-changes/")) return handleOfficePackChanges(req, res, url, ctx, path, method);
   if (path === "/ui/office-share" || path.startsWith("/ui/office-share/")) return handleOfficeShare(req, res, url, ctx, path, method);
 
   // ── #1630: avatars and Discord server emoji, same-origin (the page never loads a platform's CDN; img-src stays 'self') ──

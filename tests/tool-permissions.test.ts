@@ -59,6 +59,8 @@ const BEFORE: Record<string, string[]> = {
     "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2578: its own character in the Office view (no target; off until dashboard.office: true).
     "office_view", "office_set",
+    // #2692: the Office view's skin packs (off until office_pack_access: true).
+    "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // kiro engine move: read-only kiro engine facts.
     "kiro_engine_status",
@@ -100,6 +102,8 @@ const BEFORE: Record<string, string[]> = {
     "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2578: its own character in the Office view, as a worker's.
     "office_view", "office_set",
+    // #2692: the Office view's skin packs, as a worker's.
+    "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
     // #2056: the user's Settings → Web appearance, through the page's own checks.

@@ -236,6 +236,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       err(`${path}.board_cards_at_once`, "must be a whole number of at least 1");
     }
     if (value.office_access !== undefined && value.office_access !== null && typeof value.office_access !== "boolean") err(`${path}.office_access`, "must be a boolean");
+    if (value.office_pack_access !== undefined && value.office_pack_access !== null && typeof value.office_pack_access !== "boolean") err(`${path}.office_pack_access`, "must be a boolean");
     const dashboardProblem = dashboardAccessProblem(value.dashboard);
     if (dashboardProblem) err(`${path}.dashboard`, dashboardProblem);
 

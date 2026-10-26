@@ -70,7 +70,7 @@ import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
-import { applyOverrides, fitNight } from "./fleet-office-pack.js";
+import { applyOverrides, fitNight, fitSeatFor } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
 import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
@@ -193,7 +193,7 @@ function looksOf(L, work, q, mode, zones) {
 function withOverrides(baseSkin, zones, office) {
   const ov = zones && office ? office.overrides : null;
   if (!ov || ov.pack !== baseSkin.id) return { skin: baseSkin, ignored: false };
-  const a = applyOverrides(baseSkin.pack, fitNight(baseSkin.pack, ov));    // #2665: a night place the pack lost: left out
+  const a = applyOverrides(baseSkin.pack, fitSeatFor(baseSkin.pack, fitNight(baseSkin.pack, ov)));    // #2665/#2691: a night place or seat the pack lost: left out
   return a.ok ? { skin: { ...baseSkin, pack: a.pack }, ignored: false } : { skin: baseSkin, ignored: true };
 }
 /** A stored office's scene (or the lobby tile's): seats in its style's areas, its own seats, or one room wrapping at `deskW`. */
@@ -1113,6 +1113,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     setTip(null);
   };
   const closeLayout = () => setLayout(null);
+  // #2691: whom a seat can be reserved for — the office's members (its teams' too).
+  const layoutMembers = useMemo(() => (layout && custom ? membersOf(custom, view).map((n) => n.name) : []), [layout && layout.id, custom, view]);
   const onDraft = (draft) => setLayout((cur) => (cur ? { ...cur, draft } : cur));
   // Save: the session's list, this office's overrides replaced (none: back to the style's own), with the session's rev.
   // A change made meanwhile (409) reads the list again: the session takes it (the view too), the draft is kept, and
@@ -1193,7 +1195,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           : html`<button key=${tl.key} ref=${at} type="button" class="oo-tile-label" data-office=${tl.key} title=${to("openOffice", tl.name)} aria-label=${to("openOffice", tl.name)}
               onClick=${() => pick(tl.key)}>${text}</button>`;
       }) : null}
-      ${layout ? html`<${LayoutEditor} key=${layout.id} base=${layout.base} start=${layout.start} place=${placeOverlay} dock=${!fs}
+      ${layout ? html`<${LayoutEditor} key=${layout.id} base=${layout.base} start=${layout.start} place=${placeOverlay} dock=${!fs} members=${layoutMembers}
         stale=${layoutStale ? t("orgl.stale") : ""} onChange=${onDraft} onSave=${saveLayout} onClose=${closeLayout} />` : null}
       ${tipText ? html`<div ref=${tipRef} class="oo-tip" role="tooltip">
         <strong>${tipText.primary}</strong>${tipText.secondary ? html` <span class="muted mono">${tipText.secondary}</span>` : null}

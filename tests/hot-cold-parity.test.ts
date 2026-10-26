@@ -107,6 +107,7 @@ const HOT_KEY_PROBES: Record<string, unknown> = {
   board_cards_at_once: 3,
   dashboard: { appearance: false, task_board: true },
   office_access: true,
+  office_pack_access: true,
 };
 
 describe("hot/cold parity between the fleet's hot set and the daemon", () => {

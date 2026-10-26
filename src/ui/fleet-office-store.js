@@ -7,6 +7,8 @@
 // - the skin packs an admin uploaded (#2513: GET /ui/office-skins, POST to upload one, DELETE to remove one;
 //   src/web-office-skins.ts). The office editor and the layout editor call saveOffices() with the whole list and the rev
 //   they read (a change in between answers 409).
+// - #2692: the agents' pack changes (GET / POST /ui/office-pack-changes, an admin's): which agents may change packs, the
+//   fleet's approval mode, the changes waiting for a yes, and the newest log entries.
 import { AUTO_ID, filterOk, officesOk } from "./fleet-office-model.js";
 import { fitModeOk, savedOk } from "./fleet-office-view.js";
 
@@ -18,6 +20,19 @@ const VIEW_KEY = "agend_org_office_view", VIEWS_MAX = 32;
 /** #2540: { "<office>@<style>": "cover" } — the offices whose fit fills the panel (the rest: "contain"), the last VIEWS_MAX. */
 const FIT_KEY = "agend_org_office_fit";
 const PACK_ID = /^[A-Za-z0-9_-]{1,40}$/;
+/** #2692: GET /ui/office-pack-changes, checked: { approval, agents: [names], pending: [views], log: [entries] } (anything odd dropped). */
+export function packChangesOk(d) {
+  const str = (v, n = 200) => (typeof v === "string" ? v.slice(0, n) : "");
+  const approval = d && (d.approval === "apply" || d.approval === "approve") ? d.approval : "approve";
+  const agents = Array.isArray(d && d.agents) ? d.agents.filter((n) => typeof n === "string" && n).slice(0, 500).map((n) => n.slice(0, 200)) : [];
+  const pending = (Array.isArray(d && d.pending) ? d.pending.slice(0, 32) : []).filter((v) => v && /^[0-9a-f]{32}$/.test(String(v.id)) && typeof v.instance === "string")
+    .map((v) => ({ id: v.id, instance: str(v.instance), action: str(v.action, 20), at: Number(v.at) || 0, expires_at: Number(v.expires_at) || 0,
+      packs: (Array.isArray(v.packs) ? v.packs.slice(0, 16) : []).filter((p) => p && typeof p.id === "string").map((p) => ({ id: str(p.id, 40), name: str(p.name, 60) || str(p.id, 40), files: Number(p.files) || 0, bytes: Number(p.bytes) || 0, replaces: typeof p.replaces === "string" ? p.replaces.slice(0, 32) : null })),
+      office: str(v.office, 40), style: str(v.style, 40), keep_previous: v.keep_previous === true, drops: Array.isArray(v.drops) ? v.drops.length : 0 }));
+  const log = (Array.isArray(d && d.log) ? d.log.slice(0, 50) : []).filter((e) => e && typeof e.at === "string")
+    .map((e) => ({ at: str(e.at, 40), by: str(e.by), action: str(e.action, 20), pack: str(e.pack, 200), outcome: str(e.outcome), files: Number(e.files) || 0, bytes: Number(e.bytes) || 0, approved_by: str(e.approved_by) }));
+  return { approval, agents, pending, log };
+}
 /** The host's list of skin packs, checked: [{ id, name, sha }] (anything odd dropped). */
 export function skinListOk(d) {
   const out = [], ids = new Set();
@@ -104,6 +119,34 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
         const d = await r.json().catch(() => ({}));
         return r.ok ? { ok: true } : { ok: false, status: r.status, error: d.error || "skin_failed" };
       } catch { return { ok: false, status: 0, error: "skin_failed" }; }
+    },
+    /**
+     * #2692: the agents' skin-pack changes (an admin session): { approval, agents, pending, log }, or null (not offered,
+     * not an admin, not read).
+     */
+    async packChanges() {
+      try {
+        const r = await get("/ui/office-pack-changes", { method: "GET", headers });
+        if (!r || !r.ok) return null;
+        return packChangesOk(await r.json());
+      } catch { return null; }
+    },
+    /** #2692: the fleet's approval mode for agents' pack changes ("apply" | "approve"). */
+    async setPackApproval(approval) {
+      try {
+        const r = await get("/ui/office-pack-changes", { method: "POST", headers, body: JSON.stringify({ approval }) });
+        const d = await r.json().catch(() => ({}));
+        return r.ok ? { ok: true, changes: packChangesOk(d) } : { ok: false, status: r.status, error: d.error || "pack_changes_failed" };
+      } catch { return { ok: false, status: 0, error: "pack_changes_failed" }; }
+    },
+    /** #2692: an admin's yes or no on a pending pack change: { ok, text } or { ok: false, status, error, detail }. */
+    async decidePackChange(id, decision) {
+      if (!/^[0-9a-f]{32}$/.test(String(id))) return { ok: false, status: 0, error: "change_unknown", detail: "" };
+      try {
+        const r = await get(`/ui/office-pack-changes/${id}`, { method: "POST", headers, body: JSON.stringify({ decision }) });
+        const d = await r.json().catch(() => ({}));
+        return r.ok ? { ok: true, text: String(d.text || "") } : { ok: false, status: r.status, error: d.error || "pack_changes_failed", detail: String(d.detail || "") };
+      } catch { return { ok: false, status: 0, error: "pack_changes_failed", detail: "" }; }
     },
     /**
      * The office shown here: an id (one the host no longer has falls back to the auto office where it is used), or

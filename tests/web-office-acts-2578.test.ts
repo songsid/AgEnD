@@ -83,7 +83,7 @@ function acts(opts: { offices?: ReturnType<typeof offices>; clock?: { t: number 
 describe("the `office` feature: off unless set true", () => {
   it("a feature with its two tools, in the profiles a worker's appearance tools are in; the page lists it too", () => {
     expect(DASHBOARD_FEATURES).toContain("office");
-    expect([...OFF_UNLESS_ON]).toEqual(["office"]);
+    expect([...OFF_UNLESS_ON]).toEqual(["office", "office_packs"]);                     // #2692: office_packs too
     expect(DASHBOARD_FEATURE_TOOLS.office).toEqual(["office_view", "office_set"]);
     const names = TOOLS.map(t => t.name);
     for (const t of ["office_view", "office_set"]) {
@@ -97,15 +97,16 @@ describe("the `office` feature: off unless set true", () => {
   });
 
   it("unset (or null, or false) is off, true is on; the refusal says how it is switched on", () => {
-    expect(dashboardFeaturesOff(undefined)).toEqual(["office"]);
-    expect(dashboardFeaturesOff({ office: null })).toEqual(["office"]);
-    expect(dashboardFeaturesOff({ office: false, task_board: false })).toEqual(["task_board", "office"]);
-    expect(dashboardFeaturesOff({ office: true })).toEqual([]);
+    // #2692: office_packs is off unless set true too (its own switch).
+    expect(dashboardFeaturesOff(undefined)).toEqual(["office", "office_packs"]);
+    expect(dashboardFeaturesOff({ office: null, office_packs: true })).toEqual(["office"]);
+    expect(dashboardFeaturesOff({ office: false, task_board: false, office_packs: true })).toEqual(["task_board", "office"]);
+    expect(dashboardFeaturesOff({ office: true, office_packs: true })).toEqual([]);
     expect(dashboardRefusal({}, "office_set")).toMatch(/office_set is not available.*"office" is off until the person switches it on \(office_access: true\).*Do not retry/);
     expect(dashboardRefusal({ office: true }, "office_view")).toBeNull();
     // Its own switch, else the default's.
-    const fleet = { defaults: { dashboard: { office: true } }, instances: { a: { dashboard: { office: false } }, b: {} } };
-    expect([dashboardFeaturesOffIn(fleet, "a"), dashboardFeaturesOffIn(fleet, "b"), dashboardFeaturesOffIn({ instances: {} }, "c")]).toEqual([["office"], [], ["office"]]);
+    const fleet = { defaults: { dashboard: { office: true }, office_pack_access: true }, instances: { a: { dashboard: { office: false } }, b: {} } };
+    expect([dashboardFeaturesOffIn(fleet, "a"), dashboardFeaturesOffIn(fleet, "b"), dashboardFeaturesOffIn({ instances: {} }, "c")]).toEqual([["office"], [], ["office", "office_packs"]]);
   });
 
   it("left out of the tool menu while off", () => {

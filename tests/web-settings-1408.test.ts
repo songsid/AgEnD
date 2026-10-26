@@ -267,8 +267,8 @@ describe("#2347: one save model — an edit is unsaved at once, the bar's Save w
     save().click(); await settle(2);
     await vi.waitFor(() => expect(puts().length).toBe(first + 1), { timeout: 6000 });
     // All of them go (the defaults write replaces `dashboard` whole): the edited one as edited, the others as now saved
-    // Office remains off and untouched; its separate office_access field is not rewritten.
-    expect([before, back, puts().at(-1)]).toEqual([[true, false, true, false], [false, false, false, false], { dashboard: { appearance: false, task_board: false, web_settings: false } }]);
+    // Office and Office skin packs (#2692) remain off and untouched; their separate office_access / office_pack_access fields are not rewritten.
+    expect([before, back, puts().at(-1)]).toEqual([[true, false, true, false, false], [false, false, false, false, false], { dashboard: { appearance: false, task_board: false, web_settings: false } }]);
   });
   it("after a Save that went through, the drafts go: the form shows what is saved, unmarked", async () => {
     let saved = false;

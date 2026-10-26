@@ -40,26 +40,32 @@ export function changedFields(next, baseline) {
 
 /**
  * The dashboard features an agent may use (dashboard-permissions.ts): each "inherit" (the fleet default: `defaults.dashboard`,
- * else allowed — off for OFF_UNLESS_ON, `office`), "on" or "off". The patch names only the features that changed: null
+ * else allowed — off for OFF_UNLESS_ON, `office` and `office_packs`), "on" or "off". The patch names only the features that changed: null
  * follows the default again.
  */
-export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings", "office"];
-/** #2578: the features a person switches on — unset is off (dashboard-permissions.ts OFF_UNLESS_ON). */
-export const OFF_UNLESS_ON = ["office"];
+export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings", "office", "office_packs"];
+/** #2578, #2692: the features a person switches on — unset is off (dashboard-permissions.ts OFF_UNLESS_ON). */
+export const OFF_UNLESS_ON = ["office", "office_packs"];
+/** #2601, #2692: the features kept beside `dashboard` under their own key (dashboard-permissions.ts SEPARATE_FEATURE_KEYS). */
+export const SEPARATE_FEATURE_KEYS = { office: "office_access", office_packs: "office_pack_access" };
 export const DASHBOARD_CHOICES = ["inherit", "on", "off"];
 const dashboardOf = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 /** What a feature is for an agent with no setting of its own: the default's, else allowed (off for OFF_UNLESS_ON). */
 export const dashboardDefault = (defaults, feature) => {
-  const v = feature === "office" && defaults && Object.hasOwn(defaults, "office_access") ? defaults.office_access : dashboardOf(defaults && defaults.dashboard)[feature];
+  const key = Object.hasOwn(SEPARATE_FEATURE_KEYS, feature) ? SEPARATE_FEATURE_KEYS[feature] : null;
+  const v = key && defaults && Object.hasOwn(defaults, key) ? defaults[key] : dashboardOf(defaults && defaults.dashboard)[feature];
   return OFF_UNLESS_ON.includes(feature) ? v === true : v !== false;
 };
 export function dashboardForm(inst) {
-  const own = { ...dashboardOf(inst.dashboard), ...(Object.hasOwn(inst, "office_access") ? { office: inst.office_access } : {}) };
+  const own = { ...dashboardOf(inst.dashboard) };
+  for (const [feature, key] of Object.entries(SEPARATE_FEATURE_KEYS)) if (Object.hasOwn(inst, key)) own[feature] = inst[key];
   return Object.fromEntries(DASHBOARD_FEATURES.map((f) => [f, own[f] === true ? "on" : own[f] === false ? "off" : "inherit"]));
 }
 export function dashboardPatchValue(choices) {
-  return Object.fromEntries(DASHBOARD_FEATURES.filter((f) => f !== "office").map((f) => [f, choices[f] === "on" ? true : choices[f] === "off" ? false : null]));
+  return Object.fromEntries(DASHBOARD_FEATURES.filter((f) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, f)).map((f) => [f, choices[f] === "on" ? true : choices[f] === "off" ? false : null]));
 }
+/** A separately kept feature's own key in a patch (office_access, office_pack_access): true, false or null (inherit). */
+export const separateChoice = (choice) => (choice === "on" ? true : choice === "off" ? false : null);
 
 /** #1302: cross-instance notices. Unset, or a value the fleet does not know, means full. */
 export const visibilityDefault = (defaults) => (VISIBILITY_MODES.includes(defaults && defaults.cross_instance_visibility) ? defaults.cross_instance_visibility : "full");
@@ -181,7 +187,8 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     display_name: form.inherit.display_name ? null : form.display_name.trim(),
     status_emojis: form.status_emojis,
     dashboard: dashboardPatchValue(form.dashboard),
-    office_access: form.dashboard.office === "on" ? true : form.dashboard.office === "off" ? false : null,
+    office_access: separateChoice(form.dashboard.office),
+    office_pack_access: separateChoice(form.dashboard.office_packs),
   };
   return changedFields(next, {
     backend: inst.backend || defaults.backend || "claude-code",
@@ -205,7 +212,8 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     display_name: hasOwn(inst, "display_name") ? inst.display_name : null,
     status_emojis: statusEmojisBaseline,
     dashboard: dashboardPatchValue(dashboardForm(inst)),
-    office_access: dashboardForm(inst).office === "on" ? true : dashboardForm(inst).office === "off" ? false : null,
+    office_access: separateChoice(dashboardForm(inst).office),
+    office_pack_access: separateChoice(dashboardForm(inst).office_packs),
   });
 }
 

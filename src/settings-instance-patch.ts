@@ -1,6 +1,6 @@
 import { officeInputPatch } from "./dashboard-permissions.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
-export const NULLABLE_INSTANCE_OVERRIDES = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name", "status_emojis", "cross_instance_visibility", "dashboard", "office_access"]);
+export const NULLABLE_INSTANCE_OVERRIDES = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name", "status_emojis", "cross_instance_visibility", "dashboard", "office_access", "office_pack_access"]);
 export function removesInstanceOverride(key: string, value: unknown): boolean {
   return NULLABLE_INSTANCE_OVERRIDES.has(key) && (value === null || key === "model" && typeof value === "string" && value.trim() === "");
 }

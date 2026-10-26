@@ -47,8 +47,8 @@ describe("the features and their tools", () => {
   });
 
   it("only false switches a feature off (office: anything but true, #2578); the refusal names it and says not to retry", () => {
-    expect(dashboardFeaturesOff(undefined)).toEqual(["office"]);
-    expect(dashboardFeaturesOff({ appearance: true, task_board: false, web_settings: null, office: true })).toEqual(["task_board"]);
+    expect(dashboardFeaturesOff(undefined)).toEqual(["office", "office_packs"]);
+    expect(dashboardFeaturesOff({ appearance: true, task_board: false, web_settings: null, office: true, office_packs: true })).toEqual(["task_board"]);
     expect(dashboardRefusal({ task_board: false }, "task")).toMatch(/task is not available.*"task_board".*dashboard\.task_board: false.*Do not retry/);
     expect(dashboardRefusal({ task_board: false }, "set_web_theme")).toBeNull();
     expect(dashboardRefusal({ appearance: true }, "set_web_theme")).toBeNull();
@@ -68,7 +68,7 @@ describe("fleet.yaml: a mapping of known features to booleans; defaults and an i
   it("the validator refuses an unknown feature, a non-boolean and a non-mapping, in defaults and instances", () => {
     expect(dashboardAccessProblem({ appearance: false })).toBeNull();
     const errors = (cfg: unknown) => validateFleetConfig(cfg).errors.filter((e) => e.path.includes("dashboard")).map((e) => `${e.path}: ${e.message}`);
-    expect(errors({ defaults: { dashboard: { apperance: false } }, instances: {} })).toEqual(['defaults.dashboard: unknown feature "apperance" (known: appearance, task_board, web_settings, office)']);
+    expect(errors({ defaults: { dashboard: { apperance: false } }, instances: {} })).toEqual(['defaults.dashboard: unknown feature "apperance" (known: appearance, task_board, web_settings, office, office_packs)']);
     expect(errors({ defaults: {}, instances: { a: { dashboard: { task_board: "no" } } } })).toEqual(["instances.a.dashboard: task_board must be true or false"]);
     expect(errors({ defaults: {}, instances: { a: { dashboard: "off" } } }).join()).toMatch(/must be a mapping/);
     expect(errors({ defaults: { dashboard: { web_settings: false } }, instances: { a: { dashboard: { appearance: false } } } })).toEqual([]);
@@ -80,7 +80,7 @@ describe("fleet.yaml: a mapping of known features to booleans; defaults and an i
     writeFileSync(file, "defaults:\n  dashboard: { appearance: false, web_settings: false }\ninstances:\n  dev:\n    working_directory: " + d + "\n    dashboard: { appearance: true, task_board: false }\n  plain:\n    working_directory: " + d + "\n");
     const cfg = loadFleetConfig(file);
     expect(cfg.instances.dev!.dashboard).toEqual({ appearance: true, web_settings: false, task_board: false });
-    expect(dashboardFeaturesOff(cfg.instances.plain!.dashboard)).toEqual(["appearance", "web_settings", "office"]);
+    expect(dashboardFeaturesOff(cfg.instances.plain!.dashboard)).toEqual(["appearance", "web_settings", "office", "office_packs"]);
   });
 });
 
@@ -175,13 +175,13 @@ describe("Settings: one feature at a time; switching off applies directly, switc
   });
 
   it("the page: the agent dialog's three choices and the defaults' ticks", () => {
-    expect(dashboardForm({ dashboard: { appearance: false, task_board: true } })).toEqual({ appearance: "off", task_board: "on", web_settings: "inherit", office: "inherit" });
+    expect(dashboardForm({ dashboard: { appearance: false, task_board: true } })).toEqual({ appearance: "off", task_board: "on", web_settings: "inherit", office: "inherit", office_packs: "inherit" });
     expect(dashboardDefault({ dashboard: { web_settings: false } }, "web_settings")).toBe(false);
     expect(dashboardDefault({}, "appearance")).toBe(true);
     const inst = { working_directory: "/w", dashboard: { appearance: false } };
     const form = agentForm(inst, {});
     expect(agentPatch(form, inst, {}, null, null)).toEqual({});                                   // nothing touched, nothing sent
-    form.dashboard = { appearance: "inherit", task_board: "off", web_settings: "inherit", office: "inherit" };
+    form.dashboard = { appearance: "inherit", task_board: "off", web_settings: "inherit", office: "inherit", office_packs: "inherit" };
     expect(agentPatch(form, inst, {}, null, null)).toEqual({ dashboard: { appearance: null, task_board: false, web_settings: null } });
   });
   it("the Office picker reads and writes the compatible scalar without a dashboard.office key", () => {

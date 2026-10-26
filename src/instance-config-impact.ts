@@ -45,7 +45,7 @@ export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new S
   // #2303: the fleet reads it at each task board claim; the daemon only keeps it current.
   "board_cards_at_once",
   // The fleet reads it at each tool call; the daemon keeps it current for the next spawn's tool menu.
-  "dashboard", "office_access",
+  "dashboard", "office_access", "office_pack_access",
 ]);
 
 /**
@@ -86,7 +86,7 @@ const INSTANCE_FIELDS = [
   // #2303: read by the fleet at each task board claim.
   "board_cards_at_once",
   // Read by the fleet at each tool call (dashboard-permissions.ts).
-  "dashboard", "office_access",
+  "dashboard", "office_access", "office_pack_access",
 ] as const;
 
 /** ClassicBot channel fields the settings page renders. */

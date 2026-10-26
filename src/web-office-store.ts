@@ -25,6 +25,13 @@
  * members and the rest of its layout, and only the night places are left out (an older host's save drops them). Read
  * back here, an office's night places are put on its overrides and checked with them; ones that no longer check (a
  * pack that dropped the item: on a write) are left out, the office kept.
+ *
+ * #2691: a seat's reservation (`overrides.seatFor`) is kept the same way, for the same reason (a host with #2665 but
+ * not #2691 refuses it inside the overrides as well) —
+ *
+ *   { version: 1, rev, offices: [ … ], furnitureNight: { … }, seatFor: { "<office id>": { "<area>": { "<slot>": { for, lend } } } } }
+ *
+ * — each read back on its own: reservations that no longer check leave the night places (and the office) in.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -147,22 +154,29 @@ export function checkOffices(raw: unknown, packOf?: OverridePack): OfficeCheck {
 }
 
 type State = { rev: number; offices: Office[] } | "unreadable";
-type NightPlaces = NonNullable<LayoutOverrides["furnitureNight"]>;
-/** #2665: what goes on disk — the offices without their night places, and those beside them by office id (none: no key). */
-function onDisk(offices: Office[]): { offices: Office[]; furnitureNight?: Record<string, NightPlaces> } {
-  const night: Record<string, NightPlaces> = {};
-  const plain = offices.map(o => {
-    if (!o.overrides?.furnitureNight) return o;
-    const { furnitureNight, ...rest } = o.overrides;
-    night[o.id] = furnitureNight;
+/** The overrides kept beside the offices on disk, never inside them (#2665 night places, #2691 seat reservations). */
+const BESIDE = ["furnitureNight", "seatFor"] as const;
+type Beside = (typeof BESIDE)[number];
+type OnDisk = { offices: Office[] } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
+/** #2665: what goes on disk — the offices without those overrides, and each beside them by office id (none: no key). */
+function onDisk(offices: Office[]): OnDisk {
+  const out: OnDisk = { offices: [] };
+  out.offices = offices.map(o => {
+    if (!o.overrides || !BESIDE.some(k => o.overrides![k] !== undefined)) return o;
+    const rest: LayoutOverrides = { ...o.overrides };
+    for (const k of BESIDE) {
+      if (rest[k] === undefined) continue;
+      ((out[k] ??= {}) as Record<string, unknown>)[o.id] = rest[k];
+      delete rest[k];
+    }
     return { ...o, overrides: rest };
   });
-  return Object.keys(night).length ? { offices: plain, furnitureNight: night } : { offices: plain };
+  return out;
 }
-/** #2665: a stored office with its night places (kept beside it on disk) back on its overrides. */
-function withNight(raw: unknown, night: unknown): unknown {
-  if (!isObj(raw) || !isObj(night) || typeof raw.id !== "string" || !Object.prototype.hasOwnProperty.call(night, raw.id) || !isObj(raw.overrides)) return raw;
-  return { ...raw, overrides: { ...raw.overrides, furnitureNight: night[raw.id] } };
+/** #2665: a stored office with its `key` overrides (kept beside it on disk, in `side`) back on its overrides. */
+function withBeside(raw: unknown, key: Beside, side: unknown): unknown {
+  if (!isObj(raw) || !isObj(side) || typeof raw.id !== "string" || !Object.prototype.hasOwnProperty.call(side, raw.id) || !isObj(raw.overrides)) return raw;
+  return { ...raw, overrides: { ...raw.overrides, [key]: side[raw.id] } };
 }
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -178,14 +192,21 @@ export class OfficeStore {
     try { body = readFileSync(this.path, "utf8"); }
     catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, offices: [] } : "unreadable"); }
     try {
-      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; furnitureNight?: unknown };
+      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown } & { [K in Beside]?: unknown };
       if (doc.version !== 1 || !Number.isSafeInteger(doc.rev) || !Array.isArray(doc.offices)) return (this.state = "unreadable");
       const offices: Office[] = [], ids = new Set<string>();
       const read = (raw: unknown): Office | null => {
         try { return office(raw, "office"); } catch (err) { if (!(err instanceof Refused)) throw err; return null; }
       };
       for (const raw of doc.offices.slice(0, OFFICE_LIMITS.offices)) {
-        const o = read(withNight(raw, doc.furnitureNight)) ?? read(raw);                // night places that do not check: left out
+        // Each kept beside put back in turn: one that does not check is left out, the office and the rest kept.
+        let cur = raw, o = read(raw);
+        for (const k of BESIDE) {
+          const next = o ? withBeside(cur, k, doc[k]) : cur;
+          if (next === cur) continue;
+          const r = read(next);
+          if (r) { cur = next; o = r; }
+        }
         if (o && !ids.has(o.id)) { ids.add(o.id); offices.push(o); }
       }
       return (this.state = { rev: doc.rev as number, offices });
@@ -201,13 +222,14 @@ export class OfficeStore {
   }
   /**
    * Replace every stored office (PUT /ui/offices). `expectedRev`: the rev the page last read — another change since is a
-   * 409, so two editors never overwrite each other unseen. On disk first, then in memory.
+   * 409, so two editors never overwrite each other unseen. On disk first, then in memory. `packOf` (#2692): the packs to
+   * check the overrides against in place of the kept ones (a pack about to replace one; or none, to put back as it was).
    */
-  replace(raw: unknown, expectedRev?: number): OfficeWrite {
+  replace(raw: unknown, expectedRev?: number, opts: { packOf?: OverridePack } = {}): OfficeWrite {
     const s = this.load();
     if (s === "unreadable") return { ok: false, status: 503, error: "offices_unreadable" };
     if (expectedRev !== undefined && expectedRev !== s.rev) return { ok: false, status: 409, error: "offices_changed", detail: `now at rev ${s.rev}` };
-    const checked = checkOffices(raw, this.packOf);
+    const checked = checkOffices(raw, opts.packOf ?? this.packOf);
     if (!checked.ok) return checked;
     const rev = s.rev + 1;
     try { atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, ...onDisk(checked.offices) }, null, 2) + "\n", { mode: 0o600 }); }

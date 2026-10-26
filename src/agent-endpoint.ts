@@ -422,6 +422,11 @@ export async function dispatchAgentOperation(
   // #2578: agend-agent office view|set — the token's instance's own character.
   if (op === "office-view") return ctx.handleWebThemeHttp(instance, "office_view", args);
   if (op === "office-set") return ctx.handleWebThemeHttp(instance, "office_set", args);
+  // #2692: agend-agent office packs|pack-check|pack-upload|pack-delete|pack-restore|style — the skin packs; check and
+  // upload carry parts of bytes the CLI read (never a path).
+  const packOps: Readonly<Record<string, string>> = { "office-packs": "office_pack_list", "office-pack-check": "office_pack_check", "office-pack-upload": "office_pack_upload",
+    "office-pack-delete": "office_pack_delete", "office-pack-restore": "office_pack_restore", "office-style": "office_set_style" };
+  if (Object.hasOwn(packOps, op)) return ctx.handleWebThemeHttp(instance, packOps[op]!, args);
   if (op === "emoji-preview") {
     return ctx.handlePreviewEmojisHttp(instance, args);
   }

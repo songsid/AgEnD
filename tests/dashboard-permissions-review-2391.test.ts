@@ -94,7 +94,7 @@ describe("#2391 review: null on an agent follows the default, live, saved and af
     writeFileSync(path, `defaults:\n  dashboard:\n    task_board: false\ninstances:\n  dev:\n    working_directory: ${JSON.stringify(dir)}\n    dashboard:\n      task_board: null\n`);
     const loaded = loadFleetConfig(path);
     expect([loaded.instances.dev.dashboard?.task_board, dashboardFeaturesOffIn(loaded, "dev"), dashboardFeaturesOffIn(yaml.load(readFileSync(path, "utf8")), "dev")])
-      .toEqual([false, ["task_board", "office"], ["task_board", "office"]]);   // office: off unless set true (#2578)
+      .toEqual([false, ["task_board", "office", "office_packs"], ["task_board", "office", "office_packs"]]);   // office, office_packs: off unless set true (#2578, #2692)
   });
 });
 
@@ -116,6 +116,6 @@ describe("#2391 review: a ClassicBot identity is held to the defaults at both si
   }, 30_000);
   it("a name that is no own key (constructor, __proto__) reads the defaults, never an inherited object", () => {
     const fleet = { defaults: { dashboard: { task_board: false } }, instances: {} };
-    expect([dashboardFeaturesOffIn(fleet, "constructor"), dashboardFeaturesOffIn(fleet, "__proto__")]).toEqual([["task_board", "office"], ["task_board", "office"]]);
+    expect([dashboardFeaturesOffIn(fleet, "constructor"), dashboardFeaturesOffIn(fleet, "__proto__")]).toEqual([["task_board", "office", "office_packs"], ["task_board", "office", "office_packs"]]);
   });
 });

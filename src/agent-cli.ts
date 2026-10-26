@@ -94,6 +94,7 @@ async function main(): Promise<void> {
   // r4-4: `widget set|data <slot> …` and `widget remove [slot]` (data is set_web_widget with values only).
   // #2117: `ambient set '<json spec>'` and `ambient clear [loop|click]`.
   // #2578: `office view [office]` and `office set '<json>'` (office_set's arguments).
+  // #2692: `office packs|pack-check|pack-upload|pack-delete|pack-restore|style …` (the skin packs).
   const op = first === "theme" ? `theme-${given[0] ?? ""}` : first === "appearance" ? (given[0] === "preview" ? "appearance-preview" : given.length ? `appearance-${given[0]}` : "appearance-get")
     : first === "effect" ? `effect-${given[0] ?? ""}` : first === "widget" ? (given[0] === "data" ? "widget-set" : `widget-${given[0] ?? ""}`)
     : first === "mod" ? `mod-${given[0] ?? ""}` : first === "ambient" ? `ambient-${given[0] ?? ""}` : first === "office" ? `office-${given[0] ?? "view"}` : first;
@@ -307,6 +308,39 @@ async function main(): Promise<void> {
       args = v as Record<string, unknown>;
       break;
     }
+    // #2692: the skin packs. `office packs`, `office pack-check|pack-upload <dir> [<dir>…] [--drop-invalid-overrides]`
+    // (read here, in this working directory or the fleet's shared folder; the bytes go up in parts),
+    // `office pack-delete <id> [--keep-previous]`, `office pack-restore <id> [--drop-invalid-overrides]`, `office style <office> <pack>`.
+    case "office-packs":
+      if (rest.length) die("Usage: agend-agent office packs");
+      break;
+    case "office-pack-check": case "office-pack-upload": {
+      const drop = rest.includes("--drop-invalid-overrides"), dirs = rest.filter(a => a !== "--drop-invalid-overrides");
+      if (!dirs.length || dirs.some(d => d.startsWith("--"))) die(`Usage: agend-agent office ${op.slice(7)} <pack folder> [more folders…] [--drop-invalid-overrides]`);
+      const { sendPackSources } = await import("./web-office-pack-read.js");
+      try {
+        const answer = await sendPackSources({ ...(dirs.length === 1 ? { dir: dirs[0] } : { packs: dirs.map(dir => ({ dir })) }), ...(drop ? { drop_invalid_overrides: true } : {}) },
+          { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE }, async payload => {
+            const text = await post(op, payload);
+            try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error: "answer", message: text.slice(0, 200) }; }
+          });
+        console.log(JSON.stringify(answer));
+        if (typeof answer.error === "string") process.exit(1);
+      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
+      return;
+    }
+    case "office-pack-delete":
+      if (!rest[0] || rest.slice(1).some(a => a !== "--keep-previous")) die("Usage: agend-agent office pack-delete <id> [--keep-previous]");
+      args = { id: rest[0], ...(rest.includes("--keep-previous") ? { keep_previous: true } : {}) };
+      break;
+    case "office-pack-restore":
+      if (!rest[0] || rest.slice(1).some(a => a !== "--drop-invalid-overrides")) die("Usage: agend-agent office pack-restore <id> [--drop-invalid-overrides]");
+      args = { id: rest[0], ...(rest.includes("--drop-invalid-overrides") ? { drop_invalid_overrides: true } : {}) };
+      break;
+    case "office-style":
+      if (rest.length !== 2) die("Usage: agend-agent office style <office id> <pack id or built-in style>");
+      args = { office: rest[0], pack: rest[1] };
+      break;
     case "ambient-clear":
       args = rest[0] ? { which: rest[0] } : {};
       break;

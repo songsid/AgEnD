@@ -27,7 +27,7 @@ import "./settings-strings.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
-  ACCESS_MODES, AGENT_MODES, DASHBOARD_FEATURES, DEFAULT_SCHEMA, ownChoiceImpact, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
+  ACCESS_MODES, AGENT_MODES, DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, DEFAULT_SCHEMA, ownChoiceImpact, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
   changedFields, channelId, channelsOf, chLabel, connectionState, dashboardDefault, effectiveSummary, fleetModel, fromYaml, fullModelRequests, groupAgents,
   hasOwn, impactOf, localeOptions, defaultsImpact, requestImpact, nonNegative, positive, replyGuardSupported, sameValue, shortName, STATUS_ORDER, toYaml,
   toolSetDefault, visibilityDefault, worstImpact,
@@ -1024,16 +1024,16 @@ function General({ ctx, part = "all" }) {
       tips: noticeMode(f.tips), reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
       // The dashboard features every agent may use unless its own setting says otherwise. All of them go, because the write
       // to the fleet's defaults merges top-level keys only (`dashboard` is replaced whole): the untouched ones as saved.
-      dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => k !== "office").map((k) => [k, f[`dash_${k}`]])),
-      office_access: f.dash_office,
+      dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, f[`dash_${k}`]])),
+      ...Object.fromEntries(Object.entries(SEPARATE_FEATURE_KEYS).map(([k, key]) => [key, f[`dash_${k}`]])),
       hang_detector: { enabled: f.hangOn, timeout_minutes: num(f.hang) },
       startup: { ...(f.concurrency.trim() === "" ? {} : { concurrency: num(f.concurrency) }), stagger_delay_ms: num(f.stagger) },
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
       tips: d.tips ?? true, cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
-      dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => k !== "office").map((k) => [k, dashboardDefault(d, k)])),
-      office_access: dashboardDefault(d, "office"),
+      dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, dashboardDefault(d, k)])),
+      ...Object.fromEntries(Object.entries(SEPARATE_FEATURE_KEYS).map(([k, key]) => [key, dashboardDefault(d, k)])),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
       startup: { ...(startup.concurrency == null ? {} : { concurrency: startup.concurrency }), stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
     });

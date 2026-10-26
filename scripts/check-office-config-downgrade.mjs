@@ -20,11 +20,12 @@ for (const root of roots) {
   const dir = mkdtempSync(join(tmpdir(), 'agend-office-downgrade-'));
   try {
     for (const on of [true, false]) {
-      const config = { defaults: { dashboard: { office: on, task_board: false } }, instances: { agent: { working_directory: dir, dashboard: { office: !on } } } };
+      const config = { defaults: { dashboard: { office: on, office_packs: on, task_board: false } }, instances: { agent: { working_directory: dir, dashboard: { office: !on, office_packs: !on } } } };   // #2692: office_packs too
       normalizeOfficeStorage(config);
       assert.equal(config.defaults.dashboard.office, undefined);
       assert.equal(config.instances.agent.dashboard.office, undefined);
       assert.equal(config.defaults.office_access, on); assert.equal(config.instances.agent.office_access, !on);
+      assert.equal(config.defaults.dashboard.office_packs, undefined); assert.equal(config.defaults.office_pack_access, on); assert.equal(config.instances.agent.office_pack_access, !on);
       assert.equal(validateFleetConfig(config).valid, true, JSON.stringify(validateFleetConfig(config).errors));
       const file = join(dir, 'fleet.yaml'); writeFileSync(file, yaml.dump(config));
       const old = loadFleetConfig(file);
@@ -32,6 +33,8 @@ for (const root of roots) {
       writeFileSync(file, yaml.dump(old));
       const returned = yaml.load(readFileSync(file, 'utf8'));
       assert.equal(returned.defaults.office_access, on); assert.equal(returned.instances.agent.office_access, !on);
+      assert.equal(returned.defaults.office_pack_access, on); assert.equal(returned.instances.agent.office_pack_access, !on);
+      assert.equal(dashboardFeaturesOffIn(returned, 'agent').includes('office_packs'), on);
       assert.equal(dashboardFeaturesOffIn(returned, 'agent').includes('office'), on);
       assert.equal(dashboardFeaturesOffIn(returned, 'classic-room').includes('office'), !on);
       console.log(`PASS ${version}: Office default=${on}, instance=${!on}; validator accepts, old load/rewrite preserves, current gates restore`);

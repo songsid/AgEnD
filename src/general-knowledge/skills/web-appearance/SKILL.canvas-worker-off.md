@@ -288,6 +288,31 @@ are not in your list), you can direct your own character for a moment:
 { "go": { "person": "atlas" }, "say": "Review's ready", "seconds": 20 }
 ```
 
+## Office skin packs (everyone's)
+
+The Office view draws offices in **skin packs**, which every viewer on the fleet sees. When a person switches the
+**office_packs** dashboard feature on for you (`office_pack_access: true`, its own switch — off until then, and the
+tools are not in your list), you can publish them yourself instead of asking a person to upload each fix by hand:
+
+- `office_pack_list {}` first: each pack's `id`, `name`, `files`, `bytes`, `version`, `previous` (a kept previous
+  version you can restore, or null) and the `offices` drawn in it; the stored offices and their style; the fleet's
+  `approval` (`"apply"`: at once; `"approve"`: a fleet admin's yes first — the default); your `pending` changes; the
+  `limits` and what is `left` of your hour.
+- `office_pack_check { dir }` runs the host's own checks and stores nothing: `{ result: "PACK OK", packs: [...] }` or the
+  first refusal. `dir` is a folder with its `manifest.json` and the PNGs at the paths the manifest names, in your working
+  directory or the fleet's shared folder (`~/.agend/shared`); a symlink is followed and must stay inside. Only those
+  files are read. Or `manifest` (the object) + `files` (`{ "<name it uses>": "<path>" }`); `packs: [...]` for several.
+- `office_pack_upload` (the same inputs) keeps it — an id the fleet keeps is **replaced** at once (no delete first; on
+  any failure the old one stays) and its previous version is kept. If a stored office's layout overrides would no
+  longer fit (a seat count changed, a seat left its area, an item is gone), check and upload refuse with the office
+  and the rule: fix the pack, or send `drop_invalid_overrides: true` to drop exactly those entries (the result names
+  them). With `"approve"` the answer is `{ pending }`: it waits for an admin's yes — say so; do not upload it again.
+- `office_pack_restore { id }` brings back the previous version (the replaced one becomes the previous);
+  `office_pack_delete { id, keep_previous? }`; `office_set_style { office, pack }` points a stored office at a pack or a
+  built-in style (pixel, studio, cozy).
+- Every change is logged with each picture's sha256 and told to the fleet's admins. At most **20 batches and 200 MiB an
+  hour**: one call is one batch (up to 16 packs), so send a whole set of fixes in one `packs: [...]`.
+
 ## Limits
 
 - At least **30 s** between changes, at most **10 changes an hour** — refused with `rate_limited` and

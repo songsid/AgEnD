@@ -7,7 +7,7 @@ import { quickLinkEffective } from "./authority/web-authority.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
-import { DASHBOARD_FEATURES, dashboardFeatureDefault, officeAccessValue } from "./dashboard-permissions.js";
+import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, featureConfigKey, separateAccessValue, type DashboardFeature } from "./dashboard-permissions.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -261,9 +261,11 @@ function visibilityWidening(before: unknown, after: unknown): string[] {
   return out;
 }
 const DASHBOARD = "dashboard";
+/** #2601/#2692: the features kept beside `dashboard` under their own key (office_access, office_pack_access). */
+const SEPARATE_KEYS: readonly string[] = Object.values(SEPARATE_FEATURE_KEYS);
 /** The defaults' or an agent's dashboard switches, whole or one feature: judged by dashboardWidening, not key by key. */
 const dashboardPath = (path: readonly string[]): boolean =>
-  (path.at(-1) === "office_access" && (path.at(-2) === "defaults" || path.at(-3) === "instances")) ||
+  (SEPARATE_KEYS.includes(path.at(-1) ?? "") && (path.at(-2) === "defaults" || path.at(-3) === "instances")) ||
   (path.at(-1) === DASHBOARD && (path.at(-2) === "defaults" || path.at(-3) === "instances"))
   || (path.at(-2) === DASHBOARD && (path.at(-3) === "defaults" || path.at(-4) === "instances"));
 /**
@@ -281,14 +283,15 @@ function dashboardWidening(before: unknown, after: unknown): string[] {
     for (const k of Object.keys(switches(f?.defaults?.[DASHBOARD]))) features.add(k);
     for (const inst of Object.values(object(f?.instances) ? f!.instances : {})) for (const k of Object.keys(switches(object(inst) ? inst[DASHBOARD] : undefined))) features.add(k);
   }
-  const fallback = (f: Record<string, any> | null, feature: string): unknown => feature === "office" ? officeAccessValue(f?.defaults) : switches(f?.defaults?.[DASHBOARD])[feature];
-  const own = (f: Record<string, any> | null, name: string, feature: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? (feature === "office" ? officeAccessValue(f!.instances[name]) : switches(f!.instances[name][DASHBOARD])[feature]) : undefined);
+  const separate = (feature: string): feature is DashboardFeature => Object.hasOwn(SEPARATE_FEATURE_KEYS, feature);
+  const fallback = (f: Record<string, any> | null, feature: string): unknown => separate(feature) ? separateAccessValue(f?.defaults, feature) : switches(f?.defaults?.[DASHBOARD])[feature];
+  const own = (f: Record<string, any> | null, name: string, feature: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? (separate(feature) ? separateAccessValue(f!.instances[name], feature) : switches(f!.instances[name][DASHBOARD])[feature]) : undefined);
   const on = (v: unknown, inherited: boolean): boolean => (typeof v === "boolean" ? v : inherited);
   const line = (label: string, from: unknown, to: unknown) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
   // A value the validator would refuse (not a boolean, or no such feature) is never applied quietly.
   const odd = (v: unknown, feature: string) => v !== undefined && v !== null && (typeof v !== "boolean" || !(DASHBOARD_FEATURES as readonly string[]).includes(feature));
   for (const feature of features) {
-    const key = feature === "office" ? "office_access" : `${DASHBOARD}.${feature}`;
+    const key = featureConfigKey(feature);
     const defA = fallback(a, feature), defB = fallback(b, feature), unset = dashboardFeatureDefault(feature);
     const inheritors: string[] = [];
     for (const name of Object.keys(object(a.instances) ? a.instances : {})) {

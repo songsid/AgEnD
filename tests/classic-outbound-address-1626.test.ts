@@ -36,7 +36,7 @@ function harness(type: "discord" | "telegram" = "discord", classic = true) {
   fm.fleetConfig = {
     defaults: {},
     web: { experimental: { canvas_worker: true } },
-    instances: { classic: { working_directory: root, tool_set: "full", topic_id: "fleet-topic", dashboard: { office: true } } },   // office: off unless set (#2578)
+    instances: { classic: { working_directory: root, tool_set: "full", topic_id: "fleet-topic", dashboard: { office: true }, office_pack_access: true } },   // office, office packs: off unless set (#2578, #2692)
   } as never;
   if (classic) {
     const channels = new ClassicChannelManager(root, fm.logger);
@@ -85,6 +85,8 @@ const samples: Record<string, Record<string, unknown>> = {
   set_web_widget: { slot: "details", data: { prs: 1 } }, remove_web_widget: { slot: "details" },
   set_web_ambient: { preset: "fall", glyphs: ["🌸"] }, clear_web_ambient: { which: "loop" },
   office_view: {}, office_set: { go: { seat: "desks:0" }, say: "hi" },
+  office_pack_check: { dir: "./pack" }, office_pack_upload: { dir: "./pack", drop_invalid_overrides: true }, office_pack_delete: { id: "snug" },
+  office_pack_restore: { id: "snug" }, office_pack_list: {}, office_set_style: { office: "ops", pack: "snug" },
   export_web_mod: { name: "look", version: "1.0.0" }, propose_web_mod: { file: "look.agendmod.json" },
   upload_web_effect: { dir: "./effect" }, list_web_effects: {},
   preview_web_effect: { id: "a".repeat(32) }, profile_web_effect: { id: "a".repeat(32) },

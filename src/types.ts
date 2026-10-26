@@ -200,6 +200,11 @@ export interface InstanceConfig {
   /** Office tools: off unless true; inherits defaults.office_access. Stored outside the legacy closed dashboard map. */
   office_access?: boolean;
   /**
+   * #2692: the Office view's skin-pack tools (office_pack_check/upload/delete/restore/list, office_set_style): off unless
+   * true; inherits defaults.office_pack_access. Stored outside the legacy closed dashboard map, as office_access.
+   */
+  office_pack_access?: boolean;
+  /**
    * Detect a human-channel turn that ended without a delivered reply and ask
    * the agent to send one bounded recovery reply. Only capable backends use
    * this switch; evidence tracking remains active for reply/tool correctness.

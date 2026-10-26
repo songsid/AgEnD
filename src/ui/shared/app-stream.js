@@ -37,7 +37,7 @@
 // offices — the stored offices changed ({ rev }; SSE only: the Office view reads /ui/offices again).
 // office_skins — a skin pack was uploaded or deleted ({ rev }; SSE only: the Office view reads /ui/office-skins again).
 // office_acts — the agents' live acts in the Office view changed ({ acts }, #2578; a poll page reads /ui/office-acts).
-const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "reactions", "steps_tick", "clock", "traffic", "delegation", "backend_login", "tasks", "offices", "office_skins", "office_acts"];
+const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "reactions", "steps_tick", "clock", "traffic", "delegation", "backend_login", "tasks", "offices", "office_skins", "office_acts", "office_pack_changes"];
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed

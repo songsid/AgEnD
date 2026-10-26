@@ -225,6 +225,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     const overrides = written && typeof written === "object" && written.dashboard !== undefined
       ? { ...written, dashboard: dashboardSwitches(written.dashboard) } : written;
     if (overrides?.office_access === null) delete overrides.office_access;
+    if (overrides?.office_pack_access === null) delete overrides.office_pack_access;
     const merged = deepMergeGeneric(
       getEffectiveInstanceDefaults(fleetDefaults),
       overrides,

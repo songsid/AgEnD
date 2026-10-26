@@ -1855,6 +1855,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ol-night > circle { fill: var(--surface); fill-opacity: 0.85; }
 .ol-night > .ol-moon { fill: var(--warn); stroke: none; pointer-events: none; }
 .ol-night-line { stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-opacity: 0.8; pointer-events: none; }
+/* #2691: a reserved seat — a dashed ring round its dot; the selected seat's "Reserved for" picks. */
+.ol-seat > .ol-for-ring { fill: none; stroke: var(--warn); stroke-width: 2; stroke-dasharray: 3 3; pointer-events: none; }
+.ol-for { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s-2); }
+.ol-for > legend { float: left; margin-right: var(--s-2); }
 .ol-waypoint > circle { fill: var(--focus); }
 .ol-handle.on > circle, .ol-handle.on > rect, .ol-handle:focus-visible > circle, .ol-handle:focus-visible > rect { stroke: var(--focus); stroke-width: 4; }
 .ol-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2);

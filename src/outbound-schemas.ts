@@ -309,6 +309,37 @@ export const OfficeSetArgs = z.object({
   clear: z.boolean().optional().describe("true: end your current act now (alone, with nothing else)"),
 }).strict();
 
+
+// #2692: the Office view's skin packs (everyone's), behind the `office_packs` switch. A pack is a folder (`dir`: its
+// manifest.json and the pictures it names) or a manifest with each picture's path (`manifest` + `files`); the agent's
+// side reads them (web-office-pack-read.ts) and the fleet gets bytes, never a path. Several go as one batch (`packs`).
+const PackPathArg = z.string().min(1).max(1024);
+const PackSourceArgs = z.object({
+  dir: PackPathArg.optional().describe("A folder in your working directory or the fleet's shared folder (<AgEnD home>/shared): its manifest.json and the PNGs the manifest names, at those paths"),
+  manifest: z.record(z.string(), z.unknown()).optional().describe("The manifest itself (format 1), with files: each picture's path"),
+  files: z.record(z.string().min(1).max(200), PackPathArg).optional().describe("With manifest: { \"<name the manifest uses>\": \"<path to that PNG>\" } — every picture it names, nothing else"),
+  name: z.string().min(1).max(60).optional().describe("The pack's name in the style picker (default: its id)"),
+}).strict();
+const PackBatchArgs = PackSourceArgs.extend({
+  packs: z.array(PackSourceArgs).min(1).max(16).optional().describe("Several packs as one batch (instead of dir or manifest at the top): checked together, counted once"),
+  drop_invalid_overrides: z.boolean().optional().describe("true: where a stored office's layout overrides no longer fit the new pack, drop exactly those entries (the result names them) instead of refusing"),
+}).strict();
+export const OfficePackCheckArgs = PackBatchArgs;
+export const OfficePackUploadArgs = PackBatchArgs;
+export const OfficePackDeleteArgs = z.object({
+  id: z.string().min(1).max(40).describe("The pack's id"),
+  keep_previous: z.boolean().optional().describe("true: keep its previous version, so office_pack_restore can bring it back (default: dropped with it)"),
+}).strict();
+export const OfficePackRestoreArgs = z.object({
+  id: z.string().min(1).max(40).describe("The pack's id: its kept previous version comes back (the replaced one becomes the previous)"),
+  drop_invalid_overrides: z.boolean().optional().describe("true: where a stored office's layout overrides do not fit the restored version, drop exactly those entries instead of refusing"),
+}).strict();
+export const OfficePackListArgs = z.object({}).strict();
+export const OfficeSetStyleArgs = z.object({
+  office: z.string().min(1).max(40).describe("A stored office's id"),
+  pack: z.string().min(1).max(40).describe("A pack the fleet keeps, or a built-in style (pixel, studio, cozy)"),
+}).strict();
+
 // #1629 CW1 effects: own caller only. Internal upload bytes are never public MCP args.
 export const UploadWebEffectArgs = z.object({
   dir: z.string().min(1).max(4096).describe("A CW1 directory in your working directory: effect.json, worker.js, optional poster/cursor and at most sixteen raster assets. No HTML or CSS; normalized size <=1 MiB."),
