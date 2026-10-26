@@ -30,9 +30,9 @@ async function proof(status = 'ok', complete = true, page = true) {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   const state = { env: { AGEND_HOME: '/private-fixture' }, exitCode: 0 };
-  const root = await fetch(`http://127.0.0.1:${port}/`); await root.text();
-  requests.length = 0;
   try {
+    const root = await fetch(`http://127.0.0.1:${port}/`); await root.text();
+    requests.length = 0;
     await runInNewContext(program, {
       require: (name: string) => {
         if (name === 'path') return path;
