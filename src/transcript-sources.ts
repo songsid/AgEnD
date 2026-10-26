@@ -830,7 +830,7 @@ async function forEachLimited(count: number, limit: number, task: (index: number
 }
 
 /** One TUI session's metadata, as the scan keeps it. `ours`: its cwd is this instance's. */
-interface KiroSessionMeta { ours: boolean; id: string; updated: number; created: number }
+interface KiroSessionMeta { ours: boolean; id: string; updated: number; created: number; subagent: boolean; exportedFromV1: boolean }
 
 export class KiroSessionSource implements TranscriptSource {
   private currentFile: string | null = null;
@@ -967,7 +967,8 @@ export class KiroSessionSource implements TranscriptSource {
           cached = {
             mtimeMs: st.mtimeMs,
             size: st.size,
-            meta: meta?.session_created_reason === "subagent" ? null : {
+            meta: {
+              subagent: meta.session_created_reason === "subagent", exportedFromV1: meta.exported_from_v1 === true,
               ours: meta.cwd === this.workingDirectory,
               id: typeof meta.session_id === "string" ? meta.session_id : names[i]!.slice(0, -".json".length),
               updated: Date.parse(meta.updated_at ?? "") || 0,
@@ -986,7 +987,10 @@ export class KiroSessionSource implements TranscriptSource {
     names.forEach((e, i) => {
       const meta = verdicts[i];
       // A resumed launch follows its own conversation, wherever its newest sibling is.
-      const eligible = meta && (pinned ? meta.id === pinned : meta.ours);
+      // A real classic→TUI carry is labelled "subagent" by kiro 2.34.0. Only the owned, pinned export may bypass
+      // the ordinary child-session exclusion; discovery must never adopt one just because its cwd is the same.
+      const eligible = meta && (!meta.subagent || (meta.exportedFromV1 && pinned === meta.id))
+        && (pinned ? meta.id === pinned : meta.ours);
       if (meta && eligible && (!best || meta.updated > best.updated)) {
         best = { jsonlPath: join(this.sessionsDir, e.replace(/\.json$/, ".jsonl")), updated: meta.updated, createdAtMs: meta.created };
       }
@@ -1080,6 +1084,17 @@ function collectKiroEvents(node: unknown, out: TranscriptEvents, depth = 0): voi
   if (obj.kind === "toolUse" && obj.data && typeof obj.data === "object") {
     const d = obj.data as Record<string, unknown>;
     out.toolUses.push({ name: String(d.name ?? "unknown"), input: d.input });
+    return;
+  }
+  if (obj.kind === "ToolResults" && obj.data && typeof obj.data === "object") {
+    // 2.34.0 TUI emits one outer result map, not nested kind:toolResult blocks. Returned content is data,
+    // never another tool call: stop walking here even when an output happens to resemble a transcript record.
+    const results = (obj.data as Record<string, unknown>).results;
+    if (results && typeof results === "object" && !Array.isArray(results)) {
+      for (const result of Object.values(results)) {
+        if (result && typeof result === "object" && Object.hasOwn(result, "result")) out.toolResults.push({ name: "toolResult" });
+      }
+    }
     return;
   }
   if (obj.kind === "toolResult" && obj.data && typeof obj.data === "object") {

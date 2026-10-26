@@ -1,0 +1,8 @@
+ ◇ 1 message queued · ctrl+x expand
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+agend-audit-2598 · claude-sonnet-4.6 · high · ◑ 35%
+/scratch/agend-wiki
+
+›  Kiro is working · 1m 38s · Type to queue · Ctrl+S to steer

@@ -18,9 +18,27 @@ type JsonSchemaObject = {
   [k: string]: unknown;
 };
 
+const ANNOTATIONS = new Set(["description", "title", "default", "examples"]);
+
+/**
+ * zod 4.6 emits `.nullable()` as `type: [T, "null"]`; #2155 keeps tool schemas free of type lists, so each one goes
+ * back to the `anyOf` zod 4.3 emitted, its non-annotation keywords on the non-null branch (#2670).
+ */
+function withoutTypeLists(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(withoutTypeLists);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node)) out[k] = k === "enum" || k === "const" || ANNOTATIONS.has(k) ? v : withoutTypeLists(v);
+  if (!Array.isArray(out.type)) return out;
+  const { type, ...rest } = out;
+  const outer: Record<string, unknown> = {}, inner: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rest)) (ANNOTATIONS.has(k) ? outer : inner)[k] = v;
+  return { ...outer, anyOf: (type as string[]).map(t => (t === "null" ? { type: t } : { type: t, ...inner })) };
+}
+
 /** Strip client-incompatible keys and server-owned channel routing metadata. */
 function toToolInputSchema(schema: ZodType): JsonSchemaObject {
-  const raw = z.toJSONSchema(schema) as Record<string, unknown>;
+  const raw = withoutTypeLists(z.toJSONSchema(schema)) as Record<string, unknown>;
   const { $schema: _s, $defs: _d, ...rest } = raw;
   if (rest.type !== "object") {
     throw new Error("Expected object-typed zod schema for MCP tool input");

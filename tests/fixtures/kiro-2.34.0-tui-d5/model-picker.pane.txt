@@ -1,0 +1,26 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+agend-audit-2598 · claude-sonnet-4.6 · high · ◑ 35%
+/scratch/agend-wiki
+
+› /model
+Select model:   type to search
+
+  auto                 1.00x credits    Models chosen by task for optimal usage and consistent quality
+❯ claude-sonnet-4.6    1.30x credits    Claude Sonnet 4.6 model with 1M context window [active]
+  claude-opus-4.5      2.20x credits    Claude Opus 4.5 model
+  claude-sonnet-4.5    1.30x credits    Claude Sonnet 4.5 model
+  claude-haiku-4.5     0.40x credits    The latest Claude Haiku model
+  deepseek-3.2         0.25x credits    Experimental preview of DeepSeek V3.2
+  minimax-m2.5         0.25x credits    MiniMax M2.5 model
+  minimax-m2.1         0.15x credits    Experimental preview of MiniMax M2.1
+(+2 more)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Settings for selected model: claude-sonnet-4.6                                                    tab to switch panels
+
+  thinking  default  Shows reasoning before answering. Can improve quality, but impacts time and credits.
+  effort    high     Sets deliberation level. Higher levels help with complex tasks, but impacts time and credits.
+  fallback  none     Answers for this model when it refuses or is unavailable.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc to go back · ↑↓ to navigate · ↵ to select · tab to switch panels

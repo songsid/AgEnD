@@ -6,6 +6,7 @@
  * conversations_v2 row, and a real DeliveryOutbox queried through the same
  * `delivery_status` message_id selector agents use.
  */
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -332,6 +333,20 @@ describe("scan command layer (round-3)", () => {
     expect(result.exitCode).toBe(2);
     expect(result.newFindings).toBe(1);
     expect(result.rows[0].status).toBe("forged-envelopes");
+  });
+
+  it.each(["config", "floor"] as const)("never calls frozen classic history clean for a migrated TUI target: %s", mode => {
+    const root=tempRoot(), name="migrated", classic=join(root,"classic.sqlite3");
+    writeKiroDb(classic,[responseEntry("old clean response")]);
+    if(mode==="floor"){
+      const dir=join(root,"kiro-identity","instances");mkdirSync(dir,{recursive:true});
+      writeFileSync(join(dir,createHash("sha256").update(name).digest("hex").slice(0,32)+".json"),JSON.stringify({version:2,instance:name,keys:{owned:{engine:"v2",workingDirectory:WORK_DIR,credentialProfile:null,id:null,since:0,known:[],abandoned:[],agentConfirmed:false}}}));
+    }
+    const target=resolveScanTarget(name,{backend:"kiro-cli",working_directory:WORK_DIR,...(mode==="config"?{kiro_ui:"tui"}:{})} as Partial<InstanceConfig>,{});
+    const result=executeForgedEnvelopeScan({targets:[target],knownInstances:KNOWN,outboxDbPath:emptyOutbox(root),dataDir:root,kiroDbOverride:classic});
+    expect(result.exitCode).toBe(3);expect(result.rows[0].status).toBe("unreadable-store");
+    expect(result.rows[0].reason).toContain("classic conversation is frozen");
+    expect(result.rows[0].conversation).toBeUndefined();expect(result.newFindings).toBe(0);
   });
 
   it("exit 0 when every transcript verifies clean", () => {
