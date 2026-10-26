@@ -665,6 +665,8 @@ interface PaneEvidence {
   inputReadable: boolean;
   /** The composer's interrupt mode on this snapshot (CliBackend.readSteerComposer, #1405); null when not readable. */
   steerComposer: SteerComposerMode | null;
+  /** #2682: a busy composer's input reaches the CLI's own turn on this snapshot (Daemon.busyInputReachesTurn). */
+  busyInputReachesTurn: boolean;
 }
 
 /**
@@ -8538,9 +8540,16 @@ export class Daemon extends EventEmitter {
     const read = this.backend?.readSteerComposer;
     if (!read) return true;
     if (!this.tmux) return false;
-    let mode: SteerComposerMode | null;
-    try { mode = read.call(this.backend, await this.tmux.capturePane()); } catch { return false; }
-    return composerModeAdmits(mode, allowIdle, steerOnly);
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return false; }
+    return composerModeAdmits(read.call(this.backend, pane), allowIdle, steerOnly) && this.busyInputReachesTurn(pane);
+  }
+
+  /** #2682: a busy composer's typed input reaches the CLI's own turn (busyTurnTakesInput); an idle box, or no reader: yes. */
+  private busyInputReachesTurn(pane: string): boolean {
+    const mode = this.backend?.readSteerComposer?.(pane);
+    if (mode !== "steer" && mode !== "queue") return true;
+    return this.backend?.busyTurnTakesInput?.(pane) !== false;
   }
 
   /**
@@ -8730,6 +8739,16 @@ export class Daemon extends EventEmitter {
     if (transient.state === "unknown") { this.resetFooterFallback(); return "unknown"; }
     if (this.needsStartupInputProof()) {
       return await this.hasPositiveDeliveryInput() ? "ready" : "transient";
+    }
+    // #2682: a backend that can read its own idle input box (kiro's TUI) must show it before an idle paste. Anything
+    // else — another program owning the pane, a frame it cannot read, a capture that fails — is not one to type into.
+    if (this.backend?.idleComposerReady && this.tmux) {
+      try {
+        if (!this.backend.idleComposerReady(await this.tmux.capturePane())) return "busy";
+      } catch (err) {
+        this.logger.debug({ err }, "capture-pane failed during the composer check — treating the pane as not ready");
+        return "busy";
+      }
     }
     if (this.backend?.dropsEnterWhileBusy?.() !== true) return "ready";
     const prompt = this.backend.getBottomReadyPattern?.();
@@ -9329,7 +9348,7 @@ export class Daemon extends EventEmitter {
       // turn over. "queue", text in the box or an unreadable row: not written; handled as the unread box above.
       // #2676: an ordinary message typed into it (every other hand-off there) may also find "queue".
       if (handingOffToNativeQueue && this.backend?.readSteerComposer
-        && !composerModeAdmits(pasteBaseline?.steerComposer ?? null, true, steer)) {
+        && (!composerModeAdmits(pasteBaseline?.steerComposer ?? null, true, steer) || pasteBaseline?.busyInputReachesTurn === false)) {
         if (!verdict.durableBeginCommitted) return "handoff-box-unread";
         return this.failDelivery(verdict, status, "paste", steer ? "steer-composer-not-steering" : "composer-not-empty");
       }
@@ -10239,6 +10258,7 @@ export class Daemon extends EventEmitter {
       collapsedPastes: input?.collapsedPastes ?? 0,
       inputReadable: input != null,
       steerComposer: this.backend?.readSteerComposer?.(pane) ?? null,
+      busyInputReachesTurn: this.busyInputReachesTurn(pane),
     };
   }
 

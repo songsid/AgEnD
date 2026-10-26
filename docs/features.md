@@ -735,6 +735,25 @@ Kiro's `--resume` needs a round trip to its backend before it paints anything, s
 
 The resume budget, resume retry and outage short-circuit are kiro-only (they are backend capabilities). The delayed automatic startup retry applies to **every** backend and every unattended start path (fleet startup incl. General, full restart, config reconcile): a failed start that stayed `stopped` forever was never kiro-specific. Explicit `agend start` / API starts still report their error synchronously. An auto-paused kiro instance's wake uses the same 60s resume budget.
 
+### Another program in the kiro pane (#2682)
+
+While kiro hands its terminal to another program, AgEnD holds deliveries and types nothing into it. That covers:
+- `/editor` (legacy: `/reply` too);
+- `/transcript` with `$PAGER`;
+- a `!` command;
+- a focused `/kvim` panel.
+
+The instance shows "Kiro's terminal is in use by another program (an editor, a pager or a ! command) — finish or close it in the instance pane". Held messages go in once kiro's own input row is back.
+
+**How it recognises them.** It reads kiro's own rows first:
+- the focused `Neovim` panel header;
+- a `!` command as the running turn;
+- kiro's temp files `kiro-editor-…/prompt.md`, `kiro-raw-…/conversation.md` and, on legacy, `q_prompt_<uuid>.md`.
+
+After that, it reads the program's own bottom rows: vi's ruler and modes, less's `:` and `(END)`, `--More--`, and nano. `/fullscreen` keeps kiro's input box and is not held.
+
+**Fail closed.** An idle delivery needs kiro's input row on screen: the TUI's empty composer (or a draft), or legacy's `4% !>` / `4% >` prompt row. Any other screen counts as busy, so the message waits until the input row is back.
+
 ### Workspace trust (kiro-cli V3)
 
 kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a folder that is not yet trusted, and in your home directory on every launch. When the instance runs with `--trust-all-tools`, AgEnD answers the default **Trust, continue** with Enter. If the cursor has been moved to **Don't trust, exit**, AgEnD does not press anything. Without `--trust-all-tools`, the prompt stays in the instance's pane until you answer it there.
