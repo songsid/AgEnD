@@ -7,15 +7,16 @@ launchd service) stays the recommended path.
 The image holds AgEnD, Node.js and tmux, but no AI CLI. On its first start it installs the CLIs your `fleet.yaml` uses
 into its home volume, so later starts are instant.
 
-> **Image publishing is not enabled yet.** Until `ghcr.io/songsid/agend` is published, build the image from this
-> repository: `docker compose build` in `docker/`, as below.
+> **Image publishing is not enabled yet.** Until `ghcr.io/songsid/agend` is published, build the image from a checkout
+> of this repository with `docker/build-from-checkout.sh`, as below. It needs Node.js 22 on the build machine. A plain
+> `docker compose build` installs the npm release, which may not have the container support yet.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/songsid/AgEnD.git && cd AgEnD/docker
 cp .env.example .env          # optional: choose the instance, its backend, a chat platform
-docker compose build          # until the image is published (then: skip this)
+./build-from-checkout.sh      # until the image is published (then: skip this)
 docker compose up -d          # first start installs the CLI(s); watch with: docker compose logs -f
 docker compose exec agend agend web --code
 ```
@@ -95,7 +96,7 @@ and writable by uid 1000", the log prints the one command that fixes it.
 
 | On a regular install | In the container |
 |---|---|
-| `agend update`, `/update` | `docker compose pull && docker compose up -d` (in the container, both refuse and say this) |
+| `agend update`, `/update` | `docker compose pull && docker compose up -d` (in the container, both refuse and say this). Until the image is published: `git pull`, `./build-from-checkout.sh`, `docker compose up -d` |
 | `agend restart`, `/restart` | the same: the fleet exits and Docker starts it again |
 | `agend stop` | `docker compose stop` (in the container, `agend stop` refuses: Docker would start it again) |
 | `agend install` (a service) | not needed: Docker's restart policy supervises the fleet |

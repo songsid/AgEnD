@@ -41,13 +41,19 @@ describe("container mode is the image's alone", () => {
     expect(containerRefusal("install", IMAGE)).toContain("restart policy");
   });
 
-  it("restart signals the fleet (Docker's restart policy brings it back); a missing or bogus pid is refused", () => {
+  it("restart signals the fleet only when fleet.pid names a running AgEnD fleet (read twice, the same); else nothing", () => {
     const kill = vi.fn();
-    expect(restartInContainer(7, kill)).toMatchObject({ ok: true });
+    const fleetCmd = "node /usr/local/lib/node_modules/@songsid/agend/dist/cli.js fleet start";
+    const deps = (lines: string[]) => { let i = 0; return { commandLine: () => lines[Math.min(i++, lines.length - 1)]!, isFleet: (c: string) => /cli\.js fleet start/.test(c), kill }; };
+    expect(restartInContainer(7, deps([fleetCmd]))).toMatchObject({ ok: true });
     expect(kill).toHaveBeenCalledWith(7, "SIGTERM");
-    for (const pid of [NaN, 0, 1, -3, 1.5]) expect(restartInContainer(pid, kill).ok).toBe(false);
+    for (const pid of [NaN, 0, 1, -3, 1.5]) expect(restartInContainer(pid, deps([fleetCmd])).ok).toBe(false);
+    // A stale fleet.pid: the pid now belongs to something else, or nothing readable, or it changed between the reads.
+    expect(restartInContainer(8, deps(["/usr/bin/python3 server.py"]))).toMatchObject({ ok: false, message: expect.stringContaining("nothing was signalled") });
+    expect(restartInContainer(8, deps([""]))).toMatchObject({ ok: false });
+    expect(restartInContainer(8, deps([fleetCmd, "/usr/bin/python3 server.py"]))).toMatchObject({ ok: false });
     expect(kill).toHaveBeenCalledTimes(1);
-    expect(restartInContainer(9, () => { throw new Error("ESRCH"); })).toMatchObject({ ok: false });
+    expect(restartInContainer(9, { ...deps([fleetCmd]), kill: () => { throw new Error("ESRCH"); } })).toMatchObject({ ok: false });
   });
 
   it("the fleet's dashboard listener uses that address (0.0.0.0 in the image, 127.0.0.1 otherwise)", async () => {
@@ -94,9 +100,11 @@ describe("agend container prepare: pins, installers, the first fleet.yaml", () =
   it("first fleet.yaml: web-only by default; a chat platform only with its group and admins; bad input refused", () => {
     const web = firstRunFleet({});
     expect("yaml" in web && yaml.load(web.yaml)).toEqual({ instances: { dev: { backend: "claude-code", working_directory: "/work/dev" } } });
+    const kiro = firstRunFleet({ AGEND_BACKEND: "kiro-cli" });
+    expect("yaml" in kiro && yaml.load(kiro.yaml)).toEqual({ instances: { dev: { backend: "kiro-cli", kiro_ui: "tui", working_directory: "/work/dev" } } });
     const tg = firstRunFleet({ AGEND_INSTANCE: "ops", AGEND_BACKEND: "kiro-cli", AGEND_CHANNEL: "telegram", AGEND_GROUP_ID: "-100123", AGEND_ADMIN_IDS: "42, 43" });
     expect("yaml" in tg && yaml.load(tg.yaml)).toEqual({
-      instances: { ops: { backend: "kiro-cli", working_directory: "/work/ops" } },
+      instances: { ops: { backend: "kiro-cli", kiro_ui: "tui", working_directory: "/work/ops" } },
       channels: [{ type: "telegram", mode: "topic", bot_token_env: "TELEGRAM_BOT_TOKEN", group_id: "-100123", access: { mode: "locked", allowed_users: ["42", "43"] } }],
     });
     for (const env of [
@@ -113,7 +121,7 @@ describe("agend container prepare: pins, installers, the first fleet.yaml", () =
       env: {}, dataDir: scratch(), log: l => lines.push(l),
       find: async b => (installed[b] ? `/home/agend/.local/bin/${b}` : null),
       run: async (cmd) => { ran.push(cmd); const m = /bash -s (\S+)|stable\/(\S+?)\//.exec(cmd); const b = Object.keys({ "claude-code": 1, "kiro-cli": 1, grok: 1, codex: 1 }).find(x => cmd.includes(x === "claude-code" ? "claude.ai" : x === "kiro-cli" ? "kiro.dev" : x === "grok" ? "x.ai" : "chatgpt")); if (b) installed[b] = m ? (m[1] ?? m[2]) : "newest"; return 0; },
-      version: async (b) => (installed[b] ? `${b} ${installed[b]}` : null),
+      version: async (b) => installed[b] ?? null,
       ...over,
     };
     return { d, lines, ran, installed };
@@ -146,14 +154,29 @@ describe("agend container prepare: pins, installers, the first fleet.yaml", () =
     writeFileSync(join(d.dataDir, "fleet.yaml"), "instances:\n  a:\n    backend: claude-code\n  b:\n    backend: grok\n");
     expect(await prepareContainer(d)).toBe(true);
     expect(ran).toEqual(["curl -fsSL https://claude.ai/install.sh | bash -s 2.1.296", "curl -fsSL https://x.ai/cli/install.sh | bash"]);
-    expect(lines).toContain("⚠ grok: its installer takes no version; installing the newest instead of 1.0.52");
-    expect(lines.find(l => l.startsWith("✓ claude-code"))).toContain("pinned 2.1.296");
+    expect(lines).toContain("⚠ grok: its installer takes no version; the newest is used instead of 1.0.52");
+    expect(lines.find(l => l.startsWith("✓ claude-code"))).toMatch(/\(2\.1\.296\) — pinned$/);
     expect(lines.find(l => l.startsWith("✓ grok"))).not.toContain("pinned");
   });
 
   it("a pinned install's version is read from its own directory (no CLI started)", () => {
     expect(pinnedLayoutVersion("/home/agend/.local/share/agend-cli/kiro-cli/2.34.0/kirocli/bin/kiro-cli")).toBe("2.34.0");
     expect(pinnedLayoutVersion("/home/agend/.local/bin/kiro-cli")).toBeNull();
+  });
+
+  it("versions are compared exactly: a pin of 2.1.30 is not met by 2.1.300 (#2697 review)", async () => {
+    const { d, ran } = deps({ env: { AGEND_CLI_VERSIONS: "claude-code=2.1.30" }, installed: { "claude-code": "2.1.300" } });
+    writeFileSync(join(d.dataDir, "fleet.yaml"), "instances:\n  a:\n    backend: claude-code\n");
+    await prepareContainer(d);
+    expect(ran).toEqual(["curl -fsSL https://claude.ai/install.sh | bash -s 2.1.30"]);
+  });
+
+  it("an install that ends at another version than the pin is reported, never as pinned (#2697 review)", async () => {
+    const { d, lines } = deps({ env: { AGEND_CLI_VERSIONS: "claude-code=2.1.296" }, installed: { "claude-code": "2.1.310" }, run: async () => 0 });
+    writeFileSync(join(d.dataDir, "fleet.yaml"), "instances:\n  a:\n    backend: claude-code\n");
+    await prepareContainer(d);
+    expect(lines.at(-1)).toBe("✗ claude-code: 2.1.310 is installed, not the pinned 2.1.296");
+    expect(lines.some(l => l.includes("pinned") && l.startsWith("✓"))).toBe(false);
   });
 
   it("a pinned CLI already at the pin is left alone", async () => {
@@ -217,7 +240,8 @@ describe("the CLI in the image (src/cli.ts, spawned; no fleet, no service manage
 
   it("agend restart in the image signals the fleet in fleet.pid and starts nothing", async () => {
     const dir = home();
-    const fleet = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    // A stand-in whose command line is an AgEnD fleet's (`… agend fleet start`), as the image's is.
+    const fleet = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "agend", "fleet", "start"], { stdio: "ignore" });
     try {
       writeFileSync(join(dir, "fleet.pid"), String(fleet.pid));
       const exited = new Promise<NodeJS.Signals | null>(r => fleet.on("exit", (_c, sig) => r(sig)));
@@ -226,5 +250,18 @@ describe("the CLI in the image (src/cli.ts, spawned; no fleet, no service manage
       expect(out.stdout).toContain("Docker's restart policy");
       expect(await exited).toBe("SIGTERM");
     } finally { fleet.kill("SIGKILL"); }
+  });
+
+  it("agend restart with a stale fleet.pid (another process has that pid) signals nothing (#2697 review)", async () => {
+    const dir = home();
+    const other = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    try {
+      writeFileSync(join(dir, "fleet.pid"), String(other.pid));
+      const out = cli(dir, ["restart", "--yes"], { ...IMAGE, AGEND_ALLOW_TEST_FLEET_CONTROL: "1" });
+      expect(out.status).toBe(1);
+      expect(out.stderr).toContain("not a running AgEnD fleet");
+      expect(other.exitCode).toBeNull();
+      expect(() => process.kill(other.pid!, 0)).not.toThrow();
+    } finally { other.kill("SIGKILL"); }
   });
 });

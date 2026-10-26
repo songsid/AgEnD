@@ -9,6 +9,7 @@ The design is on [#581](https://github.com/songsid/AgEnD/issues/581#issuecomment
 |---|---|
 | `docker/Dockerfile` | `node:22-bookworm-slim` + tmux, git, curl, xz, unzip, less, tini; `npm i -g` AgEnD (`AGEND_PACKAGE`: a version, or an `npm pack` tarball for a local build); the base image's uid-1000 user renamed `agend`; `AGEND_CONTAINER=1`, `AGEND_WEB_BIND=0.0.0.0`, the CLIs' self-updates off; tini as PID 1 |
 | `docker/agend-container` | the entrypoint: runs its arguments if any; else checks the home is owned and writable, `agend container prepare`, `exec agend fleet start` |
+| `docker/build-from-checkout.sh`, `docker/.dockerignore` | until the image is published: build it from a checkout (`npm pack` → `AGEND_PACKAGE=/ctx/<tgz> docker compose build`); `.env` never enters the build context |
 | `docker/compose.yaml`, `docker/.env.example` | one service, `restart: unless-stopped`, `127.0.0.1:19280` published, named volumes `agend-home` and `agend-work` |
 | `src/container.ts` | container mode: the dashboard's listen address, the refusals of `update` / `install` / `stop`, `restart` by Docker's restart policy |
 | `src/container-prepare.ts` | `agend container prepare`: the first fleet.yaml from the environment, and the CLI installs with pins |

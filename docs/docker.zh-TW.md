@@ -5,14 +5,15 @@
 
 映像檔裡有 AgEnD、Node.js 和 tmux，但沒有任何 AI CLI。第一次啟動時，會把 `fleet.yaml` 用到的 CLI 安裝到 home volume，之後啟動就不必再裝。
 
-> **映像檔還沒有發佈。** 在 `ghcr.io/songsid/agend` 發佈之前，請從這個 repository 建置：在 `docker/` 執行 `docker compose build`，如下。
+> **映像檔還沒有發佈。** 在 `ghcr.io/songsid/agend` 發佈之前，請在這個 repository 的 checkout 用 `docker/build-from-checkout.sh` 建置，如下。
+> 建置的機器需要 Node.js 22。直接 `docker compose build` 會安裝 npm 上的版本，它可能還沒有容器支援。
 
 ## 快速開始
 
 ```bash
 git clone https://github.com/songsid/AgEnD.git && cd AgEnD/docker
 cp .env.example .env          # 選填：instance 名稱、後端、聊天平台
-docker compose build          # 映像檔發佈前需要（發佈後可略過）
+./build-from-checkout.sh      # 映像檔發佈前需要（發佈後可略過）
 docker compose up -d          # 第一次啟動會安裝 CLI；用 docker compose logs -f 觀看
 docker compose exec agend agend web --code
 ```
@@ -82,7 +83,7 @@ Token 只放在 `.env`（每次啟動讀取），不會寫進 `fleet.yaml`。之
 
 | 一般安裝 | 容器 |
 |---|---|
-| `agend update`、`/update` | `docker compose pull && docker compose up -d`（在容器裡兩者都會拒絕並提示這行） |
+| `agend update`、`/update` | `docker compose pull && docker compose up -d`（在容器裡兩者都會拒絕並提示這行）。映像檔發佈前：`git pull`、`./build-from-checkout.sh`、`docker compose up -d` |
 | `agend restart`、`/restart` | 相同：fleet 結束後由 Docker 重新啟動 |
 | `agend stop` | `docker compose stop`（在容器裡 `agend stop` 會拒絕：Docker 會再啟動它） |
 | `agend install`（安裝服務） | 不需要：由 Docker 的重新啟動政策監管 fleet |

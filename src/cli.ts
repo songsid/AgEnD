@@ -1321,7 +1321,7 @@ program
     }
     const { pinnedLayoutVersion, prepareContainer } = await import("./container-prepare.js");
     const { probeBackendVersion, resolveBackendBinary } = await import("./backend-availability.js");
-    const { spawn } = await import("node:child_process");
+    const { spawn } = await import("./child-process.js");
     const ok = await prepareContainer({
       env: process.env, dataDir: DATA_DIR, log: line => console.log(`agend container: ${line}`),
       find: backend => resolveBackendBinary(backend),
@@ -2114,7 +2114,7 @@ program
     if (inContainer()) {
       let pid = NaN;
       try { pid = Number(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim()); } catch { /* reported below */ }
-      const outcome = restartInContainer(pid);
+      const outcome = restartInContainer(pid, { commandLine: readProcessCommandLine, isFleet: isFleetStartCommandLine });
       (outcome.ok ? console.log : console.error)(outcome.message);
       if (!outcome.ok) process.exitCode = 1;
       return;

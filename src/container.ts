@@ -38,10 +38,21 @@ export function containerRefusal(command: "update" | "install" | "stop", env: No
 /**
  * `agend restart` in the container: the fleet process is the container's main process, so stopping it ends the
  * container and Docker's restart policy (compose: `restart: unless-stopped`) starts it again. A detached replacement
- * fleet, as on a host without a service, would die with the container. Returns the line to print, or why not.
+ * fleet, as on a host without a service, would die with the container. fleet.pid can be stale (its pid reused by
+ * another process): only a process whose command line is an AgEnD `fleet start` — read twice, the same both times —
+ * is signalled; anything else, or an unreadable one, is refused with nothing signalled (#2697 review).
  */
-export function restartInContainer(pid: number, kill: (pid: number, signal: NodeJS.Signals) => void = (p, s) => { process.kill(p, s); }): { ok: boolean; message: string } {
+export function restartInContainer(
+  pid: number,
+  deps: { commandLine: (pid: number) => string; isFleet: (commandLine: string) => boolean; kill?: (pid: number, signal: NodeJS.Signals) => void },
+): { ok: boolean; message: string } {
+  const kill = deps.kill ?? ((p: number, s: NodeJS.Signals) => { process.kill(p, s); });
   if (!Number.isSafeInteger(pid) || pid <= 1) return { ok: false, message: "No running fleet found in this container (fleet.pid is missing or invalid)." };
+  const first = deps.commandLine(pid);
+  if (!first || !deps.isFleet(first)) {
+    return { ok: false, message: `fleet.pid names PID ${pid}, which is not a running AgEnD fleet; nothing was signalled.` };
+  }
+  if (deps.commandLine(pid) !== first) return { ok: false, message: `PID ${pid} changed while it was checked; nothing was signalled.` };
   try { kill(pid, "SIGTERM"); }
   catch { return { ok: false, message: `Could not signal the fleet (PID ${pid}); it may have exited already.` }; }
   return { ok: true, message: "Stopping the fleet; Docker's restart policy starts the container again in a few seconds." };

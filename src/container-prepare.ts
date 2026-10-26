@@ -13,6 +13,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
+import { newInstanceKiroUi } from "./config.js";
 import { BACKEND_INSTALLATION_INFO } from "./instance-lifecycle.js";
 
 /** `AGEND_CLI_VERSIONS="claude-code=2.1.300, kiro-cli=2.34.0"` → { "claude-code": "2.1.300", … }; anything malformed is reported. */
@@ -73,7 +74,9 @@ export function firstRunFleet(env: NodeJS.ProcessEnv): { yaml: string } | { erro
   const backend = env.AGEND_BACKEND?.trim() || "claude-code";
   if (!NAME_RE.test(name)) return { error: `AGEND_INSTANCE "${name}" must be lowercase letters, digits and dashes` };
   if (!Object.hasOwn(BACKEND_INSTALLATION_INFO, backend)) return { error: `AGEND_BACKEND "${backend}" is not a backend AgEnD installs` };
-  const doc: Record<string, unknown> = { instances: { [name]: { backend, working_directory: `/work/${name}` } } };
+  // A new kiro instance runs the TUI engine, as every other creation path makes it (#2621; #2697 review).
+  const kiroUi = newInstanceKiroUi(backend, undefined);
+  const doc: Record<string, unknown> = { instances: { [name]: { backend, ...(kiroUi ? { kiro_ui: kiroUi } : {}), working_directory: `/work/${name}` } } };
   const channel = env.AGEND_CHANNEL?.trim();
   if (channel) {
     if (channel !== "telegram" && channel !== "discord") return { error: `AGEND_CHANNEL must be telegram or discord, not "${channel}"` };
@@ -122,25 +125,31 @@ export async function prepareContainer(deps: PrepareDeps): Promise<boolean> {
   for (const backend of backends) {
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) { log(`⚠ ${backend}: AgEnD has no installer for this backend; install it yourself`); continue; }
-    const pin = pins[backend];
+    const asked = pins[backend];
+    // A pin only counts where the installer can take it; versions are compared exactly (2.1.30 is not 2.1.300).
+    const pin = asked && installCommand(backend, asked) ? asked : undefined;
+    if (asked && !pin) log(`⚠ ${backend}: its installer takes no version; the newest is used instead of ${asked}`);
     let path = await deps.find(backend);
     // A pinned CLI already in the volume at another version (the pin was changed) is installed again at the pin.
-    if (path && pin && installCommand(backend, pin)) {
+    if (path && pin) {
       const current = await deps.version(backend, path);
       if (current === null) log(`⚠ ${backend}: its installed version cannot be read, so the pin ${pin} is not checked`);
-      else if (!current.includes(pin)) { log(`${backend}: ${current} is installed; the pin asks for ${pin}`); path = null; }
+      else if (current !== pin) { log(`${backend}: ${current} is installed; the pin asks for ${pin}`); path = null; }
     }
     if (!path) {
-      const command = installCommand(backend, pin);
-      const used = command ?? installCommand(backend, undefined)!;
-      if (pin && !command) log(`⚠ ${backend}: its installer takes no version; installing the newest instead of ${pin}`);
-      log(`Installing ${backend}${pin && command ? ` ${pin}` : ""}…`);
-      const code = await deps.run(used, env);
+      log(`Installing ${backend}${pin ? ` ${pin}` : ""}…`);
+      const code = await deps.run(installCommand(backend, pin)!, env);
       path = await deps.find(backend);
       if (code !== 0 || !path) { log(`✗ ${backend}: the install ${code !== 0 ? `exited ${code}` : "finished but no binary was found"}; its instances will report it`); continue; }
     }
     const version = await deps.version(backend, path);
-    log(`✓ ${backend}: ${path}${version ? ` (${version})` : ""}${pin && installCommand(backend, pin) ? ` — pinned ${pin}` : ""}`);
+    if (pin && version !== pin) {
+      log(version === null
+        ? `⚠ ${backend}: ${path} is installed, but its version cannot be read to confirm the pin ${pin}`
+        : `✗ ${backend}: ${version} is installed, not the pinned ${pin}`);
+      continue;
+    }
+    log(`✓ ${backend}: ${path}${version ? ` (${version})` : ""}${pin ? " — pinned" : ""}`);
   }
   return true;
 }
