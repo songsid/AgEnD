@@ -45,6 +45,8 @@ import { applyGuestsPatch, guestsPatch } from "../src/web-settings-patch.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { initializeSeenPeople, listSeenPeople, noteSeenPerson, pruneSeenPeople } from "../src/guest-seen-people.js";
+import { readClassicRoomNames } from "../src/classic-channel-manager.js";
+import { guestRouteDecision } from "../src/web-guest-access.js";
 
 const roots: string[] = [], stores: SettingsConfirmationStore[] = [], outboxes: Array<{ close(): void }> = [];
 afterEach(() => {
@@ -113,7 +115,7 @@ describe("the gate: what waits for a fleet admin", () => {
   });
 });
 
-function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: string, u: string) => string | null } = {}) {
+function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: string, u: string) => string | null; rooms?: string[] } = {}) {
   const root = tmp("agend-2348g-");
   const path = join(root, "fleet.yaml");
   const config: any = { defaults: {}, ...structuredClone(FLEET), ...structuredClone(fleet) };
@@ -130,7 +132,8 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
-    guestOverview: () => ({ audit: [{ kind: "grant", at: 1, account: "dc:111", name: "Ada", via: "direct", added: [], removed: ["a"], endedSessions: 1 }] }), revokeGuestWebSessions: revoke, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note } as unknown as SettingsApiContext;
+    guestOverview: () => ({ audit: [{ kind: "grant", at: 1, account: "dc:111", name: "Ada", via: "direct", added: [], removed: ["a"], endedSessions: 1 }] }), revokeGuestWebSessions: revoke, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note,
+    ...(opts.rooms ? { classicRoomNames: () => opts.rooms } : {}) } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
   const gate = new SettingsHttpConfirmation(store, {
@@ -445,5 +448,52 @@ describe("on a real FleetManager", () => {
     expect(outcomes.slice(0, 10).every((o) => o !== "admin_limit")).toBe(true);
     expect(outcomes[10]).toBe("admin_limit");
     expect((await s.sendGuestCodeByAdmin({ adapterId: "dc", userId: "1010" }, "session:B")).body.outcome, "another admin's own budget").not.toBe("admin_limit");
+  });
+});
+
+describe("#2667: a grant may name a ClassicBot room", () => {
+  const ROOM = "classic-lobby-1234";
+  const roomWarnings = (r: { warnings: Array<{ path: string; message: string }> }) => r.warnings.filter((w) => w.path.startsWith("web.guests")).map((w) => w.message);
+  it("the validator knows the rooms it is given: a room's name gives no warning; without them it does", () => {
+    const config = { defaults: {}, ...structuredClone(FLEET), web: { guests: { enabled: true, grants: { "dc:111": { instances: ["a", ROOM] } }, narrow: { "dc:111": [ROOM] } } } } as any;
+    expect(roomWarnings(validateFleetConfig(config, { rooms: [ROOM] }))).toEqual([]);
+    expect(roomWarnings(validateFleetConfig(config))).toEqual([expect.stringContaining(`"${ROOM}" is not an instance or ClassicBot room`), expect.stringContaining(`"${ROOM}"`)]);
+    expect(roomWarnings(validateFleetConfig({ ...config, web: { guests: { enabled: true, grants: { "dc:111": { instances: ["ghost"] } } } } }, { rooms: [ROOM] })), "a typo still warns")
+      .toEqual([expect.stringContaining('"ghost"')]);
+  });
+  it("classicBot.yaml's room names, read only: a persisted instanceName, an old-format entry's historical name; none without the file", () => {
+    const dir = tmp("agend-2667-rooms-");
+    expect(readClassicRoomNames(dir)).toEqual([]);
+    const before = yaml.dump({ channels: { k1: { channelId: "-1001234", adapterId: "tg2", instanceName: ROOM, name: "Lobby" }, "-1005678": { name: "Ops Room" } } });
+    writeFileSync(join(dir, "classicBot.yaml"), before);
+    expect(readClassicRoomNames(dir)).toEqual([ROOM, "classic-ops-room-5678"]);
+    expect(readFileSync(join(dir, "classicBot.yaml"), "utf8"), "never rewritten").toBe(before);
+  });
+  it("a save naming a room is not refused and says nothing about it; a fleet that does not pass its rooms would (the control)", async () => {
+    const grants = { "dc:111": { name: "Ada", instances: ["a", ROOM] } };
+    const h = harness({ web: { guests: { enabled: true, grants } } }, { rooms: [ROOM] });
+    const narrow = await h.request("PUT", WEB, { guests: { grants: { "dc:111": { name: "Ada", instances: [ROOM] } } } });
+    expect(narrow.status).toBe(200);
+    expect(h.raw().web.guests.grants["dc:111"].instances).toEqual([ROOM]);
+    expect(narrow.body.warnings.filter((w: { path: string }) => w.path.startsWith("web.guests"))).toEqual([]);
+    const blind = harness({ web: { guests: { enabled: true, grants } } });
+    const said = await blind.request("PUT", WEB, { guests: { grants: { "dc:111": { name: "Ada", instances: [ROOM] } } } });
+    expect(said.body.warnings.map((w: { message: string }) => w.message).join("\n")).toContain(`"${ROOM}"`);
+  });
+  it("on a real FleetManager: the overview lists the rooms apart, with a display name; a guest granted a room reaches that room's chat only", () => {
+    const { fm, s } = fleet();
+    s.classicChannels = { getAll: () => [{ instanceName: "classic-ops-5678" }, { instanceName: ROOM, displayName: "Lobby" }, { instanceName: "a", displayName: "dup" }] };
+    const o = fm.guestOverview();
+    expect([o.instances, o.rooms]).toEqual([["a", "b"], [{ name: ROOM, display_name: "Lobby" }, { name: "classic-ops-5678" }]]);
+    expect(fm.classicRoomNames()).toEqual(["classic-ops-5678", ROOM, "a"]);
+    (fm.fleetConfig as any).web.guests.grants = { "dc:111": { instances: [ROOM] } };
+    const scope = fm.guestScope({ adapterId: "dc", userId: "111" });
+    expect([...scope]).toEqual([ROOM]);
+    expect(o.guests.length).toBeGreaterThan(0);
+    expect(fm.guestOverview().guests.find((g) => g.userId === "111")?.scope).toEqual([ROOM]);
+    const route = (path: string) => guestRouteDecision("GET", new URL(path, "http://x"), scope).kind;
+    expect([route(`/ui/chat/${ROOM}`), route(`/ui/history?instance=${ROOM}`), route("/ui/chat/a"), route("/ui/history?instance=b")]).toEqual(["allow", "allow", "deny", "deny"]);
+    s.classicChannels = { getAll: () => [] };
+    expect([...fm.guestScope({ adapterId: "dc", userId: "111" })], "a room that is gone gives nothing").toEqual([]);
   });
 });

@@ -75,3 +75,24 @@ describe("fleet start logs the validator's warnings once, at warn level", () => 
     expect(src.match(/this\.logConfigWarningsAtStartup\(\)/g)?.length).toBe(1);
   });
 });
+
+describe("#2667: a guest grant naming a ClassicBot room is not an unknown name", () => {
+  const GRANT = CLEAN.replace("web:\n  log_tab: true\n", "web:\n  log_tab: true\n  guests:\n    enabled: true\n    grants:\n      'dc:111':\n        instances: [general, classic-lobby-1234]\n");
+  const withRoom = (dir: string) => writeFileSync(join(dir, "classicBot.yaml"), "channels:\n  k1:\n    channelId: '-1001234'\n    instanceName: classic-lobby-1234\n    name: Lobby\n");
+  it("agend doctor reads classicBot.yaml's rooms: no row with the room; without that room, the warning (the control)", async () => {
+    const dir = home(GRANT);
+    expect(configRows((await collectDoctorReport(dir, service, stubbed)).checks).map(c => c.detail)).toEqual([expect.stringContaining('"classic-lobby-1234"')]);
+    withRoom(dir);
+    expect(configRows((await collectDoctorReport(dir, service, stubbed)).checks)).toEqual([]);
+  });
+  it("fleet start's warnings know the rooms too", () => {
+    const dir = home(GRANT);
+    withRoom(dir);
+    const fm = new FleetManager(dir) as any;
+    const warn = vi.fn();
+    fm.logger = { info() {}, debug() {}, error() {}, trace() {}, fatal() {}, warn, child: () => fm.logger };
+    fm.loadConfig(join(dir, "fleet.yaml"));
+    fm.logConfigWarningsAtStartup();
+    expect(warn.mock.calls.map(c => c[1]).filter((m: string) => m.startsWith("fleet.yaml: "))).toEqual([]);
+  });
+});

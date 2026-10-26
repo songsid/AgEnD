@@ -70,7 +70,11 @@ function channelIdOf(ch: Record<string, unknown>): string | undefined {
   return typeof id === "string" && id ? id : undefined;
 }
 
-export function validateFleetConfig(config: unknown): ValidationResult {
+/**
+ * `rooms`: the ClassicBot rooms' instance names (#2667) — a guest grant or list may name one. Callers that know them pass
+ * them (the running fleet's, or classicBot.yaml's: readClassicRoomNames); without them a room's name warns as unknown.
+ */
+export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<string> } = {}): ValidationResult {
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
   const err = (path: string, message: string) => errors.push({ path, message });
@@ -490,7 +494,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       if (problem) err("web.preview_origin", problem);
     }
     if (config.web.session !== undefined) validateWebSession(config.web.session, err);
-    if (config.web.guests !== undefined) validateWebGuests(config.web.guests, config, err, warn);
+    if (config.web.guests !== undefined) validateWebGuests(config.web.guests, config, opts.rooms, err, warn);
     // #1939: the server switch and the §3 keys (§0: a session is authorized once; no step-up list).
     if (config.web.verified_authority !== undefined) {
       const v = config.web.verified_authority;
@@ -717,14 +721,14 @@ function validateUploadLimits(web: Record<string, unknown>, warn: (path: string,
   }
 }
 
-/** #1920: `web.guests` — its switches, the instance lists (names of this fleet's instances) and the guest session. */
-function validateWebGuests(guests: unknown, config: Record<string, any>, err: (path: string, message: string) => void, warn: (path: string, message: string) => void): void {
+/** #1920: `web.guests` — its switches, the instance lists (names of this fleet's instances or ClassicBot rooms, #2667) and the guest session. */
+function validateWebGuests(guests: unknown, config: Record<string, any>, rooms: Iterable<string> | undefined, err: (path: string, message: string) => void, warn: (path: string, message: string) => void): void {
   if (!isObj(guests)) { err("web.guests", "must be a mapping"); return; }
   const g = guests as Record<string, unknown>;
   const KEYS = ["enabled", "chat", "open_instances", "narrow", "grants", "session"];
   for (const key of Object.keys(g)) if (!KEYS.includes(key)) err(`web.guests.${key}`, `unknown key (${KEYS.join(", ")})`);
   for (const key of ["enabled", "chat"]) if (g[key] !== undefined && typeof g[key] !== "boolean") err(`web.guests.${key}`, "must be a boolean");
-  const known = new Set(isObj(config.instances) ? Object.keys(config.instances) : []);
+  const known = new Set([...(isObj(config.instances) ? Object.keys(config.instances) : []), ...(rooms ?? [])]);
   const lists = (key: "open_instances" | "narrow", keyOk: (k: string) => boolean, keyHint: string) => {
     const v = g[key];
     if (v === undefined) return;
@@ -732,7 +736,7 @@ function validateWebGuests(guests: unknown, config: Record<string, any>, err: (p
     for (const [k, names] of Object.entries(v as Record<string, unknown>)) {
       if (!keyOk(k)) { err(`web.guests.${key}.${k}`, `the key must be ${keyHint}`); continue; }
       if (!Array.isArray(names) || !names.every((n) => typeof n === "string" && n.length > 0 && n.length <= 128)) { err(`web.guests.${key}.${k}`, "must be a list of instance names"); continue; }
-      for (const n of names as string[]) if (!known.has(n)) warn(`web.guests.${key}.${k}`, `"${n}" is not an instance of this fleet: it gives nothing`);
+      for (const n of names as string[]) if (!known.has(n)) warn(`web.guests.${key}.${k}`, `"${n}" is not an instance or ClassicBot room of this fleet: it gives nothing`);
     }
   };
   const ID = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -752,7 +756,7 @@ function validateWebGuests(guests: unknown, config: Record<string, any>, err: (p
         if (gr.name !== undefined && (typeof gr.name !== "string" || gr.name.length > 100)) err(`${at}.name`, "must be a text of at most 100 characters");
         const names = gr.instances;
         if (!Array.isArray(names) || names.length > 200 || !names.every((n) => typeof n === "string" && n.length > 0 && n.length <= 128)) { err(`${at}.instances`, "must be a list of instance names"); continue; }
-        for (const n of names as string[]) if (!known.has(n)) warn(`${at}.instances`, `"${n}" is not an instance of this fleet: it gives nothing`);
+        for (const n of names as string[]) if (!known.has(n)) warn(`${at}.instances`, `"${n}" is not an instance or ClassicBot room of this fleet: it gives nothing`);
       }
     }
   }

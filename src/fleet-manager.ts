@@ -281,7 +281,7 @@ import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt, readClassicRoomNames } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -7147,7 +7147,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * reaches now, its sessions and devices, and its narrowing. Ids are the accounts' own (an admin's page).
    */
   guestOverview(): {
-    enabled: boolean; chat: boolean; explicit: boolean; instances: string[];
+    enabled: boolean; chat: boolean; explicit: boolean; instances: string[]; rooms: Array<{ name: string; display_name?: string }>;
     connections: Array<{ id: string; type: string; mode: "open" | "allowlist"; named: string[] }>;
     guests: Array<{ adapterId: string; userId: string; name: string; platform: string; scope: string[]; reach: string[]; sessions: number; lastSeen: number | null; devices: number; narrow: string[] | null;
       grant: { name?: string; instances: string[] } | null; code?: { at: number; outcome: string; expiresAt?: number; reason?: string; platform?: string; startUrl?: string } }>;
@@ -7181,8 +7181,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...(sent.outcome.kind === "dm_failed" ? { reason: sent.outcome.reason, platform: sent.outcome.platform, ...(sent.outcome.startUrl ? { startUrl: sent.outcome.startUrl } : {}) } : {}) } } : {}) };
     }).sort((x, y) => (y.lastSeen ?? -1) - (x.lastSeen ?? -1));
     // #2348: `explicit` — grants are the scope (default deny); false: the derived scope of #1920, until grants are saved.
-    return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, explicit: cfg?.grants !== undefined, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), connections, guests,
+    // #2667: the ClassicBot rooms there are now, apart from fleet.yaml's instances (a grant may name either: guestReach),
+    // with its display name as the sidebar resolves it (a profile alias, else the room's own), when it has one.
+    const profiles = profileIdentities(this.dataDir);
+    const rooms = (this.classicChannels?.getAll() ?? []).filter((r) => !Object.hasOwn(this.fleetConfig?.instances ?? {}, r.instanceName))
+      .map((r) => {
+        const shown = resolveInstanceIdentity({ classic: r, profile: profiles.get(r.instanceName) }).display_name;
+        return { name: r.instanceName, ...(shown && shown !== r.instanceName ? { display_name: shown } : {}) };
+      })
+      .sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+    return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, explicit: cfg?.grants !== undefined, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), rooms, connections, guests,
       audit: this.guestAudit() };
+  }
+
+  /** #2667: the ClassicBot rooms' instance names now — what a settings save's validation knows besides fleet.yaml's instances. */
+  classicRoomNames(): string[] {
+    return (this.classicChannels?.getAll() ?? []).map((r) => r.instanceName);
   }
 
   /**
@@ -12476,7 +12490,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private logConfigWarningsAtStartup(): void {
     let warnings: Array<{ path: string; message: string }> = [];
-    try { warnings = validateFleetConfig(this.rawFleetConfig).warnings; } catch (err) { this.logger.debug({ err }, "fleet.yaml validation failed (startup warnings)"); }
+    try { warnings = validateFleetConfig(this.rawFleetConfig, { rooms: readClassicRoomNames(this.dataDir) }).warnings; } catch (err) { this.logger.debug({ err }, "fleet.yaml validation failed (startup warnings)"); }
     for (const w of warnings) this.logger.warn({ path: w.path }, `fleet.yaml: ${w.path ? `${w.path}: ` : ""}${w.message}`);
   }
 

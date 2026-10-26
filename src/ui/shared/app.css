@@ -931,6 +931,8 @@ img.amb-p { object-fit: contain; }
 .s-guests .guest-names { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px var(--s-3); max-height: 220px; overflow: auto;
   padding: var(--s-1) 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .s-guests .guest-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #2667: the ClassicBot rooms follow the fleet's instances under their own heading, across the grid. */
+.s-guests .guest-names-group { grid-column: 1 / -1; margin-top: var(--s-2); }
 .s-guests .guest-list, .s-guests .g-pick { list-style: none; margin: 0 0 var(--s-3); padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
 .s-guests .guest-row, .s-guests .g-cand { padding: var(--s-3) 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .s-guests .guest-row.s-dirty { border-radius: 0; margin-left: 0; align-self: stretch; padding-left: calc(var(--s-2) + 3px); padding-right: var(--s-2); }

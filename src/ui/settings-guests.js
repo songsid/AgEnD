@@ -60,11 +60,19 @@ function wroteTo(names) {
   return html`${before}${names.map((n, i) => html`${i ? ", " : ""}<span key=${n} class="g-wrote">${n}</span>`)}${after}`;
 }
 
-function Names({ id, all, value, wrote = [], onChange }) {
+/** #2667: a granted name as a person reads it — a ClassicBot room by its display name, when it has one. */
+const shownName = (rooms, n) => { const r = (rooms || []).find((x) => x.name === n); return (r && r.display_name) || n; };
+
+/** The agents to choose from: fleet.yaml's instances, then (#2667) the ClassicBot rooms, under their own heading. */
+function Names({ id, all, rooms = [], value, wrote = [], onChange }) {
   const chosen = new Set(value || []);
-  return html`<div class="guest-names" id=${id} role="group">${all.map((n) => html`<label key=${n} class="check guest-name">
-    <input type="checkbox" checked=${chosen.has(n)} onChange=${(e) => { const s = new Set(chosen); if (e.target.checked) s.add(n); else s.delete(n); onChange(all.filter((x) => s.has(x))); }} />
-    <span>${n}${wrote.includes(n) ? html` <span class="note">${tn("grantsWroteHere")}</span>` : null}</span></label>`)}</div>`;
+  const order = [...all, ...rooms.map((r) => r.name)];
+  const box = (n, label, note) => html`<label key=${n} class="check guest-name" title=${note ? n : undefined}>
+    <input type="checkbox" checked=${chosen.has(n)} onChange=${(e) => { const s = new Set(chosen); if (e.target.checked) s.add(n); else s.delete(n); onChange(order.filter((x) => s.has(x))); }} />
+    <span>${label}${note ? html` <span class="note">${n}</span>` : null}${wrote.includes(n) ? html` <span class="note">${tn("grantsWroteHere")}</span>` : null}</span></label>`;
+  return html`<div class="guest-names" id=${id} role="group">${all.map((n) => box(n, n, false))}
+    ${rooms.length ? html`<span class="guest-names-group note" key="--rooms">${tn("grantsClassicRooms")}</span>` : null}
+    ${rooms.map((r) => box(r.name, r.display_name || r.name, !!r.display_name))}</div>`;
 }
 
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -147,6 +155,8 @@ export function GuestsSection({ ctx, staged }) {
   const setGrant = (k, grant) => { setStatus(null); setF((x) => { const g = { ...(x.grants || {}) }; if (grant) g[k] = grant; else delete g[k]; return { ...x, grants: g }; }); };
   const guests = (overview && overview.guests) || [];
   const instances = (overview && overview.instances) || [];
+  const rooms = (overview && Array.isArray(overview.rooms) && overview.rooms) || [];
+  const choosable = [...instances, ...rooms.map((r) => r.name)];
   const who = (k) => {
     const g = guests.find((x) => accountKey(x) === k), p = (people || []).find((x) => accountKey(x) === k);
     const grant = (f.grants && f.grants[k]) || (original.grants && original.grants[k]);
@@ -223,10 +233,10 @@ export function GuestsSection({ ctx, staged }) {
           <div class="g-head"><span class="g-av" aria-hidden="true">${(person.name || "?").slice(0, 1).toUpperCase()}</span>
             <div class="g-id"><strong>${person.name}</strong> <span class="note">${PLATFORMS[person.platform] || person.platform}${person.username ? ` · @${person.username}` : ""}</span></div>
             ${removed ? html`<span class="g-state">${tn("grantsWillBeRemoved")}</span>` : added ? html`<span class="g-state">${tn("grantsNew")}</span>` : pill(person)}</div>
-          <div class="g-chips">${((draft || saved).instances || []).map((n) => html`<span key=${n} class="g-chip">${n}</span>`)}</div>
+          <div class="g-chips">${((draft || saved).instances || []).map((n) => html`<span key=${n} class="g-chip" title=${shownName(rooms, n) !== n ? n : undefined}>${shownName(rooms, n)}</span>`)}</div>
           ${draft && !draft.instances.length ? html`<p class="note g-error" role="alert">${tn("grantsNoAgents")}</p>` : null}
           ${editing === k && draft ? html`<div class="g-edit"><p class="note">${tn("grantsMaySee", person.name)}</p>
-            <${Names} id=${`grant-${k}`} all=${instances} value=${draft.instances} wrote=${person.wrote} onChange=${(list) => setGrant(k, { ...draft, instances: list })} /></div>` : null}
+            <${Names} id=${`grant-${k}`} all=${instances} rooms=${rooms} value=${draft.instances} wrote=${person.wrote} onChange=${(list) => setGrant(k, { ...draft, instances: list })} /></div>` : null}
           ${readOnly ? null : html`<div class="guest-actions">
             ${draft ? html`<button type="button" class="btn btn-sm" aria-expanded=${editing === k ? "true" : "false"} onClick=${() => setEditing(editing === k ? null : k)}>${tn("grantsEditAgents")}</button>` : null}
             ${draft ? html`<button type="button" class="btn btn-sm g-send" disabled=${!applied || ss.sending || cooling || !f.enabled || !original.enabled}
@@ -245,7 +255,7 @@ export function GuestsSection({ ctx, staged }) {
             <span class="g-av" aria-hidden="true">${(p.name || "?").slice(0, 1).toUpperCase()}</span>
             <div class="g-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""} · <span class="g-when">${tn("grantsLastSeen", new Date(p.lastSeen).toLocaleString())}</span></span>
               ${p.instances && p.instances.length ? html`<div class="note">${wroteTo(p.instances)}</div>` : null}</div>
-            <button type="button" class="btn btn-sm" onClick=${() => { const k = accountKey(p); setGrant(k, { ...(p.name ? { name: p.name } : {}), instances: instances.filter((n) => (p.instances || []).includes(n)) }); setEditing(k); }}>${tn("grantsChoose")}</button></li>`)}</ul>`}`}
+            <button type="button" class="btn btn-sm" onClick=${() => { const k = accountKey(p); setGrant(k, { ...(p.name ? { name: p.name } : {}), instances: choosable.filter((n) => (p.instances || []).includes(n)) }); setEditing(k); }}>${tn("grantsChoose")}</button></li>`)}</ul>`}`}
     </fieldset>
     ${overview && overview.audit ? html`<h4>${tn("grantsRecent")}</h4>${!overview.audit.length ? html`<p class="note" id="grantsRecentNone">${tn("grantsRecentNone")}</p>`
       : html`<ul class="g-audit" id="grantsRecentList">${overview.audit.map((e, i) => html`<li key=${`${e.at}-${i}`} class="g-audit-row" data-kind=${e.kind}>

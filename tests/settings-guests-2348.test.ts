@@ -350,6 +350,37 @@ describe("Settings → Guests, as rendered (#2348)", () => {
   });
 });
 
+describe("#2667: the ClassicBot rooms in the picker", () => {
+  const ROOMS = [{ name: "classic-lobby-1234", display_name: "Lobby" }, { name: "classic-ops-5678" }];
+  it("listed after the fleet's instances under their own heading, by display name; a room's grant shows and is kept on an edit", async () => {
+    const w = await open({ enabled: true, grants: { ...structuredClone(GRANTS), "dc:111": { name: "Alice", instances: ["alpha", "classic-ops-5678"] } } }, { rooms: ROOMS });
+    const chips = () => [...w.row("dc:111").querySelectorAll(".g-chip")].map((c: any) => c.textContent);
+    expect(chips()).toEqual(["alpha", "classic-ops-5678"]);
+    await w.click(w.button("Edit agents", w.row("dc:111")));
+    const picker = w.row("dc:111").querySelector(".guest-names");
+    expect([...picker.children].map((c: any) => c.textContent.trim().replace(/\s+/g, " "))).toEqual(["alpha wrote here", "beta", "gamma", "ClassicBot rooms", "Lobby classic-lobby-1234", "classic-ops-5678"]);
+    expect([w.name(picker, "classic-ops-5678").checked, w.name(picker, "Lobby").checked]).toEqual([true, false]);
+    await w.check(w.name(picker, "Lobby"), true);
+    expect(chips(), "a room shows by its display name").toEqual(["alpha", "Lobby", "classic-ops-5678"]);
+    await w.check(w.name(picker, "alpha"), false);
+    await w.apply();
+    expect(w.writes().map((s) => s.body)).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["classic-lobby-1234", "classic-ops-5678"] } } } }]);
+  });
+  it("Choose pre-ticks a room the person wrote in; no rooms, no heading", async () => {
+    const sara = PEOPLE.find((x) => x.userId === "444")!, was = sara.instances;
+    sara.instances = ["classic-lobby-1234", "alpha"];
+    try {
+      const w = await open(undefined, { rooms: ROOMS });
+      await w.click(w.button("Choose", p.root.querySelector('.g-cand[data-account="tg:444"]')));
+      await w.apply();
+      expect(w.writes().map((s) => s.body)).toEqual([{ guests: { grants: { "tg:444": { name: "Sara K.", instances: ["alpha", "classic-lobby-1234"] } } } }]);
+    } finally { sara.instances = was; }
+    const w = await open();
+    await w.click(w.button("Edit agents", w.row("dc:111")));
+    expect(w.row("dc:111").textContent).not.toContain("ClassicBot rooms");
+  });
+});
+
 describe("#2390: why a code was not sent, in the page's language (the server's error text is English)", () => {
   it("each outcome sendGuestCodeByAdmin can answer with has its words; anything else is shown as sent", async () => {
     const src = readFileSync("src/fleet-manager.ts", "utf8");

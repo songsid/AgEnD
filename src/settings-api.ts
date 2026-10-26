@@ -92,6 +92,8 @@ export interface SettingsApiContext extends AppShellContext {
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
+  /** #2667: the ClassicBot rooms' instance names — a guest grant may name one, so a save's validation knows them. */
+  classicRoomNames?(): string[];
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
   /** #2348 delta §5: one audit entry per person whose granted agents changed with a save (event log, the Log tab). */
   noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void;
@@ -328,6 +330,8 @@ export function handleSettingsRequest(
 ): boolean {
   const path = url.pathname;
   if (!isSettingsPath(path)) return false;
+  // #2667: validated with the ClassicBot rooms there are now — a guest grant naming one is not an unknown name.
+  const validateFleet = (config: unknown) => validateFleetConfig(config, { rooms: ctx.classicRoomNames?.() ?? [] });
   const method = req.method ?? "GET";
 
   // ── The page: the app shell, which mounts the Settings panel (#1408 step 3) ──
@@ -880,8 +884,8 @@ export function handleSettingsRequest(
         changes.push(...applied.changes);
       }
       if (!changes.length) return json(res, 200, { ok: true });
-      const before = validateFleetConfig(cfg);
-      const after = validateFleetConfig({ ...cfg, web, web_terminal: webTerminal });
+      const before = validateFleet(cfg);
+      const after = validateFleet({ ...cfg, web, web_terminal: webTerminal });
       if (rejectIfWorse(res, before, after)) return;
       const previous = { web: cfg.web, hadWeb: "web" in cfg, terminal: cfg.web_terminal, hadTerminal: "web_terminal" in cfg };
       try {
@@ -957,8 +961,8 @@ export function handleSettingsRequest(
       const changes: RawConfigPatch[] = parsed.map(c => c.value === null
         ? { path: ["web", "appearance", c.group, c.key], value: undefined, remove: true }
         : { path: ["web", "appearance", c.group, c.key], value: c.value });
-      const before = validateFleetConfig(cfg);
-      const after = validateFleetConfig({ ...cfg, web });
+      const before = validateFleet(cfg);
+      const after = validateFleet({ ...cfg, web });
       if (rejectIfWorse(res, before, after)) return;
       const previous = { web: cfg.web, hadWeb: "web" in cfg };
       try {
@@ -989,8 +993,8 @@ export function handleSettingsRequest(
       if (body.locale === null || body.locale === "") delete (merged as Record<string, unknown>).locale;
       // General → Defaults' "not set" for the tool profile: the key goes (worker for an agent, general for a General).
       if (body.tool_set === null || body.tool_set === "") delete (merged as Record<string, unknown>).tool_set;
-      const before = validateFleetConfig(cfg);
-      const after = validateFleetConfig({ ...cfg, defaults: merged });
+      const before = validateFleet(cfg);
+      const after = validateFleet({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
       settingsWrite(req, () => { cfg.defaults = merged as typeof cfg.defaults;
         if (typeof body.tips === "boolean" || body.tips === "dm") setNoticeMode(cfg, "tips", body.tips);
@@ -1068,8 +1072,8 @@ export function handleSettingsRequest(
       }
       const next = { ...cfg, channels: normalizedBody as FleetConfig["channels"] };
       delete (next as { channel?: unknown }).channel; // channels[] supersedes the legacy single channel
-      const before = validateFleetConfig(cfg);
-      const after = validateFleetConfig(next);
+      const before = validateFleet(cfg);
+      const after = validateFleet(next);
       if (rejectIfWorse(res, before, after)) return;
       const previous = { channels: cfg.channels, channel: cfg.channel, hadChannel: "channel" in cfg };
       try {
@@ -1367,8 +1371,8 @@ export function handleSettingsRequest(
     let mergedInst: Record<string, any>;
     try { mergedInst = normalizeSettingsInstancePatch(base, patch); }
     catch { json(res, 400, { error: "unsupported_instance_null" }); return; }
-    const before = validateFleetConfig(cfg!);
-    const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
+    const before = validateFleet(cfg!);
+    const after = validateFleet({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
     settingsWrite(req, () => {
       Object.defineProperty(cfg!.instances, name, { value: mergedInst, writable: true, enumerable: true, configurable: true });
@@ -1409,7 +1413,7 @@ export function handleSettingsRequest(
         // left behind (schedules, team places), and its fleet.yaml entry goes.
         const execution = settingsRequestExecution(req), authorization = authorizeExplicitInstanceRemoval("dashboard-confirmed");
         (execution ? ctx.removeInstance(name, authorization, execution) : ctx.removeInstance(name, authorization)).then(
-          () => json(res, 200, { ok: true, deleted: name, warnings: validateFleetConfig(cfg).warnings }),
+          () => json(res, 200, { ok: true, deleted: name, warnings: validateFleet(cfg).warnings }),
           (err: unknown) => json(res, 500, { error: (err as Error).message }));
         return true;
       }
@@ -1417,7 +1421,7 @@ export function handleSettingsRequest(
       settingsWrite(req, () => {
         delete cfg.instances[name]; clearPausedMarker(join(ctx.dataDir, "instances", name)); ctx.saveFleetConfig();
       });
-      json(res, 200, { ok: true, warnings: validateFleetConfig(cfg).warnings });
+      json(res, 200, { ok: true, warnings: validateFleet(cfg).warnings });
       return true;
     }
 

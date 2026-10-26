@@ -28,6 +28,26 @@ export function readClassicLastActivityAt(dataDir: string, instanceName: string)
   }
 }
 
+/**
+ * #2667: the ClassicBot rooms' instance names as classicBot.yaml has them, read only (no repair, no write) — for a
+ * check that runs without the fleet (`agend doctor`, validate_config, the start's warnings). A loaded registry persists
+ * each room's instanceName; an old-format entry (its key the channel id) gets its historical unsuffixed name, as load().
+ */
+export function readClassicRoomNames(dataDir: string): string[] {
+  try {
+    const raw = yaml.load(readFileSync(join(dataDir, "classicBot.yaml"), "utf-8")) as ClassicBotYaml | null;
+    const names: string[] = [];
+    for (const [key, val] of Object.entries(raw?.channels ?? {})) {
+      if (!val || typeof val !== "object") continue;
+      if (typeof val.instanceName === "string" && val.instanceName) names.push(val.instanceName);
+      else if (!val.adapterId) { const channelId = val.channelId ?? key; names.push(classicInstanceName(sanitizeInstanceName(val.name ?? channelId), channelId, undefined)); }
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
 /** Backends offered by ClassicBot onboarding. `mock` is test-only. */
 export function getClassicBackendChoices(): Choice[] {
   return KNOWN_BACKENDS

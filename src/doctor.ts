@@ -5,6 +5,7 @@ import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import net from "node:net";
 import { loadRawFleetConfig } from "./config.js";
 import { validateFleetConfig } from "./config-validator.js";
+import { readClassicRoomNames } from "./classic-channel-manager.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { getTmuxSessionName, getTmuxSocketName } from "./paths.js";
 import { BACKENDS } from "./setup-wizard.js";
@@ -145,7 +146,7 @@ export async function collectDoctorReport(
     // #1874 follow-up: the validator's warnings (settings it ignores, e.g. `web.access`), where a hand-editor looks —
     // `agend validate` is not run by someone who edits fleet.yaml by hand.
     if (existsSync(configPath)) {
-      for (const w of validateFleetConfig(raw).warnings) add("Fleet", "warn", "fleet.yaml", w.path ? `${w.path}: ${w.message}` : w.message);
+      for (const w of validateFleetConfig(raw, { rooms: readClassicRoomNames(dataDir) }).warnings) add("Fleet", "warn", "fleet.yaml", w.path ? `${w.path}: ${w.message}` : w.message);
     }
   } catch (err) {
     add("Fleet", "error", "fleet.yaml", t("doctor.config_invalid", (err as Error).message.split("\n")[0]));

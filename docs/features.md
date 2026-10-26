@@ -1407,7 +1407,7 @@ web:
 - **Signing out:** a guest's own `/web revoke` ends only its sessions, code and remembered devices.
 
 **Explicit grants (2.3.2, #2348).** **Settings → Access & security → Guests** lets an admin choose each guest and their agents:
-- **People with access:** one row per person, with their agents, whether they are signed in, and **Edit agents**, **Send sign-in code**, **Remove access** and **Sign out**.
+- **People with access:** one row per person, with their agents, whether they are signed in, and **Edit agents**, **Send sign-in code**, **Remove access** and **Sign out**. **Edit agents** lists the fleet's agents, then its ClassicBot rooms under their own heading, by display name (#2667). A guest granted a room sees that room's web chat.
 - **Add a person:** search the people AgEnD has seen writing to an agent (never a bot, never a fleet admin). Choosing one pre-ticks the agents they wrote to.
 - **How it looks:** one flat row per person with a letter avatar, the agents as chips and the state on the right (signed in, code sent, or why a DM failed; under the name on a phone). An edited row has the straight bar.
 - **Saving:** every edit is unsaved until **Save**. Adding a person, or an agent to someone, waits for a fleet admin's OK in General; taking away applies at once, and removing someone ends their sessions, code and remembered browsers right away.
