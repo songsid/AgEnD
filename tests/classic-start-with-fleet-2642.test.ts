@@ -90,7 +90,7 @@ instances:
   vi.spyOn(fm.lifecycle, "primeAuthVerification").mockImplementation(() => {});
   for (const name of ["startAvailabilityRefresh", "ensureGeneralInstructions", "syncRoleSkills", "startSearchIndex",
     "startDiscordUsagePresence", "requestDiscordUsagePresenceRefresh", "startStatuslineWatcher", "resolveTopicIcons",
-    "refreshAllGuestRooms", "announceWebChatOnce", "startNeedsYou", "announceToolPermissionsChange", "sendFleetStartCompletionFallback",
+    "refreshAllGuestRooms", "startNeedsYou", "announceToolPermissionsChange", "sendFleetStartCompletionFallback",
     "notifyAdapterFailure", "scheduleAdapterRetry"]) {
     vi.spyOn(fm, name).mockImplementation(() => undefined);
   }

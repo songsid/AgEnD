@@ -213,10 +213,10 @@ describe("PublicLinkAutoOpen: once after start, named only", () => {
 });
 
 describe("carry of #2450 (Fable's review P2-3): auto_open is started by the fleet's own start", () => {
-  it("startAll calls it once, after the web chat announcement ('fleet ready') and before READY=1, in the same method", () => {
+  it("startAll calls it once, after 'fleet ready' and before READY=1, in the same method", () => {
     const src = readFileSync(join(process.cwd(), "src", "fleet-manager.ts"), "utf8");
     const calls = [...src.matchAll(/\n\s+this\.startPublicLinkAutoOpen\(\);/g)].map(m => m.index!);
-    const announce = src.indexOf("void this.announceWebChatOnce(agendVersion);"), ready = src.indexOf('sdNotify("READY=1");');
+    const announce = src.indexOf("await this.sendFleetStartCompletionFallback("), ready = src.indexOf('sdNotify("READY=1");');
     const between = (a: number, b: number) => src.slice(a, b);
     const methodStart = /\n  (?:private |public |protected )?(?:async )?[a-zA-Z]+\([^)]*\)[^{\n]*\{\n/;
     expect([calls.length, announce > 0 && announce < calls[0]!, calls[0]! < ready, methodStart.test(between(announce, ready))]).toEqual([1, true, true, false]);

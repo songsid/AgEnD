@@ -153,7 +153,6 @@ describe("doStopAll is wired to the sweep", () => {
       shutdownLoginWindows: async () => {},
       costGuard: { stop: noop },
       dailySummary: { stop: noop },
-      dailyTipScheduler: { stop: noop },
       scheduler: { shutdown: noop },
       controlClient: { stop: noop },
       retirePendingNoncePrompts: async () => { order.push("prompts retired"); },

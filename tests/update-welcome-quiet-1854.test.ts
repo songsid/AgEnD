@@ -44,7 +44,7 @@ describe("an update that needed no restart completes without a tip", () => {
   let dir = "";
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
-  it("the old fleet edits its message to the bare completion, tips enabled and available", async () => {
+  it("the old fleet edits its message to the bare completion, with a tip available", async () => {
     setLocale("en");
     dir = mkdtempSync(join(tmpdir(), "agend-1854-tip-"));
     beginUpdateProgress(dir, { adapterId: "a", chatId: "c", messageId: "m" }, Date.now());
@@ -55,7 +55,7 @@ describe("an update that needed no restart completes without a tip", () => {
     Object.assign(fm, {
       dataDir: dir, adapters: new Map([["a", adapter]]), logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
       updateCleanupWatch: null, updateProgressTimer: null, updateProgressEditRunning: false, lastUpdateProgressText: null,
-      tipsEnabled: () => true, pickAvailableTip: () => ({ id: "tip-x" }), formatTip: () => "💡 Tip: try /status",
+      formatTip: () => "💡 Tip: try /status",
       updateCompletionTipText: null,   // the tip cache the removed code read; a constructed fleet started it at null
     });
     fm.startUpdateProgressMonitor(adapter);

@@ -114,7 +114,7 @@ instances:
   vi.spyOn(fm.lifecycle, "isPaused").mockImplementation((...args: unknown[]) => args[0] === "paused");
   for (const name of ["startAvailabilityRefresh", "ensureGeneralInstructions", "syncRoleSkills", "startSearchIndex",
     "startDiscordUsagePresence", "requestDiscordUsagePresenceRefresh", "startStatuslineWatcher", "resolveTopicIcons",
-    "refreshAllGuestRooms", "announceWebChatOnce", "startNeedsYou", "announceToolPermissionsChange", "sendFleetStartCompletionFallback"]) {
+    "refreshAllGuestRooms", "startNeedsYou", "announceToolPermissionsChange", "sendFleetStartCompletionFallback"]) {
     vi.spyOn(fm, name).mockImplementation(() => undefined);
   }
   vi.spyOn(fm, "startSharedAdapter").mockResolvedValue(undefined);
