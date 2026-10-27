@@ -109,6 +109,24 @@ describe("#2785 (b): a newer message on the same thread replaces an older one st
     expect(rows).toEqual([{ request_delivery_id: newer.deliveryId, state: "open" }]);
   });
 
+  it("a request that needs a reply is not replaced by an update that doesn't (#2797 review): both go, the duty stays", () => {
+    const { o, admit, deliverNext } = outbox();
+    const request = admit("leader", "grok", "what's left on #2683? reply please", "cid-q", "fleet_inbound", true);
+    const update = admit("leader", "grok", "fyi: CI is green now", "cid-q");                     // no requires_reply
+    expect(deliverNext()?.deliveryId).toBe(request.deliveryId);
+    expect(deliverNext()?.deliveryId).toBe(update.deliveryId);
+    const rows = (o as any).db.prepare("SELECT request_delivery_id, state FROM reply_obligations").all();
+    expect(rows).toEqual([{ request_delivery_id: request.deliveryId, state: "open" }]);
+  });
+
+  it("an update that doesn't need a reply is replaced by a request that does", () => {
+    const { o, admit, deliverNext } = outbox();
+    const update = admit("leader", "grok", "fyi: CI is red", "cid-q");
+    const request = admit("leader", "grok", "CI is red: what's the fix? reply please", "cid-q", "fleet_inbound", true);
+    expect(deliverNext()?.deliveryId).toBe(request.deliveryId);
+    expect(o.get(update.deliveryId)?.state).toBe("cancelled");
+  });
+
   it("the 2026-10-26 #2683 burst to GrokCore: Prism's four rounds collapse into its approval", () => {
     const { o, admit, deliverNext } = outbox();
     // the eleven rows as they waited (sender, correlation id), in order

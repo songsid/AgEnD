@@ -162,6 +162,11 @@ function payloadRequiresReply(payload: unknown): boolean {
   return !!meta && typeof meta === "object" && (meta as Record<string, unknown>).requires_reply === "true";
 }
 
+/** Whether a row's payload asks for a reply (an unreadable payload: no). */
+function rowRequiresReply(row: OutboxRow): boolean {
+  try { return payloadRequiresReply(JSON.parse(row.payload_json)); } catch { return false; }
+}
+
 function payloadMessageId(payload: unknown): string | null {
   const meta = payload && typeof payload === "object" ? (payload as Record<string, unknown>).meta : undefined;
   const id = meta && typeof meta === "object" ? (meta as Record<string, unknown>).message_id : undefined;
@@ -1437,7 +1442,9 @@ export class DeliveryOutbox extends EventEmitter {
    * (correlation_id) waits behind it is not delivered — the newer one replaces it (a review round for an older PR head, a
    * CI result since overtaken). Only agents' messages (fleet_inbound, steer) that never began: a row with any attempt
    * other than an aborted one keeps its place. The dropped row is `cancelled`, its reason naming the newer delivery, and
-   * stays readable (delivery_status, Fleet traffic); a reply obligation opens only on delivery, so the newer one carries it.
+   * stays readable (delivery_status, Fleet traffic). A reply obligation opens only on delivery, from the delivered row's own
+   * payload: a row that requires a reply is replaced only by one that requires one too, else it keeps its place (#2797
+   * review — an update without requires_reply must not swallow the request it follows).
    */
   private supersedeThreadRows(pending: readonly OutboxRow[], now: string): Set<string> {
     const newest = new Map<string, OutboxRow>();
@@ -1453,7 +1460,9 @@ export class DeliveryOutbox extends EventEmitter {
       const out: string[] = [];
       for (const row of candidates) {
         if (begun.get(row.delivery_id)) continue;
-        const by = newest.get(keyOf(row)!)!.delivery_id;
+        const newer = newest.get(keyOf(row)!)!;
+        if (rowRequiresReply(row) && !rowRequiresReply(newer)) continue;
+        const by = newer.delivery_id;
         if (cancel.run(now, now, `superseded by ${by}`, row.delivery_id).changes === 1) out.push(row.delivery_id);
       }
       return out;

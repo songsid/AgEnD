@@ -474,8 +474,9 @@ describe("DeliveryOutbox", () => {
 
   it("holds only a target lane until its recovered attempt is classified", () => {
     const outbox = new DeliveryOutbox(tempDb(), "manager-1");
-    const active = outbox.admit(input({ operationId: "active", sourceKey: "active", targetInstance: "worker-a" })).delivery;
-    const newer = outbox.admit(input({ operationId: "newer", sourceKey: "newer", targetInstance: "worker-a" })).delivery;
+    // #2785 (b): independent messages, each its own thread (one thread's newer message would replace a waiting one).
+    const active = outbox.admit(input({ operationId: "active", sourceKey: "active", targetInstance: "worker-a", correlationId: "cid-active" })).delivery;
+    const newer = outbox.admit(input({ operationId: "newer", sourceKey: "newer", targetInstance: "worker-a", correlationId: "cid-newer" })).delivery;
     const independent = outbox.admit(input({ operationId: "other", sourceKey: "other", targetInstance: "worker-b" })).delivery;
     const first = outbox.claimNext("manager-1", target => `boot-${target}`, new Set())!;
     expect(first.deliveryId).toBe(active.deliveryId);
@@ -513,8 +514,9 @@ describe("DeliveryOutbox", () => {
 
   it("keeps FIFO per target across retry backoff while allowing another target to progress", () => {
     const outbox = new DeliveryOutbox(tempDb(), "manager-1");
-    const first = outbox.admit(input({ operationId: "op-1", sourceKey: "one", targetInstance: "worker-a" })).delivery;
-    const second = outbox.admit(input({ operationId: "op-2", sourceKey: "two", targetInstance: "worker-a" })).delivery;
+    // #2785 (b): independent messages, each its own thread (one thread's newer message would replace a waiting one).
+    const first = outbox.admit(input({ operationId: "op-1", sourceKey: "one", targetInstance: "worker-a", correlationId: "cid-one" })).delivery;
+    const second = outbox.admit(input({ operationId: "op-2", sourceKey: "two", targetInstance: "worker-a", correlationId: "cid-two" })).delivery;
     const independent = outbox.admit(input({ operationId: "op-3", sourceKey: "three", targetInstance: "worker-b" })).delivery;
     const claimed = outbox.claimNext("manager-1", target => `boot-${target}`, new Set())!;
     expect(claimed.deliveryId).toBe(first.deliveryId);
