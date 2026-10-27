@@ -234,12 +234,12 @@ An agent can check, upload, replace, delete and restore skin packs itself, for e
 
 **Approval.** Fleet admins choose the mode in **Edit offices → Agents changing packs**:
 
-- **Need my yes** (the default): each change waits as a pending change until a fleet admin approves it there, or with **Approve** / **Reject** on its notice in General. A change is judged again when approved. Pending changes are kept in memory for 24 hours, at most 8 at once, and a fleet restart drops them.
+- **Need my yes** (the default): each change waits as a pending change until a fleet admin approves it there, or with **Approve** / **Reject** on its notice in General. A change is judged again when approved. A change that drops layout entries is applied only if it still drops exactly the entries its notice named. If the offices were edited since then, approving it is refused and the agent has to send it again. Pending changes are kept in memory for 24 hours, at most 8 at once, and a fleet restart drops them.
 - **Apply at once**: the change applies and the admins are told.
 
 The same panel lists which agents may change packs, the changes waiting for your yes, and the recent changes.
 
-**Records and limits.** Every upload, replace, delete and restore is logged in `~/.agend/web-office-skins/.agent-changes.log` (who, when, which pack, file count, bytes, and the sha256 of the manifest and each picture, so a restore can be matched to a version). The fleet's admins are told in General in one short message. Each agent may send at most 20 batches and 200 MiB an hour. One call is one batch of up to 16 packs and 100 MiB of pictures; refusals and checks don't count. On disk the packs may take 640 MiB in all: 16 full packs and a previous version of each.
+**Records and limits.** Every upload, replace, delete and restore is logged in `~/.agend/web-office-skins/.agent-changes.log` (who, when, which pack, file count, bytes, and the sha256 of the manifest and each picture, so a restore can be matched to a version). The fleet's admins are told in General in one short message. Each agent may send at most 20 batches and 200 MiB an hour. One call is one batch of up to 16 packs and 100 MiB of pictures; refusals and checks don't count. Checks have their own allowance: 60 batches and 1 GiB as sent an hour per agent. Every check counts, whether it passes or not. On disk the packs may take 640 MiB in all: 16 full packs and a previous version of each.
 
 Also on the command line: `agend-agent office packs`, `pack-check <dir>`, `pack-upload <dir>… [--drop-invalid-overrides]`, `pack-delete <id> [--keep-previous]`, `pack-restore <id>`, `style <office> <pack>`.
 
@@ -340,6 +340,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Office share links | 10 open; 15 minutes to 24 hours; 120 requests a minute each |
 | `office_set` | 6 calls a minute, 60 an hour per agent |
 | Agents' pack changes | 20 batches and 200 MiB an hour per agent; a batch is up to 16 packs and 100 MiB |
+| Agents' pack checks (`office_pack_check`) | 60 batches and 1 GiB as sent an hour per agent |
 
 ### Files and settings
 
