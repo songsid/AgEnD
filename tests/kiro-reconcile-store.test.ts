@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyKiroCarryReconciliation, planKiroCarryReconciliation, prepareKiroCarryForLaunch } from "../src/backend/kiro-classic-archive.js";
@@ -85,6 +86,58 @@ describe("explicit stopped original/newer reconciliation", () => {
     expect(x.own()).toBeNull(); expect(x.rows()).toHaveLength(2);
     expect(prepareKiroCarryForLaunch(x.input).sessionId).toBe(x.keep); expect(x.own()).toBe(x.keep);
     expect(readFileSync(join(x.home, "kiro-identity", "claims", "v2", x.archive), "utf8")).toBe(x.name + "\nabandoned\n");
+  });
+  it("prepared replay rechecks third-session work after the original re-pin survived", () => {
+    const x = f();
+    expect(() => applyKiroCarryReconciliation(x.input, planKiroCarryReconciliation(x.input), "admin", () => {
+      if (x.own() === x.keep) throw new Error("interrupted after re-pin");
+    })).toThrow(/after re-pin/);
+    const before = x.rows(), m = JSON.parse(readFileSync(join(x.sessions, x.archive + ".json"), "utf8")); m.session_id = "third";
+    writeFileSync(join(x.sessions, "third.json"), JSON.stringify(m)); writeFileSync(join(x.sessions, "third.jsonl"), "unacknowledged third work");
+    expect(() => prepareKiroCarryForLaunch(x.input)).toThrow(/third/); expect(x.rows()).toEqual(before);
+    const dir = join(x.home, "kiro-reconciliations", readdirSync(join(x.home, "kiro-reconciliations"))[0]!);
+    expect(JSON.parse(readFileSync(join(dir, "active.json"), "utf8")).phase).toBe("prepared");
+  });
+  function changeClassic(x: ReturnType<typeof f>): void {
+    const db = new Database(x.input.dbPath);
+    try {
+      const row = db.prepare("SELECT value FROM conversations_v2 WHERE conversation_id=?").get(x.keep) as { value: string };
+      const value = JSON.parse(row.value); value.unknown_metadata = "changed after confirmation";
+      db.prepare("UPDATE conversations_v2 SET value=? WHERE conversation_id=?").run(JSON.stringify(value), x.keep);
+    } finally { db.close(); }
+  }
+  it("prepared replay refuses changed classic metadata before re-pinning or removing rows", () => {
+    const x = f(); let checks = 0;
+    expect(() => applyKiroCarryReconciliation(x.input, planKiroCarryReconciliation(x.input), "admin", () => { if (++checks === 2) throw new Error("interrupted"); })).toThrow();
+    changeClassic(x); const before = x.rows(), native = x.native(), identity = readFileSync(x.identityFile);
+    expect(() => prepareKiroCarryForLaunch(x.input)).toThrow(/Confirmed classic bytes/);
+    expect(x.rows()).toEqual(before); expect(x.native()).toEqual(native); expect(readFileSync(x.identityFile)).toEqual(identity); expect(x.own()).toBeNull();
+  });
+  it("classic bytes changed after the replay proof are refused inside the removal transaction", () => {
+    const x = f(); let checks = 0;
+    expect(() => applyKiroCarryReconciliation(x.input, planKiroCarryReconciliation(x.input), "admin", () => { if (++checks === 2) throw new Error("interrupted"); })).toThrow();
+    let pinChecks = 0;
+    expect(() => prepareKiroCarryForLaunch(x.input, () => { if (x.own() === x.keep && ++pinChecks === 2) changeClassic(x); })).toThrow(/Confirmed classic bytes/);
+    expect(x.rows()).toHaveLength(2);
+  });
+  it.each(["missing", "different"])("committed removal replay refuses a %s exact classic archive", kind => {
+    const x = f();
+    expect(() => applyKiroCarryReconciliation(x.input, planKiroCarryReconciliation(x.input), "admin", () => {
+      if (!x.rows().some((r: any) => r.conversation_id === x.keep)) throw new Error("interrupted after commit");
+    })).toThrow(/after commit/);
+    const root = join(x.home, "kiro-classic-archives", readdirSync(join(x.home, "kiro-classic-archives"))[0]!);
+    for (const name of readdirSync(root)) {
+      const path = join(root, name);
+      if (kind === "missing") rmSync(path); // synthetic missing-archive crash fixture only
+      else {
+        const archive = JSON.parse(readFileSync(path, "utf8")), value = JSON.parse(Buffer.from(archive.payload.rows[0].valueBase64, "base64").toString("utf8"));
+        value.unknown_metadata = "a different otherwise valid archive";
+        archive.payload.rows[0].valueBase64 = Buffer.from(JSON.stringify(value)).toString("base64");
+        archive.sha256 = createHash("sha256").update(JSON.stringify(archive.payload)).digest("hex"); writeFileSync(path, JSON.stringify(archive));
+      }
+    }
+    expect(() => prepareKiroCarryForLaunch(x.input)).toThrow(/exact archive is missing/);
+    expect(x.rows()).toHaveLength(1);
   });
   it("a committed classic removal with a lost final identity update cannot become a fresh start", () => {
     const x = f(), before = readFileSync(x.identityFile), claim = join(x.home, "kiro-identity", "claims", "v2", x.keep), claimBefore = readFileSync(claim);

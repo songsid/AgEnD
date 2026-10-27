@@ -161,15 +161,15 @@ export function preserveKiroReconciliation(input: KiroReconcileInput, plan: Kiro
   setPhase(input, receipt, "prepared"); return receipt;
 }
 /** An active/rolled-back intent is never interpreted as permission for a fresh conversation. */
-export function assertKiroReconciliationLaunch(input: KiroClassicArchiveInput): boolean {
-  const j = journal({ ...input, archiveId: "unused", model: "unused" }); if (!j) return false;
+export function assertKiroReconciliationLaunch(input: KiroClassicArchiveInput): { input: KiroReconcileInput; classicHash: string } | null {
+  const j = journal({ ...input, archiveId: "unused", model: "unused" }); if (!j) return null;
   if (j.phase === "rollback_pending" || j.phase === "rolled_back") throw new Error("Kiro reconciliation was rolled back; explicit confirmation is required before starting");
   if (!receiptPattern.test(j.receipt)) throw new Error("Invalid reconciliation receipt");
   const path = join(paths({ ...input, archiveId: "unused", model: "unused" }).root, j.receipt, "manifest.json");
   const m = JSON.parse(read(path, 2 * 1024 * 1024, true).bytes.toString("utf8")) as Manifest;
   if (!archivedKiroAlternative({ ...input, sessionId: m.input.sessionId }, m.input.archiveId)) throw new Error("Reconciliation selection is not proven");
   if (j.phase === "prepared") inspectKiroReconciliationRollback(m.input, j.receipt);
-  return j.phase === "prepared";
+  return j.phase === "prepared" ? { input: m.input, classicHash: m.classicHash } : null;
 }
 export function archivedKiroAlternative(input: KiroClassicArchiveInput, alternative: string): (() => boolean) | null {
   const j = journal({ ...input, archiveId: alternative, model: "unused" }); if (!j) return null;

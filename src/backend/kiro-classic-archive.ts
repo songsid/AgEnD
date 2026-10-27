@@ -280,7 +280,7 @@ function validateInput(input: KiroClassicArchiveInput): void {
   if (!safeId.test(input.sessionId) || !/^[^\n\r\0]{1,512}$/.test(input.instance)) throw new Error("Unsafe conversation id");
 }
 /** Archive all literal/canonical aliases of this exact conversation in this directory, never other conversations. */
-export function archiveKiroClassicCopy(input: KiroClassicArchiveInput, hooks: { stopped?: () => void; checkpoint?: () => void; timeoutMs?: number } = {}): string | null {
+export function archiveKiroClassicCopy(input: KiroClassicArchiveInput, hooks: { stopped?: () => void; checkpoint?: () => void; timeoutMs?: number; classicHash?: string } = {}): string | null {
   validateInput(input);
   if (!existsSync(input.dbPath)) return null;
   ownedFile(input.dbPath);
@@ -297,6 +297,7 @@ export function archiveKiroClassicCopy(input: KiroClassicArchiveInput, hooks: { 
       if (!lengths.length) { db.exec("COMMIT"); return null; }
       if (lengths.reduce((n, r) => n + r.bytes, 0) > MAX_ROW_BYTES) throw new Error("Frozen classic rows exceed the archive limit");
       const rows = db.prepare(`SELECT key, conversation_id AS id, CAST(value AS BLOB) AS value, created_at AS createdAt, updated_at AS updatedAt FROM conversations_v2 WHERE key IN (${placeholders}) AND conversation_id=? ORDER BY key`).all(...keys, input.sessionId) as Array<{ key: string; id: string; value: Buffer; createdAt: number; updatedAt: number }>;
+      if (hooks.classicHash !== undefined && fingerprintClassicRows(rows.map(r => ({ key: r.key, conversation_id: r.id, value: r.value.toString("hex").toUpperCase(), created_at: r.createdAt, updated_at: r.updatedAt }))) !== hooks.classicHash) throw new Error("Confirmed classic bytes changed; reconciliation held");
       const path = writeArchive(input, rows.map(r => ({ key: r.key, id: r.id, valueBase64: r.value.toString("base64"), createdAt: r.createdAt, updatedAt: r.updatedAt })));
       hooks.checkpoint?.(); stopped(); proveOwnedCarry(input);
       const del = db.prepare("DELETE FROM conversations_v2 WHERE key=? AND conversation_id=? AND CAST(value AS BLOB)=? AND created_at=? AND updated_at=?");
@@ -310,6 +311,12 @@ export interface KiroCarryPreparation { sessionId: string | null; archivePath: s
 /** One automatic launch repair. Explicit fresh starts do not call this. */
 export function prepareKiroCarryForLaunch(input: Omit<KiroClassicArchiveInput, "sessionId">, checkpoint?: () => void): KiroCarryPreparation {
   const pendingReconciliation = assertKiroReconciliationLaunch({ ...input, sessionId: "unresolved" });
+  if (pendingReconciliation) {
+    assertPreparedClassicSource(pendingReconciliation.input, pendingReconciliation.classicHash);
+    // Re-pinning may already have survived an interrupted attempt. Its current
+    // candidate no longer says repair, but unacknowledged later work still holds.
+    proveNoReplacementWork(pendingReconciliation.input);
+  }
   const candidate = kiroCarryCandidate(input);
   if (!candidate) return { sessionId: null, archivePath: null, repaired: false };
   const full = { ...input, sessionId: candidate.id };
@@ -336,7 +343,8 @@ export function prepareKiroCarryForLaunch(input: Omit<KiroClassicArchiveInput, "
     checkpoint?.(); repaired = repairAbandonedKiroCarry(full);
   }
   checkpoint?.(); proveOwnedCarry(full);
-  const archivePath = archiveKiroClassicCopy(full, { checkpoint });
+  const archivePath = archiveKiroClassicCopy(full, { checkpoint, classicHash: pendingReconciliation?.classicHash });
+  if (pendingReconciliation) assertPreparedClassicSource(pendingReconciliation.input, pendingReconciliation.classicHash);
   checkpoint?.(); finishKiroReconciliationLaunch(full);
   return { sessionId: candidate.id, archivePath, repaired };
 }
@@ -344,12 +352,38 @@ export function prepareKiroCarryForLaunch(input: Omit<KiroClassicArchiveInput, "
 function reconcileStopped(input: KiroReconcileInput): void {
   assertKiroConversationStopped(input); assertKiroConversationStopped({ ...input, sessionId: input.archiveId });
 }
-function classicHash(input: KiroReconcileInput): string {
+interface ClassicFingerprintRow { key: string; conversation_id: string; value: string; created_at: number; updated_at: number }
+function fingerprintClassicRows(rows: ClassicFingerprintRow[]): string {
+  return hash(JSON.stringify(rows.slice().sort((a, b) => Buffer.compare(Buffer.from(a.key), Buffer.from(b.key)))));
+}
+function classicRows(input: KiroReconcileInput): ClassicFingerprintRow[] {
   const db = new Database(input.dbPath, { readonly: true, fileMustExist: true, timeout: 200 });
   try {
     const keys = kiroDirectoryKeys(input.workingDirectory);
-    return hash(JSON.stringify(db.prepare(`SELECT key, conversation_id, hex(CAST(value AS BLOB)) AS value, created_at, updated_at FROM conversations_v2 WHERE key IN (${keys.map(() => "?").join(",")}) AND conversation_id=? ORDER BY key`).all(...keys, input.sessionId)));
+    const where = `key IN (${keys.map(() => "?").join(",")}) AND conversation_id=?`;
+    const sizes = db.prepare(`SELECT length(CAST(value AS BLOB)) AS n FROM conversations_v2 WHERE ${where}`).all(...keys, input.sessionId) as { n: number }[];
+    if (sizes.reduce((n, r) => n + r.n, 0) > MAX_ROW_BYTES) throw new Error("Confirmed classic rows exceed the archive limit");
+    return db.prepare(`SELECT key, conversation_id, hex(CAST(value AS BLOB)) AS value, created_at, updated_at FROM conversations_v2 WHERE ${where} ORDER BY key`).all(...keys, input.sessionId) as ClassicFingerprintRow[];
   } finally { db.close(); }
+}
+function classicHash(input: KiroReconcileInput): string { return fingerprintClassicRows(classicRows(input)); }
+function matchingClassicArchive(input: KiroReconcileInput, expected: string): string | undefined {
+  const root = join(input.agendHome, "kiro-classic-archives", hash(input.instance).slice(0, 32));
+  if (!existsSync(root)) return undefined;
+  return readdirSync(root).filter(name => name.startsWith(input.sessionId + "-") && name.endsWith(".json"))
+    .map(name => join(root, name)).find(path => {
+      const m = kiroClassicArchiveMetadata(path);
+      return m.instance === input.instance && m.sessionId === input.sessionId && m.directory === kiroCanonicalDirectory(input.workingDirectory)
+        && m.profile === input.credentialProfile && m.dbPath === resolve(input.dbPath)
+        && fingerprintClassicRows(readArchive(path).payload.rows.map(r => ({ key: r.key, conversation_id: r.id,
+          value: Buffer.from(r.valueBase64, "base64").toString("hex").toUpperCase(), created_at: r.createdAt, updated_at: r.updatedAt }))) === expected;
+    });
+}
+function assertPreparedClassicSource(input: KiroReconcileInput, expected: string): void {
+  const rows = classicRows(input);
+  if (fingerprintClassicRows(rows) === expected) return;
+  if (!rows.length && matchingClassicArchive(input, expected)) return; // removal committed, final selection marker did not
+  throw new Error("Confirmed classic bytes changed or their exact archive is missing; reconciliation held");
 }
 /** Runs on the bounded store worker. Never writes while planning or before the admin's confirmation. */
 export function planKiroCarryReconciliation(input: KiroReconcileInput, rollbackReceipt?: string): KiroReconcilePlan {
@@ -369,16 +403,7 @@ export function applyKiroCarryReconciliation(input: KiroReconcileInput, plan: Ki
     checkpoint(); reconcileStopped(input);
     const rollback = beginKiroReconciliationRollback(input, plan);
     if (classicHash(input) !== rollback.classicHash) {
-      const root = join(input.agendHome, "kiro-classic-archives", hash(input.instance).slice(0, 32));
-      const archive = readdirSync(root).filter(name => name.startsWith(input.sessionId + "-") && name.endsWith(".json"))
-        .map(name => join(root, name)).find(path => {
-          const m = kiroClassicArchiveMetadata(path);
-          return m.instance === input.instance && m.sessionId === input.sessionId && m.directory === kiroCanonicalDirectory(input.workingDirectory)
-            && m.profile === input.credentialProfile && m.dbPath === resolve(input.dbPath)
-            && hash(JSON.stringify(readArchive(path).payload.rows.slice().sort((a, b) => Buffer.compare(Buffer.from(a.key), Buffer.from(b.key))).map(r => ({
-              key: r.key, conversation_id: r.id, value: Buffer.from(r.valueBase64, "base64").toString("hex").toUpperCase(), created_at: r.createdAt, updated_at: r.updatedAt,
-            })))) === rollback.classicHash;
-        });
+      const archive = matchingClassicArchive(input, rollback.classicHash);
       if (!archive) throw new Error("The original classic archive is required for rollback");
       checkpoint(); restoreKiroClassicArchive(input, archive);
       if (classicHash(input) !== rollback.classicHash) throw new Error("Original classic bytes changed; rollback remains held");
