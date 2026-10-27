@@ -299,6 +299,14 @@ agend import config.tar.gz
 
 `--full` 會連所有 instance 資料一起帶走，不只設定。
 
+kiro instance 從經典引擎搬到 TUI 後，凍結的經典副本會被封存。要還原它（先停止 instance）：
+
+```bash
+agend kiro restore-classic --instance <名稱> --archive '<封存通知中的路徑>'
+```
+
+它不會覆寫既有資料，也不會把 instance 搬回經典引擎。請見 [CLI 參考](https://github.com/songsid/AgEnD/blob/main/docs/cli.zh-TW.md#還原凍結的-kiro-classic-備份)。
+
 ## Shell 補全
 
 幫 `agend attach` 和 `agend fleet start|stop|restart` 補 instance 名稱：

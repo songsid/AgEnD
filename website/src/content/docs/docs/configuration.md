@@ -113,6 +113,8 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 | `retention_days` | number | `30` | How long finished deliveries and done Task Board tasks are kept |
 | `task_board.summary_at` | `"HH:MM"` or `"off"` | `off` | When the daily Task Board summary is sent, in the fleet's timezone (24 h). Off until you set a time |
 | `dashboard` | object | — | Which dashboard features an agent may use: `appearance`, `task_board`, `web_settings`. `false` switches one off. New fleets get `task_board: false` |
+| `office_access` / `office_pack_access` | boolean | `false` | An agent's Office tools (`office_view`, `office_set`) and its skin-pack tools. Set here or per instance; outside `dashboard`, so older versions accept the file. See [Office](/AgEnD/docs/office/#agents-in-the-office) |
+| `reply_triggers` | boolean | `false` | In ClassicBot collab rooms, a native reply to the bot's message also triggers it (an @mention always does). ClassicBot defaults and each room can override |
 | `progress_min_elapsed` | number | `30` | Seconds before the live-progress line starts showing elapsed time |
 | `startup.concurrency` | number | from RAM and CPUs, `2`–`10` | Instances starting at once (`1`–`20` when set) |
 | `startup.stagger_delay_ms` | number | `500` | Minimum gap between two instance starts, for startup, wake and restart alike |
@@ -172,7 +174,7 @@ instances:
 | `log_level` | string | `info` | `trace`, `debug`, `info`, `warn`, `error` |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
 | `agent_mode` | `mcp` \| `cli` | `mcp` | `cli` uses `agend-agent` commands instead of MCP |
-| `kiro_ui` | `legacy` \| `tui` | `legacy` | Kiro engine, pinned on every launch (`v3` is refused until it can run unattended) |
+| `kiro_ui` | `legacy` \| `tui` | `legacy` when unset | Kiro engine, pinned on every launch. Every new kiro instance is written with `tui`; move an existing classic one with `migrate_kiro_instance`, which carries its conversation (one-way). `v3` is refused until it can run unattended |
 | `worktree_source` | string | — | The original repo, when this is a git worktree |
 | `cost_guard` | CostGuardConfig | — | Per-instance limit, overrides the fleet one |
 | `restart_policy.max_retries` | number | `10` | Crash restarts before giving up |
@@ -250,7 +252,7 @@ defaults:
         Authorization: "Bearer token"
 ```
 
-The events sent are `hang`, `mcp_died`, `pty_error`, `pty_recovered`, `cost_warning`, `cost_limit`, `schedule_deferred`, `model_failover` and `model_recovered`. `events: ["*"]` subscribes to all of them.
+The events sent are `hang`, `mcp_died`, `pty_error`, `pty_recovered`, `cost_warning`, `cost_limit`, `schedule_deferred`, `model_failover`, `model_recovered` and `context_lost` (an instance started over without its conversation). `events: ["*"]` subscribes to all of them.
 
 ## Credential profiles
 
@@ -309,6 +311,7 @@ For Kiro, only the login is duplicated: the large runtimes kiro downloads link b
 | `auto_pause_after` | number | inherited | Idle minutes before pause; `0` disables |
 | `tool_progress` | `off` \| `standard` \| `verbose` | inherited | Processing-bubble detail |
 | `reply_completion_guard` | boolean | inherited | As the instance field of the same name |
+| `reply_triggers` | boolean | inherited | Native replies trigger the bot; inherits `fleet.yaml` defaults, else `false` |
 
 **An empty allow list does not mean open.** When someone who is not a ClassicBot admin runs `/start` in a new room whose server, group or private chat is not on a list, General is asked for approval, with **Allow / Allow+admin / Ignore** buttons. Approving does not start the agent: run `/start` again. Admins skip this, and rooms already registered keep working.
 
@@ -337,6 +340,7 @@ channels:
 | `web_echo` | boolean | `false` | Copy this room’s web chat to the platform, independent of `web.echo_to_channel` |
 | `pre_task_command` | string | — | Pasted before every message |
 | `reply_completion_guard` | boolean | from defaults | Override for this channel |
+| `reply_triggers` | boolean | from defaults | Override native-reply triggering for this collab room |
 
 On Telegram, a `collab: true` written into the file makes the bot wait for a Discord-style mention, so ordinary messages can go unanswered. A normal Telegram `/start` never sets it.
 

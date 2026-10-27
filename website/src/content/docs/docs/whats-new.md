@@ -56,7 +56,7 @@ The steps, in order, are in the [upgrade guide](https://github.com/songsid/AgEnD
 - **Defaults that change after the upgrade:**
   - **Task board in chat:** cards that need you are not shown in General's Needs you list until you set `needs_you.task_board: true` (#2425). The daily summary is sent only when you set `defaults.task_board.summary_at`.
   - **New fleets:** a new `fleet.yaml` gets `defaults.dashboard.task_board: false` (#2391). Your existing file is not rewritten, and the task board works as before.
-  - **Canvas Worker effects are experimental and off** (#2275). Turn them on in **Settings → Web appearance**. The built-in ambient effects, such as falling petals and click stars, are not affected.
+  - **Canvas Worker effects are experimental and off** (#2275). Turn them on in **Settings → Web dashboard**. The built-in ambient effects, such as falling petals and click stars, are not affected.
   - **CLI language follows `defaults.locale`** (#2404). If it is not set, a host at UTC+8 uses Chinese, and the machine-read lines stay in English.
   - **Service hosts (#2356):** on a host where the AgEnD service is installed, `agend fleet start` and `agend fleet stop` hand over to `agend start` and `agend stop`, so no second fleet runs beside the service.
 - **Known issues:**
@@ -120,13 +120,13 @@ Typing a removed command prints the new one.
 - **Appearance:**
   - An agent's theme can colour the whole page, its sidebar, title bar and right column. Override it in **⋯ → page colours** (#2196).
   - The identity card is one button in the chat header (#2217).
-  - **Custom app icon:** **Settings → Web appearance → App icon** (#2308). Your picture is the one that **Add to Home Screen** shows.
+  - **Custom app icon:** **Settings → Web dashboard → App icon** (#2308). Your picture is the one that **Add to Home Screen** shows.
 - **Usage panel:**
   - A **Compact / Full** switch next to the title. Compact groups accounts by provider, a few lines per account: name, plan and reset time, then a bar and a percentage for its shorter and longer window where it has them (under two days, such as 5 hours, and two days or more, such as a week or a month). Antigravity gets a line per quota pool. Your choice follows you to each device.
   - Each Claude login has its own row, including the default account and every profile (#2236). An account that is used up shows 100% and its reset time. A rate-limited account shows "Rate limited".
   - If numbers cannot be read, the panel keeps the last ones and marks them "stale · cached at HH:MM", instead of flashing "could not load" (#2236, #2385).
   - Antigravity shows its plan name, and the right Gemini quota for paid plans. Gemini 4 Argon has its own line (#2240).
-- **Canvas Worker effects (experimental, off by default):** with `web.experimental.canvas_worker` on (or the switch in **Settings → Web appearance**), you can upload effects, place them in chat or on your own page, and let an agent place its own through a tool. They run in an isolated worker that cannot reach the page's content or the input boxes (#1629).
+- **Canvas Worker effects (experimental, off by default):** with `web.experimental.canvas_worker` on (or the switch in **Settings → Web dashboard**), you can upload effects, place them in chat or on your own page, and let an agent place its own through a tool. They run in an isolated worker that cannot reach the page's content or the input boxes (#1629).
 
 ### Remote access and security
 

@@ -299,6 +299,14 @@ agend import config.tar.gz
 
 `--full` includes all instance data, not just config.
 
+After a kiro instance moved from classic to the TUI, its frozen classic copy is archived. To restore it (stop the instance first):
+
+```bash
+agend kiro restore-classic --instance <name> --archive '<path from the archive notice>'
+```
+
+It never overwrites existing data and doesn't move the instance back to classic. See the [CLI reference](https://github.com/songsid/AgEnD/blob/main/docs/cli.md#restore-a-frozen-kiro-classic-archive).
+
 ## Shell completion
 
 Tab-completes instance names for `agend attach` and `agend fleet start|stop|restart`:

@@ -43,7 +43,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       <p class="text-sm text-text-secondary mt-2"><code>AGEND_VERSION</code> 只接受 <code>beta</code>、<code>latest</code> 或完整版本號（例如 <code>2.3.2</code>）。未設定時安裝 latest；系統管理員重新啟動與重新開機接續都會保留選擇。這不會切換已安裝的 AgEnD 版本；既有安裝請用 <code>agend update --beta</code>。不想讓之後的新安裝沿用 beta，可執行 <code>Remove-Item Env:AGEND_VERSION</code>。</p>
       <p class="text-sm text-text-secondary mt-2">新安裝的 Linux 若要略過磁碟選單，可在一行指令前設定 <code>$env:AGEND_WSL_DRIVE = 'D:'</code>。只接受本機磁碟代號，而且必須有至少 5 GB 可用空間；取得系統管理員權限與重新開機接續都會保留選擇。重試時優先沿用已儲存的預定位置；既有 Linux 只會沿用，不會因為這個設定而搬移。之後不想沿用時可執行 <code>Remove-Item Env:AGEND_WSL_DRIVE</code>。</p>
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
-        <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行：裝有 Windows Terminal 時在它裡面開（中文顯示正常），沒有的話是 PowerShell 視窗；你貼上指令的那個視窗會等它，最後告訴你結果。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
+        <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行：裝有 Windows Terminal 時在它裡面開（中文顯示正常），沒有的話是 PowerShell 視窗；你貼上指令的那個視窗會等它，最後告訴你結果。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行；若有安裝 Windows Terminal、而你不是在它裡面，會改在 Windows Terminal 重新開啟。設定 <code class="font-mono text-accent">$env:AGEND_INSTALL_TERMINAL = 'conhost'</code> 可保留舊的主控台視窗。</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> 只對這一個指令有效，不會改動你的執行原則，也不需要解除封鎖檔案。</li>
         <li>• <b class="text-text-primary">如果要求重新開機</b>，按 Enter 就好：重新登入 Windows 後，安裝會自己繼續（Windows 會先問一次，請選「是」）。如果沒有自動繼續，再貼上同一行指令，就會從中斷處繼續。</li>
         <li>• 每個比較久的步驟都會顯示已經過多久、通常需要多久，下面還有那個工具自己的進度。</li>
@@ -61,7 +61,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       <div class="rounded-xl border border-border bg-surface p-5">
         <div class="font-semibold text-text-primary mb-3">系統需求</div>
         <ul class="space-y-2 text-sm text-text-secondary">
-          <li>• Windows 11（或 Windows 10 版本 2004 以上）</li>
+          <li>• Windows 11（或 Windows 10 版本 2004 以上），64 位元（x64 或 ARM64）</li>
           <li>• 穩定的網路連線（需下載約 1–2 GB）</li>
           <li>• 至少 5 GB 可用磁碟空間（建議 SSD）</li>
           <li>• BIOS 虛擬化（VT-x / AMD-V）已啟用</li>
@@ -89,7 +89,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
     <div class="mb-14 rounded-xl border border-border bg-surface p-6">
       <ol class="space-y-3 text-sm text-text-secondary">
         <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 安裝 Ubuntu-24.04。如果有兩個以上可用空間至少 5 GB 的本機磁碟，會列出可用空間並讓你選擇安裝位置，標示建議的預設值（系統碟有至少 20 GB 時用系統碟，否則選空間最大的磁碟）；直接按 Enter 就採用預設。只有一個符合條件的磁碟時不會詢問。安裝前會記住位置，重試與重新開機接續都沿用；如果你已移除上次安裝的 Linux，會清掉舊位置並讓你重新選擇。如果電腦裡已經有 Ubuntu，會讓你選：另外安裝一個 AgEnD 專用的 Ubuntu，名稱是 <code class="font-mono text-accent">AgEnD</code>（建議，你原本的完全不動）；或用原本的那個（會修改它的設定，並說明改什麼）；直接按 Enter 就結束、不動任何東西。之後再執行時會沿用這個 AgEnD 專用的 Linux，不會再裝第三個。已經是 2 以上的 WSL 不會再更新；較舊的會先透過 Microsoft Store 更新，GitHub 只是備案（很多人共用同一個對外網路時，GitHub 可能暫時拒絕下載；安裝程式會說明狀況，現有的 WSL 能用時就繼續）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
-        <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI）：
+        <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI；接續安裝時會列出上次的選擇，按 Enter 沿用）。已經安裝、而且能回應 <code class="font-mono text-accent">--version</code> 的後端會保留並顯示版本，不會再跑它的安裝程式：
           <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
             <li>Kiro CLI（免費，需 AWS Builder ID / GitHub / Google）</li>
             <li>Claude Code（需 Anthropic 帳號，Claude Pro $20/月+）</li>
@@ -97,9 +97,9 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
             <li>OpenAI Codex（需 ChatGPT 帳號或 API Key）</li>
           </ol>
         </li>
-        <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 登入頁會自己在 Windows 的瀏覽器打開，在那裡登入即可。Claude Code 會在網頁上給你一段代碼：複製下來，在安裝程式的視窗按右鍵貼上，再按 Enter。每個登入完成後都會自己結束；Antigravity 準備好之後，安裝程式也會幫你結束它。已經登入的後端會跳過；沒完成的可以再試一次或先跳過；跳過的在安裝接續時會再詢問，安裝完成時也會顯示補登入的指令。</li>
-        <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
-        <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 在瀏覽器裡完成，不用在主控台打字：安裝程式會打開 AgEnD 的設定頁，並幫你複製設定碼（在網頁上按 Ctrl+V 貼上）。在網頁上選擇 Discord 或 Telegram，貼上 Bot Token（按 <b class="text-text-primary">Verify</b> 會顯示這是哪個 bot），或選 <b class="text-text-primary">Web only (no bot)</b>，不用 bot、只用網頁儀表板（後端登入也在那裡：設定 → Agent → 登入）；Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓它找到群組；Discord 要確認偵測到的帳號，並填入 General 頻道 ID。完成後 AgEnD 會啟動，並安裝成系統服務。如果設定頁打不開，安裝程式會改在主控台進行同樣的設定（<code class="font-mono text-accent">agend quickstart</code>）。最後它會幫你打開網頁儀表板（一次性登入碼已經複製好，按 Ctrl+V 貼上即可），並在桌面放兩個捷徑：<b class="text-text-primary">AgEnD 儀表板</b> 之後隨時按兩下都能用同樣方式打開，<b class="text-text-primary">AgEnD 重新啟動</b> 會先問過你再重啟 AgEnD。這台電腦本來就裝了 AgEnD（例如一直用 <code class="font-mono text-accent">agend update</code> 更新）？再貼一次同一行指令即可：它會偵測到已經裝好，先問你要不要檢查／修復設定與服務，或接續後端登入（預設為否；不論哪種，原有設定都會保留），再提供新增或更新這兩個捷徑。它不會重做設定。主控台指令放在「進階」裡，需要時再看。</li>
+        <li><b class="text-text-primary">[3/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
+        <li><b class="text-text-primary">[4/5] 準備後端登入</b> —— Kiro CLI、Claude Code 與 Codex 會在下一個階段的設定頁、在瀏覽器裡登入：這個視窗不用選方法，也不用貼代碼。Kiro 會在那裡問登入方式，Claude Code 會給一段代碼讓你貼回網頁，Codex 會顯示連結與裝置代碼。在網頁上選 <b class="text-text-primary">Sign in later</b>，該後端就留到儀表板的 <b class="text-text-primary">Needs you</b> 再登入。Antigravity 維持主控台登入：安裝程式會印出之後要執行的指令。不支援瀏覽器登入的舊版 AgEnD 套件會改用主控台登入。</li>
+        <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 在瀏覽器裡完成，不用在主控台打字：安裝程式會打開 AgEnD 的設定頁，並幫你複製設定碼（在網頁上按 Ctrl+V 貼上）。在網頁上選擇 Discord 或 Telegram，貼上 Bot Token（按 <b class="text-text-primary">Verify</b> 會顯示這是哪個 bot），或選 <b class="text-text-primary">Web only (no bot)</b>，不用 bot、只用網頁儀表板（後端登入也在那裡：設定 → Agent → 登入）；Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓它找到群組；Discord 要確認偵測到的帳號，並填入 General 頻道 ID。完成後 AgEnD 會啟動，並安裝成系統服務。設定頁有 15 分鐘的期限並會倒數，最後三分鐘會提醒。設定頁關閉時（時間到、太久沒操作或設定碼錯太多次），安裝程式會說明原因：按 Enter 重新打開（已經登入的後端不會再問），或按 <code class="font-mono text-accent">c</code> 改在主控台進行同樣的設定（<code class="font-mono text-accent">agend quickstart</code>），設定頁打不開時也會提供這個選項。設定頁要求<i>在主機上</i>確認時，安裝程式會另外開一個執行 <code class="font-mono text-accent">agend settings confirm</code> 的視窗，列出會改變的內容並詢問 y/N；必須由電腦前的人回答。最後它會幫你打開網頁儀表板（一次性登入碼已經複製好，按 Ctrl+V 貼上即可），並在桌面放兩個捷徑：<b class="text-text-primary">AgEnD 儀表板</b> 之後隨時按兩下都能用同樣方式打開，<b class="text-text-primary">AgEnD 重新啟動</b> 會先問過你再重啟 AgEnD。這台電腦本來就裝了 AgEnD（例如一直用 <code class="font-mono text-accent">agend update</code> 更新）？再貼一次同一行指令即可：它會偵測到已經裝好，先問你要不要檢查／修復設定與服務，或接續後端登入（預設為否；不論哪種，原有設定都會保留），再提供新增或更新這兩個捷徑。它不會重做設定。主控台指令放在「進階」裡，需要時再看。</li>
       </ol>
     </div>
 
@@ -205,8 +205,8 @@ exit                                         # 離開 WSL</pre>
         <p class="mt-3 text-sm text-text-secondary">正常現象。重開機後再執行一次腳本即可自動接續。</p>
       </details>
       <details class="group rounded-xl border border-border bg-surface p-5">
-        <summary class="cursor-pointer font-medium text-text-primary">Kiro CLI 登入時沒有顯示網址？</summary>
-        <p class="mt-3 text-sm text-text-secondary">等待 5–10 秒。如果仍然沒有，按 <kbd class="font-mono">Ctrl+C</kbd> 取消後重新執行腳本。</p>
+        <summary class="cursor-pointer font-medium text-text-primary">後端登入一直沒完成？</summary>
+        <p class="mt-3 text-sm text-text-secondary">在設定頁取消那個登入再試一次，或選 <b class="text-text-primary">Sign in later</b>：該後端會留在儀表板的 <b class="text-text-primary">Needs you</b>，等 AgEnD 啟動後再登入。</p>
       </details>
       <details class="group rounded-xl border border-border bg-surface p-5">
         <summary class="cursor-pointer font-medium text-text-primary">電腦重開機後 Bot 不回覆了？</summary>
@@ -223,7 +223,7 @@ exit                                         # 離開 WSL</pre>
       </details>
       <details class="group rounded-xl border border-border bg-surface p-5">
         <summary class="cursor-pointer font-medium text-text-primary">如何更新 AgEnD？</summary>
-        <p class="mt-3 text-sm text-text-secondary">在 General 傳 <code class="font-mono text-accent">/update</code>，或進入 WSL 後執行 <code class="font-mono text-accent">agend update</code>。如果你安裝時還沒有桌面捷徑，在 WSL 裡執行 <code class="font-mono text-accent">agend shortcuts</code>，就會建立「AgEnD 儀表板」和「AgEnD 重新啟動」；也可以再貼一次一行安裝指令，已經裝好 AgEnD 的電腦上它只會問要不要更新捷徑。如果是 <code class="font-mono text-accent">agend</code> 指令本身不能用了（更新被打斷後出現 <code class="font-mono text-accent">agend: command not found</code>），再貼一次一行安裝指令：它會就地修復 AgEnD，保留你的設定和資料。</p>
+        <p class="mt-3 text-sm text-text-secondary">在 General 傳 <code class="font-mono text-accent">/update</code>，或進入 WSL 後執行 <code class="font-mono text-accent">agend update</code>。如果你安裝時還沒有桌面捷徑，在 WSL 裡執行 <code class="font-mono text-accent">agend shortcuts</code>，就會建立「AgEnD 儀表板」和「AgEnD 重新啟動」；也可以再貼一次一行安裝指令，已經裝好 AgEnD 的電腦上，它會先問要不要檢查／修復，再問要不要更新捷徑。如果是 <code class="font-mono text-accent">agend</code> 指令本身不能用了（更新被打斷後出現 <code class="font-mono text-accent">agend: command not found</code>），再貼一次一行安裝指令：它會就地修復 AgEnD，保留你的設定和資料。</p>
       </details>
     </div>
 
@@ -231,9 +231,9 @@ exit                                         # 離開 WSL</pre>
     <h2 class="text-2xl font-bold text-text-primary mb-5">完全移除方法</h2>
     <p class="text-sm text-text-secondary mb-4">在 PowerShell 中依序執行：</p>
     <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister Ubuntu-24.04
-Remove-Item "$env:USERPROFILE\.wslconfig" -ErrorAction SilentlyContinue
 Remove-Item "$env:USERPROFILE\.agend-install-progress" -ErrorAction SilentlyContinue
 Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs" -ErrorAction SilentlyContinue</pre>
+    <p class="text-sm text-text-secondary mb-4">安裝程式在你的 <code class="font-mono text-accent">%USERPROFILE%\.wslconfig</code> 合併了兩個設定（<code class="font-mono text-accent">[wsl2] vmIdleTimeout=-1</code> 與 <code class="font-mono text-accent">[general] instanceIdleTimeout=-1</code>），保留你原有的其他設定，並在旁邊留了備份（<code class="font-mono text-accent">.wslconfig.agend-backup-…</code>）。請只刪掉這兩行，或還原備份；檔案裡有你自己的設定時，不要整個刪掉。</p>
     <p class="text-sm text-text-secondary mb-14">如需移除 WSL 功能本身：<i>設定 → 應用程式 → 選用功能</i>，關閉<b class="text-text-primary">「Windows 子系統 Linux 版」</b>。</p>
 
     <div class="border-t border-border pt-8 text-sm text-text-muted">

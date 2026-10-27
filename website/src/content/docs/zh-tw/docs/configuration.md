@@ -113,6 +113,8 @@ Telegram 吃：
 | `retention_days` | number | `30` | 已完成的投遞和 Task Board 已完成任務保留幾天 |
 | `task_board.summary_at` | `"HH:MM"` 或 `"off"` | `off` | 每日任務看板摘要的發送時間，以 fleet 的時區計算（24 小時制）。沒設定時為關閉 |
 | `dashboard` | object | — | agent 可以使用的儀表板功能：`appearance`、`task_board`、`web_settings`。設為 `false` 會關掉該項。新建立的 fleet 會設 `task_board: false` |
+| `office_access` / `office_pack_access` | boolean | `false` | agent 的辦公室工具（`office_view`、`office_set`）與外觀包工具。可設在這裡或個別 instance；放在 `dashboard` 之外，所以舊版也接受這個檔案。請見[辦公室](/AgEnD/zh-tw/docs/office/#辦公室裡的-agent) |
+| `reply_triggers` | boolean | `false` | 在 ClassicBot collab 聊天室，原生回覆 bot 的訊息也會觸發它（@ 提及一律會觸發）。ClassicBot 預設值與個別聊天室可以覆寫 |
 | `progress_min_elapsed` | number | `30` | 即時進度列開始顯示經過時間前的秒數 |
 | `startup.concurrency` | number | 依 RAM 與 CPU，`2`–`10` | 同時啟動的 instance 數（自己設時為 `1`–`20`） |
 | `startup.stagger_delay_ms` | number | `500` | 兩次 instance 啟動之間的最小間隔，開機、喚醒、重啟都一樣 |
@@ -172,7 +174,7 @@ instances:
 | `log_level` | string | `info` | `trace`、`debug`、`info`、`warn`、`error` |
 | `lightweight` | boolean | `false` | 跳過非必要子系統 |
 | `agent_mode` | `mcp` \| `cli` | `mcp` | `cli` 改用 `agend-agent` 指令取代 MCP |
-| `kiro_ui` | `legacy` \| `tui` | `legacy` | Kiro 引擎，每次啟動都會固定（`v3` 在能無人值守執行前會被拒絕） |
+| `kiro_ui` | `legacy` \| `tui` | 未設定時為 `legacy` | Kiro 引擎，每次啟動都會固定。新建立的 kiro instance 一律寫入 `tui`；既有的經典 instance 請用 `migrate_kiro_instance` 連同對話一起搬（單向）。`v3` 在能無人值守執行前會被拒絕 |
 | `worktree_source` | string | — | 用 git worktree 時的原始 repo |
 | `cost_guard` | CostGuardConfig | — | 單一 instance 的上限，覆寫 fleet 的 |
 | `restart_policy.max_retries` | number | `10` | 放棄前的 crash 重啟次數 |
@@ -250,7 +252,7 @@ defaults:
         Authorization: "Bearer token"
 ```
 
-會送出的事件有 `hang`、`mcp_died`、`pty_error`、`pty_recovered`、`cost_warning`、`cost_limit`、`schedule_deferred`、`model_failover` 和 `model_recovered`。`events: ["*"]` 訂閱全部。
+會送出的事件有 `hang`、`mcp_died`、`pty_error`、`pty_recovered`、`cost_warning`、`cost_limit`、`schedule_deferred`、`model_failover`、`model_recovered` 和 `context_lost`（instance 沒帶著對話重新開始）。`events: ["*"]` 訂閱全部。
 
 ## 憑證 profile
 
@@ -309,6 +311,7 @@ Kiro 只複製登入資訊：kiro 下載的大型執行環境會連回共用的�
 | `auto_pause_after` | number | 繼承 | 閒置幾分鐘後暫停；`0` 停用 |
 | `tool_progress` | `off` \| `standard` \| `verbose` | 繼承 | 處理中氣泡的詳細程度 |
 | `reply_completion_guard` | boolean | 繼承 | 同 instance 的同名欄位 |
+| `reply_triggers` | boolean | 繼承 | 原生回覆會觸發 bot；繼承 `fleet.yaml` 的 defaults，否則為 `false` |
 
 **名單是空的不代表開放。** 不是 ClassicBot 管理員的人在新頻道執行 `/start`，而該 server、群組或私人對話不在名單上時，會在 General 請你核准，附上 **Allow / Allow+admin / Ignore** 按鈕。核准不會直接啟動 agent，請再執行一次 `/start`。管理員不受此限，已經註冊的頻道也照常運作。
 
@@ -337,6 +340,7 @@ channels:
 | `web_echo` | boolean | `false` | 將此聊天室的 web chat 同步至平台，與 `web.echo_to_channel` 無關 |
 | `pre_task_command` | string | — | 每則訊息前先貼上的指令 |
 | `reply_completion_guard` | boolean | 同 defaults | 這個頻道的覆寫 |
+| `reply_triggers` | boolean | 同 defaults | 這個 collab 聊天室的原生回覆觸發覆寫 |
 
 在 Telegram 上，檔案裡寫了 `collab: true` 會讓 bot 等待 Discord 式的提及，一般訊息可能就不會有回應。一般的 Telegram `/start` 不會設定它。
 

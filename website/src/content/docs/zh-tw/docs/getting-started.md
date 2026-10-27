@@ -28,7 +28,7 @@ curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
 ```
 
-Windows 全新安裝要試用 beta：先在同一個 PowerShell 視窗執行 `$env:AGEND_VERSION = 'beta'`，再執行上面的安裝指令。也接受 `latest` 或完整版本號，例如 `2.3.2-beta.5`。未設定時使用 latest；取得系統管理員權限和重新開機接續時都會保留選擇。已安裝的 AgEnD 請用 `agend update --beta`。
+Windows 全新安裝要試用 beta：先在同一個 PowerShell 視窗執行 `$env:AGEND_VERSION = 'beta'`，再執行上面的安裝指令。也接受 `latest` 或完整版本號，例如 `2.3.2`。未設定時使用 latest；取得系統管理員權限和重新開機接續時都會保留選擇。已安裝的 AgEnD 請用 `agend update --beta`。
 
 已經有 Node 和 tmux：
 
@@ -84,7 +84,7 @@ agend quickstart
 
 之後要在現有設定加使用者、第二個平台或 Discord persona bot，再跑一次 `agend quickstart`。
 
-想用手機設定而不是在終端機設定，見 [`agend setup --tunnel`](/AgEnD/zh-tw/docs/cli/#web-儀表板)。設定頁（`agend setup`）也有 **Web only (no bot)**：不用 token，只寫入第一個 agent，其餘都在網頁儀表板完成。
+想用手機設定而不是在終端機設定，見 [`agend setup --tunnel`](/AgEnD/zh-tw/docs/cli/#web-儀表板)。設定頁（`agend setup`）也有 **Web only (no bot)**：不用 token，只寫入第一個 agent，其餘都在網頁儀表板完成。用 Telegram 或 Discord bot 時，你設定的第一個 agent 若工作目錄留空，就是 fleet 的 General，會在聊天的 General topic 或頻道回覆；填了目錄時它是那個專案的 worker，fleet 會自己另外建立 General。
 
 ## 啟動 fleet
 
@@ -137,7 +137,7 @@ agend health
 agend update
 ```
 
-它會留在你安裝的頻道（beta 就留在 beta），安裝新版、檢查它，然後重啟 fleet。從 2.2.x 升級，請先看[從 2.2 升級到 2.3](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.zh-TW.md)和[2.3 更新重點](/AgEnD/zh-tw/docs/whats-new/)，裡面有 root 與 WSL 類主機的說明：那裡的 `agend update` 需要設定 `XDG_RUNTIME_DIR`。從 2.1 升級，請先看[從 2.1 升級到 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.zh-TW.md)。從 2.1.0–2.1.11 升級，或主機沒有 AgEnD 內建的 Node 時，請改照它的手動步驟。
+它會留在你安裝的頻道（beta 就留在 beta；`agend update --stable` 會把 beta 換到正式版），安裝新版、檢查它，然後重啟 fleet。從 2.2.x 升級，請先看[從 2.2 升級到 2.3](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.zh-TW.md)和[2.3 更新重點](/AgEnD/zh-tw/docs/whats-new/)，裡面有 root 與 WSL 類主機的說明：那裡的 `agend update` 需要設定 `XDG_RUNTIME_DIR`。從 2.1 升級，請先看[從 2.1 升級到 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.zh-TW.md)。從 2.1.0–2.1.11 升級，或主機沒有 AgEnD 內建的 Node 時，請改照它的手動步驟。
 
 在 Windows 上，桌面捷徑 **AgEnD 儀表板**（打開儀表板並帶入登入碼）和 **AgEnD 重新啟動**（先詢問再重啟）是由 Windows 安裝程式建立的。如果你是之前安裝的，再貼一次 [Windows 一行安裝指令](/AgEnD/zh-tw/install-windows/)：它會偵測到 AgEnD 已經裝好，只提供新增或更新捷徑。也可以在 WSL 裡執行 `agend shortcuts`。在還沒有捷徑的 WSL 終端機裡執行 `agend update` 之後，會出現一行提示，只會出現一次；除非你自己執行上面其中一種方式，否則不會在桌面上放任何東西。如果是 `agend` 指令本身不能用了（例如更新中途被打斷，出現 `agend: command not found`），同一行指令也會就地修復，保留 fleet 的設定和資料，不會再問任何設定的問題。
 
