@@ -44,7 +44,8 @@ export function SetupWizard({ ctx, onClose }) {
       const agents = Array.isArray(e.agents) ? e.agents : [];
       const names = new Set(agents.map((a) => a.name));
       let n = 1; while (names.has(`agent-${n}`)) n++;
-      setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: `agent-${n}`,
+      // M-2069: on a fleet with no chat connection and no General, the new agent is the General — named "general".
+      setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: e.first_general ? "general" : `agent-${n}`,
         agent: agents.length ? "existing" : "new", existing_name: agents.length ? agents[0].name : "",
         platform: "telegram", token: "", group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
         identity: null, guilds: [], plan: null, offset: 0 });
@@ -146,7 +147,8 @@ export function SetupWizard({ ctx, onClose }) {
         <p class="note">${w.env.backends && w.env.backends.length ? tn("wizardBackendFound", w.env.backends.join(", ")) : tn("wizardBackendNone")}</p></div>
       <div class="field"><label for="wz-wd">${tn("wizardDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" aria-describedby="wz-wd-note" value=${dirText} onInput=${(e) => set("working_directory")(onDirText(e.target.value))} />
         <p class="note" id="wz-wd-note">${w.env.workspaces_dir && w.instance_name ? tn("wizardDirDefault", `${w.env.workspaces_dir}/${w.instance_name}`) : tn("wizardDirDefaultName")}</p></div>
-      <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${nameText} onInput=${(e) => set("instance_name")(onNameText(e.target.value))} /></div>`;
+      <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${nameText} onInput=${(e) => set("instance_name")(onNameText(e.target.value))} />
+        ${w.env.first_general ? html`<p class="note">${tn("wizardGeneralNote")}</p>` : null}</div>`;
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
@@ -169,7 +171,8 @@ export function SetupWizard({ ctx, onClose }) {
     body = !w.plan ? html`<p class="note">${tn("wizardPlanLoading")}</p>` : html`
       <p><strong>${tn("wizardWillWrite")}</strong></p>
       <pre class="s-yaml">${toYaml({ channels: [w.plan.channel], instances: { [w.plan.instance.name]: { working_directory: w.plan.instance.working_directory, backend: w.plan.instance.backend, channel_id: w.plan.instance.channel_id,
-        ...(w.plan.instance.topic && w.plan.instance.topic.to != null ? { topic_id: w.plan.instance.topic.to } : {}) } } })}</pre>
+        ...(w.plan.instance.topic && w.plan.instance.topic.to != null ? { topic_id: w.plan.instance.topic.to } : {}),
+        ...(w.plan.instance.general ? { general_topic: true, ...(w.plan.instance.general.topic_id != null ? { topic_id: w.plan.instance.general.topic_id } : {}) } : {}) } } })}</pre>
       ${w.plan.instance && w.plan.instance.existing ? html`<p class="note">${tn("wizardAgentExistingNote")}</p>` : null}
       ${w.plan.instance && w.plan.instance.topic ? html`<p class="feedback warning">${w.plan.instance.topic.to == null
         ? tn("wizardTopicNotCarried", w.plan.instance.topic.from) : tn("wizardTopicGeneral")}</p>` : null}

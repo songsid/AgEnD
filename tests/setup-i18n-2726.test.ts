@@ -75,6 +75,7 @@ describe("#2726 every message the host can answer with has its 繁體中文", ()
     const cfg = { instances: { a: { working_directory: "/w", backend: "codex" } }, defaults: {}, channel: { id: "telegram", type: "telegram", bot_token_env: "AGEND_BOT_TOKEN" } } as never;
     translated(agentConflict({ instance_name: "a" }, cfg)!);
     translated(agentConflict({ instance_name: "zz", existing_agent: true }, cfg)!);
+    translated(agentConflict({ instance_name: "general" }, cfg)!);   // M-2069: the General's name, on a fleet with a connection
     translated(webOnlyConflict(cfg)!);
     translated(newConnectionConflict({ token_env: "", channel_id: "telegram" }, { channels: [{ id: "telegram", type: "telegram", token_env: "T", group_id: null }] })!);
     translated(newTokenEnvConflict("AGEND_BOT_TOKEN", [{ id: "telegram", token_env: "AGEND_BOT_TOKEN" }])!);
@@ -155,14 +156,25 @@ describe("#2726 the setup form in a language", () => {
     expect(p.$("finish").textContent).toBe("建立並啟動 AgEnD");
     expect(p.$("platformHint").textContent).toBe(SETUP_FORM_STRINGS["zh-TW"].hintTelegram);
     expect(p.$("backendHint").textContent).toBe("在這台主機上找到：kiro-cli");
-    expect(p.$("dirHint").textContent).toBe("留空的話，agent 會有自己的資料夾 /root/.agend/workspaces/agent-1，由 AgEnD 建立。若要填寫，必須是絕對路徑。");
+    expect(p.$("dirHint").textContent).toBe("留空的話，agent 會有自己的資料夾 /root/.agend/workspaces/general，由 AgEnD 建立。若要填寫，必須是絕對路徑。");
   });
   it("English otherwise; the default follows the agent's name", async () => {
     const p = form(); await p.flush();
     expect(p.document.documentElement.lang).toBe("en");
-    expect(p.$("dirHint").textContent).toBe("Leave it empty and the agent gets its own folder, /root/.agend/workspaces/agent-1, which AgEnD creates. A path you enter must be absolute.");
+    expect(p.$("dirHint").textContent).toBe("Leave it empty and the agent gets its own folder, /root/.agend/workspaces/general, which AgEnD creates. A path you enter must be absolute.");
     p.$("name").value = "helper"; p.$("name").listeners.get("input")();
     expect(p.$("dirHint").textContent).toContain("/root/.agend/workspaces/helper,");
+  });
+  it("M-2069: a chat setup's first agent is general, said under the field; web only is agent-1; a typed name is kept", async () => {
+    const p = form(); await p.flush();
+    expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["general", false]);
+    p.$("pickWeb").onclick();
+    expect([p.$("name").value, p.$("generalNote").hidden, p.$("dirHint").textContent.includes("/workspaces/agent-1,")]).toEqual(["agent-1", true, true]);
+    p.$("pickDiscord").onclick();
+    expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["general", false]);
+    p.$("name").value = "boss"; p.$("name").listeners.get("input")();
+    p.$("pickWeb").onclick(); p.$("pickTelegram").onclick();
+    expect(p.$("name").value, "a typed name is never replaced").toBe("boss");
   });
   it("the toggle switches every shown text at once and is kept as the dashboard's agend_lang; a kept choice beats the browser", async () => {
     const p = form({ language: "en-US" }); await p.flush();

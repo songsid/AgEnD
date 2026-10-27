@@ -3,6 +3,7 @@ import { type SettingsExecution, SettingsExecutionError, settingsFileResource, t
 import { readBoundedWebBody } from "./web-body.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { gatewayRequestContext } from "./web-request-context.js";
+import { GENERAL_NAME, generalTopicFor } from "./general-instance.js";
 /**
  * The Settings setup wizard's server side.
  *
@@ -69,6 +70,8 @@ export interface WizardEnvironment {
   has_fleet: boolean;
   /** #1519 P7: the agents already configured — the wizard offers to connect one instead of overwriting it. */
   agents?: Array<{ name: string; working_directory: string | null; backend: string | null }>;
+  /** M-2069: a new agent on a chat connection would be the fleet's General (becomesGeneral) — named "general" by default. */
+  first_general?: boolean;
   /** #2726: where a new agent's directory goes when none is given — `<this>/<agent name>` (defaultWorkingDirectory). */
   workspaces_dir?: string;
 }
@@ -119,6 +122,8 @@ export interface WizardPlan {
    * gets here (the General topic of the new chat, for a General agent) or null (none: the old one is not carried).
    */
   instance: { name: string; working_directory: string; backend: string; channel_id: string; existing?: boolean;
+    /** M-2069: the new agent becomes the fleet's General (becomesGeneral), in the chat's own General topic (null: unbound). */
+    general?: { topic_id: string | null };
     topic?: { from: string; to: string | null } } | null;
   /** The new connection's id and the env var its token goes to. */
   channel_id: string;
@@ -145,11 +150,35 @@ export function nextChannelId(platform: string, existing: ReadonlyArray<{ id: st
  * #1519 P7: why the agent part of this input cannot be written, or null. A new agent's name must be free (the wizard
  * never overwrites one); an existing agent must exist. A connection-only input has no agent part.
  */
-export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "existing_agent" | "connection_only">, cfg: FleetConfig | null): string | null {
+export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "existing_agent" | "connection_only"> & { web_only?: boolean }, cfg: FleetConfig | null): string | null {
   if (input.connection_only) return null;
   const exists = !!cfg && Object.hasOwn(cfg.instances ?? {}, input.instance_name);
   if (input.existing_agent) return exists ? null : `there is no agent called "${input.instance_name}"`;
-  return exists ? `an agent called "${input.instance_name}" already exists — connect it as an existing agent, or choose another name` : null;
+  if (exists) return `an agent called "${input.instance_name}" already exists — connect it as an existing agent, or choose another name`;
+  // M-2069: "general" means the General everywhere (daemon, tool profile, pause guard); a new chat agent that would not
+  // be the General does not get the name. A web-only agent may: the fleet adopts it as the General once a chat is added.
+  if (input.instance_name === GENERAL_NAME && !input.web_only && !becomesGeneral(cfg, input)) {
+    return `the name "${GENERAL_NAME}" is kept for the fleet's General agent — choose another name`;
+  }
+  return null;
+}
+
+/**
+ * M-2069: a NEW agent on the fleet's first chat connection becomes its General when the fleet has none — the agent the
+ * user set up is the one they talk to in the chat's General, instead of a second agent the fleet would add at start.
+ * An existing agent is never made the General here: that would rewrite its role and its folder's instructions.
+ */
+export function becomesGeneral(cfg: FleetConfig | null, input: Pick<WizardPlanInput, "existing_agent" | "connection_only"> & { web_only?: boolean }): boolean {
+  if (input.connection_only || input.existing_agent || input.web_only) return false;
+  if (wizardChannels(cfg).length) return false;
+  return !Object.values(cfg?.instances ?? {}).some(inst => (inst as { general_topic?: unknown }).general_topic === true);
+}
+
+/** The plan as the wizard shows it: a new agent that will be the General says so, with the topic it gets (M-2069). */
+export function withGeneral(plan: WizardPlan, cfg: FleetConfig | null, input: Pick<WizardPlanInput, "existing_agent" | "connection_only"> & { web_only?: boolean }): WizardPlan {
+  if (!plan.instance || !becomesGeneral(cfg, input)) return plan;
+  const topic = generalTopicFor(plan.channel);
+  return { ...plan, instance: { ...plan.instance, general: { topic_id: topic == null ? null : String(topic) } } };
 }
 
 /**
@@ -390,6 +419,13 @@ function withMovedTopic<T extends { topic_id?: unknown }>(inst: T, moved: { to: 
   return (moved.to == null ? rest : { ...rest, topic_id: moved.to }) as T;
 }
 
+/** M-2069: the fields that make a new agent the General (becomesGeneral), bound to the chat's own General topic. */
+function generalFields(cfg: FleetConfig, body: WizardPlanInput, channel: Record<string, unknown>): { general_topic?: true; topic_id?: number | string } {
+  if (!becomesGeneral(cfg, body)) return {};
+  const topic = generalTopicFor(channel);
+  return { general_topic: true, ...(topic != null ? { topic_id: topic } : {}) };
+}
+
 /** One pure draft shared by the writer and the authoritative confirmation diff. */
 export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: WizardPlan): FleetConfig {
   const draft = structuredClone(cfg), summary = wizardChannels(cfg);
@@ -406,7 +442,7 @@ export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: W
     // another chat is not carried into this one (#1549 review: releasesTopic).
     ? withMovedTopic({ ...existing, channel_id: plan.channel_id }, movedTopic(cfg, body.instance_name, plan.channel))
     : { ...(existing ?? {}), working_directory: body.working_directory, backend: body.backend, channel_id: plan.channel_id,
-      ...newAgentKiroUi(existing, body.backend, cfg) },
+      ...newAgentKiroUi(existing, body.backend, cfg), ...generalFields(cfg, body, plan.channel) },
   } as FleetConfig["instances"];
   return draft;
 }
@@ -577,6 +613,7 @@ export function handleQuickstartRequest(
       agents: Object.entries(cfg?.instances ?? {}).map(([name, inst]) => ({
         name, working_directory: (inst as { working_directory?: string }).working_directory ?? null, backend: (inst as { backend?: string }).backend ?? null })),
       workspaces_dir: join(getAgendHome(), "workspaces"),
+      first_general: becomesGeneral(cfg, {}),
     } satisfies WizardEnvironment);
     return true;
   }
@@ -631,12 +668,12 @@ export function handleQuickstartRequest(
       try { envFile = envFileKeys(ctx.dataDir); }
       catch (err) { if (err instanceof EnvFileUnreadableError) return json(res, 503, { error: err.message }); throw err; }
       const taken = takenTokenEnvNames({ channelEnvs: channels.map(c => c.token_env), envFile, processEnv: Object.keys(process.env) });
-      json(res, 200, withTopicRelease(planQuickstart(withExistingAgent(body, cfg), {
+      json(res, 200, withGeneral(withTopicRelease(planQuickstart(withExistingAgent(body, cfg), {
         backends: body.connection_only ? [] : detectWizardBackends(ctx),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
         channels,
         taken_env: taken,
-      }), cfg, body));
+      }), cfg, body), cfg, body));
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }
@@ -659,11 +696,11 @@ export function handleQuickstartRequest(
       // Never a replacement (#1519 P1, S1): an id or token env another connection holds is refused before anything moves.
       const conflict = newConnectionConflict(body, { channels: summary }) ?? agentConflict(body, cfg);
       if (conflict) return json(res, 409, { error: conflict });
-      const plan = planQuickstart(withExistingAgent(body, cfg), {
+      const plan = withGeneral(planQuickstart(withExistingAgent(body, cfg), {
         backends: detectWizardBackends(ctx),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
         channels: summary,
-      });
+      }), cfg, body);
 
       // Everything is assembled and validated on a copy. Nothing on disk and
       // nothing in memory moves until the whole result is known to be valid —

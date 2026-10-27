@@ -311,7 +311,7 @@ import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
 import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
-import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { GENERAL_PAUSE_ERROR, adoptGeneralByName, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { topMemoryHogs, type MemoryHog } from "./memory-hogs.js";
 import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, webRoute, webTextLinks, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
@@ -8345,8 +8345,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
     this.warnUnboundGeneralChannelIds(fleet);
     const primaryAdapterId = channelConfigs[0] ? (channelConfigs[0].id ?? channelConfigs[0].type) : undefined;
+    let generalsCreated = adoptGeneralByName(fleet, this.logger);
     const generalInstances = Object.entries(fleet.instances).filter(([, inst]) => inst.general_topic === true);
-    let generalsCreated = false;
 
     // Collect unbound generals (no channel_id set) for auto-assignment
     const unboundGenerals = generalInstances.filter(([, inst]) => !inst.channel_id);

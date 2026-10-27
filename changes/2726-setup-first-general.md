@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **The first agent you set up on a Telegram or Discord connection is now the fleet's General.** The setup page (`agend setup`, the page the Windows installer opens) and Settings → Setup wizard name it `general` by default. It answers in the chat's own General topic: the Telegram group's built-in General, or the Discord connection's general channel. Until now it was written as an ordinary agent. The fleet then added a second agent as the General at start, and an agent you named `general` got a new forum topic while the fleet ran with no General at all. Any name works, a typed name is kept, and Web only still starts with `agent-1`. On a fleet that already has a connection or a General, a new agent cannot be called `general`. An existing fleet with an agent named `general` and no General is fixed at the next start: that agent becomes the General, in the chat's General topic (M-2069).

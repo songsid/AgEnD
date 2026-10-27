@@ -133,7 +133,8 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     <input id="dir" placeholder="/home/you/projects/app" data-i18n-placeholder="dirPlaceholder" aria-describedby="dirHint">
     <div class="sub" id="dirHint"></div>
     <label for="name" data-i18n="name">First agent name</label>
-    <input id="name" value="agent-1">
+    <input id="name" value="general" aria-describedby="generalNote">
+    <div class="sub" id="generalNote" data-i18n="generalNote" hidden>This agent is the General: it answers in the chat's own General topic and hands work to the agents you add later.</div>
   </div>
 
   <div class="step">
@@ -169,7 +170,8 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   "use strict";
   ${setupI18nRuntime(SETUP_FORM_STRINGS)}
   const $ = (id) => document.getElementById(id);
-  const state = { platform: "telegram", identity: null, guilds: [], offset: 0, plan: null, workspaces: null };
+  // M-2069: firstGeneral — a chat setup's new agent is the fleet's General, named "general" until the name is typed.
+  const state = { platform: "telegram", identity: null, guilds: [], offset: 0, plan: null, workspaces: null, firstGeneral: true, nameTyped: false };
   // Relative to the page's own directory, which is /s/<sid>/. An absolute path
   // would leave that namespace and 404 — the sid is where this page lives, not
   // a prefix bolted on to it.
@@ -193,6 +195,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     if (formFrozen) return;
     const backends = res.body?.backends || [];
     if (typeof res.body?.workspaces_dir === "string") { state.workspaces = res.body.workspaces_dir; showDirHint(); }
+    if (typeof res.body?.first_general === "boolean") { state.firstGeneral = res.body.first_general; showGeneral(); }
     $("backend").innerHTML = "";
     for (const name of backends.length ? backends : ["claude-code"]) {
       const opt = document.createElement("option"); opt.value = name; opt.textContent = name; $("backend").append(opt);
@@ -201,9 +204,18 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     else say("backendHint", "backendNone");
   }
 
+  // M-2069: on a chat platform the first agent is the General ("general"); web only has no General ("agent-1"). A name
+  // the user typed is kept.
+  function showGeneral() {
+    const general = state.firstGeneral && state.platform !== "web";
+    $("generalNote").hidden = !general;
+    if (!state.nameTyped) { $("name").value = general ? "general" : "agent-1"; showDirHint(); }
+  }
+
   function setPlatform(platform) {
     if (formFrozen) return;
     state.platform = platform;
+    showGeneral();
     state.identity = null; say("verifyMsg", "");
     $("pickTelegram").className = platform === "telegram" ? "primary" : "";
     $("pickDiscord").className = platform === "discord" ? "primary" : "";
@@ -460,7 +472,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   $("pickTelegram").onclick = () => setPlatform("telegram");
   $("pickDiscord").onclick = () => setPlatform("discord");
   $("pickWeb").onclick = () => setPlatform("web");
-  $("name").addEventListener("input", showDirHint);
+  $("name").addEventListener("input", () => { state.nameTyped = true; showDirHint(); });
   setFinishLabel("finish");
   showDirHint();
   loadEnvironment();
