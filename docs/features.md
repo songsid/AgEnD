@@ -754,6 +754,22 @@ After that, it reads the program's own bottom rows: vi's ruler and modes, less's
 
 **Fail closed.** An idle delivery needs kiro's input row on screen: the TUI's empty composer (or a draft), or legacy's `4% !>` / `4% >` prompt row. Any other screen counts as busy, so the message waits until the input row is back.
 
+### Questions and MCP input in the chat (kiro V3, #2675)
+
+When the agent asks a question, or an MCP server asks for input, kiro V3 replaces its input box with a card. AgEnD posts that card to the instance's channel and web chat, and you answer it there:
+- **A question** gets one button per option, its sub-option choices and **Skip**. To answer in your own words, reply to the post, or use the web chat's answer box.
+- **An MCP input request** can be declined or cancelled from the chat. Its fields and sign-in links stay at the terminal.
+
+AgEnD types the answer one checked step at a time. If the card changed or a key did not take, it stops and says so. Messages wait while the card is open and are delivered once it closes. Only kiro V3 shows these cards; legacy and tui (V2) never do.
+
+### Session check and title after launch (`/session-id`, `/title`, #2681)
+
+After a kiro TUI or V3 launch, AgEnD types two commands:
+- **`/session-id`** checks that kiro resumed the conversation this launch asked for. Only kiro's own answer to this command counts: a `Session ID:` line already on screen, or one quoted in the chat, does not. A match is recorded as proven. A mismatch is shown, and AgEnD never guesses another conversation from files.
+- **`/title`** sets the instance name as kiro's title. kiro applies it when its terminal title is on (`/settings display`).
+
+Each command goes only into an empty input box, never into a draft. AgEnD presses Enter only once the box shows exactly that command, and types nothing more if the command stays there. The legacy UI is unchanged: it keeps the tmux window name.
+
 ### Workspace trust (kiro-cli V3)
 
 kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a folder that is not yet trusted, and in your home directory on every launch. When the instance runs with `--trust-all-tools`, AgEnD answers the default **Trust, continue** with Enter. If the cursor has been moved to **Don't trust, exit**, AgEnD does not press anything. Without `--trust-all-tools`, the prompt stays in the instance's pane until you answer it there.
@@ -776,6 +792,16 @@ The move is one-way. Once an instance has run on the TUI, AgEnD refuses to launc
 ## agend quickstart
 
 The recommended setup wizard detects installed backends and generates a minimal `fleet.yaml`. Telegram discovers the group and user from a `/start` message. Discord detects the account from a guild message or DM, asks for explicit confirmation, and falls back to required snowflake-validated manual entry. The web wizard also requires a valid admin ID.
+
+## Setup page and wizard: optional working directory, 繁體中文 (#2726)
+
+On the `agend setup` page (the one the Windows installer opens) and in the dashboard's **Settings → Setup wizard**, a new agent's working directory may be left empty, for Web only and bot setups alike. The agent then gets its own folder, `~/.agend/workspaces/<name>`. The page shows that path under the field and creates the folder once the host confirms, and fleet.yaml records the full path. A directory you do enter must be absolute, and an existing agent keeps its own.
+
+The setup page and the code page come in English and 繁體中文. They follow the browser's language, a button at the top switches, and the choice carries over to the dashboard on the same address. In 繁體中文, the host's errors and refusals (a name that is taken, a connection that exists, a reserved token env), the plan's warnings, the Discord channel list's errors and the backend sign-in cards are translated too.
+
+## Windows install: WSL drive choice (#2712)
+
+When at least two local drives have 5 GB free, the Windows installer asks which drive the AgEnD Linux (WSL) goes on. Enter keeps the recommended drive, and with one eligible drive the choice is automatic. `AGEND_WSL_DRIVE` picks a drive without the prompt. The chosen location is kept across retries and reboots. If the recorded Linux has been removed, its stale install target is cleared.
 
 ## Web Dashboard
 
