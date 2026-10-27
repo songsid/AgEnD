@@ -24,9 +24,9 @@ export async function planKiroReconciliation(deps: KiroReconcileDeps, name: stri
 export function kiroReconciliationPrompt(p: KiroReconciliation): string {
   return t(p.plan.rollbackReceipt ? "kiro_reconcile.rollback_prompt" : "kiro_reconcile.prompt", p.name, p.input.sessionId, p.input.archiveId);
 }
-function failureText(name: string, reason: string, receipt?: string): string {
+function failureText(name: string, reason: string, receipt?: string, selectionCommitted = false): string {
   // Reasons are complete localized sentences; the outer notice owns the separator.
-  return t(receipt ? "kiro_reconcile.failed" : "kiro_reconcile.failed_no_receipt", name, reason.replace(/[.。]+\s*$/, ""));
+  return t(selectionCommitted ? "kiro_reconcile.verification_failed" : receipt ? "kiro_reconcile.failed" : "kiro_reconcile.failed_no_receipt", name, reason.replace(/[.。]+\s*$/, ""), receipt ?? "");
 }
 export async function applyKiroReconciliation(deps: KiroReconcileDeps, p: KiroReconciliation, actor: string): Promise<{ ok: boolean; text: string; receipt?: string }> {
   let lease: ReturnType<KiroReconcileDeps["reserve"]>;
@@ -57,6 +57,6 @@ export async function applyKiroReconciliation(deps: KiroReconcileDeps, p: KiroRe
   } catch (error) {
     let reason = error instanceof SyntaxError ? "Malformed reconciliation data" : (error as Error).message;
     if (storageStarted && lease.current()) { try { await deps.stop(p.name); } catch { reason += " " + t("kiro_migrate.stop_unconfirmed"); } }
-    return { ok: false, ...(receipt ? { receipt } : {}), text: failureText(p.name, reason, receipt) };
+    return { ok: false, ...(receipt ? { receipt } : {}), text: failureText(p.name, reason, receipt, !!receipt && !p.plan.rollbackReceipt) };
   } finally { lease.release(); }
 }

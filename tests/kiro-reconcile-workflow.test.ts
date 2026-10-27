@@ -61,6 +61,22 @@ describe("confirmed reconciliation workflow with inert lifecycle", () => {
     const x = fixture(); let n = 0; x.d.verify = vi.fn(async () => { if (++n === failing) throw new Error("wrong model/id"); return { forensic: "clean" }; });
     expect((await applyKiroReconciliation(x.d, await plan(x), "admin")).ok).toBe(false); expect(x.d.stop).toHaveBeenCalledOnce(); expect(x.d.restart).toHaveBeenCalledTimes(failing);
   });
+  it.each(["en", "zh-TW"] as const)("a committed selection reports restart-verification failure with its receipt (%s)", async locale => {
+    setLocale(locale);
+    const x = fixture(); x.d.restart = vi.fn(async () => { throw new Error("Reconciliation receipt scope/checksum differs."); });
+    const out = await applyKiroReconciliation(x.d, await plan(x), "admin");
+    expect(out).toMatchObject({ ok: false, receipt }); expect(x.d.store).toHaveBeenCalled(); expect(x.d.stop).toHaveBeenCalledOnce();
+    expect(out.text).toBe(t("kiro_reconcile.verification_failed", "wiki", "Reconciliation receipt scope/checksum differs", receipt));
+    expect(out.text).toContain(receipt); expect(out.text).not.toMatch(/\.\.|。。/);
+    expect(out.text).not.toContain(locale === "en" ? "reconciliation did not complete" : "對話處理未完成");
+  });
+  it("a superseded rollback does not claim selection committed or restart verification failed", async () => {
+    const x = fixture(), p = await plan(x, receipt);
+    x.d.store = vi.fn(async () => { x.supersede(); return { receipt }; });
+    const out = await applyKiroReconciliation(x.d, p, "admin");
+    expect(out).toMatchObject({ ok: false, receipt }); expect(x.d.restart).not.toHaveBeenCalled(); expect(x.d.stop).not.toHaveBeenCalled();
+    expect(out.text).toBe(t("kiro_reconcile.failed", "wiki", t("kiro_reconcile.changed").replace(/[.。]+$/, "")));
+  });
   it("a user's stop during storage never starts or cleans up over the newer owner", async () => {
     const x = fixture(), p = await plan(x); x.d.store = vi.fn(async () => { x.supersede(); return { receipt }; });
     expect((await applyKiroReconciliation(x.d, p, "admin")).ok).toBe(false); expect(x.d.restart).not.toHaveBeenCalled(); expect(x.d.stop).not.toHaveBeenCalled();

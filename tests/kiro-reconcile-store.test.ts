@@ -7,6 +7,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { applyKiroCarryReconciliation, planKiroCarryReconciliation, prepareKiroCarryForLaunch } from "../src/backend/kiro-classic-archive.js";
 import { sharedKiroV2StoreLane } from "../src/backend/kiro-v2-store.js";
 import { reconciliationFixture } from "./support/kiro-reconcile.js";
+import { KiroBackend, probeKiroCliCompatibility } from "../src/backend/kiro.js";
+import type { KiroReconcileInput } from "../src/backend/kiro-reconcile-store.js";
 import { archivedKiroAlternative } from "../src/backend/kiro-reconcile-store.js";
 
 const disk = vi.hoisted(() => ({ paths: new Map<number, string>(), syncs: [] as string[], fail: "" }));
@@ -194,6 +196,53 @@ describe("explicit stopped original/newer reconciliation", () => {
     const x = f(), state = JSON.parse(readFileSync(x.identityFile, "utf8")), old = state.keys[Object.keys(state.keys)[1]!];
     state.keys[JSON.stringify(["v3", x.cwd, null])] = { ...old, engine: "v3", id: "v3-current" }; writeFileSync(x.identityFile, JSON.stringify(state));
     expect(() => planKiroCarryReconciliation(x.input)).toThrow(/V2 carry/); expect(x.own()).toBeNull();
+  });
+  it("a selected receipt accepts reordered scope keys without changing the receipt", () => {
+    const x = f(), receipt = apply(x), native = x.native();
+    const reordered = Object.fromEntries(Object.entries(x.input).reverse()) as unknown as KiroReconcileInput;
+    expect(archivedKiroAlternative(reordered, x.archive)?.()).toBe(true);
+    const rollback = planKiroCarryReconciliation(reordered, receipt);
+    expect(applyKiroCarryReconciliation(reordered, rollback, "admin", () => {})).toBe(receipt);
+    expect(x.own()).toBeNull(); expect(x.native()).toEqual(native);
+  });
+  it.each([undefined, false])("a selected receipt accepts real launch-shaped carry opts (skipResume=%s)", skipResume => {
+    const x = f(), receipt = apply(x), native = x.native(), before = x.rows();
+    const launch = { instance: x.name, engine: "v2" as const, workingDirectory: x.cwd, credentialProfile: null, skipResume,
+      agendHome: x.home, sessionsDir: x.sessions, dbPath: x.input.dbPath };
+    expect(prepareKiroCarryForLaunch(launch).sessionId).toBe(x.keep);
+    expect(x.own()).toBe(x.keep); expect(x.rows()).toEqual(before); expect(x.native()).toEqual(native);
+    expect(JSON.parse(readFileSync(join(rootOf(x, receipt), "..", "active.json"), "utf8"))).toEqual({ receipt, phase: "selected" });
+  });
+  it("the real backend prepares two plain same-id/model launches after selection", async () => {
+    const x = f(); apply(x); const native = x.native(), before = x.rows();
+    const config = { instanceName: x.name, instanceDir: join(x.root, "instance"), workingDirectory: x.cwd,
+      mcpServers: {}, kiroUi: "tui" as const, model: x.model };
+    for (let n = 0; n < 2; n++) {
+      const b = new KiroBackend(config.instanceDir, probeKiroCliCompatibility("stub-kiro-cli", () => "kiro-cli 2.34.0\n"));
+      await b.prepareLaunch(config); b.writeConfig(config); const command = b.buildCommand(config);
+      expect(command).toContain("--resume-id '" + x.keep + "'"); expect(command).toContain("--agent-engine=v2");
+      expect(command).toContain("--model '" + x.model + "'"); expect(command).not.toContain("--resume-picker");
+      expect(b.transcriptLaunch()).toEqual({ engine: "v2", sessionId: x.keep });
+    }
+    expect(x.own()).toBe(x.keep); expect(x.rows()).toEqual(before); expect(x.native()).toEqual(native);
+  }, 40_000);
+  it("a prepared receipt replays through the production-shaped worker payload", async () => {
+    const x = f(), p = planKiroCarryReconciliation(x.input), native = x.native(); let checks = 0;
+    expect(() => applyKiroCarryReconciliation(x.input, p, "admin", () => { if (++checks === 2) throw new Error("interrupted"); })).toThrow(/interrupted/);
+    const carry = {
+      instance: x.name, engine: "v2" as const, workingDirectory: x.cwd, credentialProfile: null, skipResume: false,
+      agendHome: x.home, sessionsDir: x.sessions, dbPath: x.input.dbPath,
+    };
+    const reply = await sharedKiroV2StoreLane.read({ keys: [], sessionsDir: x.sessions, carry });
+    expect(reply.kind).toBe("ok"); if (reply.kind !== "ok") throw new Error(reply.detail);
+    expect(reply.carry?.sessionId).toBe(x.keep); expect(x.own()).toBe(x.keep); expect(x.native()).toEqual(native);
+  }, 40_000);
+  it.each(["agendHome", "instance", "workingDirectory", "credentialProfile", "sessionId", "archiveId", "sessionsDir", "dbPath", "model"] as const)("a receipt still refuses a different %s", key => {
+    const x = f(), receipt = apply(x), native = x.native(), before = x.rows();
+    const other = Object.fromEntries(Object.entries(x.input).reverse()) as unknown as KiroReconcileInput;
+    Object.assign(other, { [key]: key === "credentialProfile" ? "other-profile" : "other-value" });
+    expect(() => planKiroCarryReconciliation(other, receipt)).toThrow();
+    expect(x.native()).toEqual(native); expect(x.rows()).toEqual(before);
   });
   it("an archive receipt cannot authorize a different store/profile scope", () => {
     const x = f(); apply(x);

@@ -125,13 +125,20 @@ export function inspectKiroReconciliation(input: KiroReconcileInput, classicHash
     files: Object.fromEntries(Object.entries(snapshots).map(([n, f]) => [n, f?.fingerprint ?? null])) }));
   return { digest };
 }
+const reconciliationScopeKeys = ["agendHome", "instance", "workingDirectory", "credentialProfile", "sessionId", "archiveId", "sessionsDir", "dbPath", "model"] as const;
+function sameReconciliationScope(confirmed: KiroReconcileInput, current: KiroReconcileInput): boolean {
+  // The receipt binds these fields, not object insertion order or the launch
+  // helper's extra engine/skipResume hints. Hash the full manifest unchanged.
+  return Object.keys(confirmed).length === reconciliationScopeKeys.length
+    && reconciliationScopeKeys.every(key => Object.hasOwn(confirmed, key) && Object.hasOwn(current, key) && confirmed[key] === current[key]);
+}
 function manifestAt(input: KiroReconcileInput, receipt: string): { manifest: Manifest; root: string } {
   scope(input);
   if (!receiptPattern.test(receipt)) throw new Error("Invalid reconciliation receipt");
   const root = join(paths(input).root, receipt);
   for (const dir of [join(input.agendHome, "kiro-reconciliations"), paths(input).root, root]) checkPrivateDir(dir);
   const manifest = JSON.parse(read(join(root, "manifest.json"), 2 * 1024 * 1024, true).bytes.toString("utf8")) as Manifest;
-  if (hash(JSON.stringify(manifest)) !== receipt || manifest.version !== 1 || !equal(manifest.input, input)
+  if (hash(JSON.stringify(manifest)) !== receipt || manifest.version !== 1 || !sameReconciliationScope(manifest.input, input)
     || !equal(Object.keys(manifest.files).sort(), fileNames(input).sort())) throw new Error("Reconciliation receipt scope/checksum differs");
   for (const [name, f] of Object.entries(manifest.files)) if (f) {
     const copy = read(join(root, name), limit(name), true);
