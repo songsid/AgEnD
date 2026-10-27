@@ -216,9 +216,16 @@ describe("upgrade launch after ambiguous (2 matches) abandoned the pin", () => {
     expect(f.rows()).toHaveLength(3); expect(existsSync(join(f.input.agendHome, "kiro-classic-archives"))).toBe(false);
     expect(b.retainedResumeBlock()).toMatchObject({ reason: expect.stringContaining("kept") });
   });
-  it("a replacement with work holds before any re-pin or deletion", () => {
-    const f = fixture(); f.abandon(); f.empty("empty-1"); f.empty("worked", "not empty"); const before = f.rows();
-    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(); expect(own(f)).toBeNull(); expect(f.rows()).toEqual(before);
+  it.each([1, 2, 606524])("a replacement with %i bytes explains the work conflict before any re-pin or deletion", bytes => {
+    const f = fixture(); f.abandon(); f.empty("empty-1"); f.empty("fcf7c312-4092-4e3a-916e-3a9501073cfd", "x".repeat(bytes)); const before = f.rows();
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(`Newer same-cwd session "fcf7c312-4092-4e3a-916e-3a9501073cfd.jsonl" has work (${bytes} bytes); choose which conversation to keep before repairing`);
+    expect(own(f)).toBeNull(); expect(f.rows()).toEqual(before);
+  });
+  it.each(["missing", "symlink"])("a %s replacement transcript is named as unreadable rather than counted as work", kind => {
+    const f = fixture(); f.abandon(); f.empty("replacement"); const log = join(f.input.sessionsDir, "replacement.jsonl");
+    rmSync(log); if (kind === "symlink") symlinkSync(join(f.input.sessionsDir, f.input.sessionId + ".jsonl"), log);
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(/Replacement transcript "replacement.jsonl" could not be read safely/);
+    expect(own(f)).toBeNull(); expect(f.rows()).toHaveLength(3);
   });
   it("incomplete original proof holds the actual backend before a fresh command can be built", async () => {
     const f = fixture(); f.abandon(); f.empty("empty-1"); f.empty("empty-2"); rmSync(join(f.input.sessionsDir, f.input.sessionId + ".jsonl"));

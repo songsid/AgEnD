@@ -6,13 +6,28 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { executeForgedEnvelopeScan, resolveScanTarget } from "../src/forged-envelope-scan.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
-import { KIRO_FORENSIC_MAX_BYTES, readKiroTuiAssistantTexts } from "../src/kiro-tui-forensic.js";
+import { KIRO_FORENSIC_MAX_BYTES, KiroTuiSnapshotSizeError, readKiroTuiAssistantTexts, snapshotKiroTuiFile } from "../src/kiro-tui-forensic.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const name = "agend-audit", peer = "agend-peer", id = "audit-owned";
 const assistant = (text: string) => JSON.stringify({ version: "v1", kind: "AssistantMessage", data: { content: [{ kind: "text", data: text }] } });
 const envelope = "[from:agend-peer] hello (message_id: xmsg-audit-text)";
+
+it("snapshot reports the exact filename and caller limit separately from ownership and ENOENT", () => {
+  const root = mkdtempSync(join(tmpdir(), "kiro-snapshot-limit-")); roots.push(root);
+  const path = join(root, "replacement.jsonl"); writeFileSync(path, "xx");
+  try { snapshotKiroTuiFile(path, 1); throw new Error("expected size hold"); }
+  catch (error) {
+    expect(error).toBeInstanceOf(KiroTuiSnapshotSizeError);
+    expect(error).toMatchObject({ path, maxBytes: 1, actualBytes: 2 });
+    expect((error as Error).message).toBe('TUI session "replacement.jsonl" exceeds the scan size limit (2 > 1 bytes)');
+  }
+  expect(snapshotKiroTuiFile(path, 2).text).toBe("xx");
+  expect(() => snapshotKiroTuiFile(root, 1)).toThrow(/is not an owned regular file/);
+  try { snapshotKiroTuiFile(join(root, "absent.jsonl"), 1); throw new Error("expected ENOENT"); }
+  catch (error) { expect(error).toMatchObject({ code: "ENOENT" }); expect(error).not.toBeInstanceOf(KiroTuiSnapshotSizeError); }
+});
 function fixture(mode: "config" | "floor" = "config", profile: string | null = null) {
   const root = mkdtempSync(join(tmpdir(), "kiro-forensic-")); roots.push(root);
   const cwd = join(root, "work"), sessions = join(root, "sessions"), states = join(root, "kiro-identity", "instances"), claims = join(root, "kiro-identity", "claims", "v2");
