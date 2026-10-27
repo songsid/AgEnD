@@ -1119,31 +1119,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         && outbox.countForTarget(name, ["queued", "retry_wait", "delivering", "submission_started", "reconciliation_pending"]) === 0,
       admit: (episode, tasks, advisory) => outbox.admitWorkingRecovery(episode,
         buildWorkingRecoveryPrompt(tasks, this.workingRecoveryCause, advisory), advisory),
-      summary: (group, rows) => {
-        const general = this.findGeneralInstance();
-        if (!general || !this.daemons.has(general)) return;
-        // Our own informational notice must not supersede General's recovery
-        // as unrelated pending work before it crosses the input boundary.
-        const generalEpisode = store.get(general);
-        if (generalEpisode?.outcome === "admitted" && generalEpisode.deliveryId) {
-          const state = outbox.get(generalEpisode.deliveryId)?.state;
-          if (!state || !["delivered", "uncertain", "failed", "cancelled"].includes(state)) return;
-        }
-        const deferredAdvisories = rows.filter(row => row.outcome === "deferred"
-          && (this.daemons.get(row.instance)?.getWorkingRecoveryState?.().background ?? null) === null)
-          .map(row => `${row.instance} (${row.reason})`);
-        const posted = store.summary(group, () => outbox.admitSystemNotice(general, `working-recovery-summary:${group}`,
-          `[system:working-recovery-summary] Observed cause: unknown interruption${this.workingRecoveryCause === "unknown_interruption" ? "" : `; prior requested action: ${this.workingRecoveryCause}`}. ${rows.length} interrupted instances; continuation queued ${rows.filter(r => r.outcome === "admitted").length}, excluded ${rows.filter(r => r.outcome === "excluded").length}, still deferred ${rows.filter(r => r.outcome === "deferred").length}. ${rows.filter(r => r.reason === "advisory_background_unknown").length ? `Advisory, background unknown: ${rows.filter(r => r.reason === "advisory_background_unknown").map(r => r.instance).join(", ")}. ` : ""}${deferredAdvisories.length ? `Deferred advisory candidates (background unknown; all other gates still apply): ${deferredAdvisories.join(", ")}. ` : ""}Details are in the Log. Deferred work remains eligible; no action or confirmation is requested.`));
-        if (posted) {
-          const counts = { interrupted: rows.length, queued: rows.filter(row => row.outcome === "admitted").length,
-            excluded: rows.filter(row => row.outcome === "excluded").length, deferred: rows.filter(row => row.outcome === "deferred").length };
-          const requestedAction = this.workingRecoveryCause === "unknown_interruption" ? null : this.workingRecoveryCause;
-          this.logger.info({ group, ...counts, observedCause: "unknown_interruption", requestedAction }, "Interrupted work recovery summary queued for General");
-          this.eventLog?.insert(general, "working_state", { reason: "recovery_summary", group, ...counts,
-            observedCause: "unknown_interruption", requestedAction,
-            message: `Interrupted work summary queued for General: ${counts.interrupted} interrupted; ${counts.queued} queued, ${counts.excluded} excluded, ${counts.deferred} deferred.` });
-        }
-      },
       log: (episode, outcome, reason) => {
         const requestedAction = this.workingRecoveryCause === "unknown_interruption" ? null : this.workingRecoveryCause;
         this.logger.info({ name: episode.instance, episode: episode.key, outcome, reason,

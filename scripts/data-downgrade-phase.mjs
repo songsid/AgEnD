@@ -83,7 +83,7 @@ function recoveryRows() {
   try {
     return Object.fromEntries([
       ['working_recovery_episodes', 'instance_name'], ['working_recovery_receipts', 'episode_key'],
-      ['working_recovery_run', 'singleton'], ['working_recovery_summaries', 'episode_group'],
+      ['working_recovery_run', 'singleton'],
       ['working_recovery_cancellations', 'instance_name'],
     ].map(([table, key]) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY ${key}`).all()]));
   } finally { db.close(); }
@@ -149,7 +149,7 @@ if (phase === 'create') {
     assert.equal(state.workingJournalRows.length, 1);
     assert.notEqual(state.workingJournalRows[0].prior_json, null);
   });
-  checked('recovery episode, receipt, cancellation, run and summary rows populated before downgrade', () => {
+  checked('recovery episode, receipt, cancellation and run rows populated before downgrade', () => {
     const store = outbox.workingRecovery;
     const snapshot = { ...state.workingJournal.current,
       observation: { ...state.workingJournal.current.observation, executionState: 'working', sessionId: 'scratch-owned-session', turn: null } };
@@ -158,9 +158,6 @@ if (phase === 'create') {
     store.cancel('scratch-cancelled', snapshot.observation.configuration, snapshot.observation.sessionId);
     store.discover('scratch-recovery', snapshot);
     assert.equal(outbox.admitWorkingRecovery(store.get('scratch-recovery'), 'scratch advisory; never executed', true), true);
-    assert.equal(store.summary('scratch-recovery-group', () => {
-      outbox.admitSystemNotice('scratch-general', 'scratch-recovery-summary', 'scratch summary; never executed');
-    }), true);
     state.workingRecoveryRows = recoveryRows();
     assert.ok(Object.values(state.workingRecoveryRows).every(rows => rows.length > 0));
   });
@@ -357,7 +354,6 @@ if (phase === 'create') {
     const store = outbox.workingRecovery;
     assert.equal(outbox.admitWorkingRecovery(store.get('scratch-recovery'), 'must not duplicate', true), false);
     assert.equal(store.cancelled('scratch-cancelled', store.get('scratch-recovery').snapshot), true);
-    assert.equal(store.summary('scratch-recovery-group', () => { throw new Error('duplicate summary'); }), false);
     assert.equal(store.beginRun('return-recovery-boot', 43, 200), 'manual_restart');
   });
   checked('working journal survives old writes and accepts a new atomic observation after return', () => {

@@ -95,7 +95,6 @@ export class WorkingRecoveryStore {
     CREATE TABLE IF NOT EXISTS working_recovery_receipts (episode_key TEXT PRIMARY KEY, outcome TEXT NOT NULL, reason TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS working_recovery_run (singleton INTEGER PRIMARY KEY CHECK(singleton=1),
       boot_id TEXT NOT NULL, pid INTEGER NOT NULL, started_at INTEGER NOT NULL, requested_cause TEXT);
-    CREATE TABLE IF NOT EXISTS working_recovery_summaries (episode_group TEXT PRIMARY KEY);
     CREATE TABLE IF NOT EXISTS working_recovery_cancellations (instance_name TEXT PRIMARY KEY, configuration TEXT NOT NULL, session_id TEXT);`);
   }
   beginRun(bootId: string, pid: number, now: number): RecoveryCause {
@@ -145,8 +144,8 @@ export class WorkingRecoveryStore {
       }
       const receipt = this.db.prepare("SELECT outcome,reason FROM working_recovery_receipts WHERE episode_key=?").get(key) as { outcome: string; reason: string } | undefined;
       if (current?.key === key) {
-        // Same durable work, new fleet-start interval: keep the episode/receipt,
-        // but an earlier summary must not consume this restart's summary.
+        // Same durable work, new fleet-start interval: keep the episode/receipt
+        // and record the interval it now belongs to.
         if (current.outcome === "deferred" && current.group !== group) {
           this.db.prepare("UPDATE working_recovery_episodes SET episode_group=? WHERE instance_name=? AND episode_key=?")
             .run(group, instance, key);
@@ -208,12 +207,6 @@ export class WorkingRecoveryStore {
       return true;
     })();
   }
-  summary(group: string, insert: () => void): boolean {
-    return this.db.transaction(() => {
-      if (this.db.prepare("SELECT 1 FROM working_recovery_summaries WHERE episode_group=?").get(group)) return false;
-      insert(); this.db.prepare("INSERT INTO working_recovery_summaries VALUES(?)").run(group); return true;
-    })();
-  }
 }
 
 export interface WorkingRecoveryDependencies {
@@ -227,7 +220,6 @@ export interface WorkingRecoveryDependencies {
   card: (id: string) => RecoveryCard | undefined | null;
   laneFree: (instance: string) => boolean;
   admit: (episode: RecoveryEpisode, tasks: WorkingStateReference[], advisory: boolean) => boolean;
-  summary: (group: string, rows: RecoveryEpisode[]) => void;
   log: (episode: RecoveryEpisode, outcome: string, reason: string) => void;
 }
 
@@ -265,15 +257,6 @@ export class WorkingRecoveryCoordinator {
       }
       if (!this.deps.laneFree(row.instance) || this.deps.now() - this.lastAdmittedAt < RECOVERY_PACE_MS) continue;
       if (this.deps.admit(row, verdict.tasks, verdict.advisory)) { this.lastAdmittedAt = this.deps.now(); this.deps.log(row, "admitted", verdict.advisory ? "advisory_background_unknown" : "outbox_owned"); }
-    }
-    const rows = this.deps.store.list();
-    for (const group of new Set(rows.map(row => row.group))) {
-      const members = rows.filter(row => row.group === group && hasInterruptedExecution(row.snapshot));
-      if (!members.length) continue;
-      // Finish the paced admission sweep before the single summary, so every
-      // advisory admission in that sweep is named, rather than only its first row.
-      if (members.some(row => row.outcome === "deferred" && this.verdict(row).outcome === "ready")) continue;
-      this.deps.summary(group, members);
     }
   }
   /** Called again by the local pane writer, including after every awaited prerequisite. */
