@@ -2392,6 +2392,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .tb-tile-note { display: flex; gap: var(--s-1); align-items: flex-start; font-size: var(--fs-xs); color: var(--text-2); overflow-wrap: anywhere; }
 /* A main task's sub task at work now (its worker in the foot), and what a card waiting for you still lacks. */
 .tb-tile-now { display: flex; align-items: baseline; gap: var(--s-1); min-width: 0; font-size: var(--fs-xs); color: var(--text-2); }
+/* #2080: whom a card in review waits for — the person (accented), or the agent that confirms it. */
+.tb-tile-waits { font-size: var(--fs-xs); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-tile-waits.you { color: var(--text); font-weight: var(--fw-semibold); }
 .tb-now-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-now-label { flex-shrink: 0; font-size: 11px; font-weight: var(--fw-semibold); color: var(--text-2); }
 .tb-now-label.st-claimed { color: var(--accent); }

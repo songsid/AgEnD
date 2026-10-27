@@ -8,7 +8,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Skeleton } from "/assets/ui-states.js";
 import { GroupMark, InstanceAvatar, dotLabel, dotState, groupKind, groupLabel, groupOf, namesOf, namesStore } from "/assets/instance-nav.js";
-import { Who, boardApi, errorText } from "./fleet-task-common.js";
+import { Who, boardApi, errorText, reviewLabel } from "./fleet-task-common.js";
 
 const LABEL = { back: "tasks.workSentBack", doing: "tasks.workDoing", blocked: "tasks.workBlocked", review: "tasks.workReview", main: "tasks.workMain", ready: "tasks.workReady", waiting: "tasks.workWaiting" };
 
@@ -33,7 +33,7 @@ export function WorkLines({ lines, onOpen }) {
   if (!lines.length) return html`<p class="muted tw-none">${t("tasks.workNone")}</p>`;
   return html`<ul class="tw-lines">${lines.map((l) => html`<li key=${`${l.kind}:${l.card.id}`}>
     <button type="button" class="tw-line" title=${`${l.card.id} ${l.card.title}`} onClick=${() => onOpen(l.card.id)}>
-      <span class=${`tw-kind k-${l.kind}`}>${t(LABEL[l.kind])}</span><span class="tb-code">${l.card.id}</span><span class="tw-title">${l.card.title}</span>
+      <span class=${`tw-kind k-${l.kind}`}>${l.kind === "review" ? reviewLabel(l.card) : t(LABEL[l.kind])}</span><span class="tb-code">${l.card.id}</span><span class="tw-title">${l.card.title}</span>
       ${l.note ? html`<span class="muted tw-note">${l.note}</span>` : null}
       ${l.unread ? html`<span class="tw-unread" title=${t("tasks.workNewComments")} aria-label=${t("tasks.workNewComments")}><${Icon} name="chat" size=${13} /></span>` : null}
     </button></li>`)}</ul>`;

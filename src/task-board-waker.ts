@@ -32,7 +32,7 @@ export interface TaskBoardWakerDeps {
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
 /** The order a card's news is told in. */
-const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "answered", "approved", "wrap_up", "assigned", "start", "ready", "comment"];
+const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "confirm_own", "answered", "approved", "wrap_up", "assigned", "start", "ready", "comment"];
 
 const quote = (text: string | undefined) => (text ? `: "${oneLine(text, 160)}"` : "");
 
@@ -55,6 +55,11 @@ function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): stri
       const waits = `you handed it out and it is ready for your confirmation${card?.assignee ? ` (@${card.assignee})` : ""}${gap ? `, though ${gapText(gap, card!.kind === "main")}` : ""}`;
       return `${waits} — check it, then move it to done, or back to claimed with what is missing`;
     }
+    // #2080: an agent's own card (nobody else confirms it) in review by itself or by another's move.
+    case "confirm_own": {
+      const gap = card ? wrapUpGap(card) : null;
+      return `it is in review and nobody else confirms it — it is yours${gap ? `, though ${gapText(gap, card!.kind === "main")}` : ""}: check it, then move it to done`;
+    }
     case "approved": {
       const who = card && !personConfirms(card) ? by : "the person";
       return card?.assignee === w.instance ? `${who} confirmed it${quote(w.texts.approved)}` : `you handed it out; ${who} confirmed it${quote(w.texts.approved)}`;
@@ -62,7 +67,7 @@ function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): stri
     case "cancelled": return `cancelled by ${by}${w.texts.cancelled?.startsWith("with its main task") ? ` ${oneLine(w.texts.cancelled, 160)}` : quote(w.texts.cancelled)} — stop working on it`;
     case "wrap_up": {
       const gap = card ? wrapUpGap(card) : null;
-      return `it went to the person for confirmation by itself${gap ? `, but ${gapText(gap, true)}` : ""} — fill it in with update`;
+      return `it went ${card && !personConfirms(card) ? "to review" : "to the person for confirmation"} by itself${gap ? `, but ${gapText(gap, true)}` : ""} — fill it in with update`;
     }
   }
 }

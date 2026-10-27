@@ -432,6 +432,8 @@ export interface WebApiContext {
   readonly themeStore?: ThemeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
   readonly officeStore?: OfficeStore;
+  /** #2080: an instance dispatcher no longer in the fleet (its cards fall back to the person: Waiting for you). */
+  readonly dispatcherGone?: (name: string) => boolean;
   /** How often a person may save the offices (absent: no limit, as in a test without it). */
   readonly officeWrites?: OfficeWriteLimiter;
   /** #2578: the agents' live acts in the Office view (office_set); absent: /ui/office-acts is not offered. */
@@ -2708,7 +2710,7 @@ export function handleWebRequest(
         // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
         // public link, not a hidden one.
         const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects, leads, stats: board.projectStats() });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone), projects, leads, stats: board.projectStats(ctx.dispatcherGone) });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
@@ -2729,7 +2731,7 @@ export function handleWebRequest(
         const works = names.map((name) => ({ name, w: byName.get(name)! }));
         const all = new Map<string, Parameters<typeof board.views>[0][number]>();
         for (const { w } of works) for (const c of [...w.doing, ...w.blocked, ...w.review, ...w.ready, ...w.waiting.map((x) => x.card), ...w.mains.map((x) => x.card)]) if (!hidden(c)) all.set(c.uuid, c);
-        const viewOf = new Map(board.views([...all.values()], scope).map((v) => [v.uuid, v]));
+        const viewOf = new Map(board.views([...all.values()], scope, ctx.dispatcherGone).map((v) => [v.uuid, v]));
         const drawn = (cards: Array<{ uuid: string }>) => cards.flatMap((c) => (viewOf.has(c.uuid) ? [viewOf.get(c.uuid)!] : []));
         const codes = (cards: Array<{ card: { uuid: string; code: string } }>) => cards.filter((x) => all.has(x.card.uuid)).map((x) => x.card.code);
         const body = JSON.stringify({ instances: works.map(({ name, w }) => ({
@@ -2745,7 +2747,7 @@ export function handleWebRequest(
       if (method === "GET" && path === "/ui/tasks/search") {
         const names = new Map(board.listProjects(true).map((p) => [p.id, p.name]));
         const hits = board.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit")) || 20, scope).filter((h) => !hidden(h.card));
-        const views = board.views(hits.map((h) => h.card), scope);
+        const views = board.views(hits.map((h) => h.card), scope, ctx.dispatcherGone);
         const results = hits.map(({ card: c, match }, i) => ({
           card: views[i],
           match,

@@ -33,7 +33,8 @@ a JSON array of task ids. New tables: `task_projects`, `task_entries` (comments,
 confirm notes), `task_events` (history: who changed what, from what, to what) and `task_counters`.
 
 Statuses are the tool's (`open`, `claimed`, `blocked`, `done`, `cancelled`) plus `review`: finished, waiting for the
-person. The page names them To do, In progress, Blocked, Waiting for you, Done.
+person. The page names them To do, In progress, Blocked, To confirm, Done; a card in review says whom it waits for (#2756:
+"Waiting for you" only for the person's own hand-outs, else "Waiting for <agent>").
 
 Field limits (code points) keep a card cheap for an agent to read: title 100, goal 300, scope 600, acceptance 10 ×
 150, context 1000, state 500 in at most 5 lines, blocked reason 400, result 1000, comment 4000.

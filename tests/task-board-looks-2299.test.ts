@@ -24,7 +24,7 @@ const CSS = readFileSync(join(import.meta.dirname, "..", "src", "ui", "shared", 
 
 const PROJECT = { id: 1, name: "Leaderboard", description: "", archived: false, sort: 1, createdAt: "2026-10-20T00:00:00.000Z" };
 const card = (over: Record<string, unknown>) => ({ id: "M-1", uuid: "u1", kind: "main", projectId: 1, parentId: null, title: "Serve the weekly leaderboard", status: "blocked",
-  assignee: "alpha", priority: "high", size: "M", needsReview: true, dependsOn: [], goal: "", scope: "", acceptance: [], context: "", state: "",
+  assignee: "alpha", dispatcher: { kind: "person", name: "Ann" }, waitsForPerson: true, confirmer: null, priority: "high", size: "M", needsReview: true, dependsOn: [], goal: "", scope: "", acceptance: [], context: "", state: "",
   blockedReason: "Which scores count: ranked games only?", result: "", sort: 1, createdBy: "Ann", version: 3, createdAt: "2026-10-20T00:00:00.000Z",
   updatedAt: "2026-10-20T00:00:00.000Z", startedAt: null, submittedAt: null, doneAt: null, progress: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 },
   unmetDeps: [], commentCount: 0, newCommentCount: 0, lastComment: null, ...over });

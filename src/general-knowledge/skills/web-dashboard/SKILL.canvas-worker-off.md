@@ -229,8 +229,9 @@ values reloaded after Save. Password fields keep the browser's behaviour.
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
-  **Send back** finished work, **Answer** a blocked card); **No project** holds `task`-tool tasks. A project is a board
-  of main tasks (M-n) by status — To do, In progress, Blocked, Waiting for you, Done — with drag to move, an assignee
+  **Send back** finished work, **Answer** a blocked card — #2756: only the cards the person handed out, as Needs you;
+  an agent's card in review says "Waiting for <agent>"); **No project** holds `task`-tool tasks. A project is a board
+  of main tasks (M-n) by status — To do, In progress, Blocked, To confirm, Done — with drag to move, an assignee
   filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
   progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
   (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No

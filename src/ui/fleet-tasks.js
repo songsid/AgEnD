@@ -15,7 +15,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardDialog } from "./fleet-task-card.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
 
@@ -188,16 +188,16 @@ function ProjectTile({ project, stats, onOpen, onDialog, reload }) {
 }
 
 /**
- * Cards waiting for the person: to confirm or send back, and blocked ones to answer. A card's buttons take one answer
- * at a time: claimed before the first await, so a double click sends one move.
+ * Cards waiting for the person: to confirm or send back, and blocked ones to answer — #2080: only those the person
+ * handed out (waitsForYou, Needs you's rule); an agent's card in review is its confirmer's, and a blocked one asks its
+ * dispatcher, not the person. A card's buttons take one answer at a time: claimed before the first await, so a double
+ * click sends one move.
  */
 function Waiting({ cards, writable, onOpen, reload }) {
-  const { instances } = useStore(appStore);
-  const fleetNames = new Set(instances.map((i) => i.name));
   const pending = useRef(new Set());
   const [busy, setBusy] = useState(() => new Set());
-  const review = cards.filter((c) => c.status === "review");
-  const blocked = cards.filter((c) => c.status === "blocked");
+  const review = cards.filter((c) => c.status === "review" && waitsForYou(c));
+  const blocked = cards.filter((c) => c.status === "blocked" && waitsForYou(c));
   if (!review.length && !blocked.length) return null;
   const act = async (fn, done, card) => {
     if (pending.current.has(card.id)) return;
@@ -213,8 +213,6 @@ function Waiting({ cards, writable, onOpen, reload }) {
         <${StatusPill} status=${c.status} />
         <button type="button" class="tb-wait-title" onClick=${() => onOpen(c.id)}><span class="tb-code">${c.id}</span> ${c.title}
           ${c.status === "blocked" && c.blockedReason ? html`<span class="tb-wait-reason">${c.blockedReason}</span>` : null}
-          ${c.status === "blocked" && c.dispatcher && c.dispatcher.kind === "instance" && c.dispatcher.name !== c.assignee && fleetNames.has(c.dispatcher.name)
-            ? html`<span class="tb-wait-asked muted">${t("tasks.askedFirst", c.dispatcher.name)}</span>` : null}
           ${c.status === "review" && wrapUpText(c) ? html`<span class="tb-wait-reason wrapup">${t("tasks.wrapLine", wrapUpText(c))}</span>` : null}</button>
       </div>
       <div class="tb-wait-actions">
@@ -257,7 +255,7 @@ function SearchBox({ onOpen }) {
     ${results ? html`<ul class="tb-search-results" role="listbox">
       ${results.length ? results.map((r, i) => html`<li key=${r.card.id} role="option" aria-selected=${i === active ? "true" : "false"} class=${i === active ? "active" : ""}>
         <button type="button" onClick=${() => pick(r.card.id)}>
-          <span class="tb-code">${r.card.id}</span><span class="tb-search-title">${r.card.title}</span><${StatusPill} status=${r.card.status} />
+          <span class="tb-code">${r.card.id}</span><span class="tb-search-title">${r.card.title}</span><${StatusPill} status=${r.card.status} card=${r.card} />
           <span class="tb-search-where muted">${[r.project, r.parentTitle].filter(Boolean).join(" › ")}${r.match ? ` · ${t("tasks.inField", t(`tasks.field${r.match.field}`))}: ${r.match.text}` : ""}</span>
         </button></li>`) : html`<li class="muted tb-search-none">${t("tasks.searchEmpty")}</li>`}
     </ul>` : null}
@@ -457,9 +455,10 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
     ${now ? html`<div class="tb-tile-now" title=${now.cards.map((c) => `${c.id} ${c.title}`).join("\n")}>
       <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${now.cards[0].id}</span>
       <span class="tb-now-title">${now.cards[0].title}</span>${now.cards.length > 1 ? html`<span class="muted">${t("tasks.moreCards", now.cards.length - 1)}</span>` : null}</div>` : null}
+    ${card.status === "review" && !hasSubs ? html`<div class=${`tb-tile-waits${waitsForYou(card) ? " you" : ""}`}>${reviewLabel(card)}</div>` : null}
     <div class="tb-tile-foot">
       ${now ? html`<span class="tb-people">${workers.map((w) => html`<${Who} key=${w} name=${w} empty=${t("tasks.nobody")} title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))} />`)}</span>`
-        : hasSubs && card.status === "review" ? html`<span class="tb-who tb-now-label st-review" title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))}>${t("tasks.review")}</span>`
+        : hasSubs && card.status === "review" ? html`<span class="tb-who tb-now-label st-review" title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))}>${reviewLabel(card)}</span>`
         : html`<${Who} name=${card.assignee} empty=${t("tasks.nobody")} />`}
       <span class="tb-tile-stats">
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}

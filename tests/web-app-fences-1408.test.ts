@@ -143,7 +143,7 @@ describe("2. a delete that finishes late never takes over the page", () => {
 
 // The Tasks tab is the task board (fleet-tasks.js): a project's tile on Home, the cards waiting for the person.
 const PROJECT = { id: 1, name: "Game", description: "", archived: false, sort: 1, createdAt: "2026-10-20T00:00:00.000Z" };
-const REVIEW_CARD = { id: "M-1", uuid: "u1", kind: "main", projectId: 1, parentId: null, title: "One", status: "review", assignee: "alpha",
+const REVIEW_CARD = { id: "M-1", uuid: "u1", kind: "main", projectId: 1, parentId: null, title: "One", status: "review", assignee: "alpha", dispatcher: { kind: "person", name: "Ann" }, confirmer: null,
   priority: "normal", size: null, needsReview: true, dependsOn: [], goal: "", scope: "", acceptance: [], context: "", state: "", blockedReason: "",
   result: "GET /leaderboard answers in 40 ms", sort: 1, createdBy: "Ann", version: 3, createdAt: "2026-10-20T00:00:00.000Z", updatedAt: "2026-10-20T00:00:00.000Z",
   startedAt: null, submittedAt: null, doneAt: null, progress: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 },

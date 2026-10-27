@@ -175,7 +175,7 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
       </div>
 
       <div class="tc-actions">
-        <${StatusPill} status=${card.status} />
+        <${StatusPill} status=${card.status} card=${card} />
         ${writable ? html`
         ${card.status === "review" ? html`
           <button type="button" class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "done"))}><${Icon} name="check" size=${14} />${isMain ? t("taskcard.confirmMain") : t("tasks.confirm")}</button>
@@ -260,7 +260,7 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
 
       ${isMain ? html`<${Field} title=${t("taskcard.subs", children.length)}>
         ${children.length ? html`<ul class="tc-children">${children.map((c) => html`<li key=${c.id}><button type="button" onClick=${() => onOpen(c.id)}>
-          <${StatusPill} status=${c.status} /><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span><span class="tb-who">${c.assignee || ""}</span></button></li>`)}</ul>` : null}
+          <${StatusPill} status=${c.status} card=${c} /><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span><span class="tb-who">${c.assignee || ""}</span></button></li>`)}</ul>` : null}
         ${finished || !writable ? null : html`<${QuickAdd} placeholder=${t("taskcard.quickAdd")} onAdd=${(title) => run(() => boardApi.create({ parent: card.id, title }))} />`}
       </${Field}>` : null}
 

@@ -14231,7 +14231,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!board) return;
     const read = board.summaryRead(since.toISOString(), until.toISOString(), this.dispatcherGone);
     const projects = board.listProjects(true);
-    const stats = board.projectStats();
+    const stats = board.projectStats(this.dispatcherGone);
     const names = new Map(projects.map((p) => [p.id, p.name]));
     const configured = this.getPrimaryAdapterId();
     const primary = configured !== undefined && this.worlds.has(configured) ? configured : this.worlds.keys().next().value as string | undefined;

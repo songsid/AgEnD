@@ -10,7 +10,8 @@ import { toast } from "/assets/ui-toast.js";
 
 register("tasks", {
   en: {
-    open: "To do", claimed: "In progress", blocked: "Blocked", review: "Waiting for you", done: "Done", cancelled: "Cancelled",
+    open: "To do", claimed: "In progress", blocked: "Blocked", review: "To confirm", done: "Done", cancelled: "Cancelled",
+    reviewYou: "Waiting for you", reviewBy: "Waiting for {0}", reviewByTip: "{0} confirms it, not you",
     main: "Main task", sub: "Sub task", urgent: "Urgent", high: "High", normal: "Normal", low: "Low",
     sizeS: "Small", sizeM: "Medium", sizeL: "Large", sizeNone: "Not sized",
     projects: "Projects", noProject: "No project", noProjectDesc: "Tasks the fleet opened outside any project",
@@ -53,7 +54,6 @@ register("tasks", {
     nowDoing: "Working on", nowBlocked: "Blocked", nowNext: "Next", ownerTip: "Main task owner: {0}", moreCards: "+{0}",
     wrapTag: "To fill in", wrapLine: "Not wrapped up yet: {0}", gapUnchecked: "{0} checklist items unchecked", gapUncheckedOne: "1 checklist item unchecked",
     gapNoResult: "no result", confirmGapTitle: "Confirm {0}?", confirmAnyway: "Confirm anyway",
-    askedFirst: "{0} handed it out and has been asked; you can answer it here too",
     confirmGapLabel: "{0}. You can send it back to have it filled in — or confirm anyway, with a note if you like",
     "err.too_long": "{0} is too long: {1} characters, at most {2}", "err.state_lines": "State is at most {0} lines (it has {1})",
     "err.acceptance_empty": "An acceptance item cannot be empty", "err.acceptance_max": "At most {0} acceptance items",
@@ -76,7 +76,7 @@ register("tasks", {
     "note.deps_unmet": "Note: {0} not done yet",
     // #2246 step 3: who works on what (fleet-task-work.js)
     instances: "Instances", instancesTip: "The fleet's instances and what each works on", instancesHead: "{0} instance(s) · {1} working",
-    workSentBack: "Sent back", workDoing: "In progress", workBlocked: "Blocked", workReview: "Waiting for you", workMain: "Owns",
+    workSentBack: "Sent back", workDoing: "In progress", workBlocked: "Blocked", workReview: "To confirm", workMain: "Owns",
     workReady: "Can start", workWaiting: "Waiting on", workSubs: "sub tasks {0}/{1}", workClaimable: "nobody's: can be taken",
     workWaitsFor: "waits for {0}", workNone: "Nothing on the board", workNewComments: "Comments it has not read yet",
     workOutside: "Not in the fleet", workFailed: "Could not read who works on what: {0}", workJoin: ", ",
@@ -84,6 +84,7 @@ register("tasks", {
   },
   "zh-TW": {
     open: "待辦", claimed: "進行中", blocked: "卡住", review: "待確認", done: "完成", cancelled: "取消",
+    reviewYou: "等你確認", reviewBy: "等 {0} 確認", reviewByTip: "由 {0} 確認，不是你",
     main: "主任務", sub: "子任務", urgent: "緊急", high: "高", normal: "一般", low: "低",
     sizeS: "小", sizeM: "中", sizeL: "大", sizeNone: "未定",
     projects: "專案", noProject: "未分類", noProjectDesc: "fleet 在專案以外開的 task",
@@ -126,7 +127,6 @@ register("tasks", {
     nowDoing: "執行中", nowBlocked: "卡住", nowNext: "下一步", ownerTip: "主任務負責人：{0}", moreCards: "+{0}",
     wrapTag: "待補齊", wrapLine: "負責人還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapUncheckedOne: "還有 1 項沒勾",
     gapNoResult: "沒有產出總結", confirmGapTitle: "確認 {0}？", confirmAnyway: "還是確認",
-    askedFirst: "已先通知派工者 {0}；你也可以直接在這裡回覆",
     confirmGapLabel: "{0}。可以先退回請負責人補齊；還是要確認的話，可以留一句確認意見",
     "err.too_long": "{0}太長：{1} 字，上限 {2} 字", "err.state_lines": "目前狀態最多 {0} 行（現在 {1} 行）",
     "err.acceptance_empty": "驗收條件不能是空的", "err.acceptance_max": "驗收條件最多 {0} 項",
@@ -191,6 +191,17 @@ export const percentDone = (units) => (units.total ? Math.round((units.done / un
 export const projectKey = (card) => (card.projectId === null || card.projectId === undefined ? NO_PROJECT : card.projectId);
 
 /**
+ * #2080: whether a card waits for the person — Waiting for you, and its count: the host's word (`waitsForPerson`, the
+ * same rule as Needs you: a card the person handed out, in review needing their confirmation or blocked on a question,
+ * or one whose dispatcher was deleted); a card read without it, by the person's own hand-out alone. An agent's card in
+ * review is its confirmer's (`confirmer`), never the person's.
+ */
+export function waitsForYou(card) {
+  if (typeof card.waitsForPerson === "boolean") return card.waitsForPerson;
+  return !!card.dispatcher && card.dispatcher.kind === "person" && ((card.status === "review" && card.needsReview) || card.status === "blocked");
+}
+
+/**
  * One project's numbers for its card on Home and its header, from the cards at hand (`key`: a project id or
  * NO_PROJECT). The board's read carries the server's (over every card, finished ones too); this is the fallback.
  */
@@ -201,7 +212,7 @@ export function projectStats(key, cards) {
     if (projectKey(c) !== key) continue;
     if (!lastActivity || c.updatedAt > lastActivity) lastActivity = c.updatedAt;
     if (c.status === "cancelled") continue;
-    if (c.status === "review") waiting++;
+    if (c.status === "review" && waitsForYou(c)) waiting++;
     if (c.status === "blocked") blocked++;
     if (c.kind !== "main") continue;
     mains++;
@@ -454,8 +465,20 @@ export function ProgressBar({ progress, wide = false }) {
     ${barSegments(progress).filter((s) => s.k === "done").map((s) => html`<rect key=${s.k} class=${`tb-seg st-${s.k}`} x=${s.x} width=${s.w} height="6" />`)}</svg>`;
 }
 
-export function StatusPill({ status }) {
-  return html`<span class=${`tb-pill st-${status}`}>${t(`tasks.${status}`)}</span>`;
+/** #2080: whom a card in review waits for, in words: you, the agent that confirms it, or (neither known) "To confirm". */
+export function reviewLabel(card) {
+  if (waitsForYou(card)) return t("tasks.reviewYou");
+  return card.confirmer ? t("tasks.reviewBy", card.confirmer) : t("tasks.review");
+}
+
+/**
+ * A card's status. #2080: with the card, one in review says whom it waits for — the person ("Waiting for you") or the
+ * agent that confirms it ("Waiting for atlas").
+ */
+export function StatusPill({ status, card = null }) {
+  const by = card && status === "review" && !waitsForYou(card) && card.confirmer ? card.confirmer : null;
+  const label = !card || status !== "review" ? t(`tasks.${status}`) : reviewLabel(card);
+  return html`<span class=${`tb-pill st-${status}${by ? " by-agent" : ""}`} title=${by ? t("tasks.reviewByTip", by) : null}>${label}</span>`;
 }
 
 /**
