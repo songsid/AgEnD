@@ -1351,15 +1351,15 @@ export class InstanceLifecycle {
       if (data.type === "auth_error") {
         const verdict = authVerdict = await this.verifyAuthError(name);
         if (verdict === "valid") {
-          this.ctx.logger.info({ name, backend: this.backendOf(name) },
+          this.ctx.logger.debug({ name, backend: this.backendOf(name) },
             "auth-error pattern ignored — token-free auth check passed (likely conversation text)");
-          // Dropping the incident is not enough: the daemon armed its auth
-          // suspicion and recovery gate before emitting, and leaving those set
-          // would silently suppress hang notifications and MCP auto-restart for
-          // an instance whose credentials are demonstrably fine.
+          // #2795: a pattern match armed nothing, so this only drops it. A login-screen report did arm the auth
+          // suspicion, and leaving that set would suppress hang notifications and MCP auto-restart.
           this.daemons.get(name)?.clearSuspectedAuthFailure();
           return;
         }
+        // #2795: not vouched for — only now is a pattern match an auth failure on the daemon.
+        this.daemons.get(name)?.confirmAuthFailure?.();
       }
 
       // #2648: a kiro model error — the resumed conversation's saved model retired, or the instance's own model

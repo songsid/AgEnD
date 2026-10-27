@@ -63,6 +63,9 @@ describe("expired auth must not raise stuck alerts forever", () => {
       daemon.on("pty_error", (e: unknown) => errors.push(e));
       (daemon as any).evaluateErrorPatterns(NO_TOKEN_PANE, patterns, /^> /m, 10 * 60_000);
       expect(errors[0]).toMatchObject({ type: "auth_error", action: "pause" });
+      // #2795: the match alone arms nothing — a stuck pane still alerts until the token-free check fails.
+      expect(observeStuck(daemon, NO_TOKEN_PANE)).toHaveLength(1);
+      (daemon as any).confirmAuthFailure();
 
       // From here the alert is noise: only a re-login helps, and the user was
       // already told that once by the auth notification.
@@ -89,6 +92,7 @@ describe("expired auth must not raise stuck alerts forever", () => {
     try {
       const patterns = new KiroBackend("/tmp", TEST_KIRO_COMPAT).getErrorPatterns();
       (daemon as any).evaluateErrorPatterns(NO_TOKEN_PANE, patterns, /^> /m, 10 * 60_000);
+      (daemon as any).confirmAuthFailure();
       expect(observeStuck(daemon, NO_TOKEN_PANE)).toHaveLength(0);
 
       // wake() is the "user re-logged in and sent a message" path.

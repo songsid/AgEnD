@@ -930,9 +930,10 @@ describe("Daemon error monitor recovery", () => {
   it("re-notifies after the recovery deadline when ready never matches", () => {
     const errors: unknown[] = [];
     daemon.on("pty_error", error => errors.push(error));
+    // Not auth_error: since #2795 an auth match arms no gate until the token-free check confirms it.
     const pattern = {
       pattern: /AUTH_EXPIRED/,
-      type: "auth_error",
+      type: "model_error",
       action: "notify",
       message: "login required",
     };

@@ -6,7 +6,7 @@ roles: [general]
 
 ## Auth failure (auto-pause)
 
-When AgEnD sees `auth_error` it **pauses** that instance (`pausePending` sticky):
+When AgEnD sees `auth_error` and its token-free auth check does not vouch for the login, it **pauses** that instance (`pausePending` sticky). Auth text on the pane alone (an agent quoting a login message) changes nothing:
 - One notification **per backend** (not per instance) — log in once, same-backend peers recover.
 - Auth is **per backend**: one re-login restores every instance on that backend (claude-code, codex, kiro-cli, grok, opencode, antigravity, muse).
 - Re-login: `/login <backend>` (opencode: `opencode auth login` in a terminal), then wake the affected instance.

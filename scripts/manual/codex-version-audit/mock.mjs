@@ -63,7 +63,7 @@ createServer((req, res) => {
       return;
     }
     const finish = () => {
-      res.write(sse("response.output_item.done", { item: { type: "message", role: "assistant", id: "msg_audit", content: [{ type: "output_text", text: "ok" }] } }));
+      res.write(sse("response.output_item.done", { item: { type: "message", role: "assistant", id: "msg_audit", content: [{ type: "output_text", text: process.env.MOCK_TEXT ?? "ok" }] } }));
       res.end(sse("response.completed", { response: { id: "resp_audit", usage } }));
     };
     if (m === "slow") setTimeout(finish, Number(process.env.SLOW_MS || 8000)); else finish();

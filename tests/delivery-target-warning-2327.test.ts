@@ -107,6 +107,9 @@ describe("send_to_instance's recipient warning says only what is known (#2327)",
 
     const auth = grokDaemon();
     expect(scan(auth, `Request failed (401) Unauthorized\n${WORKING}`)).toEqual([expect.objectContaining({ type: "auth_error" })]);
+    // #2795: the text alone warns nobody; the warning follows the token-free check's failing verdict.
+    expect((await send(makeContext(auth))).warning).toBeUndefined();
+    auth.confirmAuthFailure();
     const authResult = await send(makeContext(auth));
     expect(authResult.warning).toBe("target showed an authentication error message and is waiting to recover. The message is queued and may be delayed. Check its credentials.");
     expect(authResult.warning).not.toMatch(/paused/i);

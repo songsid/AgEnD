@@ -40,21 +40,32 @@ const authPattern = (d: any) =>
   d.backend.getErrorPatterns().find((ep: any) => ep.type === "auth_error");
 
 describe("withdrawing auth suspicion after a passing probe", () => {
-  it("clears the flags the pattern match armed", () => {
+  it("#2795: a pattern match arms nothing; only a failing check confirms it", () => {
     const d = daemon();
     const ep = authPattern(d);
     d.emitErrorPattern(ep, `${ep.type}:${ep.pattern.source}`, "You are not logged in", Date.now());
 
-    // What emitErrorPattern armed, before any probe runs.
-    expect(d.authFailureUnresolved).toBe(true);
-    expect(d.errorWaitingForRecovery).toBe(true);
-    expect(d.isErrorState).toBe(true);
-
-    expect(d.clearSuspectedAuthFailure()).toBe(true);
-
+    // Pane text alone: no auth suspicion, no error state, nothing a sender is warned about.
     expect(d.authFailureUnresolved, "hang notices and MCP auto-restart depend on this").toBe(false);
     expect(d.errorWaitingForRecovery).toBe(false);
-    expect(d.activeErrorPatternKey).toBe(null);
+    expect(d.isErrorState).toBe(false);
+    expect(d.lastErrorType).toBe(null);
+
+    // The token-free check did not vouch for it: now it is an auth failure.
+    expect(d.confirmAuthFailure()).toBe(true);
+    expect(d.authFailureUnresolved).toBe(true);
+    expect(d.errorWaitingForRecovery).toBe(true);
+    expect(d.activeErrorPatternKey).toBe(`${ep.type}:${ep.pattern.source}`);
+    expect(d.lastErrorType).toBe("auth_error");
+    expect(d.confirmAuthFailure(), "one match confirms once").toBe(false);
+  });
+
+  it("#2795: a passing check drops the pending match without anything to withdraw", () => {
+    const d = daemon();
+    const ep = authPattern(d);
+    d.emitErrorPattern(ep, `${ep.type}:${ep.pattern.source}`, "You are not logged in", Date.now());
+    expect(d.clearSuspectedAuthFailure(), "nothing was armed").toBe(false);
+    expect(d.confirmAuthFailure(), "a dropped match cannot be confirmed later").toBe(false);
     expect(d.isErrorState).toBe(false);
   });
 
@@ -70,12 +81,13 @@ describe("withdrawing auth suspicion after a passing probe", () => {
     expect(d.authFailureUnresolved).toBe(false);
   });
 
-  // Only what the auth match armed comes back off. A different error that has
-  // since armed the recovery gate is still live and must stay.
+  // Only the auth suspicion comes back off. A different error that has armed
+  // the recovery gate is still live and must stay.
   it("leaves an unrelated error's recovery gate alone", () => {
     const d = daemon();
     const auth = authPattern(d);
     d.emitErrorPattern(auth, `${auth.type}:${auth.pattern.source}`, "You are not logged in", Date.now());
+    d.confirmAuthFailure();
     // kiro's network pattern sets skipRecoveryWait (it is back at its prompt
     // between retries), so it never arms the gate — use one that does.
     const other = d.backend.getErrorPatterns().find((ep: any) => ep.type === "model_error");

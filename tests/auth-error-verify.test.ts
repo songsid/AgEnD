@@ -29,6 +29,7 @@ function lifecycle(backend = "codex", names: string[] = ["worker"], plannedResta
     const daemon = Object.assign(new EventEmitter(), {
       requestPauseWhenIdle: vi.fn(),
       clearSuspectedAuthFailure: vi.fn(() => true),
+      confirmAuthFailure: vi.fn(() => true),
     });
     lc.attachIncidentHandlers(name, daemon as any);
     // attachIncidentHandlers is what registers the daemon; the lifecycle needs
@@ -95,26 +96,33 @@ describe("auth-error second opinion", () => {
   });
 
   /**
-   * The daemon arms authFailureUnresolved and the recovery gate BEFORE the
-   * pty_error reaches here, so ignoring the incident is only half the job:
-   * those gates suppress hang notifications and hold MCP auto-restart, and
-   * nothing else would have taken them back off.
+   * #2795: a pane match arms nothing on the daemon; the token-free check alone decides. A pass drops the match (and
+   * any login-screen suspicion); it never confirms it.
    */
-  it("withdraws the daemon's auth suspicion when the probe passes", async () => {
+  it("a passing probe drops the match and never confirms it", async () => {
     const runner = vi.fn(async () => ({ code: 0, output: "Logged in" }));
     setAuthCheckRunnerForTests(runner);
     const { daemons } = lifecycle();
     daemons[0].emit("pty_error", authError("worker"));
     await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(daemons[0].clearSuspectedAuthFailure).toHaveBeenCalled());
+    expect(daemons[0].confirmAuthFailure, "conversation text must not become an auth failure").not.toHaveBeenCalled();
   });
 
-  it("keeps the suspicion when the probe says the credentials are bad", async () => {
+  it("a failing probe confirms the auth failure on the daemon, then alerts", async () => {
     setAuthCheckRunnerForTests(async () => ({ code: 1, output: "Not logged in" }));
     const { daemons, notifyInstanceTopic } = lifecycle();
     daemons[0].emit("pty_error", authError("worker"));
     await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
+    expect(daemons[0].confirmAuthFailure).toHaveBeenCalledTimes(1);
     expect(daemons[0].clearSuspectedAuthFailure, "a real auth failure must stay flagged").not.toHaveBeenCalled();
+  });
+
+  it("an uncertain probe confirms it too (fail-closed, as before)", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: null, output: "" }));
+    const { daemons } = lifecycle();
+    daemons[0].emit("pty_error", authError("worker"));
+    await vi.waitFor(() => expect(daemons[0].confirmAuthFailure).toHaveBeenCalledTimes(1));
   });
 
   it("an uncertain check (timeout) pauses conservatively", async () => {

@@ -1797,6 +1797,8 @@ export class Daemon extends EventEmitter {
   private authFailureUnresolved = false;
   /** One login-screen auth report per spawn — the screen persists across polls. */
   private loginScreenReported = false;
+  /** #2795: the auth pattern match the token-free check is still to judge; it arms nothing until confirmAuthFailure(). */
+  private unverifiedAuthMatch: { key: string; at: number; gate: boolean } | null = null;
   /**
    * While the lifecycle is still starting this daemon, `pty_error` has no
    * listener and `InstanceLifecycle.daemons` has no entry — so an incident the
@@ -2118,21 +2120,14 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * Undo the auth suspicion a pattern match armed, once the backend's token-free
-   * probe has said the credentials are fine.
-   *
-   * emitErrorPattern arms these BEFORE the pty_error reaches the lifecycle, and
-   * the lifecycle's "valid" verdict used to just drop the incident — leaving the
-   * daemon permanently suspicious of an auth failure that never existed. That
-   * state is not inert: authFailureUnresolved suppresses the stuck/hang
-   * notification and holds MCP auto-restart (a later real MCP death is then read
-   * as already-confirmed auth trouble rather than re-verified), and the recovery
-   * gate suppresses further error detection until a ready pattern shows up.
-   *
-   * Only what an auth match armed is rolled back. If some other pattern has
-   * since armed the recovery gate, that one is still live and stays.
+   * Undo an auth suspicion once the backend's token-free probe has said the credentials are fine. Since #2795 a pane
+   * pattern match arms nothing before that probe (its pending match is just dropped); what is left to undo is a
+   * login-screen report, which arms authFailureUnresolved itself. That state is not inert: it suppresses the
+   * stuck/hang notification and holds MCP auto-restart. If some other pattern has armed the recovery gate, that one
+   * is still live and stays.
    */
   clearSuspectedAuthFailure(): boolean {
+    this.unverifiedAuthMatch = null;
     if (!this.authFailureUnresolved && !this.loginScreenReported) return false;
     this.authFailureUnresolved = false;
     this.loginScreenReported = false;
@@ -2141,6 +2136,29 @@ export class Daemon extends EventEmitter {
       this.lastDetectedErrorType = null;
     }
     this.logger.info("Auth suspicion withdrawn — the token-free probe reports valid credentials");
+    return true;
+  }
+
+  private armErrorRecoveryGate(key: string, type: string, now: number): void {
+    this.errorWaitingForRecovery = true;
+    this.errorDetectedAt = now;
+    this.errorRecoveryDeadlineAt = now + Daemon.ERROR_RECOVERY_TIMEOUT_MS;
+    this.activeErrorPatternKey = key;
+    this.lastDetectedErrorType = type;
+  }
+
+  /**
+   * #2795: the token-free check did not vouch for the credentials behind an auth pattern match. Only now does the
+   * match become an auth failure: the state the detector used to arm at match time. Remembered for as long as it is
+   * unresolved — an auth-broken CLI cannot finish the turn it is holding, so every other detector would otherwise
+   * keep reporting the same dead instance. A login-screen report arms its own state and has no match to confirm.
+   */
+  confirmAuthFailure(): boolean {
+    const match = this.unverifiedAuthMatch;
+    if (!match) return false;
+    this.unverifiedAuthMatch = null;
+    if (match.gate) this.armErrorRecoveryGate(match.key, "auth_error", match.at);
+    this.authFailureUnresolved = true;
     return true;
   }
 
@@ -4090,6 +4108,14 @@ export class Daemon extends EventEmitter {
       }
     }
 
+    // #2795: an auth match the token-free check has not judged yet holds the other detectors, as the armed gate did
+    // before: a real auth failure's text also matches generic patterns (kiro's "having trouble responding"). It is not
+    // an error state — nobody is warned — and it is bounded like the gate.
+    if (this.unverifiedAuthMatch?.gate) {
+      if (now - this.unverifiedAuthMatch.at < Daemon.ERROR_RECOVERY_TIMEOUT_MS) return;
+      this.unverifiedAuthMatch = null;
+    }
+
     // State: waiting for recovery. A missing/outdated ready pattern must not
     // suppress every future error forever, so the gate has a hard deadline.
     if (this.errorWaitingForRecovery) {
@@ -4243,23 +4269,17 @@ export class Daemon extends EventEmitter {
 
   /** Arm the recovery gates and emit one detected error pattern. */
   private emitErrorPattern(ep: ErrorPattern, key: string, pane: string, now: number): void {
+    // #2795: auth text on the pane proves nothing about the credentials (22 of 22 such matches on the main host were
+    // conversation text). It arms nothing here; it only asks the lifecycle's token-free check, and a failing check
+    // arms the auth state through confirmAuthFailure().
+    if (ep.type === "auth_error") this.unverifiedAuthMatch = { key, at: now, gate: !ep.skipRecoveryWait };
     // skipRecoveryWait: this error self-recovers (e.g. a timeout — Kiro is
     // back at its prompt immediately). Keep monitoring so the next occurrence
     // can fire without waiting for a possibly startup-only ready pattern.
-    if (!ep.skipRecoveryWait) {
-      this.errorWaitingForRecovery = true;
-      this.errorDetectedAt = now;
-      this.errorRecoveryDeadlineAt = now + Daemon.ERROR_RECOVERY_TIMEOUT_MS;
-      this.activeErrorPatternKey = key;
-      this.lastDetectedErrorType = ep.type;
-    }
+    else if (!ep.skipRecoveryWait) this.armErrorRecoveryGate(key, ep.type, now);
     this.lastErrorNotifiedAt.set(key, now);
     if (ep.action === "failover") this.lastFailoverAt = now;
     const message = this.resolveErrorMessage(pane, ep);
-    // Remember an auth failure for as long as it is unresolved. An auth-broken
-    // CLI cannot finish the turn it is holding, so every other detector in this
-    // scan would otherwise keep reporting the same dead instance forever.
-    if (ep.type === "auth_error") this.authFailureUnresolved = true;
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
     this.lastErrorEpisode = { key, pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
     this.emit("pty_error", { name: this.name, ...ep, message });
@@ -5364,6 +5384,7 @@ export class Daemon extends EventEmitter {
     this.pausePending = false;
     this.pauseReconfirmAuth = false;
     this.authFailureUnresolved = false;
+    this.unverifiedAuthMatch = null;
     this.loginScreenReported = false;
     this.fatalStartupReported = false;
     this.fatalStartupBlocked = false;
