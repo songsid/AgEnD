@@ -154,6 +154,38 @@ describe("the launch never works out compaction links on the fleet loop", () => 
   });
 });
 
+/** Rows as given: [id, transcript, summary or null, created, updated, extra value bytes]. */
+function rawStore(rows: Array<[string, unknown[], string | null, number, number, number]>): void {
+  mkdirSync(join(root, "xdg", "kiro-cli"), { recursive: true });
+  const d = new Database(db);
+  d.exec("CREATE TABLE conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (key, conversation_id)); CREATE INDEX idx_conversations_v2_key_updated ON conversations_v2(key, updated_at DESC);");
+  const ins = d.prepare("INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)");
+  for (const [id, transcript, summary, created, updated, pad] of rows) {
+    ins.run(cwd, id, JSON.stringify({ conversation_id: id, transcript, ...(summary === null ? {} : { latest_summary: summary }), pad: "p".repeat(pad) }), created, updated);
+  }
+  d.close();
+}
+const linksHere = () => computeKiroClassicLinks({ dbPath: db, keys: kiroDirectoryKeys(cwd) }, () => false);
+
+describe("the one-pass proof matches the SQL it replaced (#2739 review)", () => {
+  it("a cut inside a surrogate pair: an unrelated shorter transcript never hides a continuation", () => {
+    // X's cut (3) falls between the halves of P's "😀": hashed as separately encoded UTF-8 chunks, that broke P's hash.
+    rawStore([["X", [""], null, 1, 1, 0], ["P", ["😀"], null, 2, 2, 0], ["B", ["😀", "next"], "s", 3, 3, 0]]);
+    expect(linksHere()).toMatchObject({ kind: "ok", successors: { P: ["B"] } });
+  });
+
+  it("all four timestamps equal and the predecessor's value the bigger: still found (a tie never means 'no successor')", () => {
+    rawStore([["P", ["a"], null, 1, 1, 1000], ["B", ["a", "next"], "s", 1, 1, 0]]);
+    expect(linksHere()).toMatchObject({ kind: "ok", successors: { P: ["B"] } });
+  });
+
+  it("a tie inside a chain keeps first hops: P → B → C, all timestamps equal, sizes reversed", () => {
+    rawStore([["P", ["a"], null, 1, 1, 2000], ["B", ["a", "b"], "s", 1, 1, 1000], ["C", ["a", "b", "c"], "s", 1, 1, 0]]);
+    const links = linksHere();
+    expect(links.kind === "ok" && [links.successors.P, links.successors.B, links.successors.C]).toEqual([["B"], ["C"], undefined]);
+  });
+});
+
 describe("the budget: over it is unproven, never a guess", () => {
   it("out of time on the lane: over-budget", async () => {
     siblingsStore(2, 10, 10);

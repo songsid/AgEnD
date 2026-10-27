@@ -176,6 +176,24 @@ describe("applying the move", () => {
     expect(existsSync(join(claims(), B))).toBe(false);
   });
 
+  it("superseded while the store was read after preflight (#2738 review): nothing claimed, recorded, saved or armed", async () => {
+    compactedSinceLaunch();
+    const saveFleetConfig = vi.fn();
+    let live = true, reads = 0;
+    const { d, fleet } = deps({ saveFleetConfig, reserve: () => ({ current: () => live, release: () => {} }),
+      // The third read is the one after preflight: the move is superseded while it is on the worker lane.
+      readClassicStore: async (dir: string) => { const read = listKiroV1Sessions(dir, db, classicLinks(dir, db)); if (++reads === 3) live = false; return read; } });
+    const judged = await planKiroMigration(d, "wiki", false);
+    if (!judged.ok) throw new Error(judged.error);
+    expect((await applyKiroMigration(d, judged.plan)).ok).toBe(false);
+    expect(reads).toBe(3);
+    expect(saveFleetConfig).not.toHaveBeenCalled();
+    expect(fleet.instances.wiki.kiro_ui).toBeUndefined();
+    expect(v2Pending()).toBeNull();
+    expect([existsSync(join(claims(), B)), existsSync(join(claims(), C)), claimFile(A)]).toEqual([false, false, "wiki\n"]);
+    expect(classicLaunch(), "the classic record still holds A until a launch follows it").toMatchObject({ mode: "resume", id: C, followed: [A, B] });
+  });
+
   it("taken by another instance during the checks: refused before anything is armed or saved", async () => {
     compactedSinceLaunch();
     const saveFleetConfig = vi.fn();

@@ -75,9 +75,12 @@ function refusal(name: string, m: Extract<KiroTuiMigration, { kind: "refused" }>
  * is one-way, and carrying the recorded id would leave the newer conversation behind on the frozen engine.
  * `apply` records the walk, as a classic launch would (only once the admin confirmed and the instance was checked).
  */
-async function carriedClassic(deps: KiroMigrateDeps, name: string, workingDirectory: string, credentialProfile: string | null, recorded: string, apply: boolean):
-  Promise<{ ok: true; id: string; compactedFrom: string[] } | { ok: false; error: string }> {
+async function carriedClassic(deps: KiroMigrateDeps, name: string, workingDirectory: string, credentialProfile: string | null, recorded: string, apply: boolean,
+  admitted: () => void = () => {}): Promise<{ ok: true; id: string; compactedFrom: string[] } | { ok: false; error: string }> {
   const store = await deps.readClassicStore(workingDirectory, credentialProfile);
+  // #2738: the store is read on a worker lane, and the move may have been superseded meanwhile — asked again here,
+  // before the walk claims or records anything (it throws when the move is no longer this one's).
+  admitted();
   const walk = followKiroClassicCompaction({ agendHome: deps.agendHome, instance: name, workingDirectory, credentialProfile,
     readStore: () => store, apply });
   if (!walk) return { ok: true, id: recorded, compactedFrom: [] };
@@ -152,7 +155,7 @@ export async function applyKiroMigration(deps: KiroMigrateDeps, plan: KiroMigrat
     // conversation is now; one that cannot be proven any more refuses, and nothing is armed.
     const pinned = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile });
     if (pinned.kind === "ready" && pinned.classicId) {
-      const followed = await carriedClassic(deps, plan.name, plan.workingDirectory, plan.credentialProfile, pinned.classicId, true);
+      const followed = await carriedClassic(deps, plan.name, plan.workingDirectory, plan.credentialProfile, pinned.classicId, true, current);
       if (!followed.ok) throw new Error(followed.error);
     }
     const checked = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile });
