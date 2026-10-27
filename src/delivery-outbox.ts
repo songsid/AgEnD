@@ -1344,6 +1344,28 @@ export class DeliveryOutbox extends EventEmitter {
     return result.changes === 1;
   }
 
+  /**
+   * #2785 (c): the texts `source` sent `target` (fleet_inbound / steer) admitted at or after `sinceIso`, newest first,
+   * looked for among the target's newest `scan` rows only. The rows are found by the target index alone and read one by
+   * one: a filter on source or time over the table would read every row's payload (both columns follow it).
+   */
+  recentTextsFrom(target: string, source: string, sinceIso: string, scan = 30): string[] {
+    const rows = this.db.prepare("SELECT rowid AS r FROM deliveries WHERE target_instance=? ORDER BY created_seq DESC LIMIT ?")
+      .all(target, scan) as Array<{ r: number }>;
+    const read = this.db.prepare("SELECT source_instance, kind, created_at, payload_json FROM deliveries WHERE rowid=?");
+    const texts: string[] = [];
+    for (const { r } of rows) {
+      const row = read.get(r) as { source_instance: string; kind: string; created_at: string; payload_json: string } | undefined;
+      if (!row || row.created_at < sinceIso) continue;
+      if (row.source_instance !== source || (row.kind !== "fleet_inbound" && row.kind !== "steer")) continue;
+      try {
+        const content = (JSON.parse(row.payload_json) as { content?: unknown }).content;
+        if (typeof content === "string") texts.push(content);
+      } catch { /* an unreadable payload says nothing */ }
+    }
+    return texts;
+  }
+
   countForTarget(target: string, states: readonly OutboxState[]): number {
     if (states.length === 0) return 0;
     const row = this.db.prepare(`

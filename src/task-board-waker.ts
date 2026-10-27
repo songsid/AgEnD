@@ -23,11 +23,25 @@ export interface TaskBoardWakerDeps {
    * then a dispatcher's wake says so instead of asking it to tell the person.
    */
   buttonsHere?(instance: string, uuid: string): boolean;
+  /**
+   * #2785 (c): whether `from` sent `to` a message naming one of `codes` since `sinceMs` (epoch ms). An instance that
+   * assigns a card and messages its assignee about it (delegate_task) has told them: the board's "assigned" line would
+   * only repeat it. Absent: every assignment is told, as before.
+   */
+  messagedAbout?(from: string, to: string, codes: string[], sinceMs: number): boolean;
   log(level: "info" | "warn", message: string, extra?: Record<string, unknown>): void;
   gatherMs?: number;
+  /** #2785 (c): how long an instance's assignment waits for its assigner's own message before the board tells it. */
+  assignHoldMs?: number;
   timers?: { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
   now?: () => number;
 }
+
+/** #2785 (c): an instance's assignment waits this long (from when it was made) for the assigner's own message. */
+export const ASSIGN_HOLD_MS = 30_000;
+
+/** Whether `text` names card `code` (M-12 is not M-123). */
+export const namesCard = (text: string, code: string) => new RegExp(`(^|[^\\w-])${code.replace(/-/g, "\\-")}(?!\\d)`).test(text);
 
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
@@ -115,7 +129,7 @@ export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefi
 }
 
 export class TaskBoardWaker {
-  private readonly gathering = new Map<string, { wakes: Map<string, Wake>; timer: unknown }>();
+  private readonly gathering = new Map<string, { wakes: Map<string, Wake>; at: Map<string, number>; timer: unknown }>();
   private stopped = false;
   private seq = 0;
   private readonly timers: NonNullable<TaskBoardWakerDeps["timers"]>;
@@ -131,9 +145,10 @@ export class TaskBoardWaker {
       if (!this.deps.isInstance(w.instance)) continue;
       let batch = this.gathering.get(w.instance);
       if (!batch) {
-        batch = { wakes: new Map(), timer: this.timers.set(() => this.flush(w.instance), this.deps.gatherMs ?? 10_000) };
+        batch = { wakes: new Map(), at: new Map(), timer: this.timers.set(() => this.flush(w.instance), this.deps.gatherMs ?? 10_000) };
         this.gathering.set(w.instance, batch);
       }
+      if (!batch.at.has(w.uuid)) batch.at.set(w.uuid, (this.deps.now ?? Date.now)());
       const had = batch.wakes.get(w.uuid);
       batch.wakes.set(w.uuid, had
         ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts } }
@@ -152,8 +167,10 @@ export class TaskBoardWaker {
     const batch = this.gathering.get(instance);
     this.gathering.delete(instance);
     if (!batch || this.stopped) return;
+    // #2785 (c): an assignment an instance made is told by its own message; the board waits for it, then drops its line.
+    const told = this.foldToldAssignments(instance, batch);
     // Only what still holds as it goes out: not finished meanwhile, still theirs, still waiting on them.
-    const wakes = [...batch.wakes.values()].map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null);
+    const wakes = told.map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null);
     if (!wakes.length) return;
     const codes = wakes.map((w) => w.code);
     const key = `task-board:${instance}:${(this.deps.now ?? Date.now)()}:${++this.seq}`;
@@ -164,5 +181,44 @@ export class TaskBoardWaker {
     }
     if (taken) this.deps.log("info", "Task board wake handed to delivery", { instance, codes });
     else this.deps.log("warn", "Task board wake not taken; the cards keep the news", { instance, codes });
+  }
+
+  /**
+   * #2785 (c): the batch's wakes with "assigned" dropped where the assigner — an instance — messaged the assignee naming
+   * the card (or, for a sub task, its main task) since shortly before the assignment. A card whose assigner has not yet
+   * done so waits, up to ASSIGN_HOLD_MS from the assignment, in a batch of its own; after that the board tells it.
+   */
+  private foldToldAssignments(instance: string, batch: { wakes: Map<string, Wake>; at: Map<string, number> }): Wake[] {
+    const ask = this.deps.messagedAbout;
+    if (!ask) return [...batch.wakes.values()];
+    const now = (this.deps.now ?? Date.now)();
+    const hold = this.deps.assignHoldMs ?? ASSIGN_HOLD_MS;
+    const out: Wake[] = [];
+    const waiting = new Map<string, Wake>();
+    for (const [uuid, w] of batch.wakes) {
+      const by = w.by.assigned;
+      if (!w.reasons.includes("assigned") || !by || !this.deps.isInstance(by)) { out.push(w); continue; }
+      const at = batch.at.get(uuid) ?? now;
+      let messaged: boolean;
+      try { messaged = ask(by, instance, [w.code, ...(w.parent ? [w.parent] : [])], at - hold); }
+      catch (err) {
+        this.deps.log("warn", "Task board could not look for the assigner's message; telling the assignment", { instance, code: w.code, err: (err as Error).message });
+        out.push(w);
+        continue;
+      }
+      if (messaged) {
+        this.deps.log("info", "Task board assignment already told by its assigner", { instance, code: w.code, by });
+        const rest = w.reasons.filter((r) => r !== "assigned");
+        if (rest.length) out.push({ ...w, reasons: rest });
+      } else if (now - at < hold) waiting.set(uuid, w);
+      else out.push(w);
+    }
+    if (waiting.size && !this.stopped) {
+      const left = Math.min(...[...waiting.keys()].map((uuid) => hold - (now - (batch.at.get(uuid) ?? now))));
+      const again = this.gathering.get(instance) ?? { wakes: new Map(), at: new Map(), timer: this.timers.set(() => this.flush(instance), Math.max(1, left)) };
+      for (const [uuid, w] of waiting) { again.wakes.set(uuid, w); again.at.set(uuid, batch.at.get(uuid) ?? now); }
+      this.gathering.set(instance, again);
+    }
+    return out;
   }
 }

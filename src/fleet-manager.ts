@@ -123,7 +123,7 @@ import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
-import { TaskBoardWaker } from "./task-board-waker.js";
+import { TaskBoardWaker, namesCard } from "./task-board-waker.js";
 import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
@@ -18395,6 +18395,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const waker = this.taskBoardWaker = new TaskBoardWaker({
       deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      // #2785 (c): the assigner's delegate_task already told the assignee; the board's "assigned" line would repeat it.
+      messagedAbout: (from, to, codes, sinceMs) => {
+        const outbox = this.deliveryOutbox;
+        if (!outbox?.isOpen) return false;
+        return outbox.recentTextsFrom(to, from, new Date(sinceMs).toISOString()).some((text) => codes.some((code) => namesCard(text, code)));
+      },
       holds: (wake) => db.board.wakeHolds(wake),
       card: (uuid) => db.board.findCard(uuid),
       // #2352: the card's Needs you buttons are in this instance's own channel (it is the card's lane).
