@@ -483,6 +483,29 @@ describe("4b. who handed a card out, from the dashboard", () => {
   });
 });
 
+describe("4e. #2756: whom a card waits for, through the routes (#2757 review: a dispatcher deleted, caches warm)", () => {
+  it("lead's card in review is lead's to confirm — on the board, the card's own read and the work drawer; once lead is deleted, the person's on all three", async () => {
+    const h = rig();
+    const me = await h.signIn("admin");
+    const lead = { kind: "instance" as const, name: "lead" }, dev = { kind: "instance" as const, name: "dev-a" };
+    (h.fm.fleetConfig as any).instances.lead = { working_directory: h.dir };
+    (h.fm.fleetConfig as any).instances["dev-a"] = { working_directory: h.dir };
+    const card = h.db.board.createCards(lead, { cards: [{ title: "Review PR 42", assignee: "dev-a", needsReview: true }] }).cards[0]!;
+    h.db.board.moveCard(dev, card.code, "claimed");
+    h.db.board.moveCard(dev, card.code, "review", { result: "r" });
+    const seen = async () => {
+      const board = (await web(h, "/ui/tasks/board", "GET", me)).json();
+      const detail = (await web(h, `/ui/tasks/cards/${card.code}`, "GET", me)).json();
+      const work = (await web(h, "/ui/tasks/work?instance=dev-a", "GET", me)).json();
+      const pick = (c: any) => [c.waitsForPerson, c.confirmer];
+      return { board: pick(board.cards.find((c: any) => c.id === card.code)), waiting: board.stats.none.waiting, detail: pick(detail.card), work: pick(work.instances[0].review[0]) };
+    };
+    expect(await seen()).toEqual({ board: [false, "lead"], waiting: 0, detail: [false, "lead"], work: [false, "lead"] });
+    delete (h.fm.fleetConfig as any).instances.lead;                    // deleted; the board itself unchanged (its revision too)
+    expect(await seen()).toEqual({ board: [true, null], waiting: 1, detail: [true, null], work: [true, null] });
+  });
+});
+
 describe("5. revisions, refusals and notes the page can say in its language", () => {
   it("a page with the current revision is told so; a write moves it", async () => {
     const db = scratchDb();

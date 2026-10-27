@@ -2701,7 +2701,8 @@ export function handleWebRequest(
         // #2296: every open Tasks tab reads the board again after each change; on the dashboard they all get the same
         // board for a revision, so it is built once per (revision, done=all, minute) — the minute for the 14-day
         // window. The public link's reads are filtered per request (hidden instances) and are built each time.
-        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}`;
+        // #2757 review: and by the dispatchers gone (a deleted one makes its cards the person's, the revision unchanged).
+        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}`;
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
@@ -2724,7 +2725,7 @@ export function handleWebRequest(
         // by every open drawer (the public link's is filtered per request, as the board's).
         const only = url.searchParams.get("instance");
         const names = (only ? [only] : [...new Set([...Object.keys(ctx.fleetConfig?.instances ?? {}), ...board.liveAssignees()])]).filter((n) => !hiddenName(n));
-        const key = gateway ? null : `${board.revision()}:${only === null ? "*" : `=${only}`}:${names.join("\u0000")}`;
+        const key = gateway ? null : `${board.revision()}:${only === null ? "*" : `=${only}`}:${names.join("\u0000")}:${board.goneDispatchers(ctx.dispatcherGone)}`;
         const kept = key ? workBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const byName = board.workOf(names);
@@ -2760,13 +2761,13 @@ export function handleWebRequest(
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        json(res, 200, shown(board.detail(ref, scope)));
+        json(res, 200, shown(board.detail(ref, scope, ctx.dispatcherGone)));
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/cards") {
         boardWrite(req, res, url, ctx, board, CardCreateSchema, (spec, person) => {
           const { cards, said } = board.createCards(person, { cards: [spec] });
-          return { card: board.view(cards[0]!), notes: said };
+          return { card: board.view(cards[0]!, {}, ctx.dispatcherGone), notes: said };
         });
         return true;
       }
@@ -2774,14 +2775,14 @@ export function handleWebRequest(
         if (card[2] === "move") {
           boardWrite(req, res, url, ctx, board, CardMoveSchema, ({ to, ...move }, person) => {
             const { card: moved, said } = board.moveCard(person, ref, to, move);
-            return { card: board.view(moved), notes: said };
+            return { card: board.view(moved, {}, ctx.dispatcherGone), notes: said };
           });
         } else if (card[2] === "reorder") {
-          boardWrite(req, res, url, ctx, board, CardReorderSchema, ({ after, before }, person) => ({ card: board.view(board.reorder(person, ref, after ?? null, before ?? null)) }));
+          boardWrite(req, res, url, ctx, board, CardReorderSchema, ({ after, before }, person) => ({ card: board.view(board.reorder(person, ref, after ?? null, before ?? null), {}, ctx.dispatcherGone) }));
         } else {
           boardWrite(req, res, url, ctx, board, CardPatchSchema, (patch, person) => {
             const { card: updated, said } = board.updateCard(person, ref, patch);
-            return { card: board.view(updated), notes: said };
+            return { card: board.view(updated, {}, ctx.dispatcherGone), notes: said };
           });
         }
         return true;

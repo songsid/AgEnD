@@ -884,8 +884,8 @@ export class TaskBoard {
     return out;
   }
 
-  view(card: Card, scope: ReadScope = {}): CardView {
-    return this.views([card], scope)[0]!;
+  view(card: Card, scope: ReadScope = {}, gone?: GoneDispatcher): CardView {
+    return this.views([card], scope, gone)[0]!;
   }
 
   /** ` AND <column> NOT IN (…)` for a scope's left-out authors, with its values (empty when none). */
@@ -975,17 +975,27 @@ export class TaskBoard {
     });
   }
 
-  detail(ref: string, scope: ReadScope = {}): CardDetail {
+  detail(ref: string, scope: ReadScope = {}, gone?: GoneDispatcher): CardDetail {
     const card = this.getCard(ref);
     const parent = card.parent ? this.byUuid(card.parent) : undefined;
     return {
-      card: this.view(card, scope),
+      card: this.view(card, scope, gone),
       parent: parent ? { id: parent.code, title: parent.title, status: parent.status } : null,
-      children: this.views(this.children(card.uuid), scope),
+      children: this.views(this.children(card.uuid), scope, gone),
       comments: this.entries(card.uuid, ["comment", "reject", "approve"], 200),
       logs: this.entries(card.uuid, ["log"], 200),
       history: this.events(card.uuid, 200).filter((e) => e.type !== "reordered"),
     };
+  }
+
+  /**
+   * #2757 review: the instance dispatchers on the board that `gone` says are gone, as one string — what a cached read
+   * that names waitsForPerson / confirmer must also be keyed by (a dispatcher deleted changes them, the revision not).
+   */
+  goneDispatchers(gone?: GoneDispatcher): string {
+    if (!gone) return "";
+    const rows = this.db.prepare("SELECT DISTINCT dispatcher FROM tasks WHERE dispatcher IS NOT NULL AND (dispatcher_kind IS NULL OR dispatcher_kind != 'person')").all() as Row[];
+    return rows.map((r) => r.dispatcher as string).filter((n) => gone(n)).sort().join("\u0000");
   }
 
   /** The latest `limit` entries of a card, oldest first. */
@@ -1547,7 +1557,7 @@ export class TaskBoard {
       if (derived) this.checkDerivedMove(card, actor, to, reason, { comment });
       else this.checkManualMove(card, actor, to, reason, { comment });
 
-      this.applyMove(card, actor, this.ownReview(card, actor, to), reason, comment);
+      this.applyMove(card, actor, this.ownReview(card, actor, to, reason), reason, comment);
       return { card, from, ...this.spoken() };
     });
   }
@@ -1710,8 +1720,9 @@ export class TaskBoard {
             if (card.status === "review" && to === "done" && !confirms(card, actor)) throw new Error(`Task "${card.code}" is waiting for ${confirmerOf(card)}'s confirmation`);
             if (to === "done" && card.status !== "review" && requiresReview(card) && !confirms(card, actor)) to = "review";
             if (held && to !== card.status) this.checkManualMove(card, actor, to, "");
-            to = this.ownReview(card, actor, to);
           }
+          // #2757 review: a derived main task too; a card off the board (not held) keeps the tool's old, unchecked finish.
+          to = this.ownReview(card, actor, to, "", held);
         }
         if (to !== card.status) {
           this.applyMove(card, actor, to, "");
@@ -1738,8 +1749,10 @@ export class TaskBoard {
    * in the person's Waiting for you too: it finishes instead (the checks for review are the ones for done). A person's
    * move, and a card someone else confirms, stay as asked.
    */
-  private ownReview(card: Card, actor: Actor, to: CardStatus): CardStatus {
+  private ownReview(card: Card, actor: Actor, to: CardStatus, reason = "", check = true): CardStatus {
     if (to !== "review" || isPerson(actor) || card.status === "review" || !confirms(card, actor)) return to;
+    // #2757 review: finished as done is, whichever way it came (a derived main task's review checks less).
+    if (check) this.checkFinish(card, true, reason);
     this.say("own_review", [card.code], `${card.code} waits for nobody else's confirmation (you confirm it): done, not review`);
     return "done";
   }

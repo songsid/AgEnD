@@ -116,6 +116,28 @@ describe("3. an agent's own card never sits in review unnoticed", () => {
     board.updateCard(DEV, main.code, { result: "all checked" });
     expect(board.moveCard(DEV, main.code, "done").card.status).toBe("done");
   });
+  it("#2757 review: a derived main task sent back to its own agent finishes with done's checks, through move and the plain update", () => {
+    const board = open();
+    const sentBack = () => {
+      const main = board.createCards(DEV, { cards: [{ title: "Plan", assignee: "dev-a", needsReview: true, acceptance: ["works"] }] }).cards[0]!;
+      const [s] = board.createCards(DEV, { parent: main.code, cards: [{ title: "Step", assignee: "dev-a" }] }).cards;
+      board.moveCard(DEV, s!.code, "claimed");
+      board.moveCard(DEV, s!.code, "done", { result: "r" });
+      expect(board.getCard(main.code).status).toBe("review");
+      board.moveCard(ANN, main.code, "claimed", { reason: "one more look" });          // the person sends it back
+      board.updateCard(DEV, main.code, { result: "looked again" });
+      return board.getCard(main.code);
+    };
+    const a = sentBack();
+    expect(refusal(() => board.moveCard(DEV, a.code, "review"))).toBe("invalid: 1 acceptance item(s) unchecked (1); check them, or say why in the reason");
+    expect(board.getCard(a.code).status).toBe("claimed");
+    board.updateCard(DEV, a.code, { check: [1] });
+    expect(board.moveCard(DEV, a.code, "review").card.status).toBe("done");
+    const b = sentBack();
+    expect(() => board.legacyUpdate(DEV, b.uuid, { status: "review" })).toThrow(/acceptance item\(s\) unchecked/);
+    board.updateCard(DEV, b.code, { check: [1] });
+    expect(board.legacyUpdate(DEV, b.uuid, { status: "review" }).status).toBe("done");
+  });
   it("no confirm_own for the person's main task: it is theirs to confirm (Needs you)", () => {
     const board = open();
     const w = heard(board);
