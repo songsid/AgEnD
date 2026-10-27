@@ -25,16 +25,20 @@ what is wrong, and offers only the actions that diagnosis supports.
 
 ## 2. Triggers (what counts as "suspected stuck")
 
-A **ticket** opens for target T when either signal holds, and §3 lets it through:
+A **ticket** opens for target T when this signal holds and §3 lets it through:
 
 | Signal | Source | Default |
 |---|---|---|
-| **A. Frozen with work** | the existing `handleStuckTransition`: instance state `stuck` and `pendingWork` | pane unchanged ≥ `hang_detector.timeout_minutes` (10) |
-| **B. Lane held** (new) | the delivery outbox: T's head-of-line row in `delivering`/`submission_started`, or a human message waiting in T's paste queue | ≥ 10 min (`stuck_triage.lane_minutes`) |
+| **Frozen with work** | the existing `handleStuckTransition`: instance state `stuck` and `pendingWork` | pane unchanged ≥ `hang_detector.timeout_minutes` (10) |
 
-B is the 2026-10-27 shape: the pane is moving, but nothing gets through. It reuses the facts the 35-minute
-`delivery.lane_waiting` alert already reads. That alert becomes a ticket of its own, and its fleet-error text is
-retired.
+**No "messages held" trigger (user ruling, hmsg-54e98475).** Messages that wait in a queue for minutes, and false
+"stuck" readings from subagent timers, are bugs to fix at the root, not new alerts. They are fixed by the 2026-10-27
+follow-up PRs:
+- background-agent timers count as idle (#2770 (ii));
+- a waiting delivery re-checks the hand-off and never holds human messages behind it;
+- Cancel frees the lane (#2770 (i)).
+
+This design covers only agents that are genuinely stuck.
 
 There is one ticket per target. A second signal while a ticket is open only adds to that ticket.
 
@@ -49,16 +53,15 @@ There is one ticket per target. A second signal while a ticket is open only adds
 4. **Already told.** No ticket while T is: paused; in a planned restart or update; in a storm window; on a known dialog
    (it has its own prompt); holding an unresolved auth failure (the auth alert owns that); or on a rate-limit wait the
    backend reports (`Retrying in…`, usage limit).
-5. **Recovery.** The ticket resolves on its own when:
-   - for A, T leaves `stuck` (a turn starts or ends, or the composer is back and idle) and stays out of it for 60 s;
-   - for B, the lane's head row reaches a terminal state, or its queue drains.
+5. **Recovery.** The ticket resolves on its own when T leaves `stuck` (a turn starts or ends, or the composer is back
+   and idle) and stays out of it for 60 s.
 
    The notice is then edited to §7 S8, and its Needs-you item is withdrawn with the reason "cleared by itself" (§6).
 
 ## 4. Flow
 
 ```
-signal A/B ─▶ §3 rules ─▶ ticket (id, target, signal, since) ─▶ notice in General  [🔍 請 General 看一下] [更多選擇 ▾]
+stuck   ─▶ §3 rules ─▶ ticket (id, target, signal, since) ─▶ notice in General  [🔍 請 General 看一下] [更多選擇 ▾]
                                                               └▶ mirror in T's topic (same ticket, same buttons)
 admin clicks 🔍 ─▶ fleet admits a system task to General (outbox, idle-gated) ─▶ General calls inspect_stuck_instance(ticket)
                ─▶ General calls report_stuck_triage(ticket, …) ─▶ fleet edits the notice: diagnosis + matching buttons
@@ -82,7 +85,7 @@ returns a bounded, redacted snapshot.
 inspect_stuck_instance { ticket: string }            // only with an open ticket addressed to the caller
 → {
   instance, backend, backend_version, display_name,
-  signal: "frozen" | "lane_held", since, unchanged_for_s,
+  signal: "frozen", since, unchanged_for_s,
   state: { instance_state, working: [{ at, state, reason }] /* last 8 journal rows */ },
   screens: [ "auth" | "rate_limit" | "dialog:<key>" | "agent_list:<n>" | "editor_pager" | "queued" | "composer_draft"
              | "spinner" | "unknown" ],                                    // the backend's own matchers, as named
@@ -125,7 +128,7 @@ inspect_stuck_instance, then report_stuck_triage. Read-only: do not message <T>,
   General topic, or `webOnlyPromptPlace()` for a web-only fleet.
 - **T's topic (mirror).** It replaces today's hang prompt there: same ticket, same buttons; the first click wins and
   both copies are edited. The old hang prompt (S0) is no longer posted on its own.
-- **Needs you.** The ticket is the item (reason `hang` → 「可能卡住」, or `lane_held` → 「訊息送不進去」), linking to the
+- **Needs you.** The ticket is the item (reason `hang` → 「可能卡住」), linking to the
   General notice:
   - on recovery the item leaves, and when the list then empties it reads S9 instead of today's plain empty line;
   - an action taken resolves it like any prompt.
@@ -140,7 +143,6 @@ inspect_stuck_instance, then report_stuck_triage. Read-only: do not message <T>,
 |---|---|---|
 | S0 (today's hang prompt, kept for `enabled: false`) | ⚠️ {name} may be stuck — pane unchanged for {n}min, ready prompt not recognized | ⚠️ {name} 可能卡住了 — 畫面已 {n} 分鐘無變化，也偵測不到就緒提示 |
 | S1 notice (frozen) | ⚠️ {name} may be stuck: its screen hasn't changed for {n} min while it still has work. Want General to take a look first? | ⚠️ {name} 好像卡住了：畫面 {n} 分鐘沒動，可是它還有事沒做完。要先請 General 看一下嗎？ |
-| S1b notice (lane held) | ⚠️ Messages to {name} haven't gone through for {n} min. Want General to take a look first? | ⚠️ 傳給 {name} 的訊息已經 {n} 分鐘送不進去。要先請 General 看一下嗎？ |
 | B-look | 🔍 Ask General to check | 🔍 請 General 看一下 |
 | B-more | More options | 更多選擇 |
 | B-wait | ⏳ Wait a bit | ⏳ 再等等 |
@@ -162,7 +164,10 @@ inspect_stuck_instance, then report_stuck_triage. Read-only: do not message <T>,
 | S11 look expired | The check offer expired. Pick an action below if {name} is still stuck. | 查看的選項已過期；如果 {name} 還卡著，請直接選下面的動作。 |
 | S12 not admin | Only a fleet admin can do this. | 只有 fleet 管理員可以按這個。 |
 | S13 General busy | ⚠️ {name} may be stuck, and General can't check right now ({reason}). Pick an action below. | ⚠️ {name} 好像卡住了，可是 General 現在也沒辦法查看（{reason}）。請直接選下面的動作。 |
-| Needs-you reasons | May be stuck / Messages not getting through | 可能卡住／訊息送不進去 |
+| S14 many at once | ⚠️ Several agents ran into trouble at once ({n}). Open /web for the details. | ⚠️ 好幾個 agent 同時出狀況（{n} 個），請開 /web 看詳情。 |
+| S15 General down | ⚠️ General isn't responding, and {n} agents need a look. Open /web for the details. | ⚠️ General 沒有回應，另有 {n} 個 agent 需要看一下，請開 /web 看詳情。 |
+| S16 all recovered | ✅ They've all recovered, nothing to do. | ✅ 都已恢復，不用處理。 |
+| Needs-you reason | May be stuck | 可能卡住 |
 
 Interrupt uses today's cancel. Because cancel also drops messages queued in the daemon (#2770 (i)), the button is
 offered only once #2770 (i) keeps queued messages across an interrupt. Until then it is hidden.
@@ -179,6 +184,36 @@ The 🔍 button is replaced by S13 with ⏳ / 🔄 (the old path) when:
 
 `{reason}` is one of 「它自己也卡住了」/「它已暫停」/「它正在處理別的事」/「已到這小時的上限」.
 
+### 8.1 Many at once, or General down: one notice, details on the web
+
+Per-agent restart/wait prompts are **not** posted when:
+
+- **A storm is open.** The existing tmux-storm window (`stormWindow`, the one behind `storm.opened` /
+  `stormSuppressed`) is open: those agents already get the storm summary, and this design adds nothing per agent.
+- **Many get stuck at once.** Three or more tickets in the same world open within 5 minutes, outside a storm
+  (`stuck_triage.mass_threshold`, default 3).
+- **General is down.** T's world's General is stopped, crashed, paused or itself stuck, or its lane is held, *and*
+  more than one ticket is open.
+
+Instead, General's place gets **one** short notice per episode (S14 or S15), with a link to the web dashboard and no
+per-agent buttons:
+
+- It is edited, never re-posted, as agents join or recover.
+- It ends with S8-style wording once all of them have recovered (S16).
+- A storm already posts `storm.opened`, so in that case S14 is not posted at all.
+
+The web carries the detail:
+
+- Needs you lists every affected agent with its reason, its age and the per-agent actions (🔍 too, as long as General
+  can look).
+- Fleet › Org chart marks them.
+- The banner at the top of Needs you repeats S14/S15 and links to the episode.
+
+Telegram and Discord get the same single notice. A web-only fleet shows only the banner.
+
+A lone stuck General (one ticket, T = General) still gets S13 with ⏳ / 🔄: that is one agent, and the user can act on
+it.
+
 ## 9. Cost and rate limits
 
 - One General turn per click. The task is ~400 tokens plus a snapshot of at most 16 KB, roughly 5–8k input tokens
@@ -187,7 +222,7 @@ The 🔍 button is replaced by S13 with ⏳ / 🔄 (the old path) when:
   reopens as a fresh episode after that).
 - Fleet-wide: at most 3 triage turns per hour (`stuck_triage.max_per_hour`). Past that, S13 with 「已到這小時的上限」.
 - The snapshot capture runs only on General's tool call, never on the alarm itself.
-- Config: `stuck_triage.enabled` (default true), `lane_minutes` (10), `max_per_hour` (3). With
+- Config: `stuck_triage.enabled` (default true), `max_per_hour` (3), `mass_threshold` (3). With
   `enabled: false`, the old hang prompt (S0) is posted unchanged.
 
 ## 10. Out of scope / follow-ups
