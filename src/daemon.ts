@@ -7165,10 +7165,11 @@ export class Daemon extends EventEmitter {
   /**
    * #2770: a person's message a cancel dropped before it reached the CLI is told, not left as a silent "uncertain":
    * the messages dropped together go out as one `human_messages_cancelled` (the fleet marks each ❌ and says so once).
-   * Agents' messages are not a person's (their durable rows retry); a message with no chat to mark has nowhere to say it.
+   * Agents' messages are not a person's, and a durable row (delivery_id) is retried by the outbox: neither is ❌'d. A
+   * message with no chat to mark has nowhere to say it.
    */
   private noteCancelledHuman(meta: Record<string, string>): void {
-    if (meta.from_instance || !meta.chat_id || !meta.message_id) return;
+    if (meta.from_instance || meta.delivery_id || !meta.chat_id || !meta.message_id) return;
     this.cancelledHumans.push({ chatId: meta.chat_id, messageId: meta.message_id, ...(meta.thread_id ? { threadId: meta.thread_id } : {}) });
     if (this.cancelledHumansTimer) clearTimeout(this.cancelledHumansTimer);
     this.cancelledHumansTimer = setTimeout(() => {
