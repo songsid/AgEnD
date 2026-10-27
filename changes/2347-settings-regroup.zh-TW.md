@@ -6,9 +6,9 @@ section: Changed
   - **整個 Fleet** 會改變所有人的 AgEnD：
     - **Agent**，含登入與供應商 API 金鑰；
     - **Agent 預設值**；
-    - **聊天與連線**：連線、網頁轉發、ClassicBot 房間與 ClassicBot 預設值；
-    - **網頁儀表板**：Log 分頁、透過公開連結提供用量、App 圖示、身分卡上傳限制、Canvas Worker 特效；
-    - **存取與安全**：登入 session、瀏覽器終端機、公開連結與固定網址、訪客、網頁授權；
+    - **聊天與連線**：連線、Web 同步、ClassicBot 房間與 ClassicBot 預設值；
+    - **網頁儀表板**：紀錄分頁、透過公開連結提供用量、App 圖示、身分卡上傳限制、Canvas Worker 特效；
+    - **存取與安全**：登入工作階段、瀏覽器終端機、公開連結與固定網址、訪客、網頁授權；
     - **進階**：`fleet.yaml`，以及只能在其中設定的項目。
   - 寬螢幕上，各區會排成左側的一欄。
   - 舊網址會帶你到新的區：`/settings/device`、`…/appearance`、`…/general`、`…/bots`、`…/web`，以及 `…/classic`（打開聊天與連線並捲到 ClassicBot）。

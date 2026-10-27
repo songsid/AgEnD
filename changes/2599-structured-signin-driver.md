@@ -1,4 +1,4 @@
 ---
 section: Added
 ---
-- Added the internal structured browser sign-in driver for Kiro, Claude Code and Codex (#2599). This is the first stage of Windows browser sign-in; setup and installer activation follow separately. Antigravity retains its explicit console fallback.
+- **Kiro, Claude Code and Codex sign in through the browser (#2599).** One structured sign-in driver serves first-run setup, the local dashboard and the Windows installer (the entries below). Antigravity keeps its console sign-in.
