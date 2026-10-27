@@ -422,7 +422,7 @@ describe("checkScratchFleetConfig — the config a scratch fleet is given", () =
   const plan = planOf();
   const good = () => ({
     health_port: 29341,
-    defaults: { backend: "mock", tips: false, daily_summary: { enabled: false }, hang_detector: { enabled: false } },
+    defaults: { backend: "mock", daily_summary: { enabled: false }, hang_detector: { enabled: false } },
     channels: [
       { id: "discord", type: "discord", bot_token_env: "E2E_DC_TOKEN", group_id: "1", access: { mode: "locked", allowed_users: ["1"] } },
       { id: "telegram", type: "telegram", bot_token_env: "E2E_TG_TOKEN", group_id: "-1", access: { mode: "locked", allowed_users: [1] } },
@@ -477,14 +477,19 @@ describe("checkScratchFleetConfig — the config a scratch fleet is given", () =
     expect(rulesOf({ ...good(), instances: { worker: { hang_detector: {} } } })).toEqual([]);
   });
 
-  it.each(["tips", "daily_summary", "hang_detector"])("refuses a config that leaves %s on or unset — they post to the real chat on their own", key => {
+  it.each(["daily_summary", "hang_detector"])("refuses a config that leaves %s on or unset — they post to the real chat on their own", key => {
     const config = good();
-    if (key === "tips") config.defaults.tips = true;
-    else (config.defaults as Record<string, unknown>)[key] = { enabled: true };
+    (config.defaults as Record<string, unknown>)[key] = { enabled: true };
     expect(rulesOf(config)).toEqual(["config-quiet"]);
     const unset = good();
     delete (unset.defaults as Record<string, unknown>)[key];
     expect(rulesOf(unset)).toEqual(["config-quiet"]);
+  });
+
+  it("#2783: defaults.tips is no longer checked — nothing posts daily tips any more", () => {
+    for (const tips of [undefined, true, false]) {
+      expect(rulesOf({ ...good(), defaults: { ...good().defaults, ...(tips === undefined ? {} : { tips }) } } as any), String(tips)).toEqual([]);
+    }
   });
 
   it("refuses webhooks", () => {

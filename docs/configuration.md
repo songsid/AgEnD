@@ -219,7 +219,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `reply_overdue_minutes` | number | `15` | Minutes since the last ask/reminder before notifying the requester once that a `requires_reply` request is unanswered and its owner is not working. `0` disables this idle-overdue notice, not owner reminders or the final TTL-expiration notice. |
 | `reply_obligation_ttl_hours` | number | `24` | Positive finite hours since the last ask before an open reply obligation expires. Reminders do not extend it. Expiration is logged and tells the requester once if no overdue notice was already sent, even when `reply_overdue_minutes` is `0`. A restart sends one notice with up to ten open requests and `+N more`; turn-ended reminders keep their existing grace and one-per-ask behavior. |
 | `retention_days` | number | `30` | How many days to keep terminal deliveries (`delivered`/`failed`) in `delivery-outbox.db` and `done`/`cancelled` tasks on the Task Board. `uncertain` and non-terminal rows are never pruned. Pruning runs once at fleet startup and daily after that, in chunks of 500 rows so it never stalls the event loop. A `delivery_status` query for a pruned delivery_id returns "older than the retention window; record pruned" instead of "Delivery not found". |
-| `tips` | boolean | `true` | Daily tips: `true` posts in General; `false` disables. Independent of `daily_summary.enabled`. An older `"dm"` value is read as `true`. |
+| `tips` | boolean | — | Ignored: daily tips were removed (#2783). An existing value still loads with no warning and is left in the file; an older `"dm"` is rewritten to `true` so an older AgEnD can still read the file. `/tips` still draws a tip on demand. |
 | `task_board.summary_at` | string | off | The task board's daily summary for the person (off unless set, since 2.3.0 — set a time to turn it on), in each platform's General and the web chat: `"HH:MM"` (24 h, in `scheduler.default_timezone`, else the host's zone) or `"off"`. Read at every minute's check (no restart). See [features](features.md#the-task-boards-daily-summary). |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. Read when AgEnD starts: restart AgEnD after changing it. |
 
@@ -690,11 +690,11 @@ Visibility also depends on the provider: Codex rows without OAuth usage
 credentials, including API-key-only profiles, are omitted. Rows are not combined,
 and different profile names do not guarantee different billing accounts.
 
-### Sign-in notices and daily tips
+### Sign-in notices
 
-Sign-in notices (`web.notify_login`) and daily tips (`defaults.tips`) always post in the topic, as before 2.3.2; they are never sent by DM (a Telegram bot cannot DM someone who has not started it). Each is `true` (default) or `false`. `web.notify_login: false` suppresses only the operator's local sign-in notice; guest and public-link security notices still post. Sign-in codes, a new code, guest codes and public-link delivery stay private.
+Sign-in notices (`web.notify_login`) always post in the topic, as before 2.3.2; they are never sent by DM (a Telegram bot cannot DM someone who has not started it). The value is `true` (default) or `false`. `web.notify_login: false` suppresses only the operator's local sign-in notice; guest and public-link security notices still post. Sign-in codes, a new code, guest codes and public-link delivery stay private.
 
-Change them in **Settings → Access & security → Web sign-in notices** and **Agent defaults → Daily tips** (Topic / Off); both apply immediately.
+Change it in **Settings → Access & security → Web sign-in notices** (Topic / Off); it applies immediately.
 
 The DM choice that 2.3.2 betas offered is withdrawn. An old `notify_login: dm` or `tips: dm`, and any `web.notice_delivery` route, is accepted and read as `true`. On startup or an accepted reload AgEnD rewrites it as the boolean and drops `web.notice_delivery`, keeping comments and a `.bak`; `agend validate` warns until then.
 

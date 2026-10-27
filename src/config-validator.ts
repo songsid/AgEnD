@@ -566,10 +566,11 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
         err("defaults.max_cross_instance_message_bytes", "must be a positive integer number of bytes");
       }
     }
+    // #2783: daily tips are gone and the key is ignored, without a warning. A value older AgEnD would refuse is still
+    // refused, so the file stays readable after a downgrade.
     if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean" && config.defaults.tips !== "dm") {
       err("defaults.tips", "must be a boolean");
     }
-    if (config.defaults.tips === "dm") warn("defaults.tips", '"dm" is no longer offered: daily tips post in the General topic (read as true)');
     if (config.defaults.task_board !== undefined) {
       if (!isObj(config.defaults.task_board)) err("defaults.task_board", "must be a mapping");
       else if (summaryTime(config.defaults.task_board.summary_at) === undefined) {

@@ -71,19 +71,7 @@ describe("#2580 fleet notices never go by DM", () => {
     expect(h.adapter.sendDirect).not.toHaveBeenCalled();
     expect(h.adapter.sendText).toHaveBeenCalledWith("group", t("web.guest_public_login_notice", "Guest", "Firefox", 1, "session-"), { threadId: "topic", allowedMentions: { parse: [] } });
   });
-  // hmsg-d1809f2a: tips never go by DM. A legacy "dm" (either form) posts in the General topic like true.
-  it.each([["defaults.tips", "dm"], ["notice_delivery.tips", "dm"]])("a daily tip with legacy %s %s posts in the topic, never by DM", async key => {
-    const h = rig();
-    if (key === "defaults.tips") h.fm.fleetConfig.defaults.tips = "dm";
-    else { h.fm.fleetConfig.defaults.tips = true; h.fm.fleetConfig.web.notice_delivery = { tips: "dm" }; }
-    await h.fm.sendTipToGeneral();
-    expect(h.adapter.sendDirect).not.toHaveBeenCalled();
-    expect(h.adapter.notifyAlert).toHaveBeenCalledOnce();
-    expect((h.adapter.notifyAlert.mock.calls as unknown as unknown[][])[0]![0]).toBe("group");
-    const entry: any = [...h.fm.pendingNonceButtons.values()][0];
-    expect([entry.chatId, entry.threadId]).toEqual(["group", "topic"]);
-  });
-  it("validates true and false, and tolerates a legacy dm with a warning", () => {
+  it("validates true and false, and tolerates a legacy dm (a warning for sign-in only: defaults.tips is ignored, #2783)", () => {
     for (const mode of [true, false, "dm"]) {
       expect(validateFleetConfig({ defaults: { tips: mode }, web: { notify_login: mode }, instances: {} }).valid).toBe(true);
       expect(parseWebSettingsBody({ notify_login: mode })).toMatchObject({ notifyLogin: mode });
@@ -92,7 +80,8 @@ describe("#2580 fleet notices never go by DM", () => {
     expect(parseWebSettingsBody({ notify_login: "email" })).toHaveProperty("error");
     const legacy = validateFleetConfig({ defaults: { tips: "dm" }, web: { notify_login: "dm", notice_delivery: { login: "dm", tips: "dm" } }, instances: {} });
     expect(legacy.valid).toBe(true);
-    expect(legacy.warnings.map(w => w.path)).toEqual(expect.arrayContaining(["defaults.tips", "web.notify_login", "web.notice_delivery"]));
+    expect(legacy.warnings.map(w => w.path)).toEqual(expect.arrayContaining(["web.notify_login", "web.notice_delivery"]));
+    expect(legacy.warnings.map(w => w.path)).not.toContain("defaults.tips");
     expect(validateFleetConfig({ defaults: { tips: true }, web: { notify_login: false }, instances: {} }).warnings
       .filter(w => /tips|notify_login|notice_delivery/.test(w.path))).toEqual([]);
   });

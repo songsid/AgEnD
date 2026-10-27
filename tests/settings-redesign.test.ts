@@ -242,26 +242,17 @@ describe("Settings P0 redesign shell", () => {
     expect(p.root.querySelector("dialog")!.textContent).toContain("Stored but inactive: kiro-cli in mcp mode does not support reply-drop recovery.");
   });
 
-  it("daily tips offer only Topic and Off (no DM, hmsg-d1809f2a), default Topic, and stage Off", async () => {
-    answer = succeed;
-    await mountSettings("agent-defaults");
-    const select = p.root.querySelector("#g-tips");
-    expect(select.value).toBe("true");
-    expect([...select.querySelectorAll("option")].map(o => o.value)).toEqual(["true", "false"]);
-    expect(select.closest(".field").textContent).toContain("In effect: Topic");
-    expect(select.closest(".field").textContent).not.toMatch(/DM|Direct message/);
-    await choose(select, "false"); await applyStaged();
-    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: false });
-  });
-  it("a legacy tips DM route or \"dm\" value shows as Topic, and Topic saves canonical true", async () => {
-    for (const fleet of [{ defaults: { tips: true }, web: { notice_delivery: { tips: "dm" } } }, { defaults: { tips: "dm" } }]) {
-      w = world({ fleet: { ...fleet, instances: {}, channels: [] } });
+  it("#2783: Agent defaults has no Daily tips field, and a save there leaves a stored defaults.tips alone", async () => {
+    for (const tips of [false, "dm"]) {
+      w = world({ fleet: { defaults: { tips }, instances: {}, channels: [] } });
       answer = succeed; await mountSettings("agent-defaults");
-      const select = p.root.querySelector("#g-tips"); expect(select.value).toBe("true");
-      expect(select.closest(".field").textContent).toContain("In effect: Topic");
+      expect(p.root.querySelector("#g-tips")).toBeNull();
+      expect(p.root.textContent).not.toMatch(/Daily tips/);
     }
-    await choose(p.root.querySelector("#g-tips"), "false"); await applyStaged();
-    expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: false });
+    await check(p.root.querySelector("#g-reply-triggers"), true); await applyStaged();
+    const body = writes().find(s => s.path === "/api/settings/fleet/defaults")?.body;
+    expect(body).toMatchObject({ reply_triggers: true });
+    expect(body).not.toHaveProperty("tips");
   });
   it("shows the off fleet reply-trigger default and stages an explicit on", async () => {
     answer = succeed;

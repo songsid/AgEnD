@@ -955,7 +955,7 @@ function Classic({ ctx, search, openDialog }) {
   })}</div>`;
 }
 
-// Sign-in notices and daily tips post in the topic or not at all: the DM choice was withdrawn (hmsg-d1809f2a,
+// Sign-in notices post in the topic or not at all: the DM choice was withdrawn (hmsg-d1809f2a,
 // hmsg-3b8ac2af), and an old "dm" reads as on.
 const noticeMode = (v) => v !== "false" && v !== false;
 const noticeChoices = () => [{ value: "true", label: tn("noticeTopic") }, { value: "false", label: tn("noticeOff") }];
@@ -975,7 +975,6 @@ function generalForm(d, c, fleet = {}, schema = {}) {
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
     concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
-    tips: String(noticeMode(d.tips)),
     replyTriggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default),
     classicReplyTriggers: Boolean(c.reply_triggers ?? d.reply_triggers ?? schema.reply_triggers_default), classicReplyTriggersInherit: !hasOwn(c, "reply_triggers"),
     classicBackend: c.backend || d.backend || "claude-code",
@@ -1023,7 +1022,7 @@ function General({ ctx, part = "all" }) {
     const defaultsPatch = changedFields({
       backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
       agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
-      tips: noticeMode(f.tips), reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
+      reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
       // The dashboard features every agent may use unless its own setting says otherwise. All of them go, because the write
       // to the fleet's defaults merges top-level keys only (`dashboard` is replaced whole): the untouched ones as saved.
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, f[`dash_${k}`]])),
@@ -1033,7 +1032,7 @@ function General({ ctx, part = "all" }) {
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
-      tips: d.tips ?? true, cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
+      cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, dashboardDefault(d, k)])),
       ...Object.fromEntries(Object.entries(SEPARATE_FEATURE_KEYS).map(([k, key]) => [key, dashboardDefault(d, k)])),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
@@ -1070,7 +1069,7 @@ function General({ ctx, part = "all" }) {
   // ClassicBot's inherited ones say what they inherit from Agent defaults.
   const unset = {
     locale: !d.locale, backend: !d.backend, model: !d.model, auto: !hasOwn(d, "auto_pause_after"), tool_progress: !hasOwn(d, "tool_progress"),
-    tips: !hasOwn(d, "tips"), replyTriggers: !hasOwn(d, "reply_triggers"), visibility: !VISIBILITY_MODES.includes(d.cross_instance_visibility), reply: !hasOwn(d, "reply_completion_guard"), tool_set: !d.tool_set,
+    replyTriggers: !hasOwn(d, "reply_triggers"), visibility: !VISIBILITY_MODES.includes(d.cross_instance_visibility), reply: !hasOwn(d, "reply_completion_guard"), tool_set: !d.tool_set,
     log_level: !d.log_level, agent_mode: !d.agent_mode, hangOn: !hasOwn(hang, "enabled"), hang: !hasOwn(hang, "timeout_minutes"),
     concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
   };
@@ -1093,7 +1092,6 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
         <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
-        <div class=${fc("field", "tips")}>${L(tn("dailyTips"), "defaults.tips", "g-tips", "tips")}<${Select} id="g-tips" value=${f.tips} onChange=${set("tips")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.tips))} /><p class="note">${tn("dailyTipsHint")}</p></div>
         <div class=${fc("field", "replyTriggers")}><label class="check"><input id="g-reply-triggers" type="checkbox" checked=${f.replyTriggers} onChange=${(e) => set("replyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span>${dm("replyTriggers")}<${Impact} schema=${schema} field="defaults.reply_triggers" /></label><p class="note">${tn("replyTriggersHint")}</p></div>
         <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span>${dm("reply")}<${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>

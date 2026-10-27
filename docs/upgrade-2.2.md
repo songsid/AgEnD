@@ -87,7 +87,7 @@ npm install -g @songsid/agend@2.2.0
 - **Kiro:** a resumed conversation keeps the agent it was saved under and gets AgEnD's server and instructions from the shared `.kiro` files. The in-session `/agent swap` from #906 is suspended (#1800), because an instance lost its AgEnD tools after it. An instance that was already switched gets the shared entries back at its next start; after restarting it, check that it calls `reply`. Once every fleet using a directory has upgraded, delete by hand only a `.kiro/steering/agend-<instance>.md` you can confirm AgEnD wrote before #906 for that same instance and directory. Such a file has no `<!-- agend-agent:… -->` first line and starts with the old `# AgEnD Fleet Context` header naming that instance and that working directory. Keep a tagged one, because a resumed conversation reads it. Leave alone any other file of that name.
   - Upgrading from before 2.1.11 also supports one-time Kiro conversation adoption (#1624), with shared-cwd and claim safeguards; see [adoption and beta.1 recovery](kiro-upgrade-recovery.md).
 - **Web sign-in:** everyone signs in again. Old `?token=` links and bookmarks open the sign-in page. Send `/web` in General and press **💻 AgEnD computer: get a code**, or run `agend web --code` on the host, for a one-time code (8 characters, 5 minutes).
-- **General gets one message about web chat** (#1366), once per platform, recorded in `AGEND_HOME/upgrade-notices.json`.
+- **General got one message about web chat** (#1366), once per platform. Removed in #2783: upgrading now sends nothing.
 
 **From now on (policies):**
 - **Web sessions** last 48 h (48 h idle) on this computer's dashboard by default, and 4 h (30 min idle) through the public link.

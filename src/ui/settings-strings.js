@@ -5,9 +5,8 @@ import { register } from "/assets/app-i18n.js";
 register("settings", {
   en: {
     noticeTopic: "Topic", noticeOff: "Off",
-    webNotifyLogin: "Web sign-in notices", dailyTips: "Daily tips",
+    webNotifyLogin: "Web sign-in notices",
     webNotifyLoginHint: "Posted in the topic. Off suppresses operator notices only; guest and public-link security notices still post. Default: Topic.",
-    dailyTipsHint: "Posted in the General topic. Default: Topic. /tips still posts where invoked.",
     title: "Settings",
     myAgents: "My Agents",
     bots: "Bots",
@@ -686,9 +685,8 @@ register("settings", {
     se_unavailable: "無法使用",
     se_hint: "留空即使用預設值。預覽由 AgEnD 依 bot 實際 react 的方式解析。進度前綴不是反應，而是進度訊息開頭的 emoji。",
     noticeTopic: "頻道", noticeOff: "關閉",
-    webNotifyLogin: "網頁登入通知", dailyTips: "每日提示",
+    webNotifyLogin: "網頁登入通知",
     webNotifyLoginHint: "發在頻道。關閉只停用管理者登入通知；訪客與公開連結安全通知仍會發出。預設：頻道。",
-    dailyTipsHint: "發在 General 頻道。預設：頻道。/tips 仍送至呼叫的聊天室。",
     title: "設定",
     myAgents: "我的 Agent",
     bots: "機器人",

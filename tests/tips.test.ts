@@ -125,34 +125,14 @@ describe("tips catalog and persistence", () => {
 });
 
 describe("tip button flow", () => {
-  it("routes the daily tip to the live General topic and honors defaults.tips=false", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "agend-daily-tip-"));
-    dirs.push(dir);
-    const notifyAlert = vi.fn().mockResolvedValue({
-      messageId: "daily-tip", chatId: "fleet", threadId: "general-topic",
-    });
-    const adapter = { id: "tg-main", type: "telegram", notifyAlert } as any;
-    const fm = new FleetManager(dir);
-    (fm as any).scheduler = { db: {
-      listDismissedTipIds: vi.fn(() => new Set<string>()),
-      isAdvancedTipsUnlocked: vi.fn(() => false),
-    } };
-    fm.fleetConfig = {
-      defaults: {},
-      channels: [{ id: "tg-main", type: "telegram", mode: "topic", group_id: "fleet" }],
-      instances: { general: { general_topic: true, topic_id: "general-topic" } },
-    } as any;
-    fm.worlds.set("tg-main", { id: "tg-main", adapter, groupId: "fleet" } as any);
-    (fm as any).daemons.set("general", {});
-
-    await (fm as any).sendTipToGeneral();
-    expect(notifyAlert).toHaveBeenCalledWith(
-      "fleet", expect.objectContaining({ type: "tip" }), { threadId: "general-topic" },
-    );
-
-    fm.fleetConfig!.defaults.tips = false;
-    await (fm as any).sendTipToGeneral();
-    expect(notifyAlert).toHaveBeenCalledTimes(1);
+  it("#2783: nothing posts a tip on a clock any more — the daily job and its General post are gone", async () => {
+    const tips = await import("../src/tips.js");
+    expect(Object.keys(tips)).not.toContain("DailyTipScheduler");
+    for (const removed of ["sendTipToGeneral", "tipsEnabled", "pickAvailableTip"]) {
+      expect((FleetManager.prototype as any)[removed], removed).toBeUndefined();
+    }
+    // /tips still draws one on demand.
+    expect(typeof FleetManager.prototype.promptTip).toBe("function");
   });
 
   it("posts a real nonce prompt and permanently dismisses it for the clicking user", async () => {
@@ -367,6 +347,23 @@ describe("tip button flow", () => {
     expect(respond).not.toHaveBeenCalled();
   });
 
+  it("#2783: a Discord /tips on|off from a cached menu answers with the usage; nothing is saved or drawn", async () => {
+    const fm = new FleetManager(mkdtempSync(join(tmpdir(), "agend-tip-slash-mode-")));
+    dirs.push(fm.dataDir);
+    fm.fleetConfig = { defaults: { tips: false }, instances: { general: { general_topic: true } } } as any;
+    (fm as any).isFleetAdmin = () => true;
+    const save = vi.spyOn(fm as any, "saveFleetConfig").mockImplementation(() => {});
+    const promptTip = vi.spyOn(fm, "promptTip").mockResolvedValue("posted");
+    for (const mode of ["on", "off"]) {
+      const respond = vi.fn().mockResolvedValue(undefined);
+      await (fm as any).handleTipsSlash({ command: "tips", channelId: "c", userId: "admin", options: { mode }, respond }, "discord-main");
+      expect(respond).toHaveBeenCalledWith("Usage: /tips, or /tips advanced on (admin)");
+    }
+    expect(fm.fleetConfig!.defaults.tips).toBe(false);
+    expect(save).not.toHaveBeenCalled();
+    expect(promptTip).not.toHaveBeenCalled();
+  });
+
   it("Discord /tips callback binding matches the real callback shape (chatId=guildId, threadId=channelId)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-tip-slash-callback-"));
     dirs.push(dir);
@@ -481,7 +478,7 @@ describe("tip button flow", () => {
     );
   });
 
-  it("/tips modes persist settings, allow an admin unlock, and bare /tips requests a button", async () => {
+  it("/tips on|off are gone (usage, nothing saved); an admin can still unlock, and bare /tips requests a button", async () => {
     const sendText = vi.fn().mockResolvedValue({ messageId: "reply", chatId: "fleet" });
     const promptTip = vi.fn().mockResolvedValue("posted");
     const saveFleetConfig = vi.fn();
@@ -500,13 +497,13 @@ describe("tip button flow", () => {
       messageId: "m1", userId: "admin", username: "admin", timestamp: new Date(), text,
     });
 
-    expect(await commands.handleGeneralCommand(message("/tips off"))).toBe(true);
-    expect(ctx.fleetConfig.defaults.tips).toBe(false);
-    expect(saveFleetConfig).toHaveBeenCalledTimes(1);
-
-    await commands.handleGeneralCommand(message("/tips on"));
-    expect(ctx.fleetConfig.defaults.tips).toBe(true);
-    expect(saveFleetConfig).toHaveBeenCalledTimes(2);
+    for (const mode of ["off", "on"]) {
+      expect(await commands.handleGeneralCommand(message(`/tips ${mode}`))).toBe(true);
+      expect(sendText).toHaveBeenLastCalledWith("fleet", "Usage: /tips, or /tips advanced on (admin)", { threadId: "general-topic" });
+    }
+    expect(ctx.fleetConfig.defaults).toEqual({});
+    expect(saveFleetConfig).not.toHaveBeenCalled();
+    expect(promptTip).not.toHaveBeenCalled();
 
     await commands.handleGeneralCommand(message("/tips advanced on"));
     expect(unlockAdvancedTips).toHaveBeenCalledWith("admin");

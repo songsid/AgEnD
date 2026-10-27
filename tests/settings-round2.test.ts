@@ -1,4 +1,4 @@
-import { loginNoticeMode, tipNoticeMode } from "../src/notice-delivery.js";
+import { loginNoticeMode } from "../src/notice-delivery.js";
 import { EventEmitter } from "node:events";
 import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -60,9 +60,8 @@ describe("#2580 notice settings writes", () => {
       expect(loginNoticeMode(ctx.fleetConfig!.web)).toBe(mode !== false);
       expect(ctx.fleetConfig!.web?.notify_login).toBe(mode !== false);
       expect(ctx.fleetConfig!.web?.notice_delivery).toBeUndefined();
-      // Tips have no DM (hmsg-d1809f2a): a stale "dm" saves as on, with no route.
+      // #2783: tips are ignored, but a stale page's "dm" still saves as true, which 2.3.1 can read after a downgrade.
       expect((await request("/api/settings/fleet/defaults", ctx, "PUT", { tips: mode })).status).toBe(200);
-      expect(tipNoticeMode(ctx.fleetConfig!)).toBe(mode !== false);
       expect(ctx.fleetConfig!.defaults.tips).toBe(mode !== false);
       expect(ctx.fleetConfig!.web?.notice_delivery?.tips).toBeUndefined();
     }

@@ -1347,11 +1347,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             options: [{
               name: "mode", description: t("slash.option.tips_mode"),
               type: ApplicationCommandOptionType.String, required: false,
-              choices: [
-                { name: "on", value: "on" },
-                { name: "off", value: "off" },
-                { name: "advanced on", value: "advanced on" },
-              ],
+              choices: [{ name: "advanced on", value: "advanced on" }],
             }],
           },
           {

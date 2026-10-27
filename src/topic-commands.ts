@@ -1,10 +1,8 @@
-import { setNoticeMode } from "./notice-delivery.js";
 import { PaneContextCache } from "./pane-context-cache.js";
 import { sanitizeInstanceName } from "./instance-names.js";
 import { LOGIN_BACKEND_ALIASES } from "./login-flows.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
-import { WEB_REMOTE_DOCS_URL } from "./upgrade-notices.js";
 import { closeSync, readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { exec, spawn } from "./child-process.js";
@@ -41,6 +39,9 @@ import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { selfCommand } from "./cli-entry.js";
 import { GENERAL_POINTING_REFUSALS, placeSuffix } from "./topic-link.js";
+
+/** Where `/dashboard` points a phone user, until the public link (#1367) gives them a menu option. */
+export const WEB_REMOTE_DOCS_URL = "https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md#reaching-it-from-elsewhere";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -1470,18 +1471,6 @@ export class TopicCommands {
           : t("tips.unavailable"),
         { threadId: msg.threadId },
       );
-      return;
-    }
-    if (mode === "on" || mode === "off") {
-      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
-        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
-        return;
-      }
-      setNoticeMode(this.ctx.fleetConfig, "tips", mode === "on");
-      this.ctx.saveFleetConfig();
-      await adapter.sendText(msg.chatId, t(mode === "on" ? "tips.enabled" : "tips.disabled"), {
-        threadId: msg.threadId,
-      });
       return;
     }
     if (mode) {

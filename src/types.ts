@@ -302,7 +302,7 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   cost_guard?: CostGuardConfig;
   hang_detector?: HangDetectorConfig;
   daily_summary?: DailySummaryConfig;
-  /** Daily tips: true (posted in the General topic) or false. A legacy "dm" (#2581, withdrawn) reads as true. Update-completion tips stay with the result. Default: true. */
+  /** Ignored since #2783 removed the daily tips; kept so an older file loads, and left in place for a downgrade. A legacy "dm" (#2581) is still rewritten to true. */
   tips?: boolean | "dm";
   /** #2246 step 3: the task board's fleet-level settings. */
   task_board?: {

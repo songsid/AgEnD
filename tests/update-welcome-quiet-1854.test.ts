@@ -1,5 +1,5 @@
 /**
- * #1854 rank 4: a healthy update ends with one completion line and the once-only 2.2 welcome is two lines. The
+ * #1854 rank 4: a healthy update ends with one completion line (the once-only 2.2 welcome is gone, #2783). The
  * update-completion tip is deferred (daily tips and /tips are unchanged). Warning lines are kept.
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -14,14 +14,6 @@ import { beginUpdateProgress, readUpdateProgress, setUpdateProgressStage } from 
 afterEach(() => setLocale("en"));
 
 describe("the copy from the approved proposal", () => {
-  it("welcome: two lines, EN and zh-TW, no URL", () => {
-    setLocale("en");
-    expect(t("upgrade.web_chat")).toBe("🆕 AgEnD 2.2 adds web chat. You can keep chatting here.\n"
-      + "Admins: send /web in General, then press a sign-in button to get a code.");
-    setLocale("zh-TW");
-    expect(t("upgrade.web_chat")).toBe("🆕 AgEnD 2.2：新增網頁聊天，這裡也照常使用。\n管理員：在 General 傳 /web，再按登入按鈕取碼。");
-  });
-
   it("healthy completion: one line, EN and zh-TW", () => {
     const healthy = { running: 3, total: 3, version: "2.2.0", pausedNames: [] as string[] };
     setLocale("en");
