@@ -1106,6 +1106,31 @@ function Invoke-AgendRepair([string]$distro, [string]$user, [string]$version) {
     return ($after.Code -eq 0)
 }
 
+# #2650 item 6: a runnable CLI alone does not prove that setup/service/auth are ready.
+# Opt-in only. Keep the discovered account/distro, and reuse setup's own consent and expiry handling.
+function Invoke-ExistingAgendRecovery([string]$distro, [string]$user) {
+    $UBUNTU_DISTRO = $distro; $AGEND_USER = $user
+    $AGEND_ENV = Get-WslAgendCommand ''
+    if (-not (Get-VerifiedAgendVersion)) {
+        Write-Err 'AgEnD、Node、tmux 或 SQLite 尚未通過驗證；沒有重設你的設定。'
+        Write-Info "需要完整修復依賴時，先執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行安裝指令；原有設定會保留。"
+        Set-InstallFailure 'agend'
+        return $false
+    }
+    if (-not (Test-InstallerReady)) {
+        Write-Info '接下來只接續設定與服務；現有設定不會重設。尚未設定完成時會開啟瀏覽器，需要你親自確認。'
+        if (-not (Invoke-SetupAndService)) { Set-InstallFailure 'setup'; return $false }
+        if (-not (Test-InstallerReady)) {
+            Write-Warn '設定已保留，但服務或儀表板仍未就緒；這次不會宣稱修復完成。請看上方錯誤，之後可再選擇檢查／修復。'
+            Set-InstallFailure 'service'
+            return $false
+        }
+    }
+    Write-Ok '服務與儀表板已驗證就緒；沒有重新安裝 WSL 或 AI 後端。'
+    Write-Info '後端尚未登入：打開下方的儀表板，到「設定 → 登入」接續；這裡不會把服務就緒當成登入成功。'
+    return $true
+}
+
 # 說明捷徑建立的結果：兩個都好、只好一個（說是哪一個）、都沒好。兩個都好時回傳 $true。
 function Write-ShortcutResult($made) {
     $names = @($made | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension([string]$_) })
@@ -2318,6 +2343,13 @@ if (-not $Force -and -not (Test-Path $ProgressFile)) {
             Write-Ok "AgEnD 修好了，agend 指令可以用了"
         }
         Write-Ok ("這台電腦已經裝好 AgEnD（{0}，使用者 {1}）。不會重新安裝，也不會動到現有的設定。" -f $existing.Distro, $existing.User)
+        $recover = Read-Host "  需要檢查／修復設定與服務，或接續後端登入嗎？可能會啟動服務；不重設設定。(y/N)"
+        if ($recover -match '^\s*[yY]\s*$') {
+            if (-not (Invoke-ExistingAgendRecovery $existing.Distro $existing.User)) {
+                Write-Info '仍可用桌面「AgEnD 儀表板」查看需要處理的項目；再貼一次安裝指令可重新選擇檢查／修復。'
+                Read-Host "按 Enter 結束"; exit 1
+            }
+        }
         # 捷徑目前指向另一個 Linux 或使用者（例如 AgEnD 專用的 Linux 和原本的 Ubuntu）：先說，預設不改（絕不悄悄改指向）。
         $prior = Get-InstallRecordConflict $existing.Distro $existing.User
         if ($prior) {
