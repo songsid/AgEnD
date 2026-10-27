@@ -158,7 +158,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `daily_summary` | object | 啟用，21:00 | 每日花費摘要 |
 | `scheduler` | object | — | 排程設定 |
 | `webhooks` | object[] | `[]` | Webhook 通知 |
-| `startup.concurrency` | number | 自動推算，`2`–`10` | 依空閒 RAM 與 CPU 數推算共用 spawn gate 的併發上限；明確設定時範圍為 `1`–`20` |
+| `startup.concurrency` | number | 自動推算，`2`–`10` | 依空閒 RAM 與 fleet 可用的 CPU（CPU affinity 與 cgroup v1/v2 配額，而不是主機的核心數）推算共用 spawn gate 的併發上限；明確設定時範圍為 `1`–`20`。ClassicBot 聊天室在 General 之後就進入同一個佇列啟動（#2642） |
 | `resume_interrupted_work` | boolean | `true` | 啟動穩定後，依記憶體壓力與節奏，對符合條件的未完成任務送出一次接續提示。背景狀態不明時，只提示先檢查既有工作；已知背景工作仍在執行、或無法確認 session 歸屬時繼續等待。個別 instance 可設為 `false`，日誌仍照常記錄。本階段不改動既有回合恢復行為。 |
 | `startup.stagger_delay_ms` | number | `500` | 啟動、喚醒、恢復、重啟共用的外層生命週期入場與獨立 spawn 最小間隔（毫秒）。壓力正常時，巢狀 CLI spawn 沿用外層名額，可能同時開始；壓力升高時，實體 spawn 仍一次一個且至少相隔五秒，壓力嚴重時暫停新增 spawn；範圍 `0`–`30000` |
 | `warm_cap` | number | `0`（無上限） | 執行中 instance 的暖機上限；超過時暫停最近最少活動的 idle instance，General 與持有 work lease 的 instance 不被淘汰。與按時間計算的 `auto_pause_after` 互補 |

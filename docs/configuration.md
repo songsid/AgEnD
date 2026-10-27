@@ -195,7 +195,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `startup.concurrency` | number | derived, `2`–`10` | Shared spawn-gate concurrency, based on free RAM and CPU count when omitted. An explicit value must be `1`–`20`. |
+| `startup.concurrency` | number | derived, `2`–`10` | Shared spawn-gate concurrency, based on free RAM and the CPUs the fleet may use (CPU affinity and the cgroup v1/v2 quota, not the host's core count) when omitted. An explicit value must be `1`–`20`. ClassicBot rooms start right after General in the same queue (#2642). |
 | `resume_interrupted_work` | boolean | `true` | After stable startup, continue eligible unfinished task work once, with pressure pacing. Unknown background inventory permits an advisory inspection prompt; known running background work or unknown session ownership holds it. An instance can override this to `false`; the journal remains enabled. Existing turn-resume behavior is unchanged in this stage. |
 | `startup.stagger_delay_ms` | number | `500` | Minimum spacing between outer lifecycle admissions and standalone spawns (ms), shared by startup, wake, recovery and restart. At normal pressure, nested CLI spawns reuse the outer reservation and may coincide. Under elevated pressure, physical spawns remain serialized and at least 5 seconds apart; critical pressure holds new spawns. Valid range: `0`–`30000`. |
 | `cost_guard.daily_limit_usd` | number | `0` (disabled) | Fleet-wide daily cost limit |

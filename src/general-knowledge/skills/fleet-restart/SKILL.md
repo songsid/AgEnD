@@ -35,7 +35,7 @@ agend update --yes            # from a fleet session: the installed channel's la
 agend update --version 2.2.0 --yes  # a specific version
 ```
 
-It installs the selected release, checks the install, and restarts the fleet service. `--alpha` / `--beta` / `--stable` pick a channel; details in docs/cli.md.
+It installs the selected release, checks the install, and restarts the fleet service. `--alpha` / `--beta` / `--stable` pick a channel; details in docs/cli.md. A beta install stays on the beta channel: to move it to the stable release (for example from a 2.3.2 beta to 2.3.2), use `agend update --stable --yes`, and only when the user asked for it.
 
 **Manual restart (if update isn't needed):**
 ```bash

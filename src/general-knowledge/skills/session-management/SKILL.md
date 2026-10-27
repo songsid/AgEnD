@@ -151,7 +151,7 @@ for ts, sid in sorted(out, reverse=True):
 ```
 It opens many files, but only one line each, so it stays cheap.
 
-**Restore:** `codex exec resume <session-id> "<prompt>"` non-interactively, or `codex resume <session-id>` for the TUI (bare `codex resume` opens a picker). AgEnD launches `codex resume <id>` with the thread recorded for this exact directory; `codex resume --last` is only its fallback (an unreadable session DB, no other codex instance in the repository). The ID argument also accepts a session *name*.
+**Restore:** `codex exec resume <session-id> "<prompt>"` non-interactively, or `codex resume <session-id>` for the TUI (bare `codex resume` opens a picker). AgEnD launches `codex resume <id>` with the thread recorded for this exact directory; `codex resume --last` is only its fallback (an unreadable session DB, no other codex instance in the repository). On a machine where Codex never ran, a missing session DB means a new conversation, with no warning (#2743). The ID argument also accepts a session *name*.
 
 **Summary:** ❌ none available without parsing. `session_meta` carries only id/cwd/timestamp; to describe a session you must read further `event_msg` lines. Tell the user the timestamp and let them pick, rather than guessing at a topic.
 

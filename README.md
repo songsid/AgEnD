@@ -120,6 +120,8 @@ One-liner (Windows — in PowerShell; sets up WSL 2 + Ubuntu, your AI backend an
 powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
 ```
 
+For a fresh beta install on Windows, run `$env:AGEND_VERSION = 'beta'` in the same PowerShell window first (`latest` or an exact version also work).
+
 Or install manually:
 
 ```bash

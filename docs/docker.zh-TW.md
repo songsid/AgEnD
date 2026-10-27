@@ -105,7 +105,7 @@ volumes:
 
 <!-- file: .env -->
 ```sh
-# AgEnD version for the image: latest, beta, or an exact version (2.3.1).
+# AgEnD version for the image: latest, beta, or an exact version (2.3.2).
 AGEND_VERSION=latest
 # Host port of the dashboard.
 AGEND_PORT=19280

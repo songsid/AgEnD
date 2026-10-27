@@ -20,6 +20,8 @@ agend update
 
 The update runs the new version's own installer. It refreshes the service settings and restarts the fleet. You do not need to run `agend install` afterwards.
 
+**On a beta?** `agend update` stays on the channel you installed from, so a beta keeps getting betas. To move to the stable release, run `agend update --stable`.
+
 **On root or WSL-style hosts, add one step (#2369).** On 2.2.x, `agend update` may be run from a shell without `XDG_RUNTIME_DIR`: a plain `wsl` shell, `docker exec`, cron, or root. From such a shell it cannot reach the systemd user service, and it falls back to 2.2.x. Run it like this instead:
 
 ```bash
@@ -90,7 +92,7 @@ From 2.3 on, an update on macOS (launchd) counts as done only once the new fleet
 | Task board daily summary | Off | `defaults.task_board.summary_at: "09:00"` (a 24-hour time in the fleet's time zone) |
 | A new `fleet.yaml` | Written with `defaults.dashboard.task_board: false` | Settings, or per agent with `dashboard` |
 | An existing `fleet.yaml` | Not rewritten; the task board stays available | Same as above |
-| Canvas Worker effects | Experimental, off | Settings → Web appearance → Experimental |
+| Canvas Worker effects | Experimental, off | Settings → Web dashboard |
 | CLI language | From `defaults.locale`. If it is unset: Chinese on a UTC+8 host, English otherwise | `defaults.locale: en` or `zh-TW` |
 | ClassicBot rooms | Echo web chat (`🌐 web · <name>: …`) | `web_echo: false` in `classicBot.yaml`, or untick **Web echo** in the room's Settings |
 | `agend fleet start` / `agend fleet stop` on a host with a service | Hand over to `agend start` / `agend stop` | `agend fleet start --direct`, from your own shell (not from an agent session) |

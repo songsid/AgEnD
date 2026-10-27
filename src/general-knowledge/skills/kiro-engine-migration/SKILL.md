@@ -43,6 +43,7 @@ The user has already been shown the plain notice in this topic. When they ask, e
    - **Go back to a kiro-cli version that ran them.** `history` shows which versions launches were prepared
      with; the user knows which of those worked. Installing such a version again is the likely way back, but
      do not promise it. The user, or whoever administers the host, does this; you do not.
+   - **Move it to the TUI engine** with its conversation (below), if the user wants that.
    - **Wait for AgEnD's migration to V3.** It will convert each conversation once, verify it, and switch the
      instance, one instance at a time and only with the user's confirmation. It is not available yet: say so
      plainly, and never promise a date.
@@ -73,10 +74,33 @@ or classic as a recovery shortcut. Archives are private and restorable with `age
 The raw Log-history gate remains closed: the verification proves the launched/pinned reader, not ongoing pane
 session identity after `/chat` or `/clear`.
 
+- **After a `/compact`** classic kiro continues under a new conversation id. The move follows the same proven
+  compaction chain a classic restart follows and carries the newest conversation. When the chain can't be proven
+  (the store can't be read, two conversations continue the old one, or one belongs to another instance), the move
+  is refused and nothing changes: tell the user why, don't retry with `start_fresh`.
 - After the move, `kiro_engine_status` shows `kiro_ui: tui` and `engine_floor: "tui"`.
 - It is one-way. AgEnD refuses to launch a moved instance on classic again, because that would resume the frozen
   classic copy and lose everything done since. A refusal that names the engine floor means someone set `kiro_ui`
   back. The fix is to set it to `tui` again, never to remove the floor.
+
+## Other kiro behaviour users ask about
+
+- **kiro never updates itself under AgEnD.** Every kiro process AgEnD starts carries `KIRO_NO_AUTO_UPDATE=1`, so a
+  self-update to kiro-cli 3.0 can't break classic instances. `app.disableAutoupdates: true` in
+  `~/.kiro/settings/cli.json` also stops kiro-cli's own updates; that file is the user's to change, not yours.
+- **Classic restarts follow a `/compact` (#2714, #2738)** to the conversation kiro kept writing, only on proof it is
+  this instance's. When it can't be proven, or the check passes its 30 s / 2 GiB limit, the instance resumes the
+  conversation on record and the Log tab says why.
+- **Two conversations after an interrupted carry (#2753).** When a stopped TUI instance has its original carried
+  conversation and a newer one with work, recovery holds instead of choosing. `reconcile_kiro_instance` (full and
+  coordinator tool sets) asks a fleet admin to confirm, in General, keeping the original and archiving the named
+  newer one intact. Offer it only after the user chose those exact ids; docs/kiro-reconciliation.md explains it.
+- **"Kiro's terminal is in use by another program" (#2682).** While a kiro pane runs `/editor`, `/transcript`, a
+  `!` command or a focused `/kvim` panel (legacy: `/editor`, `/reply`, `!`), AgEnD holds deliveries. Tell the user
+  to finish or close that program in the instance's pane; held messages go in once kiro's input row is back.
+- **A retired model (#2648).** An instance with no model of its own whose saved conversation uses a model kiro no
+  longer offers resumes on kiro's default model and says so once. One configured to use that model is told once to
+  pick another; it is never switched.
 
 ## One kiro agent per instance (#906)
 

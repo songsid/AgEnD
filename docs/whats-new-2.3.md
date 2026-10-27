@@ -6,7 +6,7 @@
 
 The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In short:
 
-- **How to update.** Send `/update` in General, or run `agend update` on the host. The update runs the new version's own installer. If an install is interrupted, run the install command again to repair it.
+- **How to update.** Send `/update` in General, or run `agend update` on the host (a beta install stays on betas; `agend update --stable` moves it to the stable release). The update runs the new version's own installer. If an install is interrupted, run the install command again to repair it.
 - **Root and WSL-style hosts (#2369).** On 2.2.x, an `agend update` run from a shell without `XDG_RUNTIME_DIR` (a plain `wsl` shell, `docker exec`, cron, or root) cannot reach the systemd user service and falls back to 2.2.x. Use this instead:
 
   ```bash
@@ -28,7 +28,7 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 | Task board daily summary | Off | `defaults.task_board.summary_at: "09:00"` (a 24-hour time in the fleet's time zone) |
 | A new `fleet.yaml` | Written with `defaults.dashboard.task_board: false` | Settings, or per agent with `dashboard` |
 | An existing `fleet.yaml` | Not rewritten; the task board stays available | Same as above |
-| Canvas Worker effects | Experimental, off | Settings → Web appearance → Experimental |
+| Canvas Worker effects | Experimental, off | Settings → Web dashboard |
 | CLI language | From `defaults.locale`. If unset: Chinese on a UTC+8 host, English otherwise | `defaults.locale: en` or `zh-TW` |
 | ClassicBot rooms | Echo web chat (`🌐 web · <name>: …`) | `web_echo: false` in `classicBot.yaml`, or untick **Web echo** in the room's Settings |
 | `agend fleet start` / `agend fleet stop` on a host with a service | Hand over to `agend start` / `agend stop` | `agend fleet start --direct`, from your own shell (not from an agent session) |
@@ -78,8 +78,8 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 
 - An agent's theme can cover the whole page: sidebar, title bar and right panel. Override it in **⋯ → Page colours**.
 - The identity card opens from one button in the chat title bar.
-- **App icon.** Upload an image under **Settings → Web appearance → App icon**. Your image is used when you add the dashboard to your home screen.
-- **Canvas Worker effects are experimental and off by default.** A local administrator can turn them on under **Settings → Web appearance → Experimental**. Effects run in an isolated Worker and cannot read the page's content or its input fields. Ambient effects, such as falling petals and click stars, are not affected.
+- **App icon.** Upload an image under **Settings → Web dashboard → App icon**. Your image is used when you add the dashboard to your home screen.
+- **Canvas Worker effects are experimental and off by default.** A local administrator can turn them on under **Settings → Web dashboard**. Effects run in an isolated Worker and cannot read the page's content or its input fields. Ambient effects, such as falling petals and click stars, are not affected.
 - The tool set menu lists the profile each agent actually uses when it has none of its own.
 
 ### Usage panel
@@ -97,7 +97,7 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 
 ### Public links and sign-in
 
-- **Your own domain.** Enter a Cloudflare named-tunnel hostname and token under **Settings → Web**. The public link then keeps the same address each time, so a home-screen shortcut keeps working. See [Named tunnel](named-tunnel.md).
+- **Your own domain.** Enter a Cloudflare named-tunnel hostname and token under **Settings → Access & security**. The public link then keeps the same address each time, so a home-screen shortcut keeps working. See [Named tunnel](named-tunnel.md).
 - **The token** can only be set or cleared. It is never shown again or written to the log. A badly formatted token is rejected with a message.
 - **Lifetime.** A quick tunnel's link lasts 1 to 480 minutes. A named link lasts 1 to 10080 minutes, or 0 for no expiry (`web.public_link.ttl_minutes`).
 - **Reopen after a restart.** `web.public_link.auto_open` (off by default) reopens a named link after the fleet restarts, for the admin who last opened it. The sign-in code is still required.

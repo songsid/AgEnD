@@ -20,6 +20,8 @@ agend update
 
 更新會執行新版本自己的安裝程式，更新 service 設定並重新啟動 fleet。之後不需要再執行 `agend install`。
 
+**用的是 beta？** `agend update` 會留在你安裝時的頻道，所以 beta 會繼續收到 beta。要換到正式版，請執行 `agend update --stable`。
+
 **root 或 WSL 類主機要多一步（#2369）**：如果 2.2.x 的 `agend update` 是在沒有 `XDG_RUNTIME_DIR` 的 shell 執行（一般的 `wsl` shell、`docker exec`、cron，或 root），它連不到 systemd 使用者服務，會退回 2.2.x。請改用：
 
 ```bash
@@ -90,7 +92,7 @@ launchd 的 plist 不會更動。要注意一點：2.3.x 在失敗前可能已�
 | 任務看板的每日摘要 | 關閉 | `defaults.task_board.summary_at: "09:00"`（fleet 所在時區的 24 小時制時間） |
 | 新建立的 `fleet.yaml` | 會寫入 `defaults.dashboard.task_board: false` | 在設定中修改，或為個別 agent 設定 `dashboard` |
 | 既有的 `fleet.yaml` | 不會被改寫，任務看板照常可用 | 同上 |
-| Canvas Worker 特效 | 實驗功能，預設關閉 | 設定 → 網頁外觀 → 實驗功能 |
+| Canvas Worker 特效 | 實驗功能，預設關閉 | 設定 → 網頁儀表板 |
 | CLI 語言 | 跟著 `defaults.locale`；沒設定時，UTC+8 的主機用中文，其他用英文 | 設定 `defaults.locale: en` 或 `zh-TW` |
 | ClassicBot 聊天室 | 會同步網頁聊天（`🌐 web · <名字>: …`） | 在 `classicBot.yaml` 設定 `web_echo: false`，或在該聊天室的 Settings 取消勾選「Web 同步」 |
 | 主機有安裝 AgEnD 服務時，手動執行 `agend fleet start` / `agend fleet stop` | 改交給 `agend start` / `agend stop` | 在自己的 shell（不是 agent session）執行 `agend fleet start --direct` |

@@ -314,7 +314,9 @@ tools are not in your list), you can publish them yourself instead of asking a p
   any failure the old one stays) and its previous version is kept. If a stored office's layout overrides would no
   longer fit (a seat count changed, a seat left its area, an item is gone), check and upload refuse with the office
   and the rule: fix the pack, or send `drop_invalid_overrides: true` to drop exactly those entries (the result names
-  them). With `"approve"` the answer is `{ pending }`: it waits for an admin's yes — say so; do not upload it again.
+  them). With `"approve"` the answer is `{ pending }`: it waits for an admin's yes — say so; do not upload it again. A pending change that drops layout entries is applied
+  only if it still drops exactly the entries its notice named: if an office was edited meanwhile, the approval is
+  refused and you send the change again (#2695).
 - `office_pack_restore { id }` brings back the previous version (the replaced one becomes the previous);
   `office_pack_delete { id, keep_previous? }`; `office_set_style { office, pack }` points a stored office at a pack or a
   built-in style (pixel, studio, cozy).

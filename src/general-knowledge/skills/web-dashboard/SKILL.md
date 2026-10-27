@@ -91,7 +91,7 @@ who is not a fleet admin gets a code privately, by sending `/web` or from an adm
 as their own Discord or Telegram account. What a guest sees:
 - **With explicit grants** (`web.guests.grants`, set in Settings → Access & security → Guests): exactly the agents an
   admin granted that person, nothing else (default deny once the key exists). The admin picks the person from people
-  AgEnD has seen writing to an agent, ticks their agents, saves (giving access or more agents waits for a fleet admin in
+  AgEnD has seen writing to an agent, ticks their agents (or ClassicBot rooms, #2667), saves (giving access or more agents waits for a fleet admin in
   General; taking away applies at once and ends their sessions), then presses **Send sign-in code**, a DM, never a post.
   Each code sent and each change to someone's access is in the event log (`guest_code_sent`, `guest_grant_changed`),
   shown to admins under **Recent changes** in that section (no agent's Log tab shows them).
@@ -331,8 +331,8 @@ starts with the first link and stops with the last; the token is shown once. The
 says to try again in a few minutes (no retry). `web.office_share.enabled: false` turns it off and ends open links.
 
 The Office fills the Fleet panel and moves like the Canvas (#2540): drag to pan, the wheel or a pinch to zoom,
-**+** / **−** / **Fit** / **Fill** at the top right (the zoom shown as a percentage above them) or the `+ - 0` keys
-(with the office focused), an overview at the bottom right to jump (not on a phone; hidden while a single office
+**+** / **−** / **Fit** / **Fill** at the top right (the zoom shown as a percentage above them; on a phone, outside
+fullscreen, a row along the top of the scene) or the `+ - 0` keys (with the office focused), an overview at the bottom right to jump (not on a phone; hidden while a single office
 is all in view, #2737). It takes the whole panel: the
 Fleet area's full width, down to the window's foot. **Fit** shows the whole scene as large as the panel allows
 (any scale, so it fills the panel's width or height); **Fill** (a toggle, kept per office) fills the panel instead,
@@ -399,7 +399,8 @@ to that instance's Log).
   colours only; status colours (Needs you count, state dots, errors, focus ring) never change. The header follows the
   page, not the chat. Off with agents' themes off or `?safe=1`.
 
-Phone layout: bottom tabs Chat, Needs you, Fleet, Settings. Chat is current on any of an agent's pages and goes to its
+Phone layout: bottom tabs Chat, Needs you, Fleet, Settings. Settings opens on its list of sections (search on top);
+each section opens on its own page with "‹ Settings", and dialogs and the setup wizard are full-screen sheets. Chat is current on any of an agent's pages and goes to its
 chat; View, Log and Details are the switch under the header.
 
 ## Usage and the cache report
@@ -516,7 +517,10 @@ signed in? kiro logs out first; **Use a temporary public link** where allowed), 
 sign-in terminal** + its one-time access code (this browser only, no DM). While it runs every admin page shows
 "Signing in to X (started on <device>)" with **Open**; another browser sees no code and may **Cancel sign-in**. Ends
 when the browser session ends. A missing CLI is not installed here (the dialog says the install command). agy and
-opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`).
+opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`). Default Kiro, Claude Code and Codex
+accounts sign in with named browser controls instead (#2599): Kiro's account method, Start URL and region and Claude's
+code are entered in the browser, Codex shows its link and device code; credential profiles keep the dialog above. A
+backend skipped at first setup shows in Needs you even before an agent uses it.
 
 **Agents** — **New agent**; per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
 (staged; on Apply it waits for a fleet admin's confirmation in General, then the agent is stopped and removed, as
@@ -553,10 +557,12 @@ Advanced **Context lines** (these restart the room's agent); Tool progress and R
 
 **Agent defaults** — **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
 changing it waits for a fleet admin's OK) and the fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW; read at startup: restart AgEnD), default
-backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard; Advanced: tool set, agent mode, log
+backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard, **Native replies trigger ClassicBot**
+(`reply_triggers`: a native reply triggers a ClassicBot bot; off by default, #2576); Advanced: tool set, agent mode, log
 level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
 **Stagger delay** (`startup.*`, used from the next agent start, no restart). ClassicBot defaults (in Chat & connections; `classicBot.yaml defaults.*`): default backend, tool
-progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
+progress, reply guard, **Native replies trigger ClassicBot** (`reply_triggers`, also per room), **ClassicBot admins**,
+**Allowed guilds**.
 
 **Access & security** (sessions, browser terminal, public link and fixed address, guests, web authority; web echo is in Chat & connections, the Log tab and usage over the link in **Web dashboard**) — all apply at once; loosening waits for an admin; disabled over a public link.
 | Label | Key |
@@ -583,7 +589,10 @@ connections are off (and the setup wizard); while those have unsaved changes, th
 
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
 **Create and start**. The directory may be left empty: the agent gets its own folder, `~/.agend/workspaces/<name>`
-(shown under the field); one that is entered must be absolute.
+(shown under the field); one that is entered must be absolute. On a Telegram or Discord connection the first agent
+is named `general` by default and becomes the fleet's General, in the chat's General topic or channel, when its
+directory is left empty; with a directory it is the worker `agent-1` and the fleet adds its General in its own folder.
+Once a fleet has a connection or a General, a new agent can't be called `general`.
 
 **First setup, before any fleet** (`agend setup`, the page the Windows installer opens): the same steps on its own
 page, in English or 繁體中文 (the browser's language; the button at the top switches). The working directory may be

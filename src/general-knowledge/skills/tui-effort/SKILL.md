@@ -18,7 +18,7 @@ instances:
 ```
 
 **kiro_ui 模式差異：**
-- `kiro_ui: tui`：Kiro v2 TUI（需明確設定；預設是 `legacy`）；本 skill 適用。
+- `kiro_ui: tui`：Kiro v2 TUI（新建立的 kiro instance 都會寫入這個值；沒設定 `kiro_ui` 的既有項目仍是 `legacy`）；本 skill 適用。
 - `kiro_ui: v3`：目前會被設定驗證拒絕，不要設定。
 - `kiro_ui: legacy`：舊 UI，互動行為不同，本 skill 不適用。
 

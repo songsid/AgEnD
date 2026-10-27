@@ -38,11 +38,13 @@ For `backend: kiro-cli` instances, `kiro_ui` selects the CLI's UI/agent profile:
 instances:
   my-kiro:
     backend: kiro-cli
-    kiro_ui: legacy    # default — current stable behavior
-    # kiro_ui: tui     # try the newer TUI
+    kiro_ui: tui       # what every new kiro instance is written with (#2598)
+    # kiro_ui: legacy  # the classic engine; also what an entry with no kiro_ui runs
 ```
 `kiro_ui: v3` is refused by validation — do not set it.
-Leave unset (or `legacy`) unless testing a newer profile. Ignored by other backends.
+kiro-cli 3.0 drops the classic engine. Never change `kiro_ui` by hand to move an instance: that starts it on an
+empty conversation. An existing classic instance moves with its conversation through `migrate_kiro_instance`
+(the kiro-engine-migration skill). Ignored by other backends.
 
 ## Reply completion guard
 

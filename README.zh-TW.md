@@ -120,6 +120,8 @@ curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
 ```
 
+在 Windows 全新安裝 beta 版時，先在同一個 PowerShell 視窗執行 `$env:AGEND_VERSION = 'beta'`（也可以填 `latest` 或指定版本）。
+
 或手動安裝：
 
 ```bash

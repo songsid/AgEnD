@@ -6,7 +6,7 @@
 
 依順序的步驟請看[從 2.2 升級到 2.3](upgrade-2.3.zh-TW.md)。重點如下：
 
-- **怎麼升級**：在 General 傳 `/update`，或在主機上執行 `agend update`。更新會執行新版本自己的安裝程式。安裝中途被打斷時，再執行一次安裝指令就能修好。
+- **怎麼升級**：在 General 傳 `/update`，或在主機上執行 `agend update`（beta 安裝會繼續收到 beta；`agend update --stable` 會換到正式版）。更新會執行新版本自己的安裝程式。安裝中途被打斷時，再執行一次安裝指令就能修好。
 - **root 或 WSL 類主機（#2369）**：2.2.x 的 `agend update` 如果是在沒有 `XDG_RUNTIME_DIR` 的 shell 執行（一般的 `wsl` shell、`docker exec`、cron，或 root），連不到 systemd 使用者服務，會自動退回 2.2.x。請改用：
 
   ```bash
@@ -28,7 +28,7 @@
 | 任務看板的每日摘要 | 關閉 | `defaults.task_board.summary_at: "09:00"`（fleet 所在時區的 24 小時制時間） |
 | 新建立的 `fleet.yaml` | 會寫入 `defaults.dashboard.task_board: false` | 在設定中修改，或為個別 agent 設定 `dashboard` |
 | 既有的 `fleet.yaml` | 不會被改寫，任務看板照常可用 | 同上 |
-| Canvas Worker 特效 | 實驗功能，預設關閉 | 設定 → 網頁外觀 → 實驗功能 |
+| Canvas Worker 特效 | 實驗功能，預設關閉 | 設定 → 網頁儀表板 |
 | CLI 語言 | 跟著 `defaults.locale`；沒設定時，UTC+8 的主機用中文，其他用英文 | 設定 `defaults.locale: en` 或 `zh-TW` |
 | ClassicBot 聊天室 | 會同步網頁聊天（`🌐 web · <名字>: …`） | 在 `classicBot.yaml` 設定 `web_echo: false`，或在該聊天室的 Settings 取消勾選「Web 同步」 |
 | 主機有安裝 AgEnD 服務時，手動執行 `agend fleet start` / `agend fleet stop` | 改交給 `agend start` / `agend stop` | 在自己的 shell（不是 agent session）執行 `agend fleet start --direct` |
@@ -78,8 +78,8 @@
 
 - agent 的主題可以套用到整個頁面：左側欄、標題列和右側欄都會換成它的顏色。可以在 **⋯ → 頁面配色** 覆蓋。
 - 身分卡從聊天標題列的一個按鈕開啟。
-- **App 圖示**：在 **設定 → 網頁外觀 → App 圖示** 上傳一張圖。「加入主畫面」時就會顯示你的圖。
-- **Canvas Worker 特效是實驗功能，預設關閉**。本機管理者可以在 **設定 → 網頁外觀 → 實驗功能** 開啟。特效在隔離的 Worker 中執行，無法讀取頁面內容或輸入欄位。落花、點擊星星這類環境效果不受影響。
+- **App 圖示**：在 **設定 → 網頁儀表板 → App 圖示** 上傳一張圖。「加入主畫面」時就會顯示你的圖。
+- **Canvas Worker 特效是實驗功能，預設關閉**。本機管理者可以在 **設定 → 網頁儀表板** 開啟。特效在隔離的 Worker 中執行，無法讀取頁面內容或輸入欄位。落花、點擊星星這類環境效果不受影響。
 - 沒有自己設定的 agent，工具集選單會列出它實際生效的 profile。
 
 ### 用量面板
@@ -97,7 +97,7 @@
 
 ### 公開連結與登入
 
-- **自己的網域**：在 **設定 → 網頁** 填入 Cloudflare 具名 tunnel 的 hostname 和 token。之後每次開啟公開連結都是同一個網址，手機「加入主畫面」的捷徑不會失效。詳見[具名 tunnel](named-tunnel.zh-TW.md)。
+- **自己的網域**：在 **設定 → 存取與安全** 填入 Cloudflare 具名 tunnel 的 hostname 和 token。之後每次開啟公開連結都是同一個網址，手機「加入主畫面」的捷徑不會失效。詳見[具名 tunnel](named-tunnel.zh-TW.md)。
 - **token** 只能設定或清除，設定後讀不回來，也不會出現在 log 裡。格式不對會直接提示。
 - **有效時間**：快速 tunnel 的連結為 1 到 480 分鐘。具名連結為 1 到 10080 分鐘，或 0 代表不過期（`web.public_link.ttl_minutes`）。
 - **重啟後自動重開**：`web.public_link.auto_open`（預設關閉）會在 fleet 重啟後，替最後開啟連結的管理者重新打開連結。登入碼仍然需要。

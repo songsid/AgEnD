@@ -39,7 +39,7 @@ CLI 程序當掉時，daemon 的健康檢查會發現 tmux 視窗已經不在，
 1. **快照** — 把最近的使用者訊息、工具活動和狀態列資料收集到 `rotation-state.json`
 2. **清理程序** — 用 process group 訊號結束整棵程序樹（CLI 加上 MCP server），並依 PID 檔結束任何殘留的 MCP server
 3. **嘗試 resume** — 用 `--resume` 恢復完整的對話歷史
-4. **退而求其次** — resume 失敗時，開一個全新的 session，並把快照當作 context 注入
+4. **退而求其次** — resume 失敗時，開一個全新的 session，並把快照當作 context 注入。多次 resume 失敗後，先前的對話會移到 instance 資料夾保留（不會刪除），AgEnD 會在該 instance 的 topic 和 General 說明它的 context 已遺失，計畫內的重啟也一樣。ClassicBot 的通知只送到 General。這個事件會出現在紀錄分頁，webhook 也會收到 `context_lost`（#749）。
 5. **退避** — 反覆當機時採指數退避；5 分鐘滑動視窗內當機 3 次以上就暫停重啟
 
 同一工作階段的 CLI 兩次確認為記憶體不足的主要來源時，才會停止自動恢復。單純被核心選為終止對象並不足夠：未受限的全域 OOM 紀錄必須顯示，其匿名記憶體至少佔 RAM 的 50%，且至少為下一個最大程序 RSS 的兩倍。共用 cgroup 或證據不完整時不會累計。被其他程序波及時，會保留工作階段、重設自身 OOM 次數，等記憶體壓力解除後經共用啟動閘門恢復，也不消耗快速當機的重試預算。歸因不明時仍受一般當機重試上限約束；達到上限時會說明「記憶體不足，原因不明」，提供「繼續」與「新的工作階段」，不會寫入自身 OOM 停止紀錄。General 與「需要你」會顯示證據，提供「繼續」或「新的工作階段」；兩者都保留舊對話紀錄。停止紀錄會跨重啟保留，但升級時會解除舊有僅能證明受害者身分的紀錄並寫入日誌。非本人擁有、符號連結或無法安全讀取的紀錄仍會拒絕。目前歸因需要 Linux 上可確認工作階段的 Claude Code 與可讀的核心日誌；此變更不新增個別 Agent 的記憶體上限。
@@ -214,11 +214,11 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 
 ## 回覆完成守衛（`reply_completion_guard`）
 
-人類傳來的訊息必須透過 `reply`（或 `react`）工具回覆；agent 只印在自己終端機裡的文字，永遠到不了聊天室。在 Claude Code 上，回覆完成守衛會發現「面向人類的這一輪已經結束，卻沒有送出任何回覆」的情況：
+人類傳來的訊息必須透過 `reply`（或 `react`）工具回覆；agent 只印在自己終端機裡的文字，永遠到不了聊天室。在 Claude Code、Codex、Muse 以及 Kiro legacy／TUI 啟動上（見[設定](configuration.zh-TW.md)的 `reply_completion_guard`），回覆完成守衛會發現「面向人類的這一輪已經結束，卻沒有送出任何回覆」的情況：
 
 - 它會等到 instance 確實處理過這一輪、而且接著閒置滿 60 秒才判斷，所以這一輪中途的停頓不會被誤認為結束。
 - 接著它會提醒 agent 一次，請它用 `reply` 或 `react` 送出結論，不必重做一遍。
-- 如果 agent 嘗試過回覆但結果不明（可能已經送出、只是逾時），守衛不會重試，所以你不會收到兩次答案；聊天室裡會出現一則簡短通知，說明這則回覆無法確認。
+- 如果 agent 嘗試過回覆但結果不明（可能已經送出、只是逾時），守衛不會重試，所以你不會收到兩次答案。補送中與送達未確認只記在 daemon.log 與該 instance 的紀錄分頁；只有補送失敗才會在聊天裡顯示一行簡短警告：說明這可能是誤報、絕不建議 `/clear`，每個 instance 有頻率限制（#2566）。排程、靜默排程、跨 instance 更新與系統通知本來就不用回人，所以不會觸發它（#2544）。
 
 預設開啟（`reply_completion_guard: true`）；要關掉，就依 instance、在 `defaults` 裡，或依 ClassicBot 頻道設為 `false`。
 
@@ -759,10 +759,21 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 - 它會在 General 貼出「搬過去／取消」提示，fleet admin 在那裡確認之前什麼都不會變。
 - 確認後，AgEnD 會設定 `kiro_ui: tui`，把 instance 的經典對話預備為它的 TUI 對話，並重啟執行中的 instance。第一次 TUI 啟動會接續那個對話一次（kiro 因此把整段歷史複製到它的 session 檔），並登記為 instance 自己的對話。
 - 結果會貼在 General 和該 instance 的 topic。
+- 搬移時會檢查 instance 是否閒置、kiro 版本與模型，只帶入一次對話，再以一般重啟驗證接回同一段對話與模型。期間訊息會等待；失敗就停止、讓 instance 進入錯誤暫停並說明。
+- classic kiro 做過 `/compact` 後，會用新的對話 id 繼續。搬移會沿著 classic 重啟時走的同一條、經過證明的壓縮鏈（見下方），帶走最新的對話。若壓縮鏈無法證明（讀不到儲存區、有兩個延續的對話，或延續的對話屬於其他 instance），搬移會被拒絕，什麼都不改。
+- 已帶入的對話重新啟動前，凍結的經典副本會先封存，之後才從 kiro 的經典儲存區移除；可用 `agend kiro restore-classic` 還原（[CLI](cli.zh-TW.md#還原凍結的-kiro-classic-備份)）。
 - 沒有經典對話紀錄的 instance 會被拒絕，除非加上 `start_fresh: true`。
 - 目前還不搬 ClassicBot 頻道。
 
 搬移是單向的。instance 在 TUI 上執行過之後，AgEnD 就不會再用經典引擎啟動它（`engine_floor: "tui"`），因為那會接回凍結的經典副本，失去之後做的一切。TUI 啟動也不再使用 kiro 的單純 `--resume`：它會從任一引擎挑出資料夾裡最新的對話。沒有自己的對話紀錄時（較舊的 kiro-cli），TUI 啟動會開新對話並說明。
+
+如果 TUI instance 同時有原本帶入的對話和一個較新、有工作的對話，自動恢復會停住而不替你選；[處理中斷的 Kiro 對話帶入](kiro-reconciliation.zh-TW.md) 說明 `reconcile_kiro_instance`。
+
+**kiro 在 AgEnD 底下不會自行更新（#2598）。** AgEnD 啟動的每個 kiro 程序（instance，以及版本、help 與模型清單的檢查）都帶有 `KIRO_NO_AUTO_UPDATE=1`，所以不會自行更新到 kiro-cli 3.0、讓經典 instance 當場壞掉。若要讓 kiro-cli 本身也停止更新，請在 `~/.kiro/settings/cli.json` 把 `app.disableAutoupdates` 設為 `true`。
+
+**經典引擎的重啟會接上 `/compact` 之後的對話（#2714、#2738）。** classic kiro 壓縮對話後會用新的 id 繼續。AgEnD 會跟著壓縮，改用 kiro 實際繼續寫入的那個對話，但前提是能證明它屬於這個 instance：同一個目錄與儲存區、建立時間晚於舊對話的最後寫入、帶有 kiro 的壓縮摘要、transcript 延續舊對話，而且沒有被其他 instance 認領。若有兩個對話都延續舊對話，或讀不到儲存區，AgEnD 會保留原本記錄的 id，並在紀錄分頁說明原因。這項檢查在背景 worker 上把每份 transcript 只讀一次，每個工作目錄限時 30 秒、最多 2 GiB；超過任一限制時，instance 會照紀錄接續原本的對話，紀錄分頁也會說明。TUI 的 V2 引擎壓縮後 id 不變。記錄中對話的認領不見、不完整、被其他 instance 持有或已被放棄時，啟動警告會指出被擱置的是哪個對話，以及原因。
+
+**接續的對話用的模型已被停用（#2648）。** 對沒有自己模型的 instance（instance 沒設、fleet 預設也沒設），AgEnD 會檢查它要接續的對話所存的模型。若 kiro 已不再提供，instance 會改用 kiro 的預設模型接續同一個對話，並在它的 topic 說一次。若事先無法判斷，第一次出現「Model unavailable」時會用預設模型重新啟動 instance 一次。設定成使用該無法使用模型的 instance 不會被換掉：只會提醒一次改選其他模型。
 
 ## agend quickstart
 
@@ -802,7 +813,7 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 **公開連結。** 如果手機連不到這台機器，`claude-code` 或 `kiro-cli` 的登入可以透過 Cloudflare Quick Tunnel 提供一個暫時的公開 https 連結：確認訊息上有 **I understand (temporary public link)**、**I understand (local network)** 和 **Cancel** 三個按鈕，按下第一個就代表同意，每次登入問一次。`PATH` 上有 `cloudflared` 就用它；沒有的話，AgEnD 會把 Cloudflare 的版本下載到 `~/.agend/bin/`，只下載一次，版本固定，並以隨附的 SHA256 驗證。連結和存取權杖會分成兩則私訊傳給你，絕不貼在頻道裡；登入不論以何種方式結束，tunnel 都會關閉。TLS 在 Cloudflare 端解開，所以 Cloudflare 看得到那個終端機。設定 `web_terminal.tunnel.allow_public: false` 可以在這台主機上關閉這個選項。詳見 [configuration](configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
 
-**從網頁 dashboard 登入（2.3，#2233）。** 在這台機器或它的網路上登入 dashboard 的 fleet 管理員（不是透過公開連結，也不是訪客）不需要任何聊天連線也能做同樣的事：**設定 → Agent → 登入** 列出每個 backend 的登入，以及代理使用的每個憑證設定檔，附 **登入** 按鈕；網頁的 `/backend` 選單在未登入的 backend 旁提供 **登入 <backend>**；**需要你** 在因登入而暫停的代理上提供 **登入**。對話框跑的是同一個流程：裝置碼直接顯示在對話框；瀏覽器終端機登入會顯示 **開啟登入終端機** 和一次性存取碼，只給這個瀏覽器工作階段（不經過私訊，所以只用網頁的 fleet 不需要 bot）。檢查、次數限制和 10 分鐘的時限都相同，公開連結仍是每次登入自行選擇；進行中時每個管理員頁面都會顯示，附 **開啟**（啟動它的瀏覽器看得到連結和代碼，其他人只看得到是誰、在哪裡，並可取消）。啟動它的瀏覽器工作階段結束時，登入會被取消。這裡不會安裝尚未安裝的 CLI：對話框會給出安裝指令。
+**從網頁 dashboard 登入（2.3，#2233）。** 在這台機器或它的網路上登入 dashboard 的 fleet 管理員（不是透過公開連結，也不是訪客）不需要任何聊天連線也能做同樣的事：**設定 → Agent → 登入** 列出每個 backend 的登入，以及代理使用的每個憑證設定檔，附 **登入** 按鈕；網頁的 `/backend` 選單在未登入的 backend 旁提供 **登入 <backend>**；**需要你** 在因登入而暫停的代理上提供 **登入**。對話框跑的是同一個流程：裝置碼直接顯示在對話框；瀏覽器終端機登入會顯示 **開啟登入終端機** 和一次性存取碼，只給這個瀏覽器工作階段（不經過私訊，所以只用網頁的 fleet 不需要 bot）。檢查、次數限制和 10 分鐘的時限都相同，公開連結仍是每次登入自行選擇；進行中時每個管理員頁面都會顯示，附 **開啟**（啟動它的瀏覽器看得到連結和代碼，其他人只看得到是誰、在哪裡，並可取消）。啟動它的瀏覽器工作階段結束時，登入會被取消。這裡不會安裝尚未安裝的 CLI：對話框會給出安裝指令。預設的 Kiro、Claude Code 與 Codex 帳號則改用具名的瀏覽器登入控制項（#2599；[詳細說明](configuration.zh-TW.md#首次設定時從瀏覽器登入後端)），首次設定時略過的後端，即使還沒有 agent 使用，也會列在 **Needs you**。
 
 登入成功後，這個後端執行中的 instance 會重啟，以套用新的憑證。打字 `/install-cli` 只會印一行指向 `/login`，不會執行登入；它不會出現在任何指令選單裡。
 
@@ -915,6 +926,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 | 這個目錄有 session | `codex resume <id>` |
 | 這個目錄沒有 session（例如共用 repo 裡新建的 instance） | 新對話 |
 | 讀不到 session 資料庫，且同一個 git repo 裡有其他 Codex instance | 新對話，並在該 instance 的 topic 發通知 |
+| 還沒有 session 資料庫（這台機器從未執行過 Codex），且這個目錄沒有 Codex 歷史 | 開新對話，不發通知（#2743） |
 | 讀不到 session 資料庫，且 repo 裡沒有其他 Codex instance | `codex resume --last`，並發通知 |
 
 AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 Codex home（`$CODEX_HOME`，預設值：`~/.codex`），所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
@@ -1038,7 +1050,7 @@ instances:
     systemPrompt: "file:prompts/role.md"
 ```
 
-相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。這個目錄只是相對路徑的*起點*，不是邊界：`../` 與符號連結可以離開它，就像絕對路徑可以指向 fleet 使用者讀得到的任何檔案一樣。`~name/`（其他使用者的家目錄）不支援，會發出警告並拒絕，絕不會當成名為 `~name` 的目錄來讀。這項變更以前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。為了相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。2.2 目前仍實作這個退回機制；請將檔案移到 instance 的工作目錄以消除警告。
+相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。這個目錄只是相對路徑的*起點*，不是邊界：`../` 與符號連結可以離開它，就像絕對路徑可以指向 fleet 使用者讀得到的任何檔案一樣。`~name/`（其他使用者的家目錄）不支援，會發出警告並拒絕，絕不會當成名為 `~name` 的目錄來讀。這項變更以前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。為了相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。這個退回機制仍然存在，之後的版本會移除；請將檔案移到 instance 的工作目錄以消除警告。
 
 可以用逗號串接多個部分（`"file:a.md, file:b.md"`，中間也可以夾行內文字），各部分之間以空行連接。**只有至少一個部分是 `file:` 參照時**才會以逗號切分，所以像 `"You are Kuro, a careful reviewer"` 這樣的行內提示會維持一段。讀不到、超過 256 KiB，或不是一般檔案（例如 FIFO 或裝置，開啟時不會阻塞）的檔案不會貢獻任何內容；log 會列出它的路徑與錯誤（絕不列出內容），設定驗證也會對找不到檔案的參照發出警告。`workflow: "file:…"` 設定也用同樣的方式讀檔。
 
