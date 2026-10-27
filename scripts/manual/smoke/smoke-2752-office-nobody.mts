@@ -129,6 +129,7 @@ await showOffice(admin.page, decor.id);
 const d3 = await desks(admin.page);
 const stored3 = onDisk().find((o: any) => o.id === decor.id).members;
 await admin.page.screenshot({ path: shotPath(SMOKE, C, "3-picked") });
+const chrome3 = { edit: await admin.page.locator(".oo-edit").count(), share: await admin.page.locator(".oo-share").count(), tier: await admin.page.evaluate("document.body.dataset.tier || ''") };
 const e3b = await edit(admin.page, "nobody");
 await showOffice(admin.page, decor.id);
 const d3b = await desks(admin.page);
@@ -136,13 +137,14 @@ record("3 → Picked (one) → Save; → Nobody → Save", {
   "Everyone chosen when opened": e3.readBack === "everyone",
   "the button says 1 picked": e3.after === "Who is in it: 1 picked",
   "PUT answered 200": e3.status === 200,
+  "Edit offices still offered": chrome3.edit === 1,
   "stored as that one": JSON.stringify(stored3) === JSON.stringify([first]),
   "one seated": d3 === 1,
   "Picked chosen when opened again": e3b.readBack === "picked",
   "stored as nobody again": JSON.stringify(onDisk().find((o: any) => o.id === decor.id).members) === '["team:"]',
   "no one seated": d3b === 0,
   "no page error": admin.errors.length === 0,
-}, { first, e3, stored3, d3, e3b, d3b });
+}, { first, e3, stored3, d3, chrome3, e3b, d3b });
 
 // ── 4. A second fresh profile (read-only) ──
 fm.initializeWebSessions();
