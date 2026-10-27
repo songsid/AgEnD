@@ -1853,6 +1853,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ol-seat > circle { fill: var(--ok); }
 .ol-furniture > rect { fill: var(--warn); }
 .ol-door > rect { fill: var(--danger); }
+/* #2736: the mail drop — an envelope; dashed while it is the automatic spot (the pack names none). */
+.ol-mail > rect { fill: var(--accent-dim); }
+.ol-mail > .ol-flap { fill: none; stroke: var(--text); stroke-width: 1.5; pointer-events: none; }
+.ol-mail.auto > rect { stroke-dasharray: 3 2; fill-opacity: 0.6; }
 /* #2665: an item's night place — a moon on a faint disc, a thin dashed line to its day place. */
 .ol-night > circle { fill: var(--surface); fill-opacity: 0.85; }
 .ol-night > .ol-moon { fill: var(--warn); stroke: none; pointer-events: none; }

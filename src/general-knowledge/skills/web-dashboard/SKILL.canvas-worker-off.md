@@ -280,7 +280,8 @@ buttons in General); every change is logged and told in General. **Style** (per 
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
 own) or an uploaded pack; one the page cannot load is drawn as Desks with a note. On a stored office in Studio,
 Cozy or a pack,
-**Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door and
+**Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door, the mail drop
+(an envelope: where letters from other offices land; dashed on a pack without a `mailDrop`, #2736) and
 waypoints (or Tab to one and use the arrow keys, Shift for 10), add or remove waypoints and join or unjoin
 corridors; an item that sleeps at bedtime (a pack's `night`) has a night handle too ("Item {id} (night)": its night
 picture faint, a moon, a line to its day place; on the day place while it sleeps in place) — drag it to give the item

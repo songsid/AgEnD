@@ -13,10 +13,10 @@ for (const api of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFi
 syncBuiltinESMExports();
 const { normalizeOfficeStorage, dashboardFeaturesOffIn } = await import('../dist/dashboard-permissions.js');
 const { OfficeStore } = await import('../dist/web-office-store.js');
-// #2706: one office with every part of an Edit layout (the night places and reservations kept beside it since
-// #2665/#2691; the rest since #2706), one without.
+// #2706: one office with every part of an Edit layout (the night places, reservations and mail drop kept beside it
+// since #2665/#2691/#2736; the rest since #2706), one without.
 const LAID = { id: 'laid', name: 'Laid out', skin: 'snug', members: ['team:core'],
-  overrides: { pack: 'snug', door: [600, 710], seats: { lounge: [[780, 280]] }, furnitureNight: { bed: [300, 420] }, seatFor: { desks: { 0: { for: ['alpha'], lend: false } } } } };
+  overrides: { pack: 'snug', door: [600, 710], seats: { lounge: [[780, 280]] }, furnitureNight: { bed: [300, 420] }, seatFor: { desks: { 0: { for: ['alpha'], lend: false } } }, mailDrop: [640, 420] } };
 const PLAIN = { id: 'plain', name: 'Plain', skin: 'studio', members: [] };
 const bare = ({ overrides, ...o }) => o;
 const roots = process.argv.slice(2); assert.ok(roots.length, 'pass published package roots');

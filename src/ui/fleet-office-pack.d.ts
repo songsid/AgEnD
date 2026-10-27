@@ -12,6 +12,8 @@ export interface PackFurniture { id: string; sprite: PackStrip; x: number; y: nu
 export interface CheckedPack {
   format: 1; id: string; scale: number; background?: string; foreground?: string; matte?: string;
   areas: Record<string, PackArea>; stateZones: Record<string, string> | null; door: PackPoint;
+  /** #2736: where a letter from another office lands, or null (the waypoint nearest the middle). */
+  mailDrop: PackPoint | null;
   waypoints: Array<{ id: string; x: number; y: number }>; edges: Array<[string, string]>;
   furniture: PackFurniture[]; characters: Record<string, Record<string, PackStrip>>; byInstance: Record<string, string>;
   props: Record<string, PackStrip>; bubbles: Record<string, Record<string, string[]>>;
@@ -26,6 +28,8 @@ export interface LayoutOverrides {
   /** #2691: a seat's reservation by area and slot ("0", "1", …), in place of the pack's; `for: []` is none. */
   seatFor?: Record<string, Record<string, { for: string[]; lend: boolean }>>;
   door?: [number, number];
+  /** #2736: where a letter from another office lands. */
+  mailDrop?: [number, number];
   waypoints?: Array<{ id: string; x: number; y: number }>;
   edges?: Array<[string, string]>;
 }

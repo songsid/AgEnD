@@ -140,7 +140,7 @@ export function zonesLayout(pack, nodes, prev = new Map(), { night = false } = {
     return { key: `zone/${n.name}`, node: n, x: s.x - 24, y: s.y - 52, w: 48, h: 66, seat: { x: s.x, y: s.y }, wp: null, area: s.area, slot: s.slot, night: sleepers.has(n.name) };
   });
   return { mode: "zones", rooms: [{ key: "\u0000zones", name: null, lobby: false, x: 0, y: 0, w: LOGICAL.w, h: LOGICAL.h, desks }], areas: pack.areas,
-    waypoints: pack.waypoints || [], edges: pack.edges || [], straight: pack.straight === true, door: pack.door, width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };
+    waypoints: pack.waypoints || [], edges: pack.edges || [], straight: pack.straight === true, door: pack.door, mailDrop: pack.mailDrop || null, width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };
 }
 
 // ── Walking ──
@@ -227,7 +227,9 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
  */
 export const MAIL = { MAX_WAIT: 60000, GAP: 16, SEARCH: 320, ASLEEP: new Set(["paused", "stopped"]), MAX: 20 };
 /**
- * Where the `n`th waiting letter lands: `n` GAPs along from the waypoint nearest the room's middle — the nearest whose
+ * Where the `n`th waiting letter lands. #2736: the layout's `mailDrop` when it has one — the `n`th of the slots GAP
+ * apart rightwards from it that no seat is on (never beyond the room's right edge); fewer than that, today's rule. Otherwise `n`
+ * GAPs along from the waypoint nearest the room's middle — the nearest whose
  * spot (offset included) no seat of the office is on, taken or free (someone may sit there any moment; #2561 likewise);
  * with none, the nearest point round the middle (rings GAP·2 apart, inside the room) that no seat is on; with none of
  * those either, null — the letter is not delivered here (never on a seat).
@@ -236,6 +238,12 @@ export function dropPoint(L, n = 0) {
   const mid = { x: L.width / 2, y: L.height * 0.55 }, d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
   const seats = [...Object.values(L.areas || {}).flatMap((a) => a.seats || []), ...desksIn(L).map((q) => q.seat)];
   const onSeat = (p) => seats.some((q) => d(p, q) < 4);
+  // #2751 review: the nth off-seat slot (slots GAP apart from the mailDrop), so two letters never share one.
+  const md = L.mailDrop;
+  if (md) for (let i = 0, free = 0; md.x + i * MAIL.GAP <= L.width; i++) {
+    const p = { x: Math.round(md.x + i * MAIL.GAP), y: Math.round(md.y) };
+    if (!onSeat(p) && free++ === n) return p;
+  }
   const spots = (L.waypoints || []).map((w) => ({ x: Math.round(w.x + n * MAIL.GAP), y: Math.round(w.y), from: w }))
     .filter((p) => !onSeat(p.from) && !onSeat(p)).sort((p, q) => d(p.from, mid) - d(q.from, mid));
   if (spots.length) return { x: spots[0].x, y: spots[0].y };

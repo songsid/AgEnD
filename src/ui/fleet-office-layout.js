@@ -8,6 +8,9 @@
 // seats' figures, #2558), a moon, and a thin line to its day place. One that sleeps in place shows it on its day place
 // (and it follows the item); dragged away, the item has its own night place; its Reset puts back the pack's.
 //
+// #2736: the mail drop — where letters from other offices land — is a handle too (an envelope). On a pack without
+// one it stands, dashed, where letters land today (fleet-office-zones.js dropPoint); dragged, the office has its own.
+//
 // #2691: a selected seat lists the office's members under "Reserved for" (several may be picked) and "Lend when
 // away": whoever it is for takes it first, and nobody else does unless it is lent while they are all elsewhere
 // (fleet-office-zones.js assignSeats). Saved as the overrides' `seatFor` by area and slot; a reserved seat's handle
@@ -22,13 +25,14 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/as
 import { t, register } from "/assets/app-i18n.js";
 import { SidePanel } from "/assets/side-panel.js";
 import { LOGICAL, overridesBetween, own } from "./fleet-office-pack.js";
+import { dropPoint } from "./fleet-office-zones.js";
 
 register("orgl", {
   en: {
     edit: "Edit layout", title: "Edit layout", coords: "Show coordinates", addWaypoint: "Add waypoint", removeWaypoint: "Remove waypoint",
-    joinTo: "Join to", join: "Join", unjoin: "Unjoin {0}", corridors: "Corridors", none: "Nothing selected: pick a seat, an item, the door or a waypoint.",
+    joinTo: "Join to", join: "Join", unjoin: "Unjoin {0}", corridors: "Corridors", none: "Nothing selected: pick a seat, an item, the door, the mail drop or a waypoint.",
     reset: "Reset to the pack's layout", save: "Save layout", cancel: "Cancel", saved: "Layout saved.", hint: "Drag, or use the arrow keys (Shift: by 10).",
-    seat: "Seat {0} in {1}", furniture: "Item {0}", night: "Item {0} (night)", door: "Door", waypoint: "Waypoint {0}", at: "{0} at {1}, {2}",
+    seat: "Seat {0} in {1}", furniture: "Item {0}", night: "Item {0} (night)", door: "Door", mail: "Mail drop", mailAuto: "Mail drop (where letters land now; drag to place it)", waypoint: "Waypoint {0}", at: "{0} at {1}, {2}",
     nightReset: "Back to the pack's night place",
     seatFor: "Seat {0} in {1}, reserved for {2}", reservedFor: "Reserved for", lend: "Lend when away", nobody: "No members to pick.",
     changed: "Someone changed the offices meanwhile. Your layout is kept: Save again puts it on the current list.",
@@ -37,9 +41,9 @@ register("orgl", {
   },
   "zh-TW": {
     edit: "編輯配置", title: "編輯配置", coords: "顯示座標", addWaypoint: "新增路徑點", removeWaypoint: "移除路徑點",
-    joinTo: "連到", join: "連接", unjoin: "取消連接 {0}", corridors: "走道", none: "尚未選取：請選座位、家具、門或路徑點。",
+    joinTo: "連到", join: "連接", unjoin: "取消連接 {0}", corridors: "走道", none: "尚未選取：請選座位、家具、門、信件落點或路徑點。",
     reset: "還原成 pack 的配置", save: "儲存配置", cancel: "取消", saved: "配置已儲存。", hint: "拖曳，或用方向鍵移動（Shift：一次 10）。",
-    seat: "{1} 的座位 {0}", furniture: "家具 {0}", night: "家具 {0}（夜間）", door: "門", waypoint: "路徑點 {0}", at: "{0}，位置 {1}, {2}",
+    seat: "{1} 的座位 {0}", furniture: "家具 {0}", night: "家具 {0}（夜間）", door: "門", mail: "信件落點", mailAuto: "信件落點（目前信件落下的位置；拖曳即可指定）", waypoint: "路徑點 {0}", at: "{0}，位置 {1}, {2}",
     nightReset: "回到 pack 的夜間位置",
     seatFor: "{1} 的座位 {0}，保留給 {2}", reservedFor: "保留給", lend: "不在時借給別人", nobody: "沒有可選的成員。",
     changed: "有人在這期間修改了辦公室。你的配置已保留：再按一次儲存，會套用到目前的清單。",
@@ -57,7 +61,7 @@ const nightAt = (f) => (f.night.x !== null && f.night.x !== undefined && f.night
 /**
  * Every handle on a pack: { key, kind, label, x, y } — seats by area (#2691: `for` and `lend` when reserved),
  * furniture, each item's night place (#2665: an item with a `night`; `day` its day place, `inPlace` while it sleeps
- * there), the door, the waypoints.
+ * there), the door, the mail drop (#2736: `auto` where the pack has none — where letters land now), the waypoints.
  */
 export function handlesOf(pack) {
   const out = [];
@@ -71,6 +75,8 @@ export function handlesOf(pack) {
     out.push({ key: `night:${f.id}`, kind: "night", label: tl("night", f.id), x: n.x, y: n.y, day: { x: f.x, y: f.y }, inPlace: !n.own });
   }
   out.push({ key: "door", kind: "door", label: tl("door"), x: pack.door.x, y: pack.door.y });
+  const md = pack.mailDrop || dropPoint({ areas: pack.areas, waypoints: pack.waypoints, width: LOGICAL.w, height: LOGICAL.h });
+  if (md) out.push({ key: "mail", kind: "mail", label: tl(pack.mailDrop ? "mail" : "mailAuto"), x: md.x, y: md.y, ...(pack.mailDrop ? {} : { auto: true }) });
   for (const w of pack.waypoints) out.push({ key: `wp:${w.id}`, kind: "waypoint", label: tl("waypoint", w.id), x: w.x, y: w.y });
   return out;
 }
@@ -87,6 +93,7 @@ export function moveHandle(pack, key, x, y) {
   if (kind === "furn") return { ...pack, furniture: pack.furniture.map((f) => (f.id === a ? { ...f, ...inCanvas() } : f)) };
   if (kind === "night") return { ...pack, furniture: pack.furniture.map((f) => (f.id === a && f.night ? { ...f, night: { ...f.night, ...inCanvas() } } : f)) };
   if (kind === "door") return { ...pack, door: inCanvas() };
+  if (kind === "mail") return { ...pack, mailDrop: inCanvas() };
   if (kind === "wp") return { ...pack, waypoints: pack.waypoints.map((w) => (w.id === a ? { ...w, ...inCanvas() } : w)) };
   return pack;
 }
@@ -255,10 +262,11 @@ export function LayoutEditor({ base, start, place = null, stale = "", dock = tru
         ${Object.values(edited.areas).map((a) => html`<rect key=${`a:${a.name}`} class="ol-area" x=${a.rect.x} y=${a.rect.y} width=${a.rect.w} height=${a.rect.h} />`)}
         ${edited.edges.map((e) => { const p = at.get(e[0]), q = at.get(e[1]); return p && q ? html`<line key=${`e:${edgeKey(e)}`} class="ol-edge" x1=${p.x} y1=${p.y} x2=${q.x} y2=${q.y} />` : null; })}
         ${handles.filter((h) => h.kind === "night" && !h.inPlace).map((h) => html`<line key=${`nl:${h.key}`} class="ol-night-line" x1=${h.day.x} y1=${h.day.y} x2=${h.x} y2=${h.y} />`)}
-        ${[...handles.filter((h) => h.kind === "night"), ...handles.filter((h) => h.kind !== "night")].map((h) => html`<g key=${h.key} class=${`ol-handle ol-${h.kind}${h.for ? " reserved" : ""}${sel === h.key ? " on" : ""}`} data-handle=${h.key} tabindex="0" role="button"
+        ${[...handles.filter((h) => h.kind === "night"), ...handles.filter((h) => h.kind !== "night")].map((h) => html`<g key=${h.key} class=${`ol-handle ol-${h.kind}${h.for ? " reserved" : ""}${h.auto ? " auto" : ""}${sel === h.key ? " on" : ""}`} data-handle=${h.key} tabindex="0" role="button"
             aria-label=${tl("at", h.label, h.x, h.y)} aria-pressed=${sel === h.key ? "true" : "false"}
             onPointerDown=${down(h.key)} onKeyDown=${keyOn(h)} onFocus=${() => setSel(h.key)}>
           ${h.kind === "door" ? html`<rect x=${h.x - 9} y=${h.y - 9} width="18" height="18" transform=${`rotate(45 ${h.x} ${h.y})`} />`
+            : h.kind === "mail" ? html`<rect x=${h.x - 10} y=${h.y - 7} width="20" height="14" /><path class="ol-flap" d=${`M${h.x - 10} ${h.y - 7}L${h.x} ${h.y + 1}L${h.x + 10} ${h.y - 7}`} />`
             : h.kind === "furniture" ? html`<rect x=${h.x - 8} y=${h.y - 8} width="16" height="16" />`
             : h.kind === "night" ? html`<circle cx=${h.x} cy=${h.y} r=${h.inPlace ? 15 : 8} /><path class="ol-moon" d=${h.inPlace ? moonPath(h.x + 10, h.y - 10) : moonPath(h.x, h.y)} />`
             : h.kind === "seat" && h.for ? html`<circle class="ol-for-ring" cx=${h.x} cy=${h.y} r="13" /><circle cx=${h.x} cy=${h.y} r="9" />`
