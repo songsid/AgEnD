@@ -82,6 +82,10 @@ describe("where letters land", () => {
   it("never on a seat: on past it by GAP; nothing off the seats up to the right edge: today's rule", () => {
     expect(Z.dropPoint(L({ x: 300, y: 200 }, [{ x: 300, y: 200 }]))).toEqual({ x: 300 + Z.MAIL.GAP, y: 200 });
     expect(Z.dropPoint(L({ x: 300, y: 200 }, [{ x: 300 + Z.MAIL.GAP, y: 200 }]), 1)).toEqual({ x: 300 + 2 * Z.MAIL.GAP, y: 200 });
+    // #2751 review: the nth off-seat slot — a seat on the anchor never sends two letters to one spot.
+    const anchored = L({ x: 300, y: 200 }, [{ x: 300, y: 200 }]);
+    expect([0, 1, 2].map((n) => Z.dropPoint(anchored, n))).toEqual([{ x: 316, y: 200 }, { x: 332, y: 200 }, { x: 348, y: 200 }]);
+    expect(Z.dropPoint(L({ x: 1264, y: 200 }, [{ x: 1264, y: 200 }]), 1)).toEqual({ x: 600 + Z.MAIL.GAP, y: 400 });   // one slot left: the second, today's
     expect(Z.dropPoint(L({ x: 1280, y: 200 }), 1)).toEqual({ x: 600 + Z.MAIL.GAP, y: 400 });   // past the right edge: today's, n along
     expect(Z.dropPoint(L({ x: 1280, y: 200 }))).toEqual({ x: 1280, y: 200 });                  // on it is fine
     expect(Z.dropPoint(L({ x: 1280, y: 200 }, [{ x: 1280, y: 200 }]))).toEqual({ x: 600, y: 400 });
@@ -97,6 +101,14 @@ describe("where letters land", () => {
     expect(flying.t).toBeLessThan(0.1);
     expect(Math.hypot(flying.x - lay.door.x, flying.y - lay.door.y)).toBeLessThan(10);   // from the door
     expect(m.targets(lay, 1e5)).toEqual(new Map([["ran", { x: 300, y: 200 }]]));
+  });
+  it("#2751 review: two people's letters at once, a seat on the mailDrop — each its own spot", () => {
+    const nodes = [{ name: "alice", state: "idle" }, { name: "bob", state: "idle" }];
+    const lay = Z.zonesLayout(packOf(PK, { mailDrop: [100, 100] }), nodes);                  // the lounge's first seat is (100, 100)
+    const m = Z.createMail();
+    expect(m.sync([{ id: "a", from: "far", to: "alice", kind: "send" }, { id: "b", from: "far", to: "bob", kind: "send" }], 0, lay)).toBe(2);
+    const t = m.targets(lay, 1e5);
+    expect([t.get("alice"), t.get("bob")]).toEqual([{ x: 116, y: 100 }, { x: 132, y: 100 }]);
   });
 });
 
