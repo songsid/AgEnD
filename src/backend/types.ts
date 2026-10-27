@@ -696,6 +696,14 @@ export interface CliBackend {
   isPeriodicRedrawIdlePane?(pane: string): boolean;
 
   /**
+   * #2770 (ii): for a TUI that repaints periodically only in some layouts (Claude's background-agent list), whether
+   * this pane is one. Absent: every pane is (isPeriodicRedrawIdlePane applies always, as for Codex and Muse). When
+   * present, the daemon uses the periodic-idle path only while the latest capture said true, and its ordinary
+   * motion-means-work reading otherwise.
+   */
+  periodicRedrawFrom?(pane: string): boolean;
+
+  /**
    * Escape hatch for a footer layout the structural proof does not know
    * (#978): true only for the backend's own live, empty composer with no busy
    * marker and no dialog on screen. The daemon uses it solely after the pane

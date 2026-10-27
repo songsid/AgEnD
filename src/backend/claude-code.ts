@@ -1173,6 +1173,27 @@ export class ClaudeCodeBackend implements CliBackend {
     return new RegExp(`^[ \\t]*[✻✽✢·✶*][ \\t]+(?:\\p{L}+(?:-\\p{L}+)*…(?:[ \\t]+\\([^\\n]*)?|[^\\n]*?${CLAUDE_RETRY_SUFFIX}[ \\t]*$(?=${CLAUDE_LIVE_TAIL}))[ \\t]*$`, "mu");
   }
 
+  /**
+   * #2770 (ii): while background agents run, Claude repaints their session list under the box every second (each
+   * agent's elapsed time and tokens), whether or not the main session is working. Only then is this pane one whose
+   * motion proves nothing; without the list, motion keeps meaning work, as it always has.
+   */
+  periodicRedrawFrom(pane: string): boolean {
+    return claudeSessionListRows(claudeRows(pane).map(row => row.trimEnd())) > 0;
+  }
+
+  /**
+   * #2770 (ii): the main session is idle at its prompt while background agents run — the session list is on screen,
+   * the box reads and holds no queue, and no spinner or retry row is live. False for anything else, so a working
+   * main session (its spinner, a queue it holds) keeps the instance working. The daemon also holds it working while
+   * the transcript shows a turn open.
+   */
+  isPeriodicRedrawIdlePane(pane: string): boolean {
+    if (!this.periodicRedrawFrom(pane)) return false;
+    const box = readClaudeInputBox(pane);
+    return box !== null && box.queued !== true && !this.getBusyPattern().test(pane);
+  }
+
   getContextUsage(): number | null {
     try {
       const sf = join(this.instanceDir, "statusline.json");
