@@ -145,7 +145,9 @@ describe("agend update stays on the installed channel (built CLI, stubbed npm)",
     const { r, installs, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.1", latest: "2.1.10" }, []);
     expect(installs, out).toEqual([]);
     expect(r.status, out).toBe(1);
-    expect(out).toContain("agend update --stable");
+    // #2775: the channel is already current; no hint to switch to the stable release.
+    expect(out).toContain("The beta channel has nothing newer: this install is already current.");
+    expect(out).not.toContain("--stable");
   });
 
   it("--beta does not override the guard either: going back still needs --stable, --version or --force", () => {
