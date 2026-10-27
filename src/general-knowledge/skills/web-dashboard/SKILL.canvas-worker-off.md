@@ -311,7 +311,8 @@ says to try again in a few minutes (no retry). `web.office_share.enabled: false`
 
 The Office fills the Fleet panel and moves like the Canvas (#2540): drag to pan, the wheel or a pinch to zoom,
 **+** / **−** / **Fit** / **Fill** at the top right (the zoom shown as a percentage above them) or the `+ - 0` keys
-(with the office focused), an overview at the bottom right to jump (not on a phone). It takes the whole panel: the
+(with the office focused), an overview at the bottom right to jump (not on a phone; hidden while a single office
+is all in view, #2737). It takes the whole panel: the
 Fleet area's full width, down to the window's foot. **Fit** shows the whole scene as large as the panel allows
 (any scale, so it fills the panel's width or height); **Fill** (a toggle, kept per office) fills the panel instead,
 cropping what overflows — drag to see it. **+** / **−** step in pixel levels (each logical unit a whole number of

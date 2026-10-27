@@ -75,7 +75,7 @@ import { applyOverrides, fitNight, fitSeatFor, stripBox } from "./fleet-office-p
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
 import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
-  zoomLabel, zoomOffice } from "./fleet-office-view.js";
+  wholeInView, zoomLabel, zoomOffice } from "./fleet-office-view.js";
 
 register("orgo", {
   en: {
@@ -832,6 +832,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (mb && mb.style) {                                              // the overview: inside the stage, scaled to it
       const b = miniBox(size, L.width, L.height);
       for (const [a, val] of [["left", b.x], ["top", b.y], ["width", b.w], ["height", b.h]]) mb.style.setProperty(a, `${val}px`);
+      // #2737: hidden while a single office is all in view (it would show what the panel shows); All offices keeps it.
+      if (!overview && wholeInView(v, size, L.width, L.height)) mb.setAttribute("data-whole", "");
+      else mb.removeAttribute("data-whole");
     }
     const pc = pctRef.current;
     if (pc) { const lb = zoomLabel(v.k); if (pc.textContent !== lb) pc.textContent = lb; pc.setAttribute("aria-label", to("zoomLevel", lb)); }

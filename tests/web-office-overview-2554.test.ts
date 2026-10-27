@@ -434,6 +434,7 @@ describe("All offices on the page", () => {
     expect([lobby.tagName.toLowerCase(), lobby.className]).toEqual(["span", "oo-tile-label lobby"]);   // no office to open
     expect(p.root.querySelectorAll(".oo-desk").map((d: any) => d.getAttribute("data-name"))).toEqual(["atlas", "quill", "sage", "loner"]);
     expect(p.root.querySelectorAll(".oo-mini-room")).toHaveLength(3);
+    expect(p.root.querySelector(".oo-mini").hasAttribute("data-whole")).toBe(false);   // #2737: All offices keeps it, all in view
     fire(p.root.querySelector(".oo-lobby-tile input"), "change"); await settle(4);
     expect([labels(), localStorage.getItem("agend_org_office_lobby")]).toEqual([["Front desk (1)", "Lab (1)"], "0"]);
     expect(p.root.querySelectorAll(".oo-desk").map((d: any) => d.getAttribute("data-name"))).toEqual(["atlas", "quill"]);
