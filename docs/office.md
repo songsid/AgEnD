@@ -4,7 +4,7 @@
 
 **Fleet → Org chart → Office** draws your fleet as a small pixel office. Each instance is a little person whose pose is its state, and the messages, delegations and reports between instances travel across the room. This guide covers using it, setting up offices, making skin packs, arranging a layout and letting agents take part.
 
-> **Versions.** The Office view came in **2.3.0**, with the Desks and Studio styles and stored offices. Almost everything else here arrived in the **2.3.2 betas**, and two furniture keys are not released yet; [Versions](#versions) lists each feature. A feature marked **Not released yet** is on `main` but in no published version, so don't rely on it until it ships.
+> **Versions.** The Office view came in **2.3.0**, with the Desks and Studio styles and stored offices. Almost everything else here came in **2.3.2**; [Versions](#versions) lists each feature and the 2.3.2 beta it first appeared in.
 
 - [A quick tour](#a-quick-tour)
 - [Set up an office](#set-up-an-office)
@@ -76,7 +76,7 @@ Studio, Cozy and zones packs are called **zones styles** below. Only they have w
 A fleet admin, on the dashboard reached directly (not over the public link), uses **Edit offices** in the Office bar. On a screen 1200 px or wider it opens as a panel on the right, in place of the AI usage rail, with the Office still usable beside it. Narrower, it's a centred dialog. × or Esc closes it.
 
 1. **Add office**, and give it a name.
-2. **Who is in it**: **Everyone**; **Picked**, then whole teams or single instances (with none ticked yet it still shows everyone); or **Nobody (NPCs only)**: no agent sits there, only its style's NPCs (not released yet, #2752). In `web-offices.json` everyone is `"members": []` and nobody is `"members": ["team:"]`, a team with no name, which no team has.
+2. **Who is in it**: **Everyone**; **Picked**, then whole teams or single instances (with none ticked yet it still shows everyone); or **Nobody (NPCs only)**: no agent sits there, only its style's NPCs (#2752). In `web-offices.json` everyone is `"members": []` and nobody is `"members": ["team:"]`, a team with no name, which no team has.
 3. **Style**: Desks, Studio, Cozy or a kept skin pack.
 4. **Save.**
 
@@ -141,7 +141,7 @@ A minimal zones pack:
 - wear a name tag with `label` (1–40 characters), like a person (an NPC drawn as furniture);
 - stroll near its spot like an idle person with `walk` (its own walking strips, `walk` required);
 - sleep at bedtime with `night`: `{ "sprite": STRIP, "x": …, "y": … }` (its own place when x/y are left out);
-- **Not released yet:** wait for its person to sit down, and hide them. `"activeOn": "seated"` turns the item active only once one of its `activeFor` people, in that state, has reached their seat, and back as soon as they walk off (the default, `"state"`, follows the state). `"hides": true` (with `activeFor`) stops drawing those people while the item is active; someone walking is always drawn. Their name tags (one row at the item's tag point, after its own label) and bubbles go on the item, and hovering or clicking a person's tag or the item's picture selects that person. Use these for a bed, a sedan chair or a tent that becomes one picture with its person.
+- Wait for its person to sit down, and hide them. `"activeOn": "seated"` turns the item active only once one of its `activeFor` people, in that state, has reached their seat, and back as soon as they walk off (the default, `"state"`, follows the state). `"hides": true` (with `activeFor`) stops drawing those people while the item is active; someone walking is always drawn. Their name tags (one row at the item's tag point, after its own label) and bubbles go on the item, and hovering or clicking a person's tag or the item's picture selects that person. Use these for a bed, a sedan chair or a tent that becomes one picture with its person.
 
 **Depth and framing.** A `foreground` is a 16:9 PNG over the whole scene, drawn above the people and furniture but below name tags, bubbles and "+N": use it for door frames, pillars and table fronts that hide whoever walks behind them. `matte` (`#rrggbb`) is the colour around the scene where the panel isn't 16:9; without it the page samples the background's edge.
 
@@ -376,8 +376,8 @@ A STRIP is `{ "src", "frames", "w", "h", "fps", "ax", "ay", "dw", "dh" }`:
 | `label` | a name tag under it, 1–40 characters |
 | `night` | `{ sprite, x?, y? }`: how and where it sleeps at bedtime |
 | `walk` | `{ walk, walkDown?, walkUp?, walkSide? }`: it strolls near its spot |
-| `activeOn` | **Not released yet.** `"state"` (default) or `"seated"`: active only once its person has sat down (needs `activeWhen`) |
-| `hides` | **Not released yet.** `true`: its people aren't drawn while it's active; their tags and bubbles go on it (needs `activeFor`) |
+| `activeOn` | `"state"` (default) or `"seated"`: active only once its person has sat down (needs `activeWhen`) |
+| `hides` | `true`: its people aren't drawn while it's active; their tags and bubbles go on it (needs `activeFor`) |
 
 ### Layout overrides
 
@@ -428,13 +428,13 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
 - **A pack with `levels` and rolling back.** A version before levels refuses a pack that has a `levels` key, so such a pack is drawn as Desks there, with a note. Remove the key, or re-upload the pack without it, if you need to roll back.
 - **Levels and rolling back.** Versions before levels never open `usage-lifetime.json`, so a rollback keeps it. While an older version runs, though, it prunes days older than 400 without carrying them, and those days are missing from the level after you upgrade again. Nothing else is lost.
-- **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (**not released yet**), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.
-- **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.2.6 has no Office. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. Every office's layout (Edit layout, night places, seat reservations) is kept beside the office list, where 2.3.1 doesn't look: there every office shows, without its layout, and a save on 2.3.1 drops the layouts for good. **Not released yet:** this needs the fix for #2706. On 2.3.2-beta.11 or earlier, the layout is inside the office's entry, so 2.3.1 doesn't show that office at all, and a save there deletes it. Either way, keep a copy of `web-offices.json` before rolling back if the layouts matter.
-- **An office kept for nobody on an older version** (#2752, not released yet). An older version reads `["team:"]` as a team it can't find, so the office still shows nobody. Its Edit offices says **1 picked** with no box ticked; ticking someone there adds them, and the office then holds them.
+- **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (2.3.2-beta.12), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.
+- **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.2.6 has no Office. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. Every office's layout (Edit layout, night places, seat reservations) is kept beside the office list, where 2.3.1 doesn't look: there every office shows, without its layout, and a save on 2.3.1 drops the layouts for good. That needs the fix for #2706: on 2.3.2-beta.11 or earlier, the layout is inside the office's entry, so 2.3.1 doesn't show that office at all, and a save there deletes it. Either way, keep a copy of `web-offices.json` before rolling back if the layouts matter.
+- **An office kept for nobody on an older version** (#2752). An older version reads `["team:"]` as a team it can't find, so the office still shows nobody. Its Edit offices says **1 picked** with no box ticked; ticking someone there adds them, and the office then holds them.
 
 ## Versions
 
-2.3.2 hasn't had a stable release yet; its features are in the betas listed here.
+Every feature below is in 2.3.2; the table names the version it first appeared in.
 
 | Feature | First version |
 |---|---|
@@ -449,7 +449,6 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Cozy | 2.3.2-beta.8 |
 | Night places in Edit layout; share links load every pack picture | 2.3.2-beta.9 |
 | Phone layout; seat reservations; agents managing skin packs (`office_pack_access`) | 2.3.2-beta.11 |
-| Furniture `activeOn` and `hides` | **Not released yet** (after 2.3.2-beta.11) |
-| Offices with a layout survive a rollback to 2.3.1 (#2706) | **Not released yet** (after 2.3.2-beta.11) |
-| Whole fleet's style kept for everyone; Whole fleet as a share; a share's Look (#2715, #2716) | **Not released yet** (after 2.3.2-beta.14) |
-| An office for nobody (NPCs only) (#2752) | **Not released yet** (after 2.3.2-beta.14) |
+| Furniture `activeOn` and `hides`; offices with a layout survive a rollback to 2.3.1 (#2706) | 2.3.2-beta.12 |
+| Whole fleet's style kept for everyone; Whole fleet as a share; a share's Look (#2715, #2716); `mailDrop`; the overview hides while one office is all in view | 2.3.2-beta.15 |
+| Levels and the profile card (#2661); an office for nobody (NPCs only) (#2752) | 2.3.2-beta.16 |

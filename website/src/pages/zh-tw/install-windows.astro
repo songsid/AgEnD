@@ -40,7 +40,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLiner}</pre>
       <p class="text-sm text-text-secondary mt-3">全新安裝要試用 beta，先在同一個 PowerShell 視窗執行以下指令，再貼上面的安裝指令：</p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4"><code>{betaLine}</code></pre>
-      <p class="text-sm text-text-secondary mt-2"><code>AGEND_VERSION</code> 只接受 <code>beta</code>、<code>latest</code> 或完整版本號（例如 <code>2.3.2-beta.5</code>）。未設定時安裝 latest；系統管理員重新啟動與重新開機接續都會保留選擇。這不會切換已安裝的 AgEnD 版本；既有安裝請用 <code>agend update --beta</code>。不想讓之後的新安裝沿用 beta，可執行 <code>Remove-Item Env:AGEND_VERSION</code>。</p>
+      <p class="text-sm text-text-secondary mt-2"><code>AGEND_VERSION</code> 只接受 <code>beta</code>、<code>latest</code> 或完整版本號（例如 <code>2.3.2</code>）。未設定時安裝 latest；系統管理員重新啟動與重新開機接續都會保留選擇。這不會切換已安裝的 AgEnD 版本；既有安裝請用 <code>agend update --beta</code>。不想讓之後的新安裝沿用 beta，可執行 <code>Remove-Item Env:AGEND_VERSION</code>。</p>
       <p class="text-sm text-text-secondary mt-2">新安裝的 Linux 若要略過磁碟選單，可在一行指令前設定 <code>$env:AGEND_WSL_DRIVE = 'D:'</code>。只接受本機磁碟代號，而且必須有至少 5 GB 可用空間；取得系統管理員權限與重新開機接續都會保留選擇。重試時優先沿用已儲存的預定位置；既有 Linux 只會沿用，不會因為這個設定而搬移。之後不想沿用時可執行 <code>Remove-Item Env:AGEND_WSL_DRIVE</code>。</p>
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
         <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行：裝有 Windows Terminal 時在它裡面開（中文顯示正常），沒有的話是 PowerShell 視窗；你貼上指令的那個視窗會等它，最後告訴你結果。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
@@ -99,7 +99,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         </li>
         <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 登入頁會自己在 Windows 的瀏覽器打開，在那裡登入即可。Claude Code 會在網頁上給你一段代碼：複製下來，在安裝程式的視窗按右鍵貼上，再按 Enter。每個登入完成後都會自己結束；Antigravity 準備好之後，安裝程式也會幫你結束它。已經登入的後端會跳過；沒完成的可以再試一次或先跳過；跳過的在安裝接續時會再詢問，安裝完成時也會顯示補登入的指令。</li>
         <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
-        <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 在瀏覽器裡完成，不用在主控台打字：安裝程式會打開 AgEnD 的設定頁，並幫你複製設定碼（在網頁上按 Ctrl+V 貼上）。在網頁上選擇 Discord 或 Telegram，貼上 Bot Token（按 <b class="text-text-primary">Verify</b> 會顯示這是哪個 bot），或選 <b class="text-text-primary">Web only (no bot)</b>，不用 bot、只用網頁儀表板（後端登入也在那裡：設定 → Agent → 登入）；Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓它找到群組；Discord 要確認偵測到的帳號，並填入 General 頻道 ID。完成後 AgEnD 會啟動，並安裝成系統服務。如果設定頁打不開，安裝程式會改在主控台進行同樣的設定（<code class="font-mono text-accent">agend quickstart</code>）。最後它會幫你打開網頁儀表板（一次性登入碼已經複製好，按 Ctrl+V 貼上即可），並在桌面放兩個捷徑：<b class="text-text-primary">AgEnD 儀表板</b> 之後隨時按兩下都能用同樣方式打開，<b class="text-text-primary">AgEnD 重新啟動</b> 會先問過你再重啟 AgEnD。這台電腦本來就裝了 AgEnD（例如一直用 <code class="font-mono text-accent">agend update</code> 更新）？再貼一次同一行指令即可：它會偵測到已經裝好，只提供新增或更新這兩個捷徑，不會重做任何設定。主控台指令放在「進階」裡，需要時再看。</li>
+        <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 在瀏覽器裡完成，不用在主控台打字：安裝程式會打開 AgEnD 的設定頁，並幫你複製設定碼（在網頁上按 Ctrl+V 貼上）。在網頁上選擇 Discord 或 Telegram，貼上 Bot Token（按 <b class="text-text-primary">Verify</b> 會顯示這是哪個 bot），或選 <b class="text-text-primary">Web only (no bot)</b>，不用 bot、只用網頁儀表板（後端登入也在那裡：設定 → Agent → 登入）；Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓它找到群組；Discord 要確認偵測到的帳號，並填入 General 頻道 ID。完成後 AgEnD 會啟動，並安裝成系統服務。如果設定頁打不開，安裝程式會改在主控台進行同樣的設定（<code class="font-mono text-accent">agend quickstart</code>）。最後它會幫你打開網頁儀表板（一次性登入碼已經複製好，按 Ctrl+V 貼上即可），並在桌面放兩個捷徑：<b class="text-text-primary">AgEnD 儀表板</b> 之後隨時按兩下都能用同樣方式打開，<b class="text-text-primary">AgEnD 重新啟動</b> 會先問過你再重啟 AgEnD。這台電腦本來就裝了 AgEnD（例如一直用 <code class="font-mono text-accent">agend update</code> 更新）？再貼一次同一行指令即可：它會偵測到已經裝好，先問你要不要檢查／修復設定與服務，或接續後端登入（預設為否；不論哪種，原有設定都會保留），再提供新增或更新這兩個捷徑。它不會重做設定。主控台指令放在「進階」裡，需要時再看。</li>
       </ol>
     </div>
 
@@ -190,7 +190,15 @@ exit                                         # 離開 WSL</pre>
       </details>
       <details class="group rounded-xl border border-border bg-surface p-5">
         <summary class="cursor-pointer font-medium text-text-primary">出現「無法連線到網路」？</summary>
-        <p class="mt-3 text-sm text-text-secondary">確認電腦有網路。公司環境請先連 VPN，或確認防火牆沒擋住 GitHub / npm registry 的連線。</p>
+        <p class="mt-3 text-sm text-text-secondary">安裝程式會先從 Windows、再從 WSL 檢查它需要的網站，並說明是哪裡失敗：DNS、逾時、連線被拒、不受信任的 HTTPS 憑證或 proxy，以及該怎麼做。會檢查 HTTPS 的公司網路，要把公司的根憑證放進 Ubuntu（設定 <code class="font-mono text-accent">NODE_EXTRA_CA_CERTS</code>）；公司 proxy 則要為 WSL 設定 Windows 的 proxy。必要的網站連不上時，安裝程式會先問你要不要繼續，預設是停止。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">安裝紀錄在哪裡？</summary>
+        <p class="mt-3 text-sm text-text-secondary">安裝程式顯示的所有內容也會寫進 <code class="font-mono text-accent">%LOCALAPPDATA%\AgEnD\install-logs</code> 的紀錄檔（保留最近 10 份）。設定碼、登入碼、token 與網址中的帳密會先遮蔽再寫入。安裝程式停止時，你貼上指令的那個視窗會說明停在哪個階段、紀錄檔在哪裡：求助時請附上那個檔案。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">它停下來，說安裝會裝到另一個帳號</summary>
+        <p class="mt-3 text-sm text-text-secondary">WSL、AgEnD、桌面捷徑與重新開機後的接續，都屬於執行安裝程式的那個帳號。如果一般帳號在系統管理員提示時輸入了另一位管理員的密碼，安裝程式會在修改任何東西之前停下，並列出兩個帳號。請 IT 在安裝期間給你的帳號系統管理員權限，或改用那個帳號登入後再安裝。</p>
       </details>
       <details class="group rounded-xl border border-border bg-surface p-5">
         <summary class="cursor-pointer font-medium text-text-primary">WSL 安裝後要求重開機？</summary>

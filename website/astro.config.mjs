@@ -27,6 +27,8 @@ export default defineConfig({
         { label: "What's new in 2.2", translations: { 'zh-TW': '2.2 更新重點' }, slug: 'docs/whats-new-2-2' },
         { label: 'Getting Started', slug: 'docs/getting-started' },
         { label: 'Web Guide', translations: { 'zh-TW': '網頁使用說明' }, slug: 'docs/web-guide' },
+        { label: 'Office', translations: { 'zh-TW': '辦公室' }, slug: 'docs/office' },
+        { label: 'Docker', slug: 'docs/docker' },
         { label: 'Use Cases', translations: { 'zh-TW': '使用情境' }, slug: 'docs/use-cases' },
         { label: 'Features', slug: 'docs/features' },
         { label: 'CLI Reference', slug: 'docs/cli' },
