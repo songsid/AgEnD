@@ -123,6 +123,20 @@ describe("the launch never works out compaction links on the fleet loop", () => 
     expect(backend.consumeQuietLaunchNotes()).toEqual([t("kiro.compaction_kept_unreadable", A)]);
   }, 60_000);
 
+  it("links prepared for another launch are not this one's: unproven, it stays on A", async () => {
+    const [B] = siblingsStore(1, 10, 10);
+    holdA();
+    const backend = new KiroBackend(join(root, "agend", "instances", "coordinator"), COMPAT);
+    await backend.prepareLaunch({ ...(config() as object), instanceName: "someone-else" } as never);
+    backend.writeConfig(config());
+    expect(backend.buildCommand(config())).toContain(`--resume-id '${A}'`);
+    expect(backend.consumeQuietLaunchNotes()).toEqual([t("kiro.compaction_kept_unreadable", A)]);
+    // Prepared for this launch, the same store is followed: what the line above is not.
+    await backend.prepareLaunch(config());
+    backend.writeConfig(config());
+    expect(backend.buildCommand(config())).toContain(`--resume-id '${B}'`);
+  });
+
   it("a prepared launch whose store answer was over budget stays on A and says so on the Log tab, not in chat", async () => {
     siblingsStore(2, 10, 10);
     holdA();
