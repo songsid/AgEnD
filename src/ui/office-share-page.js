@@ -30,6 +30,7 @@ export function shareUrl(base, path) {
   const p = String(path);
   if (p === "/ui/offices") return `${base}/offices`;
   if (p === "/ui/office-acts") return `${base}/office-acts`;
+  if (p === "/ui/office-levels") return `${base}/office-levels`;
   if (p === "/ui/office-skins" || p.startsWith("/ui/office-skins/") || p.startsWith("/ui/office-skins?")) return `${base}${p.slice(3)}`;
   return null;
 }

@@ -361,7 +361,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
+    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -478,6 +478,8 @@ export interface WebApiContext {
   logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
+  /** #2661: every instance's Office level (office-levels.ts), reused for a minute; null: web.office_levels is off. Absent: not offered. */
+  officeLevels?(): Promise<Record<string, import("./office-levels.js").OfficeLevel> | null>;
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
@@ -2089,6 +2091,27 @@ export function handleWebRequest(
     const acts = ctx.officeActs;
     if (!acts) { json(res, 404, { error: "Office acts are not kept on this fleet" }); return true; }
     json(res, 200, { acts: acts.live(), now: Date.now() });              // now: the host's clock, for the page's offset
+    return true;
+  }
+
+  // #2661: GET /ui/office-levels { enabled, unit, detail, levels }: each instance's Office level, read as the offices
+  // are (a guest's routes do not include it). The level for whoever may open the Office; the numbers behind it (work
+  // tokens, today, first seen) only where the usage report would be served (`detail`): not with web.usage_panel off,
+  // not over the public link unless web.usage_report_on_public_link. Off (web.office_levels false): no levels at all.
+  if (method === "GET" && path === "/ui/office-levels") {
+    if (!ctx.officeLevels) { json(res, 404, { error: "Office levels are not kept on this fleet" }); return true; }
+    const admitted = admissionOf(req, url, ctx);
+    if (!admitted) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
+    const detail = (): boolean => ctx.fleetConfig?.web?.usage_panel !== false
+      && (!gatewayRequestContext(req) || ctx.fleetConfig?.web?.usage_report_on_public_link === true);
+    void import("./office-levels.js").then(async ({ LEVEL, levelsFor }) => {
+      const levels = await ctx.officeLevels!();
+      // Asked again before it is sent (it was awaited): a session signed out or a switch turned off meanwhile.
+      if (admissionOf(req, url, ctx) !== admitted) return json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
+      if (!levels || ctx.fleetConfig?.web?.office_levels === false) return json(res, 200, { enabled: false, unit: LEVEL.UNIT, detail: false, levels: {} });
+      const d = detail();
+      json(res, 200, { enabled: true, unit: LEVEL.UNIT, detail: d, levels: levelsFor(levels, d) });
+    }).catch((err) => { ctx.logger.error({ err }, "office levels failed"); try { json(res, 500, { error: "Office levels failed" }); } catch { /* already answered */ } });
     return true;
   }
 

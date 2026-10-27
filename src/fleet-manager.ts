@@ -1658,6 +1658,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         needs: () => this.needsYouItems().map(i => i.instance),
         hidden: name => crossInstanceVisibility(this.fleetConfig, name) === "hidden",
         skins: this.officeSkins,
+        levels: () => this.officeLevelsSnapshot(),
       },
       manager: new ManagedTunnel({ dataDir: join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR), log: () => this.logger.warn("Office share tunnel cleanup requires attention") }),
       ensure: signal => ensureCloudflared({ dataDir: this.dataDir, pinnedOnly: true, signal }),
@@ -1777,12 +1778,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2578: each instance's state as the org chart shows it (fleet-org.js orgState, from the same fields the status
    * frame and the Needs-you list carry) and its display name (resolveInstanceIdentity, as getUiStatus) — read once.
    */
-  private officePeople(): { stateOf(name: string): string; displayName(name: string): string | undefined } {
+  private officePeople(): { stateOf(name: string): string; displayName(name: string): string | undefined; level(name: string): number | undefined } {
     const needs = new Map<string, number>();
     for (const item of this.needsYouItems()) needs.set(item.instance, (needs.get(item.instance) ?? 0) + 1);
     const classicRooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
     let profiles: ReturnType<typeof profileIdentities> | null = null;
+    // #2661: the levels as last worked out (never waits; none while off or not worked out yet).
+    const levels = this.officeLevelsSnapshot();
     return {
+      level: name => (levels && Object.prototype.hasOwnProperty.call(levels, name) ? levels[name]!.level : undefined),
       stateOf: name => {
         if (!this.isKnownInstance(name)) return "missing";
         const p = this.instancePresentation(name), status = this.getInstanceStatus(name);
@@ -14947,6 +14951,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         status: i.status, ...(i.with ? { with: i.with } : {}), ledger: i.ledger, days: i.days })),
       messages: messages.filter(m => keep(m.instance)),
     });
+  }
+  /** #2661: the Office levels as last worked out, and the work in flight (officeLevels). */
+  private officeLevelsMemo: { at: number; levels: Record<string, import("./office-levels.js").OfficeLevel> } | null = null;
+  private officeLevelsRun: Promise<Record<string, import("./office-levels.js").OfficeLevel>> | null = null;
+  /**
+   * #2661: every instance's Office level (office-levels.ts) — worked out by the cache service from the usage store, at
+   * most once per OFFICE_LEVELS_TTL_MS however many pages and share links ask (one run at a time). Null when
+   * web.office_levels is false.
+   */
+  async officeLevels(): Promise<Record<string, import("./office-levels.js").OfficeLevel> | null> {
+    if (this.fleetConfig?.web?.office_levels === false) return null;
+    const { OFFICE_LEVELS_TTL_MS } = await import("./office-levels.js");
+    const memo = this.officeLevelsMemo;
+    if (memo && performance.now() - memo.at < OFFICE_LEVELS_TTL_MS) return memo.levels;
+    this.officeLevelsRun ??= this.cacheServiceFor().officeLevels(Date.now()).then(
+      (levels) => { this.officeLevelsMemo = { at: performance.now(), levels }; return levels; },
+    ).finally(() => { this.officeLevelsRun = null; });
+    return this.officeLevelsRun;
+  }
+  /**
+   * #2661: the levels as last worked out, for a synchronous reader (a share link's gateway): never waits; a stale or
+   * missing set starts the next run. Null when web.office_levels is false or none has been worked out yet.
+   */
+  officeLevelsSnapshot(): Record<string, import("./office-levels.js").OfficeLevel> | null {
+    if (this.fleetConfig?.web?.office_levels === false) return null;
+    void this.officeLevels().catch(() => { /* the next read tries again */ });
+    return this.officeLevelsMemo?.levels ?? null;
   }
   /** #2001: get_cache_report's — the same report, as last worked out (reused for a minute, until the next pass). */
   cacheReportPublished(window: string): Promise<CacheReport> {

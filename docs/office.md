@@ -244,6 +244,26 @@ The same panel lists which agents may change packs, the changes waiting for your
 
 Also on the command line: `agend-agent office packs`, `pack-check <dir>`, `pack-upload <dir>… [--drop-invalid-overrides]`, `pack-delete <id> [--keep-previous]`, `pack-restore <id>`, `style <office> <pack>`.
 
+## Levels
+
+Each instance has a level, from the work it has done over its whole recorded life (#2661).
+
+- **Work tokens** are uncached input, cache writes and output. Cache reads don't count: they're most of nearly every instance's total, and counting them would put everyone at the same level.
+- **Level** = floor(√(work tokens ÷ 100,000)), with no cap. 1M work tokens is about Lv 3, 260M about Lv 50, and 1B is Lv 100.
+- The numbers come from the usage store the usage report reads ([Fleet → Usage](web-dashboard.md)); nothing new is collected and no transcript is read for it. Kiro's usage is estimated from text size, so a level that includes Kiro work is marked as estimated.
+- **First seen** is the earliest day with recorded work. On a fleet older than its usage collection, that's the day collection began.
+- The usage history keeps 400 days. Days older than that are added to `usage-lifetime.json` before they're pruned, so a level never drops.
+- The fleet works the levels out at most once a minute, however many pages and share links ask.
+
+Who sees what:
+
+- **The dashboard:** every level, with the work tokens, today's work and requests, and first seen. The numbers follow the usage report's rules: none while `web.usage_panel` is `false`, and over the public link only with `web.usage_report_on_public_link: true`. Otherwise only the level is shown.
+- **Share-link viewers:** the level of the people the share shows, and nothing else.
+- **Guests:** no Office, so no levels.
+- **Agents:** `office_view` lists each member's `level`. It changes nothing an agent can do.
+
+`web.office_levels: false` turns levels off: the fleet serves none, and no badge or level row is shown.
+
 ## Who can do what
 
 | | Fleet admin, dashboard reached directly | Fleet admin, public link | Read-only session | Guest | Share-link viewer |
@@ -355,11 +375,13 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Agents' pack changes | `web-office-skins/.agent-changes.log` (the log); `.agent-changes.json` (the approval mode) |
 | Agent switches | `office_access`, `office_pack_access` (per instance, or `defaults.*`) in fleet.yaml; see [configuration.md](configuration.md) |
 | Share links | `web.office_share.enabled` (default `true`), `web.office_share.max_hours` (1–24, default 24) |
+| Levels | `web.office_levels` (default `true`); the carried lifetime total in `instances/<name>/usage-lifetime.json`, beside the usage history |
 | Per-device choices | the view, style, filters, bedtime and Lobby tile (browser storage) |
 
 ## Upgrading and rolling back
 
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
+- **Levels and rolling back.** Versions before levels never open `usage-lifetime.json`, so a rollback keeps it. While an older version runs, though, it prunes days older than 400 without carrying them, and those days are missing from the level after you upgrade again. Nothing else is lost.
 - **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (**not released yet**), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.
 - **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.2.6 has no Office. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. Every office's layout (Edit layout, night places, seat reservations) is kept beside the office list, where 2.3.1 doesn't look: there every office shows, without its layout, and a save on 2.3.1 drops the layouts for good. **Not released yet:** this needs the fix for #2706. On 2.3.2-beta.11 or earlier, the layout is inside the office's entry, so 2.3.1 doesn't show that office at all, and a save there deletes it. Either way, keep a copy of `web-offices.json` before rolling back if the layouts matter.
 

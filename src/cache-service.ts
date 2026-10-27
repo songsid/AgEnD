@@ -22,7 +22,8 @@ import { scanJsonl } from "./cache-scan.js";
 import { addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
-import { addCoverage, foldHours, pruneDays, readDays, writeDays, type UsageDays } from "./usage-rollup.js";
+import { addCoverage, carryPruned, foldHours, pruneDays, readDays, readLifetime, writeDays, type UsageDays, type UsageLifetime } from "./usage-rollup.js";
+import { officeLevels, type OfficeLevel } from "./office-levels.js";
 import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
 import type { OpencodeScanInput, OpencodeScanOutput } from "./opencode-usage-scan.js";
 import { antigravityUsageSupported, type AntigravityScanInput, type AntigravityScanOutput } from "./antigravity-usage-scan.js";
@@ -133,6 +134,8 @@ export class CacheService {
   private readonly ledgers = new Map<string, Ledger>();
   /** #2122: each instance's daily rollup (usage-rollup.ts), beside its ledger. */
   private readonly rollups = new Map<string, UsageDays>();
+  /** #2661: each instance's carried lifetime total (usage-rollup.ts UsageLifetime), beside its rollup. */
+  private readonly lifetimes = new Map<string, UsageLifetime>();
   private readonly dirty = new Set<string>();
   /** Rollout path → the inode its session_meta was read from, and the cwd it names (null: not a session_meta). */
   private meta: Record<string, { ino: number; cwd: string | null }> | null = null;
@@ -227,6 +230,17 @@ export class CacheService {
   }
   private zone(): string { return this.o.zone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
   private daysPath(inst: CacheInstance): string { return join(dirname(inst.ledgerPath), "usage-days.json"); }
+  private lifetimePath(inst: CacheInstance): string { return join(dirname(inst.ledgerPath), "usage-lifetime.json"); }
+  /** #2661: an instance's carried lifetime total, read once. */
+  async lifetimeFor(inst: CacheInstance): Promise<UsageLifetime> {
+    let l = this.lifetimes.get(inst.name);
+    if (l) return l;
+    l = await readLifetime(this.lifetimePath(inst));
+    const again = this.lifetimes.get(inst.name);
+    if (again) return again;
+    this.lifetimes.set(inst.name, l);
+    return l;
+  }
   /** #2122: an instance's rollup, read once. */
   async rollupFor(inst: CacheInstance): Promise<UsageDays> {
     let d = this.rollups.get(inst.name);
@@ -245,7 +259,14 @@ export class CacheService {
     const current = await this.rollupFor(inst);
     const next: UsageDays = structuredClone(current);
     const folded = foldHours(next, ledger, cutoff, this.zone());
-    const pruned = pruneDays(next, this.now(), this.zone());
+    // #2661: the days about to be pruned are carried into the lifetime file first, and pruned only once it is on disk
+    // (usage-rollup.ts UsageLifetime: a crash between the two writes never counts a day twice or loses one).
+    const life = structuredClone(await this.lifetimeFor(inst));
+    if (carryPruned(life, next, this.now(), this.zone())) {
+      if (await writeDays(this.lifetimePath(inst), life)) this.lifetimes.set(inst.name, life);
+      else this.o.log?.("warn", "usage lifetime: could not be saved; the rollup keeps those days until it can", { instance: inst.name });
+    }
+    const pruned = pruneDays(next, this.now(), this.zone(), (await this.lifetimeFor(inst)).through);
     if (!folded && !pruned) return current.checkpoint;
     if (!(await writeDays(this.daysPath(inst), next))) {
       this.o.log?.("warn", "usage rollup: could not be saved; the ledger keeps those hours until it can", { instance: inst.name });
@@ -724,6 +745,25 @@ export class CacheService {
       else out.push({ inst, status: "ok", ledger, days });
     }
     return { scanning: this.scanning(), instances: out };
+  }
+
+  /**
+   * #2661: every instance's Office level (office-levels.ts), from its ledger, rollup and lifetime file as they are now —
+   * read in place, one instance at a time with no await between its reads (as usageData copies them), never copied or changed.
+   * Never reads a transcript (a catch-up is started, not waited for).
+   */
+  async officeLevels(now: number): Promise<Record<string, OfficeLevel>> {
+    this.start();
+    void this.kick();
+    const out: Record<string, OfficeLevel> = Object.create(null) as Record<string, OfficeLevel>;
+    for (const inst of this.o.instances()) {
+      await this.ledgerFor(inst);
+      await this.rollupFor(inst);
+      await this.lifetimeFor(inst);
+      const one = officeLevels({ now, zone: this.zone(), instances: [{ name: inst.name, ledger: this.ledgers.get(inst.name)!, days: this.rollups.get(inst.name)!, life: this.lifetimes.get(inst.name)! }] });
+      out[inst.name] = one[inst.name]!;
+    }
+    return out;
   }
 
   /** The analysis for a window, from the ledgers as they are now (a catch-up is started, not waited for). */

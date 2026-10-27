@@ -47,7 +47,7 @@ export interface OfficeSpots {
   door: { x: number; y: number } | null;
 }
 /** `walks`: a zones style, where characters walk; on desks (false) only say and pose show. */
-export interface OfficeSeen { id: string; name: string; skin: string; walks: boolean; members: Array<{ name: string; display_name?: string; state: string }>; spots: OfficeSpots }
+export interface OfficeSeen { id: string; name: string; skin: string; walks: boolean; members: Array<{ name: string; display_name?: string; state: string; level?: number }>; spots: OfficeSpots }
 /** The chart an office's members are read against: every instance the dashboard lists, and fleet.yaml's teams. */
 export interface OfficeChart { names: readonly string[]; teams: ReadonlyArray<{ name: string; members: readonly string[] }> }
 export interface OfficeActsDeps {
@@ -60,7 +60,7 @@ export interface OfficeActsDeps {
    * A snapshot of the people, read once per call: an instance's dashboard state as the org chart shows it (fleet-org.js
    * orgState: needs, crashed, stuck, starting, queued, working, idle, paused, stopped, missing) and its display name.
    */
-  people(): { stateOf(name: string): string; displayName(name: string): string | undefined };
+  people(): { stateOf(name: string): string; displayName(name: string): string | undefined; level?(name: string): number | undefined };
   /** The live acts changed: every page hears it (`office_acts`). */
   changed(acts: OfficeAct[]): void;
 }
@@ -171,7 +171,8 @@ export class OfficeActs {
   private seen(o: Office, people: ReturnType<OfficeActsDeps["people"]>): OfficeSeen {
     const members = officeMembers(o, this.deps.chart()).map(name => {
       const display = people.displayName(name);
-      return { name, ...(display ? { display_name: display } : {}), state: people.stateOf(name) };
+      const level = people.level?.(name);   // #2661: its Office level, when levels are on (it changes nothing it can do)
+      return { name, ...(display ? { display_name: display } : {}), state: people.stateOf(name), ...(level !== undefined ? { level } : {}) };
     });
     const pack = this.deps.pack(o.skin);
     return { id: o.id, name: o.name, skin: o.skin, walks: officeWalks(pack), members, spots: officeSpots(o, pack) };

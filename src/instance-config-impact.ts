@@ -109,6 +109,7 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "web.echo_to_channel": "now",
   "web.log_tab": "now",
   "web.usage_report_on_public_link": "now",
+  "web.office_levels": "now",
   "web.public_link.allow_public": "now",
   "web.public_link.ttl_minutes": "now",
   "web.public_link.protocol": "now",

@@ -392,6 +392,11 @@ export interface WebConfig {
    */
   usage_report_on_public_link?: boolean;
   /**
+   * #2661: Office levels — each instance's level from its lifetime work, on its name tag and profile card (default
+   * true). Off: the host serves no levels (GET /ui/office-levels, a share link's), so no badge or level row is shown.
+   */
+  office_levels?: boolean;
+  /**
    * #1937: the largest file the web chat takes, in MB (whole number, 1–500; default 50). Never more than
    * upload_max_total_mb; over the public link a file is at most 95 MB whatever this says (the quick tunnel's limit).
    * Read on each upload: `agend reload` applies a change; an open page uses the new limits after it reloads.

@@ -244,6 +244,26 @@ agent 可以自己檢查、上傳、取代、刪除與還原外觀包，例如�
 
 命令列也可以：`agend-agent office packs`、`pack-check <dir>`、`pack-upload <dir>… [--drop-invalid-overrides]`、`pack-delete <id> [--keep-previous]`、`pack-restore <id>`、`style <office> <pack>`。
 
+## 等級
+
+每個 instance 都有等級，依它整個有紀錄期間做過的工作計算（#2661）。
+
+- **工作 token**＝未快取的輸入＋快取寫入＋輸出。快取讀取不算：它幾乎占每個 instance 總量的大部分，算進去大家等級都會一樣。
+- **等級**＝floor(√(工作 token ÷ 100,000))，沒有上限。100 萬工作 token 約 Lv 3，2.6 億約 Lv 50，10 億是 Lv 100。
+- 數字來自用量報告讀的用量資料（[機群 → 用量](web-dashboard.zh-TW.md)）；不會為此多收集任何東西，也不讀對話紀錄。Kiro 的用量是依文字長度估算的，包含 Kiro 工作的等級會標示為估算。
+- **首次出現**是最早有工作紀錄的那天。如果 fleet 比用量收集更早開始，就是開始收集的那天。
+- 用量紀錄保留 400 天。更早的日子在清除前會先加進 `usage-lifetime.json`，所以等級不會下降。
+- fleet 每分鐘最多計算一次等級，不論有多少頁面與分享連結在讀。
+
+誰看得到什麼：
+
+- **dashboard：**每個等級，加上工作 token、今天的工作量與請求數、首次出現。這些數字依用量報告的規則：`web.usage_panel` 為 `false` 時不提供；透過公開連結時，只有 `web.usage_report_on_public_link: true` 才提供。其他情況只顯示等級。
+- **分享連結的觀看者：**只有該分享顯示的人的等級，其他都沒有。
+- **訪客：**看不到辦公室，所以也沒有等級。
+- **agent：**`office_view` 會列出每位成員的 `level`。它不會改變 agent 能做的任何事。
+
+`web.office_levels: false` 會關閉等級：fleet 不提供任何等級，也不顯示徽章或等級列。
+
 ## 誰能做什麼
 
 | | fleet 管理者，直接連線 | fleet 管理者，公開連結 | 唯讀 session | 訪客 | 分享連結的觀看者 |
@@ -355,11 +375,13 @@ STRIP 是 `{ "src", "frames", "w", "h", "fps", "ax", "ay", "dw", "dh" }`：
 | agent 的外觀包變更 | `web-office-skins/.agent-changes.log`（紀錄）；`.agent-changes.json`（核准模式） |
 | agent 的開關 | fleet.yaml 的 `office_access`、`office_pack_access`（每個 instance，或 `defaults.*`）；見 [configuration.zh-TW.md](configuration.zh-TW.md) |
 | 分享連結 | `web.office_share.enabled`（預設 `true`）、`web.office_share.max_hours`（1–24，預設 24） |
+| 等級 | `web.office_levels`（預設 `true`）；累計的終身總量在 `instances/<name>/usage-lifetime.json`，用量紀錄旁邊 |
 | 每台裝置的選擇 | 畫面、風格、篩選、就寢與大廳格（瀏覽器儲存空間） |
 
 ## 升級與降版
 
 - **升級** 會保留你的辦公室、外觀包與配置，不需要手動搬移。
+- **等級與降版。** 等級之前的版本不會開啟 `usage-lifetime.json`，所以降版會保留它。不過舊版執行期間，會把超過 400 天的日子直接清除、不累計，重新升級後等級就少了那幾天。其他都不會遺失。
 - **在 2.3.2 之內降版。** agent 以 `keep_previous` 刪除的外觀包，上一版存在它自己的 `.kept-<id>` 資料夾，所以降回 2.3.2-beta.10 時仍然可以上傳與刪除那個 id。#2706 的修正（**尚未發布**）之後，辦公室的配置存在辦公室清單旁邊；降回這個修正之前的 2.3.2 beta 時，每間辦公室都還在，但沒有配置，在那裡儲存會丟掉配置。
 - **降回 2.3.1 或 2.2.6。** `office_access` 與 `office_pack_access` 存在 fleet.yaml 的 `dashboard` 之外，所以舊版會接受這個檔案並忽略它們。2.2.6 沒有辦公室畫面。2.3.1 沒有外觀包：用外觀包或溫馨的辦公室會以辦公桌顯示並附上說明。每間辦公室的配置（編輯配置、夜間位置、保留座位）都存在辦公室清單旁邊，2.3.1 不會讀那裡：所以每間辦公室都會顯示，只是沒有配置；在 2.3.1 上儲存會永久丟掉配置。**尚未發布：** 這需要 #2706 的修正。2.3.2-beta.11 以前，配置存在辦公室的項目裡，2.3.1 會完全不顯示那間辦公室，在那裡儲存會把它刪掉。不論哪種情況，若配置很重要，降版前請先備份 `web-offices.json`。
 

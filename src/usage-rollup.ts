@@ -128,15 +128,73 @@ export function foldHours(days: UsageDays, ledger: Ledger, cutoff: number, zone:
   return true;
 }
 
-/** Drop day rows older than the rollup keeps (by date, against `now` in `zone`). */
-export function pruneDays(days: UsageDays, now: number, zone: string): boolean {
+/**
+ * Drop day rows older than the rollup keeps (by date, against `now` in `zone`). #2661: `carriedThrough` (the lifetime
+ * file's `through` as it is on disk): only rows at or before it are dropped — one not carried yet stays until it is.
+ */
+export function pruneDays(days: UsageDays, now: number, zone: string, carriedThrough: string | null): boolean {
   const oldest = localDate(now - ROLLUP_KEEP_DAYS * DAY, zone);
   const before = days.rows.length;
-  days.rows = days.rows.filter(r => r.date >= oldest);
+  days.rows = days.rows.filter(r => r.date >= oldest || carriedThrough === null || r.date > carriedThrough);
   const cov = days.coverage.filter(([, to]) => to >= now - ROLLUP_KEEP_DAYS * DAY);
   const changed = days.rows.length !== before || cov.length !== days.coverage.length;
   days.coverage = cov;
   return changed;
+}
+
+/**
+ * #2661: what the days pruned past ROLLUP_KEEP_DAYS held, so an instance's lifetime work (its Office level,
+ * office-levels.ts) never shrinks as history ages out — `usage-lifetime.json` beside the rollup, a file no version
+ * before #2661 opens (one that rewrites usage-days.json cannot wipe it).
+ * - `by`: the carried rows' totals summed by backend; `first`: the earliest date among them; `through`: the latest
+ *   date carried. A day row at or before `through` is in `by` already and is never added again.
+ * - Order: carryPruned adds the rows about to be pruned, the lifetime file is written (atomic rename), and only then
+ *   does pruneDays drop them from the rollup. A crash between the two writes leaves those rows in both; the next pass
+ *   skips them here (at or before `through`) and the prune finishes — never counted twice, never lost. A lifetime file
+ *   that cannot be written prunes nothing that pass.
+ * - Rollback gap: an older version running meanwhile prunes days without carrying them; those days are missing from
+ *   the lifetime total for good (nothing else is lost).
+ */
+export interface UsageLifetime { v: 1; through: string | null; first: string | null; by: Record<string, HourTotals> }
+export const emptyLifetime = (): UsageLifetime => ({ v: 1, through: null, first: null, by: dict<HourTotals>() });
+const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+/** A lifetime file read back from disk; anything that is not one is empty. */
+export function reviveLifetime(raw: unknown): UsageLifetime {
+  const l = emptyLifetime();
+  if (!raw || typeof raw !== "object" || (raw as UsageLifetime).v !== 1) return l;
+  const r = raw as UsageLifetime;
+  if (isDate(r.through)) l.through = r.through;
+  if (isDate(r.first)) l.first = r.first;
+  for (const [be, t] of Object.entries((r.by && typeof r.by === "object" ? r.by : {}) as Record<string, unknown>)) {
+    if (Array.isArray(t) && t.length === 7 && t.every(n => Number.isFinite(n))) l.by[be] = t as HourTotals;
+  }
+  return l;
+}
+
+/**
+ * Carry the day rows pruneDays is about to drop (older than ROLLUP_KEEP_DAYS against `now` in `zone`) and not carried
+ * yet into `life`. Mutates `life`; returns whether anything was added.
+ */
+export function carryPruned(life: UsageLifetime, days: UsageDays, now: number, zone: string): boolean {
+  const oldest = localDate(now - ROLLUP_KEEP_DAYS * DAY, zone);
+  let changed = false;
+  for (const r of days.rows) {
+    if (r.date >= oldest || (life.through !== null && r.date <= life.through)) continue;
+    const into = life.by[r.be] ??= [0, 0, 0, 0, 0, 0, 0];
+    for (const t of Object.values(r.m)) add(into, t);
+    if (life.first === null || r.date < life.first) life.first = r.date;
+    changed = true;
+  }
+  if (!changed) return false;
+  // Every row before `oldest` is carried now: `through` is the latest of them.
+  const last = days.rows.filter(r => r.date < oldest).reduce((m, r) => (r.date > m ? r.date : m), life.through ?? "");
+  life.through = last;
+  return true;
+}
+
+export async function readLifetime(path: string): Promise<UsageLifetime> {
+  try { return reviveLifetime(JSON.parse(await readFile(path, "utf8"))); } catch { return emptyLifetime(); }
 }
 
 /** Record that the scanner has read [from, to]: merged into the intervals, at most COVERAGE_MAX of them. */
@@ -161,7 +219,7 @@ export async function readDays(path: string): Promise<UsageDays> {
 }
 
 /** Written whole and renamed into place (0600): a crash leaves the old file or the new one, never a mix. */
-export async function writeDays(path: string, days: UsageDays): Promise<boolean> {
+export async function writeDays(path: string, days: UsageDays | UsageLifetime): Promise<boolean> {
   const tmp = `${path}.${process.pid}.tmp`;
   try {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });

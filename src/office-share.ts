@@ -11,8 +11,9 @@
  *   made it. Unlike the dashboard (where a `?token=` is never a credential, web-auth.ts) this token is the capability —
  *   for this picture only, on another origin.
  * - What a viewer gets is built here for the share alone (OfficeShareView): the same shapes as the dashboard's own reads
- *   (/ui/offices, /ui/office-acts, /ui/office-skins, the status frame, /ui/traffic) so the page's Office draws them, but
- *   only the shared office's people, and of each only what the picture needs (names, identity colour, state; no model,
+ *   (/ui/offices, /ui/office-acts, /ui/office-skins, the status frame, /ui/traffic, #2661 /ui/office-levels) so the page's
+ *   Office draws them, but only the shared office's people, and of each only what the picture needs (names, identity
+ *   colour, state, level; no model,
  *   cost, context, description, thread, last reply or what it waits on). An instance whose cross_instance_visibility is
  *   "hidden" is never in it. An agent's `say` (office_set, the only text an agent wrote) only when the share says so.
  * - Limits: OFFICE_SHARE_LIMITS — links, lifetime, and per share requests and bytes a minute (every viewer comes from
@@ -28,6 +29,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { officeMembers, type OfficeAct, type OfficeChart } from "./web-office-acts.js";
+import { LEVEL, levelsFor, type OfficeLevel } from "./office-levels.js";
 import type { Office } from "./web-office-store.js";
 
 export const OFFICE_SHARE_LIMITS = {
@@ -258,6 +260,8 @@ export interface OfficeShareSource {
   hidden(name: string): boolean;
   /** The skin packs the host keeps (web-office-skins.ts). */
   skins?: { list(): { packs: Array<{ id: string; files?: number; bytes?: number }> } & Record<string, unknown>; get(id: string): unknown; picture(id: string, sha: string): Buffer | null };
+  /** #2661: the Office levels as last worked out (never waits); null: off, or none worked out yet. */
+  levels?(): Record<string, OfficeLevel> | null;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -345,6 +349,15 @@ export class OfficeShareView {
     // #2716: the whole-fleet office's style, as every dashboard shows it (a viewer may pick that office here too).
     const { rev, autoSkin } = this.src.offices();
     return { rev, offices: (this.offices ?? []).map(cut), readable: true, ...(autoSkin ? { autoSkin } : {}) };
+  }
+
+  /**
+   * #2661: /ui/office-levels's answer: the level of each person shown and nothing else — never the work tokens, today's
+   * counts or first seen (a share shows names and states). `enabled` false when levels are off.
+   */
+  levels(): { enabled: boolean; unit: number; detail: false; levels: Record<string, { level: number }> } {
+    const all = this.src.levels?.() ?? null;
+    return { enabled: all !== null, unit: LEVEL.UNIT, detail: false, levels: all ? levelsFor(all, false, this.scope) : {} };
   }
 
   /** /ui/office-acts's answer: the acts of the people shown, in a shown office, without their line unless shared. */
@@ -447,6 +460,7 @@ export interface OfficeShareGateway {
  *   /o/<t>/state                            OfficeShareView.state()
  *   /o/<t>/offices                          OfficeShareView.officeList()
  *   /o/<t>/office-acts                      OfficeShareView.acts()
+ *   /o/<t>/office-levels                    OfficeShareView.levels() (#2661: the level only)
  *   /o/<t>/office-skins                     the packs the shown offices use
  *   /o/<t>/office-skins/<id>                one of them, its instance names cut to the share (never cached)
  *   /o/<t>/office-skins/<id>/img/<sha>.png  its picture (immutable)
@@ -550,6 +564,7 @@ export function createOfficeShareGateway(opts: {
     if (rest === "/state") return json(view.state());
     if (rest === "/offices") return json(view.officeList());
     if (rest === "/office-acts") return json(view.acts());
+    if (rest === "/office-levels") return json(view.levels());
     const skins = opts.source.skins;
     if (!skins) return empty(res, 404);
     const used = view.skinIds();
