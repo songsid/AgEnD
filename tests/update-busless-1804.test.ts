@@ -9,7 +9,6 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmodSync, lstatSync as lstatSyncReal, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -25,13 +24,35 @@ const capture = JSON.parse(readFileSync(FIXTURES, "utf8")) as Record<string, { a
 const NO_BUS: CommandResult = { status: 1, signal: null, stdout: "", stderr: "Failed to connect to bus: No such file or directory\n" };
 const ok = (stdout = ""): CommandResult => ({ status: 0, signal: null, stdout, stderr: "" });
 const json = (type: string, data: unknown) => ok(`${JSON.stringify({ type, data })}\n`);
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-/** callPeer Atomics.wait-blocks this thread; the server's connection callback only runs after we yield. */
-const waitAcceptCount = async (accepted: { length: number }, count: number, timeoutMs = 5000) => {
-  const deadline = Date.now() + timeoutMs;
-  while (accepted.length < count && Date.now() < deadline) await sleep(10);
-  expect(accepted).toHaveLength(count);
-};
+/**
+ * callPeer Atomics.wait-blocks this thread. A same-thread net.Server cannot accept until after the worker has hung up;
+ * Linux then often drops the not-yet-accepted unix connection (#2457, #2788). Accept in a child (own event loop).
+ */
+const LISTEN = String.raw`
+const net = require("net");
+net.createServer(c => { process.send("accept"); c.on("error", () => {}); }).listen(process.argv[1], () => process.send("ready"));
+`;
+type LiveServer = { accepted: { length: number }; waitFor: (n: number) => Promise<void>; close: () => Promise<void> };
+const listen = (path: string) => new Promise<LiveServer>((resolve, reject) => {
+  const child = spawn(process.execPath, ["-e", LISTEN, path], { stdio: ["ignore", "inherit", "inherit", "ipc"] });
+  const accepted = { length: 0 };
+  const waiters: Array<{ n: number; res: () => void }> = [];
+  const bump = () => {
+    accepted.length++;
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      if (accepted.length >= waiters[i]!.n) waiters.splice(i, 1)[0]!.res();
+    }
+  };
+  const waitFor = (n: number) => new Promise<void>(res => { if (accepted.length >= n) res(); else waiters.push({ n, res }); });
+  child.on("error", reject);
+  child.on("message", (m: unknown) => {
+    if (m === "ready") resolve({
+      accepted, waitFor,
+      close: () => { child.kill(); return new Promise(r => { if (child.exitCode !== null) r(); else child.once("exit", () => r()); }); },
+    });
+    else if (m === "accept") bump();
+  });
+});
 
 describe("which busctl failures mean 'no bus'", () => {
   it.each([
@@ -475,33 +496,24 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
     const open = join(dir, "open");
     mkdirSync(open);
     chmodSync(open, 0o777);
-    const accepted: import("node:net").Socket[] = [];
-    const server = createServer(socket => { accepted.push(socket); });
-    await new Promise<void>(resolve => server.listen(join(open, "private"), resolve));
+    const server = await listen(join(open, "private"));
     try {
       const result = callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: 2000 });
       expect(result.stderr).toMatch(/not systemd's own socket \(.*open is writable by others \(mode 777\)\)/);
       expect(peerUnreachable(result)).toBe(true);
+      expect(server.accepted).toHaveLength(0);                              // refused before connect: the child never accepted
       chmodSync(open, 0o755);                                              // control: the same socket, protected
       expect(callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: 300 }).stderr).not.toMatch(/not systemd's own socket/);
-      await waitAcceptCount(accepted, 1);
-      await sleep(50);                                                     // grace: the refused path never sneaks in
-      expect(accepted).toHaveLength(1);                                    // only the control connected
+      await server.waitFor(1);
+      expect(server.accepted).toHaveLength(1);                              // only the control connected
     } finally {
-      for (const socket of accepted) socket.destroy();
-      await new Promise(resolve => server.close(resolve));
+      await server.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
 });
 
 describe("Prism r3: a symlink retargeted after the check cannot move the connection", () => {
-  const listen = async (path: string) => {
-    const accepted: import("node:net").Socket[] = [];
-    const server = createServer(socket => { accepted.push(socket); });
-    await new Promise<void>(resolve => server.listen(path, resolve));
-    return { accepted, close: async () => { for (const s of accepted) s.destroy(); await new Promise(resolve => server.close(resolve)); } };
-  };
   const real = { lstat: (p: string) => lstatSyncReal(p), realpath: (p: string) => realpathSync(p), euid: process.geteuid?.() ?? 0 };
 
   it("the alias resolves to A, is retargeted to B mid-check: A is connected, B never", async () => {
@@ -517,14 +529,14 @@ describe("Prism r3: a symlink retargeted after the check cannot move the connect
       const result = callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: racing });
       expect(result.stderr).not.toMatch(/not systemd's own socket/);           // A passed the check, and A was dialled
       expect(realpathSync(link)).toBe(b);                                     // the alias really points at B now
-      await waitAcceptCount(serverA.accepted, 1);
-      await sleep(50);                                                        // grace: B never connects
+      await serverA.waitFor(1);                                               // child's IPC, not a wall-clock poll
+      await new Promise<void>(r => setImmediate(r));                          // drain B's IPC if it had accepted
       expect(serverB.accepted).toHaveLength(0);
       // controls: the protected endpoint directly, and through the (now B) alias without a race
       expect(callPeer(true, capture.loadUnit!.args, { socket: join(a, "private"), timeoutMs: 300, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
-      await waitAcceptCount(serverA.accepted, 2);
+      await serverA.waitFor(2);
       expect(callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
-      await waitAcceptCount(serverB.accepted, 1);
+      await serverB.waitFor(1);
       expect([serverA.accepted.length, serverB.accepted.length]).toEqual([2, 1]);
       // a dangling alias: unresolvable, refused
       unlinkSync(link); symlinkSync(join(dir, "gone"), link);
