@@ -6,7 +6,7 @@
 
 The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In short:
 
-- **How to update.** Send `/update` in General, or run `agend update` on the host (a beta install stays on betas; `agend update --stable` moves it to the stable release). The update runs the new version's own installer. If an install is interrupted, run the install command again to repair it.
+- **How to update.** Send `/update` in General, or run `agend update` on the host. The update runs the new version's own installer. If an install is interrupted, run the install command again to repair it.
 - **Root and WSL-style hosts (#2369).** On 2.2.x, an `agend update` run from a shell without `XDG_RUNTIME_DIR` (a plain `wsl` shell, `docker exec`, cron, or root) cannot reach the systemd user service and falls back to 2.2.x. Use this instead:
 
   ```bash

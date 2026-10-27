@@ -6,7 +6,7 @@
 
 依順序的步驟請看[從 2.2 升級到 2.3](upgrade-2.3.zh-TW.md)。重點如下：
 
-- **怎麼升級**：在 General 傳 `/update`，或在主機上執行 `agend update`（beta 安裝會繼續收到 beta；`agend update --stable` 會換到正式版）。更新會執行新版本自己的安裝程式。安裝中途被打斷時，再執行一次安裝指令就能修好。
+- **怎麼升級**：在 General 傳 `/update`，或在主機上執行 `agend update`。更新會執行新版本自己的安裝程式。安裝中途被打斷時，再執行一次安裝指令就能修好。
 - **root 或 WSL 類主機（#2369）**：2.2.x 的 `agend update` 如果是在沒有 `XDG_RUNTIME_DIR` 的 shell 執行（一般的 `wsl` shell、`docker exec`、cron，或 root），連不到 systemd 使用者服務，會自動退回 2.2.x。請改用：
 
   ```bash

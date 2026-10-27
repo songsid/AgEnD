@@ -20,8 +20,6 @@ agend update
 
 The update runs the new version's own installer. It refreshes the service settings and restarts the fleet. You do not need to run `agend install` afterwards.
 
-**On a beta?** `agend update` stays on the channel you installed from, so a beta keeps getting betas. To move to the stable release, run `agend update --stable`.
-
 **On root or WSL-style hosts, add one step (#2369).** On 2.2.x, `agend update` may be run from a shell without `XDG_RUNTIME_DIR`: a plain `wsl` shell, `docker exec`, cron, or root. From such a shell it cannot reach the systemd user service, and it falls back to 2.2.x. Run it like this instead:
 
 ```bash

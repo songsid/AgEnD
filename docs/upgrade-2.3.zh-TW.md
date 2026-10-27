@@ -20,8 +20,6 @@ agend update
 
 更新會執行新版本自己的安裝程式，更新 service 設定並重新啟動 fleet。之後不需要再執行 `agend install`。
 
-**用的是 beta？** `agend update` 會留在你安裝時的頻道，所以 beta 會繼續收到 beta。要換到正式版，請執行 `agend update --stable`。
-
 **root 或 WSL 類主機要多一步（#2369）**：如果 2.2.x 的 `agend update` 是在沒有 `XDG_RUNTIME_DIR` 的 shell 執行（一般的 `wsl` shell、`docker exec`、cron，或 root），它連不到 systemd 使用者服務，會退回 2.2.x。請改用：
 
 ```bash

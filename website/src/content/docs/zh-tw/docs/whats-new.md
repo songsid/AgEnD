@@ -22,7 +22,7 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
 - **辦公室裡的 agent 是新功能：** 沒有人為某個 agent 設定 `office_access`，`office_view` 與 `office_set` 就維持關閉。降回 2.3.1 時每間辦公室都會保留（只是沒有編輯配置的修改）。
 - **ClassicBot 的原生回覆：** 只有開啟 `reply_triggers` 才會觸發 bot（預設關閉）；@ 提及照常觸發。
 
-**從 2.3.2 beta 升級：** `agend update` 會留在 beta 頻道。要換到 2.3.2 請執行 `agend update --stable`；它比所有 2.3.2 beta 都新。beta 存下的私訊通知設定會視為開啟、發在 topic，並在留下備份後改寫。較早 beta 寫下的 `dashboard.office` 會搬到 `office_access`，並留備份。
+**使用 2.3.2 beta：** `agend update` 會留在 beta 頻道，繼續收到 beta。beta 存下的私訊通知設定會視為開啟、發在 topic，並在留下備份後改寫。較早 beta 寫下的 `dashboard.office` 會搬到 `office_access`，並留備份。
 
 **新功能：**
 

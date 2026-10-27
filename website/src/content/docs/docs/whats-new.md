@@ -22,7 +22,7 @@ AgEnD 2.3 is the stable line, and 2.3.2 is its current release. This page is for
 - **Agents in the Office are new:** `office_view` and `office_set` stay off unless a person sets `office_access` for an agent. Rolling back to 2.3.1 keeps every office (without its Edit layout changes).
 - **ClassicBot native replies** trigger a bot only with `reply_triggers` on (off by default); an @mention still does.
 
-**Upgrading from a 2.3.2 beta:** `agend update` stays on the beta channel. Run `agend update --stable` to move to 2.3.2; it is newer than every 2.3.2 beta. A DM notice setting saved by a beta is read as on, in the topic, and rewritten with a backup. A `dashboard.office` written by an earlier beta moves to `office_access`, with a backup.
+**On a 2.3.2 beta:** `agend update` stays on the beta channel and keeps getting betas. A DM notice setting saved by a beta is read as on, in the topic, and rewritten with a backup. A `dashboard.office` written by an earlier beta moves to `office_access`, with a backup.
 
 **What's new:**
 
