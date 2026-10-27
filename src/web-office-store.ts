@@ -33,6 +33,9 @@
  *
  * — each read back on its own: reservations that no longer check leave the night places (and the office) in.
  *
+ * #2736: the mail drop (`overrides.mailDrop`) likewise, under `mailDrop` by office id: a 2.3.2 beta before it refuses
+ * the key inside the overrides (and would show the office without its layout).
+ *
  * #2706: the rest of an office's overrides are kept beside it too, by office id, never in its entry — 2.3.1 refuses an
  * entry with an `overrides` key, drops that office on read, and its next save deletes it. So 2.3.1 (and a host before
  * #2513) keeps every office, only without its layout —
@@ -168,8 +171,8 @@ export function checkOffices(raw: unknown, packOf?: OverridePack): OfficeCheck {
 }
 
 type State = { rev: number; offices: Office[] } | "unreadable";
-/** The overrides parts kept beside the offices on disk, apart from the rest (#2665 night places, #2691 seat reservations). */
-const BESIDE = ["furnitureNight", "seatFor"] as const;
+/** The overrides parts kept beside the offices on disk, apart from the rest (#2665 night places, #2691 seat reservations, #2736 the mail drop). */
+const BESIDE = ["furnitureNight", "seatFor", "mailDrop"] as const;
 type Beside = (typeof BESIDE)[number];
 type OnDisk = { offices: Office[]; overrides?: Record<string, LayoutOverrides> } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
 /**

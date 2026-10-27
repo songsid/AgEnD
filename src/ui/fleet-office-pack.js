@@ -35,6 +35,10 @@
 //                                                     the org chart's states (fleet-org.js ORG_STATES) → an area; a
 //                                                     state it does not name goes to "default", else the first area
 //     "door": [640, 700],                             optional: where someone new walks in from (default: bottom middle)
+//     "mailDrop": [640, 420],                         optional (#2736): where a letter from another office lands (more
+//                                                     waiting step GAP px right of it, past any seat); default: the
+//                                                     waypoint nearest the middle off every seat (fleet-office-zones.js
+//                                                     dropPoint)
 //     "waypoints": [{ "id": "hall", "x": 640, "y": 600 }, …], "edges": [["hall", "east"], …],
 //                                                     optional: the walkable graph (else people walk straight)
 //     "straight": true,                               optional (#2634): every walk goes across, then up or down — each
@@ -120,7 +124,7 @@
 //     "seatFor": { "desks": { "0": { "for": ["atlas"], "lend": false } } },
 //                                                     a seat's reservation by area and slot (#2691), in place of the
 //                                                     pack's own for that seat; "for": [] is none (lends nothing)
-//     "door": [640, 700],
+//     "door": [640, 700], "mailDrop": [640, 420],     (#2736: kept beside the offices on disk, as furnitureNight)
 //     "waypoints": [{ "id": "hall", "x": 640, "y": 600 }, …], "edges": [["hall", "east"], …] }
 //                                                     the walkable graph, replaced whole (edges need waypoints)
 //
@@ -246,7 +250,7 @@ function states(v, at) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk"], "pack");
+    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -349,7 +353,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
     return { ok: true, pack: {
       format: 1, id: x.id, scale, background: opt(x.background, "background"), foreground: opt(x.foreground, "foreground"), matte: x.matte === undefined ? undefined : x.matte.toLowerCase(), areas, stateZones,
-      door: x.door === undefined ? { x: LOGICAL.w / 2, y: LOGICAL.h - 10 } : point(x.door, "door"), waypoints, edges, straight: x.straight === true, furniture, characters, byInstance,
+      door: x.door === undefined ? { x: LOGICAL.w / 2, y: LOGICAL.h - 10 } : point(x.door, "door"),
+      mailDrop: x.mailDrop === undefined ? null : point(x.mailDrop, "mailDrop"), waypoints, edges, straight: x.straight === true, furniture, characters, byInstance,
       props: x.props === undefined ? {} : strips(x.props, PROPS, "props", scale), bubbles,
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
     } };
@@ -392,7 +397,7 @@ const reserve = (s, r) => { const { for: _f, lend: _l, ...p } = s; return r && r
 export function checkLayoutOverrides(x) {
   try {
     obj(x, "overrides");
-    keys(x, ["pack", "seats", "furniture", "furnitureNight", "seatFor", "door", "waypoints", "edges"], "overrides");
+    keys(x, ["pack", "seats", "furniture", "furnitureNight", "seatFor", "door", "mailDrop", "waypoints", "edges"], "overrides");
     if (typeof x.pack !== "string" || !ID.test(x.pack)) throw new Refused("overrides.pack", "1–40 letters, digits, _ or -");
     const out = { pack: x.pack };
     if (x.seats !== undefined) {
@@ -448,6 +453,7 @@ export function checkLayoutOverrides(x) {
       }
     }
     if (x.door !== undefined) { const q = point(x.door, "overrides.door"); out.door = [q.x, q.y]; }
+    if (x.mailDrop !== undefined) { const q = point(x.mailDrop, "overrides.mailDrop"); out.mailDrop = [q.x, q.y]; }
     if (x.edges !== undefined && x.waypoints === undefined) throw new Refused("overrides.edges", "only with waypoints");
     if (x.waypoints !== undefined) {
       const ids = new Set();
@@ -508,8 +514,9 @@ export function applyOverrides(pack, ov) {
       return { ...f, ...(q ? { x: q[0], y: q[1] } : {}), ...(n ? { night: { ...f.night, x: n[0], y: n[1] } } : {}) };
     });
     const door = ov.door ? { x: ov.door[0], y: ov.door[1] } : pack.door;
+    const mailDrop = ov.mailDrop ? { x: ov.mailDrop[0], y: ov.mailDrop[1] } : pack.mailDrop ?? null;
     const graph = ov.waypoints ? { waypoints: ov.waypoints.map((w) => ({ ...w })), edges: (ov.edges || []).map((e) => [e[0], e[1]]) } : { waypoints: pack.waypoints, edges: pack.edges };
-    return { ok: true, pack: { ...pack, areas, furniture, door, ...graph } };
+    return { ok: true, pack: { ...pack, areas, furniture, door, mailDrop, ...graph } };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
     throw err;
@@ -575,6 +582,9 @@ export function overridesBetween(pack, edited) {
     if (o.night.x !== f.night.x || o.night.y !== f.night.y) (ov.furnitureNight ||= {})[f.id] = [f.night.x, f.night.y];
   }
   if (pack.door.x !== edited.door.x || pack.door.y !== edited.door.y) ov.door = [edited.door.x, edited.door.y];
+  // #2736: a mail drop placed (the pack has none) or moved from the pack's.
+  const md = pack.mailDrop ?? null, ed = edited.mailDrop ?? null;
+  if (ed && (!md || md.x !== ed.x || md.y !== ed.y)) ov.mailDrop = [ed.x, ed.y];
   if (!same(pack.waypoints, edited.waypoints) || !same(pack.edges, edited.edges)) {
     ov.waypoints = edited.waypoints.map((w) => ({ id: w.id, x: w.x, y: w.y }));
     ov.edges = edited.edges.map((e) => [e[0], e[1]]);
