@@ -74,13 +74,21 @@ export function officeRooms(view, filter) {
   return picked.map((r) => ({ ...r, nodes: r.nodes.filter((n) => pinned.has(n.name)) })).filter((r) => r.nodes.length);
 }
 
-/** A stored office's members: instance names, or `team:<name>` for a team's; none means everyone. */
+/**
+ * #2752: an office kept for nobody (its style's NPCs only) stores this one member: a team with no name, which no team
+ * has, so a version before it finds nobody too. `[]` still means everyone.
+ */
+export const NOBODY = "team:";
+/** Who an office's members pick: "everyone" ([]), "nobody" (only NOBODY), or "picked". */
+export const membersMode = (members) => (!members.length ? "everyone" : members.every((m) => m === NOBODY) ? "nobody" : "picked");
+/** A stored office's members: instance names, or `team:<name>` for a team's; none means everyone, NOBODY nobody. */
 export function membersOf(office, view) {
   const every = [...view.top, ...view.teams.flatMap((tm) => tm.nodes), ...view.rest.nodes];
   const byName = new Map(every.map((n) => [n.name, n]));
   if (!office.members.length) return [...byName.values()];
   const out = new Map();
   for (const m of office.members) {
+    if (m === NOBODY) continue;
     const team = m.startsWith("team:") ? view.teams.find((tm) => tm.name === m.slice(5)) : null;
     for (const n of team ? team.nodes : byName.has(m) ? [byName.get(m)] : []) if (!out.has(n.name)) out.set(n.name, n);
   }

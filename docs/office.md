@@ -76,7 +76,7 @@ Studio, Cozy and zones packs are called **zones styles** below. Only they have w
 A fleet admin, on the dashboard reached directly (not over the public link), uses **Edit offices** in the Office bar. On a screen 1200 px or wider it opens as a panel on the right, in place of the AI usage rail, with the Office still usable beside it. Narrower, it's a centred dialog. × or Esc closes it.
 
 1. **Add office**, and give it a name.
-2. **Who is in it**: whole teams or single instances. An office with nobody picked shows everyone.
+2. **Who is in it**: **Everyone**; **Picked**, then whole teams or single instances (with none ticked yet it still shows everyone); or **Nobody (NPCs only)**: no agent sits there, only its style's NPCs (not released yet, #2752). In `web-offices.json` everyone is `"members": []` and nobody is `"members": ["team:"]`, a team with no name, which no team has.
 3. **Style**: Desks, Studio, Cozy or a kept skin pack.
 4. **Save.**
 
@@ -362,6 +362,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
 - **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (**not released yet**), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.
 - **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.2.6 has no Office. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. Every office's layout (Edit layout, night places, seat reservations) is kept beside the office list, where 2.3.1 doesn't look: there every office shows, without its layout, and a save on 2.3.1 drops the layouts for good. **Not released yet:** this needs the fix for #2706. On 2.3.2-beta.11 or earlier, the layout is inside the office's entry, so 2.3.1 doesn't show that office at all, and a save there deletes it. Either way, keep a copy of `web-offices.json` before rolling back if the layouts matter.
+- **An office kept for nobody on an older version** (#2752, not released yet). An older version reads `["team:"]` as a team it can't find, so the office still shows nobody. Its Edit offices says **1 picked** with no box ticked; ticking someone there adds them, and the office then holds them.
 
 ## Versions
 
@@ -383,3 +384,4 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Furniture `activeOn` and `hides` | **Not released yet** (after 2.3.2-beta.11) |
 | Offices with a layout survive a rollback to 2.3.1 (#2706) | **Not released yet** (after 2.3.2-beta.11) |
 | Whole fleet's style kept for everyone; Whole fleet as a share; a share's Look (#2715, #2716) | **Not released yet** (after 2.3.2-beta.14) |
+| An office for nobody (NPCs only) (#2752) | **Not released yet** (after 2.3.2-beta.14) |
