@@ -267,7 +267,7 @@ desk. Hover (or tap once) a desk for its name, state and backend; click (or tap 
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
 (never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
-in each (whole teams or single instances; none = everyone) and its style, and upload or delete **skin packs** (an
+in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style, and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four

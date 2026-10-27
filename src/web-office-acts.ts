@@ -22,7 +22,7 @@
  * the next call may come (cooldown_ms). office_view is not limited.
  */
 import { applyOverrides, fitNight, fitSeatFor, type CheckedPack } from "./ui/fleet-office-pack.js";
-import type { Office } from "./web-office-store.js";
+import { OFFICE_NOBODY, type Office } from "./web-office-store.js";
 import { OfficeSetArgs, OfficeViewArgs, validateArgs } from "./outbound-schemas.js";
 
 export const OFFICE_ACT_LIMITS = { perMinute: 6, perHour: 60, say: 40, minSeconds: 5, maxSeconds: 120, defaultSeconds: 30 } as const;
@@ -68,13 +68,15 @@ export type OfficeAnswer = Record<string, unknown>;
 
 /**
  * A stored office's members, as the page reads them (fleet-office-model.js membersOf): instance names, or `team:<name>`
- * for a team's members; none means everyone the dashboard lists. A name the chart does not have is left out.
+ * for a team's members; none means everyone the dashboard lists, OFFICE_NOBODY nobody (#2752). A name the chart does not
+ * have is left out.
  */
 export function officeMembers(office: Pick<Office, "members">, chart: OfficeChart): string[] {
   const listed = new Set([...chart.names, ...chart.teams.flatMap(t => t.members)]);
   if (!office.members.length) return [...listed];
   const out: string[] = [];
   for (const m of office.members) {
+    if (m === OFFICE_NOBODY) continue;
     const team = m.startsWith("team:") ? chart.teams.find(t => t.name === m.slice(5)) : undefined;
     for (const n of team ? team.members : listed.has(m) ? [m] : []) if (!out.includes(n)) out.push(n);
   }

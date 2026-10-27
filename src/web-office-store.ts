@@ -66,7 +66,12 @@ export const AUTO_OFFICE_ID = "auto";
 export interface OfficePoint { id: string; x: number; y: number }
 export interface OfficeSeat extends OfficePoint { instance?: string }
 export interface OfficeLayout { seats: OfficeSeat[]; waypoints: OfficePoint[]; edges: Array<[string, string]> }
-/** `members`: instance names, or `team:<name>` for a team's members; none means everyone. */
+/**
+ * #2752: the one member of an office kept for nobody (its style's NPCs only): a team with no name, which no team has, so
+ * an older version finds nobody in it too. As fleet-office-model.js NOBODY.
+ */
+export const OFFICE_NOBODY = "team:";
+/** `members`: instance names, or `team:<name>` for a team's members; none means everyone, [OFFICE_NOBODY] nobody. */
 export interface Office { id: string; name: string; skin: string; members: string[]; layout?: OfficeLayout; overrides?: LayoutOverrides }
 /** The checked pack an office's overrides are put on (a pack the host keeps), or null (a built-in style: shape only). */
 export type OverridePack = (id: string) => CheckedPack | null;

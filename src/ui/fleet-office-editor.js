@@ -1,6 +1,6 @@
 // Fleet → Org chart → Office: the offices people keep on the host, edited (#2399 carry: the write surface's minimal
-// editor). An admin session adds an office, renames it, chooses its style (Desks / Studio), picks who is in it (whole
-// teams, or one instance at a time; none: everyone) and deletes one — then saves the whole list with the rev it read
+// editor). An admin session adds an office, renames it, chooses its style (Desks / Studio), picks who is in it (everyone,
+// whole teams or one instance at a time, or #2752 nobody: its style's NPCs only) and deletes one — then saves the whole list with the rev it read
 // (PUT /ui/offices; a change made meanwhile is a 409: read again, nothing overwritten). A stored office's layout (seats,
 // paths) and its layout overrides (Edit layout, fleet-office-layout.js) are kept as they are. Skin packs (#2513): the
 // packs the host keeps are styles to choose; an admin uploads one here (its manifest.json and its PNGs, picked together
@@ -13,11 +13,14 @@ import { SidePanel } from "/assets/side-panel.js";
 import { toast } from "/assets/ui-toast.js";
 import { nodeText } from "./fleet-org.js";
 import { BUILT_IN_SKINS } from "./fleet-office-skin.js";
+import { NOBODY, membersMode } from "./fleet-office-model.js";
 
 register("orge", {
   en: {
     edit: "Edit offices", title: "Offices", lead: "Offices everyone on this fleet sees in the Office view. An office with no one picked shows everyone.",
     add: "Add office", newName: "New office", name: "Name", styleLabel: "Style", members: "Who is in it", membersN: "{0} picked", everyone: "Everyone",
+    picked: "Picked", nobody: "Nobody (NPCs only)", pickSome: "No one picked yet: it shows everyone until you pick someone.",
+    nobodyNote: "No agent sits here: only its style's NPCs.",
     teams: "Teams", instances: "Instances", remove: "Delete", save: "Save", cancel: "Cancel", saved: "Offices saved.",
     none: "No offices yet: the Office view shows the whole fleet.", nameNeeded: "Each office needs a name.", tooMany: "At most {0} offices.",
     changed: "Someone changed the offices meanwhile; your edits were not saved. Keep your edits (Save then replaces their change) or load theirs.",
@@ -39,6 +42,8 @@ register("orge", {
   "zh-TW": {
     edit: "編輯辦公室", title: "辦公室", lead: "這個 fleet 的每個人在辦公室檢視中都會看到這些辦公室。沒有選任何成員的辦公室會顯示全部。",
     add: "新增辦公室", newName: "新辦公室", name: "名稱", styleLabel: "風格", members: "成員", membersN: "已選 {0} 個", everyone: "全部",
+    picked: "指定", nobody: "沒有人（只有 NPC）", pickSome: "還沒選任何人：選人之前會顯示全部。",
+    nobodyNote: "這裡不坐任何 agent，只有風格裡的 NPC。",
     teams: "Team", instances: "Instance", remove: "刪除", save: "儲存", cancel: "取消", saved: "辦公室已儲存。",
     none: "還沒有辦公室：辦公室檢視會顯示整個 fleet。", nameNeeded: "每個辦公室都需要名稱。", tooMany: "最多 {0} 個辦公室。",
     changed: "有人在這期間修改了辦公室，你的編輯沒有儲存。你可以保留你的編輯（儲存時會取代對方的修改），或載入對方的版本。",
@@ -177,14 +182,29 @@ export function officeForSave(o) {
   return { id: o.id, name: o.name.trim(), skin: o.skin, members: [...o.members], ...(o.layout ? { layout: o.layout } : {}), ...(o.overrides ? { overrides: o.overrides } : {}) };
 }
 
+const whoText = (members) => {
+  const mode = membersMode(members);
+  return mode === "everyone" ? te("everyone") : mode === "nobody" ? te("nobody") : te("membersN", members.filter((m) => m !== NOBODY).length);
+};
+/** "Who is in it" (#2752): Everyone ([]), Picked (the boxes; ticking one picks), or Nobody ([NOBODY]: NPCs only). */
 function Members({ office, view, everyone, onChange }) {
-  const picked = new Set(office.members);
-  const toggle = (m) => onChange(picked.has(m) ? office.members.filter((x) => x !== m) : [...office.members, m]);
+  const mode = membersMode(office.members);
+  const [picking, setPicking] = useState(false);                       // Picked chosen, no one ticked yet (still everyone)
+  const shown = mode === "everyone" && picking ? "picked" : mode;
+  const picks = office.members.filter((m) => m !== NOBODY);            // a pick an older editor added keeps NOBODY beside it
+  const picked = new Set(picks);
+  const toggle = (m) => { setPicking(true); onChange(picked.has(m) ? picks.filter((x) => x !== m) : [...picks, m]); };
+  const choose = (to) => { setPicking(to === "picked"); onChange(to === "nobody" ? [NOBODY] : to === "picked" ? picks : []); };
+  const radio = (to) => html`<label key=${to} class="check"><input type="radio" name=${`oe-who-${office.id}`} value=${to} checked=${shown === to}
+    onChange=${() => choose(to)} /><span>${te(to)}</span></label>`;
   return html`<div class="oe-members">
-    ${view.teams.length ? html`<fieldset class="oe-group"><legend>${te("teams")}</legend>${view.teams.map((tm) => html`<label key=${`t:${tm.name}`} class="check">
+    <fieldset class="oe-group oe-who"><legend>${te("members")}</legend>${["everyone", "picked", "nobody"].map(radio)}
+      ${shown === "picked" && !picks.length ? html`<p class="note">${te("pickSome")}</p>` : null}
+      ${shown === "nobody" ? html`<p class="note">${te("nobodyNote")}</p>` : null}</fieldset>
+    ${shown === "nobody" ? null : html`${view.teams.length ? html`<fieldset class="oe-group"><legend>${te("teams")}</legend>${view.teams.map((tm) => html`<label key=${`t:${tm.name}`} class="check">
       <input type="checkbox" checked=${picked.has(`team:${tm.name}`)} onChange=${() => toggle(`team:${tm.name}`)} /><span>${tm.name}</span></label>`)}</fieldset>` : null}
     <fieldset class="oe-group"><legend>${te("instances")}</legend>${everyone.map((n) => html`<label key=${n.name} class="check">
-      <input type="checkbox" checked=${picked.has(n.name)} onChange=${() => toggle(n.name)} /><span>${nodeText(n).primary}</span></label>`)}</fieldset>
+      <input type="checkbox" checked=${picked.has(n.name)} onChange=${() => toggle(n.name)} /><span>${nodeText(n).primary}</span></label>`)}</fieldset>`}
   </div>`;
 }
 
@@ -261,7 +281,7 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
             ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
             ${STYLES.includes(o.skin) || packs.some((pk) => pk.id === o.skin) ? null : html`<option key=${o.skin} value=${o.skin}>${te("styleUnknown", o.skin)}</option>`}</select></label>
         <button type="button" class="btn btn-sm oe-members-btn" aria-expanded=${open === o.id ? "true" : "false"} onClick=${() => setOpen(open === o.id ? null : o.id)}>
-          ${te("members")}: ${o.members.length ? te("membersN", o.members.length) : te("everyone")}</button>
+          ${te("members")}: ${whoText(o.members)}</button>
         <button type="button" class="btn btn-sm btn-danger oe-remove" onClick=${() => { setDraft((d) => d.filter((x) => x.id !== o.id)); if (open === o.id) setOpen(null); }}>${te("remove")}</button>
       </div>
       ${o.layout ? html`<p class="note">${te("layoutKept")}</p>` : null}
