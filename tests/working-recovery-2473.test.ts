@@ -26,14 +26,13 @@ function fixture() {
   const journal = new WorkingStateJournal(db), store = new WorkingRecoveryStore(db);
   journal.observe("worker", snapshot()); store.discover("worker", snapshot());
   let now = 0, active = true, storm = false, level = "normal", enabled = true;
-  const state = live(), current = card(), cards: Record<string, RecoveryCard> = { "task-a": current }, admissions: string[] = [], summaries: string[] = [], logs: string[] = [];
+  const state = live(), current = card(), cards: Record<string, RecoveryCard> = { "task-a": current }, admissions: string[] = [], logs: string[] = [];
   const coordinator = new WorkingRecoveryCoordinator({ store, now: () => now, active: () => active, storm: () => storm,
     pressure: () => ({ level, sampledAt: now, recovering: false } as any), enabled: () => enabled, live: () => state,
     card: id => cards[id], laneFree: () => true, admit: row => store.admit(row, () => { admissions.push(row.key); return "delivery-a"; }),
-    summary: (group, rows) => store.summary(group, () => { summaries.push(`${group}:${rows.map(r => r.outcome).join(",")}`); }),
     log: (row, outcome, reason) => logs.push(`${row.key}:${outcome}:${reason}`),
   });
-  return { store, db, journal, coordinator, state, current, cards, admissions, summaries, logs,
+  return { store, db, journal, coordinator, state, current, cards, admissions, logs,
     time: (n: number) => { now = n; }, pressure: (s: string) => { level = s; }, enabled: (v: boolean) => { enabled = v; },
     active: (v: boolean) => { active = v; }, storm: (v: boolean) => { storm = v; } };
 }
@@ -57,7 +56,7 @@ describe("stable, durable, pressure-paced working recovery", () => {
     f.store.discover("worker", resumed);
     f.coordinator.reset(); f.coordinator.ready(); f.coordinator.tick(); f.time(240_000); f.coordinator.tick();
     expect(f.store.get("worker")!.key).not.toBe(first);
-    expect(f.admissions).toHaveLength(2); expect(f.summaries).toHaveLength(2);
+    expect(f.admissions).toHaveLength(2);
     f.store.discover("worker", { ...resumed, managerBootId: "run-3" });
     f.time(360_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(2);
   });
@@ -104,8 +103,8 @@ describe("stable, durable, pressure-paced working recovery", () => {
     f.coordinator.ready(); f.coordinator.tick(); f.time(419_999); f.coordinator.tick(); expect(f.admissions).toEqual([]);
     f.pressure("elevated"); f.time(420_000); f.coordinator.tick(); expect(f.admissions).toEqual([]);
     f.pressure("normal"); f.time(500_000); f.coordinator.tick(); f.time(529_999); f.coordinator.tick(); expect(f.admissions).toEqual([]);
-    f.time(530_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(1); expect(f.summaries).toEqual(["old-run:admitted"]);
-    f.time(900_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(1); expect(f.summaries).toHaveLength(1);
+    f.time(530_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(1);
+    f.time(900_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(1);
   });
   it("a restart loop resets stability without consuming its candidate", () => {
     const f = fixture();
@@ -119,18 +118,15 @@ describe("stable, durable, pressure-paced working recovery", () => {
     f.enabled(true); f.storm(true); f.coordinator.tick(); f.storm(false); f.coordinator.tick(); f.time(150_000); f.coordinator.tick();
     expect(f.admissions).toHaveLength(1); const key = f.store.get("worker")!.key;
     expect(f.coordinator.accepts("worker", key)).toBe(true); f.enabled(false); expect(f.coordinator.accepts("worker", key)).toBe(false);
-    expect(f.summaries).toHaveLength(1); // deferred summary is not sent again on later progress
   });
   it("paces distinct instances by five seconds and never clears deferred work", () => {
     const f = fixture(); f.store.discover("other", snapshot({ references: [{ kind: "task", id: "task-b", version: 3, status: "claimed" }] }));
     f.cards["task-b"] = { ...card(), uuid: "task-b", assignee: "other" };
     f.coordinator.ready(); f.coordinator.tick(); f.time(120_000); f.coordinator.tick();
     expect(f.admissions).toHaveLength(1);
-    expect(f.summaries).toEqual([]);
     expect(f.store.list().filter(row => row.outcome === "deferred")).toHaveLength(1);
     f.time(124_999); f.coordinator.tick(); expect(f.admissions).toHaveLength(1);
     f.time(125_000); f.coordinator.tick(); expect(f.admissions).toHaveLength(2);
-    expect(f.summaries).toEqual(["old-run:admitted,admitted"]);
   });
   it("rolls back a failed atomic admission and preserves the prior snapshot", () => {
     const f = fixture(), row = f.store.get("worker")!;
@@ -265,14 +261,14 @@ describe("2026-10-25 real update shapes", () => {
     expect(f.store.get("worker")).toBeNull();
     expect(f.admissions).toEqual([]);
   });
-  it("already persisted idle episodes are excluded without input or a summary", () => {
+  it("already persisted idle episodes are excluded without input", () => {
     const f = fixture(), idle = snapshot(); idle.observation = { ...idle.observation, executionState: "idle" };
     f.db.prepare("UPDATE working_recovery_episodes SET snapshot_json=?,episode_key=? WHERE instance_name='worker'")
       .run(JSON.stringify(idle), recoveryKey("worker", idle));
     f.coordinator.ready(); f.coordinator.tick(); f.time(120_000); f.coordinator.tick();
     expect(f.store.get("worker")).toBeNull();
     expect(f.logs.some(line => line.endsWith("excluded:not_working_at_interruption"))).toBe(true);
-    expect(f.admissions).toEqual([]); expect(f.summaries).toEqual([]);
+    expect(f.admissions).toEqual([]);
     f.store.discover("worker", snapshot(), "genuine-work");
     expect(f.store.get("worker")).toMatchObject({ outcome: "deferred", reason: "awaiting_stability" });
   });
@@ -294,12 +290,11 @@ describe("2026-10-25 real update shapes", () => {
         .toMatchObject({ outcome: "ready", tasks: [snapshot().references[0]] });
     }
   });
-  it("a deferred episode keeps its key but gets this boot's one summary after an earlier summary", () => {
+  it("a deferred episode keeps its key across a new fleet start", () => {
     const f = fixture(); f.enabled(false); f.coordinator.ready(); f.coordinator.tick(); f.time(120_000); f.coordinator.tick();
-    const previous = f.store.get("worker")!; expect(f.summaries).toHaveLength(1);
+    const previous = f.store.get("worker")!;
     f.store.discover("worker", previous.snapshot, "new-manager");
     expect(f.store.get("worker")).toMatchObject({ key: previous.key, group: "new-manager", outcome: "deferred" });
-    f.coordinator.tick(); f.coordinator.tick(); expect(f.summaries).toHaveLength(2);
-    expect(f.summaries[1]).toContain("new-manager:"); expect(f.admissions).toEqual([]);
+    f.coordinator.tick(); f.coordinator.tick(); expect(f.admissions).toEqual([]);
   });
 });

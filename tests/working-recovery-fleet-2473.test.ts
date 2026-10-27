@@ -54,7 +54,7 @@ function fixture() {
     pasteBuffer: paste, sendSpecialKey: enter, getWindowId: () => "@scratch" };
   d.waitForInputTransientToClear = vi.fn(async () => true); d.confirmSubmitted = vi.fn(async () => "submitted");
   d.setDeliveryOutboxPort(fm.deliveryOutbox);
-  // Only a published General owner is needed for durable summary admission. No General handler is driven.
+  // A published General owner, so a regression that posts to General has somewhere to post. No General handler is driven.
   fm.daemons.set("general", { bootId: "general-fixture" }); fm.lifecycle.daemons.set("worker", d);
   const board = fm.scheduler.db.board, actor = { kind: "instance", name: "worker" } as const;
   const created = board.createCards(actor, { cards: [{ title: "private task text", assignee: "worker" }] }).cards[0];
@@ -89,7 +89,7 @@ describe("#2473 manager recovery wiring", () => {
     expect(f.d.stop).toHaveBeenCalledOnce(); expect(runtime.exit).toHaveBeenCalledWith(0);
     expect(f.fm.deliveryOutbox.workingRecovery.beginRun("next-manager", 123, Date.now())).toBe(cause === "host_update" ? "update" : cause);
   });
-  it("the current manager gets its General summary despite a summary from the previous manager lifetime", async () => {
+  it("recovery decisions go to the Log only: General gets no working-recovery summary", async () => {
     const f = fixture(), outbox = f.fm.deliveryOutbox, store = outbox.workingRecovery;
     // The outbox stamps its manager ID, so seed the prior's actual previous-run
     // shape explicitly rather than passing an ignored managerBootId to observe().
@@ -97,16 +97,18 @@ describe("#2473 manager recovery wiring", () => {
     prior.managerBootId = "previous-manager";
     outbox.db.prepare("UPDATE working_state_journal SET prior_json=? WHERE instance_name='worker'").run(JSON.stringify(prior));
     outbox.db.prepare("DELETE FROM working_recovery_episodes WHERE instance_name='worker'").run();
-    store.summary("previous-manager", () => {});
     f.fm.lastActivity.set("worker", 12345);
     f.fm.observeWorkingState("worker", "published");
     expect(store.get("worker").group).toBe(f.fm.managerBootId);
     const info = vi.spyOn(f.fm.logger, "info").mockImplementation(() => {});
     await f.stable(); f.fm.workingRecovery.tick();
-    const notices = f.fm.deliveryOutbox.listPending().filter((r: any) => r.sourceKey?.startsWith("working-recovery-summary:"));
-    expect(notices).toHaveLength(1); expect(notices[0].sourceKey).toBe(`working-recovery-summary:${f.fm.managerBootId}`);
-    expect(info.mock.calls.filter((args: any[]) => args[1] === "Interrupted work recovery summary queued for General")).toHaveLength(1);
-    expect(f.fm.eventLog.query({ instance: "general", type: "working_state" }).filter((e: any) => e.payload.reason === "recovery_summary")).toHaveLength(1);
+    expect(f.fm.deliveryOutbox.listPending().filter((r: any) => r.targetInstance === "general")).toEqual([]);
+    expect(f.fm.deliveryOutbox.listPending().filter((r: any) => String(r.payload?.content).includes("working-recovery-summary"))).toEqual([]);
+    expect(info.mock.calls.filter((args: any[]) => args[1] === "Interrupted work recovery summary queued for General")).toEqual([]);
+    expect(f.fm.eventLog.query({ instance: "general", type: "working_state" })).toEqual([]);
+    // The decision itself is still in the interrupted instance's Log.
+    expect(info.mock.calls.filter((args: any[]) => args[1] === "Interrupted work recovery decision").length).toBeGreaterThan(0);
+    expect(f.fm.eventLog.query({ instance: "worker", type: "working_state" }).some((e: any) => e.payload.outcome === "admitted")).toBe(true);
   });
   it("a Claude replacement remains session_unknown until its existing checkpoint proves a session", () => {
     const f = fixture(); expect(f.d.getWorkingRecoveryState().sessionId).toBe("owned-session");
@@ -166,21 +168,20 @@ describe("#2473 manager recovery wiring", () => {
     expect(info).toHaveBeenCalledWith(expect.objectContaining({ observedCause: "unknown_interruption", requestedAction: "manual_restart" }),
       "Interrupted work recovery decision");
   });
-  it("the General summary waits for General's own continuation instead of superseding it", async () => {
+  it("General's own continuation is delivered and nothing else is queued for it", async () => {
     const f = fixture();
     f.fm.fleetConfig.instances.worker.general_topic = true;
     f.fm.fleetConfig.instances.general.general_topic = false;
     await f.stable();
-    const summaries = () => f.fm.deliveryOutbox.listPending().filter((r: any) => r.sourceKey?.startsWith("working-recovery-summary:"));
-    expect(summaries()).toHaveLength(0);
+    const pending = () => f.fm.deliveryOutbox.listPending();
+    expect(pending()).toHaveLength(1);
     const row = await f.dispatch();
     expect(row.kind).toBe("working_recovery");
     expect(f.paste).toHaveBeenCalledOnce(); expect(f.enter).toHaveBeenCalledOnce();
     expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("delivered");
     expect(f.fm.deliveryOutbox.getWorkingState("worker").current.observation.recoveryDeliveryId).toBe(row.deliveryId);
     f.fm.workingRecovery.tick(); f.fm.workingRecovery.tick();
-    expect(summaries()).toHaveLength(1);
-    expect(summaries()[0].targetInstance).toBe("worker");
+    expect(pending()).toEqual([]);
   });
   it("keeps the confirmed work interval across real beginSpawn and session re-checkpoint", async () => {
     const f = fixture(); await f.stable(); const row = await f.dispatch();
@@ -226,8 +227,7 @@ describe("#2473 manager recovery wiring", () => {
     const text = f.paste.mock.calls[0][0]; expect(text).toContain("background state is unknown"); expect(text).toContain(f.card.uuid);
     expect(text).not.toContain("private task text"); expect(f.d.turnReplyGuard.snapshot()).toBeNull();
     expect(f.fm.deliveryOutbox.get(row.deliveryId).state).toBe("delivered"); expect(await f.dispatch()).toBeUndefined();
-    const summary = f.fm.deliveryOutbox.listPending().find((r: any) => r.targetInstance === "general");
-    expect(summary.payload.content).toContain("Advisory, background unknown: worker");
+    expect(f.fm.deliveryOutbox.listPending().find((r: any) => r.targetInstance === "general")).toBeUndefined();
     expect(f.fm.eventLog.query({ instance: "worker", type: "working_state" }).some((e: any) => JSON.stringify(e).includes("advisory_background_unknown"))).toBe(true);
     expect(f.fm.deliveryOutbox.openReplyObligations("worker")).toEqual([]);
   });
@@ -239,10 +239,7 @@ describe("#2473 manager recovery wiring", () => {
     if (condition === "opt_out") f.fm.fleetConfig.instances.worker.resume_interrupted_work = false;
     await f.stable(); expect(await f.dispatch()).toBeUndefined(); expect(f.paste).not.toHaveBeenCalled();
     expect(f.fm.deliveryOutbox.workingRecovery.get("worker")?.outcome).toBe("deferred");
-    if (condition === "unknown_owner") {
-      const summary = f.fm.deliveryOutbox.listPending().find((r: any) => r.targetInstance === "general");
-      expect(summary.payload.content).toContain("Deferred advisory candidates (background unknown; all other gates still apply): worker (session_unknown)");
-    }
+    expect(f.fm.deliveryOutbox.listPending().find((r: any) => r.targetInstance === "general")).toBeUndefined();
     f.d.workingBackgroundObservation = null; f.d.ownedWorkingSession = "owned-session"; f.pressure("normal");
     f.fm.fleetConfig.instances.worker.resume_interrupted_work = true;
     f.fm.workingRecovery.tick(); await vi.advanceTimersByTimeAsync(30_000); f.fm.workingRecovery.tick();

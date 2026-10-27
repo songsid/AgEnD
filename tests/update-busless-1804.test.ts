@@ -25,6 +25,12 @@ const NO_BUS: CommandResult = { status: 1, signal: null, stdout: "", stderr: "Fa
 const ok = (stdout = ""): CommandResult => ({ status: 0, signal: null, stdout, stderr: "" });
 const json = (type: string, data: unknown) => ok(`${JSON.stringify({ type, data })}\n`);
 /**
+ * What a call that must CONNECT may take. These test servers accept and never answer, so each such call runs its whole
+ * budget; 300 ms was less than a loaded CI shard needs to start the peer worker (#2789). Calls that are refused before
+ * dialling keep 300.
+ */
+const CONNECT_BUDGET_MS = 2_000;
+/**
  * callPeer Atomics.wait-blocks this thread. A same-thread net.Server cannot accept until after the worker has hung up;
  * Linux then often drops the not-yet-accepted unix connection (#2457, #2788). Accept in a child (own event loop).
  */
@@ -491,7 +497,7 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
     expect((endpoint as { reason: string }).reason).toMatch(reason);
   });
 
-  it("live: a listening socket in a directory others can write is refused before any connection", async () => {
+  it("live: a listening socket in a directory others can write is refused before any connection", { timeout: 20_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-peer-open-"));
     const open = join(dir, "open");
     mkdirSync(open);
@@ -503,7 +509,7 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
       expect(peerUnreachable(result)).toBe(true);
       expect(server.accepted).toHaveLength(0);                              // refused before connect: the child never accepted
       chmodSync(open, 0o755);                                              // control: the same socket, protected
-      expect(callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: 300 }).stderr).not.toMatch(/not systemd's own socket/);
+      expect(callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: CONNECT_BUDGET_MS }).stderr).not.toMatch(/not systemd's own socket/);
       await server.waitFor(1);
       expect(server.accepted).toHaveLength(1);                              // only the control connected
     } finally {
@@ -516,7 +522,7 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
 describe("Prism r3: a symlink retargeted after the check cannot move the connection", () => {
   const real = { lstat: (p: string) => lstatSyncReal(p), realpath: (p: string) => realpathSync(p), euid: process.geteuid?.() ?? 0 };
 
-  it("the alias resolves to A, is retargeted to B mid-check: A is connected, B never", async () => {
+  it("the alias resolves to A, is retargeted to B mid-check: A is connected, B never", { timeout: 20_000 }, async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "agend-peer-alias-")));
     const a = join(dir, "a"), b = join(dir, "b"), open = join(dir, "open");
     for (const d of [a, b]) mkdirSync(d, { mode: 0o700 });
@@ -526,16 +532,16 @@ describe("Prism r3: a symlink retargeted after the check cannot move the connect
     const serverA = await listen(join(a, "private")), serverB = await listen(join(b, "private"));
     try {
       const racing = { ...real, realpath: (p: string) => { const r = realpathSync(p); if (p === link) { unlinkSync(link); symlinkSync(b, link); } return r; } };
-      const result = callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: racing });
+      const result = callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: CONNECT_BUDGET_MS, endpoint: racing });
       expect(result.stderr).not.toMatch(/not systemd's own socket/);           // A passed the check, and A was dialled
       expect(realpathSync(link)).toBe(b);                                     // the alias really points at B now
       await serverA.waitFor(1);                                               // child's IPC, not a wall-clock poll
       await new Promise<void>(r => setImmediate(r));                          // drain B's IPC if it had accepted
       expect(serverB.accepted).toHaveLength(0);
       // controls: the protected endpoint directly, and through the (now B) alias without a race
-      expect(callPeer(true, capture.loadUnit!.args, { socket: join(a, "private"), timeoutMs: 300, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
+      expect(callPeer(true, capture.loadUnit!.args, { socket: join(a, "private"), timeoutMs: CONNECT_BUDGET_MS, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
       await serverA.waitFor(2);
-      expect(callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
+      expect(callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: CONNECT_BUDGET_MS, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
       await serverB.waitFor(1);
       expect([serverA.accepted.length, serverB.accepted.length]).toEqual([2, 1]);
       // a dangling alias: unresolvable, refused
