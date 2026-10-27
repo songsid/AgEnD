@@ -19,10 +19,10 @@ AgEnD 2.3 is the stable line, and 2.3.2 is its current release. This page is for
 - Send `/update` in General, or run `agend update` on the host.
 - **kiro on the classic engine:** kiro-cli 3.0 drops it (`kiro_ui: legacy`, the default for an instance that sets no `kiro_ui`). AgEnD now keeps kiro from updating itself and starts new kiro instances on the TUI. Move an existing one, with its conversation, with `migrate_kiro_instance`, after a fleet admin confirms in General. A move is one-way.
 - **Settings is redesigned:** Fleet → Config is gone, and its old addresses lead to the new sections. An edit is unsaved until you press **Save**, and a change that needs a restart says so at the top of every page; AgEnD never restarts on its own.
-- **Office access moves** from `dashboard.office` to `office_access`, with a backup; it stays off unless set. Rolling back to 2.3.1 keeps every office (without its Edit layout changes).
+- **Agents in the Office are new:** `office_view` and `office_set` stay off unless a person sets `office_access` for an agent. Rolling back to 2.3.1 keeps every office (without its Edit layout changes).
 - **ClassicBot native replies** trigger a bot only with `reply_triggers` on (off by default); an @mention still does.
 
-**Upgrading from a 2.3.2 beta:** `agend update` stays on the beta channel. Run `agend update --stable` to move to 2.3.2; it is newer than every 2.3.2 beta. A DM notice setting saved by a beta is read as on, in the topic, and rewritten with a backup.
+**Upgrading from a 2.3.2 beta:** `agend update` stays on the beta channel. Run `agend update --stable` to move to 2.3.2; it is newer than every 2.3.2 beta. A DM notice setting saved by a beta is read as on, in the topic, and rewritten with a backup. A `dashboard.office` written by an earlier beta moves to `office_access`, with a backup.
 
 **What's new:**
 
@@ -33,7 +33,7 @@ AgEnD 2.3 is the stable line, and 2.3.2 is its current release. This page is for
 - **kiro:** the move to the TUI, V3 question cards answered from the chat, messages to a busy kiro within seconds, nothing typed into an editor or `!` command that owns the pane, and restarts that follow a `/compact`.
 - **Windows installer:** browser sign-in for Kiro, Claude Code and Codex, Windows Terminal, a choice of WSL drive, network checks that say what failed, an install log, a stop before installing for the wrong account, and an opt-in check and repair of an existing install. See the [Windows guide](/AgEnD/install-windows/).
 - **[Docker](/AgEnD/docs/docker/):** a runbook an agent follows to set AgEnD up in a container and maintain it.
-- **Also:** interrupted task work continues after a restart; you're told when an agent starts over without its conversation; the setup page leaves the working directory optional and comes in 繁體中文; the first agent on a chat connection is the fleet's General; Waiting for you lists only cards that wait on you.
+- **Also:** interrupted task work continues after a restart; you're told when an agent starts over without its conversation; the setup page leaves the working directory optional and comes in 繁體中文; the first agent set up on a chat connection, with its working directory left empty, is the fleet's General; Waiting for you lists only cards that wait on you.
 
 
 ## Upgrade from 2.2.x

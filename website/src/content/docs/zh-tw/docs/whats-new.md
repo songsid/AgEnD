@@ -19,10 +19,10 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
 - 在 General 傳 `/update`，或在主機上執行 `agend update`。
 - **用經典引擎的 kiro：** kiro-cli 3.0 拿掉了它（`kiro_ui: legacy`，也是沒設定 `kiro_ui` 的 instance 的預設）。AgEnD 現在不讓 kiro 自行更新，新的 kiro instance 用 TUI 啟動。既有的 instance 請用 `migrate_kiro_instance` 連同對話一起搬過去，要 fleet 管理者在 General 確認。搬移是單向的。
 - **設定改版：** Fleet → Config 移除了，舊網址會導到新區段。修改要按 **儲存** 才生效；需要重啟的變更會在每一頁頂端提醒，AgEnD 不會自己重啟。
-- **辦公室權限換位置：** 從 `dashboard.office` 搬到 `office_access`，並留備份；沒有設定就是關閉。降回 2.3.1 時每間辦公室都會保留（只是沒有編輯配置的修改）。
+- **辦公室裡的 agent 是新功能：** 沒有人為某個 agent 設定 `office_access`，`office_view` 與 `office_set` 就維持關閉。降回 2.3.1 時每間辦公室都會保留（只是沒有編輯配置的修改）。
 - **ClassicBot 的原生回覆：** 只有開啟 `reply_triggers` 才會觸發 bot（預設關閉）；@ 提及照常觸發。
 
-**從 2.3.2 beta 升級：** `agend update` 會留在 beta 頻道。要換到 2.3.2 請執行 `agend update --stable`；它比所有 2.3.2 beta 都新。beta 存下的私訊通知設定會視為開啟、發在 topic，並在留下備份後改寫。
+**從 2.3.2 beta 升級：** `agend update` 會留在 beta 頻道。要換到 2.3.2 請執行 `agend update --stable`；它比所有 2.3.2 beta 都新。beta 存下的私訊通知設定會視為開啟、發在 topic，並在留下備份後改寫。較早 beta 寫下的 `dashboard.office` 會搬到 `office_access`，並留備份。
 
 **新功能：**
 
@@ -33,7 +33,7 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
 - **kiro：** 搬到 TUI、在聊天裡回答 V3 的提問卡片、忙碌中的 kiro 幾秒內就收到訊息、不會把訊息打進佔用畫面的編輯器或 `!` 指令，以及重啟時會接上 `/compact` 之後的對話。
 - **Windows 安裝程式：** 用瀏覽器登入 Kiro、Claude Code 與 Codex，在 Windows Terminal 開啟，可選 WSL 磁碟，網路檢查會說明哪裡失敗，有安裝紀錄，會在裝到錯的帳號之前停下，並可選擇檢查與修復既有安裝。見 [Windows 安裝說明](/AgEnD/zh-tw/install-windows/)。
 - **[Docker](/AgEnD/zh-tw/docs/docker/)：** 一份讓 agent 照著在容器裡架設並維護 AgEnD 的操作手冊。
-- **其他：** 重啟後接續中斷的任務工作；agent 沒帶著對話重新開始時會通知你；設定頁的工作目錄可以留空，也有繁體中文；聊天連線上的第一個 agent 就是 fleet 的 General；「待你處理」只列真正等你的卡。
+- **其他：** 重啟後接續中斷的任務工作；agent 沒帶著對話重新開始時會通知你；設定頁的工作目錄可以留空，也有繁體中文；在聊天連線上設定的第一個 agent，若工作目錄留空，就是 fleet 的 General；「待你處理」只列真正等你的卡。
 
 
 ## 從 2.2.x 升級
