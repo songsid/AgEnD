@@ -229,8 +229,11 @@ describe("#2715/#2716 Share…", () => {
     await create();
     expect(hst.sent).toEqual([{ office: "auto", minutes: 60, text: false, theme: "auto" }]);
   });
-  it("defaultLook: light or dark as chosen; following the device (or unknown): the viewer's", () => {
-    expect([D.defaultLook("light"), D.defaultLook("dark"), D.defaultLook("system"), D.defaultLook(null)]).toEqual(["light", "dark", "auto", "auto"]);
+  it("defaultLook: what the dashboard shows now — light or dark as chosen, else the device's; nothing known: the viewer's", () => {
+    const dev = (dark: boolean) => () => ({ matches: dark });
+    expect([D.defaultLook("light", dev(true)), D.defaultLook("dark", dev(false))]).toEqual(["light", "dark"]);
+    expect([D.defaultLook("system", dev(true)), D.defaultLook("system", dev(false)), D.defaultLook(null, dev(true))]).toEqual(["dark", "light", "dark"]);
+    expect([D.defaultLook("system", null), D.defaultLook("system", () => { throw new Error("x"); })]).toEqual(["auto", "auto"]);
   });
   it("one office stored: All offices is not offered (the whole fleet is everyone); the open list names a whole-fleet link", async () => {
     const hst = host();

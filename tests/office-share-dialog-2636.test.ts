@@ -49,7 +49,7 @@ describe("Share… (#2636)", () => {
     await settle(1);
     p.root.querySelectorAll(".dlg-actions button").at(-1).click();
     await settle(4);
-    expect(hst.calls.find(c => c.method === "POST")?.body).toEqual({ office: "lab", minutes: 120, text: true, theme: "auto" });   // #2715
+    expect(hst.calls.find(c => c.method === "POST")?.body).toEqual({ office: "lab", minutes: 120, text: true, theme: "light" });   // #2715: what this (light) page shows
     expect(p.root.querySelector(".os-url").value).toBe(`https://s.trycloudflare.com/o/${"T".repeat(43)}`);
     expect(p.root.querySelector(".os-made .note").textContent).toContain("Anyone with this link can watch until");
     expect(p.root.querySelectorAll(".os-row")).toHaveLength(1);                 // the list read again

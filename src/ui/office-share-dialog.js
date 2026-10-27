@@ -2,7 +2,8 @@
 // agents' own lines show; then its URL to copy) and the list of open ones (Settings → Access & security, and under the
 // dialog's form): each with its office, when it ends, whether lines show and who made it, Revoke and Revoke all.
 // #2716: the whole-fleet office can be shared too ("auto", the default while it is the one shown); #2715: the link's
-// look — light or dark as this dashboard shows it now (the default), or the viewer's device's.
+// look — light or dark as this dashboard shows it now (the default, the device's when it follows the device), or the
+// viewer's device's.
 // GET / POST /ui/office-share, DELETE /ui/office-share/<id|all> (web-api.ts): an admin session on the dashboard reached
 // directly only; the public link never offers these.
 import { html, useEffect, useState } from "/assets/app-html.js";
@@ -48,9 +49,14 @@ export function refusalText(d) {
   return ["disabled", "office", "duration", "too_many"].includes(e) ? to(`e_${e}`) : to("failed");
 }
 
-/** #2715: the look a new link takes by default — this dashboard's light or dark when one is chosen, else the viewer's. */
-export function defaultLook(theme = globalThis.AgendTheme && typeof globalThis.AgendTheme.get === "function" ? globalThis.AgendTheme.get() : null) {
-  return theme === "light" || theme === "dark" ? theme : "auto";
+/**
+ * #2715: the look a new link takes by default — what this dashboard shows now: its chosen light or dark, or (following
+ * the device) the device's; unknown, the viewer's own.
+ */
+export function defaultLook(theme = globalThis.AgendTheme && typeof globalThis.AgendTheme.get === "function" ? globalThis.AgendTheme.get() : null,
+  media = typeof globalThis.matchMedia === "function" ? globalThis.matchMedia : null) {
+  if (theme === "light" || theme === "dark") return theme;
+  try { return media ? (media("(prefers-color-scheme: dark)").matches ? "dark" : "light") : "auto"; } catch { return "auto"; }
 }
 
 /** The open shares, read (and re-read after a change): { enabled, shares } or null while unread / unavailable. */

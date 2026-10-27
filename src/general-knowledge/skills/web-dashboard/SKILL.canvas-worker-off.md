@@ -302,7 +302,7 @@ only. Hover and click work across
 tiles; a tile's label, or a double-click on it, opens that office; traffic between offices flies straight across.
 Edit offices and Edit layout wait for a single office.
 **Share…** (#2636; an admin session, on the dashboard reached directly or over the public link — never read-only or a guest; the URL shows only to its maker, in the dialog) makes an Office share
-link: anyone who opens it watches **Whole fleet** (#2716, in the fleet's style), one office or **All offices** live, in the link's **Look** (#2715: Light, Dark or the viewer's device; default the maker's dashboard's), read-only, with no sign-in — names, identity
+link: anyone who opens it watches **Whole fleet** (#2716, in the fleet's style), one office or **All offices** live, in the link's **Look** (#2715: Light, Dark or the viewer's device; default what the maker's dashboard shows now), read-only, with no sign-in — names, identity
 colours and states, every 5 s; no chat, no clicks into anything, no settings; agents' `office_set` lines only when
 **Include agents' own status lines** is ticked; hidden instances never. 1 h by default, 15 min to 24 h
 (`web.office_share.max_hours`); at most 10 open. Its own quick tunnel (`https://<random>.trycloudflare.com/o/<token>`)

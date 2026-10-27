@@ -192,7 +192,7 @@ These need a zones style.
 A fleet admin can show the live Office to people outside the fleet for a while, with no sign-in. Use **Share…** in the Office bar, on the dashboard reached directly or signed in over the temporary public link; a read-only session or a guest can't share. There is no chat command for it.
 
 1. Choose **Whole fleet**, one office or **All offices**, and how long: 15 minutes to 24 hours (1 hour by default; `web.office_share.max_hours` sets the longest). Whole fleet is the default while it's the office shown.
-2. Choose the **Look**: **Light** or **Dark**, or **The viewer's device**. The default is the light or dark your dashboard shows now. If your dashboard follows the device, the link does too.
+2. Choose the **Look**: **Light** or **Dark**, or **The viewer's device**. The default is the light or dark your dashboard shows now, the device's when it follows the device.
 3. Tick **Include agents' own status lines** to show agents' `office_set` lines too.
 4. **Create link**, then **Copy link**. Only you see the link, once.
 
