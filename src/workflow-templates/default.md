@@ -3,7 +3,7 @@
 ## Communication Protocol
 
 - **Task flow**: `delegate_task` → silent work → `report_result`. Zero messages in between.
-- **Review flow**: send all findings in one message → author fixes → `report_result`. Target 2 round-trips. If a 3rd is needed, scope it to only unresolved items.
+- **Review flow**: send all findings in one message → author fixes → `report_result`. Target 2 round-trips. If a 3rd is needed, scope it to only unresolved items. Keep one `correlation_id` per PR or task thread: a newer message on it replaces an older one still waiting to be delivered.
 - **Direct communication**: talk to other instances directly via `send_to_instance`. Don't relay through a coordinator.
 - **Ask, don't assume**: use `request_information` when you need context from another instance.
 - **Silence = working**: Never send acknowledgment-only messages. If your entire message would be "got it" / "understood" / "working on it" or equivalent in any language — don't send it. Only send messages that contain actionable content.

@@ -59,6 +59,8 @@ Instance 之間、以及外部 CLI session 與 daemon instance 之間的通訊�
 
 結案的回覆必須帶原請求的 `correlation_id`；不帶的普通訊息可能只是進度或另一項工作，不會自動關閉舊請求。重啟提醒會合併成一則，最多列十筆未回答的請求。回覆義務預設在上次詢問的 24 小時後到期；到期不取消工作、不重送原訊息，寄件者最多收到一次逾期通知。需要更長期限時可設定 `defaults.reply_obligation_ttl_hours`（見 [設定說明](configuration.zh-TW.md)）。
 
+同一個寄件者、同一個收件者、同一個 `correlation_id` 的訊息算同一串（例如一個 PR、一項工作）。如果較舊的一則還在排隊、還沒開始送，較新的一則到了，舊的那則就不送了，狀態是 `cancelled`，原因寫著 `superseded by <新的 delivery_id>`，可用 `delivery_status` 查到；回覆義務跟著新的那則。所以同一串更新請沿用同一個 `correlation_id`。代理之間的訊息（`fleet_inbound`、`steer`）才會這樣；排程、系統通知和使用者訊息不受影響。
+
 ## 原始訊息與授權驗證
 
 使用 `forwards` 明確授權下一個收件者查原始列；每一跳都要授權。使用者授權查 `verification_id`，平台 `message_id` 留給回覆／反應。詳見 [使用者授權驗證](delivery-verification.zh-TW.md) 與 [English guide](delivery-verification.md)。

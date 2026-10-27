@@ -628,7 +628,7 @@ export const SendToInstanceArgs = z.object({
   requires_reply: z.boolean().optional()
     .describe("Whether you expect the recipient to respond. Default: false."),
   correlation_id: z.string().optional()
-    .describe("Echo this from a previous message to link request-response pairs."),
+    .describe("Echo this from a previous message to link request-response pairs. Keep one id per thread (a PR, a task): a newer message on it replaces an older one still waiting to be delivered."),
   task_summary: z.string().optional()
     .describe("Brief summary of the task or request (shown in logs and Telegram visibility posts)."),
   working_directory: z.string().optional()
