@@ -129,7 +129,6 @@ describe("start() waits for the rotation before it attaches pipe-pane", () => {
     vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
     vi.spyOn(TmuxManager.prototype, "pipeOutput").mockImplementation(async () => { rotation.order.push("pipeOutput"); });
     d.spawnClaudeWindow = async () => true;
-    d.runWarmupInstructionNotice = async () => {};
     // everything after pipe-pane is out of scope here: stop at the transcript monitor
     d.credentialProfileStore = () => { throw new Error("stop after pipeOutput"); };
     await expect(d.start()).rejects.toThrow(/stop after pipeOutput/);
@@ -142,7 +141,6 @@ describe("start() waits for the rotation before it attaches pipe-pane", () => {
     vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
     const pipe = vi.spyOn(TmuxManager.prototype, "pipeOutput").mockImplementation(async () => { rotation.order.push("pipeOutput"); });
     d.spawnClaudeWindow = async () => true;
-    d.runWarmupInstructionNotice = async () => {};
     d.credentialProfileStore = () => { throw new Error("stop after pipeOutput"); };
     const starting = d.start().catch((err: Error) => err);
     await vi.advanceTimersByTimeAsync(200);

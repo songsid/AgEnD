@@ -2033,16 +2033,6 @@ export class KiroBackend implements CliBackend {
     };
   }
 
-  /**
-   * An instance running as its own agent reads its instructions from the agent file's prompt (#906). Until a resumed
-   * conversation's switch is confirmed it still runs as its saved agent, reading the steering file (the default).
-   */
-  instructionsSource(): string | null {
-    const plan = this.activePlan;
-    if (plan?.mode === "resume" && !kiroResumeAgentSwitch.enabled) return null; // its saved agent: the steering file
-    return plan && plan.mode !== "legacy" && plan.agent && plan.agentConfirmed ? `.kiro/agents/${plan.agent}.json (its "prompt" field)` : null;
-  }
-
   private activeSpec: KiroAgentSpec | null = null;
   private activeInstance: string | null = null;
 

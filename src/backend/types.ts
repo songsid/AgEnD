@@ -839,9 +839,6 @@ export interface CliBackend {
    */
   getStartupDialogs?(): StartupDialog[];
 
-  /** Whether this backend re-reads instruction files on --resume (e.g. Claude Code's --append-system-prompt-file). */
-  readonly instructionsReloadedOnResume?: boolean;
-
   /**
    * Optional: async launch preparation before `writeConfig` (CLI probes or read-only session discovery)
    * — the daemon passes this attempt's config, then rechecks launch admission before any config/identity writes, so
@@ -860,8 +857,6 @@ export interface CliBackend {
    * and `/title` into a positively empty composer. Null on engines that have no these commands.
    */
   sessionProof?(): BackendSessionProof | null;
-  /** Optional: where this launch's instructions live, when not the backend's usual file (kiro's agent, #906). */
-  instructionsSource?(): string | null;
   /** Optional: the instance is being deleted or replaced — forget per-instance state kept outside its directory. */
   forget?(instanceName: string): void;
 

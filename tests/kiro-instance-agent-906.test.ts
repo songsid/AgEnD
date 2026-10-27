@@ -433,9 +433,7 @@ describe("the backend: command and files per plan", () => {
     expect(readFileSync(join(root, "work", ".kiro", "steering", "agend-worker.md"), "utf-8")).toContain(`agend-agent:${agentName()}`);
     const sw = backend.agentSwitch()!;
     expect(sw).toMatchObject({ agent: agentName(), alreadyConfirmed: false, command: `/agent swap ${agentName()}` });
-    expect(backend.instructionsSource()).toBeNull(); // still its saved agent: the steering file
     expect(sw.confirm()).toEqual([]);
-    expect(backend.instructionsSource()).toBe(`.kiro/agents/${agentName()}.json (its "prompt" field)`);
     expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeUndefined();
     expect(existsSync(join(root, "work", ".kiro", "steering", "agend-worker.md"))).toBe(false);
     // The next launch: confirmed, nothing written to the shared files, still resumed by id.
@@ -567,7 +565,6 @@ describe("#1800: the in-session switch is suspended", () => {
     expect(backend.agentSwitch()).toBeNull();
     expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
     expect(readFileSync(steering(), "utf-8")).toContain(`agend-agent:${agentName()}`);
-    expect(backend.instructionsSource()).toBeNull(); // its saved agent reads the steering file
   });
 
   it("an instance whose switch was already recorded gets its shared entry and steering back", () => {
@@ -584,7 +581,6 @@ describe("#1800: the in-session switch is suspended", () => {
     const after = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
     expect(launch(after)).toContain(" --resume-id 'conv-1'");
     expect(after.agentSwitch()).toBeNull();
-    expect(after.instructionsSource()).toBeNull(); // recorded or not, a resumed conversation reads the steering file
     expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
     expect(readFileSync(steering(), "utf-8")).toContain(`agend-agent:${agentName()}`);
   });
@@ -608,6 +604,5 @@ describe("#1800: the in-session switch is suspended", () => {
     expect(cmd).not.toMatch(/--resume/);
     expect(existsSync(mcpPath())).toBe(false);
     expect(backend.agentSwitch()).toBeNull();
-    expect(backend.instructionsSource()).toBe(`.kiro/agents/${agentName()}.json (its "prompt" field)`);
   });
 });

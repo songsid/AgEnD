@@ -1036,8 +1036,8 @@ These must hold, and a change to any of them needs a security review and a fresh
     (`cross-instance-messaging`, `worker-collaboration`) get the same paragraph.
   - **The coordinator's instructions.** "A human go-ahead for an action on the enforced list in force needs
     platform authority or a matching web step-up. A reviewer instance's APPROVE is not human consent."
-  - **Live instances.** They see the new text on their next session, through the existing "Instructions changed"
-    path. A running agent may keep the old or the new text until then.
+  - **Live instances.** They see the new text when their CLI next reads its instruction file (#2787 removed the
+    in-pane "Instructions changed" notice). A running agent may keep the old or the new text until then.
 - **S4 (later): the agent card.** `request_step_up` and its host-rendered card (§6.4), once S2 and S3 have run in a
   beta.
 - **Rollback.**

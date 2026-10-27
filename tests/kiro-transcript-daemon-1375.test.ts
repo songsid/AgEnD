@@ -39,7 +39,7 @@ function fixture() {
     tmuxSessionName:"never-connect", logger:{info:vi.fn(),warn:vi.fn(),debug:vi.fn(),error:vi.fn()},
     startupAborted:false, launchFenceEpoch:0, transcriptTurns:new TranscriptTurnLedger(),
     spawnClaudeWindow:vi.fn(async()=>false), injectSnapshotMessage:vi.fn(async()=>{}),
-    maybeResumeInterruptedTurn:vi.fn(async()=>{}), runWarmupInstructionNotice:vi.fn(async()=>{}),
+    maybeResumeInterruptedTurn:vi.fn(async()=>{}),
     attachPipePaneLog:vi.fn(async()=>{}), credentialProfileStore:vi.fn(()=>undefined),
     startHealthCheck:vi.fn(), startErrorMonitor:vi.fn(), startInstanceStateMonitor:vi.fn() });
   const polling = vi.spyOn(TranscriptMonitor.prototype,"startPolling").mockImplementation(()=>{});

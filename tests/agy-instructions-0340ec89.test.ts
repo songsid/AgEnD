@@ -25,7 +25,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AGY_AGENTS_FILE, AntigravityBackend, agyLegacyAgentsFile, migrateAgyAgentsFile } from "../src/backend/antigravity.js";
 import type { CliBackendConfig } from "../src/backend/types.js";
-import { buildInstructionReloadNotice } from "../src/daemon.js";
 import { FleetManager } from "../src/fleet-manager.js";
 
 const FX = new URL("./fixtures/agy-1.3.6-audit/", import.meta.url);
@@ -159,10 +158,6 @@ describe("the instructions file", () => {
     rmSync(lower());
     backend.cleanup(config());
     expect(existsSync(upper())).toBe(false);
-  });
-
-  it("the reload notice names .agents/AGENTS.md", () => {
-    expect(buildInstructionReloadNotice("agy", "agy-worker", instanceDir)).toContain("Reload only .agents/AGENTS.md;");
   });
 });
 

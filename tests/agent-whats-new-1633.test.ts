@@ -182,7 +182,7 @@ describe("the daemon", () => {
   it("trySpawn decides 'new' before prev-instructions is first written", () => {
     const src = readFileSync(join(process.cwd(), "src", "daemon.ts"), "utf-8");
     const prepare = src.indexOf('this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));');
-    const firstWrite = src.indexOf("// First time (no prev-instructions file): write current hash, skip warmup.");
+    const firstWrite = src.indexOf('try { writeFileSync(join(this.instanceDir, "prev-instructions"), backendConfig.instructions); }');
     expect(prepare).toBeGreaterThan(0);
     expect(prepare).toBeLessThan(firstWrite);
   });

@@ -172,55 +172,10 @@ const TRANSCRIPT_RUNNING_HOLD_MAX_MS = 30 * 60_000;
 export const TRANSCRIPT_OPEN_TURN_QUIET_MS = 15 * 60_000;
 const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
-/** Point a resumed CLI at its one backend-native instruction source. */
 /** The outbox evidence for a delivery the CLI's transcript shows taken (#758; #1201 absorbed; #1647 a raw paste's text). */
 function transcriptMarkerEvidence(kind: TranscriptMarkerKind, rawPaste = false): string {
   if (rawPaste) return "transcript-turn-user-entry-raw-paste-text";
   return kind === "user" ? "transcript-marker" : kind === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
-}
-
-export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string, backendSource?: string | null): string {
-  const source = backendSource ? backendSource : binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
-    ? "AGENTS.md"
-    : binaryName === "kiro-cli"
-      ? `.kiro/steering/agend-${instanceName}.md`
-      : binaryName === "agy"
-        ? ".agents/AGENTS.md"
-        : join(instanceDir, "fleet-instructions.md");
-  return `[system] Your AgEnD instructions have been updated. Reload only ${source}; do not scan other instruction directories. Do not reply to this message.`;
-}
-
-/**
- * Whether this backend has to be told in its pane that its instructions moved.
- *
- * A backend that re-reads them on resume already received the new ones from the
- * resume itself, so the notice is pure interruption. Both places that can send
- * it — the warmup paste and the deferred pendingInstructionsNotice — ask through
- * here, so the two cannot drift apart again: the warmup path used to omit this
- * check entirely and told claude-code to reload instructions it had just read.
- */
-export function backendNeedsPaneReloadNotice(
-  backend?: { instructionsReloadedOnResume?: boolean },
-): boolean {
-  return !backend?.instructionsReloadedOnResume;
-}
-
-/**
- * What the warmup should do about changed instructions.
- *
- * `skip` — nothing to say, or this backend learns of the change by itself.
- * `defer` — worth saying, but nobody is talking to the instance; say it when a
- *   real message next arrives rather than provoking an unsolicited reply.
- * `paste` — say it now, into a pane that already has a delivery in flight.
- */
-export function warmupNoticeAction(opts: {
-  warmupNeeded: boolean;
-  backend?: { instructionsReloadedOnResume?: boolean };
-  pasteQueueDepth: number;
-}): "skip" | "defer" | "paste" {
-  if (!opts.warmupNeeded) return "skip";
-  if (!backendNeedsPaneReloadNotice(opts.backend)) return "skip";
-  return opts.pasteQueueDepth === 0 ? "defer" : "paste";
 }
 
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
@@ -1855,18 +1810,10 @@ export class Daemon extends EventEmitter {
   private deliveryWritesStopping = false;
   /** #829: the latest pastes, by spawn generation (see ownedInputDraft). */
   private recentPastes: Array<{ generation: number; text: string }> = [];
-  private pendingInstructionsUpdate: string | undefined;
-  private pendingInstructionsNotice = false;
   /** #1633: the one-time "what's new for you" notice, pasted before the next real delivery; recorded once pasted. */
   private pendingWhatsNew: { notice: string; ids: string[]; version: string } | null = null;
   /** #2140: deliveries tried for the pending what's-new notice that never reached the pane (capped: never before every message). */
   private whatsNewUnwritten = 0;
-  // Whether the warmup steering-reload notice should be injected after spawn.
-  // Set in trySpawn by comparing the freshly-built instructions against the
-  // last value the agent was told about (prev-instructions). Skipped when
-  // unchanged so agents don't waste 10-30s re-reading identical steering.
-  private warmupNeeded = false;
-  private lastBuiltInstructions = "";
   private pasteQueueDepth = 0;
   /** #2770: a person's messages a cancel dropped before they reached the CLI, told together (noteCancelledHuman). */
   private cancelledHumans: Array<{ chatId: string; messageId: string; threadId?: string }> = [];
@@ -2713,17 +2660,12 @@ export class Daemon extends EventEmitter {
     }
 
     // #1209: conditional continuation for the turn interrupted by the last
-    // restart, if the gates allow. Detached like the warmup notice; the gate
+    // restart, if the gates allow. Detached; the gate
     // consumes its one-shot marker first and never throws into boot.
     const legacyResume = this.maybeResumeInterruptedTurn().catch(() => "unknown");
 
-    // Warmup: wait for CLI idle, then trigger steering reload — but only when
-    // the instructions actually changed since the agent last saw them.
-    // Skipping the no-op reload saves 10-30s of agent time on every restart
-    // where instructions are unchanged.
-    const warmup = this.runWarmupInstructionNotice();
     const recoveryOwner = JSON.stringify(this.interactionOwner());
-    void Promise.allSettled([legacyResume, warmup]).then(() => {
+    void Promise.allSettled([legacyResume]).then(() => {
       if (JSON.stringify(this.interactionOwner()) === recoveryOwner) { this.recoveryBootWorkPending = false; this.recoveryBootSettled = true; }
     });
 
@@ -7405,10 +7347,6 @@ export class Daemon extends EventEmitter {
         this.logger.warn({ err: (err as Error).message }, "Failed to persist last inbound timestamp");
       }
     }
-    if (this.pendingInstructionsUpdate) {
-      writeFileSync(join(this.instanceDir, "prev-instructions"), this.pendingInstructionsUpdate);
-      this.pendingInstructionsUpdate = undefined;
-    }
     this.pendingWork.recordInbound();
     // v3: record user messages for rotation snapshot
     this.recordRecentUserMessage(content, meta);
@@ -7458,15 +7396,6 @@ export class Daemon extends EventEmitter {
         }
         if (this.config.pre_task_command) {
           await this.deliverMessage(this.config.pre_task_command, undefined, { deliveryEpoch });
-          if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-        }
-        if (this.pendingInstructionsNotice) {
-          this.pendingInstructionsNotice = false;
-          await this.deliverMessage(
-            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
-            undefined,
-            { deliveryEpoch },
-          );
           if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
         const whatsNew = this.pendingWhatsNew ? this.currentWhatsNew(this.pendingWhatsNew) : null;
@@ -11286,10 +11215,6 @@ export class Daemon extends EventEmitter {
     if (this.snapshotConsumed) return;
     const snapshot = this.buildSnapshotPrompt();
     if (!snapshot || !this.tmux) return;
-    if (this.pendingInstructionsUpdate) {
-      writeFileSync(join(this.instanceDir, "prev-instructions"), this.pendingInstructionsUpdate);
-      this.pendingInstructionsUpdate = undefined;
-    }
     // Small delay to let the CLI fully render its ready prompt
     await new Promise(r => setTimeout(r, 1_000));
     admission?.();
@@ -12176,74 +12101,6 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * Tell the agent its instructions moved, once the CLI is idle.
-   *
-   * A named method rather than an inline closure so the wiring itself is
-   * testable: warmupNoticeAction's own tests pass even if this call site stops
-   * consulting it, which is exactly the bug this path had — the decision was
-   * made inline and never asked whether the backend needed telling at all.
-   *
-   * Never throws: a missed reload notice must not fail a spawn.
-   */
-  private async runWarmupInstructionNotice(): Promise<void> {
-    try {
-      const action = warmupNoticeAction({
-        warmupNeeded: this.warmupNeeded,
-        backend: this.backend ?? undefined,
-        pasteQueueDepth: this.pasteQueueDepth,
-      });
-      if (action === "skip") {
-        this.logger.debug(
-          this.warmupNeeded
-            ? "Warmup skipped — this backend reloads instructions on resume"
-            : "Warmup skipped — instructions unchanged",
-        );
-        // When the backend learns of the change on its own, record what it now
-        // holds: leaving prev-instructions behind would keep every later
-        // restart comparing against a value the agent has long since replaced.
-        if (this.warmupNeeded) {
-          try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }
-        }
-        return;
-      }
-      if (action === "defer") {
-        this.logger.debug("Warmup deferred — no pending inbound messages");
-        // Convert to pendingInstructionsNotice so it fires on next real message.
-        this.pendingInstructionsNotice = true;
-        try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch {}
-        return;
-      }
-      const wid = existsSync(join(this.instanceDir, "window-id"))
-        ? readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim() : "";
-      if (wid && this.controlClient) {
-        await this.controlClient.waitForIdle(wid, 120_000);
-      } else {
-        await new Promise(r => setTimeout(r, 5000));
-      }
-      // This path only runs when pasteQueueDepth > 0 — i.e. exactly when a real
-      // delivery is already in flight or queued. Without the lock the notice and
-      // that delivery race into the same pane.
-      const told = await this.paneWriteLock.run(() => this.submitSystemPaste(
-        buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
-        "instruction-reload-notice",
-      ));
-      if (!told) {
-        // Recording the new instructions here would mark the agent as told about
-        // a notice it never received, and every later restart would then skip
-        // the reload. Leave the snapshot behind and hand it to the deferred
-        // notice, which fires on the next real message.
-        this.logger.warn("Instruction reload notice not confirmed — deferring it to the next message");
-        this.pendingInstructionsNotice = true;
-        return;
-      }
-      // Record the value the agent has now been told about so the next
-      // unchanged restart skips the reload.
-      try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }
-      this.logger.debug("Warmup sent after idle");
-    } catch { /* non-fatal */ }
-  }
-
-  /**
    * #1633 (#1639 review): the pending notice as the record stands NOW, just before the paste — it was decided at launch,
    * and the record may have changed while the delivery waited. Unreadable → nothing is sent (and nothing pending);
    * entries recorded meanwhile are dropped from it; none left → nothing.
@@ -12300,35 +12157,12 @@ export class Daemon extends EventEmitter {
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
 
-    // Compare freshly-built instructions against the last value the agent was
-    // told about. Computed for ALL backends (not gated by
-    // instructionsReloadedOnResume) so the warmup steering-reload can be
-    // skipped when nothing changed.
-    this.lastBuiltInstructions = backendConfig.instructions ?? "";
     // #1633: decided before prev-instructions is first written — its absence is what says "never launched before".
     this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));
-    {
-      const prevFile = join(this.instanceDir, "prev-instructions");
-      let prev = "";
-      try { prev = readFileSync(prevFile, "utf-8"); } catch {}
-      if (!prev && backendConfig.instructions) {
-        // First time (no prev-instructions file): write current hash, skip warmup.
-        try { writeFileSync(prevFile, backendConfig.instructions); } catch {}
-        this.warmupNeeded = false;
-      } else {
-        this.warmupNeeded = !!backendConfig.instructions && prev !== backendConfig.instructions;
-      }
-
-      // For backends that don't re-read instructions on resume (kiro/codex),
-      // also notify the agent on next message instead of forcing a new
-      // session. Resume is preserved so context isn't lost.
-      if (!backendConfig.skipResume && backendNeedsPaneReloadNotice(this.backend!) && this.warmupNeeded) {
-        if (prev) {
-          this.logger.info("Instructions changed — will notify agent on next message");
-          this.pendingInstructionsNotice = true;
-        }
-        this.pendingInstructionsUpdate = backendConfig.instructions;
-      }
+    // Record what this launch writes. #2787: a change is never announced in the pane; the CLI takes the new
+    // instructions whenever it next reads its own file.
+    if (backendConfig.instructions) {
+      try { writeFileSync(join(this.instanceDir, "prev-instructions"), backendConfig.instructions); } catch { /* best effort */ }
     }
 
     // A backend that has to ask its CLI something before the launch command exists (OpenCode: does
