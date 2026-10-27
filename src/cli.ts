@@ -43,7 +43,7 @@ import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync, execSync, execFileSync } from "node:child_process";
 import { spawn } from "./child-process.js";
-import { getAgendHome, getTmuxSocketName, isDefaultAgendHome } from "./paths.js";
+import { getAgendHome, getTmuxSocketName, isDefaultAgendHome, realDefaultAgendHome } from "./paths.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
 import {
@@ -64,7 +64,7 @@ import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceCon
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
-import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath } from "./service-installer.js";
+import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath, serviceDefinitionAgendHome } from "./service-installer.js";
 import { withFsPlanLock } from "./service-plan.js";
 import {
   selectSystemdRestartTarget,
@@ -79,7 +79,7 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
 import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
 import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
-import { DIRECT_FLEET_START_ENV, redirectsToService, startedByServiceManager } from "./service-owner.js";
+import { DIRECT_FLEET_START_ENV, redirectsToService, serviceRunsHome, startedByServiceManager } from "./service-owner.js";
 import { handOff, shouldHandOff } from "./launchd-handoff.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
@@ -2018,8 +2018,15 @@ function redirectToService(command: "start" | "stop", extra: string[], directMar
   try { ownCgroup = readFileSync("/proc/self/cgroup", "utf-8"); } catch { /* not Linux */ }
   const byServiceManager = startedByServiceManager({ platform: process.platform, env: process.env, ownCgroup, ppid: process.ppid, launchdLabel: "com.agend.fleet" });
   const installed = getSystemServicePath() ?? getServicePath();
-  if (!redirectsToService({ command, directMarker, byServiceManager, installedServicePath: installed })) return false;
+  // #2741: only a service of this AgEnD home takes the start or stop over.
+  let definition: string | null = null;
+  try { if (installed) definition = readFileSync(installed, "utf-8"); } catch { /* unreadable: as before */ }
+  const sameHome = serviceRunsHome({ serviceHome: definition === null ? null : serviceDefinitionAgendHome(definition),
+    defaultHome: realDefaultAgendHome(), ownHome: getAgendHome(), definitionRead: definition !== null });
+  if (!redirectsToService({ command, directMarker, byServiceManager, installedServicePath: installed, sameHome })) return false;
   console.error(t("cli.service_redirect", String(installed), [command, ...extra].join(" ")));
+  // #2741: a unit waiting for READY that hands over exits before it — say so, with the way out, never silently.
+  if (process.env.NOTIFY_SOCKET) console.error(t("cli.service_redirect_notify"));
   const self = selfCommand([command, ...extra]);
   const result = spawnSync(self.command, self.args, { stdio: "inherit" });
   process.exit(result.status ?? 1);

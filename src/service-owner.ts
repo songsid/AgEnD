@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 /**
  * #2356: which AgEnD systemd unit, if any, a process belongs to, read from its own /proc/<pid>/cgroup (cgroup v2 `0::`
  * and v1 `N:name=systemd:` rows alike). The process's cgroup is the manager's own answer: a unit file on disk, an
@@ -33,16 +35,51 @@ export function fullReloadExitCode(ownCgroupText: string | null): number {
 export const DIRECT_FLEET_START_ENV = "AGEND_FLEET_START_DIRECT";
 
 /**
+ * #2741: the systemd service unit a process runs in (its innermost `<name>.service` cgroup), whatever it is called; null
+ * for a scope (a login shell, a terminal tab) or no systemd cgroup.
+ */
+export function systemdServiceOf(cgroupText: string): string | null {
+  for (const row of cgroupText.split("\n")) {
+    const fields = row.split(":");
+    if (fields[0] !== "0" && !fields[1]?.split(",").includes("name=systemd")) continue;
+    const units = fields.slice(2).join(":").split("/").filter(part => /\.(service|scope)$/.test(part));
+    const inner = units.at(-1);
+    if (inner?.endsWith(".service")) return inner.slice(0, -".service".length);
+  }
+  return null;
+}
+
+/**
  * This `fleet start` runs under the service manager: the AgEnD unit's ExecStart (the process is in that unit's
  * cgroup), or the launchd job (launchd names the job in XPC_SERVICE_NAME, and is the parent). Whatever that fleet runs
  * shares the answer (an agent's pane inherits the cgroup and the variable): a `fleet start` typed there is not handed
  * over, and the fleet's singleton lock refuses it while that fleet runs. Anything else is a hand-run.
+ *
+ * #2741: a unit of any name counts when systemd waits for it to notify (Type=notify: NOTIFY_SOCKET is set, and the
+ * process is in a service's cgroup) — that is a unit whose ExecStart is this fleet, e.g. a second fleet's own
+ * `my-second-fleet.service`. Handing it over would exit before READY and loop on Result=protocol. A shell never has
+ * NOTIFY_SOCKET (the fleet keeps it from what it starts: sd-notify.ts), and a terminal tab is a scope, not a service.
  */
 export function startedByServiceManager(o: {
   platform: NodeJS.Platform; env: NodeJS.ProcessEnv; ownCgroup: string | null; ppid: number; launchdLabel: string;
 }): boolean {
   if (o.platform === "darwin") return o.env.XPC_SERVICE_NAME === o.launchdLabel || o.ppid === 1;
-  return o.ownCgroup !== null && agendSystemdUnitOf(o.ownCgroup) !== null;
+  if (o.ownCgroup === null) return false;
+  if (agendSystemdUnitOf(o.ownCgroup) !== null) return true;
+  return !!o.env.NOTIFY_SOCKET && systemdServiceOf(o.ownCgroup) !== null;
+}
+
+/**
+ * #2741: does the installed service run THIS AgEnD home? Its definition names a home (AGEND_HOME, written for a
+ * non-default one), else it runs the default one. Unknown (an unreadable definition, an unknown default home) is not
+ * "different": the hand-over goes ahead as before. A fleet of another home is never handed to that service — it would
+ * start or stop the other fleet and leave this one as it was.
+ */
+export function serviceRunsHome(o: { serviceHome: string | null; defaultHome: string | null; ownHome: string; definitionRead: boolean }): boolean {
+  if (!o.definitionRead) return true;
+  const home = o.serviceHome ?? o.defaultHome;
+  if (home === null) return true;
+  return resolve(home) === resolve(o.ownHome);
 }
 
 /**
@@ -52,8 +89,10 @@ export function startedByServiceManager(o: {
  */
 export function redirectsToService(o: {
   command: "start" | "stop"; directMarker: boolean; byServiceManager: boolean; installedServicePath: string | null;
+  /** #2741: the installed service runs this process's AgEnD home (serviceRunsHome). */
+  sameHome: boolean;
 }): boolean {
-  if (!o.installedServicePath) return false;
+  if (!o.installedServicePath || !o.sameHome) return false;
   if (o.command === "stop") return true;
   return !o.directMarker && !o.byServiceManager;
 }

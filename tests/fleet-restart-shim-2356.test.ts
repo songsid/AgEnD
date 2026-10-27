@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, type AuditEntry } from "../src/fleet-control-audit.js";
-import { FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE, agendSystemdUnitOf, fullReloadExitCode, redirectsToService, startedByServiceManager } from "../src/service-owner.js";
+import { FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE, agendSystemdUnitOf, fullReloadExitCode, redirectsToService, serviceRunsHome, startedByServiceManager, systemdServiceOf } from "../src/service-owner.js";
 
 describe("agendSystemdUnitOf / fullReloadExitCode", () => {
   const USER = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service\n";
@@ -68,7 +68,7 @@ describe("fleet start / fleet stop by hand (#2356): who started it, and when the
 
   it("hands over only with a service installed; the manager's own start and AgEnD's marked start go ahead", () => {
     const go = (o: Partial<Parameters<typeof redirectsToService>[0]>) =>
-      redirectsToService({ command: "start", directMarker: false, byServiceManager: false, installedServicePath: "/u/com.agend.fleet.service", ...o });
+      redirectsToService({ command: "start", directMarker: false, byServiceManager: false, installedServicePath: "/u/com.agend.fleet.service", sameHome: true, ...o });
     expect(go({})).toBe(true);
     expect(go({ byServiceManager: true })).toBe(false);
     expect(go({ directMarker: true })).toBe(false);
@@ -78,6 +78,43 @@ describe("fleet start / fleet stop by hand (#2356): who started it, and when the
     expect(go({ command: "stop" })).toBe(true);
     expect(go({ command: "stop", byServiceManager: true, directMarker: true })).toBe(true);   // no manager ever runs `fleet stop`
     expect(go({ command: "stop", installedServicePath: null })).toBe(false);
+    // #2741: a service of another AgEnD home takes nothing over — neither a start nor a stop.
+    expect(go({ sameHome: false })).toBe(false);
+    expect(go({ command: "stop", sameHome: false })).toBe(false);
+  });
+
+  it("#2741: a custom-named unit's Type=notify ExecStart is the manager's; NOTIFY_SOCKET alone, or a scope, is not", () => {
+    const SECOND = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/my-second-fleet.service\n";
+    const SYSTEM_SECOND = "0::/system.slice/fleet-b.service\n";
+    const NOTIFY = { NOTIFY_SOCKET: "/run/user/1000/systemd/notify" };
+    expect(by({ ownCgroup: SECOND, env: NOTIFY })).toBe(true);
+    expect(by({ ownCgroup: SYSTEM_SECOND, env: NOTIFY })).toBe(true);
+    expect(by({ ownCgroup: SECOND }), "a Type=simple custom unit: the home check decides (serviceRunsHome)").toBe(false);
+    expect(by({ env: NOTIFY }), "a login session scope").toBe(false);
+    expect(by({ ownCgroup: "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-org.gnome.Terminal.slice/vte-spawn-1.scope\n", env: NOTIFY }), "a terminal tab").toBe(false);
+    expect(by({ ownCgroup: null, env: NOTIFY })).toBe(false);
+    expect(by({ ownCgroup: SECOND, env: { NOTIFY_SOCKET: "" } })).toBe(false);
+  });
+
+  it("#2741: the innermost unit of a cgroup, of any name (v2 and v1 name=systemd rows only)", () => {
+    expect(systemdServiceOf("0::/user.slice/user-1000.slice/user@1000.service/app.slice/my-second-fleet.service\n")).toBe("my-second-fleet");
+    expect(systemdServiceOf("0::/system.slice/fleet-b.service/payload\n")).toBe("fleet-b");
+    expect(systemdServiceOf("12:pids:/system.slice/x.service\n1:name=systemd:/user.slice/user-1000.slice/session-3.scope\n"), "a controller row is not systemd's").toBeNull();
+    expect(systemdServiceOf("1:name=systemd:/system.slice/fleet-b.service\n")).toBe("fleet-b");
+    expect(systemdServiceOf("0::/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-1.scope\n"), "user@ is an ancestor, the scope is the unit").toBeNull();
+    expect(systemdServiceOf("0::/\n")).toBeNull();
+  });
+
+  it("#2741: the installed service runs this home only when its AGEND_HOME (else the default home) is this one", () => {
+    const at = (o: Partial<Parameters<typeof serviceRunsHome>[0]>) =>
+      serviceRunsHome({ serviceHome: null, defaultHome: "/home/u/.agend", ownHome: "/home/u/.agend", definitionRead: true, ...o });
+    expect(at({})).toBe(true);
+    expect(at({ ownHome: "/home/u/.agend/" }), "the same path").toBe(true);
+    expect(at({ ownHome: "/srv/fleet-b" }), "the issue: a second fleet beside the default one").toBe(false);
+    expect(at({ serviceHome: "/srv/fleet-b", ownHome: "/srv/fleet-b" })).toBe(true);
+    expect(at({ serviceHome: "/srv/fleet-b" }), "the default home is not the service's custom one").toBe(false);
+    expect(at({ definitionRead: false, ownHome: "/srv/fleet-b" }), "unknown is not different: as before").toBe(true);
+    expect(at({ defaultHome: null, ownHome: "/srv/fleet-b" }), "an unknown default is not different").toBe(true);
   });
 
   it("`fleet start --direct` is an operator's override: refused from an agent session or the fleet's own commands, before the hand-over", () => {
@@ -162,7 +199,7 @@ describe("`agend fleet restart` runs `agend restart` (inert stubs)", () => {
     ? readFileSync(join(home, AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line)) : [];
   const run = (args: string[], instance: string | null) => new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
     execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), ...args], {
-      env: { HOME: join(inert, "home"), AGEND_HOME: home, PATH: join(inert, "bin"), NOTIFY_SOCKET: "", ...(instance ? { AGEND_INSTANCE_NAME: instance } : {}) },
+      env: { HOME: join(inert, "home"), AGEND_HOME: home, PATH: join(inert, "bin"), TZ: "UTC", NOTIFY_SOCKET: "", ...(instance ? { AGEND_INSTANCE_NAME: instance } : {}) },
       timeout: 30_000,
     }, (error, stdout, stderr) => {
       if (!error) resolve({ code: 0, stdout, stderr });
@@ -246,9 +283,10 @@ describe("`fleet start` / `fleet stop` by hand with a user unit installed (inert
     mkdirSync(join(inert, "bin")); mkdirSync(home, { recursive: true });
     // A user unit (Linux) and a LaunchAgent plist (macOS): `agend` finds "a service is installed" on either platform.
     mkdirSync(join(inert, "home", ".config", "systemd", "user"), { recursive: true });
-    writeFileSync(join(inert, "home", ".config", "systemd", "user", "com.agend.fleet.service"), "[Service]\nExecStart=/x/agend fleet start\n");
+    // #2741: the service runs THIS home (its AGEND_HOME, as renderSystemdUnit / renderLaunchdPlist write a custom one).
+    writeFileSync(join(inert, "home", ".config", "systemd", "user", "com.agend.fleet.service"), `[Service]\nEnvironment="AGEND_HOME=${home}"\nExecStart=/x/agend fleet start\n`);
     mkdirSync(join(inert, "home", "Library", "LaunchAgents"), { recursive: true });
-    writeFileSync(join(inert, "home", "Library", "LaunchAgents", "com.agend.fleet.plist"), "<plist/>\n");
+    writeFileSync(join(inert, "home", "Library", "LaunchAgents", "com.agend.fleet.plist"), `<plist><dict><key>EnvironmentVariables</key><dict><key>AGEND_HOME</key><string>${home}</string></dict></dict></plist>\n`);
     for (const command of ["systemctl", "launchctl", "loginctl", "journalctl", "sudo", "npm", "agend", "tmux"]) {
       const path = join(inert, "bin", command);
       writeFileSync(path, `#!/bin/sh\necho "${command} $@" >> "${join(inert, "calls")}"\nexit 1\n`);
@@ -257,9 +295,9 @@ describe("`fleet start` / `fleet stop` by hand with a user unit installed (inert
   });
   afterEach(() => { rmSync(inert, { recursive: true, force: true }); });
   const calls = (): string => existsSync(join(inert, "calls")) ? readFileSync(join(inert, "calls"), "utf8") : "";
-  const run = (args: string[], instance: string | null) => new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+  const run = (args: string[], instance: string | null, env: Record<string, string> = {}) => new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
     execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), ...args], {
-      env: { HOME: join(inert, "home"), AGEND_HOME: home, PATH: join(inert, "bin"), NOTIFY_SOCKET: "", ...(instance ? { AGEND_INSTANCE_NAME: instance } : {}) },
+      env: { HOME: join(inert, "home"), AGEND_HOME: home, PATH: join(inert, "bin"), TZ: "UTC", NOTIFY_SOCKET: "", ...(instance ? { AGEND_INSTANCE_NAME: instance } : {}), ...env },
       timeout: 30_000,
     }, (error, stdout, stderr) => {
       if (!error) resolve({ code: 0, stdout, stderr });
@@ -295,6 +333,23 @@ describe("`fleet start` / `fleet stop` by hand with a user unit installed (inert
     expect(calls()).toContain(process.platform === "darwin" ? "launchctl bootout" : "systemctl --user stop com.agend.fleet");
     const audit = readFileSync(join(home, AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line) as AuditEntry);
     expect(audit.map(entry => [entry.action, entry.outcome])).toEqual([["stop", "refused"], ["stop", "allowed"]]);
+  });
+
+  it("#2741: a fleet of another AgEnD home is never handed to this service — `fleet stop` stops only its own", async () => {
+    const other = join(inert, "second-fleet");
+    mkdirSync(other, { recursive: true });
+    const result = await run(["fleet", "stop", "--yes"], "agend-leader", { AGEND_HOME: other });
+    expect(result.stderr).not.toContain("An AgEnD service is installed");
+    expect(calls(), "the main service is left alone").not.toMatch(/systemctl --user stop|launchctl bootout/);
+  });
+
+  it("#2741: a hand-over under NOTIFY_SOCKET says so and names `fleet start --direct` — never a silent exit", async () => {
+    const result = await run(["fleet", "stop", "--yes"], "agend-leader", { NOTIFY_SOCKET: "/run/user/1000/systemd/notify" });
+    expect(result.stderr).toContain("running `agend stop --yes`");
+    expect(result.stderr).toContain("NOTIFY_SOCKET is set");
+    expect(result.stderr).toContain("agend fleet start --direct");
+    const quiet = await run(["fleet", "stop", "--yes"], "agend-leader");
+    expect(quiet.stderr, "no hint without NOTIFY_SOCKET").not.toContain("NOTIFY_SOCKET");
   });
 
   it("`fleet stop <name>` still goes to the running fleet's API, never to the service", async () => {
