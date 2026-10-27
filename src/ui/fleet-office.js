@@ -89,6 +89,8 @@ register("orgo", {
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
     hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
+    styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
+    styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
     fill: "Fill", fillTitle: "Fill the panel (the scene's overflow is cropped; drag to see it)", zoomLevel: "Zoom {0}",
     allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Double-click a tile to open that office.",
@@ -105,6 +107,8 @@ register("orgo", {
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
     b_crashed: "糟糕，當掉了|救命！", b_stuck: "嗯，卡住了？|還在想…",
     hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
+    styleForAll: "整個 fleet 的風格，所有人共用：每台裝置與分享連結都一樣", styleHere: "這個瀏覽器裡整個 fleet 的風格",
+    styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
     fill: "填滿", fillTitle: "填滿整個面板（超出的部分會被裁切，拖曳即可看到）", zoomLevel: "縮放 {0}",
     allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。雙擊一格即可開啟那間辦公室。",
@@ -531,7 +535,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [editing, setEditing] = useState(false);
   const [choice, setChoice] = useState(() => opening ?? store.choice());
   const [filter, setFilter] = useState(() => store.filter());
-  const [style, setStyle] = useState(() => store.skin());
+  // #2716: the whole-fleet office's style — the host's (for everyone) and this browser's own pick. An admin sees the
+  // host's (their own pick only while the host keeps none) and picks for everyone; anyone else's own pick, else the host's.
+  const [hostStyle, setHostStyle] = useState(undefined);            // undefined: not read yet; null: none kept
+  const [ownStyle, setOwnStyle] = useState(() => store.skinChosen());
+  const [styleErr, setStyleErr] = useState("");
+  const style = canEdit ? hostStyle ?? ownStyle ?? "cozy" : ownStyle ?? hostStyle ?? "cozy";
   const [hideAsleep, setHideAsleep] = useState(() => store.hideAsleep());
   // Bedtime (#2568), when it is on here: the idle sleep from NIGHT.FROM to NIGHT.TO on this device's clock (read every NIGHT.TICK).
   const [nightOn, setNightOn] = useState(() => store.nightOn());
@@ -572,14 +581,33 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // The editor's save and its 409 re-read are stamped when sent (`ask`), never when answered; `adopt` returns the
   // snapshot in force, so a re-read the stream overtook leaves the editor's draft on the newer one.
   const asked = useRef(0), shown = useRef(null);                      // a counter; shown: { rev, offices, arrived }
+  const migrated = useRef(false);                                     // #2716: this page's own style sent up
   const ask = () => ++asked.current;
   const adopt = (d, askedAt) => {
     const cur = shown.current;
     if (!d) return cur;
     if (cur && d.rev < cur.rev && askedAt <= cur.arrived) return cur;
     shown.current = { rev: d.rev, offices: d.offices, arrived: ++asked.current };
-    setStored(d.offices); setStoredRev(d.rev);
+    setStored(d.offices); setStoredRev(d.rev); setHostStyle(d.autoSkin || null);
     return shown.current;
+  };
+  // #2716: an admin's own pick from before the host kept one (or since an older host's save dropped it) goes up once.
+  useEffect(() => {
+    if (!canEdit || hostStyle !== null || !ownStyle || migrated.current || !lease) return;
+    migrated.current = true;
+    void store.saveAutoSkin(ownStyle).then((r) => { if (r.ok && lease.current()) setHostStyle(r.autoSkin); });
+  }, [canEdit, hostStyle]);
+  /** #2716: a style picked here — this browser's own; an admin's, for everyone (on failure: said, and read again). */
+  const pickStyle = (id) => {
+    store.saveSkin(id); setOwnStyle(id); setTip(null); setStyleErr("");
+    if (!canEdit || !lease) return;
+    const was = hostStyle;
+    setHostStyle(id);
+    void store.saveAutoSkin(id).then((r) => {
+      if (!lease.current() || r.ok) return;
+      setHostStyle(was);
+      setStyleErr(to(r.status === 429 ? "styleBusy" : "styleFailed", r.error));
+    });
   };
   useEffect(() => {
     if (!lease) return undefined;
@@ -1246,7 +1274,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     <div class="oo-bar">
       <label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
-        <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} onChange=${(e) => { store.saveSkin(e.target.value); setStyle(e.target.value); setTip(null); }}>
+        <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
           ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
           ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
         </select></label>` : null}
@@ -1262,6 +1290,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
       ${custom && baseSkin.id !== custom.skin && !loading ? html`<span class="muted oo-note">${to("skinUnknown", styleName(custom.skin))}</span>` : null}
       ${placed.ignored ? html`<span class="muted oo-note">${to("layoutIgnored")}</span>` : null}
+      ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
       ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview) setEditing(true); }} disabled=${!!layout || overview}
         title=${overview ? to("overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}

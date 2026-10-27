@@ -286,7 +286,7 @@ ways with `walkDown`, `walkUp` and `walkSide`, the side one mirrored for left). 
 packs** on (`office_pack_access`, Dashboard access) can check, upload, replace, delete and restore packs itself (one
 previous version kept per pack); **Agents changing packs** under the packs names those agents, sets whether their changes
 **Need my yes** (the default) or **Apply at once**, and approves or rejects the waiting ones (also from the notice's
-buttons in General); every change is logged and told in General. **Style** (per browser for the whole fleet, per office for a stored one): **Desks**,
+buttons in General); every change is logged and told in General. **Style** (per office for a stored one; for the whole fleet, #2716, an admin's pick is kept on the host for every device and share link, anyone else's stays in their browser): **Desks**,
 **Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state),
 **Cozy** (#2631: the same in a warm pixel-art office drawn as one picture; its notice board says a skin pack can
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
@@ -316,7 +316,7 @@ only. Hover and click work across
 tiles; a tile's label, or a double-click on it, opens that office; traffic between offices flies straight across.
 Edit offices and Edit layout wait for a single office.
 **Share…** (#2636; an admin session, on the dashboard reached directly or over the public link — never read-only or a guest; the URL shows only to its maker, in the dialog) makes an Office share
-link: anyone who opens it watches one office (or **All offices**) live, read-only, with no sign-in — names, identity
+link: anyone who opens it watches **Whole fleet** (#2716, in the fleet's style), one office or **All offices** live, in the link's **Look** (#2715: Light, Dark or the viewer's device; default the maker's dashboard's), read-only, with no sign-in — names, identity
 colours and states, every 5 s; no chat, no clicks into anything, no settings; agents' `office_set` lines only when
 **Include agents' own status lines** is ticked; hidden instances never. 1 h by default, 15 min to 24 h
 (`web.office_share.max_hours`); at most 10 open. Its own quick tunnel (`https://<random>.trycloudflare.com/o/<token>`)

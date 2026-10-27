@@ -51,7 +51,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 | **Office** | which office to show: **Whole fleet**, one of the stored offices, or **All offices** | per device |
 | **Show** | a team or the Lobby only | per browser |
 | **People** | pin chosen instances; **Show everyone** clears it | per browser |
-| **Style** | **Desks**, **Studio**, **Cozy** or an uploaded skin pack (for Whole fleet; a stored office has its own) | per browser |
+| **Style** | **Desks**, **Studio**, **Cozy** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
 | **Hide paused and stopped** | leaves the sleepers out | per browser |
 | **Bedtime 0–6: the idle sleep** | see [Bedtime](#bedtime-strolls-and-mail) (zones styles and All offices) | per device, off by default |
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
@@ -84,7 +84,7 @@ Offices are the fleet's: everyone sees the same ones. The host keeps them in `we
 
 If someone saved the offices while you were editing, your save is refused and nothing is overwritten. Choose **Keep my edits** (the next Save replaces their change) or **Load theirs**. Leaving the page with unsaved changes asks first.
 
-**Whole fleet** is the page's own office, built from your teams each time. It is never stored, and its style is a per-browser choice.
+**Whole fleet** is the page's own office, built from your teams each time. It is never stored as an office, but its style is kept on the host: a fleet admin's pick in the Office bar is what every device and every share link shows. Someone who can't edit offices may pick a style too; it stays in their browser and is used there instead. An admin's own pick from before the host kept one is sent up the first time they open the Office.
 
 ## Use a skin pack
 
@@ -191,11 +191,12 @@ These need a zones style.
 
 A fleet admin can show the live Office to people outside the fleet for a while, with no sign-in. Use **Share…** in the Office bar, on the dashboard reached directly or signed in over the temporary public link; a read-only session or a guest can't share. There is no chat command for it.
 
-1. Choose one office or **All offices**, and how long: 15 minutes to 24 hours (1 hour by default; `web.office_share.max_hours` sets the longest).
-2. Tick **Include agents' own status lines** to show agents' `office_set` lines too.
-3. **Create link**, then **Copy link**. Only you see the link, once.
+1. Choose **Whole fleet**, one office or **All offices**, and how long: 15 minutes to 24 hours (1 hour by default; `web.office_share.max_hours` sets the longest). Whole fleet is the default while it's the office shown.
+2. Choose the **Look**: **Light** or **Dark**, or **The viewer's device**. The default is the light or dark your dashboard shows now. If your dashboard follows the device, the link does too.
+3. Tick **Include agents' own status lines** to show agents' `office_set` lines too.
+4. **Create link**, then **Copy link**. Only you see the link, once.
 
-A viewer sees that office (or every office) as the dashboard draws it: the scene, names, identity colours and states, updated every 5 seconds, with zoom, Fit and fullscreen. Nothing else is shown: no chat, no clicking into anything, no settings, no models, costs or descriptions. Only the office's members are shown, and an instance with `cross_instance_visibility: hidden` never is.
+A viewer sees that office (or every office) as the dashboard draws it, in its look, and Whole fleet in the fleet's style: the scene, names, identity colours and states, updated every 5 seconds, with zoom, Fit and fullscreen. Nothing else is shown: no chat, no clicking into anything, no settings, no models, costs or descriptions. Only the office's members are shown, and an instance with `cross_instance_visibility: hidden` never is.
 
 Each link has its own address on a quick tunnel (`https://<random>.trycloudflare.com/o/<token>`), separate from the dashboard's, which starts with the first link and stops with the last. At most 10 links are open at once. Each link is limited to 120 requests a minute, and skin-pack pictures are counted apart, so even All offices with full packs loads every room. A link ends at its time, on **Revoke** (in **Settings → Access & security → Office share links**, or under the Share… form), when `web.office_share.enabled` is set to `false`, when its maker is no longer a fleet admin, when its office is deleted, or on a fleet restart. Each link made or revoked is announced in General (never the link itself). When Cloudflare refuses a new quick tunnel, making a link says to try again in a few minutes.
 
@@ -378,3 +379,4 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Phone layout; seat reservations; agents managing skin packs (`office_pack_access`) | 2.3.2-beta.11 |
 | Furniture `activeOn` and `hides` | **Not released yet** (after 2.3.2-beta.11) |
 | Offices with a layout survive a rollback to 2.3.1 (#2706) | **Not released yet** (after 2.3.2-beta.11) |
+| Whole fleet's style kept for everyone; Whole fleet as a share; a share's Look (#2715, #2716) | **Not released yet** (after 2.3.2-beta.14) |

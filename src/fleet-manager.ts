@@ -28,7 +28,7 @@ import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, pub
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
-import { ALL_OFFICES, type OfficeShare } from "./office-share.js";
+import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
 import { withinBudget } from "./monotonic-budget.js";
@@ -1671,7 +1671,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * `share` null with `count`: "Revoke all".
    */
   officeShareNotice(event: "created" | "revoked", who: string, share: OfficeShare | null, count: number): void {
-    const office = !share ? "" : share.office === ALL_OFFICES ? t("office_share.all") : this.officeStore.list().offices.find(o => o.id === share.office)?.name ?? share.office;
+    const office = !share ? "" : share.office === ALL_OFFICES ? t("office_share.all") : share.office === WHOLE_FLEET ? t("office_share.whole") : this.officeStore.list().offices.find(o => o.id === share.office)?.name ?? share.office;
     const minutes = share ? Math.round((share.expiresAt - share.createdAt) / 60_000) : 0;
     const text = event === "created" ? t("office_share.created_notice", who, office, minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`)
       : share ? t("office_share.revoked_notice", who, office) : t("office_share.revoked_all_notice", who, count);

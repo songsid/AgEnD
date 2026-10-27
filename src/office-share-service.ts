@@ -9,9 +9,9 @@
  * - Its own manager and lease (OFFICE_SHARE_TUNNEL_DIR): never the fleet's one tunnel lane (/web, /login) nor the
  *   public link's preview tunnel. A tunnel that goes away unexpectedly ends every share (their address was its host).
  */
-import { ALL_OFFICES, OfficeShareLimiter, OfficeShares, createOfficeShareGateway, shareMaxMinutes, type OfficeShare, type OfficeShareGateway,
+import { fleetWide, OfficeShareLimiter, OfficeShares, createOfficeShareGateway, shareMaxMinutes, type OfficeShare, type OfficeShareGateway,
   type OfficeShareSource } from "./office-share.js";
-import { OFFICE_SHARE_PAGE, OFFICE_SHARE_PAGE_CSP, officeShareStatic } from "./office-share-page.js";
+import { OFFICE_SHARE_PAGE_CSP, officeSharePage, officeShareStatic } from "./office-share-page.js";
 import { failureOf, type PublicLinkFailure } from "./public-link-progress.js";
 import { newTunnelSid, type ManagedTunnel } from "./tunnel/manager.js";
 import type { TunnelProvider } from "./tunnel/types.js";
@@ -24,7 +24,7 @@ const NO_EXPIRY_WALL = Number.MAX_SAFE_INTEGER;
 /** How often open shares are checked against who may still have them. */
 export const SWEEP_MS = 30_000;
 
-export type OfficeShareRefusal = "disabled" | "office" | "duration" | "too_many" | "tunnel";
+export type OfficeShareRefusal = "disabled" | "office" | "duration" | "too_many" | "theme" | "tunnel";
 export type OfficeShareMade =
   | { ok: true; share: OfficeShare; url: string }
   | { ok: false; error: OfficeShareRefusal; reason?: PublicLinkFailure | "exited" };
@@ -69,10 +69,10 @@ export class OfficeShareService {
   list(): OfficeShare[] { return this.shares.list(); }
 
   /**
-   * A new share and its URL, once the tunnel is up. `minutes` 15–max_hours×60 (60 if not given); `office` ALL_OFFICES
-   * or a stored office's id. A tunnel that cannot start ends the share at once and says why.
+   * A new share and its URL, once the tunnel is up. `minutes` 15–max_hours×60 (60 if not given); `office` ALL_OFFICES,
+   * WHOLE_FLEET (#2716) or a stored office's id; `theme` (#2715) "auto", "light" or "dark". A tunnel that cannot start ends the share at once and says why.
    */
-  async create(opts: { office: string; minutes?: number; text?: boolean; owner: string }): Promise<OfficeShareMade> {
+  async create(opts: { office: string; minutes?: number; text?: boolean; theme?: string; owner: string }): Promise<OfficeShareMade> {
     if (!this.enabled()) return { ok: false, error: "disabled" };
     const made = this.shares.create({ ...opts, maxMinutes: shareMaxMinutes(this.deps.config()?.max_hours), exists: id => this.deps.officeExists(id) });
     if (!made.ok) return { ok: false, error: made.error };
@@ -88,7 +88,7 @@ export class OfficeShareService {
   /** Shares no longer allowed: the feature off (all), an owner no longer an admin, an office deleted. */
   sweep(): number {
     if (!this.enabled()) return this.shares.revoke("all");
-    return this.shares.endWhere(s => !this.deps.ownerCurrent(s.owner) || (s.office !== ALL_OFFICES && !this.deps.officeExists(s.office)));
+    return this.shares.endWhere(s => !this.deps.ownerCurrent(s.owner) || (!fleetWide(s.office) && !this.deps.officeExists(s.office)));
   }
 
   /** The fleet is stopping: every share ends and the tunnel goes. */
@@ -122,7 +122,7 @@ export class OfficeShareService {
     const abort = this.abort = new AbortController();
     const gateway = (this.deps.createGateway ?? createOfficeShareGateway)({
       shares: this.shares, source: this.deps.source, limiter: this.limiter, pictureLimiter: this.pictureLimiter, statics: officeShareStatic,
-      page: () => ({ body: OFFICE_SHARE_PAGE, csp: OFFICE_SHARE_PAGE_CSP }),
+      page: share => ({ body: officeSharePage(share.theme), csp: OFFICE_SHARE_PAGE_CSP }),
     });
     this.gateway = gateway;
     const fail = (reason: PublicLinkFailure, detail?: string) => {

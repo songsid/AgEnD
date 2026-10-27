@@ -632,7 +632,7 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
 
 /**
  * #2636: Office share links — GET /ui/office-share (the open ones, and whether this fleet offers them), POST { office,
- * minutes?, text? } (a new one; answers its URL once its tunnel is up, or why not), DELETE /ui/office-share/<id|all>.
+ * minutes?, text?, theme? } (a new one; #2715 theme "auto" | "light" | "dark"; answers its URL once its tunnel is up, or why not), DELETE /ui/office-share/<id|all>.
  * An admin session only — on the dashboard reached directly, or (the user, #2636 follow-up) a fleet admin signed in over
  * the /web public link: the same check either way. Never the CLI token, a read-only session or a guest. The share's own
  * tunnel and gateway stay apart from /web's. The person is asked again once the body is in.
@@ -675,12 +675,13 @@ function handleOfficeShare(req: IncomingMessage, res: ServerResponse, url: URL, 
     const now = who();
     if ("status" in now) { refuse(now.status); return; }
     if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.office !== "string"
-      || (body.minutes !== undefined && typeof body.minutes !== "number") || (body.text !== undefined && typeof body.text !== "boolean")) {
-      json(res, 400, { error: "office (string), minutes? (number), text? (boolean)" });
+      || (body.minutes !== undefined && typeof body.minutes !== "number") || (body.text !== undefined && typeof body.text !== "boolean")
+      || (body.theme !== undefined && typeof body.theme !== "string")) {
+      json(res, 400, { error: "office (string), minutes? (number), text? (boolean), theme? (auto, light or dark)" });
       return;
     }
     const made = await service.create({ office: body.office, owner: now.person, ...(typeof body.minutes === "number" ? { minutes: body.minutes } : {}),
-      ...(typeof body.text === "boolean" ? { text: body.text } : {}) });
+      ...(typeof body.text === "boolean" ? { text: body.text } : {}), ...(typeof body.theme === "string" ? { theme: body.theme } : {}) });
     if (!made.ok) {
       const status = made.error === "disabled" ? 404 : made.error === "tunnel" ? 503 : made.error === "too_many" ? 409 : 400;
       json(res, status, { error: made.error, ...(made.reason ? { reason: made.reason } : {}) });
@@ -2036,6 +2037,46 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Saving offices failed");
       try { json(res, 500, { error: "Saving offices failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // #2716: PUT /ui/office-style { skin }: the whole-fleet office's style for every viewer, device and share link (a skin
+  // id, or null for the default; read back as GET /ui/offices's autoSkin). Who may save the offices may set it, as they
+  // would: an admin session, never the CLI token or the public link; asked again once the body is in; counted with the
+  // offices' saves. Every page hears `offices` and reads again.
+  if (method === "PUT" && path === "/ui/office-style") {
+    const store = ctx.officeStore;
+    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
+    const who = (): { person: string } | { status: number } => {
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      if (verdict.kind !== "allow") return { status: 401 };
+      return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+    };
+    const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
+    const first = who();
+    if ("status" in first) { refuse(first.status); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const now = who();
+      if ("status" in now) { refuse(now.status); return; }
+      if (!body || typeof body !== "object" || Array.isArray(body) || !("skin" in body) || Object.keys(body).some(k => k !== "skin")) {
+        json(res, 400, { error: "office_style_invalid", detail: "{ skin: a skin id, or null }" });
+        return;
+      }
+      const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
+      if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
+      const r = store.setAutoSkin(body.skin);
+      if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+      limiter?.record(now.person);
+      ctx.emitSseEvent("offices", { rev: r.rev });
+      json(res, 200, { rev: r.rev, autoSkin: r.autoSkin });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Saving the office style failed");
+      try { json(res, 500, { error: "Saving the office style failed" }); } catch { /* already answered */ }
     });
     return true;
   }

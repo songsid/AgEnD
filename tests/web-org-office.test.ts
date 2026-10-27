@@ -285,7 +285,10 @@ describe("the store: this browser's choices, the host's offices", () => {
   it("offices(): GET /ui/offices, checked; a failed read is null; saveOffices PUTs the list and the rev", async () => {
     const calls: any[] = [];
     const answer = (status: number, body: unknown) => async (path: string, o: any) => { calls.push([path, o.method, o.body && JSON.parse(o.body)]); return { ok: status === 200, status, json: async () => body }; };
-    expect(await S.createOfficeStore({ fetch: answer(200, { rev: 4, offices: [{ id: "ops", name: "Ops" }, { id: "auto" }] }) }).offices()).toEqual({ rev: 4, offices: [{ id: "ops", name: "Ops", skin: "pixel", members: [], layout: null }] });
+    expect(await S.createOfficeStore({ fetch: answer(200, { rev: 4, offices: [{ id: "ops", name: "Ops" }, { id: "auto" }] }) }).offices()).toEqual({ rev: 4, offices: [{ id: "ops", name: "Ops", skin: "pixel", members: [], layout: null }], autoSkin: null });
+    // #2716: the whole-fleet office's style, checked like a skin id.
+    expect((await S.createOfficeStore({ fetch: answer(200, { rev: 1, offices: [], autoSkin: "snug" }) }).offices()).autoSkin).toBe("snug");
+    expect((await S.createOfficeStore({ fetch: answer(200, { rev: 1, offices: [], autoSkin: "../x" }) }).offices()).autoSkin).toBeNull();
     expect(await S.createOfficeStore({ fetch: answer(503, {}) }).offices()).toBeNull();
     expect(await S.createOfficeStore({ fetch: async () => { throw new Error("offline"); } }).offices()).toBeNull();
     expect(await S.createOfficeStore({ fetch: answer(409, { error: "offices_changed" }) }).saveOffices([{ id: "a", name: "A" }], 3)).toEqual({ ok: false, status: 409, error: "offices_changed" });

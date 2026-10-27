@@ -1,7 +1,8 @@
 /**
  * #2636: an Office share link's page and the static files it loads, as the share gateway serves them (office-share.ts).
  *
- * The page (`/o/<token>`) is a fixed document — no data in it, no inline script — that loads the share page's module
+ * The page (`/o/<token>`) is a fixed document — no data in it but its look (#2715: the share's light or dark, set on
+ * <html> so it paints in it at once; "auto" leaves the viewer's device to choose), no inline script — that loads the share page's module
  * (src/ui/office-share-page.js), which reads the share's own addresses. Its modules and stylesheets are served at the
  * dashboard's own paths (`/assets/<name>`, `/ui/js/<name>`) so the Office's imports work unchanged, without a token:
  * they are the app's static code (published with AgEnD), never data — and only the files named here, the page
@@ -61,7 +62,7 @@ export function officeShareStatic(path: string): { body: Buffer; type: string } 
 export const OFFICE_SHARE_PAGE_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; "
   + "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-/** The page itself: the same for every share (the module reads the token from the address). */
+/** The page itself: the same for every share of a look (the module reads the token from the address). */
 export const OFFICE_SHARE_PAGE = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -80,3 +81,7 @@ export const OFFICE_SHARE_PAGE = `<!DOCTYPE html>
 </body>
 </html>
 `;
+/** #2715: the page in a share's look — "light" or "dark" on <html data-theme> (tokens.css's own switch); "auto": as it is. */
+export function officeSharePage(theme: string): string {
+  return theme === "light" || theme === "dark" ? OFFICE_SHARE_PAGE.replace('<html lang="en">', `<html lang="en" data-theme="${theme}">`) : OFFICE_SHARE_PAGE;
+}
