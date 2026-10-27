@@ -9,13 +9,15 @@ import { page, type AppPage } from "./helpers/app-harness.js";
 import { OfficeShareView, type OfficeShareSource } from "../src/office-share.js";
 
 let p: AppPage;
-let LV: any, C: any, PK: any, K: any;
+let LV: any, C: any, PK: any, K: any, F: any, VW: any;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/fleet/org" });
   LV = await import("/ui/js/fleet-office-levels.js");
   C = await import("/ui/js/fleet-office-card.js");
   PK = await import("/ui/js/fleet-office-pack.js");
   K = await import("/ui/js/fleet-office-skin.js");
+  F = await import("/ui/js/fleet-office.js");
+  VW = await import("/ui/js/fleet-office-view.js");
 });
 afterAll(() => p.restore());
 
@@ -173,6 +175,25 @@ describe("the badge on a name tag", () => {
     expect(texts(plate)).toEqual(["atlas", "12"]);
     const hidden = fakeCtx(); K.pixelSkin.drawDeskFront(hidden, desk, look({ badge: { text: "12", tier: 1 }, notag: true }), env);
     expect(texts(hidden)).toEqual([]);
+  });
+});
+
+describe("a level up on Desks (#2761 review)", () => {
+  it("the ring over them; only the people in the same room glance over", () => {
+    const desk = (key: string, name: string, x: number) => ({ key, node: { name, state: "idle", i: { name } }, x, y: 0, w: 96, h: 104, seat: { x: x + 48, y: 40 } });
+    const L = { mode: "desks", width: 600, height: 200, rooms: [
+      { key: "Platform", name: "Platform", desks: [desk("P/pixel", "pixel", 0), desk("P/quill", "quill", 100)] },
+      { key: "Web", name: "Web", desks: [desk("W/tide", "tide", 400)] }] };
+    const looks = new Map(L.rooms.flatMap((r) => r.desks).map((d) => [d.key, { name: d.node.name, label: d.node.name, state: "idle", pose: "idle", light: null, lamp: false, sign: null, coat: "#123456", work: 0, dim: false, match: false }]));
+    const skin = { ...K.pixelSkin, drawCharacter: () => {}, drawDeskFront: () => {}, drawBubble: () => {} };
+    const part = { ...F.partOf(L, looks, skin, false, null, { frame: () => [], size: () => 0 }), ups: new Map([["pixel", performance.now()]]), levelsOn: true };
+    part.layers = { ls: VW.layerScale(1, L.width, L.height), tagsOff: false, back: null, front: null };
+    const g = fakeCtx();
+    const moving = F.drawPart(g, part, 1, 0, 0, 500, false, null, { pal: { ...K.DEFAULT_PAL }, mode: "dark", labels: { lobby: "Lobby", closed: "Closed", areas: {} } });
+    const marks = g.calls.filter(([k, a]: any) => k === "fillText" && a[0] === "!").map(([, a]: any) => a[1]);
+    expect(marks).toEqual([100 + 58]);                                      // quill (Platform) glances; tide (Web) does not
+    expect(g.calls.some(([k]: any) => k === "arc")).toBe(true);             // the ring over pixel
+    expect(moving).toBe(true);                                               // the loop keeps drawing while it shows
   });
 });
 

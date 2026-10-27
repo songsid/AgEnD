@@ -582,9 +582,11 @@ describe("the Office view on the page", () => {
     expect(p.root.querySelector(".oo-card-now").textContent).toContain("Typing away");
     expect(p.root.querySelector(".oo-card .oo-badge.tier-4").textContent).toBe("50");
     expect(p.root.querySelectorAll(".oo-card-actions button").map((b: any) => b.textContent)).toEqual(["Find in office", "Chat"]);
-    desk("quill").click(); await settle(2);
+    fire(desk("quill"), "pointerdown", { pointerType: "mouse" }); await settle(2);   // a whole gesture (#2761 review): press,
+    fire(desk("quill"), "pointerup", { pointerType: "mouse" }); desk("quill").click(); await settle(2);   // then the click
     expect(card()).toBeNull();                                               // the same person again: closed
     desk("quill").click(); await settle(2);
+    fire(desk("sage"), "pointerdown", { pointerType: "mouse" }); await settle(2);
     desk("sage").click(); await settle(2);
     expect(p.root.querySelector(".oo-card-instance").textContent).toBe("sage");   // another: switched
     expect(p.root.querySelector(".oo-card-state").textContent).toBe("Paused · Novice");

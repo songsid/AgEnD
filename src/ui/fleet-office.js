@@ -226,7 +226,9 @@ function officeScene(office, nodes, skin, zones, deskW, prevSeats, night = false
 export function partOf(L, looks, skin, zones, walkers, flights) {
   const all = L.rooms.flatMap((r) => r.desks);
   const shown = new Set([...looks.values()].map((l) => l.state)), byName = new Map([...looks.values()].filter((l) => l.name).map((l) => [l.name, l.state]));
-  return { L, looks, skin, zones, walkers, flights, all, desks: all.filter((d) => d.node), layers: null,
+  // #2661: each desk's room (Desks: who is in the same area as a level-up, drawPart).
+  const roomOf = new Map(L.rooms.flatMap((r) => r.desks.map((d) => [d.key, r.key])));
+  return { L, looks, skin, zones, walkers, flights, all, desks: all.filter((d) => d.node), layers: null, roomOf,
     active: zones ? activeFurniture(skin.pack, shown, byName) : new Set(), lines: bubbleDefaults(), lang: lang() };
 }
 /**
@@ -451,7 +453,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     }
     p.heldTags = held;
   } else {
-    for (const d of p.desks) { const look = p.looks.get(d.key); sk.drawCharacter(ctx, d, actPosed(p, look), ms, env); speakers.push({ look, x: d.x + 58, y: d.y + 12 }); }
+    for (const d of p.desks) { const look = p.looks.get(d.key); sk.drawCharacter(ctx, d, actPosed(p, look), ms, env); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
     blit(p.layers.front);
     // Tags left out of the layer: the hovered desk's front again, with its tag.
     const hd = tagsOff && hot ? p.desks.find((d) => d.key === hot) : null;
@@ -1363,7 +1365,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!card) return undefined;
     const doc = globalThis.document;
     const key = (e) => { if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); closeCard(); } };
-    const press = (e) => { const el = e.target; if (cardEl.current?.contains?.(el) || el === canvasRef.current) return; closeCard(); };
+    // A desk-list entry is the scene's too: its own click decides (the same person again closes, another switches) —
+    // closing here first would let that click open it again (#2761 review).
+    const press = (e) => {
+      const el = e.target;
+      if (cardEl.current?.contains?.(el) || el === canvasRef.current) return;
+      if (typeof el?.closest === "function" && el.closest(".oo-desk") && ooRef.current?.contains?.(el)) return;
+      closeCard();
+    };
     doc?.addEventListener?.("keydown", key, true); doc?.addEventListener?.("pointerdown", press, true);
     return () => { doc?.removeEventListener?.("keydown", key, true); doc?.removeEventListener?.("pointerdown", press, true); };
   }, [card]);
