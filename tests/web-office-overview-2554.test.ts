@@ -461,6 +461,8 @@ describe("All offices on the page", () => {
     fire(cv, "pointermove", { clientX: gap.x, clientY: gap.y, pointerType: "mouse" }); await settle(2);
     expect(p.root.querySelector(".oo-tip")).toBeNull();
     fire(cv, "click", { clientX: q.x, clientY: q.y }); await settle(2);
+    expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
+    p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
     expect(location.pathname).toBe("/ui/chat/quill");
   });
   it("a tile's label opens that office (kept as the pick); a double-click on a tile's empty floor too; the lobby opens nothing", async () => {

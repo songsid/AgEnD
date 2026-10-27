@@ -36,9 +36,10 @@ const STORE = { ready: true, instances: INSTANCES, exec: { quill: "working", orb
 let p: AppPage;
 let M: any, S: any, K: any, O: any, app: any, fleet: any, nav: any, TR: any, PK: any, Z: any;
 let offices: unknown = { rev: 0, offices: [] };
+let levels: unknown = {};                                                   // #2661: GET /ui/office-levels
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/fleet/org" });
-  (globalThis as any).fetch = async (url: string) => ({ ok: true, status: 200, json: async () => (url === "/ui/org" ? ORG : url === "/ui/offices" ? offices : {}) });
+  (globalThis as any).fetch = async (url: string) => ({ ok: true, status: 200, json: async () => (url === "/ui/org" ? ORG : url === "/ui/offices" ? offices : url === "/ui/office-levels" ? levels : {}) });
   app = await import("/assets/app-store.js");
   nav = await import("/assets/app-nav.js");
   nav.startRouter(p.window);
@@ -56,6 +57,7 @@ beforeEach(async () => {
   await p.unmount();
   p.storage.clear();
   offices = { rev: 0, offices: [] };
+  levels = {};
   nav.navigate("/ui/fleet/org");
   app.appStore.set(STORE);
 });
@@ -545,13 +547,65 @@ describe("the Office view on the page", () => {
   it("a desk says what the canvas's card says, with its caption; it opens that instance's chat", async () => {
     await office();
     const quill = p.root.querySelectorAll(".oo-desk").find((b: any) => b.getAttribute("data-name") === "quill");
-    expect(quill.getAttribute("aria-label")).toBe("quill — Working · Kiro CLI · Typing away. Open chat");
+    expect(quill.getAttribute("aria-label")).toBe("quill — Working · Kiro CLI · Typing away.");
     const sage = p.root.querySelectorAll(".oo-desk").find((b: any) => b.getAttribute("data-name") === "sage");
     expect(sage.getAttribute("aria-label")).toContain("Paused · Grok Build · Asleep");
     fire(quill, "focus"); await settle(2);
     expect(p.root.querySelector(".oo-tip").textContent).toContain("Typing away");
     quill.click(); await settle(2);
+    expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
+    p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
     expect(location.pathname).toBe("/ui/chat/quill");
+  });
+  it("#2661: a desk opens its card — a popover, not a modal: the same again, Esc or a press elsewhere closes it, another switches; the card's level and rows", async () => {
+    levels = { enabled: true, unit: 100_000, detail: true, levels: {
+      quill: { level: 50, workTokens: 250_000_000, estimated: true, today: { workTokens: 12_300, requests: 45 }, firstSeen: "2026-01-01" },
+      sage: { level: 3 } } };
+    await office();
+    const desk = (n: string) => p.root.querySelectorAll(".oo-desk").find((b: any) => b.getAttribute("data-name") === n);
+    const card = () => p.root.querySelector(".oo-card");
+    expect(card()).toBeNull();
+    desk("quill").click(); await settle(2);
+    expect(card().getAttribute("role")).toBe("dialog");
+    expect(card().getAttribute("aria-modal")).toBe("false");
+    expect(p.root.querySelector(".oo-card-instance").textContent).toBe("quill");
+    expect(p.root.querySelector(".oo-card-instance").getAttribute("title")).toBe("quill");
+    expect(p.root.querySelector(".oo-card-state").textContent).toBe("Working · Master");
+    const xp = p.root.querySelector(".oo-card-xp").textContent;
+    expect(xp).toContain("Lv 50 · 250M work tokens");
+    expect(xp).toContain("(estimated)");
+    expect(xp).toContain("10.1M to Lv 51");
+    expect(p.root.querySelector(".oo-card-bar").getAttribute("max")).toBe("100");
+    const rows = p.root.querySelectorAll(".oo-card-rows dt").map((d: any) => d.textContent);
+    expect(rows).toEqual(["Office", "Backend", "Today", "First seen"]);
+    expect(p.root.querySelector(".oo-card-rows").textContent).toContain("12.3K work tokens · 45 requests");
+    expect(p.root.querySelector(".oo-card-now").textContent).toContain("Typing away");
+    expect(p.root.querySelector(".oo-card .oo-badge.tier-4").textContent).toBe("50");
+    expect(p.root.querySelectorAll(".oo-card-actions button").map((b: any) => b.textContent)).toEqual(["Find in office", "Chat"]);
+    desk("quill").click(); await settle(2);
+    expect(card()).toBeNull();                                               // the same person again: closed
+    desk("quill").click(); await settle(2);
+    desk("sage").click(); await settle(2);
+    expect(p.root.querySelector(".oo-card-instance").textContent).toBe("sage");   // another: switched
+    expect(p.root.querySelector(".oo-card-state").textContent).toBe("Paused · Novice");
+    expect(p.root.querySelector(".oo-card-xp").textContent).toBe("Lv 3");   // no numbers sent: the level only
+    fire(p.document as any, "keydown", { key: "Escape" }); await settle(2);
+    expect(card()).toBeNull();
+    desk("sage").click(); await settle(2);
+    fire(p.root.querySelector(".oo-bar"), "pointerdown", {}); await settle(2);
+    expect(card()).toBeNull();                                               // a press elsewhere
+    desk("sage").click(); await settle(2);
+    p.root.querySelector(".oo-card-close").click(); await settle(2);
+    expect(card()).toBeNull();
+    expect(app.appStore.get().ready).toBe(true);
+  });
+  it("#2661: levels off — no badge, no level rows, the title gone; the card still opens", async () => {
+    levels = { enabled: false, unit: 100_000, detail: false, levels: {} };
+    await office();
+    p.root.querySelectorAll(".oo-desk").find((b: any) => b.getAttribute("data-name") === "quill").click(); await settle(2);
+    expect(p.root.querySelector(".oo-card-state").textContent).toBe("Working");
+    expect(p.root.querySelector(".oo-card-xp")).toBeNull();
+    expect(p.root.querySelector(".oo-card .oo-badge")).toBeNull();
   });
   it("who is shown: a team, then pinned people — kept per browser; the Find box dims the rest", async () => {
     await office();
@@ -836,11 +890,16 @@ describe("the Office view on the page", () => {
       const click = (pt: any) => { fire(p.root.querySelector(".oo-canvas"), "pointerdown", { pointerType: "mouse" }); fire(p.root.querySelector(".oo-canvas"), "click", { clientX: v.x + pt.x * v.k, clientY: v.y + (pt.y - 20) * v.k }); };
       click(to); await settle(1);
       expect(location.pathname).toBe("/ui/fleet/org");                   // its destination, still empty: nothing opens
+      expect(p.root.querySelector(".oo-card")).toBeNull();
       click(from); await settle(1);
-      expect(location.pathname).toBe("/ui/chat/atlas");                   // where it is drawn, just set off
+      expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("atlas");   // #2661: a click opens the card
+      p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
+      expect(location.pathname).toBe("/ui/chat/atlas");   // where it is drawn, just set off
       nav.navigate("/ui/fleet/org"); await settle(3);
       click(still); await settle(1);
-      expect(location.pathname).toBe("/ui/chat/loner");                   // sitting still: at its seat
+      expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("loner");   // #2661: a click opens the card
+      p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
+      expect(location.pathname).toBe("/ui/chat/loner");   // sitting still: at its seat
     } finally { delete proto.getContext; }
   });
   it("an accepted far-out custom layout at DPR 3: the canvas and its layers stay within a paintable bitmap (#2431 review)", async () => {
@@ -919,6 +978,8 @@ describe("the Office view on the page", () => {
       expect(p.root.querySelectorAll(".oo-bar select")[1].value).toBe("studio");
       const quill = p.root.querySelectorAll(".oo-desk").find((b: any) => b.getAttribute("data-name") === "quill");
       quill.click(); await settle(2);
+      expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
+      p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
       expect(location.pathname).toBe("/ui/chat/quill");
     } finally { delete proto.getContext; }
   });
@@ -939,6 +1000,8 @@ describe("the Office view on the page", () => {
       fire(p.root.querySelector(".oo-canvas"), "pointerdown", { pointerType: "mouse" });
       fire(p.root.querySelector(".oo-canvas"), "click", { clientX: vx + (tide.x + 10) * k, clientY: vy + (tide.y + 10) * k });
       await settle(2);
+      expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("tide");   // #2661: a click opens the card
+      p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
       expect(location.pathname).toBe("/ui/chat/tide");
       const n = main.calls.length;
       await p.unmount(); await settle(4);

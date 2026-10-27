@@ -1809,6 +1809,42 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-mini-dot.match { fill: var(--focus); }
 .oo-tip { position: absolute; left: 0; top: 0; z-index: 5; max-width: 240px; pointer-events: none; padding: 6px 10px; font-size: var(--fs-xs); line-height: 1.4;
   color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); overflow-wrap: anywhere; }
+/* #2661: a person's profile card — a popover beside them (placed by the page: transform through the CSSOM), 320 px fixed;
+   on a phone a bottom sheet. Tone over borders; the status tokens for the level's tier. */
+.oo-card { position: absolute; left: 0; top: 0; z-index: 8; width: 320px; box-sizing: border-box; padding: var(--s-3); font-size: var(--fs-sm); line-height: var(--lh-sm);
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
+.oo-card.sheet { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; transform: none; z-index: 40; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding-bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px)); touch-action: none; }
+.oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
+.oo-card-head { display: flex; gap: var(--s-3); align-items: flex-start; }
+.oo-card-avatar { position: relative; flex: none; width: 56px; height: 56px; border-radius: var(--r-md); background: var(--surface-2); }
+.oo-card-avatar canvas { width: 56px; height: 56px; image-rendering: pixelated; }
+.oo-card-avatar .oo-badge { position: absolute; left: -6px; top: -6px; }
+.oo-card-names { flex: 1; min-width: 0; }
+.oo-card-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One line, cut; a fixed line height so a CJK fallback in the mono stack doesn't make it taller. */
+.oo-card-instance { height: 18px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-2); }
+.oo-card-state { color: var(--text-2); }
+.oo-card-close { flex: none; margin: -4px -4px 0 0; }
+.oo-card-xp { margin-top: var(--s-3); }
+.oo-card-bar { display: block; width: 100%; height: 6px; margin-top: var(--s-1); appearance: none; border: 0; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.oo-card-bar::-webkit-progress-bar { background: var(--surface-2); border-radius: var(--r-full); }
+.oo-card-bar::-webkit-progress-value { background: var(--accent); border-radius: var(--r-full); }
+.oo-card-bar::-moz-progress-bar { background: var(--accent); border-radius: var(--r-full); }
+.oo-card-rows { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2) var(--s-3); margin: var(--s-3) 0 0; }
+.oo-card-rows > div { min-width: 0; }
+.oo-card-rows dt { font-size: var(--fs-xs); color: var(--text-3); }
+.oo-card-rows dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oo-card-now { margin-top: var(--s-3); overflow-wrap: anywhere; }
+.oo-card-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-3); }
+.oo-badge { display: inline-block; min-width: 18px; padding: 0 4px; box-sizing: border-box; font-size: 10px; font-weight: var(--fw-semibold); line-height: 16px; text-align: center;
+  border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); }
+.oo-badge.mark { min-width: 10px; width: 10px; height: 10px; padding: 0; transform: rotate(45deg); border-radius: 2px; }
+.oo-badge.tier-1 { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.oo-badge.tier-2 { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.oo-badge.tier-3 { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.oo-badge.tier-4 { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.oo-badge.tier-5 { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
 /* #2554: All offices — each tile's label (office name and head count) just above the tile, placed by the page (left, top,
    max-width through the CSSOM); a button that opens the office, the lobby's a plain chip. */
 .oo-tile-label { position: absolute; left: 0; top: 0; z-index: 3; transform: translateY(calc(-100% - 4px)); max-width: 240px; overflow: hidden; text-overflow: ellipsis;

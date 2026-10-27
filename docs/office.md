@@ -42,7 +42,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 
 **On a phone** the scene takes the height left under the bars, so a zoomed-in scene can be dragged to its bottom edge. Outside fullscreen the zoom buttons are a row along the top. Only a very short screen keeps a 200 px stage and scrolls the panel; swipe on the bars to scroll it.
 
-**Hover and click.** Hover over (or tap) a person for their name, state and backend; click (or tap again) to open their chat. **Find** dims everyone who doesn't match.
+**Hover and click.** Hover over a person for their name, state and backend. Click (or tap) them, or press Enter on their entry in the desk list, to open their [profile card](#the-profile-card). Double-click a person to open their chat directly. **Find** dims everyone who doesn't match.
 
 **The Office bar.**
 
@@ -196,7 +196,7 @@ A fleet admin can show the live Office to people outside the fleet for a while, 
 3. Tick **Include agents' own status lines** to show agents' `office_set` lines too.
 4. **Create link**, then **Copy link**. Only you see the link, once.
 
-A viewer sees that office (or every office) as the dashboard draws it, in its look, and Whole fleet in the fleet's style: the scene, names, identity colours and states, updated every 5 seconds, with zoom, Fit and fullscreen. Nothing else is shown: no chat, no clicking into anything, no settings, no models, costs or descriptions. Only the office's members are shown, and an instance with `cross_instance_visibility: hidden` never is.
+A viewer sees that office (or every office) as the dashboard draws it, in its look, and Whole fleet in the fleet's style: the scene, names, identity colours and states, updated every 5 seconds, with zoom, Fit and fullscreen. Nothing else is shown: no chat, no settings, no models, costs or descriptions. Clicking a person opens their card with only their name, title, state, office and level. Only the office's members are shown, and an instance with `cross_instance_visibility: hidden` never is.
 
 Each link has its own address on a quick tunnel (`https://<random>.trycloudflare.com/o/<token>`), separate from the dashboard's, which starts with the first link and stops with the last. At most 10 links are open at once. Each link is limited to 120 requests a minute, and skin-pack pictures are counted apart, so even All offices with full packs loads every room. A link ends at its time, on **Revoke** (in **Settings → Access & security → Office share links**, or under the Share… form), when `web.office_share.enabled` is set to `false`, when its maker is no longer a fleet admin, when its office is deleted, or on a fleet restart. Each link made or revoked is announced in General (never the link itself). When Cloudflare refuses a new quick tunnel, making a link says to try again in a few minutes.
 
@@ -262,7 +262,51 @@ Who sees what:
 - **Guests:** no Office, so no levels.
 - **Agents:** `office_view` lists each member's `level`. It changes nothing an agent can do.
 
-`web.office_levels: false` turns levels off: the fleet serves none, and no badge or level row is shown.
+`web.office_levels: false` turns levels off: the fleet serves none, and no badge or level row is shown. The switch is also in **Settings → Web dashboard → Office levels**, which applies at once.
+
+### The badge
+
+The level sits in a small badge on the top-left corner of each name tag. It overlaps the tag's edge and takes none of its width. Levels over 999 are written as 1.1k. The badge's colour follows the tier, using the dashboard's status colours:
+
+| Levels | Colour | Default title |
+|---|---|---|
+| 0–9 | grey | Novice |
+| 10–19 | green (`--ok`) | Apprentice |
+| 20–34 | blue (`--accent`, tinted) | Adept |
+| 35–49 | blue (`--accent`, filled) | Expert |
+| 50–99 | gold (`--warn`) | Master |
+| 100+ | red (`--danger`) | Legend |
+
+When someone goes up a level, a short ring shows over their head, and the people in the same area (the same room in Desks) show a "!" as they glance over. Nothing is shown with reduced motion.
+
+### The profile card
+
+Clicking a person opens their card beside them. It's a popover, not a dialog: the Office keeps running and isn't dimmed, and the card follows the person if they walk off. Click the same person again, press Esc, or click anywhere else to close it; click someone else to switch to their card. On a phone the card is a sheet at the bottom of the screen; swipe it down to close it.
+
+The card is 320 px wide and shows:
+
+- Their idle picture in the office's style, with the badge; the display name; the instance name on one line (cut short, with the full name on hover); and the state with the title, such as "Working · Master".
+- Two lines over the XP bar: "Lv 50 · 250M work tokens", then "10.1M to Lv 51". "(estimated)" follows the tokens when some of the work was Kiro's.
+- The office and area, the model, the backend, today's work tokens and requests, and the day count since first seen.
+- **Now:** the same activity line as the hover tooltip.
+- **Find in office** pans and zooms to them; **Chat** opens their chat.
+
+Rows the viewer may not see are left out: no token rows where the numbers aren't served (see above), and on a share link only the name, title, state, office and level.
+
+### Titles from a skin pack
+
+A pack can give its own titles and pin a title on someone:
+
+```json
+"levels": {
+  "titles": [{ "from": 1, "name": "Intern" }, { "from": 20, "name": "Engineer" }, { "from": 50, "name": "Principal" }],
+  "fixed": { "atlas": { "title": "Founder", "hideLevel": true }, "barista": { "title": "Coffee master" } }
+}
+```
+
+- `titles`: up to 32 entries. Each `from` is 0–100000 and higher than the one before it, and each `name` is 1–24 characters. A level below the first entry keeps the default title.
+- `fixed`: up to 500 entries. A key names an instance, or an NPC by its furniture `id`, and the entry's title shows whatever the level. With `hideLevel: true`, the badge becomes a small diamond mark, and the card shows the title without "Lv n" or the XP bar. An NPC's tag shows its label and its title with the mark; NPCs have no card.
+- A share link gets a pinned title only for the people it shows, and for NPCs.
 
 ## Who can do what
 
@@ -300,6 +344,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `props` | ❌ | `task`, `send`, `report`, `broadcast`: STRIPs for what flies |
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { state: [line, …] } }`, up to 12 lines of 1–40 characters |
 | `room`, `desk` | ❌ | Desks layout pictures: `room.floor`, `room.wall`, `desk.back`, `desk.front`, `desk.lit` |
+| `levels` | ❌ | `{ titles, fixed }`: the levels' titles and pinned titles (see [Titles from a skin pack](#titles-from-a-skin-pack)) |
 
 A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
 
@@ -381,6 +426,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 ## Upgrading and rolling back
 
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
+- **A pack with `levels` and rolling back.** A version before levels refuses a pack that has a `levels` key, so such a pack is drawn as Desks there, with a note. Remove the key, or re-upload the pack without it, if you need to roll back.
 - **Levels and rolling back.** Versions before levels never open `usage-lifetime.json`, so a rollback keeps it. While an older version runs, though, it prunes days older than 400 without carrying them, and those days are missing from the level after you upgrade again. Nothing else is lost.
 - **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (**not released yet**), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.
 - **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.2.6 has no Office. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. Every office's layout (Edit layout, night places, seat reservations) is kept beside the office list, where 2.3.1 doesn't look: there every office shows, without its layout, and a save on 2.3.1 drops the layouts for good. **Not released yet:** this needs the fix for #2706. On 2.3.2-beta.11 or earlier, the layout is inside the office's entry, so 2.3.1 doesn't show that office at all, and a save there deletes it. Either way, keep a copy of `web-offices.json` before rolling back if the layouts matter.

@@ -383,8 +383,8 @@ export class OfficeShareView {
    * only for people shown, a furniture item's `activeFor` only them (none left: [], which watches nobody, never the
    * missing key, which watches everyone). #2662: and only the character sets someone shown wears (theirs in `byInstance`,
    * and `default` for everyone else), with `files` only the pictures it still names: the page loads what is drawn, not
-   * every set of a fleet-sized pack. #2691: a reserved seat's `for` cut as an office's (cutOwners). A copy: the kept
-   * pack is never changed.
+   * every set of a fleet-sized pack. #2691: a reserved seat's `for` cut as an office's (cutOwners). #2661: a title
+   * pinned (`levels.fixed`) only for people shown or an NPC. A copy: the kept pack is never changed.
    */
   pack(answer: unknown): unknown {
     if (!isObj(answer) || !isObj(answer.manifest)) return answer;
@@ -405,6 +405,11 @@ export class OfficeShareView {
         const names = (Array.isArray(f.activeFor) ? f.activeFor : [f.activeFor]).filter((n): n is string => typeof n === "string" && this.scope.has(n));
         return { ...f, activeFor: names };
       });
+    }
+    // #2661: a title pinned on someone not shown leaves with their name (an NPC's, by its furniture id, stays).
+    if (isObj(manifest.levels) && isObj(manifest.levels.fixed)) {
+      const items = new Set((Array.isArray(manifest.furniture) ? manifest.furniture : []).map(f => (isObj(f) ? f.id : null)).filter((id): id is string => typeof id === "string"));
+      manifest.levels = { ...manifest.levels, fixed: Object.fromEntries(Object.entries(manifest.levels.fixed).filter(([k]) => this.scope.has(k) || items.has(k))) };
     }
     if (!isObj(answer.files)) return { ...answer, manifest };
     const named = new Set<string>();

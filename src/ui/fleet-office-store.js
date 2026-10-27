@@ -9,10 +9,12 @@
 // - the skin packs an admin uploaded (#2513: GET /ui/office-skins, POST to upload one, DELETE to remove one;
 //   src/web-office-skins.ts). The office editor and the layout editor call saveOffices() with the whole list and the rev
 //   they read (a change in between answers 409).
+// - #2661: everyone's level (GET /ui/office-levels, src/office-levels.ts; fleet-office-levels.js levelsOk checks it).
 // - #2692: the agents' pack changes (GET / POST /ui/office-pack-changes, an admin's): which agents may change packs, the
 //   fleet's approval mode, the changes waiting for a yes, and the newest log entries.
 import { AUTO_ID, filterOk, officesOk } from "./fleet-office-model.js";
 import { fitModeOk, savedOk } from "./fleet-office-view.js";
+import { levelsOk } from "./fleet-office-levels.js";
 
 const CHOICE_KEY = "agend_org_office", FILTER_KEY = "agend_org_office_filter", SKIN_KEY = "agend_org_office_skin", ASLEEP_KEY = "agend_org_office_hide_asleep", NIGHT_KEY = "agend_org_office_night";
 /** #2554: "0" when All offices leaves the lobby tile out (default: shown). */
@@ -106,6 +108,17 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
         if (!r || !r.ok) return null;
         const d = await r.json();
         return actsOk(d && d.acts, d && d.now);
+      } catch { return null; }
+    },
+    /**
+     * #2661: everyone's level (GET /ui/office-levels; a share link's own, through its lease), checked (levelsOk); null
+     * when it could not be read (the levels shown stay).
+     */
+    async levels() {
+      try {
+        const r = await get("/ui/office-levels", { method: "GET", headers });
+        if (!r || !r.ok) return null;
+        return levelsOk(await r.json());
       } catch { return null; }
     },
     /** The skin packs the host keeps: { rev, packs: [{ id, name, sha }] }; null when they could not be read. */

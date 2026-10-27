@@ -1198,13 +1198,14 @@ function WebSection({ ctx, staged, part = "all" }) {
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
+    levels: web.office_levels !== false,                                        // #2661: on by default
     pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282, auto_open: (web.public_link && web.public_link.auto_open) ?? false },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
-  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public,
+  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, pub: original.pub.allow_public,
     ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
     termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
@@ -1218,6 +1219,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     return {
       notify: String(pick(pending, "notify_login", original.notify)),
       echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
+      levels: pick(pending, "office_levels", original.levels),
       pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
       hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
       abs: text(pick(session, "absolute_hours", original.session.absolute_hours)), idle: text(pick(session, "idle_hours", original.session.idle_hours)),
@@ -1269,6 +1271,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(f.echo !== original.echo ? { echo_to_channel: f.echo } : {}),
       ...(f.log !== original.log ? { log_tab: f.log } : {}),
       ...(f.usagePub !== original.usagePub ? { usage_report_on_public_link: f.usagePub } : {}),
+      ...(f.levels !== original.levels ? { office_levels: f.levels } : {}),
       ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
       ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
@@ -1278,6 +1281,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(body.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []),
       ...(body.log_tab !== undefined ? ["web.log_tab"] : []),
       ...(body.usage_report_on_public_link !== undefined ? ["web.usage_report_on_public_link"] : []),
+      ...(body.office_levels !== undefined ? ["web.office_levels"] : []),
       ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
       ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
@@ -1369,6 +1373,8 @@ function WebSection({ ctx, staged, part = "all" }) {
       <p class="note">${tn("webLogTabHint")}</p>
       <label class=${fc("check", "usagePub")}><input id="webUsagePublic" type="checkbox" checked=${f.usagePub} onChange=${(e) => set("usagePub")(e.target.checked)} /><span>${tn("webUsagePublic")}</span><${Impact} schema=${schema} field="web.usage_report_on_public_link" /></label>
       <p class="note">${tn("webUsagePublicHint")}</p>
+      <label class=${fc("check", "levels")}><input id="webOfficeLevels" type="checkbox" checked=${f.levels} onChange=${(e) => set("levels")(e.target.checked)} /><span>${tn("webOfficeLevels")}</span><${Impact} schema=${schema} field="web.office_levels" /></label>
+      <p class="note">${tn("webOfficeLevelsHint")}</p>
     </section>`) : null}
     ${has("readonly") ? html`<section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>

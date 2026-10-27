@@ -91,6 +91,13 @@
 //                                                     ≤ 40 characters each), in place of the page's own
 //     "room": { "floor": "floor.png", "wall": "wall.png" }, "desk": { "back": …, "front": …, "lit": … }
 //                                                     optional: for the desks layout (a pack without stateZones)
+//     "levels": {                                     optional (#2661): the Office levels' words
+//       "titles": [{ "from": 1, "name": "Intern" }, …],   the title from each level up (≤ 32, `from` 0–100000
+//                                                     rising, a name 1–24 characters), in place of the page's own
+//       "fixed": { "atlas": { "title": "Founder", "hideLevel": true } } }
+//                                                     a title pinned on an instance (or an NPC: a furniture item's
+//                                                     id) whatever its level (≤ 500); hideLevel: its badge is a mark,
+//                                                     its card has no "Lv n" or XP bar
 //   }
 //
 // A STRIP is { "src": "idle.png", "frames": 4, "w": 32, "h": 48, "fps": 4, "ax": 16, "ay": 44 }: `frames` frames of
@@ -154,7 +161,7 @@ const RESERVED = new Set(["cozy"]);
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const SRC = /^[A-Za-z0-9._/-]{1,200}$/;
 const HEX = /^#[0-9a-f]{6}$/i;
-const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40, seatFor: 16 };
+const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40, seatFor: 16, titles: 32, title: 24, fixed: 500 };
 
 class Refused extends Error { constructor(at, why) { super(`${at}: ${why}`); } }
 /** `o[k]` when it is o's own property, else undefined: a name from a pack or a page never reaches Object.prototype. */
@@ -243,6 +250,43 @@ function states(v, at) {
   return Array.isArray(v) ? list(v, 8, at).map((s, i) => one(s, `${at}[${i}]`)) : [one(v, at)];
 }
 
+/** #2661: a title's words — 1–LIMIT.title characters on one line. */
+function titleText(v, at) {
+  if (typeof v !== "string" || !v.trim() || [...v.trim()].length > LIMIT.title || /[\u0000-\u001f\u007f]/.test(v)) throw new Refused(at, `1–${LIMIT.title} characters`);
+  return v.trim();
+}
+/** #2661: a pack's `levels` (titles, fixed), checked; null when it has none. */
+function levelsOf(v) {
+  if (v === undefined) return null;
+  obj(v, "levels");
+  keys(v, ["titles", "fixed"], "levels");
+  const out = {};
+  if (v.titles !== undefined) {
+    let last = -1;
+    out.titles = list(v.titles, LIMIT.titles, "levels.titles").map((t, i) => {
+      const at = `levels.titles[${i}]`;
+      obj(t, at); keys(t, ["from", "name"], at);
+      const from = int(t.from, 0, 100000, `${at}.from`);
+      if (from <= last) throw new Refused(`${at}.from`, "higher than the title before it");
+      last = from;
+      return { from, name: titleText(t.name, `${at}.name`) };
+    });
+  }
+  if (v.fixed !== undefined) {
+    obj(v.fixed, "levels.fixed");
+    if (Object.keys(v.fixed).length > LIMIT.fixed) throw new Refused("levels.fixed", `at most ${LIMIT.fixed}`);
+    out.fixed = {};
+    for (const [k, f] of Object.entries(v.fixed)) {
+      const at = `levels.fixed.${k}`;
+      if (inherited(k)) throw new Refused(at, "an instance's name (not an inherited one)");
+      obj(f, at); keys(f, ["title", "hideLevel"], at);
+      if (f.hideLevel !== undefined && typeof f.hideLevel !== "boolean") throw new Refused(`${at}.hideLevel`, "true or false");
+      out.fixed[k] = { title: titleText(f.title, `${at}.title`), hideLevel: f.hideLevel === true };
+    }
+  }
+  return out;
+}
+
 /**
  * A pack's manifest, strictly: { ok: true, pack } or { ok: false, error: "<where>: <why>" }. `kept`: a pack the host
  * keeps already (read back, not uploaded), which may hold a RESERVED id.
@@ -250,7 +294,7 @@ function states(v, at) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk"], "pack");
+    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk", "levels"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -348,6 +392,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
         });
       }
     }
+    const levels = levelsOf(x.levels);
     const room = x.room === undefined ? {} : obj(x.room, "room"), desk = x.desk === undefined ? {} : obj(x.desk, "desk");
     keys(room, ["floor", "wall"], "room"); keys(desk, ["back", "front", "lit"], "desk");
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
@@ -357,6 +402,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       mailDrop: x.mailDrop === undefined ? null : point(x.mailDrop, "mailDrop"), waypoints, edges, straight: x.straight === true, furniture, characters, byInstance,
       props: x.props === undefined ? {} : strips(x.props, PROPS, "props", scale), bubbles,
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
+      ...(levels ? { levels } : {}),
     } };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };

@@ -478,7 +478,13 @@ describe("the Office canvas on the page", () => {
     fire(cv, "pointerdown", { pointerId: 2, pointerType: "mouse", button: 0, clientX: s.x, clientY: s.y });
     fire(cv, "pointerup", { pointerId: 2, pointerType: "mouse" });
     fire(cv, "click", { clientX: s.x, clientY: s.y }); await settle(2);
-    expect(location.pathname).toBe("/ui/chat/quill");
+    expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
+    fire(cv, "click", { clientX: s.x, clientY: s.y }); await settle(2);
+    expect(p.root.querySelector(".oo-card")).toBeNull();                                      // the same person again: closed
+    fire(cv, "click", { clientX: s.x - 300, clientY: s.y }); await settle(2);
+    expect(p.root.querySelector(".oo-card")).toBeNull();                                      // off everyone: none
+    fire(cv, "dblclick", { clientX: s.x, clientY: s.y }); await settle(2);
+    expect(location.pathname).toBe("/ui/chat/quill");                                         // a double-click: the chat, past the card
     nav.navigate("/ui/fleet/org"); await settle(2);
     // The same logical point at the opening view's screen position is somewhere else now: nobody there.
     const old = CV.toScreen(V.fitScene(1280, 720, STAGE), seat.x, seat.y - 20);
@@ -829,6 +835,7 @@ describe("the Office canvas on the page", () => {
       studio(); await office();
       fsBtn().click(); await settle(4);
       p.root.querySelector('.oo-desk[data-name="atlas"]').click(); await settle(4);
+      p.root.querySelector(".oo-card-chat").click(); await settle(4);                  // #2661: the desk opens the card; its Chat
       expect(location.pathname).toContain("atlas");
       expect(cls()).toBe("oo");
       expect(D().documentElement.classList.contains("oo-immersive")).toBe(false);

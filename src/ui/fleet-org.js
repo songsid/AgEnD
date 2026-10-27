@@ -60,6 +60,8 @@ export function orgState(i, exec, awaiting, needs) {
  * What a node's card says (fleet-canvas.js; the Office view's desk too, fleet-office.js): its names, its state and
  * backend (`sub`), and all of it in one line (`full`, the card's title and label).
  */
+/** #2661: a node's state in words (as its card and tooltip say it). */
+export const stateWords = (n) => to(n.state);
 export function nodeText(n) {
   const it = n.i;
   const names = it ? namesOf(it) : { primary: n.name, secondary: "" };

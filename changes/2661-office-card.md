@@ -1,0 +1,11 @@
+---
+section: Added
+---
+- **Office levels: the badge and the profile card (#2661, part 2).**
+  - Each name tag carries a level badge on its top-left corner, coloured by tier with the dashboard's status colours. Levels over 999 are written as 1.1k. A level up shows a short ring over the person, and the people in the same area glance over.
+  - Clicking a person, or pressing Enter on their desk-list entry, now opens their profile card instead of the chat. A double-click still opens the chat directly.
+  - The card is a 320 px popover beside the person that follows them as they walk. Click the same person again, press Esc or click elsewhere to close it; on a phone it's a bottom sheet you swipe down.
+  - The card shows the name, the instance name, the state with the title, the level and XP bar, the office and area, the model and backend, today's work and requests, the day count since first seen, the activity line, **Find in office** and **Chat**.
+  - Token rows show only where the usage report is served. A share link's card shows only the name, title, state, office and level.
+  - A skin pack's `levels` gives its own titles (`titles`) and pins a title on an instance or an NPC (`fixed`, optionally with `hideLevel`).
+  - **Settings → Web dashboard → Office levels** turns levels off or on.

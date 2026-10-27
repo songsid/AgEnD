@@ -60,13 +60,15 @@ import { appStore } from "/assets/app-store.js";
 import { t, lang, register } from "/assets/app-i18n.js";
 import { identityOf } from "/assets/identity-color.js";
 import { Icon } from "/assets/ui-icons.js";
-import { nodeText } from "./fleet-org.js";
+import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
 import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, bubbleBox, loadCozySkin, loadPackSkin, modeOf, skinFor, tagBox } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
+import { badgeOf, fixedOf } from "./fleet-office-levels.js";
+import { OfficeCard, cardModel } from "./fleet-office-card.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
@@ -152,6 +154,14 @@ function sampledMatte(img) {
   return m;
 }
 const now = () => (typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now());
+/** #2661: how often the levels are read again while the Office is shown (the host reuses them for a minute). */
+const LEVELS_MS = 60_000;
+/** #2661: how long a level-up's ring shows. */
+const UP_MS = 1800;
+/** #2661: Find in office zooms in to at least this (CSS px a logical unit). */
+const FIND_K = 2;
+/** #2661: below this stage width (CSS px) the card is a bottom sheet. */
+const SHEET_W = 560;
 /** How often the picture can change when nothing is in the air (the poses loop at 4 fps; a bubble types faster). */
 const FPS = 12;
 const STYLES = BUILT_IN_SKINS;
@@ -171,6 +181,7 @@ function readPal(el) {
     bg: v("--bg", D.bg), surface: v("--surface", D.surface), surface2: v("--surface-2", D.surface2), border: v("--border", D.border),
     text: v("--text", D.text), text2: v("--text-2", D.text2), text3: v("--text-3", D.text3), ok: v("--ok", D.ok), warn: v("--warn", D.warn),
     danger: v("--danger", D.danger), focus: v("--focus", D.focus),
+    accent: v("--accent", D.accent), accentDim: v("--accent-dim", D.accentDim), okBg: v("--ok-bg", D.okBg), warnBg: v("--warn-bg", D.warnBg), dangerBg: v("--danger-bg", D.dangerBg),
     fx: { task: v("--fx-task", D.fx.task), send: v("--fx-send", D.fx.send), report: v("--fx-report", D.fx.report), broadcast: v("--fx-broadcast", D.fx.broadcast) },
   };
 }
@@ -183,15 +194,19 @@ function teamOptions(view) {
 
 // ── A scene: one office's layout, looks and skin, drawn by itself (the single view) or as a tile (All offices, #2554) ──
 
-/** What each desk shows: the pose, the light, the coat; dimmed when the Find box matches someone else. */
-function looksOf(L, work, q, mode, zones) {
+/**
+ * What each desk shows: the pose, the light, the coat; dimmed when the Find box matches someone else; #2661: its level
+ * badge (`badge(name)`: fleet-office-levels.js badgeOf, or nothing).
+ */
+function looksOf(L, work, q, mode, zones, badge = () => null) {
   return new Map(L.rooms.flatMap((r) => r.desks).map((d) => {
     const n = d.node;
     if (!n) return [d.key, { name: "", label: "", state: "missing", pose: "away", light: null, lamp: false, sign: null, coat: "", work: 0, dim: !!q, match: false, free: zones }];
     const match = !!q && hits(n, q);
     // At night (#2568) the idle are drawn asleep (their state stays idle: the tooltip and the list say so).
     return [d.key, { name: n.name, label: nodeText(n).primary, state: n.state, pose: officePose(d.night ? "paused" : n.state), night: !!d.night, light: lightOf(n.state), lamp: lampOf(n.state),
-      sign: zones ? null : signOf(n.state), coat: coatOf(n.i, n.i ? identityOf(n.i) : null, mode), work: work.get(n.name) || 0, dim: !!q && !match, match, free: zones }];
+      sign: zones ? null : signOf(n.state), coat: coatOf(n.i, n.i ? identityOf(n.i) : null, mode), work: work.get(n.name) || 0, dim: !!q && !match, match, free: zones,
+      badge: badge(n.name) }];
   }));
 }
 /** A stored office's own layout on a zones style (its overrides); `ignored`: they do not fit this style. */
@@ -417,12 +432,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) {
       const on = people.filter((q) => live.hidden.get(q.look.name) === f.id);
       if (!on.length) {
-        if (!tagsOff && f.label) { sk.drawTag(ctx, f.x, f.y, { label: f.label }, env); tags.push(tagBox(ctx, f.x, f.y, f.label)); }
+        if (!tagsOff && f.label) { const nl = npcLook(p, f); sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(tagBox(ctx, f.x, f.y, nl.label)); }
         continue;
       }
       const order = new Map((f.activeFor || []).map((n, i) => [n, i]));
       on.sort((x, y) => (order.get(x.look.name) ?? 0) - (order.get(y.look.name) ?? 0));
-      const row = tagRow(ctx, f.x, f.y, [...(f.label ? [{ label: f.label }] : []), ...on.map((q) => q.look)]);
+      const row = tagRow(ctx, f.x, f.y, [...(f.label ? [npcLook(p, f)] : []), ...on.map((q) => q.look)]);
       const top = f.sprite ? Math.min(f.y - 50, stripBox(f.activeSprite || f.sprite, f.x, f.y).y + 2) : f.y - 50;
       for (const [i, r] of row.entries()) {
         const q = f.label ? on[i - 1] : on[i];
@@ -443,6 +458,22 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (hd) sk.drawDeskFront(ctx, hd, p.looks.get(hd.key), env);
     for (const it of up) sk.drawProp(ctx, it, ms, env);
   }
+  // #2661: a level up — a short ring over the head (UP_MS), and the people in the same area (a room's on Desks) glance
+  // over: a small "!" over theirs. Never with reduced motion (no loop: ms 0).
+  const rising = ms && p.ups && p.ups.size ? speakers.filter((sp) => { const t0 = p.ups.get(sp.look.name); return t0 !== undefined && now() - t0 < UP_MS; }) : [];
+  for (const sp of rising) {
+    const f = (now() - p.ups.get(sp.look.name)) / UP_MS;
+    ctx.save();
+    ctx.globalAlpha = 1 - f;
+    ctx.strokeStyle = env.pal.warn; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sp.x, sp.y - 8, 6 + f * 14, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = env.pal.text; ctx.font = "700 9px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    for (const o of speakers) {
+      if (o === sp || o.look.dim || o.look.pose === "away" || (o.area ?? null) !== (sp.area ?? null)) continue;
+      ctx.fillText("!", o.x, o.y - 4);
+    }
+    ctx.restore();
+  }
   // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still), placed so no two
   // overlap (placeBubbles; #2431).
   const bubbles = [];
@@ -460,7 +491,15 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags);
   const say = () => { T(); for (const { sp, b, dy } of placed) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env, -dy); };
   if (defer) defer.push(say); else say();
-  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0);
+  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0;
+}
+/**
+ * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
+ * while levels are on: "label · title", and a mark for a badge (an NPC has no level).
+ */
+function npcLook(p, f) {
+  const fx = p.levelsOn ? fixedOf(f.id, p.skin.pack && p.skin.pack.levels) : null;
+  return fx ? { label: `${f.label} · ${fx.title}`, badge: { mark: true, tier: 0 } } : { label: f.label };
 }
 /**
  * The person at (x, y) in a scene's units, as it draws them: on zones where they walk, in the box the skin draws them
@@ -562,6 +601,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [themeRev, setThemeRev] = useState(0);
   const [pal, setPal] = useState(DEFAULT_PAL);                      // the tokens in force (read once the stage is there)
   const [tip, setTip] = useState(null);                               // the desk key the tooltip is for
+  // #2661: the person whose card is open (their key, as `tip`), and the desk-list entry it was opened from (focus goes
+  // back there when it closes); the card's element and where it points (placed every frame: it follows them).
+  const [card, setCard] = useState(null);
+  const cardFrom = useRef(null), cardEl = useRef(null), cardDesk = useRef(null);
   const stageRef = useRef(null), canvasRef = useRef(null), tipRef = useRef(null), lastType = useRef("mouse");
   // Fullscreen: null, "native" (the Fullscreen API) or "immersive" (the CSS cover); per visit, never kept.
   const ooRef = useRef(null), [fs, setFs] = useState(null), fsRef = useRef(null), fsAsked = useRef(false), fsTarget = useRef(null);
@@ -621,6 +664,27 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // A read a newer one or the stream overtook is dropped (it is older: review — an opening read answered after the one
   // the stream's return began brought a cleared act back); read again when the stream comes back, and — with no live
   // stream (the public link, or a stream polling) — every POLL_MS while the page is shown.
+  // #2661: everyone's level (fleet-office-levels.js levelsOk): read on opening and every LEVELS_MS while shown — the
+  // host works them out at most once a minute, so nothing here asks more often.
+  const [lv, setLv] = useState(null);
+  // Who went up a level since the last read (name → when it was seen): a ring over them for UP_MS (drawPart).
+  const ups = useRef(new Map()), lastLevels = useRef(null);
+  useEffect(() => {
+    if (!lease) return undefined;
+    const read = async () => {
+      const d = await store.levels();
+      if (!lease.current() || !d) return;
+      const before = lastLevels.current, t = now();
+      if (before) for (const [name, e] of d.levels) { const b = before.get(name); if (b && e.level > b.level) ups.current.set(name, t); }
+      for (const [name, t0] of ups.current) if (t - t0 >= UP_MS) ups.current.delete(name);
+      lastLevels.current = d.levels;
+      setLv(d);
+      loop.current?.wake();
+    };
+    void read();
+    const h = lease.interval(() => { if (!globalThis.document?.hidden) void read(); }, LEVELS_MS);
+    return () => lease.clear(h);
+  }, [lease, store]);
   const [acts, setActs] = useState([]);
   const actSeen = useRef(new Set());
   useEffect(() => {
@@ -767,10 +831,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     });
   }, [overview, stored, view, packs, packSkins, cozyRev, hideAsleep, lobbyOn, lobbyAll, style, night]);
   const arranged = useMemo(() => tileLayout(tiles.map((tl) => ({ key: tl.key, w: tl.L.width, h: tl.L.height })), size), [tiles, size.w, size.h]);
-  const tileLooks = useMemo(() => { const work = workOn(traffic); return tiles.map((tl) => looksOf(tl.L, work, q, mode, tl.zones)); }, [tiles, traffic, q, mode, themeRev]);
+  const tileLooks = useMemo(() => { const work = workOn(traffic); return tiles.map((tl) => looksOf(tl.L, work, q, mode, tl.zones, (n) => badgeOf(n, lv, tl.skin.pack && tl.skin.pack.levels))); }, [tiles, traffic, q, mode, themeRev, lv]);
   // The scene the view pans and zooms: the office's, or the overview of every tile.
   const L = useMemo(() => (overview ? { mode: "overview", rooms: [], width: arranged.width, height: arranged.height } : single), [overview, single, arranged]);
-  const looks = useMemo(() => looksOf(L, workOn(traffic), q, mode, zones), [L, traffic, q, mode, themeRev]);
+  const looks = useMemo(() => looksOf(L, workOn(traffic), q, mode, zones, (n) => badgeOf(n, lv, skin.pack && skin.pack.levels)), [L, traffic, q, mode, themeRev, lv, skin]);
   // #2564: what comes in from other offices — one office's and style's own: a letter's door and drop are that layout's,
   // so another office (or style) starts with none (one shown meanwhile is not carried over to a different room).
   // #2578: the acts of the people in this stored office (by name); none elsewhere. On a desks style (review: accepted
@@ -845,6 +909,23 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!el || !d || !el.style) return;
     const v = view0(), p = toScreen(v, d.x, d.y), x = Math.max(4, Math.min(p.x, size.w - 244)), above = p.y > 90;
     el.style.setProperty("transform", above ? `translate(${x}px, ${p.y + 6}px) translateY(-100%)` : `translate(${x}px, ${p.y + d.h * v.k}px)`);
+  };
+  /**
+   * #2661: the card beside its person — to their right (left where it would not fit), level with their head, inside the
+   * stage — following them as they walk (a walker's position now, else their seat or desk). A bottom sheet is not placed.
+   */
+  const placeCard = () => {
+    const el = cardEl.current, c = cardDesk.current;
+    if (!el || !c || !el.style || el.classList?.contains("sheet")) return;
+    const v = view0(), sz = sizeRef.current;
+    const w = c.walks ? walkers.at(c.name, now()) : null;
+    const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
+    const p = toScreen(v, pt.x, pt.y), cw = 320, ch = el.offsetHeight || 260, gap = 12 + (w ? pt.r : pt.r);
+    let x = p.x + gap;
+    if (x + cw > sz.w - 8) x = p.x - gap - cw;
+    x = Math.max(8, Math.min(x, sz.w - cw - 8));
+    const y = Math.max(8, Math.min(p.y - 24, sz.h - ch - 8));
+    el.style.setProperty("transform", `translate(${Math.round(x)}px, ${Math.round(y)}px)`);
   };
   /**
    * Put the view on everything that shows it beside the canvas: the overview's frame (the part of the scene in view;
@@ -1044,18 +1125,19 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const base = { ctx, ratio, BW, BH, matte, env, dirty: true };
     if (overview) {
       // Each tile a scene of its own, where the overview puts it (arranged.tiles, in the same order).
-      const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i] }));
+      const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled) }));
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
-      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current } };
+      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled) } };
     }
     if (still) draw(0); else loop.current?.wake();
-  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere]);
+  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv]);
 
   /** One frame at `ms` (0: still); whether anything is moving (in the air, or someone walking). */
   function draw(ms) {
     const s = scene.current;
     if (!s) return false;
+    placeCard();
     const { ctx, BW, BH, env } = s;
     // The view in bitmap px: a logical unit is `a` px (a whole number at a pixel level), the origin on a whole px.
     const v = view0(), a = v.k * s.ratio, ox = Math.round(v.x * s.ratio), oy = Math.round(v.y * s.ratio);
@@ -1134,11 +1216,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // Everyone drawn: { key, node, box (the desk, in the view's units), dot (where the overview marks them), office (All
   // offices: the tile's name) }. In All offices a key is the tile's prefix and the desk's key: one person in two
   // offices is two people here.
+  // #2661: and for the card, where they are (`area`: the zone's or the room's name), the style that draws them, their look.
+  const roomOf = (L0, d) => { const r = L0.rooms.find((rm) => rm.desks.includes(d)); return r ? (r.lobby ? to("lobbyRoom") : r.name) : null; };
+  const areaName = (a) => (a ? ({ desks: to("area_desks"), lounge: to("area_lounge"), alert: to("area_alert"), nap: to("area_nap") })[a] || a : null);
   const people = overview
-    ? tiles.flatMap((tl, i) => { const tt = arranged.tiles[i];
+    ? tiles.flatMap((tl, i) => { const tt = arranged.tiles[i], lk = tileLooks[i];
       return tt ? desksOf(tl.L).map((d) => ({ key: tl.prefix + d.key, node: d.node, box: tileBox(tt, d), office: tl.name,
-        dot: fromTile(tt, tl.zones ? d.seat : { x: d.x + d.w / 2, y: d.y + d.h / 2 }) })) : []; })
-    : desksOf(L).map((d) => ({ key: d.key, node: d.node, box: d, office: null, dot: zones ? d.seat : { x: d.x + d.w / 2, y: d.y + d.h / 2 } }));
+        dot: fromTile(tt, tl.zones ? d.seat : { x: d.x + d.w / 2, y: d.y + d.h / 2 }),
+        area: tl.zones ? areaName(d.area) : roomOf(tl.L, d), skin: tl.skin, look: lk && lk.get(d.key) })) : []; })
+    : desksOf(L).map((d) => ({ key: d.key, node: d.node, box: d, office: null, dot: zones ? d.seat : { x: d.x + d.w / 2, y: d.y + d.h / 2 },
+      area: zones ? areaName(d.area) : roomOf(L, d), skin, look: looks.get(d.key) }));
   // Preact owns the markup, not the view: put it back on the overview, the overlay and the tooltip after every render.
   const tipDesk = tip ? people.find((d) => d.key === tip) || null : null;
   tipDeskRef.current = tipDesk ? tipDesk.box : null;
@@ -1201,16 +1288,20 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (d) show(d.box);
   };
   const onMove = (e) => { if (e.pointerType === "touch" || g.busy()) return; const d = deskOf(e); const key = d ? d.key : null; if (key !== tip) setTip(key); };
+  // #2661: a click (or a tap) on a person opens their card; on the same person again, or off everyone, closes it; on
+  // someone else, switches to theirs. A double-click skips the card and opens the chat.
   const onClick = (e) => {
     const d = deskOf(e);
-    if (!d || !d.node.i) { setTip(null); return; }
-    if (lastType.current === "touch" && tip !== d.key) { setTip(d.key); return; }   // a first tap shows; a second opens
-    open(d.node.name);
+    if (!d || !d.node.i) { setTip(null); setCard(null); return; }
+    if (lastType.current === "touch") setTip(null);
+    cardFrom.current = null;
+    setCard((cur) => (cur === d.key ? null : d.key));
   };
   // All offices: a double-click on a tile (off its people) opens that office; the lobby is no office.
   const onDblClick = (e) => {
-    const s = scene.current, w = pointOf(e);
-    if (!overview || !s || !s.overview || !w || deskOf(e)) return;
+    const s = scene.current, w = pointOf(e), hit = deskOf(e);
+    if (hit && hit.node.i) { setCard(null); open(hit.node.name); return; }   // #2661: a person's chat, past the card
+    if (!overview || !s || !s.overview || !w || hit) return;
     const tt = tileAt(s.lay, w.x, w.y) || labelAt(s.lay, w.x, w.y), tl = tt ? tiles.find((x) => x.key === tt.key) : null;
     if (tl && !tl.lobby) pick(tl.key);
   };
@@ -1258,6 +1349,47 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const pick = (id) => { if (layoutRef.current) return; store.saveChoice(id); setChoice(id); setTip(null); };
   const everyone = useMemo(() => { const m = new Map(); for (const n of [...view.top, ...view.teams.flatMap((tm) => tm.nodes), ...view.rest.nodes]) if (!m.has(n.name)) m.set(n.name, n); return [...m.values()]; }, [view]);
   const tipText = tipDesk ? nodeText(tipDesk.node) : null;
+  // #2661: the card's person (gone from the office, filtered out or the office changed: it closes).
+  const cardOf = card ? people.find((d) => d.key === card && d.node.i) || null : null;
+  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview } : null;
+  useEffect(() => { if (card && !cardOf) setCard(null); }, [card, !!cardOf]);
+  const closeCard = () => {
+    setCard(null);
+    const from = cardFrom.current; cardFrom.current = null;
+    if (from) [...(ooRef.current?.querySelectorAll?.(".oo-desk") || [])].find((el) => el.getAttribute("data-key") === from)?.focus?.();
+  };
+  // Esc, or a press anywhere off the card and the scene (the scene's own click decides there), closes it.
+  useEffect(() => {
+    if (!card) return undefined;
+    const doc = globalThis.document;
+    const key = (e) => { if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); closeCard(); } };
+    const press = (e) => { const el = e.target; if (cardEl.current?.contains?.(el) || el === canvasRef.current) return; closeCard(); };
+    doc?.addEventListener?.("keydown", key, true); doc?.addEventListener?.("pointerdown", press, true);
+    return () => { doc?.removeEventListener?.("keydown", key, true); doc?.removeEventListener?.("pointerdown", press, true); };
+  }, [card]);
+  /** Find in office: zoomed in (to at least TWO px a unit) and centred on them. */
+  const findCard = () => {
+    const c = cardDesk.current;
+    if (!c) return;
+    const w = c.walks ? walkers.at(c.name, now()) : null, at = w ? { x: w.x, y: w.y - 26 } : { x: c.box.x + c.box.w / 2, y: c.box.y + c.box.h / 2 };
+    const v = view0(), k = Math.min(OK_MAX, Math.max(v.k, FIND_K));
+    touched.current = true; fitted.current = false;
+    setView(centreOn({ ...v, k }, size, at.x, at.y));
+  };
+  /** The card's picture: the person's idle frame in the office's style (pack strip or built-in figure). */
+  const drawAvatar = (cv) => {
+    const s = scene.current, c = cardOf;
+    const g = cv && cv.getContext ? cv.getContext("2d") : null;
+    if (!g || !c || !s || !c.skin || !c.look) return;
+    const r = deviceRatio(), W = 56;
+    if (cv.width !== W * r) { cv.width = W * r; cv.height = W * r; }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
+    const look = { ...c.look, pose: "idle", dim: false, match: false, badge: null, notag: true, free: true, work: 0, sign: null };
+    const at = { x: 0, y: 0 }, b = c.skin.charBox ? c.skin.charBox(look, at) : null, box = b || { x: -16, y: -48, w: 32, h: 48 };
+    const k = Math.min((W - 8) / box.w, (W - 8) / box.h) * r;
+    g.setTransform(k, 0, 0, k, (W * r) / 2 - (box.x + box.w / 2) * k, (W * r) / 2 - (box.y + box.h / 2) * k);
+    try { c.skin.drawCharacter(g, { x: at.x - 44, y: at.y - 53, w: 88, h: 53, seat: at }, look, 0, s.env); } catch { /* a picture not loaded yet: blank */ }
+  };
   // The overview: the scene's rooms (or areas; All offices: the tiles) and a dot for each person (a call in its colour),
   // the view's frame on it.
   const miniRects = overview ? arranged.tiles.map((tt) => ({ key: tt.key, x: tt.x, y: tt.y, w: tt.w, h: tt.h }))
@@ -1317,13 +1449,18 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <strong>${tipText.primary}</strong>${tipText.secondary ? html` <span class="muted mono">${tipText.secondary}</span>` : null}
         <div>${tipText.sub}</div><div class="muted">${caption(officePose(tipDesk.node.state), tipDesk.node.state)}</div>
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}
-        ${tipDesk.node.i && onOpen && lastType.current === "touch" ? html`<div class="muted">${to("tapAgain")}</div>` : null}
       </div>` : null}
+      ${cardOf ? html`<${OfficeCard} key=${cardOf.key}
+        model=${cardModel({ node: cardOf.node, lv, levels: cardOf.skin && cardOf.skin.pack ? cardOf.skin.pack.levels : null, share: !onOpen,
+          state: stateWords(cardOf.node), now: caption(officePose(cardOf.node.state), cardOf.node.state),
+          where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
+        avatar=${drawAvatar} sheet=${size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
+        onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state), where = d.office ? ` · ${d.office}` : "";
         return html`<li key=${d.key}>${d.node.i
-          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${nt.full}${where} · ${cap}.${onOpen ? ` ${t("orgc.openChat")}` : ""}`}
-              onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => open(d.node.name)}>${nt.primary}</button>`
+          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${nt.full}${where} · ${cap}.`} aria-haspopup="dialog"
+              onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => { cardFrom.current = d.key; setCard((cur) => (cur === d.key ? null : d.key)); }}>${nt.primary}</button>`
           : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${nt.full}</span>`}</li>`;
       })}</ul>
       <div class="oc-zoom oo-zoom" role="group" aria-label=${t("orgc.view")}>

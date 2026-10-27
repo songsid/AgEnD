@@ -274,7 +274,11 @@ per instance with a name tag, General and "Not in a team" in the **Lobby**. Each
 with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
 blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
 desk to desk along the corridors in the Key's colours; a delegation in progress is a purple folder on the worker's
-desk. Hover (or tap once) a desk for its name, state and backend; click (or tap again) opens the chat. **Find** dims
+desk. Hover a desk for its name, state and backend; a click or tap (or Enter in the desk list) opens the
+person's profile card (#2661: a 320 px popover beside them, following them; Esc, a press elsewhere or the same person
+again closes it; on a phone a bottom sheet): level and XP, office and area, model, backend, today, first seen, the
+activity line, **Find in office** and **Chat**. A double-click opens the chat directly. Each name tag has a level badge
+(lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`). **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
 (never a read-only one, a guest or the public link) gets **Edit offices** (≥1200 px: a panel docked on the right in the
@@ -319,7 +323,7 @@ tiles; a tile's label, or a double-click on it, opens that office; traffic betwe
 Edit offices and Edit layout wait for a single office.
 **Share…** (#2636; an admin session, on the dashboard reached directly or over the public link — never read-only or a guest; the URL shows only to its maker, in the dialog) makes an Office share
 link: anyone who opens it watches **Whole fleet** (#2716, in the fleet's style), one office or **All offices** live, in the link's **Look** (#2715: Light, Dark or the viewer's device; default what the maker's dashboard shows now), read-only, with no sign-in — names, identity
-colours and states, every 5 s; no chat, no clicks into anything, no settings; agents' `office_set` lines only when
+colours and states, every 5 s; no chat, no settings (a click shows a card with name, title, state, office and level only); agents' `office_set` lines only when
 **Include agents' own status lines** is ticked; hidden instances never. 1 h by default, 15 min to 24 h
 (`web.office_share.max_hours`); at most 10 open. Its own quick tunnel (`https://<random>.trycloudflare.com/o/<token>`)
 starts with the first link and stops with the last; the token is shown once. There is no chat command: the button only. Open links and **Revoke** are in **Settings → Access

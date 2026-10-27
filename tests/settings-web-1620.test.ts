@@ -263,6 +263,22 @@ describe("#2122: the usage report over the public link — one switch in Setting
   });
 });
 
+describe("#2661: Office levels — one switch in Settings → Web", () => {
+  it("a boolean; applies at once either way", () => {
+    expect(judge({ office_levels: false })).toBeNull();
+    expect(judge({ office_levels: true }, { web: { office_levels: false } })).toBeNull();
+    expect(() => prepareSettingsEffect("PUT", WEB, { office_levels: "no" }, { config: { defaults: {}, instances: {} } as any, classic: {} })).toThrow("invalid_web_settings");
+  });
+  it("through the gate and the real handler: off written to fleet.yaml and the live config; on again the same way", async () => {
+    const h = harness();
+    const off = await h.request({ office_levels: false });
+    expect(off.status).toBe(200);
+    expect([h.raw().web.office_levels, h.config.web.office_levels]).toEqual([false, false]);
+    expect((await h.request({ office_levels: true }, { key: "k-2" })).status).toBe(200);
+    expect(h.config.web.office_levels).toBe(true);
+  });
+});
+
 describe("never over the temporary public link", () => {
   it.each([
     ["a tightening", { session: { local: { absolute_hours: 6 } } }],

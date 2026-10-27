@@ -18,6 +18,8 @@ export interface CheckedPack {
   furniture: PackFurniture[]; characters: Record<string, Record<string, PackStrip>>; byInstance: Record<string, string>;
   props: Record<string, PackStrip>; bubbles: Record<string, Record<string, string[]>>;
   room: { floor?: string; wall?: string }; desk: { back?: string; front?: string; lit?: string };
+  /** #2661: the Office levels' words — titles from each level up, and titles pinned on instances or NPCs. */
+  levels?: { titles?: Array<{ from: number; name: string }>; fixed?: Record<string, { title: string; hideLevel: boolean }> };
 }
 export interface LayoutOverrides {
   pack: string;

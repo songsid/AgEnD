@@ -13,8 +13,9 @@
 // @typedef {"working"|"idle"|"paused"|"needs"|"walk"} OfficePose   (fleet-office-model.js POSES; "away" draws no one)
 // @typedef {{ pal: OfficePalette, mode: "dark"|"light", labels: { lobby, closed, areas: { [area]: string } } }} OfficeEnv
 // @typedef {{ name: string, label: string, state: string, pose: OfficePose|"away", light: "warn"|"danger"|null,
-//   lamp: boolean, sign: "closed"|null, coat: string, work: number, dim: boolean, match: boolean, free: boolean }} OfficeLook
-//   (one occupant; `free`: standing in a zone, not behind a desk cell)
+//   lamp: boolean, sign: "closed"|null, coat: string, work: number, dim: boolean, match: boolean, free: boolean,
+//   badge?: { text, tier } | { mark: true } }} OfficeLook
+//   (one occupant; `free`: standing in a zone, not behind a desk cell; `badge`: its level on its name tag, #2661)
 // @typedef {object} OfficeSkin
 // @property {string} id
 // @property {object} [pack]        a checked pack (fleet-office-pack.js); with `pack.stateZones` the zones layout is used
@@ -44,15 +45,18 @@
 import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
 import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packImages, poseStrip, stripBox, walkStrip } from "./fleet-office-pack.js";
+import { tierColours } from "./fleet-office-levels.js";
 
 export { nameHash };
 
 // ── The palette: the dashboard's tokens, read by the renderer; furniture keeps its own wood and metal ──
 
-/** @typedef {{ bg, surface, surface2, border, text, text2, text3, ok, warn, danger, focus, fx: { task, send, report, broadcast } }} OfficePalette */
+/** @typedef {{ bg, surface, surface2, border, text, text2, text3, ok, warn, danger, focus, accent, accentDim, okBg, warnBg, dangerBg, fx: { task, send, report, broadcast } }} OfficePalette */
 export const DEFAULT_PAL = {
   bg: "#212121", surface: "#2f2f2f", surface2: "#3a3a3a", border: "#3d3d3d", text: "#ececec", text2: "#b4b4b4", text3: "#a3a3a3",
   ok: "#4cc38a", warn: "#e3b341", danger: "#ff8a80", focus: "#7ab7ff", fx: { task: "#b794f6", send: "#2dd4bf", report: "#f472b6", broadcast: "#fb923c" },
+  // #2661: the level badges' tiers (the status tokens and their tints).
+  accent: "#7ab7ff", accentDim: "rgba(122, 183, 255, 0.14)", okBg: "rgba(76, 195, 138, 0.14)", warnBg: "rgba(227, 179, 65, 0.14)", dangerBg: "rgba(255, 138, 128, 0.14)",
 };
 /** Light or dark, from the page's own background token (whatever chose it: the person, the system, a theme). */
 export function modeOf(pal) {
@@ -235,6 +239,7 @@ function drawDeskFront(ctx, d, look, env) {
     ctx.fillText(fitText(ctx, look.label, d.w - 18), d.x + d.w / 2, d.y + 86.5);
   }
   ctx.restore();
+  if (!look.notag && look.badge) drawBadge(ctx, d.x + 6, d.y + 78, look.badge, pal);
   if (look.match) { ctx.save(); ctx.strokeStyle = pal.focus; ctx.lineWidth = 2; ctx.strokeRect(d.x + 2, d.y + 2, d.w - 4, d.h - 6); ctx.restore(); }
 }
 
@@ -296,6 +301,36 @@ export function tagBox(ctx, x, y, label) {
   ctx.restore();
   return { x: Math.round(x - w / 2), y: y + 3, w, h: 14, text: t };
 }
+/**
+ * #2661: a level badge on a name tag's top-left corner (x, y: the tag's corner), overlapping its edge like an app's
+ * badge — it takes none of the tag's width. `badge`: { text, tier } (fleet-office-levels.js badgeOf), or { mark } for a
+ * pinned title that hides the number: a small diamond.
+ */
+export function drawBadge(ctx, x, y, badge, pal) {
+  if (!badge) return;
+  const c = tierColours(badge.tier, pal);
+  ctx.save();
+  ctx.globalAlpha = 1;
+  if (badge.mark) {
+    ctx.translate(x, y); ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = pal.surface; ctx.fillRect(-4, -4, 8, 8);
+    ctx.fillStyle = c.bg; ctx.fillRect(-4, -4, 8, 8);
+    ctx.strokeStyle = c.line; ctx.lineWidth = 1; ctx.strokeRect(-3.5, -3.5, 7, 7);
+    ctx.restore();
+    return;
+  }
+  ctx.font = BADGE_FONT;
+  const w = Math.max(12, Math.ceil((ctx.measureText ? ctx.measureText(badge.text).width : badge.text.length * 5) + 6)), h = 11;
+  const bx = Math.round(x - w / 2 + 3), by = Math.round(y - h / 2 - 1);
+  // An opaque surface first, so a tint reads the same over any picture.
+  ctx.fillStyle = pal.surface; ctx.fillRect(bx, by, w, h);
+  ctx.fillStyle = c.bg; ctx.fillRect(bx, by, w, h);
+  ctx.strokeStyle = c.line; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, w - 1, h - 1);
+  ctx.fillStyle = c.fg; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(badge.text, bx + w / 2, by + h / 2 + 0.5);
+  ctx.restore();
+}
+const BADGE_FONT = "700 8px system-ui, sans-serif";
+
 /** Zones: a name tag under someone's feet at (x, y). */
 function drawTag(ctx, x, y, look, env) {
   const { pal } = env;
@@ -307,6 +342,7 @@ function drawTag(ctx, x, y, look, env) {
   ctx.strokeStyle = look.match ? pal.focus : pal.border; ctx.lineWidth = look.match ? 2 : 1; ctx.strokeRect(Math.round(x - w / 2) + 0.5, y + 3.5, w - 1, 13);
   ctx.fillStyle = pal.text; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t, x, y + 10.5);
   ctx.restore();
+  if (look.badge) drawBadge(ctx, Math.round(x - w / 2), y + 3, look.badge, pal);
 }
 
 /**
