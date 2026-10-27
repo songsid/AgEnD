@@ -232,6 +232,12 @@ export const PERIODIC_REDRAW_PROBE_MS = 25;
 const KIRO_COMPACT_PANE_POLL_MS = 1_000;
 /** Do not turn a streaming Codex turn into one capture-pane per burst. */
 export const STRUCTURED_IDLE_PROBE_MS = 500;
+/** #2770: how often a delivery waiting for idle asks again whether it can be handed off instead. */
+export const HANDOFF_RECHECK_MS = 1_000;
+/** #2770: how often a wait for idle asks its stop condition (a cancel, a hand-off that became possible). */
+export const WAIT_STOP_POLL_MS = 250;
+/** #2770: human messages a cancel dropped are told in one notice, this long after the last of them. */
+export const CANCELLED_HUMANS_NOTICE_MS = 1_000;
 /**
  * An instance publishing more than this many execution-state edges inside the
  * window is flapping; its edges stop being logged one by one (#1116). One
@@ -1856,6 +1862,9 @@ export class Daemon extends EventEmitter {
   private warmupNeeded = false;
   private lastBuiltInstructions = "";
   private pasteQueueDepth = 0;
+  /** #2770: a person's messages a cancel dropped before they reached the CLI, told together (noteCancelledHuman). */
+  private cancelledHumans: Array<{ chatId: string; messageId: string; threadId?: string }> = [];
+  private cancelledHumansTimer: ReturnType<typeof setTimeout> | null = null;
   private firstDeliveryDelay = new FirstDeliveryDelay();
   /** Orders /steer pastes against each other. Deliberately NOT pasteLock:
    *  a steer must not queue behind the normal deliveries it exists to
@@ -7127,6 +7136,23 @@ export class Daemon extends EventEmitter {
       ownerKey: meta.human_owner_key, current: () => this.captureHumanReceiptOwner() === daemonOwner };
   }
 
+  /**
+   * #2770: a person's message a cancel dropped before it reached the CLI is told, not left as a silent "uncertain":
+   * the messages dropped together go out as one `human_messages_cancelled` (the fleet marks each ❌ and says so once).
+   * Agents' messages are not a person's (their durable rows retry); a message with no chat to mark has nowhere to say it.
+   */
+  private noteCancelledHuman(meta: Record<string, string>): void {
+    if (meta.from_instance || !meta.chat_id || !meta.message_id) return;
+    this.cancelledHumans.push({ chatId: meta.chat_id, messageId: meta.message_id, ...(meta.thread_id ? { threadId: meta.thread_id } : {}) });
+    if (this.cancelledHumansTimer) clearTimeout(this.cancelledHumansTimer);
+    this.cancelledHumansTimer = setTimeout(() => {
+      this.cancelledHumansTimer = null;
+      const messages = this.cancelledHumans.splice(0);
+      if (messages.length) this.emit("human_messages_cancelled", { messages });
+    }, CANCELLED_HUMANS_NOTICE_MS);
+    this.cancelledHumansTimer.unref?.();
+  }
+
   private finishHumanReceipt(meta: Record<string, string>, verdict: DeliveryVerdict): void {
     if (!meta.human_receipt_id || !meta.human_owner_key) return;
     const attempt = verdict.humanReceipt;
@@ -7202,6 +7228,7 @@ export class Daemon extends EventEmitter {
   steerMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
       this.deferDurableDelivery(meta, "delivery epoch changed before steer began");
+      this.noteCancelledHuman(meta);
       return;
     }
     // The fleet facade prevents a steer from overtaking an item still in its
@@ -7227,14 +7254,17 @@ export class Daemon extends EventEmitter {
     this.steerLock = this.steerLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
         this.deferDurableDelivery(meta, "delivery epoch changed before steer began");
+        this.noteCancelledHuman(meta);
         return;
       }
       await this.wake();
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
         this.deferDurableDelivery(meta, "delivery epoch changed while waking for steer");
+        this.noteCancelledHuman(meta);
         return;
       }
       const verdict: DeliveryVerdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
+      let delivered = false;
       try {
         if (await this.deliverMessage(formatted, status, {
           steer: true,
@@ -7244,6 +7274,7 @@ export class Daemon extends EventEmitter {
           verdict,
           durableAttempt: durableAttempt || undefined,
         })) {
+          delivered = true;
           this.finishDurableSubmission(durableAttempt, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
@@ -7264,6 +7295,7 @@ export class Daemon extends EventEmitter {
         throw err;
       } finally {
         this.finishHumanReceipt(meta, verdict);
+        if (!delivered && !verdict.paneWriteStarted && !this.isDeliveryEpochCurrent(deliveryEpoch)) this.noteCancelledHuman(meta);
       }
     }).catch(err => {
       this.deferDurableDelivery(meta, `target wake/steer failed before pane submission: ${(err as Error).message}`);
@@ -7281,7 +7313,7 @@ export class Daemon extends EventEmitter {
    * so channel delivery intentionally uses a normal wrapped inbound instead.
    */
   btwMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
-    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); return; }
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); this.noteCancelledHuman(meta); return; }
     this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
@@ -7290,17 +7322,20 @@ export class Daemon extends EventEmitter {
     const status = channelStatus(meta);
 
     this.steerLock = this.steerLock.then(async () => {
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); return; }
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); this.noteCancelledHuman(meta); return; }
       await this.wake();
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); return; }
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); this.noteCancelledHuman(meta); return; }
       const verdict: DeliveryVerdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
+      let delivered = false;
       try {
         if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id,
           ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}), verdict })) {
+          delivered = true;
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         }
       } finally {
         this.finishHumanReceipt(meta, verdict);
+        if (!delivered && !verdict.paneWriteStarted && !this.isDeliveryEpochCurrent(deliveryEpoch)) this.noteCancelledHuman(meta);
       }
     }).catch(err => {
       this.finishHumanReceipt(meta, { reached: false });
@@ -7322,6 +7357,7 @@ export class Daemon extends EventEmitter {
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
       this.logger.info("Pending channel delivery dropped by user cancel");
       this.deferDurableDelivery(meta, "delivery epoch changed before queue admission");
+      this.noteCancelledHuman(meta);
       return;
     }
     if (!this.tmux) {
@@ -7386,6 +7422,7 @@ export class Daemon extends EventEmitter {
     this.pasteLock = this.pasteLock.then(async () => {
       let durable: { deliveryId: string; attemptNo: number } | null = null;
       let verdict: DeliveryVerdict = { reached: false };
+      let delivered = false;
       try {
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
           this.logger.info("Pending channel delivery dropped by user cancel");
@@ -7450,6 +7487,7 @@ export class Daemon extends EventEmitter {
           verdict,
           durableAttempt: durableAttempt || undefined,
         })) {
+          delivered = true;
           this.finishDurableSubmission(durable, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
@@ -7482,6 +7520,7 @@ export class Daemon extends EventEmitter {
         this.logger.warn({ err: (err as Error).message }, "Durable pane delivery deferred after exception");
       } finally {
         this.finishHumanReceipt(meta, verdict);
+        if (!delivered && !verdict.paneWriteStarted && !this.isDeliveryEpochCurrent(deliveryEpoch)) this.noteCancelledHuman(meta);
         this.pasteQueueDepth--;
       }
     }).catch(err => {
@@ -7575,6 +7614,20 @@ export class Daemon extends EventEmitter {
     // normal Enter input has steering/interrupt semantics in several other CLIs.
     let readiness: "ready" | "busy" | "dialog" | "transient" | "unknown" = "ready";
     const gateWindowId = windowId;
+    const handOffEligible = !!(supportsQueuedInput || opts?.steer || composerQueue);
+    const handOffAdmissible = async (): Promise<boolean> => (await this.probeBlockingDialog()).state === "clear"
+      && await this.hasPositiveDeliveryInput(true)
+      && ((!opts?.steer && !composerQueue) || (this.launchTakesSteer() && await this.steerComposerAdmits(false, opts?.steer === true)));
+    // #2770: a delivery waiting for idle holds the paste queue, and every message behind it. It stops waiting at once
+    // on a cancel, and as soon as the busy pane can take it the way it would have on arrival (a box that reads again, a
+    // dialog gone) — rather than for the end of whatever keeps the pane moving (2026-10-27: 11 minutes).
+    let handOffCheckedAt = -Infinity;
+    const waitStop = async (): Promise<boolean> => {
+      if (cancelled()) return true;
+      if (!handOffEligible || !gateWindowId || performance.now() - handOffCheckedAt < HANDOFF_RECHECK_MS) return false;
+      handOffCheckedAt = performance.now();
+      return (await this.paneReadinessForDelivery(gateWindowId)) === "busy" && await handOffAdmissible() && !cancelled();
+    };
     if (gateWindowId && this.controlClient) readiness = await this.paneReadinessForDelivery(gateWindowId);
     if (readiness !== "ready") {
       if (status) this.emit("message_queued", status);
@@ -7585,11 +7638,7 @@ export class Daemon extends EventEmitter {
       // fall through to the wait.
       // #2676: an ordinary message goes into a mode-switched composer (kiro TUI) mid-turn too, on a launch whose busy
       // composer AgEnD drives, by the steer path's own gates and proof — when its box can show it is this paste.
-      const canHandOff = (supportsQueuedInput || opts?.steer || composerQueue)
-        && readiness === "busy"
-        && (await this.probeBlockingDialog()).state === "clear"
-        && await this.hasPositiveDeliveryInput(true)
-        && ((!opts?.steer && !composerQueue) || (this.launchTakesSteer() && await this.steerComposerAdmits(false, opts?.steer === true)));
+      const canHandOff = handOffEligible && readiness === "busy" && await handOffAdmissible();
       if (canHandOff) {
         // Native queue (codex), or an explicit /steer: hand the complete
         // paste+Enter transaction to the busy CLI now. For steer this is the
@@ -7604,9 +7653,12 @@ export class Daemon extends EventEmitter {
         );
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
-        const becameIdle = await this.waitForPaneReadyForDelivery(gateWindowId as string);
+        const becameIdle = await this.waitForPaneReadyForDelivery(gateWindowId as string, undefined, waitStop);
         if (cancelled()) return false;
-        if (!becameIdle) {
+        if (becameIdle === "stopped") {
+          handingOffToNativeQueue = true;
+          this.logger.info("The busy CLI can take this delivery now — handing it off instead of waiting for idle (#2770)");
+        } else if (!becameIdle) {
           // The pane never freed up. Report the failure instead of pasting into a
           // wedged CLI (where the text would sit unsubmitted and the next message
           // would land on top of it) — and instead of holding the queue silently.
@@ -7751,8 +7803,9 @@ export class Daemon extends EventEmitter {
         return this.failDelivery(verdict, status, "pre-write", "dialog-or-input-not-ready");
       }
       this.logger.info("Dialog or input transition appeared before the pane write — waiting for readiness");
-      const clear = gateWindowId ? await this.waitForPaneReadyForDelivery(gateWindowId) : false;
+      const clear = gateWindowId ? await this.waitForPaneReadyForDelivery(gateWindowId, undefined, waitStop) : false;
       if (cancelled()) return false;
+      if (clear === "stopped") { handingOffToNativeQueue = true; continue; }
       if (!clear) {
         return this.failDelivery(verdict, status, "pre-write", "readiness-timeout");
       }
@@ -8813,8 +8866,13 @@ export class Daemon extends EventEmitter {
    * Enter-dropping TUIs. Polls at a coarse cadence (each poll is a capture-pane)
    * only after the pane is already quiet, so the common fast-idle delivery still
    * costs a single capture.
+   *
+   * #2770: with `stop`, the wait also ends ("stopped") as soon as `stop` says so — asked every WAIT_STOP_POLL_MS while
+   * the pane is busy, and before every re-poll — so a cancel or a hand-off that became possible never waits out the pane.
    */
-  private async waitForPaneReadyForDelivery(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
+  private waitForPaneReadyForDelivery(windowId: string, timeoutMs?: number): Promise<boolean>;
+  private waitForPaneReadyForDelivery(windowId: string, timeoutMs: number | undefined, stop: () => Promise<boolean>): Promise<boolean | "stopped">;
+  private async waitForPaneReadyForDelivery(windowId: string, timeoutMs = 30 * 60_000, stop?: () => Promise<boolean>): Promise<boolean | "stopped"> {
     // Every backend polls: readiness now also means "no blocking dialog on
     // screen", and a dialog disappears without any output edge the silence
     // gate could see.
@@ -8826,8 +8884,9 @@ export class Daemon extends EventEmitter {
     for (;;) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) return false;
-      const idle = await this.waitForPaneIdleForDelivery(windowId, remaining);
-      if (!idle) return false;
+      const idle = stop ? await this.waitForPaneIdleForDelivery(windowId, remaining, stop)
+        : await this.waitForPaneIdleForDelivery(windowId, remaining);
+      if (idle !== true) return idle;
       // The idle wait just resolved, so re-reading the silence gate would only
       // add a stale-cache race; ask the pane the remaining questions directly.
       const transient = await this.probeInputTransient();
@@ -8846,6 +8905,7 @@ export class Daemon extends EventEmitter {
           if (transientBudget.stalled) this.retireInputTransients("transient stalled");
           return false;
         }
+        if (stop && await stop()) return "stopped";
         await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
         continue;
       }
@@ -8855,6 +8915,7 @@ export class Daemon extends EventEmitter {
           this.logger.error({ probes: unknownStreak }, "Pane stayed unreadable during the input-transient probe — refusing to deliver blind");
           return false;
         }
+        if (stop && await stop()) return "stopped";
         await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
         continue;
       }
@@ -8872,6 +8933,7 @@ export class Daemon extends EventEmitter {
           unknownStreak = 0;
         }
       }
+      if (stop && await stop()) return "stopped";
       await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
     }
   }
@@ -9229,8 +9291,11 @@ export class Daemon extends EventEmitter {
       && observedAt >= this.controlClient.getObservationResetAt();
   }
 
-  private waitForPaneIdleForDelivery(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
+  private waitForPaneIdleForDelivery(windowId: string, timeoutMs?: number): Promise<boolean>;
+  private waitForPaneIdleForDelivery(windowId: string, timeoutMs: number | undefined, stop: () => Promise<boolean>): Promise<boolean | "stopped">;
+  private waitForPaneIdleForDelivery(windowId: string, timeoutMs = 30 * 60_000, stop?: () => Promise<boolean>): Promise<boolean | "stopped"> {
     if (!this.controlClient) return Promise.resolve(true);
+    if (stop) return this.waitForPaneIdleOrStop(windowId, timeoutMs, stop);
     if (!this.canTrustRedrawIdleState()) {
       return this.controlClient.waitUntilIdle(windowId, timeoutMs);
     }
@@ -9247,6 +9312,39 @@ export class Daemon extends EventEmitter {
         clearInterval(check);
         resolve(false);
       }, timeoutMs);
+    });
+  }
+
+  /**
+   * #2770: waitForPaneIdleForDelivery that also ends as soon as `stop` says so ("stopped"). The same idle readings
+   * (tmux silence, or the state machine where its idle is trusted), polled here so nothing outlives a stopped wait.
+   */
+  private waitForPaneIdleOrStop(windowId: string, timeoutMs: number, stop: () => Promise<boolean>): Promise<boolean | "stopped"> {
+    const control = this.controlClient!;
+    const trusted = this.canTrustRedrawIdleState();
+    if (trusted && this.isPaneIdleForDelivery(windowId)) return Promise.resolve(true);
+    return new Promise(resolve => {
+      let done = false, asking = false, askedAt = -Infinity;
+      const finish = (outcome: boolean | "stopped") => {
+        if (done) return;
+        done = true;
+        clearInterval(check);
+        clearTimeout(timer);
+        resolve(outcome);
+      };
+      // The same idle readings as the plain wait: tmux silence (abandoned once this wait ends), or the state machine.
+      if (!trusted) {
+        control.waitUntilIdle(windowId, timeoutMs, () => done).then(idle => finish(idle), () => finish(false));
+      }
+      const check = setInterval(() => {
+        if (trusted && this.isPaneIdleForDelivery(windowId)) { finish(true); return; }
+        if (asking || performance.now() - askedAt < WAIT_STOP_POLL_MS) return;
+        asking = true;
+        askedAt = performance.now();
+        stop().then(stopNow => { asking = false; if (stopNow) finish("stopped"); },
+          err => { asking = false; this.logger.debug({ err }, "Delivery wait stop check failed — still waiting"); });
+      }, 50);
+      const timer = setTimeout(() => finish(false), timeoutMs);
     });
   }
 

@@ -859,6 +859,19 @@ export class InstanceLifecycle {
       if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "failed", data.threadId);
       else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "failed", data.threadId);
     }, this.ctx.logger, `daemon.message_failed[${name}]`));
+    // #2770: a cancel dropped these before they reached the CLI. Each is marked ❌ and the person is told once, instead of
+    // the messages quietly ending "uncertain".
+    daemon.on("human_messages_cancelled", safeHandler((data: { messages: Array<{ chatId: string; messageId: string; threadId?: string }> }) => {
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      if (!messages.length) return;
+      this.ctx.eventLog?.insert(name, "messages_cancelled", { count: messages.length });
+      this.ctx.logger.info({ name, count: messages.length }, "Messages dropped by a cancel before delivery — telling the person");
+      for (const m of messages) {
+        if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+        else this.ctx.reactMessageStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+      }
+      this.ctx.notifyInstanceTopic(name, t("delivery.cancelled_unsent", messages.length, name));
+    }, this.ctx.logger, `daemon.human_messages_cancelled[${name}]`));
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {

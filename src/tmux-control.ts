@@ -456,11 +456,12 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    * long default keeps the "a busy CLI is not a lost message" behaviour while
    * putting a floor under how long a wedge can absorb the queue unnoticed.
    */
-  waitUntilIdle(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
+  waitUntilIdle(windowId: string, timeoutMs = 30 * 60_000, abandoned?: () => boolean): Promise<boolean> {
     if (this.isIdle(windowId)) return Promise.resolve(true);
     return new Promise((resolve) => {
       const check = setInterval(() => {
-        if (this.stopped) { clearInterval(check); clearTimeout(timer); resolve(false); return; }
+        // #2770: the caller stopped waiting (a cancel, a hand-off): end here rather than poll for up to 30 minutes.
+        if (this.stopped || abandoned?.()) { clearInterval(check); clearTimeout(timer); resolve(false); return; }
         if (this.isIdle(windowId)) { clearInterval(check); clearTimeout(timer); resolve(true); }
       }, 200);
       const timer = setTimeout(() => {
