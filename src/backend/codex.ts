@@ -35,7 +35,7 @@ import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels,
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
-import { type CodexResumePlan, type ExactCwdSession, codexSiblingState, codexStateDbAbsent, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
+import { type CodexResumePlan, type ExactCwdSession, codexSiblingState, codexStateDbAbsent, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
 
@@ -2189,12 +2189,15 @@ export class CodexBackend implements CliBackend {
     const stateDb = existsSync(instanceDb) || sharedDb === instanceDb ? instanceDb : sharedDb;
     // No database at all is a Codex home that never ran (a fresh install):
     // there is nothing to resume, so it is a new conversation, not an
-    // unreadable database (SQLITE_CANTOPEN) falling back to `--last`. Only
-    // while no rollout in either home shows a turn in this directory: with one, the
-    // database is missing for a reason AgEnD cannot see (a renamed file in a
-    // new Codex), and that keeps today's unreadable path.
-    const lookup: ExactCwdSession = codexStateDbAbsent(stateDb)
-      && [this.isolatedCodexHome, this.sharedCodexHome].every(home => !newestMissedCwdRollout(join(home, "sessions"), config.workingDirectory))
+    // unreadable database (SQLITE_CANTOPEN) falling back to `--last` (#2743).
+    // Only on proof: neither database path exists (ENOENT, not an unreadable
+    // home), and a complete walk of both sessions dirs finds no rollout of
+    // this directory. With one, or with anything unreadable, the database is
+    // missing for a reason AgEnD cannot see (a renamed file in a new Codex),
+    // and that keeps today's warned unreadable path.
+    const neverRan = codexStateDbAbsent(instanceDb) && codexStateDbAbsent(sharedDb)
+      && [this.isolatedCodexHome, this.sharedCodexHome].every(home => cwdRolloutsProvenAbsent(join(home, "sessions"), config.workingDirectory));
+    const lookup: ExactCwdSession = neverRan
       ? { kind: "none" }
       : findExactCwdCodexSession(stateDb, config.workingDirectory);
     return planCodexResume(lookup, () => {

@@ -230,6 +230,39 @@ export function newestMissedCwdRollout(
   return null;
 }
 
+/**
+ * #2743: true only when a complete walk of `sessionsDir` proves no rollout
+ * names this directory — the directory absent, or every entry read. Anything
+ * that cannot be read (a directory, a stat, a rollout's session_meta) is not
+ * proof, so it is false: the caller then keeps the warned unreadable path
+ * instead of a quiet fresh start. Any rollout of this directory counts,
+ * with or without a turn.
+ */
+export function cwdRolloutsProvenAbsent(sessionsDir: string, workingDirectory: string): boolean {
+  const candidates = new Set(cwdCandidates(workingDirectory));
+  const code = (err: unknown): string | undefined => (err as { code?: string }).code;
+  const walk = (dir: string, depth: number): boolean => {
+    let entries: string[];
+    try { entries = readdirSync(dir); } catch (err) { return code(err) === "ENOENT"; }
+    for (const e of entries) {
+      const p = join(dir, e);
+      let st: ReturnType<typeof statSync>;
+      try { st = statSync(p); } catch (err) {
+        if (code(err) === "ENOENT") continue; // raced with deletion
+        return false;
+      }
+      if (st.isDirectory()) {
+        if (depth >= 4 || !walk(p, depth + 1)) return false;
+      } else if (st.isFile() && e.startsWith("rollout-") && e.endsWith(".jsonl")) {
+        const meta = rolloutSessionMeta(p);
+        if (!meta || candidates.has(resolve(meta.cwd))) return false;
+      }
+    }
+    return true;
+  };
+  return walk(sessionsDir, 0);
+}
+
 /** The first line of a rollout, when it is the session_meta the thread was created with. */
 function rolloutSessionMeta(path: string): { id: string; cwd: string; source: unknown } | null {
   let fd: number | null = null;
