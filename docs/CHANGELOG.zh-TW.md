@@ -128,6 +128,9 @@
 - 辦公室：單一辦公室整個都在畫面裡時，右下角的總覽會隱藏，不再蓋住場景的角落、重複面板已經顯示的內容。放大、平移或切到填滿後就會回來。「所有辦公室」仍會顯示總覽。
 
 ### 修正 (Fixed)
+- Kiro 搬移與已儲存對話處理可正確辨識 CLI 實際輸出的 `kiro-cli 2.34.0` 版本字串，並保留功能檢查。對話處理也改用專屬的進度提示。
+- 對話處理在儲存作業開始前遭拒時，保留既有暫停狀態；失敗提示不再重複標點，也只在取得收據後提醒檢查收據。
+- Claude Code agent 在背景跑 subagent 時又收得到訊息了。背景 agent 有兩個以上時，Claude 在輸入框下方列出的清單會讓 AgEnD 認不出輸入框，於是所有訊息、steer 和排程都要等這些 agent 全部結束才送得進去。現在訊息會直接交給 Claude，和沒有背景 agent 時一樣。
 - **instance 沒接上先前的對話、改從頭開始時，現在會通知你（#749）。** 多次 resume 失敗後，AgEnD 會放棄並以全新對話啟動 instance，讓它能繼續工作；先前的對話移到 instance 資料夾保留，沒有刪除。以前這件事只寫在 daemon.log，instance 就這樣不記得之前的事。現在 AgEnD 會在該 instance 的 topic 和 General 說明先前的 context 已遺失，計畫內的重啟也照樣通知。ClassicBot 的通知只送到 General，不會出現在它使用者的聊天裡。Log 分頁也會顯示這個事件，webhook 會收到 `context_lost`。
 - **同時冷啟動的數量改看 fleet 可用的 CPU，而不是主機的核心數（#749）。** 原本上限用主機核心數；在容器或設了 CPU quota 的 systemd slice 裡，這比 fleet 實際能用的多，啟動因此逾時。現在改看 CPU affinity 與 cgroup v1/v2 的 CPU quota。`startup.concurrency` 仍可覆寫。
 - Windows 安裝程式的設定步驟在較窄的主控台視窗也排得好：設定碼只在放得下時用 ASCII 框顯示，否則單獨一行；長句照實際視窗寬度自己換行（中文字算兩格）。設定頁開著時，等待的那一行不再一直重畫，可以選取設定碼、畫面不會閃；設定碼正下方會註明它已經複製到剪貼簿。在已經是系統管理員、但不是 Windows Terminal 的 PowerShell 裡執行那一行安裝指令時，有安裝 Windows Terminal 就改在 Windows Terminal 開啟安裝程式（`AGEND_INSTALL_TERMINAL=conhost` 維持舊視窗）。
