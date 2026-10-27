@@ -71,7 +71,8 @@ export function startedByServiceManager(o: {
 
 /**
  * #2741: does the installed service run THIS AgEnD home? Its definition names a home (AGEND_HOME, written for a
- * non-default one), else it runs the default one. Unknown (an unreadable definition, an unknown default home) is not
+ * non-default one), else it runs the default one. Unknown (an unreadable definition, one whose home is not read here:
+ * serviceDefinitionHome, or an unknown default home) is not
  * "different": the hand-over goes ahead as before. A fleet of another home is never handed to that service — it would
  * start or stop the other fleet and leave this one as it was.
  */

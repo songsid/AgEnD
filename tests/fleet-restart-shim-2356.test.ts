@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, type AuditEntry } from "../src/fleet-control-audit.js";
+import { serviceDefinitionHome } from "../src/service-installer.js";
 import { FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE, agendSystemdUnitOf, fullReloadExitCode, redirectsToService, serviceRunsHome, startedByServiceManager, systemdServiceOf } from "../src/service-owner.js";
 
 describe("agendSystemdUnitOf / fullReloadExitCode", () => {
@@ -103,6 +104,18 @@ describe("fleet start / fleet stop by hand (#2356): who started it, and when the
     expect(systemdServiceOf("1:name=systemd:/system.slice/fleet-b.service\n")).toBe("fleet-b");
     expect(systemdServiceOf("0::/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-1.scope\n"), "user@ is an ancestor, the scope is the unit").toBeNull();
     expect(systemdServiceOf("0::/\n")).toBeNull();
+  });
+
+  it("#2748 review: a home the definition sets in a form not read here is unknown, never 'the default home'", () => {
+    expect(serviceDefinitionHome('[Service]\nEnvironment="AGEND_HOME=/srv/a"\nExecStart=x\n')).toEqual({ known: true, home: "/srv/a" });
+    expect(serviceDefinitionHome('[Service]\nEnvironment="AGEND_HOME=/srv/100%%"\n'), "an escaped %").toEqual({ known: true, home: "/srv/100%" });
+    expect(serviceDefinitionHome("[Service]\nExecStart=x\n"), "none: the default home").toEqual({ known: true, home: null });
+    expect(serviceDefinitionHome("<plist><dict><key>AGEND_HOME</key><string>/srv/a</string></dict></plist>")).toEqual({ known: true, home: "/srv/a" });
+    for (const text of ["[Service]\nEnvironment=AGEND_HOME=/srv/a\n", '[Service]\nEnvironment="HOME=/h" "AGEND_HOME=/srv/a"\n',
+      "[Service]\nEnvironmentFile=/etc/agend.env\n", '[Service]\nEnvironment="AGEND_HOME=%h/.agend-2"\n', '[Service]\nEnvironment="AGEND_HOME=rel/dir"\n',
+      "<plist><dict><key>AGEND_HOME</key>\n<integer>1</integer></dict></plist>"]) {
+      expect(serviceDefinitionHome(text), JSON.stringify(text)).toEqual({ known: false });
+    }
   });
 
   it("#2741: the installed service runs this home only when its AGEND_HOME (else the default home) is this one", () => {
@@ -341,6 +354,13 @@ describe("`fleet start` / `fleet stop` by hand with a user unit installed (inert
     const result = await run(["fleet", "stop", "--yes"], "agend-leader", { AGEND_HOME: other });
     expect(result.stderr).not.toContain("An AgEnD service is installed");
     expect(calls(), "the main service is left alone").not.toMatch(/systemctl --user stop|launchctl bootout/);
+  });
+
+  it("#2748 review: a unit setting AGEND_HOME in a form not read here still takes the hand-over (unknown is not another home)", async () => {
+    writeFileSync(join(inert, "home", ".config", "systemd", "user", "com.agend.fleet.service"), `[Service]\nEnvironment=AGEND_HOME=${home}\nExecStart=/x/agend fleet start\n`);
+    writeFileSync(join(inert, "home", "Library", "LaunchAgents", "com.agend.fleet.plist"), `<plist><dict><key>AGEND_HOME</key>\n<data>x</data></dict></plist>\n`);
+    const result = await run(["fleet", "stop", "--yes"], "agend-leader");
+    expect(result.stderr).toContain("running `agend stop --yes`");
   });
 
   it("#2741: a hand-over under NOTIFY_SOCKET says so and names `fleet start --direct` — never a silent exit", async () => {

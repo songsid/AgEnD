@@ -64,7 +64,7 @@ import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceCon
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
-import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath, serviceDefinitionAgendHome } from "./service-installer.js";
+import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath, serviceDefinitionHome } from "./service-installer.js";
 import { withFsPlanLock } from "./service-plan.js";
 import {
   selectSystemdRestartTarget,
@@ -2021,8 +2021,9 @@ function redirectToService(command: "start" | "stop", extra: string[], directMar
   // #2741: only a service of this AgEnD home takes the start or stop over.
   let definition: string | null = null;
   try { if (installed) definition = readFileSync(installed, "utf-8"); } catch { /* unreadable: as before */ }
-  const sameHome = serviceRunsHome({ serviceHome: definition === null ? null : serviceDefinitionAgendHome(definition),
-    defaultHome: realDefaultAgendHome(), ownHome: getAgendHome(), definitionRead: definition !== null });
+  const told = definition === null ? null : serviceDefinitionHome(definition);
+  const sameHome = serviceRunsHome({ serviceHome: told?.known ? told.home : null,
+    defaultHome: realDefaultAgendHome(), ownHome: getAgendHome(), definitionRead: !!told?.known });
   if (!redirectsToService({ command, directMarker, byServiceManager, installedServicePath: installed, sameHome })) return false;
   console.error(t("cli.service_redirect", String(installed), [command, ...extra].join(" ")));
   // #2741: a unit waiting for READY that hands over exits before it — say so, with the way out, never silently.

@@ -215,6 +215,22 @@ export function serviceDefinitionAgendHome(text: string): string | null {
 }
 
 /**
+ * #2741: the AgEnD home an installed service runs, as far as it can be told: `home` from the installer's own line, or
+ * null (no AGEND_HOME anywhere: the default home). Unknown (`known: false`, #2748 review) when the definition sets it in
+ * a way not read here — an unquoted or multi-assignment Environment= line, an EnvironmentFile=, a plist entry of
+ * another shape — or the value is not an absolute path (a `%h` specifier systemd expands): never taken for a
+ * different home.
+ */
+export function serviceDefinitionHome(text: string): { known: false } | { known: true; home: string | null } {
+  const home = serviceDefinitionAgendHome(text);
+  if (home !== null) {
+    const raw = /^Environment="AGEND_HOME=((?:[^"\\]|\\.)*)"\s*$/m.exec(text)?.[1] ?? "";
+    return home.startsWith("/") && !raw.replace(/%%/g, "").includes("%") ? { known: true, home } : { known: false };
+  }
+  return /AGEND_HOME/.test(text) || /^\s*EnvironmentFile\s*=/m.test(text) ? { known: false } : { known: true, home: null };
+}
+
+/**
  * Which AgEnD home a service definition being written should name. A non-default home of this CLI is named. On a
  * REFRESH (`install --no-activate`, an update's) run from the default home, an existing definition's home is kept:
  * an update typed in a shell without AGEND_HOME must not move a custom-home service back to ~/.agend.
