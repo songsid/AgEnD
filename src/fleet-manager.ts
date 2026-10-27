@@ -23479,7 +23479,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           // From the install's own channel tag, this is what /update installs — even a stable the release pointed the
           // tag at (2.2.0 on @alpha / @beta): the plain /update text, never "/update stays on … use --stable" (#1928).
           const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
-          this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
+          // #2775: null = a beta install and a stable target; beta users are never told to switch.
+          if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         }
       }
     } catch { /* silent — network issues */ }

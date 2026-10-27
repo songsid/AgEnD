@@ -9,6 +9,7 @@ import {
   isExactVersion,
   isUnrequestedDowngrade,
   updateNoticeKey,
+  downgradeRefusal,
   lookupTargetVersion,
   reportUpdateRestart,
   shouldSkipUpdate,
@@ -171,10 +172,20 @@ describe("which channel an install is on, and which way an update goes", () => {
     expect(isUnrequestedDowngrade("1.22.0", "garbage", {})).toBe(false);
   });
 
-  it("tells a beta install about a newer stable with --stable, and everything else with /update", () => {
-    expect(updateNoticeKey("2.1.11-beta.2", "2.1.12")).toBe("update.available_stable");
+  // #2775: beta users stay on beta — a newer stable gets no notice at all, never "switch with --stable".
+  it("never tells a beta install about a stable (even one newer than every beta); /update for everything else", () => {
+    expect(updateNoticeKey("2.1.11-beta.2", "2.1.12")).toBeNull();
+    expect(updateNoticeKey("2.3.2-beta.16", "2.3.3")).toBeNull();
+    expect(updateNoticeKey("2.3.2-rc.1", "2.3.2")).toBeNull();                    // any non-alpha prerelease is on @beta
     expect(updateNoticeKey("2.1.11-beta.2", "2.1.11-beta.3")).toBe("update.available_current");
     expect(updateNoticeKey("2.1.10", "2.1.11")).toBe("update.available_current");
+    expect(updateNoticeKey("2.2.0-alpha.1", "2.2.0")).toBe("update.available_stable");  // an alpha keeps #1259's notice
+  });
+
+  it("a refused downgrade says the channel is already current, with no hint to switch (#2775)", () => {
+    const text = downgradeRefusal("2.3.3-beta.1", "beta", "2.3.2-beta.16");
+    expect(text).toBe("AgEnD v2.3.3-beta.1 is newer than beta (v2.3.2-beta.16); not going back to it. The beta channel has nothing newer: this install is already current.");
+    expect(text).not.toMatch(/--stable|stable release/);
   });
 
   it("takes only strict SemVer 2.0.0 (#1182 review): leading zeros and empty identifiers are not versions", () => {

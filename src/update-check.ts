@@ -109,12 +109,25 @@ export function getUpdateSelector(opts: UpdateVersionOptions, installedVersion: 
 }
 
 /**
- * Which "update available" line to post. A beta or alpha install's `/update`
- * stays on its channel, so a newer STABLE release needs `--stable` — say so
- * rather than "Run: /update", which would not move it there.
+ * Which "update available" line to post, or none. An alpha install's `/update`
+ * stays on @alpha, so a newer STABLE release needs `--stable` (#1259) — say so
+ * rather than "Run: /update", which would not move it there. A beta install is
+ * never told about a stable at all: beta users stay on beta, with no hint to
+ * switch (the user's decision, 2026-10-16; #2775).
  */
-export function updateNoticeKey(currentVersion: string, targetVersion: string): "update.available_stable" | "update.available_current" {
-  return isPrereleaseVersion(currentVersion) && !isPrereleaseVersion(targetVersion) ? "update.available_stable" : "update.available_current";
+export function updateNoticeKey(currentVersion: string, targetVersion: string): "update.available_stable" | "update.available_current" | null {
+  if (!isPrereleaseVersion(currentVersion) || isPrereleaseVersion(targetVersion)) return "update.available_current";
+  return installedChannel(currentVersion) === "alpha" ? "update.available_stable" : null;
+}
+
+/**
+ * Why `agend update` stops instead of going back to an older version on the
+ * install's own channel: that channel has nothing newer, so the install is
+ * already current. No hint to switch channels (#2775); `--stable` still works
+ * for whoever asks for it.
+ */
+export function downgradeRefusal(installedVersion: string, tag: string, targetVersion: string): string {
+  return `AgEnD v${installedVersion} is newer than ${tag} (v${targetVersion}); not going back to it. The ${tag} channel has nothing newer: this install is already current.`;
 }
 
 /**

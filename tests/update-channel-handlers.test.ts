@@ -221,6 +221,14 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
       const { posted } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
       expect(posted).toEqual([]);
     });
+    // #2775: no switch-to-stable notice for a beta install, whatever @latest holds.
+    it("2.3.2-beta.16 with 2.3.3 on @latest: silent while @beta has nothing newer, then only the next beta", async () => {
+      const quiet = await notice("2.3.2-beta.16", { "@songsid/agend": "2.3.3", "@songsid/agend@beta": "2.3.2-beta.16" });
+      expect(quiet.posted).toEqual([]);
+      const next = await notice("2.3.2-beta.16", { "@songsid/agend": "2.3.3", "@songsid/agend@beta": "2.3.3-beta.1" });
+      expect(next.posted).toEqual([expect.stringContaining("v2.3.3-beta.1")]);
+      expect(next.posted[0]).not.toMatch(/--stable|stable/);
+    });
     it("a stable of a higher core (2.2.1) does not reach a beta install either", async () => {
       const { posted } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.1", "@songsid/agend@beta": "2.2.0-beta.17" });
       expect(posted).toEqual([]);

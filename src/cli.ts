@@ -50,6 +50,7 @@ import {
   getUpdateSelector,
   isExactVersion,
   isUnrequestedDowngrade,
+  downgradeRefusal,
   lookupTargetVersion,
   reportUpdateRestart,
   shouldSkipUpdate,
@@ -1575,7 +1576,7 @@ program
     }
 
     if (isUnrequestedDowngrade(pkgVersion, targetVersion, opts)) {
-      const message = `AgEnD v${pkgVersion} is newer than ${tag} (v${targetVersion}); not going back to it. To switch to the stable release anyway: agend update --stable`;
+      const message = downgradeRefusal(pkgVersion, tag, targetVersion!);
       console.error(`\n  ✗ ${message}\n`);
       // A chat-started /update is waiting on this: say why it stops here.
       setUpdateProgressStage(DATA_DIR, "failed", { error: message });
