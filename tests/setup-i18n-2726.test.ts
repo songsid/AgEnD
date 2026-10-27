@@ -76,6 +76,7 @@ describe("#2726 every message the host can answer with has its 繁體中文", ()
     translated(agentConflict({ instance_name: "a" }, cfg)!);
     translated(agentConflict({ instance_name: "zz", existing_agent: true }, cfg)!);
     translated(agentConflict({ instance_name: "general" }, cfg)!);   // M-2069: the General's name, on a fleet with a connection
+    translated(agentConflict({ instance_name: "general", working_directory: "/home/you/app" }, { instances: {}, defaults: {} } as never)!);   // #2744 review
     translated(webOnlyConflict(cfg)!);
     translated(newConnectionConflict({ token_env: "", channel_id: "telegram" }, { channels: [{ id: "telegram", type: "telegram", token_env: "T", group_id: null }] })!);
     translated(newTokenEnvConflict("AGEND_BOT_TOKEN", [{ id: "telegram", token_env: "AGEND_BOT_TOKEN" }])!);
@@ -175,6 +176,13 @@ describe("#2726 the setup form in a language", () => {
     p.$("name").value = "boss"; p.$("name").listeners.get("input")();
     p.$("pickWeb").onclick(); p.$("pickTelegram").onclick();
     expect(p.$("name").value, "a typed name is never replaced").toBe("boss");
+  });
+  it("#2744 review: a typed directory makes the first agent a worker (agent-1, no note); cleared, it is the General again", async () => {
+    const p = form(); await p.flush();
+    p.$("dir").value = "/home/you/projects/app"; p.$("dir").listeners.get("input")();
+    expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["agent-1", true]);
+    p.$("dir").value = ""; p.$("dir").listeners.get("input")();
+    expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["general", false]);
   });
   it("the toggle switches every shown text at once and is kept as the dashboard's agend_lang; a kept choice beats the browser", async () => {
     const p = form({ language: "en-US" }); await p.flush();

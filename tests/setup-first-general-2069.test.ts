@@ -16,8 +16,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(),
   execFileSync: vi.fn(() => { throw Error("no binary discovery in this test"); }),
 }));
-import { agentConflict, becomesGeneral, draftQuickstart, handleQuickstartRequest, planQuickstart, withGeneral, type WizardPlanInput } from "../src/quickstart-api.js";
-import { adoptGeneralByName, generalTopicFor } from "../src/general-instance.js";
+import { agentConflict, becomesGeneral, defaultWorkingDirectory, draftQuickstart, handleQuickstartRequest, planQuickstart, withGeneral, withWorkingDirectory, type WizardPlanInput } from "../src/quickstart-api.js";
+import { adoptGeneralByName, freeGeneralName, generalTopicFor } from "../src/general-instance.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import type { FleetConfig } from "../src/types.js";
@@ -27,10 +27,12 @@ const TG = { id: "telegram", type: "telegram", mode: "topic", bot_token_env: "AG
 const DC = (general?: string) => ({ id: "discord", type: "discord", mode: "topic", bot_token_env: "AGEND_TEST_DC_TOKEN", group_id: "222",
   access: { mode: "locked", allowed_users: [] }, ...(general ? { options: { general_channel_id: general } } : {}) });
 const cfgOf = (instances: Record<string, unknown> = {}, channels: unknown[] = []) => ({ defaults: { backend: "codex" }, instances, channels }) as unknown as FleetConfig;
-const TG_IN = { platform: "telegram", admin_user_id: "42", group_id: "-100111", backend: "claude-code", working_directory: "/w/g", instance_name: "general", token_env: "AGEND_TEST_TG_TOKEN" } as WizardPlanInput;
+const TG_IN = { platform: "telegram", admin_user_id: "42", group_id: "-100111", backend: "claude-code", working_directory: "", instance_name: "general", token_env: "AGEND_TEST_TG_TOKEN" } as WizardPlanInput;
 const DC_IN = (general?: string) => ({ platform: "discord", admin_user_id: "987654321012345678", guild_id: "222", ...(general ? { general_channel_id: general } : {}),
-  backend: "claude-code", working_directory: "/w/g", instance_name: "general", token_env: "AGEND_TEST_DC_TOKEN" }) as WizardPlanInput;
-const plan = (cfg: FleetConfig, input: WizardPlanInput) => withGeneral(planQuickstart(input, { backends: ["claude-code"], has_fleet: false, channels: [] }), cfg, input);
+  backend: "claude-code", working_directory: "", instance_name: "general", token_env: "AGEND_TEST_DC_TOKEN" }) as WizardPlanInput;
+// As the routes do: the directory filled in first (#2726), then the plan and the draft.
+const plan = (cfg: FleetConfig, input: WizardPlanInput) => withGeneral(planQuickstart(withWorkingDirectory(input), { backends: ["claude-code"], has_fleet: false, channels: [] }), cfg, withWorkingDirectory(input));
+const draft = (cfg: FleetConfig, input: WizardPlanInput) => draftQuickstart(cfg, withWorkingDirectory(input), plan(cfg, input));
 
 describe("M-2069: the setup's first agent on a chat connection is the General", () => {
   it("a new agent on the first connection of a fleet with no General: yes; anything else: no", () => {
@@ -42,19 +44,31 @@ describe("M-2069: the setup's first agent on a chat connection is the General", 
     expect(becomesGeneral(cfgOf(), { web_only: true }), "web only has no chat General").toBe(false);
     expect(becomesGeneral(cfgOf({}, [TG]), TG_IN), "not the first connection").toBe(false);
     expect(becomesGeneral(cfgOf({ boss: { working_directory: "/w/b", general_topic: true } }), TG_IN), "a General exists").toBe(false);
+    expect(becomesGeneral(cfgOf({ general: { working_directory: "/w/g" } }), { ...TG_IN, instance_name: "boss" }),
+      "#2744 review: an agent already called general is the one the fleet adopts — no second General").toBe(false);
+  });
+
+  it("#2744 review: a typed directory makes a worker, never a General in the user's project; its own workspace path is no directory", () => {
+    expect(becomesGeneral(cfgOf(), { ...TG_IN, working_directory: "/home/you/projects/app" })).toBe(false);
+    expect(becomesGeneral(cfgOf(), withWorkingDirectory(TG_IN)), "the filled-in default").toBe(true);
+    expect(becomesGeneral(cfgOf(), { ...TG_IN, working_directory: defaultWorkingDirectory("other") }), "another agent's workspace is a typed directory").toBe(false);
+    const typed = { ...TG_IN, instance_name: "app", working_directory: "/home/you/projects/app" };
+    expect(draft(cfgOf(), typed).instances.app).toEqual(expect.not.objectContaining({ general_topic: true }));
+    expect(plan(cfgOf(), typed).instance?.general).toBeUndefined();
+    expect(agentConflict({ ...TG_IN, working_directory: "/home/you/projects/app" }, cfgOf()) ?? "").toMatch(/the General agent works in its own folder — leave the working directory empty/);
   });
 
   it("Telegram: written with general_topic in the group's built-in General (thread 1), and the plan says so", () => {
-    const cfg = cfgOf(), p = plan(cfg, TG_IN), draft = draftQuickstart(cfg, TG_IN, p);
-    expect(draft.instances.general).toMatchObject({ general_topic: true, topic_id: 1, channel_id: "telegram", working_directory: "/w/g", backend: "claude-code" });
+    const cfg = cfgOf(), p = plan(cfg, TG_IN), d = draft(cfg, TG_IN);
+    expect(d.instances.general).toMatchObject({ general_topic: true, topic_id: 1, channel_id: "telegram", working_directory: defaultWorkingDirectory("general"), backend: "claude-code" });
     expect(p.instance?.general).toEqual({ topic_id: "1" });
-    expect(validateFleetConfig(draft).valid, JSON.stringify(validateFleetConfig(draft).errors)).toBe(true);
+    expect(validateFleetConfig(d).valid, JSON.stringify(validateFleetConfig(d).errors)).toBe(true);
   });
 
   it("Discord: the connection's general channel; without a valid one it is the General, unbound (as the fleet's own is)", () => {
-    const withChannel = draftQuickstart(cfgOf(), DC_IN(DC_GENERAL), plan(cfgOf(), DC_IN(DC_GENERAL)));
+    const withChannel = draft(cfgOf(), DC_IN(DC_GENERAL));
     expect(withChannel.instances.general).toMatchObject({ general_topic: true, topic_id: DC_GENERAL, channel_id: "discord" });
-    const without = draftQuickstart(cfgOf(), DC_IN(), plan(cfgOf(), DC_IN()));
+    const without = draft(cfgOf(), DC_IN());
     expect(without.instances.general.general_topic).toBe(true);
     expect(without.instances.general.topic_id ?? null).toBeNull();
     expect(plan(cfgOf(), DC_IN()).instance?.general).toEqual({ topic_id: null });
@@ -62,7 +76,7 @@ describe("M-2069: the setup's first agent on a chat connection is the General", 
 
   it("any name works for the General; a second connection's or an existing agent's draft gets no general_topic", () => {
     const named = { ...TG_IN, instance_name: "boss" };
-    expect(draftQuickstart(cfgOf(), named, plan(cfgOf(), named)).instances.boss.general_topic).toBe(true);
+    expect(draft(cfgOf(), named).instances.boss.general_topic).toBe(true);
     const second = cfgOf({ general: { working_directory: "/w/g", general_topic: true, topic_id: 1 } }, [TG]);
     const input = { ...TG_IN, instance_name: "beta", group_id: "-100222", token_env: "AGEND_TEST_TG2_TOKEN" };
     const p = withGeneral(planQuickstart(input, { backends: [], has_fleet: true, channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_TEST_TG_TOKEN", group_id: "-100111" }] }), second, input);
@@ -102,26 +116,29 @@ describe("M-2069: the setup routes and pages", () => {
 
   it("the dashboard's wizard names a General-to-be general (the setup page: tests/setup-i18n-2726.test.ts, run as a page)", () => {
     const wizard = readFileSync(join(__dirname, "../src/ui/settings-wizard.js"), "utf8");
-    expect(wizard).toContain('instance_name: e.first_general ? "general" : `agent-${n}`');
-    expect(wizard).toContain('w.env.first_general ? html`<p class="note">${tn("wizardGeneralNote")}</p>` : null');
+    expect(wizard).toContain('const general = !!e.first_general && !names.has("general");');
+    expect(wizard).toContain('instance_name: general ? "general" : `agent-${n}`');
+    expect(wizard).toContain('asGeneral(w) ? html`<p class="note">${tn("wizardGeneralNote")}</p>` : null');
+    expect(wizard, "#2744 review: a typed directory makes a worker").toContain("const asGeneral = (x) => x.general && !x.working_directory;");
   });
 });
 
 describe("M-2069: an agent named general never leaves a chat fleet without a dispatcher", () => {
   const logger = { warn: vi.fn() };
+  const own = () => true;
   it("made the General, in its chat's General topic: Telegram thread 1 (the stray forum topic is left behind)", () => {
     const fleet = cfgOf({ general: { working_directory: "/w/g", topic_id: 3040 }, alpha: { working_directory: "/w/a", topic_id: 7 } }, [TG]);
-    expect(adoptGeneralByName(fleet, logger)).toBe(true);
+    expect(adoptGeneralByName(fleet, logger, own)).toBe(true);
     expect(fleet.instances.general).toMatchObject({ general_topic: true, topic_id: 1 });
     expect(fleet.instances.alpha.general_topic).toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ topic_from: 3040, topic_to: 1 }), expect.stringMatching(/made it the General/));
   });
   it("Discord: its general channel; none valid: the General keeps the topic it has", () => {
     const withChannel = cfgOf({ general: { working_directory: "/w/g", topic_id: "333333333333333333" } }, [DC(DC_GENERAL)]);
-    expect(adoptGeneralByName(withChannel, logger)).toBe(true);
+    expect(adoptGeneralByName(withChannel, logger, own)).toBe(true);
     expect(withChannel.instances.general.topic_id).toBe(DC_GENERAL);
     const without = cfgOf({ general: { working_directory: "/w/g", topic_id: "333333333333333333" } }, [DC()]);
-    expect(adoptGeneralByName(without, logger)).toBe(true);
+    expect(adoptGeneralByName(without, logger, own)).toBe(true);
     expect(without.instances.general).toMatchObject({ general_topic: true, topic_id: "333333333333333333" });
   });
   it("left alone: no chat, a General already there, bound to another connection, or no agent of that name", () => {
@@ -133,13 +150,26 @@ describe("M-2069: an agent named general never leaves a chat fleet without a dis
     ];
     for (const fleet of cases) {
       const before = JSON.stringify(fleet);
-      expect(adoptGeneralByName(fleet, logger)).toBe(false);
+      expect(adoptGeneralByName(fleet, logger, own)).toBe(false);
       expect(JSON.stringify(fleet)).toBe(before);
     }
   });
+  it("#2744 review: a general in a folder AgEnD does not own is left alone; the fleet makes its General under a free name", () => {
+    const fleet = cfgOf({ general: { working_directory: "/home/you/projects/app" } }, [TG]);
+    const seen: string[] = [];
+    expect(adoptGeneralByName(fleet, logger, dir => { seen.push(dir); return false; })).toBe(false);
+    expect([seen, fleet.instances.general.general_topic ?? null]).toEqual([["/home/you/projects/app"], null]);
+    expect(freeGeneralName(fleet.instances, "general")).toBe("general-2");
+    expect(freeGeneralName({ general: {}, "general-2": {} }, "general")).toBe("general-3");
+    expect(freeGeneralName({}, "general")).toBe("general");
+    const fm = readFileSync(join(__dirname, "../src/fleet-manager.ts"), "utf8");
+    expect(fm, "Phase 3 no longer skips a taken name").not.toContain("if (fleet.instances[name]) continue;");
+    expect(fm).toContain("name = freeGeneralName(fleet.instances, taken);");
+    expect(fm).toContain("dir => insideManagedWorkspaces(dir) || resolvePath(dir) === join(getAgendHome(), GENERAL_NAME)");
+  });
   it("runs before the fleet's General phases, so the auto-General sees it (and Phase 3 no longer meets a taken name)", () => {
     const fm = readFileSync(join(__dirname, "../src/fleet-manager.ts"), "utf8");
-    const adopt = fm.indexOf("let generalsCreated = adoptGeneralByName(fleet, this.logger);");
+    const adopt = fm.indexOf("let generalsCreated = adoptGeneralByName(fleet, this.logger,");
     expect(adopt).toBeGreaterThan(0);
     expect(adopt).toBeLessThan(fm.indexOf("const generalInstances = Object.entries(fleet.instances).filter(([, inst]) => inst.general_topic === true);"));
     expect(generalTopicFor({ type: "telegram" })).toBe(1);
@@ -166,17 +196,17 @@ describe("M-2069 cause #2: the General binds the chat's General topic; no forum 
 
   it("the setup's draft: no createForumTopic, thread 1; control: the pre-M-2069 draft (no general_topic) made forum topic 'general'", async () => {
     vi.stubEnv("AGEND_TEST_TG_TOKEN", "fake");
-    const draft = draftQuickstart(cfgOf(), TG_IN, plan(cfgOf(), TG_IN));
-    const now = await restart(draft as unknown as Record<string, unknown>);
+    const d = draft(cfgOf(), TG_IN);
+    const now = await restart(d as unknown as Record<string, unknown>);
     try {
       expect(now.fm.createForumTopic).not.toHaveBeenCalled();
       expect(now.fm.fleetConfig.instances.general.topic_id).toBe(1);
     } finally { now.done(); }
-    const before = structuredClone(draft) as any;
+    const before = structuredClone(d) as any;
     delete before.instances.general.general_topic; delete before.instances.general.topic_id;
     const old = await restart(before);
     try {
-      expect(old.fm.createForumTopic.mock.calls.map((c: unknown[]) => c[0])).toEqual(["g"]);   // basename of /w/g
+      expect(old.fm.createForumTopic.mock.calls.map((c: unknown[]) => c[0])).toEqual(["general"]);   // basename of its workspace — #3040
       expect(old.fm.fleetConfig.instances.general.topic_id).toBe(3040);
     } finally { old.done(); }
   });

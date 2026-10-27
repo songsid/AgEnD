@@ -35,6 +35,7 @@ export const HOST_MESSAGES = [
   // Conflicts (agentConflict, newConnectionConflict, webOnlyConflict, token-env-name.ts).
   ["an agent called \"{0}\" already exists — connect it as an existing agent, or choose another name", "已經有名為「{0}」的 agent —— 請把它當作既有的 agent 連接，或換一個名稱"],
   ["there is no agent called \"{0}\"", "沒有名為「{0}」的 agent"],
+  ["the General agent works in its own folder — leave the working directory empty to make \"{0}\" the General, or choose another name", "General agent 使用自己的資料夾 —— 若要讓「{0}」成為 General，請把工作目錄留空，或換一個名稱"],
   ["the name \"{0}\" is kept for the fleet's General agent — choose another name", "「{0}」這個名稱保留給 fleet 的 General agent —— 請換一個名稱"],
   ["a connection called \"{0}\" already exists — a new connection never replaces one", "已經有名為「{0}」的連線 —— 新的連線不會取代既有的連線"],
   ["this fleet already has a chat connection — add the agent with New agent instead", "這個 fleet 已經有聊天連線 —— 請改用「新增 Agent」加入 agent"],

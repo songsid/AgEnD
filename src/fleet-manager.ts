@@ -311,7 +311,7 @@ import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
 import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
-import { GENERAL_PAUSE_ERROR, adoptGeneralByName, isGeneralInstance } from "./general-instance.js";
+import { GENERAL_NAME, GENERAL_PAUSE_ERROR, adoptGeneralByName, freeGeneralName, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { topMemoryHogs, type MemoryHog } from "./memory-hogs.js";
 import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, webRoute, webTextLinks, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
@@ -8345,7 +8345,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
     this.warnUnboundGeneralChannelIds(fleet);
     const primaryAdapterId = channelConfigs[0] ? (channelConfigs[0].id ?? channelConfigs[0].type) : undefined;
-    let generalsCreated = adoptGeneralByName(fleet, this.logger);
+    let generalsCreated = adoptGeneralByName(fleet, this.logger,
+      dir => insideManagedWorkspaces(dir) || resolvePath(dir) === join(getAgendHome(), GENERAL_NAME));
     const generalInstances = Object.entries(fleet.instances).filter(([, inst]) => inst.general_topic === true);
 
     // Collect unbound generals (no channel_id set) for auto-assignment
@@ -8407,8 +8408,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Phase 3: Create new generals for any remaining adapters
     for (const need of needsGeneral) {
-      const name = channelConfigs.length > 1 ? `general-${need.adapterId}` : "general";
-      if (fleet.instances[name]) continue;
+      let name = channelConfigs.length > 1 ? `general-${need.adapterId}` : GENERAL_NAME;
+      if (fleet.instances[name]?.general_topic) continue;
+      if (fleet.instances[name]) {
+        // M-2069: the name is an agent's that is not the General (adoptGeneralByName left it: it works in a project
+        // of the user's) — the fleet still gets its General, under a free name, never none.
+        const taken = name;
+        name = freeGeneralName(fleet.instances, taken);
+        this.logger.warn({ taken, name }, "An agent is named like the General but is not one — creating the General under a free name; rename that agent to clear this");
+      }
       this.logger.warn({ adapter: need.adapterId, name }, "No general instance for adapter — auto-creating");
       const generalDir = join(getAgendHome(), name);
       mkdirSync(generalDir, { recursive: true, mode: 0o700 });

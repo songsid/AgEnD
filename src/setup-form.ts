@@ -204,10 +204,11 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     else say("backendHint", "backendNone");
   }
 
-  // M-2069: on a chat platform the first agent is the General ("general"); web only has no General ("agent-1"). A name
-  // the user typed is kept.
+  // M-2069: on a chat platform, with no directory typed, the first agent is the General ("general"); web only has no
+  // General, and a typed directory makes a worker ("agent-1"). A name the user typed is kept.
   function showGeneral() {
-    const general = state.firstGeneral && state.platform !== "web";
+    // #2744 review: only with no directory — the General works in its own folder, never in a project of the user's.
+    const general = state.firstGeneral && state.platform !== "web" && !$("dir").value.trim();
     $("generalNote").hidden = !general;
     if (!state.nameTyped) { $("name").value = general ? "general" : "agent-1"; showDirHint(); }
   }
@@ -473,6 +474,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   $("pickDiscord").onclick = () => setPlatform("discord");
   $("pickWeb").onclick = () => setPlatform("web");
   $("name").addEventListener("input", () => { state.nameTyped = true; showDirHint(); });
+  $("dir").addEventListener("input", showGeneral);
   setFinishLabel("finish");
   showDirHint();
   loadEnvironment();

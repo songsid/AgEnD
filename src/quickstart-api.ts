@@ -150,7 +150,7 @@ export function nextChannelId(platform: string, existing: ReadonlyArray<{ id: st
  * #1519 P7: why the agent part of this input cannot be written, or null. A new agent's name must be free (the wizard
  * never overwrites one); an existing agent must exist. A connection-only input has no agent part.
  */
-export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "existing_agent" | "connection_only"> & { web_only?: boolean }, cfg: FleetConfig | null): string | null {
+export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "existing_agent" | "connection_only"> & { web_only?: boolean; working_directory?: string }, cfg: FleetConfig | null): string | null {
   if (input.connection_only) return null;
   const exists = !!cfg && Object.hasOwn(cfg.instances ?? {}, input.instance_name);
   if (input.existing_agent) return exists ? null : `there is no agent called "${input.instance_name}"`;
@@ -158,6 +158,8 @@ export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "ex
   // M-2069: "general" means the General everywhere (daemon, tool profile, pause guard); a new chat agent that would not
   // be the General does not get the name. A web-only agent may: the fleet adopts it as the General once a chat is added.
   if (input.instance_name === GENERAL_NAME && !input.web_only && !becomesGeneral(cfg, input)) {
+    // A fleet that would take a General, but not in a folder of the user's: the General keeps its own (#2744 review).
+    if (becomesGeneral(cfg, { ...input, working_directory: "" })) return `the General agent works in its own folder — leave the working directory empty to make "${GENERAL_NAME}" the General, or choose another name`;
     return `the name "${GENERAL_NAME}" is kept for the fleet's General agent — choose another name`;
   }
   return null;
@@ -166,16 +168,23 @@ export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "ex
 /**
  * M-2069: a NEW agent on the fleet's first chat connection becomes its General when the fleet has none — the agent the
  * user set up is the one they talk to in the chat's General, instead of a second agent the fleet would add at start.
- * An existing agent is never made the General here: that would rewrite its role and its folder's instructions.
+ * An existing agent is never made the General here: that would rewrite its role and its folder's instructions. Nor is
+ * an agent given a directory of the user's (#2744 review): the General's instructions (CLAUDE.md / AGENTS.md: "do not
+ * modify project files") would land in their repo and stop the only agent from editing it. With a directory, the
+ * agent is a worker there and the fleet adds its General, in its own folder, at start — as before.
  */
-export function becomesGeneral(cfg: FleetConfig | null, input: Pick<WizardPlanInput, "existing_agent" | "connection_only"> & { web_only?: boolean }): boolean {
+export function becomesGeneral(cfg: FleetConfig | null, input: Partial<Pick<WizardPlanInput, "existing_agent" | "connection_only" | "working_directory" | "instance_name">> & { web_only?: boolean }): boolean {
   if (input.connection_only || input.existing_agent || input.web_only) return false;
+  if (input.working_directory && !(input.instance_name && input.working_directory === defaultWorkingDirectory(input.instance_name))) return false;
   if (wizardChannels(cfg).length) return false;
+  // An agent already called "general" (a web-only one) is the one the fleet makes the General at start
+  // (adoptGeneralByName) — a second General is not made next to it (#2744 review).
+  if (cfg && Object.hasOwn(cfg.instances ?? {}, GENERAL_NAME)) return false;
   return !Object.values(cfg?.instances ?? {}).some(inst => (inst as { general_topic?: unknown }).general_topic === true);
 }
 
 /** The plan as the wizard shows it: a new agent that will be the General says so, with the topic it gets (M-2069). */
-export function withGeneral(plan: WizardPlan, cfg: FleetConfig | null, input: Pick<WizardPlanInput, "existing_agent" | "connection_only"> & { web_only?: boolean }): WizardPlan {
+export function withGeneral(plan: WizardPlan, cfg: FleetConfig | null, input: Partial<Pick<WizardPlanInput, "existing_agent" | "connection_only" | "working_directory" | "instance_name">> & { web_only?: boolean }): WizardPlan {
   if (!plan.instance || !becomesGeneral(cfg, input)) return plan;
   const topic = generalTopicFor(plan.channel);
   return { ...plan, instance: { ...plan.instance, general: { topic_id: topic == null ? null : String(topic) } } };

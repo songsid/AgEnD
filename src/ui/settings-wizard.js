@@ -44,8 +44,11 @@ export function SetupWizard({ ctx, onClose }) {
       const agents = Array.isArray(e.agents) ? e.agents : [];
       const names = new Set(agents.map((a) => a.name));
       let n = 1; while (names.has(`agent-${n}`)) n++;
-      // M-2069: on a fleet with no chat connection and no General, the new agent is the General — named "general".
-      setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: e.first_general ? "general" : `agent-${n}`,
+      // M-2069: on a fleet with no chat connection and no General, the new agent is the General — named "general" (unless
+      // an agent has that name already: #2744 review).
+      const general = !!e.first_general && !names.has("general");
+      setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: general ? "general" : `agent-${n}`,
+        general, defaultName: `agent-${n}`, nameTyped: false,
         agent: agents.length ? "existing" : "new", existing_name: agents.length ? agents[0].name : "",
         platform: "telegram", token: "", group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
         identity: null, guilds: [], plan: null, offset: 0 });
@@ -55,6 +58,11 @@ export function SetupWizard({ ctx, onClose }) {
   // Every field the plan or a probe is about moves the revision (#1529 review r2): a plan or Detect that began before an
   // edit — target, admin, backend, directory, name — is dropped when it lands, never committed or written over the edit.
   const set = (k) => (v) => { bump(); setW((x) => ({ ...x, [k]: v })); };
+  // #2744 review: the General works in its own folder — a typed directory makes the new agent a worker, so a name not
+  // typed by hand goes back to agent-N (and "general" again once the directory is cleared).
+  const asGeneral = (x) => x.general && !x.working_directory;
+  const setDir = (v) => { bump(); setW((x) => { const next = { ...x, working_directory: v };
+    return x.nameTyped ? next : { ...next, instance_name: asGeneral(next) ? "general" : x.defaultName }; }); };
   // No token env: the plan generates one (#1519 P1: AGEND_<PLATFORM>_<ID>_TOKEN, unique) and the commit carries the plan's.
   // An existing agent (#1519 P7) is named and nothing else: the server keeps its directory and backend.
   const input = () => ({
@@ -145,10 +153,10 @@ export function SetupWizard({ ctx, onClose }) {
         <p class="note">${tn("wizardAgentExistingNote")}</p></div>` : html`${which}<div class="field"><label for="wz-be">${tn("wizardBackend")}</label>
         <${Select} id="wz-be" value=${w.backend} onChange=${set("backend")} options=${w.env.backends && w.env.backends.length ? w.env.backends : BACKENDS} />
         <p class="note">${w.env.backends && w.env.backends.length ? tn("wizardBackendFound", w.env.backends.join(", ")) : tn("wizardBackendNone")}</p></div>
-      <div class="field"><label for="wz-wd">${tn("wizardDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" aria-describedby="wz-wd-note" value=${dirText} onInput=${(e) => set("working_directory")(onDirText(e.target.value))} />
+      <div class="field"><label for="wz-wd">${tn("wizardDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" aria-describedby="wz-wd-note" value=${dirText} onInput=${(e) => setDir(onDirText(e.target.value))} />
         <p class="note" id="wz-wd-note">${w.env.workspaces_dir && w.instance_name ? tn("wizardDirDefault", `${w.env.workspaces_dir}/${w.instance_name}`) : tn("wizardDirDefaultName")}</p></div>
-      <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${nameText} onInput=${(e) => set("instance_name")(onNameText(e.target.value))} />
-        ${w.env.first_general ? html`<p class="note">${tn("wizardGeneralNote")}</p>` : null}</div>`;
+      <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${nameText} onInput=${(e) => { const v = onNameText(e.target.value); bump(); setW((x) => ({ ...x, instance_name: v, nameTyped: true })); }} />
+        ${asGeneral(w) ? html`<p class="note">${tn("wizardGeneralNote")}</p>` : null}</div>`;
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}

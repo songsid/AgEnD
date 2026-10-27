@@ -772,7 +772,7 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 在 `agend setup` 頁面（Windows 安裝程式開啟的那一頁）與儀表板的 **設定 → 設定精靈** 裡，新 agent 的工作目錄可以留空，「只用網頁」和接 bot 的設定都一樣。這時 agent 會有自己的資料夾 `~/.agend/workspaces/<名稱>`。頁面會在欄位下方顯示這個路徑，主機確認後建立資料夾，fleet.yaml 也會寫入完整路徑。若自己填寫，必須是絕對路徑；既有的 agent 保留它自己的目錄。
 
-**聊天連線上的第一個 agent 就是 General（M-2069）。** fleet 還沒有聊天連線、也沒有 General 時，用 Telegram 或 Discord 設定建立的新 agent 會寫入 `general_topic: true`，預設名稱是 `general`（名稱可自訂）。它在聊天本身的 General 回覆：Telegram 群組內建的 General 主題，或 Discord 連線的 general 頻道。不會另開論壇主題，fleet 啟動時也不會再加第二個 General。只用網頁的設定仍以 `agent-1` 開始，因為它沒有聊天的 General。fleet 已有連線或 General 之後，新的 agent 不能命名為 `general`。fleet 啟動時，若聊天 fleet 沒有 General，而名為 `general` 的 agent 沒有 `general_topic`，它會成為 General 並移到聊天的 General 主題，讓 fleet 一定有負責分派的 agent。
+**聊天連線上的第一個 agent 就是 General（M-2069）。** fleet 還沒有聊天連線、也沒有 General 時，用 Telegram 或 Discord 設定、且沒有填工作目錄的新 agent 會寫入 `general_topic: true`，預設名稱是 `general`（名稱可自訂）。它使用自己的資料夾，在聊天本身的 General 回覆：Telegram 群組內建的 General 主題，或 Discord 連線的 general 頻道。不會另開論壇主題，fleet 啟動時也不會再加第二個 General。填了工作目錄的 agent 是該專案裡的一般 agent（名稱為 `agent-1`），fleet 也和以前一樣在 General 自己的資料夾裡加入 General，所以 General 的說明檔不會出現在專案裡。只用網頁的設定仍以 `agent-1` 開始，因為它沒有聊天的 General。fleet 已有連線或 General 之後，新的 agent 不能命名為 `general`。fleet 啟動時，若聊天 fleet 沒有 General，而名為 `general`、沒有 `general_topic` 的 agent 位於 AgEnD 自己的資料夾，它會成為 General，並移到聊天的 General 主題（Discord 需要連線設有 general 頻道）。位於你自己專案裡的則維持原樣，fleet 會以另一個可用的名稱（`general-2`）加入 General，讓 fleet 一定有負責分派的 agent。
 
 設定頁和輸入代碼的頁面有英文和繁體中文：預設跟隨瀏覽器的語言，頁面上方的按鈕可以切換，選擇也會沿用到同一個網址的儀表板。使用繁體中文時，主機的錯誤與拒絕訊息（名稱已被使用、連線已存在、token 環境變數是保留名稱）、方案的警告、Discord 頻道清單的錯誤以及後端登入卡片也都有翻譯。
 
