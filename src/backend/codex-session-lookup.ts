@@ -45,6 +45,20 @@ export function openCodexStateReadonly(path: string): Database.Database {
   return new Database(path, { readonly: true, fileMustExist: true, timeout: 1_000 });
 }
 
+/**
+ * Nothing at all at `path` (ENOENT, a dangling link included): Codex has not
+ * created its database yet. Any other failure (permissions, a path through a
+ * file) is not "absent" and stays for the lookup to report as unreadable.
+ */
+export function codexStateDbAbsent(path: string): boolean {
+  try {
+    statSync(path);
+    return false;
+  } catch (err) {
+    return (err as { code?: string }).code === "ENOENT";
+  }
+}
+
 /** The working directory as configured and as the filesystem resolves it. */
 function cwdCandidates(workingDirectory: string): string[] {
   const configured = resolve(workingDirectory);

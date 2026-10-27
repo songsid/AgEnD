@@ -66,6 +66,11 @@ function writeState(threads: Array<{ id: string; cwd: string; recency: number }>
   db.close();
 }
 
+/** A state DB that exists and cannot be read. A missing one is a Codex home that never ran (#2743). */
+function unreadableState(path = join(shared, "state_5.sqlite")): void {
+  writeFileSync(path, "this is not a SQLite database");
+}
+
 function launch(workingDirectory: string, extra: Partial<CliBackendConfig> = {}) {
   const backend = new CodexBackend(join(root, "instances", "worker"));
   const cmd = backend.buildCommand({
@@ -96,6 +101,7 @@ describe("Codex launch resumes this instance's own session (#984)", () => {
 
   it("with an unreadable session DB starts fresh and warns when a sibling shares the repository", () => {
     const { a, b } = worktrees();
+    unreadableState();
     const { cmd, warning, again } = launch(a, { peerWorkingDirectories: () => [b] });
     expect(cmd).not.toContain(" resume");
     expect(warning).toMatch(/could not be read/);
@@ -105,6 +111,7 @@ describe("Codex launch resumes this instance's own session (#984)", () => {
 
   it("with an unreadable session DB falls back to --last and warns when no sibling shares the repository", () => {
     const { a } = worktrees();
+    unreadableState();
     const lone = join(root, "lone");
     mkdirSync(lone);
     const { cmd, warning } = launch(a, { peerWorkingDirectories: () => [lone] });
@@ -114,6 +121,7 @@ describe("Codex launch resumes this instance's own session (#984)", () => {
 
   it("with an unreadable session DB and no peer list refuses --last", () => {
     const { a } = worktrees();
+    unreadableState();
     const { cmd, warning } = launch(a);
     expect(cmd).not.toContain(" resume");
     expect(warning).toMatch(/NEW conversation/);
@@ -325,9 +333,23 @@ describe("the lookup reads the state DB Codex actually writes (#1028)", () => {
     expect(warning).toMatch(/could not be read/);
   });
 
-  it("with no DB in either home stays unreadable and keeps the warned fallback", () => {
+  it("with no DB in either home and no conversation for this directory starts fresh quietly (#2743)", () => {
     const { a, b } = worktrees();
     const { build } = instance();
+    const { cmd, warning } = build(a, [b]);
+    expect(cmd).not.toContain(" resume");
+    expect(warning).toBeNull();
+  });
+
+  it("with no DB in either home but a conversation for this directory stays unreadable and keeps the warned fallback", () => {
+    const { a, b } = worktrees();
+    const { build } = instance();
+    const day = join(shared, "sessions", "2026", "10", "27");
+    mkdirSync(day, { recursive: true });
+    writeFileSync(join(day, `rollout-2026-10-27T10-00-00-${OWN}.jsonl`), [
+      { type: "session_meta", payload: { id: OWN, cwd: a, source: "cli" } },
+      { type: "event_msg", payload: { type: "task_started" } },
+    ].map(l => JSON.stringify(l)).join("\n") + "\n");
     const { cmd, warning } = build(a, [b]);
     expect(cmd).not.toContain(" resume");
     expect(warning).toMatch(/could not be read/);

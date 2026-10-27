@@ -35,7 +35,7 @@ import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels,
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
-import { type CodexResumePlan, codexSiblingState, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
+import { type CodexResumePlan, type ExactCwdSession, codexSiblingState, codexStateDbAbsent, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
 
@@ -2186,9 +2186,17 @@ export class CodexBackend implements CliBackend {
     // silently start fresh or resume a session this home cannot see.
     const instanceDb = join(this.isolatedCodexHome, "state_5.sqlite");
     const sharedDb = join(this.sharedCodexHome, "state_5.sqlite");
-    const lookup = existsSync(instanceDb) || sharedDb === instanceDb
-      ? findExactCwdCodexSession(instanceDb, config.workingDirectory)
-      : findExactCwdCodexSession(sharedDb, config.workingDirectory);
+    const stateDb = existsSync(instanceDb) || sharedDb === instanceDb ? instanceDb : sharedDb;
+    // No database at all is a Codex home that never ran (a fresh install):
+    // there is nothing to resume, so it is a new conversation, not an
+    // unreadable database (SQLITE_CANTOPEN) falling back to `--last`. Only
+    // while no rollout in either home shows a turn in this directory: with one, the
+    // database is missing for a reason AgEnD cannot see (a renamed file in a
+    // new Codex), and that keeps today's unreadable path.
+    const lookup: ExactCwdSession = codexStateDbAbsent(stateDb)
+      && [this.isolatedCodexHome, this.sharedCodexHome].every(home => !newestMissedCwdRollout(join(home, "sessions"), config.workingDirectory))
+      ? { kind: "none" }
+      : findExactCwdCodexSession(stateDb, config.workingDirectory);
     return planCodexResume(lookup, () => {
       // Without the fleet's peer list the repository cannot be proven
       // sibling-free, so `--last` stays off the table.

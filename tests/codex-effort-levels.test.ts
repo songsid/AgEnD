@@ -32,7 +32,7 @@ const model = (slug: string, efforts: string[]) => ({
 function backendFor(modelSlug: string | undefined): CodexBackend {
   const b = new CodexBackend(instanceDir);
   if (modelSlug) {
-    b.buildCommand({ model: modelSlug, mcpServers: {} } as never);
+    b.buildCommand({ model: modelSlug, workingDirectory: instanceDir, mcpServers: {} } as never);
   }
   return b;
 }
