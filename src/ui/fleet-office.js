@@ -1445,7 +1445,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       }) : null}
       ${layout ? html`<${LayoutEditor} key=${layout.id} base=${layout.base} start=${layout.start} place=${placeOverlay} dock=${!fs} members=${layoutMembers}
         stale=${layoutStale ? t("orgl.stale") : ""} onChange=${onDraft} onSave=${saveLayout} onClose=${closeLayout} />` : null}
-      ${tipText ? html`<div ref=${tipRef} class="oo-tip" role="tooltip">
+      ${tipText && tip !== card ? html`<div ref=${tipRef} class="oo-tip" role="tooltip">
         <strong>${tipText.primary}</strong>${tipText.secondary ? html` <span class="muted mono">${tipText.secondary}</span>` : null}
         <div>${tipText.sub}</div><div class="muted">${caption(officePose(tipDesk.node.state), tipDesk.node.state)}</div>
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}

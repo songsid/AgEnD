@@ -960,6 +960,7 @@ describe("the Office view on the page", () => {
   it("the Studio style (zones): kept per browser; everyone in their state's area, drawn with bubbles and active furniture; a desk opens its chat", async () => {
     const proto = MiniElement.prototype as any;
     proto.getContext = function () { return (this._ctx ??= fakeCtx()); };
+    levels = { enabled: true, unit: 100_000, detail: false, levels: { quill: { level: 77 } } };   // #2661: its badge on the tag
     try {
       await office();
       const style = p.root.querySelectorAll(".oo-bar select")[1];
@@ -971,6 +972,7 @@ describe("the Office view on the page", () => {
       await settle(4);
       const texts = main.calls.filter(([k]: any) => k === "fillText").map(([, a]: any) => a[0]);
       expect(texts).toContain("quill");                                         // a name tag under feet
+      expect(texts).toContain("77");                                            // #2661: and its level badge
       expect(texts.some((x: string) => ["Need you!", "A question for you", "Over here!", "Ouch, crashed", "Help!", "Hmm, stuck?", "Still thinking…"].some((l) => l.startsWith(x) && x.length > 0))).toBe(true);
       // #2540: the canvas fills the stage (960 px here); the 1280×720 scene is fitted in it.
       expect(p.root.querySelector(".oo-canvas").style.width).toBe("960px");

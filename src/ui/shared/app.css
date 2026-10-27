@@ -1815,6 +1815,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
 .oo-card.sheet { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; transform: none; z-index: 40; border-radius: var(--r-lg) var(--r-lg) 0 0;
   padding-bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px)); touch-action: none; }
+/* On a phone the tab bar is fixed at the window's foot (z 35): the sheet sits above it. */
+@media (max-width: 899px) {
+  .oo-card.sheet { bottom: calc(56px + env(safe-area-inset-bottom, 0px)); padding-bottom: var(--s-3); }
+  .kb-open .oo-card.sheet { bottom: 0; }
+}
 .oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
 .oo-card-head { display: flex; gap: var(--s-3); align-items: flex-start; }
 .oo-card-avatar { position: relative; flex: none; width: 56px; height: 56px; border-radius: var(--r-md); background: var(--surface-2); }
@@ -1834,7 +1839,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-rows { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2) var(--s-3); margin: var(--s-3) 0 0; }
 .oo-card-rows > div { min-width: 0; }
 .oo-card-rows dt { font-size: var(--fs-xs); color: var(--text-3); }
-.oo-card-rows dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oo-card-rows dd { margin: 0; overflow-wrap: anywhere; }
 .oo-card-now { margin-top: var(--s-3); overflow-wrap: anywhere; }
 .oo-card-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-3); }
 .oo-badge { display: inline-block; min-width: 18px; padding: 0 4px; box-sizing: border-box; font-size: 10px; font-weight: var(--fw-semibold); line-height: 16px; text-align: center;
