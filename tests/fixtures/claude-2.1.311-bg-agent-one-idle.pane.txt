@@ -1,0 +1,36 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● The precheck is still running.
+
+  .
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 進度
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · /tasks to see subagents
+
+  ● main
+  ◯ general-purpose  Checking precheck process status                                           3m 6s · ↓ 56.8k tokens

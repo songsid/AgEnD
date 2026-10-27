@@ -1,0 +1,36 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● The other precheck is still running.
+
+✻ Waiting for 1 background agent to finish
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 進度
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on · 1 shell
+
+  ● main
+  ◯ general-purpose  Re-running precheck.py on paths                                           2m 46s · ↓ 47.5k tokens
+  ◯ general-purpose  Searching kiro-cli 2.34.1 changelog                                       2m 42s · ↓ 51.5k tokens

@@ -387,6 +387,24 @@ const CLAUDE_BOX_RULE = /^─{10,}$/;
  * than this many non-blank rows below the lower rule and that rule is not the live box's (a quoted capture, a dialog).
  */
 const CLAUDE_BOX_FOOTER_MAX_ROWS = 4;
+/**
+ * A row of the session list Claude paints at the very bottom while background agents run (2.1.309–2.1.311, the leader's
+ * recorded pane): `● main` (the session in view, filled) over one `◯ <agent>  <activity>  3m 6s · ↓ 56.8k tokens` row per
+ * agent. One row per agent, so it is not bounded by CLAUDE_BOX_FOOTER_MAX_ROWS.
+ */
+const CLAUDE_SESSION_LIST_ROW = /^ {2}([●◯]) \S/;
+
+/** How many rows at the bottom of `rows` are Claude's session list: two or more list rows, exactly one of them filled. */
+function claudeSessionListRows(rows: readonly string[]): number {
+  let n = 0, filled = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const m = CLAUDE_SESSION_LIST_ROW.exec(rows[i]!);
+    if (!m) break;
+    n++;
+    if (m[1] === "●") filled++;
+  }
+  return n >= 2 && filled === 1 ? n : 0;
+}
 /** Rows a box may hold before the reader stops believing it is one (Claude grows the box with the text). */
 const CLAUDE_BOX_MAX_ROWS = 40;
 /** The placeholder an empty box shows while messages are queued (2.1.293); it is not input. */
@@ -478,7 +496,10 @@ export function claudeSwitchTargetMatches(requested: string, shown: string): boo
 const switchDialogActive = (pane: string) => claudeSwitchDialog(pane) !== null;
 
 export function readClaudeInputBox(pane: string): InputBox | null {
-  const rows = claudeRows(pane).map(row => row.trimEnd());
+  const all = claudeRows(pane).map(row => row.trimEnd());
+  // The background agents' session list sits under the footer; with it counted, two agents hid the box and every
+  // delivery waited for all of them to finish (the leader, 2026-10-27).
+  const rows = all.slice(0, all.length - claudeSessionListRows(all));
   let bottom = -1;
   for (let i = rows.length - 1, footer = 0; i >= 0; i--) {
     if (CLAUDE_BOX_RULE.test(rows[i]!)) { bottom = i; break; }

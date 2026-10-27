@@ -1,0 +1,36 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+❯ [user:someone via discord, id:1] status?
+  (Reply using the reply tool — do NOT respond with direct text)
+  ctrl+x ctrl+s to send now
+
+· Improvising… (24s · ↓ 1.4k tokens · thinking with high effort)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  paste again to expand
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
+  ● main
+  ◯ general-purpose  Waiting on claude precheck output                                         11m 8s · ↓ 56.8k tokens

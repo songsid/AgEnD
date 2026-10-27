@@ -1,0 +1,36 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● 2 background agents launched (↓ to manage)
+   ├ Precheck claude 2.1.311
+   └ Precheck kiro-cli 2.34.2
+
+* Crafting… (28s · ↓ 1.1k tokens)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
+  ● main
+  ◯ general-purpose  Precheck claude 2.1.311                                                       7s · ↓ 41.5k tokens
+  ◯ general-purpose  Precheck kiro-cli 2.34.2                                                      3s · ↓ 41.5k tokens
+  ◯ general-purpose  Precheck agy 1.4.8                                                                             0s
