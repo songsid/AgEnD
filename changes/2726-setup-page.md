@@ -1,4 +1,0 @@
----
-section: Changed
----
-- **The setup page no longer requires a working directory, and it comes in 繁體中文.** On `agend setup` (the page the Windows installer opens), the working directory may be left empty, on both Web only and bot setups. The agent then gets its own folder, `~/.agend/workspaces/<name>`, the one AgEnD makes for an agent created without a directory. The page shows that path under the field, creates the folder once the host confirms, and fleet.yaml records the full path. A directory you enter must still be absolute, and an existing agent keeps its own. The setup page and the code page are now in English and 繁體中文: they follow the browser's language, a button at the top switches, and the choice carries over to the dashboard on the same address. Every error the host can show is translated, and the backend sign-in cards follow the page's language, in the dashboard too (#2726).
