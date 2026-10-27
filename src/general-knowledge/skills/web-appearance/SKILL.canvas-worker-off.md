@@ -312,6 +312,8 @@ tools are not in your list), you can publish them yourself instead of asking a p
   built-in style (pixel, studio, cozy).
 - Every change is logged with each picture's sha256 and told to the fleet's admins. At most **20 batches and 200 MiB an
   hour**: one call is one batch (up to 16 packs), so send a whole set of fixes in one `packs: [...]`.
+- `office_pack_check` has its own allowance: at most **60 checks and 1 GiB (as sent) an hour**. Every check counts,
+  passed or refused, so fix what a refusal names before checking again. `office_pack_list` shows `check_left`.
 
 The skin-pack manifest format — every key, its ranges, a minimal example — and the limits are in the Office guide:
 [docs/office.md → Make a skin pack](https://github.com/songsid/AgEnD/blob/main/docs/office.md#make-a-skin-pack). Point people there too when they ask how the Office works.

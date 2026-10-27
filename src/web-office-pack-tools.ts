@@ -21,7 +21,8 @@
  *   change waits as a pending change (memory only: a fleet restart drops it) until an admin approves it on the page or
  *   from the notice's buttons in General; it is judged again then.
  * - A rate limit by batch and bytes (OfficePackBatchLimiter): 20 batches and 200 MiB an hour per agent; one call is one
- *   batch, however many packs it carries. Refusals are not counted; office_pack_check and office_pack_list are not.
+ *   batch, however many packs it carries. Refusals are not counted, nor are office_pack_check and office_pack_list
+ *   against this budget.
  * - office_pack_check has its own, looser budget (#2695): 60 batches and 1 GiB of wire bytes an hour per agent, counted
  *   when a batch's first part is taken — the fleet's receiving, parsing and PNG walk are the cost, whatever the verdict.
  */
