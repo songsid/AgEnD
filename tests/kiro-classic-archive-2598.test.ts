@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -10,10 +10,11 @@ import { KiroBackend, kiroV1DbPath } from "../src/backend/kiro.js";
 import { kiroAgentName, kiroFleetTag } from "../src/backend/kiro-agent.js";
 import { sharedKiroV2StoreLane } from "../src/backend/kiro-v2-store.js";
 
-const fsTrace = vi.hoisted(() => ({ paths: new Map<number, string>(), syncs: [] as string[], fail: "" }));
+const fsTrace = vi.hoisted(() => ({ paths: new Map<number, string>(), syncs: [] as string[], fail: "", onStat: null as ((path: string) => void) | null }));
 vi.mock("node:fs", async original => {
   const fs = await original<typeof import("node:fs")>();
   return { ...fs,
+    lstatSync: (...args: any[]) => { fsTrace.onStat?.(String(args[0])); return (fs.lstatSync as any)(...args); },
     openSync: (...args: any[]) => { const fd = (fs.openSync as any)(...args); fsTrace.paths.set(fd, String(args[0])); return fd; },
     closeSync: (fd: number) => { fsTrace.paths.delete(fd); return fs.closeSync(fd); },
     fsyncSync: (fd: number) => { const path = fsTrace.paths.get(fd) ?? "unknown"; fsTrace.syncs.push(path); if (path === fsTrace.fail) throw new Error("directory fsync failed"); return fs.fsyncSync(fd); },
@@ -25,7 +26,7 @@ beforeAll(() => {
   writeFileSync(join(psRoot, "ps"), "#!/bin/sh\nprintf '1 offline-fixture\\n'\n"); chmodSync(join(psRoot, "ps"), 0o700);
   process.env.PATH = psRoot + ":" + savedPath;
 });
-afterEach(() => { fsTrace.syncs = []; fsTrace.fail = ""; vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { fsTrace.syncs = []; fsTrace.fail = ""; fsTrace.onStat = null; vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 afterAll(() => { sharedKiroV2StoreLane.close(); process.env.PATH = savedPath; rmSync(psRoot, { recursive: true, force: true }); });
 
 function fixture() {
@@ -118,6 +119,73 @@ describe("exact frozen classic archive (#2598)", () => {
 });
 
 describe("upgrade launch after ambiguous (2 matches) abandoned the pin", () => {
+  // Filesystem ctime cannot be backdated. Move only the synthetic carry's creation
+  // forward so these newly created fixtures model the real July files before October's carry.
+  const carryAfterFiles = (f: ReturnType<typeof fixture>) => { f.meta.created_at = new Date(Date.now() + 60_000).toISOString(); f.saveMeta(); };
+  const unknownId = "127c2b88-ca06-4225-bf48-8b663d8f1db2";
+  it.each(["", "{", "null", "{}", '{"cwd":null}'])("old unknown metadata %j with an old empty log does not block the carry", text => {
+    const f = fixture(); f.abandon();
+    const path = join(f.input.sessionsDir, unknownId + ".json"), log = path + "l";
+    writeFileSync(path, text); writeFileSync(log, ""); carryAfterFiles(f);
+    const before = statSync(path), result = prepareKiroCarryForLaunch(f.input);
+    expect(result.repaired).toBe(true); expect(own(f)).toBe(f.input.sessionId); expect(f.rows()).toHaveLength(2);
+    expect(readFileSync(path, "utf8")).toBe(text); expect(statSync(path).mtimeMs).toBe(before.mtimeMs); expect(statSync(log).size).toBe(0);
+  });
+  it("old unknown metadata with no log does not block the carry", () => {
+    const f = fixture(); f.abandon(); writeFileSync(join(f.input.sessionsDir, unknownId + ".json"), ""); carryAfterFiles(f);
+    expect(prepareKiroCarryForLaunch(f.input).repaired).toBe(true);
+  });
+  it.each(["", "{", "{}"])("recent unknown metadata %j holds with its filename before changing the pin or DB", text => {
+    const f = fixture(); f.abandon(); writeFileSync(join(f.input.sessionsDir, unknownId + ".json"), text); const before = f.rows();
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(new RegExp(unknownId + ".*unknown cwd"));
+    expect(own(f)).toBeNull(); expect(f.rows()).toEqual(before); expect(existsSync(join(f.input.agendHome, "kiro-classic-archives"))).toBe(false);
+  });
+  it("the backend hold error includes the unknown filename for the notice and Log", async () => {
+    const f = fixture(); f.abandon(); writeFileSync(join(f.input.sessionsDir, unknownId + ".json"), "");
+    const b = new KiroBackend(join(f.root, "instance"), { version: "2.34.0", source: "version", supportsLegacyUi: true, supportsTui: true, supportsV3: true,
+      agentEngines: ["v1", "v2", "v3"], supportsEffortFlag: true, supportsInstanceAgent: true });
+    const config = { instanceName: f.input.instance, instanceDir: join(f.root, "instance"), workingDirectory: f.input.workingDirectory,
+      mcpServers: {}, kiroUi: "tui" as const, model: "claude-sonnet-4.6" };
+    await b.prepareLaunch(config);
+    expect(() => b.writeConfig(config)).toThrow(unknownId + ".json");
+    expect(() => b.buildCommand(config)).toThrow(unknownId + ".json"); expect(own(f)).toBeNull(); expect(f.rows()).toHaveLength(3);
+  });
+  it("old unknown metadata with a nonempty log remains a hold", () => {
+    const f = fixture(); f.abandon(); const path = join(f.input.sessionsDir, unknownId + ".json");
+    writeFileSync(path, ""); writeFileSync(path + "l", "possible work"); carryAfterFiles(f);
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(unknownId); expect(own(f)).toBeNull(); expect(f.rows()).toHaveLength(3);
+  });
+  it("a log modified after the carry keeps otherwise old unknown metadata held", () => {
+    const f = fixture(); f.abandon(); const path = join(f.input.sessionsDir, unknownId + ".json");
+    writeFileSync(path, ""); writeFileSync(path + "l", ""); carryAfterFiles(f);
+    const after = new Date(Date.parse(f.meta.created_at) + 1000); utimesSync(path + "l", after, after);
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(unknownId); expect(own(f)).toBeNull();
+  });
+  it("backdating mtime alone cannot disguise a recent unknown file", () => {
+    const f = fixture(); f.abandon(); const path = join(f.input.sessionsDir, unknownId + ".json");
+    writeFileSync(path, ""); const old = new Date("2026-07-16T06:24:13Z"); utimesSync(path, old, old);
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(unknownId); expect(own(f)).toBeNull();
+  });
+  it.each(["metadata", "log"])("a symlinked %s cannot establish an old unknown session", which => {
+    const f = fixture(); f.abandon(); const path = join(f.input.sessionsDir, unknownId + ".json"), target = join(f.root, "empty");
+    writeFileSync(target, ""); writeFileSync(path, "");
+    if (which === "metadata") rmSync(path);
+    symlinkSync(target, which === "metadata" ? path : path + "l"); carryAfterFiles(f);
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(unknownId); expect(own(f)).toBeNull();
+  });
+  it("rechecks an ignored old unknown file before restoring the pin", () => {
+    const f = fixture(); f.abandon(); const path = join(f.input.sessionsDir, unknownId + ".json");
+    writeFileSync(path, ""); carryAfterFiles(f); let reads = 0;
+    fsTrace.onStat = p => { if (p === path && ++reads === 2) writeFileSync(path, "changed"); };
+    expect(() => prepareKiroCarryForLaunch(f.input)).toThrow(/changed during proof/);
+    expect(own(f)).toBeNull(); expect(f.rows()).toHaveLength(3);
+  });
+  it("a proven other cwd is skipped even if recent and containing work", () => {
+    const f = fixture(); f.abandon(); f.empty(unknownId, "other cwd's work");
+    const path = join(f.input.sessionsDir, unknownId + ".json"), meta = JSON.parse(readFileSync(path, "utf8"));
+    meta.cwd = join(f.root, "another-cwd"); writeFileSync(path, JSON.stringify(meta));
+    expect(prepareKiroCarryForLaunch(f.input).repaired).toBe(true); expect(readFileSync(path + "l", "utf8")).toBe("other cwd's work");
+  });
   it("re-pins the original carry before discovery, archives classic, and ignores two empty sessions", async () => {
     const f = fixture(); f.abandon(); f.empty("empty-1"); f.empty("empty-2"); expect(own(f)).toBeNull();
     const b = new KiroBackend(join(f.root, "instance"), { version: "2.34.0", source: "version", supportsLegacyUi: true, supportsTui: true, supportsV3: true,

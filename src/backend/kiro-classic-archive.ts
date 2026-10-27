@@ -5,7 +5,7 @@
 import { isDeepStrictEqual } from "node:util";
 import Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, constants, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, readdirSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { kiroAgentName, kiroFleetTag } from "./kiro-agent.js";
@@ -199,15 +199,46 @@ export function proveClassicHistoryCoverage(input: KiroClassicArchiveInput): voi
   if (!log.unchanged()) fail();
 }
 
+/** Unknown cwd is safe to ignore only for stable, owned files older than the carry, with no possible replacement work. */
+function oldUnknownMetadata(input: KiroClassicArchiveInput, name: string, created: number): (() => boolean) | null {
+  const path = join(input.sessionsDir, name), logPath = join(input.sessionsDir, name.slice(0, -5) + ".jsonl");
+  try {
+    const before = lstatSync(path);
+    const old = (st: Stats) => st.isFile() && (!process.getuid || st.uid === process.getuid())
+      && Number.isFinite(st.mtimeMs) && Number.isFinite(st.ctimeMs) && st.mtimeMs < created && st.ctimeMs < created;
+    if (!old(before)) return null;
+    const log = () => { try { return lstatSync(logPath); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; } };
+    const logBefore = log();
+    if (logBefore && (!old(logBefore) || logBefore.size !== 0)) return null;
+    const same = (a: Stats, b: Stats) => b.isFile()
+      && a.dev === b.dev && a.ino === b.ino && a.uid === b.uid && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+    return () => {
+      try {
+        const logAfter = log();
+        return same(before, lstatSync(path)) && (logBefore ? !!logAfter && same(logBefore, logAfter) : logAfter === null);
+      } catch { return false; }
+    };
+  } catch { return null; }
+}
+
 /** An abandoned pin is recoverable only while every later unowned same-cwd alternative remains empty. Leave all of them untouched. */
 function proveNoReplacementWork(input: KiroClassicArchiveInput): void {
   const original = JSON.parse(snapshotKiroTuiFile(join(input.sessionsDir, `${input.sessionId}.json`), 8 * 1024 * 1024).text);
   const created = Date.parse(original.created_at);
   if (!Number.isFinite(created)) throw new Error("Carried creation time is unavailable");
+  const unknownChecks: { name: string; unchanged: () => boolean }[] = [];
   for (const name of readdirSync(input.sessionsDir)) {
     if (!name.endsWith(".json") || name === `${input.sessionId}.json`) continue;
-    const file = snapshotKiroTuiFile(join(input.sessionsDir, name), 8 * 1024 * 1024), meta = JSON.parse(file.text);
-    if (typeof meta.cwd !== "string" || kiroCanonicalDirectory(meta.cwd) !== kiroCanonicalDirectory(input.workingDirectory)) continue;
+    let file: ReturnType<typeof snapshotKiroTuiFile>, meta: any;
+    try {
+      file = snapshotKiroTuiFile(join(input.sessionsDir, name), 8 * 1024 * 1024); meta = JSON.parse(file.text);
+      if (!meta || typeof meta.cwd !== "string" || !meta.cwd.trim()) throw new Error("Unknown cwd");
+    } catch {
+      const unchanged = oldUnknownMetadata(input, name, created);
+      if (!unchanged) throw new Error(`Replacement session metadata ${JSON.stringify(name)} has unknown cwd and may contain newer work; automatic repair held`);
+      unknownChecks.push({ name, unchanged }); continue;
+    }
+    if (kiroCanonicalDirectory(meta.cwd) !== kiroCanonicalDirectory(input.workingDirectory)) continue;
     if (Date.parse(meta.created_at) < created) continue;
     if (!safeId.test(meta.session_id) || name !== `${meta.session_id}.json`) throw new Error("Replacement session metadata is ambiguous");
     const claim = join(input.agendHome, "kiro-identity", "claims", "v2", meta.session_id);
@@ -219,6 +250,7 @@ function proveNoReplacementWork(input: KiroClassicArchiveInput): void {
     const log = snapshotKiroTuiFile(join(input.sessionsDir, `${meta.session_id}.jsonl`), 1);
     if (log.text.length !== 0 || !file.unchanged() || !log.unchanged()) throw new Error("An unowned replacement session has work or changed; automatic repair held");
   }
+  for (const check of unknownChecks) if (!check.unchanged()) throw new Error(`Replacement session metadata ${JSON.stringify(check.name)} changed during proof; automatic repair held`);
 }
 /** This runs before discovery can adopt one of the empty sessions left by the old retry escape hatch. */
 export function repairAbandonedKiroCarry(input: KiroClassicArchiveInput, stopped = () => assertKiroConversationStopped(input)): boolean {
