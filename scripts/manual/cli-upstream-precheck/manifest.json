@@ -785,7 +785,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/daemon.ts",
-     "line": 1195,
+     "line": 1200,
      "symbol": "detectMalformedClaudeToolCall.closingTags"
     },
     {
@@ -1613,7 +1613,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1621,7 +1621,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1629,7 +1629,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1637,7 +1637,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 4724,
+     "line": 4729,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -1777,7 +1777,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1785,7 +1785,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1793,7 +1793,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1801,7 +1801,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12411,
+     "line": 12424,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1809,7 +1809,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12412,
+     "line": 12425,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1817,7 +1817,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12412,
+     "line": 12425,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1825,7 +1825,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12412,
+     "line": 12425,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1833,7 +1833,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12412,
+     "line": 12425,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1841,7 +1841,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12412,
+     "line": 12425,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1849,7 +1849,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12412,
+     "line": 12425,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1857,7 +1857,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12413,
+     "line": 12426,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -1865,7 +1865,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12503,
+     "line": 12516,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -1873,7 +1873,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12615,
+     "line": 12628,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -1881,7 +1881,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12615,
+     "line": 12628,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -2289,7 +2289,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 120,
+     "line": 121,
      "symbol": "readKiroComposer"
     },
     {
@@ -2297,7 +2297,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 120,
+     "line": 121,
      "symbol": "readKiroComposer"
     },
     {
@@ -2305,7 +2305,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 120,
+     "line": 121,
      "symbol": "readKiroComposer"
     },
     {
@@ -2313,7 +2313,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 120,
+     "line": 121,
      "symbol": "readKiroComposer"
     },
     {
@@ -2321,7 +2321,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 120,
+     "line": 121,
      "symbol": "readKiroComposer"
     },
     {
@@ -2329,7 +2329,7 @@
      "kind": "template",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 137,
+     "line": 138,
      "symbol": "kiroPlaceholderMode.working"
     },
     {
@@ -2337,7 +2337,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 138,
+     "line": 139,
      "symbol": "kiroPlaceholderMode"
     },
     {
@@ -2345,7 +2345,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 138,
+     "line": 139,
      "symbol": "kiroPlaceholderMode"
     },
     {
@@ -2353,7 +2353,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 139,
+     "line": 140,
      "symbol": "kiroPlaceholderMode"
     },
     {
@@ -2361,7 +2361,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 139,
+     "line": 140,
      "symbol": "kiroPlaceholderMode"
     },
     {
@@ -2369,7 +2369,7 @@
      "kind": "template",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 140,
+     "line": 141,
      "symbol": "kiroPlaceholderMode.idle"
     },
     {
@@ -2377,7 +2377,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 142,
+     "line": 143,
      "symbol": "kiroPlaceholderMode"
     },
     {
@@ -2385,7 +2385,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 143,
+     "line": 144,
      "symbol": "kiroPlaceholderMode"
     },
     {
@@ -2393,7 +2393,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 174,
+     "line": 175,
      "symbol": "readKiroCommandComposer"
     },
     {
@@ -2401,7 +2401,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 174,
+     "line": 175,
      "symbol": "readKiroCommandComposer"
     },
     {
@@ -2409,7 +2409,7 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/kiro.ts",
-     "line": 207,
+     "line": 208,
      "symbol": "readKiroSessionIdAlert"
     },
     {
@@ -2417,7 +2417,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/kiro.ts",
-     "line": 208,
+     "line": 209,
      "symbol": "readKiroSessionIdAlert.id"
     },
     {
@@ -2425,7 +2425,7 @@
      "kind": "template",
      "surface": "resume",
      "file": "src/backend/kiro.ts",
-     "line": 209,
+     "line": 210,
      "symbol": "readKiroSessionIdAlert"
     },
     {
@@ -2433,7 +2433,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 222,
+     "line": 223,
      "symbol": "readKiroCollapsedPasteLines.m"
     },
     {
@@ -2441,7 +2441,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 250,
+     "line": 251,
      "symbol": "kiroTakeoverActive"
     },
     {
@@ -2449,7 +2449,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 253,
+     "line": 254,
      "symbol": "kiroTakeoverActive"
     },
     {
@@ -2457,7 +2457,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 308,
+     "line": 309,
      "symbol": "fullScreenProgramAtBottom"
     },
     {
@@ -2465,7 +2465,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 308,
+     "line": 309,
      "symbol": "fullScreenProgramAtBottom"
     },
     {
@@ -2473,7 +2473,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 308,
+     "line": 309,
      "symbol": "fullScreenProgramAtBottom"
     },
     {
@@ -2481,7 +2481,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 311,
+     "line": 312,
      "symbol": "fullScreenProgramAtBottom"
     },
     {
@@ -2489,7 +2489,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 311,
+     "line": 312,
      "symbol": "fullScreenProgramAtBottom"
     },
     {
@@ -2497,7 +2497,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 359,
+     "line": 360,
      "symbol": "KIRO_MODEL_PICKER_HEADER"
     },
     {
@@ -2505,7 +2505,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 359,
+     "line": 360,
      "symbol": "KIRO_MODEL_PICKER_HEADER"
     },
     {
@@ -2513,7 +2513,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 377,
+     "line": 378,
      "symbol": "KIRO_TRUST_HEADER"
     },
     {
@@ -2521,7 +2521,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 378,
+     "line": 379,
      "symbol": "KIRO_TRUST_PATTERN"
     },
     {
@@ -2529,7 +2529,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 379,
+     "line": 380,
      "symbol": "KIRO_TRUST_OPTIONS"
     },
     {
@@ -2537,7 +2537,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 379,
+     "line": 380,
      "symbol": "KIRO_TRUST_OPTIONS"
     },
     {
@@ -2545,7 +2545,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 417,
+     "line": 418,
      "symbol": "kiroTrustPromptState"
     },
     {
@@ -2553,7 +2553,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 450,
+     "line": 451,
      "symbol": "KIRO_WORKSPACE_TRUST_HEADER"
     },
     {
@@ -2561,7 +2561,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 451,
+     "line": 452,
      "symbol": "KIRO_WORKSPACE_TRUST_PATTERN"
     },
     {
@@ -2569,7 +2569,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 452,
+     "line": 453,
      "symbol": "KIRO_WORKSPACE_TRUST_OPTIONS"
     },
     {
@@ -2577,7 +2577,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 452,
+     "line": 453,
      "symbol": "KIRO_WORKSPACE_TRUST_OPTIONS"
     },
     {
@@ -2585,7 +2585,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 453,
+     "line": 454,
      "symbol": "KIRO_WORKSPACE_TRUST_GRANT"
     },
     {
@@ -2593,7 +2593,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 455,
+     "line": 456,
      "symbol": "KIRO_WORKSPACE_TRUST_FOLDER"
     },
     {
@@ -2601,7 +2601,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 456,
+     "line": 457,
      "symbol": "KIRO_WORKSPACE_TRUST_HOME"
     },
     {
@@ -2609,7 +2609,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 457,
+     "line": 458,
      "symbol": "KIRO_WORKSPACE_TRUST_TAIL"
     },
     {
@@ -2617,7 +2617,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 458,
+     "line": 459,
      "symbol": "KIRO_WORKSPACE_TRUST_REVOKE"
     },
     {
@@ -2625,7 +2625,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 478,
+     "line": 479,
      "symbol": "kiroWorkspaceTrustState"
     },
     {
@@ -2633,7 +2633,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/kiro.ts",
-     "line": 480,
+     "line": 481,
      "symbol": "kiroWorkspaceTrustState"
     },
     {
@@ -2641,7 +2641,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 537,
+     "line": 538,
      "symbol": "KIRO_MCP_INPUT_HEADER"
     },
     {
@@ -2649,7 +2649,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 538,
+     "line": 539,
      "symbol": "KIRO_MCP_INPUT_FOOTER"
     },
     {
@@ -2657,7 +2657,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 538,
+     "line": 539,
      "symbol": "KIRO_MCP_INPUT_FOOTER"
     },
     {
@@ -2665,7 +2665,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 567,
+     "line": 568,
      "symbol": "KIRO_QUESTION_FOOTER"
     },
     {
@@ -2673,7 +2673,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 567,
+     "line": 568,
      "symbol": "KIRO_QUESTION_FOOTER"
     },
     {
@@ -2681,7 +2681,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 567,
+     "line": 568,
      "symbol": "KIRO_QUESTION_FOOTER"
     },
     {
@@ -2689,7 +2689,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 567,
+     "line": 568,
      "symbol": "KIRO_QUESTION_FOOTER"
     },
     {
@@ -2697,7 +2697,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 606,
+     "line": 607,
      "symbol": "KIRO_QUESTION_FREE_ROW"
     },
     {
@@ -2705,7 +2705,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 606,
+     "line": 607,
      "symbol": "KIRO_QUESTION_FREE_ROW"
     },
     {
@@ -2713,7 +2713,7 @@
      "kind": "string",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 665,
+     "line": 666,
      "symbol": "KIRO_MCP_INPUT_ACTIONS"
     },
     {
@@ -2721,7 +2721,7 @@
      "kind": "string",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 665,
+     "line": 666,
      "symbol": "KIRO_MCP_INPUT_ACTIONS"
     },
     {
@@ -2729,7 +2729,7 @@
      "kind": "string",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 665,
+     "line": 666,
      "symbol": "KIRO_MCP_INPUT_ACTIONS"
     },
     {
@@ -2737,7 +2737,7 @@
      "kind": "string",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 682,
+     "line": 683,
      "symbol": "readKiroMcpInputCard.body"
     },
     {
@@ -2745,7 +2745,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 722,
+     "line": 723,
      "symbol": "kiroUnavailableModelPickerActive"
     },
     {
@@ -2753,7 +2753,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 729,
+     "line": 730,
      "symbol": "kiroUnavailableModelPickerActive"
     },
     {
@@ -2761,7 +2761,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 729,
+     "line": 730,
      "symbol": "kiroUnavailableModelPickerActive"
     },
     {
@@ -2769,7 +2769,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 731,
+     "line": 732,
      "symbol": "kiroUnavailableModelPickerActive.cursorRow"
     },
     {
@@ -2777,7 +2777,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 839,
+     "line": 840,
      "symbol": "KIRO_V3_EASE_IN.header"
     },
     {
@@ -2785,7 +2785,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 840,
+     "line": 841,
      "symbol": "KIRO_V3_EASE_IN.options"
     },
     {
@@ -2793,7 +2793,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 840,
+     "line": 841,
      "symbol": "KIRO_V3_EASE_IN.options"
     },
     {
@@ -2801,7 +2801,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 840,
+     "line": 841,
      "symbol": "KIRO_V3_EASE_IN.options"
     },
     {
@@ -2809,7 +2809,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 843,
+     "line": 844,
      "symbol": "KIRO_AGENT_UPGRADE.header"
     },
     {
@@ -2817,7 +2817,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 844,
+     "line": 845,
      "symbol": "KIRO_AGENT_UPGRADE.options"
     },
     {
@@ -2825,7 +2825,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 844,
+     "line": 845,
      "symbol": "KIRO_AGENT_UPGRADE.options"
     },
     {
@@ -2833,7 +2833,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 855,
+     "line": 856,
      "symbol": "KIRO_CLASSIC_NUDGE.header"
     },
     {
@@ -2841,7 +2841,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 856,
+     "line": 857,
      "symbol": "KIRO_CLASSIC_NUDGE.options"
     },
     {
@@ -2849,7 +2849,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 869,
+     "line": 870,
      "symbol": "KIRO_CLASSIC_NUDGE_V3.options"
     },
     {
@@ -2857,7 +2857,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 872,
+     "line": 873,
      "symbol": "KIRO_V3_EASE_IN_V2_USER.header"
     },
     {
@@ -2865,7 +2865,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 873,
+     "line": 874,
      "symbol": "KIRO_V3_EASE_IN_V2_USER.options"
     },
     {
@@ -2873,7 +2873,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
-     "line": 876,
+     "line": 877,
      "symbol": "KIRO_AGENT_UPGRADE_V2_FORMAT.header"
     },
     {
@@ -2881,7 +2881,7 @@
      "kind": "string",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 1018,
+     "line": 1027,
      "symbol": "KIRO_NO_AUTO_UPDATE"
     },
     {
@@ -2889,7 +2889,7 @@
      "kind": "string",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 1157,
+     "line": 1180,
      "symbol": "readActiveKiroAgent"
     },
     {
@@ -2897,7 +2897,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1328,
+     "line": 1351,
      "symbol": "KIRO_RATE_LIMIT_SCREEN"
     },
     {
@@ -2905,7 +2905,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1329,
+     "line": 1352,
      "symbol": "KIRO_RATE_LIMIT_SCREEN"
     },
     {
@@ -2913,7 +2913,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1329,
+     "line": 1352,
      "symbol": "KIRO_RATE_LIMIT_SCREEN"
     },
     {
@@ -2921,7 +2921,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1335,
+     "line": 1358,
      "symbol": "KIRO_REQUEST_LIMIT_SCREEN"
     },
     {
@@ -2929,7 +2929,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1335,
+     "line": 1358,
      "symbol": "KIRO_REQUEST_LIMIT_SCREEN"
     },
     {
@@ -2937,7 +2937,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/kiro.ts",
-     "line": 1341,
+     "line": 1364,
      "symbol": "KIRO_AMBIGUOUS_RESUME_SCREEN"
     },
     {
@@ -2945,7 +2945,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/kiro.ts",
-     "line": 1341,
+     "line": 1364,
      "symbol": "KIRO_AMBIGUOUS_RESUME_SCREEN"
     },
     {
@@ -2953,7 +2953,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 1964,
+     "line": 2012,
      "symbol": "KiroBackend.agentSwitch.command"
     },
     {
@@ -2961,7 +2961,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 1995,
+     "line": 2043,
      "symbol": "KiroBackend.instructionsSource"
     },
     {
@@ -2969,7 +2969,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 2008,
+     "line": 2056,
      "symbol": "KiroBackend.getReadyPattern"
     },
     {
@@ -2977,7 +2977,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 2008,
+     "line": 2056,
      "symbol": "KiroBackend.getReadyPattern"
     },
     {
@@ -2985,7 +2985,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 2053,
+     "line": 2101,
      "symbol": "KiroBackend.getPaneActivity.announcements"
     },
     {
@@ -2993,7 +2993,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 2061,
+     "line": 2109,
      "symbol": "KiroBackend.getPaneActivity"
     },
     {
@@ -3001,7 +3001,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2069,
+     "line": 2117,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3009,7 +3009,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2069,
+     "line": 2117,
      "symbol": "KiroBackend.getErrorPatterns.type"
     },
     {
@@ -3017,7 +3017,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2069,
+     "line": 2117,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3025,7 +3025,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2070,
+     "line": 2118,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3033,7 +3033,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2112,
+     "line": 2160,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3041,7 +3041,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2112,
+     "line": 2160,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3049,7 +3049,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2112,
+     "line": 2160,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3057,7 +3057,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2113,
+     "line": 2161,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3065,7 +3065,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2113,
+     "line": 2161,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3073,7 +3073,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2114,
+     "line": 2162,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3081,7 +3081,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2114,
+     "line": 2162,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3089,7 +3089,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2118,
+     "line": 2166,
      "symbol": "KiroBackend.getErrorPatterns.type"
     },
     {
@@ -3097,7 +3097,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2139,
+     "line": 2187,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3105,7 +3105,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2139,
+     "line": 2187,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3113,7 +3113,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2169,
+     "line": 2217,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3121,7 +3121,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2169,
+     "line": 2217,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3129,7 +3129,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2169,
+     "line": 2217,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3137,7 +3137,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2192,
+     "line": 2240,
      "symbol": "KiroBackend.getErrorPatterns.type"
     },
     {
@@ -3145,7 +3145,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2213,
+     "line": 2261,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3153,7 +3153,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2213,
+     "line": 2261,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3161,7 +3161,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2213,
+     "line": 2261,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3169,7 +3169,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 2224,
+     "line": 2272,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -3177,7 +3177,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 2374,
+     "line": 2422,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {
@@ -3185,7 +3185,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 2374,
+     "line": 2422,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {
@@ -3193,7 +3193,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3201,7 +3201,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3209,7 +3209,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3477,7 +3477,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3485,7 +3485,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3493,7 +3493,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3657,7 +3657,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3665,7 +3665,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3673,7 +3673,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 838,
+     "line": 843,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {

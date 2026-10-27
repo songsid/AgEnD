@@ -7,11 +7,12 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { ReconcileKiroInstanceArgs } from "../src/outbound-schemas.js";
 import { TOOL_PROFILES } from "../src/tool-permissions.js";
 import { LogService } from "../src/log-service.js";
-import { t } from "../src/locale.js";
+import { getLocale, setLocale, t } from "../src/locale.js";
 import type { FleetConfig } from "../src/types.js";
 
 const roots: string[] = [];
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const originalLocale = getLocale();
+afterEach(() => { setLocale(originalLocale); vi.unstubAllEnvs(); vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const receipt = "a".repeat(64);
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "reconcile-workflow-")); roots.push(root);
@@ -66,7 +67,27 @@ describe("confirmed reconciliation workflow with inert lifecycle", () => {
   });
   it("a changed preflight model cannot mutate storage", async () => {
     const x = fixture(), p = await plan(x); x.d.store = vi.fn(); x.d.preflight = vi.fn(async () => "other-model");
-    expect((await applyKiroReconciliation(x.d, p, "admin")).ok).toBe(false); expect(x.d.store).not.toHaveBeenCalled();
+    expect((await applyKiroReconciliation(x.d, p, "admin")).ok).toBe(false); expect(x.d.store).not.toHaveBeenCalled(); expect(x.d.stop).not.toHaveBeenCalled();
+  });
+  it.each(["en", "zh-TW"] as const)("preflight refusal keeps the pause reason and reports no issued receipt (%s)", async locale => {
+    setLocale(locale);
+    const x = fixture(), p = await plan(x), before = JSON.stringify(x.fleet);
+    x.d.preflight = vi.fn(async () => { throw new Error(t("kiro_migrate.version_required")); });
+    x.d.store = vi.fn();
+    const out = await applyKiroReconciliation(x.d, p, "admin");
+    expect(out).toMatchObject({ ok: false }); expect(out.receipt).toBeUndefined();
+    expect(x.d.store).not.toHaveBeenCalled(); expect(x.d.restart).not.toHaveBeenCalled(); expect(x.d.stop).not.toHaveBeenCalled();
+    expect(JSON.stringify(x.fleet)).toBe(before);
+    expect(out.text).toBe(t("kiro_reconcile.failed_no_receipt", "wiki", t("kiro_migrate.version_required").replace(/[.。]+$/, "")));
+    expect(out.text).not.toMatch(/\.\.|。。/);
+    expect(out.text).not.toContain(locale === "en" ? "Inspect the receipt" : "檢查收據");
+  });
+  it("a storage failure without a returned receipt still stops conservatively", async () => {
+    const x = fixture(), p = await plan(x); x.d.store = vi.fn(async () => { throw new Error("partial storage write."); });
+    const out = await applyKiroReconciliation(x.d, p, "admin");
+    expect(out.ok).toBe(false); expect(out.receipt).toBeUndefined(); expect(x.d.stop).toHaveBeenCalledOnce();
+    expect(out.text).toContain("partial storage write."); expect(out.text).not.toContain("..");
+    expect(x.d.restart).not.toHaveBeenCalled();
   });
   it("a failed cleanup reports that the stop could not be confirmed", async () => {
     const x = fixture(), p = await plan(x); x.d.verify = vi.fn(async () => { throw new Error("verify failed"); }); x.d.stop = vi.fn(async () => { throw new Error("stop failed"); });
@@ -85,13 +106,17 @@ function manager(x: ReturnType<typeof fixture>) {
 }
 const click = { callbackData: `kiro-reconcile:${"c".repeat(32)}:confirm`, userId: "admin", chatId: "1", messageId: "message" };
 describe("General confirmation and Log boundary", () => {
-  it("posts exact IDs, writes only a request audit, and consumes one Confirm once", async () => {
+  it.each(["en", "zh-TW"] as const)("posts exact IDs and reconciliation progress, writes a request audit, and consumes Confirm once (%s)", async locale => {
+    setLocale(locale);
     const x = fixture(), { f, posted } = manager(x);
     expect(await f.requestKiroReconciliation("wiki", "original", "newer")).toMatchObject({ ok: true });
     expect(posted[0]).toMatchObject({ prefix: "kiro-reconcile:", instanceName: "wiki", chatId: "1", threadId: "7" });
     expect(posted[0].message).toContain("original"); expect(posted[0].message).toContain("newer"); expect(x.d.restart).not.toHaveBeenCalled();
     f.consumeNonceCallback = vi.fn(() => ({ entry: { instanceName: "wiki", messageId: "message" }, action: "confirm" }));
     await f.handleKiroReconcileCallback(click, "discord"); await f.handleKiroReconcileCallback(click, "discord");
+    expect(f.retireNonceButtons).toHaveBeenCalledWith(expect.anything(), "message", t("kiro_reconcile.applying", "wiki"));
+    expect(t("kiro_reconcile.applying", "wiki")).not.toContain("TUI");
+    expect(t("kiro_reconcile.applying", "wiki")).not.toBe("kiro_reconcile.applying");
     expect(x.d.restart).toHaveBeenCalledTimes(2); expect(f.eventLog.insert).toHaveBeenCalledWith("wiki", "kiro_reconcile", expect.objectContaining({ phase: "completed", receipt }));
     expect(f.notifyFleetError).toHaveBeenCalledWith(expect.stringContaining(receipt)); expect(f.notifyInstanceTopic).toHaveBeenCalledWith("wiki", expect.stringContaining(receipt));
   });

@@ -1,4 +1,4 @@
-import { getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
+import { supportsVerifiedKiroMigration, getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
 import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identity.js";
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
@@ -2272,8 +2272,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       preflight: async (name, plan) => {
         const compat = getCachedKiroCliCompatibility(resolveBinary("kiro-cli"));
-        if (!compat.supportsTui || !compat.supportsInstanceAgent || !compat.agentEngines?.includes("v2")
-          || !/^2\.(?:3[4-9]|[4-9]\d|\d{3,})\./.test(compat.version ?? "")) throw new Error(t("kiro_migrate.version_required"));
+        if (!supportsVerifiedKiroMigration(compat)) throw new Error(t("kiro_migrate.version_required"));
         const daemon = this.daemons.get(name);
         if (this.getInstanceStatus(name) === "running" && (!daemon || !await daemon.kiroMigrationIdle())) throw new Error(t("kiro_migrate.idle_required"));
         if (!current(name) || daemon && this.daemons.get(name) !== daemon) throw new Error(t("kiro_migrate.superseded"));
@@ -2426,7 +2425,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("kiro_reconcile.audit_failed"));
       this.notifyFleetError(t("kiro_reconcile.audit_failed")); return true;
     }
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("kiro_migrate.applying", plan.name));
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("kiro_reconcile.applying", plan.name));
     outcome = await applyKiroReconciliation(this.kiroReconcileDeps(), plan, `${adapterId}:${data.userId}`);
     try { this.eventLog.insert(plan.name, "kiro_reconcile", { phase: outcome.ok ? "completed" : "failed", userId: data.userId, receipt: outcome.receipt, message: outcome.text }); }
     catch { this.logger.error({ name: plan.name, receipt: outcome.receipt }, "Kiro reconciliation final Log entry failed; confirmed intent remains in the audit and archive"); }

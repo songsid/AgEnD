@@ -217,10 +217,32 @@ describe("actual daemon and fleet boundaries, native operations stubbed", () => 
       fm.explicitStopGeneration.set("wiki", 2); expect(lease.current()).toBe(false);
     } finally { lease.release(); }
   });
+  it.each([
+    ["kiro-cli 2.34.0", {}, true], ["2.34.0", {}, true], ["kiro-cli 2.35.0", {}, true],
+    ["kiro-cli 2.33.9", {}, false], ["kiro-cli 3.0.0", {}, false], [undefined, {}, false],
+    ["unavailable", {}, false], ["kiro-cli 2.34.0", { supportsTui: false }, false],
+    ["kiro-cli 2.34.0", { supportsInstanceAgent: false }, false],
+    ["kiro-cli 2.34.0", { agentEngines: ["v1"] }, false], ["kiro-cli 2.34.0", { agentEngines: null }, false],
+  ] as const)("production preflight version %s, capabilities %j: allowed=%s", async (version, caps, allowed) => {
+    const f = fixture(), fm = Object.create(FleetManager.prototype) as any;
+    const compat = { ...kiro.probeKiroCliCompatibility("stub-kiro-cli", () => "kiro-cli 2.34.0\n"), version, ...caps };
+    vi.spyOn(backendTypes, "resolveBinary").mockReturnValue("stub-kiro-cli");
+    vi.spyOn(kiro, "getCachedKiroCliCompatibility").mockReturnValue(compat);
+    Object.assign(fm, { kiroMigrationRuns: new Map(), restartsInFlight: new Map(), stopsInFlight: new Map(), explicitStopGeneration: new Map(),
+      shuttingDown: false, scheduleDeliveryOutboxPump: vi.fn(), lifecycle: { daemons: new Map() }, fleetConfig: f.fleet, getInstanceStatus: () => "stopped" });
+    const deps = fm.kiroMigrateDeps(), lease = deps.reserve("wiki");
+    try {
+      const result = deps.preflight("wiki", await plan(f));
+      if (allowed) expect(await result).toBe(model);
+      else await expect(result).rejects.toThrow(t("kiro_migrate.version_required"));
+    } finally { lease.release(); }
+  });
   it("production preflight uses a fresh idle pane and refuses an unreadable model", async () => {
     const f = fixture(), fm = Object.create(FleetManager.prototype) as any;
     vi.spyOn(backendTypes, "resolveBinary").mockReturnValue("stub-kiro-cli");
-    vi.spyOn(kiro, "getCachedKiroCliCompatibility").mockReturnValue({ version: "2.34.0", supportsTui: true, supportsInstanceAgent: true, agentEngines: ["v2"] } as never);
+    // Use the real probe output, including the CLI name preserved in version.
+    const compat = kiro.probeKiroCliCompatibility("stub-kiro-cli", () => "kiro-cli 2.34.0\n");
+    vi.spyOn(kiro, "getCachedKiroCliCompatibility").mockReturnValue(compat);
     const daemon = { kiroMigrationIdle: vi.fn(async () => false), getModelOverride: () => undefined };
     Object.assign(fm, { kiroMigrationRuns: new Map(), restartsInFlight: new Map(), stopsInFlight: new Map(), explicitStopGeneration: new Map(),
       shuttingDown: false, scheduleDeliveryOutboxPump: vi.fn(), lifecycle: { daemons: new Map([["wiki", daemon]]) }, fleetConfig: f.fleet, getInstanceStatus: () => "running" });

@@ -24,10 +24,15 @@ export async function planKiroReconciliation(deps: KiroReconcileDeps, name: stri
 export function kiroReconciliationPrompt(p: KiroReconciliation): string {
   return t(p.plan.rollbackReceipt ? "kiro_reconcile.rollback_prompt" : "kiro_reconcile.prompt", p.name, p.input.sessionId, p.input.archiveId);
 }
+function failureText(name: string, reason: string, receipt?: string): string {
+  // Reasons are complete localized sentences; the outer notice owns the separator.
+  return t(receipt ? "kiro_reconcile.failed" : "kiro_reconcile.failed_no_receipt", name, reason.replace(/[.。]+\s*$/, ""));
+}
 export async function applyKiroReconciliation(deps: KiroReconcileDeps, p: KiroReconciliation, actor: string): Promise<{ ok: boolean; text: string; receipt?: string }> {
   let lease: ReturnType<KiroReconcileDeps["reserve"]>;
-  try { lease = deps.reserve(p.name); } catch (error) { return { ok: false, text: t("kiro_reconcile.failed", p.name, (error as Error).message) }; }
+  try { lease = deps.reserve(p.name); } catch (error) { return { ok: false, text: failureText(p.name, (error as Error).message) }; }
   let receipt: string | undefined;
+  let storageStarted = false;
   const current = () => {
     if (!lease.current()) throw new Error(t("kiro_reconcile.changed"));
     const config = deps.fleetConfig()?.instances[p.name];
@@ -39,6 +44,9 @@ export async function applyKiroReconciliation(deps: KiroReconcileDeps, p: KiroRe
     current();
     const model = await deps.preflight(p.name, { name: p.name, workingDirectory: p.input.workingDirectory, credentialProfile: p.input.credentialProfile, classicId: p.input.sessionId }); current();
     if (model !== p.input.model) throw new Error(t("kiro_reconcile.changed"));
+    // A rejected preflight has not touched storage or launched anything. Once the
+    // worker begins, even a failure without a returned receipt requires a stop.
+    storageStarted = true;
     const result = await deps.store(p.input, p.plan, actor); receipt = result.receipt; current();
     if (!receipt) throw new Error(t("kiro_reconcile.changed"));
     if (!p.plan.rollbackReceipt) {
@@ -48,7 +56,7 @@ export async function applyKiroReconciliation(deps: KiroReconcileDeps, p: KiroRe
     return { ok: true, receipt, text: t(p.plan.rollbackReceipt ? "kiro_reconcile.rolled_back" : "kiro_reconcile.done", p.name, receipt) };
   } catch (error) {
     let reason = error instanceof SyntaxError ? "Malformed reconciliation data" : (error as Error).message;
-    if (lease.current()) { try { await deps.stop(p.name); } catch { reason += " " + t("kiro_migrate.stop_unconfirmed"); } }
-    return { ok: false, ...(receipt ? { receipt } : {}), text: t("kiro_reconcile.failed", p.name, reason) };
+    if (storageStarted && lease.current()) { try { await deps.stop(p.name); } catch { reason += " " + t("kiro_migrate.stop_unconfirmed"); } }
+    return { ok: false, ...(receipt ? { receipt } : {}), text: failureText(p.name, reason, receipt) };
   } finally { lease.release(); }
 }

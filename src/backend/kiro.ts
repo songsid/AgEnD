@@ -932,6 +932,14 @@ function versionAtLeast(version: [number, number, number], minimum: string): boo
   return true;
 }
 
+/** Verified carry/reconcile stays on supported 2.x and requires the same capabilities as launch. */
+export function supportsVerifiedKiroMigration(compat: KiroCliCompatibility): boolean {
+  // `version` retains the complete --version line (e.g. "kiro-cli 2.34.0").
+  const version = parseSemver(compat.version);
+  return !!version && version[0] === 2 && versionAtLeast(version, "2.34.0")
+    && compat.supportsTui && compat.supportsInstanceAgent === true && compat.agentEngines?.includes("v2") === true;
+}
+
 function helpAdvertisesFlag(help: string, flag: string): boolean {
   // clap prints a short alias first when there is one: `  -r, --resume`.
   return new RegExp(`^\\s*(?:-[A-Za-z0-9],\\s*)?${flag}(?:[ =<,]|$)`, "m").test(help);
