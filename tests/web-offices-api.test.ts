@@ -178,6 +178,42 @@ describe("the routes", () => {
       expect(f.fm.officeStore.list().offices).toEqual([OPS]);
     } finally { await f.stop(); }
   }, 30_000);
+  it("#2716 PUT /ui/office-style: the whole-fleet office's style — an admin session only; checked; counted; announced; GET carries it", async () => {
+    const { OfficeWriteLimiter } = await import("../src/web-office-store.js");
+    const f = await fleet();
+    try {
+      const sent: Array<[string, unknown]> = [];
+      vi.spyOn(f.fm, "emitSseEvent").mockImplementation((...a: unknown[]) => { sent.push([a[0] as string, a[1]]); });
+      (f.fm as any).officeWrites = new OfficeWriteLimiter(() => 0, { perWindow: 2, windowMs: 60_000 });
+      const put = (headers: Record<string, string>, body: unknown) => raw(f.port, "PUT", "/ui/office-style", headers, JSON.stringify(body));
+      expect((await put({ origin: `http://127.0.0.1:${f.port}`, "content-type": "application/json" }, { skin: "studio" })).status).toBe(401);
+      const read = await put(f.session("read").write, { skin: "studio" });
+      expect([read.status, JSON.parse(read.body).error]).toEqual([403, "offices_need_an_admin_session"]);
+      const token = await put({ "x-agend-token": f.fm.getDashboardAccess().token, "content-type": "application/json" }, { skin: "studio" });
+      expect(token.status).toBe(403);
+      const admin = f.session("admin").write;
+      for (const bad of [{}, { skin: "a b" }, { skin: "studio", extra: 1 }, [], { skin: 3 }]) expect((await put(admin, bad)).status, JSON.stringify(bad)).toBe(400);
+      expect(f.fm.officeStore.rev()).toBe(0);
+      const ok = await put(admin, { skin: "studio" });
+      expect([ok.status, JSON.parse(ok.body)]).toEqual([200, { rev: 1, autoSkin: "studio" }]);
+      expect(sent).toEqual([["offices", { rev: 1 }]]);
+      const got = await raw(f.port, "GET", "/ui/offices", f.session("read").read);
+      expect(JSON.parse(got.body)).toEqual({ rev: 1, offices: [], readable: true, autoSkin: "studio" });
+      expect(JSON.parse((await put(admin, { skin: null })).body)).toEqual({ rev: 2, autoSkin: null });
+      const third = await put(admin, { skin: "pixel" });                                       // the offices' saves' limit
+      expect([third.status, JSON.parse(third.body).error, f.fm.officeStore.autoSkin()]).toEqual([429, "offices_rate_limited", null]);
+      expect([isPublicWebRoute("PUT", "/ui/office-style"), isPassiveWebRead("PUT", "/ui/office-style")]).toEqual([false, false]);
+      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
+      const answer = await new Promise<{ status: number; body: string }>(resolve => {
+        let code = 0;
+        const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end(b: string) { resolve({ status: code, body: String(b) }); } };
+        const req = Object.assign(new EventEmitter(), { method: "PUT", url: "/ui/office-style", headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}`, origin: "https://x.trycloudflare.com", "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" }, destroy() {}, resume() {} });
+        bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+        expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/office-style"), f.fm)).toBe(true);
+      });
+      expect([answer.status, JSON.parse(answer.body).error]).toEqual([403, "offices_not_over_public_link"]);
+    } finally { await f.stop(); }
+  }, 30_000);
   // Office review (#2399 carry, Fable): a save without the rev it read would overwrite another person's unseen.
   it("PUT without rev: 428, nothing written; with the rev read: saved", async () => {
     const f = await fleet();

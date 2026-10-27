@@ -92,7 +92,7 @@ describe("/ui/office-share (#2636)", () => {
       expect(made.status).toBe(200);
       const d = JSON.parse(made.body);
       expect(d.url).toMatch(/^https:\/\/s1\.trycloudflare\.com\/o\/[A-Za-z0-9_-]{43}$/);
-      expect(d.share).toMatchObject({ office: "hq", text: true });
+      expect(d.share).toMatchObject({ office: "hq", text: true, theme: "auto" });
       expect(f.notices).toHaveLength(1);
       expect(f.notices[0]).toContain("HQ");
       expect(f.notices[0]).toContain("2 h");
@@ -105,6 +105,10 @@ describe("/ui/office-share (#2636)", () => {
       expect(f.notices[1]).toContain("revoked");
       expect((await raw(f.port, "DELETE", `/ui/office-share/${d.share.id}`, admin.write)).status).toBe(404);
       expect((await raw(f.port, "DELETE", "/ui/office-share/nope", admin.write)).status).toBe(404);
+      // #2715/#2716: the whole fleet, in its maker's look; General names it.
+      const whole = JSON.parse((await raw(f.port, "POST", "/ui/office-share", admin.write, JSON.stringify({ office: "auto", theme: "dark" }))).body);
+      expect(whole.share).toMatchObject({ office: "auto", theme: "dark" });
+      expect(f.notices.at(-1)).toContain("the whole fleet");
     } finally { await f.stop(); }
   });
 
@@ -116,6 +120,8 @@ describe("/ui/office-share (#2636)", () => {
       const post = async (body: unknown) => { const r = await raw(f.port, "POST", "/ui/office-share", admin, JSON.stringify(body)); return [r.status, JSON.parse(r.body)]; };
       expect((await post({ office: 3 }))[0]).toBe(400);
       expect((await post({ office: "hq", text: "yes" }))[0]).toBe(400);
+      expect((await post({ office: "hq", theme: 1 }))[0]).toBe(400);
+      expect(await post({ office: "hq", theme: "sepia" })).toEqual([400, { error: "theme" }]);   // #2715
       expect(await post({ office: "nope" })).toEqual([400, { error: "office" }]);
       expect(await post({ office: "hq", minutes: 24 * 60 + 1 })).toEqual([400, { error: "duration" }]);
       on = false;

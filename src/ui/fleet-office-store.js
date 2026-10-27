@@ -1,8 +1,10 @@
 // The Office view's data, behind one small seam (fleet-office.js uses only these calls):
 // - the offices people made: the host's (GET / PUT /ui/offices, src/web-office-store.ts — one list for every viewer);
 //   what comes back is checked again here (fleet-office-model.js officesOk), never trusted;
+// - #2716: the whole-fleet office's style, kept on the host for everyone (GET /ui/offices's autoSkin; PUT
+//   /ui/office-style, an admin's) — this browser's own pick (skin(): an admin's copy of it, anyone else's own choice);
 // - this browser's own choices (localStorage; blocked storage: this page only, as the canvas's Canvas/List): which
-//   office is shown, the auto office's member filter, and its style (skin); #2540: the view (zoom and centre) and the
+//   office is shown, the auto office's member filter; #2540: the view (zoom and centre) and the
 //   fit mode (Fit or Fill) per office; #2554: whether All offices shows the lobby tile.
 // - the skin packs an admin uploaded (#2513: GET /ui/office-skins, POST to upload one, DELETE to remove one;
 //   src/web-office-skins.ts). The office editor and the layout editor call saveOffices() with the whole list and the rev
@@ -65,14 +67,25 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
   const write = (k, v) => { try { const s = st(); if (s) s.setItem(k, v); } catch { /* this page only */ } };
   const headers = { "Content-Type": "application/json" };
   return {
-    /** { rev, offices } from the host; null when it could not be read (no offices shown but the auto one). */
+    /**
+     * { rev, offices, autoSkin } from the host (#2716 autoSkin: the whole-fleet office's style, or null: none kept); null
+     * when it could not be read (no offices shown but the auto one).
+     */
     async offices() {
       try {
         const r = await get("/ui/offices", { method: "GET", headers });
         if (!r || !r.ok) return null;
         const d = await r.json();
-        return { rev: Number.isSafeInteger(d && d.rev) ? d.rev : 0, offices: officesOk(d && d.offices) };
+        return { rev: Number.isSafeInteger(d && d.rev) ? d.rev : 0, offices: officesOk(d && d.offices), autoSkin: d && typeof d.autoSkin === "string" && PACK_ID.test(d.autoSkin) ? d.autoSkin : null };
       } catch { return null; }
+    },
+    /** #2716: the whole-fleet office's style for everyone (an admin session): { ok, autoSkin } or { ok: false, status, error }. */
+    async saveAutoSkin(skin) {
+      try {
+        const r = await get("/ui/office-style", { method: "PUT", headers, body: JSON.stringify({ skin }) });
+        const d = await r.json().catch(() => ({}));
+        return r.ok ? { ok: true, autoSkin: typeof d.autoSkin === "string" ? d.autoSkin : null } : { ok: false, status: r.status, error: d.error || "office_style_failed" };
+      } catch { return { ok: false, status: 0, error: "office_style_failed" }; }
     },
     /**
      * Replace the host's list (an admin session; `rev`: the one read — required: the host refuses a save without it,
@@ -158,6 +171,8 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
     saveFilter: (f) => write(FILTER_KEY, JSON.stringify(filterOk(f))),
     /** The whole fleet's style here: a skin id ("pixel": desks, "studio" and "cozy": zones); none chosen yet: cozy (#2631); an unknown one is the default where used. */
     skin: () => { const v = read(SKIN_KEY); return typeof v === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(v) ? v : "cozy"; },
+    /** #2716: this browser's own pick of it, or null (none made here). */
+    skinChosen: () => { const v = read(SKIN_KEY); return typeof v === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(v) ? v : null; },
     saveSkin: (id) => write(SKIN_KEY, String(id)),
     /** Whether paused and stopped people are left out of the Office here (default: shown). */
     hideAsleep: () => read(ASLEEP_KEY) === "1",

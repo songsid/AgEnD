@@ -19,6 +19,10 @@
  *   127.0.0.1 through the tunnel: the limit is the share's, never an address's); its pack pictures a minute of their own,
  *   sized by the packs it shows (#2662).
  * - Kept in memory only: a restart ends every share (the quick tunnel's host changes anyway).
+ * - #2716: the whole-fleet office (the page's own, WHOLE_FLEET) may be shared too: everyone, as All offices, opened on
+ *   it; its style is the host's (web-office-store.ts autoSkin), served with the stored offices' packs.
+ * - #2715: a share's look (`theme`): "auto" follows the viewer's device, "light" or "dark" is what its maker picked
+ *   (their own dashboard's, by default) — set on the page's <html> before it paints (office-share-page.ts).
  */
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -44,6 +48,13 @@ export const OFFICE_SHARE_LIMITS = {
 } as const;
 /** "All offices": every stored office (and whoever is in none); otherwise a stored office's id. */
 export const ALL_OFFICES = "all";
+/** #2716: the whole-fleet office (fleet-office-model.js AUTO_ID, web-office-store.ts AUTO_OFFICE_ID): everyone, as All offices. */
+export const WHOLE_FLEET = "auto";
+/** A share of everyone (All offices, or the whole-fleet office), not of one stored office. */
+export const fleetWide = (office: string): boolean => office === ALL_OFFICES || office === WHOLE_FLEET;
+/** #2715: how a share's page looks — the viewer's device's light or dark ("auto"), or the one its maker picked. */
+export const SHARE_THEMES = ["auto", "light", "dark"] as const;
+export type ShareTheme = (typeof SHARE_THEMES)[number];
 /**
  * An office's members after the share's cut, when every one it named is out of the share: a team no chart has (a team's
  * name has no control character), so the page finds nobody — never [], which the page reads as everyone.
@@ -66,10 +77,12 @@ const MINUTE_MS = 60_000;
 export interface OfficeShare {
   /** A short handle for lists and revoking (never the token). */
   id: string;
-  /** ALL_OFFICES, or a stored office's id. */
+  /** ALL_OFFICES, WHOLE_FLEET (#2716), or a stored office's id. */
   office: string;
   /** Agents' own lines (office_set `say`) are shown. */
   text: boolean;
+  /** #2715: the page's look. */
+  theme: ShareTheme;
   /** Who made it (for the list and General's announcement). */
   owner: string;
   /** Wall-clock ms, for display; the expiry itself runs on the monotonic clock. */
@@ -77,7 +90,7 @@ export interface OfficeShare {
 }
 export type OfficeShareCreate =
   | { ok: true; share: OfficeShare; token: string }
-  | { ok: false; error: "too_many" | "duration" | "office" };
+  | { ok: false; error: "too_many" | "duration" | "office" | "theme" };
 
 export const hashShareToken = (token: string): string => createHash("sha256").update(token).digest("hex");
 
@@ -111,20 +124,22 @@ export class OfficeShares {
     this.wall = deps.wall ?? (() => Date.now());
   }
 
-  /** A new share: `minutes` from 15 to `maxMinutes`; `office` ALL_OFFICES or an id `exists` knows. */
-  create(opts: { office: string; minutes?: number; text?: boolean; owner: string; maxMinutes?: number; exists?(office: string): boolean }): OfficeShareCreate {
+  /** A new share: `minutes` from 15 to `maxMinutes`; `office` ALL_OFFICES, WHOLE_FLEET or an id `exists` knows; `theme` (#2715) "auto" unless asked. */
+  create(opts: { office: string; minutes?: number; text?: boolean; theme?: string; owner: string; maxMinutes?: number; exists?(office: string): boolean }): OfficeShareCreate {
     this.prune();
     const max = Math.min(opts.maxMinutes ?? OFFICE_SHARE_LIMITS.maxHours * 60, OFFICE_SHARE_LIMITS.maxHours * 60);
     const minutes = opts.minutes ?? Math.min(OFFICE_SHARE_LIMITS.defaultMinutes, max);
     if (!Number.isInteger(minutes) || minutes < OFFICE_SHARE_LIMITS.minMinutes || minutes > max) return { ok: false, error: "duration" };
-    if (opts.office !== ALL_OFFICES && !(opts.exists?.(opts.office) ?? false)) return { ok: false, error: "office" };
+    if (!fleetWide(opts.office) && !(opts.exists?.(opts.office) ?? false)) return { ok: false, error: "office" };
+    const theme = opts.theme ?? "auto";
+    if (!(SHARE_THEMES as readonly string[]).includes(theme)) return { ok: false, error: "theme" };
     if (this.byHash.size >= OFFICE_SHARE_LIMITS.links) return { ok: false, error: "too_many" };
     const random = this.deps.random ?? randomBytes;
     const token = random(32).toString("base64url");
     let id = random(4).toString("hex");
     while (this.list().some(s => s.id === id)) id = random(4).toString("hex");
     const ms = minutes * MINUTE_MS, wall = this.wall();
-    const share: OfficeShare = { id, office: opts.office, text: opts.text === true, owner: opts.owner, createdAt: wall, expiresAt: wall + ms };
+    const share: OfficeShare = { id, office: opts.office, text: opts.text === true, theme: theme as ShareTheme, owner: opts.owner, createdAt: wall, expiresAt: wall + ms };
     const key = hashShareToken(token);
     const timer = (this.deps.setTimer ?? ((fn, t) => { const h = setTimeout(fn, t); h.unref?.(); return h; }))(() => { if (this.prune()) this.announce(); }, ms + 50);
     this.byHash.set(key, { share, deadline: this.now() + ms, timer });
@@ -231,8 +246,8 @@ export interface OfficeShareSource {
   status(): unknown;
   /** The org chart (orgChart): `general` and `teams`. */
   org(): { general?: unknown; teams?: unknown };
-  /** The stored offices (web-office-store.ts list()). */
-  offices(): { rev: number; offices: Office[] };
+  /** The stored offices (web-office-store.ts list()); #2716: and the whole-fleet office's style, when one is kept. */
+  offices(): { rev: number; offices: Office[]; autoSkin?: string };
   /** The live acts (OfficeActs live()). */
   acts(): OfficeAct[];
   /** /ui/traffic's snapshot. */
@@ -269,7 +284,7 @@ export class OfficeShareView {
       .map(t => ({ name: typeof t.name === "string" ? t.name : "", members: strings(t.members) })).filter(t => t.name);
     const chart: OfficeChart = { names: known.map(i => i.name as string), teams };
     const stored = src.offices().offices;
-    if (share.office === ALL_OFFICES) {
+    if (fleetWide(share.office)) {
       this.offices = stored;
       this.scope = new Set(chart.names);
     } else {
@@ -299,7 +314,7 @@ export class OfficeShareView {
       needs: this.src.needs().filter(n => this.scope.has(n)).map(instance => ({ instance })),
       traffic: { now: traffic.now, items: traffic.items.filter(among), delegations: (traffic.delegations ?? []).filter(among) },
       text: this.share.text,
-      // Which office the page opens on: the shared one, or All offices.
+      // Which office the page opens on: the shared one, All offices, or (#2716) the whole-fleet office.
       office: this.share.office,
       // When it ends (wall clock, the host's): the page says until when.
       ...(typeof this.share.expiresAt === "number" ? { ends: this.share.expiresAt } : {}),
@@ -327,7 +342,9 @@ export class OfficeShareView {
       }
       return out;
     };
-    return { rev: this.src.offices().rev, offices: (this.offices ?? []).map(cut), readable: true };
+    // #2716: the whole-fleet office's style, as every dashboard shows it (a viewer may pick that office here too).
+    const { rev, autoSkin } = this.src.offices();
+    return { rev, offices: (this.offices ?? []).map(cut), readable: true, ...(autoSkin ? { autoSkin } : {}) };
   }
 
   /** /ui/office-acts's answer: the acts of the people shown, in a shown office, without their line unless shared. */
@@ -388,9 +405,10 @@ export class OfficeShareView {
   }
 
 
-  /** The packs the shown offices are drawn in (a pack no shown office names is not offered). */
+  /** The packs the shown offices are drawn in, #2716: the whole-fleet office's too (a pack none of them names is not offered). */
   skinIds(): Set<string> {
-    return new Set((this.offices ?? []).map(o => o.skin));
+    const auto = this.src.offices().autoSkin;
+    return new Set([...(this.offices ?? []).map(o => o.skin), ...(auto ? [auto] : [])]);
   }
 }
 
@@ -399,8 +417,8 @@ export class OfficeShareView {
  * offices are drawn in (the host's own count of each), at least the floors. Read from the stored offices and the pack
  * list only (cheap: it is asked before a picture is admitted).
  */
-export function sharePictureRate(share: Pick<OfficeShare, "office">, offices: Office[], packs: Array<{ id: string; files?: number; bytes?: number }>): OfficeShareRate {
-  const used = new Set((share.office === ALL_OFFICES ? offices : offices.filter(o => o.id === share.office)).map(o => o.skin));
+export function sharePictureRate(share: Pick<OfficeShare, "office">, offices: Office[], packs: Array<{ id: string; files?: number; bytes?: number }>, autoSkin?: string): OfficeShareRate {
+  const used = new Set([...(fleetWide(share.office) ? offices : offices.filter(o => o.id === share.office)).map(o => o.skin), ...(autoSkin ? [autoSkin] : [])]);
   let files = 0, bytes = 0;
   for (const p of packs) {
     if (!used.has(p.id)) continue;
@@ -512,7 +530,8 @@ export function createOfficeShareGateway(opts: {
     // #2662: a pack's picture counts in the share's minute of pictures (sized by the packs it shows), anything else in its 120.
     const picture = /^\/office-skins\/([A-Za-z0-9_-]{1,40})\/img\/([0-9a-f]{32})\.png$/.exec(rest);
     const lim = picture ? pictureLimiter : limiter;
-    const rate = picture ? sharePictureRate(share, opts.source.offices().offices, opts.source.skins?.list().packs ?? []) : undefined;
+    const stored = picture ? opts.source.offices() : null;
+    const rate = stored ? sharePictureRate(share, stored.offices, opts.source.skins?.list().packs ?? [], stored.autoSkin) : undefined;
     if (!lim.admit(share.id, rate)) return tooMany(res, lim.retryAfter(share.id, rate));
     // Every read below is synchronous: the share found above is the share answered.
     const send = (status: number, type: string, body: Buffer | string, cache = "no-store", csp = "default-src 'none'; sandbox"): void => {

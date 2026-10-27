@@ -42,14 +42,14 @@ describe("Share… (#2636)", () => {
     await settle(3);
     const [office, time] = p.root.querySelectorAll(".os-form select");
     expect(office.value).toBe("lab");
-    expect(office.querySelectorAll("option").map((o: any) => o.value)).toEqual(["all", "hq", "lab"]);
+    expect(office.querySelectorAll("option").map((o: any) => o.value)).toEqual(["auto", "all", "hq", "lab"]);   // #2716: the whole fleet too
     time.value = "120"; fire(time, "change");
     const box = p.root.querySelector(".os-form input[type=checkbox]");
     box.checked = true; fire(box, "change");
     await settle(1);
     p.root.querySelectorAll(".dlg-actions button").at(-1).click();
     await settle(4);
-    expect(hst.calls.find(c => c.method === "POST")?.body).toEqual({ office: "lab", minutes: 120, text: true });
+    expect(hst.calls.find(c => c.method === "POST")?.body).toEqual({ office: "lab", minutes: 120, text: true, theme: "light" });   // #2715: what this (light) page shows
     expect(p.root.querySelector(".os-url").value).toBe(`https://s.trycloudflare.com/o/${"T".repeat(43)}`);
     expect(p.root.querySelector(".os-made .note").textContent).toContain("Anyone with this link can watch until");
     expect(p.root.querySelectorAll(".os-row")).toHaveLength(1);                 // the list read again
@@ -60,7 +60,7 @@ describe("Share… (#2636)", () => {
     const hst = host({ post: () => [503, { error: "tunnel", reason: "rate-limited" }] });
     await p.mount(h(D.ShareDialog, { offices: OFFICES, current: null, get: hst.get, onClose: () => {} }));
     await settle(3);
-    expect(p.root.querySelector(".os-form select").value).toBe("all");
+    expect(p.root.querySelector(".os-form select").value).toBe("auto");                  // #2716: the whole fleet shown
     p.root.querySelectorAll(".dlg-actions button").at(-1).click();
     await settle(4);
     expect(p.root.querySelector("[role=alert]").textContent).toBe("Cloudflare is limiting new quick tunnels right now. Try again in a few minutes.");

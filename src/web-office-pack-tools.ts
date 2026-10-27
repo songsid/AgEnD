@@ -21,7 +21,10 @@
  *   change waits as a pending change (memory only: a fleet restart drops it) until an admin approves it on the page or
  *   from the notice's buttons in General; it is judged again then.
  * - A rate limit by batch and bytes (OfficePackBatchLimiter): 20 batches and 200 MiB an hour per agent; one call is one
- *   batch, however many packs it carries. Refusals are not counted; office_pack_check and office_pack_list are not.
+ *   batch, however many packs it carries. Refusals are not counted, nor are office_pack_check and office_pack_list
+ *   against this budget.
+ * - office_pack_check has its own, looser budget (#2695): 60 batches and 1 GiB of wire bytes an hour per agent, counted
+ *   when a batch's first part is taken — the fleet's receiving, parsing and PNG walk are the cost, whatever the verdict.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
@@ -40,6 +43,8 @@ export const OFFICE_PACK_TOOL_LIMITS = {
   batchesPerHour: 20, bytesPerHour: 200 * MiB,
   /** Pending changes waiting for an admin's yes: at most 8 in the fleet, 200 MiB of pictures, each for 24 hours. */
   pending: 8, pendingBytes: 200 * MiB, pendingMs: 24 * HOUR_MS,
+  /** #2695: office_pack_check's own hourly budget, in wire bytes (one full batch fits several times). */
+  checkBatchesPerHour: 60, checkBytesPerHour: 1024 * MiB,
   /** The log keeps its newest entries: at most this many lines once it passes 512 KiB. */
   logLines: 500, logBytes: 512 * 1024,
 } as const;
@@ -210,7 +215,8 @@ export class OfficePackUploads {
   private readonly pending = new Map<string, Incoming>();
   constructor(private readonly clock: () => number = () => performance.now()) {}
   forget(instance: string): void { for (const k of [...this.pending.keys()]) if (k.startsWith(`${instance}\u0000`)) this.pending.delete(k); }
-  accept(instance: string, tool: string, args: Record<string, unknown>): { done: false; answer: OfficePackAnswer } | { done: true; doc: unknown; options: Record<string, unknown> } {
+  /** `admit`: asked once a batch's first part is valid, with the batch's wire bytes; an answer refuses the batch. */
+  accept(instance: string, tool: string, args: Record<string, unknown>, admit?: (bytes: number) => OfficePackAnswer | null): { done: false; answer: OfficePackAnswer } | { done: true; doc: unknown; options: Record<string, unknown> } {
     const key = `${instance}\u0000${tool}`, now = this.clock();
     const fail = (message: string): { done: false; answer: OfficePackAnswer } => { this.pending.delete(key); return { done: false, answer: refuse("pack_part", message) }; };
     for (const [k, p] of this.pending) if (now - p.last >= PART_IDLE_MS) this.pending.delete(k);
@@ -233,6 +239,8 @@ export class OfficePackUploads {
       if (p.upload !== undefined) return fail("part 0 starts a batch");
       if (args.drop_invalid_overrides !== undefined && typeof args.drop_invalid_overrides !== "boolean") return fail("drop_invalid_overrides: true or false");
       if (!this.pending.has(key) && this.pending.size >= 8) return fail("too many batches arriving at once: try again shortly");
+      const refused = admit?.(bytes);
+      if (refused) { this.pending.delete(key); return { done: false, answer: refused }; }
       this.pending.set(key, { id: randomBytes(16).toString("hex"), count, next: 0, bytes, sha256: p.sha256 as string, chunks: [], received: 0, last: now,
         options: args.drop_invalid_overrides === undefined ? {} : { drop_invalid_overrides: args.drop_invalid_overrides } });
     } else if (args.drop_invalid_overrides !== undefined) return fail("options go on part 0");
@@ -281,12 +289,16 @@ export interface OfficePackToolsDeps {
 
 export class OfficePackTools {
   readonly limiter: OfficePackBatchLimiter;
+  /** #2695: office_pack_check's budget (wire bytes), apart from the changes'. */
+  readonly checkLimiter: OfficePackBatchLimiter;
   readonly uploads: OfficePackUploads;
   private readonly pending = new Map<string, PendingChange>();
   private readonly now: () => number;
   private approvalCache: OfficePackApproval | null = null;
-  constructor(private readonly deps: OfficePackToolsDeps, opts: { limiter?: OfficePackBatchLimiter; uploads?: OfficePackUploads; now?: () => number } = {}) {
+  constructor(private readonly deps: OfficePackToolsDeps, opts: { limiter?: OfficePackBatchLimiter; checkLimiter?: OfficePackBatchLimiter; uploads?: OfficePackUploads; now?: () => number } = {}) {
     this.limiter = opts.limiter ?? new OfficePackBatchLimiter();
+    this.checkLimiter = opts.checkLimiter ?? new OfficePackBatchLimiter(undefined,
+      { batchesPerHour: OFFICE_PACK_TOOL_LIMITS.checkBatchesPerHour, bytesPerHour: OFFICE_PACK_TOOL_LIMITS.checkBytesPerHour });
     this.uploads = opts.uploads ?? new OfficePackUploads();
     this.now = opts.now ?? (() => Date.now());
   }
@@ -374,7 +386,7 @@ export class OfficePackTools {
         return v.ok ? this.list(instance) : refuse("invalid", v.error);
       }
       case "office_pack_check": case "office_pack_upload": {
-        const got = this.uploads.accept(instance, tool, args ?? {});
+        const got = this.uploads.accept(instance, tool, args ?? {}, tool === "office_pack_check" ? bytes => this.admitCheck(instance, bytes) : undefined);
         if (!got.done) return got.answer;
         const drop = got.options.drop_invalid_overrides === true;
         const items = this.decode(got.doc, instance);
@@ -397,6 +409,14 @@ export class OfficePackTools {
     }
   }
 
+  /** #2695: a check's batch counts against its own budget as it starts (refused before any more of it arrives). */
+  private admitCheck(instance: string, bytes: number): OfficePackAnswer | null {
+    const allowed = this.checkLimiter.check(instance, bytes);
+    if (!allowed.ok) return refuse("rate_limited", `Too many pack checks (${allowed.why})${allowed.retry_after_ms === null ? "." : `; try again in ${Math.ceil(allowed.retry_after_ms / 1000)} s.`}`, { retry_after_ms: allowed.retry_after_ms, check_left: this.checkLimiter.left(instance) });
+    this.checkLimiter.record(instance, bytes);
+    return null;
+  }
+
   private list(instance: string): OfficePackAnswer {
     const rec = this.deps.skins.records(), offices = this.deps.offices.list().offices;
     const brief = (r: SkinRecord) => ({ version: r.sha, files: Object.keys(r.files).length, bytes: r.bytes, uploaded_at: r.uploaded_at, by: r.by });
@@ -411,9 +431,11 @@ export class OfficePackTools {
       approval: this.approval(),
       pending: this.pendingViews(instance),
       limits: { packs: SKIN_LIMITS.packs, files: SKIN_LIMITS.files, pack_bytes: SKIN_LIMITS.packBytes, file_bytes: SKIN_LIMITS.fileBytes, disk_bytes: SKIN_DISK_BYTES,
-        batch_packs: PACK_BATCH_LIMITS.packs, batch_bytes: PACK_BATCH_LIMITS.bytes, batches_per_hour: OFFICE_PACK_TOOL_LIMITS.batchesPerHour, bytes_per_hour: OFFICE_PACK_TOOL_LIMITS.bytesPerHour },
+        batch_packs: PACK_BATCH_LIMITS.packs, batch_bytes: PACK_BATCH_LIMITS.bytes, batches_per_hour: OFFICE_PACK_TOOL_LIMITS.batchesPerHour, bytes_per_hour: OFFICE_PACK_TOOL_LIMITS.bytesPerHour,
+        check_batches_per_hour: OFFICE_PACK_TOOL_LIMITS.checkBatchesPerHour, check_bytes_per_hour: OFFICE_PACK_TOOL_LIMITS.checkBytesPerHour },
       disk_bytes: rec.diskBytes,
       left: this.limiter.left(instance),
+      check_left: this.checkLimiter.left(instance),
     };
   }
 
@@ -651,7 +673,12 @@ export class OfficePackTools {
       this.deps.changed({ changes: true });
       return { ok: true, text };
     }
-    const r = this.apply(p.view.instance, spec, by, id);
+    // #2695: a yes covers the drops the admin was shown. Offices edited since can make the same change drop other
+    // entries; then it is refused, and the agent resubmits (its new notice names what it would drop now).
+    const now = this.judge(spec);
+    const r = !("refused" in now) && dropsKey(now.drops) !== dropsKey(p.view.drops ?? [])
+      ? no("offices_changed", `the stored offices changed since this change was submitted: it would now drop ${now.drops.length ? now.drops.map(c => `${c.name || c.office}: ${c.entry}`).join(", ") : "nothing"} instead of what was shown; resubmit it`, { drops: now.drops })
+      : this.apply(p.view.instance, spec, by, id);
     if ("refused" in r) {
       const why = String(r.refused.message ?? r.refused.error);
       this.log({ by: p.view.instance, action: p.view.action, change: id, outcome: `failed: ${why}`, approved_by: by, pack: p.view.packs.map(x => x.id).join(",") });
@@ -673,6 +700,9 @@ type ChangeSpec =
   | { action: "delete"; id: string; keepPrevious: boolean }
   | { action: "restore"; id: string; drop: boolean }
   | { action: "style"; office: string; style: string };
+
+/** The drops an admin was shown, as a comparable key (office, entry; order-free). */
+const dropsKey = (drops: readonly OverrideConflict[]) => JSON.stringify(drops.map(c => [c.office, c.entry]).sort());
 
 /** One line for a notice: what a pending change would do. */
 export function summaryOf(v: PackChangeView): string {

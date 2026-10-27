@@ -118,6 +118,27 @@ describe("the share tunnel (#2636)", () => {
 
 });
 
+describe("#2715 the page in the share's look", () => {
+  it("the gateway is handed the page for each share's look", async () => {
+    let made: { page?: (share: { theme: string }, token: string) => { body: string; csp: string } | null } = {};
+    const createGateway = ((opts: typeof made) => { made = opts; return { listen: async () => new URL("http://127.0.0.1:12345"), setHost: () => {}, close: () => {}, readinessMarker: "stub" }; }) as never;
+    const r = rig({ createGateway }); live.push(r.svc);
+    const p = r.svc.create({ office: "hq", owner: "discord:1" });
+    await r.release();
+    expect((await p).ok).toBe(true);
+    expect(made.page!({ theme: "dark" }, "t")!.body).toContain('<html lang="en" data-theme="dark">');
+    expect(made.page!({ theme: "auto" }, "t")!.body).not.toContain("data-theme");
+  });
+  it("a whole-fleet share outlives the sweep (no stored office to lose); an office's share ends with its office", async () => {
+    const r = rig(); live.push(r.svc);
+    const p = r.svc.create({ office: "auto", owner: "discord:1" });
+    await r.release();
+    expect((await p).ok).toBe(true);
+    r.svc.sweep();
+    expect(r.svc.list().map((s) => s.office)).toEqual(["auto"]);
+  });
+});
+
 describe("an ended share's limiter keys (#2662 review)", () => {
   it("the page's and the pictures' minute of an ended share are forgotten; an open share's are kept", async () => {
     let made: { limiter?: { admit(id: string, l?: { requests: number; bytes: number }): boolean }; pictureLimiter?: { admit(id: string, l?: { requests: number; bytes: number }): boolean } } = {};

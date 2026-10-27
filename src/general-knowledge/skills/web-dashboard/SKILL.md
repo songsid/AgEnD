@@ -286,13 +286,14 @@ ways with `walkDown`, `walkUp` and `walkSide`, the side one mirrored for left). 
 packs** on (`office_pack_access`, Dashboard access) can check, upload, replace, delete and restore packs itself (one
 previous version kept per pack); **Agents changing packs** under the packs names those agents, sets whether their changes
 **Need my yes** (the default) or **Apply at once**, and approves or rejects the waiting ones (also from the notice's
-buttons in General); every change is logged and told in General. **Style** (per browser for the whole fleet, per office for a stored one): **Desks**,
+buttons in General); every change is logged and told in General. **Style** (per office for a stored one; for the whole fleet, #2716, an admin's pick is kept on the host for every device and share link, anyone else's stays in their browser): **Desks**,
 **Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state),
 **Cozy** (#2631: the same in a warm pixel-art office drawn as one picture; its notice board says a skin pack can
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
 own) or an uploaded pack; one the page cannot load is drawn as Desks with a note. On a stored office in Studio,
 Cozy or a pack,
-**Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door and
+**Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door, the mail drop
+(an envelope: where letters from other offices land; dashed on a pack without a `mailDrop`, #2736) and
 waypoints (or Tab to one and use the arrow keys, Shift for 10), add or remove waypoints and join or unjoin
 corridors; an item that sleeps at bedtime (a pack's `night`) has a night handle too ("Item {id} (night)": its night
 picture faint, a moon, a line to its day place; on the day place while it sleeps in place) — drag it to give the item
@@ -316,7 +317,7 @@ only. Hover and click work across
 tiles; a tile's label, or a double-click on it, opens that office; traffic between offices flies straight across.
 Edit offices and Edit layout wait for a single office.
 **Share…** (#2636; an admin session, on the dashboard reached directly or over the public link — never read-only or a guest; the URL shows only to its maker, in the dialog) makes an Office share
-link: anyone who opens it watches one office (or **All offices**) live, read-only, with no sign-in — names, identity
+link: anyone who opens it watches **Whole fleet** (#2716, in the fleet's style), one office or **All offices** live, in the link's **Look** (#2715: Light, Dark or the viewer's device; default what the maker's dashboard shows now), read-only, with no sign-in — names, identity
 colours and states, every 5 s; no chat, no clicks into anything, no settings; agents' `office_set` lines only when
 **Include agents' own status lines** is ticked; hidden instances never. 1 h by default, 15 min to 24 h
 (`web.office_share.max_hours`); at most 10 open. Its own quick tunnel (`https://<random>.trycloudflare.com/o/<token>`)
@@ -326,7 +327,8 @@ says to try again in a few minutes (no retry). `web.office_share.enabled: false`
 
 The Office fills the Fleet panel and moves like the Canvas (#2540): drag to pan, the wheel or a pinch to zoom,
 **+** / **−** / **Fit** / **Fill** at the top right (the zoom shown as a percentage above them) or the `+ - 0` keys
-(with the office focused), an overview at the bottom right to jump (not on a phone). It takes the whole panel: the
+(with the office focused), an overview at the bottom right to jump (not on a phone; hidden while a single office
+is all in view, #2737). It takes the whole panel: the
 Fleet area's full width, down to the window's foot. **Fit** shows the whole scene as large as the panel allows
 (any scale, so it fills the panel's width or height); **Fill** (a toggle, kept per office) fills the panel instead,
 cropping what overflows — drag to see it. **+** / **−** step in pixel levels (each logical unit a whole number of

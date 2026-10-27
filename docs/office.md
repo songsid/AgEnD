@@ -36,7 +36,7 @@ Open the dashboard (`/web` in General), then **Fleet → Org chart** and pick **
 
 Now and then a person says a short line for their state in a speech bubble. A bubble never shows message content.
 
-**Moving around.** Drag to pan. The wheel or a pinch zooms. **+** / **−** step the zoom in whole pixel levels, and **Fit** shows the whole scene. **Fill** (kept per office) fills the panel instead and crops what overflows, so drag to see the rest. The keys `+`, `-` and `0` (fit) work while the office has focus, and `f` toggles **Fullscreen** (Esc leaves). The overview at the bottom right jumps to a spot; it's not shown on a phone. The zoom, centre and Fit/Fill are kept per device for each office and style. Drawing is always unsmoothed pixel art. Zooming and panning never animate.
+**Moving around.** Drag to pan. The wheel or a pinch zooms. **+** / **−** step the zoom in whole pixel levels, and **Fit** shows the whole scene. **Fill** (kept per office) fills the panel instead and crops what overflows, so drag to see the rest. The keys `+`, `-` and `0` (fit) work while the office has focus, and `f` toggles **Fullscreen** (Esc leaves). The overview at the bottom right jumps to a spot. It hides while a single office is all in view (it would repeat the panel) and comes back once you zoom in, pan or Fill; All offices always shows it. It's not shown on a phone. The zoom, centre and Fit/Fill are kept per device for each office and style. Drawing is always unsmoothed pixel art. Zooming and panning never animate.
 
 **Fullscreen** shows the office alone, with the zoom buttons, the overview, a compact office switcher and Exit floating over it. Where a page can't go fullscreen (an iPhone) or the browser refuses, the office covers the window instead. Opening a chat leaves fullscreen, and nothing about it is remembered.
 
@@ -51,7 +51,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 | **Office** | which office to show: **Whole fleet**, one of the stored offices, or **All offices** | per device |
 | **Show** | a team or the Lobby only | per browser |
 | **People** | pin chosen instances; **Show everyone** clears it | per browser |
-| **Style** | **Desks**, **Studio**, **Cozy** or an uploaded skin pack (for Whole fleet; a stored office has its own) | per browser |
+| **Style** | **Desks**, **Studio**, **Cozy** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
 | **Hide paused and stopped** | leaves the sleepers out | per browser |
 | **Bedtime 0–6: the idle sleep** | see [Bedtime](#bedtime-strolls-and-mail) (zones styles and All offices) | per device, off by default |
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
@@ -84,7 +84,7 @@ Offices are the fleet's: everyone sees the same ones. The host keeps them in `we
 
 If someone saved the offices while you were editing, your save is refused and nothing is overwritten. Choose **Keep my edits** (the next Save replaces their change) or **Load theirs**. Leaving the page with unsaved changes asks first.
 
-**Whole fleet** is the page's own office, built from your teams each time. It is never stored, and its style is a per-browser choice.
+**Whole fleet** is the page's own office, built from your teams each time. It is never stored as an office, but its style is kept on the host: a fleet admin's pick in the Office bar is what every device and every share link shows. Someone who can't edit offices may pick a style too; it stays in their browser and is used there instead. An admin's own pick from before the host kept one is sent up the first time they open the Office.
 
 ## Use a skin pack
 
@@ -157,7 +157,7 @@ A minimal zones pack:
 
 On a stored office in a zones style, a fleet admin can move things with **Edit layout**. Changes are kept as that office's own *overrides*; the pack stays as it was uploaded, and other offices on the same pack aren't affected.
 
-- The overlay shows the 1280×720 coordinate grid (**Show coordinates**) and a handle for every seat, furniture item, the door and each waypoint. Each empty seat shows a faint figure posed for its area.
+- The overlay shows the 1280×720 coordinate grid (**Show coordinates**) and a handle for every seat, furniture item, the door, the mail drop and each waypoint. The mail drop is an envelope where letters from other offices land; on a pack that doesn't name one it's dashed and shows where letters land now, and dragging it gives the office its own. Each empty seat shows a faint figure posed for its area.
 - Drag a handle, or Tab to one and use the arrow keys (Shift moves by 10).
 - **Add waypoint** / **Remove waypoint**; with a waypoint selected, **Join to** another one or **Unjoin** a corridor.
 - An item that sleeps at bedtime also has a night handle, "Item {id} (night)": its night picture drawn faint, a moon, and a thin line to its day place. Drag it to give the item its own night place; **Back to the pack's night place** undoes that.
@@ -184,18 +184,19 @@ These need a zones style.
 
 - **Bedtime** (the **Bedtime 0–6: the idle sleep** box, per device, off by default): from 00:00 to 06:00 on the viewer's clock, idle people go to the sleeping area (the area `paused` uses) while it has a free seat, and sleep there with Zzz bubbles. The rest doze where they are. Working people keep working. Furniture with a `night` is drawn asleep at its night place.
 - **Strolls:** now and then an idle person walks to a nearby waypoint that no seat is on, stays a few seconds and walks back. A furniture item with `walk` strolls the same way. Strolls happen in a single office (not All offices), not with reduced motion, and not while Edit layout is open.
-- **Mail:** a message to someone in this office from someone outside it flies in at the door as a letter and lands in the room (not with reduced motion). Its person walks over and picks it up, unless they're asleep. A letter waits up to a minute.
+- **Mail:** a message to someone in this office from someone outside it flies in at the door as a letter and lands at the pack's `mailDrop` (or the office's own from Edit layout). Without one it lands at the waypoint nearest the middle of the room, off every seat. More letters wait 16 px apart to the right, never on a seat. With reduced motion no letters are shown. Its person walks over and picks it up, unless they're asleep. A letter waits up to a minute.
 - **Traffic** between people in the same office flies from sender to receiver. A delegation stays in progress until the worker's report comes back.
 
 ## Share a view
 
 A fleet admin can show the live Office to people outside the fleet for a while, with no sign-in. Use **Share…** in the Office bar, on the dashboard reached directly or signed in over the temporary public link; a read-only session or a guest can't share. There is no chat command for it.
 
-1. Choose one office or **All offices**, and how long: 15 minutes to 24 hours (1 hour by default; `web.office_share.max_hours` sets the longest).
-2. Tick **Include agents' own status lines** to show agents' `office_set` lines too.
-3. **Create link**, then **Copy link**. Only you see the link, once.
+1. Choose **Whole fleet**, one office or **All offices**, and how long: 15 minutes to 24 hours (1 hour by default; `web.office_share.max_hours` sets the longest). Whole fleet is the default while it's the office shown.
+2. Choose the **Look**: **Light** or **Dark**, or **The viewer's device**. The default is the light or dark your dashboard shows now, the device's when it follows the device.
+3. Tick **Include agents' own status lines** to show agents' `office_set` lines too.
+4. **Create link**, then **Copy link**. Only you see the link, once.
 
-A viewer sees that office (or every office) as the dashboard draws it: the scene, names, identity colours and states, updated every 5 seconds, with zoom, Fit and fullscreen. Nothing else is shown: no chat, no clicking into anything, no settings, no models, costs or descriptions. Only the office's members are shown, and an instance with `cross_instance_visibility: hidden` never is.
+A viewer sees that office (or every office) as the dashboard draws it, in its look, and Whole fleet in the fleet's style: the scene, names, identity colours and states, updated every 5 seconds, with zoom, Fit and fullscreen. Nothing else is shown: no chat, no clicking into anything, no settings, no models, costs or descriptions. Only the office's members are shown, and an instance with `cross_instance_visibility: hidden` never is.
 
 Each link has its own address on a quick tunnel (`https://<random>.trycloudflare.com/o/<token>`), separate from the dashboard's, which starts with the first link and stops with the last. At most 10 links are open at once. Each link is limited to 120 requests a minute, and skin-pack pictures are counted apart, so even All offices with full packs loads every room. A link ends at its time, on **Revoke** (in **Settings → Access & security → Office share links**, or under the Share… form), when `web.office_share.enabled` is set to `false`, when its maker is no longer a fleet admin, when its office is deleted, or on a fleet restart. Each link made or revoked is announced in General (never the link itself). When Cloudflare refuses a new quick tunnel, making a link says to try again in a few minutes.
 
@@ -234,12 +235,12 @@ An agent can check, upload, replace, delete and restore skin packs itself, for e
 
 **Approval.** Fleet admins choose the mode in **Edit offices → Agents changing packs**:
 
-- **Need my yes** (the default): each change waits as a pending change until a fleet admin approves it there, or with **Approve** / **Reject** on its notice in General. A change is judged again when approved. Pending changes are kept in memory for 24 hours, at most 8 at once, and a fleet restart drops them.
+- **Need my yes** (the default): each change waits as a pending change until a fleet admin approves it there, or with **Approve** / **Reject** on its notice in General. A change is judged again when approved. A change that drops layout entries is applied only if it still drops exactly the entries its notice named. If the offices were edited since then, approving it is refused and the agent has to send it again. Pending changes are kept in memory for 24 hours, at most 8 at once, and a fleet restart drops them.
 - **Apply at once**: the change applies and the admins are told.
 
 The same panel lists which agents may change packs, the changes waiting for your yes, and the recent changes.
 
-**Records and limits.** Every upload, replace, delete and restore is logged in `~/.agend/web-office-skins/.agent-changes.log` (who, when, which pack, file count, bytes, and the sha256 of the manifest and each picture, so a restore can be matched to a version). The fleet's admins are told in General in one short message. Each agent may send at most 20 batches and 200 MiB an hour. One call is one batch of up to 16 packs and 100 MiB of pictures; refusals and checks don't count. On disk the packs may take 640 MiB in all: 16 full packs and a previous version of each.
+**Records and limits.** Every upload, replace, delete and restore is logged in `~/.agend/web-office-skins/.agent-changes.log` (who, when, which pack, file count, bytes, and the sha256 of the manifest and each picture, so a restore can be matched to a version). The fleet's admins are told in General in one short message. Each agent may send at most 20 batches and 200 MiB an hour. One call is one batch of up to 16 packs and 100 MiB of pictures; refusals and checks don't count. Checks have their own allowance: 60 batches and 1 GiB as sent an hour per agent. Every check counts, whether it passes or not. On disk the packs may take 640 MiB in all: 16 full packs and a previous version of each.
 
 Also on the command line: `agend-agent office packs`, `pack-check <dir>`, `pack-upload <dir>… [--drop-invalid-overrides]`, `pack-delete <id> [--keep-previous]`, `pack-restore <id>`, `style <office> <pack>`.
 
@@ -269,6 +270,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `areas` | with `stateZones` | `{ name: { rect: [x, y, w, h], seats: [seat, …] } }`, up to 32 areas and 64 seats each |
 | `stateZones` | ❌ | state → area; `"default"` for the rest. Without it the pack keeps the Desks layout |
 | `door` | ❌ | `[x, y]` where newcomers walk in (default bottom middle) |
+| `mailDrop` | ❌ | `[x, y]` where letters from other offices land, such as a mailbox or a counter. Later letters wait 16 px apart to the right of it and step past any seat. Default: the waypoint nearest the middle that no seat is on |
 | `waypoints` | ❌ | `[{ id, x, y }, …]`, up to 512 |
 | `edges` | ❌ | `[[id, id], …]`, up to 2048 |
 | `straight` | ❌ | `true`: every walk goes across, then up or down |
@@ -324,6 +326,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | `furnitureNight` | `{ item: [x, y] }`: a night place, for an item the pack gives a `night` |
 | `seatFor` | `{ area: { "slot": { "for": [instance, …], "lend": false } } }`; `"for": []` undoes the pack's reservation |
 | `door` | `[x, y]` |
+| `mailDrop` | `[x, y]`: where letters land |
 | `waypoints`, `edges` | the walking graph, replaced whole |
 
 ### Limits
@@ -340,6 +343,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Office share links | 10 open; 15 minutes to 24 hours; 120 requests a minute each |
 | `office_set` | 6 calls a minute, 60 an hour per agent |
 | Agents' pack changes | 20 batches and 200 MiB an hour per agent; a batch is up to 16 packs and 100 MiB |
+| Agents' pack checks (`office_pack_check`) | 60 batches and 1 GiB as sent an hour per agent |
 
 ### Files and settings
 
@@ -378,3 +382,4 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Phone layout; seat reservations; agents managing skin packs (`office_pack_access`) | 2.3.2-beta.11 |
 | Furniture `activeOn` and `hides` | **Not released yet** (after 2.3.2-beta.11) |
 | Offices with a layout survive a rollback to 2.3.1 (#2706) | **Not released yet** (after 2.3.2-beta.11) |
+| Whole fleet's style kept for everyone; Whole fleet as a share; a share's Look (#2715, #2716) | **Not released yet** (after 2.3.2-beta.14) |

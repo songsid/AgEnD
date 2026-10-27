@@ -225,6 +225,10 @@ export class OfficeSkinStore {
       if (packs.size >= SKIN_LIMITS.packs) continue;
       const ok = read(n, "pack.json");
       if (ok) packs.set(n, ok);
+      // #2695: pictures a replace cut short by a crash wrote (before its swap) — named by neither version, never read,
+      // never counted towards the disk budget. Only when every record there was read back: a pack a tightened rule
+      // refuses keeps its files.
+      if (ok && (prev || !existsSync(join(this.dir, n, PREVIOUS_FILE)))) this.sweep(join(this.dir, n), ok.record, prev?.record);
     }
     for (const n of stray) {
       if (kept.includes(n)) continue;
@@ -237,7 +241,7 @@ export class OfficeSkinStore {
       // read, and gone before anything renames the directory back as the pack's (#2696 review).
       try { rmSync(join(this.dir, keptDir(id), "pack.json"), { force: true }); } catch { /* next time; put() removes it too */ }
       const prev = read(keptDir(id), PREVIOUS_FILE, id);
-      if (prev) { previous.set(id, prev); away.add(id); }
+      if (prev) { previous.set(id, prev); away.add(id); this.sweep(join(this.dir, keptDir(id)), prev.record); }
     }
     return (this.state = { packs, previous, away });
   }

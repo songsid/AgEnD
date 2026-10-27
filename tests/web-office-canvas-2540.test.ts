@@ -231,6 +231,16 @@ describe("pixel levels and Fit (fleet-office-view.js)", () => {
     expect([f.x, f.width]).toEqual([0, 480]);
     expect([V.zoomLabel(1), V.zoomLabel(0.75), V.zoomLabel(1018 / 720), V.zoomLabel(8)]).toEqual(["100%", "75%", "141%", "800%"]);
   });
+  it("#2737: the whole scene in view — a fit, or smaller than the stage — and not when any edge is cut, beyond half a unit", () => {
+    expect(V.wholeInView(V.fitScene(1280, 720, STAGE), STAGE, 1280, 720)).toBe(true);
+    expect(V.wholeInView({ k: 0.5, x: 100, y: 50 }, STAGE, 1280, 720)).toBe(true);
+    expect(V.wholeInView({ k: 0.75, x: -0.3, y: 30 }, STAGE, 1280, 720)).toBe(true);         // under half a unit off
+    expect(V.wholeInView({ k: 0.75, x: -1, y: 30 }, STAGE, 1280, 720)).toBe(false);          // the left edge cut
+    expect(V.wholeInView({ k: 0.75, x: 1, y: 30 }, STAGE, 1280, 720)).toBe(false);           // the right edge cut
+    expect(V.wholeInView({ k: 0.75, x: 0, y: 90 }, STAGE, 1280, 720)).toBe(false);           // the bottom edge cut
+    expect(V.wholeInView({ k: 0.75, x: 0, y: -1 }, STAGE, 1280, 720)).toBe(false);           // the top edge cut
+    expect(V.wholeInView(V.fitScene(1280, 720, STAGE, "cover"), STAGE, 1280, 720)).toBe(false);
+  });
   it("the layers' resolution: the view's own; over the budget, divided by a whole number (an integer, crisp scale-up)", () => {
     expect(V.layerScale(2, 1280, 720)).toBe(2);
     const a = 6, ls = V.layerScale(a, 1280, 720);
@@ -328,6 +338,19 @@ describe("the Office canvas on the page", () => {
     expect([pct.textContent, pct.getAttribute("aria-label")]).toEqual(["75%", "Zoom 75%"]);
     expect(p.root.querySelector(".oo-zoom").children[0]).toBe(pct);
     expect(p.root.querySelectorAll(".oo-mini-dot").length).toBe(3);
+  });
+  it("#2737: the overview hides while the whole office is in view, and comes back zoomed in, panned or filled", async () => {
+    studio(); await office();
+    const whole = () => p.root.querySelector(".oo-mini").hasAttribute("data-whole");
+    expect(whole()).toBe(true);                                            // opened fitted: all of it in view
+    await key("+");
+    expect(whole()).toBe(false);
+    await key("0");
+    expect(whole()).toBe(true);
+    p.root.querySelector(".oo-zoom .oo-fill").click(); await settle(2);    // Fill crops the scene's overflow
+    expect(whole()).toBe(false);
+    p.root.querySelector(".oo-zoom .oo-fill").click(); await settle(2);
+    expect(whole()).toBe(true);
   });
   it("Fill: a toggle beside Fit — cover (the panel filled, the overflow cropped and pannable), kept per office, 0 and a resize fit by it", async () => {
     const RO = (globalThis as any).ResizeObserver;
@@ -591,6 +614,7 @@ describe("the Office canvas on the page", () => {
     expect(css.match(/\n\.oo \{[^}]*\}/)![0]).toContain("width: 100%");
     for (const sel of [/\n\.oc-office \{[^}]*\}/, /\n\.oo \{[^}]*\}/, /\n\.oo-stage \{[^}]*\}/]) expect(css.match(sel)![0]).not.toMatch(/max-width|aspect-ratio|[^-]height: \d|margin: 0 auto/);
     expect(css.match(/\n\.oo-mini \{[^}]*\}/)![0]).toContain("right: auto; bottom: auto");   // placed by the page (miniBox)
+    expect(css).toContain("\n.oo-mini[data-whole] { display: none; }");      // #2737
     const stage = css.match(/\n\.oo-stage \{[^}]*\}/)![0];
     expect(stage).toContain("touch-action: none");
     expect(stage).toContain("overflow: hidden");

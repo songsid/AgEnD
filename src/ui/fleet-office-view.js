@@ -97,6 +97,14 @@ export function miniFrame(v, size, w, h) {
   const x1 = Math.min(w, (size.w - v.x) / v.k), y1 = Math.min(h, (size.h - v.y) / v.k);
   return { x: x0, y: y0, width: Math.max(0, x1 - x0), height: Math.max(0, y1 - y0) };
 }
+/**
+ * #2737: the whole scene is in view (the overview's frame covers all of it, to half a unit), so the overview would only
+ * repeat the panel — and sit over the one corner of it a person cannot otherwise see.
+ */
+export function wholeInView(v, size, w, h) {
+  const f = miniFrame(v, size, w, h);
+  return f.x <= 0.5 && f.y <= 0.5 && f.x + f.width >= w - 0.5 && f.y + f.height >= h - 0.5;
+}
 
 // ── Kept per device, per office: the zoom and the logical point in the middle (the viewport's size may differ) ──
 

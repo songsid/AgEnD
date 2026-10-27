@@ -33,6 +33,9 @@
  *
  * — each read back on its own: reservations that no longer check leave the night places (and the office) in.
  *
+ * #2736: the mail drop (`overrides.mailDrop`) likewise, under `mailDrop` by office id: a 2.3.2 beta before it refuses
+ * the key inside the overrides (and would show the office without its layout).
+ *
  * #2706: the rest of an office's overrides are kept beside it too, by office id, never in its entry — 2.3.1 refuses an
  * entry with an `overrides` key, drops that office on read, and its next save deletes it. So 2.3.1 (and a host before
  * #2513) keeps every office, only without its layout —
@@ -43,6 +46,10 @@
  * here, an office's overrides come from beside it, else (a file a beta before #2706 wrote) from its entry, and the next
  * write moves them beside it. Overrides that do not check leave the office in, without them (and so without its night
  * places and reservations, which go on them).
+ *
+ * #2716: the whole-fleet office (the page's own, never stored as an office) has its style kept here too, for every
+ * viewer and device and the share links alike — `autoSkin` beside the list (a skin id: a built-in style's or a pack's;
+ * none: the page's default). An older host reads past it; its save drops it (the style falls back to the default).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -167,9 +174,9 @@ export function checkOffices(raw: unknown, packOf?: OverridePack): OfficeCheck {
   }
 }
 
-type State = { rev: number; offices: Office[] } | "unreadable";
-/** The overrides parts kept beside the offices on disk, apart from the rest (#2665 night places, #2691 seat reservations). */
-const BESIDE = ["furnitureNight", "seatFor"] as const;
+type State = { rev: number; offices: Office[]; autoSkin: string | null } | "unreadable";
+/** The overrides parts kept beside the offices on disk, apart from the rest (#2665 night places, #2691 seat reservations, #2736 the mail drop). */
+const BESIDE = ["furnitureNight", "seatFor", "mailDrop"] as const;
 type Beside = (typeof BESIDE)[number];
 type OnDisk = { offices: Office[]; overrides?: Record<string, LayoutOverrides> } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
 /**
@@ -210,9 +217,9 @@ export class OfficeStore {
     if (this.state) return this.state;
     let body: string;
     try { body = readFileSync(this.path, "utf8"); }
-    catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, offices: [] } : "unreadable"); }
+    catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, offices: [], autoSkin: null } : "unreadable"); }
     try {
-      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; overrides?: unknown } & { [K in Beside]?: unknown };
+      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; overrides?: unknown; autoSkin?: unknown } & { [K in Beside]?: unknown };
       if (doc.version !== 1 || !Number.isSafeInteger(doc.rev) || !Array.isArray(doc.offices)) return (this.state = "unreadable");
       const offices: Office[] = [], ids = new Set<string>();
       const read = (raw: unknown): Office | null => {
@@ -235,16 +242,39 @@ export class OfficeStore {
         }
         if (o && !ids.has(o.id)) { ids.add(o.id); offices.push(o); }
       }
-      return (this.state = { rev: doc.rev as number, offices });
+      // #2716: one that does not check is the default's (none), the offices kept.
+      const autoSkin = typeof doc.autoSkin === "string" && ID.test(doc.autoSkin) ? doc.autoSkin : null;
+      return (this.state = { rev: doc.rev as number, offices, autoSkin });
     } catch { return (this.state = "unreadable"); }
   }
 
   readable(): boolean { return this.load() !== "unreadable"; }
   rev(): number { const s = this.load(); return s === "unreadable" ? 0 : s.rev; }
-  /** What the page reads (GET /ui/offices): a copy; none when the file is unreadable. */
-  list(): { rev: number; offices: Office[]; readable: boolean } {
+  /** What the page reads (GET /ui/offices): a copy; none when the file is unreadable. #2716: `autoSkin` when one is kept. */
+  list(): { rev: number; offices: Office[]; readable: boolean; autoSkin?: string } {
     const s = this.load();
-    return s === "unreadable" ? { rev: 0, offices: [], readable: false } : { rev: s.rev, offices: clone(s.offices), readable: true };
+    return s === "unreadable" ? { rev: 0, offices: [], readable: false }
+      : { rev: s.rev, offices: clone(s.offices), readable: true, ...(s.autoSkin ? { autoSkin: s.autoSkin } : {}) };
+  }
+  /** #2716: the whole-fleet office's style kept for everyone, or null (the page's default). */
+  autoSkin(): string | null { const s = this.load(); return s === "unreadable" ? null : s.autoSkin; }
+  /**
+   * #2716: set the whole-fleet office's style (PUT /ui/office-style): a skin id, or null for the default. One value, so
+   * the last person's pick wins (no rev); the offices are written unchanged with it, and the rev moves (every page reads
+   * again). On disk first, then in memory.
+   */
+  setAutoSkin(skin: unknown): { ok: true; rev: number; autoSkin: string | null } | { ok: false; status: 400 | 503; error: string; detail?: string } {
+    const s = this.load();
+    if (s === "unreadable") return { ok: false, status: 503, error: "offices_unreadable" };
+    if (skin !== null && (typeof skin !== "string" || !ID.test(skin))) return { ok: false, status: 400, error: "office_style_invalid", detail: "skin: 1–40 letters, digits, _ or -, or null" };
+    const autoSkin = skin as string | null, rev = s.rev + 1;
+    try { this.write(rev, s.offices, autoSkin); }
+    catch (err) { return { ok: false, status: 503, error: "offices_write_failed", detail: (err as Error).message }; }
+    this.state = { rev, offices: s.offices, autoSkin };
+    return { ok: true, rev, autoSkin };
+  }
+  private write(rev: number, offices: Office[], autoSkin: string | null): void {
+    atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, ...officesOnDisk(offices), ...(autoSkin ? { autoSkin } : {}) }, null, 2) + "\n", { mode: 0o600 });
   }
   /**
    * Replace every stored office (PUT /ui/offices). `expectedRev`: the rev the page last read — another change since is a
@@ -258,9 +288,9 @@ export class OfficeStore {
     const checked = checkOffices(raw, opts.packOf ?? this.packOf);
     if (!checked.ok) return checked;
     const rev = s.rev + 1;
-    try { atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, ...officesOnDisk(checked.offices) }, null, 2) + "\n", { mode: 0o600 }); }
+    try { this.write(rev, checked.offices, s.autoSkin); }
     catch (err) { return { ok: false, status: 503, error: "offices_write_failed", detail: (err as Error).message }; }
-    this.state = { rev, offices: checked.offices };
+    this.state = { rev, offices: checked.offices, autoSkin: s.autoSkin };
     return { ok: true, rev, offices: clone(checked.offices) };
   }
 }

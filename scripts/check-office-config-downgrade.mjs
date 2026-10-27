@@ -13,10 +13,10 @@ for (const api of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFi
 syncBuiltinESMExports();
 const { normalizeOfficeStorage, dashboardFeaturesOffIn } = await import('../dist/dashboard-permissions.js');
 const { OfficeStore } = await import('../dist/web-office-store.js');
-// #2706: one office with every part of an Edit layout (the night places and reservations kept beside it since
-// #2665/#2691; the rest since #2706), one without.
+// #2706: one office with every part of an Edit layout (the night places, reservations and mail drop kept beside it
+// since #2665/#2691/#2736; the rest since #2706), one without.
 const LAID = { id: 'laid', name: 'Laid out', skin: 'snug', members: ['team:core'],
-  overrides: { pack: 'snug', door: [600, 710], seats: { lounge: [[780, 280]] }, furnitureNight: { bed: [300, 420] }, seatFor: { desks: { 0: { for: ['alpha'], lend: false } } } } };
+  overrides: { pack: 'snug', door: [600, 710], seats: { lounge: [[780, 280]] }, furnitureNight: { bed: [300, 420] }, seatFor: { desks: { 0: { for: ['alpha'], lend: false } } }, mailDrop: [640, 420] } };
 const PLAIN = { id: 'plain', name: 'Plain', skin: 'studio', members: [] };
 const bare = ({ overrides, ...o }) => o;
 const roots = process.argv.slice(2); assert.ok(roots.length, 'pass published package roots');
@@ -58,6 +58,7 @@ for (const root of roots) {
       const { OfficeStore: OldStore } = await import(pathToFileURL(oldStore).href);
       const home = mkdtempSync(join(dir, 'offices-'));
       assert.equal(new OfficeStore(home).replace([LAID, PLAIN], 0).ok, true);
+      assert.equal(new OfficeStore(home).setAutoSkin('snug').ok, true);                 // #2716: the whole-fleet office's style beside them
       const old = new OldStore(home), seen = old.list();
       assert.equal(seen.readable, true);
       assert.deepEqual(seen.offices.map(o => o.id), ['laid', 'plain'], `${version} drops an office with overrides on read`);
@@ -65,6 +66,7 @@ for (const root of roots) {
       const saved = old.replace(seen.offices, seen.rev);
       assert.equal(saved.ok, true, JSON.stringify(saved));
       assert.deepEqual(new OfficeStore(home).list().offices, [bare(LAID), PLAIN], `${version}'s save keeps every office (without its layout)`);
+      assert.equal(new OfficeStore(home).autoSkin(), null, `${version}'s save drops the whole-fleet office's style (the default again)`);
       console.log(`PASS ${version}: an office with Edit-layout overrides survives the old read and the old save (its layout left out)`);
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }

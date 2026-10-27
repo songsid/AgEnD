@@ -1,6 +1,9 @@
 // #2636: Office share links on the dashboard — the Office's Share… dialog (make one: which office, how long, whether
 // agents' own lines show; then its URL to copy) and the list of open ones (Settings → Access & security, and under the
 // dialog's form): each with its office, when it ends, whether lines show and who made it, Revoke and Revoke all.
+// #2716: the whole-fleet office can be shared too ("auto", the default while it is the one shown); #2715: the link's
+// look — light or dark as this dashboard shows it now (the default, the device's when it follows the device), or the
+// viewer's device's.
 // GET / POST /ui/office-share, DELETE /ui/office-share/<id|all> (web-api.ts): an admin session on the dashboard reached
 // directly only; the public link never offers these.
 import { html, useEffect, useState } from "/assets/app-html.js";
@@ -11,7 +14,8 @@ import { toast } from "/assets/ui-toast.js";
 register("oshare", {
   en: {
     share: "Share…", title: "Share the office", lead: "Anyone with the link can watch this office live — names and states, nothing else — until it ends. No sign-in.",
-    office: "Office", allOffices: "All offices", how: "For", text: "Include agents' own status lines", create: "Create link", creating: "Starting the link…",
+    office: "Office", allOffices: "All offices", wholeFleet: "Whole fleet", how: "For",
+    look: "Look", lookAuto: "The viewer's device (light or dark)", lookLight: "Light", lookDark: "Dark", text: "Include agents' own status lines", create: "Create link", creating: "Starting the link…",
     made: "Anyone with this link can watch until {0}.", copy: "Copy link", copied: "Link copied", open: "Open links", none: "No share links are open.",
     ends: "until {0}", withText: "with status lines", by: "by {0}", revoke: "Revoke", revokeAll: "Revoke all", close: "Close", failed: "The link could not be made.",
     m15: "15 minutes", m30: "30 minutes", h1: "1 hour", h2: "2 hours", h4: "4 hours", h8: "8 hours", h24: "24 hours",
@@ -22,7 +26,8 @@ register("oshare", {
   },
   "zh-TW": {
     share: "分享…", title: "分享辦公室", lead: "拿到連結的人都能即時觀看這間辦公室（只有名稱與狀態），直到連結結束，不需要登入。",
-    office: "辦公室", allOffices: "所有辦公室", how: "時間", text: "包含 agent 自己的狀態文字", create: "建立連結", creating: "正在啟動連結…",
+    office: "辦公室", allOffices: "所有辦公室", wholeFleet: "整個 fleet", how: "時間",
+    look: "外觀", lookAuto: "依觀看者的裝置（淺色或深色）", lookLight: "淺色", lookDark: "深色", text: "包含 agent 自己的狀態文字", create: "建立連結", creating: "正在啟動連結…",
     made: "拿到這個連結的人可以觀看到 {0}。", copy: "複製連結", copied: "已複製連結", open: "開啟中的連結", none: "目前沒有開啟中的分享連結。",
     ends: "到 {0} 為止", withText: "含狀態文字", by: "由 {0} 建立", revoke: "撤銷", revokeAll: "全部撤銷", close: "關閉", failed: "無法建立連結。",
     m15: "15 分鐘", m30: "30 分鐘", h1: "1 小時", h2: "2 小時", h4: "4 小時", h8: "8 小時", h24: "24 小時",
@@ -42,6 +47,16 @@ export function refusalText(d) {
   const e = d && d.error;
   if (e === "tunnel") return d.reason === "rate-limited" ? to("e_rate") : to("e_tunnel", d.reason || "unknown");
   return ["disabled", "office", "duration", "too_many"].includes(e) ? to(`e_${e}`) : to("failed");
+}
+
+/**
+ * #2715: the look a new link takes by default — what this dashboard shows now: its chosen light or dark, or (following
+ * the device) the device's; unknown, the viewer's own.
+ */
+export function defaultLook(theme = globalThis.AgendTheme && typeof globalThis.AgendTheme.get === "function" ? globalThis.AgendTheme.get() : null,
+  media = typeof globalThis.matchMedia === "function" ? globalThis.matchMedia : null) {
+  if (theme === "light" || theme === "dark") return theme;
+  try { return media ? (media("(prefers-color-scheme: dark)").matches ? "dark" : "light") : "auto"; } catch { return "auto"; }
 }
 
 /** The open shares, read (and re-read after a change): { enabled, shares } or null while unread / unavailable. */
@@ -67,7 +82,7 @@ export function ShareList({ shares, names = {}, get = globalThis.fetch, onChange
   if (!shares || !shares.length) return html`<p class="muted os-none">${to("none")}</p>`;
   return html`<div class="os-list">
     <ul class="os-rows">${shares.map((s) => html`<li key=${s.id} class="os-row">
-      <span class="os-what"><strong>${s.office === "all" ? to("allOffices") : names[s.office] || s.office_name || s.office}</strong>
+      <span class="os-what"><strong>${s.office === "all" ? to("allOffices") : s.office === "auto" ? to("wholeFleet") : names[s.office] || s.office_name || s.office}</strong>
         <span class="muted"> · ${to("ends", when(s.expiresAt))}${s.text ? ` · ${to("withText")}` : ""}</span></span>
       <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => revoke(s.id)}>${to("revoke")}</button>
     </li>`)}</ul>
@@ -75,9 +90,13 @@ export function ShareList({ shares, names = {}, get = globalThis.fetch, onChange
   </div>`;
 }
 
-/** Share…: make a link for one office (the one shown, by default) or all of them. `offices`: the stored ones. */
+/**
+ * Share…: make a link for one office (the one shown, by default), all of them, or (#2716) the whole-fleet office
+ * (`current` null: the one shown). `offices`: the stored ones.
+ */
 export function ShareDialog({ offices = [], current = null, get = globalThis.fetch, onClose }) {
-  const [office, setOffice] = useState(current && offices.some((o) => o.id === current) ? current : "all");
+  const [office, setOffice] = useState(current === null ? "auto" : current === "all" || offices.some((o) => o.id === current) ? current : "all");
+  const [theme, setTheme] = useState(() => defaultLook());
   const [minutes, setMinutes] = useState(60);
   const [text, setText] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,7 +108,7 @@ export function ShareDialog({ offices = [], current = null, get = globalThis.fet
   const create = async () => {
     setBusy(true); setError("");
     try {
-      const r = await get("/ui/office-share", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ office, minutes, text }) });
+      const r = await get("/ui/office-share", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ office, minutes, text, theme }) });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d && typeof d.url === "string") setMade(d); else setError(refusalText(d));
     } catch { setError(to("failed")); }
@@ -110,12 +129,17 @@ export function ShareDialog({ offices = [], current = null, get = globalThis.fet
       </div>` : html`<div class="os-form">
         <label class="field"><span>${to("office")}</span>
           <select class="tb-select" value=${office} onChange=${(e) => setOffice(e.target.value)} disabled=${busy}>
-            ${offices.length > 1 || !offices.length ? html`<option value="all">${to("allOffices")}</option>` : null}
+            <option value="auto">${to("wholeFleet")}</option>
+            ${offices.length > 1 || office === "all" ? html`<option value="all">${to("allOffices")}</option>` : null}
             ${offices.map((o) => html`<option key=${o.id} value=${o.id}>${o.name}</option>`)}
           </select></label>
         <label class="field"><span>${to("how")}</span>
           <select class="tb-select" value=${String(minutes)} onChange=${(e) => setMinutes(Number(e.target.value))} disabled=${busy}>
             ${DURATIONS.map(([k, m]) => html`<option key=${k} value=${String(m)}>${to(k)}</option>`)}
+          </select></label>
+        <label class="field"><span>${to("look")}</span>
+          <select class="tb-select os-look" value=${theme} onChange=${(e) => setTheme(e.target.value)} disabled=${busy}>
+            ${[["auto", "lookAuto"], ["light", "lookLight"], ["dark", "lookDark"]].map(([v, k]) => html`<option key=${v} value=${v}>${to(k)}</option>`)}
           </select></label>
         <label class="check"><input type="checkbox" checked=${text} onChange=${(e) => setText(e.target.checked)} disabled=${busy} /> ${to("text")}</label>
         ${error ? html`<p class="err os-err" role="alert">${error}</p>` : null}
