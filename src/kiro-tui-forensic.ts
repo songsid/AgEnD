@@ -3,7 +3,7 @@
  */
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { KiroScanRead } from "./forged-envelope-scan.js";
 
 export const KIRO_FORENSIC_MAX_BYTES = 64 * 1024 * 1024;
@@ -11,14 +11,22 @@ const META_MAX_BYTES = 8 * 1024 * 1024;
 const LINE_MAX_BYTES = 4 * 1024 * 1024;
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
+/** Callers using a tiny emptiness probe must distinguish work from an unsafe file. */
+export class KiroTuiSnapshotSizeError extends Error {
+  constructor(readonly path: string, readonly maxBytes: number, readonly actualBytes: number) {
+    super(`TUI session ${JSON.stringify(basename(path))} exceeds the scan size limit (${actualBytes} > ${maxBytes} bytes)`);
+  }
+}
+
 /** Refuse symlinks/devices/foreign files and read exactly the size observed at open, not an unbounded live tail. */
 export function snapshotKiroTuiFile(path: string, maxBytes: number): { text: string; unchanged: () => boolean } {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const before = fstatSync(fd);
-    if (!before.isFile() || (process.getuid && before.uid !== process.getuid()) || before.size > maxBytes) {
-      throw new Error("TUI session is not an owned regular file within the scan size limit");
+    if (!before.isFile() || (process.getuid && before.uid !== process.getuid())) {
+      throw new Error(`TUI session ${JSON.stringify(basename(path))} is not an owned regular file`);
     }
+    if (before.size > maxBytes) throw new KiroTuiSnapshotSizeError(path, maxBytes, before.size);
     const bytes = Buffer.alloc(before.size);
     let offset = 0;
     while (offset < bytes.length) {

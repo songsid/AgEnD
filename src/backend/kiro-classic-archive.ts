@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { kiroAgentName, kiroFleetTag } from "./kiro-agent.js";
 import { kiroCanonicalDirectory, kiroDirectoryKeys, kiroOwnedConversation, kiroCarryCandidate, reinstateKiroCarryPin } from "./kiro-identity.js";
-import { readKiroTuiAssistantTexts, snapshotKiroTuiFile } from "../kiro-tui-forensic.js";
+import { KiroTuiSnapshotSizeError, readKiroTuiAssistantTexts, snapshotKiroTuiFile } from "../kiro-tui-forensic.js";
 
 export interface KiroClassicArchiveInput {
   agendHome: string;
@@ -247,8 +247,18 @@ function proveNoReplacementWork(input: KiroClassicArchiveInput): void {
       if (/^[^\n\r\0]{1,512}\n$/.test(owner) && owner !== input.instance + "\n") continue;
       throw new Error("A replacement session is already owned; automatic repair held");
     }
-    const log = snapshotKiroTuiFile(join(input.sessionsDir, `${meta.session_id}.jsonl`), 1);
-    if (log.text.length !== 0 || !file.unchanged() || !log.unchanged()) throw new Error("An unowned replacement session has work or changed; automatic repair held");
+    const logName = `${meta.session_id}.jsonl`;
+    const work = (bytes: number) => new Error(`Newer same-cwd session ${JSON.stringify(logName)} has work (${bytes} bytes); choose which conversation to keep before repairing`);
+    let log: ReturnType<typeof snapshotKiroTuiFile>;
+    try {
+      // This is an emptiness probe, not the ordinary 64 MiB transcript scan.
+      log = snapshotKiroTuiFile(join(input.sessionsDir, logName), 1);
+    } catch (error) {
+      if (error instanceof KiroTuiSnapshotSizeError) throw work(error.actualBytes);
+      throw new Error(`Replacement transcript ${JSON.stringify(logName)} could not be read safely; automatic repair held: ${(error as Error).message}`);
+    }
+    if (log.text.length !== 0) throw work(Buffer.byteLength(log.text));
+    if (!file.unchanged() || !log.unchanged()) throw new Error(`Replacement transcript ${JSON.stringify(logName)} changed; automatic repair held`);
   }
   for (const check of unknownChecks) if (!check.unchanged()) throw new Error(`Replacement session metadata ${JSON.stringify(check.name)} changed during proof; automatic repair held`);
 }
