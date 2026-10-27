@@ -232,6 +232,8 @@ export const PERIODIC_REDRAW_PROBE_MS = 25;
 const KIRO_COMPACT_PANE_POLL_MS = 1_000;
 /** Do not turn a streaming Codex turn into one capture-pane per burst. */
 export const STRUCTURED_IDLE_PROBE_MS = 500;
+/** #2770 (ii): how often output may schedule a look for a layout that repaints while idle (CliBackend.periodicRedrawFrom). */
+export const PERIODIC_LAYOUT_LOOK_MS = 5_000;
 /**
  * An instance publishing more than this many execution-state edges inside the
  * window is flapping; its edges stop being logged one by one (#1116). One
@@ -1656,6 +1658,10 @@ export class Daemon extends EventEmitter {
   /** Consecutive structural idle captures for a noisy, periodically-redrawing
    * pane.  Two are required before a working -> idle transition. */
   private instanceStatePeriodicIdleConfirmations = 0;
+  /** #2770 (ii): the latest capture showed a layout that repaints while idle (CliBackend.periodicRedrawFrom). */
+  private periodicRedrawLayout = false;
+  /** When output last scheduled a look for that layout (monotonic ms), so a busy pane is not captured on every chunk. */
+  private periodicLayoutLookAt = -Infinity;
   /** Recent execution-state edge times, for the flap log limiter (#1116). */
   private stateEdgeTimes: number[] = [];
   private stateEdgesNotLogged = 0;
@@ -6521,7 +6527,8 @@ export class Daemon extends EventEmitter {
       // changed when tmux reported output (observedChangeAt), but idle/stuck are
       // decisions about *now*. The old double-observe expressed that by calling
       // observe twice, which silently disabled the "content moved" branch.
-      const structuredPeriodicIdle = this.backend?.isPeriodicRedrawIdlePane;
+      if (this.backend?.periodicRedrawFrom) this.periodicRedrawLayout = this.backend.periodicRedrawFrom(pane);
+      const structuredPeriodicIdle = this.periodicIdleProof();
       // #1641: the transcript outranks the pane: while it shows the turn running, no reading of this pane is idle (codex
       // hides its status row while streaming, leaving the idle composer and footer in view mid-turn).
       const transcriptTurn = this.transcriptTurnState();
@@ -6698,7 +6705,7 @@ export class Daemon extends EventEmitter {
     if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
     this.instanceStateLastOutputAt = event.at;
     this.interactionOutputRevision++;
-    const canProvePeriodicIdle = !!this.backend?.isPeriodicRedrawIdlePane;
+    const canProvePeriodicIdle = !!this.periodicIdleProof();
     if (canProvePeriodicIdle || (this.backend?.hasPeriodicPaneRedraw?.() === true && this.instanceState === "idle")) {
       // Do not emit idle→working solely because agy repainted an identical
       // footer. Codex additionally uses a structural probe while working: two
@@ -6716,6 +6723,24 @@ export class Daemon extends EventEmitter {
     this.applyInstanceStateSnapshot(snapshot);
     this.scheduleInstanceStateIdleCapture();
     this.scheduleInstanceStateStuckDeadline(event.at);
+    // #2770 (ii): a layout that repaints while idle (Claude's background-agent list) never leaves the quiet window the
+    // idle capture waits for, so nothing would look at the pane again before the 60 s sweep. Look now and then.
+    if (this.backend?.periodicRedrawFrom && performance.now() - this.periodicLayoutLookAt >= PERIODIC_LAYOUT_LOOK_MS) {
+      this.periodicLayoutLookAt = performance.now();
+      this.scheduleInstanceStateOutputProbe(STRUCTURED_IDLE_PROBE_MS);
+    }
+  }
+
+  /**
+   * The backend's structural idle proof for periodically repainting panes, when it applies to the current layout: always
+   * for a backend that repaints in every layout (Codex, Muse), only while the latest capture showed such a layout for one
+   * that names it (CliBackend.periodicRedrawFrom — Claude's background-agent list, #2770 (ii)).
+   */
+  private periodicIdleProof(): ((pane: string) => boolean) | undefined {
+    const proof = this.backend?.isPeriodicRedrawIdlePane;
+    if (!proof) return undefined;
+    if (this.backend?.periodicRedrawFrom && !this.periodicRedrawLayout) return undefined;
+    return proof;
   }
 
   private bindInstanceStateOutputListener(windowId: string): void {
@@ -6732,6 +6757,7 @@ export class Daemon extends EventEmitter {
 
   private startInstanceStateMonitor(): void {
     if (this.runtimeMonitorsFrozen || !this.tmux || !this.backend || this.instanceStateMonitorActive) return;
+    this.periodicRedrawLayout = false;                     // a new launch's layout is not the old one's
 
     const rawConfig = (this.config as InstanceConfig & {
       hang_detector?: { timeout_minutes?: number; idle_debounce_ms?: number };
@@ -9261,7 +9287,7 @@ export class Daemon extends EventEmitter {
    */
   private canTrustRedrawIdleState(): boolean {
     if (this.backend?.hasPeriodicPaneRedraw?.() === true) return true;
-    return this.instanceStateMonitorActive && !!this.backend?.isPeriodicRedrawIdlePane;
+    return this.instanceStateMonitorActive && !!this.periodicIdleProof();
   }
 
   /**
