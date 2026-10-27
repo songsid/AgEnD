@@ -69,7 +69,6 @@ const ROWS = [
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
   ["dash.app-icon", "web-dashboard", ".s-app-icon", "settings.appIconTitle", null, ["app icon", "favicon", "home screen", "icon"], ["App 圖示", "圖示", "主畫面"]],
   ["dash.card-limits", "web-dashboard", ".s-card-limits", "settings.cardLimitsTitle", "web.appearance", ["upload limits", "portrait", "banner", "card limits"], ["上傳限制", "身分卡上傳限制"]],
-  ["dash.canvas-worker", "web-dashboard", ".s-experimental-effects", "experimentalEffects.title", "web.experimental.canvas_worker", ["canvas worker", "experimental", "effects"], ["Canvas Worker", "實驗功能", "特效"]],
   // Fleet · Access & security
   ["access.session-absolute", "access", "#webSessionAbsolute", "settings.sessionAbsolute", "web.session.local.absolute_hours", ["session", "sign in", "hours", "expire", "logout"], ["session", "登入", "時數", "到期"]],
   ["access.session-idle", "access", "#webSessionIdle", "settings.sessionIdle", "web.session.local.idle_hours", ["session", "idle", "unused", "hours"], ["session", "閒置", "時數"]],

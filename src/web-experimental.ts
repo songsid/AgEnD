@@ -1,12 +1,16 @@
-/** #2275: the one opt-in rule shared by agent menus, calls and the web. */
+/** #2275: the one opt-in rule shared by agent menus, calls and the web. #2793: Canvas Worker effects were removed. */
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import yaml from "js-yaml";
 import type { WebConfig } from "./types.js";
 
-export const CANVAS_WORKER_EXPERIMENTAL_MESSAGE = "Canvas Worker effects are an experimental feature; enable it in Settings → Web dashboard";
-export function canvasWorkerEnabled(web?: Pick<WebConfig, "experimental"> | null): boolean {
-  return web?.experimental?.canvas_worker === true;
+export const CANVAS_WORKER_EXPERIMENTAL_MESSAGE = "Canvas Worker effects were removed; ambient effects are still available";
+/**
+ * #2793: always off. A saved `web.experimental.canvas_worker` still loads and stays in the file (a downgrade finds it),
+ * but nothing turns the tools, routes or UI back on. The dormant effect code is a separate cleanup.
+ */
+export function canvasWorkerEnabled(_web?: Pick<WebConfig, "experimental"> | null): boolean {
+  return false;
 }
 
 const CANVAS_WORKER_TOOLS: ReadonlySet<string> = new Set([

@@ -1509,7 +1509,7 @@ Bot avatars and the custom emoji of the fleet's Discord servers are fetched on t
 Clearing the display name in View's **Edit profile** now removes the override — the name the agent set with `set_display_name` (or the instance name) shows again. Display names cleared before this release recover too.
 ## Agents' look on the web: themes, identity cards, widgets, custom CSS and mods (#1629)
 
-**Canvas Worker is experimental and off by default in 2.3.0 (#2275).** A local administrator can opt in under Settings → Web dashboard → Experimental: Canvas Worker effects (`web.experimental.canvas_worker: true`). Until then, all CW UI, playback, agent tools and guidance are hidden or refused, including existing saved placements. Switching off stops playback without deleting saved data; switching on restores the existing consent and trust behavior. Ambient effects such as petals and click stars remain available either way. The following CW-specific sections describe the enabled feature.
+**Canvas Worker effects were removed (#2793).** They were experimental and off by default in 2.3.0 (#2275); now nothing turns them on — no Settings switch, no agent tools, and `web.experimental.canvas_worker` is ignored. Saved data stays on disk. Ambient effects such as petals and click stars are not affected. The CW-specific sections below describe the removed feature.
 
 Four things change how the dashboard looks, each with its own owner:
 

@@ -1,5 +1,11 @@
 /** Real private listeners/gateway and stores; synthetic accounts only, no fleet or external transport. */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
+// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
+vi.mock("../src/web-experimental.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
+  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
+}));
 import { createServer, request, type Server } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

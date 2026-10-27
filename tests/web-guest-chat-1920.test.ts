@@ -10,6 +10,12 @@
  * - A placed effect's poster: by its instance, in scope.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
+// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
+vi.mock("../src/web-experimental.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
+  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
+}));
 // #2095 CI: pino's worker opens daemon.log in the scratch home late — an afterAll rmSync walking it met ENOTEMPTY (as
 // #1778/#1779). This file has no use for the log: the logger is silent, so nothing writes there once the work is done.
 vi.mock("../src/logger.js", async original => {

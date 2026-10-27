@@ -56,7 +56,7 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
 - **升級後預設值會改變的地方：**
   - **聊天裡的任務看板：** 需要你處理的卡片，要設 `needs_you.task_board: true` 才會出現在 General 的「等你處理」（#2425）。每日摘要要設 `defaults.task_board.summary_at` 才會發。
   - **新建立的 fleet：** 新的 `fleet.yaml` 會帶 `defaults.dashboard.task_board: false`（#2391）。既有的設定檔不會被改寫，任務看板照常可用。
-  - **Canvas Worker 特效是實驗功能，預設關閉**（#2275）。可以在「**設定 → 網頁儀表板**」開啟。內建的環境效果（例如落花、點擊星星）不受影響。
+  - **Canvas Worker 特效原為預設關閉的實驗功能**（#2275），之後已移除（#2793）。內建的環境效果（例如落花、點擊星星）不受影響。
   - **CLI 的語言跟著 `defaults.locale`**（#2404）。沒設的話，時區為 UTC+8 的主機會用中文，給程式讀的那幾行固定保持英文。
   - **有安裝 AgEnD 服務的主機**（#2356）：手動執行 `agend fleet start` 和 `agend fleet stop` 會改交給 `agend start` 和 `agend stop`，不會在服務旁邊多跑一個 fleet。
 - **已知問題：**
@@ -126,7 +126,7 @@ AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2
   - 每個 Claude 登入各一列，包括預設帳號和每個 profile（#2236）。額度用完會顯示 100% 和重置時間；被限流會顯示「Rate limited」。
   - 讀不到數字時，面板會保留上次的數字並標示「已過期 · 快取於 HH:MM」，不會閃出「無法載入」（#2236、#2385）。
   - Antigravity 會顯示方案名稱；付費方案會顯示正確的 Gemini 額度。Gemini 4 Argon 有自己的一行（#2240）。
-- **Canvas Worker 特效（實驗功能，預設關閉）：** 開啟 `web.experimental.canvas_worker`（或在 **設定 → 網頁儀表板** 打開開關）後，可以上傳特效、放到聊天或個人區域，agent 也能用工具放置自己的特效（#1629）。特效在隔離的 worker 裡執行，接觸不到頁面內容和輸入框。
+- **Canvas Worker 特效（實驗功能，預設關閉；之後已移除，#2793）：** 開啟 `web.experimental.canvas_worker` 後，原本可以上傳特效、放到聊天或個人區域，agent 也能用工具放置自己的特效（#1629）。特效在隔離的 worker 裡執行，接觸不到頁面內容和輸入框。
 
 ### 遠端存取與安全
 

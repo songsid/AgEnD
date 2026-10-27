@@ -1,5 +1,11 @@
 /** #2275: current feature guidance, including CLI reads and already queued upgrade notices. */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
+// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
+vi.mock("../src/web-experimental.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
+  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
+}));
 import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -69,7 +75,7 @@ describe("experimental guidance selection", () => {
     expect(off.find(e => e.id === "2.3-web-ambient")).toBe(AGENT_WHATS_NEW.find(e => e.id === "2.3-web-ambient"));
     expect(plan().notice).toContain("`set_web_ambient`");
   });
-  it("rebuilds a cached enabled notice immediately before delivery even when no ids changed", () => {
+  it("#2793: a cached notice is rebuilt without Canvas Worker text even when the saved setting says true", () => {
     const home = scratch(), instanceDir = join(home, "instances", "worker");
     mkdirSync(instanceDir, { recursive: true });
     const d = Object.create(Daemon.prototype) as any;
@@ -79,15 +85,12 @@ describe("experimental guidance selection", () => {
     try {
       process.env.AGEND_HOME = home;
       writeFileSync(join(home, "fleet.yaml"), "web:\n  experimental:\n    canvas_worker: true\n");
-      const enabled = d.currentWhatsNew(plan(true));
-      expect(enabled.notice).toMatch(hidden);
-      writeFileSync(join(home, "fleet.yaml"), "web:\n  experimental:\n    canvas_worker: false\n");
-      const disabled = d.currentWhatsNew(enabled);
-      expect(disabled.ids).toEqual(enabled.ids);
-      expect(disabled.notice).not.toMatch(hidden);
-      expect(disabled.notice).toContain("`set_web_ambient`");
-      writeFileSync(join(home, "fleet.yaml"), "web:\n  experimental:\n    canvas_worker: true\n");
-      expect(d.currentWhatsNew(disabled).notice).toBe(enabled.notice);
+      const cached = plan(true);
+      expect(cached.notice).toMatch(hidden);                                  // a notice planned before the removal
+      const now = d.currentWhatsNew(cached);
+      expect(now.ids).toEqual(cached.ids);
+      expect(now.notice).not.toMatch(hidden);
+      expect(now.notice).toContain("`set_web_ambient`");
     } finally {
       if (priorHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = priorHome;
     }
@@ -115,12 +118,12 @@ describe("experimental guidance selection", () => {
       if (priorHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = priorHome;
     }
   });
-  it("the real standalone CLI reads the owning HOME's current flag for both catalog and content, with no fleet", async () => {
+  it("#2793: the real standalone CLI serves the off guidance whatever the owning HOME saved, with no fleet", async () => {
     const home = scratch();
     const invoke = (...args: string[]) => run(process.execPath, ["--import", pathToFileURL(join(process.cwd(), "node_modules/tsx/dist/loader.mjs")).href, join(process.cwd(), "src/agent-cli.ts"), "skill", ...args], {
       cwd: home, env: { PATH: process.env.PATH, HOME: home, AGEND_HOME: home }, timeout: 30_000,
     });
-    for (const [yamlValue, enabled] of [["false", false], ["true", true], ['"true"', false], ["false", false]] as const) {
+    for (const [yamlValue, enabled] of [["false", false], ["true", false], ['"true"', false]] as const) {
       writeFileSync(join(home, "fleet.yaml"), `web:\n  experimental:\n    canvas_worker: ${yamlValue}\n`);
       const text = (await invoke("web-appearance")).stdout;
       const catalog = (await invoke()).stdout;

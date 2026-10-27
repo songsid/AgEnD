@@ -28,7 +28,7 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 - **等你處理**（`/ui/needs`）— 所有 bot 等你處理的事集中在一個清單：權限詢問、卡住通知、登入、無法確認送達的訊息。在任何地方處理掉，每個清單都會消失。開啟 `needs_you.task_board` 後，等你處理的任務看板卡片也會加入這個清單。
 - **檢視**（`/view`）— 每個 agent 的即時終端畫面、名單、AI 訂閱用量，以及每個 agent 的個人資料和頭像。
 - **紀錄** — 每個 instance 一份：Claude Code 和 Codex 會顯示從 agent 的 transcript 讀出的每則 prompt、回覆和工具呼叫，加上當機、重啟等 fleet 事件；其他後端只顯示 fleet 事件。預設關閉；fleet 管理員在**設定 → 網頁儀表板**（`web.log_tab`）打開。
-- **設定**（`/settings`）— agent、連線、ClassicBot、Agent 預設值與儀表板自己的設定，以及整份 `fleet.yaml`，先暫存再一起套用。Bot token 在這裡輸入，存檔前會先向平台確認是哪個 bot。在 **網頁儀表板** 下可以找到 App 圖示（「加入主畫面」時顯示的圖），以及實驗功能 Canvas Worker 特效，兩者都要手動開啟。
+- **設定**（`/settings`）— agent、連線、ClassicBot、Agent 預設值與儀表板自己的設定，以及整份 `fleet.yaml`，先暫存再一起套用。Bot token 在這裡輸入，存檔前會先向平台確認是哪個 bot。在 **網頁儀表板** 下可以找到 App 圖示（「加入主畫面」時顯示的圖）。
 
 冷啟動或完整重啟時，儀表板會在所有 agent 啟動完成前就打開，並顯示每個 agent 的啟動進度。
 

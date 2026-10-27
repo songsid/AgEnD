@@ -115,7 +115,6 @@ export interface SettingsApiContext extends AppShellContext {
   getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(explicitPatches?: RawConfigPatch[]): void;
   /** Refresh managed guidance and web clients after a committed experimental setting change. */
-  canvasWorkerSettingChanged?(): void;
   lifecycle: {
     isPaused(name: string): boolean;
     pause(name: string): Promise<void>;
@@ -818,12 +817,6 @@ export function handleSettingsRequest(
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
       const parsed = parseWebSettingsBody(body);
       if ("error" in parsed) return json(res, 400, { error: parsed.error });
-      if (parsed.canvasWorker !== undefined && !settingsRequestLocalAdmin(req)) {
-        const actor = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-        if (actor.kind !== "allow" || actor.via !== "session" || actor.session.tier !== "admin" || actor.session.surface !== "local") {
-          return json(res, 403, { error: "canvas_worker_setting_needs_local_admin" });
-        }
-      }
       const { session: sessionPatch, terminal: terminalPatch } = parsed;
       // #2499 review: who is saving, asked now, before the save — a session policy saved with it can end this very session
       // (a shorter sign-in time), and the audit must still name who did it. A confirmation's replay is no one's: null.
@@ -831,10 +824,6 @@ export function handleSettingsRequest(
       const changes: RawConfigPatch[] = [];
       let web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
-      if (parsed.canvasWorker !== undefined) {
-        web.experimental = { ...web.experimental, canvas_worker: parsed.canvasWorker };
-        changes.push({ path: ["web", "experimental", "canvas_worker"], value: parsed.canvasWorker });
-      }
       if (parsed.notifyLogin !== undefined) {
         const holder = { defaults: cfg.defaults, web }; setNoticeMode(holder, "login", parsed.notifyLogin); web = holder.web;
         changes.push({ path: ["web", "notify_login"], value: web.notify_login },
@@ -898,9 +887,6 @@ export function handleSettingsRequest(
         if (previous.hadTerminal) cfg.web_terminal = previous.terminal; else delete (cfg as { web_terminal?: unknown }).web_terminal;
         ctx.logger.warn({ err }, "settings: web save refused");
         return json(res, 500, { ok: false, error: (err as Error).message });
-      }
-      if (parsed.canvasWorker !== undefined && (previous.web?.experimental?.canvas_worker === true) !== parsed.canvasWorker) {
-        ctx.canvasWorkerSettingChanged?.();
       }
       // #2348: a grant taken away (or emptied) ends that person's guest access now — sessions, an outstanding code, and
       // remembered browsers — not at their next request. A narrowed grant keeps its sessions; they see less from now on.

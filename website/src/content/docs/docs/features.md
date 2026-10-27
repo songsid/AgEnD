@@ -28,7 +28,7 @@ The fleet serves a dashboard on `127.0.0.1`, on `health_port` (default 19280). I
 - **Needs you** (`/ui/needs`) — everything waiting on you, from every bot, in one list: permission prompts, hang alerts, sign-ins, deliveries that could not be confirmed. Something handled anywhere leaves every list. Task Board cards that wait on you join it when `needs_you.task_board` is on.
 - **View** (`/view`) — every agent's live terminal, the roster, AI subscription usage, and each agent's profile and avatar.
 - **Log** — per instance: on Claude Code and Codex, each prompt, reply and tool call, read from the agent's transcript, plus fleet events such as crashes and restarts; other backends show the fleet events only. Off by default; a fleet admin turns it on in **Settings → Web dashboard** (`web.log_tab`).
-- **Settings** (`/settings`) — agents, connections, ClassicBot, agent defaults and the dashboard's own settings and the whole `fleet.yaml`, staged and applied together. Bot tokens are entered here and checked with the platform before anything is saved. Under **Web dashboard** you also find the app icon (what **Add to Home Screen** shows) and the experimental Canvas Worker effects, which are off until you turn them on.
+- **Settings** (`/settings`) — agents, connections, ClassicBot, agent defaults and the dashboard's own settings and the whole `fleet.yaml`, staged and applied together. Bot tokens are entered here and checked with the platform before anything is saved. Under **Web dashboard** you also find the app icon (what **Add to Home Screen** shows).
 
 On a cold start or a full restart the dashboard opens before every agent has started, and shows each agent's progress.
 

@@ -534,7 +534,7 @@ General (and a coordinator or full-profile instance) can change **Settings → L
 
 ### Effects
 
-A Canvas Worker effect is a small animation drawn by code in an isolated Worker, with no page or DOM of its own. **Settings → Look → Effects** manages them; agents place their own with the `web-appearance` tools.
+**Removed (#2793):** Canvas Worker effects can no longer be turned on, so none of this section is offered. Ambient effects are not affected. What it described: a Canvas Worker effect is a small animation drawn by code in an isolated Worker, with no page or DOM of its own. **Settings → Look → Effects** managed them; agents placed their own with the `web-appearance` tools.
 - **The library.** **Upload an effect folder**: `effect.json` and `worker.js`, with optional raster pictures, up to 1 MiB after processing. Each effect lists **Your copy** or **Shared with you**. **Share your copy with agents and people on this fleet** lets them use it; **Delete your copy** removes an unused copy (other people's copies stay). **Profile history** shows how it ran on viewers' pages — reported observations, not proof of its cost. **Reload library** reads it again.
 - **For a chat.** Choose the **Chat**, set an effect's **Parameters**, then **Save for this chat** (it replaces that chat's parameters with these values) or **Remove from this chat**.
 - **Your effect choices.** One effect each for the **Sidebar**, **Header**, **Page** and **Box**, each with **Pause / Resume** and **Clear**, and a **Cursor**, which shows its state and has **Clear**. They follow this platform sign-in (a Discord and a Telegram account stay separate); a host-operator sign-in shares **Host-wide effect choices**.

@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
+// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
+vi.mock("../src/web-experimental.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
+  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
+}));
 import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, canvasWorkerEnabled, isCanvasWorkerTool, readCanvasWorkerEnabled, scopedFleetConfigEnvironment, watchCanvasWorkerEnabled } from "../src/web-experimental.js";
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, canvasWorkerEnabled, canvasWorkerConfigPath, isCanvasWorkerTool, readCanvasWorkerEnabled, scopedFleetConfigEnvironment, watchCanvasWorkerEnabled } from "../src/web-experimental.js";
 import { TOOLS, toolsWithCanvasWorker } from "../src/channel/mcp-tools.js";
 import { toolsFor, TOOL_PROFILES } from "../src/tool-permissions.js";
 import { dispatchAgentOperation, type AgentEndpointContext } from "../src/agent-endpoint.js";
@@ -17,14 +23,14 @@ afterEach(() => { vi.unstubAllEnvs(); for (const p of dirs.splice(0)) rmSync(p, 
 const NAMES = ["upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect", "export_web_mod", "propose_web_mod"];
 
 describe("CW agent menus and current configuration", () => {
-  it("requires an explicit boolean true and fails closed for absent/corrupt disk settings", () => {
-    expect(canvasWorkerEnabled()).toBe(false);
-    for (const value of [false, undefined, "true", 1]) expect(canvasWorkerEnabled({ experimental: { canvas_worker: value } } as never)).toBe(false);
-    expect(canvasWorkerEnabled({ experimental: { canvas_worker: true } })).toBe(true);
+  it("#2793: off whatever is saved — in memory, on disk, absent or corrupt", async () => {
+    const real = await vi.importActual<typeof import("../src/web-experimental.js")>("../src/web-experimental.js");
+    for (const value of [true, false, undefined, "true", 1]) expect(real.canvasWorkerEnabled({ experimental: { canvas_worker: value } } as never)).toBe(false);
+    expect(real.canvasWorkerEnabled()).toBe(false);
     const dir = tmp();
     expect(readCanvasWorkerEnabled(dir)).toBe(false);
     writeFileSync(join(dir, "fleet.yaml"), "web:\n  experimental:\n    canvas_worker: true\n");
-    expect(readCanvasWorkerEnabled(dir)).toBe(true);
+    expect(readCanvasWorkerEnabled(dir)).toBe(false);
     writeFileSync(join(dir, "fleet.yaml"), "web: [\n");
     expect(readCanvasWorkerEnabled(dir)).toBe(false);
   });
@@ -38,7 +44,8 @@ describe("CW agent menus and current configuration", () => {
     expect(readCanvasWorkerEnabled(owner)).toBe(false);
     vi.stubEnv("AGEND_FLEET_DATA_DIR", owner);
     expect(scopedFleetConfigEnvironment(owner)).toEqual({ AGEND_FLEET_DATA_DIR: owner, AGEND_FLEET_CONFIG_PATH: custom });
-    expect(readCanvasWorkerEnabled(owner)).toBe(true);
+    expect(canvasWorkerConfigPath(owner)).toBe(custom);
+    expect(readCanvasWorkerEnabled(owner)).toBe(false);                       // #2793: the selected file's true is ignored too
     vi.stubEnv("AGEND_FLEET_CONFIG_PATH", "relative.yaml");
     expect(readCanvasWorkerEnabled(owner)).toBe(false);
     vi.stubEnv("AGEND_FLEET_CONFIG_PATH", custom + ".missing");
@@ -58,7 +65,8 @@ describe("CW agent menus and current configuration", () => {
     (fm as any).logger = logger;
     fm.loadConfig(custom);
     expect(scopedFleetConfigEnvironment(owner)).toEqual({ AGEND_FLEET_DATA_DIR: owner, AGEND_FLEET_CONFIG_PATH: custom });
-    expect(readCanvasWorkerEnabled(owner)).toBe(true);
+    expect(canvasWorkerConfigPath(owner)).toBe(custom);
+    expect(readCanvasWorkerEnabled(owner)).toBe(false);                       // #2793
     expect(readCanvasWorkerEnabled(foreign)).toBe(false);
     const daemon = new Daemon("worker", { working_directory: owner, workflow: false,
       restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, log_level: "error" },
@@ -95,16 +103,15 @@ describe("CW agent menus and current configuration", () => {
     expect(JSON.stringify(off)).not.toMatch(/Canvas Worker|upload_web_effect|effect slots/);
     expect(JSON.stringify(toolsWithCanvasWorker(true).find(t => t.name === "set_web_settings"))).toContain('"const":"effect"');
   });
-  it("observes atomic replacement in both directions without restarting the MCP child", async () => {
+  it("#2793: an atomic replacement that saves true is never reported as a change", async () => {
     const dir = tmp(), changes: boolean[] = [];
     writeFileSync(join(dir, "fleet.yaml"), "web: {}\n");
     const stop = watchCanvasWorkerEnabled(dir, v => changes.push(v), 10);
     try {
       writeFileSync(join(dir, "next.yaml"), "web:\n  experimental:\n    canvas_worker: true\n");
       renameSync(join(dir, "next.yaml"), join(dir, "fleet.yaml"));
-      await vi.waitFor(() => expect(changes).toEqual([true]), { interval: 15 });
-      writeFileSync(join(dir, "fleet.yaml"), "web: {}\n");
-      await vi.waitFor(() => expect(changes).toEqual([true, false]), { interval: 15 });
+      await new Promise(resolve => setTimeout(resolve, 80));
+      expect(changes).toEqual([]);
     } finally { stop(); }
   });
 });

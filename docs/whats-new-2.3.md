@@ -28,7 +28,7 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 | Task board daily summary | Off | `defaults.task_board.summary_at: "09:00"` (a 24-hour time in the fleet's time zone) |
 | A new `fleet.yaml` | Written with `defaults.dashboard.task_board: false` | Settings, or per agent with `dashboard` |
 | An existing `fleet.yaml` | Not rewritten; the task board stays available | Same as above |
-| Canvas Worker effects | Experimental, off | Settings → Web dashboard |
+| Canvas Worker effects | Removed (#2793) | — |
 | CLI language | From `defaults.locale`. If unset: Chinese on a UTC+8 host, English otherwise | `defaults.locale: en` or `zh-TW` |
 | ClassicBot rooms | Echo web chat (`🌐 web · <name>: …`) | `web_echo: false` in `classicBot.yaml`, or untick **Web echo** in the room's Settings |
 | `agend fleet start` / `agend fleet stop` on a host with a service | Hand over to `agend start` / `agend stop` | `agend fleet start --direct`, from your own shell (not from an agent session) |
@@ -79,7 +79,7 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 - An agent's theme can cover the whole page: sidebar, title bar and right panel. Override it in **⋯ → Page colours**.
 - The identity card opens from one button in the chat title bar.
 - **App icon.** Upload an image under **Settings → Web dashboard → App icon**. Your image is used when you add the dashboard to your home screen.
-- **Canvas Worker effects are experimental and off by default.** A local administrator can turn them on under **Settings → Web dashboard**. Effects run in an isolated Worker and cannot read the page's content or its input fields. Ambient effects, such as falling petals and click stars, are not affected.
+- **Canvas Worker effects were experimental and off by default, and have since been removed (#2793).** Effects run in an isolated Worker and cannot read the page's content or its input fields. Ambient effects, such as falling petals and click stars, are not affected.
 - The tool set menu lists the profile each agent actually uses when it has none of its own.
 
 ### Usage panel

@@ -90,7 +90,7 @@ launchd 的 plist 不會更動。要注意一點：2.3.x 在失敗前可能已�
 | 任務看板的每日摘要 | 關閉 | `defaults.task_board.summary_at: "09:00"`（fleet 所在時區的 24 小時制時間） |
 | 新建立的 `fleet.yaml` | 會寫入 `defaults.dashboard.task_board: false` | 在設定中修改，或為個別 agent 設定 `dashboard` |
 | 既有的 `fleet.yaml` | 不會被改寫，任務看板照常可用 | 同上 |
-| Canvas Worker 特效 | 實驗功能，預設關閉 | 設定 → 網頁儀表板 |
+| Canvas Worker 特效 | 已移除（#2793） | — |
 | CLI 語言 | 跟著 `defaults.locale`；沒設定時，UTC+8 的主機用中文，其他用英文 | 設定 `defaults.locale: en` 或 `zh-TW` |
 | ClassicBot 聊天室 | 會同步網頁聊天（`🌐 web · <名字>: …`） | 在 `classicBot.yaml` 設定 `web_echo: false`，或在該聊天室的 Settings 取消勾選「Web 同步」 |
 | 主機有安裝 AgEnD 服務時，手動執行 `agend fleet start` / `agend fleet stop` | 改交給 `agend start` / `agend stop` | 在自己的 shell（不是 agent session）執行 `agend fleet start --direct` |

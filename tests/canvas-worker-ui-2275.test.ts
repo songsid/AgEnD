@@ -30,18 +30,17 @@ describe("#2275 neutral UI feature boundary", () => {
   });
 });
 
-it("local-admin Appearance exposes the switch with confirmed config writes, off makes no library reads", async () => {
+it("#2793: a local admin's Web dashboard settings have no Canvas Worker switch and make no library reads", async () => {
   pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
-  const calls: string[] = [], writes: any[] = [];
-  vi.stubGlobal("fetch", vi.fn(async (url: string, init: any = {}) => { calls.push(url); if (init.method === "PUT") writes.push({ url, body: JSON.parse(init.body), headers: init.headers }); return { ok: true, status: 200, json: async () => url === "/ui/owner-css/state" ? { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } } : {} }; }));
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => { calls.push(url); return { ok: true, status: 200, json: async () => url === "/ui/owner-css/state" ? { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } } : {} }; }));
   vi.stubGlobal("AgendAuth", { trialSession: async () => ({ localAdmin: true }) });
   const { appStore } = await import("/assets/app-store.js"); appStore.set({ canvasWorker: false });
   const { AppearanceSection } = await import("/ui/js/settings-appearance.js"); await pg.mount(h(AppearanceSection, { part: "dashboard" })); await settle(); await settle();
-  expect(pg.root.textContent).toContain("Experimental: Canvas Worker effects");
-  expect(pg.root.querySelector(".s-experimental-effects input").checked).toBe(false);
+  expect(pg.root.querySelector(".s-app-icon")).not.toBeNull();             // the rest of the part still draws
+  expect(pg.root.querySelector(".s-experimental-effects")).toBeNull();
+  expect(pg.root.textContent).not.toMatch(/Canvas Worker|Experimental/);
   expect(pg.root.querySelector(".s-effects")).toBeNull(); expect(calls).not.toContain("/ui/effects");
-  const input = pg.root.querySelector(".s-experimental-effects input"); input.checked = true; fire(input, "change"); await settle(); await settle();
-  expect(writes).toEqual([expect.objectContaining({ url: "/api/settings/fleet/web", body: { experimental: { canvas_worker: true } }, headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) }) })]);
 });
 
 it("ambient controls remain identical with the experimental switch off or on", async () => {
@@ -66,21 +65,4 @@ it("off chat/settings static import graph contains no Canvas Worker metadata or 
     }
   }
   expect([...seen].filter(path => /\/(?:effect-[^/]+|app-effects|chat-effects|chat-effect-posters|effects-waker|settings-effects|settings-owner-effects|display-metadata)\.js$/.test(path))).toEqual([]);
-});
-
-it("a rejected experimental switch write releases busy, explains failure, and accepts a retry on the same card", async () => {
-  pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
-  let puts = 0;
-  vi.stubGlobal("fetch", vi.fn(async (url: string, init: any = {}) => {
-    if (init.method === "PUT") { puts++; if (puts === 1) throw Error("injected transport failure"); }
-    return { ok: true, status: 200, json: async () => url === "/ui/owner-css/state" ? { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } } : {} };
-  }));
-  vi.stubGlobal("AgendAuth", { trialSession: async () => ({ localAdmin: true }) });
-  const { appStore } = await import("/assets/app-store.js"); appStore.set({ canvasWorker: false });
-  const { AppearanceSection } = await import("/ui/js/settings-appearance.js"); await pg.mount(h(AppearanceSection, { part: "dashboard" })); await settle(); await settle();
-  const card = pg.root.querySelector(".s-experimental-effects"), input = card.querySelector("input");
-  input.checked = true; fire(input, "change"); await settle(); await settle();
-  expect(input.disabled).toBe(false); expect(card.querySelector('[role="alert"]')?.textContent).toBe("Could not change this setting. Try again."); expect(appStore.get().canvasWorker).toBe(false);
-  input.checked = true; fire(input, "change"); await settle(); await settle();
-  expect(puts).toBe(2); expect(input.disabled).toBe(false); expect(appStore.get().canvasWorker).toBe(true); expect(card.querySelector('[role="alert"]')).toBeNull(); expect(pg.root.querySelector(".s-experimental-effects")).toBe(card);
 });

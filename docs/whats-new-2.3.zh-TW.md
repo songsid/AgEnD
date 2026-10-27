@@ -28,7 +28,7 @@
 | 任務看板的每日摘要 | 關閉 | `defaults.task_board.summary_at: "09:00"`（fleet 所在時區的 24 小時制時間） |
 | 新建立的 `fleet.yaml` | 會寫入 `defaults.dashboard.task_board: false` | 在設定中修改，或為個別 agent 設定 `dashboard` |
 | 既有的 `fleet.yaml` | 不會被改寫，任務看板照常可用 | 同上 |
-| Canvas Worker 特效 | 實驗功能，預設關閉 | 設定 → 網頁儀表板 |
+| Canvas Worker 特效 | 已移除（#2793） | — |
 | CLI 語言 | 跟著 `defaults.locale`；沒設定時，UTC+8 的主機用中文，其他用英文 | 設定 `defaults.locale: en` 或 `zh-TW` |
 | ClassicBot 聊天室 | 會同步網頁聊天（`🌐 web · <名字>: …`） | 在 `classicBot.yaml` 設定 `web_echo: false`，或在該聊天室的 Settings 取消勾選「Web 同步」 |
 | 主機有安裝 AgEnD 服務時，手動執行 `agend fleet start` / `agend fleet stop` | 改交給 `agend start` / `agend stop` | 在自己的 shell（不是 agent session）執行 `agend fleet start --direct` |
@@ -79,7 +79,7 @@
 - agent 的主題可以套用到整個頁面：左側欄、標題列和右側欄都會換成它的顏色。可以在 **⋯ → 頁面配色** 覆蓋。
 - 身分卡從聊天標題列的一個按鈕開啟。
 - **App 圖示**：在 **設定 → 網頁儀表板 → App 圖示** 上傳一張圖。「加入主畫面」時就會顯示你的圖。
-- **Canvas Worker 特效是實驗功能，預設關閉**。本機管理者可以在 **設定 → 網頁儀表板** 開啟。特效在隔離的 Worker 中執行，無法讀取頁面內容或輸入欄位。落花、點擊星星這類環境效果不受影響。
+- **Canvas Worker 特效原為預設關閉的實驗功能，之後已移除（#2793）**。特效在隔離的 Worker 中執行，無法讀取頁面內容或輸入欄位。落花、點擊星星這類環境效果不受影響。
 - 沒有自己設定的 agent，工具集選單會列出它實際生效的 profile。
 
 ### 用量面板

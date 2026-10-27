@@ -704,21 +704,13 @@ Web chat echoes are enabled by default for fleet-topic instances. Set `web.echo_
 
 Echo text and attachment names replace mention/command tokens with visible ASCII labels such as `[mention: 200]`, `[at: botname]` and `[command: cmd at bot]`. Compatibility normalisation and format-character removal happen first; URLs, email local parts and ordinary path slashes remain intact. Discord also sends with `allowedMentions: { parse: [] }`; Telegram sends plain text without mention entities. The common ingress drops the fixed `🌐 web · ` prefix when its author is one of the configured fleet bot accounts on that platform, independent of echo flags or send acknowledgements. While any configured world on the same platform has an unknown bot identity, bot-flagged prefix candidates are also dropped before trigger evaluation, with a debug log. This temporary quarantine never affects human copies; after all identities are known, non-fleet bots keep the existing admission/collab rules. No unknown author is classified as a fleet bot, and no recent-message cache is used.
 
-### Experimental Canvas Worker effects (#2275)
+### Canvas Worker effects: removed (#2793)
 
-`web.experimental.canvas_worker` is a strict boolean, **`false` by default**:
+Canvas Worker effects (uploaded effects run in an isolated Worker, #2275) were removed. Nothing turns them on: there is no Settings switch, the effect tools (`upload_web_effect`, `list_web_effects`, `preview_web_effect`, `profile_web_effect`, `apply_web_effect`, `remove_web_effect`, `delete_web_effect`) and `export_web_mod` / `propose_web_mod` are not offered to agents and refuse calls, and the effect pages and routes are refused.
 
-```yaml
-web:
-  experimental:
-    canvas_worker: false
-```
+A saved `web.experimental.canvas_worker: true` or `false` still loads, is ignored and is left in the file, so a downgrade finds it. Saved effects, placements, effect choices and mods stay on disk untouched; a mod that contains effects can't be installed.
 
-A local fleet administrator can enable it in **Settings → Web dashboard → Experimental: Canvas Worker effects** (confirmation required). This setting cannot be changed over a public link or by a guest. It applies without restarting agents or reloading the dashboard.
-
-While off, Canvas Worker controls, Try offers, posters, libraries and playback are hidden on local, public and guest pages. No Canvas Worker runtime modules or workers load. CW-only tools, including web mod export/proposal, disappear from agent tool lists and refuse direct calls; mixed appearance tools retain their non-CW options. Managed skills and agent notices omit CW instructions. Turning it off stops running CW effects. Saved workers, placements, preferences and mods remain on disk; enabling it restores them, subject to the existing consent and trust checks.
-
-Ambient effects (falling petals, click stars and other data-only presets), themes, widgets and custom CSS are independent of this switch and keep working.
+Ambient effects (falling petals, click stars and other data-only presets, `set_web_ambient`), themes, widgets and custom CSS are not affected.
 
 ## Data directory permissions
 

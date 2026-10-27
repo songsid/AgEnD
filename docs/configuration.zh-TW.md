@@ -717,21 +717,13 @@ fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegr
 
 同步本文與附件名稱的 mention／command token 改成可見 ASCII 標籤，例如 `[mention: 200]`、`[at: botname]`、`[command: cmd at bot]`。先做相容正規化與 format-character 移除；URL、email local part 與一般路徑斜線保留。Discord 另設定 `allowedMentions: { parse: [] }`；Telegram 傳送不含 mention entities 的純文字。共用 ingress 在作者是該平台已設定的 fleet bot 帳號、且本文以固定 `🌐 web · ` 開頭時丟棄副本，不依賴 echo 開關或 send ACK。同平台只要還有任一已設定 world 的 bot 身分未知，也會在 trigger 判斷前丟棄帶平台 bot 作者旗標的前綴候選並記 debug。這段暫時隔離不影響人類貼上的前綴；身分全部就緒後，非 fleet bot 維持原 admission／collab 規則。不將未知作者當成 fleet bot，也不使用近期 message-ID cache。
 
-### 實驗功能：Canvas Worker 特效（#2275）
+### Canvas Worker 特效：已移除（#2793）
 
-`web.experimental.canvas_worker` 只接受布林值，**預設為 `false`**：
+Canvas Worker 特效（上傳後在隔離 Worker 中執行的特效，#2275）已移除，沒有任何方式能開啟：設定頁沒有開關；特效工具（`upload_web_effect`、`list_web_effects`、`preview_web_effect`、`profile_web_effect`、`apply_web_effect`、`remove_web_effect`、`delete_web_effect`）與 `export_web_mod`／`propose_web_mod` 不會提供給 agent，直接呼叫也會拒絕；特效頁面與路由也會拒絕。
 
-```yaml
-web:
-  experimental:
-    canvas_worker: false
-```
+已存的 `web.experimental.canvas_worker: true` 或 `false` 照常載入、不起作用，也留在檔案裡，降版後仍找得到。已存的特效、套用位置、特效選擇與 mod 都原封不動留在磁碟上；含特效的 mod 無法安裝。
 
-只有從本機儀表板登入的 fleet 管理者能在 **設定 → 網頁儀表板 → 實驗功能：Canvas Worker 特效** 開啟，開啟前需要確認。公開連結與訪客不能更改。切換不需要重新啟動 agent 或重新載入網頁。
-
-關閉時，本機、公開連結與訪客頁面都會隱藏 Canvas Worker 控制項、試播、海報、效果庫與播放，不載入 CW 執行模組或 Worker。CW 專用工具（包含網頁 mod 匯出與提案）不出現在 agent 工具清單，直接呼叫也會拒絕；混合型外觀工具保留非 CW 選項。受管理技能與 agent 公告省略 CW 操作說明。關閉會停止正在播放的 CW 特效，但不刪除磁碟上的 Worker、套用位置、偏好或 mod；重新開啟會恢復，仍遵守原本的同意與信任檢查。
-
-落花、點擊星星等只含資料的環境效果，以及主題、小工具和自訂 CSS，都不受此開關影響。
+落花、點擊星星等只含資料的環境效果（`set_web_ambient`），以及主題、小工具和自訂 CSS 都不受影響。
 
 ### 首次設定時從瀏覽器登入後端
 

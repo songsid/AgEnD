@@ -14,7 +14,6 @@ export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "office_levels", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
-  canvasWorker?: boolean;
   echo?: boolean;
   notifyLogin?: WebConfig["notify_login"];
   /** #1218: the Log tab on (true) or off (false). */
@@ -44,8 +43,8 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   // Its shape only: whether the merged result fits its mode (a quick tunnel's 1..480, auto_open only with a hostname) is
   // the validator's, run on the whole result by the gate's projection and by the handler.
   if (patch.public_link !== undefined && !publicLinkPatchShape(patch.public_link)) return { error: "invalid public_link settings" };
-  if (patch.experimental !== undefined && (!patch.experimental || typeof patch.experimental !== "object" || Array.isArray(patch.experimental)
-    || Object.keys(patch.experimental).some(k => k !== "canvas_worker") || typeof (patch.experimental as Record<string, unknown>).canvas_worker !== "boolean")) return { error: "experimental must be { canvas_worker: boolean }" };
+  // #2793: its one feature, Canvas Worker effects, was removed; a stale page's switch is refused, not stored.
+  if (patch.experimental !== undefined) return { error: "Canvas Worker effects were removed; experimental has nothing to set" };
   const session = webSessionPatch(patch.session);
   if (session === "invalid") return { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" };
   const terminal = webTerminalPatch(patch.web_terminal);
@@ -63,7 +62,6 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),
-    ...(patch.experimental !== undefined ? { canvasWorker: (patch.experimental as { canvas_worker: boolean }).canvas_worker } : {}),
     session, terminal,
   };
 }

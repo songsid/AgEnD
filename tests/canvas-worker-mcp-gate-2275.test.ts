@@ -42,7 +42,7 @@ afterEach(() => {
   if (home) rmSync(home, { recursive: true, force: true });
 });
 
-it("live MCP menus and guessed calls use the owning socket's current setting, and notify both toggle directions", async () => {
+it("#2793: live MCP menus and guessed calls never offer Canvas Worker tools, whatever the saved setting; ambient stays", async () => {
   home = mkdtempSync(join(tmpdir(), "agend-cw-mcp-"));
   const ownHome = join(home, "own"), inheritedHome = join(home, "inherited"), instance = join(ownHome, "instances", "worker");
   mkdirSync(instance, { recursive: true });
@@ -76,24 +76,22 @@ it("live MCP menus and guessed calls use the owning socket's current setting, an
       expect(await call(name)).toEqual({ content: [{ type: "text", text: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }], isError: true });
     }
     expect(state.sent.filter(m => m.type === "tool_call")).toEqual([]);
-    // The actual config need not be dataDir/fleet.yaml; the explicit owner pair selects it.
+    // #2793: Canvas Worker effects were removed. A saved `canvas_worker: true`, in the default file or a selected custom
+    // one, lists and allows none of them, and nothing is announced; ambient keeps working.
     const custom = join(home, "custom-fleet.yaml");
     writeFileSync(custom, "web:\n  experimental:\n    canvas_worker: true\n");
+    setting(true);
     vi.stubEnv("AGEND_FLEET_DATA_DIR", ownHome);
     vi.stubEnv("AGEND_FLEET_CONFIG_PATH", custom);
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(state.notifications).toHaveBeenCalledTimes(1);
-    expect((await list()).tools.map((t: any) => t.name)).toContain("upload_web_effect");
-    expect(await call("upload_web_effect")).not.toHaveProperty("isError");
-    setting(true); // A true default file must not override the selected custom file.
-    writeFileSync(custom, "web:\n  experimental:\n    canvas_worker: false\n");
-    // Calls and lists are fenced immediately, before the periodic notification fires.
-    expect((await list()).tools.map((t: any) => t.name)).not.toContain("upload_web_effect");
-    expect((await call("upload_web_effect")).isError).toBe(true);
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(state.notifications).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(state.notifications).not.toHaveBeenCalled();
+    const names = (await list()).tools.map((t: any) => t.name);
+    for (const name of ["upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect", "export_web_mod", "propose_web_mod"]) {
+      expect(names, name).not.toContain(name);
+      expect((await call(name)).isError, name).toBe(true);
+    }
     expect(await call("set_web_ambient")).not.toHaveProperty("isError");
-    expect(state.sent.filter(m => m.type === "tool_call").map(m => m.tool)).toEqual(["upload_web_effect", "set_web_ambient"]);
+    expect(state.sent.filter(m => m.type === "tool_call").map(m => m.tool)).toEqual(["set_web_ambient"]);
   } finally {
     for (const [i, [emitter, events]] of watched.entries()) for (const [j, event] of events.entries()) {
       for (const listener of emitter.listeners(event)) if (!before[i][j].has(listener)) ownedListeners.push([emitter, event, listener as (...args: any[]) => void]);

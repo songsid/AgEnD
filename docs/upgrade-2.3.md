@@ -90,7 +90,7 @@ From 2.3 on, an update on macOS (launchd) counts as done only once the new fleet
 | Task board daily summary | Off | `defaults.task_board.summary_at: "09:00"` (a 24-hour time in the fleet's time zone) |
 | A new `fleet.yaml` | Written with `defaults.dashboard.task_board: false` | Settings, or per agent with `dashboard` |
 | An existing `fleet.yaml` | Not rewritten; the task board stays available | Same as above |
-| Canvas Worker effects | Experimental, off | Settings → Web dashboard |
+| Canvas Worker effects | Removed (#2793) | — |
 | CLI language | From `defaults.locale`. If it is unset: Chinese on a UTC+8 host, English otherwise | `defaults.locale: en` or `zh-TW` |
 | ClassicBot rooms | Echo web chat (`🌐 web · <name>: …`) | `web_echo: false` in `classicBot.yaml`, or untick **Web echo** in the room's Settings |
 | `agend fleet start` / `agend fleet stop` on a host with a service | Hand over to `agend start` / `agend stop` | `agend fleet start --direct`, from your own shell (not from an agent session) |

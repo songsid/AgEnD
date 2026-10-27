@@ -1,7 +1,7 @@
 /**
  * #2347: the Settings panel's "You" group (Preferences, Web appearance) saves with the bar's Save — one staged "Your
  * preferences" change (app-prefs holds them while Settings is open); Save sends /ui/prefs and no apply job; Discard puts
- * back; this device's own switches are staged too; the fleet's Canvas Worker switch is a staged fleet change; Restore
+ * back; this device's own switches are staged too; a fleet switch on Web dashboard is a staged fleet change; Restore
  * defaults saves at once; leaving Settings asks, and Discard puts back. (app-prefs' hold itself: web-settings-you-2347.)
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -121,15 +121,16 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     await wait(450);
     expect([during, colors.colorsOff(), motion.followsReducedMotion(), !!bar(), prefPosts()]).toEqual([[true, true, true], false, false, false, []]);
   });
-  it("the fleet's Canvas Worker switch is a staged fleet change: nothing written until Save, then its PUT and the apply", async () => {
+  it("a fleet switch on Web dashboard (Office levels) is a staged fleet change: nothing written until Save, then its PUT and the apply", async () => {
     await open("web-dashboard");
-    const box = $(".s-experimental-effects input[type=checkbox]");
+    expect($(".s-experimental-effects")).toBeNull();                    // #2793: the Canvas Worker switch is gone
+    const box = $("#webOfficeLevels");
     await check(box, !box.checked);
     const before = sent.filter((s) => s.method === "PUT").length;
     const cost = bar()?.textContent.includes("Immediately");          // the impact table's, not a guess
     button("Save", bar()).click(); await settle(20);
     expect([cost, before, sent.filter((s) => s.method === "PUT").map((s) => [s.path, s.body]), sent.some((s) => s.method === "POST" && s.path === "/api/settings/apply")])
-      .toEqual([true, 0, [["/api/settings/fleet/web", { experimental: { canvas_worker: box.checked } }]], true]);
+      .toEqual([true, 0, [["/api/settings/fleet/web", { office_levels: box.checked }]], true]);
   });
   it("Restore defaults (a confirmed action) saves at once, Settings open or not: nothing staged", async () => {
     await open("appearance");
@@ -171,7 +172,7 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
     await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "web-dashboard" }, navKey: "settings:web-dashboard" }), h(T.Toasts, {})));
     await settle(12);
-    const box = $(".s-experimental-effects input[type=checkbox]");
+    const box = $("#webOfficeLevels");
     await check(box, !box.checked);
     prefsFail = true;
     button("Save", bar()).click(); await settle(20);

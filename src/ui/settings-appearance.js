@@ -6,7 +6,7 @@ import { register, t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { ModsCard } from "./settings-mods.js";
-import { experimentalComponent, useCanvasWorker } from "/assets/feature-flags.js";
+import { experimentalComponent } from "/assets/feature-flags.js";
 const EffectsCard = experimentalComponent(() => import("./settings-effects.js"), m => m.EffectsCard);
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
@@ -17,7 +17,7 @@ import { CARD_SIZES, cardSizeDefault, cardSizeStore, setCardSizeDefault } from "
 import { AgentWidget, checkWidget, fleetBinds, setSidebarWidget, sidebarWidgetRaw, sidebarWidgetStore, widgetProblem } from "/assets/agent-widget.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { savePref, withoutHold } from "/assets/app-prefs.js";
-import { DEFAULT_SCHEMA, impactOf, ownChoiceImpact } from "./settings-model.js";
+import { ownChoiceImpact } from "./settings-model.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { colorsOff, defaultPlaces, identityClasses, identityOf, PLACEMENTS, paintIdentity, setColorsOff, setDefaultPlaces, useIdentityColors } from "/assets/identity-color.js";
 import { CardTitle } from "./settings-learn.js";
@@ -66,7 +66,7 @@ export function AppearanceSection(props = {}) {
   // dashboard) are drawn where each belongs. None of it is offered over the public link (Look says so).
   if (publicLink) return part === "look" ? html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>` : null;
   if (part === "device") return html`<${MotionCard} ...${props} /><${DeviceCard} ...${props} />`;
-  if (part === "dashboard") return html`<${AppIconCard} /><${CardLimitsCard} /><${ExperimentalEffectsCard} ...${props} />`;
+  if (part === "dashboard") return html`<${AppIconCard} /><${CardLimitsCard} />`;
   const group = (key) => html`<h2 class="s-ap-group">${tn(key)}</h2>`;
   return html`${group("groupLook")}<${ThemesCard} ...${props} /><${IdentityColorCard} /><${CardSizeCard} />
     ${group("groupLayout")}<${SidebarWidgetCard} />
@@ -90,38 +90,6 @@ function deviceChoice(props, key, label, read, write) {
     if (value === from) props.unstage(key);
     else props.stage(key, { label: tn("youDeviceChoice", label), impact: ownChoiceImpact(props.schema), from, local: { commit: () => {}, revert: () => write(from) } }, true);
   };
-}
-
-register("experimentalEffects", {
-  en: { title: "Experimental: Canvas Worker effects", help: "Enable uploaded Canvas Worker effects. Ambient effects are always available. Saved effects stay intact when this is off.", failed: "Could not change this setting. Try again." },
-  "zh-TW": { title: "實驗功能：Canvas Worker 特效", help: "啟用上傳的 Canvas Worker 特效。氛圍特效不受影響；關閉時保留已儲存的特效。", failed: "無法變更此設定，請重試。" },
-});
-const CANVAS_WORKER = "fleet:experimental.canvas_worker";
-function ExperimentalEffectsCard(props = {}) {
-  const enabled = useCanvasWorker(), [writable, setWritable] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
-  useEffect(() => { let live = true; Promise.resolve(globalThis.AgendAuth?.trialSession?.()).then(value => { if (live) setWritable(value?.localAdmin === true); }, () => {}); return () => { live = false; }; }, []);
-  if (!writable) return null;
-  // #2347: in Settings it is a fleet change like any other — staged here, written by the bar's Save (this page's switch
-  // follows once it applied).
-  const pending = props.staged && props.staged.get(CANVAS_WORKER);
-  const shown = pending ? pending.draft : enabled;
-  const stageIt = (value) => {
-    setFailed(false);
-    if (value === enabled) { props.unstage(CANVAS_WORKER); return; }
-    props.stage(CANVAS_WORKER, { label: t("experimentalEffects.title"), impact: impactOf(props.schema || DEFAULT_SCHEMA, "web.experimental.canvas_worker"), draft: value,
-      request: { method: "PUT", url: "/api/settings/fleet/web", body: { experimental: { canvas_worker: value } } },
-      onResult: (outcome) => { if (outcome && outcome.status === "applied") appStore.set({ canvasWorker: value }); else if (outcome && outcome.status === "failed") setFailed(true); } }, true);
-  };
-  const change = async value => {
-    if (props.stage) { stageIt(value); return; }
-    setBusy(true); setFailed(false);
-    try {
-      const result = await confirmedWrite("/api/settings/fleet/web", { method: "PUT", body: { experimental: { canvas_worker: value } }, label: t("experimentalEffects.title") });
-      if (result.ok) appStore.set({ canvasWorker: value }); else setFailed(true);
-    } catch { setFailed(true); }
-    finally { setBusy(false); }
-  };
-  return html`<section class="card s-appearance s-experimental-effects"><label class="check"><input type="checkbox" checked=${shown} disabled=${busy} onChange=${event => change(event.target.checked)} /><span>${t("experimentalEffects.title")}</span></label><p class="sub">${t("experimentalEffects.help")}</p>${failed ? html`<p role="alert">${t("experimentalEffects.failed")}</p>` : null}</section>`;
 }
 
 /** #2056 B: a sample sidebar row in the host's default colour places, so the choice is seen rather than described. */

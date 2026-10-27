@@ -5,6 +5,12 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
+// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
+vi.mock("../src/web-experimental.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
+  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
+}));
 import yaml from "js-yaml";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { parseWebSettingsBody } from "../src/web-settings-patch.js";
@@ -93,52 +99,27 @@ describe("CW config and settings admission", () => {
     expect((await get("/effect")).status).toBe(403);
     expect((await get("/frame")).status).toBe(200);
   });
-  it("validates the nested setting without truthy coercion or unknown feature keys", () => {
-    const web: WebConfig = { experimental: { canvas_worker: true } };
-    expect(canvasWorkerEnabled(web)).toBe(true);
-    for (const candidate of [undefined, {}, { canvas_worker: false }, { canvas_worker: true }]) expect(validateFleetConfig({ defaults: {}, instances: {}, web: candidate === undefined ? {} : { experimental: candidate } }).errors.filter(e => e.path.startsWith("web.experimental"))).toEqual([]);
-    expect(canvasWorkerEnabled({})).toBe(false);
-    for (const candidate of [null, [], true, { canvas_worker: "true" }, { canvas_worker: 1 }, { something_else: true }]) expect(validateFleetConfig({ defaults: {}, instances: {}, web: { experimental: candidate } }).errors.some(e => e.path.startsWith("web.experimental")), JSON.stringify(candidate)).toBe(true);
-    for (const enabled of [false, true]) expect(parseWebSettingsBody({ experimental: { canvas_worker: enabled } })).toMatchObject({ canvasWorker: enabled });
-    for (const candidate of [null, [], {}, true, { canvas_worker: "true" }, { canvas_worker: null }, { canvas_worker: true, other: true }]) expect(parseWebSettingsBody({ experimental: candidate })).toHaveProperty("error");
-  });
-  it("names enabling in confirmation while disabling and shared settings remain immediate", () => {
-    const effect = (enabled: boolean, before: boolean) => prepareSettingsEffect("PUT", WEB, { experimental: { canvas_worker: enabled } }, { config: { defaults: {}, instances: {}, web: { experimental: { canvas_worker: before } } } as any, classic: {} }).diff;
-    const enable = effect(true, false);
-    expect(enable?.section).toBe("access");
-    expect(enable?.summary.join("\n")).toContain("canvas\\_worker: false → true");
-    expect(effect(false, true)).toBeNull();
-    expect(prepareSettingsEffect("PUT", WEB, { echo_to_channel: false }, { config: { defaults: {}, instances: {} } as any, classic: {} }).diff).toBeNull();
-  });
-  it("writes only for a local signed-in admin; header, guest, read and public sessions cannot toggle", async () => {
-    const f = await httpFixture(); const before = readFileSync(f.path, "utf8");
-    const headers = [{ "x-agend-token": TOKEN }, f.session("guest").headers, f.session("read").headers, f.session("admin", true).headers];
-    for (const h of headers) {
-      const result = await f.call("PUT", WEB, h, { experimental: { canvas_worker: true } });
-      expect(result.status).toBe(403); expect(f.save).not.toHaveBeenCalled(); expect(readFileSync(f.path, "utf8")).toBe(before);
+  it("#2793: a saved setting still validates (and malformed ones still fail), but nothing reads it as on", async () => {
+    const real = await vi.importActual<typeof import("../src/web-experimental.js")>("../src/web-experimental.js");
+    for (const candidate of [undefined, {}, { canvas_worker: false }, { canvas_worker: true }]) {
+      expect(validateFleetConfig({ defaults: {}, instances: {}, web: candidate === undefined ? {} : { experimental: candidate } }).errors.filter(e => e.path.startsWith("web.experimental"))).toEqual([]);
+      expect(real.canvasWorkerEnabled(candidate === undefined ? {} : { experimental: candidate } as WebConfig)).toBe(false);
     }
-    const admin = f.session();
-    expect((await f.call("PUT", WEB, admin.headers, { experimental: { canvas_worker: true } })).status).toBe(200);
-    expect(f.config.web.experimental.canvas_worker).toBe(true);
-    expect((yaml.load(readFileSync(f.path, "utf8")) as any).web.experimental.canvas_worker).toBe(true);
-    expect((await f.call("PUT", WEB, admin.headers, { experimental: { canvas_worker: false } })).status).toBe(200);
-    expect(f.config.web.experimental.canvas_worker).toBe(false);
+    for (const candidate of [null, [], true, { canvas_worker: "true" }, { canvas_worker: 1 }, { something_else: true }]) expect(validateFleetConfig({ defaults: {}, instances: {}, web: { experimental: candidate } }).errors.some(e => e.path.startsWith("web.experimental")), JSON.stringify(candidate)).toBe(true);
+    for (const candidate of [{ canvas_worker: true }, { canvas_worker: false }, {}, null]) expect(parseWebSettingsBody({ experimental: candidate })).toHaveProperty("error");
   });
-  it("refreshes live visibility exactly after successful changed settings, never on failed save or no-op", async () => {
-    const f = await httpFixture(), admin = f.session(), changes: boolean[] = [];
-    const changed = vi.fn(() => { const disk = yaml.load(readFileSync(f.path, "utf8")) as any; expect(disk.web.experimental.canvas_worker).toBe(f.config.web.experimental.canvas_worker); changes.push(disk.web.experimental.canvas_worker); });
-    f.ctx.canvasWorkerSettingChanged = changed;
-    expect((await f.call("PUT", WEB, admin.headers, { experimental: { canvas_worker: false } })).status).toBe(200);
-    expect((await f.call("PUT", WEB, admin.headers, { echo_to_channel: false })).status).toBe(200); expect(changed).not.toHaveBeenCalled();
-    expect((await f.call("PUT", WEB, admin.headers, { experimental: { canvas_worker: true } })).status).toBe(200);
-    expect(changes).toEqual([true]);
-    expect((await f.call("PUT", WEB, admin.headers, { experimental: { canvas_worker: true } })).status).toBe(200); expect(changes).toEqual([true]);
-    f.save.mockImplementationOnce(() => { throw Error("inert disk failure"); });
-    expect((await f.call("PUT", WEB, admin.headers, { experimental: { canvas_worker: false } })).status).toBe(500);
-    expect(f.config.web.experimental.canvas_worker).toBe(true); expect(changes).toEqual([true]);
-    expect((await f.call("PUT", WEB, admin.headers, { experimental: { canvas_worker: false } })).status).toBe(200); expect(changes).toEqual([true, false]);
+  it("#2793: no session can write the switch any more — a local admin's save is refused too, and the file is untouched", async () => {
+    const f = await httpFixture(); const before = readFileSync(f.path, "utf8");
+    const headers = [{ "x-agend-token": TOKEN }, f.session("guest").headers, f.session("read").headers, f.session("admin", true).headers, f.session().headers];
+    for (const h of headers) {
+      for (const enabled of [true, false]) {
+        const result = await f.call("PUT", WEB, h, { experimental: { canvas_worker: enabled } });
+        expect([400, 403]).toContain(result.status); expect(f.save).not.toHaveBeenCalled(); expect(readFileSync(f.path, "utf8")).toBe(before);
+      }
+    }
+    expect((await f.call("PUT", WEB, f.session().headers, { experimental: { canvas_worker: true } })).status).toBe(400);
+    expect((await f.call("PUT", WEB, f.session().headers, { echo_to_channel: false })).status).toBe(200);   // the rest of the page still saves
   });
-
 });
 
 describe("CW HTTP graph and shared ambient", () => {
