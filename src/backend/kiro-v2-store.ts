@@ -3,15 +3,16 @@ import { Worker } from "node:worker_threads";
 import { performance } from "node:perf_hooks";
 import type { KiroClassicArchiveInput, KiroCarryPreparation } from "./kiro-classic-archive.js";
 import type { KiroClassicLinks, KiroClassicLinksInput } from "./kiro-classic-links.js";
+import type { KiroReconcileInput, KiroReconcilePlan } from "./kiro-reconcile-store.js";
 
 export const KIRO_V2_STORE_BUDGET_MS = 15_000;
 /** #2738: a classic store's compaction links read every transcript of the instance's key — its own lane, its own budget. */
 export const KIRO_CLASSIC_LINKS_BUDGET_MS = 30_000;
 export const KIRO_V2_STORE_QUEUE_LIMIT = 64;
 export interface KiroV2StoreInput { keys: string[]; sessionsDir: string; carry?: Omit<KiroClassicArchiveInput, "sessionId">; migration?: KiroMigrationVerificationInput;
-  classicLinks?: KiroClassicLinksInput; }
+  classicLinks?: KiroClassicLinksInput; reconciliation?: { input: KiroReconcileInput; plan?: KiroReconcilePlan; actor?: string; rollbackReceipt?: string }; }
 export type KiroV2StoreReply = { kind: "ok"; sessions: Array<{ id: string; updatedAt: number; createdAt: number | null }>; diagnostics: { reads: number; hits: number }; carry?: KiroCarryPreparation; verification?: { forensic: string };
-  classicLinks?: KiroClassicLinks }
+  classicLinks?: KiroClassicLinks; reconciliation?: { plan?: KiroReconcilePlan; receipt?: string } }
   | { kind: "unreadable"; detail: string };
 export interface KiroV2StoreRequest { id: number; deadlineAt: number; input: KiroV2StoreInput; }
 interface Isolate {

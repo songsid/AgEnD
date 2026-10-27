@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, statSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import type { KiroV2StoreInput, KiroV2StoreReply, KiroV2StoreRequest } from "./kiro-v2-store.js";
 
-import { prepareKiroCarryForLaunch } from "./kiro-classic-archive.js";
+import { prepareKiroCarryForLaunch, planKiroCarryReconciliation, applyKiroCarryReconciliation } from "./kiro-classic-archive.js";
 import { computeKiroClassicLinks } from "./kiro-classic-links.js";
 
 const CACHE_LIMIT = 4096;
@@ -73,7 +73,13 @@ function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): Kiro
 parentPort?.on("message", ({ id, input, deadlineAt }: KiroV2StoreRequest) => {
   let reply: KiroV2StoreReply;
   try {
-    if (input.classicLinks) {
+    if (input.reconciliation) {
+      const checkpoint = () => { if (performance.now() >= deadlineAt) throw new Error("Kiro reconciliation timed out"); };
+      checkpoint(); const r = input.reconciliation;
+      reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 }, reconciliation: r.plan
+        ? { receipt: applyKiroCarryReconciliation(r.input, r.plan, r.actor ?? "", checkpoint) }
+        : { plan: planKiroCarryReconciliation(r.input, r.rollbackReceipt) } };
+    } else if (input.classicLinks) {
       reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 },
         classicLinks: computeKiroClassicLinks(input.classicLinks, () => performance.now() >= deadlineAt) };
     } else if (input.migration) {
@@ -84,6 +90,6 @@ parentPort?.on("message", ({ id, input, deadlineAt }: KiroV2StoreRequest) => {
       checkpoint();
       reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 }, carry: prepareKiroCarryForLaunch(input.carry, checkpoint) };
     } else reply = scan(input, deadlineAt);
-  } catch (err) { reply = { kind: "unreadable", detail: (err as Error).message }; }
+  } catch (err) { reply = { kind: "unreadable", detail: input.reconciliation && err instanceof SyntaxError ? "Malformed reconciliation data" : (err as Error).message }; }
   parentPort?.postMessage({ id, reply });
 });

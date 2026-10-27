@@ -247,6 +247,11 @@ function isRecord(v: unknown): v is KeyRecord {
     && typeof r.agentConfirmed === "boolean";
 }
 
+/** Strict read-only validation for reconciliation's peer ownership proof. */
+export function isConsistentKiroIdentityRecord(key: string, value: unknown): boolean {
+  return isRecord(value) && key === keyOf(value.engine, value.workingDirectory, value.credentialProfile);
+}
+
 type StateRead = { kind: "none" } | { kind: "bad" } | { kind: "ok"; state: StateFile };
 
 function readState(path: string, instance?: string): StateRead {

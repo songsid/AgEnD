@@ -51,6 +51,7 @@ import { join, dirname, basename, delimiter, isAbsolute, relative, resolve as re
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { planKiroReconciliation, applyKiroReconciliation, kiroReconciliationPrompt, type KiroReconciliation, type KiroReconcileDeps } from "./kiro-reconcile.js";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps, type KiroMigrationPlan } from "./kiro-migrate.js";
 import { fleetLabel } from "./fleet-label.js";
 import {
@@ -920,6 +921,7 @@ const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 /** #2598 B2: a kiro classic → TUI move's Confirm in General. "kiro-migrate:" (13) + 32 hex + ":confirm" (8) = 53 bytes. */
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
+const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
 const OFFICE_PACK_CALLBACK_PREFIX = "office-pack:";
 /** #2692: the skin-pack tools' IPC types (answered as web theme tools). */
@@ -1376,6 +1378,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
   /** #2598 B2: the kiro moves waiting on a fleet admin's Confirm in General, by prompt nonce. */
   private pendingKiroMigrations = new Map<string, KiroMigrationPlan>();
+  private pendingKiroReconciliations = new Map<string, KiroReconciliation>();
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
@@ -2371,6 +2374,60 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.notifyFleetError(outcome.text);
     this.notifyInstanceTopic(plan.name, outcome.text);
     return true;
+  }
+
+  private kiroReconcileDeps(): KiroReconcileDeps {
+    return { ...this.kiroMigrateDeps(), store: async (input, plan, actor, rollbackReceipt) => {
+      const reply = await sharedKiroV2StoreLane.read({ keys: [], sessionsDir: input.sessionsDir, reconciliation: { input, plan, actor, rollbackReceipt } });
+      if (reply.kind !== "ok" || !reply.reconciliation) throw new Error(reply.kind === "unreadable" ? reply.detail : t("kiro_reconcile.changed"));
+      return reply.reconciliation;
+    } };
+  }
+
+  async requestKiroReconciliation(name: string, keep: string, archive: string, rollbackReceipt?: string): Promise<{ ok: boolean; text?: string; error?: string }> {
+    try {
+      if (!this.eventLog) return { ok: false, error: t("kiro_reconcile.audit_failed") };
+      const plan = await planKiroReconciliation(this.kiroReconcileDeps(), name, keep, archive, rollbackReceipt);
+      const general = this.findGeneralInstance(), adapterId = general ? this.getInstanceAdapterId(general) : undefined;
+      const adapter = general ? this.getAdapterForInstance(general) : undefined, chatId = general ? this.getGroupIdForInstance(general) : undefined;
+      const topic = general ? String(this.fleetConfig?.instances[general]?.topic_id ?? "") : "";
+      if (!general || !adapterId || !adapter || !chatId) return { ok: false, error: t("kiro_migrate.no_general") };
+      const nonce = await this.postNonceButtonPromptOrThrow({ prefix: KIRO_RECONCILE_CALLBACK_PREFIX, alertType: "clear_confirm", instanceName: name,
+        adapter, adapterId, chatId, ...(topic ? { threadId: topic } : {}), message: kiroReconciliationPrompt(plan),
+        choices: [{ action: "confirm", label: t("kiro_migrate.confirm_button") }, { action: "cancel", label: t("kiro_migrate.cancel_button") }],
+        expiredText: t("kiro_migrate.expired", name), timeoutMs: KIRO_MIGRATE_TIMEOUT_MS });
+      this.pendingKiroReconciliations.set(nonce, plan);
+      setTimeout(() => this.pendingKiroReconciliations.delete(nonce), KIRO_MIGRATE_TIMEOUT_MS + 60_000).unref?.();
+      this.eventLog?.insert(name, "kiro_reconcile", { phase: "requested", keep, archive, rollbackReceipt, message: kiroReconciliationPrompt(plan) });
+      return { ok: true, text: t("kiro_migrate.requested") };
+    } catch (error) { return { ok: false, error: error instanceof SyntaxError ? "Malformed reconciliation data" : (error as Error).message }; }
+  }
+
+  private async handleKiroReconcileCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(KIRO_RECONCILE_CALLBACK_PREFIX, /^kiro-reconcile:([0-9a-f]{32}):(confirm|cancel)$/, data, adapterId, adapter);
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const nonce = data.callbackData.slice(KIRO_RECONCILE_CALLBACK_PREFIX.length, KIRO_RECONCILE_CALLBACK_PREFIX.length + 32);
+    const plan = this.pendingKiroReconciliations.get(nonce); this.pendingKiroReconciliations.delete(nonce);
+    if (action === "cancel" || !plan) {
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t(plan ? "kiro_migrate.cancelled" : "kiro_migrate.expired", entry.instanceName));
+      this.eventLog?.insert(entry.instanceName, "kiro_reconcile", { phase: "cancelled_or_expired", userId: data.userId }); return true;
+    }
+    let outcome: { ok: boolean; text: string; receipt?: string };
+    try {
+      if (!this.eventLog) throw new Error(t("kiro_reconcile.audit_failed"));
+      this.eventLog.insert(plan.name, "kiro_reconcile", { phase: "confirmed", userId: data.userId, keep: plan.input.sessionId, archive: plan.input.archiveId });
+    } catch {
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("kiro_reconcile.audit_failed"));
+      this.notifyFleetError(t("kiro_reconcile.audit_failed")); return true;
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("kiro_migrate.applying", plan.name));
+    outcome = await applyKiroReconciliation(this.kiroReconcileDeps(), plan, `${adapterId}:${data.userId}`);
+    try { this.eventLog.insert(plan.name, "kiro_reconcile", { phase: outcome.ok ? "completed" : "failed", userId: data.userId, receipt: outcome.receipt, message: outcome.text }); }
+    catch { this.logger.error({ name: plan.name, receipt: outcome.receipt }, "Kiro reconciliation final Log entry failed; confirmed intent remains in the audit and archive"); }
+    this.logger.info({ name: plan.name, ok: outcome.ok, receipt: outcome.receipt }, "Kiro explicit reconciliation");
+    this.notifyFleetError(outcome.text); this.notifyInstanceTopic(plan.name, outcome.text); return true;
   }
 
   private async handleSettingsChangeCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
@@ -5838,7 +5895,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     /** Phase 2a: the caller's transition, for a start made from inside a restart or wake. */
     transition?: TransitionHandle,
     execution?: SettingsExecution,
+    kiroMigration?: symbol,
   ): Promise<void> {
+    const migration = this.kiroMigrationRuns?.get(name);
+    if (migration && migration.token !== kiroMigration) throw new Error(t("kiro_migrate.in_progress"));
     execution?.assert();
     if (this.sessionOomStopped(name)) {
       if (resumePaused) return this.restartSingleInstance(name, { explicit: true });
@@ -6684,7 +6744,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason,
-        () => this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition));
+        () => opts?.kiroMigration ? this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition, undefined, opts.kiroMigration)
+          : this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition));
       this.stormWindow.markRecovered(name);
       return;
     }
@@ -8102,7 +8163,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
     this.startupMemoryDeadline?.stop();
-    const deadline = new StartupMemoryDeadline({
+    const deadline: StartupMemoryDeadline = new StartupMemoryDeadline({
       current: () => this.startupMemoryDeadline === deadline && !this.shuttingDown,
       waiting: () => this.spawnGate.isStartupMemoryDeferred(),
       notify: sdNotify,
@@ -14709,6 +14770,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;
     if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
     if (await this.handleClassicApproval(data, adapterId, adapter)) return true;

@@ -55,6 +55,7 @@ import {
   ClosePollArgs,
   KiroEngineStatusArgs,
   MigrateKiroInstanceArgs,
+  ReconcileKiroInstanceArgs,
   GetUsageArgs,
   GetCacheReportArgs,
   GetUsageReportArgs,
@@ -1111,6 +1112,16 @@ const migrateKiroInstance: Handler = async (ctx, rawArgs, respond) => {
   const result = await fm.requestKiroMigration(v.data.name, v.data.start_fresh === true);
   if (!result.ok) { respond(null, result.error); return; }
   respond({ status: "awaiting_admin_confirmation", name: v.data.name, classic_conversation: result.classic_conversation, note: result.text });
+};
+
+const reconcileKiroInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(ReconcileKiroInstanceArgs, rawArgs, "reconcile_kiro_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const fm = ctx as unknown as { requestKiroReconciliation?(name: string, keep: string, archive: string, rollback?: string): Promise<{ ok: boolean; text?: string; error?: string }> };
+  if (!fm.requestKiroReconciliation) { respond(null, "reconcile_kiro_instance is not available here"); return; }
+  const r = await fm.requestKiroReconciliation(v.data.name, v.data.keep_session_id, v.data.archive_session_id, v.data.rollback_receipt);
+  if (!r.ok) { respond(null, r.error); return; }
+  respond({ status: "awaiting_admin_confirmation", name: v.data.name, keep_session_id: v.data.keep_session_id, archive_session_id: v.data.archive_session_id, note: r.text });
 };
 
 /** #1823: close one of the caller's own polls before its deadline; its results then go out as at the deadline. */
@@ -2335,6 +2346,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["migrate_kiro_instance", migrateKiroInstance],
+  ["reconcile_kiro_instance", reconcileKiroInstance],
   ["get_usage", getUsage],
   ["get_cache_report", getCacheReport],
   ["get_usage_report", getUsageReport],

@@ -88,6 +88,7 @@ const ORCHESTRATION: readonly string[] = [
   "update_fleet_defaults", "update_instance_config",
   // #2598 B2: asks only; a fleet admin's Confirm in General makes the move.
   "migrate_kiro_instance",
+  "reconcile_kiro_instance",
   // Changing a decision somebody else recorded; `post_decision` adds, and stays.
   "update_decision",
   // #2056: Settings → Web appearance for the user (General has these too; a worker changes only its own theme).

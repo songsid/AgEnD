@@ -11,6 +11,9 @@ import { join, resolve } from "node:path";
 import { kiroAgentName, kiroFleetTag } from "./kiro-agent.js";
 import { kiroCanonicalDirectory, kiroDirectoryKeys, kiroOwnedConversation, kiroCarryCandidate, reinstateKiroCarryPin } from "./kiro-identity.js";
 import { KiroTuiSnapshotSizeError, readKiroTuiAssistantTexts, snapshotKiroTuiFile } from "../kiro-tui-forensic.js";
+import { archivedKiroAlternative, assertKiroReconciliationLaunch, inspectKiroReconciliation, inspectKiroReconciliationRollback,
+  preserveKiroReconciliation, completeKiroSelection, finishKiroReconciliationLaunch, beginKiroReconciliationRollback,
+  rollbackKiroSelection, type KiroReconcileInput, type KiroReconcilePlan } from "./kiro-reconcile-store.js";
 
 export interface KiroClassicArchiveInput {
   agendHome: string;
@@ -222,7 +225,7 @@ function oldUnknownMetadata(input: KiroClassicArchiveInput, name: string, create
 }
 
 /** An abandoned pin is recoverable only while every later unowned same-cwd alternative remains empty. Leave all of them untouched. */
-function proveNoReplacementWork(input: KiroClassicArchiveInput): void {
+function proveNoReplacementWork(input: KiroClassicArchiveInput, plannedArchive?: string): void {
   const original = JSON.parse(snapshotKiroTuiFile(join(input.sessionsDir, `${input.sessionId}.json`), 8 * 1024 * 1024).text);
   const created = Date.parse(original.created_at);
   if (!Number.isFinite(created)) throw new Error("Carried creation time is unavailable");
@@ -241,6 +244,9 @@ function proveNoReplacementWork(input: KiroClassicArchiveInput): void {
     if (kiroCanonicalDirectory(meta.cwd) !== kiroCanonicalDirectory(input.workingDirectory)) continue;
     if (Date.parse(meta.created_at) < created) continue;
     if (!safeId.test(meta.session_id) || name !== `${meta.session_id}.json`) throw new Error("Replacement session metadata is ambiguous");
+    if (meta.session_id === plannedArchive) continue; // read-only planning only; the confirmed operation needs the durable exact archive below.
+    const archived = archivedKiroAlternative(input, meta.session_id);
+    if (archived) { unknownChecks.push({ name, unchanged: archived }); continue; }
     const claim = join(input.agendHome, "kiro-identity", "claims", "v2", meta.session_id);
     if (existsSync(claim)) {
       const owner = readFileSync(claim, "utf8");
@@ -303,6 +309,7 @@ export function archiveKiroClassicCopy(input: KiroClassicArchiveInput, hooks: { 
 export interface KiroCarryPreparation { sessionId: string | null; archivePath: string | null; repaired: boolean }
 /** One automatic launch repair. Explicit fresh starts do not call this. */
 export function prepareKiroCarryForLaunch(input: Omit<KiroClassicArchiveInput, "sessionId">, checkpoint?: () => void): KiroCarryPreparation {
+  const pendingReconciliation = assertKiroReconciliationLaunch({ ...input, sessionId: "unresolved" });
   const candidate = kiroCarryCandidate(input);
   if (!candidate) return { sessionId: null, archivePath: null, repaired: false };
   const full = { ...input, sessionId: candidate.id };
@@ -324,13 +331,65 @@ export function prepareKiroCarryForLaunch(input: Omit<KiroClassicArchiveInput, "
         return archive.instance === input.instance && archive.sessionId === candidate.id && archive.dbPath === resolve(input.dbPath);
       });
       if (!completed) throw new Error("No frozen classic row or verified archive proves this abandoned migration; repair held");
-      return { sessionId: null, archivePath: null, repaired: false }; // deliberate fresh after an already archived migration
+      if (!pendingReconciliation) return { sessionId: null, archivePath: null, repaired: false }; // deliberate fresh after an already archived migration
     }
     checkpoint?.(); repaired = repairAbandonedKiroCarry(full);
   }
   checkpoint?.(); proveOwnedCarry(full);
   const archivePath = archiveKiroClassicCopy(full, { checkpoint });
+  checkpoint?.(); finishKiroReconciliationLaunch(full);
   return { sessionId: candidate.id, archivePath, repaired };
+}
+
+function reconcileStopped(input: KiroReconcileInput): void {
+  assertKiroConversationStopped(input); assertKiroConversationStopped({ ...input, sessionId: input.archiveId });
+}
+function classicHash(input: KiroReconcileInput): string {
+  const db = new Database(input.dbPath, { readonly: true, fileMustExist: true, timeout: 200 });
+  try {
+    const keys = kiroDirectoryKeys(input.workingDirectory);
+    return hash(JSON.stringify(db.prepare(`SELECT key, conversation_id, hex(CAST(value AS BLOB)) AS value, created_at, updated_at FROM conversations_v2 WHERE key IN (${keys.map(() => "?").join(",")}) AND conversation_id=? ORDER BY key`).all(...keys, input.sessionId)));
+  } finally { db.close(); }
+}
+/** Runs on the bounded store worker. Never writes while planning or before the admin's confirmation. */
+export function planKiroCarryReconciliation(input: KiroReconcileInput, rollbackReceipt?: string): KiroReconcilePlan {
+  reconcileStopped(input);
+  if (rollbackReceipt) return inspectKiroReconciliationRollback(input, rollbackReceipt);
+  proveOwnedCarry(input, true);
+  const plan = inspectKiroReconciliation(input, classicHash(input));
+  proveNoReplacementWork(input, input.archiveId); reconcileStopped(input);
+  return plan;
+}
+export function applyKiroCarryReconciliation(input: KiroReconcileInput, plan: KiroReconcilePlan, actor: string, checkpoint: () => void): string {
+  checkpoint(); reconcileStopped(input);
+  const current = planKiroCarryReconciliation(input, plan.rollbackReceipt);
+  if (current.digest !== plan.digest) throw new Error("Reconciliation confirmation is stale");
+  if (plan.rollbackReceipt) {
+    if (!actor || actor.length > 512) throw new Error("Rollback actor is required");
+    checkpoint(); reconcileStopped(input);
+    const rollback = beginKiroReconciliationRollback(input, plan);
+    if (classicHash(input) !== rollback.classicHash) {
+      const root = join(input.agendHome, "kiro-classic-archives", hash(input.instance).slice(0, 32));
+      const archive = readdirSync(root).filter(name => name.startsWith(input.sessionId + "-") && name.endsWith(".json"))
+        .map(name => join(root, name)).find(path => {
+          const m = kiroClassicArchiveMetadata(path);
+          return m.instance === input.instance && m.sessionId === input.sessionId && m.directory === kiroCanonicalDirectory(input.workingDirectory)
+            && m.profile === input.credentialProfile && m.dbPath === resolve(input.dbPath)
+            && hash(JSON.stringify(readArchive(path).payload.rows.slice().sort((a, b) => Buffer.compare(Buffer.from(a.key), Buffer.from(b.key))).map(r => ({
+              key: r.key, conversation_id: r.id, value: Buffer.from(r.valueBase64, "base64").toString("hex").toUpperCase(), created_at: r.createdAt, updated_at: r.updatedAt,
+            })))) === rollback.classicHash;
+        });
+      if (!archive) throw new Error("The original classic archive is required for rollback");
+      checkpoint(); restoreKiroClassicArchive(input, archive);
+      if (classicHash(input) !== rollback.classicHash) throw new Error("Original classic bytes changed; rollback remains held");
+    }
+    checkpoint(); reconcileStopped(input); return rollbackKiroSelection(input, rollback.plan);
+  }
+  const receipt = preserveKiroReconciliation(input, plan, classicHash(input), actor);
+  checkpoint(); reconcileStopped(input);
+  const prepared = prepareKiroCarryForLaunch(input, checkpoint);
+  if (prepared.sessionId !== input.sessionId) throw new Error("Reconciliation did not retain the original conversation");
+  checkpoint(); reconcileStopped(input); completeKiroSelection(input, receipt); return receipt;
 }
 
 /** Operator recovery only: verify the archive and insert missing exact rows. Never overwrite newer/different data. */
