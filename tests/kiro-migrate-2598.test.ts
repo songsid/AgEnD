@@ -181,18 +181,18 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
     return { d, fleet, saved, restart };
   }
 
-  it("refuses what it must not move", () => {
-    expect(planKiroMigration(deps().d, "nope", false)).toEqual({ ok: false, error: t("kiro_migrate.not_fleet_instance", "nope") });
-    expect(planKiroMigration(deps({ inst: { backend: "codex" } }).d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.not_kiro", "wiki", "codex") });
-    expect(planKiroMigration(deps({ inst: { kiro_ui: "tui" } }).d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.not_legacy", "wiki", "tui") });
-    expect(planKiroMigration(deps().d, "wiki", false), "nothing to carry").toEqual({ ok: false, error: t("kiro_migrate.no_classic", "wiki") });
-    expect(planKiroMigration(deps().d, "wiki", true)).toMatchObject({ ok: true, plan: { classicId: null } });
+  it("refuses what it must not move", async () => {
+    expect(await planKiroMigration(deps().d, "nope", false)).toEqual({ ok: false, error: t("kiro_migrate.not_fleet_instance", "nope") });
+    expect(await planKiroMigration(deps({ inst: { backend: "codex" } }).d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.not_kiro", "wiki", "codex") });
+    expect(await planKiroMigration(deps({ inst: { kiro_ui: "tui" } }).d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.not_legacy", "wiki", "tui") });
+    expect(await planKiroMigration(deps().d, "wiki", false), "nothing to carry").toEqual({ ok: false, error: t("kiro_migrate.no_classic", "wiki") });
+    expect(await planKiroMigration(deps().d, "wiki", true)).toMatchObject({ ok: true, plan: { classicId: null } });
   });
 
   it("a running instance: kiro_ui saved as tui, the classic conversation armed, restarted; the prompt says what happens", async () => {
     launch("v1", ["classic-1"]);
     const { d, fleet, saved, restart } = deps();
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     expect(kiroMigrationPrompt(judged.plan, true)).toContain("classic-1");
     const out = await applyKiroMigration(d, judged.plan);
@@ -207,7 +207,7 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
   it("a stopped instance is started and verified after explicit Confirm", async () => {
     launch("v1", ["classic-1"]);
     const { d, restart } = deps({ running: false });
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     expect((await applyKiroMigration(d, judged.plan)).ok).toBe(true);
     expect(restart).toHaveBeenCalledTimes(2);
@@ -216,7 +216,7 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
   it("fleet.yaml cannot be saved: nothing changes, nothing is armed", async () => {
     launch("v1", ["classic-1"]);
     const { d, fleet } = deps({ saveFleetConfig: () => { throw new Error("disk full"); } });
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     expect(await applyKiroMigration(d, judged.plan)).toEqual({ ok: false, text: t("kiro_migrate.save_failed", "wiki", "disk full") });
     expect(fleet.instances.wiki.kiro_ui).toBeUndefined();
@@ -226,7 +226,7 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
   it("the instance changed between the request and the Confirm: refused, untouched", async () => {
     launch("v1", ["classic-1"]);
     const { d, fleet, saved } = deps();
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     fleet.instances.wiki.kiro_ui = "tui";
     expect(await applyKiroMigration(d, judged.plan)).toEqual({ ok: false, text: t("kiro_migrate.not_legacy", "wiki", "tui") });
@@ -239,7 +239,7 @@ describe("migrate_kiro_instance: judge, then apply on the admin's Confirm", () =
   it("the adoption cannot be written: the config is put back and saved again", async () => {
     launch("v1", ["classic-1"]);
     const { d, fleet, saved } = deps();
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     // The records stay readable; only the adoption cannot be written next to them.
     const dir = join(home, "kiro-identity", "instances");

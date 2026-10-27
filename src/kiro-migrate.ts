@@ -33,7 +33,8 @@ export interface KiroMigrateDeps {
   verify(name: string, id: string, model: string, archived: boolean): Promise<{ forensic: string }>;
   stop(name: string): Promise<void>;
   /** The classic (v1) store the instance launches with, for where a compaction went on (#2714). */
-  readClassicStore(workingDirectory: string, credentialProfile: string | null): KiroStoreRead;
+  /** #2738: async — the compaction links are worked out on the store worker lane, never on the fleet loop. */
+  readClassicStore(workingDirectory: string, credentialProfile: string | null): KiroStoreRead | Promise<KiroStoreRead>;
 }
 
 /** What a confirmed move will do; checked again when the admin confirms. */
@@ -74,10 +75,11 @@ function refusal(name: string, m: Extract<KiroTuiMigration, { kind: "refused" }>
  * is one-way, and carrying the recorded id would leave the newer conversation behind on the frozen engine.
  * `apply` records the walk, as a classic launch would (only once the admin confirmed and the instance was checked).
  */
-function carriedClassic(deps: KiroMigrateDeps, name: string, workingDirectory: string, credentialProfile: string | null, recorded: string, apply: boolean):
-  { ok: true; id: string; compactedFrom: string[] } | { ok: false; error: string } {
+async function carriedClassic(deps: KiroMigrateDeps, name: string, workingDirectory: string, credentialProfile: string | null, recorded: string, apply: boolean):
+  Promise<{ ok: true; id: string; compactedFrom: string[] } | { ok: false; error: string }> {
+  const store = await deps.readClassicStore(workingDirectory, credentialProfile);
   const walk = followKiroClassicCompaction({ agendHome: deps.agendHome, instance: name, workingDirectory, credentialProfile,
-    readStore: () => deps.readClassicStore(workingDirectory, credentialProfile), apply });
+    readStore: () => store, apply });
   if (!walk) return { ok: true, id: recorded, compactedFrom: [] };
   if (walk.kept) return { ok: false, error: t("kiro_migrate.refused_compaction", name, walk.id, compactionReason(walk)) };
   return { ok: true, id: walk.id, compactedFrom: walk.followed };
@@ -86,18 +88,19 @@ function carriedClassic(deps: KiroMigrateDeps, name: string, workingDirectory: s
 function compactionReason(walk: KiroClassicCompaction): string {
   const kept = walk.kept!;
   return kept.reason === "unreadable" ? t("kiro_migrate.compaction_unreadable")
+    : kept.reason === "over-budget" ? t("kiro_migrate.compaction_over_budget")
     : kept.reason === "ambiguous" ? t("kiro_migrate.compaction_ambiguous", kept.from, kept.candidates.join(", "))
       : t("kiro_migrate.compaction_not_ours", kept.from, kept.candidate);
 }
 
 /** Judge a request; nothing is written. `startFresh` allows moving an instance that has no classic conversation. */
-export function planKiroMigration(deps: KiroMigrateDeps, name: string, startFresh: boolean): { ok: true; plan: KiroMigrationPlan } | { ok: false; error: string } {
+export async function planKiroMigration(deps: KiroMigrateDeps, name: string, startFresh: boolean): Promise<{ ok: true; plan: KiroMigrationPlan } | { ok: false; error: string }> {
   const found = target(deps, name);
   if (typeof found === "string") return { ok: false, error: found };
   const inspected = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: name, workingDirectory: found.workingDirectory, credentialProfile: found.credentialProfile });
   if (inspected.kind === "refused") return { ok: false, error: refusal(name, inspected) };
   if (!inspected.classicId && !startFresh) return { ok: false, error: t("kiro_migrate.no_classic", name) };
-  const carried = inspected.classicId ? carriedClassic(deps, name, found.workingDirectory, found.credentialProfile, inspected.classicId, false) : null;
+  const carried = inspected.classicId ? await carriedClassic(deps, name, found.workingDirectory, found.credentialProfile, inspected.classicId, false) : null;
   if (carried && !carried.ok) return carried;
   return { ok: true, plan: { name, workingDirectory: found.workingDirectory, credentialProfile: found.credentialProfile, classicId: carried?.id ?? null,
     ...(carried?.compactedFrom.length ? { compactedFrom: carried.compactedFrom } : {}) } };
@@ -126,7 +129,7 @@ export async function applyKiroMigration(deps: KiroMigrateDeps, plan: KiroMigrat
   if (typeof found === "string") return { ok: false, text: found };
   const again = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: found.workingDirectory, credentialProfile: found.credentialProfile });
   if (again.kind === "refused") return { ok: false, text: refusal(plan.name, again) };
-  const judged = again.classicId ? carriedClassic(deps, plan.name, found.workingDirectory, found.credentialProfile, again.classicId, false) : null;
+  const judged = again.classicId ? await carriedClassic(deps, plan.name, found.workingDirectory, found.credentialProfile, again.classicId, false) : null;
   if (judged && !judged.ok) return { ok: false, text: judged.error };
   if (found.workingDirectory !== plan.workingDirectory || found.credentialProfile !== plan.credentialProfile || (judged?.id ?? null) !== plan.classicId) {
     return { ok: false, text: t("kiro_migrate.changed", plan.name) };
@@ -149,7 +152,7 @@ export async function applyKiroMigration(deps: KiroMigrateDeps, plan: KiroMigrat
     // conversation is now; one that cannot be proven any more refuses, and nothing is armed.
     const pinned = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile });
     if (pinned.kind === "ready" && pinned.classicId) {
-      const followed = carriedClassic(deps, plan.name, plan.workingDirectory, plan.credentialProfile, pinned.classicId, true);
+      const followed = await carriedClassic(deps, plan.name, plan.workingDirectory, plan.credentialProfile, pinned.classicId, true);
       if (!followed.ok) throw new Error(followed.error);
     }
     const checked = inspectKiroTuiMigration({ agendHome: deps.agendHome, instance: plan.name, workingDirectory: plan.workingDirectory, credentialProfile: plan.credentialProfile });

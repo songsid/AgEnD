@@ -11,6 +11,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listKiroV1Sessions, resolveKiroIdentity, KiroIdentityError, type KiroStoreRead } from "../src/backend/kiro-identity.js";
+import { classicLinks } from "./support/kiro-classic-links.js";
 import { KiroBackend, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import { t } from "../src/locale.js";
 
@@ -48,14 +49,14 @@ function row(base: Row, over: { id?: string; created?: number; updated?: number;
   return { key: over.key ?? base.key, conversation_id: over.id ?? base.conversation_id, created_at: over.created ?? base.created_at, updated_at: over.updated ?? base.updated_at, value };
 }
 const transcriptOf = (r: Row) => r.value.transcript as string[];
-const links = () => { const s = listKiroV1Sessions(cwd, db); if (s.kind !== "ok" || !s.compaction) throw new Error("no links"); return s.compaction; };
+const links = () => { const s = listKiroV1Sessions(cwd, db, classicLinks(cwd, db)); if (s.kind !== "ok" || !s.compaction) throw new Error("no links"); return s.compaction; };
 
 const home = () => join(root, "agend");
 const claims = () => join(home(), "kiro-identity", "claims", "v1");
 const claimFile = (id: string) => readFileSync(join(claims(), id), "utf-8");
 const resolve = (instance = "worker", over: Partial<Parameters<typeof resolveKiroIdentity>[0]> = {}) => resolveKiroIdentity({
   instance, engine: "v1", workingDirectory: cwd, credentialProfile: null, agendHome: home(),
-  readStore: () => listKiroV1Sessions(cwd, db), launchedBefore: () => true, ...over,
+  readStore: () => listKiroV1Sessions(cwd, db, classicLinks(cwd, db)), launchedBefore: () => true, ...over,
 });
 /** The instance owns `id` the way #906 records it: adopted as the only conversation in the directory. */
 function own(id: string, instance = "worker"): void {
@@ -126,12 +127,14 @@ describe("the store's compaction links (v1, real SQLite, captured rows)", () => 
     expect((links().successorsOf(A) as string[]).sort()).toEqual([B, "B2"].sort());
   });
 
-  it("a store removed after the listing is unreadable, never 'no successor'", () => {
+  it("links that could not be worked out (unreadable, over budget — #2738) say so, never 'no successor'", () => {
     store();
-    const l = links();
-    rmSync(join(root, "xdg"), { recursive: true });
-    expect(l.successorsOf(A)).toBe("unreadable");
-    expect(l.summarized(B)).toBe("unreadable");
+    for (const failed of [{ kind: "unreadable", detail: "locked" }, { kind: "over-budget", detail: "slow" }] as const) {
+      const read = listKiroV1Sessions(cwd, db, failed);
+      if (read.kind !== "ok" || !read.compaction) throw new Error("no listing");
+      expect(read.compaction.successorsOf(A)).toBe(failed.kind);
+      expect(read.compaction.summarized(B)).toBe(failed.kind);
+    }
   });
 });
 
@@ -249,7 +252,7 @@ describe("without proof the recorded id is kept, and the decision says why", () 
   it("links that turn unreadable mid-way keep what was proven", () => {
     own(A);
     store();
-    const real = listKiroV1Sessions(cwd, db) as Extract<KiroStoreRead, { kind: "ok" }>;
+    const real = listKiroV1Sessions(cwd, db, classicLinks(cwd, db)) as Extract<KiroStoreRead, { kind: "ok" }>;
     const readStore = (): KiroStoreRead => ({ ...real, compaction: { ...real.compaction!, successorsOf: id => id === B ? "unreadable" : real.compaction!.successorsOf(id) } });
     expect(resolve("worker", { readStore })).toEqual({ mode: "resume", id: B, agentConfirmed: false, followed: [A], kept: { reason: "unreadable" } });
   });
@@ -353,48 +356,51 @@ const COMPAT: KiroCliCompatibility = {
   agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, supportsInstanceAgent: true, source: "version",
 };
 describe("the backend: what the operator is told", () => {
-  const launch = () => {
+  const config = () => ({ workingDirectory: cwd, instanceDir: join(root, "agend", "instances", "worker"), instanceName: "worker", kiroUi: "legacy",
+    mcpServers: { agend: { command: "node", args: ["server.js"], env: {} } }, instructions: "hi" }) as never;
+  // As the daemon launches: prepareLaunch (the compaction links, on the worker lane — #2738), then writeConfig.
+  const launch = async () => {
     const backend = new KiroBackend(join(root, "agend", "instances", "worker"), COMPAT);
-    const cfg = { workingDirectory: cwd, instanceDir: join(root, "agend", "instances", "worker"), instanceName: "worker", kiroUi: "legacy",
-      mcpServers: { agend: { command: "node", args: ["server.js"], env: {} } }, instructions: "hi" } as never;
+    const cfg = config();
+    await backend.prepareLaunch(cfg);
     backend.writeConfig(cfg);
     return { backend, cmd: backend.buildCommand(cfg) };
   };
   beforeEach(() => mkdirSync(join(root, "agend", "instances", "worker"), { recursive: true }));
 
-  it("a followed compaction: --resume-id B, and a quiet note for the Log tab (no chat warning)", () => {
+  it("a followed compaction: --resume-id B, and a quiet note for the Log tab (no chat warning)", async () => {
     own(A);
     store(CAPTURED.slice(0, 2));
-    const { backend, cmd } = launch();
+    const { backend, cmd } = await launch();
     expect(cmd).toContain(`--resume-id '${B}'`);
     expect(backend.consumeQuietLaunchNotes()).toEqual([t("kiro.compaction_followed", A, B)]);
     expect(backend.consumeLaunchWarning()).toBeNull();
     expect(backend.consumeQuietLaunchNotes()).toEqual([]);
   });
 
-  it("a direct buildCommand (no writeConfig before it) says the same", () => {
+  it("a direct buildCommand (no writeConfig before it) says the same", async () => {
     own(A);
     store(CAPTURED.slice(0, 2));
     const backend = new KiroBackend(join(root, "agend", "instances", "worker"), COMPAT);
-    const cmd = backend.buildCommand({ workingDirectory: cwd, instanceDir: join(root, "agend", "instances", "worker"), instanceName: "worker", kiroUi: "legacy",
-      mcpServers: { agend: { command: "node", args: ["server.js"], env: {} } }, instructions: "hi" } as never);
+    await backend.prepareLaunch(config());
+    const cmd = backend.buildCommand(config());
     expect(cmd).toContain(`--resume-id '${B}'`);
     expect(backend.consumeQuietLaunchNotes()).toEqual([t("kiro.compaction_followed", A, B)]);
   });
 
-  it("kept for a reason: --resume-id A, and the reason as a quiet note", () => {
+  it("kept for a reason: --resume-id A, and the reason as a quiet note", async () => {
     own(A);
     store(CAPTURED.slice(0, 2));
     writeFileSync(join(claims(), B), "sibling\n");
-    const { backend, cmd } = launch();
+    const { backend, cmd } = await launch();
     expect(cmd).toContain(`--resume-id '${A}'`);
     expect(backend.consumeQuietLaunchNotes()).toEqual([t("kiro.compaction_kept_not_ours", A, A, B)]);
   });
 
-  it("an incomplete claim: a fresh start, with a launch warning saying which conversation and why", () => {
+  it("an incomplete claim: a fresh start, with a launch warning saying which conversation and why", async () => {
     own(A);
     writeFileSync(join(claims(), A), "worker");
-    const { backend, cmd } = launch();
+    const { backend, cmd } = await launch();
     expect(cmd).not.toContain("--resume-id");
     expect(backend.consumeLaunchWarning()).toBe(t("kiro.claim_lost", A, t("kiro.claim_lost_incomplete")));
   });

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { KiroV2StoreInput, KiroV2StoreReply, KiroV2StoreRequest } from "./kiro-v2-store.js";
 
 import { prepareKiroCarryForLaunch } from "./kiro-classic-archive.js";
+import { computeKiroClassicLinks } from "./kiro-classic-links.js";
 
 const CACHE_LIMIT = 4096;
 const CACHE_BYTES = 4 * 1024 * 1024;
@@ -72,7 +73,10 @@ function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): Kiro
 parentPort?.on("message", ({ id, input, deadlineAt }: KiroV2StoreRequest) => {
   let reply: KiroV2StoreReply;
   try {
-    if (input.migration) {
+    if (input.classicLinks) {
+      reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 },
+        classicLinks: computeKiroClassicLinks(input.classicLinks, () => performance.now() >= deadlineAt) };
+    } else if (input.migration) {
       if (performance.now() >= deadlineAt) throw new Error("Kiro verification timed out");
       reply = { kind: "ok", sessions: [], diagnostics: { reads: 0, hits: 0 }, verification: verifyKiroMigrationStore(input.migration) };
     } else if (input.carry) {

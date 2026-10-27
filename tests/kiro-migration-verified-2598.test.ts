@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps } from "../src/kiro-migrate.js";
 import { armKiroTuiMigration, kiroOwnedConversation, listKiroV1Sessions, resolveKiroIdentity } from "../src/backend/kiro-identity.js";
+import { classicLinks } from "./support/kiro-classic-links.js";
 import { archiveKiroClassicCopy } from "../src/backend/kiro-classic-archive.js";
 import { verifyKiroMigrationStore } from "../src/backend/kiro-migration-verify.js";
 import { KiroSessionSource } from "../src/transcript-sources.js";
@@ -54,16 +55,16 @@ function fixture() {
       return verifyKiroMigrationStore(verifyInput(archived));
     }),
     stop: vi.fn(async () => { steps.push("stop"); }),
-    readClassicStore: () => listKiroV1Sessions(cwd, dbPath),
+    readClassicStore: () => listKiroV1Sessions(cwd, dbPath, classicLinks(cwd, dbPath)),
   };
   return { cwd, sessions, dbPath, identity, input, meta, metaPath, log, agent, save, fleet, d, steps, verifyInput,
     released: () => released, supersede: () => { live = false; } };
 }
-function plan(f: ReturnType<typeof fixture>) { const result = planKiroMigration(f.d, "wiki", false); if (!result.ok) throw new Error(result.error); return result.plan; }
+async function plan(f: ReturnType<typeof fixture>) { const result = await planKiroMigration(f.d, "wiki", false); if (!result.ok) throw new Error(result.error); return result.plan; }
 
 describe("single-confirm verified migration", () => {
   it("carries once, archives on the plain restart, verifies both, and releases the lane", async () => {
-    const f = fixture(); const out = await applyKiroMigration(f.d, plan(f));
+    const f = fixture(); const out = await applyKiroMigration(f.d, await plan(f));
     expect(out).toEqual({ ok: true, text: t("kiro_migrate.verified", "wiki", id, model, "clean") });
     expect(f.steps).toEqual(["preflight", "restart", "carry-verify", "restart", "plain-verify"]);
     expect(f.d.restart).toHaveBeenCalledTimes(2); expect(f.released()).toBe(true); expect(f.d.stop).not.toHaveBeenCalled();
@@ -72,34 +73,34 @@ describe("single-confirm verified migration", () => {
   });
   it.each(["busy", "unsupported version", "model unknown"])("preflight %s leaves everything untouched", async reason => {
     const f = fixture(); f.d.preflight = vi.fn(async () => { throw new Error(reason); });
-    expect((await applyKiroMigration(f.d, plan(f))).ok).toBe(false);
+    expect((await applyKiroMigration(f.d, await plan(f))).ok).toBe(false);
     expect(f.fleet.instances.wiki.kiro_ui).toBeUndefined(); expect(f.d.saveFleetConfig).not.toHaveBeenCalled(); expect(f.d.restart).not.toHaveBeenCalled(); expect(f.released()).toBe(true);
   });
   it.each([1, 2])("failed verification %s stops without a success claim or fresh/classic fallback", async failure => {
     const f = fixture(), original = f.d.verify; let calls = 0;
     f.d.verify = vi.fn(async (name: string, session: string, expected: string, archived: boolean) => { if (++calls === failure) throw new Error("wrong model or pin"); return original(name, session, expected, archived); });
-    const out = await applyKiroMigration(f.d, plan(f)); expect(out.ok).toBe(false); expect(out.text).toContain("wrong model or pin");
+    const out = await applyKiroMigration(f.d, await plan(f)); expect(out.ok).toBe(false); expect(out.text).toContain("wrong model or pin");
     expect(f.d.stop).toHaveBeenCalledOnce(); expect(f.d.restart).toHaveBeenCalledTimes(failure); expect(f.fleet.instances.wiki.kiro_ui).toBe("tui"); expect(f.released()).toBe(true);
   });
   it("restart failure is a failure and explicitly stops, not a successful queued migration", async () => {
     const f = fixture(); f.d.restart = vi.fn(async () => { throw new Error('Session id "'+id+'" is ambiguous (2 matches).'); });
-    expect((await applyKiroMigration(f.d, plan(f))).ok).toBe(false); expect(f.d.stop).toHaveBeenCalledOnce(); expect(f.d.verify).not.toHaveBeenCalled();
+    expect((await applyKiroMigration(f.d, await plan(f))).ok).toBe(false); expect(f.d.stop).toHaveBeenCalledOnce(); expect(f.d.verify).not.toHaveBeenCalled();
   });
   it("an explicit stop/replacement while verification awaits never triggers the second restart", async () => {
     const f = fixture(); f.d.verify = vi.fn(async () => { f.supersede(); return { forensic: "clean" }; });
-    expect((await applyKiroMigration(f.d, plan(f))).ok).toBe(false); expect(f.d.restart).toHaveBeenCalledOnce(); expect(f.d.stop).not.toHaveBeenCalled();
+    expect((await applyKiroMigration(f.d, await plan(f))).ok).toBe(false); expect(f.d.restart).toHaveBeenCalledOnce(); expect(f.d.stop).not.toHaveBeenCalled();
   });
   it("a changed effective model during preflight refuses before writing", async () => {
     const f = fixture(); f.d.preflight = vi.fn(async () => { f.fleet.instances.wiki.model = "different"; return model; });
-    expect((await applyKiroMigration(f.d, plan(f))).ok).toBe(false); expect(f.d.saveFleetConfig).not.toHaveBeenCalled();
+    expect((await applyKiroMigration(f.d, await plan(f))).ok).toBe(false); expect(f.d.saveFleetConfig).not.toHaveBeenCalled();
   });
   it("a failed stop is reported honestly, with history still pinned", async () => {
     const f = fixture(); f.d.verify = vi.fn(async () => { throw new Error("failed reader"); }); f.d.stop = vi.fn(async () => { throw new Error("stop timeout"); });
-    const out = await applyKiroMigration(f.d, plan(f)); expect(out.ok).toBe(false); expect(out.text).toContain(t("kiro_migrate.stop_unconfirmed"));
+    const out = await applyKiroMigration(f.d, await plan(f)); expect(out.ok).toBe(false); expect(out.text).toContain(t("kiro_migrate.stop_unconfirmed"));
     expect(kiroOwnedConversation({ ...f.identity, engine: "v2" })).toBe(id);
   });
-  it("the admin sees sudo/password risk, both verification launches, and that stopped targets will start", () => {
-    const f = fixture(), text = kiroMigrationPrompt(plan(f), false);
+  it("the admin sees sudo/password risk, both verification launches, and that stopped targets will start", async () => {
+    const f = fixture(), text = kiroMigrationPrompt((await plan(f)), false);
     expect(text).toContain("sudo"); expect(text).toContain("password"); expect(text).toContain("plain restart"); expect(text).toContain("confirming starts");
   });
 });
@@ -224,9 +225,9 @@ describe("actual daemon and fleet boundaries, native operations stubbed", () => 
     Object.assign(fm, { kiroMigrationRuns: new Map(), restartsInFlight: new Map(), stopsInFlight: new Map(), explicitStopGeneration: new Map(),
       shuttingDown: false, scheduleDeliveryOutboxPump: vi.fn(), lifecycle: { daemons: new Map([["wiki", daemon]]) }, fleetConfig: f.fleet, getInstanceStatus: () => "running" });
     const deps = fm.kiroMigrateDeps(), lease = deps.reserve("wiki");
-    try { await expect(deps.preflight("wiki", plan(f))).rejects.toThrow(t("kiro_migrate.idle_required"));
-      daemon.kiroMigrationIdle.mockResolvedValue(true); expect(await deps.preflight("wiki", plan(f))).toBe(model);
-      delete f.fleet.instances.wiki.model; await expect(deps.preflight("wiki", plan(f))).rejects.toThrow(t("kiro_migrate.model_unknown"));
+    try { await expect(deps.preflight("wiki", await plan(f))).rejects.toThrow(t("kiro_migrate.idle_required"));
+      daemon.kiroMigrationIdle.mockResolvedValue(true); expect(await deps.preflight("wiki", await plan(f))).toBe(model);
+      delete f.fleet.instances.wiki.model; await expect(deps.preflight("wiki", await plan(f))).rejects.toThrow(t("kiro_migrate.model_unknown"));
     } finally { lease.release(); }
   });
 });

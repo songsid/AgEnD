@@ -29,6 +29,7 @@ import {
   type KiroAgentSpec,
 } from "../src/backend/kiro-agent.js";
 import { forgetKiroIdentity, listKiroV1Sessions, resolveKiroIdentity, KiroIdentityError, type KiroStoreRead } from "../src/backend/kiro-identity.js";
+import { NO_CLASSIC_LINKS } from "./support/kiro-classic-links.js";
 import { KiroBackend, readActiveKiroAgent, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import { resolveKiroV3Resume } from "../src/backend/kiro-v3-identity.js";
 import { kasBucket } from "../src/backend/kiro-kas-store.js";
@@ -288,7 +289,7 @@ describe("R2#4 a creation time that cannot be read defers the take-up and keeps 
     db.exec("CREATE TABLE conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (key, conversation_id)); CREATE INDEX idx_conversations_v2_key_updated ON conversations_v2(key, updated_at DESC);");
     db.prepare("INSERT INTO conversations_v2 VALUES (?, 'n1', '{}', 2000, 2500)").run(join(root, "work"));
     db.close();
-    const read = listKiroV1Sessions(join(root, "work"), dbPath);
+    const read = listKiroV1Sessions(join(root, "work"), dbPath, NO_CLASSIC_LINKS);
     expect(read.kind).toBe("ok");
     if (read.kind !== "ok") return;
     expect(read.createdAt("n1")).toBe(2_000);
@@ -417,7 +418,7 @@ describe("#15 the v1 selector reads through the metadata index, or not at all", 
     const db = new Database(join(dir, "data.sqlite3"));
     db.exec("CREATE TABLE conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (key, conversation_id));");
     db.close();
-    expect(listKiroV1Sessions(join(root, "work"), join(dir, "data.sqlite3")).kind).toBe("unreadable");
+    expect(listKiroV1Sessions(join(root, "work"), join(dir, "data.sqlite3"), NO_CLASSIC_LINKS).kind).toBe("unreadable");
   });
   it("with realistic statistics the query still searches the index, reading updated_at from it", () => {
     const db = new Database(":memory:");

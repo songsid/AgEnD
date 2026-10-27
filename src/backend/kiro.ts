@@ -15,7 +15,7 @@ import {
   removeSharedKiroMcpEntries, writeTaggedKiroSteering, removeTaggedKiroSteering, kiroSteeringOwnership,
 } from "./kiro-agent.js";
 import {
-  type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
+  type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, readKiroClassicLinks, confirmKiroAgentSwitch,
   kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroRecordedConversation, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
   kiroEngineFloor, kiroCarryCandidate,
 } from "./kiro-identity.js";
@@ -28,6 +28,7 @@ import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
 import { sharedKiroV2StoreLane } from "./kiro-v2-store.js";
+import { KIRO_CLASSIC_LINKS_NOT_PREPARED, type KiroClassicLinks } from "./kiro-classic-links.js";
 import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict, type KiroModelRecords, type KiroModelSwitch } from "./kiro-retired-model.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
@@ -1099,6 +1100,7 @@ function kiroCompactionNotes(decision: Extract<KiroIdentityDecision, { mode: "re
   if (decision.followed?.length) notes.push(t("kiro.compaction_followed", decision.followed[0]!, decision.id));
   const kept = decision.kept;
   if (kept?.reason === "unreadable") notes.push(t("kiro.compaction_kept_unreadable", decision.id));
+  else if (kept?.reason === "over-budget") notes.push(t("kiro.compaction_kept_over_budget", decision.id));
   else if (kept?.reason === "ambiguous") notes.push(t("kiro.compaction_kept_ambiguous", decision.id, kept.from, kept.candidates.join(", ")));
   else if (kept?.reason === "not-ours") notes.push(t("kiro.compaction_kept_not_ours", decision.id, kept.from, kept.candidate));
   return notes;
@@ -1397,6 +1399,8 @@ export class KiroBackend implements CliBackend {
   /** #1218: the last launch built in full (cleared when a build starts, set only when it returns). */
   private builtLaunch: KiroLogLaunch | null = null;
   private preparedV2Store: { key: string; store: KiroStoreRead } | null = null;
+  /** #2738: a classic launch's compaction links, worked out in prepareLaunch on their worker lane (off the loop). */
+  private preparedClassicLinks: { key: string; links: KiroClassicLinks } | null = null;
   /** #2648: the saved model of the v2 conversation this instance has recorded, read in prepareLaunch (off the loop). */
   private preparedV2Model: { key: string; id: string; model: string | null } | null = null;
   private storePreparation = 0;
@@ -1413,6 +1417,12 @@ export class KiroBackend implements CliBackend {
     return this.preparedV2Store.store;
   }
 
+  /** Not prepared for this launch: unproven, so the launch stays on the recorded conversation (never read here). */
+  private readPreparedClassicLinks(config: CliBackendConfig): KiroClassicLinks {
+    return this.preparedClassicLinks?.key === this.storeKey(config) ? this.preparedClassicLinks.links
+      : KIRO_CLASSIC_LINKS_NOT_PREPARED;
+  }
+
   /** Metadata only: identity claims/config writes remain synchronous, after
    * the daemon rechecks its launch admission following this await. */
   async prepareLaunch(config?: CliBackendConfig): Promise<void> {
@@ -1420,9 +1430,19 @@ export class KiroBackend implements CliBackend {
     this.preparedV2Store = null;
     this.preparedV2Model = null;
     this.preparedCarry = null;
-    if (!config || config.kiroUi !== "tui") return;
+    this.preparedClassicLinks = null;
+    if (!config) return;
     if (!this.fixedCompatibility) this.compatibility = cachedKiroCliCompatibility(this.binaryPath).compatibility;
     const key = this.storeKey(config);
+    const classic = planKiroLaunch(config.kiroUi ?? "legacy", this.compatibility);
+    if (classic.kind === "launch" && classic.flags.includes("--agent-engine=v1") && this.compatibility.supportsInstanceAgent && !config.skipResume) {
+      // #2738: whether the recorded conversation was compacted reads every transcript of the key — a GB on a
+      // long-lived instance. Worked out here on the worker lane; writeConfig only looks the answer up.
+      const links = await readKiroClassicLinks(config.workingDirectory, kiroV1DbPath(resolveCredentialProfile(config.backendOptions)));
+      if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedClassicLinks = { key, links };
+      return;
+    }
+    if (config.kiroUi !== "tui") return;
     const plan = planKiroLaunch("tui", this.compatibility);
     if (plan.kind !== "launch" || !plan.flags.includes("--agent-engine=v2") || !this.compatibility.supportsInstanceAgent) return;
     const opts = { instance: config.instanceName, engine: "v2" as const, workingDirectory: config.workingDirectory,
@@ -1944,7 +1964,7 @@ export class KiroBackend implements CliBackend {
         skipResume: config.skipResume,
         agendHome,
         readStore: () => engine === "v1"
-          ? listKiroV1Sessions(config.workingDirectory, kiroV1DbPath(credentialProfile))
+          ? listKiroV1Sessions(config.workingDirectory, kiroV1DbPath(credentialProfile), this.readPreparedClassicLinks(config))
           : this.readPreparedV2Store(config),
         launchedBefore: () => kiroLaunchedHereBefore(config.instanceName, config.workingDirectory, credentialProfile, engine),
         upgradeAdoption: () => {

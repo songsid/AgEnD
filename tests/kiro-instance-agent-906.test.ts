@@ -25,6 +25,7 @@ import {
 import { KiroBackend, kiroResumeAgentSwitch, probeKiroCliCompatibility, readActiveKiroAgent, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import { recordKiroLaunch } from "../src/backend/kiro-engine-ledger.js";
 import { t } from "../src/locale.js";
+import { NO_CLASSIC_LINKS } from "./support/kiro-classic-links.js";
 
 let root: string;
 beforeEach(() => {
@@ -219,16 +220,16 @@ function v1Store(rows: Array<[string, string, number, number?]>): string {
 describe("§2 store selectors", () => {
   it("v1: this directory's conversations from conversations_v2, newest by updated_at; a missing database is empty", () => {
     const cwd = join(root, "work");
-    expect(listKiroV1Sessions(cwd, join(root, "xdg", "kiro-cli", "data.sqlite3"))).toMatchObject({ kind: "ok", sessions: [] });
+    expect(listKiroV1Sessions(cwd, join(root, "xdg", "kiro-cli", "data.sqlite3"), NO_CLASSIC_LINKS)).toMatchObject({ kind: "ok", sessions: [] });
     const db = v1Store([[cwd, "c-old", 100], [cwd, "c-new", 200], [join(root, "other"), "c-other", 300]]);
-    const read = listKiroV1Sessions(cwd, db);
+    const read = listKiroV1Sessions(cwd, db, NO_CLASSIC_LINKS);
     expect(read.kind === "ok" && read.sessions.sort((a, b) => b.updatedAt - a.updatedAt).map(s => s.id)).toEqual(["c-new", "c-old"]);
   });
 
   it("v1: a corrupt database is unreadable, never empty", () => {
     const dir = join(root, "xdg", "kiro-cli"); mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "data.sqlite3"), "not a database");
-    expect(listKiroV1Sessions(join(root, "work"), join(dir, "data.sqlite3")).kind).toBe("unreadable");
+    expect(listKiroV1Sessions(join(root, "work"), join(dir, "data.sqlite3"), NO_CLASSIC_LINKS).kind).toBe("unreadable");
   });
 
   it("v2: session files of this directory, subagents and other directories ignored", async () => {

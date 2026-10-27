@@ -39,7 +39,8 @@ import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { writeFileAtomic } from "./kiro-engine-ledger.js";
-import { sharedKiroV2StoreLane } from "./kiro-v2-store.js";
+import { sharedKiroClassicLinksLane, sharedKiroV2StoreLane, type KiroV2StoreLane } from "./kiro-v2-store.js";
+import type { KiroClassicLinks } from "./kiro-classic-links.js";
 
 export type KiroClassicEngine = "v1" | "v2";
 /** v3 has its own identity (kiro-v3-identity.ts); its records here only say whether it runs as the agent. */
@@ -83,10 +84,11 @@ export type KiroStoreRead =
       /**
        * The conversations kiro continued `id` in: each carries a compaction summary, was created no earlier than `id`
        * was last written, and its transcript starts with `id`'s whole (non-empty) transcript. Same store key.
+       * "over-budget" (#2738): the store was too big to prove it in time — unproven, never a guess.
        */
-      successorsOf(id: string): string[] | "unreadable";
+      successorsOf(id: string): string[] | "unreadable" | "over-budget";
       /** Whether `id` carries a compaction summary: it continues some earlier conversation. */
-      summarized(id: string): boolean | "unreadable";
+      summarized(id: string): boolean | "unreadable" | "over-budget";
     };
   }
   | { kind: "unreadable"; detail: string };
@@ -113,8 +115,11 @@ const V1_INDEX = "idx_conversations_v2_key_updated";
  * forced with INDEXED BY, so a missing index is an error (unreadable), never a silent scan of the table. The row
  * itself is touched only for `conversation_id`, which precedes `value`. `created_at` follows `value`, so it is read
  * only for the few take-up candidates. A missing database is an empty store.
+ *
+ * The compaction links come in worked out already (#2738): proving them reads every transcript of the key, which is
+ * done on the store worker lane (readKiroClassicLinks), never here on the fleet loop.
  */
-export function listKiroV1Sessions(workingDirectory: string, dbPath: string): KiroStoreRead {
+export function listKiroV1Sessions(workingDirectory: string, dbPath: string, links: KiroClassicLinks): KiroStoreRead {
   try { statSync(dbPath); } catch (err) {
     return (err as NodeJS.ErrnoException).code === "ENOENT" ? EMPTY_STORE
       : { kind: "unreadable", detail: `cannot stat ${dbPath}: ${(err as Error).message}` };
@@ -148,37 +153,8 @@ export function listKiroV1Sessions(workingDirectory: string, dbPath: string): Ki
         return Number.isFinite(at) && at > 0 ? at : null;
       }),
       compaction: {
-        successorsOf: (id: string) => {
-          // A successor was written after `id` was (the index's updated_at): only those rows' values are ever read.
-          const from = sessions.find(s => s.id === id);
-          const later = from ? sessions.filter(s => s.id !== id && s.updatedAt >= from.updatedAt).map(s => s.id) : [];
-          if (later.length === 0) return [];
-          // The transcripts compared as SQLite's minified JSON text: kiro appends to it and never trims it (606
-          // entries kept, 2.34.0), so a continuation's array text starts with the whole earlier one but its "]".
-          // A later compaction continues it too (C extends B extends A): only the first hop counts — a continuation
-          // that continues another continuation of `id` is that one's successor, not `id`'s.
-          // The "," where the earlier "]" stood is what makes it longer by whole entries: never the same array, never
-          // an entry extended in place, and never a continuation of an empty transcript ("[]" is followed by no ",").
-          const extends_ = (x: string, y: string) => `json_type(${y}.t) = 'array' AND json_type(${x}.t) = 'array'
-            AND substr(${x}.t, 1, length(${y}.t) - 1) = substr(${y}.t, 1, length(${y}.t) - 1)
-            AND substr(${x}.t, length(${y}.t), 1) = ',' AND ${x}.created >= ${y}.at`;
-          return query(reader => (reader.prepare(`
-            WITH a AS (SELECT key, updated_at AS at, json_extract(value, '$.transcript') AS t FROM conversations_v2
-                       WHERE key IN (?, ?, ?) AND conversation_id = ? AND json_valid(value)),
-                 b AS (SELECT conversation_id AS id, key, created_at AS created, updated_at AS at, json_extract(value, '$.transcript') AS t
-                       FROM conversations_v2
-                       WHERE key IN (?, ?, ?) AND conversation_id IN (SELECT value FROM json_each(?)) AND json_valid(value)
-                         AND json_type(value, '$.latest_summary') IS NOT NULL AND json_type(value, '$.latest_summary') != 'null'),
-                 s AS (SELECT b.* FROM a JOIN b ON b.key = a.key WHERE ${extends_("b", "a")})
-            SELECT s.id AS id FROM s WHERE NOT EXISTS (SELECT 1 FROM s AS m WHERE m.id != s.id AND ${extends_("s", "m")})`)
-            .all(a, b, c, id, a, b, c, JSON.stringify(later)) as Array<{ id: unknown }>)
-            .flatMap(r => typeof r.id === "string" ? [r.id] : []));
-        },
-        summarized: (id: string) => query(reader => {
-          const row = reader.prepare("SELECT json_type(value, '$.latest_summary') AS summary FROM conversations_v2 WHERE key IN (?, ?, ?) AND conversation_id = ? AND json_valid(value) LIMIT 1")
-            .get(a, b, c, id) as { summary: unknown } | undefined;
-          return typeof row?.summary === "string" && row.summary !== "null";
-        }),
+        successorsOf: (id: string) => links.kind === "ok" ? [...(links.successors[id] ?? [])] : links.kind,
+        summarized: (id: string) => links.kind === "ok" ? links.summarized[id] === true : links.kind,
       },
     };
   } catch (err) {
@@ -186,6 +162,16 @@ export function listKiroV1Sessions(workingDirectory: string, dbPath: string): Ki
   } finally {
     try { db.close(); } catch { /* closed */ }
   }
+}
+
+/**
+ * #2738: a classic store's compaction links, worked out on their own worker lane within its budget. Out of time or
+ * over the size budget it is "over-budget": the launch stays on the recorded conversation and says so.
+ */
+export async function readKiroClassicLinks(workingDirectory: string, dbPath: string, lane: KiroV2StoreLane = sharedKiroClassicLinksLane): Promise<KiroClassicLinks> {
+  const reply = await lane.read({ keys: [], sessionsDir: "", classicLinks: { dbPath, keys: kiroDirectoryKeys(workingDirectory) } });
+  if (reply.kind === "unreadable") return reply.detail === lane.timedOut ? { kind: "over-budget", detail: reply.detail } : reply;
+  return reply.classicLinks ?? { kind: "unreadable", detail: "no compaction links in the reply" };
 }
 
 /** Full v2 files are read/parsed in a bounded worker, never on the fleet loop. */
@@ -222,6 +208,8 @@ export type KiroIdentityDecision =
 
 export type KiroCompactionKept =
   | { reason: "unreadable" }
+  /** #2738: the store was too big to prove a compaction within the budget. */
+  | { reason: "over-budget" }
   | { reason: "ambiguous"; from: string; candidates: string[] }
   | { reason: "not-ours"; from: string; candidate: string };
 
@@ -633,7 +621,7 @@ function compactionChain(ids: string[], links: NonNullable<Extract<KiroStoreRead
   const hasPredecessor = new Set<string>();
   for (const id of ids) {
     const s = links.successorsOf(id);
-    if (s === "unreadable") return "unreadable";
+    if (s === "unreadable" || s === "over-budget") return "unreadable"; // deferred either way
     const within = s.filter(x => x !== id && ids.includes(x));
     next.set(id, within);
     for (const x of within) hasPredecessor.add(x);
@@ -642,7 +630,7 @@ function compactionChain(ids: string[], links: NonNullable<Extract<KiroStoreRead
   const foreign: string[] = [];
   for (const root of ids.filter(id => !hasPredecessor.has(id))) {
     const summarized = links.summarized(root);
-    if (summarized === "unreadable") return "unreadable";
+    if (summarized === "unreadable" || summarized === "over-budget") return "unreadable";
     (summarized ? foreign : own).push(root);
   }
   const notOurs = new Set<string>();
@@ -685,7 +673,7 @@ function followClassicCompaction(claims: string, statePath: string, instance: st
   // every hop is an id not seen before (a revisit is refused as not this instance's), and the store has finitely many.
   for (;;) {
     const next = store.compaction.successorsOf(at);
-    if (next === "unreadable") { kept = { reason: "unreadable" }; break; }
+    if (next === "unreadable" || next === "over-budget") { kept = { reason: next }; break; }
     if (next.length === 0) break;
     if (next.length > 1) { kept = { reason: "ambiguous", from: at, candidates: [...next].sort() }; break; }
     const id = next[0]!;

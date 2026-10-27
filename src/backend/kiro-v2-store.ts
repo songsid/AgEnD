@@ -2,11 +2,16 @@ import type { KiroMigrationVerificationInput } from "./kiro-migration-verify.js"
 import { Worker } from "node:worker_threads";
 import { performance } from "node:perf_hooks";
 import type { KiroClassicArchiveInput, KiroCarryPreparation } from "./kiro-classic-archive.js";
+import type { KiroClassicLinks, KiroClassicLinksInput } from "./kiro-classic-links.js";
 
 export const KIRO_V2_STORE_BUDGET_MS = 15_000;
+/** #2738: a classic store's compaction links read every transcript of the instance's key — its own lane, its own budget. */
+export const KIRO_CLASSIC_LINKS_BUDGET_MS = 30_000;
 export const KIRO_V2_STORE_QUEUE_LIMIT = 64;
-export interface KiroV2StoreInput { keys: string[]; sessionsDir: string; carry?: Omit<KiroClassicArchiveInput, "sessionId">; migration?: KiroMigrationVerificationInput; }
-export type KiroV2StoreReply = { kind: "ok"; sessions: Array<{ id: string; updatedAt: number; createdAt: number | null }>; diagnostics: { reads: number; hits: number }; carry?: KiroCarryPreparation; verification?: { forensic: string } }
+export interface KiroV2StoreInput { keys: string[]; sessionsDir: string; carry?: Omit<KiroClassicArchiveInput, "sessionId">; migration?: KiroMigrationVerificationInput;
+  classicLinks?: KiroClassicLinksInput; }
+export type KiroV2StoreReply = { kind: "ok"; sessions: Array<{ id: string; updatedAt: number; createdAt: number | null }>; diagnostics: { reads: number; hits: number }; carry?: KiroCarryPreparation; verification?: { forensic: string };
+  classicLinks?: KiroClassicLinks }
   | { kind: "unreadable"; detail: string };
 export interface KiroV2StoreRequest { id: number; deadlineAt: number; input: KiroV2StoreInput; }
 interface Isolate {
@@ -31,21 +36,24 @@ export class KiroV2StoreLane {
   private nextId = 0;
   private pending = new Map<number, { deadlineAt: number; input: KiroV2StoreInput; sent: boolean;
     timer: ReturnType<typeof setTimeout>; resolve(reply: KiroV2StoreReply): void }>();
-  constructor(private factory = createIsolate, private now = () => performance.now()) {}
+  constructor(private factory = createIsolate, private now = () => performance.now(), private budgetMs = KIRO_V2_STORE_BUDGET_MS,
+    private label = "v2 session discovery") {}
+  /** The detail of a reply that ran out of this lane's budget. */
+  get timedOut(): string { return `${this.label} timed out`; }
 
   read(input: KiroV2StoreInput): Promise<KiroV2StoreReply> {
-    if (this.pending.size >= KIRO_V2_STORE_QUEUE_LIMIT) return Promise.resolve(unreadable("v2 session discovery queue full"));
-    const id = ++this.nextId, deadlineAt = this.now() + KIRO_V2_STORE_BUDGET_MS;
+    if (this.pending.size >= KIRO_V2_STORE_QUEUE_LIMIT) return Promise.resolve(unreadable(`${this.label} queue full`));
+    const id = ++this.nextId, deadlineAt = this.now() + this.budgetMs;
     const promise = new Promise<KiroV2StoreReply>(resolve => {
       this.pending.set(id, { input, deadlineAt, sent: false, resolve, timer: setTimeout(() => {
-        this.settle(id, unreadable("v2 session discovery timed out")); this.retire();
-      }, KIRO_V2_STORE_BUDGET_MS) });
+        this.settle(id, unreadable(this.timedOut)); this.retire();
+      }, this.budgetMs) });
     });
     this.pump();
     return promise;
   }
   close(): void {
-    for (const id of this.pending.keys()) this.settle(id, unreadable("v2 session discovery closed"));
+    for (const id of this.pending.keys()) this.settle(id, unreadable(`${this.label} closed`));
     this.retire();
   }
   private settle(id: number, reply: KiroV2StoreReply): void {
@@ -57,13 +65,13 @@ export class KiroV2StoreLane {
   private retire(): void {
     if (!this.worker || this.retiring) return;
     this.retiring = true;
-    for (const [id, request] of this.pending) if (request.sent) this.settle(id, unreadable("v2 session discovery worker retired"));
+    for (const [id, request] of this.pending) if (request.sent) this.settle(id, unreadable(`${this.label} worker retired`));
     try { void this.worker.terminate().catch(() => {}); } catch { /* retain physical slot until exit */ }
   }
   private pump(): void {
     if (this.retiring || !this.pending.size) return;
     for (const [id, request] of this.pending) {
-      if (this.now() >= request.deadlineAt) this.settle(id, unreadable("v2 session discovery timed out"));
+      if (this.now() >= request.deadlineAt) this.settle(id, unreadable(this.timedOut));
     }
     if (!this.pending.size) return;
     if (!this.worker) {
@@ -74,24 +82,24 @@ export class KiroV2StoreLane {
           const request = this.pending.get(message.id);
           if (!request) return;
           if (this.now() >= request.deadlineAt) {
-            this.settle(message.id, unreadable("v2 session discovery timed out")); this.retire();
+            this.settle(message.id, unreadable(this.timedOut)); this.retire();
           } else this.settle(message.id, message.reply);
         });
         worker.on("error", () => { if (this.worker === worker) this.retire(); });
         worker.on("exit", () => {
           if (this.worker !== worker) return;
           this.worker = null; this.retiring = false;
-          for (const [id, request] of this.pending) if (request.sent) this.settle(id, unreadable("v2 session discovery worker exited"));
+          for (const [id, request] of this.pending) if (request.sent) this.settle(id, unreadable(`${this.label} worker exited`));
           this.pump();
         });
       } catch {
-        for (const id of this.pending.keys()) this.settle(id, unreadable("cannot start v2 session discovery worker"));
+        for (const id of this.pending.keys()) this.settle(id, unreadable(`cannot start ${this.label} worker`));
         return;
       }
     }
     for (const [id, request] of this.pending) {
       if (request.sent) continue;
-      if (this.now() >= request.deadlineAt) { this.settle(id, unreadable("v2 session discovery timed out")); continue; }
+      if (this.now() >= request.deadlineAt) { this.settle(id, unreadable(this.timedOut)); continue; }
       try {
         request.sent = true; this.worker!.ref();
         this.worker!.postMessage({ id, deadlineAt: request.deadlineAt, input: request.input } satisfies KiroV2StoreRequest);
@@ -100,3 +108,5 @@ export class KiroV2StoreLane {
   }
 }
 export const sharedKiroV2StoreLane = new KiroV2StoreLane();
+/** #2738: apart from the v2 lane, so a long classic read never spends a v2 launch's budget in its queue. */
+export const sharedKiroClassicLinksLane = new KiroV2StoreLane(createIsolate, () => performance.now(), KIRO_CLASSIC_LINKS_BUDGET_MS, "classic compaction links");

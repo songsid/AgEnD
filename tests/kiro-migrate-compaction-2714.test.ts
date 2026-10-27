@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { kiroRecordedConversation, listKiroV1Sessions, resolveKiroIdentity, type KiroStoreRead } from "../src/backend/kiro-identity.js";
+import { classicLinks } from "./support/kiro-classic-links.js";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps } from "../src/kiro-migrate.js";
 import { t } from "../src/locale.js";
 import type { FleetConfig } from "../src/types.js";
@@ -43,7 +44,7 @@ const fork = (): Row => ({ ...CAPTURED[1]!, conversation_id: "B2",
 const claims = () => join(home, "kiro-identity", "claims", "v1");
 const claimFile = (id: string) => readFileSync(join(claims(), id), "utf-8");
 const classicLaunch = () => resolveKiroIdentity({ instance: "wiki", engine: "v1", workingDirectory: cwd, credentialProfile: null, agendHome: home,
-  readStore: () => listKiroV1Sessions(cwd, db), launchedBefore: () => true });
+  readStore: () => listKiroV1Sessions(cwd, db, classicLinks(cwd, db)), launchedBefore: () => true });
 /** wiki owns A (its classic launch recorded it), then compacted twice without a restart: kiro now writes C. */
 function compactedSinceLaunch(rows: Row[] = CAPTURED): void {
   store([CAPTURED[0]!]);
@@ -57,7 +58,7 @@ function deps(over: Partial<KiroMigrateDeps> = {}) {
     agendHome: home, fleetConfig: () => fleet, saveFleetConfig: () => {}, status: () => "running",
     restart: vi.fn(async () => {}), reserve: () => ({ current: () => true, release: () => {} }),
     preflight: vi.fn(async () => "claude-sonnet-4.6"), verify: vi.fn(async () => ({ forensic: "clean" })), stop: vi.fn(async () => {}),
-    readClassicStore: (dir: string) => listKiroV1Sessions(dir, db),
+    readClassicStore: (dir: string) => listKiroV1Sessions(dir, db, classicLinks(dir, db)),
     ...over,
   };
   return { d, fleet };
@@ -65,9 +66,9 @@ function deps(over: Partial<KiroMigrateDeps> = {}) {
 const v2Pending = () => kiroRecordedConversation({ agendHome: home, instance: "wiki", engine: "v2", workingDirectory: cwd, credentialProfile: null });
 
 describe("judging the move: the conversation carried is where the classic one went on", () => {
-  it("compacted twice since its launch: the plan carries C, says so, and writes nothing", () => {
+  it("compacted twice since its launch: the plan carries C, says so, and writes nothing", async () => {
     compactedSinceLaunch();
-    const judged = planKiroMigration(deps().d, "wiki", false);
+    const judged = await planKiroMigration(deps().d, "wiki", false);
     expect(judged).toEqual({ ok: true, plan: { name: "wiki", workingDirectory: cwd, credentialProfile: null, classicId: C, compactedFrom: [A, B] } });
     if (!judged.ok) throw new Error(judged.error);
     expect(kiroMigrationPrompt(judged.plan, true)).toContain(t("kiro_migrate.prompt_compacted", A, C));
@@ -76,9 +77,9 @@ describe("judging the move: the conversation carried is where the classic one we
     expect(claimFile(A)).toBe("wiki\n");
   });
 
-  it("not compacted: unchanged, the recorded conversation and no compaction line", () => {
+  it("not compacted: unchanged, the recorded conversation and no compaction line", async () => {
     compactedSinceLaunch([CAPTURED[0]!]);
-    const judged = planKiroMigration(deps().d, "wiki", false);
+    const judged = await planKiroMigration(deps().d, "wiki", false);
     expect(judged).toEqual({ ok: true, plan: { name: "wiki", workingDirectory: cwd, credentialProfile: null, classicId: A } });
   });
 
@@ -89,19 +90,22 @@ describe("judging the move: the conversation carried is where the classic one we
       t("kiro_migrate.compaction_not_ours", A, B)],
     ["the store unreadable", () => compactedSinceLaunch(), d => { d.readClassicStore = (): KiroStoreRead => ({ kind: "unreadable", detail: "locked" }); },
       t("kiro_migrate.compaction_unreadable")],
+    ["the store too big to prove it within the budget (#2738)", () => compactedSinceLaunch(),
+      d => { d.readClassicStore = async () => listKiroV1Sessions(cwd, db, { kind: "over-budget", detail: "slow" }); },
+      t("kiro_migrate.compaction_over_budget")],
   ];
   for (const [label, arrange, tweak, reason] of refused) {
-    it(`unproven — ${label}: refused, nothing changed`, () => {
+    it(`unproven — ${label}: refused, nothing changed`, async () => {
       arrange();
       const { d } = deps(); tweak(d);
-      expect(planKiroMigration(d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.refused_compaction", "wiki", A, reason) });
+      expect(await planKiroMigration(d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.refused_compaction", "wiki", A, reason) });
     });
   }
 
-  it("a proven hop and an unproven next one still refuses: carrying B could leave C's work behind", () => {
+  it("a proven hop and an unproven next one still refuses: carrying B could leave C's work behind", async () => {
     compactedSinceLaunch();
     writeFileSync(join(claims(), C), "sibling\n");
-    expect(planKiroMigration(deps().d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.refused_compaction", "wiki", B, t("kiro_migrate.compaction_not_ours", B, C)) });
+    expect(await planKiroMigration(deps().d, "wiki", false)).toEqual({ ok: false, error: t("kiro_migrate.refused_compaction", "wiki", B, t("kiro_migrate.compaction_not_ours", B, C)) });
   });
 });
 
@@ -119,7 +123,7 @@ describe("a long chain is followed to its end (#2721 review: no hop budget)", ()
     it(`${n} compactions since the launch: the plan carries hop-${n}, and applying arms it`, async () => {
       compactedSinceLaunch(chain(n));
       const { d } = deps();
-      const judged = planKiroMigration(d, "wiki", false);
+      const judged = await planKiroMigration(d, "wiki", false);
       if (!judged.ok) throw new Error(judged.error);
       expect(judged.plan.classicId).toBe(`hop-${n}`);
       expect(judged.plan.compactedFrom).toHaveLength(n);
@@ -127,12 +131,12 @@ describe("a long chain is followed to its end (#2721 review: no hop budget)", ()
       expect(v2Pending()).toBe(`hop-${n}`);
     });
   }
-  it("links that loop back (never kiro's, but no budget stops it) end at the revisit, refused as not this instance's", () => {
+  it("links that loop back (never kiro's, but no budget stops it) end at the revisit, refused as not this instance's", async () => {
     compactedSinceLaunch([CAPTURED[0]!]);
-    const real = listKiroV1Sessions(cwd, db) as Extract<KiroStoreRead, { kind: "ok" }>;
+    const real = listKiroV1Sessions(cwd, db, classicLinks(cwd, db)) as Extract<KiroStoreRead, { kind: "ok" }>;
     const loop: Record<string, string> = { [A]: "L1", L1: "L2", L2: A };
     const readClassicStore = (): KiroStoreRead => ({ ...real, compaction: { successorsOf: id => [loop[id]!], summarized: () => true } });
-    expect(planKiroMigration(deps({ readClassicStore }).d, "wiki", false))
+    expect(await planKiroMigration(deps({ readClassicStore }).d, "wiki", false))
       .toEqual({ ok: false, error: t("kiro_migrate.refused_compaction", "wiki", "L2", t("kiro_migrate.compaction_not_ours", "L2", A)) });
   });
   it("the classic launch follows the same long chain", () => {
@@ -145,7 +149,7 @@ describe("applying the move", () => {
   it("records the walk as a classic launch would, then arms C: the TUI launch resumes C", async () => {
     compactedSinceLaunch();
     const { d, fleet } = deps();
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     const outcome = await applyKiroMigration(d, judged.plan);
     expect(outcome.ok).toBe(true);
@@ -161,7 +165,7 @@ describe("applying the move", () => {
   it("compacted after the plan was asked for: the carried id changed, so it asks again and changes nothing", async () => {
     compactedSinceLaunch(CAPTURED.slice(0, 2));
     const { d, fleet } = deps();
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     expect(judged.plan.classicId).toBe(B);
     store(CAPTURED); // the instance compacted again while the prompt waited
@@ -176,7 +180,7 @@ describe("applying the move", () => {
     compactedSinceLaunch();
     const saveFleetConfig = vi.fn();
     const { d, fleet } = deps({ saveFleetConfig, preflight: vi.fn(async () => { writeFileSync(join(claims(), C), "sibling\n"); return "claude-sonnet-4.6"; }) });
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     const outcome = await applyKiroMigration(d, judged.plan);
     expect(outcome).toEqual({ ok: false, text: t("kiro_migrate.failed", "wiki", t("kiro_migrate.refused_compaction", "wiki", B, t("kiro_migrate.compaction_not_ours", B, C))) });
@@ -190,7 +194,7 @@ describe("applying the move", () => {
     compactedSinceLaunch();
     const instances = join(home, "kiro-identity", "instances");
     const { d, fleet } = deps({ preflight: vi.fn(async () => { chmodSync(instances, 0o500); return "claude-sonnet-4.6"; }) });
-    const judged = planKiroMigration(d, "wiki", false);
+    const judged = await planKiroMigration(d, "wiki", false);
     if (!judged.ok) throw new Error(judged.error);
     let outcome: { ok: boolean; text: string };
     try { outcome = await applyKiroMigration(d, judged.plan); } finally { chmodSync(instances, 0o700); }

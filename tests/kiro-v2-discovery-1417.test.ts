@@ -91,6 +91,7 @@ describe("real private worker, exact JSON metadata semantics", () => {
       if (name === "node:path") return { join };
       if (name === "./kiro-migration-verify.js") return { verifyKiroMigrationStore: () => { throw new Error("metadata discovery must not verify a migration"); } };
       if (name === "./kiro-classic-archive.js") return { prepareKiroCarryForLaunch: () => { throw new Error("metadata discovery must not mutate a store"); } };
+      if (name === "./kiro-classic-links.js") return { computeKiroClassicLinks: () => { throw new Error("metadata discovery must not read classic transcripts"); } };
       throw new Error("unexpected worker dependency: " + name);
     };
     new Function("require", "exports", js)(inertRequire, {});
