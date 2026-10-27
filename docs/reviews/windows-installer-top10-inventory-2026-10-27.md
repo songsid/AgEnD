@@ -19,7 +19,7 @@ Nine items have their requested handling in main. **Item 6 was partial:** a comp
 
 ## Gap fix and limits
 
-The optional recovery performs dependency/version checks before setup/service work. It uses the existing setup flow without `--reset`, `--yes`, automatic approval or beta-only options, and independently checks readiness afterwards. The discovered distro/user remain scoped to the helper; subsequent shortcut operations retain their original target. A dependency failure explains the explicit full-repair route instead of silently continuing. Existing fleets/settings are not reset, and WSL/backends are not reinstalled by this helper.
+The optional recovery performs dependency/version checks before setup/service work. It uses the existing setup flow without `--reset`, `--yes`, automatic approval or beta-only options, and independently checks readiness afterwards. The discovered distro/user remain scoped to the helper; console fallback, the confirmation window and the printed confirmation command use that same account and its HOME. Subsequent shortcut operations retain their original target. A dependency failure explains the explicit full-repair route instead of silently continuing. Existing fleets/settings are not reset, and WSL/backends are not reinstalled by this helper.
 
 The warning before opting in says that recovery may start the service. Cancelling setup or failing readiness does not claim success. A ready service can still need backend sign-in, which is explained separately with the dashboard route. Rollback is a revert of this change; there is no config migration.
 

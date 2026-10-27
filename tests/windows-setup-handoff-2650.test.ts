@@ -39,9 +39,13 @@ function withHelpers(body: string) {
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
+$a = $ast.Find({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$WSL_COMMAND_FN'}, $false)
+. ([scriptblock]::Create($a.Extent.Text)); . ([scriptblock]::Create($WSL_COMMAND_FN))
 $script:OnWindows = $false
 $UBUNTU_DISTRO = 'Ubuntu-24.04'
+$AGEND_USER = 'root'
 function Open-InBrowser([string]$url) { Add-Content -LiteralPath (Join-Path $env:TMPDIR 'opened.txt') -Value $url; return $true }
+function Wait-SetupPageReachable { return $true }
 function Set-SetupClipboard([string]$text) { return $true }
 # Start-Process, stubbed: what it was asked to start is written down, one line per call.
 function Start-Process { param($FilePath, $ArgumentList) Add-Content -LiteralPath (Join-Path $env:TMPDIR 'started.txt') -Value ($FilePath + ' ' + ($ArgumentList -join ' ')) }
@@ -100,7 +104,7 @@ Write-Output ("SHOWN=" + $r.Shown + " DONE=" + $r.Done)`);
     expect(calls[0]).toMatch(/^wsl\.exe -d Ubuntu-24\.04 -u root --exec bash -lc "[^"]*agend settings confirm 0123456789abcdef0123456789abcdef; echo; read -r -p 'Press Enter to close this window\. ' _"$/);
     expect(calls[0]).not.toContain("--yes");
     expect(out).toContain("已經另外打開一個「AgEnD setup confirmation」視窗：看過裡面列出的內容，沒問題就輸入 y 再按 Enter。");
-    expect(out).toContain(`wsl -d Ubuntu-24.04 -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm ${ID}'`);
+    expect(out).toContain(`wsl -d Ubuntu-24.04 -u root --exec bash -lc 'export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend settings confirm ${ID}'`);
     expect(out).toContain("SHOWN=True DONE=False");
   });
   it("no window could be opened: said so, and the command to paste is still there", () => {

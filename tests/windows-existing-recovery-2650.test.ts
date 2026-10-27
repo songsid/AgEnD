@@ -63,6 +63,33 @@ Write-Output ('OK='+(Invoke-ExistingAgendRecovery 'Chosen' 'alice'))`);
     expect(out).toContain('OK=True');expect(out).toContain('service:Chosen|alice|export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend setup');
     expect(out).toContain('else agend install; fi');expect(out).not.toMatch(/--reset|--yes|--backend-signins|\/root\//);
   });
+  it.each(['alice','root'])('real expired-setup console fallback stays in the selected account %s', user => {
+    const out=run(`$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-SetupAndService'},$true)
+. ([scriptblock]::Create($f.Extent.Text))
+function Invoke-BrowserSetup {return @{Done=$false;Already=$false;Shown=$true;Stopped='ttl'}}
+function Read-Host {return 'c'}
+function Start-Process {param($FilePath,$ArgumentList,[switch]$NoNewWindow,[switch]$Wait,[switch]$PassThru);$script:calls+=('WINDOW='+$FilePath+'|'+($ArgumentList -join ' ')+'|interactive='+[bool]$NoNewWindow);return @{ExitCode=0}}
+Write-Output ('OK='+(Invoke-ExistingAgendRecovery 'Chosen' '${user}'))`);
+    expect(out).toContain('OK=True');expect(out).toContain(`WINDOW=wsl.exe|-d Chosen -u ${user} --exec bash -lc`);
+    expect(out).toContain('agend quickstart');expect(out).toContain('interactive=True');expect(out).not.toContain('/root/');
+    if(user!=='root')expect(out).not.toContain('-u root');
+  });
+  it.each(['alice','root'])('real browser confirmation and printed fallback stay in the selected account %s', user => {
+    const id='0123456789abcdef0123456789abcdef';
+    const out=run(`foreach($name in @('Invoke-SetupAndService','Invoke-BrowserSetup')){
+$f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true);. ([scriptblock]::Create($f.Extent.Text))}
+function Wait-SetupPageReachable {return $true}
+function Open-InBrowser {return $true}
+function Set-SetupClipboard {return $true}
+function Start-Process {param($FilePath,$ArgumentList);$script:calls+=('WINDOW='+$FilePath+'|'+($ArgumentList -join ' '));return @{ExitCode=0}}
+function Invoke-WslStep {param($Label,$Usually,$Script,$UpperMinutes,$OnLine)
+  $script:calls+=('STEP='+$UBUNTU_DISTRO+'|'+$AGEND_USER+'|'+$Script)
+  if($OnLine){& $OnLine 'Setup page: http://127.0.0.1:19280/s/private/';& $OnLine 'Settings confirmation requested: {"id":"${id}","source":"setup_session"}';& $OnLine 'Setup complete — starting AgEnD.'};return 0}
+Write-Output ('OK='+(Invoke-ExistingAgendRecovery 'Chosen' '${user}'))`);
+    expect(out).toContain('OK=True');expect(out).toContain(`WINDOW=wsl.exe|-d Chosen -u ${user} --exec bash -lc`);
+    expect(out).toContain(`wsl -d Chosen -u ${user} --exec bash -lc 'export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend settings confirm ${id}'`);
+    expect(out).not.toMatch(/--yes|\/root\//);if(user!=='root')expect(out).not.toContain('-u root');
+  });
   it.each(['','n','not yes','y'])('fast-path recovery honours the explicit answer %j', answer => {
     const start=source.indexOf('        $recover = Read-Host'),end=source.indexOf('        # 捷徑目前',start),fragment=source.slice(start,end);
     expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);

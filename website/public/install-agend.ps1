@@ -780,7 +780,8 @@ function Get-LoginFollowUpCommand([string]$key) {
 # 視窗）。確認一定要有人在這台電腦上看過內容、輸入 y：網頁自己做不到，安裝程式也不代答。編號只接受 32 位小寫十六進位。
 function Get-HostConfirmCommand([string]$id) {
     if ($id -cnotmatch '^[0-9a-f]{32}\z') { throw 'Invalid confirmation id' }
-    return ("wsl -d {0} -u root -- bash -lc 'export PATH=/root/.local/bin:`$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm {1}'" -f $UBUNTU_DISTRO, $id)
+    $command = Get-WslAgendCommand ('agend settings confirm ' + $id)
+    return ("wsl -d {0} -u {1} --exec bash -lc {2}" -f (ConvertTo-PsArgument $UBUNTU_DISTRO), (ConvertTo-PsArgument $AGEND_USER), (ConvertTo-PsLiteral $command))
 }
 # #2233：設定頁選了「Web only (no bot)」嗎？問 AgEnD 自己（agend validate --connections 解析 fleet.yaml，和 fleet 讀的一樣），
 # 不用 grep 猜。回傳 'web'（0 個連線）、'chat'（有連線）或 'unknown'（讀不到、舊版沒有這個選項、WSL 沒回應）——不知道就不說「已串接」。
@@ -1353,9 +1354,9 @@ function Set-SetupClipboard([string]$text) { try { Set-Clipboard -Value $text; r
 # 這個視窗正在等設定頁，不能在這裡打字，所以確認放到另一個視窗。回傳視窗有沒有打開。
 function Open-HostConfirmWindow([string]$id) {
     if ($id -cnotmatch '^[0-9a-f]{32}\z') { return $false }
-    $script = 'printf ''\033]0;AgEnD setup confirmation\007''; export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm ' + $id + '; echo; read -r -p ''Press Enter to close this window. '' _'
+    $script = 'printf ''\033]0;AgEnD setup confirmation\007''; ' + (Get-WslAgendCommand ('agend settings confirm ' + $id)) + '; echo; read -r -p ''Press Enter to close this window. '' _'
     try {
-        $null = Start-Process -FilePath 'wsl.exe' -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-lc', $script))
+        $null = Start-Process -FilePath 'wsl.exe' -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', $AGEND_USER, '--exec', 'bash', '-lc', $script))
         return $true
     } catch { return $false }
 }
@@ -1476,7 +1477,7 @@ function Invoke-ConsoleQuickstart {
     Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
     try {
         $p = Start-Process -FilePath 'wsl.exe' -NoNewWindow -Wait -PassThru `
-            -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-lc', ($AGEND_ENV + 'agend quickstart')))
+            -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', $AGEND_USER, '--exec', 'bash', '-lc', ($AGEND_ENV + 'agend quickstart')))
         if ($null -eq $p.ExitCode) { return 1 }
         return [int]$p.ExitCode
     } catch { return 1 }
