@@ -46,8 +46,10 @@ $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
 $script:OnWindows = $false
+$AGEND_USER = 'root'
 # The browser and the clipboard, stubbed: what they were asked for is written down.
 function Open-InBrowser([string]$url) { Add-Content -LiteralPath (Join-Path $env:TMPDIR 'opened.txt') -Value $url; return $true }
+function Wait-SetupPageReachable { return $true }
 function Set-SetupClipboard([string]$text) { Add-Content -LiteralPath (Join-Path $env:TMPDIR 'clip.txt') -Value $text; return $true }
 function FakeSetup([string]$script) { return { param($hook) Invoke-Watched -Label '等待你在瀏覽器完成設定' -Usually 'x' -File 'sh' -Arguments @('-c', $script) -OnLine $hook -HeartbeatSeconds 60 }.GetNewClosure() }
 ${body}`);

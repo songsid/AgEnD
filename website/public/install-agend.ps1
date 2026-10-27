@@ -780,7 +780,8 @@ function Get-LoginFollowUpCommand([string]$key) {
 # 視窗）。確認一定要有人在這台電腦上看過內容、輸入 y：網頁自己做不到，安裝程式也不代答。編號只接受 32 位小寫十六進位。
 function Get-HostConfirmCommand([string]$id) {
     if ($id -cnotmatch '^[0-9a-f]{32}\z') { throw 'Invalid confirmation id' }
-    return ("wsl -d {0} -u root -- bash -lc 'export PATH=/root/.local/bin:`$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm {1}'" -f $UBUNTU_DISTRO, $id)
+    $command = Get-WslAgendCommand ('agend settings confirm ' + $id)
+    return ("wsl -d {0} -u {1} --exec bash -lc {2}" -f (ConvertTo-PsArgument $UBUNTU_DISTRO), (ConvertTo-PsArgument $AGEND_USER), (ConvertTo-PsLiteral $command))
 }
 # #2233：設定頁選了「Web only (no bot)」嗎？問 AgEnD 自己（agend validate --connections 解析 fleet.yaml，和 fleet 讀的一樣），
 # 不用 grep 猜。回傳 'web'（0 個連線）、'chat'（有連線）或 'unknown'（讀不到、舊版沒有這個選項、WSL 沒回應）——不知道就不說「已串接」。
@@ -1106,6 +1107,31 @@ function Invoke-AgendRepair([string]$distro, [string]$user, [string]$version) {
     return ($after.Code -eq 0)
 }
 
+# #2650 item 6: a runnable CLI alone does not prove that setup/service/auth are ready.
+# Opt-in only. Keep the discovered account/distro, and reuse setup's own consent and expiry handling.
+function Invoke-ExistingAgendRecovery([string]$distro, [string]$user) {
+    $UBUNTU_DISTRO = $distro; $AGEND_USER = $user
+    $AGEND_ENV = Get-WslAgendCommand ''
+    if (-not (Get-VerifiedAgendVersion)) {
+        Write-Err 'AgEnD、Node、tmux 或 SQLite 尚未通過驗證；沒有重設你的設定。'
+        Write-Info "需要完整修復依賴時，先執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行安裝指令；原有設定會保留。"
+        Set-InstallFailure 'agend'
+        return $false
+    }
+    if (-not (Test-InstallerReady)) {
+        Write-Info '接下來只接續設定與服務；現有設定不會重設。尚未設定完成時會開啟瀏覽器，需要你親自確認。'
+        if (-not (Invoke-SetupAndService)) { Set-InstallFailure 'setup'; return $false }
+        if (-not (Test-InstallerReady)) {
+            Write-Warn '設定已保留，但服務或儀表板仍未就緒；這次不會宣稱修復完成。請看上方錯誤，之後可再選擇檢查／修復。'
+            Set-InstallFailure 'service'
+            return $false
+        }
+    }
+    Write-Ok '服務與儀表板已驗證就緒；沒有重新安裝 WSL 或 AI 後端。'
+    Write-Info '後端尚未登入：打開下方的儀表板，到「設定 → 登入」接續；這裡不會把服務就緒當成登入成功。'
+    return $true
+}
+
 # 說明捷徑建立的結果：兩個都好、只好一個（說是哪一個）、都沒好。兩個都好時回傳 $true。
 function Write-ShortcutResult($made) {
     $names = @($made | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension([string]$_) })
@@ -1328,9 +1354,9 @@ function Set-SetupClipboard([string]$text) { try { Set-Clipboard -Value $text; r
 # 這個視窗正在等設定頁，不能在這裡打字，所以確認放到另一個視窗。回傳視窗有沒有打開。
 function Open-HostConfirmWindow([string]$id) {
     if ($id -cnotmatch '^[0-9a-f]{32}\z') { return $false }
-    $script = 'printf ''\033]0;AgEnD setup confirmation\007''; export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend settings confirm ' + $id + '; echo; read -r -p ''Press Enter to close this window. '' _'
+    $script = 'printf ''\033]0;AgEnD setup confirmation\007''; ' + (Get-WslAgendCommand ('agend settings confirm ' + $id)) + '; echo; read -r -p ''Press Enter to close this window. '' _'
     try {
-        $null = Start-Process -FilePath 'wsl.exe' -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-lc', $script))
+        $null = Start-Process -FilePath 'wsl.exe' -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', $AGEND_USER, '--exec', 'bash', '-lc', $script))
         return $true
     } catch { return $false }
 }
@@ -1451,7 +1477,7 @@ function Invoke-ConsoleQuickstart {
     Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
     try {
         $p = Start-Process -FilePath 'wsl.exe' -NoNewWindow -Wait -PassThru `
-            -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--exec', 'bash', '-lc', ($AGEND_ENV + 'agend quickstart')))
+            -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', $AGEND_USER, '--exec', 'bash', '-lc', ($AGEND_ENV + 'agend quickstart')))
         if ($null -eq $p.ExitCode) { return 1 }
         return [int]$p.ExitCode
     } catch { return 1 }
@@ -2318,6 +2344,13 @@ if (-not $Force -and -not (Test-Path $ProgressFile)) {
             Write-Ok "AgEnD 修好了，agend 指令可以用了"
         }
         Write-Ok ("這台電腦已經裝好 AgEnD（{0}，使用者 {1}）。不會重新安裝，也不會動到現有的設定。" -f $existing.Distro, $existing.User)
+        $recover = Read-Host "  需要檢查／修復設定與服務，或接續後端登入嗎？可能會啟動服務；不重設設定。(y/N)"
+        if ($recover -match '^\s*[yY]\s*$') {
+            if (-not (Invoke-ExistingAgendRecovery $existing.Distro $existing.User)) {
+                Write-Info '仍可用桌面「AgEnD 儀表板」查看需要處理的項目；再貼一次安裝指令可重新選擇檢查／修復。'
+                Read-Host "按 Enter 結束"; exit 1
+            }
+        }
         # 捷徑目前指向另一個 Linux 或使用者（例如 AgEnD 專用的 Linux 和原本的 Ubuntu）：先說，預設不改（絕不悄悄改指向）。
         $prior = Get-InstallRecordConflict $existing.Distro $existing.User
         if ($prior) {
