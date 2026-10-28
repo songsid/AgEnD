@@ -237,13 +237,14 @@ export interface CardEvent {
 
 /**
  * Why an instance hears about one of its cards (step 2's wakes, task-board-waker.ts): someone else assigned it,
- * started it, sent it back, answered its blocked question, commented, or finished the last card it waited for; the
- * person confirmed it (its assignee and its dispatcher hear); it is blocked and the instance handed it out (decide);
- * it went to the person for confirmation and the instance handed it out, so it tells them (to_confirm);
- * a main task went to the person by itself before its owner wrapped it up (wrap_up); or someone else cancelled it — a
- * main task's cancel takes its unfinished sub tasks down with it, and their assignees hear (cancelled).
+ * started it, sent it back, answered its blocked question, or finished the last card it waited for; it is blocked and
+ * the instance handed it out (decide); it went to the person for confirmation and the instance handed it out, so it
+ * tells them (to_confirm); a main task went to the person by itself before its owner wrapped it up (wrap_up); or
+ * someone else cancelled it — a main task's cancel takes its unfinished sub tasks down with it, and their assignees
+ * hear (cancelled). #2801: only a change of status or assignee is news, and only to the one instance that acts on it
+ * next — a comment, and a confirmation (the work is finished), wake nobody.
  */
-export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "comment" | "ready" | "decide" | "to_confirm" | "confirm_own" | "approved" | "wrap_up" | "cancelled";
+export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "ready" | "decide" | "to_confirm" | "confirm_own" | "wrap_up" | "cancelled";
 
 /** One card's news for one instance from one committed write. Never sent to a page (it carries titles and text). */
 export interface Wake {
@@ -269,6 +270,8 @@ export interface BoardChange {
   projects: boolean;
   /** Whom to wake about what (the fleet's waker); a page is sent the rest. */
   wakes: Wake[];
+  /** #2801: the cards whose status or assignee this write changed (an older notice about them no longer stands). */
+  changed: string[];
 }
 
 export interface CardDetail {
@@ -764,6 +767,12 @@ export class TaskBoard {
   }
 
   // ── Reading ─────────────────────────────────────────────
+
+  /** #2801: when the card's status or assignee last changed (ISO), or null — a notice older than that is stale. */
+  lastChangeAt(uuid: string): string | null {
+    const r = this.db.prepare("SELECT MAX(at) AS at FROM task_events WHERE task_id = ? AND type IN ('created', 'moved', 'assigned')").get(uuid) as { at: string | null } | undefined;
+    return r?.at ?? null;
+  }
 
   /** A card by number (M-3), uuid, or a unique uuid prefix of at least 8 hex digits. */
   findCard(ref: string): Card | undefined {
@@ -2151,6 +2160,7 @@ export class TaskBoard {
       w.by[reason] = by.name;
       out.set(key, w);
     };
+    // The answer to a blocked question is the comment that came with it (#2801: a comment alone wakes nobody).
     const comments = new Map<string, string>();
     for (const e of events) if (e.type === "commented") comments.set(e.uuid, String(e.data.text ?? ""));
     for (const e of events) {
@@ -2161,7 +2171,6 @@ export class TaskBoard {
       // The `task` tool's own tasks are handed over with a message of their own (delegate_task): no notice besides.
       if (e.type === "created") { if (this.isOnBoard(card)) add(card, d.assignee ?? null, "assigned", e.actor); }
       else if (e.type === "assigned") { if (this.isOnBoard(card)) add(card, (d.to as string | null) ?? null, "assigned", e.actor); }
-      else if (e.type === "commented") add(card, card.assignee, "comment", e.actor, d.text);
       else if (e.type === "moved") {
         if (d.to === "done") this.wakeReady(card, e.actor, add);
         if (d.to === "cancelled") {
@@ -2173,21 +2182,19 @@ export class TaskBoard {
         }
         // An agent's card waits for its instance dispatcher to confirm it (#2434: its own to confirm, nobody to ask). A
         // person's card has no instance dispatcher, so no notice: the person has it in Needs you.
-        if (d.to === "review" && !isPerson(e.actor) && requiresReview(card)) add(card, dispatcherOf(), "to_confirm", e.actor);
+        const toConfirm = d.to === "review" && !isPerson(e.actor) && requiresReview(card) ? dispatcherOf() : null;
+        if (toConfirm) add(card, toConfirm, "to_confirm", e.actor);
         // #2080: a card its own assignee confirms, in review by itself (its sub tasks done) or by someone else's move:
         // nobody else will confirm it, so its assignee is told it is theirs.
         if (d.to === "review" && card.assignee && confirmingInstance(card) === card.assignee) add(card, card.assignee, "confirm_own", e.actor);
         if (d.auto) {
-          if (d.to === "review" && card.kind === "main" && wrapUpGap(card)) add(card, card.assignee, "wrap_up", e.actor);
+          // #2801: one change, one instance — the dispatcher's confirmation already says what it lacks.
+          if (d.to === "review" && card.kind === "main" && wrapUpGap(card) && !toConfirm) add(card, card.assignee, "wrap_up", e.actor);
           continue;
         }
         if (d.from === "open" && d.to === "claimed") add(card, card.assignee, "start", e.actor);
         else if (d.from === "blocked" && d.to === "claimed") add(card, card.assignee, "answered", e.actor, comments.get(card.uuid));
         else if (d.from === "review" && (d.to === "claimed" || d.to === "open")) add(card, card.assignee, "sent_back", e.actor, d.reason);
-        else if (d.from === "review" && d.to === "done") {
-          add(card, card.assignee, "approved", e.actor, d.reason);
-          add(card, dispatcherOf(), "approved", e.actor, d.reason);
-        }
         if (d.to === "blocked" && !isPerson(e.actor)) add(card, dispatcherOf(), "decide", e.actor, d.reason);
       }
     }
@@ -2203,12 +2210,11 @@ export class TaskBoard {
 
   /**
    * What of a wake still stands now (at the end of its write, and again when the fleet sends it): a finished card is
-   * news only as a confirmation; a card that is no longer the instance's is not; a question only while the card is
-   * blocked and the instance still handed it out; a wrap-up only while it waits unfinished; and an assignment or a
-   * comment only once the card can start (its "ready" wakes it then). What asks the instance to act holds only while
-   * it still can (#2303 review): "ready" while the card is open with nothing left to wait for, "start" and "answered"
-   * while it is in progress, "sent back" while it is back with the instance; a comment only while its assignee has not
-   * read it (its own write since showed it, as the `task` tool's answer). null when nothing is left.
+   * news only as a cancel; a card that is no longer the instance's is not; a question only while the card is blocked
+   * and the instance still handed it out; a wrap-up only while it waits unfinished; and an assignment only once the
+   * card can start (its "ready" wakes it then). What asks the instance to act holds only while it still can (#2303
+   * review): "ready" while the card is open with nothing left to wait for, "start" and "answered" while it is in
+   * progress, "sent back" while it is back with the instance. null when nothing is left.
    */
   wakeHolds(wake: Wake): Wake | null {
     const card = this.byUuid(wake.uuid);
@@ -2217,7 +2223,6 @@ export class TaskBoard {
     const own = card.assignee === wake.instance;
     const waiting = this.unmetDeps(card).length > 0;
     let reasons = wake.reasons.filter((r) => {
-      if (r === "approved") return card.status === "done" && (own || handedOut);
       if (r === "cancelled") return card.status === "cancelled" && own;
       if (isFinished(card)) return false;
       if (r === "decide") return handedOut && card.status === "blocked";
@@ -2227,15 +2232,13 @@ export class TaskBoard {
       if (r === "confirm_own") return card.status === "review" && confirmingInstance(card) === wake.instance;
       if (r === "wrap_up") return card.status === "review" && wrapUpGap(card) !== null;
       if (r === "assigned") return !waiting;
-      if (r === "comment") return !waiting && this.newComments(card).length > 0;
       if (r === "ready") return card.status === "open" && !waiting;
       if (r === "start" || r === "answered") return card.status === "claimed";
       if (r === "sent_back") return card.status === "claimed" || card.status === "open";
       return true;
     });
-    // One piece of news says it all: the answer is the comment, a send-back outweighs the rest.
-    if (reasons.includes("answered")) reasons = reasons.filter((r) => r !== "comment");
-    if (reasons.includes("sent_back")) reasons = reasons.filter((r) => r !== "comment" && r !== "start");
+    // One piece of news says it all: a send-back outweighs the rest.
+    if (reasons.includes("sent_back")) reasons = reasons.filter((r) => r !== "start");
     if (reasons.includes("assigned")) reasons = reasons.filter((r) => r !== "start" && r !== "ready");
     if (reasons.includes("cancelled")) reasons = ["cancelled"];
     if (!reasons.length) return null;
@@ -2266,7 +2269,8 @@ export class TaskBoard {
       const touched = this.pending;
       const projects = this.projectsChanged;
       if (touched.length || projects) {
-        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor.name))], projects, wakes };
+        const changed = [...new Set(touched.filter((e) => e.type === "moved" || e.type === "assigned").map((e) => e.uuid))];
+        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor.name))], projects, wakes, changed };
         for (const listener of this.listeners) {
           try { listener(change); } catch { /* a listener must not break a write that already committed */ }
         }

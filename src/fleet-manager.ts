@@ -18310,8 +18310,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The task board's live side: every committed change goes to the open pages (never to a guest) — the board's new
    * revision and the card numbers it touched; not who touched them (the page does not need it, and a public-link page
    * must not learn a hidden instance's name from it). Its news goes to the instances whose cards someone else changed:
-   * one "[Task board]" notice per instance, gathered for 10 s, held by the delivery outbox until it is taken
-   * (task-board-waker.ts).
+   * one "[Task board]" notice per instance, gathered for 10 s, held by the delivery outbox until it is taken, or
+   * withdrawn once its cards changed again (#2801; task-board-waker.ts).
    */
   private attachTaskBoard(db: SchedulerDb): void {
     this.taskBoardWaker?.stop();
@@ -18320,12 +18320,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const waker = this.taskBoardWaker = new TaskBoardWaker({
       deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
-      // #2785 (c): the assigner's delegate_task already told the assignee; the board's "assigned" line would repeat it.
+      // #2785 (c), #2801: the maker's own message already told it; the board's line would repeat it.
       messagedAbout: (from, to, codes, sinceMs) => {
         const outbox = this.deliveryOutbox;
         if (!outbox?.isOpen) return false;
         return outbox.recentTextsFrom(to, from, new Date(sinceMs).toISOString()).some((text) => codes.some((code) => namesCard(text, code)));
       },
+      // #2801: a notice still waiting whose cards have all changed again is not delivered.
+      withdraw: (prefix, stale, reason) => {
+        const outbox = this.deliveryOutbox;
+        return outbox?.isOpen ? outbox.withdrawWaitingNotices(prefix, stale, reason).length : 0;
+      },
+      changedAt: (uuid) => db.board.lastChangeAt(uuid),
       holds: (wake) => db.board.wakeHolds(wake),
       card: (uuid) => db.board.findCard(uuid),
       // #2352: the card's Needs you buttons are in this instance's own channel (it is the card's lane).
@@ -18340,10 +18346,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       log: (level, message, extra) => this.logger[level](extra ?? {}, message),
     });
-    db.board.onChange(({ rev, ids, projects, wakes }) => {
+    db.board.onChange(({ rev, ids, projects, wakes, changed }) => {
       // Refresh both old and new owners on reassignment; wakes are not an ownership index.
       if (ids.length) for (const name of this.daemons.keys()) this.observeWorkingState(name, "tasks");
       this.emitSseEvent("tasks", { rev, ids, projects });
+      waker.changed(changed);
       waker.note(wakes);
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
       if (ids.length || projects) this.needsYou?.poke();

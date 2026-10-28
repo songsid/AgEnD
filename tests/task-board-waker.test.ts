@@ -16,7 +16,7 @@ import { Scheduler } from "../src/scheduler/index.js";
 import { FleetManager } from "../src/fleet-manager.js";
 
 const wake = (over: Partial<Wake>): Wake => {
-  const reasons = over.reasons ?? ["comment"];
+  const reasons = over.reasons ?? ["ready"];
   return { instance: "dev-a", uuid: "u1", code: "S-1", title: "Build the API", parent: "M-1", reasons, texts: {}, ...over, by: Object.fromEntries(reasons.map((r) => [r, (over as { who?: string }).who ?? "Ann"])) };
 };
 
@@ -56,12 +56,12 @@ describe("gathering an instance's news", () => {
   it("one message per instance per window; a card's news merged, each reason keeping its own words", () => {
     const { w, sent, timers, fire } = waker();
     w.note([wake({ reasons: ["sent_back"], texts: { sent_back: "ties share a rank" } })]);
-    w.note([wake({ reasons: ["comment"], texts: { comment: "and cache it" }, who: "Bob" } as Partial<Wake>), wake({ instance: "dev-b", uuid: "u2", code: "S-2", reasons: ["ready"] })]);
+    w.note([wake({ reasons: ["cancelled"], texts: { cancelled: "a duplicate" }, who: "Bob" } as Partial<Wake>), wake({ instance: "dev-b", uuid: "u2", code: "S-2", reasons: ["ready"] })]);
     expect(timers.map((t) => t.ms)).toEqual([10_000, 10_000]);       // one window per instance
     expect(sent).toEqual([]);
     fire();
     expect(sent).toEqual([
-      { instance: "dev-a", message: '[Task board] S-1 "Build the API": sent back by Ann: "ties share a rank"; new comment from Bob: "and cache it". Read it with: task get S-1' },
+      { instance: "dev-a", message: '[Task board] S-1 "Build the API": cancelled by Bob: "a duplicate" — stop working on it; sent back by Ann: "ties share a rank". Read it with: task get S-1' },
       { instance: "dev-b", message: '[Task board] S-2 "Build the API": everything it waited for is done — you can start it. Read it with: task get S-2' },
     ]);
   });
@@ -71,7 +71,7 @@ describe("gathering an instance's news", () => {
     const { w, sent, fire } = waker({ holds: (x) => (gone.has(x.uuid) ? null : x) });
     w.note([wake({}), wake({ uuid: "u2", code: "S-2" })]);
     fire();
-    expect(sent.map((s) => s.message)).toEqual(['[Task board] S-1 "Build the API": new comment from Ann. Read it with: task get S-1']);
+    expect(sent.map((s) => s.message)).toEqual(['[Task board] S-1 "Build the API": everything it waited for is done — you can start it. Read it with: task get S-1']);
     w.note([wake({ uuid: "u2", code: "S-2" })]);
     fire();
     expect(sent).toHaveLength(1);                                      // nothing left: nothing sent
@@ -99,18 +99,13 @@ describe("the message", () => {
         '- S-30 "Build the API": sent back by Ann: "redo".',
         "Read task mine for the order and work through them one at a time, by priority.",
       ].join("\n"));
-    expect(wakeMessage([wake({}), wake({ uuid: "u2", code: "S-2", reasons: ["approved"], instance: "lead" })]))
-      .toBe('[Task board] 2 things on your cards:\n- S-1 "Build the API": new comment from Ann.\n- S-2 "Build the API": you handed it out; the person confirmed it.\nYour work: task mine');
+    expect(wakeMessage([wake({}), wake({ uuid: "u2", code: "S-2", reasons: ["cancelled"] })]))
+      .toBe('[Task board] 2 things on your cards:\n- S-1 "Build the API": everything it waited for is done — you can start it.\n- S-2 "Build the API": cancelled by Ann — stop working on it.\nYour work: task mine');
   });
 
   it("#2434: the dispatcher is told a card it handed out is ready for its own confirmation, and what it lacks", () => {
     expect(wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"], who: "dev-a" } as Partial<Wake>)], () => ({ assignee: "dev-a", kind: "sub", acceptance: [{ text: "a", done: false }], result: "" }) as never))
       .toBe('[Task board] S-1 "Build the API": you handed it out and it is ready for your confirmation (@dev-a), though 1 acceptance item unchecked, no result — check it, then move it to done, or back to claimed with what is missing. Read it with: task get S-1');
-    // Confirmed by an instance: its name; by the person (their own card): "the person".
-    const agent = () => ({ assignee: "dev-a", dispatcher: { kind: "instance", name: "lead" } }) as never;
-    expect(wakeMessage([wake({ reasons: ["approved"], instance: "dev-a", who: "lead" } as Partial<Wake>)], agent)).toContain("lead confirmed it");
-    const theirs = () => ({ assignee: "dev-a", dispatcher: { kind: "person", name: "Ann" } }) as never;
-    expect(wakeMessage([wake({ reasons: ["approved"], instance: "dev-a" } as Partial<Wake>)], theirs)).toContain("the person confirmed it");
   });
 
   it("a card cancelled by someone else, alone or with its main task", () => {
@@ -145,7 +140,7 @@ describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's not
   const dirs: string[] = [];
   afterEach(() => { vi.useRealTimers(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-  it("a person's comment on dev-a's card, 10 s later, is one durable notice for dev-a — not from a person", async () => {
+  it("a card assigned to dev-a, 10 s later, is one durable notice for dev-a — not from a person; a comment adds nothing (#2801)", async () => {
     vi.useFakeTimers();
     const d = mkdtempSync(join(tmpdir(), "task-board-waker-")); dirs.push(d);
     writeFileSync(join(d, "fleet.yaml"), "defaults: {}\ninstances: {}\n");
@@ -167,7 +162,7 @@ describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's not
     expect(more).toEqual([]);
     expect(row!.target_instance).toBe("dev-a");
     const payload = JSON.parse(row!.payload_json);
-    expect(payload.content).toBe('[Task board] M-1 "Leaderboard": assigned to you by lead; new comment from Ann: "weekly, not daily". Read it with: task get M-1');
+    expect(payload.content).toBe('[Task board] M-1 "Leaderboard": assigned to you by lead. Read it with: task get M-1');
     expect(payload.meta).toMatchObject({ user: "AgEnD", user_id: "agend-system", source: "agend-system" });
     fm.taskBoardWaker.stop();
     fm.deliveryOutbox?.close?.();

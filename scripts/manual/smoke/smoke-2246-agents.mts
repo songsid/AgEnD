@@ -7,8 +7,9 @@
 //   reviewer, not the lead who owns it) and the card's Now and Dispatched by rows.
 // - The reviewer finishes: the main task reaches the person not wrapped up — To fill in on its tile, what is missing on
 //   Home; Confirm asks first, Confirm anyway with a note confirms it.
-// - The wakes (first case): the lead's question and confirmation, the developer's answer, the reviewer's ready —
-//   each a "[Task board]" notice from AgEnD in the delivery outbox. The gathering window is shortened for the smoke.
+// - The wakes (first case): the lead's question and wrap-up, the developer's answer, the reviewer's ready — each a
+//   "[Task board]" notice from AgEnD in the delivery outbox; the person's confirmation tells nobody (#2801). The
+//   gathering window and the wait for an agent's own message are shortened for the smoke.
 // A phone never scrolls sideways. Every page logs no error (CSP violations included).
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2246-agents.mts
@@ -33,6 +34,7 @@ function freshBoard(c: MatrixCase) {
   fm.scheduler = new Scheduler(join(fm.dataDir, `scheduler-agents-${caseName(c)}.db`), () => {}, DEFAULT_SCHEDULER_CONFIG, (n: string) => !!fm.fleetConfig.instances[n]);
   (fm as any).attachTaskBoard(fm.scheduler.db);
   (fm as any).taskBoardWaker.deps.gatherMs = 300;            // the smoke's only change: 10 s of gathering is the unit tests'
+  (fm as any).taskBoardWaker.deps.toldWindowMs = 1_000;       // and #2801's 2-minute wait for the maker's own message
   return fm.scheduler.db;
 }
 const tool = (db: any, who: string, args: Record<string, unknown>) => {
@@ -151,14 +153,15 @@ for (const c of matrix()) {
     // The wakes, once: AgEnD's notices in the outbox.
     if (first) {
       first = false;
-      await until(() => notices().some((n) => n.to === LEAD && /confirmed/.test(n.content)), 5000);
+      await until(() => notices().some((n) => n.to === LEAD && /by itself/.test(n.content)), 5000);
+      await new Promise((r) => setTimeout(r, 2_000));        // longer than both shortened windows: a confirmation notice would be in
       const all = notices();
       const to = (who: string) => all.filter((n) => n.to === who).map((n) => n.content).join("\n");
       chk.leadAskedTheQuestion = /you handed it out and it is blocked/.test(to(LEAD));
       chk.devHeardTheAnswer = /answered your blocked question: "Same rank, the person says"/.test(to(DEV));
       chk.reviewerReady = /everything it waited for is done/.test(to(REVIEWER));
       chk.leadToldToWrapUp = /went to the person for confirmation by itself, but 2 definition-of-done items unchecked, no result/.test(to(LEAD));
-      chk.leadHeardConfirmation = /the person confirmed it: "Fine for now"/.test(to(LEAD));
+      chk.confirmationTellsNobody = !/confirmed it/.test(all.map((n) => n.content).join("\n"));   // #2801
       chk.fromAgendNotAPerson = all.length > 0 && all.every((n) => n.meta.user === "AgEnD" && n.meta.source === "agend-system");
       writeFileSync(join(dirname(shotPath(SMOKE, "notices", "x")), "notices.txt"), all.map((n) => `→ ${n.to}\n${n.content}\n`).join("\n"));
     }

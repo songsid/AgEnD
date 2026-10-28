@@ -626,6 +626,26 @@ export class DeliveryOutbox extends EventEmitter {
     if (changed) this.emit("state", { deliveryId, state: "cancelled" });
   }
 
+  /**
+   * #2801: AgEnD's own notices with a key starting `prefix` that are still waiting, never begun (as #2797: an aborted
+   * attempt wrote nothing), and that `stale(sourceKey, createdAt)` says are overtaken, are not delivered — `cancelled`
+   * with `reason`, still readable (delivery_status, Fleet traffic). Returns the ids dropped.
+   */
+  withdrawWaitingNotices(prefix: string, stale: (sourceKey: string, createdAt: string) => boolean, reason: string): string[] {
+    const rows = this.db.prepare(`SELECT delivery_id, source_key, created_at FROM deliveries
+      WHERE kind=? AND state IN ('queued','retry_wait') AND substr(source_key,1,?)=? ORDER BY created_seq`)
+      .all(SYSTEM_NOTICE_KIND, prefix.length, prefix) as Array<{ delivery_id: string; source_key: string; created_at: string }>;
+    const picked = rows.filter((r) => stale(r.source_key, r.created_at));
+    if (!picked.length) return [];
+    const begun = this.db.prepare("SELECT 1 FROM delivery_attempts WHERE delivery_id=? AND state<>'aborted' LIMIT 1");
+    const now = new Date().toISOString();
+    const cancel = this.db.prepare(`UPDATE deliveries SET state='cancelled',finished_at=?,updated_at=?,last_error=?,next_attempt_at=NULL
+      WHERE delivery_id=? AND state IN ('queued','retry_wait')`);
+    const done = this.db.transaction(() => picked.filter((r) => !begun.get(r.delivery_id) && cancel.run(now, now, reason, r.delivery_id).changes === 1).map((r) => r.delivery_id))();
+    for (const deliveryId of done) this.emit("state", { deliveryId, state: "cancelled" });
+    return done;
+  }
+
   private noteWorkingReferences(instances: string[]): void {
     // The transaction has committed. Telemetry must not change its result.
     try { this.emit("working_references", [...new Set(instances)]); } catch { /* observation only */ }

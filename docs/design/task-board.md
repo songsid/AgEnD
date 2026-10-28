@@ -225,7 +225,9 @@ it on purpose, and #1267 (a Kanban) left that to the person. What this PR takes,
 ## Step 2: wakes
 
 **Who hears what** (`TaskBoard.settleWakes`, read from a write's events once it is all written, still inside it): an
-instance hears what someone else did to a card that is its own, or that it handed out —
+instance hears what someone else did to a card that is its own, or that it handed out. #2801: only a change of status
+or assignee is news, and each change goes to one instance — the one that acts next. A comment and a confirmation wake
+nobody (the card lists new comments for its assignee: `mine`, `get`) —
 
 | News | Who | When |
 |---|---|---|
@@ -233,21 +235,17 @@ instance hears what someone else did to a card that is its own, or that it hande
 | start | the assignee | someone else moved its open card to in progress |
 | sent back | the assignee | the person sent it back from review, with the reason |
 | answered | the assignee | its blocked question answered (by the person or its dispatcher), with the answer |
-| comment | the assignee | a comment by someone else (once the card can start) |
 | ready | the assignee | every card it waited for is done — by hand or by the board's own move |
 | decide | the dispatcher | its card got blocked on a question: ask the person, answer it on the card |
-| to confirm | the dispatcher | its card went to the person for confirmation: tell them (and what it still lacks) |
-| approved | the assignee and the dispatcher | the person confirmed it, with their note |
-| wrap up | the main task's owner | it went to review by itself, its definition of done or result still missing |
+| to confirm | the dispatcher | its card waits for its confirmation (#2434), with what it still lacks — also when it went there by itself |
+| wrap up | the main task's owner | it went to review by itself, its definition of done or result still missing — only when no instance dispatcher is told to confirm it |
 | cancelled | the assignee | someone else cancelled it — or its main task, taking it down — with why |
 
-Never its own write, never a finished card (but for a confirmation or a cancel), never a name that is not one of the
+Never its own write, never a finished card (but for a cancel), never a name that is not one of the
 fleet's instances. `TaskBoard.wakeHolds` drops what no longer stands — at the end of the write and again when it goes
 out: a card finished meanwhile, no longer the instance's, a question already answered, a card wrapped up meanwhile.
 What asks the instance to act holds only while it can (#2303 review): `ready` while the card is open with nothing
-left to wait for, `start` and `answered` while it is in progress, `sent back` while it is back with the instance; a
-comment only while its assignee has not read it (any write of its own on the card since shows it the comment, as the
-`task` tool's answer, and counts it as seen).
+left to wait for, `start` and `answered` while it is in progress, `sent back` while it is back with the instance.
 
 **Sending** (`src/task-board-waker.ts`). The fleet gathers an instance's news for 10 s into one `[Task board]` notice:
 a line per card, each reason with its own words and who did it; a main task assigned with its sub tasks is one line;
@@ -256,6 +254,16 @@ tasks… one at a time, by priority"). The notice is AgEnD's own (`admitSystemNo
 words) and the delivery outbox holds it until the instance can take it, across a fleet restart too. News still
 gathering when the fleet stops is lost; the card keeps it (`mine`, the comments new to its assignee). Blocked cards
 with an instance dispatcher still wait for you on Home, marked as asked first.
+
+- **Told already (#2785 (c), widened by #2801).** News an instance made — an assignment, a block, an answer, a move to
+  review — is dropped when that instance messaged the one it concerns naming the card (or, for a sub task, its main
+  task) up to 2 minutes before; news not yet told that way waits up to 2 minutes from the change for such a message
+  (`TOLD_WINDOW_MS`), then goes. A person's change is told without waiting.
+- **Superseded (#2801).** A notice's outbox key ends with the cards it names (`:cards=<uuid>,…`). When a write changes
+  a card's status or assignee (`BoardChange.changed`), a notice still waiting (queued or retrying, never begun) that
+  names it is withdrawn once every card on it has changed since it was admitted (`TaskBoard.lastChangeAt`): `cancelled`,
+  "superseded: its card changed again", still readable in `delivery_status` and Fleet traffic. What still concerns the
+  instance is told anew from the change. A notice from before #2801 (no cards in its key) is never withdrawn.
 
 ## Step 3: the person in the chat
 

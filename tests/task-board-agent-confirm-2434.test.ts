@@ -209,7 +209,7 @@ describe("4. the person's own card: unchanged", () => {
 });
 
 describe("5. notices", () => {
-  it("the dispatcher hears once that its card waits for its confirmation; the assignee hears who confirmed it", () => {
+  it("the dispatcher hears once that its card waits for its confirmation; its confirmation wakes nobody (#2801)", () => {
     const { board } = open();
     const h = heard(board);
     const a = card(board, LEAD, { needsReview: true });
@@ -220,7 +220,7 @@ describe("5. notices", () => {
     board.updateCard(DEV, a.code, { state: "done: all\nnext: nothing" });
     expect(h.take()).toEqual([]);                                      // an edit in review is no new notice
     board.moveCard(LEAD, a.code, "done");
-    expect(h.take()).toEqual([{ to: "dev-a", code: a.code, reasons: ["approved"], by: "lead" }]);
+    expect(h.take()).toEqual([]);                                      // the work is finished: nothing to act on
     // The person's card: nobody is asked to relay it (it is in their Needs you).
     const p = card(board, ANN);
     board.moveCard(DEV, p.code, "claimed");

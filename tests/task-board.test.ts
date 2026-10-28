@@ -413,10 +413,11 @@ describe("9. change notifications and search", () => {
     expect(() => board.moveCard(DEV, s.code, "done")).toThrow();
     board.createProject(ANN, { name: "Other" });
     expect(heard).toEqual([
-      { rev: 2, ids: ["M-1"], actors: ["dev-a"], projects: false, wakes: [] },
-      { rev: 3, ids: ["S-1"], actors: ["dev-a"], projects: false, wakes: [] },
-      { rev: 4, ids: ["S-1", "M-1"], actors: ["dev-a"], projects: false, wakes: [] },
-      { rev: 5, ids: [], actors: [], projects: true, wakes: [] },
+      { rev: 2, ids: ["M-1"], actors: ["dev-a"], projects: false, wakes: [], changed: [] },
+      { rev: 3, ids: ["S-1"], actors: ["dev-a"], projects: false, wakes: [], changed: [] },
+      // #2801: the cards whose status (or assignee) the write changed — a sub task's start starts its main task.
+      { rev: 4, ids: ["S-1", "M-1"], actors: ["dev-a"], projects: false, wakes: [], changed: [s.uuid, m.uuid] },
+      { rev: 5, ids: [], actors: [], projects: true, wakes: [], changed: [] },
     ]);
   });
 
@@ -837,12 +838,12 @@ describe("15. whom a write wakes (step 2)", () => {
     expect(h.take()).toEqual([{ to: "dev-b", code: next.code, reasons: ["ready"], by: "dev-a", texts: {} }]);
   });
 
-  it("comments, a send-back, an answer and a confirmation, each with its own words", () => {
+  it("a send-back and an answer, each with its own words; a comment and a confirmation wake nobody (#2801)", () => {
     const { board } = withProject();
     const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
     const h = heard(board);
     board.updateCard(ANN, card.code, { comment: "cache it 30 s" });
-    expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["comment"], by: "Ann", texts: { comment: "cache it 30 s" } }]);
+    expect(h.take()).toEqual([]);
     board.moveCard(DEV, card.code, "claimed");
     board.moveCard(DEV, card.code, "blocked", { reason: "codes or messages?" });
     // Its dispatcher hears the question, and answers it on the card.
@@ -857,10 +858,7 @@ describe("15. whom a write wakes (step 2)", () => {
     board.moveCard(DEV, card.code, "review", { result: "r2", reason: "no checklist" });
     h.take();
     board.moveCard(ANN, card.code, "done", { reason: "nice" });
-    expect(h.take()).toEqual([
-      { to: "dev-a", code: card.code, reasons: ["approved"], by: "Ann", texts: { approved: "nice" } },
-      { to: "lead", code: card.code, reasons: ["approved"], by: "Ann", texts: { approved: "nice" } },
-    ]);
+    expect(h.take()).toEqual([]);
   });
 
   it("a card going to review: the instance that handed it out is told it waits for its confirmation; the person's own, nobody", () => {
@@ -916,9 +914,8 @@ describe("15. whom a write wakes (step 2)", () => {
   it("what no longer stands is dropped: a finished card, one now someone else's, a question already answered", () => {
     const { board } = withProject();
     const card = main(board, LEAD, { assignee: "dev-a" });
-    board.updateCard(ANN, card.code, { comment: "a word" });          // a comment holds while it is unread (#2303)
-    const wake = { instance: "dev-a", uuid: card.uuid, code: card.code, title: card.title, parent: null, reasons: ["comment"] as WakeReason[], by: { comment: "Ann" }, texts: {} };
-    expect(board.wakeHolds(wake)?.reasons).toEqual(["comment"]);
+    const wake = { instance: "dev-a", uuid: card.uuid, code: card.code, title: card.title, parent: null, reasons: ["assigned"] as WakeReason[], by: { assigned: "lead" }, texts: {} };
+    expect(board.wakeHolds(wake)?.reasons).toEqual(["assigned"]);
     board.updateCard(ANN, card.code, { assignee: "dev-b" });
     expect(board.wakeHolds(wake)).toBeNull();
     board.updateCard(ANN, card.code, { assignee: "dev-a" });

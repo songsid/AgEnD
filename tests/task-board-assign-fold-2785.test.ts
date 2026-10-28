@@ -2,8 +2,9 @@
  * #2785 (c): one dispatch arrived twice — the board's "[Task board] M-n … assigned to you by X" and X's own
  * delegate_task about M-n. On the host, 29 of 31 such notices (10-20 … 10-28) came with the assigner's message naming
  * the card, −12 s … +24 s apart. The board now drops its "assigned" line when the assigner is an instance that messaged
- * the assignee about the card (or, for a sub task, its main task), waiting up to ASSIGN_HOLD_MS for that message;
+ * the assignee about the card (or, for a sub task, its main task), waiting up to TOLD_WINDOW_MS for that message;
  * everything else — other news on the card, a person's assignments, an assigner who never writes — is told as before.
+ * (#2801 widens it to every change an instance makes, with a 2-minute window: board-notices-once-2801.test.ts.)
  *
  * Isolation: fake timers and clock through the waker's deps; a temp outbox database.
  */
@@ -15,7 +16,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ASSIGN_HOLD_MS, TaskBoardWaker, namesCard } from "../src/task-board-waker.js";
+import { TOLD_WINDOW_MS, TaskBoardWaker, namesCard } from "../src/task-board-waker.js";
 import type { Wake } from "../src/scheduler/task-board.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 
@@ -61,17 +62,17 @@ describe("#2785 (c): an instance's assignment is told once — by its own messag
     at(10_000);
     expect(sent).toEqual([]);
     // looked for the assigner's message from shortly before the assignment, about this card
-    expect(asked).toEqual([{ from: "lead", to: "dev-a", codes: ["M-7"], since: 1_000_000 - ASSIGN_HOLD_MS }]);
+    expect(asked).toEqual([{ from: "lead", to: "dev-a", codes: ["M-7"], since: 1_000_000 - TOLD_WINDOW_MS }]);
     at(60_000);
     expect(sent).toEqual([]);
   });
 
-  it("other news on the same card still goes — only the assigned line is dropped", () => {
+  it("other news on the same card still goes — only the assigner's own line is dropped", () => {
     const { w, sent, at } = rig(() => true);
-    w.note([wake({ reasons: ["assigned", "comment"], texts: { comment: "start with the schema" } })]);
+    w.note([{ ...wake({ reasons: ["assigned", "sent_back"], texts: { sent_back: "start with the schema" } }), by: { assigned: "lead", sent_back: "Ann" } }]);
     at(10_000);
     expect(sent).toHaveLength(1);
-    expect(sent[0]!.message).toContain("new comment from lead");
+    expect(sent[0]!.message).toContain('sent back by Ann: "start with the schema"');
     expect(sent[0]!.message).not.toContain("assigned to you");
   });
 
@@ -82,17 +83,17 @@ describe("#2785 (c): an instance's assignment is told once — by its own messag
     late.at(10_000);
     expect(late.sent).toEqual([]);                    // waiting for the assigner
     written = true;
-    late.at(ASSIGN_HOLD_MS);
+    late.at(TOLD_WINDOW_MS);
     expect(late.sent).toEqual([]);                    // it came: nothing to repeat
 
     const never = rig(() => false);
     never.w.note([wake({})]);
     never.at(10_000);
     expect(never.sent).toEqual([]);
-    never.at(ASSIGN_HOLD_MS - 1);
+    never.at(TOLD_WINDOW_MS - 1);
     expect(never.sent).toEqual([]);
-    never.at(ASSIGN_HOLD_MS);
-    expect(never.sent).toHaveLength(1);              // told, at most ASSIGN_HOLD_MS late
+    never.at(TOLD_WINDOW_MS);
+    expect(never.sent).toHaveLength(1);              // told, at most TOLD_WINDOW_MS late
     expect(never.sent[0]!.message).toContain("M-7");
     expect(never.sent[0]!.message).toContain("assigned to you by lead");
   });
@@ -116,12 +117,12 @@ describe("#2785 (c): an instance's assignment is told once — by its own messag
 
   it("other cards in the same batch are not held back by one waiting assignment", () => {
     const { w, sent, at } = rig(() => false);
-    w.note([wake({}), wake({ uuid: "u2", code: "M-8", reasons: ["comment"], texts: { comment: "see the log" } })]);
+    w.note([wake({}), wake({ uuid: "u2", code: "M-8", reasons: ["sent_back"], texts: { sent_back: "see the log" }, who: "Ann" })]);
     at(10_000);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.message).toContain("M-8");
     expect(sent[0]!.message).not.toContain("M-7");
-    at(ASSIGN_HOLD_MS);
+    at(TOLD_WINDOW_MS);
     expect(sent).toHaveLength(2);
     expect(sent[1]!.message).toContain("M-7");
   });
@@ -199,7 +200,7 @@ describe("in a real FleetManager: the outbox is where the assigner's message is 
           .map((r) => JSON.parse(r.payload_json).content as string);
       } finally { db.close(); }
     };
-    await vi.advanceTimersByTimeAsync(ASSIGN_HOLD_MS + 1_000);
+    await vi.advanceTimersByTimeAsync(TOLD_WINDOW_MS + 1_000);
     const out = notices();
     fm.taskBoardWaker.stop();
     fm.deliveryOutbox?.close?.();
