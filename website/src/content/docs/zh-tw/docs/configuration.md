@@ -29,7 +29,7 @@ agend validate
 | `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 裡的名字，讓同一個 Discord server 裡多個 fleet 的 bot 分得出來 |
 | `web` | object | — | 網頁 dashboard 選項，見下 |
 | `web_terminal` | object | — | `/login` 背後的瀏覽器終端：`enabled`（`true`）、`bind`（`127.0.0.1`）、`ttl_minutes`（1–20，`10`）和 `tunnel.allow_public` |
-| `needs_you` | object | — | **「等你處理」**清單，列出所有在等人處理的事：`live_message`（`true`）在 General 維持一則即時訊息；`dm`（`false`）另外私訊該 bot 的管理員；`task_board`（`false`）會加入等你處理的任務看板卡片 |
+| `needs_you` | object | — | **「等你處理」**清單，列出所有在等人處理的事：`live_message`（`true`）有事等你處理時在 General 維持一則即時訊息（沒有就刪除）；`dm`（`false`）另外私訊該 bot 的管理員；`task_board`（`false`）會加入等你處理的任務看板卡片 |
 
 ### web
 

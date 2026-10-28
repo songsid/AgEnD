@@ -191,7 +191,7 @@ describe("lanes: a card waits in its lane's channel, not in General", () => {
     expect(r.state.actions).toEqual([]);
   });
 
-  it("an emptied lane says nothing waits; a lane whose channel is gone says the list moved, without buttons, and is forgotten", async () => {
+  it("an emptied lane's list is deleted (#2804); a lane whose channel is gone says the list moved, without buttons, and is forgotten", async () => {
     const r = rig();
     r.state.tasks = [task({ uuid: "u2", code: "M-2", lane: "lead" }), task({ uuid: "u4", code: "M-4", lane: "beta" })];
     r.hub.start();
@@ -201,16 +201,19 @@ describe("lanes: a card waits in its lane's channel, not in General", () => {
     r.topics.beta = null;
     r.hub.recompute();
     await r.advance(60_000);
-    expect(r.calls).toContain(`edit 55 ${lead} needs.live_empty []`);
+    expect(r.calls.some(c => c.startsWith(`edit 55 ${lead}`))).toBe(false);
+    expect(r.adapter.deleteMessage).toHaveBeenCalledWith("-100", lead, "55");
     expect(r.calls).toContain(`edit 66 ${beta} needs.live_moved []`);
-    expect(Object.keys(r.pointers()).sort()).toEqual(["tg#lane:lead"]);          // General never needed posting
+    expect(Object.keys(r.pointers()).sort()).toEqual([]);   // the emptied lane's message is gone; General never needed posting
   });
 
-  it("a lane message from before a restart is rendered again even with nothing waiting (its old buttons are gone)", async () => {
+  it("a lane message from before a restart is deleted when nothing waits (#2804; its old buttons are gone with it)", async () => {
     const r = rig({ pointers: { tg: { chatId: "-100", threadId: "1", messageId: "old-g" }, "tg#lane:lead": { chatId: "-100", threadId: "55", messageId: "old-l" } } });
     r.hub.start();
     await r.advance(60_000);
-    expect(r.calls).toContain("edit 55 old-l needs.live_empty []");
+    expect(r.adapter.deleteMessage).toHaveBeenCalledWith("-100", "old-l", "55");
+    expect(r.adapter.deleteMessage).toHaveBeenCalledWith("-100", "old-g", "1");
+    expect(r.calls.some(c => c.startsWith("edit"))).toBe(false);
     expect(r.adapter.notifyAlert).not.toHaveBeenCalled();
   });
 

@@ -160,7 +160,7 @@ describe("§5.2 Acknowledge from chat", () => {
     expect(r.state.acked.get("d1")).toBe("discord:100");
     await r.advance(20_000);
     expect(r.hub.webItems().map(i => i.instance)).toEqual(["beta"]);
-    expect(r.A.calls.at(-1)).toBe("edit A-m1 needs.live_empty [0]");
+    expect(r.A.calls.at(-1)).toBe("delete A-m1");   // #2804: nothing waits on A any more — its list goes away
   });
 
   it("B's admin (not A's) on A's message: refused as not an admin there", async () => {

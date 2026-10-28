@@ -25,7 +25,7 @@ export interface LivePointer extends LiveTarget { messageId: string }
 export interface LiveChoice { id: string; label: string }
 
 export interface LiveContent {
-  /** Nothing waits on this world: no message is posted for it if none exists yet. */
+  /** Nothing waits on this world: no message is posted for it, and one that exists is removed (#2804). */
   empty: boolean;
   text: string;
   /** Delivery items that get an Acknowledge button on this render. */
@@ -171,8 +171,13 @@ export class NeedsYouLiveMessage {
     this.deps.revokeAcks();
     const content = this.deps.content();
     const now = this.deps.now();
-    // Nothing to say and nothing said yet: a fleet that never needed anyone posts nothing.
-    if (this.pointer === null && content.empty) { this.postWanted = false; return; }
+    // #2804: nothing waits — no message. A fleet that never needed anyone posts nothing, and once the last item is
+    // handled the list goes away instead of standing in General as "nothing needs you".
+    if (content.empty) {
+      this.postWanted = false;
+      if (this.pointer !== null) await this.removeEmpty(this.pointer, generation, target);
+      return;
+    }
 
     const moved = this.pointer !== null && !samePlace(this.pointer, target);
     const mayPost = now >= this.nextPostAt;
@@ -216,6 +221,23 @@ export class NeedsYouLiveMessage {
     if (!this.fenced(generation, target)) { this.deps.revokeAcks(); return; }
     this.lastRender = key;
     this.lastEditAt = this.deps.now();
+  }
+
+  /** #2804: delete the list once nothing waits; a delete that fails is retried at the next render (renewal). */
+  private async removeEmpty(pointer: LivePointer, generation: number, target: LiveTarget): Promise<void> {
+    try {
+      await this.deps.remove(pointer);
+    } catch (err) {
+      // Already gone (deleted by a person, or the place is) counts as removed; anything else keeps it for a retry.
+      if (!this.deps.isEditLoss(err)) {
+        if (this.fenced(generation, target)) this.deps.log("could not remove the live message now that nothing waits; will try again", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
+        return;
+      }
+    }
+    if (this.pointer !== pointer) return;      // a newer post already replaced it
+    this.pointer = null;
+    this.deps.savePointer(null);
+    this.lastRender = null;
   }
 
   private async postNew(generation: number, target: LiveTarget, content: LiveContent, moved: boolean): Promise<void> {

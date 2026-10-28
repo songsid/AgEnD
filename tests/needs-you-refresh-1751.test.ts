@@ -25,7 +25,7 @@ function fakeTelegram() {
   const adapter = new TelegramAdapter({ id: "tg", botToken: ["123456789", "fixture"].join(":"), accessManager: {} as never, inboxDir: dir });
   adapters.push(adapter);
   const api = adapter.getBot().api;
-  const posts: Record<string, any>[] = [], edits: Record<string, any>[] = [];
+  const posts: Record<string, any>[] = [], edits: Record<string, any>[] = [], deletes: Record<string, any>[] = [];
   let editReply: any = NO_CHANGE;
   let sequence = 10;
   const transport = async (method: string, payload: any): Promise<any> => {
@@ -33,17 +33,23 @@ function fakeTelegram() {
     if (method === "editMessageText" || method === "editMessageReplyMarkup") {
       edits.push({ method, ...payload }); if (editReply instanceof Error) throw editReply; return editReply;
     }
-    if (method === "deleteMessage") return { ok: true, result: true };
+    if (method === "deleteMessage") { deletes.push({ chat_id: payload.chat_id, message_id: payload.message_id }); return { ok: true, result: true }; }
     throw new Error(`Unstubbed Telegram method: ${method}`);
   };
   // Appending a fake transport alone would bypass production transformers. Replay that chain over the fake base.
   const call = api.config.installedTransformers().reduce<any>((prev, transform) =>
     (method: any, payload: any, signal: any) => transform(prev, method, payload, signal), transport);
   api.config.use((_prev, method, payload, signal) => call(method, payload, signal));
-  return { dir, adapter, posts, edits, reply: (value: any) => { editReply = value; } };
+  return { dir, adapter, posts, edits, deletes, reply: (value: any) => { editReply = value; } };
 }
 
-function hubRig() {
+/**
+ * #2804: an empty list now removes the message, so the edit paths below run with one thing waiting, seeded at start —
+ * a crashed instance: no Acknowledge button, so its renewals render identically.
+ */
+const WAITING = [{ name: "dev", crashedAt: 1 }];
+
+function hubRig(waiting: Array<{ name: string; crashedAt: number }> = WAITING) {
   vi.useFakeTimers();
   setLocale("zh-TW");
   const tg = fakeTelegram();
@@ -52,7 +58,7 @@ function hubRig() {
   const ctx: NeedsYouHubContext = {
     dataDir: tg.dir, now: () => Date.now(), mono: () => performance.now(),
     setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: h => clearTimeout(h as ReturnType<typeof setTimeout>),
-    prompts: () => [], instances: () => [], deliveries: () => [], ownerOf: () => "tg",
+    prompts: () => [], instances: () => waiting, deliveries: () => [], ownerOf: () => "tg",
     worlds: () => [{ id: "tg", adapter: tg.adapter, place: { type: "telegram", groupId: "-100123" } }],
     noticeTarget: () => ({ chatId: "-100123" }), instanceTopic: () => undefined,
     isFleetAdmin: () => true, fleetAdmins: () => [], emitSse: () => {}, acknowledge: () => false,
@@ -75,14 +81,22 @@ afterEach(() => {
 });
 
 describe("#1751 real hub → renderer → Telegram edits", () => {
-  it("twelve identical empty renewals never post another message and skip subsequent edits", async () => {
+  it("twelve identical renewals never post another message and skip subsequent edits", async () => {
     const r = hubRig();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(12 * RENEW_MS);
     expect(r.posts).toEqual([]);
     expect(r.edits).toHaveLength(1); // The persisted pointer needs one successful render this lifecycle.
-    expect(r.edits[0].text).toBe("✅ 目前沒有需要你處理的事。");
+    expect(r.edits[0].text).toContain("📥 等你處理");
     expect(r.logs.some(x => x.includes("posting a new one"))).toBe(false);
+  });
+
+  it("#2804: with nothing waiting, a message from before the restart is deleted — no edit to \"nothing needs you\", no post", async () => {
+    const r = hubRig([]);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(3 * RENEW_MS);
+    expect([r.posts, r.edits]).toEqual([[], []]);
+    expect(r.deletes).toEqual([{ chat_id: -100123, message_id: 1 }]);
   });
 
   it("a real 400 unchanged edit is a successful no-op, including button-only edits", async () => {
@@ -191,7 +205,7 @@ describe("#1751 real hub → renderer → Telegram edits", () => {
     (r.hub as any).live.get("tg").renderer.changed(false);
     await vi.advanceTimersByTimeAsync(EDIT_MIN_MS);
     expect(r.posts).toEqual([]); expect(r.edits).toHaveLength(3);
-    expect(r.edits[2].text).toBe("✅ 目前沒有需要你處理的事。");
+    expect(r.edits[2].text).toContain("📥 等你處理");
   });
 
   it("forward and backward wall jumps cannot shorten the monotonic replacement limit", async () => {

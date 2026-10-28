@@ -21,7 +21,7 @@ function rig(over: { pointer?: LivePointer | null; target?: LiveTarget | null; c
   let saved: LivePointer | null = over.pointer ?? null;
   const pending: Array<{ resolve: () => void; reject: (e: Error) => void; kind: string }> = [];
   let hold = false;                                  // hold the next post/edit ACK until released
-  let failEdit = false, failPost = false;
+  let failEdit = false, failPost = false, failRemove: Error | null = null;
   const ack = <T>(kind: string, value: T): Promise<T> => hold
     ? new Promise<T>((resolve, reject) => pending.push({ resolve: () => resolve(value), reject, kind }))
     : Promise.resolve(value);
@@ -35,7 +35,7 @@ function rig(over: { pointer?: LivePointer | null; target?: LiveTarget | null; c
     post: async (t, text, choices) => { const id = `m${nextMsg++}`; log.push(`post ${id} @${t.chatId}/${t.threadId ?? "-"} [${choices.length}] ${text}`); if (failPost) throw new Error("403"); return ack("post", { ...canonicalTarget(t), messageId: id }); },
     edit: async (p, text, choices) => { log.push(`edit ${p.messageId} [${choices.length}] ${text}`); if (failEdit) throw new Error("message missing"); return ack("edit", undefined); },
     isEditLoss: err => err instanceof Error && err.message === "message missing", // This fixture's confirmed unavailable message.
-    remove: async p => { log.push(`remove ${p.messageId}`); },
+    remove: async p => { log.push(`remove ${p.messageId}`); if (failRemove) throw failRemove; },
     loadPointer: () => saved,
     savePointer: p => { saved = p; log.push(`save ${p?.messageId ?? "null"}`); },
     mintAcks: (generation, place, items) => {
@@ -70,6 +70,7 @@ function rig(over: { pointer?: LivePointer | null; target?: LiveTarget | null; c
     set: {
       target: (t: LiveTarget | null) => { target = t; }, enabled: (v: boolean) => { enabled = v; }, stopping: (v: boolean) => { stopping = v; },
       exists: (v: boolean) => { exists = v; }, content: (c: LiveContent) => { content = c; }, hold: (v: boolean) => { hold = v; }, failEdit: (v: boolean) => { failEdit = v; }, failPost: (v: boolean) => { failPost = v; },
+      failRemove: (e: Error | null) => { failRemove = e; },
     },
   };
 }
@@ -274,6 +275,45 @@ describe("shutdown and off", () => {
     r.log.length = 0;
     await r.m.disable();
     expect(r.log).toEqual(["revoke", "save null", "edit m1 [0] OFF"]);
+    expect(r.saved).toBeNull();
+  });
+});
+
+describe("#2804: the list exists only while something waits", () => {
+  const EMPTY: LiveContent = { empty: true, text: "nothing", ackable: [] };
+  it("the last item handled: the message is deleted and forgotten — never edited to \"nothing needs you\"", async () => {
+    const r = rig();
+    await r.advance(0);
+    r.set.content(EMPTY); r.m.changed(false);
+    await r.advance(EDIT_MIN_MS);
+    expect(r.log.filter(l => /^(edit|remove|save)/.test(l))).toEqual(["save m1", "remove m1", "save null"]);
+    expect(r.saved).toBeNull();
+    await r.advance(3 * RENEW_MS);
+    expect(r.log.filter(l => /^(edit|post|remove)/.test(l)).slice(-1)).toEqual(["remove m1"]);   // nothing more
+  });
+  it("a message from before a restart with nothing waiting is deleted at once", async () => {
+    const r = rig({ pointer: { chatId: "g", threadId: "general", messageId: "old" }, content: EMPTY });
+    await r.advance(0);
+    expect(r.log.filter(l => /^(edit|post|remove|save)/.test(l))).toEqual(["remove old", "save null"]);
+  });
+  it("something waits again: a new message is posted (people are notified)", async () => {
+    const r = rig();
+    await r.advance(0);
+    r.set.content(EMPTY); r.m.changed(false);
+    await r.advance(EDIT_MIN_MS);
+    r.set.content({ empty: false, text: "again", ackable: [] }); r.m.changed(true);
+    await r.advance(POST_MIN_MS);
+    expect(r.log.filter(l => l.startsWith("post"))).toEqual(["post m1 @g/general [1] list", "post m2 @g/general [0] again"]);
+  });
+  it("a delete the platform refuses keeps the pointer and is tried again at the next renewal; an already-gone message counts as deleted", async () => {
+    const r = rig({ pointer: { chatId: "g", threadId: "general", messageId: "old" }, content: EMPTY });
+    r.set.failRemove(new Error("429"));
+    await r.advance(0);
+    expect(r.saved?.messageId).toBe("old");
+    expect(r.log.some(l => l.startsWith("log could not remove the live message"))).toBe(true);
+    r.set.failRemove(new Error("message missing"));             // this fixture's isEditLoss
+    await r.advance(RENEW_MS);
+    expect(r.log.filter(l => l === "remove old")).toHaveLength(2);
     expect(r.saved).toBeNull();
   });
 });

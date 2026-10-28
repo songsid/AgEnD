@@ -29,7 +29,7 @@ This page is the short version. Every field, with the edge cases, is in the [ful
 | `fleet_label` | string | host name | How this fleet names itself in `/login`, so several fleets' bots in one Discord server can be told apart |
 | `web` | object | — | Web dashboard options, below |
 | `web_terminal` | object | — | The browser terminal behind `/login`: `enabled` (`true`), `bind` (`127.0.0.1`), `ttl_minutes` (1–20, `10`), and `tunnel.allow_public` |
-| `needs_you` | object | — | The **Needs you** list of things waiting on a person: `live_message` (`true`) keeps one live message in General; `dm` (`false`) also DMs the bot's admins; `task_board` (`false`) adds the Task Board cards that wait on you |
+| `needs_you` | object | — | The **Needs you** list of things waiting on a person: `live_message` (`true`) keeps one live message in General while something waits (deleted once nothing does); `dm` (`false`) also DMs the bot's admins; `task_board` (`false`) adds the Task Board cards that wait on you |
 
 ### web
 
