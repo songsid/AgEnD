@@ -95,7 +95,7 @@ import {
   type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis, type StatusEmojiKey,
 } from "./status-emojis.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
-import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
+import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
@@ -287,6 +287,8 @@ import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteC
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
+import { ConfigHistory, ConfigSyntaxError, configIssueText } from "./config-history.js";
+import type { ConfigSource } from "./config-history.js";
 import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt, readClassicRoomNames } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
@@ -1352,6 +1354,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  private configHistory: ConfigHistory | null = null;
+  private configHistoryTimer: ReturnType<typeof setInterval> | null = null;
+  private loadedFleetSource: ConfigSource | null = null;
+  private getConfigHistory(): ConfigHistory {
+    return this.configHistory ??= new ConfigHistory(this.dataDir, () => this.needsYou?.poke(), message => this.logger.warn(message));
+  }
   /** When the fleet first saw an instance crashed, for its "Needs you" age; cleared when it is not. */
   private readonly needsCrashedAt = new Map<string, number>();
   /** Pause reason/time read from the marker, per paused instance; dropped on any attention change of it, and at most
@@ -3367,7 +3375,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // fleet.yaml, sent SIGHUP, and got no reaction and no explanation.
       this.logger.error({ err }, "SIGHUP config reload failed");
       const message = err instanceof Error ? err.message : String(err);
-      this.notifyFleetError(t("fleet.reload_failed", message));
+      if (!(err instanceof ConfigSyntaxError)) this.notifyFleetError(t("fleet.reload_failed", message));
     });
   }
 
@@ -3609,19 +3617,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Load fleet.yaml and build routing table */
-  loadConfig(configPath: string): FleetConfig {
+  loadConfig(configPath: string, options: { startup?: boolean; remember?: boolean } = {}): FleetConfig {
     this.configPath = configPath;
-    const source = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "{}\n";
-    this.rawFleetDocument = parseDocument(source, { keepSourceTokens: true });
-    if (this.rawFleetDocument.errors.length > 0) {
-      throw new Error(`Invalid fleet.yaml: ${this.rawFleetDocument.errors[0].message}`);
-    }
-    const raw = loadRawFleetConfig(configPath);
-    const loaded = loadFleetConfig(configPath);
+    const history = this.getConfigHistory();
+    history.track("fleet.yaml", configPath);
+    const selected = existsSync(configPath) ? history.read("fleet.yaml", configPath, options.startup) : { source: "{}\n", fallback: false };
+    this.rawFleetDocument = parseDocument(selected.source, { keepSourceTokens: true });
+    const raw = loadRawFleetConfigSource(selected.source);
+    const loaded = loadFleetConfigSource(selected.source);
     this.assertProviderSecretEnvKeys(loaded);
     this.rawFleetConfig = raw;
     this.settingsRuntimeRevision++;
     this.fleetConfig = loaded;
+    this.loadedFleetSource = selected;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.warnAboutRemovedLoginMode(loaded);
     this.enforceGuestSwitch();
@@ -3630,6 +3638,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Scope the path to its owning data directory so another inherited home's override cannot enable CW.
     process.env.AGEND_FLEET_DATA_DIR = resolvePath(this.dataDir);
     process.env.AGEND_FLEET_CONFIG_PATH = resolvePath(configPath);
+    if (options.remember !== false && existsSync(configPath)) history.accepted("fleet.yaml", configPath, selected);
     return this.fleetConfig;
   }
 
@@ -8172,7 +8181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.rotateFleetLogs();
 
-    const fleet = this.loadConfig(configPath);
+    const fleet = this.loadConfig(configPath, { startup: true });
     this.slimFleetConfigAtStartup();
     this.logConfigWarningsAtStartup();
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
@@ -8259,7 +8268,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // migrates legacy single-bot entries and names without a suffix. Classic
     // routing does NOT go through the routing engine (single-key, can't hold two
     // bots in one channel) — it resolves per-bot via getInstanceByChannel.
-    this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger);
+    this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger, this.getConfigHistory());
     const classicAdapters = fleet.channels?.length ? fleet.channels : (fleet.channel ? [fleet.channel] : []);
     this.classicChannels.configureAdapters(classicAdapters);
     // The unrecoverable-id report is deliberately NOT sent here: no adapter
@@ -8277,6 +8286,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // rooms), before the dashboard serves anything; from now on every change is written back (off the loop).
     this.restoreWebChat(fleet);
     this.startSearchIndex(fleet);
+
+    // Parse-only source monitoring; it does not apply hand-edited Fleet settings.
+    this.configHistoryTimer = setInterval(() => this.configHistory?.check(), 1_000);
+    this.configHistoryTimer.unref?.();
 
     // Poll classicBot.yaml for external changes every 30s
     this.classicReloadTimer = setInterval(() => {
@@ -8428,7 +8441,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       fleet.instances[name] = autoGeneralInstanceConfig(fleet.defaults, generalDir, need.adapterId);   // #2598: its kiro_ui is the fleet's
       generalsCreated = true;
     }
-    if (generalsCreated) this.saveFleetConfig();
+    if (generalsCreated && !this.configHistory?.isFallback(this.configPath)) this.saveFleetConfig();
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
       const schedulerConfig: SchedulerConfig = {
@@ -8625,7 +8638,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           fixedGeneral = true;
         }
       }
-      if (fixedGeneral) this.saveFleetConfig();
+      if (fixedGeneral && !this.configHistory?.isFallback(this.configPath)) this.saveFleetConfig();
 
       // Auto-create topics AFTER adapter is ready (needs adapter.createTopic)
       await this.topicCommands.autoCreateTopics();
@@ -12608,6 +12621,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
 
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
+    this.configHistory?.accepted("fleet.yaml", this.configPath, { source: output, fallback: false });
     // The instance map is defaults-expanded. A defaults edit changes that view even when it writes no instance
     // leaves. Re-resolve from the committed YAML so inherited values cannot become stale overrides on the next save.
     // Keep the FleetConfig object itself: Settings and other request contexts hold it.
@@ -12674,6 +12688,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** One-time upgrade migration; invalid YAML is never rewritten. */
   private migrateNoticeDeliveryStorage(): void {
+    if (this.configHistory?.isFallback(this.configPath)) return;
     if (this.fleetConfig && this.configPath && (this.fleetConfig.web?.notify_login === "dm" || this.fleetConfig.defaults.tips === "dm"
       || this.fleetConfig.web?.notice_delivery !== undefined)
       && validateFleetConfig(this.rawFleetConfig).valid) {
@@ -12686,6 +12701,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private migrateOfficeStorage(): void {
+    if (this.configHistory?.isFallback(this.configPath)) return;
     if (!this.fleetConfig || !this.configPath || !hasLegacyOffice(this.rawFleetConfig) || !validateFleetConfig(this.rawFleetConfig).valid) return;
     try {
       this.writeFleetConfigBackup(readFileSync(this.configPath, "utf8"));
@@ -12704,6 +12720,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private slimFleetConfigAtStartup(): void {
+    if (this.configHistory?.isFallback(this.configPath)) return;
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
     const redundantPaths = collectRedundantInstanceDefaultPaths(this.rawFleetConfig);
@@ -14993,6 +15010,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
+      configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
+        ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,
+      })),
       taskAction: action => this.taskActionFromChat(action),
       settings: () => ({
         liveMessage: this.fleetConfig?.needs_you?.live_message !== false,
@@ -21330,6 +21350,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const sharesStopped = this.officeSharesInstance?.close();   // #2636: every Office share ends, and its tunnel
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
+    if (this.configHistoryTimer) clearInterval(this.configHistoryTimer);
+    this.configHistoryTimer = null;
     const needsStopped = this.stopNeedsYou();
     // #1490 P3: stop() now returns a Promise; await it so the final
     // ledger flush completes before process.exit(0) in doStopAll's caller.
@@ -21642,14 +21664,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const previousRawConfig = this.rawFleetConfig;
     const previousRawDocument = this.rawFleetDocument;
     const previousSavedSnapshot = this.savedFleetConfigSnapshot;
+    const previousSource = this.loadedFleetSource;
 
     try {
-      this.loadConfig(this.configPath);
+      this.loadConfig(this.configPath, { remember: false });
     } catch (err) {
       this.fleetConfig = oldConfig;
       this.rawFleetConfig = previousRawConfig;
       this.rawFleetDocument = previousRawDocument;
       this.savedFleetConfigSnapshot = previousSavedSnapshot;
+      this.loadedFleetSource = previousSource;
       throw err;
     }
 
@@ -21667,6 +21691,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.rawFleetConfig = previousRawConfig;
       this.rawFleetDocument = previousRawDocument;
       this.savedFleetConfigSnapshot = previousSavedSnapshot;
+      this.loadedFleetSource = previousSource;
       this.observeWebAuthority();                    // #2453 review: the configuration back in force is the one seen
       this.logger.error({
         oldCount,
@@ -21687,6 +21712,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
 
@@ -21909,7 +21935,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * the panel shows the mismatch instead of a button.
    */
   private checkStartupSignatureConsistency(): void {
-    if (!this.configPath) { this.fleetSignatureMismatch = null; return; }
+    if (!this.configPath || this.configHistory?.isFallback(this.configPath)) { this.fleetSignatureMismatch = null; return; }
     let onDisk: FleetConfig | null;
     try {
       onDisk = loadFleetConfig(this.configPath);

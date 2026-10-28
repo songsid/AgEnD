@@ -7,7 +7,9 @@
  * a file or a clock of its own.
  */
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend";
+import type { ConfigIssue } from "./config-history.js";
+
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -41,6 +43,7 @@ export interface NeedsYouItem {
    * lead. Its world owns the item; absent: the item sits in its assignee's world's General, as every other item.
    */
   lane?: string;
+  configIssue?: ConfigIssue;
 }
 
 export type NeedsYouReason =
@@ -48,7 +51,7 @@ export type NeedsYouReason =
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "auth_paused" | "crashed" | "usage_limit"                       // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
-  | "task_review" | "task_blocked" | "backend_signin";                                 // task
+  | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback";                                 // task
 
 /** A fleet prompt offered on the dashboard (hang / exit-restart / interactive-assist), as the fleet holds it. */
 export interface PromptInput {
@@ -122,6 +125,7 @@ export interface NeedsYouInputs {
   deliveries: DeliveryInput[];
   tasks?: TaskInput[];
   backendSignIns?: BackendSignInInput[];
+  configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
   ownerOf: (instance: string) => string | undefined;
 }
@@ -205,6 +209,12 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   for (const b of inputs.backendSignIns ?? []) items.push({
     id: `backend-signin:${b.backend}:${b.since}`, type: "backend", instance: "", reason: "backend_signin", detail: b.backend, since: b.since,
     ...(b.browser ? { signIn: { backend: b.backend } } : {}),
+  });
+
+  for (const issue of inputs.configIssues ?? []) items.push({
+    id: `config:${issue.file}:${issue.since}`, type: "config", instance: "", owner: issue.owner,
+    reason: issue.mode === "fallback" ? "config_fallback" : "config_invalid", detail: issue.detail, since: issue.since,
+    configIssue: { file: issue.file, line: issue.line, column: issue.column, reason: issue.reason, mode: issue.mode, time: issue.time, since: issue.since },
   });
 
   // Task board cards waiting for the person (#2246 step 3), under their assignee.
@@ -308,7 +318,7 @@ export function renderLiveMessage(
   const shown = lines.slice(0, LIVE_MAX_LINES);
   const body = shown.map(l => {
     const age = ageLabel(l.item.since, nowMs);
-    const head = `• ${l.item.instance} — ${l.title} (${age})`;
+    const head = `• ${l.item.instance ? `${l.item.instance} — ` : ""}${l.title} (${age})`;
     return l.link ? `${head} · ${l.link}` : head;
   });
   if (lines.length > shown.length) body.push(t("needs.live_more", lines.length - shown.length));

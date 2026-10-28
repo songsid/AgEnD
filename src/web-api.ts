@@ -263,6 +263,7 @@ function visibleNeeds(ctx: WebApiContext, gateway: boolean, items: unknown[]): u
   const { hidden } = boardHiding(ctx, true);
   return items.filter((i) => {
     const item = i as { type?: unknown; card?: { code?: unknown } };
+    if (item.type === "config") return false; // private operator configuration diagnostics never cross a public link
     if (item.type !== "task") return true;
     const code = item.card?.code;
     if (!board || typeof code !== "string") return false;

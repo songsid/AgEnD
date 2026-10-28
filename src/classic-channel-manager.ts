@@ -7,6 +7,7 @@ import yaml from "js-yaml";
 import { getAgendHome } from "./paths.js";
 import { classicInstanceName, sanitizeInstanceName } from "./instance-names.js";
 import type { Logger } from "./logger.js";
+import { ConfigHistory, ConfigStartupError, type ConfigSource } from "./config-history.js";
 import { KNOWN_BACKENDS } from "./config-validator.js";
 import { classicProfile, normalizeBackendOptions, type BackendOptions, type ClassicProfile } from "./classic-bindings.js";
 import type { Choice } from "./channel/types.js";
@@ -211,9 +212,12 @@ export class ClassicChannelManager {
   /** Config-order adapter identities, used to migrate legacy rows by platform. */
   private adapters: ClassicAdapterIdentity[] = [];
 
-  constructor(private dataDir: string, private logger: Logger) {
+  private fallbackSource: ConfigSource | undefined;
+
+  constructor(private dataDir: string, private logger: Logger, private history = new ConfigHistory(dataDir)) {
     this.configPath = join(dataDir, "classicBot.yaml");
-    this.load();
+    this.history.track("classicBot.yaml", this.configPath);
+    this.load(true);
   }
 
   /**
@@ -240,8 +244,8 @@ export class ClassicChannelManager {
 
     this.primaryAdapterId = primaryAdapterId;
     this.adapters = identities;
-    const repaired = this.load();
-    if (repaired && this.backupBeforeAdapterRepair()) this.save();
+    const repaired = this.load(false, this.fallbackSource);
+    if (repaired && !this.fallbackSource && this.backupBeforeAdapterRepair()) this.save();
   }
 
   /** Map key for a (channelId, adapterId) pair. adapterId-less = legacy entry (pre-migration). */
@@ -307,11 +311,12 @@ export class ClassicChannelManager {
    * Load the persisted registry. Returns true when it migrated/repaired data
    * and the caller should write the normalized registry back to disk.
    */
-  private load(): boolean {
+  private load(startup = false, override?: ConfigSource): boolean {
     if (!existsSync(this.configPath)) return false;
     try {
-      const raw = yaml.load(readFileSync(this.configPath, "utf-8")) as ClassicBotYaml | null;
-      if (!raw) return false;
+      const selected = override ?? this.history.read("classicBot.yaml", this.configPath, startup);
+      const raw = yaml.load(selected.source) as ClassicBotYaml | null;
+      if (!raw) { this.history.accepted("classicBot.yaml", this.configPath, selected); return false; }
       this.sourceDocument = structuredClone(raw);
       this.defaults = raw.defaults ?? {};
       this.reportUnquotedIds();
@@ -440,9 +445,12 @@ export class ClassicChannelManager {
       this.rebuildChannelIds();
       this.lastMtime = statSync(this.configPath).mtimeMs;
       this.savedProjection = structuredClone(repaired ? raw : this.document());
+      this.history.accepted("classicBot.yaml", this.configPath, selected);
+      this.fallbackSource = selected.fallback ? selected : undefined;
       this.logger.info({ count: this.channels.size }, "Loaded classic channels");
       return repaired;
     } catch (err) {
+      if (startup && (err instanceof ConfigStartupError || this.history.isFallback(this.configPath))) throw err;
       this.logger.warn({ err }, "Failed to load classicBot.yaml");
       return false;
     }
@@ -489,6 +497,8 @@ export class ClassicChannelManager {
     writeFileSync(this.configPath, YAML_HEADER + yaml.dump(next, { lineWidth: -1 }));
     this.savedProjection = structuredClone(projected);
     this.sourceDocument = structuredClone(next);
+    this.history.accepted("classicBot.yaml", this.configPath, { source: readFileSync(this.configPath, "utf8"), fallback: false });
+    this.fallbackSource = undefined;
     this.lastMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
   }
 

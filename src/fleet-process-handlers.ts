@@ -70,3 +70,23 @@ export function installFleetProcessHandlers(options: FleetProcessOptions): { rea
   });
   return { get stopping() { return stopping; } };
 }
+
+/** A deliberate config-recovery refusal is a failed start, not an arbitrary runtime rejection to keep alive. */
+export async function startFleetOrExit(
+  manager: { startAll(path: string): Promise<void>; stopAll(): Promise<void> },
+  path: string,
+  runtime: Pick<NodeJS.Process, "exit">,
+  output: Pick<Console, "error">,
+): Promise<void> {
+  try { await manager.startAll(path); }
+  catch (error) {
+    const { ConfigStartupError } = await import("./config-history.js");
+    if (!(error instanceof ConfigStartupError)) throw error;
+    output.error(error.message);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([manager.stopAll().catch(() => {}), new Promise<void>(resolve => { timer = setTimeout(resolve, 10_000); })]);
+    } finally { if (timer) clearTimeout(timer); }
+    runtime.exit(1);
+  }
+}

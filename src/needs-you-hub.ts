@@ -81,6 +81,7 @@ export interface NeedsYouHubContext {
   /** Task board cards waiting for the person (#2246 step 3); none when the board is not open. */
   tasks?(): TaskInput[];
   backendSignIns?(): BackendSignInInput[];
+  configIssues?(): NonNullable<import("./needs-you.js").NeedsYouInputs["configIssues"]>;
   /**
    * The person's move on a card from the chat: confirm it, send it back with `text` (the reason), or answer its blocked
    * question with `text`. Checked against the version the button showed; the answer is said to the clicker.
@@ -250,7 +251,7 @@ export class NeedsYouHub {
     try { tasks = this.ctx.tasks?.() ?? []; } catch (err) {
       this.ctx.log("warn", "Needs you: could not read the task board", { err: String((err as Error)?.message ?? err) });
     }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
@@ -347,7 +348,7 @@ export class NeedsYouHub {
     const reason = item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.reason}`);
-    return item.type === "task" && item.detail ? `${reason}: ${item.detail}` : reason;
+    return (item.type === "task" || item.type === "config") && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
   /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */

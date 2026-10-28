@@ -19,7 +19,7 @@ import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import { notifyStore, notifySupport, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
+import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
 
 register("needs", {
@@ -95,7 +95,7 @@ const BAD = new Set(["crashed", "delivery_failed", "hang", "exited"]);
  */
 function detailOf(item) {
   const c = item.type === "task" ? item.card : null;
-  if (!c || !c.title) return item.detail;
+  if (!c || !c.title) return configDetail(item);
   const lacks = c.gap ? [c.gap.unchecked ? tn("gapUnchecked", c.gap.unchecked) : "", c.gap.noResult ? tn("gapNoResult") : ""].filter(Boolean).join(tn("gapJoin")) : "";
   const tail = c.question || (lacks ? tn("gap", lacks) : "");
   return `${c.code} ${c.title}${tail ? ` — ${tail}` : ""}`;
@@ -112,13 +112,15 @@ export function age(since, nowMs) {
 
 /** The store's list, grouped by instance, in its order (instances by their oldest item; items oldest first). */
 export function groupNeeds(items) {
-  const groups = [];
+  const groups = new Map();
   for (const item of items) {
-    const last = groups[groups.length - 1];
-    if (last && last.instance === item.instance) last.items.push(item);
-    else groups.push({ instance: item.instance, items: [item] });
+    // Configuration issues belong to Settings, not the unassigned task/sign-in group.
+    const key = JSON.stringify([item.instance, !item.instance && item.type === "config"]);
+    const group = groups.get(key);
+    if (group) group.items.push(item);
+    else groups.set(key, { instance: item.instance, items: [item] });
   }
-  return groups;
+  return [...groups.values()];
 }
 
 export function NeedsPanel({ navKey }) {
@@ -142,8 +144,8 @@ export function NeedsPanel({ navKey }) {
     <${PanelHeader} title=${tn("title")} sub=${items.length ? t("app.needsCount", items.length) : null} />
     <div data-trust="panel-content" class="panel-body"><div class="col">
       ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
-        : groups.map((g) => html`<section key=${g.instance} class="n-group" aria-label=${g.instance}>
-          <h2 class="n-group-head">${g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
+        : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config"])} class="n-group" aria-label=${g.instance}>
+          <h2 class="n-group-head">${g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`)}
       <${NotifyToggle} />
