@@ -347,6 +347,8 @@ const MIXED = "/mnt/e/Task/AgEnD/projects/codex";
 const LOWER = MIXED.toLowerCase();
 const sameIno: CwdStat = () => ({ isDirectory: () => true, dev: 1n, ino: WSL_INO });
 const differentIno: CwdStat = p => ({ isDirectory: () => true, dev: 1n, ino: p === p.toLowerCase() ? 1n : 2n });
+const sameInoDifferentDev: CwdStat = p => ({ isDirectory: () => true, dev: p === p.toLowerCase() ? 2n : 1n, ino: WSL_INO });
+const zeroIno: CwdStat = () => ({ isDirectory: () => true, dev: 1n, ino: 0n });
 const failingStat: CwdStat = () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); };
 
 describe("cwd casing aliases only when stat proves the same directory (#2817)", () => {
@@ -360,6 +362,14 @@ describe("cwd casing aliases only when stat proves the same directory (#2817)", 
 
   it("does not add the lowercase spelling of a different inode (case-sensitive pair)", () => {
     expect(cwdCandidates(MIXED, differentIno)).toEqual([resolve(MIXED)]);
+  });
+
+  it("does not add the lowercase spelling when only the inode matches (different device)", () => {
+    expect(cwdCandidates(MIXED, sameInoDifferentDev)).toEqual([resolve(MIXED)]);
+  });
+
+  it("does not add the lowercase spelling when the inode is zero", () => {
+    expect(cwdCandidates(MIXED, zeroIno)).toEqual([resolve(MIXED)]);
   });
 
   it("leaves candidates unchanged when stat fails", () => {
