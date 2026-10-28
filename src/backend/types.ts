@@ -165,6 +165,12 @@ export interface ErrorPattern {
   formatMessage?: (match: RegExpMatchArray) => string;
   /** Run the backend's live quota check before surfacing a quota notice. */
   verifyQuota?: boolean;
+  /**
+   * #2822: the line puts the instance on a usage-limit hold with no known reset time; returns the model it names. The
+   * daemon tells once per hold (later hits are absorbed), the reply guard stays quiet on turns that end on the line,
+   * and the hold clears at the first turn that ends without it. Needs you lists it while it lasts.
+   */
+  usageHold?: (match: RegExpMatchArray) => string;
   /** Skip the 5-min per-type notification cooldown so every occurrence notifies
    * (e.g. Kiro "Response timed out" — each timeout should reach the user). */
   skipCooldown?: boolean;

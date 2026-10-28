@@ -46,7 +46,7 @@ export interface NeedsYouItem {
 export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
-  | "auth_paused" | "crashed"                                       // instance
+  | "auth_paused" | "crashed" | "usage_limit"                       // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "task_review" | "task_blocked" | "backend_signin";                                 // task
 
@@ -79,6 +79,8 @@ export interface InstanceInput {
   crashedAt?: number | null;
   /** Paused for sign-in: the login the dashboard can sign in for it, or null (#2233). */
   signIn?: { backend: string; profile?: string } | null;
+  /** #2822: on a usage-limit hold (no known reset time): the model, and since when. */
+  usageHold?: { model: string; since: number } | null;
 }
 
 export interface DeliveryInput {
@@ -180,6 +182,10 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     if (inst.pauseReason === "auth") {
       items.push({ id: `auth:${inst.name}:${inst.pausedAt ?? 0}`, type: "instance", instance: inst.name, reason: "auth_paused", detail: "", since: inst.pausedAt ?? 0,
         ...(inst.signIn ? { signIn: { backend: inst.signIn.backend, ...(inst.signIn.profile ? { profile: inst.signIn.profile } : {}) } } : {}) });
+    }
+    if (inst.usageHold) {
+      items.push({ id: `usage:${inst.name}:${inst.usageHold.since}`, type: "instance", instance: inst.name, reason: "usage_limit",
+        detail: inst.usageHold.model, since: inst.usageHold.since });
     }
     if (inst.crashedAt != null) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });

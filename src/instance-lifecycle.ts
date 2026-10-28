@@ -1250,6 +1250,8 @@ export class InstanceLifecycle {
     }, this.ctx.logger, `daemon.dialog_answer_ignored[${name}]`));
 
     daemon.on("instance_interaction", () => this.ctx.onAttentionChanged?.(name));
+    // #2822: a usage-limit hold began or ended — Needs you lists it while it lasts.
+    daemon.on("usage_hold", () => this.ctx.onAttentionChanged?.(name));
 
     daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });

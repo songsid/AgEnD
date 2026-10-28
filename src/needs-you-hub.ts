@@ -343,7 +343,10 @@ export class NeedsYouHub {
 
   /** A line's words: why it waits — and for a card, which card and what it asks or lacks (the chat shows no detail). */
   private lineTitle(item: NeedsYouItem): string {
-    const reason = this.ctx.t(`needs.reason.${item.reason}`);
+    // #2822: a usage-limit hold names its model in the title (the chat shows no detail line).
+    const reason = item.reason === "usage_limit"
+      ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
+      : this.ctx.t(`needs.reason.${item.reason}`);
     return item.type === "task" && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 

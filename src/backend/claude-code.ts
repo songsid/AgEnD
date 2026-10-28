@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
+import { t } from "../locale.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, promptCacheTtl, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 /** Mirror Claude Code's ~/.claude/projects key for a working directory. Exported for the detection-signal seam. */
@@ -1313,6 +1314,21 @@ export class ClaudeCodeBackend implements CliBackend {
         // is a self-recovering pause, so do not arm the generic recovery
         // deadline (which would otherwise re-emit the same visible line every
         // five minutes while the wait is still in progress).
+        skipRecoveryWait: true,
+      },
+      // #2822: a model's own usage credits are spent (claude 2.1.312 builds it from a 429 whose representative claim is
+      // seven_day_overage_included). It names no reset time, and the 5h/7d usage API can show room while it holds, so
+      // it is not cross-checked there. Matched only as Claude renders its own API error — `⎿` and the no-break-space
+      // gap, the whole sentence and one of its own hints, alone on the line — never prose quoting it (an agent
+      // researching this text tripped the unanchored credit pattern below on 2026-10-28).
+      {
+        pattern: /^[ \t]*⎿[ \t\u00a0]+You['’]ve reached your ([A-Za-z0-9][A-Za-z0-9 .-]{0,40}?) limit\.(?:[ \t]+(?:\/model to switch models\.|Run \/usage-credits to continue or switch models with \/model\.|Switch to another model(?:, or manage usage credits at [^\s]+,)? to continue\.))?[ \t]*$/m,
+        type: "quota",
+        action: "notify",
+        message: t("inst.model_usage_limit", "Claude"),
+        formatMessage: match => t("inst.model_usage_limit", match[1]!.trim()),
+        usageHold: match => match[1]!.trim(),
+        skipCooldown: true,
         skipRecoveryWait: true,
       },
       { pattern: /credit balance is too low/i, type: "quota", action: "pause", message: "Insufficient API credits" },

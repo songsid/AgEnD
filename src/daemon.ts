@@ -2019,6 +2019,30 @@ export class Daemon extends EventEmitter {
   // old transcript, so pre-ready scans must not lower this seeded baseline.
   private seededErrorCountBaselines = new Map<string, number>();
   private lastDetectedErrorType: string | null = null;
+  /** #2822: a usage limit with no known reset time holds this instance (see ErrorPattern.usageHold). */
+  private usageLimitHold: { model: string; since: number } | null = null;
+
+  /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
+  usageHold(): { model: string; since: number } | null {
+    return this.usageLimitHold ? { ...this.usageLimitHold } : null;
+  }
+
+  private clearUsageLimitHold(reason: string): void {
+    if (!this.usageLimitHold) return;
+    this.logger.info({ model: this.usageLimitHold.model, reason }, "Usage-limit hold cleared");
+    this.usageLimitHold = null;
+    this.emit("usage_hold", { name: this.name, held: false });
+  }
+
+  /** #2822: whether this turn's part of the pane ends on a usage-limit line (from its inbound marker, else the last rows). */
+  private turnShowsUsageLimit(pane: string, inboundMarker?: string): boolean {
+    const patterns = (this.backend?.getErrorPatterns?.() ?? []).filter(ep => ep.usageHold);
+    if (!patterns.length) return false;
+    const marker = inboundMarker?.trim();
+    const at = marker && marker.length >= 8 ? pane.lastIndexOf(marker) : -1;   // as extractProxyReplyText: a short one could be agent text
+    const tail = at >= 0 ? pane.slice(at) : pane.split("\n").slice(-30).join("\n");
+    return patterns.some(ep => new RegExp(ep.pattern.source, ep.pattern.flags.replace("g", "")).test(tail));
+  }
 
   private static errorPatternKey(ep: ErrorPattern): string {
     return `${ep.type}:${ep.pattern.source}`;
@@ -4187,6 +4211,12 @@ export class Daemon extends EventEmitter {
         continue;
       }
 
+      // #2822: while a usage-limit hold lasts, its later hits (one per failed turn) were told already: absorb them.
+      if (ep.usageHold && this.usageLimitHold) {
+        this.lastErrorCount.set(key, count);
+        continue;
+      }
+
       // count > seen → a NEW occurrence of this exact pattern appeared.
       // Leave a cooldown-suppressed count unconsumed so it can fire once the
       // cooldown expires, but continue scanning unrelated patterns this cycle.
@@ -4238,6 +4268,13 @@ export class Daemon extends EventEmitter {
     this.lastErrorNotifiedAt.set(key, now);
     if (ep.action === "failover") this.lastFailoverAt = now;
     const message = this.resolveErrorMessage(pane, ep);
+    if (ep.usageHold) {
+      const matches = [...pane.matchAll(new RegExp(ep.pattern.source, ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g"))];
+      const last = matches[matches.length - 1];
+      this.usageLimitHold = { model: last ? ep.usageHold(last) : "", since: Date.now() };
+      this.logger.warn({ model: this.usageLimitHold.model }, "Usage-limit hold started (reset time unknown)");
+      this.emit("usage_hold", { name: this.name, held: true });
+    }
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
     this.lastErrorEpisode = { key, pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
     this.emit("pty_error", { name: this.name, ...ep, message });
@@ -5823,6 +5860,7 @@ export class Daemon extends EventEmitter {
     if (!turn || this.isPaused) return;
 
     if (turn.completionDelivered) {
+      this.clearUsageLimitHold("a reply was delivered");
       if (turn.phase === "recovering") {
         this.emit("reply_drop_recovered", {
           name: this.name,
@@ -5842,6 +5880,18 @@ export class Daemon extends EventEmitter {
       this.turnReplyGuard.complete(turn.generation);
       return;
     }
+
+    // #2822: a turn that ended on a usage-limit line could not have replied — no recovery turn, no drop report: the
+    // limit is told once (the notice and Needs you). A turn that ends without it shows the limit has cleared (or the
+    // model was switched): the hold ends and the guard works as before.
+    if (pane !== undefined && this.turnShowsUsageLimit(pane, turn.target.inboundMarker)) {
+      this.logger.info({ correlationId: turn.target.correlationId, held: this.usageLimitHold !== null },
+        "Turn ended on a usage-limit line — no reply recovery");
+      this.clearReplyGuardConfirm();
+      this.turnReplyGuard.complete(turn.generation);
+      return;
+    }
+    if (pane !== undefined) this.clearUsageLimitHold("a turn ended without the usage-limit line");
 
     // A second idle edge ends the one permitted recovery turn. Never create a
     // third turn or guess at terminal text; make the failure visible instead.
