@@ -11494,19 +11494,6 @@ export class Daemon extends EventEmitter {
     let alive = await this.trySpawn(false, resumeBudget);
       this.startupAdmission?.();
 
-    // If this boot attempted resume after a crash loop and it failed before reaching
-    // ready, persist resumeFailed so the next start knows to go fresh.
-    if (!alive && attemptedResume && this.bootCrashLoopResume) {
-      try {
-        writeFileSync(join(this.instanceDir, "crash-state.json"), JSON.stringify({
-          resumeFailed: true,
-          failedAt: Date.now(),
-        }));
-      } catch { /* best effort */ }
-      this.logger.warn("Resumed session after crash loop failed to start — next boot will go fresh");
-      this.bootCrashLoopResume = false;
-    }
-
     if (!alive && attemptedResume) {
       // Resume failed. Before abandoning the session:
       //  1. If the backend is unreachable (fleet-level memory, or this very pane
@@ -11586,6 +11573,19 @@ export class Daemon extends EventEmitter {
       }
       this.setSessionAside(proven ? "cli_reported_no_conversation" : "resume_failed_repeatedly");
       this.skipResume = true;
+      // If this was a crash-loop-resume attempt, the session is now proven
+      // broken. Persist resumeFailed so the next restart goes fresh without
+      // attempting resume again.
+      if (this.bootCrashLoopResume) {
+        try {
+          writeFileSync(join(this.instanceDir, "crash-state.json"), JSON.stringify({
+            resumeFailed: true,
+            failedAt: Date.now(),
+          }));
+        } catch { /* best effort */ }
+        this.logger.warn("Crash-loop-resume: session abandoned — next boot will go fresh");
+        this.bootCrashLoopResume = false;
+      }
       }
       // A fresh start that also failed retries once, as before. It never clears
       // a session: nothing about a failed fresh launch says the stored
@@ -11606,7 +11606,19 @@ export class Daemon extends EventEmitter {
       }
     } else if (attemptedResume) {
       resumedSuccessfully = true;
-      this.bootCrashLoopResume = false; // resume succeeded — no need to fall back
+      if (this.bootCrashLoopResume) {
+        // Resume succeeded after a crash loop — clear any stale resumeFailed marker
+        // that might have been written by a concurrent write or a previous attempt,
+        // so the next restart is not forced fresh.
+        this.bootCrashLoopResume = false;
+        try {
+          const p = join(this.instanceDir, "crash-state.json");
+          if (existsSync(p)) {
+            const s = JSON.parse(readFileSync(p, "utf-8"));
+            if (s?.resumeFailed === true) unlinkSync(p);
+          }
+        } catch { /* best effort */ }
+      }
       this.clearUnprovenResumeFailures();
       // A resume needs the backend: its success is positive proof the backend
       // is reachable again (a fresh prompt is local and proves nothing).

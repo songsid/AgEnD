@@ -308,3 +308,38 @@ describe("unread marker survives callers that never enter Daemon.start", () => {
     expect(readFileSync(path, "utf8")).toBe(content);
   });
 });
+
+describe("#2809 spawnClaudeWindow: resumeFailed placement and cleanup", () => {
+  it("resumeFailed write is guarded by bootCrashLoopResume check in spawnClaudeWindow source (#2809 P2-1 structural)", () => {
+    // Structural: resumeFailed is only written inside an `if (this.bootCrashLoopResume)` block
+    // that appears directly after setSessionAside — never on the throw/outage paths.
+    const src = readFileSync(new URL("../src/daemon.ts", import.meta.url), "utf8");
+    const fn = src.slice(src.indexOf("private async spawnClaudeWindow"));
+    const setAsidePos = fn.indexOf("this.setSessionAside(");
+    const resumeFailedPos = fn.indexOf("resumeFailed: true");
+    const bootCrashLoopGuardPos = fn.lastIndexOf("if (this.bootCrashLoopResume)", resumeFailedPos);
+    expect(setAsidePos, "setSessionAside must be present").toBeGreaterThan(0);
+    expect(resumeFailedPos, "resumeFailed write must be present").toBeGreaterThan(0);
+    expect(resumeFailedPos, "resumeFailed must come after setSessionAside").toBeGreaterThan(setAsidePos);
+    expect(bootCrashLoopGuardPos, "resumeFailed must be inside bootCrashLoopResume guard").toBeGreaterThan(setAsidePos);
+    // Verify the resume-success path also has a bootCrashLoopResume=false and
+    // clears any stale resumeFailed from disk
+    const elseResumePath = fn.slice(fn.indexOf("} else if (attemptedResume) {"));
+    expect(elseResumePath).toContain("bootCrashLoopResume = false");
+    expect(elseResumePath).toContain("resumeFailed");
+  });
+
+  it("crash-loop-resume: bootCrashLoopResume is set by the boot reader (#2809 P2-2 guard)", async () => {
+    // Verify the boot reader sets bootCrashLoopResume for a real crash loop.
+    writeFileSync(marker, JSON.stringify({ crashesInWindow: 3, lastCrashAt: Date.now(), resumeDisabled: true }));
+    // Read what the daemon instance has after the reader runs (at IpcServer.listen)
+    let bootCrashAtIpc: boolean | undefined;
+    atIpc = () => {
+      bootCrashAtIpc = (captured as unknown as { bootCrashLoopResume: boolean }).bootCrashLoopResume;
+    };
+    await expect(lifecycle().start("worker", config, false)).rejects.toBe(ipcBoundary);
+    expect(bootCrashAtIpc, "bootCrashLoopResume must be true after reading crash-loop marker").toBe(true);
+    // skipResume must be false (we try resume)
+    expect(internals(captured!).skipResume, "skipResume must be false for crash loop").toBe(false);
+  });
+});
