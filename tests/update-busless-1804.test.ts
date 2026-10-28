@@ -30,6 +30,8 @@ const json = (type: string, data: unknown) => ok(`${JSON.stringify({ type, data 
  * dialling keep 300.
  */
 const CONNECT_BUDGET_MS = 2_000;
+/** Below the 20s live-test limit so a missing accept rejects in time for `finally` to kill the child (#2791). */
+const LISTEN_WAIT_MS = 5_000;
 /**
  * callPeer Atomics.wait-blocks this thread. A same-thread net.Server cannot accept until after the worker has hung up;
  * Linux then often drops the not-yet-accepted unix connection (#2457, #2788). Accept in a child (own event loop).
@@ -38,25 +40,77 @@ const LISTEN = String.raw`
 const net = require("net");
 net.createServer(c => { process.send("accept"); c.on("error", () => {}); }).listen(process.argv[1], () => process.send("ready"));
 `;
-type LiveServer = { accepted: { length: number }; waitFor: (n: number) => Promise<void>; close: () => Promise<void> };
+type LiveServer = {
+  accepted: { length: number };
+  pid: number;
+  waitFor: (n: number, timeoutMs?: number) => Promise<void>;
+  close: () => Promise<void>;
+};
 const listen = (path: string) => new Promise<LiveServer>((resolve, reject) => {
   const child = spawn(process.execPath, ["-e", LISTEN, path], { stdio: ["ignore", "inherit", "inherit", "ipc"] });
+  const pid = child.pid;
+  if (pid === undefined) { reject(new Error("listen child has no pid")); return; }
+  let ready = false;
+  let closed = false;
   const accepted = { length: 0 };
-  const waiters: Array<{ n: number; res: () => void }> = [];
+  const waiters: Array<{ n: number; res: () => void; rej: (e: Error) => void; timer: ReturnType<typeof setTimeout> }> = [];
+  const rejectWaiters = (err: Error) => {
+    for (const w of waiters.splice(0)) { clearTimeout(w.timer); w.rej(err); }
+  };
   const bump = () => {
     accepted.length++;
     for (let i = waiters.length - 1; i >= 0; i--) {
-      if (accepted.length >= waiters[i]!.n) waiters.splice(i, 1)[0]!.res();
+      if (accepted.length >= waiters[i]!.n) {
+        const w = waiters.splice(i, 1)[0]!;
+        clearTimeout(w.timer);
+        w.res();
+      }
     }
   };
-  const waitFor = (n: number) => new Promise<void>(res => { if (accepted.length >= n) res(); else waiters.push({ n, res }); });
-  child.on("error", reject);
+  const waitFor = (n: number, timeoutMs = LISTEN_WAIT_MS) => new Promise<void>((res, rej) => {
+    if (child.exitCode !== null) { rej(new Error(`listen child exited before ${n} accepts`)); return; }
+    if (accepted.length >= n) { res(); return; }
+    const timer = setTimeout(() => {
+      const i = waiters.findIndex(w => w.timer === timer);
+      if (i >= 0) waiters.splice(i, 1);
+      rej(new Error(`listen child accepted ${accepted.length}, wanted ${n}`));
+    }, timeoutMs);
+    waiters.push({ n, res, rej, timer });
+  });
+  const close = () => {
+    if (closed) return Promise.resolve();
+    closed = true;
+    clearTimeout(readyTimer);
+    rejectWaiters(new Error("listen child closed"));
+    child.kill();
+    return new Promise<void>(r => { if (child.exitCode !== null) r(); else child.once("exit", () => r()); });
+  };
+  const readyTimer = setTimeout(() => {
+    if (ready) return;
+    void close();
+    reject(new Error(`listen ${path} did not become ready`));
+  }, LISTEN_WAIT_MS);
+  child.on("error", err => {
+    const error = err instanceof Error ? err : new Error(String(err));
+    rejectWaiters(error);
+    if (!ready) { ready = true; clearTimeout(readyTimer); reject(error); }
+    child.kill();
+  });
+  child.on("exit", (code, signal) => {
+    rejectWaiters(new Error(`listen child exited (${code ?? signal})`));
+    if (!ready) {
+      ready = true;
+      clearTimeout(readyTimer);
+      reject(new Error(`listen child exited before ready (${code ?? signal})`));
+    }
+  });
   child.on("message", (m: unknown) => {
-    if (m === "ready") resolve({
-      accepted, waitFor,
-      close: () => { child.kill(); return new Promise(r => { if (child.exitCode !== null) r(); else child.once("exit", () => r()); }); },
-    });
-    else if (m === "accept") bump();
+    if (m === "ready") {
+      if (ready) return;
+      ready = true;
+      clearTimeout(readyTimer);
+      resolve({ accepted, pid, waitFor, close });
+    } else if (m === "accept") bump();
   });
 });
 
@@ -502,8 +556,9 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
     const open = join(dir, "open");
     mkdirSync(open);
     chmodSync(open, 0o777);
-    const server = await listen(join(open, "private"));
+    let server: LiveServer | undefined;
     try {
+      server = await listen(join(open, "private"));
       const result = callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: 2000 });
       expect(result.stderr).toMatch(/not systemd's own socket \(.*open is writable by others \(mode 777\)\)/);
       expect(peerUnreachable(result)).toBe(true);
@@ -513,7 +568,7 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
       await server.waitFor(1);
       expect(server.accepted).toHaveLength(1);                              // only the control connected
     } finally {
-      await server.close();
+      await server?.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -529,8 +584,10 @@ describe("Prism r3: a symlink retargeted after the check cannot move the connect
     mkdirSync(open); chmodSync(open, 0o777);
     const link = join(open, "link");
     symlinkSync(a, link);
-    const serverA = await listen(join(a, "private")), serverB = await listen(join(b, "private"));
+    let serverA: LiveServer | undefined, serverB: LiveServer | undefined;
     try {
+      serverA = await listen(join(a, "private"));
+      serverB = await listen(join(b, "private"));
       const racing = { ...real, realpath: (p: string) => { const r = realpathSync(p); if (p === link) { unlinkSync(link); symlinkSync(b, link); } return r; } };
       const result = callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: CONNECT_BUDGET_MS, endpoint: racing });
       expect(result.stderr).not.toMatch(/not systemd's own socket/);           // A passed the check, and A was dialled
@@ -550,7 +607,23 @@ describe("Prism r3: a symlink retargeted after the check cannot move the connect
       expect(dangling.stderr).toMatch(/not systemd's own socket \(ENOENT/);
       expect(peerUnreachable(dangling)).toBe(true);
     } finally {
-      await serverA.close(); await serverB.close();
+      await serverA?.close(); await serverB?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a missing accept fails before the test timeout and the child is gone", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-peer-bound-"));
+    let server: LiveServer | undefined;
+    try {
+      server = await listen(join(dir, "private"));
+      const pid = server.pid;
+      await expect(server.waitFor(1, 200)).rejects.toThrow(/accepted 0, wanted 1/);
+      await server.close();
+      server = undefined;
+      expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      await server?.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
