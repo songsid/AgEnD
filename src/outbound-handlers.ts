@@ -223,7 +223,7 @@ function rejectOversizedCrossInstanceEnvelope(
   message: string,
   meta: Record<string, string>,
   respond: Respond,
-  /** #1650: the footer differs by the receiver's mode — its own, or the longer of the two when targets are not known yet. */
+  /** #1650: the reply marker differs by the receiver's mode — its own, or the longer of the two when targets are not known yet. */
   mode: AgentMode | "either" = "mcp",
 ): boolean {
   const size = (m: AgentMode) => Buffer.byteLength(formatCrossInstanceInboundMessage(message, meta, m), "utf8");

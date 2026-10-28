@@ -98,6 +98,10 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // #2692 (in 2.3.2-beta.11: beta.10 is published without it).
   { id: "2.3.2-office-pack-tools", since: "2.3.2-beta.11", tools: ["office_pack_check", "office_pack_upload", "office_pack_restore", "office_pack_delete", "office_pack_list", "office_set_style"],
     text: "Office skin packs: `office_pack_check` checks a pack without storing it (`dir`, or `manifest` + `files`; several as `packs`); `office_pack_upload` adds or replaces; `office_pack_restore {id}`; `office_pack_delete {id, keep_previous?}`; `office_pack_list`; `office_set_style {office, pack}`." },
+  // #2785 (a): the reply footer under a cross-instance message is gone; an owed reply is a marker in the header line.
+  // `since` is the next stable: 2.3.2 is published without it, and a 2.3.2-beta.N sorts below 2.3.2.
+  { id: "2.3.3-reply-required-marker", since: "2.3.3",
+    text: "A message from another agent no longer ends with a reply line. When an answer is owed, its header line ends with `reply required → report_result <correlation_id>` (CLI mode: the `agend-agent report` command) — answer with that. Without the marker, answer only if you have something to add, with `send_to_instance`; `request_kind` is no longer shown." },
 ];
 
 /** #2275: old sessions learn only the capabilities currently enabled. Keep the full

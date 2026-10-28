@@ -21,7 +21,8 @@ describe("renderHandoffMetadata", () => {
     });
     expect(out).toContain("message_id: xmsg-1");
     expect(out).toContain("correlation_id: cid-abc");
-    expect(out).toContain("request_kind: task");
+    // #2785 (a): request_kind stays in the stored meta; the receiver is told only whether a reply is owed.
+    expect(out).not.toContain("request_kind");
     expect(out).toContain("task_summary: port the provider");
     expect(out).toContain("working_directory: /repo");
     expect(out).toContain("branch: feat/x");

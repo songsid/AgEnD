@@ -51,23 +51,23 @@ function isClassicInstance(params: FleetInstructionsParams): boolean {
 
 function mcpCrossInstanceReplyRule(classic: boolean): string {
   if (!classic) {
-    return "- `[from:instance-name]` → answer with `send_to_instance`, or `report_result` with the correlation_id shown. Never `reply`.";
+    return "- `[from:instance-name]` → answer with `send_to_instance`, or `report_result` with the correlation_id shown. Never `reply`. `reply required →` in its header means a reply is owed: report_result with that id. Otherwise answer only if you have something to add.";
   }
-  return "- `[from:instance-name]` → answer the sender with `send_to_instance`/`report_result`. Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `reply` for that channel-facing action. With `requires_reply=true`, also report the outcome to the sender.";
+  return "- `[from:instance-name]` → answer the sender with `send_to_instance`/`report_result`. Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `reply` for that channel-facing action. When the header says `reply required →`, also report the outcome to the sender.";
 }
 
 function fullCrossInstanceMessageRule(classic: boolean): string {
   if (!classic) {
     return "- `[from:instance-name]` — from another fleet instance → use `send_to_instance` or `report_result`, NOT the `reply` tool.";
   }
-  return "- `[from:instance-name]` — from another fleet instance → answer the sender with `send_to_instance` or `report_result`. Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `reply` for that channel-facing action. With `requires_reply=true`, also report the outcome to the sender.";
+  return "- `[from:instance-name]` — from another fleet instance → answer the sender with `send_to_instance` or `report_result`. Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `reply` for that channel-facing action. When the header says `reply required →`, also report the outcome to the sender.";
 }
 
 function fullCrossInstanceCollaborationRule(classic: boolean): string {
   if (!classic) {
-    return "2. Cross-instance messages appear as `[from:instance-name]`. Reply via send_to_instance or report_result, NOT reply.";
+    return "2. Cross-instance messages appear as `[from:instance-name]`. Reply via send_to_instance or report_result, NOT reply. `reply required →` in the header means a reply is owed: report_result with that id; without it, answer only if you have something to add.";
   }
-  return "2. Cross-instance messages appear as `[from:instance-name]`. Answer the sender via send_to_instance or report_result. Use reply only to carry out an explicit request to communicate with humans in your bound ClassicBot channel; when `requires_reply=true`, separately report the outcome to the sender.";
+  return "2. Cross-instance messages appear as `[from:instance-name]`. Answer the sender via send_to_instance or report_result. Use reply only to carry out an explicit request to communicate with humans in your bound ClassicBot channel; when the header says `reply required →`, separately report the outcome to the sender.";
 }
 
 function cliCrossInstanceRule(classic: boolean): string {
@@ -80,7 +80,7 @@ function cliCrossInstanceRule(classic: boolean): string {
   return [
     "## Runtime Cross-instance Rule",
     "This is a ClassicBot instance. For `[from:INSTANCE]`, answer the sender with `agend-agent send` or `agend-agent report`.",
-    "Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `agend-agent reply` for that channel-facing action. With `requires_reply=true`, also report the outcome to the sender.",
+    "Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `agend-agent reply` for that channel-facing action. When the header says `reply required →`, also report the outcome to the sender.",
   ].join("\n");
 }
 
@@ -135,7 +135,6 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
     "- `delegate_task` → work silently → `report_result` (echo correlation_id). No ack messages in between.",
     "- Send returns `{ sent, queued }` immediately — the fleet owns delivery. NEVER re-send because a reply said `queued` or an IPC wait timed out.",
     "- If an outbound call returns an `operation_id` or `delivery_id` and its result is unclear, use `delivery_status` to inspect it before deciding what to do. `uncertain` means it may have been delivered; do not resend blindly.",
-    "- `[agend-delivery-id:<uuid>]` at the start of a message is system metadata; do not quote, rewrite, or repeat it.",
     "- You only have file access under your own working directory; everything cross-instance goes through fleet tools.",
     "",
     "Full fleet guidance (workflow, decisions, collaboration rules) is in your system instructions.",

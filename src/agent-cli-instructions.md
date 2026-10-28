@@ -13,8 +13,8 @@ Commands print JSON, except `usage`, which prints a text summary.
 2. **`[from:INSTANCE-NAME] text`** — Another agent sent you a message.
    Reply to the sending agent: `agend-agent send INSTANCE-NAME "your response"`
 
-3. **`[from:INSTANCE-NAME]` with `request_kind: task`** in the `(…)` header line — you've been assigned a task.
-   When done: `agend-agent report INSTANCE-NAME "summary of results" CORRELATION_ID`
+3. **`[from:INSTANCE-NAME]` with `reply required → agend-agent report …`** in the `(…)` header line — a reply is owed.
+   When done, run that command with your summary: `agend-agent report INSTANCE-NAME "summary of results" CORRELATION_ID`
 
 ## Quick Reference
 

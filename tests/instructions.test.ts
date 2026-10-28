@@ -86,6 +86,23 @@ describe("buildFleetInstructions", () => {
     expect(core).not.toContain("bound ClassicBot channel");
   });
 
+  it("#2785 (a): both layers name the reply-required marker; the delivery-id rule is said once, in the system prompt", () => {
+    for (const kind of ["fleet-topic", "classic"] as const) {
+      const params = { ...base, runtimeIdentity: { kind, backend: "codex", model: "gpt-5.6-sol" }, workflow: false as const };
+      const full = buildFleetInstructions(params);
+      const core = buildMcpCoreInstructions(params);
+      expect(full, kind).toContain("`reply required →`");
+      expect(core, kind).toContain("`reply required →`");
+      expect(full, kind).not.toContain("requires_reply=true");
+      expect(core, kind).not.toContain("requires_reply=true");
+      const rule = "`[agend-delivery-id:<uuid>]` at the start of a message is system metadata";
+      expect(full.split(rule).length - 1, kind).toBe(1);
+      expect(core, kind).not.toContain(rule);
+      expect(Buffer.byteLength(core, "utf8"), kind).toBeLessThan(2048);
+    }
+    expect(readFileSync(new URL("../src/agent-cli-instructions.md", import.meta.url), "utf8")).toContain("`reply required → agend-agent report …`");
+  });
+
   it("lets ClassicBot perform only explicitly requested human-facing channel work", () => {
     const params = {
       ...base,
@@ -99,7 +116,7 @@ describe("buildFleetInstructions", () => {
       expect(instructions).toContain("Only when the request explicitly asks");
       expect(instructions).toContain("bound ClassicBot channel");
       expect(instructions).toContain("ask, notify, follow up, or mention someone");
-      expect(instructions).toContain("With `requires_reply=true`, also report the outcome to the sender");
+      expect(instructions).toContain("When the header says `reply required →`, also report the outcome to the sender");
     }
     // The exception is keyed only by instance kind, not by request_kind, so
     // send_to_instance and delegate_task can assign the same channel work.
@@ -142,7 +159,7 @@ describe("buildFleetInstructions", () => {
     expect(classic).toContain("This is a ClassicBot instance");
     expect(classic).toContain("Only when the request explicitly asks");
     expect(classic).toContain("use `agend-agent reply` for that channel-facing action");
-    expect(classic).toContain("With `requires_reply=true`, also report the outcome to the sender");
+    expect(classic).toContain("When the header says `reply required →`, also report the outcome to the sender");
     expect(fleetTopic).toContain("This is a fleet-topic instance");
     expect(fleetTopic).toContain("never use `agend-agent reply`");
     expect(fleetTopic).not.toContain("bound ClassicBot channel");
