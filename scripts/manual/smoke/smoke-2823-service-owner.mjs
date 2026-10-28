@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 assert.equal(readFileSync('/proc/1/comm', 'utf8').trim(), 'systemd');
 assert.equal(process.env.AGEND_2823_DISPOSABLE, 'yes');
 assert.equal(process.env.HOME, '/home/rh');
-const home = '/home/rh/handoff', cli = '/opt/agend/dist/cli.js';
+const home = '/home/rh/refusal', cli = '/opt/agend/dist/cli.js';
 const unit = 'com.agend.fleet.service';
 const env = { ...process.env, AGEND_HOME: home, AGEND_NODE: process.execPath, XDG_RUNTIME_DIR: '/run/user/1000' };
 const owner = createRequire(import.meta.url)('/opt/agend/launcher/fleet-service-owner.cjs');
@@ -25,11 +25,11 @@ writeFileSync(home + '/fleet.yaml', 'defaults:\n  locale: en\ninstances: {}\nweb
 const installed = agend('install', '--no-activate');
 console.log(installed.stdout, installed.stderr); assert.equal(installed.status, 0);
 assert.equal(ctl('daemon-reload').status, 0);
-let child, sleeper;
+let child;
 try {
-  // Fault injection only at the real CLI's final runtime.exit: stopAll has already released its records.
-  writeFileSync('/home/rh/delay-exit.cjs', `const fs = require('fs'); const exit = process.exit.bind(process); process.exit = code => { setTimeout(() => { fs.writeFileSync('/home/rh/old-exit.json', JSON.stringify({at:Date.now(),pid:process.pid})); exit(code); }, 3000); };`);
-  child = spawn(process.execPath, [cli, 'fleet', 'start', '--direct'], { env: { ...env, NODE_OPTIONS: '--require=/home/rh/delay-exit.cjs' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  // Observe any TERM to the real outside fleet; only test cleanup may send one.
+  writeFileSync('/home/rh/observe-term.cjs', `process.on('SIGTERM', () => require('fs').appendFileSync('/home/rh/term.calls', 'TERM\\n'));`);
+  child = spawn(process.execPath, [cli, 'fleet', 'start', '--direct'], { env: { ...env, NODE_OPTIONS: '--require=/home/rh/observe-term.cjs' }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', b => process.stdout.write('outside: ' + b)); child.stderr.on('data', b => process.stdout.write('outside-error: ' + b));
   await waitFor(() => existsSync(home + '/fleet.pid') && lock().pid === child.pid, 'outside startup');
   await waitFor(async () => { try { return (await fetch('http://127.0.0.1:19280/health')).ok; } catch { return false; } }, 'health');
@@ -59,57 +59,22 @@ try {
   assert.ok(!/^(?:install|exec|root|prefix) /m.test(readFileSync('/home/rh/npm.calls', 'utf8')));
   assert.equal(readFileSync(home + '/fleet.lock', 'utf8'), original);
   log('target installer refusal', { status: install.status, stdout: install.stdout.trim() });
-  const restart = agend('restart', '--yes'); console.log(restart.stdout, restart.stderr);
-  assert.equal(restart.status, 0);
-  await waitFor(() => child.exitCode !== null || child.signalCode !== null, 'old fleet exit');
-  const newPid = Number(ctl('show', '-p', 'MainPID', '--value', unit).stdout.trim());
-  assert.notEqual(newPid, child.pid); assert.equal(lock().pid, newPid);
-  const oldExit = JSON.parse(readFileSync('/home/rh/old-exit.json', 'utf8'));
-  assert.equal(oldExit.pid, child.pid);
-  assert.ok(Date.parse(lock().createdAt) >= oldExit.at, 'replacement lock must wait for original process exit, not just record removal');
-  log('records released before real process exit', { oldExitAt: oldExit.at, replacementClaimAt: Date.parse(lock().createdAt), waitedForExit: true });
-  assert.equal(owner.inspect(home, target).kind, 'managed');
-  assert.match(restart.stdout, /Fleet is now running under/);
-  assert.equal(owner.updateRefusal(home), null);
-  log('real restart handoff', { oldPid: child.pid, newPid, lockPid: lock().pid, unit: ctl('is-active', unit).stdout.trim() });
-  assert.equal(ctl('stop', unit).status, 0);
-  // Real non-AgEnD PID, including a stale/reused PID record, must receive no TERM.
-  sleeper = spawn('/bin/sleep', ['1000'], { env, stdio: 'ignore' });
-  writeFileSync(home + '/fleet.lock', JSON.stringify({ pid: sleeper.pid, role: 'fleet', nonce: 'stale-reused-record' }));
-  const bad = agend('restart', '--yes'); assert.equal(bad.status, 1); assert.ok(alive(sleeper.pid));
-  assert.match(bad.stderr, /ownership changed or could not be verified/);
+  const restart = agend('restart', '--yes');
+  assert.equal(restart.status, 1);
+  assert.match(restart.stderr, /Restart not started: fleet PID/);
+  assert.match(restart.stderr, /Nothing was signalled or started/);
+  assert.ok(alive(child.pid));
+  assert.equal(readFileSync(home + '/fleet.lock', 'utf8'), original);
+  assert.equal(readFileSync('/home/rh/.config/systemd/user/' + unit, 'utf8'), definition);
   assert.equal(ctl('show', '-p', 'MainPID', '--value', unit).stdout.trim(), '0');
-  log('real unrelated/reused PID refused', { status: bad.status, alive: alive(sleeper.pid) });
-  // Real different-home AgEnD fleet also receives no signal.
-  const foreignHome = '/home/rh/foreign'; mkdirSync(foreignHome, { mode: 0o700 });
-  writeFileSync(foreignHome + '/fleet.yaml', 'instances: {}\nhealth_port: 19281\nweb:\n  enabled: true\n');
-  const foreign = spawn(process.execPath, [cli, 'fleet', 'start', '--direct'], { env: { ...env, AGEND_HOME: foreignHome }, stdio: 'ignore' });
-  try {
-    await waitFor(() => existsSync(foreignHome + '/fleet.pid'), 'foreign start');
-    writeFileSync(home + '/fleet.lock', JSON.stringify({ pid: foreign.pid, role: 'fleet', nonce: 'wrong-home' }));
-    const refused = agend('restart', '--yes'); assert.equal(refused.status, 1); assert.ok(alive(foreign.pid));
-    log('real foreign-home refused', { status: refused.status, alive: alive(foreign.pid) });
-  } finally { foreign.kill('SIGTERM'); await waitFor(() => foreign.exitCode !== null || foreign.signalCode !== null, 'foreign exit'); }
-  // Clear only these private acceptance records before starting our next real owner.
-  const { unlinkSync } = await import('node:fs'); unlinkSync(home + '/fleet.lock');
-  if (existsSync(home + '/fleet.pid')) unlinkSync(home + '/fleet.pid');
-  child = spawn(process.execPath, [cli, 'fleet', 'start', '--direct'], { env, stdio: 'ignore' });
-  await waitFor(() => existsSync(home + '/fleet.pid'), 'hung owner start');
-  process.kill(child.pid, 'SIGSTOP'); // Container-only: hold graceful shutdown, not the main host.
-  const began = performance.now();
-  const timeoutResult = await new Promise(resolve => {
-    const p = spawn(process.execPath, [cli, 'restart', '--yes'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = ''; p.stdout.on('data', b => { stdout += b; }); p.stderr.on('data', b => { stderr += b; });
-    p.on('exit', code => resolve({ code, stdout, stderr }));
-  });
-  assert.equal(timeoutResult.code, 1); assert.match(timeoutResult.stderr, /did not exit within 300 seconds/);
-  assert.ok(performance.now() - began >= 300_000); assert.ok(alive(child.pid));
-  assert.equal(ctl('show', '-p', 'MainPID', '--value', unit).stdout.trim(), '0');
-  assert.equal(lock().pid, child.pid);
-  log('real 300s TERM-only timeout', { ...timeoutResult, elapsedMs: Math.round(performance.now() - began), ownerAlive: true, newMainPID: 0 });
+  assert.ok(!existsSync('/home/rh/term.calls'), 'no TERM on update, installer or restart refusal');
+  log('real restart refusal', { status: restart.status, stderr: restart.stderr.trim(), ownerAlive: true, noTerm: true, newMainPID: 0, unitUnchanged: true, lockUnchanged: true });
 } finally {
-  if (child && alive(child.pid)) { try { process.kill(child.pid, 'SIGCONT'); } catch {} child.kill('SIGTERM'); }
-  if (sleeper) sleeper.kill('SIGTERM');
+  // Explicit supervisor cleanup of this disposable test's own fleet, after all assertions.
+  if (child && alive(child.pid)) {
+    child.kill('SIGTERM');
+    await waitFor(() => child.exitCode !== null || child.signalCode !== null, 'outside cleanup');
+  }
   ctl('stop', unit);
 }
 log('PASS', { realCLI: true, realSystemdUser: true, containerOnly: true });

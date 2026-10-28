@@ -175,7 +175,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const before = readFileSync(join(s.pkgDir, "package.json"), "utf8");
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--upgrade", "--spec", v2]);
     expect(run.status).toBe(1);
-    expect(run.stdout).toContain("service ownership could not be verified");
+    expect(run.stdout).toContain("fleet ownership could not be verified");
     expect(s.version()).toBe("1.0.0");
     expect(readFileSync(join(s.pkgDir, "package.json"), "utf8")).toBe(before);
     expect(existsSync(join(s.home, "agend-calls.log"))).toBe(false);

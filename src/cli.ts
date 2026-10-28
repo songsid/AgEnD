@@ -2150,6 +2150,13 @@ program
       userState,
     });
     if (systemdTarget) {
+      const ownerTarget = { unit: systemdTarget.unit.endsWith(".service") ? systemdTarget.unit : `${systemdTarget.unit}.service`, user: systemdTarget.user };
+      const ownerRefusal = fleetServiceOwner.restartRefusal(DATA_DIR, ownerTarget, { locale: getLocale() });
+      if (ownerRefusal) {
+        console.error(ownerRefusal);
+        process.exitCode = 1;
+        return;
+      }
       const scope = systemdTarget.user ? "user service" : "system service";
       const statusCommand = systemdTarget.user
         ? "systemctl --user status com.agend.fleet"
@@ -2265,15 +2272,6 @@ program
       if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
       const { systemdPeerBus } = await import("./service-activation.js");
       if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps, systemdPeerBus))) return;
-      let handedOver = false;
-      const ownerTarget = { unit: systemdTarget.unit.endsWith(".service") ? systemdTarget.unit : `${systemdTarget.unit}.service`, user: systemdTarget.user };
-      try {
-        handedOver = await fleetServiceOwner.handoff(DATA_DIR, ownerTarget, { locale: getLocale(), log: line => console.log(line) });
-      } catch (error) {
-        console.error((error as Error).message);
-        process.exitCode = 1;
-        return;
-      }
       // Clears the failed state AND the start-limit counter (#1113:
       // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
       // so an operator's restart is never refused by the limit.
@@ -2282,16 +2280,6 @@ program
       } catch { /* best effort */ }
       const restartOutcome = systemdRestartOutcome(systemdTarget.unit, systemdTarget.user);
       if (restartOutcome === "restarted") {
-        if (handedOver) {
-          const owner = fleetServiceOwner.inspect(DATA_DIR, ownerTarget);
-          if (owner.kind !== "managed" || owner.pid !== owner.mainPid) {
-            console.error(fleetServiceOwner.message("unconfirmed", ownerTarget, getLocale()));
-            process.exitCode = 1;
-            return;
-          }
-          console.log(fleetServiceOwner.message("ready", { ...ownerTarget, pid: owner.pid }, getLocale()));
-          return;
-        }
         console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
         return;
       }

@@ -271,7 +271,7 @@ exit 0
       const { r, out, calls, restarted } = update(fleet.pid);
       expect(restarted, `${out}\n${calls.join("\n")}`).toBe(false);
       expect(r.status).toBe(1);
-      expect(out).toContain("service ownership could not be verified");
+      expect(out).toContain("fleet ownership could not be verified");
       expect(calls.some(c => c.startsWith("npm install"))).toBe(false); // nothing to install
     } finally { fleet.stop(); }
   });
@@ -283,7 +283,7 @@ exit 0
       expect(restarted, out).toBe(false);
       // #2823: a live unproven PID beside an installed unit holds before the old stale-fleet heuristic.
       expect(r.stdout).not.toContain("Already up to date");
-      expect(r.stderr).toContain("service ownership could not be verified");
+      expect(r.stderr).toContain("fleet ownership could not be verified");
       expect(r.status).toBe(1);
       expect(r.stdout).not.toContain("the running fleet started before it was");
     } finally { stranger.stop(); }
@@ -320,7 +320,7 @@ exit 0
       expect(restarted, `${label}\n${out}`).toBe(false);
       expect(r.stderr, `${label}\n${out}`).not.toContain("the fleet is not running");
       expect(r.stdout, `${label}\n${out}`).not.toContain("Already up to date");
-      expect(r.stderr, `${label}\n${out}`).toContain("service ownership could not be verified");
+      expect(r.stderr, `${label}\n${out}`).toContain("fleet ownership could not be verified");
     }
   }, 60_000);
 
@@ -506,6 +506,6 @@ exit 0
     expect(calls.some(c => c.startsWith("systemctl --user restart")), out).toBe(false);
     expect(readFileSync(join(unitDir, "com.agend.fleet.service"), "utf8")).toBe(unitBefore);
     expect(r.status, out).toBe(1);
-    expect(out).toContain("service ownership could not be verified");
+    expect(out).toContain("fleet ownership could not be verified");
   });
 });

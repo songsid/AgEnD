@@ -223,7 +223,7 @@ describe("a second `agend update` after a failed verification (built CLI, stubbe
       { staleFleet: true, unitExec: ({ runningCli }) => runningCli });
     expect(r.status, out).toBe(1);
     // #2823: the sleep stand-in has only fleet.pid, so ownership refuses before the later unit-executable guard.
-    expect(out).toContain("service ownership could not be verified");
+    expect(out).toContain("fleet ownership could not be verified");
     expect(calls).not.toContain("agend restart");
     expect(unitAfter).toBe(unitBefore);
     expect(fleetAlive).toBe(true);
@@ -233,7 +233,7 @@ describe("a second `agend update` after a failed verification (built CLI, stubbe
     const { r, out, calls, fleetAlive, unitBefore, unitAfter } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
       { staleFleet: true, unitExec: ({ globalCli }) => globalCli });
     expect(r.status, out).toBe(1);
-    expect(out).toContain("service ownership could not be verified");
+    expect(out).toContain("fleet ownership could not be verified");
     expect(calls).not.toContain("agend restart");
     expect(calls.some(c => c.startsWith("npm install"))).toBe(false);
     expect(unitAfter).toBe(unitBefore);

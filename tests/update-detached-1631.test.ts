@@ -115,7 +115,7 @@ describe("#1631 A: a hand-started fleet, no reachable user manager — every upd
     const before = readFileSync(unitOf(w.home), "utf8");
     const r = w.update("2.2.0-beta.3");
     expect(r.r.status, r.out).toBe(1);
-    expect(r.out).toContain("service ownership could not be verified");
+    expect(r.out).toContain("fleet ownership could not be verified");
     expect(r.calls.some(c => c.startsWith("agend ") || c.startsWith("npm install"))).toBe(false);
     expect(readFileSync(unitOf(w.home), "utf8")).toBe(before);
   });
