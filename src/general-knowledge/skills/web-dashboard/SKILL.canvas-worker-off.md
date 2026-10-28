@@ -107,8 +107,8 @@ just **✓ Verified**, with the until-when in its tooltip, its accessible name a
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
 per account. Never for a guest. Over the admin's own named link (#2453) only with **Also over my named link**
-(`named_link`, off by default); over the temporary public link `/web` opens only with **Also over the temporary public
-link** (`quick_link`, off by default, §0.3). That authority ends with the link, and the card says "over your named link"
+(`named_link`, off by default); over the temporary public link `/web` opens while **Also over the temporary public
+link** is on (`quick_link`, on by default since #2819, §0.3; `quick_link: false` turns it off). That authority ends with the link, and the card says "over your named link"
 or "over the temporary public link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
 this computer" or the named-link option is the reason). Settings → Access & security → **Web authority** (`web.verified_authority`, on
 by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown

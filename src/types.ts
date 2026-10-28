@@ -503,9 +503,10 @@ export interface WebVerifiedAuthorityConfig {
    */
   named_link?: boolean;
   /**
-   * #1939 §0.3: sessions over the temporary public link (the quick tunnel `/web` opens) may be authorized too — off by
-   * default (the user's decision, 2026-10-23). Turning it on is confirmed in a General or on the host (never by the
-   * asking session); off applies at once and every receipt from a quick-link session reads as none.
+   * #1939 §0.3: sessions over the temporary public link (the quick tunnel `/web` opens) may be authorized too — on by
+   * default (the user's decision, 2026-10-28; off before), and `false` turns it off. Each session still needs its
+   * account's Confirm in the DM. Turning it back on is confirmed in a General or on the host (never by the asking
+   * session); off applies at once and every receipt from a quick-link session reads as none.
    */
   quick_link?: boolean;
 }

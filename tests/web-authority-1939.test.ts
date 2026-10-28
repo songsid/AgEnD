@@ -106,9 +106,9 @@ describe("§3 every check, in order, for one request", () => {
     expect(confirmAfterBody(ok, evaluateWebAuthority(input({ session: record({ handle: "ffffffffffffffff" }), authorization: { ...AUTH, handle: "ffffffffffffffff" } }))))
       .toEqual({ authority: { kind: "none", actor: null, authority_epoch: 0 }, refusal: "session_changed" });
   });
-  it("the policy: 48 h and LAN by default; a bad value never loosens it", () => {
-    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, maxSessionMs: 48 * HOUR });         // §0.1: on by default
-    expect(webAuthorityPolicy({ verified_authority: { enabled: true, loopback_only: true, max_session_hours: 6 } })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, quickLink: false, maxSessionMs: 6 * HOUR });
+  it("the policy: 48 h and LAN by default, and the temporary public link (#2819); a bad value never loosens it", () => {
+    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, maxSessionMs: 48 * HOUR });         // §0.1: on by default
+    expect(webAuthorityPolicy({ verified_authority: { enabled: true, loopback_only: true, max_session_hours: 6 } })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, quickLink: true, maxSessionMs: 6 * HOUR });
     expect(webAuthorityPolicy({ verified_authority: { enabled: false } }).enabled).toBe(false);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 500 } }).maxSessionMs).toBe(48 * HOUR);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 0 } }).maxSessionMs).toBe(HOUR);
@@ -240,10 +240,16 @@ describe("/ui/send: the receipt's origin carries the session's authority (and is
     expect(await send(h, who(h))).toBe(200);
     expect(h.got[0]!.origin.authority).toEqual(NONE1);
   });
-  it("the public link: none, even for an admin's account", async () => {
+  it("the temporary public link with quick_link: false: none, even for an admin's account", async () => {
+    const h = rig();
+    h.fm.fleetConfig!.web = { verified_authority: { enabled: true, quick_link: false } };
+    expect(await send(h, session(h, { surface: "gateway", exposureId: "e1" }))).toBe(200);
+    expect(h.got[0]!.origin.authority).toMatchObject({ kind: "none", actor: null });
+  });
+  it("#2819: the temporary public link by default — an authorized admin session's receipt is web-verified (peer quick_link)", async () => {
     const h = rig();
     expect(await send(h, session(h, { surface: "gateway", exposureId: "e1" }))).toBe(200);
-    expect(h.got[0]!.origin.authority).toEqual(NONE1);
+    expect(h.got[0]!.origin.authority).toMatchObject({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" }, session: { peer: "quick_link" } });
   });
   it("an instance of another adapter: none (the same user id on Discord is another account)", async () => {
     const h = rig();

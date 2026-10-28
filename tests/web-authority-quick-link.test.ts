@@ -1,12 +1,13 @@
 /**
- * Design #1939 §0.3: "Authorize this browser" over the temporary public link (the quick tunnel `/web` opens) — opt-in
- * (`web.verified_authority.quick_link`), off by default (the user's decision, 2026-10-23). The acceptance list of §0.3:
+ * Design #1939 §0.3: "Authorize this browser" over the temporary public link (the quick tunnel `/web` opens) —
+ * `web.verified_authority.quick_link`, on by default since #2819 (the user's decision, 2026-10-28; off from 2026-10-23),
+ * `false` turns it off. The acceptance list of §0.3:
  * - Provenance: a gateway request that is not named is `quick_link`, from the listener alone (never a header).
  * - Admission: option off → quick_link_off; loopback_only on → loopback_only; on → the same §3 checks as local, peer
  *   `quick_link`; never claimed off the gateway. Each link's option is its own.
  * - Read now: option off → its receipts read as none (quick_link_off) at once; back on (it was on before) moves the epoch.
- * - Settings: an effective widening (false → true) is confirmed and marked never self-confirmed, alone or mixed; off is
- *   immediate; null / a removed key is a no-op with the release default, and a widening if the default were true.
+ * - Settings: an effective widening (false → true, or an explicit false removed to inherit the default) is confirmed and
+ *   marked never self-confirmed, alone or mixed; off is immediate; a removed key is judged against the release default.
  * - The fleet: a quick-link session authorized by the Confirm path is web-verified with peer quick_link; off drops only
  *   the quick-link sessions' authorizations; the link's end takes them too.
  * Real modules; temp homes only (no fleet started, no tunnel, no network).
@@ -92,13 +93,16 @@ describe("admission (§3 with §0.3)", () => {
     expect(evaluateWebAuthority(input({ gateway: false, session: session("local") })).refusal).toBe("public_link");
     expect(evaluateWebAuthority(input({ session: session("local") })).refusal).toBe("public_link");
   });
-  it("the policy: off by default (the release default is false); only `true` turns it on", () => {
-    expect([QUICK_LINK_DEFAULT, webAuthorityPolicy(undefined).quickLink, webAuthorityPolicy({ verified_authority: { quick_link: "yes" as never } }).quickLink,
-      webAuthorityPolicy({ verified_authority: { quick_link: true } }).quickLink]).toEqual([false, false, false, true]);
+  it("#2819: the policy is on by default (the release default is true); `false` turns it off; a refused value never opens it", () => {
+    expect([QUICK_LINK_DEFAULT, webAuthorityPolicy(undefined).quickLink, webAuthorityPolicy({ verified_authority: {} }).quickLink,
+      webAuthorityPolicy({ verified_authority: { quick_link: false } }).quickLink, webAuthorityPolicy({ verified_authority: { quick_link: true } }).quickLink,
+      webAuthorityPolicy({ verified_authority: { quick_link: "yes" as never } }).quickLink, webAuthorityPolicy({ verified_authority: { quick_link: "no" as never } }).quickLink])
+      .toEqual([true, true, true, false, true, false, false]);
   });
-  it("the value in force: explicit, else the default — a key removed inherits it", () => {
-    expect([quickLinkEffective({}), quickLinkEffective({ quick_link: false }), quickLinkEffective({ quick_link: true }), quickLinkEffective({}, true),
-      quickLinkEffective({ quick_link: false }, true), quickLinkEffective(undefined)]).toEqual([false, false, true, true, false, false]);
+  it("the value in force: explicit, else (unset or null) the default — a key removed inherits it; anything else is off", () => {
+    expect([quickLinkEffective({}), quickLinkEffective({ quick_link: false }), quickLinkEffective({ quick_link: true }), quickLinkEffective({}, false),
+      quickLinkEffective({ quick_link: true }, false), quickLinkEffective(undefined), quickLinkEffective({ quick_link: null }), quickLinkEffective({ quick_link: 0 }),
+      quickLinkEffective({ quick_link: "true" })]).toEqual([true, false, true, false, true, true, true, false, false]);
   });
 });
 
@@ -127,27 +131,35 @@ describe("the state: quick_link remembered; back on after it was on moves the ep
   // §0.3 (#2525 review): every widening moves the epoch in the same write — the first one too (unlike the named link).
   it("every on moves the epoch, the first one too; off: no move, and the read says it closed", () => {
     const { s, files } = store();
-    const base = s.current({}).epoch;
-    const first = s.current({ quick_link: true });
-    const off = s.current({});
+    const base = s.current({ quick_link: false }).epoch;
+    const first = s.current({});                                                // #2819: unset is on
+    const off = s.current({ quick_link: false });
     const again = s.current({ quick_link: true });
-    const same = s.current({ quick_link: true });
+    const same = s.current({});
     expect([first.quickLink, first.epoch - base, off.quickLink, off.epoch - base, off.quickLinkClosed, again.epoch - base, same.epoch - base, JSON.parse(files.get("/a.json")!).epoch - base])
       .toEqual([true, 1, false, 1, true, 2, 2, 2]);
   });
-  it("a warm store (epoch 7): unset → on and explicit false → on each move it, on disk too", () => {
-    for (const before of [{}, { quick_link: false }]) {
+  it("a warm store (epoch 7), off: on explicitly or by removing the false each move it, on disk too", () => {
+    for (const on of [{ quick_link: true }, {}]) {
       const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 7, enabled: true, loopback_only: false })]]);
       const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => files.get(p)!, write: (p, d) => { files.set(p, d); } });
-      expect(s.current(before).epoch, JSON.stringify(before)).toBe(7);
-      expect([s.current({ quick_link: true }).epoch, JSON.parse(files.get("/a.json")!).epoch], JSON.stringify(before)).toEqual([8, 8]);
+      expect(s.current({ quick_link: false }).epoch, JSON.stringify(on)).toBe(7);
+      expect([s.current(on).epoch, JSON.parse(files.get("/a.json")!).epoch], JSON.stringify(on)).toEqual([8, 8]);
     }
+  });
+  it("#2819 upgrade: a file from before the default went on (no quick_link) and no key in fleet.yaml — moved once, then steady", () => {
+    const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 7, enabled: true, loopback_only: false })]]);
+    const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => files.get(p)!, write: (p, d) => { files.set(p, d); } });
+    expect([s.current({}).epoch, s.current({}).epoch, JSON.parse(files.get("/a.json")!)]).toEqual([8, 8, { v: 1, epoch: 8, enabled: true, loopback_only: false, quick_link: true }]);
+    const kept = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 7, enabled: true, loopback_only: false })]]);
+    const off = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => kept.get(p)!, write: (p, d) => { kept.set(p, d); } });
+    expect(off.current({ quick_link: false }).epoch).toBe(7);                  // explicitly off: nothing moves
   });
   it("each link remembered on its own: the named one's first on does not move it, the quick one's does; the named one back on does", () => {
     const { s } = store();
-    const base = s.current({ named_link: true }).epoch;
-    s.current({});
-    expect([s.current({ quick_link: true }).epoch - base, s.current({ quick_link: true, named_link: true }).epoch - base]).toEqual([1, 2]);
+    const base = s.current({ named_link: true, quick_link: false }).epoch;
+    s.current({ quick_link: false });
+    expect([s.current({}).epoch - base, s.current({ named_link: true }).epoch - base]).toEqual([1, 2]);
   });
   it("a file from before §0.3 (no quick_link) reads as off; one that cannot be written counts the option off", () => {
     const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false, named_link: true, named_link_seen: true })]]);
@@ -159,26 +171,17 @@ describe("the state: quick_link remembered; back on after it was on moves the ep
 
 describe("Settings: an effective widening is confirmed and never self-confirmed; off is immediate", () => {
   const FLEET = { defaults: {}, channels: [{ id: "dc", type: "discord", group_id: "G", bot_token_env: "X" }], instances: { a: { working_directory: "/tmp" } } };
-  const judgeWith = (prepare: typeof prepareSettingsEffect) => (va: unknown, current?: Record<string, unknown>) =>
-    prepare("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: { ...structuredClone(FLEET), web: current ? { verified_authority: current } : {} } as any, classic: {} }).diff;
-  const judge = judgeWith(prepareSettingsEffect);
-  it("on: a confirmed change, marked noSelfConfirm — alone, or mixed with keys that are immediate on their own", () => {
-    const alone = judge({ quick_link: true }), mixed = judge({ quick_link: true, loopback_only: true, max_session_hours: 6 }), fromFalse = judge({ quick_link: true }, { quick_link: false });
-    expect([alone?.noSelfConfirm, alone?.summary.join("\n").includes("quick\\_link"), mixed?.noSelfConfirm, fromFalse?.noSelfConfirm]).toEqual([true, true, true, true]);
+  const judge = (va: unknown, current?: Record<string, unknown>) =>
+    prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: { ...structuredClone(FLEET), web: current ? { verified_authority: current } : {} } as any, classic: {} }).diff;
+  // The guard (§0.3): a false removed is a widening only on the value in force — a check on the raw key sees no change.
+  it("on from an explicit false — true, or the false removed (#2819: it inherits on): confirmed, marked noSelfConfirm, alone or mixed", () => {
+    const off = { quick_link: false };
+    const alone = judge({ quick_link: true }, off), removed = judge({ quick_link: null }, off), mixed = judge({ quick_link: null, loopback_only: true, max_session_hours: 6 }, off);
+    expect([alone?.noSelfConfirm, alone?.summary.join("\n").includes("quick\\_link"), removed?.noSelfConfirm, mixed?.noSelfConfirm]).toEqual([true, true, true, true]);
   });
-  it("off, a re-save, or a removed key (it inherits false): immediate (no confirmation, no mark)", () => {
-    expect([judge({ quick_link: null }, { quick_link: true }), judge({ quick_link: true }, { quick_link: true }), judge({ quick_link: null }, { quick_link: false }),
-      judge({ loopback_only: true })]).toEqual([null, null, null, null]);
-  });
-  it("the guard (§0.3): with the default forced true, removing an explicit false is a widening too — confirmed, marked", async () => {
-    vi.resetModules();
-    vi.doMock("../src/authority/web-authority.js", async (orig) => {
-      const m = await orig<typeof import("../src/authority/web-authority.js")>();
-      return { ...m, QUICK_LINK_DEFAULT: true, quickLinkEffective: (v: never, fallback = true) => m.quickLinkEffective(v, fallback) };
-    });
-    const forced = judgeWith((await import("../src/settings-effect.js")).prepareSettingsEffect);
-    const removed = forced({ quick_link: null }, { quick_link: false });
-    expect([removed?.noSelfConfirm, forced({ quick_link: null }, { quick_link: true })]).toEqual([true, null]);
+  it("off, a re-save, true over the default, or a key removed from true: immediate (no confirmation, no mark)", () => {
+    expect([judge({ quick_link: false }), judge({ quick_link: false }, { quick_link: true }), judge({ quick_link: true }, { quick_link: true }),
+      judge({ quick_link: true }), judge({ quick_link: null }, { quick_link: true }), judge({ loopback_only: true })]).toEqual([null, null, null, null, null, null]);
   });
   it("the validator: a boolean only; a known key", () => {
     const v = (quick: unknown) => validateFleetConfig({ ...structuredClone(FLEET), web: { verified_authority: { quick_link: quick } } } as never);
@@ -209,13 +212,24 @@ describe("the fleet: a quick-link session authorized, and the link's end", () =>
         .toEqual([null, "quick_link", [[true, undefined]], "quick_link"]);
     } finally { h.close(); }
   });
-  it("option off (the default): quick_link_off, at the Confirm tap too", () => {
+  it("#2819: the option unset (the default, on): authorized by the Confirm path → web-verified, peer quick_link", () => {
     const h = fleet(VA({}));
     try {
       const rec = h.gatewaySession();
-      expect([h.s.authorizeWebSession(rec, "quick_link", true), h.s.sessionAuthorizationRequests().deps.authorize(rec.handle, "quick_link")])
-        .toEqual([{ ok: false, refusal: "quick_link_off" }, { ok: false, refusal: "quick_link_off" }]);
+      expect(h.s.authorizeWebSession(rec, "quick_link", true)).toMatchObject({ ok: true });
+      expect(h.s.webAuthority({ session: rec, gateway: true, peer: "quick_link" }).authority).toMatchObject({ kind: "web-verified", session: { peer: "quick_link" } });
     } finally { h.close(); }
+  });
+  it("option off (quick_link: false): quick_link_off, at the Confirm tap too; loopback_only wins even with it unset", () => {
+    for (const va of [{ quick_link: false }, { loopback_only: true }]) {
+      const h = fleet(VA(va));
+      try {
+        const rec = h.gatewaySession();
+        const want = va.loopback_only ? "loopback_only" : "quick_link_off";
+        expect([h.s.authorizeWebSession(rec, "quick_link", true), h.s.sessionAuthorizationRequests().deps.authorize(rec.handle, "quick_link")], JSON.stringify(va))
+          .toEqual([{ ok: false, refusal: want }, { ok: false, refusal: want }]);
+      } finally { h.close(); }
+    }
   });
   it("the Confirm tap judges a quick-link session as the gateway request it is; its card names the link's host and the internet", () => {
     const h = fleet(VA({ quick_link: true }));
@@ -236,9 +250,9 @@ describe("the fleet: a quick-link session authorized, and the link's end", () =>
       const rec = h.gatewaySession();
       expect(h.s.authorizeWebSession(rec, "quick_link", true)).toMatchObject({ ok: true });
       const before = h.s.webAuthority({ session: rec, gateway: true, peer: "quick_link" });
-      delete h.s.fleetConfig.web.verified_authority.quick_link; h.s.saveFleetConfig();       // off (removed: the default)
+      h.s.fleetConfig.web.verified_authority.quick_link = false; h.s.saveFleetConfig();     // off
       if (readWhileOff) h.s.webAuthority({ session: rec, gateway: true, peer: "quick_link" });
-      h.s.fleetConfig.web.verified_authority.quick_link = true; h.s.saveFleetConfig();      // on again (after its confirmation)
+      delete h.s.fleetConfig.web.verified_authority.quick_link; h.s.saveFleetConfig();       // on again (#2819: removed, the default)
       const after = h.s.webAuthority({ session: rec, gateway: true, peer: "quick_link" });
       expect([before.authority.kind, after.authority.kind, after.refusal]).toEqual(["web-verified", "none", "not_authorized"]);
     } finally { h.close(); }

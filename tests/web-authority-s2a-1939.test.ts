@@ -42,25 +42,25 @@ const log = () => ({ warn: vi.fn() });
 describe("§10 the revocation epoch: moved by the switch, by loopback_only going off, and by an explicit revocation", () => {
   it("a fresh fleet: on by default (§0.1) — the first read records it and moves the epoch past 0", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
-    expect(s.current(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1 });
-    expect(m.stored()).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false });
-    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
+    expect(s.current(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 1 });
+    expect(m.stored()).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false, quick_link: true });
+    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 2 });
   });
   it("on, off, on: each moves the epoch, and the positions are written", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1 });
-    expect(m.stored()).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 1 });
+    expect(m.stored()).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false, quick_link: true });
     expect(s.current({ enabled: true }).epoch).toBe(1);                                    // unchanged: no move, no write
     expect(m.io.writes).toBe(1);
-    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
+    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 2 });
     expect(s.current({ enabled: true }).epoch).toBe(3);
   });
   it("loopback_only on: no move (lan receipts read as none meanwhile); off again: a move", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
     s.current({ enabled: true });
-    expect(s.current({ enabled: true, loopback_only: true })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 1 });
+    expect(s.current({ enabled: true, loopback_only: true })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, quickLink: true, epoch: 1 });
     expect(m.stored().loopback_only).toBe(true);
-    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
+    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 2 });
   });
   it("a change made while the fleet was stopped still moves it (the last positions are on disk)", () => {
     const m = memIo(JSON.stringify({ v: 1, epoch: 4, enabled: true, loopback_only: true }));
@@ -68,22 +68,26 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     const m2 = memIo(JSON.stringify({ v: 1, epoch: 4, enabled: true, loopback_only: false }));
     expect(new AuthorityStateStore("/s.json", log(), m2.io).current({ enabled: false }).epoch).toBe(5);
     const m3 = memIo(JSON.stringify({ v: 1, epoch: 4, enabled: true, loopback_only: false }));
-    expect(new AuthorityStateStore("/s.json", log(), m3.io).current({ enabled: true }).epoch).toBe(4);
+    // #2819: a file from before the quick link's default went on (no quick_link): that widening moves it once, here too.
+    expect(new AuthorityStateStore("/s.json", log(), m3.io).current({ enabled: true }).epoch).toBe(5);
+    const m4 = memIo(JSON.stringify({ v: 1, epoch: 4, enabled: true, loopback_only: false, quick_link: true }));
+    expect(new AuthorityStateStore("/s.json", log(), m4.io).current({ enabled: true }).epoch).toBe(4);
   });
   it("an explicit revocation moves it and says whether it is on disk", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
     s.current({ enabled: true });
     expect(s.revoke()).toEqual({ epoch: 2, durable: true });
     expect(m.stored().epoch).toBe(2);
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 2 });
   });
   it("unreadable: every earlier authority is revoked (the epoch jumps past any counter), and it is said once", () => {
     const l = log(); const m = memIo("{broken");
     const s = new AuthorityStateStore("/s.json", l, m.io, () => 1_792_000_000_123);
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1_792_000_001 });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 1_792_000_001 });
     expect(l.warn).toHaveBeenCalledTimes(1);
     const m2 = memIo(JSON.stringify({ v: 2, epoch: 1, enabled: true, loopback_only: false }));
-    expect(new AuthorityStateStore("/s.json", log(), m2.io, () => 5_000).current({ enabled: false }).epoch).toBe(5);
+    // #2819: past the clock's 5, the quick link's default (on) is a widening of the state read back: one more.
+    expect(new AuthorityStateStore("/s.json", log(), m2.io, () => 5_000).current({ enabled: false }).epoch).toBe(6);
   });
   it("fail-closed: while the state cannot be written the switch counts as off, and loopback_only stays on; then it recovers", () => {
     const l = log(); const m = memIo(JSON.stringify({ v: 1, epoch: 1, enabled: true, loopback_only: true }));
@@ -93,8 +97,8 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 2 });
     expect(l.warn).toHaveBeenCalledTimes(1);
     m.io.fail = false;
-    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
-    expect(m.stored()).toEqual({ v: 1, epoch: 2, enabled: true, loopback_only: false });
+    expect(s.current({ enabled: true, loopback_only: false })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 2 });
+    expect(m.stored()).toEqual({ v: 1, epoch: 2, enabled: true, loopback_only: false, quick_link: true });
   });
   it("a revocation that cannot be written: not durable, and the switch counts as off until it is", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
@@ -103,22 +107,24 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     expect(s.revoke()).toEqual({ epoch: 2, durable: false });
     expect(s.current({ enabled: true }).enabled).toBe(false);
     m.io.fail = false;
-    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 2 });
+    expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 2 });
   });
   it("#2112 review: a file missing, or behind the receipts (deleted, restored from an older copy), is never trusted", () => {
     const l = log();
     // Missing, with receipts at epoch 4: past them and the clock's seconds, and off.
-    expect(new AuthorityStateStore("/s.json", l, memIo().io, () => 9_000, () => 4).current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 10 });
+    expect(new AuthorityStateStore("/s.json", l, memIo().io, () => 9_000, () => 4).current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 10 });
     expect(l.warn).toHaveBeenCalledTimes(1);
-    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 40).current({ enabled: false }).epoch).toBe(41);
+    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 40).current({ enabled: false }).epoch).toBe(42);   // #2819: + the quick link on
     // A file at epoch 2 while a receipt carries 5.
     const behind = memIo(JSON.stringify({ v: 1, epoch: 2, enabled: true, loopback_only: false }));
     expect(new AuthorityStateStore("/s.json", log(), behind.io, () => 1_000, () => 5).current({ enabled: true }).epoch).toBe(7);   // 6, then on: 7
     // At the receipts' epoch: trusted as written.
-    const level = memIo(JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false }));
+    const level = memIo(JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false, quick_link: true }));
     expect(new AuthorityStateStore("/s.json", log(), level.io, () => 1_000, () => 5).current({ enabled: true }).epoch).toBe(5);
     // Missing with no receipts: a fresh fleet.
-    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 0).current({ enabled: false }).epoch).toBe(0);
+    // #2819: the quick link on by default is a widening of the empty state, so even a fresh fleet's first read moves it.
+    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 0).current({ enabled: false }).epoch).toBe(1);
+    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 0).current({ enabled: false, quick_link: false }).epoch).toBe(0);
     // The receipts cannot be read: the file is not trusted either.
     const unknown = memIo(JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false }));
     expect(new AuthorityStateStore("/s.json", log(), unknown.io, () => 9_000, () => { throw new Error("locked"); }).current({ enabled: true }).epoch).toBe(10);
@@ -126,7 +132,7 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
   it("on disk: web-authority.json, owner-only", () => {
     const dir = tmp(); const s = new AuthorityStateStore(join(dir, "web-authority.json"), log());
     s.current({ enabled: true });
-    expect(JSON.parse(readFileSync(join(dir, "web-authority.json"), "utf8"))).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false });
+    expect(JSON.parse(readFileSync(join(dir, "web-authority.json"), "utf8"))).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false, quick_link: true });
     expect(statSync(join(dir, "web-authority.json")).mode & 0o777).toBe(0o600);
     expect(new AuthorityStateStore(join(dir, "web-authority.json"), log()).current({ enabled: true }).epoch).toBe(1);
   });
@@ -178,9 +184,10 @@ describe("the FleetManager: admission and delivery_status use the state in force
     return { s, dir, outbox, receive, status };
   }
   it("the switch off: admission refuses; on: the first read moves the epoch, and a receipt reads web-verified", () => {
-    const h = fm({ verified_authority: { enabled: false } });
+    // The switch alone (#2819: the quick link held off, so its first read moves nothing here).
+    const h = fm({ verified_authority: { enabled: false, quick_link: false } });
     expect(h.s.webAuthority({ session: null, gateway: false, peer: "loopback" }).refusal).toBe("disabled");
-    h.s.fleetConfig.web = { verified_authority: { enabled: true } };
+    h.s.fleetConfig.web = { verified_authority: { enabled: true, quick_link: false } };
     expect(h.s.webAuthorityState()).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 1 });
     expect(h.s.webAuthority({ session: null, gateway: false, peer: "loopback" }).refusal).toBe("not_session");
     const id = h.receive(webHumanOrigin(false, webSession(1)));

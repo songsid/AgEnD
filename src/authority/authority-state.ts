@@ -115,7 +115,7 @@ export class AuthorityStateStore {
     const s = this.load();
     const enabled = config?.enabled !== false, loopbackOnly = config?.loopback_only === true;            // §0.1: on by default
     const namedLink = config?.named_link === true;                                                       // §0.2: off by default
-    const quickLink = quickLinkEffective(config);                                                        // §0.3: off by default
+    const quickLink = quickLinkEffective(config);                                                        // §0.3: on by default
     const reopened = (namedLink && !s.named_link && !!s.named_link_seen) || (quickLink && !s.quick_link);   // §0.3: every widening
     const closed = !!s.named_link && !namedLink, quickClosed = !!s.quick_link && !quickLink;
     const revokes = s.enabled !== enabled || (s.loopback_only && !loopbackOnly) || reopened;

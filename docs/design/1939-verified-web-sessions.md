@@ -336,7 +336,18 @@ link keeps `public_link`.
 - **Real smoke:** with a named hostname (a stubbed tunnel in tests; the real smoke on the admin's own hostname). No
   trycloudflare quick-tunnel smokes from the host (the decision on 429s).
 
-### 0.3 The temporary public link (2026-10-23, #2478 follow-up): opt-in, off by default (the user's decision)
+### 0.3 The temporary public link (2026-10-23, #2478 follow-up): opt-in, off by default (the user's decision) — on by default since 2026-10-28 (#2819)
+
+**Amended 2026-10-28 (#2819).** The user decided to make the option **on by default** (hmsg-9f1329b2). What follows
+holds with the default flipped:
+- A fleet that never set the key may authorize over the quick link. Each session still needs its account's Confirm in
+  the DM, so the default grants nothing by itself; `quick_link: false` turns it off, and `loopback_only` still wins.
+- Widening is still judged on the value in force: removing an explicit `false` (it inherits on) is a widening, held
+  for the same confirmation, never self-confirmed, and it moves the epoch.
+- The first start after the update, on a fleet with no key, is such a widening (off → on in the stored state): the
+  epoch moves once, so browsers authorized before then confirm once more. Nothing is granted by it.
+- A value the validator refuses (`"no"`, `0`) is off, never the default.
+- Downgrading to code with the off default reads the unset key as off again: quick-link receipts read as none.
 
 **The request.** The user asked (2026-10-23, relayed by the leader) for **Authorize this browser** over the temporary
 quick-tunnel link too (`*.trycloudflare.com`, what `/web` opens), with the same ceremony and limits as the named link,
@@ -561,7 +572,7 @@ do), and again when the session is authorized (§0). Nothing about locality is r
 5. **Never the public link, with two opt-in exceptions (§0.2, §0.3).** Over the admin's own **named** tunnel a
    `gateway` session qualifies only while `web.verified_authority.named_link` is on (turned on through Settings
    confirmation) and `loopback_only` is off; its peer is then `named_link`. Over the temporary **quick** tunnel it
-   qualifies only while `web.verified_authority.quick_link` is on (§0.3: confirmed to turn on when off by default) and
+   qualifies only while `web.verified_authority.quick_link` is on (§0.3: on by default since #2819; confirmed to turn back on) and
    `loopback_only` is off; its peer is then `quick_link`.
 6. **Freshness.**
    - **Authority lasts** `web.verified_authority.max_session_hours` (1–48, default 48) **after the session's

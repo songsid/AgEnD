@@ -86,10 +86,10 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
     - **Its authority ends with the link:** Close, `/web revoke`, the link's expiry, a fleet restart, or the option turned off. Turning the option off makes every receipt given over the link read as none at once.
     - **Turning the option off** ends the authority of every session over the link at once, not the sessions themselves: they keep chatting like any public-link session.
     - **"Only this computer can authorize"** still wins.
-  - **Over the temporary public link (#1939 §0.3), opt-in.** Settings → Access & security → Web authority shows **Also over the temporary public link**, off by default (`web.verified_authority.quick_link`).
-    - **Turning it on** is confirmed in a General or on this computer, never by the browser asking.
-    - **Turning it on ends every authorization given so far** (on this computer too): each browser confirms again.
-    - **Once it's on,** a browser signed in over the link `/web` opens can be authorized the same way. The Confirm card says "over the temporary public link <host> (the internet)", and the device list marks it.
+  - **Over the temporary public link (#1939 §0.3), on by default since #2819.** Settings → Access & security → Web authority shows **Also over the temporary public link**, ticked unless `web.verified_authority.quick_link: false` is set. Untick it to turn it off; that applies at once.
+    - **Turning it back on** is confirmed in a General or on this computer, never by the browser asking.
+    - **Turning it on ends every authorization given so far** (on this computer too): each browser confirms again. The first start after updating to #2819 does this once on a fleet that never set the option.
+    - **While it's on,** a browser signed in over the link `/web` opens can be authorized the same way. The Confirm card says "over the temporary public link <host> (the internet)", and the device list marks it.
     - **While it's off,** the row under the composer on that link says how to turn it on.
     - **Its authority ends with the link:** Close, `/web revoke`, the link's expiry, a fleet restart (a new link), or the option turned off. Turning the option off makes every receipt given over the link read as none at once.
     - **The risk you accept:** the link is an address on the internet, and Cloudflare's quick-tunnel service sees its traffic. A stolen cookie of an authorized browser could be replayed until one of the ends above (or its 30-minute idle limit) stops it.
@@ -638,7 +638,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | Task board, schedules, teams | ✅ | ❌ read only | ❌ as B |
 | Look: themes, custom CSS, widgets, app icon | ✅ | ❌ (your profile, picture, card and identity colour can still be changed) | ❌ as B |
 | Mods and effects | ✅ | ❌ mods; the effects in this chat only play | ❌ as B |
-| Authorize this browser (web authority) | ✅ | ✅ with `web.verified_authority.quick_link: true` (off by default) | ✅ with `web.verified_authority.named_link: true` (off by default) |
+| Authorize this browser (web authority) | ✅ | ✅ unless `web.verified_authority.quick_link: false` (on by default) | ✅ with `web.verified_authority.named_link: true` (off by default) |
 | Guests | ✅ with `web.guests.enabled: true` (off by default) | ✅ only while an admin has the link open | ✅ as B |
 | `/login`'s browser terminal | ✅ | ❌ not while this link is open: they share the one tunnel | ❌ as B |
 | Sign-in notice in General | ✅ `web.notify_login` (on by default) | ✅ always; if it can't be posted, the sign-in is refused | ✅ as B |

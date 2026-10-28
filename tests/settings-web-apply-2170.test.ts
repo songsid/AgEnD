@@ -198,9 +198,10 @@ describe("#2453 (§0.2): the named-link option is never confirmed by its asker",
     const p = f.propose();
     expect(f.any.settingsSelfConfirmation(f.store, req, p.view.id)).toBeNull();
   });
-  it("§0.3: a web-verified local admin turning the quick-link option on — alone or with other keys — gets none", () => {
+  it("§0.3: a web-verified local admin turning the quick-link option back on — alone or with other keys — gets none", () => {
     const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" });
-    const alone = proposeWeb(f, { quick_link: true }), mixed = proposeWeb(f, { quick_link: true, loopback_only: true });
+    (f.fm.fleetConfig as any).web = { verified_authority: { quick_link: false } };              // #2819: on is the default
+    const alone = proposeWeb(f, { quick_link: true }), mixed = proposeWeb(f, { quick_link: null, loopback_only: true });
     expect([f.any.settingsSelfConfirmation(f.store, s.req, alone.view.id), f.any.settingsSelfConfirmation(f.store, s.req, mixed.view.id),
       alone.apply.mock.calls.length, mixed.apply.mock.calls.length]).toEqual([null, null, 0, 0]);
   });

@@ -140,7 +140,7 @@ describe("the state: named_link remembered; back on after it was on moves the ep
   it("a file from before #2453 (no named_link) reads as off; one that cannot be written counts the option off", () => {
     const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false })]]);
     const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => files.get(p)!, write: () => { throw new Error("read-only"); } });
-    expect(s.current({ named_link: true })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 5 });
+    expect(s.current({ named_link: true, quick_link: false })).toEqual({ enabled: false, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 5 });
   });
 });
 

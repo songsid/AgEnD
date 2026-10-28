@@ -80,14 +80,19 @@ export function webAuthorityPolicy(web: WebConfig | undefined): WebAuthorityPoli
     quickLink: quickLinkEffective(v), maxSessionMs: hours * 3_600_000 };
 }
 
-/** §0.3: the release default of `web.verified_authority.quick_link` — off (the user's decision, 2026-10-23). */
-export const QUICK_LINK_DEFAULT = false;
 /**
- * §0.3: the quick-link option as in force — its explicit value, else the release default. Every widening is judged on
- * this (settings-change.ts, settings-effect.ts), never on the raw key: a key removed to inherit is a change of value too.
+ * §0.3: the release default of `web.verified_authority.quick_link` — on (the user's decision, 2026-10-28; off since
+ * 2026-10-23). A session still needs its account's Confirm in the DM; `quick_link: false` turns it off.
+ */
+export const QUICK_LINK_DEFAULT = true;
+/**
+ * §0.3: the quick-link option as in force — its explicit value, else (unset) the release default. Every widening is
+ * judged on this (settings-change.ts, settings-effect.ts), never on the raw key: a key removed to inherit is a change of
+ * value too. #2819: a value the validator refuses ("no", 0) is off, never the default — now that the default is on, it
+ * must not open the link.
  */
 export function quickLinkEffective(v: { quick_link?: unknown } | undefined | null, fallback: boolean = QUICK_LINK_DEFAULT): boolean {
-  return typeof v?.quick_link === "boolean" ? v.quick_link : fallback;
+  return v?.quick_link === undefined || v.quick_link === null ? fallback : v.quick_link === true;
 }
 
 /** Headers a proxy adds; any one of them makes a request `lan`, whatever its peer address (§3.4). */

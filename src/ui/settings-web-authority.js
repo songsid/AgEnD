@@ -25,8 +25,9 @@ export function verifiedAuthorityBody(original, f) {
   if (f.hours !== original.hours) out.max_session_hours = f.hours === null ? null : f.hours;
   // #2453 (§0.2): off by default; turning it on is confirmed in a General or on the host.
   if (f.namedLink !== original.namedLink) out.named_link = f.namedLink ? true : null;
-  // §0.3: off by default (the user's decision); turning it on is confirmed in a General or on the host.
-  if (f.quickLink !== original.quickLink) out.quick_link = f.quickLink ? true : null;
+  // §0.3: on by default (the user's decision, 2026-10-28), so off is written as false; turning it back on is confirmed in a
+  // General or on the host.
+  if (f.quickLink !== original.quickLink) out.quick_link = f.quickLink ? null : false;
   return Object.keys(out).length ? out : null;
 }
 
@@ -45,7 +46,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     if (!o || typeof o !== "object" || !o.state || !o.hours || !Array.isArray(o.lanHosts) || !Array.isArray(o.authorized)) { setFailed(true); return; }
     const c = o.configured || {};
     const orig = { enabled: c.enabled !== false, loopbackOnly: c.loopback_only === true, hours: typeof c.max_session_hours === "number" ? c.max_session_hours : null,
-      namedLink: c.named_link === true, quickLink: c.quick_link === true };
+      namedLink: c.named_link === true, quickLink: c.quick_link == null || c.quick_link === true };   // #2819: on unless set otherwise
     setOverview(o); setFailed(false);
     setOriginal((prev) => prev || orig);
     // #2347: a draft kept from before this card was last shown (still unsaved) comes back over what is saved now — only
