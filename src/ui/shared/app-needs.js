@@ -59,6 +59,10 @@ export async function setNotify(on, env = globalThis) {
   return state;
 }
 
+export const configDetail = (item) => {
+  const issue = item.configIssue;
+  return issue ? t(`app.config_history_${issue.mode === "fallback" ? "fallback" : issue.time ? "edit" : "no_history"}`, issue.file, issue.line, issue.column, issue.reason, issue.time || "") : item.detail;
+};
 export const reasonText = (item) => t(`app.needs_reason_${item.reason}`);
 
 let stop = null;
@@ -77,7 +81,7 @@ export function startNeedsNotifier({ open, env = globalThis } = {}) {
     seen.add(item.id);
     if (!notifyOn(env)) return;
     try {
-      const n = new env.Notification(item.instance || reasonText(item), { body: item.detail ? `${reasonText(item)}: ${item.detail}` : reasonText(item), tag: item.id });
+      const n = new env.Notification(item.instance || reasonText(item), { body: item.detail ? `${reasonText(item)}: ${configDetail(item)}` : reasonText(item), tag: item.id });
       n.onclick = () => { try { env.focus && env.focus(); } catch { /* ignore */ } if (open && item.instance) open(item.instance); n.close(); };
     } catch { /* a browser that refuses at the last moment: the list still shows it */ }
   };

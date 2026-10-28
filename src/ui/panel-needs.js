@@ -19,7 +19,7 @@ import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import { notifyStore, notifySupport, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
+import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
 
 register("needs", {
@@ -95,7 +95,7 @@ const BAD = new Set(["crashed", "delivery_failed", "hang", "exited"]);
  */
 function detailOf(item) {
   const c = item.type === "task" ? item.card : null;
-  if (!c || !c.title) return item.detail;
+  if (!c || !c.title) return configDetail(item);
   const lacks = c.gap ? [c.gap.unchecked ? tn("gapUnchecked", c.gap.unchecked) : "", c.gap.noResult ? tn("gapNoResult") : ""].filter(Boolean).join(tn("gapJoin")) : "";
   const tail = c.question || (lacks ? tn("gap", lacks) : "");
   return `${c.code} ${c.title}${tail ? ` — ${tail}` : ""}`;

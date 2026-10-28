@@ -189,7 +189,11 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     return { defaults: {}, instances: {} };
   }
 
-  const raw = readFileSync(configPath, "utf-8");
+  return loadFleetConfigSource(readFileSync(configPath, "utf-8"));
+}
+
+/** Parse an already selected source without rewriting the on-disk file. */
+export function loadFleetConfigSource(raw: string): FleetConfig {
   // Quote bare 16+ digit integers before parsing to prevent precision loss.
   // Discord snowflakes and Telegram group IDs are 64-bit and exceed JS MAX_SAFE_INTEGER.
   const safeRaw = raw.replace(/(?<=:\s+|[-]\s+)(\d{16,})(?=\s*$)/gm, (_, d) => `"${d}"`);
@@ -357,7 +361,10 @@ function validateWebTerminalTunnelConfig(raw: unknown): NonNullable<FleetConfig[
 /** Read the user-authored config without applying defaults or normalization. */
 export function loadRawFleetConfig(configPath: string): RawFleetConfig {
   if (!existsSync(configPath)) return {};
-  const raw = readFileSync(configPath, "utf-8");
+  return loadRawFleetConfigSource(readFileSync(configPath, "utf-8"));
+}
+
+export function loadRawFleetConfigSource(raw: string): RawFleetConfig {
   // Match loadFleetConfig(): preserve platform IDs that exceed MAX_SAFE_INTEGER.
   const safeRaw = raw.replace(/(?<=:\s+|[-]\s+)(\d{16,})(?=\s*$)/gm, (_, d) => `"${d}"`);
   const parsed = unshareParsed(yaml.load(safeRaw), "fleet.yaml");          // #2208, as loadFleetConfig

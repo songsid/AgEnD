@@ -157,3 +157,13 @@ describe("the public link (#1367): exactly this route, under its own session and
     expect(b.c.acknowledgeNeedsItem).not.toHaveBeenCalled();
   });
 });
+
+it("does not publish operator configuration diagnostics through the public link", () => {
+  const store = new WebSessionStore();
+  const s = store.create({ tier: "read", surface: "gateway", exposureId, label: "read", tokenEpoch: tokenEpoch(token) });
+  const h = request("/ui/poll?after=", "GET", { cookie: `__Host-agend_session=${s.sessionId}` }, "sample.trycloudflare.com");
+  bindGatewayRequest(h.req, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
+  const c = ctx(store, { needsYouItems: () => [...ITEMS, { type: "config", instance: "", detail: "private config diagnostic" }] });
+  handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, pub), c);
+  expect(h.status()).toBe(200); expect(h.json().needs).toEqual(ITEMS);
+});

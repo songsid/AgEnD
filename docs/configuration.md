@@ -2,6 +2,12 @@
 
 Complete reference for all AgEnD configuration files.
 
+## Recovery from broken YAML
+
+AgEnD keeps the five newest successfully loaded valid sources of `fleet.yaml` and `classicBot.yaml` in `AGEND_HOME/config-history.db` (private mode `0600`; it may contain the same secrets as those files). Re-reading unchanged text does not add a version. A YAML parse error, including duplicate keys, creates one **Needs you** item for that file while the fleet keeps its previous settings. Fixing the syntax clears that live-edit warning; `agend reload` still reads the disk file and never silently applies a backup.
+
+At startup only, a YAML parse error selects the newest stored valid source for that same file and path. **Needs you** names the file, parser location and stored-copy time; the other configuration file loads normally. The original file is never repaired or overwritten. Correct it and reload the settings to leave fallback mode. Without a usable stored copy, or if the history DB is unreadable, startup fails clearly (including Classic, rather than silently losing its rooms). Parseable schema errors keep the existing validation policy and do not select a backup; invalid sources are never added to history. `agend validate` always checks the actual files on disk. There is no history page, restore command or configuration switch. Before downgrading to a version without recovery, fix any broken YAML first.
+
 ## fleet.yaml
 
 Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.

@@ -2,7 +2,7 @@
 // #2481: first — counts a `fleet start` attempt before anything below can fail (start-failure.ts).
 import "./start-attempt.js";
 import "./node-warnings.js";
-import { installFleetProcessHandlers } from "./fleet-process-handlers.js";
+import { installFleetProcessHandlers, startFleetOrExit } from "./fleet-process-handlers.js";
 import { applyNetworkReliabilityDefaults } from "./network-family.js";
 
 // Preserve Node's dual-stack Happy Eyeballs behavior, but avoid its 250ms
@@ -347,7 +347,7 @@ fleet
       if (process.env.AGEND_HOME) {
         console.log(`  Using AGEND_HOME: ${process.env.AGEND_HOME}`);
       }
-      await fm.startAll(FLEET_CONFIG_PATH);
+      await startFleetOrExit(fm, FLEET_CONFIG_PATH, process, console);
     }
     console.log("Fleet started");
   });
