@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createSdNotifier, startSdWatchdog } from "../src/sd-notify.js";
 
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
@@ -58,11 +61,45 @@ describe("#2813 heartbeat margin", () => {
     const h = harness(); h.notify("WATCHDOG=1"); h.callbacks[0](timeout()); h.notify.cancelRetry();
     vi.advanceTimersByTime(1_000); expect(h.send).toHaveBeenCalledTimes(1);
     h.notify("WATCHDOG=1"); h.notify("STOPPING=1"); h.callbacks[1](timeout()); h.callbacks[2](null);
+    expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(30_000); expect(h.send).toHaveBeenCalledTimes(3);
   });
 
   it("a newer normal ping supersedes an old retry or late callback", () => {
     const h = harness(); h.notify("WATCHDOG=1"); h.notify("WATCHDOG=1"); h.callbacks[0](timeout()); h.callbacks[1](null);
+    expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(1_000); expect(h.send).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe("#2813 real default-notifier shutdown entry point", () => {
+  it.each(["pending retry", "in-flight callback"])("sdNotifyBlocking cancels %s", async phase => {
+    vi.useFakeTimers();
+    const dir = mkdtempSync(join(tmpdir(), "agend-notify-stop-"));
+    writeFileSync(join(dir, "fleet.pid"), String(process.pid));
+    const callbacks: Array<(error: Error | null) => void> = [];
+    const asyncSend = vi.fn((_file: string, _args: string[], _opts: unknown, done: (error: Error | null) => void) => { callbacks.push(done); });
+    const blockingSend = vi.fn();
+    vi.resetModules();
+    vi.doMock("../src/paths.js", () => ({ getAgendHome: () => dir }));
+    vi.doMock("../src/child-process.js", () => ({ execFile: asyncSend }));
+    vi.doMock("node:child_process", () => ({ execFileSync: blockingSend }));
+    vi.stubEnv("NOTIFY_SOCKET", "/scratch/notify");
+    try {
+      const api = await import("../src/sd-notify.js");
+      api.sdNotify("WATCHDOG=1");
+      expect(asyncSend).toHaveBeenCalledTimes(1);
+      if (phase === "pending retry") { callbacks[0](timeout()); expect(vi.getTimerCount()).toBe(1); }
+      api.sdNotifyBlocking("STOPPING=1");
+      expect(blockingSend).toHaveBeenCalledWith("systemd-notify", ["STOPPING=1"], expect.objectContaining({ timeout: 5_000 }));
+      if (phase === "in-flight callback") callbacks[0](timeout());
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(1_000);
+      expect(asyncSend).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.doUnmock("../src/paths.js"); vi.doUnmock("../src/child-process.js"); vi.doUnmock("node:child_process");
+      vi.unstubAllEnvs(); vi.resetModules(); rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
