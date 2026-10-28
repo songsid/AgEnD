@@ -55,7 +55,7 @@ export const RUNTIME_READ_FLEET_KEYS = [
   // Read per message / per post / per tick.
   "defaults.max_cross_instance_message_bytes",
   "defaults.tips",
-  // #2246 step 3: the board's daily summary reads it at every look (once a minute).
+  // #2804: its daily summary is gone; summary_at is accepted and ignored.
   "defaults.task_board",
   "defaults.progress_min_elapsed",
   // Read on every schedule trigger, unlike the two Scheduler ctor keys.

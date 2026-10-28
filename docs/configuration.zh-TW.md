@@ -29,7 +29,7 @@ defaults:
     warn_at_percentage: 80
     timezone: Asia/Taipei
   daily_summary:
-    enabled: true
+    enabled: true      # 預設關閉；要每日花費摘要才設 true
     hour: 21
 
 instances:
@@ -155,7 +155,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 |------|------|------|------|
 | `cost_guard` | object | 停用 | 全 fleet 花費守衛 |
 | `hang_detector` | object | 啟用，10 分鐘 | 卡住偵測 |
-| `daily_summary` | object | 啟用，21:00 | 每日花費摘要 |
+| `daily_summary` | object | 關閉，21:00 | 每日花費摘要（#2804 起預設關閉） |
 | `scheduler` | object | — | 排程設定 |
 | `webhooks` | object[] | `[]` | Webhook 通知 |
 | `startup.concurrency` | number | 自動推算，`2`–`10` | 依空閒 RAM 與 fleet 可用的 CPU（CPU affinity 與 cgroup v1/v2 配額，而不是主機的核心數）推算共用 spawn gate 的併發上限；明確設定時範圍為 `1`–`20`。ClassicBot 聊天室在 General 之後就進入同一個佇列啟動（#2642） |
@@ -169,7 +169,6 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `reply_obligation_ttl_hours` | number | `24` | 開放中的回覆義務距上次詢問多久後到期，必須是有限正數（小時）；提醒不延長期限。到期只記錄 log。到期前，負責的 instance 閒置且未回覆時，每次詢問提醒一次（重啟後也是，已提醒過的不再提醒） |
 | `retention_days` | number | `30` | `delivery-outbox.db` 保留已完成投遞（`delivered`/`failed`）及 Task Board 已完成/已取消任務的天數。`uncertain` 與非終態的 row 永遠不會被清除。fleet 啟動時執行一次，之後每天執行，每次最多刪除 500 筆以免卡住 event loop。被清除的 delivery_id 在 `delivery_status` 工具中會回傳「早於保留期限，已清除」而非「找不到」 |
 | `tips` | boolean | `true` | `true` 在 General 發每日提示；`false` 關閉。不受 `daily_summary.enabled` 控制。舊的 `"dm"` 值視為 `true` |
-| `task_board.summary_at` | string | 關閉 | 任務看板給人的每日摘要（自 2.3.0 起沒設定就關閉，設定時間即開啟），發到各平台的 General 和網頁聊天室：`"HH:MM"`（24 小時制，依 `scheduler.default_timezone`，沒設就用主機時區）或 `"off"`。每分鐘檢查時讀取，改了不用重啟。見[功能說明](features.zh-TW.md#任務看板的每日摘要) |
 
 重啟去重另外保存 owner／boot 檢查點（只有識別碼與時間），不跟著通知的保留政策清理。刪除舊的已送達通知，不會讓同一個 boot 重新提醒或重新標記請求。
 
@@ -192,7 +191,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
-| `enabled` | boolean | `true` | 啟用每日花費摘要 |
+| `enabled` | boolean | `false` | 在 General 發每日花費摘要（#2804 起預設關閉；它的每日時鐘照跑，日誌和收件匣輪替仍會進行；每日小提示有自己的時鐘） |
 | `hour` | number | `21` | 發送時間（0-23） |
 | `minute` | number | `0` | 分鐘 |
 

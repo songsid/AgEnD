@@ -112,7 +112,6 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 | `reply_overdue_minutes` | — | — | Obsolete: the asker is no longer told. Still accepted; ignored |
 | `reply_obligation_ttl_hours` | number | `24` | Hours after which an unanswered request expires |
 | `retention_days` | number | `30` | How long finished deliveries and done Task Board tasks are kept |
-| `task_board.summary_at` | `"HH:MM"` or `"off"` | `off` | When the daily Task Board summary is sent, in the fleet's timezone (24 h). Off until you set a time |
 | `dashboard` | object | — | Which dashboard features an agent may use: `appearance`, `task_board`, `web_settings`. `false` switches one off. New fleets get `task_board: false` |
 | `office_access` / `office_pack_access` | boolean | `false` | An agent's Office tools (`office_view`, `office_set`) and its skin-pack tools. Set here or per instance; outside `dashboard`, so older versions accept the file. See [Office](/AgEnD/docs/office/#agents-in-the-office) |
 | `reply_triggers` | boolean | `false` | In ClassicBot collab rooms, a native reply to the bot's message also triggers it (an @mention always does). ClassicBot defaults and each room can override |
@@ -124,7 +123,7 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 | `cost_guard.timezone` | string | system | IANA zone the daily reset follows |
 | `hang_detector.enabled` | boolean | `true` | Detect stuck instances |
 | `hang_detector.timeout_minutes` | number | `10` | Minutes a working instance's screen may stay unchanged before alerting |
-| `daily_summary.enabled` | boolean | `true` | Daily cost and status report |
+| `daily_summary.enabled` | boolean | `false` | Daily cost and status report in General (off unless set) |
 | `daily_summary.hour` / `.minute` | number | `21` / `0` | When it is sent, local time |
 | `tips` | boolean | `true` | Daily tips in General |
 | `scheduler.max_schedules` | number | `100` | Schedule limit |

@@ -516,6 +516,8 @@ Besides `/status`, these work from chat (on Discord as slash commands; on Telegr
 
 ## Daily summary
 
+Off unless `defaults.daily_summary.enabled: true` (since #2804: on a normal day General shows only tips and update notices).
+
 A daily report is posted to the General topic at a configurable time (default 21:00):
 
 ```
@@ -527,38 +529,6 @@ proj-c: $0.00 ⚠️ 1 hang
 
 Total: $10.30
 ```
-
-## The task board's daily summary
-
-Once a day at `defaults.task_board.summary_at` (`"HH:MM"` in the fleet's zone; **off unless set**, since 2.3.0 — e.g. `summary_at: "09:00"` turns it on) each platform's General gets a summary of the task board, and the web chat shows the same in General:
-
-```
-📋 Task board — daily summary, 10/20 09:00 – 10/21 09:00
-
-Waiting for your confirmation (1)
-• M-2 "Rewards API" · Fishing
-
-Blocked (1)
-• M-3 "Event page" · Fishing @dev-b: keep the page after the event?
-
-Done (2)
-• M-5 "Login fix" · Fishing
-• 1 sub task(s): S-1
-
-New (1)
-• M-6 "Weekly leaderboard" · Fishing
-
-Projects
-• Fishing 40% (2/5), 1 waiting for you, 1 blocked
-
-The board: Fleet › Tasks on the dashboard.
-```
-
-- What waits for you and what is blocked are as they are now; done and new cover the time since the last summary (at most a week).
-- Each platform lists the cards of its own instances; a card no platform's instance holds (nobody's, a person's) goes to the first one.
-- A day when nothing waits and nothing moved sends nothing. A summary missed while AgEnD was down goes out when it is back that day. The first one after an upgrade comes the next morning.
-- `"off"` turns it off; the change applies at the next minute's check.
-- Over the public link, a summary that names a card hidden there (an instance with `cross_instance_visibility: hidden` as its assignee, creator or dispatcher), or a card no longer on the board, is not shown.
 
 ## Hang detection
 

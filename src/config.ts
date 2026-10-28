@@ -51,7 +51,9 @@ export const DEFAULT_HANG_DETECTOR: HangDetectorConfig = {
 };
 
 export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
-  enabled: true,
+  // #2804: off unless set — General shows only tips and update notices on a normal day. Its clock still runs: the
+  // daily log/inbox rotation rides on it. (The daily tip has its own clock at the same hour/minute.)
+  enabled: false,
   hour: 21,
   minute: 0,
 };
@@ -155,7 +157,7 @@ export function getEffectiveInstanceDefaults(
     retention_days: _retentionDays,
     daily_summary: _dailySummary,
     webhooks: _webhooks,
-    // #2246 step 3: the board's daily summary is the fleet's (task-board-summary.ts), read at every look.
+    // Fleet-level only (#2804: its daily summary is gone; an old summary_at is accepted and ignored).
     task_board: _taskBoard,
     ...instanceDefaults
   } = fleetDefaults;

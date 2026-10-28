@@ -112,7 +112,6 @@ Telegram 吃：
 | `reply_overdue_minutes` | — | — | 已停用：不再通知發問者。仍可寫，但不起作用 |
 | `reply_obligation_ttl_hours` | number | `24` | 沒回覆的請求幾小時後到期 |
 | `retention_days` | number | `30` | 已完成的投遞和 Task Board 已完成任務保留幾天 |
-| `task_board.summary_at` | `"HH:MM"` 或 `"off"` | `off` | 每日任務看板摘要的發送時間，以 fleet 的時區計算（24 小時制）。沒設定時為關閉 |
 | `dashboard` | object | — | agent 可以使用的儀表板功能：`appearance`、`task_board`、`web_settings`。設為 `false` 會關掉該項。新建立的 fleet 會設 `task_board: false` |
 | `office_access` / `office_pack_access` | boolean | `false` | agent 的辦公室工具（`office_view`、`office_set`）與外觀包工具。可設在這裡或個別 instance；放在 `dashboard` 之外，所以舊版也接受這個檔案。請見[辦公室](/AgEnD/zh-tw/docs/office/#辦公室裡的-agent) |
 | `reply_triggers` | boolean | `false` | 在 ClassicBot collab 聊天室，原生回覆 bot 的訊息也會觸發它（@ 提及一律會觸發）。ClassicBot 預設值與個別聊天室可以覆寫 |
@@ -124,7 +123,7 @@ Telegram 吃：
 | `cost_guard.timezone` | string | 系統時區 | 每日重置依據的 IANA 時區 |
 | `hang_detector.enabled` | boolean | `true` | 偵測卡住的 instance |
 | `hang_detector.timeout_minutes` | number | `10` | 工作中的 instance 畫面幾分鐘沒變化後通知 |
-| `daily_summary.enabled` | boolean | `true` | 每日花費與狀態報告 |
+| `daily_summary.enabled` | boolean | `false` | 在 General 發每日花費與狀態報告（沒設定就關閉） |
 | `daily_summary.hour` / `.minute` | number | `21` / `0` | 當地時間的發送時刻 |
 | `tips` | boolean | `true` | General 的每日提示 |
 | `scheduler.max_schedules` | number | `100` | 排程上限 |

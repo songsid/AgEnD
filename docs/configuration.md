@@ -203,7 +203,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `cost_guard.timezone` | string | system TZ | IANA timezone for daily reset |
 | `hang_detector.enabled` | boolean | `true` | Enable stuck instance detection |
 | `hang_detector.timeout_minutes` | number | `10` | Minutes of no output before alert |
-| `daily_summary.enabled` | boolean | `true` | Enable daily cost/status report |
+| `daily_summary.enabled` | boolean | `false` | Post the daily cost/status report in General (off by default since #2804; its daily clock still runs log and inbox rotation; the daily tip has its own clock) |
 | `daily_summary.hour` | number | `21` | Report hour (local time) |
 | `daily_summary.minute` | number | `0` | Report minute |
 | `scheduler.max_schedules` | number | `100` | Max schedules |
@@ -220,7 +220,6 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `reply_obligation_ttl_hours` | number | `24` | Positive finite hours since the last ask before an open reply obligation expires. Reminders do not extend it. Expiration is logged only. Until then, an owner that is idle with the request unanswered is reminded once per ask (also after a restart, unless it was already reminded). |
 | `retention_days` | number | `30` | How many days to keep terminal deliveries (`delivered`/`failed`) in `delivery-outbox.db` and `done`/`cancelled` tasks on the Task Board. `uncertain` and non-terminal rows are never pruned. Pruning runs once at fleet startup and daily after that, in chunks of 500 rows so it never stalls the event loop. A `delivery_status` query for a pruned delivery_id returns "older than the retention window; record pruned" instead of "Delivery not found". |
 | `tips` | boolean | `true` | Daily tips: `true` posts in General; `false` disables. Independent of `daily_summary.enabled`. An older `"dm"` value is read as `true`. |
-| `task_board.summary_at` | string | off | The task board's daily summary for the person (off unless set, since 2.3.0 — set a time to turn it on), in each platform's General and the web chat: `"HH:MM"` (24 h, in `scheduler.default_timezone`, else the host's zone) or `"off"`. Read at every minute's check (no restart). See [features](features.md#the-task-boards-daily-summary). |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. Read when AgEnD starts: restart AgEnD after changing it. |
 
 Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp only), independent of notification retention. Cleaning old delivered notices does not allow the same boot to remind or stamp the requests again.
