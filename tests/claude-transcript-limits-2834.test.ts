@@ -109,6 +109,9 @@ describe("#2834: a session's first records are read, history is not replayed", (
   it("a transcript created after the monitor began (a new session): its first record — the credit error — is read", async () => {
     const { m, errs } = monitorAt(join(tmp(), "new-session.jsonl"));
     const path = await m.resolveTranscriptPath();
+    // Claude writes the session file on the first prompt, seconds after the monitor began; a file's birth time comes
+    // from the kernel's coarse clock, a few ms behind Date.now(), so a write within the same few ms could read as older.
+    await new Promise(r => setTimeout(r, 50));
     writeFileSync(path, line({ type: "user", message: { role: "user", content: "message 1" } }) + line(CREDIT_ERROR));
     await m.pollIncrement(); await m.pollIncrement();
     expect(errs).toEqual([["Credit balance is too low", 400, null, "billing_error"]]);
