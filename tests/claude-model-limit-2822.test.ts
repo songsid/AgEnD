@@ -47,7 +47,7 @@ describe("#2822: the transcript monitor tells Claude's own API error apart from 
     m.on("api_error", (...a: unknown[]) => errors.push(a)); m.on("assistant_text", (x: string) => texts.push(x));
     m.processEntry(RECORD);
     m.processEntry({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: `Claude prints "${LIMIT}"` }] } });
-    expect(errors).toEqual([[LIMIT, 429, Date.parse(RECORD.timestamp)]]);
+    expect(errors).toEqual([[LIMIT, 429, Date.parse(RECORD.timestamp), "rate_limit"]]);   // #2834: the error kind too
     expect(texts).toEqual([`Claude prints "${LIMIT}"`]);
   });
 

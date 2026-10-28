@@ -20,7 +20,9 @@
           "DANGER_OPTION_ROW": "approval", "DANGER_FOOTER": "approval", "claudeCommandRequestIdentity": "approval",
           "CLAUDE_BACKGROUND_WORK_EXIT": "exit", "quitBlockedByDialog": "exit", "CLAUDE_LIVE_TAIL": "idle-busy" } },
       { "file": "src/daemon.ts", "symbols": ["detectMalformedClaudeToolCall"], "surfaces": { "detectMalformedClaudeToolCall": "error" } },
-      { "file": "src/login-flows.ts", "symbols": ["claude-code"], "surfaces": { "claude-code": "onboarding" } }
+      { "file": "src/login-flows.ts", "symbols": ["claude-code"], "surfaces": { "claude-code": "onboarding" } },
+      { "file": "src/backend/claude-transcript-errors.ts",
+        "surfaces": { "CLAUDE_MODEL_USAGE_LIMIT": "error", "CLAUDE_USAGE_LIMIT_PAUSE": "error", "CLAUDE_CREDIT_BALANCE_LOW": "error" } }
     ],
     "codex": [
       { "file": "src/backend/codex.ts",

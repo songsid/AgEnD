@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
@@ -28,12 +28,19 @@ export class TranscriptMonitor extends EventEmitter {
   private polling = false; // reentry guard for pollIncrement
   private generation = 0;
 
+  /**
+   * #2834: since when a transcript counts as this run's own (read from its start): when this monitor began, moved to each
+   * re-baseline (resetOffset) — a file born before that is history, already seen or not ours to replay (#2835 review).
+   */
+  private attachBoundary: number;
+
   constructor(
     private instanceDir: string,
     private logger: Logger,
     private source: TranscriptSource | null = null,
   ) {
     super();
+    this.attachBoundary = Date.now();
     this.offsetFile = join(instanceDir, "transcript-offset");
     // Persisted offsets are only meaningful for the claude-code transcript;
     // sources re-resolve and re-baseline themselves (a stale byte offset into
@@ -104,6 +111,16 @@ export class TranscriptMonitor extends EventEmitter {
     }
   }
 
+  /** #2834: the file was created after the attach boundary (its birth time; 0 or unavailable → not provable → false). */
+  private createdThisRun(path: string): boolean {
+    try {
+      const born = statSync(path).birthtimeMs;
+      return born > 0 && born >= this.attachBoundary;               // Claude creates it after AgEnD spawned it
+    } catch {
+      return false;
+    }
+  }
+
   async pollIncrement(): Promise<void> {
     // Reentry guard: setInterval keeps firing even when the previous poll is
     // still awaiting stat/read. Two concurrent runs would race on byteOffset
@@ -157,9 +174,11 @@ export class TranscriptMonitor extends EventEmitter {
         // First-ever attach: baseline to EOF so history does not replay — to its last line boundary, so a
         // record being written right now is read once complete rather than lost (#1250). If the boundary cannot
         // be read, nothing is attached or saved and the next poll tries again (#1283 review): offset 0 would
-        // replay the whole history.
+        // replay the whole history. #2834: a transcript CREATED after this monitor began has no history — it is
+        // this run's new session, whose first records (a failed first call, e.g. an exhausted credit balance) must
+        // not be skipped: read it from the start. A filesystem without a creation time keeps the EOF baseline.
         try {
-          this.byteOffset = await lastLineBoundary(current);
+          this.byteOffset = this.createdThisRun(current) ? 0 : await lastLineBoundary(current);
           this.skipping = false;
           this.pendingLong = null;
         } catch {
@@ -218,6 +237,11 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   private processEntry(entry: any): void {
+    // #2834: Claude's own status notes (e.g. its usage-limit auto-continue) — a system record, not model output.
+    if (entry.type === "system" && entry.subtype === "informational" && typeof entry.content === "string") {
+      this.emit("system_informational", entry.content);
+      return;
+    }
     const msg = entry.message;
     if (!msg?.role || !msg?.content) return;
     // #2822: Claude records a failed API call as an assistant record of its own (`isApiErrorMessage`) — the CLI's own
@@ -227,7 +251,8 @@ export class TranscriptMonitor extends EventEmitter {
         ? msg.content.map((b: any) => (b?.type === "text" && typeof b.text === "string" ? b.text : "")).join("")
         : String(msg.content);
       const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
-      this.emit("api_error", text, typeof entry.apiErrorStatus === "number" ? entry.apiErrorStatus : null, Number.isFinite(at) ? at : null);
+      this.emit("api_error", text, typeof entry.apiErrorStatus === "number" ? entry.apiErrorStatus : null, Number.isFinite(at) ? at : null,
+        typeof entry.error === "string" ? entry.error : null);
       return;
     }
 
@@ -294,6 +319,7 @@ export class TranscriptMonitor extends EventEmitter {
 
   resetOffset(): void {
     this.generation++;
+    this.attachBoundary = Date.now();
     this.byteOffset = 0;
     this.skipping = false;
     this.pendingLong = null;
