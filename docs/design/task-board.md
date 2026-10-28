@@ -227,7 +227,8 @@ it on purpose, and #1267 (a Kanban) left that to the person. What this PR takes,
 **Who hears what** (`TaskBoard.settleWakes`, read from a write's events once it is all written, still inside it): an
 instance hears what someone else did to a card that is its own, or that it handed out. #2801: only a change of status
 or assignee is news, and each change goes to one instance — the one that acts next. A comment and a confirmation wake
-nobody (the card lists new comments for its assignee: `mine`, `get`) —
+nobody (the card lists new comments for its assignee: `mine`, `get`), but for the answer to a busy assignee's blocked
+question, kept on the card as a comment (#2303): its assignee is told (answer kept) while the card is still blocked —
 
 | News | Who | When |
 |---|---|---|
@@ -235,6 +236,7 @@ nobody (the card lists new comments for its assignee: `mine`, `get`) —
 | start | the assignee | someone else moved its open card to in progress |
 | sent back | the assignee | the person sent it back from review, with the reason |
 | answered | the assignee | its blocked question answered (by the person or its dispatcher), with the answer |
+| answer kept | the assignee | its dispatcher answered while it works on another card: the answer waits on the card, which stays blocked until it resumes it |
 | ready | the assignee | every card it waited for is done — by hand or by the board's own move |
 | decide | the dispatcher | its card got blocked on a question: ask the person, answer it on the card |
 | to confirm | the dispatcher | its card waits for its confirmation (#2434), with what it still lacks — also when it went there by itself |
@@ -257,8 +259,10 @@ with an instance dispatcher still wait for you on Home, marked as asked first.
 
 - **Told already (#2785 (c), widened by #2801).** News an instance made — an assignment, a block, an answer, a move to
   review — is dropped when that instance messaged the one it concerns naming the card (or, for a sub task, its main
-  task) up to 2 minutes before; news not yet told that way waits up to 2 minutes from the change for such a message
-  (`TOLD_WINDOW_MS`), then goes. A person's change is told without waiting.
+  task) about it: for an assignment from up to 2 minutes before it (a delegate_task often comes first), for anything
+  else only from the change on (an earlier message did not tell what came after it). News not yet told that way waits
+  up to 2 minutes from the change for such a message (`TOLD_WINDOW_MS`), then goes. A cancel is told at once and never
+  folded; a person's change is told without waiting.
 - **Superseded (#2801).** A notice's outbox key ends with the cards it names (`:cards=<uuid>,…`). When a write changes
   a card's status or assignee (`BoardChange.changed`), a notice still waiting (queued or retrying, never begun) that
   names it is withdrawn once every card on it has changed since it was admitted (`TaskBoard.lastChangeAt`): `cancelled`,

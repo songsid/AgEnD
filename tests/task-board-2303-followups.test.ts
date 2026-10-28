@@ -144,8 +144,8 @@ describe("2. a dispatcher answering a blocked card respects its assignee's limit
     expect(r.said[0]!.text).toContain(`dev-a is working on ${b.code}`);
     expect(board.inProgress("dev-a").map((c) => c.code)).toEqual([b.code]);
     expect(board.detail(a.code).comments.map((c) => [c.author, c.text])).toEqual([["lead", "the best of three"]]);
-    // #2801: the card did not change, so no notice; its assignee finds the answer with its work.
-    expect(take()).toEqual([]);
+    // #2801 review: the one comment that is news — the answer it waits for, kept on the card; and with its work.
+    expect(take()).toEqual([{ to: "dev-a", text: expect.stringContaining('lead answered your blocked question: "the best of three" — kept on the card') }]);
     expect(myWorkText(board, "dev-a", board.myWork("dev-a"))).toMatch(new RegExp(`new comments[\\s\\S]*${a.code} `));
     expect(board.myWork("dev-a").newComments.map((n) => n.card.code)).toEqual([a.code]);
     expect(refusal(() => board.moveCard(DEV, a.code, "claimed"))).toBe("one_at_a_time");   // still one at a time

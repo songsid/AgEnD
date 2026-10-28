@@ -128,7 +128,7 @@ describe("#2801: one card's life — who is told what (the issue's table)", () =
 });
 
 describe("#2801: news its maker already told in a message (within 2 minutes) is not repeated", () => {
-  it("block, answer and review, each told by its maker's message before or after: no board notice", () => {
+  it("an assignment told before or after, a block, an answer and a review told after: no board notice", () => {
     const { board, say, settle } = rig();
     const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
     say("lead", "dev-a", `Board card ${card.code}: build it`);
@@ -138,8 +138,9 @@ describe("#2801: news its maker already told in a message (within 2 minutes) is 
     vi.advanceTimersByTime(60_000);
     say("dev-a", "lead", `${card.code} is blocked: which API?`);            // a minute after the change
     expect(settle()).toEqual([]);
-    say("lead", "dev-a", `${card.code}: the v2 one`);                        // just before the change
     board.moveCard(LEAD, card.code, "claimed", { comment: "the v2 one" });
+    vi.advanceTimersByTime(5_000);
+    say("lead", "dev-a", `${card.code}: answered on the card — the v2 one`);
     expect(settle()).toEqual([]);
     board.moveCard(DEV, card.code, "review", { result: "r" });
     say("dev-a", "lead", `PR ready for ${card.code}`);
@@ -157,6 +158,30 @@ describe("#2801: news its maker already told in a message (within 2 minutes) is 
     say("dev-a", "lead", "M-99 is blocked");
     board.moveCard(DEV, card.code, "blocked", { reason: "which API?" });
     expect(settle()).toEqual([["lead", has("you handed it out and it is blocked (@dev-a)")]]);
+  });
+
+  it("a message before a change other than an assignment did not tell it (#2801 review): the board does", () => {
+    const { board, say, settle } = rig();
+    const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
+    settle();
+    board.moveCard(DEV, card.code, "claimed");
+    say("dev-a", "lead", `${card.code} going well so far`);
+    vi.advanceTimersByTime(60_000);
+    board.moveCard(DEV, card.code, "blocked", { reason: "which API?" });
+    expect(settle()).toEqual([["lead", has("you handed it out and it is blocked (@dev-a)")]]);
+  });
+
+  it("a cancel is told at once — after a message about the card, or one right after it — never held or folded", () => {
+    const { board, say, settle } = rig();
+    const card = main(board, LEAD, { assignee: "dev-a" });
+    settle();
+    board.moveCard(DEV, card.code, "claimed");
+    say("lead", "dev-a", `${card.code} looks fine so far`);
+    vi.advanceTimersByTime(60_000);
+    board.moveCard(LEAD, card.code, "cancelled", { reason: "dropped" });
+    say("lead", "dev-a", `${card.code} is cancelled, stop`);
+    vi.advanceTimersByTime(10_000);                                           // the gather only: no 2-minute wait
+    expect(settle()).toEqual([["dev-a", has('cancelled by lead: "dropped" — stop working on it')]]);
   });
 
   it("a person's change is told at once, without waiting for a message", () => {
@@ -187,6 +212,23 @@ describe("#2801: a notice still waiting is withdrawn once its cards changed agai
     board.moveCard(ANN, card.code, "claimed", { comment: "the v2 one" });
     expect(rows().find((r) => r.id === blocked.id)).toMatchObject({ state: "cancelled", err: "superseded: its card changed again" });
     expect(settle()).toEqual([["dev-a", has("Ann answered your blocked question")]]);
+  });
+
+  it("a busy assignee's blocked question answered: the answer waits on the card and its assignee is told so (#2801 review)", () => {
+    const { board, settle } = rig();
+    const [a, b] = [main(board, LEAD, { assignee: "dev-a" }), main(board, LEAD, { assignee: "dev-a" })];
+    board.moveCard(DEV, a.code, "claimed");
+    board.moveCard(DEV, a.code, "blocked", { reason: "which scores count?" });
+    board.moveCard(DEV, b.code, "claimed");
+    settle();
+    board.moveCard(LEAD, a.code, "claimed", { comment: "the best of three" });
+    expect(board.getCard(a.code).status).toBe("blocked");
+    expect(settle()).toEqual([["dev-a", has(`${a.code} "Build the leaderboard": lead answered your blocked question: "the best of three" — kept on the card`)]]);
+    // Resumed meanwhile: no longer news.
+    board.moveCard(LEAD, a.code, "claimed", { comment: "and ties share a rank" });
+    board.moveCard(DEV, b.code, "review", { result: "r" });
+    board.moveCard(DEV, a.code, "claimed");
+    expect(settle().filter(([to]) => to === "dev-a")).toEqual([]);
   });
 
   it("a card given to someone else: its old assignee's waiting notice is withdrawn; the new one is told", () => {

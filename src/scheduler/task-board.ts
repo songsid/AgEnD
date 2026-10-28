@@ -242,9 +242,10 @@ export interface CardEvent {
  * tells them (to_confirm); a main task went to the person by itself before its owner wrapped it up (wrap_up); or
  * someone else cancelled it — a main task's cancel takes its unfinished sub tasks down with it, and their assignees
  * hear (cancelled). #2801: only a change of status or assignee is news, and only to the one instance that acts on it
- * next — a comment, and a confirmation (the work is finished), wake nobody.
+ * next — a comment, and a confirmation (the work is finished), wake nobody; but for the answer to its blocked question
+ * that waits on the card while its assignee is busy with another (#2303), which it acts on next (answer_kept).
  */
-export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "ready" | "decide" | "to_confirm" | "confirm_own" | "wrap_up" | "cancelled";
+export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "answer_kept" | "ready" | "decide" | "to_confirm" | "confirm_own" | "wrap_up" | "cancelled";
 
 /** One card's news for one instance from one committed write. Never sent to a page (it carries titles and text). */
 export interface Wake {
@@ -1554,7 +1555,8 @@ export class TaskBoard {
         if (busy.length) {
           const text = checkText("the comment", comment!, CARD_LIMITS.comment);
           this.entry(card, "comment", actor, text);
-          this.event(actor, card, "commented", { text });
+          // #2801 review: the one comment that is news — the answer its assignee waits for (`kept`).
+          this.event(actor, card, "commented", { text, kept: true });
           card.version++;
           card.updatedAt = this.nowIso();
           this.save(card);
@@ -2164,6 +2166,10 @@ export class TaskBoard {
     const comments = new Map<string, string>();
     for (const e of events) if (e.type === "commented") comments.set(e.uuid, String(e.data.text ?? ""));
     for (const e of events) {
+      const card = e.type === "commented" && e.data.kept === true ? this.byUuid(e.uuid) : undefined;
+      if (card) add(card, card.assignee, "answer_kept", e.actor, String(e.data.text ?? ""));
+    }
+    for (const e of events) {
       const card = this.byUuid(e.uuid);
       if (!card) continue;
       const d = e.data as { from?: CardStatus; to?: CardStatus; auto?: boolean; reason?: string; assignee?: string | null; text?: string; cascade?: string };
@@ -2234,6 +2240,7 @@ export class TaskBoard {
       if (r === "assigned") return !waiting;
       if (r === "ready") return card.status === "open" && !waiting;
       if (r === "start" || r === "answered") return card.status === "claimed";
+      if (r === "answer_kept") return card.status === "blocked";
       if (r === "sent_back") return card.status === "claimed" || card.status === "open";
       return true;
     });

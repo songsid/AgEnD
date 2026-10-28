@@ -47,8 +47,8 @@ export interface TaskBoardWakerDeps {
 }
 
 /**
- * #2785 (c), #2801: a change an instance made counts as told when it messaged the one it concerns about the card up to
- * this long before; the news waits this long (from the change) for such a message before the board tells it.
+ * #2785 (c), #2801: news an instance made waits this long (from the change) for its own message about the card before
+ * the board tells it; an assignment also counts a message up to this long before it.
  */
 export const TOLD_WINDOW_MS = 120_000;
 /** The start of a task board notice's key; `:cards=` and the card uuids end it (#2801). */
@@ -61,7 +61,7 @@ export const namesCard = (text: string, code: string) => new RegExp(`(^|[^\\w-])
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
 /** The order a card's news is told in. */
-const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "confirm_own", "answered", "wrap_up", "assigned", "start", "ready"];
+const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "confirm_own", "answered", "answer_kept", "wrap_up", "assigned", "start", "ready"];
 
 const quote = (text: string | undefined) => (text ? `: "${oneLine(text, 160)}"` : "");
 
@@ -73,6 +73,8 @@ function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): stri
     case "start": return `${by} asks you to start it`;
     case "sent_back": return `sent back by ${by}${quote(w.texts.sent_back)}`;
     case "answered": return `${by} answered your blocked question${quote(w.texts.answered)} — it is in progress again`;
+    // #2801 review: the answer waits on the card while the assignee finishes another (#2303); nothing else would say so.
+    case "answer_kept": return `${by} answered your blocked question${quote(w.texts.answer_kept)} — kept on the card, which stays blocked while you finish your current card: resume it (move it to claimed) when you're free`;
     case "ready": return "everything it waited for is done — you can start it";
     case "decide": return here
       ? `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — answer it yourself if you can (move it back to claimed with the decision as the comment); otherwise the person has Answer for it in your channel`
@@ -215,9 +217,11 @@ export class TaskBoardWaker {
 
   /**
    * #2785 (c), #2801: the batch's wakes with each piece of news dropped where the instance that made it messaged this
-   * one naming the card (or, for a sub task, its main task) since shortly before the change. A card whose maker has not
-   * yet done so waits, up to TOLD_WINDOW_MS from the change, in a batch of its own; after that the board tells it. A
-   * person's change, and the board's own, are told without looking.
+   * one naming the card (or, for a sub task, its main task) about it: for an assignment since shortly before it (a
+   * delegate_task often comes first); for anything else only since the change (#2801 review: an earlier message about
+   * the card did not tell what came after it). A card whose maker has not yet done so waits, up to TOLD_WINDOW_MS from
+   * the change, in a batch of its own; after that the board tells it. A cancel is told at once, never folded ("stop
+   * working on it" must not wait); so are a person's change and the board's own.
    */
   private foldToldNews(instance: string, batch: { wakes: Map<string, Wake>; at: Map<string, number> }): Wake[] {
     const ask = this.deps.messagedAbout;
@@ -227,6 +231,7 @@ export class TaskBoardWaker {
     const out: Wake[] = [];
     const waiting = new Map<string, Wake>();
     for (const [uuid, w] of batch.wakes) {
+      if (w.reasons.includes("cancelled")) { out.push(w); continue; }
       const at = batch.at.get(uuid) ?? now;
       const codes = [w.code, ...(w.parent ? [w.parent] : [])];
       const asked = new Map<string, boolean | "failed">();
@@ -235,14 +240,15 @@ export class TaskBoardWaker {
       for (const r of w.reasons) {
         const by = w.by[r];
         if (!by || !this.deps.isInstance(by)) continue;
-        let messaged = asked.get(by);
+        const since = r === "assigned" ? at - window : at;
+        let messaged = asked.get(`${by}\u0000${since}`);
         if (messaged === undefined) {
-          try { messaged = ask(by, instance, codes, at - window); }
+          try { messaged = ask(by, instance, codes, since); }
           catch (err) {
             this.deps.log("warn", "Task board could not look for the maker's message; telling it", { instance, code: w.code, err: (err as Error).message });
             messaged = "failed";
           }
-          asked.set(by, messaged);
+          asked.set(`${by}\u0000${since}`, messaged);
         }
         if (messaged === true) told.push(r);
         else if (messaged === false && now - at < window) pending = true;
