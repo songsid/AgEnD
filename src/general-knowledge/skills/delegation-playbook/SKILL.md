@@ -29,7 +29,7 @@ When an instance reports back, classify the outcome:
 - Success → Summarize key results for user. Omit internal coordination noise.
 - Partial → State what succeeded, what remains, proposed next steps.
 - Failure → Retry up to 2 times. If still failing: try alternative instance, reduce scope, or return partial result clearly marked.
-- No response → when a `[system:reply-overdue]` notice arrives (after 15 min by default), check `describe_instance` and `delivery_status` before asking again. If still silent: report to user with options.
+- No response → check `describe_instance` and `delivery_status` before asking again (the owner is reminded on its own; you are not notified). If still silent: report to user with options.
 
 ## Shared Decisions
 

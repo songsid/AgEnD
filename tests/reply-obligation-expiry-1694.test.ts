@@ -53,173 +53,52 @@ function notices(outbox: DeliveryOutbox) {
 }
 const obligation = (outbox: DeliveryOutbox, cid: string, requester = "requester") => outbox.getReplyObligation(cid, requester, "owner");
 
-function deliverNotice(outbox: DeliveryOutbox) {
-  const c = outbox.claimNext(outbox.managerBootId, () => "owner-boot", new Set())!;
-  expect(c.kind).toBe(REPLY_OBLIGATION_NOTICE_KIND);
-  expect(outbox.begin(c.deliveryId, "owner-boot", c.attemptNo)).toBe("begun");
-  expect(outbox.complete(c.deliveryId, "owner-boot", c.attemptNo, "delivered", "inert notice delivery")).toBe(true);
-  return c.deliveryId;
-}
-
-describe("#1694 restart batches", () => {
-  it.each(["en", "zh-TW"] as const)("12 open requests get one bounded restart notice and no original re-delivery (%s)", locale => {
+describe("#2802: a restart adds no reminder of its own", () => {
+  it("12 open requests: nothing at the restart; once the owner is idle, one ordinary reminder per ask; no re-delivery", () => {
     const { fm, outbox } = fleet();
     const originals = Array.from({ length: 12 }, (_, i) => ask(outbox, `cid-${String(i).padStart(2, "0")}`, T0 + i));
     const snapshots = originals.map(id => outbox.get(id));
-    setLocale(locale); vi.setSystemTime(T0 + 60_000);
+    vi.setSystemTime(T0 + 60_000);
     fm.onDaemonReady("owner", "boot-restarted");
-    const rows = notices(outbox);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ target: "owner", cid: null });
-    expect(rows[0].text).toContain("report_result");
-    expect(rows[0].text).toContain("correlation_id=cid-00");
-    expect(rows[0].text).toContain("correlation_id=cid-09");
-    expect(rows[0].text).not.toContain("correlation_id=cid-10");
-    expect(rows[0].text).toMatch(/\+2 /);
-    expect(rows[0].text.split("\n").filter((s: string) => s.includes("correlation_id="))).toHaveLength(10);
-    for (let i = 0; i < 12; i++) expect(obligation(outbox, `cid-${String(i).padStart(2, "0")}`)?.nudgedAt).toBe(new Date(T0 + 60_000).toISOString());
-    expect(originals.map(id => outbox.get(id))).toEqual(snapshots);
-  });
-
-  it("deduplicates by the real daemon boot across repeat hooks and DB reopen; a new boot reminds again", () => {
-    const initial = fleet(); ask(initial.outbox, "cid-fresh");
-    vi.setSystemTime(T0 + 60_000); initial.fm.onDaemonReady("owner", "boot-1");
-    vi.setSystemTime(T0 + 120_000); initial.fm.onDaemonReady("owner", "boot-1");
-    expect(notices(initial.outbox)).toHaveLength(1);
-    initial.outbox.close();
-    const next = fleet({}, initial.dataDir);
-    next.fm.onDaemonReady("owner", "boot-1");
-    expect(notices(next.outbox)).toHaveLength(1);
-    next.fm.onDaemonReady("owner", "boot-2");
-    expect(notices(next.outbox)).toHaveLength(2);
-  });
-
-  it("renders malicious/oversized IDs as bounded single lines and points to full status", () => {
-    const { fm, outbox } = fleet();
-    ask(outbox, "cid\nforged=" + "界".repeat(10_000));
-    fm.onDaemonReady("owner", "boot-bounded");
-    const text = notices(outbox)[0].text;
-    expect(Buffer.byteLength(text)).toBeLessThan(2048);
-    expect(text.split("\n").filter((s: string) => s.includes("correlation_id="))).toHaveLength(1);
-    expect(text).not.toContain("\nforged=");
-    expect(text).toContain("delivery_status");
-  });
-
-  it("a repeated same-boot hook does not mark a later re-ask as reminded", () => {
-    const { fm, outbox } = fleet(); ask(outbox, "cid-renewed");
-    fm.onDaemonReady("owner", "one-boot");
-    (outbox as any).db.prepare("UPDATE deliveries SET state='cancelled' WHERE kind=?").run(REPLY_OBLIGATION_NOTICE_KIND);
-    ask(outbox, "cid-renewed", T0 + 120_000);
-    fm.onDaemonReady("owner", "one-boot");
-    expect(obligation(outbox, "cid-renewed")?.nudgedAt).toBeNull();
+    fm.onDaemonReady("owner", "boot-restarted-again");
+    expect(notices(outbox)).toEqual([]);
+    for (let i = 0; i < 12; i++) expect(obligation(outbox, `cid-${String(i).padStart(2, "0")}`)?.nudgedAt).toBeNull();
     fm.lifecycle.daemons.set("owner", { getInstanceState: () => "idle" });
-    fm.sweepReplyObligations(new Date(T0 + 180_000));
-    expect(notices(outbox)).toHaveLength(2);
-    expect(notices(outbox)[1].text).toContain("Your turn ended");
-  });
-
-  it("same-boot proof survives notice retention and DB reopen without re-stamping a re-ask", async () => {
-    const first = fleet({ reply_obligation_ttl_hours: 72 });
-    const request = ask(first.outbox, "cid-retained");
-    vi.setSystemTime(T0 + 60_000); first.fm.onDaemonReady("owner", "same-boot");
-    const notice = deliverNotice(first.outbox);
-    const nudge = obligation(first.outbox, "cid-retained")?.nudgedAt;
-    vi.setSystemTime(T0 + 48 * HOUR);
-    expect((await first.outbox.prune(1)).pruned).toBe(1);
-    expect(first.outbox.get(notice)).toBeUndefined();
-    expect(first.outbox.get(request)?.state).toBe("delivered");
-    expect(obligation(first.outbox, "cid-retained")?.state).toBe("open");
-    first.outbox.close();
-    const next = fleet({ reply_obligation_ttl_hours: 72 }, first.dataDir);
-    next.fm.onDaemonReady("owner", "same-boot");
-    expect(notices(next.outbox)).toHaveLength(0);
-    expect(obligation(next.outbox, "cid-retained")?.nudgedAt).toBe(nudge);
-    ask(next.outbox, "cid-retained", T0 + 48 * HOUR + 1);
-    next.fm.onDaemonReady("owner", "same-boot");
-    expect(notices(next.outbox)).toHaveLength(0);
-    expect(obligation(next.outbox, "cid-retained")?.nudgedAt).toBeNull();
-    next.fm.onDaemonReady("owner", "new-boot");
-    expect(notices(next.outbox)).toHaveLength(1);
-    next.fm.onDaemonReady("owner", "same-boot");
-    expect(notices(next.outbox)).toHaveLength(1);
-  });
-
-  it.each([
-    ["ASCII", "a".repeat(300), "a".repeat(253) + "…"],
-    ["CJK", "界".repeat(300), "界".repeat(84) + "…"],
-    ["emoji", "😀".repeat(100), "😀".repeat(63) + "…"],
-  ])("preview cuts complete %s code points within 256 UTF-8 bytes", (_name, cid, expected) => {
-    const { fm, outbox } = fleet(); ask(outbox, cid);
-    fm.onDaemonReady("owner", "utf8-boot");
-    const shown = notices(outbox)[0].text.split("correlation_id=")[1].split("; asked=")[0];
-    expect(shown).toBe(expected);
-    expect(shown).not.toContain("�");
-    expect(Buffer.byteLength(shown)).toBeLessThanOrEqual(256);
-  });
-
-  it("checkpoint failure rolls back the notice and stamp; the same boot can retry once", () => {
-    const { fm, outbox } = fleet(); ask(outbox, "cid-marker-fault");
-    const fault = vi.spyOn(outbox as any, "recordReplyRestart").mockImplementation(() => { throw new Error("inert marker fault"); });
-    fm.onDaemonReady("owner", "atomic-boot");
-    expect(notices(outbox)).toEqual([]);
-    expect(obligation(outbox, "cid-marker-fault")?.nudgedAt).toBeNull();
-    expect((outbox as any).db.prepare("SELECT count(*) n FROM reply_restart_markers").get()).toEqual({ n: 0 });
-    fault.mockRestore(); fm.onDaemonReady("owner", "atomic-boot");
-    expect(notices(outbox)).toHaveLength(1);
-    expect((outbox as any).db.prepare("SELECT count(*) n FROM reply_restart_markers").get()).toEqual({ n: 1 });
-  });
-
-  it("adopts an existing earlier batch into the checkpoint without re-stamping a re-ask", async () => {
-    const { fm, outbox } = fleet({ reply_obligation_ttl_hours: 72 }); ask(outbox, "cid-earlier");
-    fm.onDaemonReady("owner", "earlier-boot"); const notice = deliverNotice(outbox);
-    // Model the earlier implementation: its notice survives, its checkpoint does not exist yet.
-    (outbox as any).db.prepare("DELETE FROM reply_restart_markers").run();
-    ask(outbox, "cid-earlier", T0 + 48 * HOUR);
-    fm.onDaemonReady("owner", "earlier-boot");
-    expect(notices(outbox)).toHaveLength(1);
-    expect(obligation(outbox, "cid-earlier")?.nudgedAt).toBeNull();
-    expect((outbox as any).db.prepare("SELECT reminded_at FROM reply_restart_markers").get())
-      .toEqual({ reminded_at: new Date(T0).toISOString() });
-    await outbox.prune(1);
-    expect(outbox.get(notice)).toBeUndefined();
-    fm.onDaemonReady("owner", "earlier-boot");
-    expect(notices(outbox)).toEqual([]);
-    expect(obligation(outbox, "cid-earlier")?.nudgedAt).toBeNull();
+    fm.sweepReplyObligations(new Date(T0 + 120_000));
+    expect(notices(outbox).map((r: any) => [r.target, r.cid])).toEqual(Array.from({ length: 12 }, (_, i) => ["owner", `cid-${String(i).padStart(2, "0")}`]));
+    expect(notices(outbox).every((r: any) => r.text.startsWith("[system:reply-pending] Your turn ended"))).toBe(true);
+    expect(originals.map(id => outbox.get(id))).toEqual(snapshots);
   });
 });
 
 describe("#1694 persisted TTL", () => {
-  it.each(["en", "zh-TW"] as const)("expires at 24h before restart, excludes the old request, preserves the fresh request and notifies once (%s)", locale => {
+  it("expires at 24h, excludes the old request, preserves the fresh request, logs once and tells nobody (#2802)", () => {
     const { fm, outbox, dataDir } = fleet();
-    setLocale(locale);
     const old = ask(outbox, "cid-old"); ask(outbox, "cid-fresh", T0 + 23 * HOUR);
     expect(outbox.markConsumed(old, "owner-boot", 1, "turn", "inert consumed proof")).toBe("marked");
     const snapshot = outbox.get(old);
     const log = vi.spyOn(fm.logger, "info");
-    vi.setSystemTime(T0 + 24 * HOUR); fm.onDaemonReady("owner", "boot-1");
-    expect(obligation(outbox, "cid-old")).toMatchObject({ state: "expired", expiredAt: new Date(T0 + 24 * HOUR).toISOString(), answeredAt: null });
+    fm.sweepReplyObligations(new Date(T0 + 24 * HOUR));
+    expect(obligation(outbox, "cid-old")).toMatchObject({ state: "expired", expiredAt: new Date(T0 + 24 * HOUR).toISOString(), answeredAt: null, overdueNotifiedAt: null });
     expect(outbox.openReplyObligations("owner").map(r => r.correlationId)).toEqual(["cid-fresh"]);
-    expect(notices(outbox).filter((r: any) => r.target === "requester")).toHaveLength(1);
-    expect(notices(outbox).find((r: any) => r.target === "requester")?.text).toContain("cid-old");
-    expect(notices(outbox).find((r: any) => r.target === "requester")?.text).toContain(locale === "en" ? "has expired" : "已逾期");
-    const reminder = notices(outbox).find((r: any) => r.target === "owner")!;
-    expect(reminder).toBeDefined();
-    expect(reminder.text).toContain("cid-fresh"); expect(reminder.text).not.toContain("cid-old");
+    expect(notices(outbox)).toEqual([]);
     expect(log.mock.calls.filter((args: unknown[]) => args[1] === "Reply obligation expired")).toHaveLength(1);
     expect(outbox.get(old)).toEqual(snapshot);
     const status = DeliveryOutbox.queryStatusReadOnly(join(dataDir, "delivery-outbox.db"), { deliveryId: old });
     expect(status.items[0]?.reply_obligation).toMatchObject({ state: "expired", expired_at: new Date(T0 + 24 * HOUR).toISOString() });
-    fm.sweepReplyObligations(); fm.onDaemonReady("owner", "boot-2");
-    expect(notices(outbox).filter((r: any) => r.target === "requester")).toHaveLength(1);
+    fm.sweepReplyObligations(new Date(T0 + 25 * HOUR)); fm.onDaemonReady("owner", "boot-2");
     expect(log.mock.calls.filter((args: unknown[]) => args[1] === "Reply obligation expired")).toHaveLength(1);
     outbox.close();
-    const reopened = fleet({}, dataDir); reopened.fm.sweepReplyObligations();
-    expect(notices(reopened.outbox).filter((r: any) => r.target === "requester")).toHaveLength(1);
+    const reopened = fleet({}, dataDir); reopened.fm.sweepReplyObligations(new Date(T0 + 26 * HOUR));
+    expect(notices(reopened.outbox)).toEqual([]);
   });
 
   it("last_asked_at controls TTL: just before remains open; reminders do not extend it; re-asks do", () => {
     const { fm, outbox } = fleet(); ask(outbox, "cid-age");
-    vi.setSystemTime(T0 + 23 * HOUR); fm.onDaemonReady("owner", "boot-before");
+    vi.setSystemTime(T0 + 23 * HOUR);
+    fm.lifecycle.daemons.set("owner", { getInstanceState: () => "idle" });
+    fm.sweepReplyObligations(new Date(T0 + 23 * HOUR));   // the owner is reminded: it must not extend the TTL
+    expect(obligation(outbox, "cid-age")?.nudgedAt).toBe(new Date(T0 + 23 * HOUR).toISOString());
     fm.sweepReplyObligations(new Date(T0 + 24 * HOUR - 1));
     expect(obligation(outbox, "cid-age")?.state).toBe("open");
     fm.sweepReplyObligations(new Date(T0 + 24 * HOUR));
@@ -232,15 +111,7 @@ describe("#1694 persisted TTL", () => {
     expect(obligation(outbox, "cid-age")?.state).toBe("open");
     fm.sweepReplyObligations(new Date(T0 + 49 * HOUR));
     expect(obligation(outbox, "cid-age")?.state).toBe("expired");
-    expect(notices(outbox).filter((r: any) => r.target === "requester")).toHaveLength(2);
-  });
-
-  it("a prior overdue notice is retained without a second expiration notice", () => {
-    const { fm, outbox } = fleet(); ask(outbox, "cid-overdue");
-    outbox.notifyOverdueReplyObligations({ now: new Date(T0 + HOUR), overdueMs: 60_000, ownerIdle: () => true });
-    fm.sweepReplyObligations(new Date(T0 + 24 * HOUR));
-    expect(obligation(outbox, "cid-overdue")?.state).toBe("expired");
-    expect(notices(outbox).filter((r: any) => r.target === "requester")).toHaveLength(1);
+    expect(notices(outbox).filter((r: any) => r.target === "requester")).toEqual([]);
   });
 
   it("a backward wall clock delays expiry, and the later forward boundary expires once", () => {
@@ -251,33 +122,15 @@ describe("#1694 persisted TTL", () => {
     fm.sweepReplyObligations(new Date(T0 + 48 * HOUR));
     expect(obligation(outbox, "cid-clock")?.state).toBe("expired");
     fm.sweepReplyObligations(new Date(T0 + 49 * HOUR));
-    expect(notices(outbox)).toHaveLength(1);
-  });
-
-  it("a second notice insertion failure rolls back both expirations and requester notices", () => {
-    const { fm, outbox } = fleet(); ask(outbox, "cid-a"); ask(outbox, "cid-b");
-    const original = (outbox as any).insertReplyObligationNotice.bind(outbox);
-    let count = 0;
-    const fault = vi.spyOn(outbox as any, "insertReplyObligationNotice").mockImplementation((...args: unknown[]) => {
-      if (++count === 2) throw new Error("inert notice fault");
-      return original(...args);
-    });
-    fm.sweepReplyObligations(new Date(T0 + 24 * HOUR));
-    expect(outbox.openReplyObligations("owner")).toHaveLength(2);
     expect(notices(outbox)).toEqual([]);
-    expect(obligation(outbox, "cid-a")?.expiredAt).toBeNull();
-    fault.mockRestore();
-    fm.sweepReplyObligations(new Date(T0 + 24 * HOUR));
-    expect(outbox.openReplyObligations("owner")).toEqual([]);
-    expect(notices(outbox)).toHaveLength(2);
   });
 
-  it.each(["working", "stopped"])("the sweep expires a %s owner even with idle-overdue notices disabled", state => {
+  it.each(["working", "stopped"])("the sweep expires a %s owner, and tells nobody", state => {
     const { fm, outbox } = fleet({ reply_overdue_minutes: 0 }); ask(outbox, "cid-busy");
     if (state === "stopped") fm.lifecycle.daemons.delete("owner");
     fm.sweepReplyObligations(new Date(T0 + 24 * HOUR));
     expect(obligation(outbox, "cid-busy")?.state).toBe("expired");
-    expect(notices(outbox)).toHaveLength(1); expect(notices(outbox)[0].target).toBe("requester");
+    expect(notices(outbox)).toEqual([]);
   });
 
   it("uses the configured TTL and fails safe on invalid raw values", () => {
@@ -299,7 +152,7 @@ describe("#1694 persisted TTL", () => {
     for (const value of [1, 24, 48, 0.5]) expect(errors(value).errors).toEqual([]);
   });
 
-  it("raw YAML load reaches the actual restart TTL boundary, including invalid-value fallback", () => {
+  it("raw YAML load reaches the actual TTL boundary, including invalid-value fallback", () => {
     for (const value of [2, 0, "two"]) {
       const { fm, outbox, dataDir } = fleet();
       const path = join(dataDir, "fleet.yaml");
@@ -307,11 +160,11 @@ describe("#1694 persisted TTL", () => {
       fm.fleetConfig = loadFleetConfig(path);
       ask(outbox, "cid-yaml");
       const ttl = typeof value === "number" && value > 0 ? value * HOUR : 24 * HOUR;
-      vi.setSystemTime(T0 + ttl - 1); fm.onDaemonReady("owner", "before");
+      fm.sweepReplyObligations(new Date(T0 + ttl - 1));
       expect(obligation(outbox, "cid-yaml")?.state).toBe("open");
-      vi.setSystemTime(T0 + ttl); fm.onDaemonReady("owner", "at-boundary");
+      fm.sweepReplyObligations(new Date(T0 + ttl));
       expect(obligation(outbox, "cid-yaml")?.state).toBe("expired");
-      expect(notices(outbox).filter((r: any) => r.target === "requester")).toHaveLength(1);
+      expect(notices(outbox)).toEqual([]);
     }
   });
 
@@ -341,13 +194,13 @@ describe("#1694 persisted TTL", () => {
     expect(obligation(outbox, "cid-real")?.state).toBe("open");
   });
 
-  it("turn-ended still emits one notice per ask after grace, including rows beyond the restart display cap", () => {
+  it("turn-ended emits one notice per ask after grace, for every open ask", () => {
     const { outbox } = fleet();
     for (let i = 0; i < 12; i++) ask(outbox, `cid-${i}`);
-    expect(outbox.remindReplyObligations("owner", { now: new Date(T0 + 59_999), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
-    expect(outbox.remindReplyObligations("owner", { now: new Date(T0 + 60_000), graceMs: 60_000, reason: "turn-ended" })).toBe(12);
+    expect(outbox.remindReplyObligations("owner", { now: new Date(T0 + 59_999), graceMs: 60_000 })).toBe(0);
+    expect(outbox.remindReplyObligations("owner", { now: new Date(T0 + 60_000), graceMs: 60_000 })).toBe(12);
     expect(notices(outbox)).toHaveLength(12);
-    expect(outbox.remindReplyObligations("owner", { now: new Date(T0 + 120_000), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
+    expect(outbox.remindReplyObligations("owner", { now: new Date(T0 + 120_000), graceMs: 60_000 })).toBe(0);
   });
 });
 

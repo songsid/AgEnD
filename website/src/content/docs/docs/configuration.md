@@ -108,7 +108,7 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 | `delivery_worker` | `off` \| `wake_only` \| `on` | `wake_only` | `wake_only` wakes a paused instance when work from another instance is queued for it. `off` never does. `on` (canary) also gives it a delivery worker of its own |
 | `warm_overflow` | number | `2` | How far `warm_cap` may be exceeded to wake an instance with queued work |
 | `max_cross_instance_message_bytes` | number | `12288` | Largest cross-instance message body. Bigger ones are refused with advice to send a file path |
-| `reply_overdue_minutes` | number | `15` | Tell the asker once when a request that needs a reply is unanswered and its owner is idle. `0` turns this notice off |
+| `reply_overdue_minutes` | — | — | Obsolete: the asker is no longer told. Still accepted; ignored |
 | `reply_obligation_ttl_hours` | number | `24` | Hours after which an unanswered request expires |
 | `retention_days` | number | `30` | How long finished deliveries and done Task Board tasks are kept |
 | `task_board.summary_at` | `"HH:MM"` or `"off"` | `off` | When the daily Task Board summary is sent, in the fleet's timezone (24 h). Off until you set a time |

@@ -127,29 +127,21 @@ describe.each<Locale>(["en", "zh-TW"])("delivery notices in %s", locale => {
     }
   });
 
-  it("localizes restart and both reply reminder paths with usable tool IDs", () => {
+  it("localizes the one reply reminder (#2802: turn ended) with usable tool IDs", () => {
     const outbox = store();
-    const row = admit(outbox, "op-reply", true);
+    admit(outbox, "op-reply", true);
     finish(outbox, "delivered", "confirmed");
-    const recovery = outbox.admitPostRestartOutcomeNotice(outbox.get(row.deliveryId)!, "source-next-boot")!;
-    readable(String(recovery.payload.content), locale);
-    expect(recovery.payload.content).toContain(locale === "en" ? "Do not resend this operation" : "請不要重送");
-    expect(recovery.payload.content).toContain("delivery_status");
-    // Reply obligations are opened when the request is delivered; each reminder is idempotent.
-    for (const [index, reason] of (["turn-ended", "restart"] as const).entries()) {
-      const now = new Date(Date.now() + 120_000 + index * 1000);
-      expect(outbox.remindReplyObligations("worker", { now, since: now, graceMs: 0, reason })).toBe(1);
-    }
-    outbox.notifyOverdueReplyObligations({ now: new Date(Date.now() + 240_000), overdueMs: 1, ownerIdle: () => true });
+    // Reply obligations are opened when the request is delivered; the reminder is idempotent.
+    const now = new Date(Date.now() + 120_000);
+    expect(outbox.remindReplyObligations("worker", { now, graceMs: 0 })).toBe(1);
+    expect(outbox.remindReplyObligations("worker", { now, graceMs: 0 })).toBe(0);
     const notices = outbox.listPending().filter(r => r.kind === "reply_obligation_notice");
-    expect(notices).toHaveLength(3);
-    for (const notice of notices) {
-      const text = String(notice.payload.content);
-      readable(text, locale);
-      expect(text).toContain("correlation_id=cid-op-reply");
-      expect(text).toContain(notice.targetInstance === "worker" ? "report_result" : "describe_instance");
-      expect(text.split("\n")[0]).not.toContain("correlation_id=");
-    }
+    expect(notices).toHaveLength(1);
+    const text = String(notices[0]!.payload.content);
+    readable(text, locale);
+    expect(text).toContain("correlation_id=cid-op-reply");
+    expect(text).toContain("report_result");
+    expect(text.split("\n")[0]).not.toContain("correlation_id=");
   });
 
   it("uses locale on real fleet failure and 24-hour expiry event listeners", () => {

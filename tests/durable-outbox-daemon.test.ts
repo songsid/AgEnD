@@ -653,7 +653,7 @@ describe("MCP durable response delivery tracking", () => {
     }
   });
 
-  it("records the response written by the real Daemon path and avoids a post-restart notice", async () => {
+  it("records the response written by the real Daemon path; a restart adds no notice (#2802)", async () => {
     const root = mkdtempSync(join(tmpdir(), "agend-outbox-mcp-response-"));
     roots.push(root);
     const dbPath = join(root, "delivery-outbox.db");
@@ -709,7 +709,6 @@ describe("MCP durable response delivery tracking", () => {
       replacement.onDaemonReady("source", "source-replacement-boot");
 
       expect(recovered).toEqual({ queued: 0, reconciliationPending: 0 });
-      expect(restarted.getUnansweredAccepted("source", "source-replacement-boot")).toEqual([]);
       expect(restarted.listPending().some(item => item.kind === "post_restart_outcome_notice")).toBe(false);
       restarted.close();
     } finally {

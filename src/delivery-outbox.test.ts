@@ -140,12 +140,12 @@ describe("DeliveryOutbox", () => {
     ]);
     expect(statusAfterCrash.items[0]).not.toHaveProperty("payload");
     const pendingAfterRecovery = restarted.listPending();
+    // #2802: the restarted sender gets no "accepted before the restart" notice; the row is still delivered or failed.
     expect(pendingAfterRecovery).toMatchObject([
       { operationId: "op-1", targetInstance: "worker", state: "queued", payload: { content: "hello" } },
-      { operationId: expect.stringContaining("notice:"), targetInstance: "source", state: "queued" },
     ]);
+    expect(pendingAfterRecovery).toHaveLength(1);
     expect(replacementManager.lifecycle.daemons.has("worker")).toBe(false);
-    expect(restarted.getUnansweredAccepted("source", sourceDaemon.bootId)).toHaveLength(1);
 
     const queuedDelivery = pendingAfterRecovery.find(row => row.operationId === "op-1")!;
     const createdAt = (restarted as any).db.prepare(
@@ -543,29 +543,11 @@ describe("DeliveryOutbox", () => {
     outbox.close();
   });
 
-  it("tracks the MCP response boundary and deduplicates post-restart notices", () => {
+  it("tracks the MCP response boundary", () => {
     const outbox = new DeliveryOutbox(tempDb(), "manager-1");
     const parent = outbox.admit(input()).delivery;
-    expect(outbox.getUnansweredAccepted("source", "source-boot-2")).toHaveLength(1);
+    expect(outbox.get(parent.deliveryId)?.responseDeliveredAt).toBeNull();
     expect(outbox.markResponseDelivered("source", "op-1")).toBe(1);
-    expect(outbox.getUnansweredAccepted("source", "source-boot-2")).toHaveLength(0);
-
-    const unanswered = outbox.admit(input({
-      operationId: "op-2",
-      sourceKey: "mcp:source:op-2:worker:fleet_inbound",
-    })).delivery;
-    const notice = outbox.admitPostRestartOutcomeNotice(unanswered, "source-boot-2");
-    const duplicate = outbox.admitPostRestartOutcomeNotice(unanswered, "source-boot-2");
-    expect(notice?.payload.content).toContain("Do not resend this operation");
-    expect(duplicate?.deliveryId).toBe(notice?.deliveryId);
-    const broadcastSibling = outbox.admit(input({
-      operationId: "op-2",
-      sourceKey: "mcp:source:op-2:worker-2::broadcast",
-      targetInstance: "worker-2",
-      kind: "broadcast",
-    })).delivery;
-    const siblingNotice = outbox.admitPostRestartOutcomeNotice(broadcastSibling, "source-boot-2");
-    expect(siblingNotice?.deliveryId).not.toBe(notice?.deliveryId);
     expect(outbox.get(parent.deliveryId)?.responseDeliveredAt).not.toBeNull();
     outbox.close();
   });

@@ -288,7 +288,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
   });
 
-  it("bounds recovery to one prompt and cooldowns repeated unrecovered warnings", async () => {
+  it("bounds recovery to one prompt; an unrecovered drop is an event only, never a channel warning (#2802)", async () => {
     const h = harness(ui);
     for (let turn = 0; turn < 3; turn++) {
       if (turn === 2) vi.advanceTimersByTime(5 * 60_000);
@@ -300,10 +300,8 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     }
     expect(recoveryWrites(h)).toHaveLength(3); // one for each original turn, never a third turn
     expect(h.unrecovered).toHaveBeenCalledTimes(3);
-    const warnings = h.daemon.deliverDaemonReply.mock.calls.filter((args: any[]) => args[1] === "replydropwarn");
-    expect(warnings).toHaveLength(2);
-    expect(warnings[0][0]).toBe(t("inst.reply_drop_unrecovered"));
-    expect(warnings[0][0]).not.toMatch(/chat=|thread=|recovery_turn_missing_reply|\n/);
+    // #2802: the person is no longer told; the event (Log tab) stays.
+    expect(h.daemon.deliverDaemonReply.mock.calls.filter((args: any[]) => args[1] === "replydropwarn")).toEqual([]);
   });
 
   it("a queued recovery prompt is fenced by cancellation", async () => {

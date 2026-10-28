@@ -16,17 +16,6 @@ export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
 export const DURABLE_DELIVERY_MAX_AGE_MS = 24 * 60 * 60_000;
 export const DURABLE_DELIVERY_ABORT_BACKOFF_MS = 5_000;
 export const DEFAULT_REPLY_OBLIGATION_TTL_MS = 24 * 60 * 60_000;
-const RESTART_REPLY_DISPLAY_LIMIT = 10;
-
-/** Keep each preview on one physical line and bound even an arbitrary correlation ID. */
-function replyPreview(value: string): string {
-  const escaped = value.replace(/[\u0000-\u001f\u007f]/g, c => JSON.stringify(c).slice(1, -1));
-  const bytes = Buffer.from(escaped);
-  if (bytes.length <= 256) return escaped;
-  let end = 253;
-  while ((bytes[end] & 0xc0) === 0x80) end--;
-  return bytes.subarray(0, end).toString("utf8") + "…";
-}
 
 export interface DaemonDeliveryPort {
   begin(deliveryId: string, targetBootId: string, attemptNo: number, evidence?: DeliveryAttemptEvidence): "begun" | "duplicate" | "stale";
@@ -736,8 +725,7 @@ export class DeliveryOutbox extends EventEmitter {
         PRIMARY KEY (correlation_id, requester_instance, owner_instance)
       );
       CREATE INDEX IF NOT EXISTS idx_reply_obligation_owner_state ON reply_obligations(owner_instance, state);
-      -- A notice can be pruned while its boot is still alive. Keep the claim
-      -- independently: no notice FK/cascade and no request or message content.
+      -- #2802: no longer written (the per-boot restart reminder is gone); kept so existing databases keep their schema.
       CREATE TABLE IF NOT EXISTS reply_restart_markers (
         owner_instance TEXT NOT NULL,
         restart_id TEXT NOT NULL,
@@ -897,40 +885,16 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /**
-   * #926 safety net 1: remind an owner that has not answered. `turn-ended`
-   * reminds once per ask, after the grace (a reply seconds after the ask is
-   * normal); `restart` batches once per daemon boot, because the interrupted
-   * turn does not resume on its own. Marked in the same transaction as the notice.
+   * #926 safety net 1: remind an owner that has not answered, once per ask, after the grace (a reply seconds after the
+   * ask is normal). Marked in the same transaction as the notice. #2802: the only reply reminder — the per-boot restart
+   * batch is gone (an owner idle after a restart gets this one, per ask, unless it was already reminded), and so are the
+   * requester's overdue and expiry notices.
    */
-  remindReplyObligations(ownerInstance: string, opts: { now?: Date; graceMs: number; reason: "turn-ended" | "restart"; since?: Date; restartId?: string }): number {
+  remindReplyObligations(ownerInstance: string, opts: { now?: Date; graceMs: number }): number {
     const now = opts.now ?? new Date();
     const nowIso = now.toISOString();
     const graceCutoff = new Date(now.getTime() - opts.graceMs).toISOString();
-    const sinceIso = (opts.since ?? now).toISOString();
     const inserted = this.db.transaction(() => {
-      if (opts.reason === "restart") {
-        const restartId = opts.restartId ?? sinceIso;
-        const key = `reply-pending:restart:${JSON.stringify([ownerInstance, restartId])}`;
-        if (this.db.prepare("SELECT 1 FROM reply_restart_markers WHERE owner_instance=? AND restart_id=?")
-          .get(ownerInstance, restartId)) return 0;
-        // Adopt an existing notice from the earlier implementation/rollback
-        // without stamping a new ask or producing another notice.
-        const prior = this.db.prepare("SELECT created_at FROM deliveries WHERE source_key=?").get(key) as { created_at: string } | undefined;
-        if (prior) { this.recordReplyRestart(ownerInstance, restartId, prior.created_at); return 0; }
-        const total = (this.db.prepare("SELECT count(*) n FROM reply_obligations WHERE owner_instance=? AND state='open'")
-          .get(ownerInstance) as { n: number }).n;
-        if (!total) return 0;
-        const preview = this.db.prepare(`SELECT requester_instance,correlation_id,last_asked_at FROM reply_obligations
-          WHERE owner_instance=? AND state='open' ORDER BY last_asked_at,correlation_id,requester_instance LIMIT ?`)
-          .all(ownerInstance, RESTART_REPLY_DISPLAY_LIMIT) as ReplyObligationRow[];
-        const lines = preview.map(row => `${replyPreview(row.requester_instance)}; correlation_id=${replyPreview(row.correlation_id)}; asked=${replyPreview(row.last_asked_at)}`);
-        if (total > preview.length) lines.push(t("delivery.reply_restart_more", total - preview.length));
-        const content = t("delivery.reply_restart") + "\n" + lines.join("\n");
-        if (!this.insertReplyObligationNotice(ownerInstance, null, key, content, nowIso)) return 0;
-        this.recordReplyRestart(ownerInstance, restartId, nowIso);
-        this.db.prepare("UPDATE reply_obligations SET nudged_at=? WHERE owner_instance=? AND state='open'").run(nowIso, ownerInstance);
-        return 1;
-      }
       const due = this.db.prepare("SELECT * FROM reply_obligations WHERE owner_instance=? AND state='open' AND nudged_at IS NULL AND last_asked_at <= ?")
         .all(ownerInstance, graceCutoff) as ReplyObligationRow[];
       let count = 0;
@@ -948,12 +912,7 @@ export class DeliveryOutbox extends EventEmitter {
     return inserted;
   }
 
-  private recordReplyRestart(owner: string, restartId: string, now: string): void {
-    this.db.prepare("INSERT INTO reply_restart_markers(owner_instance,restart_id,reminded_at) VALUES (?,?,?)")
-      .run(owner, restartId, now);
-  }
-
-  /** Expiry is terminal for this ask; a later delivered re-ask can reopen the same tuple. */
+  /** Expiry is terminal for this ask; a later delivered re-ask can reopen the same tuple. #2802: logged, no notice. */
   expireReplyObligations(opts: { now?: Date; ttlMs?: number } = {}): ReplyObligation[] {
     const now = opts.now ?? new Date();
     const ttl = opts.ttlMs !== undefined && Number.isFinite(opts.ttlMs) && opts.ttlMs > 0 ? opts.ttlMs : DEFAULT_REPLY_OBLIGATION_TTL_MS;
@@ -963,53 +922,17 @@ export class DeliveryOutbox extends EventEmitter {
       const due = this.db.prepare("SELECT * FROM reply_obligations WHERE state='open' AND last_asked_at<=? ORDER BY last_asked_at")
         .all(cutoff) as ReplyObligationRow[];
       for (const row of due) {
-        if (!row.overdue_notified_at) {
-          const key = `reply-overdue:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${row.last_asked_at}`;
-          this.insertReplyObligationNotice(row.requester_instance, row.correlation_id, key,
-            t("delivery.reply_expired", row.owner_instance, row.correlation_id, row.last_asked_at), nowIso);
-        }
-        this.db.prepare(`UPDATE reply_obligations SET state='expired',expired_at=?,overdue_notified_at=COALESCE(overdue_notified_at,?)
+        this.db.prepare(`UPDATE reply_obligations SET state='expired',expired_at=?
           WHERE correlation_id=? AND requester_instance=? AND owner_instance=? AND state='open'`)
-          .run(nowIso, nowIso, row.correlation_id, row.requester_instance, row.owner_instance);
-        row.state = "expired"; row.expired_at = nowIso; row.overdue_notified_at ??= nowIso;
+          .run(nowIso, row.correlation_id, row.requester_instance, row.owner_instance);
+        row.state = "expired"; row.expired_at = nowIso;
       }
       return due.map(mapObligation);
     })();
     if (expired.length) {
-      this.emit("admitted");
       this.noteWorkingReferences(expired.flatMap(row => [row.ownerInstance, row.requesterInstance]));
     }
     return expired;
-  }
-
-  /**
-   * #926 safety net 2 (poll-on-timeout, in code): tell the requester once when
-   * the owner is not working and nothing has come back for `overdueMs` since
-   * the last ask or reminder. A still-working owner is never reported.
-   */
-  notifyOverdueReplyObligations(opts: { now?: Date; overdueMs: number; ownerIdle: (owner: string) => boolean }): number {
-    if (!(opts.overdueMs > 0)) return 0;
-    const now = opts.now ?? new Date();
-    const nowIso = now.toISOString();
-    const inserted = this.db.transaction(() => {
-      const open = this.db.prepare(`
-        SELECT * FROM reply_obligations WHERE state='open' AND overdue_notified_at IS NULL ORDER BY opened_at
-      `).all() as ReplyObligationRow[];
-      let count = 0;
-      for (const row of open) {
-        const quietSince = Math.max(Date.parse(row.last_asked_at), row.nudged_at ? Date.parse(row.nudged_at) : 0);
-        if (now.getTime() - quietSince < opts.overdueMs || !opts.ownerIdle(row.owner_instance)) continue;
-        const content = t("delivery.reply_overdue", row.owner_instance, row.correlation_id, row.last_asked_at, row.nudged_at ? t("delivery.reply_reminded", row.nudged_at) : "");
-        const key = `reply-overdue:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${row.last_asked_at}`;
-        if (this.insertReplyObligationNotice(row.requester_instance, row.correlation_id, key, content, nowIso)) count++;
-        this.db.prepare(`
-          UPDATE reply_obligations SET overdue_notified_at=? WHERE correlation_id=? AND requester_instance=? AND owner_instance=? AND state='open'
-        `).run(nowIso, row.correlation_id, row.requester_instance, row.owner_instance);
-      }
-      return count;
-    })();
-    if (inserted > 0) this.emit("admitted");
-    return inserted;
   }
 
   /** A system notice as a durable row, like #929's outcome notices; the key makes it idempotent. */
@@ -1836,68 +1759,6 @@ export class DeliveryOutbox extends EventEmitter {
     return transaction();
   }
 
-  /** Atomically create a post-restart notice for an accepted operation whose response was not recorded. */
-  admitPostRestartOutcomeNotice(parent: OutboxDelivery, currentSourceBootId: string): OutboxDelivery | undefined {
-    const sourceKey = `post-restart:${parent.sourceInstance}:${parent.sourceDaemonBootId}:${parent.operationId}:${parent.targetInstance}`;
-    const operationId = `notice:${parent.sourceDaemonBootId}:${parent.operationId}:${parent.targetInstance}`;
-    const now = new Date().toISOString();
-    const deliveryId = randomUUID();
-    const noticeText = t("delivery.post_restart", parent.targetInstance, statusSummary(parent.state), parent.operationId, parent.state);
-    const payload = {
-      type: "fleet_inbound",
-      content: noticeText,
-      meta: {
-        user: "AgEnD recovery",
-        user_id: "agend-system",
-        message_id: `delivery-notice-${parent.operationId}-${parent.targetInstance}`,
-        chat_id: "",
-        thread_id: "",
-        source: "delivery-outbox",
-      },
-    };
-    const transaction = this.db.transaction(() => {
-      const prior = this.db.prepare(`
-        SELECT d.* FROM outcome_notices n JOIN deliveries d ON d.delivery_id=n.notice_delivery_id
-        WHERE n.source_instance=? AND n.source_daemon_boot_id=? AND n.operation_id=? AND n.target_instance=?
-      `).get(parent.sourceInstance, parent.sourceDaemonBootId, parent.operationId, parent.targetInstance) as OutboxRow | undefined;
-      if (prior) return mapRow(prior);
-      const terminalNotice = this.db.prepare(`
-        SELECT d.* FROM failure_notices n JOIN deliveries d ON d.delivery_id=n.notice_delivery_id
-        WHERE n.parent_delivery_id=?
-      `).get(parent.deliveryId) as OutboxRow | undefined;
-      if (terminalNotice) return mapRow(terminalNotice);
-      const reserved = this.db.prepare(`
-        INSERT OR IGNORE INTO outcome_notices
-        (source_instance,source_daemon_boot_id,operation_id,target_instance,notice_delivery_id,created_at)
-        VALUES (?,?,?,?,?,?)
-      `).run(parent.sourceInstance, parent.sourceDaemonBootId, parent.operationId, parent.targetInstance, deliveryId, now);
-      if (reserved.changes !== 1) return undefined;
-      this.db.prepare(`
-        INSERT INTO deliveries (
-          delivery_id,operation_id,source_key,source_instance,source_daemon_boot_id,
-          target_instance,target_session,kind,correlation_id,payload_json,state,
-          attempt_no,created_seq,manager_boot_id,created_at,updated_at,accepted_at
-        ) VALUES (?,?,?,?,?,?,NULL,'post_restart_outcome_notice',NULL,?,'queued',0,
-          (SELECT COALESCE(MAX(created_seq),0)+1 FROM deliveries),NULL,?,?,?)
-      `).run(
-        deliveryId,
-        operationId,
-        sourceKey,
-        "agend-system",
-        currentSourceBootId,
-        parent.sourceInstance,
-        JSON.stringify(payload),
-        now,
-        now,
-        now,
-      );
-      return mapRow(this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow);
-    });
-    const notice = transaction();
-    if (notice) this.emit("admitted", notice);
-    return notice;
-  }
-
   recoverTargetGeneration(targetInstance: string, currentTargetBootId: string): { queued: number; reconciliationPending: number } {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
@@ -2009,18 +1870,6 @@ export class DeliveryOutbox extends EventEmitter {
     const changed = transaction();
     if (changed) this.emit("state", { deliveryId, state: outcome });
     return changed;
-  }
-
-  getUnansweredAccepted(sourceInstance: string, currentBootId: string): OutboxDelivery[] {
-    const rows = this.db.prepare(`
-      SELECT * FROM deliveries
-      WHERE source_instance=? AND source_daemon_boot_id<>? AND response_delivered_at IS NULL
-        -- Scheduler admission has no waiting source-agent tool response; its
-        -- stable run key and durable row are the recovery/lookup contract.
-        AND kind NOT IN ('raw_paste')
-      ORDER BY created_seq
-    `).all(sourceInstance, currentBootId) as OutboxRow[];
-    return rows.map(mapRow);
   }
 
   close(): void {
@@ -2158,6 +2007,7 @@ export class DeliveryOutbox extends EventEmitter {
 
   /** Must be called inside the same SQLite transaction as the terminal transition. */
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
+    // post_restart_outcome_notice: no longer written (#2802), but a row from before may still be queued.
     if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"
       || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND || parent.kind === WORKING_RECOVERY_KIND) return;
     // A self-scheduled silent heartbeat has no other sender to inform. Keep

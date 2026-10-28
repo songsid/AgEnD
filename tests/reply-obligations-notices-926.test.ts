@@ -1,11 +1,9 @@
 /**
- * #926 phase 2: the two safety nets over reply obligations.
- *   1. An owner whose turn ended (or whose turn a restart killed) without
- *      answering gets one reminder — the 9/24 #924 and #925 cases.
- *   2. The requester is told once when an idle owner still has not answered
- *      after `reply_overdue_minutes` — the coordinator's poll-on-timeout.
- * Real outbox, real FleetManager, a real Daemon pane write, and a
- * whole-process SIGKILL for the restart case.
+ * #926 phase 2, cut down by #2802 (the user's decision of 2026-10-28): one safety net over reply obligations.
+ *   An owner whose turn ended without answering gets one reminder per ask — the 9/24 #924 and #925 cases. After a
+ *   restart it is the same reminder (no batch), once the owner is idle, unless that ask was already reminded.
+ *   The requester is never told (no overdue or expiry notice); `reply_overdue_minutes` is accepted and ignored.
+ * Real outbox, real FleetManager, a real Daemon pane write, and a whole-process SIGKILL for the restart case.
  */
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -74,9 +72,9 @@ const at = (seconds: number) => new Date(Date.parse(T0) + seconds * 1000);
 describe("safety net 1: remind the owner (#926)", () => {
   it("after the grace, reminds once that terminal text does not reach the requester", () => {
     const outbox = asked(T0);
-    expect(outbox.remindReplyObligations("reviewer", { now: at(59), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
-    expect(outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000, reason: "turn-ended" })).toBe(1);
-    expect(outbox.remindReplyObligations("reviewer", { now: at(600), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
+    expect(outbox.remindReplyObligations("reviewer", { now: at(59), graceMs: 60_000 })).toBe(0);
+    expect(outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000 })).toBe(1);
+    expect(outbox.remindReplyObligations("reviewer", { now: at(600), graceMs: 60_000 })).toBe(0);
     expect(notices(outbox)).toEqual([{ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader.*report_result.*terminal text does not reach them\.\ncorrelation_id=cid-925/) }]);
     expect(outbox.getReplyObligation("cid-925", "leader", "reviewer")?.nudgedAt).toBe(at(61).toISOString());
     outbox.close();
@@ -84,61 +82,27 @@ describe("safety net 1: remind the owner (#926)", () => {
 
   it("reminds again after the requester asks again", () => {
     const outbox = asked(T0);
-    outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000, reason: "turn-ended" });
+    outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000 });
     vi.setSystemTime(at(300));
     admit(outbox, "leader", "reviewer", "cid-925", true);
     deliverAll(outbox);
-    expect(outbox.remindReplyObligations("reviewer", { now: at(330), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
-    expect(outbox.remindReplyObligations("reviewer", { now: at(361), graceMs: 60_000, reason: "turn-ended" })).toBe(1);
-    outbox.close();
-  });
-
-  it("after a restart, reminds once per restart even if it was reminded before", () => {
-    const outbox = asked(T0);
-    outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000, reason: "turn-ended" });
-    const restart = at(958);  // the 21:25:51 fleet restart, relative to the 21:09:53 ask
-    expect(outbox.remindReplyObligations("reviewer", { now: restart, graceMs: 0, reason: "restart", since: restart })).toBe(1);
-    expect(outbox.remindReplyObligations("reviewer", { now: at(960), graceMs: 0, reason: "restart", since: restart })).toBe(0);
-    expect(notices(outbox).at(-1)!.text).toMatch(/^\[system:reply-pending\] A restart left.*report_result.*\nleader; correlation_id=cid-925/);
+    expect(outbox.remindReplyObligations("reviewer", { now: at(330), graceMs: 60_000 })).toBe(0);
+    expect(outbox.remindReplyObligations("reviewer", { now: at(361), graceMs: 60_000 })).toBe(1);
     outbox.close();
   });
 
   it("never reminds about an answered request", () => {
     const outbox = asked(T0);
     admit(outbox, "reviewer", "leader", "cid-925");
-    expect(outbox.remindReplyObligations("reviewer", { now: at(600), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
-    expect(outbox.remindReplyObligations("reviewer", { now: at(600), graceMs: 0, reason: "restart", since: at(600) })).toBe(0);
-    expect(outbox.notifyOverdueReplyObligations({ now: at(99_999), overdueMs: 60_000, ownerIdle: () => true })).toBe(0);
+    expect(outbox.remindReplyObligations("reviewer", { now: at(600), graceMs: 60_000 })).toBe(0);
     outbox.close();
   });
 });
 
-describe("safety net 2: tell the requester (#926)", () => {
-  const minutes = (m: number) => m * 60_000;
-
-  it("tells the requester once when an idle owner is overdue, measured from the last ask or reminder", () => {
-    const outbox = asked(T0);
-    outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000, reason: "turn-ended" });
-    const idle = () => true;
-    expect(outbox.notifyOverdueReplyObligations({ now: at(61 + 15 * 60 - 1), overdueMs: minutes(15), ownerIdle: idle })).toBe(0);
-    expect(outbox.notifyOverdueReplyObligations({ now: at(61 + 15 * 60), overdueMs: minutes(15), ownerIdle: idle })).toBe(1);
-    expect(outbox.notifyOverdueReplyObligations({ now: at(99_999), overdueMs: minutes(15), ownerIdle: idle })).toBe(0);
-    expect(notices(outbox).at(-1)).toEqual({ target: "leader", cid: "cid-925",
-      text: expect.stringMatching(/^\[system:reply-overdue\] reviewer has not replied.*describe_instance or delivery_status.*\ncorrelation_id=cid-925; asked=.*; reminded=/) });
-    outbox.close();
-  });
-
-  it("never reports an owner that is still working, and 0 turns the notice off", () => {
-    const outbox = asked(T0);
-    expect(outbox.notifyOverdueReplyObligations({ now: at(99_999), overdueMs: minutes(15), ownerIdle: () => false })).toBe(0);
-    expect(outbox.notifyOverdueReplyObligations({ now: at(99_999), overdueMs: 0, ownerIdle: () => true })).toBe(0);
-    expect(notices(outbox)).toEqual([]);
-    outbox.close();
-  });
-
+describe("the requester is never told (#2802)", () => {
   it("does not let a notice that fails spawn a failure notice of its own", () => {
     const outbox = asked(T0);
-    outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000, reason: "turn-ended" });
+    outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000 });
     deliverAll(outbox, "failed");
     const kinds = (outbox as any).db.prepare("SELECT kind FROM deliveries").all().map((r: any) => r.kind);
     expect(kinds).not.toContain("delivery_outcome_notice");
@@ -146,7 +110,7 @@ describe("safety net 2: tell the requester (#926)", () => {
   });
 });
 
-describe("the fleet runs both nets (#926)", () => {
+describe("the fleet sweep (#926, #2802)", () => {
   function fleet(state: Record<string, string>, overdue?: number) {
     const { fm, outbox } = quietFleet(tempRoot(), overdue === undefined ? {} : { reply_overdue_minutes: overdue });
     for (const [name, s] of Object.entries(state)) fm.lifecycle.daemons.set(name, { getInstanceState: () => s });
@@ -156,45 +120,52 @@ describe("the fleet runs both nets (#926)", () => {
   }
   const later = (minutes: number) => new Date(Date.now() + minutes * 60_000);
 
-  it("reminds an idle owner and, 15 minutes later by default, tells the requester", () => {
+  it("reminds an idle owner once; the requester hears nothing, not when overdue, not when the ask expires", () => {
     const { fm, outbox } = fleet({ reviewer: "idle", leader: "idle" });
     fm.sweepReplyObligations(later(2));
     expect(notices(outbox).map((n: any) => n.target)).toEqual(["reviewer"]);
     fm.sweepReplyObligations(later(2 + 15));
-    expect(notices(outbox).map((n: any) => n.target)).toEqual(["reviewer", "leader"]);
+    fm.sweepReplyObligations(later(120));
+    fm.sweepReplyObligations(later(25 * 60));
+    expect(outbox.getReplyObligation("cid-925", "leader", "reviewer")).toMatchObject({ state: "expired" });
+    expect(notices(outbox).map((n: any) => n.target)).toEqual(["reviewer"]);
     outbox.close();
   });
 
-  it("leaves a working owner alone, and honours reply_overdue_minutes: 0", () => {
+  it("leaves a working owner alone; reply_overdue_minutes changes nothing", () => {
     const busy = fleet({ reviewer: "working" });
     busy.fm.sweepReplyObligations(later(120));
     expect(notices(busy.outbox)).toEqual([]);
     busy.outbox.close();
-    const off = fleet({ reviewer: "idle" }, 0);
-    off.fm.sweepReplyObligations(later(120));
-    expect(notices(off.outbox).map((n: any) => n.target)).toEqual(["reviewer"]);
-    off.outbox.close();
+    for (const overdue of [0, 1]) {
+      const idle = fleet({ reviewer: "idle", leader: "idle" }, overdue);
+      idle.fm.sweepReplyObligations(later(120));
+      expect(notices(idle.outbox).map((n: any) => n.target), String(overdue)).toEqual(["reviewer"]);
+      idle.outbox.close();
+    }
   });
 
-  it("reminds the owner when its daemon comes back after a restart", () => {
+  it("a restart adds no batch: the owner gets the ordinary reminder once idle, and an ask reminded before is not repeated", () => {
     const { fm, outbox } = fleet({ reviewer: "idle" });
     fm.onDaemonReady("reviewer", "reviewer-boot-2");
-    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", text: expect.stringMatching(/A restart left/) })]);
+    expect(notices(outbox)).toEqual([]);
+    fm.sweepReplyObligations(later(2));
+    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader/) })]);
+    fm.onDaemonReady("reviewer", "reviewer-boot-3");
+    fm.sweepReplyObligations(later(5));
+    expect(notices(outbox)).toHaveLength(1);
     outbox.close();
   });
 
-  it("validates reply_overdue_minutes", () => {
+  it("reply_overdue_minutes is obsolete: any value still loads", () => {
     const errors = (value: unknown) => JSON.stringify(validateFleetConfig({ defaults: { reply_overdue_minutes: value }, instances: {} }))
       .includes("reply_overdue_minutes");
-    expect(errors(15)).toBe(false);
-    expect(errors(0)).toBe(false);
-    expect(errors(-1)).toBe(true);
-    expect(errors("15")).toBe(true);
+    expect([15, 0, -1, "15"].map(errors)).toEqual([false, false, false, false]);
   });
 });
 
 describe("the #925 shape: the whole process dies mid-review (#926)", () => {
-  it("keeps the obligation through a SIGKILL and reminds the owner when it comes back", async () => {
+  it("keeps the obligation through a SIGKILL and reminds the owner once it is back and idle", async () => {
     const root = tempRoot();
     const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
     const script = [
@@ -222,8 +193,11 @@ describe("the #925 shape: the whole process dies mid-review (#926)", () => {
 
     const { fm, outbox } = quietFleet(root);
     expect(outbox.getReplyObligation("cid-925", "leader", "reviewer")).toMatchObject({ state: "open" });
+    fm.lifecycle.daemons.set("reviewer", { getInstanceState: () => "idle" });
     fm.onDaemonReady("reviewer", "reviewer-boot-after-restart");
-    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: null, text: expect.stringMatching(/A restart left.*\nleader; correlation_id=cid-925/) })]);
+    expect(notices(outbox)).toEqual([]);
+    fm.sweepReplyObligations(new Date(Date.now() + 2 * 60_000));
+    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader.*\ncorrelation_id=cid-925/s) })]);
     outbox.close();
   }, 30_000);
 });
@@ -234,7 +208,7 @@ describe("a reminder reaches the owner's pane through the real dispatcher and Da
     const { fm, outbox } = quietFleet(root);
     admit(outbox, "leader", "reviewer", "cid-925", true);
     deliverAll(outbox);
-    outbox.remindReplyObligations("reviewer", { now: new Date(Date.now() + 120_000), graceMs: 60_000, reason: "turn-ended" });
+    outbox.remindReplyObligations("reviewer", { now: new Date(Date.now() + 120_000), graceMs: 60_000 });
 
     const instanceDir = join(root, "instances", "reviewer");
     mkdirSync(instanceDir, { recursive: true });

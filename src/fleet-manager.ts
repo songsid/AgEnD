@@ -1035,7 +1035,6 @@ export function deriveSpawnConcurrency(freeMemMB: number, cores: number): number
 /** #926: how often reply obligations are checked, the owner-reminder grace, and the default overdue window. */
 const REPLY_OBLIGATION_SWEEP_MS = 30_000;
 const REPLY_REMINDER_GRACE_MS = 60_000;
-const DEFAULT_REPLY_OVERDUE_MINUTES = 15;
 
 /**
  * The filter `list_emojis` and `list_stickers` take (#1226). Values may come from the agent CLI as strings, so a
@@ -2853,24 +2852,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   onDaemonReady(name: string, daemonBootId: string): void {
     const daemon = this.daemons.get(name);
     if (daemon?.bootId === daemonBootId) this.listenForWorkingState(name, daemon);
-    const outbox = this.deliveryOutbox;
-    if (!outbox) return;
-    for (const prior of outbox.getUnansweredAccepted(name, daemonBootId)) {
-      try {
-        outbox.admitPostRestartOutcomeNotice(prior, daemonBootId);
-      } catch (err) {
-        this.logger.error({ err, source: name, operationId: prior.operationId }, "Could not persist post-restart delivery outcome notice");
-      }
-    }
-    // #926: a restart kills the turn that was working on a request, and a
-    // resumed CLI does not pick it back up. Remind the owner once per restart.
-    try {
-      const now = new Date();
-      this.expireReplyObligations(now);
-      outbox.remindReplyObligations(name, { reason: "restart", graceMs: 0, now, since: now, restartId: daemonBootId });
-    } catch (err) {
-      this.logger.error({ err, owner: name }, "Could not persist the post-restart reply reminder");
-    }
+    // #2802: no post-restart notices. The outbox still delivers or fails a row accepted before the restart, and an open
+    // request is reminded by the ordinary turn-ended nudge (sweepReplyObligations) once the owner is idle.
     this.scheduleDeliveryOutboxPump();
   }
 
@@ -2938,9 +2921,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #926: the two reply-obligation safety nets. Idle owners with an unanswered
-   * request get one reminder (after the grace); requesters get one overdue
-   * notice when the owner is not working and nothing came back in time.
+   * #926: idle owners with an unanswered request get one reminder (after the grace). #2802: the only reply notice —
+   * requesters are no longer told about overdue or expired asks (they can check delivery_status / describe_instance).
    */
   sweepReplyObligations(now = new Date()): void {
     const outbox = this.deliveryOutbox;
@@ -2949,10 +2931,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       this.expireReplyObligations(now);
       for (const name of this.daemons.keys()) {
-        if (stateOf(name) === "idle") outbox.remindReplyObligations(name, { now, graceMs: REPLY_REMINDER_GRACE_MS, reason: "turn-ended" });
+        if (stateOf(name) === "idle") outbox.remindReplyObligations(name, { now, graceMs: REPLY_REMINDER_GRACE_MS });
       }
-      const minutes = this.fleetConfig?.defaults?.reply_overdue_minutes ?? DEFAULT_REPLY_OVERDUE_MINUTES;
-      outbox.notifyOverdueReplyObligations({ now, overdueMs: minutes * 60_000, ownerIdle: name => stateOf(name) !== "working" });
     } catch (err) {
       this.logger.error({ err }, "Reply-obligation sweep failed");
     }

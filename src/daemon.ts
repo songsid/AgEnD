@@ -147,7 +147,6 @@ const TURN_OUTBOUND_TOOLS = new Set([
 // These actions reach the human-facing channel and satisfy reply-completion:
 // a deliberate reaction or edit is a valid response even without new text.
 const TURN_COMPLETION_TOOLS = new Set(["reply", "react", "edit_message"]);
-const REPLY_DROP_WARNING_COOLDOWN_MS = 5 * 60_000;
 /**
  * #1241: how long an idle edge must persist — with no reply and no further
  * observed work — before the reply guard declares the turn a miss. A claude
@@ -1663,7 +1662,6 @@ export class Daemon extends EventEmitter {
   /** Prevent a visible stale XML fragment from being recovered on later turns. */
   private lastMalformedToolCallSignature: string | undefined;
   private proxyReplySeq = 0;
-  private lastReplyDropWarningAt = 0;
   /**
    * #1241: an idle edge that has not yet proven the turn ended. Armed instead
    * of recovering immediately; a steady idle snapshot past confirmAt promotes
@@ -6180,41 +6178,7 @@ export class Daemon extends EventEmitter {
       reason,
       message: formatReplyDropDetection(turn, reason),
     });
-    this.deliverReplyDropNotice(
-      "inst.reply_drop_unrecovered",
-      "replydropwarn",
-      "Reply-drop recovery warning",
-      turn,
-      reason,
-      true,
-    );
-  }
-
-  /** Channel notice for a reply-drop. `rateLimit` shares the per-instance cooldown (#2544). */
-  private deliverReplyDropNotice(
-    key: "inst.reply_drop_unrecovered",
-    kind: string,
-    title: string,
-    turn: TurnReplySnapshot,
-    reason: string,
-    rateLimit: boolean,
-  ): void {
-    if (rateLimit) {
-      const now = Date.now();
-      if (this.lastReplyDropWarningAt !== 0
-        && now - this.lastReplyDropWarningAt < REPLY_DROP_WARNING_COOLDOWN_MS) {
-        this.logger.debug({ reason, kind }, "Reply-drop channel notice rate-limited");
-        return;
-      }
-      this.lastReplyDropWarningAt = now;
-    }
-    void this.deliverDaemonReply(
-      t(key),
-      kind,
-      title,
-      turn.target,
-      true,
-    );
+    // #2802: the event stays (Log tab); the person is no longer told in the topic or the web chat.
   }
 
   /** Relay the pane's final text to the channel, marked as a daemon proxy reply. */
@@ -6249,7 +6213,6 @@ export class Daemon extends EventEmitter {
     requestPrefix: string,
     logLabel: string,
     target?: TurnReplyTarget,
-    statusOnly = false,
   ): Promise<boolean> {
     const args: Record<string, unknown> = { text: body };
     const chatId = target?.chatId ?? this.lastChatId;
@@ -6321,7 +6284,6 @@ export class Daemon extends EventEmitter {
           args,
           fleetRequestId: fleetReqId,
           adapterId,
-          statusOnly,
         });
       } catch {
         clearTimeout(timeout);

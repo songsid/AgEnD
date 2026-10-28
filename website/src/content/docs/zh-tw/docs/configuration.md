@@ -108,7 +108,7 @@ Telegram 吃：
 | `delivery_worker` | `off` \| `wake_only` \| `on` | `wake_only` | `wake_only` 會在有其他 instance 的工作排隊時喚醒暫停中的 instance。`off` 永遠不喚醒。`on`（canary）另外給它一個專屬的投遞 worker |
 | `warm_overflow` | number | `2` | 為了喚醒有排隊工作的 instance，`warm_cap` 最多可以超出的數量 |
 | `max_cross_instance_message_bytes` | number | `12288` | 跨 instance 訊息本文的大小上限。超過會被拒絕，並建議改傳檔案路徑 |
-| `reply_overdue_minutes` | number | `15` | 需要回覆的請求沒人回、負責的 instance 又閒著時，通知發問者一次。`0` 關閉這個通知 |
+| `reply_overdue_minutes` | — | — | 已停用：不再通知發問者。仍可寫，但不起作用 |
 | `reply_obligation_ttl_hours` | number | `24` | 沒回覆的請求幾小時後到期 |
 | `retention_days` | number | `30` | 已完成的投遞和 Task Board 已完成任務保留幾天 |
 | `task_board.summary_at` | `"HH:MM"` 或 `"off"` | `off` | 每日任務看板摘要的發送時間，以 fleet 的時區計算（24 小時制）。沒設定時為關閉 |

@@ -500,7 +500,7 @@ describe("Claude human-turn reply completion harness", () => {
     expect(daemon.turnReplyGuard.snapshot()).toBeNull();
   });
 
-  it.each(["en", "zh-TW"] as Locale[])("#2566 %s final warning is one short line without diagnostic identifiers", locale => {
+  it.each(["en", "zh-TW"] as Locale[])("#2566 %s detection keeps its diagnostics for the log; #2802: no warning text for the person", locale => {
     setLocale(locale);
     const detected = formatReplyDropDetection({
       replyAttempted: false, replyDelivered: false, completionDelivered: false,
@@ -508,12 +508,7 @@ describe("Claude human-turn reply completion harness", () => {
     }, "no_valid_call");
     expect(detected).toContain("no_valid_call"); // retained for log diagnostics only
     expect(detected).toContain("chat=guild-1, thread=channel-1");
-    const text = t("inst.reply_drop_unrecovered");
-    expect(text).not.toMatch(/chat=|thread=|no_valid_call|recovery_turn_missing_reply|no-adapter-confirmed-reply|\n|\{0\}/);
-    expect(text.length).toBeLessThan(100);
-    expect(text).toBe(locale === "en"
-      ? "⚠️ Still no confirmed reply after one retry. Ask it to continue if you saw nothing."
-      : "⚠️ 補送後仍沒確認到回覆，沒收到請叫它繼續。");
+    expect(t("inst.reply_drop_unrecovered")).toBe("inst.reply_drop_unrecovered");   // the key is gone
     setLocale("en");
   });
 

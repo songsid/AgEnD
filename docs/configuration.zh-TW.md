@@ -165,8 +165,8 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `progress_min_elapsed` | number | `30` | 進度行／取消按鈕開始顯示經過時間之前的秒數 |
 | `locale` | `"en"` \| `"zh-TW"` | 依時區推算 | 使用者可見介面與通知的語言。AgEnD 啟動時讀取：變更後需重新啟動 AgEnD。 |
 | `max_cross_instance_message_bytes` | number | `12288` | 跨 instance 訊息內容的 UTF-8 byte 上限。超限時會明確拒絕，並提示精簡內容或改傳檔案路徑。 |
-| `reply_overdue_minutes` | number | `15` | 距上次詢問／提醒多少分鐘後，通知寄件者一次：`requires_reply` 請求仍未回答，且負責的 instance 並非 working。`0` 只停用這則閒置逾期通知，不停用對負責者的提醒或 TTL 到期的最後通知 |
-| `reply_obligation_ttl_hours` | number | `24` | 開放中的回覆義務距上次詢問多久後到期，必須是有限正數（小時）；提醒不延長期限。到期會記錄 log，若尚未通知過逾期則通知寄件者一次，即使 `reply_overdue_minutes` 是 `0` 也一樣。重啟只發一則提醒，最多列十筆請求及「+N 個其他請求」；回合結束的提醒保留既有寬限及每次詢問一次的規則。 |
+| `reply_overdue_minutes` | — | — | 已停用（#2802）：不再通知寄件者逾期。仍可寫在設定檔中（載入不會出錯），但不起作用 |
+| `reply_obligation_ttl_hours` | number | `24` | 開放中的回覆義務距上次詢問多久後到期，必須是有限正數（小時）；提醒不延長期限。到期只記錄 log。到期前，負責的 instance 閒置且未回覆時，每次詢問提醒一次（重啟後也是，已提醒過的不再提醒） |
 | `retention_days` | number | `30` | `delivery-outbox.db` 保留已完成投遞（`delivered`/`failed`）及 Task Board 已完成/已取消任務的天數。`uncertain` 與非終態的 row 永遠不會被清除。fleet 啟動時執行一次，之後每天執行，每次最多刪除 500 筆以免卡住 event loop。被清除的 delivery_id 在 `delivery_status` 工具中會回傳「早於保留期限，已清除」而非「找不到」 |
 | `tips` | boolean | `true` | `true` 在 General 發每日提示；`false` 關閉。不受 `daily_summary.enabled` 控制。舊的 `"dm"` 值視為 `true` |
 | `task_board.summary_at` | string | 關閉 | 任務看板給人的每日摘要（自 2.3.0 起沒設定就關閉，設定時間即開啟），發到各平台的 General 和網頁聊天室：`"HH:MM"`（24 小時制，依 `scheduler.default_timezone`，沒設就用主機時區）或 `"off"`。每分鐘檢查時讀取，改了不用重啟。見[功能說明](features.zh-TW.md#任務看板的每日摘要) |
