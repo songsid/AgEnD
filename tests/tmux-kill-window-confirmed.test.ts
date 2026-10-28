@@ -108,3 +108,42 @@ describe.skipIf(!have("tmux"))("TmuxManager.killWindowConfirmed", () => {
     expect(tmux("list-windows", "-t", "s", "-F", "#{window_id}")).not.toContain(id);
   });
 });
+
+// Real OS acceptance for #2806: two harmless processes, exclusively our socket.
+describe.skipIf(!have("tmux"))("#2806 failed startup cannot kill the active neighbour", () => {
+  it("leaves both windows alive when disposal runs before the failed daemon owns a window", async () => {
+    const { Daemon } = await import("../src/daemon.js");
+    const { InstanceLifecycle } = await import("../src/instance-lifecycle.js");
+    TmuxManager.setSocketName(SOCK);
+    tmux("-f", "/dev/null", "new-session", "-d", "-s", "s", "-n", "neighbour", "sleep 100");
+    tmux("new-window", "-a", "-t", "s", "-n", "other", "sleep 100");
+    const neighbour = tmux("list-windows", "-t", "s", "-F", "#{window_id} #{window_name}")
+      .trim().split("\n").find(line => line.endsWith(" neighbour"))!.split(" ")[0];
+    tmux("select-window", "-t", `s:${neighbour}`);
+    const pid = await TmuxManager.getPanePid("s", neighbour);
+    expect(pid).toBeGreaterThan(1);
+    // Proves the dangerous empty selector really resolves to this neighbour.
+    expect(Number(tmux("list-panes", "-t", "s:", "-F", "#{pane_pid}").trim())).toBe(pid);
+    const dir = mkdtempSync(join(tmpdir(), "agend-pre-window-"));
+    try {
+      const logger = { info() {}, debug() {}, warn() {}, error() {} };
+      const daemon = new Daemon("failed", { working_directory: dir, log_level: "silent" } as any,
+        dir, false, undefined, undefined, { child: () => logger } as any) as any;
+      daemon.tmuxSessionName = "s";
+      daemon.tmux = new TmuxManager("s", "");
+      daemon.start = async () => { throw new Error("retained session needs repair"); };
+      await expect(InstanceLifecycle.startOrDispose(daemon, "failed", logger as any)).rejects.toThrow("retained session needs repair");
+      // Allow a mistakenly signalled process to be reaped before testing liveness.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(process.kill(pid!, 0)).toBe(true);
+      expect(tmux("list-windows", "-t", "s", "-F", "#{window_id}").trim().split("\n")).toHaveLength(2);
+      // Owned cleanup still works and only kills its exact window.
+      const owned = new TmuxManager("s", neighbour);
+      daemon.tmux = owned;
+      await daemon.killProcessTree("SIGTERM", "private acceptance: owned pane only");
+      await expect.poll(() => owned.getPaneStatus()).toBeNull();
+      expect(await owned.killWindowConfirmed()).toBe(true);
+      expect(tmux("list-windows", "-t", "s", "-F", "#{window_name}").trim()).toBe("other");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

@@ -38,8 +38,14 @@ function fallbackReadError(error: unknown): TmuxReadError {
   return new TmuxReadError(kind, "tmux fallback read failed", error);
 }
 
+/** An empty window selector means tmux's active window, never an owned pane. */
+export function tmuxWindowTarget(session: string, window: string): string {
+  if (!window.trim()) throw new TmuxReadError("command", "Cannot target tmux window without a window id");
+  return `${session}:${window}`;
+}
+
 export function tmuxReadArgs(query: TmuxReadQuery): string[] {
-  const target = "window" in query ? `${query.session}:${query.window}` : query.session;
+  const target = "window" in query ? tmuxWindowTarget(query.session, query.window) : query.session;
   if (/[\x00-\x1f\x7f]/u.test(target)) throw new TmuxReadError("command", "Invalid tmux read target");
   switch (query.kind) {
     case "windows": return ["list-windows", "-t", target, "-F", "#{window_id}|||#{window_name}"];

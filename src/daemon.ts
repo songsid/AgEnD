@@ -11943,9 +11943,12 @@ export class Daemon extends EventEmitter {
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */
   private async killProcessTree(signal: NodeJS.Signals = "SIGTERM", reason = "unspecified"): Promise<void> {
-    if (!this.tmux) return;
+    const windowId = this.tmux?.getWindowId();
+    // Before createWindow succeeds there is no pane owned by this daemon.
+    // tmux interprets an empty selector as the session's active window.
+    if (!windowId?.trim()) return;
     try {
-      const pid = await TmuxManager.getPanePid(this.tmuxSessionName, this.tmux.getWindowId());
+      const pid = await TmuxManager.getPanePid(this.tmuxSessionName, windowId);
       if (pid) {
         this.noteStopRequest(signal, reason);
         process.kill(-pid, signal);

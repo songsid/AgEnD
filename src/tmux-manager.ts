@@ -1,7 +1,7 @@
 import { execFile } from "./child-process.js";
 import { promisify } from "node:util";
 import type { TerminalConfig } from "./types.js";
-import { tmuxReadArgs, type TmuxReadPort, type TmuxReadQuery } from "./tmux-read.js";
+import { tmuxWindowTarget, tmuxReadArgs, type TmuxReadPort, type TmuxReadQuery } from "./tmux-read.js";
 import { tmuxExecHelper } from "./tmux-exec-helper.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 
@@ -228,7 +228,7 @@ export class TmuxManager {
   static async getPanePid(sessionName: string, windowId: string, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<number | null> {
     try {
       const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-        "list-panes", "-t", `${sessionName}:${windowId}`, "-F", "#{pane_pid}",
+        "list-panes", "-t", tmuxWindowTarget(sessionName, windowId), "-F", "#{pane_pid}",
       ]), { timeout: timeoutMs });
       const pid = parseInt(stdout.trim(), 10);
       return isNaN(pid) ? null : pid;
@@ -257,6 +257,7 @@ export class TmuxManager {
   }
 
   private async read(query: TmuxReadQuery, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
+    if ("window" in query) tmuxWindowTarget(query.session, query.window);
     if (this.readPort) return TmuxManager.portRead(this.readPort, query, timeoutMs);
     return (await exec("tmux", TmuxManager.tmuxArgs(tmuxReadArgs(query)), { timeout: timeoutMs })).stdout;
   }
@@ -285,7 +286,7 @@ export class TmuxManager {
         this.windowId = survivor.id;
         await this.respawnWindow(command, cwd);
         await exec("tmux", TmuxManager.tmuxArgs([
-          "set-window-option", "-t", `${this.sessionName}:${this.windowId}`,
+          "set-window-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
           "allow-rename", "off",
         ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
         return this.windowId;
@@ -304,7 +305,7 @@ export class TmuxManager {
       // what makes `window-size latest` safe here (see applyLogicalSize).
       await this.applyLogicalSize();
       if (windowName) {
-        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
+        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId), "allow-rename", "off"]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
       }
     } catch (err) {
       // Do not leave a live instance in an unpinned geometry if setup fails.
@@ -321,7 +322,7 @@ export class TmuxManager {
     // its first frame. Reapplying is idempotent and repairs external drift.
     await this.applyLogicalSize();
     await exec("tmux", TmuxManager.tmuxArgs([
-      "respawn-window", "-k", "-t", `${this.sessionName}:${this.windowId}`,
+      "respawn-window", "-k", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       "-c", cwd, command,
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
@@ -342,7 +343,7 @@ export class TmuxManager {
    */
   private async applyLogicalSize(): Promise<void> {
     if (!this.windowId) throw new Error("Cannot size tmux window without a window id");
-    const target = `${this.sessionName}:${this.windowId}`;
+    const target = tmuxWindowTarget(this.sessionName, this.windowId);
     await exec("tmux", TmuxManager.tmuxArgs([
       "resize-window", "-t", target,
       "-x", String(this.logicalSize.columns),
@@ -356,7 +357,7 @@ export class TmuxManager {
   async killWindow(): Promise<void> {
     if (!this.windowId) return;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${this.windowId}`]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+      await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", tmuxWindowTarget(this.sessionName, this.windowId)]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     } catch {
       // Expected if window already exited
     }
@@ -407,7 +408,7 @@ export class TmuxManager {
   /** Enable remain-on-exit so dead panes are preserved for exit code capture. */
   async setRemainOnExit(): Promise<void> {
     await exec("tmux", TmuxManager.tmuxArgs([
-      "set-option", "-t", `${this.sessionName}:${this.windowId}`,
+      "set-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       "remain-on-exit", "on",
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
@@ -446,7 +447,7 @@ export class TmuxManager {
   /** Return tmux's effective window geometry and sizing policy (diagnostics/tests). */
   async getWindowGeometry(): Promise<TmuxLogicalSize & { mode: string }> {
     if (!this.windowId) throw new Error("Cannot inspect tmux window without a window id");
-    const target = `${this.sessionName}:${this.windowId}`;
+    const target = tmuxWindowTarget(this.sessionName, this.windowId);
     const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
       "display-message", "-p", "-t", target,
       "#{window_width} #{window_height}",
@@ -481,7 +482,7 @@ export class TmuxManager {
 
   async sendKeys(text: string): Promise<boolean> {
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-l", "-t", `${this.sessionName}:${this.windowId}`, text]));
+      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-l", "-t", tmuxWindowTarget(this.sessionName, this.windowId), text]));
       return true;
     } catch { return false; }
   }
@@ -495,7 +496,7 @@ export class TmuxManager {
   async sendKeySequence(keys: readonly string[]): Promise<boolean> {
     if (keys.length === 0 || !keys.every(key => EDITING_KEYS.has(key))) return false;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, ...keys]));
+      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", tmuxWindowTarget(this.sessionName, this.windowId), ...keys]));
       return true;
     } catch { return false; }
   }
@@ -503,7 +504,7 @@ export class TmuxManager {
   async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q", timeoutMs?: number): Promise<boolean> {
     this.lastSendSpecialKeyError = null;
     try {
-      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]), timeoutMs);
+      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", tmuxWindowTarget(this.sessionName, this.windowId), key]), timeoutMs);
       return true;
     } catch (err) {
       const stderr = err && typeof err === "object" && "stderr" in err
@@ -518,7 +519,7 @@ export class TmuxManager {
   async deleteBackward(count: number, timeoutMs?: number): Promise<boolean> {
     if (!Number.isInteger(count) || count <= 0) return true;
     try {
-      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, "-N", String(count), "BSpace"]), timeoutMs);
+      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", tmuxWindowTarget(this.sessionName, this.windowId), "-N", String(count), "BSpace"]), timeoutMs);
       return true;
     } catch { return false; }
   }
@@ -544,7 +545,7 @@ export class TmuxManager {
    * write. `timeoutMs` bounds each tmux call.
    */
   private async loadAndPaste(text: string, opts: { guard?: () => boolean; timeoutMs?: number } = {}): Promise<boolean> {
-    const target = `${this.sessionName}:${this.windowId}`;
+    const target = tmuxWindowTarget(this.sessionName, this.windowId);
     const allowed = () => !opts.guard || opts.guard();
     const bufName = `paste-${this.windowId}-${Date.now()}`;
     this.lastPasteError = null;
@@ -606,7 +607,7 @@ export class TmuxManager {
   async pasteText(text: string, opts: { retryEnter?: boolean } = {}): Promise<boolean> {
     const retryEnter = opts.retryEnter !== false;
     try {
-      const target = `${this.sessionName}:${this.windowId}`;
+      const target = tmuxWindowTarget(this.sessionName, this.windowId);
       if (!(await this.loadAndPaste(text))) return false;
       await new Promise(r => setTimeout(r, 500));
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
@@ -639,7 +640,7 @@ export class TmuxManager {
     }
     const escaped = logPath.replace(/'/g, "'\\''");
     await exec("tmux", TmuxManager.tmuxArgs([
-      "pipe-pane", "-t", `${this.sessionName}:${this.windowId}`,
+      "pipe-pane", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       `cat >> '${escaped}'`,
     ]));
   }
