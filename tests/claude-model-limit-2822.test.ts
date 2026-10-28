@@ -1,13 +1,16 @@
 /**
- * #2822: Claude's per-model limit — `⎿  You've reached your Fable limit. …` (claude 2.1.312 builds it from a 429 whose
- * representative claim is seven_day_overage_included) — had no detector: every turn failed, and the reply guard sent
- * a recovery turn after each one, which failed too. It is now a usage-limit hold with no reset time: told once, the
- * reply guard quiet on turns that end on the line, cleared by the first turn that ends without it, listed in Needs
- * you while it lasts. Matched only as Claude renders its own API error: an agent quoting or researching the text must
- * never start a hold (the leader's must-pass case — this agent's own pane tripped the unanchored credit pattern while
- * reading the binary).
+ * #2822: Claude's per-model limit — "You've reached your Fable limit. …" (claude 2.1.312 builds it from a 429 whose
+ * representative claim is seven_day_overage_included) — had no detector: every turn failed, and the reply guard sent a
+ * recovery turn after each one, which failed too. It is now a usage-limit hold with no reset time: told once, the reply
+ * guard quiet on a person turn whose newest transcript event is that error, ended by Claude's next output of any turn,
+ * listed in Needs you while it lasts.
  *
- * Isolation: temp dirs; no tmux, no CLI, no network — the daemon's scan and guard are driven with pane text.
+ * The only evidence is Claude's own record of the failed call in its transcript — an assistant record with
+ * `isApiErrorMessage: true`, `apiErrorStatus: 429` (captured from the real CLI). Pane text never counts: Bash output, a
+ * code block or an agent quoting the line render the same characters (Prism's #2827 review; this agent's own pane
+ * tripped the unanchored credit pattern while it read the binary).
+ *
+ * Isolation: temp dirs; no tmux, no CLI, no network — the monitor gets records, the daemon gets its events.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +21,7 @@ import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { Daemon } from "../src/daemon.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
 import { setLocale, t } from "../src/locale.js";
+import { TranscriptMonitor } from "../src/transcript-monitor.js";
 import type { Logger } from "../src/logger.js";
 
 vi.mock("../src/backend/types.js", async importOriginal => ({
@@ -30,92 +34,34 @@ const dirs: string[] = [];
 afterEach(() => { vi.useRealTimers(); setLocale("en"); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-2822-")); dirs.push(d); return d; };
 
-const NBSP = " ";
-/** Exactly what claude 2.1.312 painted in an isolated container for the 429 (captured with tmux capture-pane). */
-const REAL = `  ⎿ ${NBSP}You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.`;
-const patterns = () => new ClaudeCodeBackend(tmp()).getErrorPatterns();
-const holdPattern = () => patterns().find(p => p.usageHold)!;
+const LIMIT = "You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.";
+/** The record claude 2.1.312 wrote for the 429 (isolated container, mock API), fields trimmed. */
+const RECORD = { type: "assistant", isApiErrorMessage: true, apiErrorStatus: 429, error: "rate_limit", timestamp: "2026-10-28T10:16:00.000Z",
+  message: { role: "assistant", content: [{ type: "text", text: LIMIT }] } };
+const RENDERED = `  ⎿  ${LIMIT}`;
 
-describe("#2822: the pattern — Claude's own error line, nothing else", () => {
-  it.each([
-    ["the captured 2.1.312 line", REAL, "Fable"],
-    ["the /model hint", `  ⎿  You've reached your Fable limit. /model to switch models.`, "Fable"],
-    ["the switch hint", `  ⎿  You've reached your Fable limit. Switch to another model to continue.`, "Fable"],
-    ["no hint, typographic apostrophe", `  ⎿ ${NBSP}You’ve reached your Fable 5.1 limit.`, "Fable 5.1"],
-  ])("matches %s and names the model", (_n, line, model) => {
-    const ep = holdPattern();
-    const m = line.match(ep.pattern);
-    expect(m).not.toBeNull();
-    expect(ep.usageHold!(m!)).toBe(model);
+describe("#2822: the transcript monitor tells Claude's own API error apart from model output", () => {
+  it("an isApiErrorMessage record is an api_error (text, status, time), never assistant_text", () => {
+    const m = new TranscriptMonitor(tmp(), logger) as any;
+    const errors: unknown[][] = []; const texts: string[] = [];
+    m.on("api_error", (...a: unknown[]) => errors.push(a)); m.on("assistant_text", (x: string) => texts.push(x));
+    m.processEntry(RECORD);
+    m.processEntry({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: `Claude prints "${LIMIT}"` }] } });
+    expect(errors).toEqual([[LIMIT, 429, Date.parse(RECORD.timestamp)]]);
+    expect(texts).toEqual([`Claude prints "${LIMIT}"`]);
   });
 
-  it.each([
-    ["an agent quoting it as prose", "● You've reached your Fable limit. /model to switch models."],
-    ["prose mid-sentence", "The CLI prints \"You've reached your Fable limit.\" when the credits run out."],
-    ["an indented code block", "    You've reached your Fable limit. Run /usage-credits to continue or switch models with /model."],
-    ["the binary-strings dump that tripped the fleet on 10-28", `var S7r=["You've hit your","You've reached your","You're out of usage credits"]`],
-    ["the dialog title (no period)", "  You've reached your Fable limit"],
-    ["the sibling wording (not chosen)", "  ⎿  Fable requires usage credits. /model to switch models."],
-    ["the out-of-credits wording", "  ⎿  You're out of usage credits. Run /usage-credits to keep using Fable 5.1 or /model to switch models."],
-    ["the line with other text after it", `${REAL} (quoted from the docs)`],
-  ])("does not match %s", (_n, line) => {
-    expect(holdPattern().pattern.test(line)).toBe(false);
-  });
-
-  it("is a notify-only quota line with no usage-API cross-check (the 5h/7d API can show room while it holds)", () => {
-    expect(holdPattern()).toMatchObject({ type: "quota", action: "notify", skipCooldown: true, skipRecoveryWait: true });
-    expect(holdPattern().verifyQuota).toBeUndefined();
-  });
-
-  it("the notice names the model and says the reset time is unknown, in both languages", () => {
-    const m = REAL.match(holdPattern().pattern)!;
-    expect(holdPattern().formatMessage!(m)).toBe("Claude has reached its Fable usage limit — reset time unknown. Messages reach it but fail until the limit clears or the model is switched (/model).");
-    setLocale("zh-TW");
-    expect(t("inst.model_usage_limit", "Fable")).toBe("Claude 的 Fable 用量已達上限，恢復時間未知。訊息仍會送到，但在額度恢復或切換模型（/model）前都會失敗。");
+  it("a prompt is a user_prompt; a meta record or a tool result is not", () => {
+    const m = new TranscriptMonitor(tmp(), logger) as any;
+    let prompts = 0; m.on("user_prompt", () => prompts++);
+    m.processEntry({ type: "user", message: { role: "user", content: "message 1" } });
+    m.processEntry({ type: "user", isMeta: true, message: { role: "user", content: "<local-command-caveat>" } });
+    m.processEntry({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } });
+    expect(prompts).toBe(1);
   });
 });
 
-function scanDaemon() {
-  const dir = tmp();
-  const daemon = new Daemon("fable-agent", { working_directory: dir, log_level: "silent" } as any, dir, false,
-    new ClaudeCodeBackend(dir), undefined, logger) as any;
-  const errors: Array<{ message: string; action: string }> = [];
-  const holds: boolean[] = [];
-  daemon.on("pty_error", (e: { message: string; action: string }) => errors.push(e));
-  daemon.on("usage_hold", (e: { held: boolean }) => holds.push(e.held));
-  return { daemon, errors, holds };
-}
-
-describe("#2822: told once per hold", () => {
-  it("three failing turns → one notice and one hold; the later lines are absorbed", () => {
-    const { daemon, errors, holds } = scanDaemon();
-    const p = patterns();
-    let pane = "❯ hello";
-    for (let turn = 1; turn <= 3; turn++) {
-      pane += `\n❯ message ${turn}\n${REAL}\n❯ `;
-      daemon.evaluateErrorPatterns(pane, p, /❯/, 1_000_000 + turn);
-    }
-    expect(errors.map(e => e.message)).toEqual([t("inst.model_usage_limit", "Fable")]);
-    expect(holds).toEqual([true]);
-    expect(daemon.usageHold()).toMatchObject({ model: "Fable" });
-  });
-
-  it("an agent discussing the text never starts a hold", () => {
-    const { daemon, errors, holds } = scanDaemon();
-    const pane = [
-      "● Claude prints \"You've reached your Fable limit.\" when Fable's credits are gone; the hint is \"/model to switch models.\"",
-      "● You've reached your Fable limit. /model to switch models.",
-      "    You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.",
-      "❯ ",
-    ].join("\n");
-    daemon.evaluateErrorPatterns(pane, patterns(), /❯/, 2_000_000);
-    expect(errors.filter(e => /usage limit/i.test(e.message))).toEqual([]);
-    expect(holds).toEqual([]);
-    expect(daemon.usageHold()).toBeNull();
-  });
-});
-
-function guardDaemon() {
+function daemonFor() {
   const dir = tmp();
   const real = new ClaudeCodeBackend(dir);
   const daemon = new Daemon("fable-agent", {
@@ -127,70 +73,129 @@ function guardDaemon() {
   daemon.deliverDaemonReply = vi.fn(async () => true);
   daemon.mcpServerAlive = vi.fn(() => ({ alive: true, source: "connection" }));
   daemon.ipcServer = { broadcast: vi.fn(), send: vi.fn(() => true) };
-  const holds: boolean[] = [];
+  const holds: boolean[] = []; const notices: Array<{ type: string; action: string; message: string }> = [];
   daemon.on("usage_hold", (e: { held: boolean }) => holds.push(e.held));
-  return { daemon, holds, patterns: real.getErrorPatterns() };
+  daemon.on("pty_error", (e: { type: string; action: string; message: string }) => notices.push(e));
+  return { daemon, holds, notices, patterns: real.getErrorPatterns() };
 }
 const at = (state: "idle" | "working") => ({ state, unchangedForMs: 0, observedAt: Date.now(), stateChangedAt: Date.now() }) as any;
 const meta = (n: number) => ({ chat_id: "chat", thread_id: "topic", adapter_id: "tg", message_id: `m-${n}`, correlation_id: `cid-${n}` });
+const limitError = (d: any) => d.noteClaudeApiError(LIMIT, 429);
 
-/** One person turn whose pane ends as given; the guard is evaluated after its idle-confirm window. */
-async function turn(daemon: any, n: number, body: string, scan?: any[], above = "") {
+/**
+ * One person turn as the real CLI orders it: Claude records the prompt, then `during` (its transcript events), and
+ * AgEnD arms the turn when the delivery is confirmed — for a 429 that is AFTER the error was recorded (seen on 2.1.312).
+ * The pane goes idle, and the guard decides after its confirm window.
+ */
+async function turn(daemon: any, n: number, during: () => void, pane = "● …\n❯ ") {
   const inbound = `[user:Ann via telegram] message ${n}`;
+  daemon.noteClaudePrompt();
+  during();
   daemon.markTurnStarted(meta(n), inbound);
-  const pane = `${above}${inbound}\n${body}\n❯ `;
-  daemon.applyInstanceStateSnapshot(at("working"), pane);
-  if (scan) daemon.evaluateErrorPatterns(pane, scan, /❯/, 3_000_000 + n);
-  daemon.applyInstanceStateSnapshot(at("idle"), pane);
+  daemon.applyInstanceStateSnapshot(at("working"), `${inbound}\n${pane}`);
+  daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n${pane}`);
   await vi.advanceTimersByTimeAsync(61_000);
-  daemon.applyInstanceStateSnapshot(at("idle"), pane);
+  daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n${pane}`);
   await daemon.pasteLock;
 }
 
-describe("#2822: the reply guard while the limit holds", () => {
-  it("3 turns on the limit line → no recovery prompt, no drop report; a 4th turn without it clears the hold and the guard works again", async () => {
-    vi.useFakeTimers();
-    const { daemon, holds, patterns: p } = guardDaemon();
-    const detected = vi.fn(); const unrecovered = vi.fn();
-    daemon.on("reply_drop_detected", detected); daemon.on("reply_drop_unrecovered", unrecovered);
-    for (const n of [1, 2, 3]) await turn(daemon, n, REAL, p);
-    expect(daemon.deliverMessage).not.toHaveBeenCalled();             // no [system:reply-required] turn
-    expect(detected).not.toHaveBeenCalled(); expect(unrecovered).not.toHaveBeenCalled();
-    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+describe("#2822: the hold", () => {
+  it("Claude's limit error starts it once: one notice (model, reset time unknown); later errors are told no more", () => {
+    const { daemon, holds, notices } = daemonFor();
+    for (let i = 0; i < 3; i++) limitError(daemon);
     expect(holds).toEqual([true]);
-    // The model was switched (or the limit reset): the turn ends without the line.
-    await turn(daemon, 4, "● Here is the answer.", p);
+    expect(notices).toEqual([expect.objectContaining({ type: "quota", action: "notify",
+      message: "Claude has reached its Fable usage limit — reset time unknown. Messages reach it but fail until the limit clears or the model is switched (/model)." })]);
+    expect(daemon.usageHold()).toMatchObject({ model: "Fable" });
+    setLocale("zh-TW");
+    expect(t("inst.model_usage_limit", "Fable")).toBe("Claude 的 Fable 用量已達上限，恢復時間未知。訊息仍會送到，但在額度恢復或切換模型（/model）前都會失敗。");
+  });
+
+  it.each([
+    ["another status", "You've reached your Fable limit. /model to switch models.", 500],
+    ["the sibling wording (not chosen)", "Fable requires usage credits. /model to switch models.", 429],
+    ["the out-of-credits wording", "You're out of usage credits. Run /usage-credits to keep using Fable 5.1 or /model to switch models.", 429],
+  ])("no hold for %s", (_n, text, status) => {
+    const { daemon, holds } = daemonFor();
+    daemon.noteClaudeApiError(text, status, Date.now());
+    expect(holds).toEqual([]);
+  });
+
+  it("pane text never starts it — the complete rendered line in Bash output, in a code block, or quoted (Prism P2-1)", () => {
+    const { daemon, holds, notices, patterns } = daemonFor();
+    const pane = [
+      "● Bash(cat limit.txt)", RENDERED,                                             // a tool's successful output, ⎿ and all
+      "```", RENDERED, "```",                                                        // a code block keeping the whole line
+      `● Claude prints "${LIMIT}"`, "❯ ",
+    ].join("\n");
+    daemon.evaluateErrorPatterns(pane, patterns, /❯/, 1_000_000);
+    daemon.noteClaudeOutput();                                                       // the agent's text quoting it is output
+    expect(holds).toEqual([]);
+    expect(notices.filter(n => /usage limit/i.test(n.message))).toEqual([]);
+  });
+
+  it("Claude's next output ends it — whatever turn it is, a person's or not (Prism P2-3)", () => {
+    const { daemon, holds } = daemonFor();
+    limitError(daemon);
+    daemon.noteClaudeOutput();                                                       // e.g. a fleet_inbound turn: no reply guard
     expect(holds).toEqual([true, false]);
     expect(daemon.usageHold()).toBeNull();
-    // …and with no reply delivered, the guard is back to its normal one recovery prompt.
+  });
+});
+
+describe("#2822: the reply guard", () => {
+  it("3 turns ending on the limit error → no recovery turn, no drop report; then an answer ends the hold and the guard is normal again", async () => {
+    vi.useFakeTimers();
+    const { daemon, holds } = daemonFor();
+    const detected = vi.fn(); const unrecovered = vi.fn();
+    daemon.on("reply_drop_detected", detected); daemon.on("reply_drop_unrecovered", unrecovered);
+    for (const n of [1, 2, 3]) await turn(daemon, n, () => limitError(daemon));
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    expect(detected).not.toHaveBeenCalled(); expect(unrecovered).not.toHaveBeenCalled();
+    expect(holds).toEqual([true]);
+    await turn(daemon, 4, () => daemon.noteClaudeOutput());                          // answered in text, no reply tool
+    expect(holds).toEqual([true, false]);
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
     expect(String(daemon.deliverMessage.mock.calls[0][0])).toMatch(/^\[system:reply-required\]/);
   });
 
-  it("the first failing turn is quiet even if the guard runs before the scan has seen the line", async () => {
+  it("an error from before this turn does not silence it (Prism P2-2): the turn still gets its one recovery", async () => {
     vi.useFakeTimers();
-    const { daemon } = guardDaemon();
-    await turn(daemon, 1, REAL);                                       // no scan at all
-    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    const { daemon } = daemonFor();
+    limitError(daemon);                                                              // the previous turn's error
+    await turn(daemon, 2, () => {}, `${RENDERED}\n● ok\n❯ `);                        // old line on screen; only this turn's prompt recorded
+    expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("an old limit line above this turn's message does not keep the turn quiet", async () => {
+  it("an error earlier in this turn followed by an answer does not silence it (Prism P2-2)", async () => {
     vi.useFakeTimers();
-    const { daemon } = guardDaemon();
-    await turn(daemon, 2, "● thinking, but no reply sent", undefined, `${REAL}\n❯ \n`);
-    expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);           // judged on its own part of the pane
+    const { daemon, holds } = daemonFor();
+    await turn(daemon, 1, () => { limitError(daemon); daemon.noteClaudeOutput(); });
+    expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
+    expect(holds).toEqual([true, false]);
+  });
+
+  it("an error from before this turn's prompt, read only after the turn was armed, does not silence it", async () => {
+    vi.useFakeTimers();
+    const { daemon } = daemonFor();
+    limitError(daemon);
+    const inbound = "[user:Ann via telegram] message 2";
+    daemon.markTurnStarted(meta(2), inbound);
+    daemon.noteClaudePrompt();                                                       // this turn's prompt, recorded after the old error
+    daemon.applyInstanceStateSnapshot(at("working"), `${inbound}\n● …\n❯ `); daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n● …\n❯ `);
+    await vi.advanceTimersByTimeAsync(61_000); daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n● …\n❯ `); await daemon.pasteLock;
+    expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("#2822: Needs you", () => {
-  it("one item while the hold lasts: the instance, the model, reset time unknown", () => {
+  it("one item while the hold lasts: the instance, the model, reset time unknown — gone with the hold", () => {
     const base = { prompts: [], deliveries: [], tasks: [], backendSignIns: [], ownerOf: () => "tg" } as any;
     const held = deriveNeedsYou({ ...base, instances: [{ name: "fable-agent", usageHold: { model: "Fable", since: 1_700_000_000_000 } }] });
-    expect(held.items ?? held).toEqual([expect.objectContaining({ id: "usage:fable-agent:1700000000000", type: "instance", instance: "fable-agent", reason: "usage_limit", detail: "Fable" })]);
+    expect(held).toEqual([expect.objectContaining({ id: "usage:fable-agent:1700000000000", type: "instance", instance: "fable-agent", reason: "usage_limit", detail: "Fable" })]);
     expect(t("needs.reason.usage_limit", "Fable")).toBe("Usage limit reached · Fable · reset time unknown");
     setLocale("zh-TW");
     expect(t("needs.reason.usage_limit", "Fable")).toBe("用量已達上限 · Fable · 恢復時間未知");
-    const cleared = deriveNeedsYou({ ...base, instances: [{ name: "fable-agent", usageHold: null }] });
-    expect(cleared.items ?? cleared).toEqual([]);
+    expect(deriveNeedsYou({ ...base, instances: [{ name: "fable-agent", usageHold: null }] })).toEqual([]);
   });
 });

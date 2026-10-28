@@ -2019,29 +2019,61 @@ export class Daemon extends EventEmitter {
   // old transcript, so pre-ready scans must not lower this seeded baseline.
   private seededErrorCountBaselines = new Map<string, number>();
   private lastDetectedErrorType: string | null = null;
-  /** #2822: a usage limit with no known reset time holds this instance (see ErrorPattern.usageHold). */
+  /**
+   * #2822: Claude's per-model usage limit (`You've reached your <model> limit.`), known only from Claude's own record of
+   * the failed call in its transcript (`isApiErrorMessage`, a 429) — never from pane text, which an agent can print. It
+   * names no reset time. While it holds it is told once, and the reply guard stays quiet while the transcript's newest
+   * event is that error; any later assistant output (of any turn, from a person or not) ends it. The order is Claude's
+   * own: a 429 is recorded within a second, often before AgEnD has armed the turn, so no AgEnD-side clock is used.
+   */
   private usageLimitHold: { model: string; since: number } | null = null;
+  /** Transcript events in Claude's order: the latest limit error, assistant output and prompt. */
+  private transcriptEventSeq = 0;
+  private usageLimitErrorSeq = 0;
+  private assistantOutputSeq = 0;
+  private userPromptSeq = 0;
+  static readonly MODEL_USAGE_LIMIT = /^You['’]ve reached your ([A-Za-z0-9][A-Za-z0-9 .-]{0,40}?) limit\./;
 
   /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
   usageHold(): { model: string; since: number } | null {
     return this.usageLimitHold ? { ...this.usageLimitHold } : null;
   }
 
-  private clearUsageLimitHold(reason: string): void {
+  /** #2822: Claude recorded a failed API call. */
+  private noteClaudeApiError(text: string, status: number | null): void {
+    const seq = ++this.transcriptEventSeq;
+    const match = status === 429 ? Daemon.MODEL_USAGE_LIMIT.exec(text.trim()) : null;
+    if (!match) return;
+    this.usageLimitErrorSeq = seq;
+    if (this.usageLimitHold) return;                                   // told already: one notice per hold
+    const model = match[1]!.trim();
+    this.usageLimitHold = { model, since: Date.now() };
+    const message = t("inst.model_usage_limit", model);
+    this.logger.warn({ model }, "Usage-limit hold started (reset time unknown)");
+    this.emit("usage_hold", { name: this.name, held: true });
+    this.emit("pty_error", { name: this.name, type: "quota", action: "notify", message, skipCooldown: true, skipRecoveryWait: true });
+  }
+
+  /** #2822: Claude produced output (text or a tool call): the model answers again, so a hold ends. */
+  private noteClaudeOutput(): void {
+    this.assistantOutputSeq = ++this.transcriptEventSeq;
     if (!this.usageLimitHold) return;
-    this.logger.info({ model: this.usageLimitHold.model, reason }, "Usage-limit hold cleared");
+    this.logger.info({ model: this.usageLimitHold.model }, "Usage-limit hold cleared — Claude answered again");
     this.usageLimitHold = null;
     this.emit("usage_hold", { name: this.name, held: false });
   }
 
-  /** #2822: whether this turn's part of the pane ends on a usage-limit line (from its inbound marker, else the last rows). */
-  private turnShowsUsageLimit(pane: string, inboundMarker?: string): boolean {
-    const patterns = (this.backend?.getErrorPatterns?.() ?? []).filter(ep => ep.usageHold);
-    if (!patterns.length) return false;
-    const marker = inboundMarker?.trim();
-    const at = marker && marker.length >= 8 ? pane.lastIndexOf(marker) : -1;   // as extractProxyReplyText: a short one could be agent text
-    const tail = at >= 0 ? pane.slice(at) : pane.split("\n").slice(-30).join("\n");
-    return patterns.some(ep => new RegExp(ep.pattern.source, ep.pattern.flags.replace("g", "")).test(tail));
+  /** #2822: a prompt reached Claude (recorded in its transcript). */
+  private noteClaudePrompt(): void {
+    this.userPromptSeq = ++this.transcriptEventSeq;
+  }
+
+  /**
+   * #2822: the turn ended on the limit error — the transcript's newest event. A prompt after it (a new message the error
+   * is older than) or output after it (the model answered) means it is not this turn's end.
+   */
+  private personTurnEndedOnUsageLimit(): boolean {
+    return this.usageLimitErrorSeq > 0 && this.usageLimitErrorSeq > this.assistantOutputSeq && this.usageLimitErrorSeq > this.userPromptSeq;
   }
 
   private static errorPatternKey(ep: ErrorPattern): string {
@@ -2763,6 +2795,7 @@ export class Daemon extends EventEmitter {
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Ack react failed"));
       };
       this.transcriptMonitor.on("tool_use", (name: string, input: unknown) => {
+        this.noteClaudeOutput();
         this.logger.debug({ tool: name }, "Tool use");
         ackIfPending();
         this.recordRecentEvent({ type: "tool_use", name, preview: this.summarizeTool(name, input) });
@@ -2776,7 +2809,10 @@ export class Daemon extends EventEmitter {
         // show only elapsed time than to leave a stale "Bash: npm test" on screen.
         this.publishActivity(null);
       });
+      this.transcriptMonitor.on("api_error", (text: string, status: number | null) => this.noteClaudeApiError(text, status));
+      this.transcriptMonitor.on("user_prompt", () => this.noteClaudePrompt());
       this.transcriptMonitor.on("assistant_text", (text: string) => {
+        this.noteClaudeOutput();
         this.logger.debug({ text: text.slice(0, 200) }, "Claude response");
         ackIfPending();
         this.recordRecentEvent({ type: "assistant_text", preview: text.slice(0, 100) });
@@ -4211,12 +4247,6 @@ export class Daemon extends EventEmitter {
         continue;
       }
 
-      // #2822: while a usage-limit hold lasts, its later hits (one per failed turn) were told already: absorb them.
-      if (ep.usageHold && this.usageLimitHold) {
-        this.lastErrorCount.set(key, count);
-        continue;
-      }
-
       // count > seen → a NEW occurrence of this exact pattern appeared.
       // Leave a cooldown-suppressed count unconsumed so it can fire once the
       // cooldown expires, but continue scanning unrelated patterns this cycle.
@@ -4268,13 +4298,6 @@ export class Daemon extends EventEmitter {
     this.lastErrorNotifiedAt.set(key, now);
     if (ep.action === "failover") this.lastFailoverAt = now;
     const message = this.resolveErrorMessage(pane, ep);
-    if (ep.usageHold) {
-      const matches = [...pane.matchAll(new RegExp(ep.pattern.source, ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g"))];
-      const last = matches[matches.length - 1];
-      this.usageLimitHold = { model: last ? ep.usageHold(last) : "", since: Date.now() };
-      this.logger.warn({ model: this.usageLimitHold.model }, "Usage-limit hold started (reset time unknown)");
-      this.emit("usage_hold", { name: this.name, held: true });
-    }
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
     this.lastErrorEpisode = { key, pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
     this.emit("pty_error", { name: this.name, ...ep, message });
@@ -5860,7 +5883,6 @@ export class Daemon extends EventEmitter {
     if (!turn || this.isPaused) return;
 
     if (turn.completionDelivered) {
-      this.clearUsageLimitHold("a reply was delivered");
       if (turn.phase === "recovering") {
         this.emit("reply_drop_recovered", {
           name: this.name,
@@ -5881,17 +5903,15 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    // #2822: a turn that ended on a usage-limit line could not have replied — no recovery turn, no drop report: the
-    // limit is told once (the notice and Needs you). A turn that ends without it shows the limit has cleared (or the
-    // model was switched): the hold ends and the guard works as before.
-    if (pane !== undefined && this.turnShowsUsageLimit(pane, turn.target.inboundMarker)) {
-      this.logger.info({ correlationId: turn.target.correlationId, held: this.usageLimitHold !== null },
-        "Turn ended on a usage-limit line — no reply recovery");
+    // #2822: a turn whose newest transcript event is Claude's usage-limit error could not have replied — no recovery
+    // turn, no drop report: the limit is told once (the notice and Needs you). Only that record counts: pane text and
+    // an error from before this turn began do not.
+    if (this.personTurnEndedOnUsageLimit()) {
+      this.logger.info({ correlationId: turn.target.correlationId }, "Turn ended on Claude's usage-limit error — no reply recovery");
       this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       return;
     }
-    if (pane !== undefined) this.clearUsageLimitHold("a turn ended without the usage-limit line");
 
     // A second idle edge ends the one permitted recovery turn. Never create a
     // third turn or guess at terminal text; make the failure visible instead.

@@ -220,7 +220,19 @@ export class TranscriptMonitor extends EventEmitter {
   private processEntry(entry: any): void {
     const msg = entry.message;
     if (!msg?.role || !msg?.content) return;
+    // #2822: Claude records a failed API call as an assistant record of its own (`isApiErrorMessage`) — the CLI's own
+    // error, not model output: told as "api_error", never as "assistant_text".
+    if (entry.type === "assistant" && entry.isApiErrorMessage === true) {
+      const text = Array.isArray(msg.content)
+        ? msg.content.map((b: any) => (b?.type === "text" && typeof b.text === "string" ? b.text : "")).join("")
+        : String(msg.content);
+      const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+      this.emit("api_error", text, typeof entry.apiErrorStatus === "number" ? entry.apiErrorStatus : null, Number.isFinite(at) ? at : null);
+      return;
+    }
 
+    // #2822: a prompt (a person's message, a system notice) — the point a later API error is judged against.
+    if (entry.type === "user" && entry.isMeta !== true && typeof msg.content === "string" && msg.content.trim()) this.emit("user_prompt");
     const contents = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
 
     for (const block of contents) {
