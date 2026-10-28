@@ -450,12 +450,9 @@ describe.skipIf(process.env.AGEND_SYSTEMD_E2E !== "1" || !linux || !existsSync(b
   }, 60_000);
 });
 
-/**
- * The upgrade the stranded users take: an older `agend update` (beta.2, which
- * still has the gate) installs the new version and runs the restart through
- * the FRESHLY INSTALLED binary (`which agend`), never through itself. So the
- * restart that has to get past systemd 249's ignored CoredumpFilter is the new
- * code's — the one without the gate — and the update lands in one go.
+/** #2823: a PID-file-only synthetic owner now refuses before the legacy upgrade branch.
+ * Real managed/outside success (including systemd249's ignored CoredumpFilter) is covered by
+ * smoke-2823-service-owner.mjs; this fixture preserves the no-install/no-service-mutation fence.
  */
 describe("upgrade path: the restart runs through the newly installed binary (built CLI, stubbed npm/agend/systemctl)", () => {
   it.skipIf(!existsSync(cli))("an unproven PID claim cannot authorize install or restart beside a unit (#2823)", () => {
