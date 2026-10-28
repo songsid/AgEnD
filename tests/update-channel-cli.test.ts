@@ -222,17 +222,22 @@ describe("a second `agend update` after a failed verification (built CLI, stubbe
     const { r, out, calls, fleetAlive, unitBefore, unitAfter } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
       { staleFleet: true, unitExec: ({ runningCli }) => runningCli });
     expect(r.status, out).toBe(1);
-    expect(out).toContain("does not start the verified install");
+    // #2823: the sleep stand-in has only fleet.pid, so ownership refuses before the later unit-executable guard.
+    expect(out).toContain("service ownership could not be verified");
     expect(calls).not.toContain("agend restart");
     expect(unitAfter).toBe(unitBefore);
     expect(fleetAlive).toBe(true);
   });
 
-  it("control: a unit that starts the verified install (by its bin link) is restarted onto", { timeout: 60_000 }, () => {
-    const { out, calls } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
+  it("a matching unit executable does not authorize an unproven live fleet.pid owner", { timeout: 60_000 }, () => {
+    const { r, out, calls, fleetAlive, unitBefore, unitAfter } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
       { staleFleet: true, unitExec: ({ globalCli }) => globalCli });
-    expect(out, `${out}\n${calls.join("\n")}`).toContain("verified — restarting the fleet onto it");
-    expect(calls, `${out}\n${calls.join("\n")}`).toContain("agend restart");
+    expect(r.status, out).toBe(1);
+    expect(out).toContain("service ownership could not be verified");
+    expect(calls).not.toContain("agend restart");
+    expect(calls.some(c => c.startsWith("npm install"))).toBe(false);
+    expect(unitAfter).toBe(unitBefore);
+    expect(fleetAlive).toBe(true);
   });
 });
 
