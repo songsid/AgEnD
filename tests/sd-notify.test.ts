@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,8 +68,11 @@ describe("systemd notification capability containment", () => {
   });
 });
 
-describe("a notification that is not sent says so — once per kind per window", () => {
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+describe("notification failures stay visible; only ownership skips coalesce", () => {
   function notifier(over: { socket?: string | undefined; recorded?: number | null; fail?: Error | "throw" | null } = {}) {
+    vi.useFakeTimers();
     let clock = 0;
     const warn = vi.fn();
     const send = vi.fn((_state: string, _socket: string, onDone: (e: Error | null) => void) => {
@@ -115,11 +118,12 @@ describe("a notification that is not sent says so — once per kind per window",
     }
   });
 
-  it("systemd-notify failing, or not starting at all: warned, rate-limited the same way", () => {
+  it("systemd-notify failing, or not starting at all: every failure is logged", () => {
     for (const fail of [Object.assign(new Error("Command failed"), { code: 1 }), "throw" as const]) {
       const n = notifier({ fail });
       n.notify("WATCHDOG=1"); n.notify("WATCHDOG=1");
-      expect(n.warn).toHaveBeenCalledTimes(1);
+      expect(n.warn).toHaveBeenCalledTimes(2);
+      expect(n.warn.mock.calls[0]![0]).toMatchObject({ signal: null, killed: false, elapsedMs: 0 });
       expect(String(n.warn.mock.calls[0]![1])).toMatch(/systemd-notify/);
     }
   });

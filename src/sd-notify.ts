@@ -93,17 +93,9 @@ export function sendSystemdNotificationAsync(
 }
 
 /**
- * Send a notification without blocking the event loop.
- *
- * The watchdog ping exists to prove this process is still turning its event
- * loop. Proving it with `execFileSync` stopped the loop for as long as the fork
- * took — up to the 5s timeout — every 30 seconds, and forking is slowest exactly
- * when the machine is loaded, i.e. when the ping matters. A fire-and-forget spawn
- * says the same thing about liveness (the timer fired, the call was made) without
- * contradicting itself.
- *
- * Still a subprocess: Node does not expose AF_UNIX datagram sockets, so
- * systemd-notify remains the only way to reach NOTIFY_SOCKET from here.
+ * Wait for the notify child asynchronously. execFile still has a synchronous
+ * fork cost under host pressure; the shorter heartbeat interval and bounded
+ * retry restore margin without an independent heartbeat or changing barriers.
  */
 export function sdNotify(state: string): void {
   defaultNotifier(state);
@@ -114,8 +106,16 @@ export type SdNotifyWarn = (fields: Record<string, unknown>, message: string) =>
 let warnSink: SdNotifyWarn | null = null;
 export function setSdNotifyWarn(sink: SdNotifyWarn | null): void { warnSink = sink; }
 
-/** At most one warning per kind in this window: a ping is every 30 s, the log must not be. */
+/** Repeated unchanged ownership skips may coalesce; delivery failures never do. */
 export const SD_NOTIFY_WARN_INTERVAL_MS = 10 * 60_000;
+/** More opportunities within WatchdogSec=60, still driven by the main loop. */
+export const SD_WATCHDOG_INTERVAL_MS = 10_000;
+export const SD_NOTIFY_RETRY_MS = 1_000;
+
+/** Liveness is sampled only by the fleet's main loop, never an independent sender. */
+export function startSdWatchdog(notify: (state: string) => void = sdNotify): ReturnType<typeof setInterval> {
+  return setInterval(() => notify("WATCHDOG=1"), SD_WATCHDOG_INTERVAL_MS);
+}
 
 export interface SdNotifierDeps {
   socket: string | undefined;
@@ -129,36 +129,63 @@ export interface SdNotifierDeps {
 /**
  * The notification path, with what it depends on passed in (tests). A skipped notification used to be silent: a
  * fleet.pid naming another process, or a systemd-notify that failed, stopped the watchdog being fed with nothing in
- * the log, and the abort that followed looked like a hang. Now each says so, rate-limited per kind.
+ * the log, and the abort that followed looked like a hang. Delivery failures include the child outcome on every attempt; ownership skips coalesce.
  */
-export function createSdNotifier(deps: SdNotifierDeps): (state: string) => void {
+export function createSdNotifier(deps: SdNotifierDeps): ((state: string) => void) & { cancelRetry(): void } {
   const now = deps.now ?? (() => performance.now());
   const lastWarnAt = new Map<string, number>();
-  const warn = (kind: string, fields: Record<string, unknown>, message: string): void => {
-    const sink = deps.warn();
-    if (!sink) return;
-    const at = now(), last = lastWarnAt.get(kind);
-    if (last !== undefined && at - last < SD_NOTIFY_WARN_INTERVAL_MS) return;
-    lastWarnAt.set(kind, at);
-    try { sink(fields, message); } catch { /* reporting must never break the ping */ }
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let generation = 0;
+  const cancelRetry = (): void => {
+    generation++;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
   };
-  return (state: string): void => {
-    if (!deps.socket) return;
+  const warnOwner = (fields: Record<string, unknown>): void => {
+    const at = now(), last = lastWarnAt.get("not_owner");
+    if (last !== undefined && at - last < SD_NOTIFY_WARN_INTERVAL_MS) return;
+    lastWarnAt.set("not_owner", at);
+    try { deps.warn()?.(fields,
+      "systemd notification not sent: fleet.pid does not name this process, so systemd's watchdog is not being fed"); } catch { /* reporting must never break the ping */ }
+  };
+  const attempt = (state: string, retry: boolean, epoch: number): void => {
+    if (!deps.socket || epoch !== generation) return;
     const pid = deps.pid(), recorded = deps.recordedPid();
     if (recorded !== pid) {
-      warn("not_owner", { state, pid, recordedPid: recorded },
-        "systemd notification not sent: fleet.pid does not name this process, so systemd's watchdog is not being fed");
+      warnOwner({ state, pid, recordedPid: recorded });
       return;
     }
-    try {
-      deps.send(state, deps.socket, error => {
-        if (error) warn("notify_failed", { state, error: error.message, code: (error as { code?: unknown }).code },
-          "systemd-notify failed; systemd's watchdog may not be fed");
-      });
-    } catch (error) {
-      warn("notify_failed", { state, error: (error as Error).message }, "systemd-notify could not be started; systemd's watchdog may not be fed");
-    }
+    const startedAt = now();
+    let completed = false;
+    const done = (error: Error | null): void => {
+      if (completed) return;
+      completed = true;
+      if (!error) return;
+      const detail = error as Error & { code?: unknown; signal?: unknown; killed?: boolean };
+      // Every failed attempt is visible, including a failed retry. A later
+      // successful ping needs no warning; only unchanged ownership skips coalesce.
+      try { deps.warn()?.({ state, retry, error: error.message, code: detail.code ?? null,
+        signal: detail.signal ?? null, killed: detail.killed ?? false,
+        elapsedMs: Math.max(0, Math.round(now() - startedAt)) },
+        "systemd-notify failed; systemd's watchdog may not be fed"); } catch { /* reporting must never break the ping */ }
+      if (state === "WATCHDOG=1" && !retry && epoch === generation) {
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          attempt(state, true, epoch); // owner is checked again, and a retry never retries itself
+        }, SD_NOTIFY_RETRY_MS);
+        retryTimer.unref?.();
+      }
+    };
+    try { deps.send(state, deps.socket, done); }
+    catch (error) { done(error instanceof Error ? error : new Error(String(error))); }
   };
+  const notify = (state: string): void => {
+    // A regular ping supersedes an older retry; STOPPING/READY also fence any
+    // in-flight failure callback from rearming a heartbeat after lifecycle changes.
+    cancelRetry();
+    attempt(state, false, generation);
+  };
+  return Object.assign(notify, { cancelRetry });
 }
 
 const defaultNotifier = createSdNotifier({
@@ -177,6 +204,7 @@ const defaultNotifier = createSdNotifier({
  * should use this.
  */
 export function sdNotifyBlocking(state: string): void {
+  defaultNotifier.cancelRetry();
   if (!notifySocket || !isFleetOwner()) return;
   try {
     sendSystemdNotification(state, notifySocket, process.env);

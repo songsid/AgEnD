@@ -72,7 +72,7 @@ import {
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
-import { sdNotify, sdNotifyBlocking, setSdNotifyWarn } from "./sd-notify.js";
+import { sdNotify, sdNotifyBlocking, setSdNotifyWarn, startSdWatchdog } from "./sd-notify.js";
 import { StartupMemoryDeadline, fleetStopConcurrency } from "./startup-memory-deadline.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
@@ -8131,7 +8131,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // No independent heartbeat: a genuinely frozen main loop still stops pinging.
     setSdNotifyWarn((fields, message) => this.logger.warn(fields, message));
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);
-    this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
+    this.watchdogTimer = startSdWatchdog();
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
     try {
