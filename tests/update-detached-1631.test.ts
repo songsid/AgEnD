@@ -108,14 +108,16 @@ describe("#1631 A: a hand-started fleet, no reachable user manager — every upd
     expect(existsSync(unitOf(w.home)), "no unit after the second update").toBe(false);
   });
 
-  it("control — a unit already there (an earlier `agend install`): the new release's `agend install` rewrites it, then the restart", { timeout: 120_000 }, () => {
+  it("an existing unit plus unproven live PID refuses before install or service refresh (#2823)", { timeout: 120_000 }, () => {
     const w = updateWorld();
     mkdirSync(join(w.home, ".config", "systemd", "user"), { recursive: true });
     writeFileSync(unitOf(w.home), "[Service]\nExecStart=/old/node /old/cli.js fleet start\n");
+    const before = readFileSync(unitOf(w.home), "utf8");
     const r = w.update("2.2.0-beta.3");
-    expect(r.r.status, r.out).toBe(0);
-    const service = r.calls.filter(c => c.startsWith("agend install") || c === "agend restart --yes");
-    expect(service, "the existing unit is refreshed by the NEW binary (not activated), then the fleet restarted onto it").toEqual(["agend install --no-activate", "agend restart --yes"]);
+    expect(r.r.status, r.out).toBe(1);
+    expect(r.out).toContain("service ownership could not be verified");
+    expect(r.calls.some(c => c.startsWith("agend ") || c.startsWith("npm install"))).toBe(false);
+    expect(readFileSync(unitOf(w.home), "utf8")).toBe(before);
   });
 });
 

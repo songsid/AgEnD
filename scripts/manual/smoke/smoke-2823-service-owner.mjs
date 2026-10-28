@@ -27,7 +27,9 @@ console.log(installed.stdout, installed.stderr); assert.equal(installed.status, 
 assert.equal(ctl('daemon-reload').status, 0);
 let child, sleeper;
 try {
-  child = spawn(process.execPath, [cli, 'fleet', 'start', '--direct'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  // Fault injection only at the real CLI's final runtime.exit: stopAll has already released its records.
+  writeFileSync('/home/rh/delay-exit.cjs', `const fs = require('fs'); const exit = process.exit.bind(process); process.exit = code => { setTimeout(() => { fs.writeFileSync('/home/rh/old-exit.json', JSON.stringify({at:Date.now(),pid:process.pid})); exit(code); }, 3000); };`);
+  child = spawn(process.execPath, [cli, 'fleet', 'start', '--direct'], { env: { ...env, NODE_OPTIONS: '--require=/home/rh/delay-exit.cjs' }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', b => process.stdout.write('outside: ' + b)); child.stderr.on('data', b => process.stdout.write('outside-error: ' + b));
   await waitFor(() => existsSync(home + '/fleet.pid') && lock().pid === child.pid, 'outside startup');
   await waitFor(async () => { try { return (await fetch('http://127.0.0.1:19280/health')).ok; } catch { return false; } }, 'health');
@@ -62,6 +64,10 @@ try {
   await waitFor(() => child.exitCode !== null || child.signalCode !== null, 'old fleet exit');
   const newPid = Number(ctl('show', '-p', 'MainPID', '--value', unit).stdout.trim());
   assert.notEqual(newPid, child.pid); assert.equal(lock().pid, newPid);
+  const oldExit = JSON.parse(readFileSync('/home/rh/old-exit.json', 'utf8'));
+  assert.equal(oldExit.pid, child.pid);
+  assert.ok(Date.parse(lock().createdAt) >= oldExit.at, 'replacement lock must wait for original process exit, not just record removal');
+  log('records released before real process exit', { oldExitAt: oldExit.at, replacementClaimAt: Date.parse(lock().createdAt), waitedForExit: true });
   assert.equal(owner.inspect(home, target).kind, 'managed');
   assert.match(restart.stdout, /Fleet is now running under/);
   assert.equal(owner.updateRefusal(home), null);

@@ -2285,11 +2285,11 @@ program
         if (handedOver) {
           const owner = fleetServiceOwner.inspect(DATA_DIR, ownerTarget);
           if (owner.kind !== "managed" || owner.pid !== owner.mainPid) {
-            console.error(fleetServiceOwner.text("unconfirmed", ownerTarget, getLocale()));
+            console.error(fleetServiceOwner.message("unconfirmed", ownerTarget, getLocale()));
             process.exitCode = 1;
             return;
           }
-          console.log(fleetServiceOwner.text("ready", { ...ownerTarget, pid: owner.pid }, getLocale()));
+          console.log(fleetServiceOwner.message("ready", { ...ownerTarget, pid: owner.pid }, getLocale()));
           return;
         }
         console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");

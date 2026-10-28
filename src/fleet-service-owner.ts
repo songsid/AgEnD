@@ -6,5 +6,5 @@ export const fleetServiceOwner = createRequire(import.meta.url)("../launcher/fle
   updateRefusal(home: string, options?: { locale?: string }): string | null;
   inspect(home: string, service: ServiceOwnerTarget): ServiceOwnerState;
   handoff(home: string, service: ServiceOwnerTarget, options: { locale: string; log(line: string): void }): Promise<boolean>;
-  text(key: "ready" | "unconfirmed", state: { unit: string; pid?: number }, locale: string): string;
+  message(key: "ready" | "unconfirmed", state: { unit: string; pid?: number }, locale: string): string;
 };

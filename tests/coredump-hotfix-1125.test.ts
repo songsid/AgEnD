@@ -265,13 +265,13 @@ exit 0
     return { r, calls, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => /^systemctl --user restart com\.agend\.fleet/.test(c)) };
   }
 
-  it.skipIf(!existsSync(cli) || !linux)("restarts a confirmed fleet that started before the install — and a loaded CoredumpFilter=0x33 no longer blocks it", () => {
+  it.skipIf(!existsSync(cli) || !linux)("a PID-file-only stand-in is refused before the CoredumpFilter check (#2823)", () => {
     const fleet = liveProcess("node /opt/agend/bin/agend fleet start");
     try {
       const { r, out, calls, restarted } = update(fleet.pid);
-      expect(restarted, `${out}\n${calls.join("\n")}`).toBe(true);
-      expect(r.status).toBe(0);
-      expect(r.stdout).toContain("the running fleet started before it was");
+      expect(restarted, `${out}\n${calls.join("\n")}`).toBe(false);
+      expect(r.status).toBe(1);
+      expect(out).toContain("service ownership could not be verified");
       expect(calls.some(c => c.startsWith("npm install"))).toBe(false); // nothing to install
     } finally { fleet.stop(); }
   });
@@ -281,9 +281,9 @@ exit 0
     try {
       const { r, out, restarted } = update(stranger.pid);
       expect(restarted, out).toBe(false);
-      // #1829 ⑥: a fleet.pid naming a process that is not a fleet means no fleet runs — never "up to date".
+      // #2823: a live unproven PID beside an installed unit holds before the old stale-fleet heuristic.
       expect(r.stdout).not.toContain("Already up to date");
-      expect(r.stderr).toContain("is installed but the fleet is not running — run: agend start");
+      expect(r.stderr).toContain("service ownership could not be verified");
       expect(r.status).toBe(1);
       expect(r.stdout).not.toContain("the running fleet started before it was");
     } finally { stranger.stop(); }
@@ -306,7 +306,7 @@ exit 0
     }
   }, 30_000);
 
-  // #1829 review: a fleet.pid that cannot be read or parsed is not evidence of a stopped fleet — the old answer stays.
+  // #2823: an unreadable/unparseable claim beside a unit holds; it proves neither stopped nor safely managed.
   it.skipIf(!existsSync(cli) || !linux)("a fleet.pid that is a directory, empty, malformed or unreadable → not 'not running'", () => {
     const writers: Array<[string, (path: string) => void]> = [
       ["directory", path => mkdirSync(path)],
@@ -319,7 +319,8 @@ exit 0
       const { r, out, restarted } = update(null, { pidFile });
       expect(restarted, `${label}\n${out}`).toBe(false);
       expect(r.stderr, `${label}\n${out}`).not.toContain("the fleet is not running");
-      expect(r.stdout, `${label}\n${out}`).toContain("Already up to date");
+      expect(r.stdout, `${label}\n${out}`).not.toContain("Already up to date");
+      expect(r.stderr, `${label}\n${out}`).toContain("service ownership could not be verified");
     }
   }, 60_000);
 
@@ -457,7 +458,7 @@ describe.skipIf(process.env.AGEND_SYSTEMD_E2E !== "1" || !linux || !existsSync(b
  * code's — the one without the gate — and the update lands in one go.
  */
 describe("upgrade path: the restart runs through the newly installed binary (built CLI, stubbed npm/agend/systemctl)", () => {
-  it.skipIf(!existsSync(cli))("installs, then `<installed agend> restart` restarts the fleet despite a loaded CoredumpFilter=0x33", () => {
+  it.skipIf(!existsSync(cli))("an unproven PID claim cannot authorize install or restart beside a unit (#2823)", () => {
     const home = tmp();
     const agendHome = join(home, ".agend");
     mkdirSync(agendHome, { recursive: true });
@@ -493,24 +494,21 @@ exit 0
     writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
     chmodSync(join(bin, "busctl"), 0o755);
     for (const f of ["npm", "systemctl"]) chmodSync(join(bin, f), 0o755);
-    // #2264: the fleet runs (fleet.pid names a live process — this test's; systemctl is a stub), so the installer
-    // restarts it rather than starting it.
+    // A test-runner PID claim is deliberately unproven; #2823 must refuse before installation.
     mkdirSync(agendHome, { recursive: true });
     writeFileSync(join(agendHome, "fleet.pid"), String(process.pid));
+    const unitBefore = readFileSync(join(unitDir, "com.agend.fleet.service"), "utf8");
     const r = spawnSync(process.execPath, [cli, "update", "--beta"], {
       env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 120_000,
     });
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
     const out = `${r.stdout}\n${r.stderr}\n${calls.join("\n")}`;
-    // The exact version `--beta` resolved to (#1182: a dist-tag can move between the check and the install).
-    expect(calls.some(c => c === "npm install -g @songsid/agend@99.0.0-beta.3"), out).toBe(true);
-    expect(calls.findIndex(c => c.startsWith("systemctl --user restart com.agend.fleet")), out).toBeGreaterThan(calls.findIndex(c => c.startsWith("npm install")));
-    // The installed copy refreshed the unit (its own entry, named Node), and its restart passed the guard on that unit.
-    const unitText = readFileSync(join(home, ".config", "systemd", "user", "com.agend.fleet.service"), "utf8");
-    // This build pins no runtime: a system Node, so the unit starts the package's launcher (#1450).
-    expect(unitText).toContain(`ExecStart="${join(realpathSync(globalPkg), "launcher", "agend")}" fleet start`);
-    expect(r.status, out).toBe(0);
-    expect(`${r.stdout}${r.stderr}`).not.toContain("Not restarting");
+    // #2823 refuses the unproven test-runner PID before any package or service mutation.
+    expect(calls.some(c => c.startsWith("npm install")), out).toBe(false);
+    expect(calls.some(c => c.startsWith("systemctl --user restart")), out).toBe(false);
+    expect(readFileSync(join(unitDir, "com.agend.fleet.service"), "utf8")).toBe(unitBefore);
+    expect(r.status, out).toBe(1);
+    expect(out).toContain("service ownership could not be verified");
   });
 });

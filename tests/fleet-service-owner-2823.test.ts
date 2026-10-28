@@ -1,5 +1,7 @@
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, symlinkSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 const owner = createRequire(import.meta.url)("../launcher/fleet-service-owner.cjs");
 const service = { unit: "com.agend.fleet.service", user: true };
@@ -17,7 +19,10 @@ function rig() {
   const run = vi.fn(() => ({ status: 0, stdout: "MainPID=0\nControlGroup=\nActiveState=inactive\nSubState=dead\nWorkingDirectory=" + home }));
   const deps = {
     uid: 1000, platform: "linux", env: { HOME: "/scratch", XDG_RUNTIME_DIR: "/run/user/1000" }, locale: "en",
-    exists: (p: string) => files.has(p) || p === "/scratch/.config/systemd/user/com.agend.fleet.service",
+    lstat: vi.fn((p: string) => {
+      if (!files.has(p) && p !== "/scratch/.config/systemd/user/com.agend.fleet.service") throw Object.assign(Error("missing"), { code: "ENOENT" });
+      return { isFile: () => true };
+    }),
     read: (p: string) => { if (!files.has(p)) throw Error("missing " + p); return files.get(p)!; },
     real: (p: string) => p === proc + "/exe" ? "/usr/bin/node" : p === proc + "/cwd" ? "/scratch" : p,
     stat: vi.fn(() => ({ uid: 1000 })), alive: vi.fn(() => alive), run,
@@ -103,6 +108,55 @@ describe("TERM-only service handoff", () => {
     const r = rig(); r.run.mockReturnValue({ status: 0, stdout: `MainPID=1234\nControlGroup=/unit\nActiveState=active\nSubState=running\nWorkingDirectory=${r.home}` });
     r.files.set(r.proc + "/cgroup", "0::/unit\n");
     expect(await owner.handoff(r.home, service, r.deps)).toBe(false); expect(r.deps.signal).not.toHaveBeenCalled();
+  });
+});
+describe("review interleavings", () => {
+  it.each(["birth", "command"])("a blocking manager query changes %s: no TERM to replacement", async field => {
+    const r = rig(); let calls = 0;
+    const answer = r.run(); r.run.mockImplementation(() => {
+      if (++calls === 2) {
+        if (field === "birth") r.files.set(r.proc + "/stat", r.files.get(r.proc + "/stat")!.replace(/999$/, "1000"));
+        else r.files.set(r.proc + "/cmdline", "/bin/sleep\0");
+      }
+      return answer;
+    });
+    await expect(owner.handoff(r.home, service, r.deps)).rejects.toThrow("ownership changed");
+    expect(r.deps.signal).not.toHaveBeenCalled();
+  });
+  it("managed answer still revalidates the lock AFTER the blocking manager query", () => {
+    const r = rig(); r.files.set(r.proc + "/cgroup", "0::/unit\n");
+    r.run.mockImplementation(() => {
+      r.files.set(r.home + "/fleet.lock", r.files.get(r.home + "/fleet.lock")!.replace("nonce", "different"));
+      return { status: 0, stdout: `MainPID=1234\nControlGroup=/unit\nActiveState=active\nSubState=running\nWorkingDirectory=${r.home}` };
+    });
+    expect(owner.updateRefusal(r.home, r.deps)).toContain("could not be verified");
+  });
+  it("deleting both records while owner lives cannot admit a replacement", async () => {
+    const r = rig(); r.deps.signal.mockImplementation(() => { r.files.delete(r.home + "/fleet.lock"); r.files.delete(r.home + "/fleet.pid"); });
+    await expect(owner.handoff(r.home, service, r.deps)).rejects.toThrow("did not exit within 300 seconds");
+    expect(r.elapsed()).toBe(300_000); expect(r.deps.signal.mock.calls).toEqual([[1234]]);
+  });
+  it("a changed captured process still holds after both records disappear", async () => {
+    const r = rig(); r.deps.signal.mockImplementation(() => { r.files.delete(r.home + "/fleet.lock"); r.files.delete(r.home + "/fleet.pid"); });
+    r.deps.sleep.mockImplementation(async () => { r.files.set(r.proc + "/stat", r.files.get(r.proc + "/stat")!.replace(/999$/, "1000")); });
+    await expect(owner.handoff(r.home, service, r.deps)).rejects.toThrow("ownership changed");
+    expect(r.deps.signal.mock.calls).toEqual([[1234]]);
+  });
+  it("records disappear first; replacement waits until the captured process really exits", async () => {
+    const r = rig(); r.deps.signal.mockImplementation(() => { r.files.delete(r.home + "/fleet.lock"); });
+    r.deps.sleep.mockImplementation(async () => { r.setAlive(false); });
+    expect(await owner.handoff(r.home, service, r.deps)).toBe(true);
+    expect(r.deps.sleep).toHaveBeenCalledTimes(1);
+  });
+  it.each(["fleet.lock", "fleet.pid"])("ELOOP on %s is unknown, never absent", file => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-2823-loop-"));
+    try { symlinkSync(file, join(dir, file)); expect(owner.inspect(dir, service).kind).toBe("unknown"); }
+    finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it.each(["fleet.lock", "fleet.pid"])("EACCES on %s is unknown, never absent", file => {
+    const r = rig(); r.files.delete(r.home + "/fleet.lock"); const original = r.deps.lstat.getMockImplementation()!;
+    r.deps.lstat.mockImplementation(p => { if (p === r.home + "/" + file) throw Object.assign(Error("denied"), { code: "EACCES" }); return original(p); });
+    expect(owner.updateRefusal(r.home, r.deps)).toContain("could not be verified");
   });
 });
 it("CLI and target installer enforce the shared proof before install and before restart", () => {

@@ -791,7 +791,7 @@ function main(argv, injected) {
       var what = "the previous package (v" + preimage.version + ") and " + name + " were restored";
       if (back !== preimage.version) restored.push(bin + " reports " + (back || "nothing") + ", not v" + preimage.version);
       var outcome;
-      if (untouched) outcome = what + "; " + fleetServiceOwner.text("survivor", { pid: fleetBefore }, fleetServiceOwner.locale(home));
+      if (untouched) outcome = what + "; " + fleetServiceOwner.message("survivor", { pid: fleetBefore }, fleetServiceOwner.locale(home));
       else if (fleetBefore > 0) {
         var started = startService(svc, home, deps);
         outcome = started.running ? what + "; the previous service is running (pid " + started.pid + ")"
