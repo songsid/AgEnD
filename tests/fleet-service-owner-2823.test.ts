@@ -108,6 +108,9 @@ describe("TERM-only service handoff", () => {
 it("CLI and target installer enforce the shared proof before install and before restart", () => {
   const cli = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
   const install = readFileSync(new URL("../launcher/agend-install.cjs", import.meta.url), "utf8");
+  expect(cli.indexOf("fleetServiceOwner.updateRefusal")).toBeGreaterThan(0);
+  expect(cli.indexOf("fleetServiceOwner.handoff")).toBeGreaterThan(0);
+  expect(install.indexOf("fleetServiceOwner.updateRefusal")).toBeGreaterThan(0);
   expect(cli.indexOf("fleetServiceOwner.updateRefusal")).toBeLessThan(cli.indexOf("preflight.preflightUpdate"));
   expect(cli.indexOf("fleetServiceOwner.handoff")).toBeLessThan(cli.indexOf("const restartOutcome = systemdRestartOutcome"));
   expect(install.indexOf("fleetServiceOwner.updateRefusal")).toBeLessThan(install.indexOf('var admitted = admit('));
