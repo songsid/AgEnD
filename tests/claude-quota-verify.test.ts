@@ -7,7 +7,8 @@ import {
   type ClaudeQuotaVerdict,
   type LifecycleContext,
 } from "../src/instance-lifecycle.js";
-import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { Daemon } from "../src/daemon.js";
+import pino from "pino";
 
 function percentUsage(used: number, hint?: string) {
   return {
@@ -52,18 +53,15 @@ const quotaError = (name: string) => ({
   message: "Insufficient API credits",
 });
 
+/** #2834: the event the daemon emits for Claude's own usage-pause note (no pane pattern any more). */
 const hardUsagePauseError = (name: string) => {
-  const pane = "● Usage limit reached · continuing automatically at 1:50pm · esc or type to cancel";
-  const pattern = new ClaudeCodeBackend("/tmp/claude-usage-pause-pattern").getErrorPatterns()
-    .find(candidate => candidate.message.startsWith("Claude Code usage limit reached"));
-  if (!pattern) throw new Error("Claude usage pause pattern is missing");
-  const match = pane.match(pattern.pattern);
-  if (!match) throw new Error("Claude usage pause fixture no longer matches");
-  return {
-    name,
-    ...pattern,
-    message: pattern.formatMessage?.(match) ?? pattern.message,
-  };
+  const daemon = new Daemon(name, { working_directory: "/tmp", log_level: "silent" } as any, "/tmp/claude-usage-pause-2834", false,
+    undefined, undefined, pino({ level: "silent" }) as any) as any;
+  let event: any;
+  daemon.on("pty_error", (e: any) => { event = e; });
+  daemon.noteClaudeInformational("Usage limit reached · continuing automatically at 1:50pm · esc to cancel");
+  if (!event) throw new Error("the daemon emitted no usage-pause event");
+  return { ...event, name };
 };
 
 describe("Claude quota second opinion", () => {

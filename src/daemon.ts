@@ -70,6 +70,7 @@ import { agendMessageInInput, bottomRowIsReady, inputAreaText, inputShowsPastedT
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, formatReplyDropDetection, turnExpectsPersonReply, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
+import { CLAUDE_CREDIT_BALANCE_LOW, CLAUDE_MODEL_USAGE_LIMIT, CLAUDE_USAGE_LIMIT_PAUSE } from "./backend/claude-transcript-errors.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
@@ -2030,16 +2031,34 @@ export class Daemon extends EventEmitter {
   /** Transcript events in Claude's order (prompts, output, every API error): the newest, and the latest limit error. */
   private transcriptEventSeq = 0;
   private usageLimitErrorSeq = 0;
-  static readonly MODEL_USAGE_LIMIT = /^You['’]ve reached your ([A-Za-z0-9][A-Za-z0-9 .-]{0,40}?) limit\./;
+  static readonly MODEL_USAGE_LIMIT = CLAUDE_MODEL_USAGE_LIMIT;
 
   /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
   usageHold(): { model: string; since: number } | null {
     return this.usageLimitHold ? { ...this.usageLimitHold } : null;
   }
 
+  /** #2834: Claude's account is out of API credits — its own record; the same pause as the pane pattern it replaces. */
+  static readonly CREDIT_BALANCE_LOW = CLAUDE_CREDIT_BALANCE_LOW;
+  /** #2834 (#816): Claude's usage-limit auto-continue note, as it records it (`system` / `informational`). */
+  static readonly USAGE_LIMIT_PAUSE = CLAUDE_USAGE_LIMIT_PAUSE;
+
+  /** #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. */
+  private noteClaudeInformational(text: string): void {
+    const match = Daemon.USAGE_LIMIT_PAUSE.exec(text.trim());
+    if (!match) return;
+    const when = match[1]!.trim();
+    this.emit("pty_error", { name: this.name, type: "quota", action: "notify", verifyQuota: true, skipCooldown: true, skipRecoveryWait: true,
+      message: `Claude Code usage limit reached — paused; continuing automatically ${when}` });
+  }
+
   /** #2822: Claude recorded a failed API call. */
-  private noteClaudeApiError(text: string, status: number | null): void {
+  private noteClaudeApiError(text: string, status: number | null, errorKind: string | null = null): void {
     const seq = ++this.transcriptEventSeq;
+    if (errorKind === "billing_error" || (status === 400 && Daemon.CREDIT_BALANCE_LOW.test(text))) {
+      this.emit("pty_error", { name: this.name, type: "quota", action: "pause", message: "Insufficient API credits" });
+      return;
+    }
     const match = status === 429 ? Daemon.MODEL_USAGE_LIMIT.exec(text.trim()) : null;
     if (!match) return;
     this.usageLimitErrorSeq = seq;
@@ -2808,7 +2827,9 @@ export class Daemon extends EventEmitter {
         // show only elapsed time than to leave a stale "Bash: npm test" on screen.
         this.publishActivity(null);
       });
-      this.transcriptMonitor.on("api_error", (text: string, status: number | null) => this.noteClaudeApiError(text, status));
+      this.transcriptMonitor.on("api_error", (text: string, status: number | null, _at: number | null, errorKind: string | null) =>
+        this.noteClaudeApiError(text, status, errorKind));
+      this.transcriptMonitor.on("system_informational", (text: string) => this.noteClaudeInformational(text));
       this.transcriptMonitor.on("user_prompt", () => this.noteClaudePrompt());
       this.transcriptMonitor.on("assistant_text", (text: string) => {
         this.noteClaudeOutput();
