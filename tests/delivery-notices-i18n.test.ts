@@ -40,10 +40,13 @@ function quietFleet() {
   fm.fleetConfig = { defaults: {}, instances: {} };
   fm.scheduleDeliveryOutboxPump = () => {};
   const notify = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
+  // #2804: these texts are logged, not posted to General; the log is where they are read now.
+  const logged = (level: "error" | "warn") => vi.spyOn(fm.logger, level);
+  const errors = logged("error"), warns = logged("warn");
   fm.ensureDeliveryOutbox();
   managers.push(fm);
   stores.push(fm.deliveryOutbox);
-  return { fm, notify, outbox: fm.deliveryOutbox as DeliveryOutbox };
+  return { fm, notify, errors, warns, outbox: fm.deliveryOutbox as DeliveryOutbox };
 }
 const oldJargon = /durable delivery|durably accepted|outbox bound|unresolved submissions|bounded retr|best-effort-submission:unverified|until .*reconciles/i;
 function readable(text: string, locale: Locale) {
@@ -145,10 +148,11 @@ describe.each<Locale>(["en", "zh-TW"])("delivery notices in %s", locale => {
   });
 
   it("uses locale on real fleet failure and 24-hour expiry event listeners", () => {
-    const { outbox, notify } = quietFleet();
+    const { outbox, notify, errors, warns } = quietFleet();
     const row = admit(outbox);
     finish(outbox, "uncertain", "best-effort-submission:unverified");
-    const first = String(notify.mock.calls[0]![0]);
+    expect(notify, "#2804: not posted to General").not.toHaveBeenCalled();
+    const first = String(errors.mock.calls.find(c => (c[0] as any)?.deliveryId === row.deliveryId)![1]);
     readable(first, locale);
     expect(first).toContain(locale === "en" ? "could not be confirmed" : "無法確認");
     expect(first).toContain(`delivery_id=${row.deliveryId}`);
@@ -156,7 +160,8 @@ describe.each<Locale>(["en", "zh-TW"])("delivery notices in %s", locale => {
     // Expiry creates a failed sender notice and a batch notice; do not alter either event.
     const expired = admit(outbox, "op-expiry");
     expect(outbox.expireStale(Date.parse(expired.createdAt!) + DURABLE_DELIVERY_MAX_AGE_MS + 1)).toBeGreaterThan(0);
-    const batch = String(notify.mock.calls.at(-1)![0]);
+    const batch = String(warns.mock.calls.find(c => typeof (c[0] as any)?.count === "number")![1]);
+    expect(notify).not.toHaveBeenCalled();
     readable(batch, locale);
     expect(batch).toContain("24");
     expect(batch).toContain(locale === "en" ? "Notices to the sending instances have been queued" : "通知已排入佇列");
@@ -165,14 +170,16 @@ describe.each<Locale>(["en", "zh-TW"])("delivery notices in %s", locale => {
 
   it("localizes the long lane wait notice without releasing the lane", async () => {
     vi.useFakeTimers();
-    const { fm, outbox, notify } = quietFleet();
+    const { fm, outbox, notify, warns } = quietFleet();
     const row = admit(outbox);
     const claimed = outbox.claimNext("manager", () => "worker-boot", new Set())!;
     // The store was created with the FleetManager's boot ID.
     const waiting = fm.waitForDurableLaneRelease(claimed) as Promise<void>;
     await vi.advanceTimersByTimeAsync(DURABLE_DELIVERY_LANE_ALERT_MS);
-    expect(notify).toHaveBeenCalledOnce();
-    const text = String(notify.mock.calls[0]![0]);
+    expect(notify, "#2804: logged, not posted").not.toHaveBeenCalled();
+    const lane = warns.mock.calls.filter(c => (c[0] as any)?.deliveryId === row.deliveryId);
+    expect(lane).toHaveLength(1);
+    const text = String(lane[0]![1]);
     readable(text, locale);
     expect(text).toContain(`delivery_id=${row.deliveryId}`);
     expect(outbox.get(row.deliveryId)?.state).toBe("delivering");

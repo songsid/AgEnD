@@ -65,14 +65,15 @@ describe("#2287 self silent schedule outcome stays in the log, never a new promp
   });
 });
 
-describe("#2287 fleet state observer keeps self-silent failures log-only", () => {
+describe("#2287 fleet state observer keeps self-silent failures log-only (#2804: every one is log-only now)", () => {
   it.each([
+    // #2804: no General post for any of them — a person sees a failed or unconfirmed delivery as a Needs-you item.
     [true, "failed", "raw_paste", "schedule:self:run:worker:raw_paste", 0],
     [true, "uncertain", "raw_paste", "schedule:self:run:worker:raw_paste", 0],
-    [false, "failed", "raw_paste", "schedule:self:run:worker:raw_paste", 1],
-    [false, "uncertain", "raw_paste", "schedule:self:run:worker:raw_paste", 1],
-    [true, "uncertain", "raw_paste", "command:clear:worker:raw_paste", 1],
-    [true, "uncertain", "fleet_inbound", "schedule:self:run:worker:fleet_inbound", 1],
+    [false, "failed", "raw_paste", "schedule:self:run:worker:raw_paste", 0],
+    [false, "uncertain", "raw_paste", "schedule:self:run:worker:raw_paste", 0],
+    [true, "uncertain", "raw_paste", "command:clear:worker:raw_paste", 0],
+    [true, "uncertain", "fleet_inbound", "schedule:self:run:worker:fleet_inbound", 0],
   ] as const)("self=%s state=%s kind=%s key=%s retains its log and expected alert", (self, outcome, kind, sourceKey, alerts) => {
     const root = mkdtempSync(join(tmpdir(), "agend-silent-observer2287-"));
     const fm = new FleetManager(root); const f = fm as any;

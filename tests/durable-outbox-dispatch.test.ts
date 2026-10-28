@@ -106,13 +106,15 @@ describe("durable outbox dispatcher", () => {
     let resolveHandoff!: (result: boolean) => void;
     vi.spyOn(fm, "deliverToInstance").mockImplementation(() => new Promise(resolve => { resolveHandoff = resolve; }));
     const fleetNotice = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
+    const warned = vi.spyOn(fm.logger, "warn");
 
     const dispatch = (fm as any).dispatchDurableDelivery(claimed) as Promise<void>;
     await vi.advanceTimersByTimeAsync(DURABLE_DELIVERY_LANE_ALERT_MS + 10 * 60_000);
 
     expect(outbox.get(row.deliveryId)).toMatchObject({ state: "delivering", attemptNo: 1 });
-    expect(fleetNotice).toHaveBeenCalledOnce();
-    expect(fleetNotice.mock.calls[0]![0]).toContain("still waiting");
+    // #2804: logged, not posted to General — nothing needs the person while the delivery is still in flight.
+    expect(fleetNotice).not.toHaveBeenCalled();
+    expect(warned.mock.calls.filter(c => String(c[1]).includes("still waiting"))).toHaveLength(1);
 
     // The idle gate may itself take a long time. When it safely releases work
     // before handoff, that explicit result releases the generation-owned lane.
@@ -121,7 +123,7 @@ describe("durable outbox dispatcher", () => {
 
     expect(outbox.get(row.deliveryId)).toMatchObject({ state: "retry_wait", attemptNo: 1 });
     expect(outbox.get(row.deliveryId)?.nextAttemptAt).not.toBeNull();
-    expect(fleetNotice).toHaveBeenCalledOnce();
+    expect(fleetNotice).not.toHaveBeenCalled();
     outbox.close();
   });
 });

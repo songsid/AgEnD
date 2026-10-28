@@ -418,7 +418,7 @@ describe("delivery_status: a submission proof that failed reads as 'could not co
 });
 
 describe("the fleet's notice for an unconfirmed delivery: the cause in the log; a silent schedule says what it is", () => {
-  it("a silent schedule: the silent-schedule notice with its cause; a human message: today's notice — both log the cause", () => {
+  it("#2804: both are logged with their cause, neither is posted to General; only the human one is a Needs-you item", () => {
     setLocale("en");
     const fm: any = new FleetManager(tmp());
     fm.ensureDeliveryOutbox();
@@ -441,14 +441,14 @@ describe("the fleet's notice for an unconfirmed delivery: the cause in the log; 
         return row.deliveryId;
       };
       const silent = settle("raw_paste", "schedule:98b718d7:run:worker:raw_paste", "raw-paste-submit-proof:no-positive-acceptance-proof");
-      expect(notice).toHaveBeenCalledTimes(1);
-      expect(notice.mock.calls[0]![0]).toContain("A silent schedule's paste into worker could not be confirmed (raw-paste-submit-proof:no-positive-acceptance-proof)");
-      expect(logged.mock.calls.find(c => (c[0] as any)?.deliveryId === silent)?.[0]).toMatchObject({
-        cause: "raw-paste-submit-proof:no-positive-acceptance-proof", silentSchedule: true });
+      const silentLog = logged.mock.calls.find(c => (c[0] as any)?.deliveryId === silent)!;
+      expect(silentLog[0]).toMatchObject({ cause: "raw-paste-submit-proof:no-positive-acceptance-proof", silentSchedule: true });
+      expect(silentLog[1]).toContain("A silent schedule's paste into worker could not be confirmed (raw-paste-submit-proof:no-positive-acceptance-proof)");
       const human = settle("fleet_inbound", "mcp:source:op:worker:fleet_inbound", "post-submit-proof:unproven");
-      expect(notice).toHaveBeenCalledTimes(2);
-      expect(notice.mock.calls[1]![0]).toContain("Delivery to worker could not be confirmed");
-      const humanLog = logged.mock.calls.find(c => (c[0] as any)?.deliveryId === human)?.[0] as any;
+      expect(notice, "#2804: never a General post of its own").not.toHaveBeenCalled();
+      const humanEntry = logged.mock.calls.find(c => (c[0] as any)?.deliveryId === human)!;
+      expect(humanEntry[1]).toContain("Delivery to worker could not be confirmed");
+      const humanLog = humanEntry[0] as any;
       expect(humanLog).toMatchObject({ cause: "post-submit-proof:unproven" });
       expect(humanLog.silentSchedule).toBeUndefined();
       expect(outbox.needsAttention("2000-01-01T00:00:00.000Z").map(d => d.deliveryId)).toEqual([human]);

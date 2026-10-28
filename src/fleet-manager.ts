@@ -2679,11 +2679,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const notice = silent
             ? t(`delivery.fleet_${row.state}_silent_schedule`, row.targetInstance, row.operationId, row.deliveryId, row.lastError ?? "unknown")
             : t(`delivery.fleet_${row.state}`, row.targetInstance, row.operationId, row.deliveryId);
+          // #2804: log-only. The person sees a failed or unconfirmed delivery as a Needs-you item (with Acknowledge),
+          // not as a separate General post; the sending agent still gets its delivery-outcome notice.
           this.logger.error({ deliveryId: row.deliveryId, operationId: row.operationId, target: row.targetInstance, state: row.state,
             cause: row.lastError, ...(silent ? { silentSchedule: true } : {}) }, notice);
-          // A self-scheduled silent heartbeat stays log-only, including the
-          // operator alert; another source still receives the normal notice.
-          if (!silent || row.sourceInstance !== row.targetInstance) this.notifyFleetError(notice);
         }
       }
     });
@@ -2712,9 +2711,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.scheduleDeliveryOutboxPump();
       if (event.count) this.needsYou?.poke();   // #1386: rows that expired failed — they wait on someone now
       this.wakeCoordinator?.kick();
-      if (event.count) this.notifyFleetError(
-        t("delivery.expired", event.count, event.uncertain ?? 0),
-      );
+      // #2804: the expired rows are Needs-you items now; the count is logged, not posted to General.
+      if (event.count) this.logger.warn({ count: event.count, uncertain: event.uncertain ?? 0 }, t("delivery.expired", event.count, event.uncertain ?? 0));
     });
     this.scheduleDeliveryOutboxPump();
   }
@@ -3187,9 +3185,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if ((current?.state === "delivering" || current?.state === "submission_started")
           && current.targetDaemonBootId === claimed.targetDaemonBootId
           && current.managerBootId === claimed.managerBootId) {
-          this.notifyFleetError(
-            t("delivery.lane_waiting", claimed.targetInstance, Math.round(DURABLE_DELIVERY_LANE_ALERT_MS / 60_000), deliveryId),
-          );
+          // #2804: logged, not posted. A delivery still in flight needs nobody yet; if it ends failed or unconfirmed it
+          // becomes a Needs-you item.
+          this.logger.warn({ deliveryId, target: claimed.targetInstance },
+            t("delivery.lane_waiting", claimed.targetInstance, Math.round(DURABLE_DELIVERY_LANE_ALERT_MS / 60_000), deliveryId));
         }
       }, DURABLE_DELIVERY_LANE_ALERT_MS);
       alertTimer.unref?.();
