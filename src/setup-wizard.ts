@@ -11,6 +11,7 @@ import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
 import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
+import { DEFAULT_DAILY_SUMMARY } from "./config.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
@@ -106,7 +107,7 @@ async function ask(
 }
 
 /** Ask a yes/no question. */
-async function confirm(
+export async function confirm(
   rl: ReturnType<typeof createInterface>,
   prompt: string,
   defaultYes = true,
@@ -653,7 +654,8 @@ export async function runSetupWizard(): Promise<void> {
   }
 
   let dailySummaryHour = 21;
-  const enableSummary = await confirm(rl, "Enable daily summary report?", true);
+  // #2804: Enter keeps the fleet default (off); an explicit yes still turns the report on.
+  const enableSummary = await confirm(rl, "Enable daily summary report?", DEFAULT_DAILY_SUMMARY.enabled);
   if (enableSummary) {
     const hourStr = await ask(rl, "Summary hour (0-23, local time)", {
       default: "21",

@@ -57,3 +57,18 @@ describe("#2804: the task board's daily summary is gone", () => {
     expect(r.warnings.filter((e) => /task_board/.test(JSON.stringify(e)))).toEqual([]);
   });
 });
+
+describe("#2804 (Prism P2): `agend init` keeps the report off unless asked", () => {
+  const rl = (answer: string) => ({ question: async () => answer }) as never;
+  it("Enter at \"Enable daily summary report?\" means no; an explicit yes still turns it on", async () => {
+    const { confirm, buildFleetConfig } = await import("../src/setup-wizard.js");
+    const src = readFileSync(new URL("../src/setup-wizard.ts", import.meta.url), "utf8");
+    expect(src).toContain('confirm(rl, "Enable daily summary report?", DEFAULT_DAILY_SUMMARY.enabled)');
+    expect(await confirm(rl(""), "Enable daily summary report?", DEFAULT_DAILY_SUMMARY.enabled)).toBe(false);
+    expect(await confirm(rl("y"), "Enable daily summary report?", DEFAULT_DAILY_SUMMARY.enabled)).toBe(true);
+    const off = buildFleetConfig({ channelType: "telegram", backend: "claude-code", botTokenEnv: "AGEND_BOT_TOKEN", groupId: -1,
+      channelMode: "topic", accessMode: "locked", allowedUsers: [1], projectRoots: ["/tmp/p"], instances: [],
+      costGuard: { enabled: false }, dailySummary: { enabled: false } });
+    expect((off.defaults as Record<string, unknown> | undefined)?.daily_summary).toBeUndefined();
+  });
+});

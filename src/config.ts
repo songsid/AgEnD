@@ -51,8 +51,8 @@ export const DEFAULT_HANG_DETECTOR: HangDetectorConfig = {
 };
 
 export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
-  // #2804: off unless set — General shows only tips and update notices on a normal day. The clock still runs
-  // (tips and log/inbox rotation share it).
+  // #2804: off unless set — General shows only tips and update notices on a normal day. Its clock still runs: the
+  // daily log/inbox rotation rides on it. (The daily tip has its own clock at the same hour/minute.)
   enabled: false,
   hour: 21,
   minute: 0,

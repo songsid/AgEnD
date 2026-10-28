@@ -203,7 +203,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `cost_guard.timezone` | string | system TZ | IANA timezone for daily reset |
 | `hang_detector.enabled` | boolean | `true` | Enable stuck instance detection |
 | `hang_detector.timeout_minutes` | number | `10` | Minutes of no output before alert |
-| `daily_summary.enabled` | boolean | `false` | Post the daily cost/status report in General (off by default since #2804; the daily clock still runs for tips and log rotation) |
+| `daily_summary.enabled` | boolean | `false` | Post the daily cost/status report in General (off by default since #2804; its daily clock still runs log and inbox rotation; the daily tip has its own clock) |
 | `daily_summary.hour` | number | `21` | Report hour (local time) |
 | `daily_summary.minute` | number | `0` | Report minute |
 | `scheduler.max_schedules` | number | `100` | Max schedules |
