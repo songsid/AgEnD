@@ -342,33 +342,58 @@ describe("#2809 spawnClaudeWindow: resumeFailed placement and cleanup", () => {
     // skipResume must be false (we try resume)
     expect(internals(captured!).skipResume, "skipResume must be false for crash loop").toBe(false);
   });
-  it("fresh-fallback success: clears resumeFailed marker so next restart is not forced fresh (#2809 P2-2)", async () => {
-    // Scenario: crash-loop-resume → session abandoned (setSessionAside) → writes resumeFailed
-    // → fresh trySpawn succeeds. After this, crash-state.json must be removed so the next
-    // NORMAL restart (not itself a crash-loop) is not forced fresh.
+  it("fresh-fallback success: clears resumeFailed marker so next restart is not forced fresh (#2809 P2-2 runtime)", async () => {
+    // Scenario: crash-loop-resume → trySpawn[1]=false, trySpawn[2]=false →
+    // setSessionAside writes resumeFailed + clears bootCrashLoopResume →
+    // fresh trySpawn[3]=true → crash-state.json must be gone afterward.
     //
-    // We drive the real boot reader (sets bootCrashLoopResume=true) and stub spawnClaudeWindow
-    // to simulate: setSessionAside path runs, resumeFailed written, then fresh trySpawn succeeds.
-    writeFileSync(marker, JSON.stringify({ crashesInWindow: 3, lastCrashAt: Date.now(), resumeDisabled: true }));
+    // Drives real savedSpawn with seams stubbed (no live tmux/process).
     const crashStatePath = join(dir, "instance", "crash-state.json");
+    const d = daemon();
+    const state = internals(d);
 
-    vi.spyOn(Daemon.prototype as unknown as DaemonInternals, "spawnClaudeWindow")
-      .mockImplementationOnce(async function (this: Daemon) {
-        const d = this as unknown as { bootCrashLoopResume: boolean; skipResume: boolean; instanceDir: string };
-        // Verify the boot reader set bootCrashLoopResume
-        expect(d.bootCrashLoopResume, "bootCrashLoopResume must be true").toBe(true);
-        // Simulate the setSessionAside + resumeFailed write happening inside spawnClaudeWindow
-        // (as the real code does after session abandonment)
+    // Boot reader would have set bootCrashLoopResume — simulate that
+    (d as unknown as { bootCrashLoopResume: boolean }).bootCrashLoopResume = true;
+
+    // trySpawn: 1=false, 2=false, 3=true
+    let tryCount = 0;
+    vi.spyOn(state, "beginSpawn").mockImplementation(() => {});
+    vi.spyOn(state, "endSpawn").mockImplementation(() => {});
+    vi.spyOn(state, "trySpawn").mockImplementation(async () => {
+      tryCount++;
+      return tryCount >= 3;
+    });
+
+    // Stub setSessionAside: write resumeFailed + clear bootCrashLoopResume (mirrors real path)
+    vi.spyOn(d as unknown as { setSessionAside(r: string): void }, "setSessionAside")
+      .mockImplementation((_r: string) => {
         writeFileSync(crashStatePath, JSON.stringify({ resumeFailed: true, failedAt: Date.now() }));
-        d.bootCrashLoopResume = false; // mirrors what the real setSessionAside path does
-        // Simulate fresh start succeeding — return false (not a resume)
-        return false;
+        (d as unknown as { bootCrashLoopResume: boolean }).bootCrashLoopResume = false;
       });
 
-    await expect(lifecycle().start("worker", config, false)).rejects.toBe(ipcBoundary);
+    // Stub outage/retained/pane checks that run between trySpawn false and setSessionAside
+    vi.spyOn(d as unknown as { noteStartupPaneForBackendOutage(): Promise<void> }, "noteStartupPaneForBackendOutage")
+      .mockResolvedValue(undefined);
+    vi.spyOn(d as unknown as { failStartupIfBackendUnreachable(): Promise<void> }, "failStartupIfBackendUnreachable")
+      .mockResolvedValue(undefined);
+    vi.spyOn(d as unknown as { setAsideForeignSession(): void }, "setAsideForeignSession").mockImplementation(() => {});
+    vi.spyOn(d as unknown as { killProcessTree(sig: string, reason: string): Promise<void> }, "killProcessTree")
+      .mockResolvedValue(undefined);
+    // Provide a minimal tmux stub so killWindow doesn't throw
+    (d as unknown as { tmux: { killWindow(): Promise<void>; isWindowAlive(): Promise<boolean>; getWindowId(): string; capturePaneWithHistory(n: number): Promise<string> } }).tmux = {
+      killWindow: async () => {},
+      isWindowAlive: async () => false,
+      getWindowId: () => "",
+      capturePaneWithHistory: async () => "No conversation found to resume",
+    };
+    // paneSaysNoConversation reads the pane text that tmux.capturePaneWithHistory returns
+    vi.spyOn(d as unknown as { paneSaysNoConversation(t: string | undefined): boolean }, "paneSaysNoConversation")
+      .mockReturnValue(true);
 
-    // CRITICAL: crash-state.json must be gone after fresh-fallback success.
-    // If it remains, the next normal restart reads resumeFailed=true and skips resume.
-    expect(existsSync(crashStatePath), "resumeFailed marker must be cleared after fresh-fallback success").toBe(false);
+    const result = await savedSpawn.call(d);
+
+    expect(tryCount, "3 trySpawn calls: 2 resume-fail + 1 fresh").toBe(3);
+    expect(result, "returns false = fresh start").toBe(false);
+    expect(existsSync(crashStatePath), "resumeFailed marker cleared after fresh-fallback success").toBe(false);
   });
 });

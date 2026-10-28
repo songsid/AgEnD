@@ -11604,18 +11604,17 @@ export class Daemon extends EventEmitter {
       this.startupAdmission?.();
         throw new Error("CLI failed to start after retry");
       }
-      // Fresh fallback succeeded. If this was a crash-loop-resume attempt, clear
-      // the resumeFailed marker so the next normal restart is not forced fresh.
-      if (this.bootCrashLoopResume) {
-        this.bootCrashLoopResume = false;
-        try {
-          const p = join(this.instanceDir, "crash-state.json");
-          if (existsSync(p)) {
-            const s = JSON.parse(readFileSync(p, "utf-8"));
-            if (s?.resumeFailed === true) unlinkSync(p);
-          }
-        } catch { /* best effort */ }
-      }
+      // Fresh fallback succeeded. Clear any resumeFailed marker written during this
+      // boot's setSessionAside path, so the next normal restart is not forced fresh.
+      // NOTE: bootCrashLoopResume is already false here (cleared by setSessionAside path),
+      // so check the marker directly rather than relying on the flag.
+      try {
+        const p = join(this.instanceDir, "crash-state.json");
+        if (existsSync(p)) {
+          const s = JSON.parse(readFileSync(p, "utf-8"));
+          if (s?.resumeFailed === true) unlinkSync(p);
+        }
+      } catch { /* best effort */ }
     } else if (attemptedResume) {
       resumedSuccessfully = true;
       if (this.bootCrashLoopResume) {
