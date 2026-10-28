@@ -104,10 +104,12 @@ describe("the reply-completion guard covers web messages", () => {
         expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
         const target = daemon.turnReplyGuard.snapshot()?.target;
         expect(target).toMatchObject(bound ? { chatId: "guild-1", threadId: "topic-7" } : { chatId: "" });
-        // Only a failed recovery warns the person, on that same original destination.
+        // #2802: a failed recovery no longer warns the person either; it is an event (the Log tab) only.
+        const unrecovered = vi.fn();
+        daemon.on("reply_drop_unrecovered", unrecovered);
         await silentTurn(daemon);
-        expect(daemon.deliverDaemonReply).toHaveBeenCalledOnce();
-        expect(daemon.deliverDaemonReply.mock.calls[0]![3]).toMatchObject(target);
+        expect(unrecovered).toHaveBeenCalledOnce();
+        expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
       });
     }
   }
