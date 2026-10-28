@@ -545,6 +545,12 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (config.defaults.warm_cap !== undefined && (!Number.isInteger(config.defaults.warm_cap) || (config.defaults.warm_cap as number) < 0)) {
       err("defaults.warm_cap", "must be a non-negative integer (0 = unlimited)");
     }
+    // #2802: reply_overdue_minutes is ignored now, but a value written while ignored must still load on the previous
+    // stable (a downgrade), so it keeps that release's check.
+    const overdue = config.defaults.reply_overdue_minutes;
+    if (overdue !== undefined && (typeof overdue !== "number" || !Number.isFinite(overdue) || overdue < 0)) {
+      err("defaults.reply_overdue_minutes", "must be a non-negative number of minutes (the setting is obsolete and ignored)");
+    }
     const replyTtl = config.defaults.reply_obligation_ttl_hours;
     if (replyTtl !== undefined && (typeof replyTtl !== "number" || replyTtl <= 0 || !Number.isFinite(replyTtl * 3_600_000))) {
       err("defaults.reply_obligation_ttl_hours", "must be a positive finite number of hours (default 24)");

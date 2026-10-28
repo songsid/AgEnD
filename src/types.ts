@@ -277,8 +277,8 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   progress_min_elapsed?: number;
   /** Maximum UTF-8 byte size of one cross-instance tool message body. Default: 12288. */
   max_cross_instance_message_bytes?: number;
-  /** Obsolete since #2802 (the requester's overdue notice is gone): accepted so existing fleet.yaml files load, ignored. */
-  reply_overdue_minutes?: unknown;
+  /** Obsolete since #2802 (the requester's overdue notice is gone): ignored, still validated as before for downgrades. */
+  reply_overdue_minutes?: number;
   /** #1694: hours since the last ask before an open reply obligation expires (default 24; positive finite duration). */
   reply_obligation_ttl_hours?: number;
   scheduler?: {

@@ -218,7 +218,7 @@ A human message has to be answered through the `reply` (or `react`) tool; text t
 
 - It waits until the instance has actually worked on the turn and then stayed idle for 60 seconds, so a pause mid-turn is not mistaken for the end.
 - It then asks the agent, once, to send its conclusion with `reply` or `react` — without redoing the work.
-- If a reply was attempted but its result is unknown (it may have been applied and then timed out), it does not retry, so you never get the answer twice. Retrying and unconfirmed delivery are recorded only in daemon.log and the instance's Log tab; only a recovery that fails gets a short warning in the chat, which says it may be a false positive, never recommends `/clear`, and is rate-limited per instance (#2566). Schedules, silent schedules, cross-instance updates and system notices aren't expected to answer a person, so they never trigger it (#2544).
+- If a reply was attempted but its result is unknown (it may have been applied and then timed out), it does not retry, so you never get the answer twice. Retrying, unconfirmed delivery and a recovery that fails too are recorded only in daemon.log and the instance's Log tab (#2566, #2802). Schedules, silent schedules, cross-instance updates and system notices aren't expected to answer a person, so they never trigger it (#2544).
 
 It is on by default (`reply_completion_guard: true`); set `false` per instance, in `defaults`, or per ClassicBot channel to turn it off.
 

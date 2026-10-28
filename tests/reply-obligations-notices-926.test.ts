@@ -157,10 +157,10 @@ describe("the fleet sweep (#926, #2802)", () => {
     outbox.close();
   });
 
-  it("reply_overdue_minutes is obsolete: any value still loads", () => {
+  it("reply_overdue_minutes is ignored but keeps 2.3.2's check, so a downgrade still loads the file", () => {
     const errors = (value: unknown) => JSON.stringify(validateFleetConfig({ defaults: { reply_overdue_minutes: value }, instances: {} }))
       .includes("reply_overdue_minutes");
-    expect([15, 0, -1, "15"].map(errors)).toEqual([false, false, false, false]);
+    expect([15, 0, -1, "15"].map(errors)).toEqual([false, false, true, true]);
   });
 });
 
