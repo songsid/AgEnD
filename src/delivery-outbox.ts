@@ -1388,11 +1388,19 @@ export class DeliveryOutbox extends EventEmitter {
    * stays readable (delivery_status, Fleet traffic). A reply obligation opens only on delivery, from the delivered row's own
    * payload: a row that requires a reply is replaced only by one that requires one too, else it keeps its place (#2797
    * review — an update without requires_reply must not swallow the request it follows).
+   *
+   * #2815: a silent schedule's ticks are one thread per schedule. Each tick is a `raw_paste` with its own correlation id
+   * (`schedule:<id>:<run>`), so ticks queued while the target was stuck were all pasted back to back once it was free;
+   * now a newer tick of the same schedule replaces the older ones that never began, by the same rule.
    */
   private supersedeThreadRows(pending: readonly OutboxRow[], now: string): Set<string> {
     const newest = new Map<string, OutboxRow>();
-    const keyOf = (row: OutboxRow) => (row.kind === "fleet_inbound" || row.kind === "steer") && row.correlation_id
-      ? `${row.source_instance}\u0000${row.target_instance}\u0000${row.correlation_id}` : null;
+    const keyOf = (row: OutboxRow) => {
+      if (!row.correlation_id) return null;
+      if (row.kind === "fleet_inbound" || row.kind === "steer") return `${row.source_instance}\u0000${row.target_instance}\u0000${row.correlation_id}`;
+      const schedule = row.kind === "raw_paste" ? /^schedule:([^:]+):/.exec(row.correlation_id)?.[1] : undefined;
+      return schedule ? `schedule\u0000${row.source_instance}\u0000${row.target_instance}\u0000${schedule}` : null;
+    };
     for (const row of pending) { const key = keyOf(row); if (key) newest.set(key, row); }   // ascending: the last wins
     const candidates = pending.filter(row => { const key = keyOf(row); return key !== null && newest.get(key)!.delivery_id !== row.delivery_id; });
     if (!candidates.length) return new Set();
