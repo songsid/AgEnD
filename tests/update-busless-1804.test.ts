@@ -52,8 +52,10 @@ const listen = (path: string) => new Promise<LiveServer>((resolve, reject) => {
   if (pid === undefined) { reject(new Error("listen child has no pid")); return; }
   let ready = false;
   let closed = false;
+  let exited = false;
   const accepted = { length: 0 };
   const waiters: Array<{ n: number; res: () => void; rej: (e: Error) => void; timer: ReturnType<typeof setTimeout> }> = [];
+  const dead = () => exited || child.exitCode !== null || child.signalCode !== null;
   const rejectWaiters = (err: Error) => {
     for (const w of waiters.splice(0)) { clearTimeout(w.timer); w.rej(err); }
   };
@@ -68,7 +70,7 @@ const listen = (path: string) => new Promise<LiveServer>((resolve, reject) => {
     }
   };
   const waitFor = (n: number, timeoutMs = LISTEN_WAIT_MS) => new Promise<void>((res, rej) => {
-    if (child.exitCode !== null) { rej(new Error(`listen child exited before ${n} accepts`)); return; }
+    if (dead()) { rej(new Error(`listen child exited before ${n} accepts`)); return; }
     if (accepted.length >= n) { res(); return; }
     const timer = setTimeout(() => {
       const i = waiters.findIndex(w => w.timer === timer);
@@ -82,8 +84,10 @@ const listen = (path: string) => new Promise<LiveServer>((resolve, reject) => {
     closed = true;
     clearTimeout(readyTimer);
     rejectWaiters(new Error("listen child closed"));
+    if (dead()) return Promise.resolve();
     child.kill();
-    return new Promise<void>(r => { if (child.exitCode !== null) r(); else child.once("exit", () => r()); });
+    if (dead()) return Promise.resolve();
+    return new Promise<void>(r => { if (dead()) r(); else child.once("exit", () => r()); });
   };
   const readyTimer = setTimeout(() => {
     if (ready) return;
@@ -97,6 +101,7 @@ const listen = (path: string) => new Promise<LiveServer>((resolve, reject) => {
     child.kill();
   });
   child.on("exit", (code, signal) => {
+    exited = true;
     rejectWaiters(new Error(`listen child exited (${code ?? signal})`));
     if (!ready) {
       ready = true;
@@ -619,6 +624,24 @@ describe("Prism r3: a symlink retargeted after the check cannot move the connect
       server = await listen(join(dir, "private"));
       const pid = server.pid;
       await expect(server.waitFor(1, 200)).rejects.toThrow(/accepted 0, wanted 1/);
+      await server.close();
+      server = undefined;
+      expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      await server?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("SIGTERM then waitFor reject still lets close finish", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-peer-sigterm-"));
+    let server: LiveServer | undefined;
+    try {
+      server = await listen(join(dir, "private"));
+      const pid = server.pid;
+      const waiting = server.waitFor(1);
+      process.kill(pid, "SIGTERM");
+      await expect(waiting).rejects.toThrow(/exited/);
       await server.close();
       server = undefined;
       expect(() => process.kill(pid, 0)).toThrow();
