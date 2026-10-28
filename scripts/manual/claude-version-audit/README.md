@@ -157,3 +157,26 @@ The audit was run as `AUDIT_DIR=… OLD=306 NEW=308 PORT=18308 TMUX_TMPDIR=<shor
 - ` and the `: prose.
 
 **Upstream changelog (2.1.307):** the fix for `/clear` conversations returning is for cloud and self-hosted runners, and the retry fix is for HTTP MCP servers. AgEnD's MCP server is stdio. Nothing on AgEnD's path changed.
+
+## 2.1.311 → 2.1.312
+
+The binaries were 2.1.311 (sha256 `86dc1fcc69498159eaf15f446613e847010f9036bfbbdffd4c49350be8489ada`) and 2.1.312 (sha256 `4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d`), from the daily upstream watch (2026-10-28, MAJOR hard=3). The host had already auto-updated to 2.1.312.
+
+The audit was run as `AUDIT_DIR=… OLD=311 NEW=312 PORT=18312 TMUX_TMPDIR=<short dir> bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.312-*.pane.txt` (the same 33 screens as 2.1.308), held by `tests/claude-2.1.312-surfaces.test.ts`. Each was matched to its 2.1.311 capture by content; four were picked by hand (`resumed` ← 50, `trust-keys-dropped` ← 120, `danger-enter-swallowed` ← 132, `ready-statusline` ← 20).
+
+**LIVE: no change on a screen AgEnD reads.**
+- 36 steps: 22 SAME. The 14 DIFFs are spinner and "Worked for" verbs, session ids, the working-directory name and footer hints (` · ← for agents`, `◐ medium · /effort`).
+- All 62 captures classify identically under the production predicates except `132-danger-fast` (Down and Enter written together the instant the dangerous-command menu paints). That is the timing race 2.1.306 and 2.1.308 already showed: 2.1.311 happened to decline, 2.1.312 kept the menu with the cursor on `No`, which AgEnD confirms with Enter on the next poll. At AgEnD's cadence (Down, 200 ms, Enter) both versions declined at every delay (0, 0.3, 0.6, 1, 2 and 4 s).
+
+**The upstream watch's flags (binary):**
+- Usage limit (#816): the started and re-armed rows are unchanged — `Usage limit reached · continuing automatically {when} · esc to cancel`. Only the separate "waiting" row now says `Esc to cancel`; AgEnD reads neither that row nor "Continuing automatically".
+- #2822 (#2827): `You've reached your <model> limit.` has the same count (10) in both binaries.
+- `rate limit usage (5-hour limit):` is prose in the statusline-setup help; the other new "5-hour limit" strings are the new 5-hour-reset offer's labels. Neither is a screen AgEnD acts on.
+- `Automatic continue stopped after repeated usage limit hits · This task will not resume on its own` was already in 2.1.311 (as `usage-limit hits · this task`); only its case changed. AgEnD never read it.
+- `Press esc to stop the turn.` is the Remote Control permission screen ("…a permission question that this terminal cannot show"). AgEnD does not use Remote Control.
+- `rate limit (HTTP 429, or a git wrapper that exits 75)`, `resume the session` and `resume the agent it was waiting on` are changelog prose or `claude -p` debug logs.
+- The cold-resume prompt (`COLD_RESUME_*`): every piece has the same count; the `and is` change is elsewhere.
+- Model names now drop `[1m]` where it has no effect (changelog), and `[1m]` is still accepted. AgEnD only displays the statusline model; pricing already strips `[1m]`; nothing compares it with the configured model.
+- The model-fallback and 24-hook strings named in the release notes have the same counts in 2.1.311.
+
+**Predicate literals:** 268 checked, 73 in the binaries, 4 counts changed: `Esc to cancel` (9 → 13: the usage "waiting" row and new dialogs; AgEnD's resume footer only counts after the two `Resume …` rows), ` and the `, `as given`, `claude auth login` (prose).
