@@ -9,7 +9,7 @@
  *
  * Isolation: temp dirs; no tmux, no CLI, no network.
  */
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -147,5 +147,13 @@ describe("#2834: a session's first records are read, history is not replayed", (
     appendFileSync(path, line(CREDIT_ERROR));
     await m.pollIncrement();
     expect(pauses).toHaveLength(2);                                                  // a new error after the reset is read
+  });
+  it("a file born in the same millisecond the monitor began is history, not new (main CI on #2835)", async () => {
+    const path = join(tmp(), "same-ms.jsonl");
+    writeFileSync(path, line(CREDIT_ERROR));
+    const { m, errs } = monitorAt(path);
+    m.attachBoundary = Math.floor(statSync(path).birthtimeMs);                     // Date.now() is whole ms; birthtimeMs is not
+    await m.pollIncrement(); await m.pollIncrement();
+    expect(errs).toEqual([]);
   });
 });

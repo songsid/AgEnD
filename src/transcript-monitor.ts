@@ -115,7 +115,11 @@ export class TranscriptMonitor extends EventEmitter {
   private createdThisRun(path: string): boolean {
     try {
       const born = statSync(path).birthtimeMs;
-      return born > 0 && born >= this.attachBoundary;               // Claude creates it after AgEnD spawned it
+      // Born in a LATER millisecond than the boundary: Date.now() is whole ms while birthtimeMs keeps the fraction, so a
+      // file written in the same millisecond the monitor began (or was reset) would otherwise count as new and replay its
+      // history (main CI, #2835). Claude creates a session's file seconds after the spawn; a coarse kernel clock only
+      // makes a file look older — the safe side (EOF baseline).
+      return born > 0 && Math.floor(born) > this.attachBoundary;
     } catch {
       return false;
     }
