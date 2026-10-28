@@ -4,7 +4,7 @@ import { sendPackSources } from "./web-office-pack-read.js";
 import type { RecoveryLive } from "./working-recovery.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
 import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
-import { agentWhatsNew, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, whatsNewNotice } from "./agent-whats-new.js";
+import { agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, withWhatsNew } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
@@ -29,8 +29,9 @@ import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource, type TranscriptSource } from "./transcript-sources.js";
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
-import { resolveToolSet } from "./tool-permissions.js";
-import { dashboardAccessProblem, dashboardFeaturesOff } from "./dashboard-permissions.js";
+import { resolveToolSet, toolsFor } from "./tool-permissions.js";
+import { TOOLS, toolsWithCanvasWorker } from "./channel/mcp-tools.js";
+import { dashboardAccessProblem, dashboardFeaturesOff, withoutFeatures } from "./dashboard-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { readCanvasWorkerEnabled, scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
@@ -100,8 +101,6 @@ import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 import type { KiroLogLaunch } from "./kiro-log-gate.js";
 
-/** #2140: deliveries that may carry an unwritten what's-new notice before it is recorded anyway. */
-const WHATS_NEW_MAX_UNWRITTEN = 3;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1814,8 +1813,6 @@ export class Daemon extends EventEmitter {
   private recentPastes: Array<{ generation: number; text: string }> = [];
   /** #1633: the one-time "what's new for you" notice, pasted before the next real delivery; recorded once pasted. */
   private pendingWhatsNew: { notice: string; ids: string[]; version: string } | null = null;
-  /** #2140: deliveries tried for the pending what's-new notice that never reached the pane (capped: never before every message). */
-  private whatsNewUnwritten = 0;
   private pasteQueueDepth = 0;
   /** #2770: a person's messages a cancel dropped before they reached the CLI, told together (noteCancelledHuman). */
   private cancelledHumans: Array<{ chatId: string; messageId: string; threadId?: string }> = [];
@@ -7419,33 +7416,11 @@ export class Daemon extends EventEmitter {
           await this.deliverMessage(this.config.pre_task_command, undefined, { deliveryEpoch });
           if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
-        const whatsNew = this.pendingWhatsNew ? this.currentWhatsNew(this.pendingWhatsNew) : null;
-        if (whatsNew) {
-          // #1633: here, inside the delivery lock and ahead of a real delivery — never into a busy turn, never to an
-          // instance nobody writes to. #2140: told at most once. Once its paste reached the pane it is recorded, proven
-          // submitted or not. A system paste has no unique id: its only pane proof is its opening line on the screen, and
-          // a long notice (every entry since an old session began) scrolls that line above the captured rows once Claude
-          // paints it — unproven, though the agent read it. One that never reached the pane (cancelled, never idle) is
-          // tried again, at most WHATS_NEW_MAX_UNWRITTEN times, then recorded with a warning.
-          const attempt: DeliveryVerdict = { reached: false };
-          const pasted = await this.deliverMessage(whatsNew.notice, undefined, { deliveryEpoch, verdict: attempt });
-          if (this.pendingWhatsNew === whatsNew) {
-            const written = pasted || attempt.paneWriteStarted === true;
-            if (!written) this.whatsNewUnwritten++;
-            if (written || this.whatsNewUnwritten >= WHATS_NEW_MAX_UNWRITTEN) {
-              if (!pasted) {
-                this.logger.warn({ entries: whatsNew.ids, written, attempts: this.whatsNewUnwritten, phase: attempt.phase, proof: attempt.proof },
-                  written ? "what's-new notice pasted but its submission could not be proven — recorded so it is not sent again"
-                    : "what's-new notice did not reach the pane after several deliveries — recorded so it is not sent again");
-              }
-              this.pendingWhatsNew = null;
-              this.whatsNewUnwritten = 0;
-              try { recordWhatsNew(this.instanceDir, whatsNew.ids, whatsNew.version); }
-              catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
-            }
-          }
-          if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-        }
+        // #2800: with this real message, in the same paste — never a paste or turn of its own: after its delivery marker
+        // (transcript proof anchors on it), before the message. A person's message with a verified receipt is pasted
+        // byte for byte (its proof is the wire's hash), so the notice waits for the next delivery without one.
+        const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id ? this.currentWhatsNew(this.pendingWhatsNew) : null;
+        const pasted = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
@@ -7457,13 +7432,21 @@ export class Daemon extends EventEmitter {
           return;
         }
         durable = durableAttempt;
-        if (await this.deliverMessage(formatted, status, {
-          deliveryEpoch,
-          submissionId: meta.message_id,
-          ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
-          verdict,
-          durableAttempt: durableAttempt || undefined,
-        })) {
+        let sent: Awaited<ReturnType<Daemon["deliverMessage"]>> | false = false;
+        try {
+          sent = await this.deliverMessage(pasted, status, {
+            deliveryEpoch,
+            submissionId: meta.message_id,
+            ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
+            verdict,
+            durableAttempt: durableAttempt || undefined,
+          });
+        } finally {
+          // #2800: told once — recorded as soon as it went out with this message, proven submitted or not, also when
+          // a later step of the write threw; a paste that never reached the pane keeps it for the next message.
+          if (whatsNew && (sent || verdict.paneWriteStarted)) this.recordWhatsNewSent(whatsNew);
+        }
+        if (sent) {
           delivered = true;
           this.finishDurableSubmission(durable, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
@@ -12122,29 +12105,36 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * #1633 (#1639 review): the pending notice as the record stands NOW, just before the paste — it was decided at launch,
-   * and the record may have changed while the delivery waited. Unreadable → nothing is sent (and nothing pending);
-   * entries recorded meanwhile are dropped from it; none left → nothing.
+   * #1633 (#1639 review): the pending notice as things stand NOW, just before the paste — it was decided at launch, and
+   * the record, a switch or the instance's tools may have changed while the delivery waited. Planned again from the
+   * record (#2800: the running release only, tools it has now); nothing left to tell → recorded, nothing pending.
    */
   private currentWhatsNew(pending: { notice: string; ids: string[]; version: string }): { notice: string; ids: string[]; version: string } | null {
-    const record = readWhatsNewRecord(this.instanceDir);
-    if (record === "unreadable") { this.pendingWhatsNew = null; return null; }
-    const known = new Set(record?.announced ?? []);
-    const ids = pending.ids.filter(id => !known.has(id));
-    if (!ids.length) { this.pendingWhatsNew = null; return null; }
-    // Rebuild even when ids are unchanged: an experimental switch may have changed
-    // while this delivery waited. Never paste the old enabled capability text.
-    // #2163: rebuilt as planned — only the entries this instance's roles are told; the rest are recorded with them.
-    const roles = this.whatsNewRoles();
-    const shown = agentWhatsNew(readCanvasWorkerEnabled(join(this.instanceDir, "..", ".."))).filter(e => ids.includes(e.id) && (!e.audience || e.audience.some(r => roles.includes(r))));
-    if (!shown.length) {
+    const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh: false, version: pending.version,
+      roles: this.whatsNewRoles(), tools: this.whatsNewTools(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
+    if (!plan || "silent" in plan) {
       this.pendingWhatsNew = null;
-      try { recordWhatsNew(this.instanceDir, ids, pending.version); } catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
+      if (plan) this.recordWhatsNewSent({ ids: plan.silent, version: plan.version });
       return null;
     }
-    const narrowed = { notice: whatsNewNotice(pending.version, shown), ids, version: pending.version };
-    this.pendingWhatsNew = narrowed;
-    return narrowed;
+    this.pendingWhatsNew = plan;
+    return plan;
+  }
+
+  private recordWhatsNewSent(told: { ids: string[]; version: string }): void {
+    if (this.pendingWhatsNew && told.ids.every(id => this.pendingWhatsNew!.ids.includes(id))) this.pendingWhatsNew = null;
+    try { recordWhatsNew(this.instanceDir, told.ids, told.version); }
+    catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
+  }
+
+  /**
+   * #2800: the tools this instance's agend MCP server lists now — the same filters (tool set, dashboard switches, the
+   * Canvas Worker switch) — so a notice names only changes to tools it has.
+   */
+  private whatsNewTools(): ReadonlySet<string> {
+    const allowed = toolsFor(resolveToolSet(this.config, this.name));
+    const listed = withoutFeatures(TOOLS.filter(t => allowed.has(t.name)), dashboardFeaturesOff(dashboardAccessOf(this.config)));
+    return new Set(toolsWithCanvasWorker(readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")), listed).map(t => t.name));
   }
 
   /**
@@ -12161,12 +12151,12 @@ export class Daemon extends EventEmitter {
   /** #1633: what this instance has not been told about its AgEnD version yet (see agent-whats-new.ts). */
   private prepareWhatsNew(fresh: boolean, version: string | null = agendVersion()): void {
     try {
-      const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version, roles: this.whatsNewRoles(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
+      const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version, roles: this.whatsNewRoles(),
+        tools: this.whatsNewTools(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
       if (!plan) { this.pendingWhatsNew = null; return; }
       if ("silent" in plan) { recordWhatsNew(this.instanceDir, plan.silent, plan.version); this.pendingWhatsNew = null; return; }
       this.pendingWhatsNew = plan;
-      this.whatsNewUnwritten = 0;
-      this.logger.info({ entries: plan.ids }, "what's-new notice pending for the next delivery");
+      this.logger.debug({ entries: plan.ids }, "what's-new notice pending for the next delivery");
     } catch (err) {
       this.logger.debug({ err }, "what's-new not prepared");
     }

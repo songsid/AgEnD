@@ -79,6 +79,8 @@ interface Opts {
   noTranscript?: boolean;
   /** Deliver via steerMessage (a steer into the ready pane) instead of the queued path. */
   steer?: boolean;
+  /** #2800: a what's-new notice pending for this delivery (rides in the same paste). */
+  whatsNew?: string;
 }
 
 async function deliver(opts: Opts = {}) {
@@ -115,7 +117,7 @@ async function deliver(opts: Opts = {}) {
   const tmux = {
     capturePane: vi.fn(async () => shown()),
     capturePaneWithHistory: vi.fn(async () => shown()),
-    pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
+    pasteBuffer: vi.fn(async (_text: string) => { pasted = true; return true; }),
     sendSpecialKey: vi.fn(async () => true),
     getLastPasteError: vi.fn(),
     isLastPasteFailureRecoverable: vi.fn(() => true),
@@ -129,6 +131,12 @@ async function deliver(opts: Opts = {}) {
   vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
   const confirmed = vi.fn();
   daemon.on("message_confirmed", confirmed);
+  if (opts.whatsNew) {
+    const pending = { notice: opts.whatsNew, ids: ["n"], version: "2.3.2" };
+    daemon.pendingWhatsNew = pending;
+    vi.spyOn(daemon, "currentWhatsNew").mockImplementation(() => daemon.pendingWhatsNew);
+    vi.spyOn(daemon, "recordWhatsNewSent").mockImplementation(() => { daemon.pendingWhatsNew = null; });
+  }
   const inboundMeta = {
     delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
     user: "instance:source", user_id: "instance:source", message_id: "message-758", chat_id: "chat", thread_id: "", ts: new Date().toISOString(),
@@ -190,6 +198,22 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
     expect(h.evidence()).toBe("unverifiable-no-transcript-marker");
     expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+  });
+
+  // #2800 (Prism P2): the attached what's-new notice must not displace the delivery marker the proof anchors on.
+  it("#2800: a delivery carrying a what's-new notice is still proven by its transcript entry — the exact pasted text", async () => {
+    const h = await deliver({ whatsNew: "[system:whats-new] AgEnD is now 2.3.2. Changed for tools you have." });
+    await h.begun();
+    const pasted = h.tmux.pasteBuffer.mock.calls[0]![0];
+    expect(pasted.startsWith(`[agend-delivery-id:${h.deliveryId}]\n[system:whats-new] AgEnD is now 2.3.2.`)).toBe(true);
+    expect(pasted).toContain("\n\n[from:source]");
+    appendFileSync(h.transcript, userEntry(h.deliveryId, pasted));
+    await h.pump(400, h.finished);
+    expect(h.state()).toBe("delivered");
+    expect(h.evidence()).toContain("transcript-marker");
+    // The consumed watcher reads the same anchor: the entry counts as the CLI taking this delivery.
+    const { transcriptDeltaDeliveryMarker, markerConsumed } = await import("../src/delivery-reconciliation.js");
+    expect(markerConsumed(transcriptDeltaDeliveryMarker(userEntry(h.deliveryId, pasted), "claude-code", h.deliveryId))).toBe(true);
   });
 
   it("the marker arrives in the transcript wrapped the way Claude Code writes it: delivered, transcript-marker", async () => {

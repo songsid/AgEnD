@@ -193,7 +193,7 @@ describe("#2163: agend-agent skill", () => {
 });
 
 describe("#2163: what's-new by role", () => {
-  const V = "2.3.0";
+  const V = "2.2.5"; // #2800: the release whose entries these are (a later one supersedes them)
   const record = { announced: AGENT_WHATS_NEW.filter(e => !e.id.startsWith("2.3-")).map(e => e.id) };
   const shownIds = (roles: Parameters<typeof planWhatsNew>[0]["roles"]) => {
     const p = planWhatsNew({ record, fresh: false, version: V, roles });

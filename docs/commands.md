@@ -34,6 +34,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/backend [backend] [model] [effort]` | Move the instance to another CLI backend: backend (every backend; one this host cannot run (not installed, not signed in, too old) is shown disabled with the reason) → model (`/model`'s list, or the default) → effort (`/effort`'s levels; skipped for a backend without one) → Confirm/Cancel. Nothing is written or restarted before the confirmation; then backend, model and effort are saved in one write and the instance restarts **once**, in a **fresh session** (a conversation does not carry across backends), interrupting a turn in progress. A typed form goes straight to the confirmation; a backend this host cannot run is refused with the reason, and a model or effort the new backend does not offer is refused with the choices. The backend it already runs changes nothing (use `/model` or `/effort`). The switch is `update_instance_config`'s: the new backend's `backend_options` (its credential profile, kiro's engine) apply, and a credential profile with no login for it is refused with the command to log it in. A stopped or paused instance is saved and not started. Fleet instances only. | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max). A typed level applies directly; with no arg the menu opens | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok). | Admin |
+| 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
 | 🔒 `/tips advanced on` | Fleet-wide manual unlock of the advanced tips tier (independent of the per-user dismiss-count unlock). Currently has no visible effect while the beginner-only rollout stage is active — see the `/tips` row above. | Admin |
 | 🔒 `/visibility [full\|summary\|hidden]` | How bot-to-bot (cross-instance) messages appear in instance topics: `full` posts the whole message (the default, as before), `summary` one line per message, `hidden` nothing. With a mode it sets the fleet default and saves it to `fleet.yaml` (`defaults.cross_instance_visibility`); with none it shows the current setting and which instances have their own. Delivery and the Mirror Topic are never affected. General topic only. See [features](features.md#bot-to-bot-message-visibility). | Admin |
 
@@ -85,7 +86,7 @@ Registered globally via `client.application.commands.set()`.
 | `/cancel` | Interrupt agent generation | All |
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI; others reply "not supported") | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
-| `/tips [mode]` | Draw a random usage tip, posted in the current channel (`mode` empty); `mode: advanced on` manually unlocks the advanced tier fleet-wide (no visible effect yet — beginner-only rollout stage) | All / 🔒 for `advanced on` |
+| `/tips [mode]` | Draw a random usage tip, posted in the current channel (`mode` empty); `mode: on\|off` toggles the daily auto-send; `mode: advanced on` manually unlocks the advanced tier fleet-wide (no visible effect yet — beginner-only rollout stage) | All / 🔒 for `on`\|`off`\|`advanced on` |
 | 🔒 `/web` (`/dashboard`) | General admin menu with private local/public sign-in; public link is opt-in. `/dashboard` is a listed deprecated Discord slash (#1569 / #2359): same gate, same replies and `action: revoke`, after a one-line “use /web” notice. Typed `/dashboard` still goes to the slash menu | Admin |
 | 🔒 `/status` | Fleet table: Instance, Backend, Model, Ctx, Effort, Cost, State (State merges paused/stopped/crashed with the execution state) | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
@@ -156,7 +157,7 @@ Permission varies by platform/mode:
 - `/pause`, `/wake` — Fleet topics: fleet admin. ClassicBot chat/channel: fleet admin or ClassicBot admin (both platforms).
 - `/ctx` — all users (both platforms)
 - `/collab` — DC: fleet admin in a fleet channel; fleet admin or ClassicBot admin in a ClassicBot channel. TG: fleet admin in a fleet topic; in a ClassicBot chat it is not a command (the text goes to the agent).
-- `/tips` — drawing a tip is all-users, posted wherever it was invoked; `/tips advanced on` requires fleet admin. Not registered on TG Classic at all.
+- `/tips` — drawing a tip is all-users, posted wherever it was invoked; `/tips on`/`off`/`advanced on` require fleet admin. Not registered on TG Classic at all.
 
 ### Buttons
 

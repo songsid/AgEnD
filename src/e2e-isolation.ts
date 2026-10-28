@@ -400,7 +400,7 @@ export function planTeardown(plan: ScratchPlan, seams: Seams = {}): TeardownResu
 /** The slice of a fleet.yaml a scratch run is checked against. */
 export interface ScratchFleetConfig {
   health_port?: unknown;
-  defaults?: { backend?: unknown; agent_mode?: unknown; daily_summary?: { enabled?: unknown }; hang_detector?: { enabled?: unknown }; webhooks?: unknown };
+  defaults?: { backend?: unknown; agent_mode?: unknown; tips?: unknown; daily_summary?: { enabled?: unknown }; hang_detector?: { enabled?: unknown }; webhooks?: unknown };
   channels?: Array<{ bot_token_env?: unknown; access?: unknown }>;
   channel?: { bot_token_env?: unknown; access?: unknown };
   instances?: Record<string, { backend?: unknown; agent_mode?: unknown; hang_detector?: { enabled?: unknown } }>;
@@ -446,6 +446,7 @@ export function checkScratchFleetConfig(config: ScratchFleetConfig, plan: Scratc
     out.push({ rule: "config-agent-mode", detail: "defaults.agent_mode: cli would put every instance on a port that is not derived from the scratch health port" });
   }
   const quiet: Array<[string, unknown]> = [
+    ["defaults.tips", config.defaults?.tips],
     ["defaults.daily_summary.enabled", config.defaults?.daily_summary?.enabled],
     ["defaults.hang_detector.enabled", config.defaults?.hang_detector?.enabled],
   ];

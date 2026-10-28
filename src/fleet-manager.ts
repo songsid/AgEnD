@@ -3,7 +3,7 @@ import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identit
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
 import { SEPARATE_FEATURE_KEYS, hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
-import { loginNoticeMode, normalizeNoticeDelivery } from "./notice-delivery.js";
+import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
@@ -434,6 +434,7 @@ import { SpawnGate } from "./spawn-gate.js";
 import { BackendOutageTracker } from "./backend-outage.js";
 import {
   canUnlockAdvancedTips,
+  DailyTipScheduler,
   selectTip,
   visibleTipLevels,
   type Tip,
@@ -1235,6 +1236,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private dailySummary: DailySummary | null = null;
   /** #2246 step 3: the task board's daily summary for the person (task-board-summary.ts). */
   private taskBoardSummary: TaskBoardSummaryClock | null = null;
+  private dailyTipScheduler: DailyTipScheduler | null = null;
   /** The task board's wakes (step 2): an instance hears when someone else changes a card it owns or handed out. */
   private taskBoardWaker: TaskBoardWaker | null = null;
   private webhookEmitter: WebhookEmitter | null = null;
@@ -4004,9 +4006,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : t("tips.unavailable"));
       return;
     }
-    // #2783: `on`/`off` switched the daily tip, which is gone; a menu cached before then may still send them.
-    if (mode) {
-      await data.respond(t("tips.usage"));
+    if (mode === "on" || mode === "off") {
+      if (!this.isFleetAdmin(data.userId, adapterId)) {
+        await data.respond(t("permission.denied"));
+        return;
+      }
+      setNoticeMode(this.fleetConfig, "tips", mode === "on");
+      this.saveFleetConfig();
+      await data.respond(t(mode === "on" ? "tips.enabled" : "tips.disabled"));
       return;
     }
 
@@ -4026,7 +4033,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // emits on callback_query. Discord emits (guildId, channelId); Telegram
     // emits (supergroup chatId, topic threadId). For /tips invoked in an
     // arbitrary channel, pass the canonical group id as chatId and the
-    // invocation channel as threadId.
+    // invocation channel as threadId, exactly as sendTipToGeneral() does.
     const chatId = this.getGroupIdForInstance(targetName) || data.channelId;
     const result = await this.promptTip(targetName, adapter, chatId, data.channelId);
     if (result === "posted" && data.dismissResponse) {
@@ -5545,7 +5552,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       scope,
       speaker,
       // The table's level, plus the fleet-admin modes of a command whose handler decides by its options: /tips with a
-      // mode unlocks tips; bare /tips only draws one (#1396 review).
+      // mode saves fleet config or unlocks tips; bare /tips only draws one (#1396 review).
       fleetAdminCommand: (!!rule && "level" in rule && rule.level === "fleet-admin")
         || (data.command === "tips" && typeof data.options?.mode === "string" && data.options.mode.trim() !== ""),
       otherBotOwns: !!fleetTarget && !!this.getInstanceAdapterId(fleetTarget.name) && this.getInstanceAdapterId(fleetTarget.name) !== adapterId,
@@ -8476,6 +8483,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.scheduler.db.onTaskChange = (task) => this.searchIndex?.record(taskDoc(task));
       this.logger.info("Scheduler initialized");
       this.attachTaskBoard(this.scheduler.db);
+
+      // Tips share the daily-report clock but remain an independent internal
+      // job: disabling daily_summary must not disable tips (and vice versa).
+      // The callback checks defaults.tips at fire time, so /tips on|off is hot.
+      this.dailyTipScheduler = new DailyTipScheduler(
+        summaryConfig,
+        costGuardConfig.timezone,
+        () => this.sendTipToGeneral().catch(err => {
+          this.logger.warn({ err }, "Failed to send daily tip");
+        }),
+      );
+      this.dailyTipScheduler.start();
 
       // Inject active decisions as env var for MCP instructions.
       // Snapshotted at startup — new decisions via post_decision are available
@@ -15252,6 +15271,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  private tipsEnabled(): boolean {
+    return this.fleetConfig?.defaults.tips !== false;
+  }
+
   private readTipState(): { dismissed: Set<string>; advancedUnlocked: boolean } | null {
     if (!this.scheduler) return null;
     try {
@@ -15265,6 +15288,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ err }, "Failed to read tip state");
       return null;
     }
+  }
+
+  private pickAvailableTip(): Tip | null {
+    const state = this.readTipState();
+    return state
+      ? selectTip(state.dismissed, Math.random, state.advancedUnlocked, this.getActiveBackendIds())
+      : null;
   }
 
   private tipText(tip: Tip): string {
@@ -15359,6 +15389,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return nonce !== null;
   }
 
+  private async sendTipToGeneral(): Promise<void> {
+    if (!this.tipsEnabled()) return;
+    const generalName = this.findGeneralInstance();
+    if (!generalName) return;
+    const adapter = this.getAdapterForInstance(generalName);
+    const chatId = this.getGroupIdForInstance(generalName);
+    const topicId = this.fleetConfig?.instances[generalName]?.topic_id;
+    if (!adapter || !chatId) return;
+    const result = await this.promptTip(
+      generalName,
+      adapter,
+      chatId,
+      topicId != null ? String(topicId) : undefined,
+    );
+    if (result === "unavailable") {
+      this.logger.warn({ generalName }, "Daily tip could not be posted");
+    }
+  }
 
   private async handleTipDismiss(
     data: AdapterCallbackData,
@@ -21397,6 +21445,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.costGuard?.stop();
     this.dailySummary?.stop();
     this.taskBoardSummary?.stop();
+    this.dailyTipScheduler?.stop();
+    this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     if (this.guestRoomsTimer) { clearInterval(this.guestRoomsTimer); this.guestRoomsTimer = null; }

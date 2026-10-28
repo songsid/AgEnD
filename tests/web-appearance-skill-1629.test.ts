@@ -139,18 +139,25 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
   const NEW = ["2.3-web-appearance-topic", "2.3-web-settings-for-the-user", "2.3-web-ambient", "2.3-repo-tools", "2.3-web-verified", "2.3-decision-titles", "2.3-web-ordinary-requests"];
   it("an instance told everything of 2.2 hears the 2.3 lines once from 2.2.5 — never on an older 2.2.x", () => {
     for (const version of ["2.2.0", "2.2.1", "2.2.4"]) expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version }), version).toBeNull();
-    for (const version of ["2.2.5", "2.3.0-beta.12", "2.3.0"]) {
-      const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
-      // On 2.3.0 the 2.3.0 stable entries come with them (whats-new-2.2.5.test.ts pins those).
-      const also = version === "2.3.0" ? AGENT_WHATS_NEW.filter(e => e.since === "2.3.0").map(e => e.id) : [];
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual([...NEW, ...also]);
-    }
+    const on225 = planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.2.5" });
+    expect(on225 && "notice" in on225 ? on225.ids : on225).toEqual(NEW);
+    // #2800: only the running release is told; on a later release they are superseded — recorded, the notes are linked.
+    const onBeta = planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.3.0-beta.12" });
+    expect(onBeta && "silent" in onBeta ? onBeta.silent : onBeta).toEqual(NEW);
+    const on230 = planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.3.0" });
+    const also = AGENT_WHATS_NEW.filter(e => e.since === "2.3.0").map(e => e.id);
+    expect(on230 && "notice" in on230 ? on230.ids : on230, "all recorded, 2.3.0's own told").toEqual([...NEW, ...also]);
+    expect(on230 && "notice" in on230 ? on230.notice : "").not.toContain("Ambient effects:");
     expect(planWhatsNew({ record: { announced: AGENT_WHATS_NEW.map(e => e.id) }, fresh: false, version: "2.3.0" })).toBeNull();
   });
   it("one told the six detailed 2.3.0-alpha.1 entries and the two beta.2 lines hears only what it was not told, once", () => {
     const record = { announced: [...OLD, ...SIX, "2.3-web-appearance-topic", "2.3-repo-tools"] };
+    const missed = ["2.3-web-settings-for-the-user", "2.3-web-ambient", "2.3-web-verified", "2.3-decision-titles", "2.3-web-ordinary-requests"];
+    const on225 = planWhatsNew({ record, fresh: false, version: "2.2.5" });
+    expect(on225 && "notice" in on225 ? on225.ids : on225, "#2056, #2117, #1939, #2152: the lines it missed").toEqual(missed);
+    // #2800: on a later release those 2.2.5 lines are superseded (recorded, not told).
     const later = planWhatsNew({ record, fresh: false, version: "2.3.0-beta.12" });
-    expect(later && "ids" in later ? later.ids : later, "#2056, #2117, #1939, #2152: the lines it missed").toEqual(["2.3-web-settings-for-the-user", "2.3-web-ambient", "2.3-web-verified", "2.3-decision-titles", "2.3-web-ordinary-requests"]);
+    expect(later && "silent" in later ? later.silent : later).toEqual(missed);
     expect(planWhatsNew({ record: { announced: [...record.announced, ...NEW] }, fresh: false, version: "2.3.0-beta.12" })).toBeNull();
   });
 });

@@ -536,6 +536,7 @@ backend skipped at first setup shows in Needs you even before an agent uses it.
 | Agent mode, Tool set | `agent_mode`, `tool_set` | agent |
 | Tool progress; Bot-to-bot messages in topics (full / summary / hidden); Log level | `tool_progress`, `cross_instance_visibility`, `log_level` | now |
 | Require a delivered reply | `reply_completion_guard` | now |
+| Daily tips (Topic / Off; always posted in General, never by DM) | `tips` | now |
 | Lightweight mode, Fallback model | `lightweight`, `model_failover` | agent |
 | System prompt | `systemPrompt` | agent |
 | Tags | `tags` | now |

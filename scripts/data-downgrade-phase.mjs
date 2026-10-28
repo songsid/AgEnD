@@ -337,7 +337,7 @@ if (phase === 'create') {
   }
   writeFileSync(statePath, JSON.stringify(state));
 } else {
-  const { loginNoticeMode } = await load('notice-delivery.js');
+  const { loginNoticeMode, tipNoticeMode } = await load('notice-delivery.js');
   checked('Office on/off switches survive the published old config round trip', () => {
     const config = loadFleetConfig(join(scratch, 'office-fleet.yaml'));
     assert.equal(validateFleetConfig(config).valid, true);
@@ -347,8 +347,7 @@ if (phase === 'create') {
   checked('legacy DM notice routes read as topic after the published old config round trip', () => {
     const config = loadFleetConfig(join(scratch, 'notice-fleet.yaml'));
     assert.equal(validateFleetConfig(config).valid, true);
-    assert.equal(loginNoticeMode(config.web), true);   // stale routes read as topic
-    assert.equal(config.defaults.tips, true);   // #2783: daily tips are gone; the ignored key stays a boolean an older AgEnD reads
+    assert.equal(loginNoticeMode(config.web), true); assert.equal(tipNoticeMode(config), true);   // stale routes read as topic
   });
   checked('recovery receipts survive old writes and still prevent duplicate admission after return', () => {
     assert.deepEqual(recoveryRows(), state.workingRecoveryRows);
