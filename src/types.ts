@@ -302,8 +302,8 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   tips?: boolean | "dm";
   /** #2246 step 3: the task board's fleet-level settings. */
   task_board?: {
-    /** The daily summary's time in the fleet's zone ("HH:MM", 24 h), or "off". Default "09:00". */
-    summary_at?: string;
+    /** #2804: the task board's daily summary is gone; a value written before is accepted and ignored. */
+    summary_at?: unknown;
   };
   webhooks?: WebhookConfig[];
 }

@@ -1294,21 +1294,6 @@ export class TaskBoard {
     return out;
   }
 
-  /**
-   * Step 3, the daily summary (task-board-summary.ts): what waits for the person now, what got done and what was
-   * opened in [since, until) (not cancelled), and every live main task's project and assignee.
-   */
-  summaryRead(since: string, until: string, gone?: GoneDispatcher): { waiting: Card[]; done: Card[]; created: Card[]; mains: Array<{ projectId: number | null; assignee: string | null }> } {
-    const between = (sql: string) => (this.db.prepare(sql).all(since, until) as Row[]).map(toCard);
-    return {
-      waiting: this.waitingForPerson(gone).map((w) => w.card),
-      done: between("SELECT * FROM tasks WHERE status = 'done' AND done_at >= ? AND done_at < ? ORDER BY sort"),
-      created: between("SELECT * FROM tasks WHERE status != 'cancelled' AND created_at >= ? AND created_at < ? ORDER BY sort"),
-      mains: (this.db.prepare("SELECT project_id, assignee FROM tasks WHERE kind = 'main' AND status != 'cancelled'").all() as Row[])
-        .map((r) => ({ projectId: (r.project_id as number | null) ?? null, assignee: (r.assignee as string | null) ?? null })),
-    };
-  }
-
   // ── Writing: the board ──────────────────────────────────
 
   createCards(actor: Actor, input: { project?: string | number | null; parent?: string | null; cards: NewCard[] }): { cards: Card[]; notes: string[]; said: Note[] } {

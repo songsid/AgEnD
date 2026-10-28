@@ -118,13 +118,6 @@ describe("#2425 only what asks the person waits for the person", () => {
     } finally { f.scheduler.db.close(); }
   });
 
-  it("the daily summary waits on the same two", () => {
-    const f = fixture();
-    try {
-      const read = f.board.summaryRead("2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z");
-      expect(read.waiting.map((c) => c.code).sort()).toEqual([f.asked.code, f.confirm.code].sort());
-    } finally { f.scheduler.db.close(); }
-  });
 });
 
 // #2425 follow-up: a card an instance handed out waits for that instance (#2425, #2434). Once that instance is deleted,
@@ -158,7 +151,6 @@ describe("a card whose instance dispatcher was deleted falls back to the person"
       expect(codes(f.board.waitingForPerson(f.fm.dispatcherGone))).toEqual(now);
       expect(codes(f.fm.needsYouTasks())).toEqual(now);
       expect([f.lead.code, f.leadReview.code, f.classic.code].map((c) => f.fm.needsYouRoute(c) !== null)).toEqual([true, true, false]);
-      expect(codes(f.board.summaryRead("2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z", f.fm.dispatcherGone).waiting.map((card) => ({ card })))).toEqual(now);
       // Never an agent's own card (no dispatcher) or a legacy row: they have no dispatcher to lose.
       expect(codes(f.fm.needsYouTasks())).not.toContain(f.review.code);
       expect(codes(f.fm.needsYouTasks())).not.toContain(f.legacy[0]!.code);

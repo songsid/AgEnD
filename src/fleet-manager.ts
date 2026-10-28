@@ -134,7 +134,6 @@ import type { FleetContext } from "./fleet-context.js";
 import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, parseCompactCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineJson, statuslineModel } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
-import { TaskBoardSummaryClock, buildSummary, isQuiet, renderSummary, summaryMarkFile, summaryTime } from "./task-board-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
 import { TmuxControlClient } from "./tmux-control.js";
 import { safeHandler } from "./safe-async.js";
@@ -1233,8 +1232,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   costGuard: CostGuard | null = null;
   private statuslineWatcher: StatuslineWatcher;
   private dailySummary: DailySummary | null = null;
-  /** #2246 step 3: the task board's daily summary for the person (task-board-summary.ts). */
-  private taskBoardSummary: TaskBoardSummaryClock | null = null;
   private dailyTipScheduler: DailyTipScheduler | null = null;
   /** The task board's wakes (step 2): an instance hears when someone else changes a card it owns or handed out. */
   private taskBoardWaker: TaskBoardWaker | null = null;
@@ -8318,7 +8315,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...fleet.defaults.daily_summary,
     };
     this.dailySummary = new DailySummary(summaryConfig, costGuardConfig.timezone, (text) => {
-      this.postDailySummary(text);
+      if (text !== null) this.postDailySummary(text);
       // Rotate classic channel chat logs daily
       this.classicChannels?.rotateLogs();
       this.rotateInboxes();
@@ -8341,17 +8338,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
     });
     this.dailySummary.start();
-    // #2246 step 3: the task board's daily summary — its own time (defaults.task_board.summary_at, read at every look),
-    // in the fleet's zone; a summary missed while the fleet was down goes out when it is back.
-    this.taskBoardSummary = new TaskBoardSummaryClock({
-      at: () => summaryTime(this.fleetConfig?.defaults?.task_board?.summary_at) ?? null,
-      zone: () => this.usageZone(),
-      now: () => new Date(),
-      mark: summaryMarkFile(join(this.dataDir, "task-board-summary.json")),
-      send: (since, until) => this.postTaskBoardSummary(since, until),
-      failed: (err) => this.logger.warn({ err }, "The task board's daily summary failed; the next minute tries again"),
-    });
-    this.taskBoardSummary.start();
 
     // Rotate classic channel chat logs daily (piggyback on daily summary timer)
     this.classicChannels?.rotateLogs();
@@ -14212,47 +14198,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { chatId, opts: {} };
   }
 
-  /**
-   * #2246 step 3: the task board's daily summary of [since, until) (task-board-summary.ts). Each chat world's General
-   * gets its own instances' cards — a card that no world's instance holds (nobody's, a person's) goes to the primary
-   * one — and each of that world's Generals shows the same text in the web chat. A world with nothing to say gets
-   * nothing. A web-only fleet: everything, in the web chat.
-   */
-  private postTaskBoardSummary(since: Date, until: Date): void {
-    const board = this.scheduler?.db.board;
-    if (!board) return;
-    const read = board.summaryRead(since.toISOString(), until.toISOString(), this.dispatcherGone);
-    const projects = board.listProjects(true);
-    const stats = board.projectStats(this.dispatcherGone);
-    const names = new Map(projects.map((p) => [p.id, p.name]));
-    const configured = this.getPrimaryAdapterId();
-    const primary = configured !== undefined && this.worlds.has(configured) ? configured : this.worlds.keys().next().value as string | undefined;
-    const worldOf = (assignee: string | null): string | undefined => {
-      const owner = assignee ? this.getInstanceAdapterId(assignee) : undefined;
-      return owner !== undefined && this.worlds.has(owner) ? owner : primary;
-    };
-    const zone = this.usageZone();
-    for (const world of this.worlds.size ? [...this.worlds.keys()] : [undefined]) {
-      const summary = buildSummary(read, since, until, { inChat: (assignee) => worldOf(assignee) === world, projects, stats });
-      if (isQuiet(summary)) continue;
-      const text = renderSummary(summary, { zone, t: (key, ...args) => t(key, ...args), projectOf: (c) => (c.projectId === null ? null : names.get(c.projectId) ?? null) });
-      const cards = [...new Set([...summary.review, ...summary.blocked, ...summary.done, ...summary.created].map((c) => c.code))];
-      if (world !== undefined) {
-        const adapter = this.worlds.get(world)?.adapter;
-        const target = this.fleetNoticeTarget(world);
-        if (adapter && target) {
-          adapter.sendText(target.chatId, text, target.opts).catch(e => this.logger.warn({ err: e, world }, "Failed to send the task board's daily summary"));
-        } else {
-          this.logger.warn({ world }, "The task board's daily summary has no postable target — set a General topic or channel.options.general_channel_id");
-        }
-      }
-      for (const [name, cfg] of Object.entries(this.fleetConfig?.instances ?? {})) {
-        if (cfg.general_topic !== true || (world !== undefined && this.getInstanceAdapterId(name) !== world)) continue;
-        // #2341 review: with the cards it names, so the public link withholds it while one of them is hidden there.
-        this.emitSseEvent("message", { instance: name, sender: name, role: "status", text, ts: new Date().toISOString(), cards });
-      }
-    }
-  }
+
 
   /**
    * Post the daily summary where fleet-wide notices go.
@@ -21431,7 +21377,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
-    this.taskBoardSummary?.stop();
     this.dailyTipScheduler?.stop();
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }

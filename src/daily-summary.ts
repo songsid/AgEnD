@@ -10,16 +10,19 @@ export class DailySummary {
   constructor(
     private config: DailySummaryConfig,
     private timezone: string,
-    private onSummary: (text: string) => void,
+    /** Every day at the configured time: the report's text, or null when the report is off (#2804). */
+    private onSummary: (text: string | null) => void,
     private getSummaryText: () => string,
   ) {}
 
+  /**
+   * #2804: the clock always runs — the daily housekeeping (log and inbox rotation) rides on it — and the report is
+   * built and handed on only when `enabled`.
+   */
   start(): void {
-    if (!this.config.enabled) return;
     const cron = `${this.config.minute} ${this.config.hour} * * *`;
     this.job = new Cron(cron, { timezone: this.timezone }, () => {
-      const text = this.getSummaryText();
-      this.onSummary(text);
+      this.onSummary(this.config.enabled ? this.getSummaryText() : null);
     });
   }
 
