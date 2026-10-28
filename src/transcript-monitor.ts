@@ -28,8 +28,11 @@ export class TranscriptMonitor extends EventEmitter {
   private polling = false; // reentry guard for pollIncrement
   private generation = 0;
 
-  /** #2834: when this monitor began — a transcript created after it is this run's own, read from its start. */
-  private readonly createdAt: number;
+  /**
+   * #2834: since when a transcript counts as this run's own (read from its start): when this monitor began, moved to each
+   * re-baseline (resetOffset) — a file born before that is history, already seen or not ours to replay (#2835 review).
+   */
+  private attachBoundary: number;
 
   constructor(
     private instanceDir: string,
@@ -37,7 +40,7 @@ export class TranscriptMonitor extends EventEmitter {
     private source: TranscriptSource | null = null,
   ) {
     super();
-    this.createdAt = Date.now();
+    this.attachBoundary = Date.now();
     this.offsetFile = join(instanceDir, "transcript-offset");
     // Persisted offsets are only meaningful for the claude-code transcript;
     // sources re-resolve and re-baseline themselves (a stale byte offset into
@@ -108,11 +111,11 @@ export class TranscriptMonitor extends EventEmitter {
     }
   }
 
-  /** #2834: the file was created after this monitor began (its birth time; 0 or unavailable → not provable → false). */
+  /** #2834: the file was created after the attach boundary (its birth time; 0 or unavailable → not provable → false). */
   private createdThisRun(path: string): boolean {
     try {
       const born = statSync(path).birthtimeMs;
-      return born > 0 && born >= this.createdAt;                    // Claude creates it after AgEnD spawned it
+      return born > 0 && born >= this.attachBoundary;               // Claude creates it after AgEnD spawned it
     } catch {
       return false;
     }
@@ -316,6 +319,7 @@ export class TranscriptMonitor extends EventEmitter {
 
   resetOffset(): void {
     this.generation++;
+    this.attachBoundary = Date.now();
     this.byteOffset = 0;
     this.skipping = false;
     this.pendingLong = null;

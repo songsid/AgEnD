@@ -127,4 +127,25 @@ describe("#2834: a session's first records are read, history is not replayed", (
     await m.pollIncrement();
     expect(errs).toHaveLength(1);
   });
+  it("after a re-baseline (a wake or respawn reset) an error already read is not replayed; a later one is (#2835 review)", async () => {
+    const dir = tmp();
+    const daemon = new Daemon("worker", { working_directory: dir, log_level: "silent" } as any, dir, false, undefined, undefined, logger) as any;
+    const pauses: unknown[] = [];
+    daemon.on("pty_error", (e: any) => { if (e.action === "pause") pauses.push(e); });
+    const path = join(tmp(), "session.jsonl");
+    const m = new TranscriptMonitor(tmp(), logger) as any;
+    m.resolveTranscriptPath = async () => path;
+    m.on("api_error", (text: string, status: number | null, _at: number | null, kind: string | null) => daemon.noteClaudeApiError(text, status, kind));
+    await new Promise(r => setTimeout(r, 50));
+    writeFileSync(path, line({ type: "user", message: { role: "user", content: "message 1" } }) + line(CREDIT_ERROR));
+    await m.pollIncrement(); await m.pollIncrement();
+    expect(pauses).toHaveLength(1);                                                  // the new session's first-message error
+    m.resetOffset(); await m.initialize();                                           // as resetTranscriptBeforeAdmission does
+    await m.pollIncrement(); await m.pollIncrement();
+    expect(pauses).toHaveLength(1);                                                  // the same file, unchanged: no replay
+    await new Promise(r => setTimeout(r, 5));
+    appendFileSync(path, line(CREDIT_ERROR));
+    await m.pollIncrement();
+    expect(pauses).toHaveLength(2);                                                  // a new error after the reset is read
+  });
 });
