@@ -55,6 +55,38 @@ describe("valid source history", () => {
   });
 });
 
+describe("safe parser diagnostics", () => {
+  for (const file of ["fleet.yaml", "classicBot.yaml"] as const) {
+    it.each([
+      ["alias", "defaults:\n  model: *PRIVATE_CONFIG_SECRET\n", "Invalid YAML alias"],
+      ["tag", "defaults:\n  model: !PRIVATE_CONFIG_SECRET value\n", "Invalid YAML tag"],
+      ["directive", "%TAG !PRIVATE_CONFIG_SECRET!\n---\ndefaults: {}\n", "Invalid YAML directive"],
+      ["escape", 'defaults:\n  model: "\\qPRIVATE_CONFIG_SECRET"\n', "Invalid YAML escape sequence"],
+    ])(`${file}: source-derived %s is absent from live, fallback and startup messages`, (_kind, source, category) => {
+      const r = rig(file); r.accept(); writeFileSync(r.path, source);
+      r.history.check();
+      const live = r.history.currentIssues()[0]!;
+      expect(live).toMatchObject({ file, mode: "edit", reason: category });
+      expect(live.line).toBeGreaterThan(0); expect(live.column).toBeGreaterThan(0);
+      const fallback = new ConfigHistory(r.home); expect(fallback.read(file, r.path, true).fallback).toBe(true);
+      for (const locale of ["en", "zh-TW"] as const) {
+        setLocale(locale);
+        for (const issue of [live, fallback.currentIssues()[0]!]) {
+          const detail = configIssueText(issue, t);
+          expect(detail).toContain(category); expect(detail).not.toContain("PRIVATE_CONFIG_SECRET");
+        }
+        const emptyHome = mkdtempSync(join(tmpdir(), "agend-config-empty-2829-")); dirs.push(emptyHome);
+        try { new ConfigHistory(emptyHome).read(file, r.path, true); throw Error("expected startup refusal"); }
+        catch (error) {
+          expect(String(error)).toContain(category); expect(String(error)).not.toContain("PRIVATE_CONFIG_SECRET");
+        }
+      }
+      expect(() => r.history.read(file, r.path)).toThrow(ConfigSyntaxError); // live reload remains strict
+      expect(r.rows()).toHaveLength(1); // invalid source never enters history
+    });
+  }
+});
+
 describe("parse-only startup recovery and passive warnings", () => {
   it.each(["fleet.yaml", "classicBot.yaml"] as const)("warns once, then recovers %s without changing it", file => {
     const r = rig(file); r.accept(); r.history.check(); writeFileSync(r.path, r.bad);

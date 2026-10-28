@@ -29,6 +29,28 @@ export class ConfigSyntaxError extends Error {
     this.name = "ConfigSyntaxError";
   }
 }
+/** Parser messages may interpolate source-derived aliases, tags or directives, even without an excerpt. */
+function safeYamlReason(code?: string, reason = ""): string {
+  const categories: Record<string, string> = {
+    DUPLICATE_KEY: "Map keys must be unique",
+    BAD_ALIAS: "Invalid YAML alias", ALIAS_PROPS: "Invalid YAML alias properties",
+    BAD_DIRECTIVE: "Invalid YAML directive", BAD_DQ_ESCAPE: "Invalid YAML escape sequence",
+    BAD_INDENT: "Invalid YAML indentation", TAB_AS_INDENT: "Tabs cannot be used for YAML indentation",
+    BAD_PROP_ORDER: "Invalid YAML property order", BAD_SCALAR_START: "Invalid YAML scalar",
+    TAG_RESOLVE_FAILED: "Invalid YAML tag", MULTIPLE_TAGS: "Multiple YAML tags",
+    MULTIPLE_ANCHORS: "Multiple YAML anchors", MULTIPLE_DOCS: "Multiple YAML documents",
+    MISSING_CHAR: "Missing YAML punctuation", UNEXPECTED_TOKEN: "Unexpected YAML token",
+    NON_STRING_KEY: "Invalid YAML mapping key", KEY_OVER_1024_CHARS: "YAML mapping key is too long",
+    MULTILINE_IMPLICIT_KEY: "Invalid multiline YAML key", BLOCK_AS_IMPLICIT_KEY: "Invalid block YAML key",
+    BLOCK_IN_FLOW: "Invalid YAML collection", BAD_COLLECTION_TYPE: "Invalid YAML collection",
+    RESOURCE_EXHAUSTION: "YAML resource limit exceeded",
+  };
+  if (code) return categories[code] ?? "Invalid YAML syntax";
+  if (reason.startsWith('unidentified alias ') || reason.startsWith('name of an alias ')) return "Invalid YAML alias";
+  if (reason.startsWith('unknown tag ') || reason.startsWith('undeclared tag handle ') || reason.startsWith('tag ') ||
+      reason.startsWith('cannot resolve a node with ') || reason.startsWith('unacceptable node kind for ')) return "Invalid YAML tag";
+  return "Invalid YAML syntax"; // Never forward an unclassified parser string.
+}
 /** Never include a YAML source excerpt (it can contain tokens). Both production parsers must accept the source. */
 export function checkConfigSyntax(source: string, file: ConfigFile): unknown {
   const counter = new LineCounter();
@@ -36,14 +58,14 @@ export function checkConfigSyntax(source: string, file: ConfigFile): unknown {
   const error = doc.errors[0];
   if (error) {
     const where = counter.linePos(error.pos[0]);
-    throw new ConfigSyntaxError(file, where.line, where.col, error.message.replace(/[.。]+$/, ""));
+    throw new ConfigSyntaxError(file, where.line, where.col, safeYamlReason(error.code));
   }
   try {
     const safe = file === "fleet.yaml" ? source.replace(/(?<=:\s+|[-]\s+)(\d{16,})(?=\s*$)/gm, (_, d) => `"${d}"`) : source;
     return unshareParsed(yaml.load(safe), file);
   } catch (error) {
     if (error instanceof yaml.YAMLException) throw new ConfigSyntaxError(file, (error.mark?.line ?? 0) + 1,
-      (error.mark?.column ?? 0) + 1, error.reason.replace(/[.。]+$/, ""));
+      (error.mark?.column ?? 0) + 1, safeYamlReason(undefined, error.reason));
     throw error; // alias-expansion/loader/security failures are not syntax fallback candidates
   }
 }

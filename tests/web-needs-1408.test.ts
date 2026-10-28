@@ -76,6 +76,25 @@ describe("#2246 step 3: task board cards in Needs you", () => {
   });
 });
 
+describe("#2829 configuration issues", () => {
+  it("keeps configuration under Settings, separate from unassigned cards and sign-ins", async () => {
+    const config = (file: string) => ({ id: `config:${file}`, type: "config", instance: "", reason: "config_invalid", detail: `${file}: fix YAML`, since: 1 });
+    app.appStore.set({ needs: [config("fleet.yaml"),
+      { id: "task:unassigned", type: "task", instance: "", reason: "task_blocked", detail: "Task asks you", since: 2 },
+      config("classicBot.yaml"),
+      { ...ITEMS[2] },
+    ] });
+    await mount(); await settle(4);
+    expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["Settings", "Task board (nobody assigned)", "qa-bot"]);
+    expect(p.root.querySelectorAll(".n-group").map((e: any) => e.querySelectorAll(".n-detail").map((d: any) => d.textContent)))
+      .toEqual([["fleet.yaml: fix YAML", "classicBot.yaml: fix YAML"], ["Task asks you"], []]);
+    app.appStore.set({ needs: [config("fleet.yaml"), { id: "backend:codex", type: "backend", instance: "", reason: "backend_signin", detail: "Sign in", since: 3 }] });
+    await settle(4);
+    expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["Settings", "Fleet sign-ins"]);
+    expect(reqs).toEqual([]);
+  });
+});
+
 describe("the panel renders the server's list and reads nothing itself (#1374)", () => {
   it("no request on mount, and none in two minutes open (only a display tick)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval"] });

@@ -71,7 +71,7 @@ describe("fleet start logs the validator's warnings once, at warn level", () => 
   });
   it("startAll calls it right after loading the config (once per start)", async () => {
     const src = (await import("node:fs")).readFileSync(join(process.cwd(), "src", "fleet-manager.ts"), "utf8");
-    expect(src).toMatch(/const fleet = this\.loadConfig\(configPath\);\n\s+this\.slimFleetConfigAtStartup\(\);\n\s+this\.logConfigWarningsAtStartup\(\);/);
+    expect(src).toMatch(/const fleet = this\.loadConfig\(configPath, \{ startup: true \}\);\n\s+this\.slimFleetConfigAtStartup\(\);\n\s+this\.logConfigWarningsAtStartup\(\);/);
     expect(src.match(/this\.logConfigWarningsAtStartup\(\)/g)?.length).toBe(1);
   });
 });
