@@ -7,6 +7,10 @@ type NoticeConfig = { defaults: FleetDefaults; web?: WebConfig };
 export function loginNoticeMode(web?: WebConfig): boolean {
   return web?.notify_login !== false;
 }
+/** Daily tips always post in the General topic; an old "dm" reads as on. */
+export function tipNoticeMode(config: NoticeConfig): boolean {
+  return config.defaults.tips !== false;
+}
 /** Disk keeps only the boolean field; setting it clears the stale `notice_delivery` route #2591 stored beside it. */
 export function setNoticeMode(config: NoticeConfig, kind: "login" | "tips", mode: NoticeMode): void {
   const web = config.web = { ...config.web };
@@ -15,10 +19,7 @@ export function setNoticeMode(config: NoticeConfig, kind: "login" | "tips", mode
   if (Object.keys(delivery).length) web.notice_delivery = delivery; else delete web.notice_delivery;
   if (kind === "login") web.notify_login = mode !== false; else config.defaults.tips = mode !== false;
 }
-/**
- * Accept the short-lived #2581 string form and #2591's routes, but write back only booleans. `defaults.tips` is ignored
- * since #2783, but its "dm" is still rewritten: 2.3.1 refuses it, and a downgrade must load the file.
- */
+/** Accept the short-lived #2581 string form and #2591's routes, but write back only booleans. */
 export function normalizeNoticeDelivery(config: NoticeConfig): void {
   if (config.web?.notify_login === "dm" || config.web?.notice_delivery?.login) setNoticeMode(config, "login", config.web.notify_login !== false);
   if (config.defaults.tips === "dm" || config.web?.notice_delivery?.tips) setNoticeMode(config, "tips", config.defaults.tips !== false);

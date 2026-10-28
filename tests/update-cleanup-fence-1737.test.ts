@@ -31,7 +31,7 @@ function inertManager(dataDir:string, editMessage:any){
  logger:{info:vi.fn(),warn:vi.fn(),error:vi.fn()},startNeedsYou:vi.fn(),announceToolPermissionsChange:vi.fn(),tightenInstanceDirectories:vi.fn(),
  fleetLevelSignature:()=>"inert",checkStartupSignatureConsistency:vi.fn(),applyJobStoreCache:{settleAfterRestart:()=>[]},reloadPending:false,
  sweepOrphanedCancelButtons:async()=>{},configuredStartupInstanceNames:()=>["one","two"],
- lifecycle:{isPaused:()=>false,daemons:new Map([["one",{}],["two",{}]])},findGeneralInstance:()=>null,
+ lifecycle:{isPaused:()=>false,daemons:new Map([["one",{}],["two",{}]])},findGeneralInstance:()=>null,tipsEnabled:()=>false,
  updateCleanupWatch:null,updateProgressTimer:null,updateProgressEditRunning:false,lastUpdateProgressText:null,updateCompletionTipText:null,
  sendFleetStartCompletionFallback:async(_chat:string,text:string)=>{await adapter.sendText("c",text);return true;}});
  return {fm,adapter};
@@ -72,10 +72,10 @@ describe("#1737: the real completion and startup clear — renders a landed outc
   const terminal=edit.mock.calls.map(c=>String(c[2])).find(x=>x.includes("✅ Update complete"));
   expect(terminal).toContain(WARNING);expect(terminal).toContain(COMMAND);expect(readUpdateProgress(dir)).toBeNull();expect(fm.updateCleanupWatch).toBeNull();
  });
- it("#1854: the real completion carries no tip, even with one available",async()=>{
+ it("#1854: the real completion carries no tip, even with tips enabled and one available",async()=>{
   const dir=scratch();seed(dir);const pending=readUpdateProgress(dir)!;
   const edit=vi.fn().mockResolvedValue(undefined),{fm,adapter}=inertManager(dir,edit);
-  Object.assign(fm,{formatTip:()=>"💡 Tip: try /status"});
+  Object.assign(fm,{tipsEnabled:()=>true,pickAvailableTip:()=>({id:"tip-x"}),formatTip:()=>"💡 Tip: try /status"});
   await completion(fm,adapter,pending);
   const terminal=edit.mock.calls.map(c=>String(c[2])).find(x=>x.includes("✅ Update complete"));
   expect(terminal).toBe("✅ Update complete — v2.2.1 · 2/2 agents ready (0s)");

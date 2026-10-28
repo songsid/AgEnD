@@ -1,3 +1,5 @@
+import { Cron } from "croner";
+import type { DailySummaryConfig } from "./types.js";
 
 export type TipLevel = "beginner" | "intermediate" | "advanced";
 
@@ -383,4 +385,27 @@ export function selectTip(
   if (candidates.length === 0) return null;
   const index = Math.min(candidates.length - 1, Math.max(0, Math.floor(random() * candidates.length)));
   return candidates[index];
+}
+
+/** Fleet-internal daily trigger. It is intentionally not persisted in fleet.yaml. */
+export class DailyTipScheduler {
+  private job: Cron | null = null;
+
+  constructor(
+    private readonly config: DailySummaryConfig,
+    private readonly timezone: string,
+    private readonly onTip: () => void | Promise<void>,
+  ) {}
+
+  start(): void {
+    const cron = `${this.config.minute} ${this.config.hour} * * *`;
+    this.job = new Cron(cron, { timezone: this.timezone }, () => {
+      Promise.resolve(this.onTip()).catch(() => { /* caller owns logging */ });
+    });
+  }
+
+  stop(): void {
+    this.job?.stop();
+    this.job = null;
+  }
 }

@@ -1,5 +1,5 @@
 /**
- * #1854 rank 4: a healthy update ends with one completion line (the once-only 2.2 welcome is gone, #2783). The
+ * #1854 rank 4: a healthy update ends with one completion line and the once-only 2.2 welcome is two lines. The
  * update-completion tip is deferred (daily tips and /tips are unchanged). Warning lines are kept.
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -44,7 +44,7 @@ describe("an update that needed no restart completes without a tip", () => {
   let dir = "";
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
-  it("the old fleet edits its message to the bare completion, with a tip available", async () => {
+  it("the old fleet edits its message to the bare completion, tips enabled and available", async () => {
     setLocale("en");
     dir = mkdtempSync(join(tmpdir(), "agend-1854-tip-"));
     beginUpdateProgress(dir, { adapterId: "a", chatId: "c", messageId: "m" }, Date.now());
@@ -55,7 +55,7 @@ describe("an update that needed no restart completes without a tip", () => {
     Object.assign(fm, {
       dataDir: dir, adapters: new Map([["a", adapter]]), logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
       updateCleanupWatch: null, updateProgressTimer: null, updateProgressEditRunning: false, lastUpdateProgressText: null,
-      formatTip: () => "💡 Tip: try /status",
+      tipsEnabled: () => true, pickAvailableTip: () => ({ id: "tip-x" }), formatTip: () => "💡 Tip: try /status",
       updateCompletionTipText: null,   // the tip cache the removed code read; a constructed fleet started it at null
     });
     fm.startUpdateProgressMonitor(adapter);

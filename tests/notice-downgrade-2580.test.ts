@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
-import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "../src/notice-delivery.js";
+import { loginNoticeMode, tipNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "../src/notice-delivery.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
@@ -39,7 +39,7 @@ describe("#2580 downgrade-safe notice storage", () => {
     const raw = h.read();
     expect([raw.web.notify_login, raw.defaults.tips]).toEqual([true, true]);
     expect(raw.web.notice_delivery).toBeUndefined();                             // hmsg-d1809f2a/3b8ac2af: no DM routes
-    expect(loginNoticeMode(raw.web)).toBe(true);
+    expect([loginNoticeMode(raw.web), tipNoticeMode(raw)]).toEqual([true, true]);
     expect(readFileSync(h.file, "utf8")).toContain("# Keep my settings");
     expect(readFileSync(h.file + ".bak", "utf8")).toBe(original);
   });
@@ -78,11 +78,11 @@ describe("#2580 downgrade-safe notice storage", () => {
     expect([h.read().defaults.tips, h.read().web.notify_login]).toEqual([true, true]);
     expect(h.read().web.notice_delivery).toBeUndefined();
     h.fm.loadConfig(h.file);
-    expect([loginNoticeMode(h.fm.fleetConfig.web), h.fm.fleetConfig.defaults.tips]).toEqual([true, true]);
+    expect([loginNoticeMode(h.fm.fleetConfig.web), tipNoticeMode(h.fm.fleetConfig)]).toEqual([true, true]);
     expect(await put(h.fm, "/api/settings/fleet/web", { notify_login: false })).toBe(200);
     expect(h.read().web.notify_login).toBe(false);
     expect(await put(h.fm, "/api/settings/fleet/defaults", { tips: false })).toBe(200);
-    expect([loginNoticeMode(h.read().web), h.read().defaults.tips]).toEqual([false, false]);
+    expect([loginNoticeMode(h.read().web), tipNoticeMode(h.read())]).toEqual([false, false]);
     expect(h.read().web.notice_delivery).toBeUndefined();
   });
   it.each([["/api/settings/fleet/web", { notify_login: true }], ["/api/settings/fleet/defaults", { tips: true }], ["/api/settings/fleet/web", { log_tab: true }]])(
@@ -100,6 +100,9 @@ describe("#2580 downgrade-safe notice storage", () => {
     expect(loginNoticeMode({ notify_login: false, notice_delivery: { login: "dm" } })).toBe(false);
     expect(loginNoticeMode({ notify_login: true, notice_delivery: { login: "dm" } })).toBe(true);
     expect(loginNoticeMode({ notify_login: "dm" })).toBe(true);
+    expect(tipNoticeMode({ defaults: { tips: false }, web: { notice_delivery: { tips: "dm" } } })).toBe(false);
+    expect(tipNoticeMode({ defaults: { tips: true }, web: { notice_delivery: { tips: "dm" } } })).toBe(true);
+    expect(tipNoticeMode({ defaults: { tips: "dm" } })).toBe(true);
   });
   it("routing has a closed schema and cannot hide unknown Settings effects", () => {
     expect(validateFleetConfig({ defaults: {}, instances: {}, web: { notice_delivery: { login: "email" } } }).valid).toBe(false);
