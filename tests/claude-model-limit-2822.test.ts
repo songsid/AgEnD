@@ -57,7 +57,8 @@ describe("#2822: the transcript monitor tells Claude's own API error apart from 
     m.processEntry({ type: "user", message: { role: "user", content: "message 1" } });
     m.processEntry({ type: "user", isMeta: true, message: { role: "user", content: "<local-command-caveat>" } });
     m.processEntry({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } });
-    expect(prompts).toBe(1);
+    m.processEntry({ type: "user", message: { role: "user", content: [{ type: "text", text: "look at this" }, { type: "image", source: {} }] } });
+    expect(prompts).toBe(2);                                                         // the string one and the block one
   });
 });
 
@@ -185,6 +186,60 @@ describe("#2822: the reply guard", () => {
     daemon.applyInstanceStateSnapshot(at("working"), `${inbound}\n● …\n❯ `); daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n● …\n❯ `);
     await vi.advanceTimersByTimeAsync(61_000); daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n● …\n❯ `); await daemon.pasteLock;
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#2822: real transcript records, monitor → daemon → guard (Prism r2)", () => {
+  /** The daemon's own wiring of the monitor, on real-shaped records. */
+  function wired() {
+    const d = daemonFor();
+    const m = new TranscriptMonitor(tmp(), logger) as any;
+    m.on("api_error", (text: string, status: number | null) => d.daemon.noteClaudeApiError(text, status));
+    m.on("user_prompt", () => d.daemon.noteClaudePrompt());
+    m.on("assistant_text", () => d.daemon.noteClaudeOutput());
+    m.on("tool_use", () => d.daemon.noteClaudeOutput());
+    return { ...d, record: (e: unknown) => m.processEntry(e) };
+  }
+  const prompt = (content: unknown) => ({ type: "user", message: { role: "user", content } });
+  const apiError = (status: number, text: string) => ({ type: "assistant", isApiErrorMessage: true, apiErrorStatus: status, error: "x",
+    timestamp: new Date().toISOString(), message: { role: "assistant", content: [{ type: "text", text }] } });
+  async function personTurn(daemon: any, n: number, records: () => void) {
+    records();
+    const inbound = `[user:Ann via telegram] message ${n}`;
+    daemon.markTurnStarted(meta(n), inbound);
+    daemon.applyInstanceStateSnapshot(at("working"), `${inbound}\n❯ `); daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n❯ `);
+    await vi.advanceTimersByTimeAsync(61_000); daemon.applyInstanceStateSnapshot(at("idle"), `${inbound}\n❯ `); await daemon.pasteLock;
+  }
+
+  it("(a) a block-form prompt after an old limit is newer: the new turn gets its one recovery", async () => {
+    vi.useFakeTimers();
+    const { daemon, record } = wired();
+    record(prompt("message 1")); record(RECORD);
+    await personTurn(daemon, 2, () => record(prompt([{ type: "text", text: "message 2" }, { type: "image", source: { type: "base64", data: "" } }])));
+    expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("(b) a later API error of another kind (a 500, a non-matching 429) is newer: the turn gets its one recovery", async () => {
+    for (const later of [apiError(500, "API Error: 500 Internal server error"), apiError(429, "API Error: Rate limit reached")]) {
+      vi.useFakeTimers();
+      const { daemon, record } = wired();
+      await personTurn(daemon, 1, () => { record(prompt("message 1")); record(RECORD); record(later); });
+      expect(daemon.deliverMessage, String(later.apiErrorStatus)).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    }
+  });
+
+  it("controls: the limit as the newest event is quiet — after a 500; a meta record, a tool result or a system record after it change nothing", async () => {
+    vi.useFakeTimers();
+    const { daemon, record } = wired();
+    await personTurn(daemon, 1, () => {
+      record(prompt("message 1")); record(apiError(500, "API Error: 500")); record(RECORD);
+      // after it, records that are neither prompts nor output (Claude writes such records after an error)
+      record({ type: "user", isMeta: true, message: { role: "user", content: "<local-command-caveat>" } });
+      record(prompt([{ type: "tool_result", tool_use_id: "t", content: "x" }]));
+      record({ type: "system", subtype: "turn_duration", message: { role: "system", content: "x" } });
+    });
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
   });
 });
 

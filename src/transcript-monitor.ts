@@ -231,8 +231,13 @@ export class TranscriptMonitor extends EventEmitter {
       return;
     }
 
-    // #2822: a prompt (a person's message, a system notice) — the point a later API error is judged against.
-    if (entry.type === "user" && entry.isMeta !== true && typeof msg.content === "string" && msg.content.trim()) this.emit("user_prompt");
+    // #2822: a prompt (a person's message, a system notice; a string, or text/image blocks) — never a meta record or a
+    // tool result. The point a later API error is judged against.
+    if (entry.type === "user" && entry.isMeta !== true && (typeof msg.content === "string"
+      ? msg.content.trim() !== ""
+      : Array.isArray(msg.content) && msg.content.length > 0 && msg.content.every((b: any) => b?.type === "text" || b?.type === "image"))) {
+      this.emit("user_prompt");
+    }
     const contents = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
 
     for (const block of contents) {

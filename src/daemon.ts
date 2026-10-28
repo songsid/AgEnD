@@ -2027,11 +2027,9 @@ export class Daemon extends EventEmitter {
    * own: a 429 is recorded within a second, often before AgEnD has armed the turn, so no AgEnD-side clock is used.
    */
   private usageLimitHold: { model: string; since: number } | null = null;
-  /** Transcript events in Claude's order: the latest limit error, assistant output and prompt. */
+  /** Transcript events in Claude's order (prompts, output, every API error): the newest, and the latest limit error. */
   private transcriptEventSeq = 0;
   private usageLimitErrorSeq = 0;
-  private assistantOutputSeq = 0;
-  private userPromptSeq = 0;
   static readonly MODEL_USAGE_LIMIT = /^You['’]ve reached your ([A-Za-z0-9][A-Za-z0-9 .-]{0,40}?) limit\./;
 
   /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
@@ -2056,7 +2054,7 @@ export class Daemon extends EventEmitter {
 
   /** #2822: Claude produced output (text or a tool call): the model answers again, so a hold ends. */
   private noteClaudeOutput(): void {
-    this.assistantOutputSeq = ++this.transcriptEventSeq;
+    ++this.transcriptEventSeq;
     if (!this.usageLimitHold) return;
     this.logger.info({ model: this.usageLimitHold.model }, "Usage-limit hold cleared — Claude answered again");
     this.usageLimitHold = null;
@@ -2065,15 +2063,16 @@ export class Daemon extends EventEmitter {
 
   /** #2822: a prompt reached Claude (recorded in its transcript). */
   private noteClaudePrompt(): void {
-    this.userPromptSeq = ++this.transcriptEventSeq;
+    ++this.transcriptEventSeq;
   }
 
   /**
-   * #2822: the turn ended on the limit error — the transcript's newest event. A prompt after it (a new message the error
-   * is older than) or output after it (the model answered) means it is not this turn's end.
+   * #2822: the turn ended on the limit error — the transcript's newest event of any kind. A prompt after it (a new
+   * message the error is older than), output after it (the model answered) or another API error after it (a 500, a
+   * different 429) means the limit error is not this turn's end.
    */
   private personTurnEndedOnUsageLimit(): boolean {
-    return this.usageLimitErrorSeq > 0 && this.usageLimitErrorSeq > this.assistantOutputSeq && this.usageLimitErrorSeq > this.userPromptSeq;
+    return this.usageLimitErrorSeq > 0 && this.usageLimitErrorSeq === this.transcriptEventSeq;
   }
 
   private static errorPatternKey(ep: ErrorPattern): string {
