@@ -40,6 +40,7 @@ echo "$*" >> "\${AGEND_HOME}/agend-calls.log"
 exit 0
 `);
   chmodSync(join(pkg, "bin", "agend"), 0o755);
+  cpSync(join(REPO, "launcher", "fleet-service-owner.cjs"), join(pkg, "launcher", "fleet-service-owner.cjs"));
   cpSync(join(REPO, "launcher", "agend-install.cjs"), join(pkg, "launcher", "agend-install.cjs"));
   cpSync(join(REPO, "launcher", "private-home.cjs"), join(pkg, "launcher", "private-home.cjs"));
   cpSync(join(REPO, "launcher", "install-admission.cjs"), join(pkg, "launcher", "install-admission.cjs"));   // the lock's process readers
@@ -132,8 +133,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const v1 = release(s.root, "1.0.0"), v2 = release(s.root, "2.0.0");
     expect(s.npm(["install", "-g", v1]).status).toBe(0);
     const sibling = interruptedUpdate(s, "2.0.0");
-    withUnit(s.root);   // the user's host: the fleet runs as the systemd user service `agend install` made
-    fleetRuns(s.home);
+    withUnit(s.root);   // installed service, currently stopped; no unproven live PID claim
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--upgrade", "--spec", v2]);
     expect(run.status, run.stdout + run.stderr).toBe(0);
     expect(s.version()).toBe("2.0.0");
@@ -147,8 +147,8 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     expect(existsSync(join(s.root, "prefix", ".agend-install.lock")), "the unreadable lock is gone, and so is the installer's own").toBe(false);
     expect(run.stdout).toMatch(/moved aside an install lock that could not be read/);
     // The service is the new release's: its `agend install --no-activate` (the unit rewritten under the manager it has;
-    // linger on — ensureUserSystemd below), then the restart onto it.
-    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "restart --yes"]);
+    // linger on — ensureUserSystemd below), then starting it.
+    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "start"]);
     // The chat's progress moved on from "downloading": installed, v2.0.0 (the new fleet takes it to its final message).
     const marker = JSON.parse(readFileSync(join(s.home, "update-in-progress.json"), "utf8"));
     expect(marker.progress).toMatchObject({ stage: "installed", version: "2.0.0", target: { messageId: "2" } });
@@ -165,6 +165,20 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     expect(run.stdout).toMatch(/put back AgEnD v1\.0\.0 that an interrupted install had moved aside/);
     expect(s.version()).toBe("2.0.0");
     expect(existsSync(sibling)).toBe(false);
+  });
+
+  it("target installer refuses an unproven live PID beside a service BEFORE repairing or installing", () => {
+    const s = scratch();
+    const v1 = release(s.root, "1.0.0"), v2 = release(s.root, "2.0.0");
+    expect(s.npm(["install", "-g", v1]).status).toBe(0);
+    withUnit(s.root); fleetRuns(s.home); // a live test PID is deliberately not fleet ownership proof
+    const before = readFileSync(join(s.pkgDir, "package.json"), "utf8");
+    const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--upgrade", "--spec", v2]);
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("service ownership could not be verified");
+    expect(s.version()).toBe("1.0.0");
+    expect(readFileSync(join(s.pkgDir, "package.json"), "utf8")).toBe(before);
+    expect(existsSync(join(s.home, "agend-calls.log"))).toBe(false);
   });
 
   it("a hand-started fleet (no service unit): no unit is made (#1631), only the restart onto the new release", () => {

@@ -63,6 +63,7 @@ import {
 import { clearUpdateMarker, markUpdateInProgress, readUpdateProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
+import { fleetServiceOwner } from "./fleet-service-owner.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath, serviceDefinitionHome } from "./service-installer.js";
@@ -72,7 +73,7 @@ import {
   SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
 } from "./service-restart-selection.js";
 import { loadRawFleetConfig } from "./config.js";
-import { detectLocale, setLocale, t } from "./locale.js";
+import { detectLocale, setLocale, getLocale, t } from "./locale.js";
 import { settingsSourceLabel } from "./settings-confirmation.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
@@ -1338,6 +1339,14 @@ program
     // by the time npm resolves it. Unknown target: the tag, as before.
     const pkg = `@songsid/agend@${targetVersion ?? tag}`;
 
+    const ownerRefusal = fleetServiceOwner.updateRefusal(DATA_DIR, { locale: getLocale() });
+    if (ownerRefusal) {
+      console.error(ownerRefusal);
+      setUpdateProgressStage(DATA_DIR, "failed", { error: ownerRefusal });
+      process.exitCode = 1;
+      return;
+    }
+
     // The restart stage, shared by a real update and by the stale-fleet case.
     const restartFleetForUpdate = (command: string, args: string[], version: string): "restarted" | "pending" | "failed" => {
       console.log("  Restarting fleet...");
@@ -2256,6 +2265,15 @@ program
       if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
       const { systemdPeerBus } = await import("./service-activation.js");
       if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps, systemdPeerBus))) return;
+      let handedOver = false;
+      const ownerTarget = { unit: systemdTarget.unit.endsWith(".service") ? systemdTarget.unit : `${systemdTarget.unit}.service`, user: systemdTarget.user };
+      try {
+        handedOver = await fleetServiceOwner.handoff(DATA_DIR, ownerTarget, { locale: getLocale(), log: line => console.log(line) });
+      } catch (error) {
+        console.error((error as Error).message);
+        process.exitCode = 1;
+        return;
+      }
       // Clears the failed state AND the start-limit counter (#1113:
       // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
       // so an operator's restart is never refused by the limit.
@@ -2264,6 +2282,16 @@ program
       } catch { /* best effort */ }
       const restartOutcome = systemdRestartOutcome(systemdTarget.unit, systemdTarget.user);
       if (restartOutcome === "restarted") {
+        if (handedOver) {
+          const owner = fleetServiceOwner.inspect(DATA_DIR, ownerTarget);
+          if (owner.kind !== "managed" || owner.pid !== owner.mainPid) {
+            console.error(fleetServiceOwner.text("unconfirmed", ownerTarget, getLocale()));
+            process.exitCode = 1;
+            return;
+          }
+          console.log(fleetServiceOwner.text("ready", { ...ownerTarget, pid: owner.pid }, getLocale()));
+          return;
+        }
         console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
         return;
       }

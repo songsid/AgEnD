@@ -235,7 +235,7 @@ describe("#2420 a new service that does not come up: the previous package, unit 
     expect(manager(r)).toEqual(kind === "user" ? ["systemctl --user daemon-reload", "systemctl --user show -p ActiveState -p SubState -p MainPID -p NeedDaemonReload com.agend.fleet"] : []);
     expect(r.version()).toBe(OLD);
     expect(readFileSync(r.file!, "utf8")).toBe(r.oldDefinition);
-    expect(failure(r)).toContain("the previous service was never stopped and still runs (pid 9191)");
+    expect(failure(r)).toContain("the previously recorded fleet PID 9191 is still alive; this check does not establish which service owns it");
   });
 
   it("the refresh itself fails (`install --no-activate` exit 1): rolled back the same way; no restart is attempted", () => {

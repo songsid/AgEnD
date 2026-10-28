@@ -24,6 +24,7 @@ var childProcess = require("child_process");
 
 var LOCK = ".agend-install.lock";
 var MARKER = "update-in-progress.json";
+var fleetServiceOwner = require("./fleet-service-owner.cjs");
 var ensurePrivateHome = require("./private-home.cjs").ensurePrivateHome;
 
 function defaultDeps() {
@@ -670,6 +671,8 @@ function main(argv, injected) {
   catch (error) { return fail("install", error.message); }
 
   log("  AgEnD installer v" + version + (upgrade ? " (upgrade)" : ""));
+  var ownerRefusal = fleetServiceOwner.updateRefusal(home, { env: deps.env, uid: deps.uid, run: deps.run });
+  if (ownerRefusal) return fail("install", ownerRefusal);
   var root = last(deps.run("npm", ["root", "-g"], { timeoutMs: 30000 }).stdout);
   var prefix = last(deps.run("npm", ["prefix", "-g"], { timeoutMs: 30000 }).stdout);
   if (!root || !prefix) {
@@ -688,6 +691,9 @@ function main(argv, injected) {
   try {
     claimed = claimMarker(home, deps, {});
     setStage(home, claimed, "downloading", { version: version }, deps);
+    // Recheck before any package repair/global install, including old update callers.
+    var ownerRecheck = fleetServiceOwner.updateRefusal(home, { env: deps.env, uid: deps.uid, run: deps.run });
+    if (ownerRecheck) return fail("install", ownerRecheck);
     var fixed = repair(root, prefix, deps);
     fixed.notes.forEach(function (n) { log("  ↺ " + n); });
     pruneStale(prefix, deps).forEach(function (n) { log("  ↺ " + n); });
@@ -785,7 +791,7 @@ function main(argv, injected) {
       var what = "the previous package (v" + preimage.version + ") and " + name + " were restored";
       if (back !== preimage.version) restored.push(bin + " reports " + (back || "nothing") + ", not v" + preimage.version);
       var outcome;
-      if (untouched) outcome = what + "; the previous service was never stopped and still runs (pid " + fleetBefore + ")";
+      if (untouched) outcome = what + "; " + fleetServiceOwner.text("survivor", { pid: fleetBefore }, fleetServiceOwner.locale(home));
       else if (fleetBefore > 0) {
         var started = startService(svc, home, deps);
         outcome = started.running ? what + "; the previous service is running (pid " + started.pid + ")"
