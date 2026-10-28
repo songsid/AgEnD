@@ -10,6 +10,7 @@ import { join } from "node:path";
 import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENT_WHATS_NEW, WHATS_NEW_NOTES_URL, withWhatsNew, agendVersion, packageReleaseVersion, compareVersions, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "../src/agent-whats-new.js";
+import type { WhatsNewAudience } from "../src/agent-whats-new.js";
 import { Daemon } from "../src/daemon.js";
 import type { TmuxManager } from "../src/tmux-manager.js";
 
@@ -193,7 +194,7 @@ describe("the daemon", () => {
     await w.deliver("first");
     expect(w.pastes.length, "one paste, not a turn of its own").toBe(1);
     const [notice, message] = w.pastes[0]!.split("\n\n");
-    expect([notice!.startsWith("[system:whats-new]"), message]).toEqual([true, "[from:peer] first\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)"]);
+    expect([notice!.startsWith("[system:whats-new]"), message]).toEqual([true, "[from:peer] first"]);
     expect([w.d["pendingWhatsNew"], announcedIn(w.dir)]).toEqual([null, ALL]);
     await w.deliver("second");
     expect(w.pastes.length).toBe(2);
@@ -384,6 +385,13 @@ describe("#2800: once per release, only relevant tools", () => {
       .toEqual([["old", "beta", "now"], false, true, true]);
     const onlyOld = planWhatsNew({ record: { announced: [] }, fresh: false, version: "2.3.2", entries: entries.slice(0, 1) });
     expect(onlyOld).toEqual({ silent: ["old"], version: "2.3.2" });
+  });
+  it("#2785 (a): every role hears the reply-required marker once on 2.3.3, whatever its tools; 2.3.2 never does", () => {
+    const told = (version: string, roles: WhatsNewAudience[]) => {
+      const plan = planWhatsNew({ record: { announced: [] }, fresh: false, version, roles, tools: new Set(["reply"]) });
+      return !!plan && "notice" in plan && plan.notice.includes("reply required → report_result");
+    };
+    expect([told("2.3.3", ["worker"]), told("2.3.3", ["classic"]), told("2.3.3", ["general"]), told("2.3.2", ["worker"])]).toEqual([true, true, true, false]);
   });
   it("an entry naming tools is shown only to an instance that has one of them; a rule-only entry to every role it is for", () => {
     const entries = [{ id: "pack", since: "2.3.2", tools: ["office_pack_list"], text: "pack line" }, { id: "rule", since: "2.3.2", text: "rule line" }];
