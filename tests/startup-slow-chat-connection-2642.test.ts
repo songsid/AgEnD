@@ -18,7 +18,7 @@ vi.mock("../src/logger.js", async original => {
   const silent: any = { info() {}, debug() {}, warn(_o: unknown, m?: string) { if (m) calls.warns.push(m); }, error() {}, child: () => silent };
   return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
 });
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: (s: string) => { calls.notify.push(s); }, sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: (s: string) => { calls.notify.push(s); }, sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn(), startSdWatchdog: () => setInterval(() => {}, 10_000) }));
 vi.mock("../src/tmux-exec-helper.js", () => ({ tmuxExecHelper: { reopen() {}, start() {}, maintain() {}, async stop() {} } }));
 
 const { FleetManager } = await import("../src/fleet-manager.js");

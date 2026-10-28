@@ -10,7 +10,7 @@ import { StormWindow } from "../src/storm-window.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { getLocale, setLocale } from "../src/locale.js";
 
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn(), startSdWatchdog: () => setInterval(() => {}, 10_000) }));
 // Give the ESM namespace configurable wrappers; the native reader stays inert in the default-path control.
 vi.mock("node:fs", async original => ({ ...await original<typeof import("node:fs")>() }));
 vi.mock("node:os", async original => ({ ...await original<typeof import("node:os")>(), platform: () => "linux" }));
