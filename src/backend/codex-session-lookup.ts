@@ -59,12 +59,43 @@ export function codexStateDbAbsent(path: string): boolean {
   }
 }
 
-/** The working directory as configured and as the filesystem resolves it. */
-function cwdCandidates(workingDirectory: string): string[] {
+/** bigint stat of a cwd candidate. ino can exceed Number.MAX_SAFE_INTEGER (WSL 9P). */
+export type CwdStat = (path: string) => { isDirectory(): boolean; dev: bigint; ino: bigint };
+
+export function defaultCwdStat(path: string): ReturnType<CwdStat> {
+  return statSync(path, { bigint: true });
+}
+
+function sameDirectory(a: string, b: string, stat: CwdStat): boolean {
+  try {
+    const sa = stat(a);
+    const sb = stat(b);
+    return sa.isDirectory() && sb.isDirectory() && sa.dev === sb.dev && sa.ino !== 0n && sa.ino === sb.ino;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The working directory as configured, as the filesystem resolves it, and — only when
+ * `stat` proves they are the same directory (same dev, nonzero identical ino) — the
+ * lowercase spelling Codex stores on a case-insensitive mount (#2817).
+ */
+export function cwdCandidates(workingDirectory: string, stat: CwdStat = defaultCwdStat): string[] {
   const configured = resolve(workingDirectory);
   let real: string | null = null;
   try { real = realpathSync(configured); } catch { /* a missing dir still matches as configured */ }
-  return real && real !== configured ? [configured, real] : [configured];
+  const base = real && real !== configured ? [configured, real] : [configured];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (p: string) => { if (!seen.has(p)) { seen.add(p); out.push(p); } };
+  for (const p of base) add(p);
+  for (const p of [...out]) {
+    const lower = p.toLowerCase();
+    if (lower === p) continue;
+    if (sameDirectory(p, lower, stat)) add(lower);
+  }
+  return out;
 }
 
 /**
@@ -93,6 +124,7 @@ export function findExactCwdCodexSession(
   workingDirectory: string,
   open: (path: string) => Database.Database = openCodexStateReadonly,
   rolloutHasTurn: (path: string) => boolean = rolloutRecordsTurn,
+  stat: CwdStat = defaultCwdStat,
 ): ExactCwdSession {
   let db: Database.Database | null = null;
   try {
@@ -100,16 +132,17 @@ export function findExactCwdCodexSession(
     const columns = new Set((db.prepare("PRAGMA table_info(threads)").all() as Array<{ name: string }>).map(c => c.name));
     const missing = CODEX_THREAD_COLUMNS.filter(c => !columns.has(c));
     if (missing.length > 0) return { kind: "unreadable", reason: `threads schema missing: ${missing.join(", ")}` };
-    const [first, second = first] = cwdCandidates(workingDirectory);
+    const candidates = cwdCandidates(workingDirectory, stat);
+    const placeholders = candidates.map(() => "?").join(", ");
     // Every thread of this directory, newest first, until one has content —
     // no page limit, so a run of empty threads cannot hide an older session.
     const rows = db.prepare(`
       SELECT id, has_user_event, first_user_message, rollout_path FROM threads
-      WHERE cwd IN (?, ?)
+      WHERE cwd IN (${placeholders})
         AND source = 'cli'
         AND archived = 0
       ORDER BY recency_at_ms DESC, updated_at_ms DESC, id DESC
-    `).iterate(first, second) as IterableIterator<{ id: unknown; has_user_event: unknown; first_user_message: unknown; rollout_path: unknown }>;
+    `).iterate(...candidates) as IterableIterator<{ id: unknown; has_user_event: unknown; first_user_message: unknown; rollout_path: unknown }>;
     let row: { id: unknown } | undefined;
     for (const r of rows) {
       // Any sign of content is enough; only a thread with none is skipped.
@@ -205,8 +238,9 @@ export function newestMissedCwdRollout(
   sessionsDir: string,
   workingDirectory: string,
   rolloutHasTurn: (path: string) => boolean = rolloutRecordsTurn,
+  stat: CwdStat = defaultCwdStat,
 ): { id: string; path: string } | null {
-  const candidates = new Set(cwdCandidates(workingDirectory));
+  const candidates = new Set(cwdCandidates(workingDirectory, stat));
   const files: Array<{ path: string; mtimeMs: number }> = [];
   const walk = (dir: string, depth: number): void => {
     let entries: string[];
@@ -238,8 +272,8 @@ export function newestMissedCwdRollout(
  * instead of a quiet fresh start. Any rollout of this directory counts,
  * with or without a turn.
  */
-export function cwdRolloutsProvenAbsent(sessionsDir: string, workingDirectory: string): boolean {
-  const candidates = new Set(cwdCandidates(workingDirectory));
+export function cwdRolloutsProvenAbsent(sessionsDir: string, workingDirectory: string, stat: CwdStat = defaultCwdStat): boolean {
+  const candidates = new Set(cwdCandidates(workingDirectory, stat));
   const code = (err: unknown): string | undefined => (err as { code?: string }).code;
   const walk = (dir: string, depth: number): boolean => {
     let entries: string[];

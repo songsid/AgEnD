@@ -8,15 +8,19 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  type CwdStat,
   codexSiblingState,
+  cwdCandidates,
+  cwdRolloutsProvenAbsent,
   defaultGitCommonDir,
   findExactCwdCodexSession,
+  newestMissedCwdRollout,
   openCodexStateReadonly,
   planCodexResume,
   rolloutRecordsTurn,
@@ -334,6 +338,87 @@ describe("findExactCwdCodexSession", () => {
       writer.prepare("UPDATE threads SET recency_at_ms = 500 WHERE id = ?").run(ids[0]);
       expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: ids[0] });
     } finally { writer.close(); }
+  });
+});
+
+/** #2817: Codex stores threads.cwd lowercase on a case-insensitive WSL mount. */
+const WSL_INO = 54043195529266548n; // above Number.MAX_SAFE_INTEGER
+const MIXED = "/mnt/e/Task/AgEnD/projects/codex";
+const LOWER = MIXED.toLowerCase();
+const sameIno: CwdStat = () => ({ isDirectory: () => true, dev: 1n, ino: WSL_INO });
+const differentIno: CwdStat = p => ({ isDirectory: () => true, dev: 1n, ino: p === p.toLowerCase() ? 1n : 2n });
+const failingStat: CwdStat = () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); };
+
+describe("cwd casing aliases only when stat proves the same directory (#2817)", () => {
+  it("uses a BigInt inode above MAX_SAFE_INTEGER", () => {
+    expect(WSL_INO > BigInt(Number.MAX_SAFE_INTEGER)).toBe(true);
+  });
+
+  it("adds the lowercase alias when both spellings are the same directory", () => {
+    expect(cwdCandidates(MIXED, sameIno)).toEqual([resolve(MIXED), LOWER]);
+  });
+
+  it("does not add the lowercase spelling of a different inode (case-sensitive pair)", () => {
+    expect(cwdCandidates(MIXED, differentIno)).toEqual([resolve(MIXED)]);
+  });
+
+  it("leaves candidates unchanged when stat fails", () => {
+    expect(cwdCandidates(MIXED, failingStat)).toEqual([resolve(MIXED)]);
+  });
+
+  it("finds the stored lowercase thread from the mixed-case working directory", () => {
+    const { path, ids } = stateDb([{ cwd: LOWER, recency: 100 }]);
+    expect(findExactCwdCodexSession(path, MIXED, openCodexStateReadonly, rolloutRecordsTurn, sameIno))
+      .toEqual({ kind: "found", id: ids[0] });
+  });
+
+  it("does not resume a different directory that only shares the lowercase spelling", () => {
+    const { path } = stateDb([{ cwd: LOWER, recency: 100 }]);
+    expect(findExactCwdCodexSession(path, MIXED, openCodexStateReadonly, rolloutRecordsTurn, differentIno))
+      .toEqual({ kind: "none" });
+  });
+
+  it("does not widen the search when stat fails", () => {
+    const { path } = stateDb([{ cwd: LOWER, recency: 100 }]);
+    expect(findExactCwdCodexSession(path, MIXED, openCodexStateReadonly, rolloutRecordsTurn, failingStat))
+      .toEqual({ kind: "none" });
+  });
+
+  it("keeps source, archived, empty-conversation and recency rules on the alias", () => {
+    const { path, ids } = stateDb([
+      { cwd: LOWER, recency: 100 },
+      { cwd: LOWER, recency: 900, archived: 1 },
+      { cwd: LOWER, recency: 800, source: "exec" },
+      { cwd: LOWER, recency: 700, firstUserMessage: "" },
+    ]);
+    expect(findExactCwdCodexSession(path, MIXED, openCodexStateReadonly, rolloutRecordsTurn, sameIno))
+      .toEqual({ kind: "found", id: ids[0] });
+  });
+
+  it.skipIf(!existsSync("/mnt/e"))("on a real case-insensitive /mnt/e directory, default stat finds the lowercase row", () => {
+    const root = mkdtempSync(join("/mnt/e", "agend-2817-"));
+    dirs.push(root);
+    const mixed = join(root, "Task");
+    mkdirSync(mixed);
+    expect(cwdCandidates(mixed)).toContain(mixed.toLowerCase());
+    const { path, ids } = stateDb([{ cwd: mixed.toLowerCase(), recency: 100 }]);
+    expect(findExactCwdCodexSession(path, mixed)).toEqual({ kind: "found", id: ids[0] });
+  });
+
+  it("newestMissedCwdRollout and cwdRolloutsProvenAbsent use the same alias rule", () => {
+    const root = tempDir();
+    const sessions = join(root, "sessions", "2026", "10", "28");
+    mkdirSync(sessions, { recursive: true });
+    const id = uuid();
+    const rolloutPath = join(sessions, `rollout-2026-10-28T10-00-00-${id}.jsonl`);
+    writeFileSync(rolloutPath, [
+      JSON.stringify({ type: "session_meta", payload: { id, cwd: LOWER, source: "cli" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }),
+    ].join("\n") + "\n");
+    expect(newestMissedCwdRollout(join(root, "sessions"), MIXED, rolloutRecordsTurn, sameIno)?.id).toBe(id);
+    expect(newestMissedCwdRollout(join(root, "sessions"), MIXED, rolloutRecordsTurn, differentIno)).toBeNull();
+    expect(cwdRolloutsProvenAbsent(join(root, "sessions"), MIXED, sameIno)).toBe(false);
+    expect(cwdRolloutsProvenAbsent(join(root, "sessions"), MIXED, differentIno)).toBe(true);
   });
 });
 

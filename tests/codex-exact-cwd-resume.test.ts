@@ -5,7 +5,7 @@
  * codex-cli 0.157.0 schema; every case calls the production buildCommand.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -88,6 +88,21 @@ describe("Codex launch resumes this instance's own session (#984)", () => {
     expect(cmd).not.toContain("--last");
     expect(cmd).not.toContain(SIBLING);
     expect(warning).toBeNull();
+  });
+
+  it.skipIf(!existsSync("/mnt/e"))("resumes the lowercase-stored thread of a mixed-case /mnt/e workspace (#2817)", () => {
+    const acc = mkdtempSync(join("/mnt/e", "agend-2817-cmd-"));
+    try {
+      const mixed = join(acc, "Task");
+      mkdirSync(mixed);
+      writeState([{ id: OWN, cwd: mixed.toLowerCase(), recency: 100 }]);
+      const { cmd, warning } = launch(mixed);
+      expect(cmd).toContain(` resume '${OWN}' --dangerously-bypass-approvals-and-sandbox`);
+      expect(cmd).not.toContain("--last");
+      expect(warning).toBeNull();
+    } finally {
+      rmSync(acc, { recursive: true, force: true });
+    }
   });
 
   it("starts a new instance in a shared repository fresh instead of taking a sibling's session", () => {
