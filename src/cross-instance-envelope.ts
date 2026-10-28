@@ -1,8 +1,12 @@
 /** Product guard that reserves room for routing metadata and protects recipient context. */
 export const MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES = 16_000;
 
-/** Render metadata carried in a cross-instance handoff. */
-export function renderCrossInstanceHandoffMetadata(meta: Record<string, string>): string {
+/**
+ * Render metadata carried in a handoff. #2785 (a): request_kind stays in the stored meta (Fleet traffic, logs) but is
+ * not rendered — "a reply is owed" is the only thing it told the receiver, and `replyMarker` says that. The marker
+ * replaces the correlation_id row (it carries the id) and goes last, so a long task_summary or branch can't bury it.
+ */
+export function renderCrossInstanceHandoffMetadata(meta: Record<string, string>, replyMarker = ""): string {
   const rows: string[] = [];
   const add = (label: string, value: string | undefined) => {
     if (value && value.trim()) rows.push(`${label}: ${value.trim()}`);
@@ -10,12 +14,12 @@ export function renderCrossInstanceHandoffMetadata(meta: Record<string, string>)
   add("message_id", meta.message_id);
   add("verification_id", meta.verification_id);
   add("forwards", meta.forwards);
-  add("correlation_id", meta.correlation_id);
-  add("request_kind", meta.request_kind);
+  if (!replyMarker) add("correlation_id", meta.correlation_id);
   add("task_summary", meta.task_summary);
   add("working_directory", meta.working_directory);
   add("branch", meta.branch);
   add("attachment_file_id", meta.attachment_file_id);
+  if (replyMarker) rows.push(replyMarker);
   return rows.length ? `\n(${rows.join(" | ")})` : "";
 }
 
@@ -45,20 +49,17 @@ export function shellArg(value: string): string {
 export type AgentMode = "mcp" | "cli";
 
 /**
- * #1650: how to answer, in the receiver's own terms — MCP tool names, or the agend-agent commands of
- * agent-cli-instructions.md (a CLI-mode agent has no MCP server; naming tools it lacks told it nothing).
+ * #1650: how to answer an owed reply, in the receiver's own terms — MCP tool names, or the agend-agent commands of
+ * agent-cli-instructions.md (a CLI-mode agent has no MCP server; naming tools it lacks told it nothing). #2785 (a): ""
+ * when no reply is owed — the instructions already say to answer only with something to add, via send_to_instance.
  */
-export function crossInstanceReplyFooter(meta: Record<string, string>, mode: AgentMode = "mcp"): string {
-  const required = meta.requires_reply === "true";
+export function crossInstanceReplyMarker(meta: Record<string, string>, mode: AgentMode = "mcp"): string {
+  if (meta.requires_reply !== "true") return "";
+  const cid = meta.correlation_id?.trim();
   if (mode === "cli") {
-    const from = shellArg(meta.from_instance || "SENDER");
-    return required
-      ? `\n(A reply IS required: agend-agent report ${from} "…" ${shellArg(meta.correlation_id || "CORRELATION_ID")} — or agend-agent send ${from} "…". Not direct text.)`
-      : `\n(If you need to reply, use agend-agent send ${from} "…", NOT direct text. If there is nothing to add, you may stay silent.)`;
+    return `reply required → agend-agent report ${shellArg(meta.from_instance || "SENDER")} "…" ${shellArg(cid || "CORRELATION_ID")}`;
   }
-  return required
-    ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
-    : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
+  return cid ? `reply required → report_result ${cid}` : "reply required → send_to_instance";
 }
 
 /** Exact cross-instance block pasted by the receiving daemon (in the receiver's mode, #1650). */
@@ -71,7 +72,6 @@ export function formatCrossInstanceInboundMessage(content: string, meta: Record<
   const renderMeta = isRedundantTaskSummary(content, meta.task_summary)
     ? { ...meta, task_summary: "" }
     : meta;
-  formatted += renderCrossInstanceHandoffMetadata(renderMeta);
-  formatted += crossInstanceReplyFooter(meta, mode);
+  formatted += renderCrossInstanceHandoffMetadata(renderMeta, crossInstanceReplyMarker(meta, mode));
   return formatted;
 }
