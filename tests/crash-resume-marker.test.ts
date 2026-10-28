@@ -120,11 +120,9 @@ function daemon() {
 }
 
 describe("#835 recovery intent reaches the real Daemon.start reader", () => {
-  it.each([
-    ["crash loop", { crashesInWindow: 3, resumeDisabled: true }],
-    ["explicit fresh start (no crash count)", { resumeDisabled: true, reason: "pty_error_restart" }],
-  ])("consumes %s after latching skipResume, before the first startup await", async (_label, state) => {
-    writeFileSync(marker, JSON.stringify(state));
+  it("consumes explicit-fresh-start marker and latches skipResume", async () => {
+    // An explicit fresh-start request (not a crash loop) still skips resume.
+    writeFileSync(marker, JSON.stringify({ resumeDisabled: true, reason: "pty_error_restart" }));
     const sequence: string[] = [];
     const readStates: Array<{ exists: boolean; skipResume: boolean }> = [];
     const clearStates: boolean[] = [];
@@ -156,6 +154,39 @@ describe("#835 recovery intent reaches the real Daemon.start reader", () => {
     expect(lc.daemons.size).toBe(0);
     expect(Daemon.prototype.abortStartup).toHaveBeenCalledOnce();
     expect(IpcServer.prototype.listen).toHaveBeenCalledOnce();
+  });
+
+  it("crash loop: does NOT skip resume — sets bootCrashLoopResume instead (#2809)", async () => {
+    // A real crash loop (3+ crashes in 5 min) should try resume first.
+    // skipResume must be false; bootCrashLoopResume must be true.
+    writeFileSync(marker, JSON.stringify({ crashesInWindow: 3, lastCrashAt: Date.now(), resumeDisabled: true }));
+    let skipResumeAtIpc: boolean | undefined;
+    let bootCrashLoopResumeAtIpc: boolean | undefined;
+    atIpc = () => {
+      skipResumeAtIpc = internals(captured!).buildBackendConfig().skipResume;
+      bootCrashLoopResumeAtIpc = (captured as unknown as { bootCrashLoopResume: boolean }).bootCrashLoopResume;
+    };
+
+    await expect(lifecycle().start("worker", config, false)).rejects.toBe(ipcBoundary);
+
+    expect(skipResumeAtIpc, "crash loop must NOT skip resume").toBe(false);
+    expect(bootCrashLoopResumeAtIpc, "crash loop must set bootCrashLoopResume").toBe(true);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("resumeFailed marker: skips resume (session proved broken after crash-loop-resume) (#2809)", async () => {
+    // A previous crash-loop-resume attempt failed → next boot goes fresh.
+    writeFileSync(marker, JSON.stringify({ resumeFailed: true, failedAt: Date.now() }));
+    let skipResumeAtIpc: boolean | undefined;
+    atIpc = () => {
+      skipResumeAtIpc = internals(captured!).buildBackendConfig().skipResume;
+    };
+
+    await expect(lifecycle().start("worker", config, false)).rejects.toBe(ipcBoundary);
+
+    expect(skipResumeAtIpc, "resumeFailed must skip resume").toBe(true);
+    expect(internals(captured!).skipResume).toBe(true);
+    expect(existsSync(marker)).toBe(false);
   });
 
   it.each([
