@@ -29,7 +29,7 @@ function contents(name: string, enabled = false): string {
   return result.text;
 }
 function plan(enabled?: boolean) {
-  const result = planWhatsNew({ record: { announced: [] }, fresh: false, version: "2.3.0", roles: ["general"], canvasWorker: enabled });
+  const result = planWhatsNew({ record: { announced: [] }, fresh: false, version: "2.2.5", roles: ["general"], canvasWorker: enabled }); // #2800: the release that has these entries
   if (!result || !("notice" in result)) throw new Error("expected real pending notice");
   return result;
 }
@@ -81,6 +81,7 @@ describe("experimental guidance selection", () => {
     const d = Object.create(Daemon.prototype) as any;
     d.instanceDir = instanceDir;
     d.whatsNewRoles = () => ["general"];
+    d.whatsNewTools = () => undefined; // #2800: no tool filter here — this pins the Canvas Worker rebuild
     const priorHome = process.env.AGEND_HOME;
     try {
       process.env.AGEND_HOME = home;

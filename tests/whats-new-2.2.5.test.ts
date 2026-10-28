@@ -66,10 +66,11 @@ describe("Canvas Worker effects are announced as experimental", () => {
     expect(named.map(e => e.id), "the entries that name them (the check below runs on each)").toEqual(["2.3-web-appearance-topic", "2.3-web-settings-for-the-user"]);
     for (const e of named) expect([/experimental — off unless the person turns them on/.test(e.text), /still beta/.test(e.text)], e.id).toEqual([true, false]);
   });
-  it("the enabled 2.2.1 → 2.3.0 notice calls them experimental, never stable or beta", () => {
-    const plan = planWhatsNew({ record: { announced: idsUpTo("2.2.1") }, fresh: false, version: "2.3.0", canvasWorker: true });
+  it("the enabled 2.2.1 → 2.2.5 notice calls them experimental, never stable or beta", () => {
+    // #2800: told on the release that has them (2.2.5); a later release supersedes them.
+    const plan = planWhatsNew({ record: { announced: idsUpTo("2.2.1") }, fresh: false, version: "2.2.5", canvasWorker: true });
     const notice = plan && "notice" in plan ? plan.notice : "";
-    expect(notice).toContain("AgEnD is now 2.3.0");
+    expect(notice).toContain("AgEnD is now 2.2.5");
     const lines = notice.split("\n").filter(l => /Canvas Worker/.test(l));
     expect(lines.length, "both lines that name them are in the notice").toBe(2);
     for (const line of lines) expect([/experimental/.test(line), /still beta|stable/.test(line)]).toEqual([true, false]);
