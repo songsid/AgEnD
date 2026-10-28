@@ -47,7 +47,9 @@ const QUEUED = ["busy-queued", "busy-queued-long", "long-busy-queued", "tool-que
   // …and the 2.1.308 audit's.
   .concat("claude-2.1.308-busy-queued.pane.txt")
   // …and the leader's 2.1.311 pane: the same queue, with a background agent's session list under the box.
-  .concat("claude-2.1.311-bg-agent-queued-hint.pane.txt");
+  .concat("claude-2.1.311-bg-agent-queued-hint.pane.txt")
+  // …and the 2.1.312 audit's.
+  .concat("claude-2.1.312-busy-queued.pane.txt");
 
 describe("the backend", () => {
   const backend = new ClaudeCodeBackend("/nonexistent-1169");
