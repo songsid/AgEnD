@@ -45,6 +45,12 @@ onboarding and permission/queued-input surfaces in loopback-only namespaces. The
 explicit escalation request to the inert shell probe; use approval-on flags to capture the human dialog. No backend
 change was needed. The precheck's unhinted reset-timeout string already exists in both versions.
 
+## Codex 0.165.0
+
+The [0.164.0 → 0.165.0 audit](../../../tests/fixtures/codex-audit-0165/README.md) reran `pass1.sh` + `pass2.sh` on both
+versions and the real-CLI e2e. `pass1.sh` gained a `notfound` step (mock mode: a 404 `model_not_found`), for #56445: 0.165
+shows the provider's message instead of retrying. No backend change was needed.
+
 ## A package without codex-code-mode-host (#2357)
 
 `companion-missing.sh <package-dir> <label> [toolexec|tool|toolshell]` launches a codex package layout through

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The turn sequence on one codex (production config, trusted git work dir), every step captured at 25 ms:
-# launch → ok turn → slow turn (busy) → near-limit turn (nudge hidden by AgEnD) → usage limit → 401 → 500 → capacity →
+# launch → ok turn → slow turn (busy) → near-limit turn (nudge hidden by AgEnD) → usage limit → 401 → 500 → capacity → model not found →
 # /compact with args → quit → production resume of the same thread → app-server killed (reconnect panes).
 # Usage: AUDIT=… PORT=… pass1.sh <VERSION>
 set -euo pipefail
@@ -16,6 +16,7 @@ r mode usage; r send "fourth";        r cap 05-usage-limit 6
 r mode e401; r send "fifth";          r cap 06-e401 10
 r mode e500; r send "sixth";          r cap 07-e500 40
 r mode capacity; r send "seventh";    r cap 08-capacity 40
+r mode notfound; r send "eighth";     r cap 08b-model-not-found 40   # 0.165 #56445: no retry, the provider's message
 r mode ok;   r send "/compact keep the decisions"; r cap 09-compact-args 8
 r key C-c; sleep 0.5; r key C-c;      r cap 10-quit 4
 r launch main resume trust;           r cap 11-resume 10

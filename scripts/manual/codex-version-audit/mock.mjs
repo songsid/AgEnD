@@ -34,6 +34,8 @@ createServer((req, res) => {
       return;
     }
     if (m === "e401") { res.writeHead(401, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "Incorrect API key provided", type: "invalid_request_error", code: "invalid_api_key" } })); return; }
+    // 0.165 (#56445): a provider's model_not_found is no longer retried; codex shows the provider's own message.
+    if (m === "notfound") { res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "The model `gpt-audit-missing` does not exist or you do not have access to it.", type: "invalid_request_error", code: "model_not_found" } })); return; }
     if (m === "e500") { res.writeHead(500, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "internal", type: "server_error" } })); return; }
     if (m === "usage") {
       res.writeHead(429, { "content-type": "application/json", ...limitHeaders(100) });
