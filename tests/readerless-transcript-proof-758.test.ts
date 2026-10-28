@@ -117,7 +117,7 @@ async function deliver(opts: Opts = {}) {
   const tmux = {
     capturePane: vi.fn(async () => shown()),
     capturePaneWithHistory: vi.fn(async () => shown()),
-    pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
+    pasteBuffer: vi.fn(async (_text: string) => { pasted = true; return true; }),
     sendSpecialKey: vi.fn(async () => true),
     getLastPasteError: vi.fn(),
     isLastPasteFailureRecoverable: vi.fn(() => true),
@@ -204,7 +204,7 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   it("#2800: a delivery carrying a what's-new notice is still proven by its transcript entry — the exact pasted text", async () => {
     const h = await deliver({ whatsNew: "[system:whats-new] AgEnD is now 2.3.2. Changed for tools you have." });
     await h.begun();
-    const pasted = String((h.tmux.pasteBuffer.mock.calls[0] as unknown[])[0]);
+    const pasted = h.tmux.pasteBuffer.mock.calls[0]![0];
     expect(pasted.startsWith(`[agend-delivery-id:${h.deliveryId}]\n[system:whats-new] AgEnD is now 2.3.2.`)).toBe(true);
     expect(pasted).toContain("\n\n[from:source]");
     appendFileSync(h.transcript, userEntry(h.deliveryId, pasted));
