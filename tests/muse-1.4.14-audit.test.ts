@@ -49,6 +49,9 @@ describe("Muse 1.4.14: the 1.4.13 surfaces, re-captured", () => {
       expect(found.length).toBeGreaterThan(0);
       expect(found.every(d => d.keys.length === 0)).toBe(true);
       expect(backend.isPeriodicRedrawIdlePane(p)).toBe(false);
+      // At runtime the same menu is a held human prompt: never answered, deliveries wait.
+      expect(dialogs(p).length).toBeGreaterThan(0);
+      expect(dialogs(p).every(d => d.holdOnly === true && d.keys.length === 0 && d.blocksDelivery === true)).toBe(true);
     }
   });
 
