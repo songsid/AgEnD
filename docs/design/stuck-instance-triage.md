@@ -45,8 +45,8 @@ There is one ticket per target. A second signal while a ticket is open only adds
 ## 3. False-alarm rules (no ticket, or the open ticket resolves)
 
 1. **Background agents only.** A claude-code pane whose only motion is in Claude's session list (`  ● main` /
-   `  ◯ <agent> … 3m 6s · ↓ 56.8k tokens`, recognised as in #2771) with an idle box is idle: no A. B still applies, so
-   messages that really are held still show. This is #2770 (ii).
+   `  ◯ <agent> … 3m 6s · ↓ 56.8k tokens`, recognised as in #2771) with an idle box is idle, not frozen: no ticket.
+   This is #2770 (ii).
 2. **#1641 self-recovery.** No ticket while the stuck-recovery window is running (idle composer and no open
    transcript turn, held `UNKNOWN_LAYOUT_STABLE_MS`). A ticket opens only after that window ends without recovery.
 3. **Start-up.** No ticket within 3 min of a spawn or launch attempt (the m365 blips).
@@ -75,6 +75,9 @@ recovery at any point ─▶ notice edited "✅ 已恢復，不用處理", butto
   secondary), behind a disclosure button on Discord and as a second keyboard row on Telegram.
 - **Ticket lifetime:** a ticket stays open until recovery or an action. The 🔍 button expires after 30 min without a
   click (S11); the actions stay.
+- **Inspection attempt:** an accepted 🔍 click starts one attempt. Its 15-min inspection window (§5) and its 15-min
+  report timeout (S10) both count from that click, so a click at minute 20 still gets a full 15 min. Once clicked, the
+  🔍 button is gone for that ticket: one attempt per ticket.
 
 ## 5. The evidence tool
 
@@ -105,7 +108,7 @@ inspect_stuck_instance { ticket: string }            // only with an open ticket
   receipts (only kind, age and state are shown) and Discord/Telegram user ids.
 - **Bound:** 16 KB of JSON at most. Rows are cut from the top, log lines from the oldest.
 - **Gate:** the ticket must be open, addressed to this caller (T's world's General), and the call made within the
-  ticket's 15-min inspection window. At most 3 calls per ticket. Anything else gets a refusal naming the reason.
+  15-min inspection window of the ticket's attempt, counted from the accepted 🔍 click (§4). At most 3 calls per ticket. Anything else gets a refusal naming the reason.
 - **No side effects:** it reads the daemon's state over IPC (no fork on the fleet loop).
   The single capture-pane runs in the daemon.
 
@@ -116,7 +119,8 @@ report_stuck_triage { ticket, where: string ≤ 200, why: string ≤ 400,
 
 The fleet renders the result (S4). General's free text fills only the 「卡在哪」/「原因」 lines. Buttons, order and
 wording come from the fleet. The recommended action goes first and is marked; the other actions follow in fixed order.
-Without a report within 15 min, the notice is edited to S10 with the plain buttons.
+Without a report within 15 min of the accepted 🔍 click (the same attempt as the inspection window), the notice is
+edited to S10 with the plain buttons.
 
 **The task General receives:** a system notice through the delivery outbox: idle-gated, never steered into a turn,
 silent to the user. The text: `[system:stuck-triage] ticket=<id> target=<T> signal=<…>. Call
@@ -152,7 +156,7 @@ inspect_stuck_instance, then report_stuck_triage. Read-only: do not message <T>,
 | S2 looking | 🔍 General is checking {name}… (read-only, nothing is changed) | 🔍 General 正在看 {name}…（只看不動，不會改任何東西） |
 | S4 diagnosis | 🔍 General checked {name}.\nWhere: {where}\nWhy: {why}\nSuggested: {action} | 🔍 General 看過 {name} 了。\n卡在哪：{where}\n原因：{why}\n建議：{action} |
 | S4 mark | (suggested) | （建議） |
-| S5 confirm restart | Restart {name}? Its current work and any messages still waiting for it will be lost. | 確定要重新啟動 {name}？它手上的工作和還在排隊的訊息都會中斷。 |
+| S5 confirm restart | Restart {name}? Its current work stops. Messages still waiting for it are delivered once it is back. | 確定要重新啟動 {name}？它手上的工作會中斷；還在排隊的訊息會等它重啟後再送達。 |
 | S5b confirm interrupt | Stop {name}'s current work? Like pressing Esc: the agent stays up, its current turn stops. | 確定要中斷 {name} 目前的工作？效果像按 Esc：agent 還在，只是停下手上這一輪。 |
 | B-yes / B-no | Yes / Cancel | 確定 / 取消 |
 | S6 waiting | ⏳ OK, waiting. I'll update this if {name} recovers, and ask again in {m} min if it doesn't. | ⏳ 好，先等等。{name} 恢復了這則會自動更新；{m} 分鐘後還沒好會再問你。 |
@@ -238,8 +242,10 @@ it.
   - the 2026-10-27 replayed frames (agent list, three agents, ghost text);
   - an m365 start-up blip;
   - auth, dialog and rate-limit panes.
-- Lane-held trigger from a recorded outbox shape (the head row `delivering` with no attempt row).
-- Tool gate: no ticket, wrong caller, expired window and 4th call are refused.
+- No lane trigger: a recorded outbox shape (the head row `delivering` with no attempt row) on an agent that is not
+  frozen opens no ticket. On a frozen-with-work ticket the same shape shows only as evidence (`lane`).
+- Tool gate: no ticket, wrong caller, no accepted click, a call 15 min after the click, and a 4th call are refused.
+  A click at minute 20 of the ticket is inspected and reported normally.
 - Redaction corpus. 16 KB bound.
 - Buttons: admin-only, nonce consumed once across the General and topic copies, confirm step, recovery edits both.
 - Telegram callback length; web Needs-you rendering.
