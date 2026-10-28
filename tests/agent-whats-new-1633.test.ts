@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AGENT_WHATS_NEW, WHATS_NEW_NOTES_URL, agendVersion, packageReleaseVersion, compareVersions, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "../src/agent-whats-new.js";
+import { AGENT_WHATS_NEW, WHATS_NEW_NOTES_URL, withWhatsNew, agendVersion, packageReleaseVersion, compareVersions, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "../src/agent-whats-new.js";
 import { Daemon } from "../src/daemon.js";
 import type { TmuxManager } from "../src/tmux-manager.js";
 
@@ -198,6 +198,45 @@ describe("the daemon", () => {
     await w.deliver("second");
     expect(w.pastes.length).toBe(2);
     expect(w.pastes[1]!.startsWith("[from:peer] second")).toBe(true);
+  });
+  it("#2800 (Prism P2): AgEnD's leading marker lines stay first — the notice goes after them, before the message", () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    expect(withWhatsNew(`[agend-delivery-id:${id}]\n[from:peer] task`, "[system:whats-new] N"))
+      .toBe(`[agend-delivery-id:${id}]\n[system:whats-new] N\n\n[from:peer] task`);
+    expect(withWhatsNew(`[agend-delivery-id:${id}]\n[agend-human-id:hmsg-x]\n[user:a] hi`, "[system:whats-new] N"))
+      .toBe(`[agend-delivery-id:${id}]\n[agend-human-id:hmsg-x]\n[system:whats-new] N\n\n[user:a] hi`);
+    expect(withWhatsNew("[from:peer] task", "[system:whats-new] N")).toBe("[system:whats-new] N\n\n[from:peer] task");
+    // A marker quoted later in the body is not a leading line.
+    expect(withWhatsNew("[from:peer] see [agend-delivery-id:x]\n", "[system:whats-new] N").startsWith("[system:whats-new] N")).toBe(true);
+  });
+  it("#2800 (Prism P3): written, then a later step of the write throws — recorded once, not attached again", async () => {
+    const w = daemon();
+    w.d["prepareWhatsNew"](false, V);
+    let first = true;
+    w.d["deliverMessage"] = vi.fn(async (text: string, _status: unknown, opts?: { verdict?: { paneWriteStarted?: boolean } }) => {
+      w.pastes.push(text);
+      if (first) { first = false; if (opts?.verdict) opts.verdict.paneWriteStarted = true; throw new Error("SQLITE_IOERR after the paste"); }
+      return true;
+    });
+    await w.deliver("first");
+    expect([w.d["pendingWhatsNew"], announcedIn(w.dir)]).toEqual([null, ALL]);
+    await w.deliver("second");
+    expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(1);
+  });
+  it("#2800 (Prism P3 control): a throw before anything was written records nothing — the next message carries it", async () => {
+    const w = daemon();
+    w.d["prepareWhatsNew"](false, V);
+    let first = true;
+    w.d["deliverMessage"] = vi.fn(async (text: string) => {
+      w.pastes.push(text);
+      if (first) { first = false; throw new Error("paste failed"); }
+      return true;
+    });
+    await w.deliver("first");
+    expect([w.d["pendingWhatsNew"]?.ids, readWhatsNewRecord(w.dir)]).toEqual([ALL, null]);
+    await w.deliver("second");
+    expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(2);
+    expect(announcedIn(w.dir)).toEqual(ALL);
   });
   it("#2800: only entries about tools the instance has — a worker is not told about create_instance, which it lacks", async () => {
     const w = daemon();

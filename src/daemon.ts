@@ -4,7 +4,7 @@ import { sendPackSources } from "./web-office-pack-read.js";
 import type { RecoveryLive } from "./working-recovery.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
 import type { WorkingStateObservation, WorkingStateReason } from "./working-state-journal.js";
-import { agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience } from "./agent-whats-new.js";
+import { agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, withWhatsNew } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
@@ -7416,11 +7416,11 @@ export class Daemon extends EventEmitter {
           await this.deliverMessage(this.config.pre_task_command, undefined, { deliveryEpoch });
           if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
-        // #2800: in front of this real message, in the same paste — never a paste or turn of its own. A person's
-        // message with a verified receipt is pasted byte for byte (its proof is the wire's hash), so the notice
-        // waits for the next delivery without one.
+        // #2800: with this real message, in the same paste — never a paste or turn of its own: after its delivery marker
+        // (transcript proof anchors on it), before the message. A person's message with a verified receipt is pasted
+        // byte for byte (its proof is the wire's hash), so the notice waits for the next delivery without one.
         const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id ? this.currentWhatsNew(this.pendingWhatsNew) : null;
-        const pasted = whatsNew ? `${whatsNew.notice}\n\n${formatted}` : formatted;
+        const pasted = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
@@ -7432,16 +7432,20 @@ export class Daemon extends EventEmitter {
           return;
         }
         durable = durableAttempt;
-        const sent = await this.deliverMessage(pasted, status, {
-          deliveryEpoch,
-          submissionId: meta.message_id,
-          ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
-          verdict,
-          durableAttempt: durableAttempt || undefined,
-        });
-        // #2800: told once — recorded as soon as it went out with this message, proven submitted or not; a paste
-        // that never reached the pane keeps it for the next message.
-        if (whatsNew && (sent || verdict.paneWriteStarted)) this.recordWhatsNewSent(whatsNew);
+        let sent: Awaited<ReturnType<Daemon["deliverMessage"]>> | false = false;
+        try {
+          sent = await this.deliverMessage(pasted, status, {
+            deliveryEpoch,
+            submissionId: meta.message_id,
+            ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
+            verdict,
+            durableAttempt: durableAttempt || undefined,
+          });
+        } finally {
+          // #2800: told once — recorded as soon as it went out with this message, proven submitted or not, also when
+          // a later step of the write threw; a paste that never reached the pane keeps it for the next message.
+          if (whatsNew && (sent || verdict.paneWriteStarted)) this.recordWhatsNewSent(whatsNew);
+        }
         if (sent) {
           delivered = true;
           this.finishDurableSubmission(durable, verdict);

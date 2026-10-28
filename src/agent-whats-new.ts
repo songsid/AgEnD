@@ -197,6 +197,19 @@ export function whatsNewNotice(version: string, entries: readonly WhatsNewEntry[
   ].join("\n");
 }
 
+/** The routing/authority lines AgEnD puts first in a delivery's text (`[agend-delivery-id:…]`, `[agend-human-id:…]`). */
+const LEADING_MARKERS = /^(?:\[agend-(?:delivery|human)-id:[^\]\n]+\]\n)*/;
+
+/**
+ * #2800: the notice attached to a delivery's text — after AgEnD's leading marker lines, before the message itself.
+ * Transcript proof and the consumed watcher accept a delivery's marker only at the very start of the CLI's user entry
+ * (delivery-reconciliation leadsWithMarker), so the marker has to stay first.
+ */
+export function withWhatsNew(formatted: string, notice: string): string {
+  const markers = LEADING_MARKERS.exec(formatted)![0];
+  return `${markers}${notice}\n\n${formatted.slice(markers.length)}`;
+}
+
 /** "2.3.2-beta.11" → "2.3.2": the release an entry or a running version belongs to (#2800). */
 function releaseOf(version: string): string | null {
   return /^v?(\d+\.\d+\.\d+)/.exec(version.trim())?.[1] ?? null;
