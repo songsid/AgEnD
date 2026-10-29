@@ -1214,6 +1214,18 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .v-filter-box input::placeholder { color: var(--text-3); }
 .v-filter-clear { width: 28px; height: 28px; }
 .v-filter .note { padding: var(--s-1) var(--s-1) 0; font-variant-numeric: tabular-nums; }
+/* A short viewport (a phone in landscape: about 300–480 px tall): the head, nav, filter and footer pinned around the
+   list left it no room, and what did not fit was drawn over the footer (user report 2026-10-30). There the sidebar
+   scrolls as one column: nothing shrinks, the list grows to its rows, the nav rows sit two to a row, and the filter
+   stays in view at the bottom while the list scrolls past. Portrait phones and desktops are taller than this. */
+@media (max-height: 500px) {
+  .sidebar { overflow-y: auto; overscroll-behavior: contain; }
+  .sidebar > *, .view-roster > * { flex-shrink: 0; }
+  .view-roster { flex: none; }
+  .view-roster > .side-section { flex: none; overflow: visible; }
+  .side-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .v-filter { position: sticky; bottom: 0; z-index: 2; background: var(--bg-sidebar); }
+}
 /* alpha.2 (N1): status and CLI chips under the filter box — each a group of checkboxes under its header (#1700). */
 /* #1776: the "N / M" count is on the headers' row, at its right end — not a row of its own. The headers (and an open
    group's list, the reset) wrap in their own box beside it, so a filter's summary or a narrow sidebar moves a header
