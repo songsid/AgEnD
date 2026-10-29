@@ -1247,7 +1247,7 @@ export class TopicCommands {
   sendSteer(
     instanceName: string,
     content: string,
-    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody">,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody"> & { webGuest?: boolean },
   ): string {
     const backend = this.effectiveBackend(instanceName);
     const launchSupportsSteer = this.ctx.instanceLaunchSupportsSteer?.(instanceName);
@@ -1269,6 +1269,7 @@ export class TopicCommands {
         thread_id: msg.threadId ?? "",
         adapter_id: msg.adapterId ?? "",
         source: msg.source,
+        ...(msg.webGuest ? { web_guest: "1" } : {}),     // #2855: "[user:… via web (guest), id:…]", as /ui/send
       },
     };
     const sent = this.ctx.sendHumanControl
@@ -1282,7 +1283,7 @@ export class TopicCommands {
   sendBtw(
     instanceName: string,
     content: string,
-    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody">,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody"> & { webGuest?: boolean },
   ): string {
     const backend = this.effectiveBackend(instanceName);
     if (!BTW_SUPPORTED_BACKENDS.has(backend)) return t("btw.unsupported", backend);
@@ -1300,6 +1301,7 @@ export class TopicCommands {
         thread_id: msg.threadId ?? "",
         adapter_id: msg.adapterId ?? "",
         source: msg.source,
+        ...(msg.webGuest ? { web_guest: "1" } : {}),     // #2855: "[user:… via web (guest), id:…]", as /ui/send
       },
     };
     const sent = this.ctx.sendHumanControl

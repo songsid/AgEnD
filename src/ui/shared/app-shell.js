@@ -780,7 +780,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
     };
   }, []);
-  const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
+  const guest = guestPage();             // #1920: a guest's page — no operations, pending changes or owner CSS (#2855: usage, yes)
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
   return html`<div ref=${root} class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
@@ -794,7 +794,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
-    ${guest ? null : html`<${RightRail} route=${nav.route} />`}
+    <${RightRail} route=${nav.route} />
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || guest || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}

@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
 import { usageExpiryText, usageResetSinceText, usageResetText, usageRowName, usageStaleText, usageText } from "./i18n.js";
+import { guestRequestOf } from "../web-guest-access.js";
 
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
@@ -617,6 +618,10 @@ export function isUsagePath(path: string): boolean {
   return path === "/api/ai-usage";
 }
 
+/** #2855: whether this read forces a refresh — asked for, and not a guest's (it reads the snapshot the fleet keeps, which
+ * is refreshed behind it as for anyone). */
+export function usageForce(req: IncomingMessage, url: URL): boolean { return url.searchParams.has("force") && !guestRequestOf(req); }
+
 /**
  * Handle a usage API request. Returns true if the request was ours (and has
  * been answered), false otherwise.
@@ -640,7 +645,7 @@ export function handleUsageRequest(
 
   // #1585: the panel opens from the last snapshot at once (refreshing behind it); never a browser or proxy cache — the
   // snapshot lives in this process, behind the same gate as every read, and goes when a request may not see it.
-  getUsageSnapshot(url.searchParams.has("force"), ctx.getActiveUsageProviderIds?.(), { allowStale: true })
+  getUsageSnapshot(usageForce(req, url), ctx.getActiveUsageProviderIds?.(), { allowStale: true })
     .then(payload => json(res, 200, payload))
     .catch(err => {
       ctx.logger.debug({ err }, "ai-usage fetch failed");

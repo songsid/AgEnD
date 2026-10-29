@@ -89,6 +89,17 @@ describe("the rules", () => {
   });
 });
 
+describe("#2855: the usage panel — a guest never forces a refresh", () => {
+  it("usageForce: ?force for an admin, never for a guest", async () => {
+    const { usageForce } = await import("../src/usage/usage-api.js");
+    const { bindGuestRequest } = await import("../src/web-guest-access.js");
+    const u = new URL("http://x/api/ai-usage?force=1"), plain = new URL("http://x/api/ai-usage");
+    const admin = {}, guest = {};
+    bindGuestRequest(guest, { owner: ALICE, scope: () => new Set(["a"]), current: () => true });
+    expect([usageForce(admin as never, u), usageForce(guest as never, u), usageForce(admin as never, plain)]).toEqual([true, false, false]);
+  });
+});
+
 describe("#2848: a chat whose messages are all hidden from the guest says so", () => {
   it("cross-instance lines: unmarked → hidden and allHidden; marked as the topic's → shown; an admin is never told", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["c2848"])); guestsChat();
@@ -231,6 +242,56 @@ describe("live: a guest scoped to `a`", () => {
     const full = fm.getUiStatus();
     expect(full.instances.find((i: { name: string }) => i.name === "a")).toMatchObject({ last_reply: "2026-10-29T08:00:00.000Z", last_reply_channel: "2026-10-29T07:00:00.000Z" });
     expect(guestStatus(full, new Set(["a"])).instances[0]).toMatchObject({ last_reply: "2026-10-29T07:00:00.000Z" });
+  });
+  it("#2855: /ui/command — an in-scope agent, the table's \"anyone\" commands only, while guests may chat; a /steer reaches the agent as a guest's", async () => {
+    scopedToA(); guestsChat();
+    fm.guestCommandRuns = new (fm.guestCommandRuns.constructor)(undefined, { perWindow: 10, windowMs: 60_000 });
+    const guest = session("guest", ALICE);
+    const steered: any[] = [];
+    fm.instanceIpcClients.set("a", { connected: true, send: (m: any) => { steered.push(m); return true; } });
+    vi.spyOn(fm.topicCommands, "effectiveBackend").mockReturnValue("claude-code");
+    const cmd = (body: Record<string, unknown>) => raw(port, "POST", "/ui/command", write(guest), JSON.stringify(body));
+    const st = await cmd({ instance: "a", command: "steer", args: "look at the logs" });
+    expect(st.status, st.body).toBe(200);
+    const meta = steered.find((m) => m.type === "steer")?.meta;
+    expect(meta).toMatchObject({ source: "web", web_guest: "1", user_id: ALICE.userId });
+    expect(formatHumanInboundMessage("look at the logs", meta, "mcp")).toContain(`via web (guest), id:${ALICE.userId}]`);
+    const clear = await cmd({ instance: "a", command: "clear" });
+    expect([clear.status, JSON.parse(clear.body).error]).toEqual([403, expect.stringContaining("/clear")]);
+    expect(await cmd({ instance: "b", command: "ctx" })).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
+    guestsChat(false);
+    expect(await cmd({ instance: "a", command: "steer", args: "x" })).toEqual({ status: 403, body: JSON.stringify({ error: "guest_read_only" }) });
+    guestsChat();
+    const statuses: number[] = [];
+    for (let i = 0; i < 10; i++) statuses.push((await cmd({ instance: "a", command: "cancel" })).status);
+    expect(statuses.filter((s) => s === 429).length, "10 a minute (the steer and refusals above counted too)").toBeGreaterThan(0);
+    expect(JSON.parse((await cmd({ instance: "a", command: "cancel" })).body).error).toBe("guest_commands_rate_limited");
+    // One at a time: a second while the first is still running is refused.
+    fm.guestCommandRuns = new (fm.guestCommandRuns.constructor)(undefined, { perWindow: 10, windowMs: 60_000 });
+    let release!: () => void;
+    const slow = vi.spyOn(fm, "webCommand").mockImplementation(() => new Promise((r) => { release = () => r({ status: 200, body: { text: "ok" } }); }));
+    const first = cmd({ instance: "a", command: "ctx" });
+    await vi.waitFor(() => expect(slow).toHaveBeenCalled());
+    expect(JSON.parse((await cmd({ instance: "a", command: "ctx" })).body).error).toBe("guest_command_running");
+    release(); expect((await first).status).toBe(200);
+    // …and one whose body is still on its way when another starts (both past the check on arrival): the second check, once
+    // the body is in, refuses it — never two at once.
+    const body = JSON.stringify({ instance: "a", command: "ctx" });
+    const late = new Promise<Raw>((resolve, reject) => {
+      const r = request({ host: "127.0.0.1", port, method: "POST", path: "/ui/command", headers: { host: `127.0.0.1:${port}`, ...write(guest), "content-length": String(Buffer.byteLength(body)) } },
+        (res) => { let b = ""; res.on("data", (c: Buffer) => { b += c.toString(); }); res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b })); });
+      r.on("error", reject); r.flushHeaders();
+      setTimeout(() => { void running.then(() => r.end(body)); }, 0);
+    });
+    const callsBefore = slow.mock.calls.length;
+    const running = vi.waitFor(() => expect(slow.mock.calls.length).toBe(callsBefore + 1));
+    const other = cmd({ instance: "a", command: "ctx" });
+    await running;
+    expect(JSON.parse((await late).body).error).toBe("guest_command_running");
+    release(); expect((await other).status).toBe(200);
+    slow.mockRestore();
+    // The status frame tells its palette which commands it may run on each agent.
+    expect(fm.getUiStatus().instances.find((i: { name: string }) => i.name === "a").guest_commands).toEqual(["ctx", "cancel", "btw", "steer"]);
   });
   it("#2855: at most 30 saves a minute per guest account, every device of it counted together", async () => {
     scopedToA(); guestsChat(); freshLimits();

@@ -35,7 +35,7 @@ describe("the server marks a guest's page", () => {
     expect(guest).toContain('data-tier="guest"');
     expect(guest).toContain('data-guest-name="Alice &#60;&#38;&#62;"');
     expect(guest).toContain('data-guest-platform="discord"');
-    expect(guest).toContain('data-usage-panel="0"');
+    expect(guest, "#2855: the usage panel is a guest's too").toContain('data-usage-panel="1"');
     const admin = shellFor("admin");
     expect(admin).not.toContain("data-tier");
     expect(admin).not.toContain("data-guest");
@@ -107,7 +107,7 @@ describe("a guest's shell", () => {
 });
 
 describe("a guest's chat", () => {
-  async function chatPage(guest: boolean) {
+  async function chatPage(guest: boolean, commands?: string[]) {
     vi.resetModules();
     const harness = await import("./helpers/app-harness.js");
     const p = harness.page({ storage: { agend_tour_done: "1" } });
@@ -125,7 +125,7 @@ describe("a guest's chat", () => {
     const stream = { on: (n: string, fn: (d: unknown) => void) => { subs.set(n, [...(subs.get(n) ?? []), fn]); return () => {}; }, emit: (n: string, d: unknown) => { for (const fn of subs.get(n) ?? []) fn(d); }, started: () => true, catchUp: () => {} };
     stream.on("status", app.applyStatus);
     panel.boot({ stream, boot: null, deps: { fetch, toast: (m: string) => toasts.push(m), setTimeout: () => 0 } });
-    stream.emit("status", { uptime: 1, instances: [{ name: "w", status: "running", state: "idle" }] });
+    stream.emit("status", { uptime: 1, instances: [{ name: "w", status: "running", state: "idle", ...(commands ? { commands } : {}) }] });
     const { Toasts } = await import("/assets/ui-toast.js" as string);
     await p.mount(harness.h("div", null, harness.h("main", { id: "main" }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: "w" }, navKey: "chat|w" })), harness.h(Toasts, null)));
     await settle();
@@ -135,7 +135,7 @@ describe("a guest's chat", () => {
     const shown = () => [...p.root.querySelectorAll(".toast")].map((e: any) => e.textContent);
     return { p, calls, toasts, shown, box, type, key };
   }
-  it("no tabs, menu or palette; a '/…' draft refused here with why and kept; the hint says it is a guest's", async () => {
+  it("no tabs or menu; with no commands it may run here, no palette, and a '/…' draft refused here with why and kept; the hint says it is a guest's", async () => {
     const c = await chatPage(true);
     expect(c.p.root.querySelector("nav.inst-switch"), "no Chat / View / Log / Details").toBeNull();
     expect(c.p.root.querySelector("[aria-haspopup=menu]"), "no ⋯ menu").toBeNull();
@@ -143,12 +143,28 @@ describe("a guest's chat", () => {
     expect(c.p.root.querySelector(".cmd-palette"), "no command palette").toBeNull();
     await c.key("Enter");
     expect(c.calls.filter((x) => x.path === "/ui/send" || x.path === "/ui/command"), "nothing sent").toEqual([]);
-    expect(c.shown().join(" | ")).toContain("Guests can't run commands");
+    expect(c.shown().join(" | ")).toContain("/clear isn't available to guests");
     expect(c.box().value, "the draft is kept to edit").toBe("/clear");
     expect(c.p.root.querySelector(".guest-note")?.textContent).toContain("guest's (recognition only)");
     await c.type("hello");
     await c.key("Enter");
     expect(c.calls.filter((x) => x.path === "/ui/send").map((x) => (x.body as any).message), "a message goes as before").toEqual(["hello"]);
+  });
+  it("#2855: its palette offers only the commands its status says it may run here; one runs through /ui/command; another is refused here", async () => {
+    const c = await chatPage(true, ["ctx", "cancel", "btw", "steer"]);
+    await c.type("/");
+    const offered = [...c.p.root.querySelectorAll(".cmd-palette [data-cmd], .cmd-palette li, .cmd-palette button")].map((e: any) => e.textContent.trim()).filter(Boolean);
+    expect(offered.join(" "), "only the four it may run").toMatch(/ctx/);
+    for (const name of ["clear", "model", "compact", "pause", "save"]) expect(offered.join(" "), name).not.toContain(`/${name}`);
+    await c.type("/cl");
+    expect(c.p.root.querySelector(".cmd-palette .cmd-none")?.textContent, "a guest is never told Enter sends it").toBe("Not one a guest can run here.");
+    await c.type("/ctx"); await c.key("Enter");
+    expect(c.calls.filter((x) => x.path === "/ui/command").map((x) => (x.body as any).command)).toEqual(["ctx"]);
+    await c.type("/model opus"); await c.key("Enter");
+    expect(c.calls.filter((x) => x.path === "/ui/command")).toHaveLength(1);
+    expect(c.shown().join(" | ")).toContain("/model isn't available to guests");
+    await c.type("/whatever x"); await c.key("Enter");
+    expect(c.shown().join(" | ")).toContain("Guests can't send that");
   });
   it("control: an admin's chat has its tabs, menu and palette", async () => {
     const c = await chatPage(false);

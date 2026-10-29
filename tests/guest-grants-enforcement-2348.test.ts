@@ -124,10 +124,11 @@ describe("every read path a guest could reach, refused by the server", () => {
     });
     expect([got.includes("LIVE_GRANTED_A"), got.includes("LIVE_SECRET_B")]).toEqual([true, false]);
   });
-  it("search, the task board, the org chart and usage: 403 guest_forbidden, whatever is granted", async () => {
+  // #2855: the usage panel (/api/ai-usage) is a guest's now, as /usage in chat; the cost report (/ui/usage-report) is not.
+  it("search, the task board, the org chart and the usage report: 403 guest_forbidden, whatever is granted", async () => {
     const g = guestSession();
     for (const p of ["/ui/search?q=GRANTED", "/ui/search/context?instance=a&id=1", "/ui/tasks/board", "/ui/tasks/work", "/ui/tasks/search?q=x", "/ui/tasks/cards/M-1",
-      "/ui/org", "/ui/traffic", "/ui/usage-report", "/api/ai-usage", "/api/fleet", "/status",
+      "/ui/org", "/ui/traffic", "/ui/usage-report", "/api/fleet", "/status",
       "/api/settings/guests", "/api/settings/guests/people"]) {   // #2499 review: the guest audit (Recent changes) rides on the first
       expect(await raw(port, "GET", p, { cookie: cookieOf(g) }), p).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
     }

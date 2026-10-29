@@ -56,6 +56,10 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "on", note: "a click on a reply the guest may see (the handler checks; web.guests.chat)" },
   { methods: ["POST"], pattern: new RegExp(`^/ui/cancel/${NAME}$`), instance: { group: 1 }, state: "on", note: "Cancel, as the platform's button lets anyone allowed there (web.guests.chat)" },
   { methods: ["GET"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "the host's look (theme, language, shown settings) and the guest's own — nothing that names an instance (guestPrefs)" },
+  // #2855: a command the table lets anyone run on an in-scope agent (the handler checks the instance, the switch and the table).
+  { methods: ["POST"], pattern: /^\/ui\/command$/, instance: null, state: "on", note: "#2855: a web command the table lets anyone run there, on an in-scope agent (the handler checks)" },
+  // #2855: the usage panel — every subscription's headroom, as /usage shows anyone in chat; never a forced refresh.
+  { methods: ["GET"], pattern: /^\/api\/ai-usage$/, instance: null, state: "on", note: "#2855: the usage panel (as /usage in chat; a guest never forces a refresh)" },
   { methods: ["POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "#2855: its own preferences (theme, language, favourites, sort, filter) into its own account's bucket (the handler checks)" },
   { methods: ["GET", "POST"], pattern: /^\/ui\/profile$/, instance: null, state: "on", note: "the guest's own web name (its account's, never anyone else's)" },
 ];
@@ -139,6 +143,8 @@ export function guestPrefs<T extends { values: Record<string, unknown> }>(view: 
   for (const [k, v] of Object.entries(view.values)) if (GUEST_PREF_KEYS.has(k)) values[k] = v;
   return { ...view, values };
 }
+/** #2855: a guest's commands a minute, per account (every device of it); and one at a time. */
+export const GUEST_COMMAND_RUNS = { perWindow: 10, windowMs: 60_000 } as const;
 /** #2855: a guest's preference saves a minute, per account (every device of it). */
 export const GUEST_PREF_WRITES = { perWindow: 30, windowMs: 60_000 } as const;
 /** #2855: a guest's `set`, at most this many bytes (five small keys; 50 favourites of 128-character names fit). */
@@ -177,6 +183,8 @@ export function guestStatus(status: unknown, scope: ReadonlySet<string>): { inst
     // #2855: the sidebar's "Recent" and reply times — the last reply that reached the channel, never one to someone's
     // web-only exchange (`last_reply` itself is not passed on).
     if (typeof i.last_reply_channel === "string") out.last_reply = i.last_reply_channel;
+    // #2855: the web commands a guest may run on it (its palette) — the table's "anyone" cells, worked out by the fleet.
+    if (Array.isArray(i.guest_commands)) out.commands = i.guest_commands;
     instances.push(out);
   }
   return { instances };
