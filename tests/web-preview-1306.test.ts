@@ -47,9 +47,9 @@ async function listen(settings: PreviewSettings = SETTINGS, config: object | nul
 // ── 1. The preview listener ──
 
 describe("the preview listener", () => {
-  it("leaves the legacy CW bootstrap off without explicit admission while HTML stays available", async () => {
+  it("#2799: serves no effect document (an empty 404) while HTML stays available", async () => {
     const { port } = await listen();
-    expect((await raw(port, "GET", "/effect")).status).toBe(403);
+    expect((await raw(port, "GET", "/effect")).status).toBe(404);
     expect((await raw(port, "GET", "/frame")).status).toBe(200);
   });
   it("GET /frame is the shim with exactly the §5.1 headers — and no X-Frame-Options", async () => {
@@ -149,12 +149,12 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
       const r = await raw(h.port, "GET", "/ui", { host: `127.0.0.1:${h.port}`, cookie: h.cookie });
       expect(r.status).toBe(200);
       const csp = String(r.headers["content-security-policy"]);
-      expect(directive(csp, "frame-src")).toBe(`frame-src http://127.0.0.1:${h.pport.port}/frame http://127.0.0.1:${h.port}/effect-bootstrap`);
+      expect(directive(csp, "frame-src")).toBe(`frame-src http://127.0.0.1:${h.pport.port}/frame`);
       expect(directive(csp, "frame-ancestors")).toBe("frame-ancestors 'none'");
       expect(r.headers["x-frame-options"]).toBe("DENY");
       expect(bodyAttrs(r.body)).toEqual({
         // data-mode: the app's entry reads it (#1408 step 1); the signed-in local page is "full".
-        "data-mode": "full", "data-canvas-worker": "0", "data-effect-boot": h.fm.effectBoot, "data-effect-epoch": h.epoch, "data-effect-scope": "owner", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
+        "data-mode": "full", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
         "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1", "data-log-tab": "0",
         // #1937: the upload limits in force (the defaults here).
         "data-upload-limits": "{&#34;maxFileBytes&#34;:52428800,&#34;maxFiles&#34;:5,&#34;maxTotalBytes&#34;:104857600}",
@@ -164,16 +164,16 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
         "data-owner-css-state": "off",
       });
       const lh = await raw(h.port, "GET", "/ui", { host: `localhost:${h.port}`, cookie: h.cookie });
-      expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame http://localhost:${h.port}/effect-bootstrap`);
+      expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame`);
     } finally { h.stop(); }
   });
 
-  it("a non-loopback Host without web.preview_origin: HTML preview disabled but the independent opaque effect frame is allowed — X-Forwarded-Host is never read", async () => {
+  it("a non-loopback Host without web.preview_origin: HTML preview disabled, nothing framed — X-Forwarded-Host is never read", async () => {
     const h = await startFleet({ web: { allowed_hosts: ["fleet.example.net"] } });
     try {
       const r = await raw(h.port, "GET", "/ui", { host: "fleet.example.net", cookie: h.cookie, "x-forwarded-host": `127.0.0.1:${h.port}`, "x-forwarded-proto": "https" });
       const csp = String(r.headers["content-security-policy"]);
-      expect(directive(csp, "frame-src")).toBe("frame-src https://fleet.example.net/effect-bootstrap");
+      expect(directive(csp, "frame-src")).toBe("");
       const a = bodyAttrs(r.body);
       expect([a["data-dashboard-origin"], a["data-preview-origin"], a["data-preview-boot"]]).toEqual(["https://fleet.example.net", "", ""]);
       expect(a["data-preview-reason"]).toMatch(/web\.preview_origin/);
@@ -188,7 +188,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
   it("/view and /settings signed in carry /ui's preview attributes and frame-src; anonymous /view is view-only with none; sign-in never gets one; every dashboard response keeps DENY and frame-ancestors 'none'", async () => {
     const h = await startFleet();
     try {
-      const frame = `frame-src http://127.0.0.1:${h.pport.port}/frame http://127.0.0.1:${h.port}/effect-bootstrap`;
+      const frame = `frame-src http://127.0.0.1:${h.pport.port}/frame`;
       const ui = await raw(h.port, "GET", "/ui", { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
       for (const p of ["/view", "/view/alpha", "/settings", "/settings/general"]) {
         const r = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });

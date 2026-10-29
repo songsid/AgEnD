@@ -28,7 +28,6 @@ const ROWS = [
   ["look.widget", "look", ".s-widget", "settings.widgetTitle", "widget.sidebar", ["sidebar widget", "widget", "json"], ["側邊欄小工具", "小工具"]],
   ["look.css", "look", ".s-owner-css", "settings.cssTitle", null, ["custom css", "stylesheet", "style", "css"], ["自訂 CSS", "樣式表", "樣式"]],
   ["look.mods", "look", ".s-mods", "settings.modsTitle", null, ["mod", "mods", "import", "add-on", "agendmod"], ["mod", "匯入", "擴充"]],
-  ["look.effects", "look", ".s-effects", null, null, ["effects", "canvas", "ambient", "petals", "click stars"], ["特效", "效果", "花瓣", "氛圍"], L("Effects", "效果")],
   ["look.restore", "look", ".s-restore", "settings.restoreTitle", null, ["restore defaults", "reset", "default"], ["還原預設值", "重設", "預設"]],
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],

@@ -11,8 +11,6 @@
  */
 import { createHash } from "node:crypto";
 import { compareVersions } from "./agent-whats-new.js";
-import { checkEffectEntry } from "./web-effect-bundle.js";
-import { resolveEffectParams } from "./web-effect.js";
 import type { AppearanceLimits } from "./web-appearance-limits.js";
 import { checkOwnerCss, OWNER_CSS_MAX_BYTES } from "./web-owner-css.js";
 import { MEDIA_EXT, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
@@ -52,19 +50,8 @@ export interface ModManifest {
     ownerCss?: { css: string; assets?: string[] };
   };
 }
-/** An effect entry's files (relative to its directory), as the effect runtime's checker takes them. */
+/** An effect entry's files (relative to its directory). */
 export type EffectFiles = ReadonlyMap<string, Uint8Array>;
-/** What the plan shows of an effect entry (the runtime's checker says it). */
-export interface EffectSummary { id: string; title: string; bytes: number; regions: string[]; wants: string[]; params: string[] }
-/**
- * The effect runtime's side, as the bundle needs it (CW1, Sol's B2): the pure entry checker and param resolver. Null
- * while this fleet has no effect runtime: a bundle with effects is then refused (effects_unavailable).
- */
-export interface ModEffectChecker {
-  check(files: EffectFiles): { ok: true; summary: EffectSummary; manifest: unknown } | { ok: false; problems: ModProblem[] };
-  /** Resolve a placement's overrides against the entry's params: the non-default ones, or refused. */
-  params(manifest: unknown, overrides: unknown): { ok: true; overrides: Record<string, unknown> } | { ok: false; error: string };
-}
 
 export interface ModPicture { path: string; slot: "background" | "avatar" | "glyph"; id: string; kind: MediaKind; kept: Uint8Array }
 export interface CheckedMod {
@@ -77,19 +64,14 @@ export interface CheckedMod {
   widgets: Partial<Record<WidgetSlot, { spec: WidgetSpec; data: WidgetData }>>;
   /** #2117: the ambients (one per kind) and the glyph pictures they name. */
   ambient?: { specs: Partial<Record<AmbientKind, AmbientSpec>>; pictures: ModPicture[] };
-  effects: Array<{ path: string; files: EffectFiles; summary: EffectSummary; manifest: unknown }>;
+  /** #2799: the Canvas Worker effect entries it declares (their files unchecked: the store refuses any bundle with one). */
+  effects: Array<{ path: string; files: EffectFiles }>;
   ownerCss?: { text: string; assets: Array<{ path: string; id: string; kind: MediaKind; kept: Uint8Array }> };
 }
 export interface ModContext {
   /** The running AgEnD version (`requires.agend` is checked against it); null: unknown, a `requires` is refused. */
   agendVersion: string | null;
   limits: AppearanceLimits;
-  effects: ModEffectChecker | null;
-  /**
-   * #2017: whether a theme's placements must name effects that play in chat. On for a new import or proposal (the
-   * default); off when an installed mod's file is read again — what was installed before the rule stays as it was.
-   */
-  placementRegions?: boolean;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
@@ -221,18 +203,14 @@ export function checkModBundle(text: string, ctx: ModContext): { ok: true; mod: 
   const mod: CheckedMod = { id: modBundleId(manifest, shas), manifest, bytes: size, widgets: {}, effects: [] };
   const c = manifest.contents;
 
-  // Effects first: the theme's placements name them.
+  // Effects first: the theme's placements name them. #2799: Canvas Worker effects were removed — an entry is only
+  // recorded (its files, unchecked), so the store can refuse the bundle as it did while they were off.
   const effectPaths = new Set(c.effects ?? []);
-  if (c.effects?.length) {
-    if (!ctx.effects) bad("manifest.contents.effects", "effects_unavailable: this fleet has no effect runtime yet");
-    else for (const dir of c.effects) {
-      const entry = new Map<string, Uint8Array>();
-      for (const [p, b] of files) if (p.startsWith(`${dir}/`)) { entry.set(p.slice(dir.length + 1), b); used.add(p); }
-      if (!entry.size) { bad(`effects.${dir}`, "no files under it"); continue; }
-      const r = ctx.effects.check(entry);
-      if (!r.ok) { for (const q of r.problems) bad(`effects.${dir}/${q.path}`, q.problem); continue; }
-      mod.effects.push({ path: dir, files: entry, summary: r.summary, manifest: r.manifest });
-    }
+  for (const dir of c.effects ?? []) {
+    const entry = new Map<string, Uint8Array>();
+    for (const [p, b] of files) if (p.startsWith(`${dir}/`)) { entry.set(p.slice(dir.length + 1), b); used.add(p); }
+    if (!entry.size) { bad(`effects.${dir}`, "no files under it"); continue; }
+    mod.effects.push({ path: dir, files: entry });
   }
 
   if (c.theme) {
@@ -266,15 +244,8 @@ export function checkModBundle(text: string, ctx: ModContext): { ok: true; mod: 
             const where = `theme.effects.${i}`;
             if (!isObj(p) || Object.keys(p).some(k => k !== "effect" && k !== "params") || typeof p.effect !== "string") { bad(where, "{ effect: path, params? }"); return; }
             if (!effectPaths.has(p.effect)) { bad(where, `${p.effect} is not one of this bundle's effects`); return; }
-            const entry = mod.effects.find(e => e.path === p.effect);
-            if (!entry || !ctx.effects) return;                      // its own problem is reported already
-            // #2017: a chat placement needs an effect that plays in chat. A non-chat effect may still come as a library
-            // entry (contents.effects) without being placed.
-            if (ctx.placementRegions !== false && !entry.summary.regions.includes("chat")) { bad(where, `effect_region: ${p.effect}'s regions do not include chat`); return; }
-            const r = ctx.effects.params(entry.manifest, p.params ?? {});
-            if (!r.ok) { bad(`${where}.params`, r.error); return; }
-            if (effects.some(e => e.effect === p.effect)) { bad(where, "placed twice"); return; }
-            effects.push({ effect: p.effect, params: r.overrides });
+            // #2799: a placement names an effect the bundle declares; the store refuses the bundle for it, so nothing
+            // more is checked (the effect runtime that resolved params and regions is gone).
           });
         }
         if (checked.ok) mod.theme = { theme: checked.theme, pictures, effects };
@@ -378,22 +349,3 @@ export function modFile(bytes: Uint8Array): { sha256: string; b64: string } {
 }
 /** The extension a picture or CSS asset is exported under. */
 export function modAssetName(base: string, kind: MediaKind): string { return `${base}.${MEDIA_EXT[kind]}`; }
-
-/**
- * The effect runtime's checker (CW1: Sol's src/web-effect-bundle.ts and src/web-effect.ts) as a bundle uses it. Used
- * once the fleet has an effect library to install into; until then the fleet passes null and effects are refused.
- */
-export function cw1EffectChecker(): ModEffectChecker {
-  return {
-    check(files) {
-      const r = checkEffectEntry(files);
-      if (!r.ok) return { ok: false, problems: r.problems };
-      const m = r.manifest;
-      return { ok: true, manifest: m, summary: { id: r.id, title: m.title, bytes: r.bytes, regions: [...m.regions], wants: [...m.wants], params: Object.keys(m.params ?? {}) } };
-    },
-    params(manifest, overrides) {
-      const r = resolveEffectParams(manifest as Parameters<typeof resolveEffectParams>[0], overrides);
-      return r.ok ? { ok: true, overrides: { ...r.overrides } } : { ok: false, error: r.error };
-    },
-  };
-}

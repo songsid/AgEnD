@@ -8,12 +8,6 @@
  *   polling at once, and it opens only once its listeners are attached.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
-// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
-vi.mock("../src/web-experimental.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
-  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
-}));
 import { request, type Server } from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -81,7 +75,7 @@ describe("module admission (#1408 §4)", () => {
       // The vendored files are part of it.
       for (const v of ["/assets/preact.module.js", "/assets/preact-hooks.module.js", "/assets/htm.module.js"]) expect(seen.has(v), v).toBe(true);
       // What needs a session stays behind the gate.
-      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/js/chat-effects.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
+      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
         expect((await get(h.port, p)).status, p).toBe(401);
       }
     } finally { await h.stop(); }

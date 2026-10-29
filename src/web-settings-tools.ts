@@ -7,30 +7,23 @@
  * the store's own checks (the user's decision, 2026-10-18: General may keep it; #2056 first allowed only the trial). Only
  * a version the person's store holds can be put back: every one of them passed checkOwnerCss when it was saved.
  *
- * Whose settings: the host's (the prefs every viewer of this host shares), and a person's own — their custom CSS and
- * their effect slots — named by `person` (one of get_web_settings' people; default: the host operator).
+ * Whose settings: the host's (the prefs every viewer of this host shares), and a person's own custom CSS — named by
+ * `person` (one of get_web_settings' people; default: the host operator).
  *
- * Not here, and why (the page is the only way): choosing a file from the person's computer (a mod file, an effect folder,
- * a CSS asset, a card picture), this browser's switches (custom CSS off on this device, effect playback pause), downloading
- * an export, and the card upload limits (fleet configuration, whose raises wait for an admin's confirmation).
+ * Not here, and why (the page is the only way): choosing a file from the person's computer (a CSS asset, a card
+ * picture), this browser's custom CSS switch, downloading an export, and the card upload limits (fleet configuration,
+ * whose raises wait for an admin's confirmation). #2799: Canvas Worker effects, effect slots and mods are not changed
+ * here (refused, as while the effects were off).
  */
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { OPERATOR } from "./web-prefs.js";
 import type { WebPrefsStore } from "./web-prefs.js";
 import type { OwnerCssStore } from "./web-owner-css-store.js";
-import type { ModStore } from "./web-mod-store.js";
-import type { WebEffectService } from "./web-effect-service.js";
 import { DEFAULT_PLACEMENTS } from "./web-identity-palette.js";
 
-const OWNER_SLOTS = ["sidebar", "header", "page", "box", "cursor"] as const;
-type OwnerSlot = typeof OWNER_SLOTS[number];
-
 export interface WebSettingsDeps {
-  canvasWorkerEnabled?(): boolean;
   prefs: WebPrefsStore;
   ownerCss: OwnerCssStore;
-  mods: ModStore;
-  effects: WebEffectService;
   /** The instances the page lists (fleet and ClassicBot rooms). */
   instances(): string[];
   /** A person's colour for one instance, as the Colour dialog reads it; and its write (the page's /api/profile path). */
@@ -42,8 +35,6 @@ export interface WebSettingsDeps {
   /** #2117: each chat's ambient ({ loop?, click? }: spec and who set it), and a person's write (the chat menu's route). */
   ambient(instance: string): Record<string, { spec: unknown; by: string }>;
   setAmbient(instance: string, spec: unknown, which?: unknown): Record<string, unknown>;
-  /** The effects placed on each chat (the page's Effects card). */
-  placements(instance: string): Array<{ id: string; params?: Record<string, unknown> }>;
   /** Every page re-reads after a change (the routes' `announce`). */
   announce(): void;
 }
@@ -88,23 +79,17 @@ export class WebSettingsTools {
     const places = (Array.isArray(host["color.show"]) ? host["color.show"] : [...DEFAULT_PLACEMENTS]) as string[];
     const cardSize = (host["card.size"] as string | undefined) ?? "m";
     const css = this.deps.ownerCss.state(person);
-    const enabled = this.deps.canvasWorkerEnabled?.() === true;
-    const mods = enabled ? this.deps.mods.list() : { mods: [] }, proposals = enabled ? this.deps.mods.proposals() : [];
-    const agents = this.deps.instances().map((name) => ({ name, ...this.deps.colour(name), ...(enabled ? { effects: this.deps.placements(name) } : {}), ambient: this.deps.ambient(name) }));
-    const slots = Object.fromEntries(OWNER_SLOTS.map((s) => [s, (own[`fx.${s}`] as string | undefined) ?? null]));
+    const agents = this.deps.instances().map((name) => ({ name, ...this.deps.colour(name), ambient: this.deps.ambient(name) }));
     const sizeWord = { s: "small", m: "medium", l: "large" } as Record<string, string>;
     const summary = [
-      `Agents' themes, ${enabled ? "effects and " : ""}widgets: ${host["fx.show"] === false ? "hidden (every chat looks the same)" : "shown"}.`,
+      `Agents' themes, widgets: ${host["fx.show"] === false ? "hidden (every chat looks the same)" : "shown"}.`,
       `Identity colours: ${host["color.off"] === true ? "turned off on this host" : `shown on ${places.length ? places.join(", ") : "nowhere"}${host["color.show"] === undefined ? " (the default)" : ""}`}.`,
       `Agents with a person's own colour: ${agents.filter((a) => a.color || a.show).map((a) => `${a.name} (${a.color ?? "their own colour"}${a.show ? `, on ${a.show.join(", ") || "nowhere"}` : ""})`).join("; ") || "none"}.`,
       `Identity cards: ${sizeWord[cardSize] ?? cardSize}${isObj(host["card.sizeByInstance"]) && Object.keys(host["card.sizeByInstance"]).length ? `, set apart: ${Object.entries(host["card.sizeByInstance"]).map(([n, s]) => `${n} ${sizeWord[s as string] ?? s}`).join(", ")}` : ""}.`,
       `Page colours a person chose: ${isObj(host["theme.pageByInstance"]) && Object.keys(host["theme.pageByInstance"]).length ? Object.entries(host["theme.pageByInstance"]).map(([n, v]) => `${n} ${v === "page" ? "on the whole page" : "only its chat"}`).join(", ") : "none (each agent's own choice)"}.`,
       `Sidebar widget: ${isObj(host["widget.sidebar"]) ? `"${String((host["widget.sidebar"] as { spec?: { title?: unknown } }).spec?.title ?? "untitled")}"` : "none"}.`,
       `Custom CSS (${person === OPERATOR ? "the host operator" : person}): ${css.active ? `in force (version ${css.active.slice(0, 8)})` : "off"}${css.pending ? `, on trial (${Math.ceil(css.pending.remaining_ms / 1000)} s left): keep or revert it` : ""}; ${css.versions.length} saved version(s).`,
-      ...(enabled ? [`Mods installed: ${mods.mods.map((m) => `${m.name} ${m.version}`).join(", ") || "none"}; proposed by agents: ${proposals.map((p) => p.instance).join(", ") || "none"}.`,
-      `Effects on chats: ${agents.filter((a) => a.effects?.length).map((a) => `${a.name}: ${a.effects!.map((e) => e.id.slice(0, 8)).join(", ")}`).join("; ") || "none"}.`] : []),
       `Ambient effects: ${agents.filter((a) => Object.keys(a.ambient).length).map((a) => `${a.name}: ${Object.values(a.ambient).map((x) => `${(x.spec as { preset?: string }).preset} (set by ${x.by === "human" ? "a person" : "the agent"})`).join(", ")}`).join("; ") || "none"}.`,
-      ...(enabled ? [`Effect slots (${person === OPERATOR ? "the host operator" : person}): ${OWNER_SLOTS.filter((s) => slots[s]).map((s) => `${s} ${(slots[s] as string).slice(0, 8)}`).join(", ") || "none"}.`] : []),
     ];
     return {
       ok: true, summary, person, people: this.people(),
@@ -112,9 +97,7 @@ export class WebSettingsTools {
         colour_places_default: host["color.show"] === undefined, colours_off: host["color.off"] === true, sidebar_widget: host["widget.sidebar"] ?? null },
       agents,
       custom_css: { active: css.active, on_trial: css.pending !== null, trial: css.pending?.id ?? null, versions: css.versions.map((v) => ({ sha: v.sha, bytes: v.bytes })) },
-      ...(enabled ? { mods: { installed: mods.mods, proposals }, effect_slots: slots } : {}),
-      page_only: [enabled ? "choosing a file from the person's computer (a mod file, an effect folder, a CSS asset, a card picture)" : "choosing a file from the person's computer (a CSS asset, a card picture)",
-        enabled ? "this browser's switches (custom CSS off on this device; pausing effect playback)" : "this browser's custom CSS switch",
+      page_only: ["choosing a file from the person's computer (a CSS asset, a card picture)", "this browser's custom CSS switch",
         "downloading an export", "the card upload limits"],
     };
   }
@@ -124,18 +107,14 @@ export class WebSettingsTools {
     const person = this.person(rawPerson);
     if (typeof person !== "string") return person;
     if (!isObj(change) || typeof change.what !== "string") return failed("change", "an object with `what`");
-    if (this.deps.canvasWorkerEnabled?.() !== true && ["effect", "effect_slot", "mod"].includes(change.what)) {
-      return failed("experimental_feature_disabled", CANVAS_WORKER_EXPERIMENTAL_MESSAGE);
-    }
+    // #2799: Canvas Worker effects were removed, and with them the effect, effect-slot and mod changes here: refused.
+    if (["effect", "effect_slot", "mod"].includes(change.what)) return failed("experimental_feature_disabled", CANVAS_WORKER_EXPERIMENTAL_MESSAGE);
     switch (change.what) {
       case "host": return this.host(change.set);
       case "agent_colour": return this.agentColour(change);
       case "page_colours": return this.pageColours(change);
       case "banner_focus": return this.bannerFocus(change);
       case "custom_css": return this.css(person, change);
-      case "mod": return this.mod(person, change);
-      case "effect": return this.effect(person, change);
-      case "effect_slot": return this.slot(person, change);
       case "ambient": return this.ambient(change);
       case "restore_defaults": return this.restore(person);
       default: return failed("change", `unknown \`what\`: ${change.what}`);
@@ -146,14 +125,8 @@ export class WebSettingsTools {
   private writePrefs(person: string, set: Record<string, unknown>): Result {
     const parsed = this.deps.prefs.parsePatch(set);
     if (!parsed.ok) return failed("prefs", parsed.error);
-    const before = this.deps.prefs.readForViewer(person).values;
-    const written = this.deps.prefs.writeForViewer(person, parsed.patch, {
-      validateEffect: (p, key, id) => this.deps.effects.validateOwnerSelection(p, key, id),
-    });
+    const written = this.deps.prefs.writeForViewer(person, parsed.patch, { validateEffect: () => "effects_unavailable" });
     if (!written.ok) return failed(written.error);
-    const dropped = written.changed.filter((k) => k.startsWith("fx.") && k !== "fx.show")
-      .flatMap((k) => typeof before[k] === "string" && before[k] !== written.view.values[k] ? [before[k] as string] : []);
-    if (dropped.length) this.deps.effects.collectOwnerReplaced(dropped);
     if (written.changed.length) this.deps.announce();
     return { ok: true, changed: written.changed };
   }
@@ -226,43 +199,9 @@ export class WebSettingsTools {
     }
   }
 
-  private mod(person: string, c: Record<string, unknown>): Result {
-    const mods = this.deps.mods;
-    const out = (r: { ok: boolean; error?: string; detail?: string; problems?: unknown }, body: () => Record<string, unknown>): Result =>
-      r.ok ? { ok: true, ...body() } : failed(r.error ?? "mod", r.detail, r.problems);
-    switch (c.action) {
-      case "review": {
-        // A person has one review open at a time: opening another would drop theirs (a file they are looking at on the page).
-        const open = mods.stageOrigin(person);
-        if (open) {
-          return failed("mod_review_open", open.proposal === null
-            ? "the person has a mod file open for review on the page; ask them to install or cancel it first"
-            : `a review of ${open.proposal}'s proposal is already open (yours, or the person's on the page); cancel yours with its stage, or ask them to finish`);
-        }
-        const r = mods.stageProposal(person, c.instance);
-        return out(r, () => r.ok ? { stage: r.stage, plan: r.plan, plan_hash: r.plan_hash, note: "install it with the parts to apply (custom CSS is never ticked for you)" } : {});
-      }
-      case "install": {
-        // Only an agent's proposal: a mod the person imported from a file is theirs to install on the page.
-        const open = mods.stageOrigin(person);
-        if (open && open.stage === c.stage && open.proposal === null) return failed("mod_not_from_an_agent", "a mod the person imported from a file is installed on the page, by them");
-        const r = mods.commit(person, { stage: c.stage, plan_hash: c.plan_hash, include: c.include, target: c.target });
-        if (r.ok) this.deps.announce();
-        return out(r, () => r.ok ? { id: r.id, applied: r.applied, ...(r.css ? { css: r.css } : {}) } : {});
-      }
-      case "cancel": { const r = mods.abort(person, c.stage); return out(r, () => ({})); }
-      case "dismiss": { const r = mods.dismiss(c.instance); return out(r, () => ({})); }
-      case "uninstall": { const r = mods.uninstall(c.id); return out(r, () => r.ok ? { released: r.released } : {}); }
-      default: return failed("mod", "action: review (instance), install (stage, plan_hash, include, target), cancel (stage), dismiss (instance) or uninstall (id)");
-    }
-  }
 
-  private effect(person: string, c: Record<string, unknown>): Result {
-    const args = { instance: c.instance, id: c.id, ...(c.params !== undefined ? { params: c.params } : {}) };
-    const r = c.action === "apply" ? this.deps.effects.apply(person, args) : c.action === "remove" ? this.deps.effects.remove(person, { instance: c.instance, ...(c.id !== undefined ? { id: c.id } : {}) }) : null;
-    if (!r) return failed("effect", "action: apply (instance, id, params?) or remove (instance, id?)");
-    return isObj(r) && typeof r.error === "string" ? failed(r.error, typeof r.detail === "string" ? r.detail : undefined) : { ok: true, ...(r as Record<string, unknown>) };
-  }
+
+
 
   /** #2117: a person's ambient for an agent — the chat menu's write (a person's wins over the agent's, and binds it). */
   private ambient(c: Record<string, unknown>): Result {
@@ -273,11 +212,7 @@ export class WebSettingsTools {
     return { ok: true, instance: c.instance, ...r, now: this.deps.ambient(c.instance) };
   }
 
-  private slot(person: string, c: Record<string, unknown>): Result {
-    if (typeof c.slot !== "string" || !(OWNER_SLOTS as readonly string[]).includes(c.slot)) return failed("effect_slot", `slot: ${OWNER_SLOTS.join(", ")}`);
-    if (c.id !== null && typeof c.id !== "string") return failed("effect_slot", "id: an effect id, or null to clear");
-    return this.writePrefs(person, { [`fx.${c.slot as OwnerSlot}`]: c.id });
-  }
+
 
   /** The page's Restore defaults: the host prefs back to their defaults, and this person's custom CSS off. */
   private restore(person: string): Result {

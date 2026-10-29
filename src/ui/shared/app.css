@@ -2201,17 +2201,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .s-limit-warnings { margin: var(--s-2) 0; padding-left: var(--s-4); }
 @media (max-width: 479px) { .grid3 { grid-template-columns: minmax(0, 1fr); } }
 
-/* #1629 B2: effect library controls. No runtime layer is created by this card. */
-.s-fx-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
-.s-fx-item { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border); }
-.s-fx-item h4 { margin: 0; }
-.s-fx-poster { display: block; max-width: min(240px, 100%); max-height: 160px; object-fit: contain; border-radius: var(--r-sm); }
-
-.s-fx-chat, .s-fx-params label:not(.check) { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
-.s-fx-chat { margin: var(--s-2) 0; }
-.s-fx-params { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0; max-width: 100%; }
-.s-fx-target, .s-fx-params input:not([type=checkbox]), .s-fx-params select { min-height: 36px; min-width: 0; max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); }
-
 /* #1629: stock paint bands. Structural ancestors remain neutral; only bounded content owns level 1.
    The viewport effect root is a direct body sibling: behind 0 / stock content 1 (header 2) / front 20.
    Nested menus cannot cross a content stacking context: the unmounted trust guard suspends fronts for overlays. */
@@ -2222,18 +2211,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Header menus must stay above the later scroller stacking context. */
 .panel-head { z-index: 2; }
 @media (min-width: 900px) { .chat-split > .pv-divider, .chat-split > .pv-panel { position: relative; z-index: 1; } }
-/* #1629: owner choices share the existing control font floor. */
-.s-fx-owner{margin-top:var(--s-4);padding-top:var(--s-3);border-top:1px solid var(--border)}
-.s-fx-owner-row{display:flex;align-items:end;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-2)}
-.s-fx-owner-row>label{display:flex;flex-direction:column;gap:var(--s-1);min-width:0;flex:1}
-
-/* #2044: the effect frame's document declares no colour scheme (light). An iframe whose own colour scheme differs
-   from its document's gets an opaque backdrop, so under the dark theme the frame hid the whole chat: keep them equal. */
-.agend-effect-frame { color-scheme: normal !important; }
-
-/* #1629: host-created static poster IMG; geometry and visibility belong to the trusted CSSOM binding. */
-.agend-effect-poster { object-fit: cover !important; object-position: center !important; user-select: none; }
-
 /* #1629: full-app bounded stock surfaces. Panel roots stay neutral; effects never raise the whole app. */
 .p-fleet > .seg, .p-settings > .seg,
 .p-fleet > .panel-body, .p-needs > .panel-body, .p-settings > .panel-body,
@@ -2241,18 +2218,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-log > .log-bar, .p-view > .v-term, .p-view > .v-id { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
 .p-settings > .s-pending { z-index: 1; }
-
-/* #1629: host-owned local Trial panel. Only its canvas frame lives inside the paint-contained stage. */
-.effect-trial-head, .effect-trial-controls, .effect-trial-note { position: relative; z-index: 1; background: var(--bg); padding: var(--s-3); margin: 0; }
-.effect-trial-head { display: flex; align-items: center; gap: var(--s-2); border-bottom: 1px solid var(--border); }
-.effect-trial-head > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.effect-trial-body { flex: 1; min-height: 0; display: flex; padding: var(--s-3); }
-.effect-trial-stage { position: relative; z-index: 0; flex: 1; min-width: 0; min-height: 0; contain: paint; overflow: clip; padding: 0; border: 0; outline: none; box-shadow: none; }
-
-/* #2115: diagnostics remain inside the stock protected panel header, never in an effect plane. */
-.panel-head:has(> .chat-fx-notice) { flex-wrap: wrap; }
-.chat-fx-notice { order: 10; flex: 1 1 100%; min-width: 0; max-width: 100%; font-size: var(--fs-sm); overflow-wrap: anywhere; }
-.chat-fx-notice > span { display: block; }
 
 /* ── #2293: global search — the sidebar row's shortcut, the header's button (collapsed sidebar, phone), the dialog ── */
 /* #2478: a touch screen has no Ctrl/⌘ K — the shortcut's hint is not shown there (the row is). */

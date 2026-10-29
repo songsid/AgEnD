@@ -8,12 +8,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseDocument } from "yaml";
 import { describe, expect, it, vi } from "vitest";
-// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
-// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
-vi.mock("../src/web-experimental.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
-  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
-}));
 import { FleetManager } from "../src/fleet-manager.js";
 import { UPLOAD_LIMITS, UPLOAD_MB_RANGE } from "../src/web-upload.js";
 import { DEFAULT_SESSION_POLICY, MAX_WEB_SESSIONS } from "../src/web-session.js";
@@ -103,10 +97,8 @@ describe("the web-dashboard skill", () => {
     expect(SKILL).not.toMatch(/[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}/);   // a bot token shape
   });
 
-  // 2.3.0 stable (#1633): an agent on 2.3.0 is never told a feature is "2.3 beta" or to check for a beta version, in
-  // either variant (the Canvas-Worker-off one is hand-maintained beside this one).
-  it("names no beta version, in either variant", () => {
-    const off = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-dashboard/SKILL.canvas-worker-off.md"), "utf8");
-    expect([SKILL.match(/\bbeta\b[^\n]{0,40}/gi), off.match(/\bbeta\b[^\n]{0,40}/gi)]).toEqual([null, null]);
+  // 2.3.0 stable (#1633): an agent on 2.3.0 is never told a feature is "2.3 beta" or to check for a beta version.
+  it("names no beta version", () => {
+    expect(SKILL.match(/\bbeta\b[^\n]{0,40}/gi)).toBeNull();
   });
 });

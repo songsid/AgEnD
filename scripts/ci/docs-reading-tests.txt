@@ -5,7 +5,6 @@
 tests/changelog-fragments.test.ts
 tests/command-surface-docs-1148.test.ts
 tests/docs-reading-tests-list.test.ts
-tests/effect-click-sparks-example.test.ts
 tests/fleet-docs-link-1844.test.ts
 tests/no-wsl-shutdown-advice.test.ts
 tests/stale-forwards-guidance-1780.test.ts

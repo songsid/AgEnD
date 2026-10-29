@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { helpOption } from "../src/backend/launch-effort.js";
@@ -24,9 +23,4 @@ describe("landing CodeQL production regressions", () => {
     expect(result.error, result.stderr).toBeUndefined(); expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout.trim())).toEqual([true, false, true, false]);
   }, 15000);
-  it.each(["app-source", "registry", "stage", "product"])("%s native fixture retains errors privately and sends a generic response", stem => {
-    const source = readFileSync(`scripts/manual/effect-trial-${stem}-1629.mts`, "utf8");
-    expect(source).toContain('res.end("Internal fixture error")'); expect(source).toContain('console.error(e)');
-    expect(source).not.toContain('res.end(String(e))'); expect(source).toContain('assert.equal(await fault.text(),"Internal fixture error")');
-  });
 });

@@ -118,7 +118,7 @@ describe("/ui/send with replyTo", () => {
     const history = JSON.parse((await raw(port, "GET", "/ui/history?instance=a&limit=5", { cookie: cookieOf(session("admin")) })).body);
     expect(history.messages.at(-1).replyTo).toEqual(mine.replyTo);
   });
-  it("only { boot, id }: anything else 400; a row no longer kept, of another chat, or an effect offer: 409, nothing delivered", async () => {
+  it("only { boot, id }: anything else 400; a row no longer kept, or of another chat: 409, nothing delivered", async () => {
     const delivered = delivering();
     const quoted = emit({ sender: "atlas", role: "agent", text: "hi" });
     const admin = session("admin");
@@ -131,8 +131,6 @@ describe("/ui/send with replyTo", () => {
       const r = await raw(port, "POST", "/ui/send", write(admin), JSON.stringify({ instance: "a", message: "x", replyTo }));
       expect([r.status, JSON.parse(r.body).reason], JSON.stringify(replyTo)).toEqual([409, "reply_gone"]);
     }
-    const trial = fm.webChatHistory.recordEffectTrial("a", { v: 1 }, now());
-    if (trial) expect((await raw(port, "POST", "/ui/send", write(admin), JSON.stringify({ instance: "a", message: "x", replyTo: { boot: trial.boot, id: trial.id } }))).status).toBe(409);
     expect(delivered, "nothing reached the agent").toHaveLength(0);
   });
   it("a guest replies only to what it may see: a channel message or its own; a web-only one is 409", async () => {

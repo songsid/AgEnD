@@ -2,7 +2,7 @@
  * The user's tofu boxes (Discord hmsg-49fbf692, relayed by the leader): emoji the dashboard's text fonts lack must be
  * drawn by the platform's colour emoji font, never a box. Every font stack the dashboard ships ends with the emoji
  * chain — the stock tokens (--font-ui, --font-mono via --font-emoji), each agent-theme font (.th-font-system: its own
- * stack; .th-font-mono: --font-mono), the effect-trial frame, the /login terminal and the session-ended banner — and no
+ * stack; .th-font-mono: --font-mono), the /login terminal and the session-ended banner — and no
  * stylesheet sets a literal font stack without it.
  */
 import { describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 const CHAIN = ['"Apple Color Emoji"', '"Segoe UI Emoji"', '"Noto Color Emoji"', "emoji"];
-const FILES = ["src/ui/shared/app.css", "src/ui/shared/effect-trial.css", "src/ui/web-terminal/terminal.css", "src/ui/signin.html"];
+const FILES = ["src/ui/shared/app.css", "src/ui/web-terminal/terminal.css", "src/ui/signin.html"];
 
 /** Each font stack a stylesheet sets: the families of every `font-family:` and the family part of every `font:` shorthand. */
 function stacks(css: string): string[] {

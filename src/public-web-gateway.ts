@@ -15,8 +15,6 @@ export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
 /** Reviewed panel routes. No health, agent, issue-code, preview, legacy restart or SSE. */
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
-  // #2118: fixed trusted opaque bootstrap only. No library/resource, personal or Trial grant.
-  if (method === "GET" && path === "/effect-bootstrap") return true;
   if (reads && isWebIconPath(path)) return true;
   if (reads && ["/", "/signin", "/ui", "/view", "/auth/session", "/auth/sessions", "/auth/device", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
   if (method === "GET" && path.startsWith("/assets/") && isServedAsset(path.slice("/assets/".length))) return true;
@@ -47,10 +45,6 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/ui\/office-skins(?:\/[A-Za-z0-9_-]{1,40}(?:\/img\/[0-9a-f]{32}\.png)?)?$/.test(path)) return true;
   // #1629: agents' themes and their pictures, read-only — the public link views themes; reset and lock are not here.
   if (method === "GET" && (path === "/ui/themes" || /^\/ui\/img\/theme\/[^/]+\/[0-9a-f]{32}$/.test(path))) return true;
-  // #2118: exact current-Chat reads only; handler rechecks session/epoch/exposure/instance/retention.
-  if (method === "GET" && (path === "/ui/effects/placements" || /^\/ui\/effects\/resource\/[0-9a-f]{32}$/.test(path))) return true;
-  // Static posters remain available without granting library, personal slots or writes.
-  if (method === "GET" && (path === "/ui/effect-posters" || /^\/ui\/effect-posters\/[0-9a-f]{32}\.png$/.test(path))) return true;
   // #1630: avatars and server emoji, read-only — nothing a signed-in public user cannot already see in the page.
   if (method === "GET" && /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/.test(path)) return true;
   if (method === "POST" && /^\/ui\/(send|upload|prompt|reply-button|command|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|config)$/.test(path)) return true;

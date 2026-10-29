@@ -227,13 +227,6 @@ import { OfficeSkinStore } from "./web-office-skins.js";
 import { OfficeActs } from "./web-office-acts.js";
 import { OFFICE_PACK_TOOLS, OfficePackTools, type PackChangeView } from "./web-office-pack-tools.js";
 import { WebAppearance } from "./web-appearance.js";
-import { WebEffectLibrary } from "./web-effect-library.js";
-import { WebEffectTrials } from "./web-effect-trials.js";
-import { WebEffectService } from "./web-effect-service.js";
-import { WebEffectProfiles } from "./web-effect-profiles.js";
-import { WebEffectTools, WEB_EFFECT_TOOLS } from "./web-effect-tools.js";
-import { resolveEffectParams } from "./web-effect.js";
-import { cw1EffectChecker } from "./web-mod-bundle.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { WEB_NAME_FALLBACK, safeWebName, validateWebName, webNameInUse, webPersonKey, type WebAccount } from "./web-profile.js";
 import type { WebPerson as WebPersonView } from "./web-api.js";
@@ -248,7 +241,6 @@ import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
 import { cardVersion, resolveCard } from "./web-card.js";
 import { ModStore } from "./web-mod-store.js";
-import { AgentMods } from "./web-mod-agent.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
 import { accentColor, avatarFor, ownBotConnections, type AvatarDescriptor } from "./instance-avatar.js";
@@ -345,10 +337,8 @@ import { decisionListAnswer } from "./decision-list.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
-import { canvasWorkerEnabled, isCanvasWorkerTool, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
-import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
+import { isCanvasWorkerTool, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { bundledSkillContents } from "./bundled-skills.js";
-import { createEffectBootstrap } from "./web-effect-bootstrap.js";
 import { fleetLevelDifferences, fleetLevelSignature, appendedConnections } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
@@ -1439,11 +1429,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
-  /** #2118: independent of HTML preview availability/port; fixed bootstrap only, no effect resources. */
-  private readonly effectBootstrap = createEffectBootstrap();
-  /** Fixed trusted document coherence, independent of the HTML preview listener; never a resource grant. */
-  get effectBoot(): string { return this.effectBootstrap.boot; }
-  canvasWorkerEnabled(): boolean { return canvasWorkerEnabled(this.fleetConfig?.web); }
   private healthServerDrain: WebServerDrain | null = null;
   /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
   private previewListener: PreviewListener | null = null;
@@ -1608,7 +1593,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1629: every instance's theme, placements, assets and lock (web-themes.json). */
   get themeStore(): ThemeStore {
     // r4.1 Q3 (b): the card's limits are read from fleet.yaml at each upload (a change applies without a restart).
-    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir, { limits: () => effectiveAppearanceLimits(this.fleetConfig?.web?.appearance).limits, effectsDropped: ids => this.effectLibrary.collectUnreferenced(ids) }));
+    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir, { limits: () => effectiveAppearanceLimits(this.fleetConfig?.web?.appearance).limits }));
   }
   private officeStoreInstance?: OfficeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json, beside web-themes.json). */
@@ -1788,84 +1773,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame carries the rev */ } }));
   }
 
-  private effectLibraryInstance?: WebEffectLibrary;
-  private effectTrialsInstance?: WebEffectTrials;
-  /** Lazy, single-owner storage. Register every host reference source before any operation can collect. */
-  get effectLibrary(): WebEffectLibrary {
-    if (!this.effectLibraryInstance) {
-      const library = new WebEffectLibrary(this.dataDir);
-      // Providers are lazy; publish only after every registration succeeds.
-      library.registerReferenceSource("themes", () => {
-        if (!this.themeStore.readable()) throw new Error("themes_unreadable");
-        return this.themeStore.placedEffects().flatMap(row => row.ids.map(id => ({ id, holder: `instance:${row.name}` })));
-      });
-      library.registerReferenceSource("prefs", () => this.webPrefs.ownerEffectReferences());
-      library.registerReferenceSource("mods", () => {
-        const mods = this.mods.list();
-        if (mods.unreadable) throw new Error("mods_unreadable");
-        return mods.mods.flatMap(mod => mod.effects.map(effect => ({ id: effect.id, holder: `mod:${mod.id}` })));
-      });
-      this.effectTrialsInstance = new WebEffectTrials({ library, known: name => this.isKnownInstance(name) });
-      this.effectLibraryInstance = library;
-    }
-    return this.effectLibraryInstance;
-  }
-  /** Volatile Try offers and session-bound runs share this library. */
-  get effectTrials(): WebEffectTrials { if (!this.effectTrialsInstance) void this.effectLibrary; return this.effectTrialsInstance!; }
-
-  private effectProfilesInstance?: WebEffectProfiles;
-  get effectProfiles(): WebEffectProfiles { return (this.effectProfilesInstance ??= new WebEffectProfiles(this.dataDir)); }
-  private effectServiceInstance?: WebEffectService;
-  get effectService(): WebEffectService {
-    return (this.effectServiceInstance ??= new WebEffectService({ library: this.effectLibrary, themes: this.themeStore, profiles: this.effectProfiles, prefs: this.webPrefs, trials: this.effectTrials,
-      known: name => this.isKnownInstance(name), changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* next status carries revision */ } } }));
-  }
-
-  private effectToolsService?: WebEffectTools;
-  /** Caller identity is supplied only by the owned IPC connection / verified agent endpoint token. */
-  get effectTools(): WebEffectTools {
-    return (this.effectToolsService ??= new WebEffectTools({
-      library: this.effectLibrary, limiter: this.webAppearance.limiter,
-      authorize: (name, buckets) => !this.isKnownInstance(name) ? { error: "unknown_instance" } : this.webAppearance.authorizeEffect(name, buckets),
-      placed: name => this.themeStore.get(name).placements.effects,
-      place: (name, effects) => {
-        const before = this.themeStore.get(name).placements.effects;
-        const explicit = new Set(effects.filter(e => typeof e !== "string").map(e => e.id));
-        const w = this.themeStore.setPlacements(name, { effects }, "agent", what => {
-          // An unchanged human/private placement may be retained, never exposed or newly acquired by an agent.
-          const r = explicit.has(what.id) ? this.effectLibrary.read(what.id, { kind: "agent", id: name })
-            : this.effectLibrary.readReferenced(what.id, `instance:${name}`);
-          if (!r.ok) return r.error;
-          const params = explicit.has(what.id) ? what.params : before.find(e => e.id === what.id)?.params;
-          return resolveEffectParams(r.entry.manifest, params ?? {}).ok ? null : "effect_params";
-        });
-        return w.ok ? { ok: true, rev: w.rev } : { ok: false, error: w.error };
-      },
-      changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* later status carries placements */ } },
-      // A nonmutating own/shared offer is not an appearance write. Only an explicit non-public admin-session click may start it.
-      preview: async (instance, id) => {
-        const result = this.effectTrials.offer(instance, id);
-        if (!result.ok) return { error: "not_found" };
-        const present = this.webChatHistory.list(instance).some(row => row.effectTrial?.offer === result.offer.offer);
-        if (!present && !this.publishEffectTrial(instance, result.offer)) return { error: "trial_unavailable" };
-        return { id, status: "offered", expiresAt: result.offer.expiresAt, message: "A trial card is in your web chat. A signed-in admin outside the public link can start it; nothing was applied." };
-      },
-      profiles: id => this.effectProfiles.read(id),
-      profileSummary: id => this.effectService.profileSummary(id),
-      profileSummaries: ids => this.effectService.profileSummaries(ids),
-      playbackSummary: (name, id) => this.effectService.playbackSummary(name, id),
-    }));
-  }
-
   private appearanceToolsService?: AppearanceTools;
   /** #1629 r4 §1: get_web_appearance / preview_web_appearance — the caller's own look, resolved as the page resolves it. */
   get appearanceTools(): AppearanceTools {
     return (this.appearanceToolsService ??= new AppearanceTools({
-      canvasWorkerEnabled: () => this.canvasWorkerEnabled(),
       frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
       theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets, ambient: r.placements.ambient,
         glyphAsset: (id) => this.themeStore.asset(name, id) }; },
-      effects: name => this.themeStore.readable() ? this.themeStore.get(name).placements.effects.map(p => ({ id: p.id, by: p.by, ...(p.params ? { params: p.params } : {}), playback: this.effectService.playbackSummary(name, p.id) })) : [],
       card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
       // #1958: the host's identity-colour settings, as the page reads them (an unreadable prefs file: the defaults).
       colorPrefs: () => { try { const v = this.webPrefs.read(OPERATOR).values as Record<string, unknown>; return { show: v["color.show"], off: v["color.off"] === true }; } catch { return {}; } },
@@ -1888,42 +1802,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private modStore?: ModStore;
-  /**
-   * #1629 r4-5 / B2: installed mods use the same validated library and scoped holder claims as direct uploads.
-   */
+  /** #1629 r4-5: installed mods (#2799: a bundle that carries Canvas Worker effects is refused). */
   get mods(): ModStore {
     return (this.modStore ??= new ModStore(this.dataDir, {
       themes: this.themeStore,
       prefs: this.webPrefs,
       ownerCss: this.ownerCss,
-      effects: this.effectLibrary,
-      canvasWorkerEnabled: () => this.canvasWorkerEnabled(),
-      context: () => ({ agendVersion: agendVersion(), limits: this.themeStore.limits(), effects: cw1EffectChecker() }),
+      context: () => ({ agendVersion: agendVersion(), limits: this.themeStore.limits() }),
       isKnownInstance: (name) => this.isKnownInstance(name),
       prefsIdentity: OPERATOR,
     }));
-  }
-  private agentModsService?: AgentMods;
-  /** #1629 r4-5b: export_web_mod / propose_web_mod — the caller's own look as a file, and a proposal for a person. */
-  get agentMods(): AgentMods {
-    return (this.agentModsService ??= new AgentMods({
-      themes: this.themeStore, mods: this.mods, limiter: this.webAppearance.limiter,
-      webConfig: () => this.fleetConfig?.web ?? null,
-      // The mod store's own: a proposal is checked exactly as the person's import of it will be.
-      context: () => this.mods.checkContext(),
-      readOwnEffect: (instance, id) => { const r = this.effectLibrary.read(id, { kind: "agent", id: instance }); return r.ok ? { name: r.entry.manifest.name, files: r.entry.files } : null; },
-      notice: (instance, text) => { try { this.emitSseEvent("message", { instance, sender: instance, role: "status", text, ts: new Date().toISOString() }); } catch { /* the page reads it from Settings too */ } },
-      changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame */ } },
-    }));
-  }
-  /**
-   * #1629 r4-5c: an effect as this person may carry it away in an export — their own claim, or one a person shared —
-   * read with their principal (Sol's ACL). Being able to view or run a placed effect never grants packaging someone
-   * else's private claim: the library's reference read is runtime access, not an export path. Null: not theirs.
-   */
-  modPlacedEffect(person: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null {
-    const r = this.effectLibrary.read(id, { kind: "human", id: person });
-    return r.ok ? { name: r.entry.manifest.name, files: r.entry.files } : null;
   }
   /** #1629 r4-5: an instance's card text as every viewer sees it (a person's fields over the agent's). */
   modCardText(name: string): { tagline?: string; bio?: string } {
@@ -1950,15 +1838,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   get webSettings(): WebSettingsTools {
     return (this.webSettingsToolsService ??= new WebSettingsTools({
-      canvasWorkerEnabled: () => this.canvasWorkerEnabled(),
-      prefs: this.webPrefs, ownerCss: this.ownerCss, mods: this.mods, effects: this.effectService,
+      prefs: this.webPrefs, ownerCss: this.ownerCss,
       instances: () => [...Object.keys(this.fleetConfig?.instances ?? {}),
         ...(this.classicChannels?.getAll() ?? []).map((ch) => ch.instanceName).filter((n) => !Object.hasOwn(this.fleetConfig?.instances ?? {}, n))],
       colour: (name) => personIdentityColour(this.dataDir, name),
       setColour: (name, patch) => { const w = setPersonIdentityColour(this.dataDir, name, patch); if (w.ok) this.identityChanged(); return w; },
       bannerFocus: (name) => personBannerFocus(this.dataDir, name),
       setBannerFocus: (name, focus) => { const w = setPersonBannerFocus(this.dataDir, name, focus); if (w.ok) this.identityChanged(); return w; },
-      placements: (name) => this.themeStore.get(name).placements.effects.map((e) => (typeof e === "string" ? { id: e } : e)),
       ambient: (name) => Object.fromEntries(Object.entries(this.themeStore.get(name).placements.ambient).flatMap(([k, a]) => a ? [[k, { spec: a.spec, by: a.by }]] : [])),
       setAmbient: (name, spec, which) => this.webAppearance.humanSetAmbient(name, spec, which),
       announce: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next status frame carries it */ } },
@@ -10849,7 +10735,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private checkToolPermission(sink: ToolSink, instanceName: string, tool: string): { allowed: boolean; message: string } {
-    if (isCanvasWorkerTool(tool) && !this.canvasWorkerEnabled()) return { allowed: false, message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
+    if (isCanvasWorkerTool(tool)) return { allowed: false, message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };   // #2799: removed
     const profile: ToolSetName = resolveToolSet(this.fleetConfig?.instances[instanceName], instanceName);
     const allowed = mayUseTool(profile, tool);
     if (!allowed) {
@@ -11558,16 +11444,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
     const type = String(msg.type);
-    if (type.startsWith("fleet_") && WEB_EFFECT_TOOLS.has(type.slice(6))) {
-      const ipc = this.instanceIpcClients.get(name), fleetRequestId = msg.fleetRequestId;
-      if (!ipc || typeof fleetRequestId !== "string") return;
-      void this.handleWebThemeHttp(name, type.slice(6), (msg.payload ?? {}) as Record<string, unknown>).then(result => {
-        if (this.instanceIpcClients.get(name) === ipc) ipc.send({ type: "fleet_web_theme_response", fleetRequestId, result });
-      }, err => {
-        if (this.instanceIpcClients.get(name) === ipc) ipc.send({ type: "fleet_web_theme_response", fleetRequestId, error: err instanceof Error ? err.message : "Effect operation failed" });
-      }).catch(err => this.logger.debug({ err }, "Effect tool response could not be written"));
-      return;
-    }
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
     if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
@@ -11602,7 +11478,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const args = (msg.payload ?? {}) as Record<string, unknown>;
       const result = tool === "get_web_appearance" || tool === "preview_web_appearance"
         ? this.appearanceTools.handle(instanceName, tool, args)
-        : tool === "export_web_mod" || tool === "propose_web_mod" ? this.agentMods.handle(instanceName, tool, args)
         : tool === "office_view" || tool === "office_set" ? this.officeActs.handle(instanceName, tool, args)
         : OFFICE_PACK_IPC.has(`fleet_${tool}`) ? this.officePackTools.handle(instanceName, tool, args)
         : this.webAppearance.handleTool(instanceName, tool, args);
@@ -12043,13 +11918,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1629: `agend-agent theme …` — the same service as the tools; `instance` is the token's. */
   async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
-    if (isCanvasWorkerTool(tool) && !this.canvasWorkerEnabled()) return { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
-    if (WEB_EFFECT_TOOLS.has(tool)) {
-      if (!this.isKnownInstance(instance)) return { error: "unknown_instance" };
-      return this.effectTools.handle(instance, tool, args);
-    }
+    if (isCanvasWorkerTool(tool)) return { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };   // #2799: removed
     if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
-    if (tool === "export_web_mod" || tool === "propose_web_mod") return this.agentMods.handle(instance, tool, args);
     if (tool === "office_view" || tool === "office_set") return this.officeActs.handle(instance, tool, args);   // #2578
     if (OFFICE_PACK_IPC.has(`fleet_${tool}`)) return this.officePackTools.handle(instance, tool, args);       // #2692
     return this.webAppearance.handleTool(instance, tool, args);
@@ -12928,7 +12798,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.compactWatchService?.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.effectToolsService?.forget(name); this.mods.forgetInstance(name); this.agentMods.forget(name); this.officeActsInstance?.forget(name); this.officePackToolsInstance?.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.mods.forgetInstance(name); this.officeActsInstance?.forget(name); this.officePackToolsInstance?.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -18253,14 +18123,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return room ? `room:${room.channelId}:${room.adapterId ?? ""}` : null;
   }
 
-  /** The only Try-card publisher: no arbitrary SSE sender/role can manufacture this metadata. */
-  private publishEffectTrial(instance: string, offer: unknown): boolean {
-    const row = this.webChatHistory.recordEffectTrial(instance, offer, new Date().toISOString());
-    if (!row) return false;
-    broadcastSseEvent(this.sseClients, "message", row, err => this.logger.debug({ err }, "SSE client write failed; evicting"), this.webChatHistory.cursorOf(row));
-    return true;
-  }
-
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
     // #1386: a prompt opened or closed, or an instance's state moved — "Needs you" may have changed.
@@ -18596,25 +18458,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.logger.debug({ knowledgeDir, workDir, backend }, "Synced general knowledge files");
   }
 
-  /** Update only AgEnD-managed skill copies; no launch or restart is needed for an experimental switch. */
-  canvasWorkerSettingChanged(): void {
-    this.refreshExperimentalSkills();
-    this.emitSseEvent("status", this.getUiStatus());
-  }
-
-  private refreshExperimentalSkills(): void {
-    for (const [name, daemon] of this.daemons) {
-      try {
-        const cfg = daemon.getConfigSnapshot();
-        const backend = cfg.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-        const workDir = this.resolveKnowledgeWorkDir(cfg.working_directory, backend, name);
-        const classic = this.classicChannels?.getAll().some(ch => ch.instanceName === name) === true;
-        if (classic && !insideManagedWorkspaces(workDir)) continue;
-        this.syncRoleSkills(workDir, backend, classic ? "classic" : cfg.general_topic ? "general" : "worker");
-      } catch (err) { this.logger.warn({ name, err }, "Could not refresh experimental skill visibility"); }
-    }
-  }
-
   /** Publish only the bundled skills eligible for an instance role. */
   private syncRoleSkills(workDir: string, backend: string, role: ManagedSkillRole, knowledgeDir?: string): void {
     const skillSegments = FleetManager.SKILLS_DIR_SEGMENTS[backend];
@@ -18812,7 +18655,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         continue;
       }
       managed.push(name);
-      const newContent = bundledSkillContents(join(srcSkills, name), this.canvasWorkerEnabled());
+      const newContent = bundledSkillContents(join(srcSkills, name));
       if (refuse(dest)) continue;
       try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch { /* rewrite */ }
       mkdirSync(destDir, { recursive: true });
@@ -21250,7 +21093,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!Object.hasOwn(this.fleetConfig?.instances ?? {}, ch.instanceName)
         && !this.classicChannels.getAll().some((c) => c.instanceName === ch.instanceName)) {
       try { this.webPrefs.forgetInstance(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room from web favorites failed"); }
-      try { this.themeStore.forget(ch.instanceName); this.webAppearance.limiter.forget(ch.instanceName); this.effectToolsService?.forget(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room's web theme failed"); }
+      try { this.themeStore.forget(ch.instanceName); this.webAppearance.limiter.forget(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room's web theme failed"); }
     }
 
     this.instanceWorldBinding.delete(ch.instanceName);
@@ -21715,10 +21558,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
-
-    if (canvasWorkerEnabled(oldConfig?.web) !== this.canvasWorkerEnabled()) {
-      this.canvasWorkerSettingChanged();
-    }
 
     // Classic behavior settings share the fleet defaults but are not entries
     // in fleet.yaml. Snapshot the old effective chain before reloading the
@@ -23632,13 +23471,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
 
-      if (!this.canvasWorkerEnabled() && isCanvasWorkerHttpPath(requestPath)) {
-        res.writeHead(403, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-        res.end(JSON.stringify({ error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }));
-        return;
-      }
-      if (this.effectBootstrap.handle(req, res)) return;
-
       // Branding is public, after Host admission: automatic favicon requests
       // must not become noisy web-token 401s in the browser console.
       // #2308: the icon routes and the pages' icon links follow the app icon set in Settings.
@@ -24091,7 +23923,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return;
     }
     const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig,
-      canvasWorkerEnabled: () => this.canvasWorkerEnabled(),
       // #1723: with a web.preview_origin, the open public link's dashboard frames this listener's preview too.
       extraOrigins: () => { const o = settings.origin ? this.publicWebLink?.openDashboardOrigin() : null; return o ? [o] : []; } });
     this.previewListener = listener;
@@ -24246,8 +24077,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         ...(image.themeAvatar ? { theme_avatar: image.themeAvatar } : {}),
         ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
         ...(() => { try { const v = cardVersion(resolveCard(name, cards.get(name), this.themeStore.get(name).theme.card)); return v ? { card_v: v } : {}; } catch { return {}; } })(),
-        // #2118: only this Chat's placement content; guest projection drops global revisions.
-        effect_chat_v: this.canvasWorkerEnabled() ? createHash("sha256").update(JSON.stringify(this.themeStore.get(name).placements.effects)).digest("hex").slice(0, 32) : null,
         // #1958: the identity colour's tiers (the page resolves them: the agent's only while it shows agents' themes).
         color: { ...(colors.get(name)?.color ? { person: colors.get(name)!.color! } : {}), ...(image.agentColor ? { agent: image.agentColor } : {}),
           ...(image.roleColor ? { role: image.roleColor } : {}), auto: autoIdentityColor(name) },
@@ -24274,7 +24103,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       };
     });
     return {
-      canvas_worker: this.canvasWorkerEnabled(),
       instances,
       startup: this.startupDashboard?.snapshot() ?? null,
       publicLink: this.getPublicWebStatus(),

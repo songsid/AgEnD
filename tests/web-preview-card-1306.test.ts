@@ -71,8 +71,8 @@ function uiFiles(dir = UI): string[] {
   });
 }
 
-describe("preview and effect factories are the only frames (§5.3 / #1629)", () => {
-  it("only the reviewed preview and Canvas Worker factories create iframes or write sandbox", () => {
+describe("the preview factory is the only frame (§5.3; #2799 removed the Canvas Worker one)", () => {
+  it("only the reviewed preview factory creates iframes or writes sandbox", () => {
     const hits = uiFiles().flatMap(f => {
       // Code only: comments may name these words.
       // Strip until nothing changes, so a comment that removal joins up is stripped too.
@@ -83,7 +83,7 @@ describe("preview and effect factories are the only frames (§5.3 / #1629)", () 
       } while (src !== before);
       return [...src.matchAll(/createElement\(\s*["'`]iframe["'`]\s*\)|<iframe\b|["'`]sandbox["'`]|\.sandbox\b/gi)].map(m => `${f.slice(UI.length + 1)}: ${m[0]}`);
     });
-    expect(hits.sort()).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"', 'shared/effect-frame.js: createElement("iframe")', 'shared/effect-frame.js: "sandbox"'].sort());
+    expect(hits.sort()).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"'].sort());
     expect(PREVIEW.indexOf('createElement("iframe")')).toBeGreaterThan(PREVIEW.indexOf("function mountPreview("));
   });
 

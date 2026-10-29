@@ -32,7 +32,7 @@ vi.mock("../src/logger.js", async original => {
 
 const B = await import("../src/web-mod-bundle.js");
 const { buildModBundle } = await import("../src/web-mod-export.js");
-const { ModStore, MOD_STAGE_MS, modHolder, modPlan } = await import("../src/web-mod-store.js");
+const { ModStore, MOD_STAGE_MS, modPlan } = await import("../src/web-mod-store.js");
 const { ThemeStore } = await import("../src/web-theme-store.js");
 const { WebPrefsStore, OPERATOR } = await import("../src/web-prefs.js");
 const { OwnerCssStore } = await import("../src/web-owner-css-store.js");
@@ -73,7 +73,7 @@ function bundle(over: { manifest?: Record<string, unknown>; files?: Record<strin
 }
 const text = (doc: unknown) => JSON.stringify(doc);
 const limits = effectiveAppearanceLimits(undefined).limits;
-const ctx = (over: Partial<import("../src/web-mod-bundle.js").ModContext> = {}) => ({ agendVersion: "2.3.0", limits, effects: null, ...over });
+const ctx = (over: Partial<import("../src/web-mod-bundle.js").ModContext> = {}) => ({ agendVersion: "2.3.0", limits, ...over });
 const check = (doc: unknown, c = ctx()) => B.checkModBundle(typeof doc === "string" ? doc : text(doc), c);
 const problems = (doc: unknown, c = ctx()) => { const r = check(doc, c); return r.ok ? [] : r.problems.map(p => `${p.path}: ${p.problem}`); };
 
@@ -131,7 +131,6 @@ describe("the bundle check", () => {
     ["custom CSS loading from the internet", bundle({ files: { "css/custom.css": file("a { background: url(https://evil/x.png) }") } }), /ownerCss\.css: url/],
     ["custom CSS naming an asset the bundle does not carry", bundle({ files: { "css/custom.css": file(`a { background: url("asset:${"a".repeat(32)}") }`) } }), /ownerCss\.css: unknown_asset/],
     ["a CSS asset that is not a picture or font", bundle({ files: { "css/x.bin": file("MZ...") }, contents: { ownerCss: { css: "css/custom.css", assets: ["css/x.bin"] } } }), /ownerCss\.assets\.css\/x\.bin/],
-    ["effects on a fleet without an effect runtime", bundle({ files: { "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file("agend.ready()") }, contents: { effects: ["effects/snow"] } }), /effects_unavailable/],
     ["contents naming nothing", { ...bundle(), manifest: { name: "x", version: "1.0.0", title: "x", contents: {} }, files: {} }, /manifest\.contents: names nothing/],
   ];
   it.each(REFUSED)("refused: %s", (_d, doc, pattern) => {
@@ -155,40 +154,19 @@ describe("the bundle check", () => {
     const id = first.ok ? first.mod.ownerCss!.assets[0]!.id : "";
     expect(check(bundle({ files: { "css/p.png": file(BG), "css/custom.css": file(`a { background: url("asset:${id}") }`) }, contents: { ownerCss: { css: "css/custom.css", assets: ["css/p.png"] } } })).ok).toBe(true);
   });
-  it("CW1 effects: each entry through the runtime's checker; a theme's placements resolve their params (non-defaults kept)", () => {
-    const c = ctx({ effects: B.cw1EffectChecker() });
+  it("#2799: an effect entry is only recorded (its files unchecked); a placement must name one; nothing else is resolved", () => {
     const withFx = (placed: unknown) => bundle({ files: {
-      "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file("agend.ready()"),
+      "effects/snow/effect.json": file(JSON.stringify({ ...EFFECT, runtime: "html" })), "effects/snow/worker.js": file("agend.ready()"),
       "theme.json": file(JSON.stringify({ v: 1, accent: "#8b5cf6", background: { image: "pictures/bg.png", fit: "cover", opacity: 0.4 }, avatar: "pictures/me.png", effects: placed })) },
       contents: { effects: ["effects/snow"] } });
-    const r = check(withFx([{ effect: "effects/snow", params: { count: 5 } }]), c);
+    const r = check(withFx([{ effect: "effects/snow", params: { count: 99 } }]));
     expect(r.ok, JSON.stringify(!r.ok && r.problems)).toBe(true);
     if (r.ok) {
-      expect(r.mod.effects.map(e => [e.path, e.summary.title, e.summary.regions])).toEqual([["effects/snow", "Snow", ["chat"]]]);
-      expect(r.mod.theme!.effects).toEqual([{ effect: "effects/snow", params: { count: 5 } }]);
+      expect(r.mod.effects.map(e => [e.path, [...e.files.keys()].sort()])).toEqual([["effects/snow", ["effect.json", "worker.js"]]]);
+      expect(r.mod.theme!.effects, "no placement is resolved (the store refuses the bundle for its effects)").toEqual([]);
     }
-    const d = check(withFx([{ effect: "effects/snow", params: { count: 2 } }]), c);
-    expect(d.ok && d.mod.theme!.effects[0]!.params, "a default is not an override").toEqual({});
-    expect(problems(withFx([{ effect: "effects/snow", params: { count: 11 } }]), c)).toEqual(["theme.effects.0.params: invalid_params"]);
-    expect(problems(withFx([{ effect: "effects/snow", params: { speed: 1 } }]), c)).toEqual(["theme.effects.0.params: invalid_params"]);
-    expect(problems(withFx([{ effect: "effects/rain" }]), c)).toEqual(["theme.effects.0: effects/rain is not one of this bundle's effects"]);
-    const bad = bundle({ files: { "effects/snow/effect.json": file(JSON.stringify({ ...EFFECT, runtime: "html" })), "effects/snow/worker.js": file("agend.ready()") }, contents: { effects: ["effects/snow"] } });
-    expect(problems(bad, c).some(p => p.startsWith("effects.effects/snow/"))).toBe(true);
-  });
-  it("#2017: a theme may place only effects that play in chat; a non-chat effect may still come as a library entry", () => {
-    const c = ctx({ effects: B.cw1EffectChecker() });
-    const GLOW = { ...EFFECT, name: "glow", title: "Glow", regions: ["header", "page"] };
-    const doc = (placed: unknown) => bundle({ files: {
-      "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file("agend.ready()"),
-      "effects/glow/effect.json": file(JSON.stringify(GLOW)), "effects/glow/worker.js": file("agend.ready()//glow"),
-      "theme.json": file(JSON.stringify({ v: 1, accent: "#8b5cf6", background: { image: "pictures/bg.png", fit: "cover", opacity: 0.4 }, avatar: "pictures/me.png", effects: placed })) },
-      contents: { effects: ["effects/snow", "effects/glow"] } });
-    const fine = check(doc([{ effect: "effects/snow" }]), c);
-    expect(fine.ok, JSON.stringify(!fine.ok && fine.problems)).toBe(true);
-    if (fine.ok) expect(fine.mod.effects.map(e => e.path), "the non-chat effect is a library entry").toEqual(["effects/snow", "effects/glow"]);
-    const refused = check(doc([{ effect: "effects/snow" }, { effect: "effects/glow" }]), c);
-    expect(refused.ok, "the whole mod is refused: nothing to stage or commit").toBe(false);
-    expect(problems(doc([{ effect: "effects/snow" }, { effect: "effects/glow" }]), c)).toEqual(["theme.effects.1: effect_region: effects/glow's regions do not include chat"]);
+    expect(problems(withFx([{ effect: "effects/rain" }]))).toEqual(["theme.effects.0: effects/rain is not one of this bundle's effects"]);
+    expect(problems(bundle({ files: {}, contents: { effects: ["effects/none"] } }))).toEqual(["effects.effects/none: no files under it"]);
   });
   it("export → import: what a fleet builds, it accepts (and card pictures never travel)", () => {
     const built = buildModBundle({ name: "out", version: "2.0.0", title: "Out" }, {
@@ -211,54 +189,19 @@ describe("the bundle check", () => {
   });
 });
 
-/** A fake effect library with CW1's names: records every call; can be told to fail a step. */
-function fakeLibrary() {
-  const calls: string[] = [];
-  const claims = new Set<string>();
-  const lib = {
-    calls, claims, failCommit: false, failRelease: false, staged: new Map<string, string[]>(),
-    stage(entries: readonly ReadonlyMap<string, Uint8Array>[], principal: { kind: string; id: string }, opts: { holder: string }) {
-      calls.push(`stage ${principal.kind}:${principal.id} ${opts.holder} ${entries.length}`);
-      const id = `s${lib.staged.size}`;
-      lib.staged.set(id, entries.map((_, i) => `${String(i).padStart(32, "e")}`.slice(-32)));
-      (lib as any).holderOf = opts.holder;
-      return { ok: true as const, stageId: id, ids: lib.staged.get(id)! };
-    },
-    commit(stageId: string) {
-      calls.push(`commit ${stageId}`);
-      if (lib.failCommit) return { ok: false as const, error: "store_failed" };
-      const ids = lib.staged.get(stageId)!;
-      const holder = (lib as any).holderOf as string;
-      for (const id of ids) claims.add(`${holder}/${id}`);
-      return { ok: true as const, ids, created: ids, undo: () => { calls.push(`undo ${stageId}`); for (const id of ids) claims.delete(`${holder}/${id}`); return true; } };
-    },
-    abort(stageId: string) { calls.push(`abort ${stageId}`); },
-    collectUnreferenced(ids: readonly string[]) { calls.push(`collect ${ids.join(",")}`); },
-    releaseHolder(holder: string, principal: { kind: string; id: string }) {
-      calls.push(`release ${holder} ${principal.kind}:${principal.id}`);
-      if (lib.failRelease) return { ok: false as const, error: "reference_provider_failed" };
-      const released = [...claims].filter(c => c.startsWith(`${holder}/`));
-      for (const c of released) claims.delete(c);
-      return { ok: true as const, released: released.map(c => c.split("/")[1]!), undo: () => { for (const c of released) claims.add(c); return true; } };
-    },
-  };
-  return lib;
-}
-
-function setup(opts: { effects?: boolean } = {}) {
+function setup() {
   const dir = tmp();
   let clock = 1_000_000;
   const themes = new ThemeStore(dir);
   const prefs = new WebPrefsStore(dir, { exists: () => true } as never);
   const css = new OwnerCssStore(dir, prefs);
-  const lib = fakeLibrary();
   const known = new Set(["alpha", "beta"]);
   const store = new ModStore(dir, {
-    themes, prefs, ownerCss: css, effects: opts.effects ? lib : null,
-    context: () => ctx(opts.effects ? { effects: B.cw1EffectChecker() } : {}),
+    themes, prefs, ownerCss: css,
+    context: () => ctx(),
     isKnownInstance: n => known.has(n), prefsIdentity: OPERATOR, clock: () => clock,
   });
-  return { dir, themes, prefs, css, lib, store, tick: (ms: number) => { clock += ms; } };
+  return { dir, themes, prefs, css, store, tick: (ms: number) => { clock += ms; } };
 }
 const ALL = { theme: true, identity: true, widgets: { chat_header: true, sidebar: true }, ownerCss: true };
 
@@ -336,23 +279,22 @@ describe("stage, then commit", () => {
     expect(s.store.abort("p", c.stage)).toEqual({ ok: true });
     expect(s.store.staged("p")).toBeNull();
   });
-  it("a failure mid-commit restores every store: theme record, pictures, preferences, custom CSS assets, effects", () => {
-    const s = setup({ effects: true });
+  it("a failure mid-commit restores every store: theme record, pictures, preferences, custom CSS assets", () => {
+    const s = setup();
     s.themes.setTheme("alpha", { v: 1, font: "inter" }, "agent");
     s.prefs.write(OPERATOR, new Map([["widget.sidebar", { spec: { v: 1, title: "Mine", items: [{ type: "stat", label: "Idle", bind: "fleet.idle" }] }, data: {} }]]));
     const before = { theme: s.themes.get("alpha"), prefs: s.prefs.read(OPERATOR).values["widget.sidebar"], files: readdirSync(s.dir) };
-    const doc = bundle({ files: { "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file("agend.ready()"), "css/p.png": file(png(2, 2, [1, 2, 3])) },
-      contents: { effects: ["effects/snow"], ownerCss: { css: "css/custom.css", assets: ["css/p.png"] } } });
+    const doc = bundle({ files: { "css/p.png": file(png(2, 2, [1, 2, 3])) },
+      contents: { ownerCss: { css: "css/custom.css", assets: ["css/p.png"] } } });
     const st = s.store.stage("p", text(doc));
     if (!st.ok) throw new Error(JSON.stringify(st));
     vi.spyOn(s.css, "save").mockReturnValue({ ok: false, status: 503, error: "prefs_unwritable" });
-    const r = s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { ...ALL, effects: true }, target: "alpha" });
+    const r = s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: ALL, target: "alpha" });
     expect(r).toMatchObject({ ok: false, status: 503, error: "prefs_unwritable" });
     expect(s.themes.get("alpha")).toEqual(before.theme);
     expect(readdirSync(join(s.dir, "web-themes")).flatMap(d => readdirSync(join(s.dir, "web-themes", d))), "the import's pictures are gone").toEqual([]);
     expect(s.prefs.read(OPERATOR).values["widget.sidebar"]).toEqual(before.prefs);
     expect(s.css.state("p").assets, "the CSS asset it added is gone").toEqual([]);
-    expect(s.lib.calls.filter(c => c.startsWith("undo")), "the effect claim undone").toEqual(["undo s0"]);
     expect([s.store.list().mods, existsSync(join(s.dir, "web-mods"))]).toEqual([[], false]);
   });
   it("an index that can't be written: everything undone, the bundle file removed", () => {
@@ -452,109 +394,45 @@ describe("#1897 review: commit checks the state it was consented for, and undoes
   });
 });
 
-describe("effects, replace and uninstall (the library under the mod's own holder)", () => {
-  const fx = (version = "1.0.0", worker = "agend.ready()") => bundle({ manifest: { version }, files: { "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file(worker),
-    "theme.json": file(JSON.stringify({ v: 1, accent: "#8b5cf6", background: { image: "pictures/bg.png", fit: "cover", opacity: 0.4 }, avatar: "pictures/me.png", effects: [{ effect: "effects/snow", params: { count: 4 } }] })) },
+describe("#2799: Canvas Worker effects were removed — a mod that carries them is refused, and what is on disk stays", () => {
+  const REMOVED = { ok: false, status: 403, error: "canvas_worker_experimental", detail: "Canvas Worker effects were removed; ambient effects are still available" };
+  const fx = (version = "1.0.0") => bundle({ manifest: { version }, files: { "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file("agend.ready()"),
+    "theme.json": file(JSON.stringify({ v: 1, accent: "#8b5cf6", background: { image: "pictures/bg.png", fit: "cover", opacity: 0.4 }, avatar: "pictures/me.png", effects: [{ effect: "effects/snow" }] })) },
     contents: { effects: ["effects/snow"] } });
-  it("staged under the person and the mod's holder; committed; placed with its overrides on the target", () => {
-    const s = setup({ effects: true });
-    const st = s.store.stage("p", text(fx()));
+  it("a bundle that carries effects is refused at stage; asking for effects is refused at commit", () => {
+    const s = setup();
+    expect(s.store.stage("p", text(fx()))).toMatchObject(REMOVED);
+    expect(s.store.staged("p")).toBeNull();
+    const st = s.store.stage("p", text(bundle()));
     if (!st.ok) throw new Error(JSON.stringify(st));
-    const id = st.plan.mod.id;
-    expect(s.lib.calls).toEqual([`stage human:p ${modHolder(id)} 1`]);
-    expect(s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { theme: false, effects: false }, target: "alpha" })).toMatchObject({ status: 400 });
-    expect(s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { theme: true }, target: "alpha" }), "the theme places effects: effects must come too").toMatchObject({ status: 400, error: "include" });
-    const r = s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { theme: true, effects: true }, target: "alpha" });
-    expect(r).toMatchObject({ ok: true, applied: ["effects", "theme"] });
-    expect(s.themes.get("alpha").placements.effects).toMatchObject([{ id: s.lib.staged.get("s0")![0], by: "human", params: { count: 4 } }]);
-    expect(s.store.list().mods[0]).toMatchObject({ effects: [{ path: "effects/snow", id: s.lib.staged.get("s0")![0] }], created: s.lib.staged.get("s0") });
+    expect(s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { theme: true, effects: true }, target: "alpha" })).toMatchObject(REMOVED);
+    expect(s.store.list().mods).toEqual([]);
   });
-  it("staged effects not chosen are let go (abort)", () => {
-    const s = setup({ effects: true });
-    const st = s.store.stage("p", text(fx()));
-    if (!st.ok) throw new Error("stage");
+  it("an installed mod that carried effects (an older AgEnD's) is not uninstalled; replaced, its record goes and its claims stay on disk", () => {
+    const s = setup();
+    const a = s.store.stage("p", text(bundle({ manifest: { name: "snowy", version: "1.0.0" } })));
+    if (!a.ok) throw new Error(JSON.stringify(a));
+    expect(s.store.commit("p", { stage: a.stage, plan_hash: a.plan_hash, include: { theme: true }, target: "alpha" })).toMatchObject({ ok: true });
+    // As an older AgEnD wrote it: the effect entries it installed, and who held them.
+    const indexFile = join(s.dir, "web-mods.json");
+    const index = JSON.parse(readFileSync(indexFile, "utf8"));
+    index.mods[a.plan.mod.id] = { ...index.mods[a.plan.mod.id], effects: [{ path: "effects/snow", id: "e".repeat(32) }], effectsBy: "p" };
+    writeFileSync(indexFile, JSON.stringify(index));
+    const reread = new ModStore(s.dir, { themes: s.themes, prefs: s.prefs, ownerCss: s.css, context: () => ctx(), isKnownInstance: () => true, prefsIdentity: OPERATOR });
+    expect(reread.uninstall(a.plan.mod.id)).toMatchObject(REMOVED);
+    expect(reread.list().mods.map(m => m.effects)).toEqual([[{ path: "effects/snow", id: "e".repeat(32) }]]);
+    const b = reread.stage("p", text(bundle({ manifest: { name: "snowy", version: "2.0.0" } })));
+    if (!b.ok) throw new Error(JSON.stringify(b));
+    expect(reread.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { identity: true, replace: true }, target: "alpha" })).toMatchObject({ ok: true });
+    expect(reread.list().mods.map(m => [m.version, m.effects, m.effectsBy])).toEqual([["2.0.0", [], undefined]]);
+  });
+  it("uninstall of a mod without effects: its file and entry go, nothing to release", () => {
+    const s = setup();
+    const st = s.store.stage("p", text(bundle()));
+    if (!st.ok) throw new Error(JSON.stringify(st));
     s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { identity: true }, target: "alpha" });
-    expect(s.lib.calls.slice(1)).toEqual(["abort s0"]);
-  });
-  it("another version of an installed name: replace must be confirmed; then the old one's holder is released, its file gone", () => {
-    const s = setup({ effects: true });
-    const a = s.store.stage("p", text(fx("1.0.0")));
-    if (!a.ok) throw new Error("stage");
-    s.store.commit("p", { stage: a.stage, plan_hash: a.plan_hash, include: { theme: true, effects: true }, target: "alpha" });
-    const oldId = a.plan.mod.id;
-    const b = s.store.stage("p", text(fx("1.1.0", "agend.ready();")));
-    if (!b.ok) throw new Error("stage");
-    expect(b.plan.mod.replaces).toEqual({ id: oldId, version: "1.0.0" });
-    expect(s.store.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { effects: true } })).toMatchObject({ status: 409, error: "replaces" });
-    expect(s.store.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { effects: true, replace: true } })).toMatchObject({ ok: true });
-    expect(s.store.list().mods.map(m => m.version)).toEqual(["1.1.0"]);
-    expect(s.lib.calls).toContain(`release ${modHolder(oldId)} human:p`);
-    expect(s.lib.calls.at(-1)).toBe(`collect ${s.lib.staged.get("s0")!.join(",")}`);
-    expect(s.store.bundleText(oldId)).toBeNull();
-  });
-  it("replace: the old holder is released last; refused, every store is restored first and then the new commit undone", () => {
-    const s = setup({ effects: true });
-    const a = s.store.stage("p", text(fx("1.0.0")));
-    if (!a.ok) throw new Error("stage");
-    s.store.commit("p", { stage: a.stage, plan_hash: a.plan_hash, include: { theme: true, effects: true }, target: "alpha" });
-    const before = { theme: s.themes.get("alpha"), list: s.store.list().mods };
-    const b = s.store.stage("p", text(fx("1.1.0", "agend.ready();")));
-    if (!b.ok) throw new Error("stage");
-    s.lib.failRelease = true;
-    s.lib.calls.length = 0;
-    expect(s.store.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { theme: true, effects: true, replace: true }, target: "alpha" })).toMatchObject({ ok: false, status: 409, error: "effects_release_refused" });
-    expect(s.lib.calls, "commit first, release last, then the commit undone").toEqual(["commit s1", `release ${modHolder(a.plan.mod.id)} human:p`, "undo s1"]);
-    expect([s.themes.get("alpha"), s.store.list().mods]).toEqual([before.theme, before.list]);
-    expect(s.store.bundleText(b.plan.mod.id), "the new file is gone").toBeNull();
-    expect(s.store.bundleText(a.plan.mod.id), "the old one stays").not.toBeNull();
-  });
-  it("a reviewed proposal whose replace is refused at the release stays proposed (the index is restored whole)", () => {
-    const s = setup({ effects: true });
-    const a = s.store.stage("p", text(fx("1.0.0")));
-    if (!a.ok) throw new Error("stage");
-    s.store.commit("p", { stage: a.stage, plan_hash: a.plan_hash, include: { effects: true } });
-    const agentFile = (() => { const d = fx("1.1.0", "agend.ready();") as any; delete d.manifest.contents.ownerCss; delete d.files["css/custom.css"]; return text(d); })();
-    const next = B.checkModBundle(agentFile, ctx({ effects: B.cw1EffectChecker() }));
-    if (!next.ok) throw new Error(JSON.stringify(next.problems));
-    expect(s.store.propose("alpha", agentFile, next.mod)).toMatchObject({ ok: true });
-    const b = s.store.stageProposal("p", "alpha");
-    if (!b.ok) throw new Error("stage");
-    s.lib.failRelease = true;
-    expect(s.store.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { effects: true, replace: true } })).toMatchObject({ ok: false, error: "effects_release_refused" });
-    expect(s.store.proposals().map(p => p.version)).toEqual(["1.1.0"]);
-    expect(s.store.stageProposal("p", "alpha").ok, "and can be opened again").toBe(true);
-  });
-  it("uninstall releases only this mod's holder, removes its file and entry, and leaves what it applied", () => {
-    const s = setup({ effects: true });
-    const st = s.store.stage("p", text(fx()));
-    if (!st.ok) throw new Error("stage");
-    s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { theme: true, effects: true }, target: "alpha" });
-    const id = st.plan.mod.id;
-    const r = s.store.uninstall(id);
-    expect(r).toMatchObject({ ok: true, released: s.lib.staged.get("s0") });
-    expect(s.lib.calls.at(-1), "the released ids go to the guarded collector, after the write").toBe(`collect ${s.lib.staged.get("s0")!.join(",")}`);
-    expect([s.store.list().mods, s.store.bundleText(id), s.themes.get("alpha").theme.accent]).toEqual([[], null, "#8b5cf6"]);
-    expect(s.store.uninstall(id)).toMatchObject({ status: 404 });
-  });
-  it("a release the library refuses: nothing changes (the mod stays installed)", () => {
-    const s = setup({ effects: true });
-    const st = s.store.stage("p", text(fx()));
-    if (!st.ok) throw new Error("stage");
-    s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { effects: true } });
-    s.lib.failRelease = true;
-    expect(s.store.uninstall(st.plan.mod.id)).toMatchObject({ ok: false, status: 409, error: "effects_release_refused" });
-    expect(s.store.list().mods).toHaveLength(1);
-    expect(s.lib.calls.some(c => c.startsWith("collect")), "nothing collected when nothing was released").toBe(false);
-  });
-  it("an index write that fails after a release puts the release back", () => {
-    const s = setup({ effects: true });
-    const st = s.store.stage("p", text(fx()));
-    if (!st.ok) throw new Error("stage");
-    s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { effects: true } });
-    const claims = [...s.lib.claims];
-    rmSync(join(s.dir, "web-mods.json")); mkdirSync(join(s.dir, "web-mods.json"));
-    expect(s.store.uninstall(st.plan.mod.id)).toMatchObject({ ok: false, status: 503 });
-    expect([...s.lib.claims]).toEqual(claims);
+    expect(s.store.uninstall(st.plan.mod.id)).toEqual({ ok: true, released: [] });
+    expect(s.store.list().mods).toEqual([]);
   });
   it("limits: 20 installed; an unreadable index refuses every write", () => {
     const s = setup();
@@ -630,6 +508,26 @@ describe("the routes", () => {
       expect([un.status, f.fm.mods.list().mods]).toEqual([200, []]);
     } finally { await f.stop(); }
   }, 30_000);
+  it("#2799: an installed file that carries effects (an older AgEnD's) is not handed out; a person's own effect choice is refused", async () => {
+    const f = await fleet();
+    try {
+      const admin = f.session("admin").write;
+      const st = JSON.parse((await raw(f.port, "POST", "/ui/mods/stage", admin, text(bundle()))).body);
+      expect((await raw(f.port, "POST", "/ui/mods/commit", admin, JSON.stringify({ stage: st.stage, plan_hash: st.plan_hash, include: { identity: true }, target: "alpha" }))).status).toBe(200);
+      const id = f.fm.mods.list().mods[0].id as string, onDisk = join(f.fm.dataDir, "web-mods", `${id}.agendmod.json`);
+      expect((await raw(f.port, "GET", `/ui/mods/file/${id}`, f.session().read)).status, "without effects: any admin's").toBe(200);
+      const withFx = text(bundle({ files: { "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file("agend.ready()") }, contents: { effects: ["effects/snow"] } }));
+      for (const [label, body] of [["carries effects", withFx], ["no longer checks, lists effects", JSON.stringify({ manifest: { contents: { effects: ["effects/snow"] } } })]] as const) {
+        writeFileSync(onDisk, body);
+        const dl = await raw(f.port, "GET", `/ui/mods/file/${id}`, f.session().read);
+        expect([dl.status, JSON.parse(dl.body)], label).toEqual([403, { error: "canvas_worker_experimental", message: "Canvas Worker effects were removed; ambient effects are still available" }]);
+      }
+      const fx = await raw(f.port, "POST", "/ui/prefs", admin, JSON.stringify({ set: { "fx.page": "e".repeat(32) } }));
+      expect([fx.status, JSON.parse(fx.body).error]).toEqual([403, "canvas_worker_experimental"]);
+      expect((await raw(f.port, "POST", "/ui/prefs", admin, JSON.stringify({ set: { "fx.page": null } }))).status, "a clear too").toBe(403);
+      expect((await raw(f.port, "POST", "/ui/prefs", admin, JSON.stringify({ set: { theme: "dark" } }))).status, "any other preference").toBe(200);
+    } finally { await f.stop(); }
+  }, 30_000);
   it("export uses the importer's title rule: U+034F alone is refused (400), a plain title round-trips (#1897 review)", async () => {
     const f = await fleet();
     try {
@@ -645,7 +543,10 @@ describe("the routes", () => {
     const f = await fleet();
     try {
       const agentFile = (() => { const d = bundle() as any; delete d.manifest.contents.ownerCss; delete d.files["css/custom.css"]; return text(d); })();
-      expect(f.fm.agentMods.handle("alpha", "propose_web_mod", { data_b64: Buffer.from(agentFile).toString("base64") })).toHaveProperty("proposed");
+      // #2799: agents no longer propose (propose_web_mod was removed); one proposed before is still reviewed here.
+      const checked = B.checkModBundle(agentFile, f.fm.mods.checkContext());
+      if (!checked.ok) throw new Error(JSON.stringify(checked.problems));
+      expect(f.fm.mods.propose("alpha", agentFile, checked.mod)).toMatchObject({ ok: true });
       expect(JSON.parse((await raw(f.port, "GET", "/ui/mods", f.session().read)).body).proposals).toMatchObject([{ instance: "alpha", name: "violet" }]);
       const st = await raw(f.port, "POST", "/ui/mods/proposal/stage", f.session().write, JSON.stringify({ instance: "alpha" }));
       expect([st.status, JSON.parse(st.body).plan.mod.name]).toEqual([200, "violet"]);
@@ -754,7 +655,7 @@ describe("the page: a plan's choices belong to its stage (#1897 review)", () => 
       expect([t.cssTicked(), t.calls.filter(([u]) => u === "/ui/mods").length]).toEqual([true, 1]);
     } finally { vi.unstubAllGlobals(); t.pg.restore(); }
   });
-  it("the theme is shown whole: both palettes, bubbles, label, background fit and opacity, the pictures themselves, effect placements", async () => {
+  it("the theme is shown whole: both palettes, bubbles, label, background fit and opacity, the pictures themselves", async () => {
     const { page, settle } = await import("./helpers/app-harness.js");
     vi.resetModules();
     const pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
@@ -762,15 +663,13 @@ describe("the page: a plan's choices belong to its stage (#1897 review)", () => 
       const P = await import("/assets/app-html.js");
       await import("/ui/js/settings-strings.js");
       const { ThemeDetail } = await import("/ui/js/settings-mods.js");
-      (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
       const BG = "b".repeat(32), AV = "c".repeat(32);
       P.render(P.h(ThemeDetail, { theme: { v: 1, colors: { light: { bg: "#fafafa" }, dark: { text: "#eeeeee", agentBubble: "#222222" } }, bubble: { radius: 6, border: "accent" }, workingLabel: "Pondering",
-        background: { image: BG, fit: "contain", opacity: 0.35 }, avatar: AV }, pictures: [{ path: "p/bg.png", slot: "background", id: BG, bytes: 2048 }, { path: "p/me.png", slot: "avatar", id: AV, bytes: 1024 }],
-        effects: [{ effect: "effects/snow", id: "d".repeat(32), params: { count: 4 } }] }), pg.root); await settle();
+        background: { image: BG, fit: "contain", opacity: 0.35 }, avatar: AV }, pictures: [{ path: "p/bg.png", slot: "background", id: BG, bytes: 2048 }, { path: "p/me.png", slot: "avatar", id: AV, bytes: 1024 }] }), pg.root); await settle();
       // Each field in its own labelled row (the raw view below repeats them, so it can't stand in for a row).
       const rows = [...pg.root.querySelectorAll(".s-mod-kv")].map((r: any) => r.textContent.replace(/\s+/g, " ").trim());
       for (const v of ["Light coloursbg #fafafa", "Dark colourstext #eeeeeeagentBubble #222222", "Bubbles6px · accent", "Working labelPondering", "Background fit and opacitycontain · 35%",
-        "Background picturep/bg.png · 2 KiB", "Picture (face)p/me.png · 1 KiB", 'Places effecteffects/snow dddddddd · {"count":4}']) expect(rows, v).toContain(v);
+        "Background picturep/bg.png · 2 KiB", "Picture (face)p/me.png · 1 KiB"]) expect(rows, v).toContain(v);
       expect([...pg.root.querySelectorAll(".s-mod-pic img")].map((i: any) => i.getAttribute("src"))).toEqual([`/ui/mods/staged/${BG}`, `/ui/mods/staged/${AV}`]);
       expect(pg.root.querySelector("[style]"), "colours through the CSSOM (#1300), never a style= in the markup").toBeNull();
     } finally { pg.restore(); }

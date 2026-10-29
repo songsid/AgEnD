@@ -20,8 +20,8 @@ import { randomUUID } from "node:crypto";
 import { agendVersion } from "../agent-whats-new.js";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
-import { TOOLS, toolsWithCanvasWorker } from "./mcp-tools.js";
-import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, isCanvasWorkerTool, readCanvasWorkerEnabled, watchCanvasWorkerEnabled } from "../web-experimental.js";
+import { TOOLS } from "./mcp-tools.js";
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, isCanvasWorkerTool } from "../web-experimental.js";
 import { readDashboardOff, watchDashboardOff } from "../dashboard-live.js";
 import { encodeOperationError, encodeOperationSuccess } from "./mcp-operation-response.js";
 import { buildMcpCoreInstructions } from "../instructions.js";
@@ -300,14 +300,15 @@ const featureDataDir = SOCKET_PATH ? dirname(dirname(dirname(SOCKET_PATH))) : ge
 const spawnDashboardOff = featuresOffFromEnv(process.env.AGEND_DASHBOARD_OFF);
 const menuInstance = process.env.AGEND_INSTANCE_NAME ?? "";
 const dashboardOffNow = () => (menuInstance ? readDashboardOff(featureDataDir, menuInstance, spawnDashboardOff) : spawnDashboardOff);
-const currentTools = () => toolsWithCanvasWorker(readCanvasWorkerEnabled(featureDataDir), withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow()));
+const currentTools = () => withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow());
 
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentTools() }));
 
 // --- Tool call handler ---
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
-  if (isCanvasWorkerTool(req.params.name) && !readCanvasWorkerEnabled(featureDataDir)) {
+  // #2793 / #2799: a removed Canvas Worker tool (a session that resumed with its old schema): said so, plainly.
+  if (isCanvasWorkerTool(req.params.name)) {
     return { content: [{ type: "text", text: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }], isError: true };
   }
   const args = (req.params.arguments ?? {}) as Record<string, unknown>;
@@ -349,7 +350,6 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await mcp.connect(transport);
   // CLI clients that cache tool menus can refresh without restarting the instance. Every call still checks current state.
-  watchCanvasWorkerEnabled(featureDataDir, () => { void mcp.sendToolListChanged().catch(() => {}); });
   if (menuInstance) watchDashboardOff(featureDataDir, menuInstance, spawnDashboardOff, () => { void mcp.sendToolListChanged().catch(() => {}); });
 
   // Parent death detection.

@@ -3,13 +3,7 @@
  * own stores and checks — no second implementation, no bypass of custom CSS's safe rules. A worker keeps only its own
  * theme. Real stores on a scratch home (FleetManager, no fleet start).
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
-// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
-vi.mock("../src/web-experimental.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
-  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
-}));
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,7 +44,7 @@ describe("get_web_settings: the page in plain words", () => {
   it("defaults: a sentence per setting, the values, the people, and what only the person can do", () => {
     const r = fm.webSettings.read();
     expect(r.ok).toBe(true);
-    expect(r.summary[0]).toBe("Agents' themes, effects and widgets: shown.");
+    expect(r.summary[0]).toBe("Agents' themes, widgets: shown.");
     expect(r.summary[1]).toBe(`Identity colours: shown on ${DEFAULT_PLACEMENTS.join(", ")} (the default).`);
     expect(r.summary.join("\n")).toContain("Custom CSS (the host operator): off");
     expect(r.host).toMatchObject({ themes_shown: true, card_size: "m", colour_places: [...DEFAULT_PLACEMENTS], colour_places_default: true, colours_off: false, sidebar_widget: null });
@@ -77,7 +71,7 @@ describe("set_web_settings: as the page changes it", () => {
     const status = vi.spyOn(fm, "emitSseEvent");
     expect(set({ what: "host", set: { themes_shown: false, card_size: "l", colours_off: true, colour_places: ["ring"] } })).toMatchObject({ ok: true });
     expect(host()).toMatchObject({ "fx.show": false, "card.size": "l", "color.off": true, "color.show": ["ring"] });
-    expect(fm.webSettings.read().summary.slice(0, 2)).toEqual(["Agents' themes, effects and widgets: hidden (every chat looks the same).", "Identity colours: turned off on this host."]);
+    expect(fm.webSettings.read().summary.slice(0, 2)).toEqual(["Agents' themes, widgets: hidden (every chat looks the same).", "Identity colours: turned off on this host."]);
     expect(status).toHaveBeenCalledWith("status", expect.anything());
     expect(set({ what: "host", set: { themes_shown: true, card_size: "m", colours_off: false, colour_places: [...DEFAULT_PLACEMENTS].reverse() } })).toMatchObject({ ok: true });
     expect(["fx.show", "card.size", "color.off", "color.show"].map((k) => Object.hasOwn(host(), k))).toEqual([false, false, false, false]);
@@ -188,67 +182,16 @@ describe("set_web_settings: as the page changes it", () => {
     expect(appearance).toContain("waits until they open the dashboard");
     expect(readFileSync("src/general-knowledge/skills/web-dashboard/SKILL.md", "utf8")).toContain("keep or revert\nthe trial, switch to an earlier saved version");
   });
-  it("an effect slot: the page's owner-selection check (an unknown effect is refused); an effect on a chat: the effect service's", () => {
-    expect(set({ what: "effect_slot", slot: "sidebar", id: "f".repeat(32) })).toMatchObject({ ok: false });
-    expect(set({ what: "effect_slot", slot: "nope", id: null })).toMatchObject({ ok: false, error: "effect_slot" });
-    expect(set({ what: "effect", action: "apply", instance: "alpha", id: "f".repeat(32) })).toMatchObject({ ok: false });
-    expect(set({ what: "effect", action: "remove", instance: "alpha" })).toMatchObject({ ok: true, removed: [] });
-  });
-  it("mods: an agent's proposal reviewed (the plan) and installed with the parts asked for — the store's own commit", async () => {
-    const { createHash } = await import("node:crypto");
-    const { checkModBundle } = await import("../src/web-mod-bundle.js");
-    const { agendVersion } = await import("../src/agent-whats-new.js");
-    const file = (t: string) => ({ sha256: createHash("sha256").update(t).digest("hex"), b64: Buffer.from(t).toString("base64") });
-    const doc = { format: "agend-mod", v: 1, manifest: { name: "tagline", version: "1.0.0", title: "Tagline", author: "alpha", contents: { identity: "identity.json" } },
-      files: { "identity.json": file(JSON.stringify({ tagline: "Reviews fast" })) } };
-    const text = JSON.stringify(doc);
-    const checked = checkModBundle(text, { agendVersion: agendVersion(), limits: fm.themeStore.limits(), effects: null });
-    if (!checked.ok) throw new Error(JSON.stringify(checked.problems));
-    expect(fm.mods.propose("alpha", text, checked.mod)).toMatchObject({ ok: true });
-    expect(fm.webSettings.read().summary.join("\n")).toContain("proposed by agents: alpha");
-    const review = set({ what: "mod", action: "review", instance: "alpha" });
-    expect(review).toMatchObject({ ok: true, stage: expect.any(String), plan_hash: expect.any(String) });
-    expect(set({ what: "mod", action: "install", stage: review.stage, plan_hash: "0".repeat(64), include: { identity: true }, target: "alpha" }), "a plan that moved").toMatchObject({ ok: false });
-    const status = vi.spyOn(fm, "emitSseEvent");
-    const installed = set({ what: "mod", action: "install", stage: review.stage, plan_hash: review.plan_hash, include: { identity: true }, target: "alpha" });
-    expect(status, "every page re-reads, as after the page's install").toHaveBeenCalledWith("status", expect.anything());
-    status.mockRestore();
-    expect(installed).toMatchObject({ ok: true, applied: expect.arrayContaining(["identity"]) });
-    expect(fm.webSettings.read().mods.installed.map((m: { name: string }) => m.name)).toEqual(["tagline"]);
-    expect(set({ what: "mod", action: "uninstall", id: installed.id })).toMatchObject({ ok: true });
-  });
-  it("mods (#2064 review): General never displaces the person's open review, and never installs a mod they imported from a file", async () => {
-    const { createHash } = await import("node:crypto");
-    const { checkModBundle } = await import("../src/web-mod-bundle.js");
-    const { agendVersion } = await import("../src/agent-whats-new.js");
-    const file = (t: string) => ({ sha256: createHash("sha256").update(t).digest("hex"), b64: Buffer.from(t).toString("base64") });
-    const bundle = (name: string) => JSON.stringify({ format: "agend-mod", v: 1, manifest: { name, version: "1.0.0", title: name, author: "alpha", contents: { identity: "identity.json" } },
-      files: { "identity.json": file(JSON.stringify({ tagline: name })) } });
-    const proposed = checkModBundle(bundle("proposed"), { agendVersion: agendVersion(), limits: fm.themeStore.limits(), effects: null });
-    if (!proposed.ok) throw new Error(JSON.stringify(proposed.problems));
-    expect(fm.mods.propose("alpha", bundle("proposed"), proposed.mod)).toMatchObject({ ok: true });
-    const person = fm.webSettings.read().person as string;
-    // The person imports a file on the page and is looking at its plan.
-    const theirs = fm.mods.stage(person, bundle("from-a-file"));
-    expect(theirs).toMatchObject({ ok: true });
-    expect(set({ what: "mod", action: "review", instance: "alpha" }), "theirs stays open").toMatchObject({ ok: false, error: "mod_review_open", detail: expect.stringContaining("file") });
-    expect(set({ what: "mod", action: "install", stage: theirs.stage, plan_hash: theirs.plan_hash, include: { identity: true } }), "a file's mod is the person's to install")
-      .toMatchObject({ ok: false, error: "mod_not_from_an_agent" });
-    expect(fm.mods.staged(person)?.stage, "their review is untouched").toBe(theirs.stage);
-    expect(fm.webSettings.read().mods.installed).toEqual([]);
-    expect(fm.mods.abort(person, theirs.stage)).toMatchObject({ ok: true });
-    // With nothing open General reviews the proposal; a second review waits for that one, which General may cancel.
-    const review = set({ what: "mod", action: "review", instance: "alpha" });
-    expect(review).toMatchObject({ ok: true, stage: expect.any(String) });
-    expect(set({ what: "mod", action: "review", instance: "alpha" })).toMatchObject({ ok: false, error: "mod_review_open", detail: expect.stringContaining("alpha's proposal") });
-    expect(set({ what: "mod", action: "cancel", stage: review.stage })).toMatchObject({ ok: true });
-    expect(set({ what: "mod", action: "review", instance: "alpha" })).toMatchObject({ ok: true });
-    expect(set({ what: "mod", action: "dismiss", instance: "alpha" })).toMatchObject({ ok: true });
-    fm.mods.abort(person, fm.mods.staged(person)?.stage);
-  });
-  it("mods: a proposal that is not there is the store's refusal; an unknown action is named", () => {
-    expect(set({ what: "mod", action: "review", instance: "alpha" })).toMatchObject({ ok: false });
-    expect(set({ what: "mod", action: "lasers" })).toMatchObject({ ok: false, error: "mod" });
+  // #2799: the fleet.yaml above still says canvas_worker: true (an old one loads); the effects, effect slots and mods
+  // these changes reached were removed with them.
+  it("#2799: an effect, an effect slot or a mod change is refused, whatever the config says", () => {
+    for (const change of [{ what: "effect_slot", slot: "sidebar", id: "f".repeat(32) }, { what: "effect", action: "remove", instance: "alpha" },
+      { what: "mod", action: "review", instance: "alpha" }]) {
+      expect(set(change), change.what).toMatchObject({ ok: false, error: "experimental_feature_disabled", detail: "Canvas Worker effects were removed; ambient effects are still available" });
+    }
+    const r = fm.webSettings.read();
+    expect(["mods", "effect_slots"].some((k) => Object.hasOwn(r, k)), "no mods or effect slots in the read").toBe(false);
+    expect(r.agents.some((a: Record<string, unknown>) => Object.hasOwn(a, "effects"))).toBe(false);
   });
   it("Restore defaults: the host settings the page resets, and the person's custom CSS off", () => {
     set({ what: "host", set: { themes_shown: false, card_size: "s", colours_off: true } });
@@ -270,5 +213,12 @@ describe("the tool handlers (the dispatch every sink uses)", () => {
     expect((await call("set_web_settings", { change: { what: "host", set: { card_size: "l" } } })).result).toMatchObject({ ok: true });
     expect(host()["card.size"]).toBe("l");
     expect((await call("set_web_settings", { change: { what: "restore_defaults" } })).result).toMatchObject({ ok: true });
+  });
+  it("#2799: a call naming a removed change (a resumed session) gets the tool's refusal, as before — not a schema error", async () => {
+    for (const change of [{ what: "effect_slot", slot: "page", id: null }, { what: "effect", action: "apply", instance: "alpha", id: "e".repeat(32) }, { what: "mod", action: "install", stage: "x" }]) {
+      const r = await call("set_web_settings", { change });
+      expect([r.result, r.error], change.what).toEqual([{ ok: false, error: "experimental_feature_disabled", detail: "Canvas Worker effects were removed; ambient effects are still available" }, undefined]);
+    }
+    expect((await call("set_web_settings", { person: "nobody", change: { what: "mod" } })).result, "the person is still checked first").toMatchObject({ ok: false, error: "unknown_person" });
   });
 });

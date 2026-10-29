@@ -7,15 +7,9 @@
  *   guest's, as a typed message.
  * - /ui/prefs: read only — the host's look and the guest's own, never a preference that names an instance (the app
  *   shell's embedded copy too); POST stays closed. /ui/profile: its own web name.
- * - A placed effect's poster: by its instance, in scope.
+ * - #2799: the effect posters' route is gone — a guest is refused it as any other unlisted route; an admin finds nothing.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
-// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
-vi.mock("../src/web-experimental.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
-  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
-}));
 // #2095 CI: pino's worker opens daemon.log in the scratch home late — an afterAll rmSync walking it met ENOTEMPTY (as
 // #1778/#1779). This file has no use for the log: the logger is silent, so nothing writes there once the work is done.
 vi.mock("../src/logger.js", async original => {
@@ -188,12 +182,14 @@ describe("live: a guest scoped to `a`", () => {
     expect((await raw(port, "POST", "/ui/profile", write(guest), JSON.stringify({ name: "Alice W" }))).status).toBe(200);
     expect(JSON.parse((await raw(port, "GET", "/ui/profile", { cookie: cookieOf(guest) })).body)).toMatchObject({ name: "Alice W", bound: true, id: ALICE.userId });
   });
-  it("a placed effect's poster: by its instance, in scope", async () => {
+  it("#2799: the effect posters' route is gone — a guest is refused it, an admin finds nothing, whatever an old fleet.yaml says", async () => {
     scopedToA(); guestsChat();
     fm.fleetConfig.web.experimental = { canvas_worker: true };
-    const guest = session("guest", ALICE);
-    expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png?instance=b`, { cookie: cookieOf(guest) })).status).toBe(404);
-    expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png`, { cookie: cookieOf(guest) })).status).toBe(404);
-    expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png?instance=a`, { cookie: cookieOf(guest) })).status, "in scope: the handler answers").not.toBe(403);
+    const guest = session("guest", ALICE), admin = session("admin");
+    for (const q of ["?instance=b", "", "?instance=a"]) {
+      const path = `/ui/effect-posters/${"e".repeat(32)}.png${q}`;
+      expect((await raw(port, "GET", path, { cookie: cookieOf(guest) })).status, `guest ${q}`).toBe(403);
+      expect((await raw(port, "GET", path, { cookie: cookieOf(admin) })).status, `admin ${q}`).toBe(404);
+    }
   });
 });

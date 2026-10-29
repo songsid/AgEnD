@@ -1,18 +1,13 @@
-/** #2275: the one opt-in rule shared by agent menus, calls and the web. #2793: Canvas Worker effects were removed. */
-import { readFileSync } from "node:fs";
+/**
+ * #2275: what is left of the Canvas Worker opt-in. #2793 turned the effects off for good; #2799 removed their code.
+ * A saved `web.experimental.canvas_worker` still loads and stays in the file (a downgrade finds it) and turns nothing
+ * on. An agent whose session still lists a removed tool, or a page or CLI that still asks for one, is told plainly.
+ */
 import { isAbsolute, join, resolve } from "node:path";
-import yaml from "js-yaml";
-import type { WebConfig } from "./types.js";
 
 export const CANVAS_WORKER_EXPERIMENTAL_MESSAGE = "Canvas Worker effects were removed; ambient effects are still available";
-/**
- * #2793: always off. A saved `web.experimental.canvas_worker` still loads and stays in the file (a downgrade finds it),
- * but nothing turns the tools, routes or UI back on. The dormant effect code is a separate cleanup.
- */
-export function canvasWorkerEnabled(_web?: Pick<WebConfig, "experimental"> | null): boolean {
-  return false;
-}
 
+/** The removed Canvas Worker tools: a call to one is answered with the message above (a resumed session may hold them). */
 const CANVAS_WORKER_TOOLS: ReadonlySet<string> = new Set([
   "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
   "apply_web_effect", "remove_web_effect", "delete_web_effect", "export_web_mod", "propose_web_mod",
@@ -25,29 +20,7 @@ export function scopedFleetConfigEnvironment(dataDir: string, env: NodeJS.Proces
   if (!owner || !config || !isAbsolute(owner) || !isAbsolute(config) || resolve(owner) !== resolve(dataDir)) return {};
   return { AGEND_FLEET_DATA_DIR: resolve(owner), AGEND_FLEET_CONFIG_PATH: resolve(config) };
 }
-export function canvasWorkerConfigPath(dataDir: string): string {
+/** The fleet.yaml a child process of this home reads (the scoped reference, else <home>/fleet.yaml). */
+export function fleetConfigPath(dataDir: string): string {
   return scopedFleetConfigEnvironment(dataDir).AGEND_FLEET_CONFIG_PATH ?? join(dataDir, "fleet.yaml");
-}
-
-/** Child MCP servers and managed skill readers use their owning data dir, never cwd. Missing/invalid is off. */
-export function readCanvasWorkerEnabled(dataDir: string): boolean {
-  try {
-    const raw = readFileSync(canvasWorkerConfigPath(dataDir), "utf8");
-    const parsed = yaml.load(raw) as { web?: Pick<WebConfig, "experimental"> } | null;
-    return canvasWorkerEnabled(parsed?.web);
-  } catch { return false; }
-}
-
-/** Polling survives atomic config replacement, unlike watching the old file inode. */
-export function watchCanvasWorkerEnabled(dataDir: string, changed: (enabled: boolean) => void, interval = 1000): () => void {
-  let previous = readCanvasWorkerEnabled(dataDir);
-  const check = () => {
-    const current = readCanvasWorkerEnabled(dataDir);
-    if (current === previous) return;
-    previous = current;
-    changed(current);
-  };
-  const timer = setInterval(check, interval);
-  timer.unref();
-  return () => clearInterval(timer);
 }

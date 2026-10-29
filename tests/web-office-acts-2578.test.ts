@@ -118,7 +118,7 @@ describe("the `office` feature: off unless set true", () => {
   it("refused at the IPC sink and the agent endpoint until switched on, read at each call", async () => {
     const { FleetManager } = await import("../src/fleet-manager.js");
     const fm = { fleetConfig: { defaults: {}, instances: { dev: { working_directory: "/tmp/d" } as Record<string, unknown> } },
-      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() }, canvasWorkerEnabled: () => false };
+      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } };
     const check = (FleetManager.prototype as any).checkToolPermission.bind(fm);
     expect(check("ipc-typed", "dev", "office_set")).toEqual({ allowed: false, message: dashboardRefusal({}, "office_set") });
     fm.fleetConfig.instances.dev.office_access = true;

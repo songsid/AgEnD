@@ -11,9 +11,9 @@ import type { SearchDoc } from "./search-store.js";
 
 const time = (iso: unknown, fallback = Date.now()): number => { const t = typeof iso === "string" ? Date.parse(iso) : NaN; return Number.isFinite(t) ? t : fallback; };
 
-/** A chat row's doc, or null when it is not searched (a status line, an effect offer, nothing to find). */
+/** A chat row's doc, or null when it is not searched (a status line, nothing to find). */
 export function chatDoc(m: WebChatMessage): SearchDoc | null {
-  if ((m.role !== "user" && m.role !== "agent") || m.effectTrial) return null;
+  if (m.role !== "user" && m.role !== "agent") return null;
   const words = m.click?.label ?? m.text ?? "";
   const files = (m.attachments ?? []).map(a => a.name).filter(Boolean).join(" ");
   const text = [words, files].filter(Boolean).join("\n");

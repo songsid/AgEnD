@@ -1189,6 +1189,10 @@ const getWebSettings: Handler = async (ctx, rawArgs, respond) => {
   if (r.ok) respond(r); else respond(null, `get_web_settings: ${r.error}${r.detail ? ` — ${r.detail}` : ""}`);
 };
 const setWebSettings: Handler = async (ctx, rawArgs, respond) => {
+  // #2799: the Canvas Worker changes (effect, effect_slot, mod) left the schema with their code; a call that still names
+  // one (a resumed session) gets the tool's own refusal, as while the effects were off — not a schema error.
+  const raw = rawArgs as { person?: unknown; change?: { what?: unknown } } | null;
+  if (ctx.webSettings && ["effect", "effect_slot", "mod"].includes(raw?.change?.what as string)) { respond(ctx.webSettings.change(raw!.person, { what: raw!.change!.what })); return; }
   const v = validateArgs(SetWebSettingsArgs, rawArgs, "set_web_settings");
   if (!v.ok) { respond(null, v.error); return; }
   if (!ctx.webSettings) { respond(null, "set_web_settings is unavailable on this fleet"); return; }

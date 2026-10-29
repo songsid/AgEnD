@@ -91,15 +91,6 @@ let holding = 0;
 const held = new Map();        // key → value chosen in Settings, shown here, not saved yet
 const heldFrom = new Map();    // key → its cached form before it was held (a choice back to it is no change)
 const heldListeners = new Set();
-// #2193: whether the signed-in person has a personal effect slot chosen (their fx.* keys: in the page's data-prefs and
-// in every host read, never in this host cache). The effects runtime is loaded only when there is something to play.
-const ownerEffectsIn = (values) => !!values && OWNER_EFFECT_PREF_KEYS.some((k) => own(values, k) && values[k] != null && values[k] !== "");
-let ownerFx = initial ? ownerEffectsIn(initial.values) : false;
-const ownerFxListeners = new Set();
-/** Whether the person has any personal effect (fx.page/header/sidebar/box/cursor) chosen, as this page last read. */
-export function ownerEffectsChosen() { return ownerFx; }
-/** Called when that changes. Returns the unsubscribe. */
-export function onOwnerEffectsChanged(fn) { ownerFxListeners.add(fn); return () => ownerFxListeners.delete(fn); }
 
 // The host's values into the cache, now — before the sidebar, the tour or the first-run card read their keys. A key
 // the host does not have: the default, on a device in step with the host; this device's own (to upload) otherwise.
@@ -140,8 +131,6 @@ function take(body) {
   if (!isView(body) || (rev !== null && body.rev < rev)) return false;
   rev = body.rev;
   host = hostValues(body.values);
-  const fx = ownerEffectsIn(body.values);
-  if (fx !== ownerFx) { ownerFx = fx; for (const fn of [...ownerFxListeners]) { try { fn(fx); } catch { /* the rest still hear */ } } }
   return true;
 }
 

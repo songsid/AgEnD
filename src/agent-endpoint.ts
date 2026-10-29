@@ -95,7 +95,6 @@ const OP_MAP: Record<string, string> = {
 type CrudHandler = (ctx: OutboundContext, instance: string, args: Record<string, unknown>) => Promise<unknown>;
 
 export interface AgentEndpointContext extends OutboundContext {
-  canvasWorkerEnabled?(): boolean;
   /** #2305: an instance's reaction to a web chat message (FleetManager.reactToWebMessage). */
   reactToWebMessage?(instance: string, messageId: string, emoji: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }>;
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
@@ -333,7 +332,7 @@ export async function dispatchAgentOperation(
   // here; this does not isolate hostile shell processes sharing that identity.
   const requestedTool = toolForAgentOp(op);
   if (requestedTool) {
-    if (isCanvasWorkerTool(requestedTool) && ctx.canvasWorkerEnabled?.() !== true) {
+    if (isCanvasWorkerTool(requestedTool)) {                                    // #2799: removed
       throw new ToolNotPermittedError(CANVAS_WORKER_EXPERIMENTAL_MESSAGE);
     }
     const profile = resolveToolSet(ctx.fleetConfig?.instances[instance], instance);
@@ -414,11 +413,6 @@ export async function dispatchAgentOperation(
   if (op === "widget-remove") return ctx.handleWebThemeHttp(instance, "remove_web_widget", args);
   if (op === "ambient-set") return ctx.handleWebThemeHttp(instance, "set_web_ambient", args);
   if (op === "ambient-clear") return ctx.handleWebThemeHttp(instance, "clear_web_ambient", args);
-  if (op === "mod-export") return ctx.handleWebThemeHttp(instance, "export_web_mod", args);
-  if (op === "mod-propose") return ctx.handleWebThemeHttp(instance, "propose_web_mod", args);
-  // CW1 effect ops use the token-resolved instance; internal byte parts, never a workspace path.
-  const effectOps: Readonly<Record<string, string>> = { "effect-upload":"upload_web_effect", "effect-list":"list_web_effects", "effect-preview":"preview_web_effect", "effect-profile":"profile_web_effect", "effect-apply":"apply_web_effect", "effect-remove":"remove_web_effect", "effect-delete":"delete_web_effect" };
-  if (Object.hasOwn(effectOps, op)) return ctx.handleWebThemeHttp(instance, effectOps[op]!, args);
   // #2578: agend-agent office view|set — the token's instance's own character.
   if (op === "office-view") return ctx.handleWebThemeHttp(instance, "office_view", args);
   if (op === "office-set") return ctx.handleWebThemeHttp(instance, "office_set", args);

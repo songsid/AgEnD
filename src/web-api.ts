@@ -1,5 +1,4 @@
-import { canvasWorkerEnabled, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
-import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { guestChatRefusal, guestCommandText, guestDeliveries, guestFrameData, guestHistory, guestMessages, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
@@ -19,9 +18,6 @@ import { buildModBundle, type ModExportParts } from "./web-mod-export.js";
 import { AGENT_WIDGET_SLOTS, checkWidgetData, checkWidgetSpec } from "./web-widget.js";
 import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
 import { canonicalText } from "./web-theme.js";
-import type { WebEffectService } from "./web-effect-service.js";
-import type { EffectTrialActor } from "./web-effect-trials.js";
-import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
@@ -69,7 +65,6 @@ import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { resolveTz } from "./tz-utils.js";
-import { filesPlayInChat } from "./web-effect.js";
 import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
 import { xmsgShown } from "./search/search-docs.js";
 import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
@@ -362,7 +357,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
+    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -400,7 +395,6 @@ export interface WebApiContext {
   /** Current owned pane reader shared with status; absent means context is unavailable. */
   getPaneContextSource?(name: string): PaneContextSource | null;
   /** #1306: which preview origin this /ui load may frame (Host and the TLS signal only); absent: previews off. */
-  readonly effectBoot?: string;
   previewForUi?(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null };
   /** #1723: the same for a page of the public link (exposure `exposureId`, at `dashboardOrigin`); absent: none there. */
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
@@ -457,12 +451,8 @@ export interface WebApiContext {
   readonly webAppearance?: WebAppearance;
   /** #1629 r4-5: installed mods and a person's staged import. */
   readonly mods?: ModStore;
-  /** #1629 B2: session-only effect library, runtime resources and reported host profiles. */
-  readonly effectService?: WebEffectService;
   /** #1629 r4-5: an instance's card text as shown (a person's fields over the agent's), for a mod's export. */
   modCardText?(name: string): { tagline?: string; bio?: string };
-  /** #1629 r4-5c: an effect this person may export (their own claim, or human-shared); null for anyone else's. */
-  modPlacedEffect?(person: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
   /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
   isKnownInstance?(name: string): boolean;
   startInstance(name: string, config: unknown, topicMode: boolean, kind?: "fleet-topic" | "classic", resumePaused?: boolean): Promise<void>;
@@ -945,88 +935,6 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
   return true;
 }
 
-/** #1629: static current-placement posters, separate from the local human-only runtime API. */
-function handleEffectPosters(res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  const image = /^\/ui\/effect-posters\/([0-9a-f]{32})\.png$/.exec(path);
-  const names = [...url.searchParams.keys()], instance = url.searchParams.get("instance");
-  if (method !== "GET" || path !== "/ui/effect-posters" && !image || names.length !== 1 || names[0] !== "instance" || !instance || instance.length > 128) {
-    json(res, 404, { error: "not_found" }); return true;
-  }
-  const service = ctx.effectService;
-  if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
-  if (image) {
-    const r = service.placedPoster(image[1]!, instance);
-    if (!r.ok) json(res, 404, { error: "not_found" });
-    else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
-  } else {
-    const result = service.posterPlacements(instance);
-    json(res, result.error === "themes_unreadable" ? 503 : result.error ? 404 : 200, result);
-  }
-  return true;
-}
-
-/** #1629 Try: separate local-admin routes. These never borrow ordinary read-tier/placement authority. */
-function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "trials_not_over_public_link" }); return true; }
-  const who = (): { actor: Omit<EffectTrialActor, "ownerCss"> & { ownerCss: "off" | "on" | "unknown" }; record: SessionRecord; sessions: WebSessionStore | null | undefined } | { error: string; status: number } => {
-    const sessions = ctx.webSessions;
-    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, sessions, { touch: false });
-    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 } as const;
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "trials_need_a_local_admin", status: 403 } as const;
-    const person = webPersonKey(v.session.owner);
-    let css: "off" | "on" | "unknown" = "unknown";
-    try { const value = ctx.ownerCss?.effectState(person); if (value === "off" || value === "on") css = value; } catch { /* unavailable is never off */ }
-    // CSS is diagnostic for Try; its host-owned shadow shell isolates controls and local paint.
-    const actor = Object.freeze({ via: "session" as const, surface: "local" as const, tier: "admin" as const, sessionHash: v.session.idHash, epoch: v.session.handle, person, ownerCss: css });
-    return { actor, record: v.session, sessions };
-  };
-  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
-  const service = ctx.effectService; if (!service) { json(res, 404, { error: "trials_unavailable" }); return true; }
-  const start = path === "/ui/effect-trials/start";
-  const route = /^\/ui\/effect-trials\/([0-9a-f]{32})\/(resource|poster\.png|profile|stop)$/.exec(path);
-  const resource = reading && route && ["resource", "poster.png", "profile"].includes(route[2]!);
-  const stop = method === "POST" && route?.[2] === "stop";
-  if (!(resource || stop || method === "POST" && start)) { json(res, 404, { error: "not_found" }); return true; }
-  const allowed = resource ? ["ownerEpoch", "instance"] : ["ownerEpoch"];
-  if ([...url.searchParams.keys()].some(k => !allowed.includes(k)) || allowed.some(k => url.searchParams.getAll(k).length !== 1)
-    || url.searchParams.get("ownerEpoch") !== first.actor.epoch) { json(res, reading ? 404 : 409, { error: reading ? "not_found" : "trials_person_changed" }); return true; }
-  const instance = url.searchParams.get("instance") ?? "";
-  const answer = (result: Record<string, unknown>) => json(res, result.error ? result.error === "not_found" ? 404
-    : ["profiles_unreadable", "profiles_busy", "profiles_write_failed"].includes(String(result.error)) ? 503 : 400 : 200, result);
-  if (resource) {
-    if (route[2] === "poster.png") {
-      const result = service.trialPoster(route[1]!, instance, first.actor);
-      if (!result.ok) json(res, 404, { error: "not_found" });
-      else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(result.bytes); }
-    } else answer(route[2] === "profile" ? service.trialProfile(route[1]!, instance, first.actor) : service.trialResource(route[1]!, instance, first.actor));
-    return true;
-  }
-  (async () => {
-    let bytes: Buffer;
-    try { bytes = await readBoundedWebBody(req, 16 * 1024); } catch { json(res, 413, { error: "trial_body_bound" }); return; }
-    if (!permitWebContinuation(req, res, ctx)) return;
-    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
-    if (now.record !== first.record || now.sessions !== first.sessions || now.actor.sessionHash !== first.actor.sessionHash
-      || now.actor.person !== first.actor.person || now.actor.epoch !== first.actor.epoch) { json(res, 409, { error: "trials_person_changed" }); return; }
-    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "trial_json" }); return; }
-    if (start) {
-      const parsed = z.strictObject({ offer: z.string().regex(/^[0-9a-f]{32}$/), instance: z.string().min(1).max(128) }).safeParse(body);
-      if (!parsed.success) { json(res, 400, { error: "trial_args" }); return; }
-      answer(service.trialStart(parsed.data.offer, parsed.data.instance, now.actor));
-    } else {
-      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "trial_args" }); return; }
-      answer(service.trialStop(route![1]!, now.actor));
-    }
-  })().catch(() => { try { json(res, 500, { error: "trial_request_failed" }); } catch { /* response ended */ } });
-  return true;
-}
-
 /** #2599: the same closed browser controls as setup, for a current local human admin. */
 function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): boolean {
   res.setHeader("Cache-Control", "private, no-store");
@@ -1126,79 +1034,6 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
   return true;
 }
 
-/** #1629 B2: effect routes require a human session; route bodies never supply an actor or reference holder. */
-function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  const reading = method === "GET";
-  // Reports are bounded untrusted diagnostics, not an appearance or admission write (r2 §6).
-  const profilePost = method === "POST" && /^\/ui\/effects\/profile\/[0-9a-f]{32}$/.test(path);
-  const gateway = gatewayRequestContext(req), guest = guestRequestOf(req);
-  const instanceQuery = url.searchParams.get("instance"), keys = [...url.searchParams.keys()];
-  const chatRead = reading && (path === "/ui/effects/placements" || /^\/ui\/effects\/resource\/[0-9a-f]{32}$/.test(path))
-    && keys.length === 2 && keys.includes("instance") && keys.includes("ownerEpoch") && !!instanceQuery && instanceQuery.length <= 128;
-  // Public viewing grants current Chat reads, never ordinary library/owner/Trial access or writes.
-  if (gateway && (!chatRead || !gateway.isCurrent())) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
-  const who = (): { person: string; canWrite: boolean; epoch: string; guest: boolean } | { status: number; error: string } => {
-    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
-    if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "effects_need_a_signed_in_person" };
-    if (!reading && !profilePost && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
-    if (verdict.session.tier === "guest" && (!chatRead || !guest || !guest.current() || !guest.scope().has(instanceQuery!))) return { status: 404, error: "not_found" };
-    return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin", epoch: verdict.session.handle, guest: verdict.session.tier === "guest" };
-  };
-  const first = who(); if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
-  const service = ctx.effectService; if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
-  const unavailable = new Set(["themes_unreadable", "profiles_unreadable", "library_unreadable", "references_unreadable", "library_busy", "profiles_busy", "profiles_write_failed", "library_write_failed", "prefs_unreadable"]);
-  const answer = (result: Record<string, unknown>) => json(res, typeof result.error === "string" ? result.error === "not_found" ? 404 : result.error === "profile_rate_limited" ? 429 : unavailable.has(result.error) ? 503 : 400 : 200, result);
-  const idPath = /^\/ui\/effects\/(resource|profile)\/([0-9a-f]{32})$/.exec(path);
-  const instance = url.searchParams.get("instance") ?? undefined, slot = url.searchParams.get("slot");
-  if (slot !== null && instance !== undefined) { json(res, 404, { error: "not_found" }); return true; }
-  const runtimeRead = reading && (slot !== null || path === "/ui/effects/owner" || path === "/ui/effects/placements" || idPath?.[1] === "resource" || instance !== undefined && /^\/ui\/effects\/image\//.test(path));
-  if ((runtimeRead || profilePost) && (url.searchParams.getAll("ownerEpoch").length !== 1 || url.searchParams.get("ownerEpoch") !== first.epoch)) {
-    const privateResource = reading && (slot !== null || idPath?.[1] === "resource" || /^\/ui\/effects\/image\//.test(path));
-    json(res, privateResource ? 404 : 409, { error: privateResource ? "not_found" : "effects_person_changed" }); return true;
-  }
-  if (reading) {
-    const image = /^\/ui\/effects\/image\/([0-9a-f]{32})\/(poster|cursor)\.png$/.exec(path);
-    if (image) {
-      const r = slot === null ? service.image(first.person, image[1]!, image[2] as "poster" | "cursor", instance) : service.ownerImage(first.person, image[1]!, image[2] as "poster" | "cursor", slot);
-      if (!r.ok) json(res, 404, { error: "not_found" });
-      else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
-      return true;
-    }
-    if (path === "/ui/effects") answer({ ...service.list(first.person), canWrite: first.canWrite });
-    else if (path === "/ui/effects/owner" && instance === undefined && slot === null) answer(service.ownerSelections(first.person));
-    else if (path === "/ui/effects/placements" && instance !== undefined) answer(service.placements(first.person, instance, !!gateway || first.guest));
-    else if (idPath?.[1] === "resource") answer(slot === null ? service.resource(first.person, idPath[2]!, instance, !!gateway || first.guest) : service.ownerResource(first.person, idPath[2]!, slot));
-    else if (idPath?.[1] === "profile" && instance === undefined) answer(service.profile(first.person, idPath[2]!));
-    else json(res, 404, { error: "not_found" });
-    return true;
-  }
-  const deletion = /^\/ui\/effects\/([0-9a-f]{32})$/.exec(path);
-  if (method === "DELETE" && deletion) { answer(service.delete(first.person, deletion[1]!)); return true; }
-  if (method !== "POST" || !["/ui/effects/upload", "/ui/effects/apply", "/ui/effects/remove", "/ui/effects/share"].includes(path) && idPath?.[1] !== "profile") { json(res, 404, { error: "not_found" }); return true; }
-  (async () => {
-    let bytes: Buffer;
-    try { bytes = await readBoundedWebBody(req, path === "/ui/effects/upload" ? EFFECT_WIRE_LIMIT : 16 * 1024); }
-    catch { json(res, 413, { error: "effect_body_bound" }); return; }
-    if (!permitWebContinuation(req, res, ctx)) return;
-    const now = who(); if ("status" in now) { json(res, now.status, { error: now.error }); return; }
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
-    if (now.person !== first.person || now.epoch !== first.epoch) { json(res, 409, { error: "effects_person_changed" }); return; }
-    if (path === "/ui/effects/upload") { answer(service.upload(now.person, bytes)); return; }
-    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "effect_json" }); return; }
-    if (path === "/ui/effects/apply") answer(service.apply(now.person, body));
-    else if (path === "/ui/effects/remove") answer(service.remove(now.person, body));
-    else if (path === "/ui/effects/share") answer(service.share(now.person, body));
-    else {
-      if (body && typeof body === "object" && (body as Record<string, unknown>).kind === "playback" && (url.searchParams.getAll("instance").length !== 1 || slot !== null)) { json(res, 400, { error: "playback_report" }); return; }
-      answer(service.report(now.person, idPath![2]!, body, instance, now.epoch));
-    }
-  })().catch(() => { try { json(res, 500, { error: "effect_request_failed" }); } catch { /* response ended */ } });
-  return true;
-}
-
 /**
  * #1629 r4 §4 (r4-5): mods — a person's import (stage, then commit), uninstall and export. Every route is a signed-in
  * session's, writes an admin's: never the CLI's header token (the way an agent could reach it) and never the public link
@@ -1249,14 +1084,12 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     const text = mods.bundleText(fileMatch[1]!);
     const rec = mods.list().mods.find(m => m.id === fileMatch[1]);
     if (text === null || !rec) { json(res, 404, { error: "no_such_mod" }); return true; }
-    // The file is the installed bundle, effects and all — also effects its import left out, which nobody installed.
-    // So the export ACL judges what the file carries, not what was installed: it downloads only when this person may
-    // read every effect in it (their own claim on that content, or a shared one). A file without effects is any admin's.
+    // The file is the installed bundle, effects and all. #2799: a file that carries Canvas Worker effects (or can't be
+    // read to tell) is not handed out; one without is any admin's.
     const fx = mods.bundleEffects(fileMatch[1]!);
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && (fx === "unknown" || (fx?.length ?? 0) > 0)) {
+    if (fx === "unknown" || (fx?.length ?? 0) > 0) {
       json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return true;
     }
-    if (fx === "unknown" || (fx ?? []).some(id => !ctx.modPlacedEffect?.(first.person, id))) { json(res, 403, { error: "mod_effects_not_yours", detail: "this mod's file carries effects that are not yours to share: export your own look instead" }); return true; }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="${rec.name}-${rec.version}.agendmod.json"` });
     res.end(text);
@@ -1329,11 +1162,9 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
     const store = ctx.themeStore;
     const rec = store.get(name);
     if (inc.theme === true) {
-      // The effects the theme places travel with it, as the library keeps them (a person may export what is placed).
-      // Only effects this person may carry away travel (Sol's ACL); the rest are counted, never packaged.
-      // #2017: an older placement of an effect that doesn't play in chat stays out (a mod can't place it): counted.
-      const effects = (canvasWorkerEnabled(ctx.fleetConfig?.web) ? rec.placements.effects : []).flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
-      parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
+      // #2799: Canvas Worker effects were removed; an older placement travels nowhere (it is counted as left out).
+      omitted += rec.placements.effects.length;
+      parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects: [] };
     }
     if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};
     for (const slot of AGENT_WIDGET_SLOTS) {
@@ -1600,11 +1431,6 @@ export function handleWebRequest(
 ): boolean {
   const path = url.pathname;
   const method = req.method ?? "GET";
-  if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && isCanvasWorkerHttpPath(path)) {
-    json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE });
-    return true;
-  }
-
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
   // gate: the same session cookie or header token, and an unset token closes
   // the panel instead of comparing null against a missing credential.
@@ -2297,17 +2123,10 @@ export function handleWebRequest(
       if (!now?.canWrite) { refuse(now); return; }
       if (now.person !== first.person || now.epoch !== first.epoch || now.via !== first.via) { json(res, 409, { error: "prefs_person_changed" }); return; }
       const personal = [...parsed.patch.keys()].some(isOwnerEffectKey);
-      if (personal && !canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
-      if (personal && now.person === null) { json(res, 403, { error: "prefs_need_a_signed_in_person" }); return; }
-      // A scope marker rejects a queued old page after a different login, including the same person's new session.
-      // It supplies neither identity nor authority; the current verified session still chooses the bucket.
-      if (personal && body.ownerEpoch !== now.epoch) { json(res, 409, { error: "prefs_person_changed" }); return; }
-      const before = prefs.readForViewer(now.person);
-      const written = prefs.writeForViewer(now.person, parsed.patch, { onlyIfUnset: body.onlyIfUnset === true,
-        validateEffect: (person, key, id) => ctx.effectService ? ctx.effectService.validateOwnerSelection(person, key, id) : "effects_unavailable" });
+      // #2799: a person's own effect selections were Canvas Worker effects' (removed): refused, as before.
+      if (personal) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
+      const written = prefs.writeForViewer(now.person, parsed.patch, { onlyIfUnset: body.onlyIfUnset === true, validateEffect: () => "effects_unavailable" });
       if (!written.ok) { json(res, written.status, { error: written.error }); return; }
-      const dropped = written.changed.filter(isOwnerEffectKey).flatMap(key => typeof before.values[key] === "string" && before.values[key] !== written.view.values[key] ? [before.values[key] as string] : []);
-      if (dropped.length) ctx.effectService?.collectOwnerReplaced(dropped);
       if (written.changed.length) ctx.emitSseEvent("status", ctx.getUiStatus());
       json(res, 200, { ...written.view, ...prefsScope(now), changed: written.changed });
     })().catch(err => {
@@ -2331,15 +2150,9 @@ export function handleWebRequest(
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
 
-  // Posters remain behind the common session gate, with a closed GET-only public manifest.
-  if (path === "/ui/effect-posters" || path.startsWith("/ui/effect-posters/")) return handleEffectPosters(res, url, ctx, path, method);
-
-  // Canvas effects are absent from the public gateway manifest and independently refused above.
-  if (path === "/ui/effect-trials" || path.startsWith("/ui/effect-trials/")) return handleEffectTrials(req, res, url, ctx, path, method);
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
-  if (path === "/ui/effects" || path.startsWith("/ui/effects/")) return handleEffects(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
   // token. Who did it is recorded by principal: the session's public handle, never the session id or a credential.
@@ -3279,7 +3092,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       let quoted: WebChatMessage | undefined;
       if (replyTo) {
         quoted = ctx.webChatHistory?.find(instance, replyTo.boot, replyTo.id);
-        if (!quoted || quoted.effectTrial || (guest && !guestSeesMessage(quoted, guest, guest.scope()))) {
+        if (!quoted || (guest && !guestSeesMessage(quoted, guest, guest.scope()))) {
           json(res, 409, { error: t("web.reply_gone"), reason: "reply_gone" });
           return;
         }
@@ -3569,12 +3382,10 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
 export type PublicPreviewForUi = PreviewAvailability & { boot: string | null; frameSrc: string | null; detail?: string };
 
 export interface AppShellContext {
-  /** #2118: independent trusted opaque effect document, never HTML-preview consent or listener state. */
-  readonly effectBoot?: string;
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean }; search?: { public_link?: boolean } } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { public_link?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -3697,16 +3508,9 @@ function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: strin
   const badge = ctx.guestBadge?.(owner);
   return ` data-tier="guest"${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
 }
-/** A separate session fence for Chat playback: public/guest viewers acquire no owner-pref identity. */
-function shellEffect(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): { boot: string; epoch: string; scope: "owner" | "chat" } | null {
-  if (mode !== "full" || typeof ctx.effectBoot !== "string" || !/^[0-9a-f]{32}$/.test(ctx.effectBoot)) return null;
-  const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
-  if (v.kind !== "allow" || v.via !== "session" || !v.session || !/^[a-f0-9]{16}$/.test(v.session.handle)) return null;
-  return { boot: ctx.effectBoot, epoch: v.session.handle, scope: gatewayRequestContext(req) || v.session.tier === "guest" ? "chat" : "owner" };
-}
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
-  const ownerCss = shellOwnerCss(ctx, mode, viewer), effect = shellEffect(req, ctx, mode);
+  const ownerCss = shellOwnerCss(ctx, mode, viewer);
   let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
   if (mode === "full" && !viewer?.guest && viewer?.person != null && ctx.ownerCss) {
     ownerCssState = ctx.ownerCss.effectState(viewer.person);
@@ -3714,7 +3518,6 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
-    + `${effect ? ` data-effect-boot="${effect.boot}" data-effect-epoch="${effect.epoch}" data-effect-scope="${effect.scope}"` : ""}`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
@@ -3724,7 +3527,6 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false || viewer?.guest ? "0" : "1"}"`
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
-    + ` data-canvas-worker="${canvasWorkerEnabled(ctx.fleetConfig?.web) ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
     // checks before sending a file, and the numbers its words say. The server checks again on every upload.
     + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`
@@ -3754,10 +3556,7 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
-    // This fixed trusted document is independent of HTML preview. Its own response confines all Worker execution.
-    const effectOrigin = gatewayRequestContext(req)?.expectedOrigin ?? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req));
-    const effectFrame = shellEffect(req, ctx, mode) && effectOrigin ? `${effectOrigin}/effect-bootstrap` : null;
-    const frameSrc = [previewFrames, effectFrame].filter(Boolean).join(" ");
+    const frameSrc = previewFrames ?? "";
     sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
