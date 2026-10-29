@@ -434,18 +434,6 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const box = tagBox(ctx, q.at.x, q.at.y, q.look.label);
       tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
     }
-    // A crowd's grid is tighter than a compact tag is wide (OVERFLOW.STEPS down to 32): a neighbour's tag goes a row
-    // lower (COMPACT_ROW) rather than out, so a row of people reads as two staggered rows of names.
-    if (!tagsOff) for (const q of people) {
-      if (live.hidden.has(q.look.name) || !crowded(q)) continue;
-      for (const dy of [0, COMPACT_ROW]) {
-        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true), foot = tagFootprint(ctx, box, q.look.badge, true);
-        if (touches(foot)) continue;
-        sk.drawTag(ctx, q.at.x, q.at.y + dy, q.look, env, true);
-        tags.push(box); taken.push(foot);
-        break;
-      }
-    }
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
     // its place in the row while another's tag is left out), and their bubbles, over its picture. The tags drawn are
@@ -454,7 +442,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) {
       const on = people.filter((q) => live.hidden.get(q.look.name) === f.id);
       if (!on.length) {
-        if (!tagsOff && f.label) { const nl = npcLook(p, f); sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(tagBox(ctx, f.x, f.y, nl.label)); }
+        if (!tagsOff && f.label) {
+          const nl = npcLook(p, f), box = tagBox(ctx, f.x, f.y, nl.label);
+          sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge));
+        }
         continue;
       }
       const order = new Map((f.activeFor || []).map((n, i) => [n, i]));
@@ -467,11 +458,24 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         if (q ? !tagged(q) : tagsOff) continue;
         sk.drawTag(ctx, r.x, f.y, r.look, env);
         const box = tagBox(ctx, r.x, f.y, r.look.label);
-        tags.push(box);
+        tags.push(box); taken.push(tagFootprint(ctx, box, r.look.badge));
         if (q) held.push({ name: q.look.name, id: f.id, box });
       }
     }
     p.heldTags = held;
+    // The crowd's compact tags go last, clear of every full tag above: people's, an item's own name and the row it
+    // carries (#2862 review). A crowd's grid is tighter than a compact tag is wide (OVERFLOW.STEPS down to 32): a
+    // neighbour's tag goes a row lower (COMPACT_ROW) rather than out, so a row of people reads as two staggered rows.
+    if (!tagsOff) for (const q of people) {
+      if (live.hidden.has(q.look.name) || !crowded(q)) continue;
+      for (const dy of [0, COMPACT_ROW]) {
+        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true), foot = tagFootprint(ctx, box, q.look.badge, true);
+        if (touches(foot)) continue;
+        sk.drawTag(ctx, q.at.x, q.at.y + dy, q.look, env, true);
+        tags.push(box); taken.push(foot);
+        break;
+      }
+    }
   } else {
     for (const d of p.desks) { const look = p.looks.get(d.key); sk.drawCharacter(ctx, d, actPosed(p, look), ms, env); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
     blit(p.layers.front);
