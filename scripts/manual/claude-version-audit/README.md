@@ -88,7 +88,7 @@ LIVE means the screen was captured on both versions, read identically by the pro
 
 The audit was run as `AUDIT_DIR=… OLD=294 NEW=295 PORT=18295 bash pass1.sh` (then `extra.sh` and `extra2.sh`).
 
-- **LIVE: no change.** Every surface in the table above was captured on both versions, and all 45 frames classify identically with the production predicates. The input-box readings are identical too. The only differences are spinner verbs, the mock's reply counter, and the moment the effort hint first paints.
+- **LIVE: no change.** Every LIVE surface in the table above was captured on both versions, and all 45 frames classify identically with the production predicates. The input-box readings are identical too. The only differences are spinner verbs, the mock's reply counter, and the moment the effort hint first paints.
 - **Predicate fragments:** 3 of 215 changed count.
   - `" and the "` and `"auth token"` are in prose.
   - `"Esc to cancel"` dropped from 12 to 10. Its lost occurrences are the Claude apps gateway connect screen, which AgEnD doesn't handle. The footers AgEnD matches are composed at run time, and every part of them has the same count.
