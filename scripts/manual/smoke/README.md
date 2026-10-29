@@ -50,7 +50,7 @@ systemd-run itself. Every log is kept.
 To run one smoke by hand:
 
 ```sh
-REPO=$PWD OUT=/tmp/o MATRIX=quick HP=48600 FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-mod-effects.mts
+REPO=$PWD OUT=/tmp/o MATRIX=quick HP=48600 FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-ambient.mts
 ```
 
 Shots land in `$OUT/<smoke>/<case>-<shot>.png`, with a `result.json` next to them. Every smoke records CSP
