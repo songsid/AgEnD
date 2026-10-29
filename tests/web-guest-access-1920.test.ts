@@ -53,7 +53,9 @@ describe("guestRouteDecision (the table)", () => {
       "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/api/ai-usage", "/ui/fleet", "/ui/needs",
       "/ui/fleet/agent/a", "/ui/log/a", "/settings", "/ui/img/emoji/x", "/ui/preview-status"];
     for (const p of [...later, ...admin]) expect(guestRouteDecision("GET", u(p), new Set(["a"])), p).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
-    for (const [m, p] of [["POST", "/ui/prefs"], ["POST", "/ui/command"],
+    // #2855: POST /ui/prefs is open (its own preferences: the handler checks); /ui/command is not, yet.
+    expect(guestRouteDecision("POST", u("/ui/prefs"), new Set(["a"])).kind).toBe("allow");
+    for (const [m, p] of [["POST", "/ui/command"],
       ["POST", "/ui/prompt"], ["POST", "/api/profile/a"], ["POST", "/api/card/a/banner"], ["DELETE", "/api/avatar/a"], ["POST", "/ui/chat/a"], ["PUT", "/api/settings/fleet/web"]]) {
       expect(guestRouteDecision(m!, u(p!), new Set(["a"])), `${m} ${p}`).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
     }
@@ -150,7 +152,10 @@ describe("the gate, live: a guest scoped to `a`", () => {
     // Step 2b: chat is a guest's now — but never to an instance out of scope (404), and its preferences stay read-only.
     const send = await raw(port, "POST", "/ui/send", write(guest, port), JSON.stringify({ instance: "b", message: "hi" }));
     expect(send).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
-    expect(await raw(port, "POST", "/ui/prefs", write(guest, port), JSON.stringify({ set: { theme: "dark" } }))).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
+    // #2855: its own preferences — into its own bucket, never the host's.
+    const saved = await raw(port, "POST", "/ui/prefs", write(guest, port), JSON.stringify({ set: { theme: "dark" } }));
+    expect([saved.status, JSON.parse(saved.body).values.theme]).toEqual([200, "dark"]);
+    expect(fm.webPrefs.read("operator").values.theme, "the host's theme is untouched").not.toBe("dark");
     expect((await raw(port, "POST", "/ui/command", write(guest, port), JSON.stringify({ instance: "a", command: "clear" }))).status).toBe(403);
     // Unchanged: an admin session and the header token reach the admin routes.
     expect((await raw(port, "GET", "/status", { cookie: cookieOf(admin) })).status).toBe(200);

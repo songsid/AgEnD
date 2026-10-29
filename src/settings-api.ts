@@ -95,6 +95,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** #2667: the ClassicBot rooms' instance names — a guest grant may name one, so a save's validation knows them. */
   classicRoomNames?(): string[];
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
+  /** #2855: a removed guest's own preferences go with it. */
+  forgetGuestPrefs?(owner: { adapterId: string; userId: string }): void;
   /** #2348 delta §5: one audit entry per person whose granted agents changed with a save (event log, the Log tab). */
   noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void;
   /** #2348: the people AgEnD has seen in chat (the Guests picker), never a fleet admin or a bot. */
@@ -896,6 +898,11 @@ export function handleSettingsRequest(
         const at = key.indexOf(":");
         try { ended.set(key, ctx.revokeGuestWebSessions?.({ adapterId: key.slice(0, at), userId: key.slice(at + 1) })?.count ?? 0); }
         catch (err) { ctx.logger.warn({ err }, "settings: could not end a removed guest's sessions"); }
+        // #2855: removed (not just emptied): the guest's own preferences go too. Its name stays for its past messages.
+        if (grant === null) {
+          try { ctx.forgetGuestPrefs?.({ adapterId: key.slice(0, at), userId: key.slice(at + 1) }); }
+          catch (err) { ctx.logger.warn({ err }, "settings: could not delete a removed guest's preferences"); }
+        }
       }
       // #2348 delta §5: every grant change is audited, widening (confirmed in General, replayed here) or narrowing (at
       // once) alike: who, how, the agents added and taken away. Agent names only; never message content. Shown under

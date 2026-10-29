@@ -259,7 +259,7 @@ import { crossInstanceVisibility, runVisibilityCommand, xmsgVisibility } from ".
 import { SEARCH_RETENTION_DAYS, SearchIndex } from "./search/search-index.js";
 import { chatDoc, taskDoc, xmsgDoc, type CrossInstanceRecord, type XmsgVisibility } from "./search/search-docs.js";
 import { WebSettingsTools } from "./web-settings-tools.js";
-import { bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
+import { GUEST_PREF_WRITES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
@@ -1605,6 +1605,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly officeSkinWrites = new OfficeWriteLimiter(undefined, { perWindow: 10, windowMs: 60_000 });
   /** How often a person may save the offices (PUT /ui/offices); memory only, as the appearance limiter. */
   readonly officeWrites = new OfficeWriteLimiter();
+  /** #2855: a guest's preference saves, per account. */
+  readonly guestPrefWrites = new OfficeWriteLimiter(undefined, GUEST_PREF_WRITES);
   private officeSharesInstance?: OfficeShareService;
   /**
    * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of
@@ -7420,6 +7422,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1920 §5.4: a guest's own `/web revoke` — its sessions and its outstanding code; nobody else's (an admin's revokes
    * everyone's, as before).
    */
+  /** #2855: the admin removed a guest — its own preferences (theme, language, favourites, sort, filter) go too. */
+  forgetGuestPrefs(owner: { adapterId: string; userId: string }): void { this.webPrefs.forgetGuest(webPersonKey(owner)); }
+
   revokeGuestWebSessions(owner: { adapterId: string; userId: string }): { count: number; durable: boolean } {
     this.initializeWebSessions();
     const key = `${owner.adapterId}\u0000${owner.userId}`;
@@ -24089,6 +24094,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         tags: identity.tags,
         teams: instanceTeams(this.fleetConfig?.teams, name),     // #2172: the sidebar groups a team's members under it
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
+        // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
+        last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,
         status: this.getInstanceStatus(name),
         // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
         // what the dashboard's activity events carry) come from instancePresentation (#1212).

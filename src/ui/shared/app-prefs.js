@@ -102,9 +102,20 @@ if (host) {
   }
 }
 
-/** This page may change the host's preferences: the signed-in app, not over the public link, not a guest's (#1920). */
-export function prefsWritable() {
-  return !!initial && !guestPage() && !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
+/**
+ * #2855: the preferences a guest keeps as its own, on the host under its account (the same list as web-prefs.ts
+ * GUEST_OWN_PREF_KEYS); the rest of a guest's page follows the host's look and stays on this browser.
+ */
+export const GUEST_OWN_PREF_KEYS = Object.freeze(["theme", "lang", "nav.favorites", "nav.sort", "nav.filter"]);
+const GUEST_OWN = new Set(GUEST_OWN_PREF_KEYS);
+/**
+ * This page may change a preference on the host: the signed-in app, not over the public link (#1920). A guest's page
+ * (#2855): only its own keys — over the public link too, since only its own bucket is written; no key named: none.
+ */
+export function prefsWritable(key) {
+  if (!initial) return false;
+  if (guestPage()) return key !== undefined && GUEST_OWN.has(key);
+  return !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
 }
 /**
  * The value in force for a key, in memory — never only in this browser's storage (a full storage must not bring back
@@ -142,7 +153,7 @@ export function savePref(key, value) {
   if (!hostKey(key)) return;
   if (holding && HELD_KEYS.has(key)) { hold(key, value); return; }
   cache(key, value);
-  if (!prefsWritable()) return;
+  if (!prefsWritable(key)) return;
   pending.set(key, value);
   mine.set(key, value);
   clearTimeout(flushTimer);
@@ -317,9 +328,9 @@ function apply(changed) {
  * refused session or an unreadable store leaves the device unmarked, so the next load tries again.
  */
 export async function migratePrefs() {
-  if (!prefsWritable() || inStep()) return false;
+  if (!initial || inStep() || !HOST_KEYS.some((key) => prefsWritable(key))) return false;
   for (const key of HOST_KEYS) {
-    if (own(host, key)) continue;
+    if (own(host, key) || !prefsWritable(key)) continue;
     const local = SYNCED[key].fromLocal(readLocal(SYNCED[key].ls));
     if (local === undefined) continue;
     let r;

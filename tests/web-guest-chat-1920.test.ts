@@ -64,6 +64,8 @@ afterEach(() => { vi.restoreAllMocks(); delete fm.fleetConfig.web; });
 const session = (tier: "admin" | "guest", owner?: typeof ALICE) =>
   fm.webSessions.create({ tier, surface: "local", label: tier, tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!), owner }).sessionId as string;
 const scopedToA = () => vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+/** #2855: a test's own guest-save limit (the account's count is per fleet, so one test's saves would count in the next). */
+const freshLimits = () => { fm.guestPrefWrites = new (fm.guestPrefWrites.constructor)(undefined, { perWindow: 30, windowMs: 60_000 }); };
 const guestsChat = (chat?: boolean) => { fm.fleetConfig.web = { guests: { enabled: true, ...(chat === undefined ? {} : { chat }) } }; };
 
 describe("the rules", () => {
@@ -181,7 +183,7 @@ describe("live: a guest scoped to `a`", () => {
     expect((await raw(port, "POST", "/ui/reply-button", write(session("admin")), JSON.stringify({ instance: "a", id: ids[1], index: 0 }))).status).toBe(200);
     expect(delivered[1].meta.web_guest, "an admin's choice is not a guest's").toBeUndefined();
   });
-  it("/ui/prefs and the app shell's copy: the host's look and the guest's own only; POST closed", async () => {
+  it("/ui/prefs and the app shell's copy: the host's look and the guest's own only", async () => {
     scopedToA(); guestsChat();
     fm.webPrefs.write("operator", new Map<string, unknown>([["theme", "dark"], ["nav.favorites", ["b"]], ["nav.order", ["b", "a"]], ["card.sizeByInstance", { b: "l" }]]));
     const guest = session("guest", ALICE), admin = session("admin");
@@ -193,7 +195,51 @@ describe("live: a guest scoped to `a`", () => {
     const embedded = /data-prefs="([^"]*)"/.exec(shell.body)?.[1] ?? "";
     expect(embedded).toContain("dark");
     expect(embedded).not.toContain("nav.favorites");
-    expect((await raw(port, "POST", "/ui/prefs", write(guest), JSON.stringify({ set: { "nav.favorites": ["a"] } }))).status).toBe(403);
+  });
+  it("#2855: a guest saves its own preferences — its five keys, its own bucket, favourites in scope; the same on its other devices", async () => {
+    scopedToA(); guestsChat(); freshLimits();
+    const person = `person:${ALICE.adapterId}:${ALICE.userId}`;
+    fm.webPrefs.write("operator", new Map<string, unknown>([["theme", "light"], ["nav.favorites", ["b"]], ["nav.sort", { mode: "custom", favs: "fixed" }]]));
+    const guest = session("guest", ALICE), other = session("guest", ALICE), admin = session("admin");
+    const post = (sid: string, set: unknown, extra: Record<string, unknown> = {}) => raw(port, "POST", "/ui/prefs", write(sid), JSON.stringify({ set, ...extra }));
+    const own = { theme: "dark", lang: "zh-TW", "nav.favorites": ["a"], "nav.sort": { mode: "recent", favs: "fixed" }, "nav.filter": { q: "ops", status: [], cli: [] } };
+    const ok = await post(guest, own);
+    expect(ok.status, ok.body).toBe(200);
+    expect(JSON.parse(ok.body).values).toMatchObject(own);
+    // Its other device (another session of the same account) reads the same; the host's own values are unchanged.
+    expect(JSON.parse((await raw(port, "GET", "/ui/prefs", { cookie: cookieOf(other) })).body).values).toMatchObject(own);
+    const shell = await raw(port, "GET", "/ui", { cookie: cookieOf(other), accept: "text/html" });
+    expect(/data-prefs="([^"]*)"/.exec(shell.body)?.[1] ?? "").toContain("recent");
+    expect(fm.webPrefs.read("operator").values).toMatchObject({ theme: "light", "nav.favorites": ["b"], "nav.sort": { mode: "custom", favs: "fixed" } });
+    expect(JSON.parse((await raw(port, "GET", "/ui/prefs", { cookie: cookieOf(admin) })).body).values, "an admin's view is the host's").toMatchObject({ theme: "light" });
+    expect(fm.webPrefs.read(person).values).toMatchObject(own);
+    // Refused: another key, a favourite out of its scope, too big.
+    for (const [set, error] of [[{ "nav.order": ["a"] }, "guest_pref_not_yours: nav.order"], [{ "card.size": "l" }, "guest_pref_not_yours: card.size"],
+      [{ "nav.favorites": ["b"] }, "not_in_scope: b"]] as const) {
+      const r = await post(guest, set);
+      expect([r.status, JSON.parse(r.body).error], JSON.stringify(set)).toEqual([400, error]);
+    }
+    expect((await post(guest, { "nav.filter": { q: "x".repeat(17 * 1024), status: [], cli: [] } })).status, "over 16 KB").toBe(413);
+    // A favourite whose instance leaves the guest's scope is not shown any more (it stays in its bucket).
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["b"]));
+    expect(JSON.parse((await raw(port, "GET", "/ui/prefs", { cookie: cookieOf(guest) })).body).values["nav.favorites"]).toEqual([]);
+  });
+  it("#2855: the guest's status frame times its agent by the last reply its channel showed, never a web-only one", async () => {
+    const { guestStatus } = await import("../src/web-guest-access.js");
+    fm.emitSseEvent("message", { instance: "a", sender: "a", role: "agent", text: "to the channel", ts: "2026-10-29T07:00:00.000Z", channel: true });
+    fm.emitSseEvent("message", { instance: "a", sender: "a", role: "agent", text: "to someone's web chat", ts: "2026-10-29T08:00:00.000Z" });
+    const full = fm.getUiStatus();
+    expect(full.instances.find((i: { name: string }) => i.name === "a")).toMatchObject({ last_reply: "2026-10-29T08:00:00.000Z", last_reply_channel: "2026-10-29T07:00:00.000Z" });
+    expect(guestStatus(full, new Set(["a"])).instances[0]).toMatchObject({ last_reply: "2026-10-29T07:00:00.000Z" });
+  });
+  it("#2855: at most 30 saves a minute per guest account, every device of it counted together", async () => {
+    scopedToA(); guestsChat(); freshLimits();
+    const a = session("guest", ALICE), b = session("guest", ALICE);
+    const post = (sid: string) => raw(port, "POST", "/ui/prefs", write(sid), JSON.stringify({ set: { theme: "dark" } }));
+    const statuses: number[] = [];
+    for (let i = 0; i < 30; i++) statuses.push((await post(i % 2 ? a : b)).status);
+    const over = await post(a);
+    expect([statuses.every((s) => s === 200), over.status, JSON.parse(over.body).error]).toEqual([true, 429, "guest_prefs_rate_limited"]);
   });
   it("/ui/profile: the guest's own web name", async () => {
     scopedToA(); guestsChat();

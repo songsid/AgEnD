@@ -188,6 +188,17 @@ describe("#2848: a line is the channel's exactly when its topic got the same pos
   });
 });
 
+describe("#2855: the last reply its channel showed", () => {
+  it("lastAgentReply({ channel: true }) skips a reply to a web-only exchange; without it, every reply counts", async () => {
+    const { WebChatHistory } = await import("../src/web-chat-history.js");
+    const h = new WebChatHistory();
+    h.record({ instance: "w", sender: "w", role: "agent", text: "to the channel", ts: "2026-10-29T07:00:00.000Z", channel: true });
+    h.record({ instance: "w", sender: "w", role: "agent", text: "to someone's web chat", ts: "2026-10-29T08:00:00.000Z" });
+    expect([h.lastAgentReply("w"), h.lastAgentReply("w", { channel: true }), h.lastAgentReply("nobody", { channel: true })])
+      .toEqual(["2026-10-29T08:00:00.000Z", "2026-10-29T07:00:00.000Z", null]);
+  });
+});
+
 describe("#1672: it is in the web chat history, and there again after a restart", () => {
   it("the real fleet records the line; a new fleet on the same home restores it as a status line", async () => {
     const h = mkdtempSync(join(tmpdir(), "agend-test-1672-")); homes.push(h);

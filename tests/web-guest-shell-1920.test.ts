@@ -2,9 +2,9 @@
  * #1920 phase 3 (P3a): a guest's web app — only what a guest may use, and who it is signed in as.
  * - The server marks a guest's page (data-tier="guest", its web name and platform; no usage panel) — an admin's page is
  *   unchanged.
- * - The shell: the sidebar lists its own agents to pick from (no filters, no reordering) with a "Guest · <name>
+ * - The shell: the sidebar lists its own agents to pick from (#2855: its own star, sort and filter; no reordering) with a "Guest · <name>
  *   (<platform>)" chip and its session — no Fleet overview, Needs you, Fleet, View, Settings, New agent or widget; no
- *   bottom tabs; no operations, usage rail, pending changes or owner-CSS bar. Its preferences are read-only.
+ *   bottom tabs; no operations, usage rail, pending changes or owner-CSS bar. #2855: it saves only its own preferences.
  * - The chat: no instance tabs, ⋯ menu or effects; no command palette — a "/…" draft is refused here with why (the
  *   server would refuse it as a command) and kept; the hint says the agent sees its messages as a guest's.
  * Rigs: the real handler (server), and the real Shell / chat panel in a mini DOM (as web-new-agent-2074 and
@@ -85,12 +85,14 @@ describe("a guest's shell", () => {
     expect(pg.root.querySelector("#sidebar .guest-chip").parentNode.getAttribute("data-trust")).toBe("navigation");
     expect(pg.root.querySelector("#sidebar .side-nav"), "no Fleet overview, Needs you, Fleet, View or New agent").toBeNull();
     expect(texts(pg, "#sidebar .side-foot a.side-row"), "no Settings").toEqual([]);
-    expect(pg.root.querySelector("#sidebar .v-filter"), "no filters").toBeNull();
-    expect(texts(pg, "#sidebar .inst-name").sort(), "a filter this device kept hides nothing").toEqual(["docs", "web-dev"]);
+    // #2855: its own filter — the one this device kept is in the box (so it can be cleared), and applied.
+    expect((pg.root.querySelector("#sidebar .v-filter input") as any)?.value, "its filter, shown").toBe("zzz");
+    expect(texts(pg, "#sidebar .inst-name"), "and applied: only the open chat, pinned as Current (#1936)").toEqual(["web-dev"]);
     expect(pg.root.querySelector("#sidebar [draggable=true]"), "no reordering").toBeNull();
     expect(pg.root.querySelector("nav.tabs"), "no bottom tabs").toBeNull();
     expect(pg.root.querySelector(".shell.guest")).not.toBeNull();
-    expect(prefs.prefsWritable(), "its preferences are read-only").toBe(false);
+    // #2855: its own five keys only; nothing else, and nothing when no key is named.
+    expect(["theme", "lang", "nav.favorites", "nav.sort", "nav.filter", "nav.order", "card.size", undefined].map((k) => prefs.prefsWritable(k))).toEqual([true, true, true, true, true, false, false, false]);
   });
   it("control: an admin's shell keeps all of it", async () => {
     const { pg, prefs } = await shell(false);

@@ -101,7 +101,8 @@ if (mode === "full") {
     import("/ui/js/backend-signin.js").then((m) => m.installSignIn(), () => {});
   }
   // #1665: this device's first upload of its own choices (once), then another device's changes at each status frame.
-  // A guest's page only reads them (prefsWritable is false there).
+  // A guest's page (#2855) uploads and saves only its own keys (prefsWritable(key)); another device's changes reach it at
+  // its next load (its status frames carry no prefs_rev).
   bootPrefs();
   // #1629: agents' themes, read when the status frame's themes_rev moves (a guest's frames never carry it).
   if (!guest) startThemes();
