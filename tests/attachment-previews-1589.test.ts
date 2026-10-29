@@ -224,6 +224,15 @@ describe("media and text show inline in the chat (#1589)", () => {
     await click(missing.querySelector(".tc-show"));
     expect(missing.querySelector(".pv-note").textContent).toMatch(/no longer available/);
   });
+  it("#2863: the text card keeps 1 MiB while an HTML preview goes to 8 MB — 1.5 MiB (listed, or read) is a download, never a question", async () => {
+    serve({ [ID(2)]: "x".repeat(1.5 * 1024 * 1024) });
+    const doc = await chat([att(3, "mid.txt", 1.5 * 1024 * 1024), att(2, "grew.txt", 100)]);
+    const [listed, grew] = [...doc.querySelectorAll(".text-card")] as any[];
+    for (const c of [listed, grew]) {
+      await click(c.querySelector(".tc-show"));
+      expect([c.querySelector(".pv-note").textContent, c.querySelector(".tc-body").hidden]).toEqual(["This file is over 1 MiB; download it to read it.", true]);
+    }
+  });
   it("formatting has a budget the lines and 1 MiB do not give: one wide csv line or a dense code line becomes plain text", async () => {
     const wide = Array(100000).fill("x").join(","), dense = "0 ".repeat(10000), ticks = "`a` ".repeat(5000);
     const cols = `${Array(60).fill("h").join(",")}\n${Array(60).fill("v").join(",")}`;   // 120 cells, but 60 columns

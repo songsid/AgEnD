@@ -152,11 +152,12 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [, dayTick] = useState(0);
   useEffect(() => (open ? onDayChange(() => dayTick(n => n + 1)) : undefined), [!!open]);
 
-  const ui = { state: (s, reason) => setRun({ state: s === "starting" || s === "running" ? s : "idle", reason: reason || "" }) };
-  const start = () => {
+  // #2863: "large" — over 8 MB, nothing runs until "Preview anyway" (or the card's, which opened it with `anyway`).
+  const ui = { state: (s, reason) => setRun({ state: s === "starting" || s === "running" || s === "large" ? s : "idle", reason: reason || "" }) };
+  const start = (anyway) => {
     if (!open || !holder.current) return;
     setView("preview");
-    P().start(frameKey(open.key), holder.current, open.code, ui, { fill: true });
+    P().start(frameKey(open.key), holder.current, open.code, ui, anyway === true || open.anyway ? { fill: true, anyway: true } : { fill: true });
   };
   const stop = () => { if (open) P().stop(frameKey(open.key), "stopped", ""); };
   // A new block in the panel: what ran before is gone (openPanel stopped it); the card's click starts it here — or,
@@ -224,7 +225,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     if (newer.code != null) { openPanel(newer); return; }
     const was = open && open.key, mine = reading.current = newer;
     setNewerNote(t("chat.pvLoading"));
-    const r = await loadHtmlAttachment(newer.att);
+    // A click on the newer version reads it whatever its size (up to the 50 MB ceiling); over 8 MB the panel then asks.
+    const r = await loadHtmlAttachment(newer.att, undefined, { anyway: true });
     if (reading.current !== mine) return;
     reading.current = null;
     const now = panelStore.get().open;
@@ -270,9 +272,10 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
           <button type="button" class=${`btn btn-sm${view === "code" ? " on" : ""}`} aria-pressed=${view === "code" ? "true" : "false"} onClick=${() => setView("code")}><${Icon} name="code" size=${14} />${t("chat.pvCode")}</button>
         </div>
         <span class="grow"></span>
-        ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
+        ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(true); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
           <button type="button" class="btn btn-sm pv-panel-stop" title=${t("chat.pvStop")} onClick=${stop}><${Icon} name="stop" size=${14} /><span class="lbl">${t("chat.pvStop")}</span></button>`
-          : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${start}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
+          : run.state === "large" ? html`<button type="button" class="btn btn-sm btn-primary pv-panel-anyway" title=${t("chat.pvAnyway")} disabled=${!a.ok} onClick=${() => start(true)}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvAnyway")}</span></button>`
+          : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${() => start()}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
         <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
       </div>
       ${newer && newer.key !== open.key ? html`<div class="pv-newer" role="status"><span>${t("chat.pvNewer", timeOf(newer.ts))}</span>

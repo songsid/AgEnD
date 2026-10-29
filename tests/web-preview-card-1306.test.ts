@@ -122,8 +122,9 @@ function holder(doc = fakeDoc()): FakeHolder {
 }
 type Preview = {
   init(d: object): void; availability(): { ok: boolean; why: string; reason: string }; optedIn(): boolean; setOptIn(on: boolean): void; never(): boolean; setNever(on: boolean): void;
-  start(key: string, h: FakeHolder, html: string, ui: { state(n: string, r: string): void }): boolean; stop(key: string): boolean; stopAll(): string[]; stopIn(node: unknown): string[];
+  start(key: string, h: FakeHolder, html: string, ui: { state(n: string, r: string): void }, opts?: { anyway?: boolean; fill?: boolean }): boolean; stop(key: string): boolean; stopAll(): string[]; stopIn(node: unknown): string[];
   running(key: string): boolean; mountPreview(doc: unknown): FakeFrame; onMessage(e: unknown): void; onChange(fn: () => void): void; BANNER: string;
+  LIMITS: { askBytes: number; maxBytes: number };
 };
 function load(o: { optIn?: boolean; never?: boolean; at?: string; data?: Record<string, string>; local?: Map<string, string> } = {}) {
   // Two tabs of one dashboard share localStorage (pass the same map); each has its own sessionStorage.
@@ -196,11 +197,23 @@ describe("the parent: opt-in and availability (§3.2, §7)", () => {
   it("the per-session kill switch hides it even after opting in", () => {
     expect(started({ optIn: true, never: true }).ok).toBe(false);
   });
-  it("over 1 MiB of UTF-8 is never started", () => {
+  it("#2863: over 8 MB of UTF-8 asks (\"large\", with its size) and starts nothing; Preview anyway (opts.anyway) starts it", () => {
     const env = load({ optIn: true });
-    const h = holder();
-    expect(env.P.start("k", h, "é".repeat(512 * 1024 + 1), { state() {} })).toBe(false);
-    expect(h.children).toHaveLength(0);
+    const h = holder(), seen: Array<[string, string]> = [];
+    const ui = { state(name: string, reason: string) { seen.push([name, reason]); } };
+    expect(env.P.start("k", h, "é".repeat(4 * 1024 * 1024 + 1), ui)).toBe(false);
+    expect([h.children.length, seen]).toEqual([0, [["large", "This file is large (8 MB). Preview anyway?"]]]);
+    expect(env.P.start("k", h, "é".repeat(4 * 1024 * 1024 + 1), ui, { anyway: true })).toBe(true);
+    expect(h.children).toHaveLength(1);
+    expect(env.P.start("k2", holder(), "é".repeat(4 * 1024 * 1024), ui), "exactly 8 MB starts at once").toBe(true);
+  });
+  it("#2863: over the 50 MB ceiling nothing starts, not even with anyway (the limits as exported, scaled down here)", () => {
+    const env = load({ optIn: true });
+    env.P.LIMITS.askBytes = 10; env.P.LIMITS.maxBytes = 20;
+    const h = holder(), seen: string[] = [];
+    expect(env.P.start("k", h, "x".repeat(21), { state(name: string, reason: string) { seen.push(`${name}: ${reason}`); } }, { anyway: true })).toBe(false);
+    expect([h.children.length, seen]).toEqual([0, ["unavailable: This HTML is over 50 MB; it is not previewed. Download it to open it."]]);
+    expect(env.P.start("k", h, "x".repeat(20), { state() {} }, { anyway: true }), "at the ceiling, with anyway: runs").toBe(true);
   });
 });
 

@@ -15,8 +15,11 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { allowedHostNames, hostnameOf, LOOPBACK_HOST_NAMES, type HostGuardConfig } from "./web-host-guard.js";
 
-/** The most HTML a preview takes (UTF-8 bytes): the parent refuses more before sending, the shim refuses it too. */
-export const PREVIEW_HTML_MAX_BYTES = 1024 * 1024;
+/**
+ * The most HTML a preview takes (UTF-8 bytes): the parent refuses more before sending (a download only), the shim refuses
+ * it too. #2863: 50 MiB, the default upload limit; the page asks first ("Preview anyway?") above 8 MiB.
+ */
+export const PREVIEW_HTML_MAX_BYTES = 50 * 1024 * 1024;
 
 export interface PreviewWebConfig {
   preview?: unknown;
@@ -173,7 +176,7 @@ export function previewFrameCsp(ancestors: readonly string[]): string {
 
 /**
  * The shim (design §4): posts `ready` with the listener's boot id; takes ONE `render` — from its parent window, from
- * an exact listed dashboard origin (never "null"), with exactly {v, type, ch, html}, html ≤ 1 MiB — removes the WebRTC
+ * an exact listed dashboard origin (never "null"), with exactly {v, type, ch, html}, html ≤ PREVIEW_HTML_MAX_BYTES — removes the WebRTC
  * entry points from its realm (defence in depth only), and writes a heartbeat/height prologue and the HTML into its
  * own document. Every later message is ignored.
  */

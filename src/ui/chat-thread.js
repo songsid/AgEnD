@@ -8,7 +8,7 @@
 // Unrelated updates (a new message, another message's tick) stop nothing (#1306 §6.2, #1408 §4).
 import "./chat-render.js";
 import "./preview.js";
-import { loadHtmlAttachment } from "./html-attachment.js";
+import { HTML_PREVIEW_MAX, loadHtmlAttachment, sizeLabel } from "./html-attachment.js";
 import { chatTime, chatTimeFull, onDayChange } from "./chat-time.js";
 import { textLinkSegments } from "/assets/app-route.js";
 
@@ -23,6 +23,12 @@ export const TEXT_PREVIEW_LINES = 200;
 export const TEXT_PREVIEW_NODES = 4000;
 /** A csv/tsv wider than this is shown as text, as Markdown tables are capped at 20 columns. */
 export const TEXT_PREVIEW_COLUMNS = 50;
+/**
+ * #2863: the most a text card reads (bytes). It stays 1 MiB while an HTML preview goes to 8 MiB (and 50 MiB on
+ * "Preview anyway"): a text card reads, parses and formats the file on this page's own thread (Markdown, highlighting,
+ * a CSV table; Show all draws every line), where an HTML preview runs in its own frame. A bigger file is a download.
+ */
+export const TEXT_CARD_MAX = 1024 * 1024;
 const P = () => globalThis.AgendPreview;
 /** #1672: a status line longer than this (lines, or characters) is folded until it is opened. */
 export const STATUS_FOLD_LINES = 6;
@@ -406,7 +412,7 @@ export function createThread(list, scroller, opts) {
       if (reading) return;
       if (text !== null) { body.hidden = !body.hidden; show.textContent = tr(body.hidden ? "chat.tcShow" : "chat.tcHide"); return; }
       const mine = reading = ++reads; note.textContent = tr("chat.pvLoading");
-      const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size });
+      const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size }, undefined, { ask: TEXT_CARD_MAX, max: TEXT_CARD_MAX });
       if (reading !== mine) return;                      // dropped (its chat left meanwhile): a new click reads again
       reading = 0;
       if (!ph.isConnected) return;                       // the card left the page while it was read: nothing to draw
@@ -462,6 +468,8 @@ export function createThread(list, scroller, opts) {
     const head = el("div", "pv-head"); head.setAttribute("data-trust", "thread-control");
     const label = el("span", "pv-label", att ? `${tr("chat.pvHtml")} · ${att.name}` : tr("chat.pvHtml"));
     const run = el("button", "btn btn-sm pv-run", tr("chat.pvPreview")); run.type = "button";
+    // #2863: a large file (over 8 MB) is previewed only on this second click, in the card or the panel as first asked.
+    const anywayB = el("button", "btn btn-sm pv-anyway", tr("chat.pvAnyway")); anywayB.type = "button"; anywayB.hidden = true;
     const stopB = el("button", "btn btn-sm pv-stop", tr("chat.pvStop")); stopB.type = "button"; stopB.hidden = true;
     // An attachment already has its download link (the file itself) right above the card.
     const dl = att ? null : el("button", "btn btn-sm btn-ghost pv-dl", tr("chat.pvDownload"));
@@ -474,7 +482,7 @@ export function createThread(list, scroller, opts) {
     const optB = el("button", "chip-btn pv-opt"); optB.type = "button";
     const neverB = el("button", "chip-btn pv-never"); neverB.type = "button";
     menu.append(sum, optB, neverB);
-    head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
+    head.append(label, run, anywayB, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
     const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     // #1568: the banner, with its "I understand" (hidden until the next sign-in; the frame's border stays).
     const banner = el("div", "pv-banner"); banner.setAttribute("data-trust", "thread-control"); banner.hidden = true;
@@ -486,45 +494,64 @@ export function createThread(list, scroller, opts) {
     // Reading an attachment: one read per card at a time (a second click while it reads does nothing), and a read
     // whose card was stopped, replaced or left meanwhile is dropped (`reading` moved on, or the card left the page).
     let reading = 0, reads = 0;
+    // #2863: where "Preview anyway" runs it ("card" | "panel") and what the card says meanwhile; null: not asked.
+    // `tooBig`: over the 50 MB ceiling (listed, or read) — the card says so and offers only the file's download.
+    let large = null, largeNote = "", tooBig = !!att && typeof att.size === "number" && att.size > HTML_PREVIEW_MAX;
     const refresh = (reason) => {
       const a = P().availability();
       const going = state === "starting" || state === "running";
       const inPanel = !!panel && panel.shown() === key;   // #1481: the panel shows this block; the card points there
-      run.hidden = !a.ok || going || inPanel || !!reading;
-      if (toPanel) toPanel.hidden = inPanel || !!reading;
+      if (going || reading) large = null;
+      if (reason == null && large) reason = largeNote;
+      if (reason == null && tooBig) reason = tr("chat.pvAttOver");
+      run.hidden = !a.ok || going || inPanel || !!reading || !!large || tooBig;
+      anywayB.hidden = !a.ok || !large;
+      if (toPanel) toPanel.hidden = inPanel || !!reading || tooBig;
       stopB.hidden = !going && !reading;
       banner.hidden = !going || P().bannerAcked();
       note.textContent = reason != null ? reason : reading ? tr("chat.pvLoading") : going ? (state === "starting" ? tr("chat.pvStarting") : "") : inPanel ? tr("chat.pvInPanel") : a.ok ? "" : a.reason;
       optB.textContent = P().optedIn() ? tr("chat.pvDisallow") : tr("chat.pvAllow");
       neverB.textContent = P().never() ? tr("chat.pvNeverUndo") : tr("chat.pvNever");
     };
-    /** The HTML, then `then(code)`: at once for a fence or an attachment already read; otherwise read it first. */
-    const withCode = async (then) => {
+    /** Over 8 MB: the card asks, and "Preview anyway" runs it where `target` ("card" | "panel") says. */
+    const askLarge = (target, reason) => { large = target; largeNote = reason; refresh(reason); };
+    /**
+     * The HTML, then `then(code)`: at once for a fence or an attachment already read; otherwise read it first — a large
+     * one only once `anyway` (its listed size asks before anything is fetched).
+     */
+    const withCode = async (then, target = "card", anyway = false) => {
       if (code != null) { then(code); return; }
       if (reading) return;
       const mine = reading = ++reads;
       refresh();
-      const r = await loadHtmlAttachment(att);
+      const r = await loadHtmlAttachment(att, undefined, { anyway });
       if (reading !== mine || !ph.isConnected) return;
       reading = 0;
+      if (!r.ok && r.reason === "large") { askLarge(target, trf("chat.pvLarge", sizeLabel(r.size))); return; }
+      if (!r.ok && r.reason === "over") { tooBig = true; refresh(); return; }
       if (!r.ok) { refresh(attReason(r.reason)); return; }
       code = r.code;
       refresh();
       then(code);
     };
-    const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
+    const ui = { state: (name, reason) => {
+      state = name === "starting" || name === "running" ? name : "idle";
+      if (name === "large") { askLarge("card", reason || ""); return; }
+      large = null; refresh(reason || null);
+    } };
     // Nothing is read for Preview on a device that does not allow previews: the button is not even shown there.
     // A Preview click is newer than any Open in panel still reading (#1704): it claims the panel's turn too — and, its
     // own HTML read, starts only if no newer click claimed meanwhile and no preview was started since (the panel's own
     // Preview): a late read never undoes a newer choice. A close is neither, so it does not drop this click.
-    run.onclick = () => {
+    const preview = (anyway) => {
       if (!P().availability().ok || reading) return;     // this card already reading: that click stays the one
       const mine = panel ? (panel.claim(), panel.claims()) : 0, started = P().startCount();
       withCode((c) => {
         if ((panel && panel.claims() !== mine) || P().startCount() !== started) { refresh(); return; }
-        P().start(key, holder, c, ui);
-      });
+        if (anyway) P().start(key, holder, c, ui, { anyway: true }); else P().start(key, holder, c, ui);
+      }, "card", anyway);
     };
+    run.onclick = () => preview(false);
     stopB.onclick = () => { if (reading) { reading = 0; refresh(); } else P().stop(key, "stopped", ""); };
     // #1704: this click runs it in the panel, as Preview there would — a running preview moves (it stops here and
     // starts there), an idle one starts there. Whether it can run is the panel's to say: a device that has not allowed
@@ -532,15 +559,18 @@ export function createThread(list, scroller, opts) {
     // An attachment's HTML is read first. The click claims the panel at once, so a newer click (even one still reading)
     // wins: if the panel changed (another click, block, close) or any preview started meanwhile, this one is dropped —
     // a late read never undoes a newer click.
-    if (toPanel) toPanel.onclick = () => {
+    const openInPanel = (anyway) => {
       if (reading) return;                               // this card already reading: that click stays the one
       if (P().running(key)) P().stop(key, "stopped", "");
       const at = panel.claim(), started = P().startCount();
       withCode((c) => {
         if (panel.version() !== at || P().startCount() !== started) { refresh(); return; }
-        panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: true });
-      });
+        large = null; refresh();
+        panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts, ...(anyway ? { anyway: true } : {}) }, { run: true });
+      }, "panel", anyway);
     };
+    if (toPanel) toPanel.onclick = () => openInPanel(false);
+    anywayB.onclick = () => { const where = large; large = null; if (where === "panel" && toPanel) openInPanel(true); else preview(true); };
     if (dl) dl.onclick = () => opts.download(code);
     ack.onclick = () => P().ackBanner();      // every card and the panel hear it (onChange)
     optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };

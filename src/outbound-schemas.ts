@@ -34,7 +34,7 @@ export const ReplyArgs = z.object({
   reply_to: z.string().optional()
     .describe("Message ID to thread under. Use message_id from the inbound block."),
   files: z.array(z.string()).optional()
-    .describe("Absolute file paths to attach (at most 20). Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (up to 1 MiB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets."),
+    .describe("Absolute file paths to attach (at most 20). Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (it previews at once up to 8 MB, after the person confirms up to 50 MB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets."),
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
   stickers: z.array(NonEmptyString).max(3).optional()
     .describe("Up to 3 sticker ids from list_stickers, sent with the text (Discord: the same message; Telegram: after it). Stickers are never written in the text."),
