@@ -9,6 +9,7 @@ function defaults(options) {
     read: function (p) { return fs.readFileSync(p, "utf8"); },
     stat: function (p) { return fs.statSync(p); },
     real: function (p) { return fs.realpathSync(p); },
+    link: function (p) { return fs.readlinkSync(p); },
     lstat: function (p) { return fs.lstatSync(p); },
     alive: function (pid) { try { process.kill(pid, 0); return true; } catch (e) { if (e.code === "ESRCH") return false; throw e; } },
     run: function (cmd, args, opts) {
@@ -64,7 +65,9 @@ function processProof(pid, home, d) {
   if (argv.length < 4 || argv.length > 5 || argv[2] !== "fleet" || argv[3] !== "start" || (argv.length === 5 && argv[4] !== "--direct")) throw Error("not a fleet command");
   var entry = d.real(argv[1]);
   if (path.basename(entry) !== "cli.js" || path.basename(path.dirname(entry)) !== "dist" || JSON.parse(d.read(path.join(path.dirname(entry), "../package.json"))).name !== "@songsid/agend") throw Error("not an AgEnD CLI");
-  if (!/^node(?:js)?$/.test(path.basename(d.real(proc + "/exe")))) throw Error("not node");
+  // The kernel's exe link is already resolved. An update replaces the package dir that holds the private runtime,
+  // so the link then ends in " (deleted)" and realpath would throw on the old path.
+  if (!/^node(?:js)?$/.test(path.basename(d.link(proc + "/exe").replace(/ \(deleted\)$/, "")))) throw Error("not node");
   var env = Object.create(null);
   d.read(proc + "/environ").split("\0").forEach(function (v) { var at = v.indexOf("="); if (at > 0) env[v.slice(0, at)] = v.slice(at + 1); });
   var declared = env.AGEND_HOME || (env.HOME ? path.join(env.HOME, ".agend") : null);
