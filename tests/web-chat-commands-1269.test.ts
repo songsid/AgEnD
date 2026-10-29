@@ -406,3 +406,30 @@ describe("the chat's commands (the real page modules)", () => {
       expect(phase(c)).toBeNull();
     });
 });
+
+describe("#2855: a guest's commands — the table's \"anyone\" cells, nothing else", () => {
+  it("guestWebCommands: the web commands anyone may run, by the agent's kind of channel and platform", async () => {
+    const { guestWebCommands, WEB_COMMANDS } = await import("../src/web-commands.js");
+    const { commandSpec, decideCommand } = await import("../src/command-table.js");
+    const anyone = (scope: any, platform: any) => WEB_COMMANDS.filter((c) => decideCommand(commandSpec(c)!, scope, { fleetAdmin: () => "denied", channelAdmin: () => false, classicAdmin: () => false }, platform).allow);
+    for (const scope of ["fleet", "general", "classic"] as const) for (const platform of ["discord", "telegram"] as const) {
+      expect(guestWebCommands(scope, platform), `${scope} ${platform}`).toEqual(anyone(scope, platform));
+      for (const c of ["clear", "compact", "model", "backend", "effort", "pause", "wake", "save"]) expect(guestWebCommands(scope, platform), `${scope} ${platform} ${c}`).not.toContain(c);
+    }
+    expect(guestWebCommands("fleet", "discord")).toEqual(["ctx", "cancel", "btw", "steer"]);
+  });
+  it("runWebCommand for a guest: an \"anyone\" command runs; any other is refused (403) before it does anything", async () => {
+    const { runWebCommand } = await import("../src/web-commands.js");
+    const ran: string[] = [];
+    const deps = { scope: () => "fleet", platform: () => "discord", t: (k: string, ...a: string[]) => `${k}:${a.join(",")}`,
+      ctx: async () => { ran.push("ctx"); return "ctx text"; }, clearAsk: () => { ran.push("clear"); return { token: "t", message: "m" }; },
+      applyModel: async () => { ran.push("model"); return "x"; }, pauseWake: async () => { ran.push("pause"); return "x"; } } as any;
+    expect(await runWebCommand(deps, { instance: "w", command: "ctx" }, { publicLink: false, guest: true })).toEqual({ status: 200, body: { text: "ctx text" } });
+    for (const command of ["clear", "model", "pause"]) {
+      expect(await runWebCommand(deps, { instance: "w", command, args: command === "model" ? "x" : undefined }, { publicLink: false, guest: true }), command)
+        .toEqual({ status: 403, body: { error: `web.command_guest_refused:/${command}` } });
+    }
+    expect(ran).toEqual(["ctx"]);
+    expect((await runWebCommand(deps, { instance: "w", command: "clear" }, { publicLink: false })).status, "an admin, as before").toBe(200);
+  });
+});

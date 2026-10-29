@@ -254,12 +254,12 @@ import { LoginSession } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
-import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
+import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope, type Platform } from "./command-table.js";
 import { crossInstanceVisibility, runVisibilityCommand, xmsgVisibility } from "./cross-instance-notice.js";
 import { SEARCH_RETENTION_DAYS, SearchIndex } from "./search/search-index.js";
 import { chatDoc, taskDoc, xmsgDoc, type CrossInstanceRecord, type XmsgVisibility } from "./search/search-docs.js";
 import { WebSettingsTools } from "./web-settings-tools.js";
-import { GUEST_PREF_WRITES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
+import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
@@ -309,7 +309,7 @@ import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { topMemoryHogs, type MemoryHog } from "./memory-hogs.js";
 import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, webRoute, webTextLinks, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
 import { CacheService, cacheWindow, type CacheInstance, type CacheReport } from "./cache-service.js";
-import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
+import { guestWebCommands, runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
@@ -1607,6 +1607,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly officeWrites = new OfficeWriteLimiter();
   /** #2855: a guest's preference saves, per account. */
   readonly guestPrefWrites = new OfficeWriteLimiter(undefined, GUEST_PREF_WRITES);
+  /** #2855: a guest's commands, per account. */
+  readonly guestCommandRuns = new OfficeWriteLimiter(undefined, GUEST_COMMAND_RUNS);
   private officeSharesInstance?: OfficeShareService;
   /**
    * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of
@@ -15685,7 +15687,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority }): Promise<WebCommandResult> {
+  /** #2855: the table scope of an instance the web chat may command (a fleet instance or a ClassicBot room), else null. */
+  private webCommandScope(instance: string): CommandScope | null {
+    // Own entries only: a name like "__proto__" or "constructor" must not be found on the prototype (#1476 review).
+    const instances = this.fleetConfig?.instances;
+    if (instances && Object.prototype.hasOwnProperty.call(instances, instance)) return isGeneralInstance(this.fleetConfig, instance) ? "general" : "fleet";
+    return this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? "classic" : null;
+  }
+  /** #2855: the platform an instance's channel is on, for the command table's cell (a web-only fleet: Discord's). */
+  private commandPlatform(instance: string): Platform { return this.getAdapterForInstance(instance)?.type === "telegram" ? "telegram" : "discord"; }
+
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority; guest?: boolean }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
@@ -15693,6 +15705,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(),
         username: opts.person?.name ?? WEB_NAME_FALLBACK, userId: opts.person?.userId ?? WEB_NAME_FALLBACK,
         threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority),
+        ...(opts.guest ? { webGuest: true } : {}),       // #2855: a guest's /steer or /btw reaches the agent as a guest's
       };
     };
     const choicesFromCache = (instance: string): WebChoices | null => {
@@ -15703,12 +15716,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { current, options: this.withCurrentModel(cached.models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })) };
     };
     return runWebCommand({
-      // Own entries only: a name like "__proto__" or "constructor" must not be found on the prototype (#1476 review).
-      scope: (instance) => {
-        const instances = this.fleetConfig?.instances;
-        if (instances && Object.prototype.hasOwnProperty.call(instances, instance)) return isGeneralInstance(this.fleetConfig, instance) ? "general" : "fleet";
-        return this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? "classic" : null;
-      },
+      scope: (instance) => this.webCommandScope(instance),
+      platform: (instance) => this.commandPlatform(instance),
       ctx: (instance) => this.topicCommands.getCtxText(instance),
       // Board 003648ac: a watch for the paste, armed when the daemon says it was written (raw_paste_written); one
       // for a command that was not handed over is dropped.
@@ -24096,6 +24105,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,
+        // #2855: the web commands a guest may run here — the table's "anyone" cells for this channel (guestWebCommands);
+        // only while guests are on (no guest reads it otherwise).
+        ...(this.fleetConfig?.web?.guests?.enabled === true
+          ? { guest_commands: (() => { const scope = this.webCommandScope(name); return scope ? guestWebCommands(scope, this.commandPlatform(name)) : []; })() } : {}),
         status: this.getInstanceStatus(name),
         // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
         // what the dashboard's activity events carry) come from instancePresentation (#1212).

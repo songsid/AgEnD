@@ -643,10 +643,12 @@ function Composer({ name, label = name, lease, busy }) {
   const files = s.pendingFiles[name] || [];
   const reply = s.replies[name];                       // #2272: the message this one will reply to
   const content = !!value.trim() || files.length > 0;
-  // A file waiting: what goes is a message with its file, never a command (no palette, no command line). A guest never
-  // runs one (#1920: the server refuses its slash text), so it has no palette either.
+  // A file waiting: what goes is a message with its file, never a command (no palette, no command line). #2855: a guest's
+  // palette offers only what it may run on this agent — the table's "anyone" commands (its status frame's `commands`).
   const guest = guestPage();
-  const palette = guest || files.length || closedFor === value ? null : paletteFor(value);
+  const app = useStore(appStore);
+  const guestAllowed = guest ? (app.instances.find((i) => i.name === name)?.commands ?? []) : null;
+  const palette = files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
   // (#2478 — a long name's placeholder made the box two lines tall).
@@ -673,9 +675,12 @@ function Composer({ name, label = name, lease, busy }) {
       else complete(pick);
       return;
     }
-    // #1920: a guest's "/…" would be refused as a command — said here, the draft kept to edit.
-    if (guest && /^\s*\//.test(value)) { toast(t("chat.guestNoCommands"), false); return; }
     const cmd = files.length ? null : parseCommandLine(value);
+    // #1920/#2855: a guest's "/…" that is not one it may run here is refused here, why said, the draft kept to edit — a
+    // known command: only the channel's admins run it; anything else: it would not go as a message either.
+    if (guest && /^\s*\//.test(value) && !(cmd && guestAllowed.includes(cmd.command))) {
+      toast(cmd ? t("chat.guestCommandNotAllowed", `/${cmd.command}`) : t("chat.guestNoCommands"), false); return;
+    }
     if (cmd && needsArgument(cmd.command) && !cmd.args) { recordEdit(input.current); setValue(`/${cmd.command} `); return; }
     if (cmd) { runLine(cmd); return; }
     store.send(name);
@@ -709,7 +714,7 @@ function Composer({ name, label = name, lease, busy }) {
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
           class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>
           <span class="cmd-name mono">/${c.name}${c.arg ? html` <span class="cmd-arg">${c.arg}</span>` : null}</span><span class="cmd-desc">${t(`chat.cmd_${c.name}`)}</span></li>`)
-        : html`<li class="cmd-none" role="option" aria-selected="false">${t("chat.cmdNotCommand")}</li>`}
+        : html`<li class="cmd-none" role="option" aria-selected="false">${t(guest ? "chat.cmdNotGuests" : "chat.cmdNotCommand")}</li>`}
     </ul>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status">
       <span class="reply-mark" aria-hidden="true"><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></span><span class="reply-label">${t("chat.replyingTo", reply.sender)}</span>

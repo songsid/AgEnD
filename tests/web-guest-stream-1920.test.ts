@@ -49,6 +49,8 @@ describe("the projections (pure)", () => {
     // #2855: its reply time is the last reply its channel showed — never `last_reply` (which counts web-only exchanges).
     expect(guestStatus({ instances: [{ name: "a", last_reply: "2026-10-29T08:00:00.000Z", last_reply_channel: "2026-10-29T07:00:00.000Z" }, { name: "a2", last_reply: "x" }] }, new Set(["a", "a2"])))
       .toEqual({ instances: [{ name: "a", last_reply: "2026-10-29T07:00:00.000Z" }, { name: "a2" }] });
+    // #2855: the commands a guest may run on it — its palette — and nothing of an admin's.
+    expect(guestStatus({ instances: [{ name: "a", guest_commands: ["ctx", "cancel"] }] }, new Set(["a"]))).toEqual({ instances: [{ name: "a", commands: ["ctx", "cancel"] }] });
   });
   it("guestFrameData: status projected; an in-scope instance's activity; every other event is not sent", () => {
     const scope = new Set(["a"]);

@@ -433,6 +433,8 @@ export interface WebApiContext {
   readonly officeWrites?: OfficeWriteLimiter;
   /** #2855: a guest's preference saves, per account (GUEST_PREF_WRITES). */
   readonly guestPrefWrites?: OfficeWriteLimiter;
+  /** #2855: a guest's commands, per account (GUEST_COMMAND_RUNS). */
+  readonly guestCommandRuns?: OfficeWriteLimiter;
   /** #2578: the agents' live acts in the Office view (office_set); absent: /ui/office-acts is not offered. */
   readonly officeActs?: Pick<OfficeActs, "live">;
   /** #2636: Office share links (office-share-service.ts): the open ones, making and ending one. */
@@ -476,7 +478,7 @@ export interface WebApiContext {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
@@ -536,6 +538,9 @@ export interface WebApiContext {
 async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return JSON.parse((await readBoundedWebBody(req, 512 * 1024)).toString("utf8"));
 }
+
+/** #2855: the guest accounts with a command in progress (one at a time each). */
+const guestCommandsRunning = new Set<string>();
 
 /** Send JSON response. */
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -2221,6 +2226,14 @@ export function handleWebRequest(
   if (method === "POST" && path === "/ui/command") {
     if (!ctx.webCommand) { json(res, 404, { error: "Not available" }); return true; }
     const run = ctx.webCommand.bind(ctx);
+    // #2855: a guest — an in-scope agent, while guests may chat, the table's "anyone" commands only (runWebCommand), at
+    // most GUEST_COMMAND_RUNS a minute per account and one at a time.
+    const guest = guestRequestOf(req), account = guest ? `${guest.owner.adapterId}:${guest.owner.userId}` : "";
+    if (guest) {
+      const limit = ctx.guestCommandRuns?.check(account);
+      if (limit && !limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_commands_rate_limited", retry_after_s: limit.retry_after_s }); return true; }
+      if (guestCommandsRunning.has(account)) { json(res, 429, { error: "guest_command_running" }); return true; }
+    }
     const arrival = webAuthorityOf(req, url, ctx);                         // #1939 §3: on arrival, and again after the body
     (async () => {
       let body: Record<string, unknown>;
@@ -2233,10 +2246,23 @@ export function handleWebRequest(
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
       if (!person) return;
-      const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
-      const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
-        { publicLink: !!gatewayRequestContext(req), person, authority });
-      json(res, r.status, r.body);
+      if (guest) {
+        if (!guest.current()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+        const refused = guestChatRefusal(guest, instance);
+        if (refused) { json(res, refused.status, { error: refused.error }); return; }
+        if (guestCommandsRunning.has(account)) { json(res, 429, { error: "guest_command_running" }); return; }
+        // The budget again, now (#2857 review): commands that ran while this body was on its way have counted.
+        const budget = ctx.guestCommandRuns?.check(account);
+        if (budget && !budget.ok) { res.setHeader("Retry-After", String(budget.retry_after_s)); json(res, 429, { error: "guest_commands_rate_limited", retry_after_s: budget.retry_after_s }); return; }
+        guestCommandsRunning.add(account);
+        ctx.guestCommandRuns?.record(account);
+      }
+      try {
+        const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
+        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
+          { publicLink: !!gatewayRequestContext(req), person, authority, ...(guest ? { guest: true } : {}) });
+        json(res, r.status, r.body);
+      } finally { if (guest) guestCommandsRunning.delete(account); }
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web command failed");
       try { json(res, 500, { error: "Command failed" }); } catch { /* already answered */ }
@@ -3571,7 +3597,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // #1723: why the public link's preview tunnel failed (a fixed reason the page words), when it did.
     + `${p?.detail ? ` data-preview-detail="${attr(p.detail)}"` : ""}`
     // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔ — never to a guest (#1920).
-    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false || viewer?.guest ? "0" : "1"}"`
+    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`   // #2855: guests' too
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat

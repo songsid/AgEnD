@@ -1454,14 +1454,15 @@ web:
   - Answers are read in the background (at sign-in, when the guest's page connects, and again every 10 minutes). A room shows only on a "member" answer at most 15 minutes old. While a room is still being checked the page waits instead of signing the guest out.
 - **Then `narrow`,** which only takes away.
 
-Either way the server enforces it on every read a guest can make: chat, history, files and the event stream are limited to those agents; search, the task board, the org chart and usage are never a guest's. A fleet admin is never a guest.
+Either way the server enforces it on every read a guest can make: chat, history, files and the event stream are limited to those agents; search, the task board, the org chart and the usage report (costs per agent) are never a guest's. A fleet admin is never a guest.
 
 **What a guest can do.**
 - **Chat:** with those agents only. That means the history its channel showed, files, reply buttons and Cancel, unless `chat: false` makes guests read-only.
-- **No commands:** text starting with `/` is refused.
+- **Commands (#2855):** only those the chat's command table lets anyone run in that agent's channel: on the web, `/ctx`, `/steer`, `/btw` and `/cancel`. Its palette offers just those; any other is refused with why. At most 10 a minute, one at a time.
+- **Usage (#2855):** the usage panel (◔), every subscription's headroom on the host, as `/usage` shows anyone in chat. It never forces a refresh.
 - **What the agent sees:** `[user:<name> via web (guest), id:<id>]`, for typed messages and button clicks alike. A guest only chats: the agent takes nothing they ask as an admin's.
 - **Its app:** no Fleet, View, Settings, Needs you, New agent or widgets; a **Guest** chip says who is signed in.
-- **Preferences:** it reads the host's look (theme, language) but no preference that names an agent, and it can set its own web name.
+- **Preferences (#2855):** its own theme, language, favourites, sort and filter, kept on the host under its account (the same on every device; deleted when the admin removes it); otherwise the host's look, and no preference that names an agent outside its scope. It can set its own web name.
 
 **Sessions.**
 - **Lifetime:** 12 h absolute and 2 h idle by default (`web.guests.session`), never longer than the surface's own limit (the public link's 4 h / 30 min).

@@ -93,7 +93,8 @@ as their own Discord or Telegram account. What a guest sees:
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
   **Start from today's guests** turns that into grants.
 
-They can chat there unless `web.guests.chat` is false, never send a command (text starting with `/` is refused), and the
+They can chat there unless `web.guests.chat` is false, run only the commands the command table lets anyone run in that
+agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the
 agent sees them as `via web (guest)`. A guest's app has no Fleet, View, Settings or Needs you. To invite someone: turn it
 on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
 send `/web`). The Guests section is not in Settings over the public link.

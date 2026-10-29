@@ -50,12 +50,13 @@ describe("guestRouteDecision (the table)", () => {
     // Step 2b opened chat, the guest's prefs (read) and profile, and the effect posters — gone with the effects (#2799).
     const later = ["/ui/effect-posters?instance=a", `/ui/effect-posters/${"e".repeat(32)}.png?instance=a`];
     const admin = ["/status", "/api/fleet", "/api/profiles", "/api/pane/a", "/ui/org", "/ui/traffic", "/ui/cache", "/ui/teams", "/ui/tasks", "/ui/steps",
-      "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/api/ai-usage", "/ui/fleet", "/ui/needs",
+      "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/ui/fleet", "/ui/needs",
       "/ui/fleet/agent/a", "/ui/log/a", "/settings", "/ui/img/emoji/x", "/ui/preview-status"];
     for (const p of [...later, ...admin]) expect(guestRouteDecision("GET", u(p), new Set(["a"])), p).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
-    // #2855: POST /ui/prefs is open (its own preferences: the handler checks); /ui/command is not, yet.
-    expect(guestRouteDecision("POST", u("/ui/prefs"), new Set(["a"])).kind).toBe("allow");
-    for (const [m, p] of [["POST", "/ui/command"],
+    // #2855: open to a guest, each handler checking the rest: its own preferences, a command the table lets anyone run on
+    // an in-scope agent, and the usage panel (as /usage in chat).
+    for (const [m, p] of [["POST", "/ui/prefs"], ["POST", "/ui/command"], ["GET", "/api/ai-usage"]]) expect(guestRouteDecision(m!, u(p!), new Set(["a"])).kind, `${m} ${p}`).toBe("allow");
+    for (const [m, p] of [
       ["POST", "/ui/prompt"], ["POST", "/api/profile/a"], ["POST", "/api/card/a/banner"], ["DELETE", "/api/avatar/a"], ["POST", "/ui/chat/a"], ["PUT", "/api/settings/fleet/web"]]) {
       expect(guestRouteDecision(m!, u(p!), new Set(["a"])), `${m} ${p}`).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
     }
