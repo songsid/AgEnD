@@ -22,6 +22,8 @@ const pane = (n: string) => readFileSync(join(fixtures, `codex-0165-workspace-${
 const CREDITS_PROMPT = pane("credits-prompt");
 const SPEND_PROMPT = pane("spend-cap-prompt");
 const CREDITS_AFTER_ESCAPE = pane("credits-after-escape");
+// The real 0.165.0 rendering of an agent answer that quotes the rows (plain, `>` quote, fenced code): all indented.
+const QUOTED = pane("quoted");
 
 const dirs: string[] = [];
 const tempDir = () => { const d = mkdtempSync(join(tmpdir(), "agend-2844-")); dirs.push(d); return d; };
@@ -91,8 +93,15 @@ describe("the workspace limit rows pause, without the usage-window check", () =>
     expect(hit.message.startsWith("Codex usage limit reached")).toBe(false);
   });
 
+  it("an agent's answer quoting them (the live 0.165.0 rendering) matches none: the glyph must be in column 0", () => {
+    expect(QUOTED).toContain("  ■ Your workspace is out of credits.");
+    expect(patterns().filter(p => p.skipUsageVerify && (p.pattern.lastIndex = 0, p.pattern.test(QUOTED)))).toEqual([]);
+  });
+
   it("prose that only mentions them never matches: the rows must open with codex's status glyph", () => {
     for (const line of [
+      "  ■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.",
+      "\t■ You hit your spend cap set in your workspace. Increase your spend cap to continue.",
       "check whether the workspace is out of credits later",
       "Your workspace is out of credits. Ask your workspace owner to refill in order to continue.",
       "• Your workspace is out of credits.",
@@ -150,6 +159,45 @@ describe("in the real Daemon: Escape, then one pause; a wake does not pause agai
     expect(parked).toEqual([]);
     expect(errors).toEqual([expect.objectContaining({
       type: "quota", action: "pause", message: "Codex workspace credits exhausted — workspace owner must refill" })]);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("the prompt on the very first poll (no live composer before it): its row is the live incident and pauses once", async () => {
+    vi.useFakeTimers();
+    const { daemon, state, keys, errors, parked } = makeDaemon(CREDITS_PROMPT);
+    state.onKey = k => { if (k === "Escape") state.pane = CREDITS_AFTER_ESCAPE; };
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(keys).toEqual(["Escape"]);
+    expect(parked).toEqual([]);
+    expect(errors.map(e => e.message)).toEqual(["Codex workspace credits exhausted — workspace owner must refill"]);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("an example of the row in the agent's answer (indented) never pauses", async () => {
+    vi.useFakeTimers();
+    const { daemon, state, errors } = makeDaemon(COMPOSER_ONLY);
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(6_000);
+    state.pane = COMPOSER_ONLY.replace("› Ask Codex",
+      "• Example error in the runbook:\n\n  ■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.\n\n› Ask Codex");
+    await vi.advanceTimersByTimeAsync(12_000);
+    state.pane = QUOTED;
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(errors).toEqual([]);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("an Escape that does not take: after the grace the prompt is a person's (interaction evidence, parked report)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
+    const { daemon, keys, parked } = makeDaemon(CREDITS_PROMPT);    // Escape changes nothing
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(keys).toEqual(["Escape"]);
+    expect(daemon.interactionEvidence(CREDITS_PROMPT, daemon.runtimeDialogs())).toBeNull();   // within the grace
+    await vi.advanceTimersByTimeAsync(85_000);
+    expect(daemon.interactionEvidence(CREDITS_PROMPT, daemon.runtimeDialogs())).toMatchObject({ kind: "dialog" });
+    expect(parked).toHaveLength(1);
     daemon.freezeRuntimeMonitors();
   });
 

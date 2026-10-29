@@ -429,6 +429,11 @@ export interface RuntimeDialog {
    */
   answeredByAgend?: boolean;
   /**
+   * This dialog only paints for a live incident: the newest `historyUntilLiveComposer` error row on screen with it is
+   * the current failure, never resumed history, even when no live composer was seen before it in this spawn (#2844).
+   */
+  marksLiveIncident?: boolean;
+  /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
    * while safety-critical dialogs must prove that the prompt disappeared

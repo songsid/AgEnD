@@ -715,6 +715,8 @@ const DIALOG_ANSWER_IGNORED_MAX = 3;
  * normal pace (and a fresh count).
  */
 const DIALOG_ANSWER_BACKOFF_MS = 30_000;
+/** #2844: how long a dialog AgEnD answers itself (`answeredByAgend`) stays nobody's interaction while it is on screen. */
+const AGEND_ANSWER_GRACE_MS = 20_000;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
 /** How many times a delivery redoes itself when a spawn starts between its settle wait and its pane write. */
@@ -1578,6 +1580,8 @@ export class Daemon extends EventEmitter {
   private interactionObservedOutputRevision = 0;
   private interactionCaptureSerial = 0;
   private interactionDialogKey: string | null = null;
+  /** Since when (monotonic) the `answeredByAgend` dialog now on screen has been withheld from the interaction state. */
+  private agendAnswerGrace: { key: string; since: number } | null = null;
   private acceptedInstanceSnapshot: InstanceStateSnapshot | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
   private autoResolvedDialogKey: string | null = null;
@@ -3952,6 +3956,7 @@ export class Daemon extends EventEmitter {
         for (const dialog of dialogs) {
           if (!Daemon.dialogMatches(dialog, pane)) continue;
           this.noteCodexReserveDialog(dialog, pane);
+          this.noteLiveIncidentDialog(dialog, pane);
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
           if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
           // Reported as ignoring the daemon: the SAME request (the identity the count was made on — verbatim, the
@@ -5190,10 +5195,19 @@ export class Daemon extends EventEmitter {
         && Daemon.dialogMatches(d, pane)
         // #1690: AgEnD's own switch dialog, being answered right now, is nobody's to answer.
         && !(this.ownSwitch && claudeSwitchDialog(pane) !== null));
-      // #2844: a dialog AgEnD is answering itself is nobody's to answer, until its answers are reported as ignored.
-      // No evidence at all then: the catch-alls further down the table match the same screen.
-      if (dialog?.answeredByAgend
-        && !(this.dialogAnswers?.reported && this.dialogAnswers.key === Daemon.answerKey(dialog))) return null;
+      // #2844: a dialog AgEnD is answering itself is nobody's to answer — for AGEND_ANSWER_GRACE_MS of being on screen,
+      // and only until its answers are reported as ignored. No evidence at all meanwhile: the catch-alls further down
+      // the table match the same screen. A dialog still there after the grace (an Escape that did not take, keys that
+      // could not be sent) is a person's again.
+      if (dialog?.answeredByAgend) {
+        const key = Daemon.answerKey(dialog);
+        const now = performance.now();
+        if (this.agendAnswerGrace?.key !== key) this.agendAnswerGrace = { key, since: now };
+        if (now - this.agendAnswerGrace.since < AGEND_ANSWER_GRACE_MS
+          && !(this.dialogAnswers?.reported && this.dialogAnswers.key === key)) return null;
+      } else {
+        this.agendAnswerGrace = null;
+      }
       if (dialog) {
         const identity = dialog.requestIdentity?.(pane) ?? pane.replace(/\r/g, "")
           .split("\n").map(row => row.replace(/^([ \t]*)[❯›]([ \t]+)(?=\d\.|Yes\b|No\b|Resume\b)/, "$1$2").trimEnd())
@@ -8345,6 +8359,24 @@ export class Daemon extends EventEmitter {
     return this.paneAuthoritativelyIdle(pane) && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
       && !this.backend?.backgroundWorkRunning?.(pane) && codexLiveRowMatches(pane, nudge.pattern)
       && Daemon.countOccurrences(nudge.pattern, pane) === Daemon.countOccurrences(nudge.pattern, nudge.pane);
+  }
+
+  /**
+   * #2844: a dialog that only paints for a live incident proves the newest such error row on screen is current: its
+   * baseline is held below it, so neither a first poll that sees the dialog before any live composer nor the composer
+   * after it can take that row for resumed history. Older rows stay history.
+   */
+  private noteLiveIncidentDialog(dialog: RuntimeDialog, pane: string): void {
+    if (!dialog.marksLiveIncident) return;
+    const baselines = this.nudgeBaselines ?? new Map<string, number>();
+    for (const ep of this.backend?.getErrorPatterns?.() ?? []) {
+      if (!ep.historyUntilLiveComposer) continue;
+      const count = Daemon.countOccurrences(ep.pattern, pane);
+      if (count === 0) continue;
+      const key = Daemon.errorPatternKey(ep);
+      baselines.set(key, Math.min(baselines.get(key) ?? count - 1, count - 1));
+    }
+    this.nudgeBaselines = baselines;
   }
 
   /** The first live composer of a spawn fixes what is history (see {@link nudgeBaselines}). */
@@ -12522,6 +12554,7 @@ export class Daemon extends EventEmitter {
                 || this.hasAutoDialogClaim(dialog))) continue;
             lastDialog = dialog;
             this.noteCodexReserveDialog(dialog, pane);
+            this.noteLiveIncidentDialog(dialog, pane);
             cleanReadyPolls = 0;
             // Start the parked clock for every delivery-blocking dialog, exact
             // ones included: if the auto-dismiss keeps failing here, the human

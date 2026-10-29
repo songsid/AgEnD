@@ -1988,14 +1988,16 @@ export class CodexBackend implements CliBackend {
       // matches them.
       //
       // pause, not notify: nothing works until someone refills or raises the cap.
-      // Anchored to the status glyph at the start of the row, because these skip
-      // the usage-window check (a workspace limit is not one of those windows,
-      // so the check would call it "available"): prose must never reach them.
+      // Anchored to the status glyph in COLUMN 0, because these skip the
+      // usage-window check (a workspace limit is not one of those windows, so the
+      // check would call it "available"): codex draws its own error cells there,
+      // while an agent's message, quote or code block is indented under its `•`
+      // (captured live, tests/fixtures/codex-0165-workspace-quoted.pane.txt).
       // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard wrap
       // can land a newline anywhere in the sentence. A resumed transcript reprints
       // these rows, and the first live composer of a spawn takes them as history.
       {
-        pattern: new RegExp(String.raw`^[ \t]*(?:${CODEX_STATUS_GLYPH})[ \t]+(?:You['’]re\s+out\s+of\s+credits\.\s+)?Your\s+workspace\s+is\s+out\s+of\s+credits\.`, "m"),
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+(?:You['’]re\s+out\s+of\s+credits\.\s+)?Your\s+workspace\s+is\s+out\s+of\s+credits\.`, "m"),
         type: "quota",
         action: "pause",
         message: "Codex workspace credits exhausted — workspace owner must refill",
@@ -2003,7 +2005,7 @@ export class CodexBackend implements CliBackend {
         historyUntilLiveComposer: true,
       },
       {
-        pattern: new RegExp(String.raw`^[ \t]*(?:${CODEX_STATUS_GLYPH})[ \t]+You\s+hit\s+your\s+spend\s+cap\s+set\s+(?:by\s+the\s+owner\s+of|in)\s+your\s+workspace\.`, "m"),
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+You\s+hit\s+your\s+spend\s+cap\s+set\s+(?:by\s+the\s+owner\s+of|in)\s+your\s+workspace\.`, "m"),
         type: "quota",
         action: "pause",
         message: "Codex workspace spend cap reached — workspace owner must raise it",
@@ -2011,7 +2013,7 @@ export class CodexBackend implements CliBackend {
         historyUntilLiveComposer: true,
       },
       {
-        pattern: new RegExp(String.raw`^[ \t]*(?:${CODEX_STATUS_GLYPH})[ \t]+Usage\s+limit\s+reached\.\s+You['’]ve\s+reached\s+your\s+usage\s+limit\.\s+Increase\s+your\s+limits`, "m"),
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+Usage\s+limit\s+reached\.\s+You['’]ve\s+reached\s+your\s+usage\s+limit\.\s+Increase\s+your\s+limits`, "m"),
         type: "quota",
         action: "pause",
         message: "Codex workspace usage limit reached — increase the workspace limits to continue",
@@ -2199,6 +2201,7 @@ export class CodexBackend implements CliBackend {
       verifyAfterKeys: true,
       autoResolutionKey: "codex-workspace-limit-prompt",
       answeredByAgend: true,
+      marksLiveIncident: true,
     };
   }
 
