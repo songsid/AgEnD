@@ -465,10 +465,14 @@ export class WebChatHistory {
    * shown in a channel or the web chat; a cross-instance line is never one), restored history included. Null when none
    * is kept.
    */
-  lastAgentReply(instance: string): string | null {
+  lastAgentReply(instance: string, opts: { channel?: boolean } = {}): string | null {
     const slot = this.byInstance.get(instance);
     if (!slot) return null;
-    for (let i = slot.messages.length - 1; i >= 0; i--) if (slot.messages[i]!.role === "agent") return slot.messages[i]!.ts;
+    // #2855 `channel`: only a reply that reached the channel — what any guest of it can see (its sidebar's "Recent").
+    for (let i = slot.messages.length - 1; i >= 0; i--) {
+      const m = slot.messages[i]!;
+      if (m.role === "agent" && (!opts.channel || m.channel === true)) return m.ts;
+    }
     return null;
   }
 

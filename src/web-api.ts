@@ -1,7 +1,7 @@
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
-import { guestChatRefusal, guestCommandText, guestDeliveries, guestFrameData, guestHistory, guestMessages, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
+import { guestChatRefusal, guestCommandText, guestDeliveries, GUEST_PREF_MAX_BYTES, guestFrameData, guestHistory, guestMessages, guestOwnPrefs, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
@@ -431,6 +431,8 @@ export interface WebApiContext {
   readonly dispatcherGone?: (name: string) => boolean;
   /** How often a person may save the offices (absent: no limit, as in a test without it). */
   readonly officeWrites?: OfficeWriteLimiter;
+  /** #2855: a guest's preference saves, per account (GUEST_PREF_WRITES). */
+  readonly guestPrefWrites?: OfficeWriteLimiter;
   /** #2578: the agents' live acts in the Office view (office_set); absent: /ui/office-acts is not offered. */
   readonly officeActs?: Pick<OfficeActs, "live">;
   /** #2636: Office share links (office-share-service.ts): the open ones, making and ending one. */
@@ -2111,6 +2113,10 @@ export function handleWebRequest(
   if (path === "/ui/prefs" && method === "POST") {
     const prefs = ctx.webPrefs;
     if (!prefs) { json(res, 404, { error: "Preferences are not kept on this fleet" }); return true; }
+    // #2855: a guest saves its own preferences (GUEST_OWN_PREF_KEYS) into its own account's bucket — on any listener,
+    // the public link too, since nothing of the host's is written. At most GUEST_PREF_WRITES a minute per account.
+    const guest = guestRequestOf(req);
+    if (guest) { saveGuestPrefs(req, res, ctx, prefs, guest); return true; }
     if (gatewayRequestContext(req)) { json(res, 403, { error: "prefs_not_over_public_link" }); return true; }
     const refuse = (viewer: PrefsViewer | null) => json(res, viewer ? 403 : 401, { error: viewer ? "prefs_read_only" : WEB_TOKEN_INVALID_MESSAGE });
     const first = prefsViewer(req, url, ctx);
@@ -3471,7 +3477,37 @@ function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFi
  * or replays a tour already seen, a new device included. Only for the signed-in app (the public link reads what is in
  * force too); the anonymous View reader and the sign-in page keep the browser's own.
  */
-type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" | "person" | "operator"; canWrite: boolean; via: string; guest?: boolean; owner?: WebAccount };
+type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" | "person" | "operator"; canWrite: boolean; via: string; guest?: boolean; owner?: WebAccount;
+  /** #2855: a guest's scope, read at each answer (its favourites only name instances in it). */
+  guestScope?: () => ReadonlySet<string> };
+/** #2855: a guest's own preferences — its own keys, its own bucket, favourites only in its scope. */
+function saveGuestPrefs(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext, prefs: WebPrefsStore, guest: GuestRequest): void {
+  const person = webPersonKey(guest.owner), account = `${guest.owner.adapterId}:${guest.owner.userId}`;
+  const limit = ctx.guestPrefWrites?.check(account);
+  if (limit && !limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_prefs_rate_limited", retry_after_s: limit.retry_after_s }); return; }
+  // Too large by its own declared length: answered before a byte is read (the body is drained, not cut off).
+  if (Number(req.headers["content-length"]) > GUEST_PREF_MAX_BYTES) { req.resume(); json(res, 413, { error: "guest_prefs_too_large", detail: "at most 16 KB" }); return; }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = JSON.parse((await readBoundedWebBody(req, GUEST_PREF_MAX_BYTES)).toString("utf8")); } catch { json(res, 400, { error: "Invalid JSON, or over 16 KB" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    if (!guest.current()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+    if (!body || typeof body !== "object" || Array.isArray(body) || !body.set || typeof body.set !== "object" || Array.isArray(body.set)) { json(res, 400, { error: "set required" }); return; }
+    const set = body.set as Record<string, unknown>, scope = guest.scope();
+    const favourites = set["nav.favorites"];
+    if (Array.isArray(favourites)) {
+      const outside = favourites.find((n) => typeof n !== "string" || !scope.has(n));
+      if (outside !== undefined) { json(res, 400, { error: `not_in_scope: ${String(outside).slice(0, 64)}` }); return; }
+    }
+    const written = prefs.writeForGuest(person, new Map(Object.entries(set)), { onlyIfUnset: body.onlyIfUnset === true });
+    if (!written.ok) { json(res, written.status, { error: written.error }); return; }
+    ctx.guestPrefWrites?.record(account);
+    json(res, 200, { ...guestOwnPrefs(prefs.readForViewer(person), prefs.readGuestOwn(person), scope), ownerScope: "person", ownerEpoch: null, changed: written.changed });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, "Saving a guest's web preferences failed");
+    try { json(res, 500, { error: "Saving preferences failed" }); } catch { /* already answered */ }
+  });
+}
 function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiContext, "webToken" | "webSessions">>): PrefsViewer | null {
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   if (v.kind !== "allow") return null;
@@ -3479,6 +3515,12 @@ function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiCon
   // it (#2094) read the host's preferences unfiltered: the sidebar's order and favourites, naming instances out of its
   // scope. Its account (phase 3) names it on its page.
   const guest = v.via === "session" && v.session?.tier === "guest" ? { guest: true, ...(v.session.owner ? { owner: v.session.owner } : {}) } : {};
+  // #2855: a guest reads its own preferences (its account's bucket) on every listener, the public link too.
+  if (v.via === "session" && v.session?.tier === "guest" && v.session.owner) {
+    const g = guestRequestOf(req);
+    return { person: webPersonKey(v.session.owner), epoch: v.session.handle, scope: "person", canWrite: false, via: "session", ...guest,
+      guestScope: () => g?.scope() ?? new Set<string>() };
+  }
   if (!gatewayRequestContext(req) && v.via === "session" && v.session) {
     const person = webPersonKey(v.session.owner);
     return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...guest };
@@ -3489,7 +3531,9 @@ const prefsScope = (v: PrefsViewer | null) => ({ ownerScope: v?.scope ?? "none",
 // #1920: a guest reads the host's look and its own, never a preference that names an instance (guestPrefs).
 const prefsView = (prefs: WebPrefsStore, v: PrefsViewer | null) => {
   const view = { ...prefs.readForViewer(v?.person ?? null), ...prefsScope(v) };
-  return v?.guest ? guestPrefs(view) : view;
+  if (!v?.guest) return view;
+  // #2855: the host's look, then the guest's own preferences (only on a guest with an account: its bucket).
+  return v.person ? guestOwnPrefs(view, prefs.readGuestOwn(v.person), v.guestScope?.() ?? new Set<string>()) : guestPrefs(view);
 };
 function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   if (mode !== "full" || !ctx.webPrefs) return '<html lang="en">';

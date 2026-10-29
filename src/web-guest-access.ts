@@ -56,7 +56,7 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "on", note: "a click on a reply the guest may see (the handler checks; web.guests.chat)" },
   { methods: ["POST"], pattern: new RegExp(`^/ui/cancel/${NAME}$`), instance: { group: 1 }, state: "on", note: "Cancel, as the platform's button lets anyone allowed there (web.guests.chat)" },
   { methods: ["GET"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "the host's look (theme, language, shown settings) and the guest's own — nothing that names an instance (guestPrefs)" },
-  { methods: ["POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "later", note: "phase 3: what a guest may keep of its own" },
+  { methods: ["POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "#2855: its own preferences (theme, language, favourites, sort, filter) into its own account's bucket (the handler checks)" },
   { methods: ["GET", "POST"], pattern: /^\/ui\/profile$/, instance: null, state: "on", note: "the guest's own web name (its account's, never anyone else's)" },
 ];
 
@@ -139,6 +139,21 @@ export function guestPrefs<T extends { values: Record<string, unknown> }>(view: 
   for (const [k, v] of Object.entries(view.values)) if (GUEST_PREF_KEYS.has(k)) values[k] = v;
   return { ...view, values };
 }
+/** #2855: a guest's preference saves a minute, per account (every device of it). */
+export const GUEST_PREF_WRITES = { perWindow: 30, windowMs: 60_000 } as const;
+/** #2855: a guest's `set`, at most this many bytes (five small keys; 50 favourites of 128-character names fit). */
+export const GUEST_PREF_MAX_BYTES = 16 * 1024;
+/**
+ * #2855: a guest's whole view — the host's look (guestPrefs), then its own preferences on top; a favourite only while its
+ * instance is in the guest's scope (never a name out of it). `own` null: its bucket could not be read (the look alone).
+ */
+export function guestOwnPrefs<T extends { values: Record<string, unknown> }>(view: T, own: Record<string, unknown> | null, scope: ReadonlySet<string>): T {
+  const base = guestPrefs(view);
+  if (!own) return base;
+  const values = { ...base.values };
+  for (const [key, value] of Object.entries(own)) values[key] = key === "nav.favorites" && Array.isArray(value) ? value.filter((n) => scope.has(n)) : value;
+  return { ...base, values };
+}
 const guestRequests = new WeakMap<object, GuestRequest>();
 /** Set by the one entry that admits a guest (FleetManager's gate); read by the handlers that answer per recipient. */
 export function bindGuestRequest(req: object, guest: GuestRequest): void { guestRequests.set(req, guest); }
@@ -159,6 +174,9 @@ export function guestStatus(status: unknown, scope: ReadonlySet<string>): { inst
     if (typeof i.name !== "string" || !scope.has(i.name)) continue;
     const out: Record<string, unknown> = {};
     for (const k of STATUS_FIELDS) if (Object.prototype.hasOwnProperty.call(i, k) && i[k] !== undefined) out[k] = i[k];
+    // #2855: the sidebar's "Recent" and reply times — the last reply that reached the channel, never one to someone's
+    // web-only exchange (`last_reply` itself is not passed on).
+    if (typeof i.last_reply_channel === "string") out.last_reply = i.last_reply_channel;
     instances.push(out);
   }
   return { instances };

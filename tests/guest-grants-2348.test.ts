@@ -123,6 +123,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   let revision = 0;
   const save = vi.fn(() => { noteSettingsWrite(path, yaml.load(readFileSync(path, "utf8")), config); writeFileSync(path, yaml.dump(config)); revision++; });
   const revoke = vi.fn((_owner: { adapterId: string; userId: string }) => ({ count: 1, durable: true }));
+  const forget = vi.fn((_owner: { adapterId: string; userId: string }) => undefined);   // #2855
   const people = vi.fn(() => ({ people: [{ adapterId: "dc", userId: "111", username: "ada" }] }));
   const sendCode = vi.fn(async (_o: unknown, _by: string, _current?: () => boolean) => ({ status: 200, body: { ok: true, outcome: "sent" } }));
   const note = vi.fn((_c: { by: string | null; via: string; account: string; added: string[]; removed: string[]; endedSessions: number }) => undefined);
@@ -132,7 +133,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
-    guestOverview: () => ({ audit: [{ kind: "grant", at: 1, account: "dc:111", name: "Ada", via: "direct", added: [], removed: ["a"], endedSessions: 1 }] }), revokeGuestWebSessions: revoke, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note,
+    guestOverview: () => ({ audit: [{ kind: "grant", at: 1, account: "dc:111", name: "Ada", via: "direct", added: [], removed: ["a"], endedSessions: 1 }] }), revokeGuestWebSessions: revoke, forgetGuestPrefs: forget, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note,
     ...(opts.rooms ? { classicRoomNames: () => opts.rooms } : {}) } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
@@ -157,7 +158,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
     });
   }
   const raw = () => yaml.load(readFileSync(path, "utf8")) as any;
-  return { config, save, store, request, raw, revoke, people, sendCode, refusal, sessions, note, sid };
+  return { config, save, store, request, raw, revoke, forget, people, sendCode, refusal, sessions, note, sid };
 }
 const confirmer = () => ({ label: "F", current: () => true });
 
@@ -187,8 +188,11 @@ describe("through the real gate and handler", () => {
     expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": null, "dc:222": { instances: [] } } } })).status).toBe(200);
     expect(h.raw().web.guests.grants).toEqual({ "dc:222": { instances: [] } });
     expect(h.revoke.mock.calls.map((c) => c[0])).toEqual([{ adapterId: "dc", userId: "111" }, { adapterId: "dc", userId: "222" }]);
+    // #2855: removed — its own preferences go too; emptied (still listed) — they stay.
+    expect(h.forget.mock.calls.map((c) => c[0])).toEqual([{ adapterId: "dc", userId: "111" }]);
     expect((await h.request("PUT", WEB, { guests: { grants: { "dc:222": null } } })).status).toBe(200);
     expect(h.raw().web.guests).toEqual({ enabled: true, grants: {} });
+    expect(h.forget.mock.calls.map((c) => c[0])).toEqual([{ adapterId: "dc", userId: "111" }, { adapterId: "dc", userId: "222" }]);
   });
   // #2348 design delta §5: removing or narrowing a grant applies at once and used to leave no record anywhere.
   it("every grant change is audited: a confirmed widening, a narrowing and a removal at once (with the sessions ended); a save that changes no grant is not", async () => {
