@@ -24,7 +24,8 @@ function rig() {
       return { isFile: () => true };
     }),
     read: (p: string) => { if (!files.has(p)) throw Error("missing " + p); return files.get(p)!; },
-    real: (p: string) => p === proc + "/exe" ? "/usr/bin/node" : p === proc + "/cwd" ? "/scratch" : p,
+    real: (p: string) => p === proc + "/cwd" ? "/scratch" : p,
+    link: vi.fn((p: string) => { if (p !== proc + "/exe") throw Error("not a link " + p); return "/usr/bin/node"; }),
     stat: vi.fn(() => ({ uid: 1000 })), alive: vi.fn(() => alive), run,
     signal: vi.fn()
   };
@@ -37,6 +38,16 @@ describe("same-home fleet service ownership", () => {
     expect(owner.updateRefusal(r.home, r.deps)).toContain("Run kill 1234 to request a normal stop, confirm that process has exited, then run agend start and retry agend update");
     expect(owner.updateRefusal(r.home, { ...r.deps, locale: "zh-TW" })).toContain("套件與服務設定均未變更");
     expect(r.deps.signal).not.toHaveBeenCalled();
+  });
+  it("a fleet whose private runtime was replaced by the update (exe link \" (deleted)\") is still the unit's own fleet", () => {
+    const r = rig();
+    r.run.mockReturnValue({ status: 0, stdout: `MainPID=1234\nControlGroup=/unit\nActiveState=active\nSubState=running\nWorkingDirectory=${r.home}` });
+    r.files.set(r.proc + "/cgroup", "0::/unit\n");
+    r.deps.link.mockReturnValue("/lib/node_modules/@songsid/.agend-fSEyCO84/node_modules/@songsid/agend-node-linux-x64/bin/node (deleted)");
+    expect(owner.inspect(r.home, service, r.deps)).toMatchObject({ kind: "managed", pid: 1234, mainPid: 1234 });
+    expect(owner.restartRefusal(r.home, service, r.deps)).toBeNull();
+    r.deps.link.mockReturnValue("/usr/bin/python3 (deleted)");
+    expect(owner.inspect(r.home, service, r.deps)).toMatchObject({ kind: "unknown" });
   });
   it("legacy role-less fleet locks keep their documented fleet meaning", () => {
     const r = rig(); r.files.set(r.home + "/fleet.lock", JSON.stringify({ pid: 1234, nonce: "legacy" }));
