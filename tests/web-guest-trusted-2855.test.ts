@@ -37,7 +37,8 @@ interface Raw { status: number; headers: Record<string, string | string[] | unde
 function raw(port: number, method: string, path: string, headers: Record<string, string> = {}): Promise<Raw> {
   return new Promise((resolve, reject) => {
     const r = request({ host: "127.0.0.1", port, method, path, headers: { host: `127.0.0.1:${port}`, ...headers } }, (res) => {
-      let b = ""; res.on("data", (c: Buffer) => { b += c.toString(); }); res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: b }));
+      // Decoded once, whole: a chunk boundary may fall inside a character.
+      const b: Buffer[] = []; res.on("data", (c: Buffer) => { b.push(c); }); res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(b).toString("utf8") }));
     });
     r.on("error", reject); r.end();
   });
@@ -178,6 +179,14 @@ describe("the View: GET /view/<n> and /api/pane/<n>", () => {
     tmux.mockImplementation(async (_f: string, args: string[]) => ({ stdout: args.includes("capture-pane") ? big : "80x24\n", stderr: "" }));
     const r = await get(session("guest", ALICE), "/api/pane/a");
     expect([r.status, r.body.length, r.body.endsWith("THE-END")]).toEqual([200, GUEST_PANE_MAX_BYTES, true]);
+  });
+  it("…cut at its first whole line: never mid-character or mid-escape sequence", async () => {
+    grants("trusted");
+    const line = "\u001b[1m語言 é\u001b[0m line\n";                     // multi-byte characters and escapes on every line
+    const big = line.repeat(Math.ceil(GUEST_PANE_MAX_BYTES / Buffer.byteLength(line)) + 7) + "THE-END";
+    tmux.mockImplementation(async (_f: string, args: string[]) => ({ stdout: args.includes("capture-pane") ? big : "80x24\n", stderr: "" }));
+    const r = await get(session("guest", ALICE), "/api/pane/a");
+    expect([r.status, r.body.startsWith(line), r.body.includes("\ufffd"), r.body.endsWith("THE-END"), Buffer.byteLength(r.body) <= GUEST_PANE_MAX_BYTES]).toEqual([200, true, false, true, true]);
   });
 });
 describe("search: GET /ui/search and /ui/search/context", () => {

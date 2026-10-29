@@ -304,7 +304,10 @@ function guestPane(ctx: ViewApiContext, name: string, guest: import("./web-guest
     if (size) { headers["X-Pane-Cols"] = String(size.cols); headers["X-Pane-Rows"] = String(size.rows); }
     const bytes = Buffer.from(text, "utf8");
     res.writeHead(200, headers);
-    res.end(bytes.length > GUEST_PANE_MAX_BYTES ? bytes.subarray(bytes.length - GUEST_PANE_MAX_BYTES) : bytes);
+    // Over the cap: its end, from the first whole line in it (never mid-character or mid-escape sequence).
+    const tail = bytes.length > GUEST_PANE_MAX_BYTES ? bytes.subarray(bytes.length - GUEST_PANE_MAX_BYTES) : bytes;
+    const line = tail === bytes ? -1 : tail.indexOf(0x0a);
+    res.end(line >= 0 ? tail.subarray(line + 1) : tail);
   }, (err) => { ctx.logger.debug({ err, name }, "capture-pane failed (guest)"); res.writeHead(200, { "Content-Type": "text/plain" }); res.end(""); });
 }
 
