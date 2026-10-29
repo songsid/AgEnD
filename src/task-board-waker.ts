@@ -55,8 +55,17 @@ export const TOLD_WINDOW_MS = 120_000;
 const KEY_PREFIX = "task-board:";
 const cardsOfKey = (key: string) => { const at = key.lastIndexOf(":cards="); return at < 0 ? [] : key.slice(at + 7).split(",").filter(Boolean); };
 
-/** Whether `text` names card `code` (M-12 is not M-123). */
-export const namesCard = (text: string, code: string) => new RegExp(`(^|[^\\w-])${code.replace(/-/g, "\\-")}(?!\\d)`).test(text);
+/**
+ * Whether `text` names card `code` (M-12 is not M-123, XM-12 is not M-12): the code itself, not a pattern built from it
+ * (CodeQL #97 — no character of the code is special).
+ */
+export const namesCard = (text: string, code: string): boolean => {
+  if (!code) return false;
+  for (let at = text.indexOf(code); at >= 0; at = text.indexOf(code, at + 1)) {
+    if (!/[\w-]/.test(text[at - 1] ?? "") && !/\d/.test(text[at + code.length] ?? "")) return true;
+  }
+  return false;
+};
 
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
