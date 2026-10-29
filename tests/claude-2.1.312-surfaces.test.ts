@@ -151,6 +151,9 @@ describe("Claude Code 2.1.312 screens (real panes)", () => {
     const p = pane("background-work-exit");
     expect(claudeBackgroundWorkExitActive(p)).toBe(true);
     expect(backend.quitBlockedByDialog(p)).toBe(true);
+    // #1436 review: the entry that sees it presses nothing and only holds.
+    const held = acting(backend.getRuntimeDialogs(), p) as Array<Dialog & { keys?: string[]; holdOnly?: boolean }>;
+    expect(held.map(d => [d.keys, d.holdOnly])).toEqual([[[], true]]);
   });
 
   it("--continue with nothing to continue says so in the words resumeMissingPattern knows", () => {
