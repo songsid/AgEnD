@@ -126,7 +126,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const forget = vi.fn((_owner: { adapterId: string; userId: string }) => undefined);   // #2855
   const people = vi.fn(() => ({ people: [{ adapterId: "dc", userId: "111", username: "ada" }] }));
   const sendCode = vi.fn(async (_o: unknown, _by: string, _current?: () => boolean) => ({ status: 200, body: { ok: true, outcome: "sent" } }));
-  const note = vi.fn((_c: { by: string | null; via: string; account: string; added: string[]; removed: string[]; endedSessions: number }) => undefined);
+  const note = vi.fn((_c: { by: string | null; via: string; account: string; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }) => undefined);
   const refusal = vi.fn(opts.refuse ?? ((_a: string, u: string) => (u === "111" ? null : "only someone AgEnD has seen in chat can be given guest access")));
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;

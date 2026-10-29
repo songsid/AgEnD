@@ -187,7 +187,7 @@ describe("search: GET /ui/search and /ui/search/context", () => {
   function index(hits: () => Hit[], context?: (key: string) => unknown) {
     const ix = {
       status: () => "ready",
-      query: vi.fn(async () => ({ ok: true, value: { hits: hits(), limited: false }, building: false })),
+      query: vi.fn(async (_filters?: unknown) => ({ ok: true, value: { hits: hits(), limited: false }, building: false })),
       context: vi.fn(async (key: string) => ({ ok: true, value: context?.(key) ?? null, building: false })),
     };
     fm.searchIndex = ix;
