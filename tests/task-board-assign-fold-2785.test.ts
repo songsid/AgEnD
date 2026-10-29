@@ -146,7 +146,20 @@ describe("namesCard", () => {
     ["Board card M-2086", "M-20861", false],
     ["XM-2086 is not it", "M-2086", false],
     ["no card here", "M-1", false],
+    ["M-2086 at the very end: M-2086", "M-2086", true],
+    ["(M-7) in brackets", "M-7", true],
   ])("%s / %s → %s", (text, code, want) => expect(namesCard(text, code)).toBe(want));
+  // CodeQL #97: the code is matched as itself, never as a pattern — a regex metacharacter in it is just that character.
+  it.each([
+    ["card M.1 here", "M.1", true],
+    ["card MX1 here", "M.1", false],                  // "." no longer matches any character
+    ["see M-1+ now", "M-1+", true],
+    ["see M-11 now", "M-1+", false],                  // "+" no longer repeats
+    ["(M-1( open", "M-1(", true],                     // an unbalanced "(" no longer throws
+    ["a^b and $x", "$x", true],
+    ["", "M-1", false],
+    ["M-1", "", false],
+  ])("a metacharacter is literal: %s / %s → %s", (text, code, want) => expect(namesCard(text, code)).toBe(want));
 });
 
 describe("DeliveryOutbox.recentTextsFrom", () => {

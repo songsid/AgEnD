@@ -25,6 +25,10 @@ const work = join(root, "work"); mkdirSync(work, { recursive: true });
 const instanceDir = join(process.env.AGEND_HOME!, "instances", "smoke2800"); mkdirSync(instanceDir, { recursive: true });
 const logger = pino({ level: "debug" }, pino.destination({ dest: join(root, `daemon-${label}.log`), sync: true }));
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+/** Whether a turn links the What's-new notes: a URL in it whose host and path are the docs' (CodeQL #98: parsed, not a substring). */
+const linksWhatsNew = (text: string): boolean => (text.match(/https?:\/\/[^\s)"'<>]+/g) ?? []).some((raw) => {
+  try { const u = new URL(raw); return u.protocol === "https:" && u.hostname === "songsid.github.io" && u.pathname.startsWith("/AgEnD/docs/whats-new/"); } catch { return false; }
+});
 const history = () => { try { return tmux("capture-pane", "-p", "-J", "-S", "-3000", "-t", "smoke2800"); } catch { return ""; } };
 const userEntries = (): string[] => {
   const out: string[] = [];
@@ -61,7 +65,7 @@ console.log(JSON.stringify({
   noticeTurnsOfItsOwn: users.filter(u => u.startsWith("[system:whats-new]") && !u.includes("smoke-2800: the real task")).length,
   taskTurnStartsWithNotice: withTask.length === 1 && withTask[0]!.startsWith("[system:whats-new]"),
   noticeNamesPackTools: users.some(u => u.includes("office_pack_check")),
-  linksNotes: users.some(u => u.includes("https://songsid.github.io/AgEnD/docs/whats-new/")),
+  linksNotes: users.some(u => linksWhatsNew(u)),
   recordedPackEntry: record && record !== "unreadable" ? record.announced.includes("2.3.2-office-pack-tools") : record,
   pendingAfter: d.pendingWhatsNew,
 }));
