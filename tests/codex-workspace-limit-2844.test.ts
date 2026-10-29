@@ -174,6 +174,20 @@ describe("in the real Daemon: Escape, then one pause; a wake does not pause agai
     daemon.freezeRuntimeMonitors();
   });
 
+  it("first poll on the real spend-cap prompt, an older credits row above it: the pause is the spend cap's", async () => {
+    vi.useFakeTimers();
+    const { daemon, state, keys, errors } = makeDaemon(SPEND_PROMPT);
+    // Escape removes the prompt rows; the transcript (both error rows) stays above the composer.
+    const after = SPEND_PROMPT.split("\n").filter(r => !/^\s*(?:Usage limit reached|Request a limit increase|[›\s]*\d\. (?:Yes|No)|enter select)/.test(r)).join("\n")
+      + "\n› Ask Codex to do anything\n  Context 100% left";
+    state.onKey = k => { if (k === "Escape") state.pane = after; };
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(keys).toEqual(["Escape"]);
+    expect(errors.map(e => e.message)).toEqual(["Codex workspace spend cap reached — workspace owner must raise it"]);
+    daemon.freezeRuntimeMonitors();
+  });
+
   it("an example of the row in the agent's answer (indented) never pauses", async () => {
     vi.useFakeTimers();
     const { daemon, state, errors } = makeDaemon(COMPOSER_ONLY);

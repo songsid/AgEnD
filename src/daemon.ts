@@ -8364,17 +8364,22 @@ export class Daemon extends EventEmitter {
   /**
    * #2844: a dialog that only paints for a live incident proves the newest such error row on screen is current: its
    * baseline is held below it, so neither a first poll that sees the dialog before any live composer nor the composer
-   * after it can take that row for resumed history. Older rows stay history.
+   * after it can take that row for resumed history. Older rows, of any kind, stay history.
    */
   private noteLiveIncidentDialog(dialog: RuntimeDialog, pane: string): void {
     if (!dialog.marksLiveIncident) return;
     const baselines = this.nudgeBaselines ?? new Map<string, number>();
-    for (const ep of this.backend?.getErrorPatterns?.() ?? []) {
-      if (!ep.historyUntilLiveComposer) continue;
-      const count = Daemon.countOccurrences(ep.pattern, pane);
-      if (count === 0) continue;
-      const key = Daemon.errorPatternKey(ep);
-      baselines.set(key, Math.min(baselines.get(key) ?? count - 1, count - 1));
+    // Only the row nearest the dialog is the incident; every other kind on screen (an older credits row above a new
+    // spend cap) stays history, so the first matching pattern cannot claim the live incident under its own name.
+    const rows = (this.backend?.getErrorPatterns?.() ?? []).filter(ep => ep.historyUntilLiveComposer).map(ep => {
+      const flags = ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g";
+      const matches = [...pane.matchAll(new RegExp(ep.pattern.source, flags))];
+      return { key: Daemon.errorPatternKey(ep), count: matches.length, last: matches.at(-1)?.index ?? -1 };
+    }).filter(row => row.count > 0);
+    const newest = rows.reduce<(typeof rows)[number] | null>((best, row) => !best || row.last > best.last ? row : best, null);
+    for (const row of rows) {
+      const floor = row === newest ? row.count - 1 : row.count;
+      baselines.set(row.key, Math.min(baselines.get(row.key) ?? floor, floor));
     }
     this.nudgeBaselines = baselines;
   }
