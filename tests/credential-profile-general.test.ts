@@ -446,6 +446,22 @@ describe("the General skill", () => {
     expect(skill).toMatch(/relay the command from the refusal, character for\s+character/);
   });
 
+  // A General asked 「怎麼更換 codex profile 並接續 session」 never loaded this skill and told the user to resume by hand.
+  it("its description triggers on switching a profile, account or login and on keeping the session — in English and Chinese, on one line", () => {
+    const description = /^description: (.*)$/m.exec(skill)![1]!;
+    for (const words of ["profile", "credential profile", "account", "login", "codex", "claude-code", "kiro-cli", "session", "換帳號", "換 profile", "切換 codex/claude/kiro 登入", "接續 session"]) {
+      expect(description, words).toContain(words);
+    }
+    expect(description.length).toBeLessThan(600);
+    expect(skill.slice(0, skill.indexOf("\n---", 4))).toMatch(/^---\nname: credential-profiles\ndescription: [^\n]+\nroles: \[general\]$/);
+  });
+
+  it("shows the codex call, and says not to resume a codex session by hand", () => {
+    const move = skill.slice(skill.indexOf("## Move an existing agent"), skill.indexOf("## Move an agent back"));
+    expect(move).toContain("config: { backend_options: { codex: { credential_profile: \"personal\" } } },");
+    expect(move).toMatch(/Do not run `codex resume <id>` by hand/);
+  });
+
   it("says how to go back to the default login", () => {
     expect(skill).toContain("credential_profile\": null");
   });
