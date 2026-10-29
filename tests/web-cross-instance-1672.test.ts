@@ -33,7 +33,7 @@ const GROUP = "-100777";
 const LABEL = "alice → bob";
 const LONG = `First line of the request.\n\nSecond paragraph — ${"x".repeat(150)}`;
 type Kind = "task" | "query" | "report" | "update" | undefined;
-interface WebLine { instance: string; sender: string; role: string; text: string }
+interface WebLine { instance: string; sender: string; role: string; text: string; channel?: true }
 
 async function send(opts: {
   tool?: "send_to_instance" | "delegate_task" | "request_information" | "report_result";
@@ -156,6 +156,38 @@ describe("#1672: the web chat shows cross-instance messages like the topics", ()
   });
 });
 
+describe("#2848: a line is the channel's exactly when its topic got the same post", () => {
+  // The guest rule (#1920) shows a guest what the channel showed: a line posted to the instance's topic carries `channel`.
+  const marked = (r: Awaited<ReturnType<typeof send>>, who: "alice" | "bob") => r.web.filter(w => w.instance === who).map(w => w.channel === true);
+  it("full and summary: both chats' lines are marked, and both topics got a post", async () => {
+    for (const mode of ["full", "summary"]) {
+      const r = await send({ defaults: { cross_instance_visibility: mode }, kind: "task" });
+      expect([marked(r, "alice"), marked(r, "bob"), r.topics.map(p => p.threadId).sort()], mode).toEqual([[true], [true], ["11", "22"]]);
+    }
+  });
+  it("hidden on one side: no line there; the other side's line is marked with its post", async () => {
+    const r = await send({ kind: "task", target: { cross_instance_visibility: "hidden" } });
+    expect([marked(r, "alice"), marked(r, "bob"), r.topics.map(p => p.threadId)]).toEqual([[true], [], ["11"]]);
+  });
+  it("no post, no mark: a web-only fleet, a topic-less instance", async () => {
+    const web = await send({ kind: "task", webOnly: true });
+    expect([marked(web, "alice"), marked(web, "bob"), web.topics]).toEqual([[false], [false], []]);
+    const topicless = await send({ kind: "task", target: { topic_id: undefined } });
+    expect([marked(topicless, "alice"), marked(topicless, "bob")]).toEqual([[true], [false]]);
+  });
+  it("in every case the marked lines are exactly the posted topics", async () => {
+    const cases = [{ kind: "task" as Kind }, { kind: "report" as Kind }, { kind: "update" as Kind, defaults: { cross_instance_visibility: "summary" } },
+      { kind: "task" as Kind, sender: { cross_instance_visibility: "hidden" } }, { kind: "task" as Kind, target: { general_topic: true } },
+      { kind: "task" as Kind, sender: { topic_id: undefined } }, { kind: "task" as Kind, webOnly: true }];
+    for (const c of cases) {
+      const r = await send(c);
+      const topicOf = { alice: "11", bob: "22" } as const;
+      const markedTopics = r.web.filter(w => w.channel === true).map(w => topicOf[w.instance as "alice" | "bob"]).sort();
+      expect(markedTopics, JSON.stringify(c)).toEqual(r.topics.map(p => p.threadId).sort());
+    }
+  });
+});
+
 describe("#1672: it is in the web chat history, and there again after a restart", () => {
   it("the real fleet records the line; a new fleet on the same home restores it as a status line", async () => {
     const h = mkdtempSync(join(tmpdir(), "agend-test-1672-")); homes.push(h);
@@ -250,6 +282,16 @@ describe("#1672: a status line is not announced as a reply", () => {
     expect(announced).toEqual([]);
     store.ingest({ boot: "x", id: 2, instance: "w", sender: "agend-x", role: "agent", text: "reply", ts: "2026-01-01T00:00:00Z" });
     expect(announced).toEqual(["chat.a11yReplied:agend-x"]);
+  });
+  it("#2848: the history answer's allHidden is kept per chat; a later answer without it clears it", async () => {
+    const answers: Record<string, unknown> = { hidden: { messages: [], allHidden: true }, plain: { messages: [] } };
+    const fetch = async (path: string) => ({ json: async () => answers[new URL(path, "http://x").searchParams.get("instance")!] });
+    const store = createChatStore({ announce() {}, t: (k: string) => k, fetch } as never);
+    await store.openHistory("hidden", null); await store.openHistory("plain", null);
+    expect([store.allHidden("hidden"), store.allHidden("plain")]).toEqual([true, false]);
+    answers.hidden = { messages: [] };
+    store.state.historyRead.delete("hidden"); await store.openHistory("hidden", null);
+    expect(store.allHidden("hidden")).toBe(false);
   });
 });
 
