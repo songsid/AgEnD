@@ -3,6 +3,7 @@
  * hand-editor looks — `agend doctor` and daemon.log at fleet start — not only in `agend validate`. Only warnings the
  * validator already produces; nothing forks (every doctor dependency is stubbed).
  */
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,6 +86,22 @@ describe("#2667: a guest grant naming a ClassicBot room is not an unknown name",
     withRoom(dir);
     expect(configRows((await collectDoctorReport(dir, service, stubbed)).checks)).toEqual([]);
   });
+  it("agend validate reads classicBot.yaml's rooms: a grant naming one is quiet; an unknown name still warns", () => {
+    const run = (dir: string) => spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "validate"], {
+      cwd: process.cwd(), env: { ...process.env, AGEND_HOME: dir }, encoding: "utf8", timeout: 60_000,
+    });
+    const dir = home(GRANT);
+    withRoom(dir);
+    const ok = run(dir);
+    expect(ok.status, ok.stderr || ok.stdout).toBe(0);
+    expect(ok.stdout).not.toMatch(/"classic-lobby-1234"/);
+    expect(ok.stdout).not.toMatch(/gives nothing/);
+    writeFileSync(join(dir, "fleet.yaml"), GRANT.replace("classic-lobby-1234", "ghost"));
+    const unknown = run(dir);
+    expect(unknown.stdout).toMatch(/"ghost" is not an instance or ClassicBot room of this fleet: it gives nothing/);
+    expect(unknown.status).toBe(0);
+  }, 120_000);
+
   it("fleet start's warnings know the rooms too", () => {
     const dir = home(GRANT);
     withRoom(dir);
