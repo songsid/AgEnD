@@ -5190,6 +5190,10 @@ export class Daemon extends EventEmitter {
         && Daemon.dialogMatches(d, pane)
         // #1690: AgEnD's own switch dialog, being answered right now, is nobody's to answer.
         && !(this.ownSwitch && claudeSwitchDialog(pane) !== null));
+      // #2844: a dialog AgEnD is answering itself is nobody's to answer, until its answers are reported as ignored.
+      // No evidence at all then: the catch-alls further down the table match the same screen.
+      if (dialog?.answeredByAgend
+        && !(this.dialogAnswers?.reported && this.dialogAnswers.key === Daemon.answerKey(dialog))) return null;
       if (dialog) {
         const identity = dialog.requestIdentity?.(pane) ?? pane.replace(/\r/g, "")
           .split("\n").map(row => row.replace(/^([ \t]*)[❯›]([ \t]+)(?=\d\.|Yes\b|No\b|Resume\b)/, "$1$2").trimEnd())

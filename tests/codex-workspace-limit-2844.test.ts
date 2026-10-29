@@ -153,6 +153,15 @@ describe("in the real Daemon: Escape, then one pause; a wake does not pause agai
     daemon.freezeRuntimeMonitors();
   });
 
+  it("while AgEnD answers it, the prompt is nobody's interaction (no awaiting_input, so no Needs-you ping)", () => {
+    const { daemon } = makeDaemon(CREDITS_PROMPT);
+    expect(daemon.interactionEvidence(CREDITS_PROMPT, daemon.runtimeDialogs())).toBeNull();
+    // …until its answers are reported as ignored: then a person has to look.
+    const dialog = daemon.runtimeDialogs().find((d: { description: string }) => d.description === WORKSPACE_DIALOG);
+    daemon.dialogAnswers = { key: (Daemon as any).answerKey(dialog), ignored: 3, reported: true, screen: CREDITS_PROMPT, lastAnswerAt: 0 };
+    expect(daemon.interactionEvidence(CREDITS_PROMPT, daemon.runtimeDialogs())).toMatchObject({ kind: "dialog" });
+  });
+
   it("a resumed pane that reprints the old row is history; a new row after it pauses", async () => {
     vi.useFakeTimers();
     const { daemon, state, errors } = makeDaemon(CREDITS_AFTER_ESCAPE);  // the wake's resumed transcript

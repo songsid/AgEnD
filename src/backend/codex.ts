@@ -2198,6 +2198,7 @@ export class CodexBackend implements CliBackend {
       isActive: codexWorkspaceLimitPromptVisible,
       verifyAfterKeys: true,
       autoResolutionKey: "codex-workspace-limit-prompt",
+      answeredByAgend: true,
     };
   }
 

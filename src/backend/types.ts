@@ -423,6 +423,12 @@ export interface RuntimeDialog {
   /** Optional static presentation category; only structural predicates qualify. */
   interactionKind?: InteractionKind;
   /**
+   * AgEnD answers this dialog itself (`keys`), so while it is on screen nobody else is waiting to: it is not a person's
+   * interaction (no awaiting_input, no Needs-you item) unless its answers are reported as ignored. Without it, a
+   * dialog the runtime scanner closes ~5 s after it paints raced the Needs-you ping (#2844).
+   */
+  answeredByAgend?: boolean;
+  /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
    * while safety-critical dialogs must prove that the prompt disappeared
