@@ -24,8 +24,8 @@ const NAMES = ["研一官網前端 claude", "grok-scout", "General 總管", "資
 const LEVELS = [12, 27, 3, 12, 27, 27, 40, 40, 8, 50, 120, 3, 8, 40, 1500, 120, 50, 3, 12, 27];
 
 /** Cozy (the built-in pack, its picture not loaded) with every tag drawn recorded: [label, x, y, compact]. */
-function scene(n: number, state = "idle") {
-  const cozy = K.SKINS.get("cozy");
+function scene(n: number, state = "idle", furniture: any[] = []) {
+  const base = K.SKINS.get("cozy"), cozy = furniture.length ? { ...base, pack: { ...base.pack, furniture: [...base.pack.furniture, ...furniture] } } : base;
   const drawn: any[] = [];
   const skin = { ...cozy, drawCharacter() {}, drawFurniture() {}, drawBubble() {},
     drawTag: (ctx: any, x: number, y: number, look: any, env: any, compact = false) => { drawn.push({ label: look.label, x, y, compact, badge: look.badge }); } };
@@ -39,7 +39,7 @@ function scene(n: number, state = "idle") {
   const env = { pal: { ...K.DEFAULT_PAL }, mode: "dark", labels: { areas: {} } };
   const draw = (hot: string | null = null, tagsOff = false) => { drawn.length = 0; F.drawPart(ctx, part, 1, 0, 0, 0, true, hot, env, tagsOff); return [...drawn]; };
   const footprint = (t: any) => K.tagFootprint(ctx, K.tagBox(ctx, t.x, t.y, t.label, t.compact), t.badge, t.compact);
-  return { L, draw, footprint, part, ctx };
+  return { L, draw, footprint, part, ctx, cozy };
 }
 const touch = (a: any, b: any) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
@@ -80,6 +80,29 @@ describe("#2860 a crowded area keeps compact tags", () => {
     expect(hovered.compact).toBe(false);
     const off = s.draw(who.key, true).filter((t) => NAMES.includes(t.label));
     expect(off.map((t) => [t.label, t.compact])).toEqual([[who.node.name, false]]);
+  });
+
+  it("#2862 review: a hovered person in the middle of the crowd keeps a full tag no compact one touches", () => {
+    const s = scene(20);
+    const inCrowd = s.part.desks.filter((d: any) => s.L.over.has(d.area)).sort((a: any, b: any) => a.seat.x - b.seat.x);
+    for (const who of [inCrowd[Math.floor(inCrowd.length / 2)], inCrowd[1]]) {
+      const drawn = s.draw(who.key);
+      const full = drawn.find((t) => t.label === who.node.name);
+      expect(full.compact).toBe(false);
+      const fullBox = s.footprint(full);
+      for (const t of drawn.filter((x) => x.compact)) expect(touch(s.footprint(t), fullBox), `${t.label} × ${who.node.name}`).toBe(false);
+    }
+  });
+
+  it("#2862 review: a furniture item's own name in the crowded area is clear of every compact tag", () => {
+    const probe = scene(20);
+    const inCrowd = probe.part.desks.filter((d: any) => probe.L.over.has(d.area));
+    const mid = inCrowd[Math.floor(inCrowd.length / 2)].seat;
+    const s = scene(20, "idle", [{ id: "barista", label: "Barista bot", x: mid.x + 6, y: mid.y + 4, depth: "y" }]);
+    const drawn = s.draw();
+    const sign = drawn.find((t) => t.label === "Barista bot");
+    expect(sign?.compact).toBe(false);
+    for (const t of drawn.filter((x) => x.compact)) expect(touch(s.footprint(t), s.footprint(sign)), t.label).toBe(false);
   });
 
   it("an area with room keeps full tags (nothing over capacity: nothing compact)", () => {
