@@ -213,6 +213,22 @@ describe("through the real gate and handler", () => {
     expect((await h.request("PUT", WEB, { guests: { chat: false } })).status).toBe(200);
     expect(h.note, "a rename and a save without grants change no one's agents").not.toHaveBeenCalled();
   });
+  it("#2855: Chat → Trusted waits for a fleet admin; Trusted → Chat applies at once; each is audited with the level it went to", async () => {
+    const h = harness({ web: { guests: { enabled: true, grants: { "dc:111": { instances: ["a"] } } } } });
+    const up = await h.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["a"], level: "trusted" } } } });
+    expect([up.status, up.body.result]).toEqual([202, "pending_confirmation"]);
+    expect(h.raw().web.guests.grants["dc:111"].level).toBeUndefined();
+    expect((await h.store.decide(up.body.pending_change.id, "confirm", confirmer())).state).toBe("applied");
+    expect(h.raw().web.guests.grants["dc:111"]).toEqual({ instances: ["a"], level: "trusted" });
+    expect(h.note.mock.calls.map((c) => c[0])).toEqual([{ by: null, via: "confirmed", account: "dc:111", added: [], removed: [], endedSessions: 0, level: "trusted" }]);
+    h.note.mockClear();
+    const down = await h.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["a"], level: "chat" } } } });
+    expect(down.status).toBe(200);
+    expect(h.raw().web.guests.grants["dc:111"], "chat is the default: no level on disk").toEqual({ instances: ["a"] });
+    expect(h.note.mock.calls.map((c) => c[0].level)).toEqual(["chat"]);
+    expect(h.revoke, "taking Trusted away needs no sign-out: every View and search read asks the level").not.toHaveBeenCalled();
+    expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["a"], level: "owner" } } } })).status).toBe(400);
+  });
   // #2499 review (Prism P2): a session policy saved together with the grant change can end the saving admin's own session;
   // the audit still names who saved it (asked before the save), and a confirmation's replay stays null.
   it("the saver is the one asked before the save, even when the save ends that admin's own session", async () => {

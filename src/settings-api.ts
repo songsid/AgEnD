@@ -98,7 +98,7 @@ export interface SettingsApiContext extends AppShellContext {
   /** #2855: a removed guest's own preferences go with it. */
   forgetGuestPrefs?(owner: { adapterId: string; userId: string }): void;
   /** #2348 delta §5: one audit entry per person whose granted agents changed with a save (event log, the Log tab). */
-  noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void;
+  noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }): void;
   /** #2348: the people AgEnD has seen in chat (the Guests picker), never a fleet admin or a bot. */
   guestPeople?(): unknown;
   /** #2348: why an account may not be granted (not seen in chat, a fleet admin, an unknown connection), or null. */
@@ -913,8 +913,11 @@ export function handleSettingsRequest(
         for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
           const a = new Set(Object.hasOwn(was, key) ? was[key]!.instances : []), b = new Set(Object.hasOwn(now, key) ? now[key]!.instances : []);
           const added = [...b].filter((n) => !a.has(n)), removed = [...a].filter((n) => !b.has(n));
-          if (!added.length && !removed.length) continue;
-          try { ctx.noteGuestGrantChange({ by, via, account: key, added, removed, endedSessions: ended.get(key) ?? 0 }); }
+          // #2855: a kept grant's level, when it changed (Chat ↔ Trusted).
+          const levelOf = (g: { level?: string } | undefined) => (g?.level === "trusted" ? "trusted" as const : "chat" as const);
+          const level = Object.hasOwn(was, key) && Object.hasOwn(now, key) && levelOf(was[key]) !== levelOf(now[key]) ? levelOf(now[key]) : undefined;
+          if (!added.length && !removed.length && !level) continue;
+          try { ctx.noteGuestGrantChange({ by, via, account: key, added, removed, endedSessions: ended.get(key) ?? 0, ...(level ? { level } : {}) }); }
           catch (err) { ctx.logger.warn({ err }, "settings: could not audit a guest grant change"); }
         }
       }

@@ -529,7 +529,7 @@ export interface WebGuestsConfig {
    * this key exists it is the only scope there is (default deny): the derived scope above (connection access, rooms,
    * open_instances, narrow) no longer gives anything. `name` is display only (who it was when granted).
    */
-  grants?: Record<string, { name?: string; instances: string[] }>;
+  grants?: Record<string, { name?: string; instances: string[]; /** #2855: "trusted" adds a read-only View and search; absent: chat. */ level?: "chat" | "trusted" }>;
   /** A guest session's limits: absolute 1–24 h (default 12), idle 15–720 min (default 120). */
   session?: { absolute_hours?: number; idle_minutes?: number };
 }

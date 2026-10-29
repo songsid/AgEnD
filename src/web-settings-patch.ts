@@ -77,19 +77,21 @@ export type GuestsPatch = {
   open_instances?: Record<string, string[] | null>;
   narrow?: Record<string, string[] | null>;
   /** #2348: per `<connection id>:<user id>` — the grant (replaced whole), or null to remove it. */
-  grants?: Record<string, { name?: string; instances: string[] } | null>;
+  grants?: Record<string, { name?: string; instances: string[]; level?: "trusted" } | null>;
 };
 const GUEST_ACCOUNT_KEY = /^[A-Za-z0-9_.-]{1,64}:[0-9A-Za-z_-]{1,64}$/;
-/** #2348: one grant as the patch carries it: `{ name?, instances }`, or null (removed). */
-function guestGrant(v: unknown): { name?: string; instances: string[] } | null | "invalid" {
+/** #2348: one grant as the patch carries it: `{ name?, instances, level? }`, or null (removed). #2855: level "chat" (the
+ * default) is kept as no level at all; "trusted" is kept. */
+function guestGrant(v: unknown): { name?: string; instances: string[]; level?: "trusted" } | null | "invalid" {
   if (v === null) return null;
   if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
   const g = v as Record<string, unknown>;
-  if (Object.keys(g).some((k) => k !== "name" && k !== "instances")) return "invalid";
+  if (Object.keys(g).some((k) => k !== "name" && k !== "instances" && k !== "level")) return "invalid";
   if (g.name !== undefined && (typeof g.name !== "string" || g.name.length > 100)) return "invalid";
+  if (g.level !== undefined && g.level !== "chat" && g.level !== "trusted") return "invalid";
   const instances = guestList(g.instances);
   if (instances === "invalid" || instances === null) return "invalid";
-  return { ...(typeof g.name === "string" && g.name ? { name: g.name } : {}), instances };
+  return { ...(typeof g.name === "string" && g.name ? { name: g.name } : {}), instances, ...(g.level === "trusted" ? { level: "trusted" as const } : {}) };
 }
 const GUEST_LIST_MAX = 200;
 function guestList(v: unknown): string[] | null | "invalid" {

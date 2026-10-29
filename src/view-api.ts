@@ -50,6 +50,8 @@ import { bannerFocusOk, CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard }
 import { IdentityColorStore } from "./web-identity-color.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import type { ThemeCard } from "./web-theme.js";
+import { GUEST_PANE_MAX_BYTES, GUEST_PANE_READS, GUEST_PANE_SHARE_MS, guestRequestOf } from "./web-guest-access.js";
+import { OfficeWriteLimiter } from "./web-office-store.js";
 
 const execFileP = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -270,6 +272,42 @@ function tmuxArgs(rest: string[]): string[] {
   return socket ? ["-L", socket, ...rest] : rest;
 }
 
+/**
+ * #2855: a trusted guest's read-only View. Per account: GUEST_PANE_READS reads a second, of at most `panes` agents at
+ * once (agents read within `panesWindowMs`). Every guest viewer of an agent reads one shared capture, at most
+ * GUEST_PANE_SHARE_MS old — one tmux read per window however many watch. At most GUEST_PANE_MAX_BYTES (the end of it).
+ */
+const paneReadLimiter = () => new OfficeWriteLimiter(undefined, { perWindow: GUEST_PANE_READS.perWindow, windowMs: GUEST_PANE_READS.windowMs });
+let guestPaneReads = paneReadLimiter();
+const guestPaneAgents = new Map<string, Map<string, number>>();     // account → agent → when it was last read (ms)
+const sharedCaptures = new Map<string, { at: number; capture: Promise<{ text: string; size: PaneSize | null }> }>();
+/** For tests: forget the guests' read counts and shared captures. */
+export function resetGuestPanes(): void { guestPaneReads = paneReadLimiter(); guestPaneAgents.clear(); sharedCaptures.clear(); }
+function guestPane(ctx: ViewApiContext, name: string, guest: import("./web-guest-access.js").GuestRequest, res: ServerResponse): void {
+  if (!guest.trusted?.()) { json(res, 403, { error: "guest_not_trusted" }); return; }
+  const account = `${guest.owner.adapterId}:${guest.owner.userId}`, now = performance.now();
+  const agents = guestPaneAgents.get(account) ?? new Map<string, number>();
+  for (const [agent, at] of agents) if (now - at >= GUEST_PANE_READS.panesWindowMs) agents.delete(agent);
+  if (!agents.has(name) && agents.size >= GUEST_PANE_READS.panes) { json(res, 429, { error: "guest_view_too_many_agents" }); return; }
+  const limit = guestPaneReads.check(account);
+  if (!limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_view_rate_limited", retry_after_s: limit.retry_after_s }); return; }
+  guestPaneReads.record(account);
+  agents.set(name, now); guestPaneAgents.set(account, agents);
+  let shared = sharedCaptures.get(name);
+  if (!shared || now - shared.at >= GUEST_PANE_SHARE_MS) {
+    shared = { at: now, capture: capturePane(ctx, name) };
+    sharedCaptures.set(name, shared);
+    shared.capture.catch(() => { if (sharedCaptures.get(name) === shared) sharedCaptures.delete(name); });
+  }
+  shared.capture.then(({ text, size }) => {
+    const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "private, no-store" };
+    if (size) { headers["X-Pane-Cols"] = String(size.cols); headers["X-Pane-Rows"] = String(size.rows); }
+    const bytes = Buffer.from(text, "utf8");
+    res.writeHead(200, headers);
+    res.end(bytes.length > GUEST_PANE_MAX_BYTES ? bytes.subarray(bytes.length - GUEST_PANE_MAX_BYTES) : bytes);
+  }, (err) => { ctx.logger.debug({ err, name }, "capture-pane failed (guest)"); res.writeHead(200, { "Content-Type": "text/plain" }); res.end(""); });
+}
+
 /** A pane's logical grid size in cells, as tmux sees it. */
 export interface PaneSize { cols: number; rows: number }
 
@@ -371,6 +409,10 @@ export function handleViewRequest(
   if (method === "GET" && path.startsWith("/api/pane/")) {
     const name = decodeURIComponent(path.slice("/api/pane/".length));
     if (!knownInstance(ctx, name)) { json(res, 404, { error: "unknown instance" }); return true; }
+    // #2855: a guest (the gate bound it, and checked the agent is in its scope) — Trusted only, within its limits, and
+    // reading the capture every guest viewer of this agent shares.
+    const guest = guestRequestOf(req);
+    if (guest) { guestPane(ctx, name, guest, res); return true; }
     capturePane(ctx, name)
       .then(({ text, size }) => {
         const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8" };

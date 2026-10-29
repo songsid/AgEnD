@@ -54,7 +54,7 @@ function get(url: string, o: Opts = {}) {
   let status = 0, body = "";
   const res = { destroyed: false, headersSent: false, setHeader: () => {}, writeHead: (code: number) => { status = code; }, end: (text = "") => { body = String(text); }, destroy: vi.fn() };
   if (o.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: X, expectedOrigin: ORIGIN, isCurrent: () => true });
-  if (tier === "guest") bindGuestRequest(req, { owner: { adapterId: "discord", userId: "9" }, scope: () => new Set(["dev"]) } as never);
+  if (tier === "guest") bindGuestRequest(req, { owner: { adapterId: "discord", userId: "9" }, scope: () => new Set(["dev"]), current: () => true } as never);
   const index = o.index === undefined ? fakeIndex() : o.index;
   const ctx = {
     webToken: TOKEN, webSessions: sessions, fleetConfig: { instances: {}, teams: { ops: { members: ["a", "b"] } }, ...(o.web ? { web: o.web } : {}) },
@@ -103,12 +103,10 @@ describe("GET /ui/search: who may search", () => {
     held.release(); await settle(); await settle();
     expect([r.status(), r.json().error]).toEqual([404, "search_not_over_public_link"]);
   });
-  it("a guest: 403 at the gate every request passes (not on GUEST_ROUTES), and again in the handler", async () => {
-    for (const q of ["/ui/search?q=x", "/ui/search/context?key=k"]) {
-      expect(guestRouteDecision("GET", new URL(q, ORIGIN), new Set(["dev"]))).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
-    }
+  it("a guest: through the gate (#2855: a trusted one searches what it can see), refused by the handler unless Trusted", async () => {
+    for (const q of ["/ui/search?q=x", "/ui/search/context?key=k"]) expect(guestRouteDecision("GET", new URL(q, ORIGIN), new Set(["dev"])).kind).toBe("allow");
     const r = get("/ui/search?q=nginx", { tier: "guest" }); await settle();
-    expect([r.status(), r.index.query.mock.calls.length]).toEqual([403, 0]);
+    expect([r.status(), r.json().error, r.index.query.mock.calls.length]).toEqual([403, "guest_not_trusted", 0]);
   });
   it("a read-only session: 401 — admins only", async () => {
     const r = get("/ui/search?q=nginx", { tier: "read" }); await settle();

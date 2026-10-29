@@ -6,9 +6,13 @@
 // Everything recurring is a passive read (#1374) taken through the navigation's lease: the pane every 800 ms and the
 // roster every 5 s while the panel is mounted and the tab is visible, usage every 60 s while its dialog is open. They
 // stop when the panel goes.
+//
+// #2855: a trusted guest's View — read-only: its own agents (the status frame's list, never /api/profiles), the pane
+// every second under a "watching only" line, no identity card, Edit profile or Help. A chat-level guest is told it needs
+// Trusted access; nothing is read.
 import { html, useEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
-import { appStore, createStore, useStore } from "./app-store.js";
+import { appStore, createStore, guestPage, guestTrusted, useStore } from "./app-store.js";
 import { useLease } from "./app-ctx.js";
 import { PanelHeader, setTitle, onPanelKey, signInHref } from "./app-shell.js";
 import { InstanceSwitch } from "./instance-switch.js";
@@ -123,8 +127,11 @@ const MIN_PX = 12, MAX_PX = 22, FIT_FLOOR_PX = 6;
 
 export function ViewPanel({ route, navKey }) {
   const lease = useLease(navKey);
-  const v = useStore(viewStore);
-  const { viewOnly } = useStore(appStore);
+  const viewed = useStore(viewStore);
+  const { viewOnly, instances, ready } = useStore(appStore);
+  const guest = guestPage(), trusted = guest && guestTrusted();
+  // #2855: a guest's roster is its own agents, as its status frame lists them.
+  const v = guest ? { loaded: ready !== false, error: null, roster: (instances || []).map((i) => ({ instance_name: i.name, display_name: i.display_name, status: i.status })) } : viewed;
   // { kind: "edit" | "usage" | "help", key }: a dialog belongs to the navigation that opened it. The profile editor's
   // draft names one agent; on another navigation it is gone, never retargeted (#1448 review).
   const [dialog, setDialogState] = useState(null);
@@ -142,6 +149,7 @@ export function ViewPanel({ route, navKey }) {
 
   // The roster: now, then every 5 s while this panel is mounted and the tab is visible (a passive read).
   useEffect(() => {
+    if (guest) return;
     const reads = readStream(lease);
     const load = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
@@ -180,7 +188,7 @@ export function ViewPanel({ route, navKey }) {
 
   // Aa and ◔ are every page's (HeaderTools); Help is View's own.
   const actions = html`<${HeaderTools} view=${true} navKey=${navKey} />
-    <button type="button" class="icon-btn" onClick=${() => setDialog("help")} aria-label=${tn("helpButton")} title=${tn("helpButton")}><${Icon} name="info" /></button>`;
+    ${guest ? null : html`<button type="button" class="icon-btn" onClick=${() => setDialog("help")} aria-label=${tn("helpButton")} title=${tn("helpButton")}><${Icon} name="info" /></button>`}`;
 
   let body;
   if (v.error && !v.roster.length) body = html`<div data-trust="panel-content" class="panel-body center"><${ErrorState} message=${tn("rosterFailedShort")} onRetry=${() => navigate(location.pathname, { replace: true })} /></div>`;
@@ -188,21 +196,26 @@ export function ViewPanel({ route, navKey }) {
   else if (!v.roster.length) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="view" title=${tn("noInstances")} /></div>`;
   else if (!name) body = html`<div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div>`;
   else if (!it) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${tn("notFound", { name })} hint=${tn("notFoundHint")} /></div>`;
+  else if (guest && !trusted) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="view" title=${tn("guestNeedsTrusted")} hint=${tn("guestNeedsTrustedHint")} /></div>`;
+  else if (guest) body = html`<p data-trust="panel-content" class="v-watching" role="note">${tn("guestWatching")}</p>
+    <${Terminal} key=${name} name=${name} lease=${lease} density=${density} every=${GUEST_PANE_MS} />`;
   else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} />
     <${ViewIdentity} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
 
   return html`<div data-effect-panel="view" class="panel p-view">
     <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")}
       sub=${it ? html`<span class="status"><span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>${tn(STATUS_KEYS[it.status] || "statusUnknown")}</span>` : null}
-      nav=${it && !viewOnly ? html`<${InstanceSwitch} name=${name} current="view" />` : null}>${actions}</${PanelHeader}>
+      nav=${it && (guest ? trusted : !viewOnly) ? html`<${InstanceSwitch} name=${name} current="view" guest=${guest} />` : null}>${actions}</${PanelHeader}>
     ${body}
     ${open === "edit" && it ? html`<${EditProfile} key=${navKey} it=${it} onClose=${() => setDialog(null)} />` : null}
     ${open === "help" ? html`<${HelpDialog} onClose=${() => setDialog(null)} />` : null}
   </div>`;
 }
 
+/** #2855: how often a guest's View reads the pane (the server allows it two reads a second). */
+const GUEST_PANE_MS = 1000;
 /** The live terminal: the pane every 800 ms (passive), drawn as escaped markup, its font fitted to the pane's grid. */
-function Terminal({ name, lease, density }) {
+function Terminal({ name, lease, density, every = 800 }) {
   const term = useRef(null), pre = useRef(null);
   const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "" });
   const [problem, setProblem] = useState(null);
@@ -246,7 +259,8 @@ function Terminal({ name, lease, density }) {
       try {
         const r = await lease.fetch(`/api/pane/${encodeURIComponent(name)}`);
         if (!reads.live(token)) return;
-        if (!r.ok) { setProblem(r.status === 404 ? tn("paneUnavailable") : tn("paneFailed", { name, status: r.status })); return; }
+        if (r.status === 429) return;                      // #2855: a guest over its read limit keeps the last frame
+        if (!r.ok) { setProblem(r.status === 404 ? tn("paneUnavailable") : r.status === 403 && guestPage() ? tn("guestNeedsTrusted") : tn("paneFailed", { name, status: r.status })); return; }
         const text = await r.text();
         if (!reads.live(token) || !pre.current) return;
         const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
@@ -259,7 +273,7 @@ function Terminal({ name, lease, density }) {
       finally { reads.end(token); }
     };
     refresh();
-    lease.interval(refresh, 800);
+    lease.interval(refresh, every);
     let timer = null;
     const schedule = () => { lease.clear(timer); timer = lease.timeout(() => { grid.current.key = ""; fit(); }, 80); };
     lease.on(window, "resize", schedule);

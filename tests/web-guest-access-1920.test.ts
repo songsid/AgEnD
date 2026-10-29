@@ -49,13 +49,16 @@ describe("guestRouteDecision (the table)", () => {
     // Phase 1b opened the stream, the poll and a file (answered per recipient: web-guest-stream-1920.test.ts).
     // Step 2b opened chat, the guest's prefs (read) and profile, and the effect posters — gone with the effects (#2799).
     const later = ["/ui/effect-posters?instance=a", `/ui/effect-posters/${"e".repeat(32)}.png?instance=a`];
-    const admin = ["/status", "/api/fleet", "/api/profiles", "/api/pane/a", "/ui/org", "/ui/traffic", "/ui/cache", "/ui/teams", "/ui/tasks", "/ui/steps",
+    const admin = ["/status", "/api/fleet", "/api/profiles", "/view", "/ui/org", "/ui/traffic", "/ui/cache", "/ui/teams", "/ui/tasks", "/ui/steps",
       "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/ui/fleet", "/ui/needs",
       "/ui/fleet/agent/a", "/ui/log/a", "/settings", "/ui/img/emoji/x", "/ui/preview-status"];
     for (const p of [...later, ...admin]) expect(guestRouteDecision("GET", u(p), new Set(["a"])), p).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
     // #2855: open to a guest, each handler checking the rest: its own preferences, a command the table lets anyone run on
     // an in-scope agent, and the usage panel (as /usage in chat).
     for (const [m, p] of [["POST", "/ui/prefs"], ["POST", "/ui/command"], ["GET", "/api/ai-usage"]]) expect(guestRouteDecision(m!, u(p!), new Set(["a"])).kind, `${m} ${p}`).toBe("allow");
+    // #2855: a trusted guest's View of an in-scope agent and its search (the handlers check Trusted); out of scope: 404.
+    for (const p of ["/view/a", "/api/pane/a", "/ui/search", "/ui/search/context"]) expect(guestRouteDecision("GET", u(p), new Set(["a"])).kind, p).toBe("allow");
+    for (const p of ["/view/b", "/api/pane/b"]) expect(guestRouteDecision("GET", u(p), new Set(["a"])), p).toEqual({ kind: "deny", status: 404, error: "not found" });
     for (const [m, p] of [
       ["POST", "/ui/prompt"], ["POST", "/api/profile/a"], ["POST", "/api/card/a/banner"], ["DELETE", "/api/avatar/a"], ["POST", "/ui/chat/a"], ["PUT", "/api/settings/fleet/web"]]) {
       expect(guestRouteDecision(m!, u(p!), new Set(["a"])), `${m} ${p}`).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
@@ -219,10 +222,11 @@ describe("the gate, live: a guest scoped to `a`", () => {
     expect(fm.guestScope(ALICE).size).toBe(0);
     expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) })).status).toBe(401);
   });
-  it("/view's terminal, roster and page are not a guest's (view_access: session)", async () => {
+  it("/view's roster is never a guest's; its terminal, a trusted one's only (#2855); its page shows (and says so) (view_access: session)", async () => {
     const guest = session("guest", ALICE);
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
-    for (const p of ["/api/pane/a", "/api/profiles", "/view/a"]) expect((await raw(port, "GET", p, { cookie: cookieOf(guest) })).status, p).toBe(403);
+    const status = async (p: string) => { const r = await raw(port, "GET", p, { cookie: cookieOf(guest) }); return [r.status, r.status === 403 ? JSON.parse(r.body).error : null]; };
+    expect([await status("/api/pane/a"), await status("/api/profiles"), (await status("/view/a"))[0]]).toEqual([[403, "guest_not_trusted"], [403, "guest_forbidden"], 200]);
   });
   it("the public link's gateway path: the same gate", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));

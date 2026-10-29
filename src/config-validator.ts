@@ -753,9 +753,11 @@ function validateWebGuests(guests: unknown, config: Record<string, any>, rooms: 
       for (const [k, grant] of Object.entries(g.grants as Record<string, unknown>)) {
         const at = `web.guests.grants.${k}`;
         if (!accountKey(k)) { err(at, "the key must be <connection id>:<user id>"); continue; }
-        if (!isObj(grant)) { err(at, "must be { name?, instances: [instance…] }"); continue; }
+        if (!isObj(grant)) { err(at, "must be { name?, instances: [instance…], level? }"); continue; }
         const gr = grant as Record<string, unknown>;
-        for (const key of Object.keys(gr)) if (key !== "name" && key !== "instances") err(`${at}.${key}`, "unknown key (name, instances)");
+        for (const key of Object.keys(gr)) if (key !== "name" && key !== "instances" && key !== "level") err(`${at}.${key}`, "unknown key (name, instances, level)");
+        // #2855: chat (the default) or trusted (adds a read-only View and search).
+        if (gr.level !== undefined && gr.level !== "chat" && gr.level !== "trusted") err(`${at}.level`, "must be chat or trusted");
         if (gr.name !== undefined && (typeof gr.name !== "string" || gr.name.length > 100)) err(`${at}.name`, "must be a text of at most 100 characters");
         const names = gr.instances;
         if (!Array.isArray(names) || names.length > 200 || !names.every((n) => typeof n === "string" && n.length > 0 && n.length <= 128)) { err(`${at}.instances`, "must be a list of instance names"); continue; }
