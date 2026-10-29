@@ -60,7 +60,8 @@ describe("the web-dashboard skill", () => {
     expect(SKILL).toContain(`Up to ${UPLOAD_LIMITS.maxFiles} files, ${UPLOAD_LIMITS.maxFileBytes / MB} MB each, ${UPLOAD_LIMITS.maxTotalBytes / MB} MB per message`);
     expect(SKILL).toContain(`${UPLOAD_MB_RANGE.min}–${UPLOAD_MB_RANGE.max}`);
     expect(SKILL).toContain(`Local: ${DEFAULT_SESSION_POLICY.local.absoluteMs / HOUR} h from sign-in and ${DEFAULT_SESSION_POLICY.local.idleMs / HOUR} h unused`);
-    expect(SKILL).toContain(`always ${DEFAULT_SESSION_POLICY.gateway.absoluteMs / HOUR} h / ${DEFAULT_SESSION_POLICY.gateway.idleMs / 60_000} min unused`);
+    expect(SKILL).toContain(`Public link: as long as the link, at most ${DEFAULT_SESSION_POLICY.gateway.absoluteMs / HOUR} h`);
+    expect(SKILL).toContain(`${DEFAULT_SESSION_POLICY.gateway.idleMs / 60_000} min unused, and they end when the link closes`);
     expect(SKILL).toContain(`At most ${MAX_WEB_SESSIONS} sessions`);
     expect(SKILL).toContain(`valid ${LOGIN_CODE_TTL_MS / 60_000} minutes, single use`);
     expect(SKILL).toContain(`${MAX_LOGIN_CODE_ATTEMPTS} wrong tries use it up`);

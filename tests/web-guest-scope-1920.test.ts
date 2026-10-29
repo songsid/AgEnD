@@ -177,13 +177,13 @@ describe("an emptied scope or guests turned off ends guest sessions (§3.5)", ()
 });
 
 describe("a guest's session: its own policy and its own room (§5.4)", () => {
-  it("12 h absolute / 2 h idle by default; never longer than the surface's (the public link's 4 h / 30 min wins)", () => {
+  it("12 h absolute / 2 h idle by default; never longer than the surface's (the public link's 8 h / 30 min wins)", () => {
     let now = 1_000_000;
     const s = new WebSessionStore({ now: () => now });
     const local = s.create({ tier: "guest", surface: "local", label: "g", tokenEpoch: EPOCH, owner: ALICE }).record;
     expect([local.absoluteExpiry - now, local.idleExpiry - now]).toEqual([12 * HOUR, 2 * HOUR]);
     const gw = s.create({ tier: "guest", surface: "gateway", label: "g", tokenEpoch: EPOCH, owner: ALICE, exposureId: "a".repeat(32) }).record;
-    expect([gw.absoluteExpiry - now, gw.idleExpiry - now]).toEqual([4 * HOUR, 30 * MINUTE]);
+    expect([gw.absoluteExpiry - now, gw.idleExpiry - now]).toEqual([8 * HOUR, 30 * MINUTE]);
     const admin = s.create({ tier: "admin", surface: "local", label: "a", tokenEpoch: EPOCH }).record;
     expect(admin.absoluteExpiry - now, "an admin's is unchanged").toBe(48 * HOUR);
     const short = new WebSessionStore({ now: () => now, localPolicy: () => ({ absoluteMs: 1 * HOUR, idleMs: 1 * HOUR }) });

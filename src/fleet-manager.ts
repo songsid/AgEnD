@@ -6695,10 +6695,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         dataDir: this.dataDir,
         onWarn: message => this.logger.warn(message),
         // #1620: fleet.yaml's web.session.local, read at every check — a Settings save or a reload applies at once
-        // (shortening ends the sessions it now outlives). The public link's policy stays fixed.
+        // (shortening ends the sessions it now outlives). The public link's own cap stays fixed.
         localPolicy: () => localSessionPolicy(this.fleetConfig?.web?.session?.local),
         // #1920 §5.4: a guest's, from web.guests.session (never longer than the surface's own).
         guestPolicy: () => guestSessionPolicy(this.fleetConfig?.web?.guests?.session),
+        // A session over the temporary link ends with the link (its TTL, at most 8 h on a quick tunnel).
+        exposureEnd: id => this.publicWebLink?.endOf(id) ?? null,
       });
       this.enforceGuestSwitch();                     // #1920: guests off while the fleet was down
     }

@@ -19,9 +19,9 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 const errorsOf = (web: unknown): string[] => validateFleetConfig({ instances: {}, web }).errors.map(e => `${e.path}: ${e.message}`);
 
 describe("#1670: the default local session is 48 h / 48 h", () => {
-  it("the default policy is 48 h absolute, 48 h idle; the public link's stays 4 h / 30 min", () => {
+  it("the default policy is 48 h absolute, 48 h idle; the public link's is 8 h / 30 min (#2850)", () => {
     expect(DEFAULT_SESSION_POLICY.local).toEqual({ absoluteMs: 48 * H, idleMs: 48 * H });
-    expect(DEFAULT_SESSION_POLICY.gateway).toEqual({ absoluteMs: 4 * H, idleMs: 30 * M });
+    expect(DEFAULT_SESSION_POLICY.gateway).toEqual({ absoluteMs: 8 * H, idleMs: 30 * M });
   });
 
   it("a missing config gives 48 / 48 — no web.session at all, an empty one, or a store with no policy given", () => {

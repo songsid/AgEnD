@@ -66,7 +66,8 @@ of their own (`web.preview_on_public_link`, default on).
 **Sessions.**
 - Local: 48 h from sign-in and 48 h unused (`web.session.local.absolute_hours` / `idle_hours`, 1–720). Background
   polling and the live stream don't count as use. Sessions survive a fleet restart.
-- Public link: always 4 h / 30 min unused, and they end when the link closes.
+- Public link: as long as the link, at most 8 h (never longer than the account's own limit: `web.session.local` for
+  an admin, `web.guests.session` for a guest), 30 min unused, and they end when the link closes.
 - At most 8 sessions; the least recently used is dropped.
 - The session menu (sidebar): "Signed in · …", "Ends by <time> at the latest, or after <span> unused". With more than
   one session it lists **Signed-in devices** (this one marked "· This device", others with **Sign out**) and **Sign
@@ -654,7 +655,7 @@ off).
 - "Cloudflare gave no public address in time" — only after a real 60 s wait;
 - no steps at all: `web.public_link.allow_public: false`, or the sender is not a fleet admin.
 
-**"Your session has ended."** It lasted its 48 h (or the idle limit), a public link closed or ran 4 h / 30 min idle,
+**"Your session has ended."** It lasted its 48 h (or the idle limit), a public link closed or ran out (at most 8 h) or sat 30 min idle,
 or someone ran `/web revoke`, **Sign out everywhere** or `agend web-token rotate`. Get a new code: `/web`, **Send me
 a new code**, or `agend web` on the host. "No session — open the dashboard link again" means the browser keeps no
 cookies for the site.
