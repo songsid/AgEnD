@@ -290,6 +290,24 @@ describe("live: a guest scoped to `a`", () => {
     expect(JSON.parse((await late).body).error).toBe("guest_command_running");
     release(); expect((await other).status).toBe(200);
     slow.mockRestore();
+    // #2857 review: a body held back past the check on arrival is counted against the budget when it comes in — ten others
+    // ran meanwhile, so it is refused (never an eleventh command in the minute).
+    fm.guestCommandRuns = new (fm.guestCommandRuns.constructor)(undefined, { perWindow: 10, windowMs: 60_000 });
+    const held = JSON.stringify({ instance: "a", command: "ctx" });
+    let send!: () => void;
+    const pending = new Promise<Raw>((resolve, reject) => {
+      const r = request({ host: "127.0.0.1", port, method: "POST", path: "/ui/command", headers: { host: `127.0.0.1:${port}`, ...write(guest), "content-length": String(Buffer.byteLength(held)) } },
+        (res) => { let b = ""; res.on("data", (c: Buffer) => { b += c.toString(); }); res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b })); });
+      r.on("error", reject); r.flushHeaders();
+      send = () => r.end(held);
+    });
+    await new Promise((r) => setTimeout(r, 100));                // past the check on arrival
+    vi.spyOn(fm, "webCommand").mockResolvedValue({ status: 200, body: { text: "ok" } });
+    for (let i = 0; i < 10; i++) expect((await cmd({ instance: "a", command: "ctx" })).status, `run ${i + 1}`).toBe(200);
+    send();
+    const late2 = await pending;
+    expect([late2.status, JSON.parse(late2.body).error]).toEqual([429, "guest_commands_rate_limited"]);
+    vi.mocked(fm.webCommand).mockRestore();
     // The status frame tells its palette which commands it may run on each agent.
     expect(fm.getUiStatus().instances.find((i: { name: string }) => i.name === "a").guest_commands).toEqual(["ctx", "cancel", "btw", "steer"]);
   });

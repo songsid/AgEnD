@@ -2251,6 +2251,9 @@ export function handleWebRequest(
         const refused = guestChatRefusal(guest, instance);
         if (refused) { json(res, refused.status, { error: refused.error }); return; }
         if (guestCommandsRunning.has(account)) { json(res, 429, { error: "guest_command_running" }); return; }
+        // The budget again, now (#2857 review): commands that ran while this body was on its way have counted.
+        const budget = ctx.guestCommandRuns?.check(account);
+        if (budget && !budget.ok) { res.setHeader("Retry-After", String(budget.retry_after_s)); json(res, 429, { error: "guest_commands_rate_limited", retry_after_s: budget.retry_after_s }); return; }
         guestCommandsRunning.add(account);
         ctx.guestCommandRuns?.record(account);
       }
