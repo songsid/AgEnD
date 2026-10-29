@@ -1,5 +1,3 @@
-import { canvasWorkerEnabled } from "./web-experimental.js";
-import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
 import { sameAccount } from "./web-guest-access.js";
 import { withAppIconLinks } from "./web-icons.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -65,7 +63,6 @@ export const LOGIN_PAUSED_MESSAGE = "Too many wrong codes — sign-in is paused 
 const MAX_LOGIN_BODY = 1024;
 
 export interface AuthApiContext {
-  readonly fleetConfig?: { web?: { experimental?: { canvas_worker?: boolean } } } | null;
   readonly webToken: string | null;
   readonly webSessions: WebSessionStore | null;
   readonly webLoginCodes: WebLoginCodes | null;
@@ -125,13 +122,6 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-prefs.js",
     // #2726: the setup host's words and codes in both languages (static tables, no data), for the Setup wizard and Apply.
     "setup-host-text.js",
-    // #1629: static session-bound owner preference client; every data route remains session-gated.
-    "owner-effect-prefs.js", "feature-flags.js", "effect-display-metadata.js",
-    // #1629: static host runtime closure; effect data stays behind session/epoch routes.
-    "effect-posters.js", "effect-poster-reader.js",
-    "effect-app-runtime.js", "effect-trial-source.js", "effect-owner-source.js", "effect-owner-regions.js", "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
-    "effect-stock-trust.js", "effect-stock-snapshot.js", "effect-trial-stage.js", "effect-trial-shadow.js", "effect-profiles.js", "effect-profiler.js",
-    "effect-baseline.js", "effect-frame.js", "effect-geometry.js", "effect-host-style.js", "effect-cursor.js", "effect-policy.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).
     "owner-css.js",
     // #1629: agents' themes on their own chat surfaces (static code; the themes are read behind the gate).
@@ -140,13 +130,12 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "identity-card.js", "card-strings.js",
     // #1629 r4-4: widgets drawn by the page's own components (static code; the widgets are read behind the gate).
     "agent-widget.js",
-    // #2117: the per-device "follow the system's reduced-motion setting" switch, shared by ambient and Canvas Worker effects.
+    // #2117: the per-device "follow the system's reduced-motion setting" switch for ambient effects.
     "fx-motion.js",
     // #1958: identity colours on the page and the Color dialog (static code; the colours come in the status frame).
     "identity-color.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
-  "effect-trial.css": { file: join("shared", "effect-trial.css"), type: "text/css; charset=utf-8" },
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
 };
 
@@ -258,7 +247,6 @@ export function handleAuthRequest(
   }
 
   if (path.startsWith("/assets/")) {
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && isCanvasWorkerHttpPath(path)) { json(res, 404, { error: "canvas_worker_experimental" }); return true; }
     const asset = method === "GET" ? ASSETS[path.slice("/assets/".length)] : undefined;
     if (!asset) { json(res, 404, { error: "not found" }); return true; }
     try {

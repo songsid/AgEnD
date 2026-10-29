@@ -19,7 +19,6 @@
  * after it.
  */
 import { randomBytes } from "node:crypto";
-import { effectTrialOffer, type EffectTrialOffer } from "./web-effect-trials.js";
 import { webTextLinks, type TextLink } from "./topic-link.js";
 import { WEB_REACTIONS_MAX, webReactionsOf } from "./web-reactions.js";
 
@@ -102,8 +101,6 @@ export interface WebChatMessage {
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
   buttons?: WebChatButtons;
-  /** #1629: host display metadata only; volatile and never restored from disk. */
-  effectTrial?: Readonly<EffectTrialOffer>;
   /**
    * A person's click on a reply button (user messages only): the page shows the button's label as a chip instead of
    * `text` — the line the agent was given, value and all. `of`: the buttons' set id, to link to the reply (live only).
@@ -370,7 +367,7 @@ export class WebChatHistory {
 
   private persist(instance: string): void {
     if (!this.store) return;
-    this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).filter(m => !m.effectTrial).map((m) => this.stored(m)));
+    this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).map((m) => this.stored(m)));
   }
 
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
@@ -479,8 +476,8 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
-    return this.recordEntry(msg, null);
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+    return this.recordEntry(msg);
   }
 
   /**
@@ -489,14 +486,7 @@ export class WebChatHistory {
    */
   reserve(): number { return this.nextId++; }
 
-  /** Host-only producer seam. Generic records cannot promote sender/role strings into a Try action. */
-  recordEffectTrial(instance: string, offer: unknown, ts: string): WebChatMessage | null {
-    const trial = effectTrialOffer(offer);
-    if (typeof instance !== "string" || !instance.length || instance.length > 128 || !trial) return null;
-    return this.recordEntry({ instance, sender: "agend", role: "status", text: "", ts }, trial);
-  }
-
-  private recordEntry(msg: Parameters<WebChatHistory["record"]>[0], trial: ReturnType<typeof effectTrialOffer>): WebChatMessage {
+  private recordEntry(msg: Parameters<WebChatHistory["record"]>[0]): WebChatMessage {
     // #1774: a reserved place (this boot's, not yet used) — else the next. A late one is recorded where it was reserved,
     // and counts as seen now (seenSeq): a cursor handed out while it waited moves past it, and is still sent it.
     const reserved = typeof msg.reserved === "number" && Number.isSafeInteger(msg.reserved) && msg.reserved > 0 && msg.reserved < this.nextId
@@ -515,7 +505,6 @@ export class WebChatHistory {
     };
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
-    if (trial) entry.effectTrial = trial;
     const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
     if (click) entry.click = click;
     // #1990: only a status line (the server's own text) links; never an agent's or a person's message.

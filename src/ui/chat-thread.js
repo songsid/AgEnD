@@ -8,7 +8,6 @@
 // Unrelated updates (a new message, another message's tick) stop nothing (#1306 §6.2, #1408 §4).
 import "./chat-render.js";
 import "./preview.js";
-import { canvasWorkerEnabled, onCanvasWorkerChange, onCanvasMetadataChange, readCanvasTrialMessage } from "/assets/feature-flags.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
 import { chatTime, chatTimeFull, onDayChange } from "./chat-time.js";
 import { textLinkSegments } from "/assets/app-route.js";
@@ -120,7 +119,7 @@ export function createThread(list, scroller, opts) {
     if (el.textContent !== v) el.textContent = v;
   }
   // #1770: "today" ends at the fleet's midnight; the labels are rewritten then (and on every render), while there are any.
-  let offDay = null, trialTimer = null;
+  let offDay = null;
   function armDay() {
     if (nodes.size && !offDay) offDay = onDayChange(() => { for (const v of nodes.values()) timeLabel(v.node); });
     else if (!nodes.size && offDay) { offDay(); offDay = null; }
@@ -133,8 +132,6 @@ export function createThread(list, scroller, opts) {
     // is kept by: it is written into the node (timeLabels) — crossing midnight relabels in place and reloads no preview.
     const time = x.ts ? `<span class="time" data-ts="${escAttr(x.ts)}" title="${escAttr(chatTimeFull(x.ts))}"></span>` : `<span class="time"></span>`;
     if (x.outgoing) return outgoingHtml(x);
-    const trial = readCanvasTrialMessage(x);
-    if (trial) return canvasWorkerEnabled() ? trialHtml(trial, time, x) : "";
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
@@ -213,26 +210,7 @@ export function createThread(list, scroller, opts) {
       ? `<button type="button" class="click-link" data-act="showButtons" data-arg="${escAttr(of)}" title="${escAttr(tr("chat.clickShow"))}">${inner}</button>`
       : `<span class="click-text">${inner}</span>`}</div>`;
   }
-  function trialNow() { try { const t = opts.serverNow ? opts.serverNow() : Date.now(); return Number.isFinite(t) ? t : Infinity; } catch { return Infinity; } }
-  const trialReasons = new Set(["checking", "localAdmin", "chatChanged", "busy", "safe", "effectsOff", "reducedMotion", "saveData", "unsupported", "transport", "inactive", "dialog", "expired"]);
-  function trialStatus(message) {
-    const reason = opts.effectTrialStatus?.(message);
-    return reason === "ready" || trialReasons.has(reason) ? reason : opts.canTryEffect?.(message) === true ? "ready" : "localAdmin";
-  }
-  function trialHtml(offer, time, message) {
-    const reason = trialNow() >= offer.expiresAt ? "expired" : PUBLIC_LINK() ? "localAdmin" : trialStatus(message);
-    const rawFailure = opts.effectTrialFailure?.(message), failure = typeof rawFailure === "string" ? rawFailure.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80) : null;
-    const available = reason === "ready", fix = !PUBLIC_LINK() && !available && reason !== "expired" && reason !== "checking" && typeof opts.fixEffectTrial === "function";
-    const label = available ? "chat.effectTrialStart" : reason === "busy" ? "chat.effectTrialStopOther" : reason === "localAdmin" ? "chat.effectTrialSignIn" : reason === "reducedMotion" ? "chat.effectTrialPlayMotion" : "chat.effectTrialSettings";
-    const button = available || fix ? `<button type="button" class="btn btn-sm effect-trial-start" data-act="effectTrial" data-arg="${escAttr(msgKey(message))}">${escAttr(tr(label))}</button>` : "";
-    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(available ? "chat.effectTrialLocal" : "chat.effectTrialReason_" + reason))}</div>${failure ? `<div class="effect-trial-failure" role="status">${escAttr(tr("chat.effectTrialStopped"))}: ${escAttr(failure)}</div>` : ""}${button}</div></div></div>`;
-  }
-  function armTrials() {
-    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
-    if (!canvasWorkerEnabled()) return;
-    const now = trialNow(), next = msgs.map(x => readCanvasTrialMessage(x)).filter(x => x && x.expiresAt > now).reduce((n, x) => Math.min(n, x.expiresAt), Infinity);
-    if (Number.isFinite(next)) trialTimer = setTimeout(() => { trialTimer = null; render(msgs); }, Math.max(1, Math.min(2147483647, next - now)));
-  }
+
   /**
    * #1672: a status line (another instance's message, a daemon notice) is muted, read-only plain text — never Markdown,
    * a preview card, a button or a person's bubble. Checked before isUser, which reads the sender: a fleet name need not
@@ -668,7 +646,6 @@ export function createThread(list, scroller, opts) {
   function render(next, renderOpts = {}) {
     const stick = pinned || nearBottom();
     msgs = next || [];
-    armTrials();
     if (!msgs.length) {
       for (const v of nodes.values()) stopIn(v.node);
       nodes.clear();
@@ -693,11 +670,7 @@ export function createThread(list, scroller, opts) {
   }
   /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
   function draw(drawOpts) {
-    const shown = msgs.slice(startIndex()).filter(message => {
-      // Volatile host offer records are hidden off and while their on-only parser is loading.
-      const hostOffer = message?.role === "status" && message.sender === "agend" && Object.hasOwn(message, "effectTrial") && message.effectTrial != null;
-      return !hostOffer || canvasWorkerEnabled() && readCanvasTrialMessage(message) !== undefined;
-    });
+    const shown = msgs.slice(startIndex());
     const keep = new Set(shown.map(msgKey));
     for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
     let prev = null, added = 0;
@@ -711,7 +684,7 @@ export function createThread(list, scroller, opts) {
         const stopped = have ? stopIn(have.node) : [];
         const node = msgNode(html, x, stopped);
         if (have) have.node.replaceWith(node); else added++;
-        have = { html, node, x, trialButton: node.querySelector(".effect-trial-offer > button.effect-trial-start") }; nodes.set(key, have);
+        have = { html, node, x }; nodes.set(key, have);
       } else { have.x = x; timeLabel(have.node); }
       const want = prev ? prev.nextSibling : list.firstChild;
       // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
@@ -811,13 +784,6 @@ export function createThread(list, scroller, opts) {
     else if (act === "replyButton") {
       const m = /^([0-9a-f]{32}):(\d{1,2})$/.exec(el.dataset.arg || "");
       if (m && opts.clickReplyButton) opts.clickReplyButton(m[1], Number(m[2]));
-    } else if (act === "effectTrial") {
-      // Only the current host-produced keyed card and a real local click can request admission. No token is read from DOM.
-      const key = el.dataset.arg, row = msgs.find(x => msgKey(x) === key), owner = nodes.get(key), node = owner?.node, offer = readCanvasTrialMessage(row);
-      if (PUBLIC_LINK() || e.defaultPrevented || e.isTrusted !== true || owner?.trialButton !== el || el.className !== "btn btn-sm effect-trial-start" || !node?.contains(el) || el.closest(".effect-trial-offer")?.getAttribute("data-trust") !== "thread-control"
-        || !offer || trialNow() >= offer.expiresAt) return;
-      if (trialStatus(row) === "ready" && opts.canTryEffect?.(row) === true) opts.startEffectTrial?.(row);
-      else opts.fixEffectTrial?.(row, trialStatus(row));
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
     else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
@@ -841,7 +807,7 @@ export function createThread(list, scroller, opts) {
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   /**
    * #2053: kept for a later visit — the chat left as it always did (every preview stops: "leave"), but its drawn nodes
-   * stay. Nothing of it runs meanwhile: no timer (day labels, polls, effect trials, filling in), no size observer; the
+   * stay. Nothing of it runs meanwhile: no timer (day labels, polls, filling in), no size observer; the
    * caller drops its subscriptions. Shown again: attach, then render — only what changed is drawn.
    */
   function park() {
@@ -850,7 +816,6 @@ export function createThread(list, scroller, opts) {
     if (P()) P().stopAll("leave");
     for (const node of list.querySelectorAll(".html-card[data-att], .text-card[data-att]")) { const f = cardDrop.get(node); if (f) f(); }
     if (ro) { ro.disconnect(); ro = null; }
-    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
     if (growTimer !== null) clearTimeout(growTimer);
     growTimer = growFrame = null;
@@ -868,12 +833,9 @@ export function createThread(list, scroller, opts) {
     if (ro) { ro.observe(list); ro.observe(sc); }
   }
   /** `own`: only this thread's previews stop (a thread let go while another chat is in view); else every one, as leaving. */
-  const redrawFeature = () => { if (!disposed && !parked) render(msgs); };
-  const featureOff = onCanvasWorkerChange(redrawFeature), metadataOff = onCanvasMetadataChange(redrawFeature);
   function dispose(own = false) {
-    disposed = true; featureOff(); metadataOff();
+    disposed = true;
     if (!parked) watchReader(scroller, false);
-    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();
     if (P()) { if (own) P().stopIn(list); else P().stopAll("leave"); }
     nodes.clear();

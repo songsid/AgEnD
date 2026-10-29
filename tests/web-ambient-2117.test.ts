@@ -41,7 +41,6 @@ const { effectiveAppearanceLimits } = await import("../src/web-appearance-limits
 const { WebSettingsTools } = await import("../src/web-settings-tools.js");
 const { appearanceView, previewSvg } = await import("../src/web-appearance-view.js");
 const { ModStore } = await import("../src/web-mod-store.js");
-const { AgentMods } = await import("../src/web-mod-agent.js");
 const { WebPrefsStore, OPERATOR } = await import("../src/web-prefs.js");
 const { OwnerCssStore } = await import("../src/web-owner-css-store.js");
 
@@ -578,9 +577,9 @@ describe("the page: the chat", () => {
   });
 });
 
-describe("the person's mods and the agent's export", () => {
+describe("the person's mods", () => {
   const limits = effectiveAppearanceLimits(undefined).limits;
-  const ctx = () => ({ agendVersion: "2.3.0", limits, effects: null });
+  const ctx = () => ({ agendVersion: "2.3.0", limits });
   const sha = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
   const file = (b: Uint8Array | string) => { const bytes = Buffer.from(b as any); return { sha256: sha(bytes), b64: bytes.toString("base64") }; };
   function setup() {
@@ -589,11 +588,10 @@ describe("the person's mods and the agent's export", () => {
     const themes = new ThemeStore(dir);
     const prefs = new WebPrefsStore(dir, { exists: () => true } as never);
     const css = new OwnerCssStore(dir, prefs);
-    const mods = new ModStore(dir, { themes, prefs, ownerCss: css, effects: null, context: ctx, isKnownInstance: (n: string) => n === "alpha", prefsIdentity: OPERATOR, clock: () => clock });
+    const mods = new ModStore(dir, { themes, prefs, ownerCss: css, context: ctx, isKnownInstance: (n: string) => n === "alpha", prefsIdentity: OPERATOR, clock: () => clock });
     const web = { themes: { agent_edit: true } };
     const app = new WebAppearance(themes, () => web, () => {}, new AppearanceLimiter(() => clock), () => clock);
-    const agent = new AgentMods({ themes, mods, limiter: app.limiter, webConfig: () => web, context: ctx, notice: () => {}, changed: () => {}, clock: () => clock });
-    return { themes, mods, app, agent, tick: (ms: number) => { clock += ms; } };
+    return { themes, mods, app, tick: (ms: number) => { clock += ms; } };
   }
   const bundleText = JSON.stringify({ format: "agend-mod", v: 1,
     manifest: { name: "petals", version: "1.0.0", title: "Petals", contents: { ambient: "ambient.json" } },
@@ -608,16 +606,6 @@ describe("the person's mods and the agent's export", () => {
     expect(r).toMatchObject({ ok: true, applied: ["ambient"] });
     const rec = s.themes.get("alpha");
     expect([rec.placements.ambient.loop?.by, rec.placements.ambient.click?.spec.preset, rec.assets.map(a => a.slot)]).toEqual(["human", "burst-on-click", ["glyph"]]);
-  });
-  it("export_web_mod carries the ambient the agent set itself, never one a person set", () => {
-    const s = setup();
-    s.app.humanSetAmbient("alpha", PETALS);
-    expect(s.app.handleTool("alpha", "set_web_ambient", STARS)).toMatchObject({ kind: "click" });
-    const out = s.agent.handle("alpha", "export_web_mod", { name: "mine", version: "1.0.0" }) as any;
-    const doc = JSON.parse(Buffer.from(out.files[0].data_b64, "base64").toString("utf8"));
-    const amb = JSON.parse(Buffer.from(doc.files["ambient.json"].b64, "base64").toString("utf8"));
-    expect(Object.keys(amb)).toEqual(["click"]);
-    expect(B.checkModBundle(JSON.stringify(doc), ctx()).ok).toBe(true);
   });
 });
 
@@ -717,25 +705,19 @@ describe("the wiring", () => {
 });
 
 describe("the page: the one-time reduced-motion note", () => {
-  async function mountNote(storage: Record<string, string>, reduce: boolean, withAmbient = true, url?: string, canvasPlaying = false) {
+  async function mountNote(storage: Record<string, string>, reduce: boolean, withAmbient = true, url?: string) {
     const env = await pageLoad({ storage, reduce, ...(url ? { url } : {}) });
     const { P, themes, amb } = env;
     themes.themesStore.set({ ambient: withAmbient ? { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } : {} });
     const pre = await import("/assets/preact.module.js");
-    pre.render(P.h("div", { class: "chat-main" }, P.h(amb.AmbientMotionNote, { name: "alpha", canvasPlaying })), pg!.root); await settle(4);
+    pre.render(P.h("div", { class: "chat-main" }, P.h(amb.AmbientMotionNote, { name: "alpha" })), pg!.root); await settle(4);
     return { ...env, note: () => pg!.root.querySelector(".amb-note") };
   }
-  it("a CW-only chat uses the same one-time note and protects its controls", async () => {
-    const first = await mountNote({}, true, false, undefined, true);
-    expect(first.note()).not.toBeNull(); expect(first.note()!.getAttribute("data-trust")).toBe("thread-control");
-    const motion = await import("/assets/fx-motion.js");
-    first.note()!.querySelector(".amb-note-off")!.click(); await settle(4);
-    expect(motion.motionBlocked()).toBe(true); expect(first.note()).toBeNull();
-  });
-  it("reevaluates the shared note when OS motion changes even if playback stays shown", async () => {
+  it("reevaluates the shared note when OS motion changes while the ambient stays shown", async () => {
     const env = await pageLoad({ reduce: false });
+    env.themes.themesStore.set({ ambient: { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } });
     const pre = await import("/assets/preact.module.js"), motion = await import("/assets/fx-motion.js");
-    pre.render(env.P.h(env.amb.AmbientMotionNote, { name: "alpha", canvasPlaying: true }), pg!.root); await settle(4);
+    pre.render(env.P.h(env.amb.AmbientMotionNote, { name: "alpha" }), pg!.root); await settle(4);
     expect(pg!.root.querySelector(".amb-note")).toBeNull();
     (globalThis as any).matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
     motion.setFollowsReducedMotion(false); await settle(4);
@@ -754,7 +736,7 @@ describe("the page: the one-time reduced-motion note", () => {
     const again = await mountNote({ agend_fx_motion_note_seen: "1" }, true);
     expect(again.note()).toBeNull();
   });
-  it("the shared helper on its own (Canvas Worker effects may use it): due only for a clear system yes, not following, not seen", async () => {
+  it("the shared helper on its own: due only for a clear system yes, not following, not seen", async () => {
     const cases: Array<[Record<string, string>, boolean | "throws", boolean]> = [
       [{}, true, true], [{}, false, false], [{}, "throws", false],
       [{ agend_fx_follow_reduced_motion: "1" }, true, false], [{ agend_fx_motion_note_seen: "1" }, true, false],

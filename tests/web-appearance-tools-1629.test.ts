@@ -77,7 +77,6 @@ function tools(opts: { big?: boolean; clock?: () => number; frame?: (name: strin
   };
   const asset = (name: string, aid: string) => { const k = Object.keys(ids).find(x => ids[x] === aid && x.startsWith(name + ":")); return k ? { bytes: pics[k]!, mime: "image/png" } : null; };
   const t = new AppearanceTools({
-    canvasWorkerEnabled: () => true, // Existing appearance contract with the experimental feature enabled.
     frame: opts.frame ?? ((name) => ({ name, display_name: name === "a" ? "Agent <A>" : "Agent B", avatar: { kind: "initial", text: name.toUpperCase() }, theme_avatar: { kind: "image", src: `/ui/img/theme/${name}/${themes[name].avatar}` }, theme_accent: themes[name].accent })),
     theme: (name) => ({ theme: themes[name], locked: false }),
     card: (name) => (name === "a" ? { portrait: { id: ids["a:portrait"]!, by: "agent", src: "/api/card/a/portrait" }, banner: { id: ids["a:banner"]!, by: "human", src: "/api/card/a/banner" }, tagline: { text: "Reviews <b>PRs</b>", by: "human" }, bio: { text: "one\ntwo", by: "agent" } } : {}),
@@ -95,8 +94,8 @@ describe("get_web_appearance", () => {
   it("the caller's look: face, ring, card field by field, theme per mode, lock and limits — nothing of another instance", () => {
     const { t, ids } = tools();
     const a = t.handle("a", "get_web_appearance", { name: "b" }) as Record<string, any>;   // a stray target is ignored
-    expect([a.name, a.avatar, a.ring, a.card.tagline, a.card.portrait.by, a.working_label, a.locked, a.agent_edit, a.limits, a.effects, a.widgets])
-      .toEqual(["a", { source: "theme", url: `/ui/img/theme/a/${ids["a:avatar"]}` }, { color: "#8b5cf6", source: "theme" }, { text: "Reviews <b>PRs</b>", by: "human" }, "agent", "Brewing <now>", false, true, { changes: 10 }, [], []]);
+    expect([a.name, a.avatar, a.ring, a.card.tagline, a.card.portrait.by, a.working_label, a.locked, a.agent_edit, a.limits, "effects" in a, a.widgets])
+      .toEqual(["a", { source: "theme", url: `/ui/img/theme/a/${ids["a:avatar"]}` }, { color: "#8b5cf6", source: "theme" }, { text: "Reviews <b>PRs</b>", by: "human" }, "agent", "Brewing <now>", false, true, { changes: 10 }, false, []]);
     expect([a.theme.dark.accent, a.theme.light.bg, a.theme.dark.bg]).toEqual(["#8b5cf6", "#ffffff", "#212121"]);
     expect(JSON.stringify(a)).not.toMatch(/Agent B|B's label|#00ff00/);
   });

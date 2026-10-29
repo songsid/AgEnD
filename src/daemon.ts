@@ -30,13 +30,12 @@ import { createTranscriptSource, type TranscriptSource } from "./transcript-sour
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet, toolsFor } from "./tool-permissions.js";
-import { TOOLS, toolsWithCanvasWorker } from "./channel/mcp-tools.js";
+import { TOOLS } from "./channel/mcp-tools.js";
 import { dashboardAccessProblem, dashboardFeaturesOff, withoutFeatures } from "./dashboard-permissions.js";
 import { getAgendHome } from "./paths.js";
-import { readCanvasWorkerEnabled, scopedFleetConfigEnvironment } from "./web-experimental.js";
-import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
+import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, writeModFile, writePreview } from "./web-asset-parts.js";
+import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
@@ -117,15 +116,6 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   set_web_widget: "fleet_set_web_widget", remove_web_widget: "fleet_remove_web_widget",
   // #2117: its own declarative ambient.
   set_web_ambient: "fleet_set_web_ambient", clear_web_ambient: "fleet_clear_web_ambient",
-  // r4-5b: mods — an export's file is written here, a proposal's file read here (on the agent's side).
-  export_web_mod: "fleet_export_web_mod", propose_web_mod: "fleet_propose_web_mod",
-  upload_web_effect: "fleet_upload_web_effect",
-  list_web_effects: "fleet_list_web_effects",
-  preview_web_effect: "fleet_preview_web_effect",
-  profile_web_effect: "fleet_profile_web_effect",
-  apply_web_effect: "fleet_apply_web_effect",
-  remove_web_effect: "fleet_remove_web_effect",
-  delete_web_effect: "fleet_delete_web_effect",
   // #2578: its own character in the Office view — the args as they are (the fleet checks them).
   office_view: "fleet_office_view", office_set: "fleet_office_set",
   // #2692: the skin packs — check and upload read the pack here (web-office-pack-read.ts) and send its bytes in parts.
@@ -10835,59 +10825,11 @@ export class Daemon extends EventEmitter {
           reply(written, undefined);
           return;
         }
-        if (tool === "export_web_mod") {
-          // The fleet builds the file (whole, or in parts); it is written here, in the working directory.
-          const first = await ask(args);
-          if (first.error) { reply(null, first.error); return; }
-          let failed: string | undefined;
-          const firstResult = (first.result && typeof first.result === "object" ? first.result : {}) as Record<string, unknown>;
-          const got = await receiveFiles(firstResult, async (payload) => {
-            const r = await ask(payload);
-            if (r.error) { failed = r.error; return { error: r.error }; }
-            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
-          }, { name: MOD_FILE, idKey: "transfer", what: "export", maxParts: MOD_MAX_PARTS });
-          if (failed) { reply(null, failed); return; }
-          if ("error" in got) { reply(got, undefined); return; }
-          const written = await writeModFile(got.files, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
-          if ("error" in written) { reply(null, `export_web_mod: ${written.error}`); return; }
-          reply({ ...written, ...(firstResult.effects_omitted ? { effects_omitted: firstResult.effects_omitted } : {}) }, undefined);
-          return;
-        }
-        if (tool === "propose_web_mod") {
-          const read = await readAgentFile(args.file, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name, maxBytes: MOD_UPLOAD_MAX_BYTES });
-          const named = typeof args.file === "string" ? args.file.slice(0, 200) : "the file argument";
-          if (!read.ok) { reply(null, `propose_web_mod: ${named} — ${read.reason}`); return; }
-          let failed: string | undefined;
-          const answer = await sendAssetInParts("mod", read.bytes, async (payload) => {
-            const r = await ask(payload);
-            if (r.error) { failed = r.error; return { error: r.error }; }
-            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
-          });
-          reply(failed ? null : answer, failed);
-          return;
-        }
         if (tool === "office_pack_check" || tool === "office_pack_upload") {
           // #2692: the folder (or the manifest's files) is read here, on the agent's side; the fleet gets bytes in parts.
           const answer = await sendPackSources(args, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name },
             async (payload) => { const r = await ask(payload); return r.error ? { error: "fleet", message: r.error } : ((r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>); });
           reply(answer, undefined);
-          return;
-        }
-        if (tool === "upload_web_effect") {
-          const owner = { fence:this.launchFenceEpoch, spawn:this.spawnGeneration, boot:this.bootId, ipc:this.ipcServer };
-          const current = () => !!owner.ipc && owner.ipc === this.ipcServer && owner.fence === this.launchFenceEpoch && owner.spawn === this.spawnGeneration && owner.boot === this.bootId && !this.deliveryWritesStopping && !this.startupAborted;
-          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
-          const read = await readAgentEffect(args.dir, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
-          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
-          if (!read.ok) { reply(null, `upload_web_effect: ${read.reason}`); return; }
-          let failed: string | undefined;
-          const answer = await sendEffectInParts(read.files, async payload => {
-            if (!current()) { failed="upload_web_effect: launch no longer current"; return {error:failed}; }
-            const r = await ask(payload);
-            if (r.error) { failed = r.error; return { error:r.error }; }
-            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string,unknown>;
-          });
-          reply(failed ? null : answer, failed);
           return;
         }
         if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }
@@ -12226,7 +12168,7 @@ export class Daemon extends EventEmitter {
    */
   private currentWhatsNew(pending: { notice: string; ids: string[]; version: string }): { notice: string; ids: string[]; version: string } | null {
     const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh: false, version: pending.version,
-      roles: this.whatsNewRoles(), tools: this.whatsNewTools(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
+      roles: this.whatsNewRoles(), tools: this.whatsNewTools() });
     if (!plan || "silent" in plan) {
       this.pendingWhatsNew = null;
       if (plan) this.recordWhatsNewSent({ ids: plan.silent, version: plan.version });
@@ -12243,13 +12185,13 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * #2800: the tools this instance's agend MCP server lists now — the same filters (tool set, dashboard switches, the
-   * Canvas Worker switch) — so a notice names only changes to tools it has.
+   * #2800: the tools this instance's agend MCP server lists now — the same filters (tool set, dashboard switches) — so a
+   * notice names only changes to tools it has.
    */
   private whatsNewTools(): ReadonlySet<string> {
     const allowed = toolsFor(resolveToolSet(this.config, this.name));
     const listed = withoutFeatures(TOOLS.filter(t => allowed.has(t.name)), dashboardFeaturesOff(dashboardAccessOf(this.config)));
-    return new Set(toolsWithCanvasWorker(readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")), listed).map(t => t.name));
+    return new Set(listed.map(t => t.name));
   }
 
   /**
@@ -12267,7 +12209,7 @@ export class Daemon extends EventEmitter {
   private prepareWhatsNew(fresh: boolean, version: string | null = agendVersion()): void {
     try {
       const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version, roles: this.whatsNewRoles(),
-        tools: this.whatsNewTools(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
+        tools: this.whatsNewTools() });
       if (!plan) { this.pendingWhatsNew = null; return; }
       if ("silent" in plan) { recordWhatsNew(this.instanceDir, plan.silent, plan.version); this.pendingWhatsNew = null; return; }
       this.pendingWhatsNew = plan;

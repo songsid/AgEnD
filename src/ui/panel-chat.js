@@ -6,7 +6,7 @@
 // right, the agent's at full width, and one rounded composer pinned below with attach, Stop reply and Send inside it.
 // The instance's own actions (details, start, stop, restart, delete) are in the header's ⋯ menu, and only the ones
 // that apply to its state are offered (#1408 rough edges 4 and 7).
-import { html, useCallback, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, t } from "/assets/app-i18n.js";
 import { appStore, createStore, guestPage, useStore } from "/assets/app-store.js";
 import { ComposerAuth } from "/assets/web-authorize.js";
@@ -80,12 +80,7 @@ import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVers
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
-import { canvasWorkerMenuAvailable, experimentalComponent, useCanvasWorker } from "/assets/feature-flags.js";
-const ChatEffectPosters = experimentalComponent(() => import("./chat-effect-posters.js"), m => m.ChatEffectPosters);
-const ChatEffects = experimentalComponent(() => import("./chat-effects.js"), m => m.ChatEffects);
-import { setFollowsReducedMotion } from "/assets/fx-motion.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
-import { startEffectsWaker, getAppEffects, wakeEffects, effectsLoaded, onEffectsAwake, chatHasEffects } from "/assets/feature-flags.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composerField = () => (typeof document !== "undefined" ? document.getElementById("msgIn") : null);
 
@@ -149,9 +144,6 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   }
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
-  // #2118: viewing current in-scope Chat effects needs no management or personal-slot authority. #2193: the runtime
-  // itself loads only when there is something to play (effects-waker.js).
-  startEffectsWaker({ store });
   return store;
 }
 
@@ -261,9 +253,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const themeKey = JSON.stringify(theme);
   const card = useCard(name, inst.card_v);
   const [dialog, setDialog] = useState(null);       // "delete" | null
-  const [canvasPlayback, setCanvasPlayback] = useState(null);
-  const publishCanvasPlayback = useCallback(value => setCanvasPlayback(previous =>
-    !previous && !value.playing || previous?.name === value.name && previous.playing === value.playing ? previous : value), []);
   const [wrap, setWrap] = useState(codeWrap);
   const wide = useStore(chatWide).on;
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
@@ -312,9 +301,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     else if (r && r.held) toast(r.message);
     else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
   };
-  // #2193: this chat's Canvas Worker placements (its status row's effect_chat_v): none, no effects code runs for it.
-  const cwEnabled = useCanvasWorker();
-  const fxHere = cwEnabled && chatHasEffects(name);
   const items = [
     // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
     { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) },
@@ -328,7 +314,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
     ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
     narrowScreen() ? null : { key: "fullWidth", checkbox: true, checked: wide, label: t("chat.fullWidth"), onSelect: () => setChatWide(!wide) },
-    cwEnabled && canvasWorkerMenuAvailable(window) ? { key: "effects", label: t("cwControls.title"), onSelect: () => setDialog("effects") } : null,
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
@@ -341,14 +326,14 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
       <div ref=${effectSurface} class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
         ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}
         <${ChatAmbient} name=${name} surface=${effectSurface} part="layer" />
-        <${AmbientMotionNote} name=${name} canvasPlaying=${canvasPlayback?.name === name && canvasPlayback.playing} />
+        <${AmbientMotionNote} name=${name} />
         <${Thread} name=${name} th=${thread} />
         <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${theme ? theme.workingLabel : undefined} />
         <${ChatAmbient} name=${name} surface=${effectSurface} part="front" />
@@ -425,18 +410,6 @@ function threadEntry(name, doc) {
   const thread = createThread(list, doc.createElement("div"), {
     t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j), onEmpty: (v) => e.sink?.setEmpty(v),
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
-    // #2193: an offer shown while the effects runtime sleeps wakes it; until it answers, the offer is being checked.
-    effectTrialStatus: x => { const fx = getAppEffects(); if (fx) return fx.trialStatus(x); if (!effectsLoaded()) { void wakeEffects(); return "checking"; } return "localAdmin"; },
-    effectTrialFailure: x => getAppEffects()?.trialFailure(x),
-    fixEffectTrial: (x, reason) => {
-      if (reason === "reducedMotion") setFollowsReducedMotion(false);
-      else if (reason === "busy") getAppEffects()?.stopTrial();
-      else if (reason === "transport") location.reload();
-      else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
-      else navigate("/settings/look");
-    },
-    canTryEffect: x => getAppEffects()?.canTry(x) === true,
-    startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && e.sink && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
     deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
@@ -472,17 +445,6 @@ function follow(name, thread) {
     else if (kind === "sent") thread.jumpLatest();
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
-  // #2193: the runtime may start later (an offer shown wakes it): its trial updates are followed from then.
-  let trialOff = null, trialOwner = null;
-  const watchTrial = () => {
-    const next = getAppEffects();
-    if (next === trialOwner) return;
-    trialOff?.(); trialOff = null; trialOwner = next;
-    trialOff = next?.subscribeTrial(() => thread.render(store.threadRows(name))) ?? null;
-  };
-  watchTrial();
-  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.threadRows(name)); }));
-  offs.push(() => { trialOff?.(); trialOff = null; trialOwner = null; });
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
   return () => { for (const off of offs) off(); };
 }

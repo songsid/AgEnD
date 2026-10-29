@@ -35,11 +35,11 @@ describe("guestRouteDecision (the table)", () => {
   const scope = new Set(["a"]);
   it("an `on` route: in scope → allow; out of scope, or not a name → 404", () => {
     for (const p of ["/ui", "/ui/chat/a", "/ui/js/panel-chat.js", "/ui/history?instance=a", "/api/profile/a", "/api/avatar/a", "/api/card/a", "/api/card/a/banner",
-      "/ui/img/avatar/a", "/ui/img/bot/a", `/ui/img/theme/a/${"f".repeat(32)}`, "/ui/effect-posters?instance=a"]) {
+      "/ui/img/avatar/a", "/ui/img/bot/a", `/ui/img/theme/a/${"f".repeat(32)}`]) {
       expect(guestRouteDecision("GET", u(p), scope).kind, p).toBe("allow");
     }
     expect(guestRouteDecision("HEAD", u("/ui/chat/a"), scope).kind).toBe("allow");
-    for (const p of ["/ui/chat/b", "/ui/history?instance=b", "/ui/history", "/api/profile/b", "/api/card/b/portrait", "/ui/img/bot/b", "/ui/effect-posters?instance=b", "/ui/effect-posters",
+    for (const p of ["/ui/chat/b", "/ui/history?instance=b", "/ui/history", "/api/profile/b", "/api/card/b/portrait", "/ui/img/bot/b",
       "/ui/chat/a%2Fb", "/api/profile/a%2Fb", "/ui/chat/%E0%A4%A", "/api/card/%ZZ"]) {
       expect(guestRouteDecision("GET", u(p), scope), p).toEqual({ kind: "deny", status: 404, error: "not found" });
     }
@@ -47,8 +47,8 @@ describe("guestRouteDecision (the table)", () => {
   });
   it("a `later` route and anything else → 403 guest_forbidden; a method not listed → 403", () => {
     // Phase 1b opened the stream, the poll and a file (answered per recipient: web-guest-stream-1920.test.ts).
-    // Step 2b opened chat, the guest's prefs (read) and profile, and the posters (by their instance).
-    const later: string[] = [];
+    // Step 2b opened chat, the guest's prefs (read) and profile, and the effect posters — gone with the effects (#2799).
+    const later = ["/ui/effect-posters?instance=a", `/ui/effect-posters/${"e".repeat(32)}.png?instance=a`];
     const admin = ["/status", "/api/fleet", "/api/profiles", "/api/pane/a", "/ui/org", "/ui/traffic", "/ui/cache", "/ui/teams", "/ui/tasks", "/ui/steps",
       "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/api/ai-usage", "/ui/fleet", "/ui/needs",
       "/ui/fleet/agent/a", "/ui/log/a", "/settings", "/ui/img/emoji/x", "/ui/preview-status"];
@@ -136,7 +136,7 @@ describe("the gate, live: a guest scoped to `a`", () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     const guest = session("guest", ALICE), admin = session("admin");
     const token = fm.getDashboardAccess().token!;
-    for (const p of ["/ui/chat/a", "/api/profile/a", "/api/card/a", "/ui/effect-posters?instance=a"]) {
+    for (const p of ["/ui/chat/a", "/api/profile/a", "/api/card/a"]) {
       const [g, ad] = [await raw(port, "GET", p, { cookie: cookieOf(guest) }), await raw(port, "GET", p, { cookie: cookieOf(admin) })];
       expect([g.status, g.body.includes("guest_forbidden")], p).toEqual([ad.status, false]);
     }

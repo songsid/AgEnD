@@ -3,12 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
-// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
-// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
-vi.mock("../src/web-experimental.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
-  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
-}));
 import { FleetManager } from "../src/fleet-manager.js";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
@@ -41,7 +35,6 @@ function harness(type: "discord" | "telegram" = "discord", classic = true) {
   fm.worlds.set("owner", { id: "owner", adapter } as never);
   fm.fleetConfig = {
     defaults: {},
-    web: { experimental: { canvas_worker: true } },
     instances: { classic: { working_directory: root, tool_set: "full", topic_id: "fleet-topic", dashboard: { office: true }, office_pack_access: true } },   // office, office packs: off unless set (#2578, #2692)
   } as never;
   if (classic) {
@@ -94,10 +87,6 @@ const samples: Record<string, Record<string, unknown>> = {
   office_view: {}, office_set: { go: { seat: "desks:0" }, say: "hi" },
   office_pack_check: { dir: "./pack" }, office_pack_upload: { dir: "./pack", drop_invalid_overrides: true }, office_pack_delete: { id: "snug" },
   office_pack_restore: { id: "snug" }, office_pack_list: {}, office_set_style: { office: "ops", pack: "snug" },
-  export_web_mod: { name: "look", version: "1.0.0" }, propose_web_mod: { file: "look.agendmod.json" },
-  upload_web_effect: { dir: "./effect" }, list_web_effects: {},
-  preview_web_effect: { id: "a".repeat(32) }, profile_web_effect: { id: "a".repeat(32) },
-  apply_web_effect: { id: "a".repeat(32), params: { density: 2 } }, remove_web_effect: {}, delete_web_effect: { id: "a".repeat(32) },
   release_repo: { path: "/fixture/worktree" }, deploy_template: { template: "test", directory: "/fixture/repo" },
   teardown_deployment: { name: "test" }, list_deployments: {},
 };

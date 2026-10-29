@@ -5,7 +5,7 @@
  */
 import { readFileSync } from "node:fs";
 import yaml from "js-yaml";
-import { canvasWorkerConfigPath } from "./web-experimental.js";
+import { fleetConfigPath } from "./web-experimental.js";
 import { dashboardFeaturesOffIn, type DashboardFeature } from "./dashboard-permissions.js";
 
 /**
@@ -14,10 +14,10 @@ import { dashboardFeaturesOffIn, type DashboardFeature } from "./dashboard-permi
  */
 export function readDashboardOff(dataDir: string, instance: string, fallback: DashboardFeature[]): DashboardFeature[] {
   try {
-    return dashboardFeaturesOffIn(yaml.load(readFileSync(canvasWorkerConfigPath(dataDir), "utf8")), instance);
+    return dashboardFeaturesOffIn(yaml.load(readFileSync(fleetConfigPath(dataDir), "utf8")), instance);
   } catch { return fallback; }
 }
-/** Polls like watchCanvasWorkerEnabled; `changed` gets the new list when it differs. */
+/** Polls fleet.yaml; `changed` gets the new list when it differs. */
 export function watchDashboardOff(dataDir: string, instance: string, fallback: DashboardFeature[], changed: (off: DashboardFeature[]) => void, interval = 1000): () => void {
   let previous = readDashboardOff(dataDir, instance, fallback).join(",");
   const timer = setInterval(() => {

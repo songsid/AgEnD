@@ -50,7 +50,6 @@ beforeAll(async () => {
   nav = await import("/assets/app-nav.js");
   reg = await import("/ui/js/settings-registry.js");
   // Effects (Look) are drawn with Canvas Worker effects on: every card is there to check against the registry.
-  (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
   nav.startRouter(p.window);
 });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; delete (globalThis as any).AgendPreview; delete (globalThis as any).AgendAuth; });

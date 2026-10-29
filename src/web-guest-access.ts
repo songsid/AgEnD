@@ -42,16 +42,12 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: READS, pattern: new RegExp(`^/api/card/${NAME}(?:/(?:portrait|banner))?$`), instance: { group: 1 }, state: "on", note: "the instance's identity card" },
   { methods: ["GET"], pattern: new RegExp(`^/ui/img/(?:avatar|bot)/${NAME}$`), instance: { group: 1 }, state: "on", note: "the instance's face in the sidebar" },
   { methods: ["GET"], pattern: new RegExp(`^/ui/img/theme/${NAME}/[0-9a-f]{32}$`), instance: { group: 1 }, state: "on", note: "the instance's theme pictures" },
-  { methods: ["GET"], pattern: /^\/ui\/effect-posters$/, instance: { query: "instance" }, state: "on", note: "the instance's static effect posters (the list)" },
-  { methods: ["GET"], pattern: /^\/ui\/effects\/placements$/, instance: { query: "instance" }, state: "on", note: "current in-scope Chat effect metadata only, with a session epoch" },
-  { methods: ["GET"], pattern: /^\/ui\/effects\/resource\/[0-9a-f]{32}$/, instance: { query: "instance" }, state: "on", note: "a current in-scope Chat effect resource, never library or personal-slot reads" },
   // Opened by phase 1b: the stream and the poll filtered per recipient; a file bound to its instance.
   // The stream and the poll, projected per recipient (guestFrameData / guestPollBody); a file, bound to its stored
   // instance by the handler (404 out of scope: an id from another instance is useless).
   { methods: ["GET"], pattern: /^\/ui\/events$/, instance: null, state: "on", note: "the stream, projected for this guest (guestFrameData)" },
   { methods: ["GET"], pattern: /^\/ui\/poll$/, instance: null, state: "on", note: "the poll, projected for this guest (guestPollBody)" },
   { methods: ["GET"], pattern: /^\/ui\/file\/[^/]+$/, instance: null, state: "on", note: "a file, served only when its stored instance is in scope (the handler checks)" },
-  { methods: ["GET"], pattern: /^\/ui\/effect-posters\/[0-9a-f]{32}\.png$/, instance: { query: "instance" }, state: "on", note: "a placed effect's static poster, bound to its instance by the query" },
   // Opened by phase 2: what needs the guest's own identity, authority and the history rule.
   { methods: ["GET"], pattern: /^\/ui\/history$/, instance: { query: "instance" }, state: "on", note: "an in-scope instance's history, as its channel showed it (guestHistory, #1920 §5.2)" },
   // Phase 2 (step 2b): chat as on the platform — authority none, never a command (guestChatRefusal, in the handlers).
@@ -151,11 +147,10 @@ export function guestRequestOf(req: object): GuestRequest | undefined { return g
 /**
  * What a guest's status frame keeps of each in-scope instance: who it is and how it looks, its state — not its model,
  * backend, effort, cost, context, description, tags or what it is waiting for (a prompt's text). And nothing of the
- * fleet identity: no public link, connections, uptime, host memory, revisions. The public CW capability bit is
- * retained so a guest also stops playback when the administrator disables it.
+ * fleet identity: no public link, connections, uptime, host memory, revisions.
  */
-const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "effect_chat_v", "color", "color_show", "status", "state", "execution_state", "startup_phase"] as const;
-export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>>; canvas_worker: boolean } {
+const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "color", "color_show", "status", "state", "execution_state", "startup_phase"] as const;
+export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>> } {
   const list = status && typeof status === "object" && Array.isArray((status as { instances?: unknown }).instances) ? (status as { instances: unknown[] }).instances : [];
   const instances: Array<Record<string, unknown>> = [];
   for (const raw of list) {
@@ -166,8 +161,7 @@ export function guestStatus(status: unknown, scope: ReadonlySet<string>): { inst
     for (const k of STATUS_FIELDS) if (Object.prototype.hasOwnProperty.call(i, k) && i[k] !== undefined) out[k] = i[k];
     instances.push(out);
   }
-  // This public capability bit carries no fleet identity; guests need it for live enable/disable too.
-  return { instances, canvas_worker: !!status && typeof status === "object" && (status as { canvas_worker?: unknown }).canvas_worker === true };
+  return { instances };
 }
 
 // ── Phase 2: the chat, as the channel showed it (#1920 §5.2) ──
@@ -184,12 +178,12 @@ export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: 
 }
 /**
  * A message as a guest gets it: without whose account wrote it (`mine` says it was the guest), and without another
- * person's message id and ticks; never an effect Try (effects stay admin-only). A reply's quote (#2272) only when the
+ * person's message id and ticks. A reply's quote (#2272) only when the
  * guest may see the message it quotes — otherwise just that it replies to an earlier message (`hidden`).
  */
 export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: ReadonlySet<string>): Record<string, unknown> {
-  const { from, channel: _channel, messageId, delivery, effectTrial: _trial, seenSeq: _seen, replyTo, ...rest } = m;
-  void _channel; void _trial; void _seen;
+  const { from, channel: _channel, messageId, delivery, seenSeq: _seen, replyTo, ...rest } = m;
+  void _channel; void _seen;
   const mine = from === accountOf(guest.owner);
   // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
   // shows. A guest gets the label, as the channel showed it.
@@ -200,7 +194,7 @@ export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: Rea
   return { ...rest, ...click, ...quote, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
 }
 const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
-  rows.filter((m) => !m.effectTrial && guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));
+  rows.filter((m) => guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));
 
 /**
  * One stream event as a guest gets it, or undefined (not sent). Default deny:

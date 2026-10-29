@@ -73,33 +73,6 @@ for (const focus of foci) {
     await ctx.close();
   }
 }
-// #2089 review: the real stock-trust snapshot with a banner (and its blurred fill) on screen — effects still admitted;
-// and refused once the fill's filter is anything else.
-if (TAG !== "before") {
-  const { ctx, page } = await fx.page(c, { storage: { agend_chat_card: "open" } });
-  await page.setViewportSize({ width: 1920, height: 1000 });
-  await page.goto(`${fx.base}/ui/chat/${enc(NAME)}`); await page.waitForTimeout(1200);
-  if (!(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-menu > button").then(() => page.click(".chat-card-menu [role=menuitemcheckbox]")).then(() => page.keyboard.press("Escape")).catch(() => {}); await page.waitForTimeout(400); }
-  const trust = async () => page.evaluate(`import("/assets/effect-stock-trust.js").then((m) => { const r = m.stockEffectTrust(window, { ownerCss: "off" }); return { ok: r.ok, reason: r.reason, fill: getComputedStyle(document.querySelector(".id-banner-fill")).filter }; })`);
-  results.stock = { stock: await trust() };
-  await page.evaluate(`document.querySelector(".id-banner-fill").style.setProperty("filter", "blur(30px)")`);
-  results.stock.otherFilter = await trust();
-  // #2089 review: a fixed fill (owner CSS could make one) is the viewport's, never the box's to clip — refused.
-  await page.evaluate(`(() => { const f = document.querySelector(".id-banner-fill"); f.style.removeProperty("filter"); f.style.setProperty("position", "fixed"); document.querySelector(".id-banner-box").style.setProperty("container-type", "normal"); })()`);
-  results.stock.fixedFill = await trust();
-  // #2089 review r3: `display: contents` keeps the box's computed position and overflow but generates no box; an inline
-  // box clips differently. Both refused; the geometry shows where the fill really is placed.
-  const geo = `(() => { const f = document.querySelector(".id-banner-fill"), b = document.querySelector(".id-banner-box"), r = (e) => { const x = e.getBoundingClientRect(); return [Math.round(x.x), Math.round(x.y), Math.round(x.width), Math.round(x.height)]; }; return { box: r(b), fill: r(f), offsetParent: f.offsetParent?.className ?? null, boxDisplay: getComputedStyle(b).display, boxPosition: getComputedStyle(b).position, boxOverflow: getComputedStyle(b).overflow }; })()`;
-  const reset = `(() => { const f = document.querySelector(".id-banner-fill"), b = document.querySelector(".id-banner-box"); f.style.removeProperty("position"); b.style.removeProperty("display"); b.style.removeProperty("container-type"); })()`;
-  for (const [key, display] of [["contentsBox", "contents"], ["inlineBox", "inline"]] as const) {
-    await page.evaluate(reset);
-    await page.evaluate(`(() => { const b = document.querySelector(".id-banner-box"); b.style.setProperty("display", "${display}"); b.style.setProperty("container-type", "normal"); })()`);
-    results.stock[key] = { ...(await trust()), geometry: await page.evaluate(geo) };
-  }
-  await page.evaluate(reset);
-  results.stock.restored = await trust();
-  await ctx.close();
-}
 // #2089 review: the narrowest real layouts — a 900 px window with the widest sidebar, and the usage rail open — never draw
 // a banner narrower than 9 : 4 (nor wider than 5 : 1), on Details, View and the chat card, at L (the tallest size).
 if (TAG !== "before") {
@@ -140,7 +113,6 @@ if (TAG !== "before") {
   }
 }
 writeFileSync(shotPath(SMOKE, "result", TAG).replace(/\.png$/, ".json"), JSON.stringify(results, null, 1));
-console.log(JSON.stringify(results.stock ?? null));
 console.log(JSON.stringify(results.layouts ?? null));
 console.log(JSON.stringify(results.cases.map((x: any) => x.edit ? `edit ${x.edit} f${x.focus} ${x.present ?? x.missing}` : x.missing ? `${x.width} ${x.size} ${x.surface} MISSING` : `${x.width} f${x.focus} ${x.size} ${x.surface} ${x.box?.join("×")} ${x.ar}:1 shows ${x.shownHeight} pos ${x.pos}`)));
 await fx.close(); process.exit(0);

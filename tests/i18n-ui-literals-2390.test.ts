@@ -23,7 +23,6 @@ const ALLOWED = new Map<string, string>([
   ["shared/app-shell.js\ttext\tEnglish", "the language's own name in the language menu"],
   ["settings-wizard.js\tplaceholder\t/home/you/projects/app", "an example path"],
   ["settings-mods.js\tplaceholder\tmy-look", "an example mod name"],
-  ["settings-effects.js\ttext\tKiB ·", "a unit"],
   ["settings-dialogs.js\tplaceholder\te.g. file:prompts/dev.md", "an example value (file: syntax)"],
   ["panel-settings.js\ttext\tcollab", "the config mode's name (channel collab)"],
   ["panel-settings.js\ttext\tClassicBot", "a product name"],

@@ -7,23 +7,23 @@ import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
  *
  * Stage: a person's upload is checked whole (web-mod-bundle.ts) and kept **in memory** with the plan the page shows,
  * one per person, for 10 minutes (monotonic). A fleet restart forgets it: commit then answers unknown_stage, and the
- * person stages and reviews again. Effect entries are staged in the effect library at the same time (CW1), under the
- * mod's own holder.
+ * person stages and reviews again.
  *
- * Commit applies exactly the staged plan's chosen parts — or nothing: effect library first, then the theme store (one
- * record write), the person's sidebar widget, their own CSS (as a trial they keep or revert on the page), then the
- * index. Any failure undoes what was done, in reverse. Pictures an import replaced are deleted only once all of it held.
+ * Commit applies exactly the staged plan's chosen parts — or nothing: the theme store (one record write), the person's
+ * sidebar widget, their own CSS (as a trial they keep or revert on the page), then the index. Any failure undoes what
+ * was done, in reverse. Pictures an import replaced are deleted only once all of it held.
  *
- * Uninstall removes the mod from the library: its file, its index entry and its effect claim (the library keeps an
- * effect still placed, or held by another mod or upload). What it applied stays applied — a look is the instance's (or
- * the person's) once imported; Reset, Lock and the person's own CSS controls work on it as on any other.
+ * Uninstall removes the mod from the library: its file and its index entry. What it applied stays applied — a look is
+ * the instance's (or the person's) once imported; Reset, Lock and the person's own CSS controls work on it as on any
+ * other. #2799: Canvas Worker effects were removed — a bundle that carries effects is refused at import, and an installed
+ * mod that carries them is not uninstalled here (its effect claims stay on disk, as they were, for a downgrade).
  */
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { MEDIA_MIME } from "./web-image-meta.js";
-import { canonicalJson, type CheckedMod, checkModBundle, type EffectFiles, type ModContext, type ModProblem } from "./web-mod-bundle.js";
+import { canonicalJson, type CheckedMod, checkModBundle, type ModContext, type ModProblem } from "./web-mod-bundle.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OwnerCssSnapshot } from "./web-owner-css-store.js";
 import { AGENT_WIDGET_SLOTS, type AgentWidgetSlot } from "./web-widget.js";
@@ -33,20 +33,6 @@ export const MODS_MAX_INSTALLED = 20;
 export const MODS_MAX_BYTES = 64 * 1024 * 1024;
 const MOD_ID = /^[0-9a-f]{32}$/;
 
-/** Who an effect claim belongs to (CW1): a mod import is always a person's. */
-export interface EffectPrincipal { kind: "agent" | "human"; id: string }
-/**
- * The effect library (Sol's B2, CW1), as mods use it. Null while the fleet has none: then no bundle with effects is
- * accepted (the checker refuses it first).
- */
-export interface ModEffectLibrary {
-  stage(entries: readonly EffectFiles[], principal: EffectPrincipal, opts: { holder: string }): { ok: true; stageId: string; ids: string[] } | { ok: false; error: string };
-  commit(stageId: string): { ok: true; ids: string[]; created: string[]; undo: () => boolean } | { ok: false; error: string };
-  abort(stageId: string): void;
-  releaseHolder(holder: string, principal: EffectPrincipal): { ok: true; released: string[]; undo: () => boolean } | { ok: false; error: string };
-  /** A guarded, deferred collector: rechecks every claim and reference before deleting (never synchronously). */
-  collectUnreferenced?(ids: readonly string[]): void;
-}
 /** A person's preferences, as the import writes their sidebar widget (web-prefs.ts). */
 export interface ModPrefs {
   read(identity: string): { values: Record<string, unknown>; unreadable?: true };
@@ -64,7 +50,7 @@ export interface ModRecord {
   name: string; version: string; title: string;
   bytes: number;
   installedBy: string;
-  /** Principal that owns this mod's effect holder. Older records use installedBy. */
+  /** Principal that owned this mod's effect holder (#2799: kept as written; effects are no longer installed). */
   effectsBy?: string;
   installedAt: number;
   /** The instance the look went to, when it had one. */
@@ -92,23 +78,21 @@ export interface ModInclude {
   replace?: boolean;
 }
 
-interface Stage { id: string; person: string; mod: CheckedMod; text: string; plan: ModPlan; planHash: string; at: number; effects?: { stageId: string; ids: string[]; owner: string }; proposal?: string }
+interface Stage { id: string; person: string; mod: CheckedMod; text: string; plan: ModPlan; planHash: string; at: number; proposal?: string }
 /** r4-5b: a mod an agent proposed (propose_web_mod), waiting for a person to review it — one per agent. */
 export interface ModProposal { name: string; version: string; title: string; bytes: number; at: number; id: string }
 type Index = { rev: number; mods: Map<string, ModRecord>; proposals: Map<string, ModProposal> } | "unreadable";
 
 const sha32 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 32);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-export const modHolder = (id: string) => `mod:${id}`;
 
 /** What the page shows before anything is applied: every part, in full (the owner CSS's text included). */
 export function modPlan(mod: CheckedMod, installed: ReadonlyMap<string, ModRecord>): ModPlan {
   const items: ModPlanItem[] = [];
   const t = mod.theme;
   if (t) {
-    const effectsById = (p: string) => mod.effects.find(e => e.path === p)?.summary.id ?? null;
     items.push({ part: "theme", theme: t.theme, pictures: t.pictures.map(p => ({ path: p.path, slot: p.slot, id: p.id, bytes: p.kept.length })),
-      effects: t.effects.map(e => ({ effect: e.effect, id: effectsById(e.effect), params: e.params })) });
+      effects: t.effects.map(e => ({ effect: e.effect, id: null, params: e.params })) });
   }
   if (mod.identity) items.push({ part: "identity", ...mod.identity });
   for (const slot of ["chat_header", "details", "sidebar"] as const) {
@@ -116,7 +100,7 @@ export function modPlan(mod: CheckedMod, installed: ReadonlyMap<string, ModRecor
     if (w) items.push({ part: "widget", slot, spec: w.spec, data: w.data });
   }
   if (mod.ambient) items.push({ part: "ambient", ...mod.ambient.specs, pictures: mod.ambient.pictures.map(p => ({ path: p.path, slot: p.slot, id: p.id, bytes: p.kept.length })) });
-  for (const e of mod.effects) items.push({ part: "effect", path: e.path, ...e.summary });
+  for (const e of mod.effects) items.push({ part: "effect", path: e.path });
   if (mod.ownerCss) items.push({ part: "ownerCss", text: mod.ownerCss.text, assets: mod.ownerCss.assets.map(a => ({ path: a.path, id: a.id, kind: a.kind, bytes: a.kept.length })) });
   const same = [...installed].find(([, r]) => r.name === mod.manifest.name);
   const warnings: string[] = [];
@@ -144,9 +128,6 @@ export class ModStore {
     themes: ThemeStore;
     prefs: ModPrefs;
     ownerCss: ModOwnerCss | null;
-    effects: ModEffectLibrary | null;
-    /** The live policy when this store is used by the fleet; storage-only test clients may omit it. */
-    canvasWorkerEnabled?: () => boolean;
     context: () => ModContext;
     isKnownInstance: (name: string) => boolean;
     /** The preferences bucket the page reads (/ui/prefs: one, the operator's — web-prefs.ts). */
@@ -262,9 +243,9 @@ export class ModStore {
   bundleEffects(id: string): string[] | "unknown" | null {
     const text = this.bundleText(id);
     if (text === null) return null;
-    // An installed file, read again: #2017's placement rule is for new imports — a mod installed before it still checks.
-    const checked = checkModBundle(text, { ...this.deps.context(), placementRegions: false });
-    if (checked.ok) return checked.mod.effects.map(e => e.summary.id);
+    // #2799: the effect entries it declares, by path (only whether there are any is asked).
+    const checked = checkModBundle(text, this.deps.context());
+    if (checked.ok) return checked.mod.effects.map(e => e.path);
     try {
       const listed = (JSON.parse(text) as { manifest?: { contents?: { effects?: unknown } } })?.manifest?.contents?.effects;
       if (listed === undefined || (Array.isArray(listed) && listed.length === 0)) return [];
@@ -280,7 +261,6 @@ export class ModStore {
   private drop(person: string): void {
     const s = this.stages.get(person);
     if (!s) return;
-    if (s.effects) this.deps.effects?.abort(s.effects.stageId);
     this.stages.delete(person);
   }
   /** The person's staged import (its plan), if one is still current. */
@@ -320,7 +300,8 @@ export class ModStore {
     const checked = checkModBundle(text, this.deps.context());
     if (!checked.ok) return { ok: false, status: 400, error: "mod_invalid", problems: checked.problems };
     const mod = checked.mod;
-    if (this.deps.canvasWorkerEnabled?.() === false && mod.effects.length) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
+    // #2799: Canvas Worker effects were removed — a bundle that carries any is refused, as while they were off.
+    if (mod.effects.length) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
     // Provenance is the path the bytes came in by: what an agent proposed never carries custom CSS (r4 §4).
     if (from.proposal !== undefined && mod.ownerCss) return { ok: false, status: 400, error: "owner_css_not_from_agent" };
     const plan = modPlan(mod, idx.mods);
@@ -330,19 +311,8 @@ export class ModStore {
       if (total + mod.bytes > MODS_MAX_BYTES) return { ok: false, status: 409, error: "mods_quota", detail: `at most ${MODS_MAX_BYTES / 1024 / 1024} MiB installed` };
     }
     this.drop(person);
-    let effects: Stage["effects"];
-    if (mod.effects.length) {
-      if (!this.deps.effects) return { ok: false, status: 400, error: "effects_unavailable" };
-      // The installed mod has one effect-holder principal. Reapplying its immutable bytes must not acquire an
-      // untracked claim for the next person. A mod whose effects were never selected gets its owner when selected.
-      const installed = idx.mods.get(mod.id);
-      const owner = installed?.effects.length ? installed.effectsBy ?? installed.installedBy : person;
-      const r = this.deps.effects.stage(mod.effects.map(e => e.files), { kind: "human", id: owner }, { holder: modHolder(mod.id) });
-      if (!r.ok) return { ok: false, status: 409, error: "effects_refused", detail: r.error };
-      effects = { stageId: r.stageId, ids: r.ids, owner };
-    }
     const planHash = sha32(canonicalJson(plan));
-    const s: Stage = { id: randomBytes(16).toString("hex"), person, mod, text, plan, planHash, at: this.clock(), ...(effects ? { effects } : {}), ...(from.proposal !== undefined ? { proposal: from.proposal } : {}) };
+    const s: Stage = { id: randomBytes(16).toString("hex"), person, mod, text, plan, planHash, at: this.clock(), ...(from.proposal !== undefined ? { proposal: from.proposal } : {}) };
     this.stages.set(person, s);
     return { ok: true, stage: s.id, plan, plan_hash: planHash };
   }
@@ -360,16 +330,14 @@ export class ModStore {
     const include = parseInclude(body.include);
     if (!include) return { ok: false, status: 400, error: "include", detail: "{ theme?, identity?, ambient?, effects?, ownerCss?, widgets?: { chat_header?, details?, sidebar? }, replace? } of booleans" };
     const mod = s.mod;
-    if (this.deps.canvasWorkerEnabled?.() === false && (mod.effects.length || include.effects)) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
+    if (mod.effects.length || include.effects) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
     const want = {
-      theme: !!(include.theme && mod.theme), identity: !!(include.identity && mod.identity), effects: !!(include.effects && mod.effects.length),
+      theme: !!(include.theme && mod.theme), identity: !!(include.identity && mod.identity),
       ownerCss: !!(include.ownerCss && mod.ownerCss),
       ambient: !!(include.ambient && mod.ambient),
       widgets: AGENT_WIDGET_SLOTS.filter(slot => include.widgets?.[slot] && mod.widgets[slot]),
       sidebar: !!(include.widgets?.sidebar && mod.widgets.sidebar),
     };
-    // Effect placements ride with the theme, and need the effects installed.
-    if (want.theme && mod.theme?.effects.length && !want.effects) return { ok: false, status: 400, error: "include", detail: "the theme places this mod's effects: include effects too" };
     const toInstance = want.theme || want.identity || want.widgets.length > 0 || want.ambient;
     let target: string | undefined;
     if (toInstance) {
@@ -377,7 +345,7 @@ export class ModStore {
       target = body.target;
     }
     if (want.ownerCss && !this.deps.ownerCss) return { ok: false, status: 404, error: "owner_css_unavailable" };
-    if (!toInstance && !want.effects && !want.ownerCss && !want.sidebar) return { ok: false, status: 400, error: "include", detail: "nothing chosen" };
+    if (!toInstance && !want.ownerCss && !want.sidebar) return { ok: false, status: 400, error: "include", detail: "nothing chosen" };
     const idx = this.load();
     if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
     const replaces = s.plan.mod.replaces;
@@ -386,11 +354,6 @@ export class ModStore {
     const sameName = [...idx.mods].find(([id, r]) => r.name === mod.manifest.name && id !== mod.id);
     if ((sameName?.[0] ?? null) !== (replaces?.id ?? null) || idx.mods.has(mod.id) !== s.plan.mod.installed) {
       return { ok: false, status: 409, error: "plan_changed", detail: "the installed mods changed since this file was checked: import it again" };
-    }
-    const installed = idx.mods.get(mod.id);
-    const effectOwner = installed?.effects.length ? installed.effectsBy ?? installed.installedBy : person;
-    if (want.effects && s.effects?.owner !== effectOwner) {
-      return { ok: false, status: 409, error: "plan_changed", detail: "the effect claim owner changed: import it again" };
     }
     if (replaces && !include.replace) return { ok: false, status: 409, error: "replaces", detail: `version ${replaces.version} of ${mod.manifest.name} is installed: confirm replace` };
     if (!idx.mods.has(mod.id)) {
@@ -408,16 +371,6 @@ export class ModStore {
     // here, inside the rollback boundary, as one that answers with an error.
     try {
       const applied: string[] = [];
-      let created: string[] = [];
-      let effectIds = new Map<string, string>();
-      if (want.effects && s.effects && this.deps.effects) {
-        const r = this.deps.effects.commit(s.effects.stageId);
-        if (!r.ok) return rollback(409, "effects_refused", r.error);
-        undo.push(() => { r.undo(); });
-        created = r.created;
-        effectIds = new Map(mod.effects.map((e, i) => [e.path, r.ids[i]!]));
-        applied.push("effects");
-      }
       let finalize: (() => void) | null = null;
       if (target) {
         const t = mod.theme;
@@ -427,7 +380,6 @@ export class ModStore {
           pictures: [...(want.theme && t ? t.pictures : []), ...(want.ambient && mod.ambient ? mod.ambient.pictures : [])].map(p => ({ slot: p.slot, id: p.id, kind: p.kind, kept: p.kept })),
           ...(want.ambient && mod.ambient ? { ambient: mod.ambient.specs } : {}),
           widgets: Object.fromEntries(want.widgets.map(slot => [slot, mod.widgets[slot]!])),
-          ...(want.theme && t && t.effects.length ? { effects: t.effects.map(e => ({ id: effectIds.get(e.effect)!, params: e.params })) } : {}),
         }, "human");
         if (!w.ok) return rollback(w.status, w.error, w.detail);
         undo.push(() => { w.undo(); });
@@ -465,20 +417,18 @@ export class ModStore {
         applied.push("ownerCss");
       }
 
-      // The index: this mod in, the one it replaces out. The old mod's effect claim is released LAST (below): one library
-      // write per rollback chain, so the new commit's undo always meets the exact state it left (CW1, agreed with Sol).
+      // The index: this mod in, the one it replaces out. #2799: an old mod's effect claims stay on disk as they are.
       const mods = new Map(idx.mods);
-      const old = replaces ? mods.get(replaces.id) : undefined;
       if (replaces) mods.delete(replaces.id);
       const prev = mods.get(mod.id);
       mods.set(mod.id, {
         name: mod.manifest.name, version: mod.manifest.version, title: mod.manifest.title, bytes: mod.bytes,
         installedBy: prev?.installedBy ?? person, installedAt: prev?.installedAt ?? this.now(),
-        ...(want.effects ? { effectsBy: effectOwner } : prev?.effectsBy ? { effectsBy: prev.effectsBy } : {}),
+        ...(prev?.effectsBy ? { effectsBy: prev.effectsBy } : {}),
         ...(target ? { target } : prev?.target ? { target: prev.target } : {}),
         parts: [...new Set([...(prev?.parts ?? []), ...applied])],
-        effects: mod.effects.map(e => ({ path: e.path, id: effectIds.get(e.path) ?? prev?.effects.find(x => x.path === e.path)?.id ?? "" })).filter(e => e.id),
-        created: [...new Set([...(prev?.created ?? []), ...created])],
+        effects: [],
+        created: [...(prev?.created ?? [])],
       });
       try {
         mkdirSync(join(this.dataDir, "web-mods"), { recursive: true, mode: 0o700 });
@@ -491,50 +441,30 @@ export class ModStore {
       const w = this.commitIndex(mods, proposals);
       if (!w.ok) return rollback(w.status, w.error, w.detail);
       undo.push(() => { this.commitIndex(idx.mods, idx.proposals); });
-      // The last fallible step: the replaced mod's effect claim. Refused: every store above is restored first, then the
-      // new library commit is undone (rollback runs in reverse). Released: nothing fallible follows.
-      let releasedOld: string[] = [];
-      if (replaces && old && old.effects.length && this.deps.effects) {
-        const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.effectsBy ?? old.installedBy });
-        if (!r.ok) return rollback(409, "effects_release_refused", r.error);
-        releasedOld = r.released;
-      }
       if (proposals) { try { unlinkSync(this.proposalFile(s.proposal!)); } catch { /* already gone */ } }
       // Held: what the import replaced may go now, and the stage is done.
       finalize?.();
       if (replaces) { try { unlinkSync(this.file(replaces.id)); } catch { /* already gone */ } }
-      if (releasedOld.length) this.deps.effects?.collectUnreferenced?.(releasedOld);
-      if (s.effects && !want.effects) this.deps.effects?.abort(s.effects.stageId);   // staged, not chosen: let it go
       this.stages.delete(person);
       return { ok: true, id: mod.id, applied, ...(css ? { css } : {}) };
     } catch (err) { return rollback(503, "mod_apply_failed", (err as Error).message); }
   }
 
-  /** Remove an installed mod from the library: its effect claim, its file and its entry. What it applied stays. */
+  /** Remove an installed mod from the library: its file and its entry. What it applied stays. */
   uninstall(id: unknown): ModWrite<{ released: string[] }> {
     const idx = this.load();
     if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
     if (typeof id !== "string" || !idx.mods.has(id)) return { ok: false, status: 404, error: "no_such_mod" };
     const rec = idx.mods.get(id)!;
-    if (this.deps.canvasWorkerEnabled?.() === false) {
-      const contained = this.bundleEffects(id);
-      if (rec.effects.length || contained === "unknown" || (contained?.length ?? 0) > 0) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
-    }
-    let released: string[] = [];
-    let undo: (() => boolean) | null = null;
-    if (rec.effects.length) {
-      if (!this.deps.effects) return { ok: false, status: 503, error: "effects_unavailable" };
-      const r = this.deps.effects.releaseHolder(modHolder(id), { kind: "human", id: rec.effectsBy ?? rec.installedBy });
-      if (!r.ok) return { ok: false, status: 409, error: "effects_release_refused", detail: r.error };
-      released = r.released; undo = r.undo;
-    }
+    // #2799: a mod that carries Canvas Worker effects keeps its claim on them (on disk, as it was): not uninstalled here.
+    const contained = this.bundleEffects(id);
+    if (rec.effects.length || contained === "unknown" || (contained?.length ?? 0) > 0) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
     const mods = new Map(idx.mods);
     mods.delete(id);
     const w = this.commitIndex(mods);
-    if (!w.ok) { undo?.(); return w; }
+    if (!w.ok) return w;
     try { unlinkSync(this.file(id)); } catch { /* already gone */ }
-    if (released.length) this.deps.effects?.collectUnreferenced?.(released);
-    return { ok: true, released };
+    return { ok: true, released: [] };
   }
 
   /** An instance was removed: its name leaves the records that named it as their target. */

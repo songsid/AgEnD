@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TOOLS } from "../src/channel/mcp-tools.js";
+import { isCanvasWorkerTool } from "../src/web-experimental.js";
 import {
   EARLY_AGENT_OP_TOOLS,
   IPC_TYPE_TOOLS,
@@ -52,11 +53,6 @@ const BEFORE: Record<string, string[]> = {
     "set_web_widget", "remove_web_widget",
     // #2117: its own declarative ambient (no target).
     "set_web_ambient", "clear_web_ambient",
-    // #1629 r4-5b: mods — its own look as a file, and a proposal for a person (agents never import).
-    "export_web_mod", "propose_web_mod",
-    // #1629 B2: the caller-scoped Canvas Worker effect tools.
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2578: its own character in the Office view (no target; off until dashboard.office: true).
     "office_view", "office_set",
     // #2692: the Office view's skin packs (off until office_pack_access: true).
@@ -97,9 +93,6 @@ const BEFORE: Record<string, string[]> = {
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
     "set_web_ambient", "clear_web_ambient",
-    "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2578: its own character in the Office view, as a worker's.
     "office_view", "office_set",
     // #2692: the Office view's skin packs, as a worker's.
@@ -250,10 +243,10 @@ describe("no entry path is missing from the table", () => {
     const source = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8");
     const router = source.slice(source.indexOf("private dispatchTypedIpc"), source.indexOf("private handleScheduleCrud"));
 
-    for (const type of Object.keys(IPC_TYPE_TOOLS)) {
+    for (const type of Object.keys(IPC_TYPE_TOOLS).filter(t => !isCanvasWorkerTool(IPC_TYPE_TOOLS[t]!))) {
       const family = type.startsWith("fleet_schedule_") ? "fleet_schedule_"
         : type.startsWith("fleet_decision_") ? "fleet_decision_"
-        : ["fleet_upload_web_effect", "fleet_list_web_effects", "fleet_preview_web_effect", "fleet_profile_web_effect", "fleet_apply_web_effect", "fleet_remove_web_effect", "fleet_delete_web_effect"].includes(type) ? "WEB_EFFECT_TOOLS.has(type.slice(6))" : type;
+        : type;
       expect(router, `${type} is in the table but the router drops it`).toContain(family);
     }
     expect(IPC_TYPE_TOOLS.fleet_decision_update).toBe("update_decision");
@@ -262,8 +255,10 @@ describe("no entry path is missing from the table", () => {
 
   it("maps every tool name it claims to a tool that exists", () => {
     const real = new Set(TOOLS.map(t => t.name));
+    // #2799: the CLI's effect and mod ops and their IPC types still name the removed tools, so `agend-agent effect …`
+    // and a stale MCP process are told plainly (refused before any handler: canvas-worker-removed-2799).
     for (const [, tool] of Object.entries({ ...IPC_TYPE_TOOLS, ...EARLY_AGENT_OP_TOOLS })) {
-      expect(real.has(tool), `${tool} is not a tool`).toBe(true);
+      expect(real.has(tool) || isCanvasWorkerTool(tool), `${tool} is not a tool`).toBe(true);
     }
     for (const [profile, tools] of Object.entries(TOOL_PROFILES)) {
       for (const tool of tools) expect(real.has(tool), `${profile} lists ${tool}`).toBe(true);
@@ -535,8 +530,6 @@ describe("the refusal explains itself", () => {
     for (const tool of [
       "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient",
       "get_web_appearance", "preview_web_appearance",
-      "export_web_mod", "propose_web_mod",
-      "upload_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
       "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
       "office_view", "office_set",
     ]) {
@@ -592,9 +585,6 @@ describe("own-appearance family consistency (#2132)", () => {
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
     "set_web_ambient", "clear_web_ambient",
-    "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
   ] as const;
 
   it("every profile with set_web_theme has ALL own-appearance tools — no exceptions (#2132 + hmsg-07371500)", () => {
@@ -607,7 +597,7 @@ describe("own-appearance family consistency (#2132)", () => {
     }
   });
 
-  it("general has the full own-appearance family including ambient and effect tools (#2132 + hmsg-07371500)", () => {
+  it("general has the full own-appearance family including ambient (#2132 + hmsg-07371500)", () => {
     for (const tool of OWN_APPEARANCE) {
       expect(TOOL_PROFILES.general, `general must have ${tool}`).toContain(tool);
     }

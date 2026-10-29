@@ -11,14 +11,7 @@ English UI labels (the page also has 中文). Before you state a value the user 
 it: `get_fleet_config` shows fleet.yaml; this skill gives defaults. Never invent a control that is not listed here.
 Never tell anyone to kill `wslrelay` or run `wsl --shutdown` (see Troubleshooting).
 
-During a cold start/full restart, an already signed-in browser can open the dashboard while agents start. **Fleet
-starting N/M** counts successful starts among runnable instances (persisted pauses excluded); queued/starting labels
-are visible in the sidebar, chat header and Org chart. Reads remain available; messages and changes are refused with
-a retry hint until startup finishes. Returning guests may wait for their connection scope without being signed out.
-Needs you may still be empty while its hub initializes. A brief reconnect gap
-is normal while a full restart replaces the process; the starting banner then replaces the unreachable message.
-
-For how *you* look on the dashboard (theme, identity card, colour, widgets, ambient effects, effects, mods), load `web-appearance`.
+For how *you* look on the dashboard (theme, identity card, colour, widgets and ambient effects), load `web-appearance`.
 
 ## Index
 
@@ -34,7 +27,7 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets, ambi
 | subscription meters, plan badges, profiles, keep-warm, prompt cache | [Usage and the cache report](#usage-and-the-cache-report) |
 | what an agent did step by step | [The Log tab](#the-log-tab) |
 | any Settings control | [Settings](#settings) |
-| themes, cards, widgets, ambient effects (petals, click stars), effects, mods | [Look](#look) |
+| themes, cards, widgets, ambient effects (petals, click stars) | [Look](#look) |
 | blank page, preview refused, link fails, signed out, "live" missing | [Troubleshooting](#troubleshooting) |
 
 Addresses: the dashboard is served on the host at `http://localhost:<health_port>` (default 19280), on 127.0.0.1
@@ -67,8 +60,7 @@ hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, 
 still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Access & security, Look,
-mods, effect-library/personal-selection management, schedule edits and preference writes are refused. Current in-scope
-Chat effect metadata/code reads are allowed, with session/epoch/exposure checks; the public viewer’s show switch is browser-local. HTML previews work over it through a second tunnel
+schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 
 **Sessions.**
@@ -152,8 +144,7 @@ workspace `inbox/`; an unused upload is deleted after 30 minutes.
 
 **In replies.** Images inline; video and audio play inline; Markdown, CSV, JSON, code and text files get a **Show**
 card (200 lines, then "Show all … lines"); other files download. Code blocks have a language tag, **Wrap** and
-**Copy**, and fold after 30 lines. **⋯ → Full width** (desk only, off by default, this browser's choice) widens the
-thread and the composer to the whole chat panel for wide tables and code; a person's bubbles keep their size. Each reply has **Copy this reply**. Markdown: headings, lists, quotes, bold/italic/
+**Copy**, and fold after 30 lines. Each reply has **Copy this reply**. Markdown: headings, lists, quotes, bold/italic/
 strike, links, and tables (header row plus separator, alignment, up to 20 columns). Discord mentions show as names;
 a Discord server emoji (`<:name:id>`) of the fleet's servers shows as its picture, and any other (or one whose picture
 can't load) as `:name:`. Unicode emoji are drawn by the system's colour emoji font under every theme font (boxes on
@@ -246,9 +237,7 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A main
   task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
   **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
-  to them first). Read-only over the public link. The cards you handed out that wait for your confirmation, or are
-  blocked, are also **Needs you** items: on the web they open the card; in each bot's live message in General they
-  have **Confirm** / **Send back** / **Answer** (the words are a reply to the bot's prompt).
+  to them first). Read-only over the public link.
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't
@@ -280,8 +269,7 @@ activity line, **Find in office** and **Chat**. A double-click opens the chat di
 (lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`). **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
-(never a read-only one, a guest or the public link) gets **Edit offices** (≥1200 px: a panel docked on the right in the
-usage rail's place, the Office in use beside it, × or Esc closes it and the rail returns; narrower: a centred dialog): add, rename and delete offices, pick who is
+(never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
 in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style, and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
@@ -305,10 +293,7 @@ its own night place, **Back to the pack's night place** undoes it (#2665); a sel
 office's members, several allowed) and **Lend when away** (#2691) — whoever it is for sits there first when they come
 to its area, nobody else does unless it is lent while they are all away (a borrower moves off when one comes), and a
 reserved seat's handle is ringed; a pack can reserve seats as well; **Save layout** keeps the moves as that
-office's overrides (the pack stays as uploaded), **Reset** goes back to the pack's own. On a screen ≥1200 px its controls sit in the right-hand panel (the canvas whole for the
-handles); narrower, or in fullscreen, they are the bar along the canvas's bottom. Esc is Cancel. While either editor
-is docked the page beside it works, Ctrl+K search included; leaving the page with unsaved changes asks first
-("Discard changes"). While it is open the office picker and Edit offices wait (**Cancel** closes it); if someone
+office's overrides (the pack stays as uploaded), **Reset** goes back to the pack's own. While it is open the office picker and Edit offices wait (**Cancel** closes it); if someone
 saved the offices meanwhile, Save says so and keeps your layout — Save again puts it on the current list. A crowded area packs extra people into a tighter grid, then shows "+N" in its corner; there
 only calls and work get bubbles (a few at most) and name tags show on hover or focus. **Hide paused and stopped**
 (per browser, off by default) leaves the sleepers out. Now and then someone says a short line for their state in a
@@ -555,11 +540,11 @@ ClassicBot (in **Chat & connections**, `/settings/chat#classicbot`) — per room
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
 **Agent defaults** — **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
-changing it waits for a fleet admin's OK) and the fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW; read at startup: restart AgEnD), default
+changing it waits for a fleet admin's OK) and the fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard, **Native replies trigger ClassicBot**
 (`reply_triggers`: a native reply triggers a ClassicBot bot; off by default, #2576); Advanced: tool set, agent mode, log
 level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
-**Stagger delay** (`startup.*`, used from the next agent start, no restart). ClassicBot defaults (in Chat & connections; `classicBot.yaml defaults.*`): default backend, tool
+**Stagger delay** (`startup.*`, restart AgEnD). ClassicBot defaults (in Chat & connections; `classicBot.yaml defaults.*`): default backend, tool
 progress, reply guard, **Native replies trigger ClassicBot** (`reply_triggers`, also per room), **ClassicBot admins**,
 **Allowed guilds**.
 
@@ -601,7 +586,7 @@ when the host confirms; a directory that is entered must be absolute.
 ## Look
 
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in
-Settings → **Look**, card by card (the app icon, card upload limits and Canvas Worker effects are in **Web dashboard**; following reduced motion and custom CSS off here are in **Preferences**):
+Settings → **Look**, card by card (the app icon and card upload limits are in **Web dashboard**; following reduced motion and custom CSS off here are in **Preferences**):
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
   ring colours fall back to the bots' own (all devices).
 - **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
@@ -620,38 +605,21 @@ Settings → **Look**, card by card (the app icon, card upload limits and Canvas
   **Save and try**, then **Keep** within 15 s or it reverts; **Turn off (all devices)**; earlier versions **Use
   this**. If something is hidden or broken, open the page with `?safe=1`, or tick **Turn off custom CSS on this
   device** (in Preferences).
-- **Mods** — one `.agendmod.json` file carrying a look; importing shows everything first and applies only what you
-  tick (custom CSS is never pre-ticked); agents can propose mods (**Review** / **Dismiss**); **Export a mod** writes one.
-  Uninstalling removes the mod, not what it applied.
-- **Effects** — the effect library (upload a folder with `effect.json` and `worker.js`, up to 1 MiB), save one for a
-  chat, share your copy; **Your effect choices** for Sidebar / Header / Page / Box (each with Pause / Resume and
-  Clear) and a Cursor (its state, and Clear). CW uses the dashboard's opaque isolated document, independently of
-  **Allow HTML previews**, its listener and port. Signed-in public/guest viewers can play current effects in chats they
-  may see, without library, personal-slot, Trial or profile grants. Their Chat header offers a browser-local show/off
-  switch and recovery, on desktop and phone; it never changes host preferences. A Try sample starts on a signed-in non-public admin's
-  click, with no extra consent. The show switch, safe mode, hidden tab, browser support and live performance guard remain.
-  No startup FPS calibration; data saver does not block. Reduced motion blocks only if this device chose to follow it.
-  A blocked placement keeps an exact named notice. On ordinary dashboard sessions, Show/custom-CSS actions open
-  **Look**. Public/guest Show-off has **Turn effects on here**; a guest CSS refusal offers Reload.
-  An unavailable
-  isolated transport offers Reload, never an HTML-preview setup step. A motion refusal offers **Play effects anyway**;
-  safe mode offers **Leave safe mode**. The dialog names loading, safety and raw unknown codes. Codes stay local; agents get only closed recent blocked reasons without viewer identifiers or counts.
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
 
 Moved out of Look in 2.3.2 (#2347). **Preferences** (this device only): **Effects: follow the system's reduced-motion
-setting** (off by default): on, both ambient and Canvas Worker effects stay still while the system asks for reduced motion. Otherwise both play, with one shared one-time chat note and a local action to follow the system. And **Turn off custom CSS on this device**. **Web dashboard**: the **App icon**;
+setting** (off by default): on, ambient effects stay still while the system asks for reduced motion. Otherwise they play, with one shared one-time chat note and a local action to follow the system. And **Turn off custom CSS on this device**. **Web dashboard**: the **App icon**;
 **Identity card upload limits** — portrait and banner size limits and per-agent picture quota (`web.appearance.*`);
-lowering applies at once, raising waits for an admin; and **Experimental: Canvas Worker effects**.
+lowering applies at once, raising waits for an admin.
 
 **What an agent can change for the user.** A worker changes only its own look (the `web-appearance` tools); before
 #2064 everything on this page was the person's. Since #2064 (2.2.5) General, coordinators and
 full-profile instances get `get_web_settings` / `set_web_settings`, which go through the same checks as the page;
 workers don't. The `web-appearance` skill's **For the user** section has the details. In short: General can change
-the host's appearance settings, one agent's identity colour, mods (review, install, cancel, dismiss, uninstall),
-effects and the effect slots, and Restore defaults; for custom CSS it can save a version **on trial**, keep or revert
+the host's appearance settings, one agent's identity colour, ambient effects and Restore defaults; for custom CSS it can save a version **on trial**, keep or revert
 the trial, switch to an earlier saved version, or turn CSS off — and it keeps a trial only once the user says they like
 it (the user's decision). Still the person's own click on the page: choosing files from their computer
-(import a mod, upload an effect folder or CSS assets), the per-browser switches (custom CSS off on this device, Pause/Resume), downloading an exported mod, and the
+(upload CSS assets), the per-browser switches (custom CSS off on this device, Pause/Resume), and the
 card upload limits. The docs' "Asking General to change it for you" says the same for people.
 
 ## Troubleshooting
@@ -702,14 +670,3 @@ no instance uses that provider.
 **Settings won't change something.** Over a public link, Web settings and appearance are read only; a loosening
 change waits for an admin's confirmation in General chat; a value in the "Set in fleet.yaml" list must be edited in
 fleet.yaml (Advanced, or the file) and `agend reload`.
-
-### Canvas Worker playback diagnostics
-
-The effect player loads only when there is something to play: the open chat has a placed effect, the person chose a
-personal effect, or a Try card is shown (#2193). Before that, nothing of it is in the page, by design. Ambient effects
-and custom CSS never need it.
-
-If an effect cannot play, the Chat notice and Effects dialog show its local refusal code. A failed Try retains its stop
-code on the offer card; the browser console also names refusals. Include the code when reporting a problem. Long chat
-history is checked separately from the bounded set of current paint holes. Moving the pointer away does not stop Try;
-window blur, navigation, closing or loss of the verified stage does. Local raw codes are not sent in agent summaries.

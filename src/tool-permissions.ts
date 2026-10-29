@@ -59,13 +59,10 @@ const WORKER: readonly string[] = [
   "set_web_widget", "remove_web_widget",
   // Its own declarative ambient (#2117): no target, the same lock and limits.
   "set_web_ambient", "clear_web_ambient",
-  // Mods (#1629 r4-5b): its own look as a file, and proposing one for a person — never importing.
-  "export_web_mod", "propose_web_mod",
   // Its own character in the Office view (#2578): no target; off until a person switches office_access on.
   "office_view", "office_set",
   // The Office view's skin packs (#2692): everyone's, so off until a person switches office_pack_access on for it.
   "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
-  "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
   // Its own schedules. Present here, but not a free hand: scheduleOpRefusal
   // limits a non-coordinator to schedules that target itself and that it
   // created (#895). The target is the control, not whether the tool is listed.
@@ -130,8 +127,6 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
     "set_web_ambient", "clear_web_ambient",
-    "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // Its own character in the Office view (#2578), as a worker's.
     "office_view", "office_set",
     // The Office view's skin packs (#2692), as a worker's: off until a person switches office_pack_access on.
@@ -145,8 +140,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
     "list_stickers", "preview_stickers",
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient", "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
+    "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient",
     "office_view", "office_set",
     "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status", "get_cache_report", "get_usage_report",
@@ -274,6 +268,8 @@ export const IPC_TYPE_TOOLS: Readonly<Record<string, string>> = {
   fleet_remove_web_widget: "remove_web_widget",
   fleet_set_web_ambient: "set_web_ambient",
   fleet_clear_web_ambient: "clear_web_ambient",
+  // #2799: the removed Canvas Worker tools keep their IPC types, so a stale MCP process's call is refused with the
+  // plain message at the permission check (it never reaches a handler) instead of going unanswered.
   fleet_export_web_mod: "export_web_mod",
   fleet_propose_web_mod: "propose_web_mod",
   fleet_upload_web_effect: "upload_web_effect",
@@ -366,9 +362,6 @@ const OWN_APPEARANCE_TOOLS: ReadonlySet<string> = new Set([
   "get_web_appearance", "preview_web_appearance",
   "set_web_widget", "remove_web_widget",
   "set_web_ambient", "clear_web_ambient",
-  "export_web_mod", "propose_web_mod",
-  "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-  "apply_web_effect", "remove_web_effect", "delete_web_effect",
   "office_view", "office_set",
 ]);
 

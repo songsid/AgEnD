@@ -6,7 +6,6 @@
  * without pulling in channel infrastructure.
  */
 import { z, type ZodType } from "zod";
-import { isCanvasWorkerTool } from "../web-experimental.js";
 import * as schemas from "../outbound-schemas.js";
 
 /** Narrow JSON-schema fragment shape that MCP tool listings need. */
@@ -166,9 +165,9 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["set_persona_emoji", schemas.SetPersonaEmojiArgs,
     "Set your persona emoji: the status stamp (default: delivered) your bot puts on messages it handles, so people can tell you apart from other bots. Other statuses: received, queued, processing, failed, progress_prefix, and photo / attachment (the stamp on a photo / file your bot saved). Validated the way Settings validates it; takes effect on your next stamp."],
   ["get_web_settings", schemas.GetWebSettingsArgs,
-    "Settings → Look as it is now, for the user: every setting the page shows in plain words (summary) and as values — the host's (themes shown, identity colours, card sizes, sidebar widget), each agent's own colour, effects and ambient effect, one person's custom CSS and effect slots — the installed and proposed mods, the people whose own settings you may name, and what only the person can do on the page. General, coordinators and full profiles."],
+    "Read Settings → Look: themes, colours, cards, widgets, custom CSS and ambient presets. General, coordinators and full profiles."],
   ["set_web_settings", schemas.SetWebSettingsArgs,
-    "Change one Look setting for the user, exactly as the page changes it (the same checks; custom CSS keeps its safe rules): host settings, an agent's colour, an agent's card banner focus, custom CSS (save on trial, keep or revert the trial, use an earlier version, off), a proposed mod (review, install with the parts to apply, cancel, dismiss, uninstall), an effect on a chat, an agent's ambient effect (falling petals, click stars — set or clear), an effect slot, or Restore defaults. Returns { ok, ... } or { ok: false, error, detail }. See the web-appearance skill. General, coordinators and full profiles."],
+    "Change Settings → Look: host settings, colours, cards, custom CSS, ambient presets, or Restore defaults. General, coordinators and full profiles."],
   ["get_web_theme", schemas.GetWebThemeArgs,
     "Your own web theme (how your chat looks in the web dashboard): the current theme, the token defaults it is drawn over, your uploaded pictures, and your limits (changes left, each picture slot's size limits and your picture quota; uploads are not counted). No target: always yours."],
   ["set_web_theme", schemas.SetWebThemeArgs,
@@ -176,7 +175,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["set_web_theme_asset", schemas.SetWebThemeAssetArgs,
     "Upload a picture from your working directory for your theme's background or avatar, your identity card's portrait or banner, or a glyph for your ambient; returns { id } to name in set_web_theme (background.image, avatar, card.portrait, card.banner) or set_web_ambient (glyphs: [{ asset: id }]). Metadata (EXIF/GPS) is removed. Each slot's size limits and your picture quota apply."],
   ["get_web_appearance", schemas.GetWebAppearanceArgs,
-    "How you appear on the web dashboard now: your face and where it comes from (profile, theme, bot, emoji or initial), your ring colour, your identity card field by field (a person's field wins over yours), your theme per light/dark mode after the defaults, whether a person locked it, your placed effects and closed recent playback-block reasons, and your limits. Recent viewer reports are untrusted observations, never proof of health. No target: always yours."],
+    "Read your own appearance on the dashboard: face, ring colour, identity card, theme, widgets, ambient presets and limits."],
   ["preview_web_appearance", schemas.PreviewWebAppearanceArgs,
     "Draw how you appear on the web dashboard as an SVG per mode (your card, the chat header with your face and ring, a pair of bubbles in your colours, your working label), written to .agend/appearance/<mode>.svg in your working directory, with the pictures it shows beside it (avatar, portrait, banner, background). Returns the paths: Read the SVGs for geometry, colours and text, and the pictures as images."],
   ["set_web_widget", schemas.SetWebWidgetArgs,
@@ -184,7 +183,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["remove_web_widget", schemas.RemoveWebWidgetArgs,
     "Remove your own widget from one slot, or both (a change for the rate limit). A widget a person placed stays."],
   ["set_web_ambient", schemas.SetWebAmbientArgs,
-    "Set your own ambient effect on the web dashboard: a preset (fall, rise, twinkle, burst-on-click) with your glyphs, colours and a few numbers — data only; the dashboard draws it behind your chat (falling petals 🌸❀✿, snow, click stars ✦✧). No code, no consent or preview needed, unlike a Canvas Worker effect. A chat has one looping ambient and one burst-on-click. Shown only where a person shows agents' looks (it plays with the system's reduced motion on, unless that device chose to follow it). Returns { kind, ambient, rev } or { errors: [{ path, problem }] }. A change for the rate limit; refused while a person locked your look or set that ambient."],
+    "Set your own ambient preset (fall, rise, twinkle, burst-on-click) with glyphs, colours and numbers. Declarative data only; no code or preview is needed. Shares the theme-change limit and respects a person's lock."],
   ["clear_web_ambient", schemas.ClearWebAmbientArgs,
     "Clear your own ambient effect: the looping one, the click one, or both (a change for the rate limit). One a person set stays."],
   ["office_view", schemas.OfficeViewArgs,
@@ -203,26 +202,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "List the skin packs the fleet keeps: each { id, name, files, bytes, version, uploaded_at, by, previous: { version, files, bytes } | null (restorable), offices: [ids drawn in it] }, plus deleted packs whose previous version was kept, the stored offices with their style, the approval mode (\"apply\": at once; \"approve\": an admin's yes first), your pending changes, the limits and your remaining budget. Read it before uploading."],
   ["office_set_style", schemas.OfficeSetStyleArgs,
     "Point a stored office (office_pack_list lists them) at a skin pack the fleet keeps, or a built-in style (pixel, studio, cozy). Its layout overrides stay (they apply only on the pack they were made on, and must fit it). Logged, told to the admins and held for their yes like an upload; counts as a batch. Returns { applied } or { pending } or { error, message }."],
-  ["export_web_mod", schemas.ExportWebModArgs,
-    "Export your own look on the web dashboard as a mod file — your theme with its pictures, your card text and the widgets you placed (never custom CSS) — written to .agend/mods/<name>-<version>.agendmod.json in your working directory. Returns { path, bytes }."],
-  ["propose_web_mod", schemas.ProposeWebModArgs,
-    "Propose a mod file from your working directory for a person to review in Settings → Look → Mods. It is checked whole; one carrying custom CSS is refused. Nothing changes until a person installs it."],
   ["reset_web_theme", schemas.ResetWebThemeArgs,
     "Reset your own web theme to the default (counts as a change for the rate limit)."],
-  ["upload_web_effect", schemas.UploadWebEffectArgs,
-    "Upload a Canvas Worker effect directory from your own workspace. Code runs only in an isolated Worker, with no DOM or network. Returns { id, warnings }; <=1 MiB normalized, ten uploads/eight MiB retained (uploads themselves are not counted). No target."],
-  ["list_web_effects", schemas.ListWebEffectsArgs,
-    "List your own effects and human-shared effects, their declarations, byte sizes, recorded profiles and closed recent blocked reasons for effects placed in your own chat. No viewer identities or counts; absence of reports means unknown. No target."],
-  ["preview_web_effect", schemas.PreviewWebEffectArgs,
-    "Offer a Try card for an effect you can read, in your own chat: only an admin signed in outside the public link can click to start a clipped sample, never you. Nothing is applied or saved; the offer lasts up to 10 minutes (offering the same effect again keeps it, a different one replaces it). Returns { id, status: \"offered\", expiresAt }, or not_found / trial_unavailable. It never launches a browser for you."],
-  ["profile_web_effect", schemas.ProfileWebEffectArgs,
-    "Read how an effect you can read ran on viewers' pages, per device class: { status: \"unmeasured\" | \"reported\", records } with a verdict (ok, degraded, paused, off) and a reason. No measurement means unknown, never free or healthy."],
-  ["apply_web_effect", schemas.ApplyWebEffectArgs,
-    "Apply an effect to your own chat only, with typed params if declared. At most two placements; shared theme-change rate limit and human lock apply. Owner regions and cursors are not agent settings."],
-  ["remove_web_effect", schemas.RemoveWebEffectArgs,
-    "Remove one effect from your own chat, or all (omit id). Shares the theme-change limit; a human lock is respected."],
-  ["delete_web_effect", schemas.DeleteWebEffectArgs,
-    "Delete your own unused effect claim. Any current placement, mod or live stage prevents deletion; another principal's claim is never removed."],
   ["set_description", schemas.SetDescriptionArgs,
     "Set your role description. This is injected into your system prompt as your role definition. Takes effect on next session restart."],
   ["checkout_repo", schemas.CheckoutRepoArgs,
@@ -264,34 +245,3 @@ export const TOOLS: ToolDef[] = DEFS.map(([name, schema, description]) => ({
  * a control, so it stopped being defined next to the schemas and moved next to
  * the thing that enforces it.
  */
-
-/** #2275: keep non-CW appearance tools useful without advertising disabled branches. */
-export function toolsWithCanvasWorker(enabled: boolean, definitions: readonly ToolDef[] = TOOLS): ToolDef[] {
-  if (enabled) return [...definitions];
-  const descriptions: Readonly<Record<string, string>> = {
-    get_web_settings: "Read Settings → Look: themes, colours, cards, widgets, custom CSS and ambient presets. General, coordinators and full profiles.",
-    set_web_settings: "Change Settings → Look: host settings, colours, cards, custom CSS, ambient presets, or Restore defaults. General, coordinators and full profiles.",
-    get_web_appearance: "Read your own appearance on the dashboard: face, ring colour, identity card, theme, widgets, ambient presets and limits.",
-    set_web_ambient: "Set your own ambient preset (fall, rise, twinkle, burst-on-click) with glyphs, colours and numbers. Declarative data only; no code or preview is needed. Shares the theme-change limit and respects a person's lock.",
-  };
-  return definitions.filter(t => !isCanvasWorkerTool(t.name)).map(t => {
-    const schema = structuredClone(t.inputSchema);
-    if (t.name === "set_web_settings") {
-      const change = schema.properties?.change as Record<string, unknown> | undefined;
-      for (const key of ["oneOf", "anyOf"]) {
-        if (Array.isArray(change?.[key])) change[key] = (change[key] as Array<{ properties?: { what?: { const?: string } } }>).filter(branch => !["effect", "effect_slot", "mod"].includes(branch.properties?.what?.const ?? ""));
-      }
-    }
-    // `person` is shared with effect slots in the on schema; no disabled capability leaks via nested descriptions.
-    const stripDescriptions = (node: unknown): void => {
-      if (!node || typeof node !== "object") return;
-      for (const [key, value] of Object.entries(node)) {
-        if (key === "description" && typeof value === "string") {
-          (node as Record<string, unknown>)[key] = value.replace(/custom CSS, effect slots/g, "custom CSS").replace(/themes, effects and widgets/g, "themes and widgets");
-        } else stripDescriptions(value);
-      }
-    };
-    stripDescriptions(schema);
-    return { ...t, description: descriptions[t.name] ?? t.description, inputSchema: schema };
-  });
-}
