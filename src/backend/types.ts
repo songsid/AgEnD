@@ -165,6 +165,12 @@ export interface ErrorPattern {
   formatMessage?: (match: RegExpMatchArray) => string;
   /** Run the backend's live quota check before surfacing a quota notice. */
   verifyQuota?: boolean;
+  /** A quota pause the live usage-window check cannot judge (codex workspace credits and spend caps are not one of
+   * its windows): pause without asking it. Only for rows anchored to the CLI's own error decoration. */
+  skipUsageVerify?: boolean;
+  /** Occurrences already on the first live composer of a spawn are resumed history (codex reprints its error rows
+   * on resume), not a new incident: only later ones count. */
+  historyUntilLiveComposer?: boolean;
   /** Skip the 5-min per-type notification cooldown so every occurrence notifies
    * (e.g. Kiro "Response timed out" — each timeout should reach the user). */
   skipCooldown?: boolean;

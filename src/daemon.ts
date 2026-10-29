@@ -1561,7 +1561,7 @@ export class Daemon extends EventEmitter {
    * cancels it when anything changed, and it fires at most once. The due time is on the monotonic clock.
    */
   /**
-   * How many occurrences of each `nudge_continue` pattern were already on screen when this spawn first showed a live
+   * How many occurrences of each `nudge_continue` (or `historyUntilLiveComposer`) pattern were already on screen when this spawn first showed a live
    * composer (null until then): resumed scrollback, i.e. HISTORY. An occurrence is a new episode only beyond that — a
    * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
    */
@@ -4209,9 +4209,10 @@ export class Daemon extends EventEmitter {
       const seen = this.lastErrorCount.get(key) ?? 0;
 
       // #2282: a resumed exhausted429 row is history, not even a new
-      // notification/failover incident. Wait for the first live composer to
-      // establish its baseline; later appended occurrences remain eligible.
-      if (ep.type === "rate_limit" && ep.action === "nudge_continue") {
+      // notification/failover incident; so is a resumed codex workspace-limit row
+      // (#2844: a wake must not pause again on it). Wait for the first live
+      // composer to establish its baseline; later appended occurrences remain eligible.
+      if ((ep.type === "rate_limit" && ep.action === "nudge_continue") || ep.historyUntilLiveComposer) {
         const baseline = this.nudgeBaselines?.get(key);
         if (baseline === undefined || count <= baseline) {
           if (baseline !== undefined) this.lastErrorCount.set(key, count);
@@ -8347,7 +8348,7 @@ export class Daemon extends EventEmitter {
     if (!this.isCodexLivePaneSnapshot(pane)) return;
     const baselines = this.nudgeBaselines ?? new Map<string, number>();
     for (const ep of patterns) {
-      if (ep.action !== "nudge_continue") continue;
+      if (ep.action !== "nudge_continue" && !ep.historyUntilLiveComposer) continue;
       const key = Daemon.errorPatternKey(ep);
       const count = Daemon.countOccurrences(ep.pattern, pane);
       // History that has scrolled away must not hide the next real occurrence.

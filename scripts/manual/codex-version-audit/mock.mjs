@@ -37,8 +37,11 @@ createServer((req, res) => {
     // 0.165 (#56445): a provider's model_not_found is no longer retried; codex shows the provider's own message.
     if (m === "notfound") { res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "The model `gpt-audit-missing` does not exist or you do not have access to it.", type: "invalid_request_error", code: "model_not_found" } })); return; }
     if (m === "e500") { res.writeHead(500, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "internal", type: "server_error" } })); return; }
-    if (m === "usage") {
-      res.writeHead(429, { "content-type": "application/json", ...limitHeaders(100) });
+    // wscredits / wsspend: a business-workspace member out of credits or past the owner's spend cap. Codex reads the
+    // x-codex-rate-limit-reached-type header and opens its "Notify owner? / Request increase?" Yes/No prompt.
+    const workspace = { wscredits: "workspace_member_credits_depleted", wsspend: "workspace_member_usage_limit_reached" }[m];
+    if (m === "usage" || workspace) {
+      res.writeHead(429, { "content-type": "application/json", ...limitHeaders(100), ...(workspace ? { "x-codex-rate-limit-reached-type": workspace } : {}) });
       res.end(JSON.stringify({ error: { type: "usage_limit_reached", message: "usage limit", plan_type: "plus", resets_at: Math.floor(Date.now() / 1000) + 3600 } }));
       return;
     }

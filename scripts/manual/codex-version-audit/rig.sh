@@ -3,7 +3,7 @@
 #   VERSION     codex version installed under $AUDIT/codex-$VERSION (npm --prefix), never the host install
 #   steps       mock | launch <name> [resume|fresh] [trust|untrusted] [nudge] [WxH] [workdir-name] [git|plain] | clone <name> <from>
 #               | raw <name> <inst> <workdir-name> <codex args…> | cap <scenario> <secs>
-#               | send <text> | key <tmux-key> | mode <ok|slow|near|usage|e401|e500|notfound|capacity> | kill | stop
+#               | send <text> | key <tmux-key> | mode <ok|slow|near|usage|wscredits|wsspend|e401|e500|notfound|capacity> | kill | stop
 #               | paths (prints SOCK AH SH RUN for this run)
 # Env: AUDIT (scratch root, required), PORT (default 18762), WIN (tmux window target, default "a").
 # Every name is owned by ONE run — the version AND the audit root (a short hash of its real path): the private tmux
