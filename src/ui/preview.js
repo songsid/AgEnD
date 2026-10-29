@@ -20,7 +20,9 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function (root) {
   "use strict";
 
-  var LIMITS = { maxBytes: 1024 * 1024, minHeight: 40, maxHeight: 4000, readyMs: 3000, watchdogMs: 10000, resizePerSec: 10, minDelta: 2, growthFreeze: 5, growthWindowMs: 2000 };
+  // #2863: askBytes — above it the person is asked first ("Preview anyway?"); maxBytes — above it only a download (the
+  // frame's own ceiling, web-preview.ts PREVIEW_HTML_MAX_BYTES; html-attachment.js reads with the same two).
+  var LIMITS = { askBytes: 8 * 1024 * 1024, maxBytes: 50 * 1024 * 1024, minHeight: 40, maxHeight: 4000, readyMs: 3000, watchdogMs: 10000, resizePerSec: 10, minDelta: 2, growthFreeze: 5, growthWindowMs: 2000 };
   var OPT_IN_KEY = "agend_html_preview";        // localStorage: "on" — this device allows previews
   var NEVER_KEY = "agend_html_preview_never";   // sessionStorage: "1" — never preview on this device (this session)
   // #1568: the banner was acknowledged ("I understand"). localStorage: the sign-in's session handle — hidden while the
@@ -54,6 +56,8 @@
   function now() { return root.performance && typeof root.performance.now === "function" ? root.performance.now() : Date.now(); }
   function store(kind) { try { return root[kind] || null; } catch (e) { return null; } }
   function utf8Bytes(s) { try { return new root.TextEncoder().encode(s).length; } catch (e) { return String(s).length * 3; } }
+  /** #2863: "12 MB" / "8.4 MB" (1 MB = 1024 × 1024 bytes, as the caps are; html-attachment.js sizeLabel). */
+  function sizeLabel(bytes) { var mb = bytes / (1024 * 1024); return (mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10) + " MB"; }
   function randomCh() {
     var b = new Uint8Array(16);
     root.crypto.getRandomValues(b);
@@ -229,7 +233,8 @@
 
   /**
    * Run `html` in `holder` (a node of the card) for `key`. `ui` is told what happened: ui.state(name, reason) with
-   * "starting" | "running" | "stopped" | "unavailable". One preview at a time: any other running one stops first.
+   * "starting" | "running" | "stopped" | "unavailable" | "large" (#2863: over LIMITS.askBytes — nothing runs until it is
+   * asked again with opts.anyway, the person's "Preview anyway"). One preview at a time: any other running one stops first.
    * opts.fill (#1481, the side panel): the frame fills its holder — the same frame from mountPreview, only sized by the
    * panel instead of by the frame's height messages, which it then ignores.
    */
@@ -239,7 +244,9 @@
   function start(key, holder, html, ui, opts) {
     var a = availability();
     if (!a.ok) { ui.state("unavailable", a.reason); return false; }
-    if (typeof html !== "string" || utf8Bytes(html) > LIMITS.maxBytes) { ui.state("unavailable", say("pvHtmlOver", "This HTML is over 1 MiB; it is not previewed.")); return false; }
+    var bytes = typeof html === "string" ? utf8Bytes(html) : Infinity;
+    if (bytes > LIMITS.maxBytes) { ui.state("unavailable", say("pvHtmlOver", "This HTML is over 50 MB; it is not previewed. Download it to open it.")); return false; }
+    if (bytes > LIMITS.askBytes && !(opts && opts.anyway)) { ui.state("large", say("pvLarge", "This file is large ({0}). Preview anyway?", sizeLabel(bytes))); return false; }
     stopAll("another");
     starts++;
     var doc = holder.ownerDocument;

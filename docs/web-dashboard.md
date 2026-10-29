@@ -188,7 +188,12 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 ### HTML previews
 When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.htm` file, a card under it can run that HTML for you.
 - **Files and blocks work the same.** A file's card sits under the reply's files. Its HTML is read from the fleet only when you click **Preview** or **Open in panel**, and it runs in the same sandboxed frame as a block. The file is never opened on the dashboard's own address. **Download** is the file's own link above the card. A file the fleet no longer has (its copy was removed to stay within the limit, or it was sent before AgEnD kept copies) says so; ask the agent to send it again.
-- **Up to 1 MiB.** A block or a file over 1 MiB (as UTF-8) gets no preview. A file's listed size is checked before anything is read, and its bytes are checked again after. Files are read as UTF-8.
+- **Size (#2863).**
+  - Up to 8 MB (as UTF-8), a block or a file previews at once.
+  - Above that, the card first says *"This file is large (12 MB). Preview anyway?"* and runs it only on **Preview anyway**, in the same frame (in the panel too, if that's where you opened it). A file's listed size is checked before anything is read, so a large file isn't downloaded until you say so.
+  - Over 50 MB there is no preview, only the download.
+  - Files are read as UTF-8. The same sizes apply over the temporary public link.
+  - The **Show** card for text files stays at 1 MB: it formats the whole file in the page itself, not in a frame.
 - **Off until you turn it on.** Use **Allow HTML previews** in **Settings → Preferences**, or the card's **⋯** menu. It asks once and says what it means. The choice is saved on the AgEnD host, so it applies on every device signed in to it (never on the public link). Turning it off stops every running preview.
 - **Click to run, every time.** **Preview** runs it in a frame under the card, with this banner: *"Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."* **I understand** on the banner hides it until you next sign in. The amber border around the preview always stays. **Stop** closes it. One preview runs at a time.
 - **Download** saves a block's HTML as `reply.html` (a file keeps its own name). It is never opened in the dashboard.
