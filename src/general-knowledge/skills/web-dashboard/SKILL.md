@@ -95,7 +95,10 @@ as their own Discord or Telegram account. What a guest sees:
 
 They can chat there unless `web.guests.chat` is false, run only the commands the command table lets anyone run in that
 agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the
-agent sees them as `via web (guest)`. A guest's app has no Fleet, View, Settings or Needs you. To invite someone: turn it
+agent sees them as `via web (guest)`. A guest's app has no Fleet, Settings or Needs you. Each person is **Chat** (the
+default) or **Trusted** (#2855, `level: trusted` on the grant; Chat → Trusted waits for a fleet admin): a Trusted guest
+also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once) and **search** of the chat
+messages it can already see (6 a minute, 20 results; no messages between agents, tasks or settings). To invite someone: turn it
 on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
 send `/web`). The Guests section is not in Settings over the public link.
 
@@ -208,7 +211,7 @@ Board tasks — never a CLI's own transcript (that is the Log). Results come as 
 first, badged Chat / Message / Task; 1–2 character words work (alone: the newest 5,000 entries, said in the dialog).
 ↑↓ / Enter / Esc / click outside; **Filters**: agent, team, time, kinds, **Only mine**; recent searches when empty.
 A chat result opens the chat at the message (flashed); a message between agents, a task or a chat row the history no
-longer keeps opens as the index's copy. Admins only, over the temporary public link and on a phone too (no guests). Config: `web.search.enabled`
+longer keeps opens as the index's copy. Admins, over the temporary public link and on a phone too; a Trusted guest (#2855) searches only its own agents' chat messages it can see. Config: `web.search.enabled`
 (default on, off everywhere), `web.search.public_link` (default on; false keeps it off the public link), `web.search.retention_days` (unset and 0 = no age limit; 1–3650 days; daily prune still caps at 300,000). Secrets are masked; a hidden `cross_instance_visibility`
 agent's messages are not found. "Search is off or not available": `web.search.enabled: false`, or the index could not
 open (the fleet log says why); "Still indexing": the first fill after an upgrade.

@@ -952,6 +952,8 @@ img.amb-p { object-fit: contain; }
 .s-guests .g-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: var(--s-2) 0 0 calc(28px + var(--s-2)); }
 .s-guests .g-chip { padding: 1px var(--s-2); border: 1px solid color-mix(in srgb, var(--text-3) 55%, transparent); border-radius: 0; font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; }
 .s-guests .g-edit { margin: var(--s-2) 0 0 calc(28px + var(--s-2)); }
+.s-guests .g-level { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-2) 0 0 calc(28px + var(--s-2)); }
+.s-guests .g-level > .note:last-child { flex-basis: 100%; margin: 0; }
 .s-guests .guest-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: var(--s-2) 0 0 calc(28px + var(--s-2)); }
 .s-guests .g-error { color: var(--danger); margin-left: calc(28px + var(--s-2)); }
 .s-guests .g-search { width: 100%; max-width: 360px; margin: var(--s-1) 0 var(--s-2); }
@@ -1265,6 +1267,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .v-pre .ansi[data-b] { font-weight: var(--fw-bold); }
 /* #1582: faint text (SGR 2) — a CLI's suggestion or placeholder, never input — stays faint here. */
 .v-pre .ansi[data-dim] { opacity: .5; }
+.v-watching { flex-shrink: 0; margin: 0; padding: var(--s-2) var(--s-4); font-size: var(--fs-sm); color: var(--text-2); background: var(--surface); border-bottom: 1px solid var(--border); }
 .v-term-note { position: absolute; left: var(--s-3); right: var(--s-3); top: var(--s-3); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--warn-bg); border: 1px solid var(--warn-line); color: #f0f0f0; font-size: var(--fs-sm); }
 .v-probe { position: absolute; visibility: hidden; white-space: pre; left: -9999px; top: 0; font-size: 100px; }
 .help-list { list-style: disc; padding-left: var(--s-5); display: flex; flex-direction: column; gap: var(--s-2); font-size: var(--fs-sm); }
@@ -2215,7 +2218,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-fleet > .seg, .p-settings > .seg,
 .p-fleet > .panel-body, .p-needs > .panel-body, .p-settings > .panel-body,
 .p-log > .panel-body, .p-details > .panel-body, .p-view > .panel-body,
-.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id { position: relative; z-index: 1; }
+.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-watching { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
 .p-settings > .s-pending { z-index: 1; }
 

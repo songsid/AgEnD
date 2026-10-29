@@ -52,7 +52,7 @@ afterEach(async () => {
 });
 
 describe("a guest's shell", () => {
-  async function shell(guest: boolean) {
+  async function shell(guest: boolean, trusted = false) {
     vi.resetModules();
     const harness = await import("./helpers/app-harness.js");
     // A filter this device kept ("zzz" matches no agent), and host preferences on the page (so they could be written).
@@ -60,6 +60,7 @@ describe("a guest's shell", () => {
     mounted.push(pg);
     pg.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {} }));
     if (guest) { pg.document.body.setAttribute("data-tier", "guest"); pg.document.body.setAttribute("data-guest-name", "Alice"); pg.document.body.setAttribute("data-guest-platform", "discord"); }
+    if (trusted) pg.document.body.setAttribute("data-guest-level", "trusted");
     (pg.window as any).AgendAuth = { canWrite: async () => !guest, sessionEnded: () => false, onSessionEnd: () => () => {} };
     (globalThis as { fetch?: unknown }).fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
     const { startRouter } = await import("/assets/app-nav.js" as string);
@@ -94,6 +95,11 @@ describe("a guest's shell", () => {
     // #2855: its own five keys only; nothing else, and nothing when no key is named.
     expect(["theme", "lang", "nav.favorites", "nav.sort", "nav.filter", "nav.order", "card.size", undefined].map((k) => prefs.prefsWritable(k))).toEqual([true, true, true, true, true, false, false, false]);
   });
+  it("#2855: a trusted guest's sidebar adds Search (and only Search) above its agents", async () => {
+    const { pg } = await shell(true, true);
+    expect(texts(pg, "#sidebar .side-nav .side-row")).toEqual(["SearchCtrl K"]);
+    expect(texts(pg, "#sidebar .side-foot a.side-row"), "still no Settings").toEqual([]);
+  });
   it("control: an admin's shell keeps all of it", async () => {
     const { pg, prefs } = await shell(false);
     expect(pg.root.querySelector("#sidebar .guest-chip")).toBeNull();
@@ -107,12 +113,13 @@ describe("a guest's shell", () => {
 });
 
 describe("a guest's chat", () => {
-  async function chatPage(guest: boolean, commands?: string[]) {
+  async function chatPage(guest: boolean, commands?: string[], trusted = false) {
     vi.resetModules();
     const harness = await import("./helpers/app-harness.js");
     const p = harness.page({ storage: { agend_tour_done: "1" } });
     mounted.push(p);
     if (guest) p.document.body.setAttribute("data-tier", "guest");
+    if (trusted) p.document.body.setAttribute("data-guest-level", "trusted");
     const app = await import("/assets/app-store.js" as string);
     const panel = await import("/ui/js/panel-chat.js" as string);
     const calls: Array<{ path: string; body: unknown }> = [];
@@ -166,6 +173,16 @@ describe("a guest's chat", () => {
     await c.type("/whatever x"); await c.key("Enter");
     expect(c.shown().join(" | ")).toContain("Guests can't send that");
   });
+  it("#2855: a trusted guest's chat: Chat | View | Search (no Log or Details); Search opens on this agent", async () => {
+    const c = await chatPage(true, [], true);
+    const tabs = [...c.p.root.querySelectorAll("nav.inst-switch .seg-item")].map((e: any) => [e.textContent, e.getAttribute("href")]);
+    expect(tabs).toEqual([["Chat", "/ui/chat/w"], ["View", "/view/w"], ["Search", null]]);
+    const shell = await import("/assets/app-shell.js" as string);
+    fire(c.p.root.querySelector("nav.inst-switch button.seg-item"), "click");
+    await vi.waitFor(() => expect(shell.shellStore.get().dialog?.props?.preset).toEqual({ instance: "w" }));
+    shell.closeDialog();
+    expect(c.p.root.querySelector("[aria-haspopup=menu]"), "still no ⋯ menu").toBeNull();
+  });
   it("control: an admin's chat has its tabs, menu and palette", async () => {
     const c = await chatPage(false);
     expect(c.p.root.querySelector("nav.inst-switch")).not.toBeNull();
@@ -173,5 +190,53 @@ describe("a guest's chat", () => {
     await c.type("/");
     expect(c.p.root.querySelector(".cmd-palette")).not.toBeNull();
     expect(c.p.root.querySelector(".guest-note")).toBeNull();
+  });
+});
+
+describe("#2855: a guest's View", () => {
+  async function viewPage(trusted: boolean, paneStatus = 200) {
+    vi.resetModules();
+    const harness = await import("./helpers/app-harness.js");
+    const p = harness.page({ url: "http://127.0.0.1:19280/view/w", storage: { agend_tour_done: "1" } });
+    mounted.push(p);
+    p.document.body.setAttribute("data-tier", "guest");
+    if (trusted) p.document.body.setAttribute("data-guest-level", "trusted");
+    const calls: string[] = [];
+    (globalThis as any).fetch = async (path: string) => {
+      calls.push(path);
+      const status = path.startsWith("/api/pane/") ? paneStatus : 200;
+      return { ok: status < 400, status, headers: { get: (k: string) => ({ "x-pane-cols": "80", "x-pane-rows": "24" } as Record<string, string>)[k.toLowerCase()] ?? null },
+        text: async () => "guest pane text", json: async () => ([]) };
+    };
+    const app = await import("/assets/app-store.js" as string);
+    app.applyStatus({ instances: [{ name: "w", status: "running", display_name: "Web" }] });
+    const { ViewPanel } = await import("/assets/panel-view.js" as string);
+    const every = vi.spyOn(globalThis, "setInterval");
+    await p.mount(harness.h(ViewPanel, { route: { panel: "view", instance: "w" }, navKey: `view:w|${trusted}` }));
+    await settle(4);
+    return { p, calls, every: every.mock.calls.map((c) => c[1]) };
+  }
+  it("trusted: its own agents (never /api/profiles), the pane under a watching-only line; no identity card, Edit profile or Help; Chat | View | Search", async () => {
+    const { p, calls, every } = await viewPage(true);
+    expect(calls.filter((c) => c === "/api/profiles"), "the roster is its status frame's").toEqual([]);
+    expect([every.includes(1000), every.includes(800)], "its pane every second (an admin's: 800 ms)").toEqual([true, false]);
+    expect(calls).toContain("/api/pane/w");
+    expect(p.root.querySelector(".v-watching")?.textContent).toBe("👁 Watching only. You can't type here; send a message in Chat instead.");
+    expect(p.root.querySelector(".v-pre")?.textContent).toBe("guest pane text");
+    expect([p.root.querySelector(".v-id"), p.root.querySelector("[aria-label='Help']")]).toEqual([null, null]);
+    expect(p.root.querySelector("h1")?.textContent).toBe("Web");
+    expect([...p.root.querySelectorAll("nav.inst-switch .seg-item")].map((e: any) => e.textContent)).toEqual(["Chat", "View", "Search"]);
+  });
+  it("over its read limit (429): no error shown, the last frame kept", async () => {
+    const { p, calls } = await viewPage(true, 429);
+    expect(calls).toContain("/api/pane/w");
+    expect([p.root.querySelector(".v-term-note"), p.root.querySelector(".v-pre")?.textContent]).toEqual([null, ""]);
+  });
+  it("chat-level: told it needs Trusted access; nothing read, no tabs", async () => {
+    const { p, calls } = await viewPage(false);
+    expect(p.root.querySelector(".empty-title")?.textContent).toBe("Watching needs Trusted access");
+    expect(p.root.querySelector(".empty-hint")?.textContent).toContain("Settings → Guests");
+    expect(calls.filter((c) => c.startsWith("/api/"))).toEqual([]);
+    expect(p.root.querySelector("nav.inst-switch")).toBeNull();
   });
 });

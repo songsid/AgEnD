@@ -60,6 +60,11 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: ["POST"], pattern: /^\/ui\/command$/, instance: null, state: "on", note: "#2855: a web command the table lets anyone run there, on an in-scope agent (the handler checks)" },
   // #2855: the usage panel — every subscription's headroom, as /usage shows anyone in chat; never a forced refresh.
   { methods: ["GET"], pattern: /^\/api\/ai-usage$/, instance: null, state: "on", note: "#2855: the usage panel (as /usage in chat; a guest never forces a refresh)" },
+  // #2855: a trusted guest — the read-only View of an in-scope agent (its page, its pane), and search of what it can see.
+  { methods: READS, pattern: new RegExp(`^/view/${NAME}$`), instance: { group: 1 }, state: "on", note: "#2855: the app shell for one agent's View (static; the pane read checks Trusted)" },
+  { methods: ["GET"], pattern: new RegExp(`^/api/pane/${NAME}$`), instance: { group: 1 }, state: "on", note: "#2855: a trusted guest's read-only View of an in-scope agent (the handler checks Trusted and its limits)" },
+  { methods: ["GET"], pattern: /^\/ui\/search$/, instance: null, state: "on", note: "#2855: a trusted guest's search — only messages it can see (the handler checks)" },
+  { methods: ["GET"], pattern: /^\/ui\/search\/context$/, instance: null, state: "on", note: "#2855: a trusted guest's search result in context — only rows it can see (the handler checks)" },
   { methods: ["POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "#2855: its own preferences (theme, language, favourites, sort, filter) into its own account's bucket (the handler checks)" },
   { methods: ["GET", "POST"], pattern: /^\/ui\/profile$/, instance: null, state: "on", note: "the guest's own web name (its account's, never anyone else's)" },
 ];
@@ -118,6 +123,8 @@ export interface GuestRequest {
   chat?(): boolean;
   /** #1920 §3.2: its stream connected — its rooms' membership is read again, in the background. */
   streamOpened?(): void;
+  /** #2855: the admin made this guest Trusted (web.guests.grants[account].level): a read-only View and search. */
+  trusted?(): boolean;
 }
 
 /**
@@ -143,6 +150,14 @@ export function guestPrefs<T extends { values: Record<string, unknown> }>(view: 
   for (const [k, v] of Object.entries(view.values)) if (GUEST_PREF_KEYS.has(k)) values[k] = v;
   return { ...view, values };
 }
+/** #2855: a trusted guest's pane reads — at most this many a second per account, of at most PANES agents at once. */
+export const GUEST_PANE_READS = { perWindow: 2, windowMs: 1_000, panes: 2, panesWindowMs: 5_000 } as const;
+/** #2855: every guest viewer of an agent reads one capture of its pane, at most this old (one tmux read per window). */
+export const GUEST_PANE_SHARE_MS = 500;
+/** #2855: a pane read a guest gets, at most this many bytes (the end of the screen is kept). */
+export const GUEST_PANE_MAX_BYTES = 256 * 1024;
+/** #2855: a trusted guest's searches a minute, per account; one at a time; at most GLOBAL guest searches running. */
+export const GUEST_SEARCHES = { perWindow: 6, windowMs: 60_000, global: 3, maxResults: 20 } as const;
 /** #2855: a guest's commands a minute, per account (every device of it); and one at a time. */
 export const GUEST_COMMAND_RUNS = { perWindow: 10, windowMs: 60_000 } as const;
 /** #2855: a guest's preference saves a minute, per account (every device of it). */

@@ -7,7 +7,7 @@ import { Toasts } from "./ui-toast.js";
 import { ConfirmHost, confirmDialog } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
-import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
+import { appStore, createStore, guestBadge, guestPage, guestTrusted, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { toast } from "./ui-toast.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
@@ -78,7 +78,8 @@ export const searchShortcut = () => (isMacLike() ? "⌘K" : "Ctrl K");
 export function searchOffered(admin) {
   const body = typeof document !== "undefined" ? document.body : null;
   const offLink = !!body && body.dataset.publicLink === "1" && body.dataset.searchLink === "0";
-  return !!admin && !guestPage() && !offLink;
+  // #2855: a trusted guest searches too (only what it can see: the server's rule).
+  return (guestPage() ? guestTrusted() : !!admin) && !offLink;
 }
 let searchModule = null;
 /** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
@@ -106,6 +107,10 @@ export function handleSearchKey(e) {
   e.preventDefault();
   openSearch(key === "f" ? { instance: route.instance } : {});
 }
+
+/** The sidebar's Search row (Ctrl+K / ⌘K). */
+const searchRow = () => html`<button type="button" class="side-row side-search" onClick=${() => openSearch()} title=${t("app.searchTitle", searchShortcut())}
+  aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${t("app.search")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>`;
 
 function readCollapsed() { try { return localStorage.getItem("agend_sidebar") === "hidden"; } catch { return false; } }
 const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
@@ -350,6 +355,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
         <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
         <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
       </div>
+      ${searchOffered(false) ? html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>${searchRow()}</nav>` : null}
       <${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false} exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />
       <div class="side-foot" data-trust="navigation">
         <${GuestChip} />
@@ -372,8 +378,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
-      ${searchOffered(canCreate) ? html`<button type="button" class="side-row side-search" onClick=${() => openSearch()} title=${t("app.searchTitle", searchShortcut())}
-        aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${t("app.search")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>` : null}
+      ${searchOffered(canCreate) ? searchRow() : null}
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}

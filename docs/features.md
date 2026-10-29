@@ -1425,7 +1425,7 @@ web:
       "<connection id>:123456789": [helper]
     session: { absolute_hours: 12, idle_minutes: 120 }   # 1–24 h, 15–720 min
     grants:                # #2348: once present, the whole scope (open_instances and narrow give nothing)
-      "<connection id>:123456789": { name: Ada, instances: [helper] }
+      "<connection id>:123456789": { name: Ada, instances: [helper], level: trusted }   # level: chat (default) | trusted (#2855)
 ```
 
 **Getting a code.**
@@ -1442,8 +1442,9 @@ web:
 - **How it looks:** one flat row per person with a letter avatar, the agents as chips and the state on the right (signed in, code sent, or why a DM failed; under the name on a phone). An edited row has the straight bar.
 - **Saving:** every edit is unsaved until **Save**. Adding a person, or an agent to someone, waits for a fleet admin's OK in General; taking away applies at once, and removing someone ends their sessions, code and remembered browsers right away.
 - **Send sign-in code** is an action, not part of Save. It DMs a saved grant's account its code (once a minute per person; never posted anywhere else). If the DM fails, the row says why — on Telegram, with the bot's start link to pass on. The code works on the dashboard reached directly and, if it is open when the code is sent, on the public link.
-- **Audit:** the event log records each code an admin sends (`guest_code_sent`: who, to whom, the outcome) and each saved change to someone's agents (`guest_grant_changed`: who saved it, whether it applied at once or was confirmed in General, the agents added and removed, and the sessions a removal ended). The section's **Recent changes** list shows the newest of them, to admins only (never a guest, never over the public link). Every guest sign-in is also posted in General.
-- **In `fleet.yaml`:** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …] } }`. Once `grants` exists it is the whole scope — default deny: connection access, rooms, `open_instances` and `narrow` give nothing then. **Start from today's guests** stages each current guest's reach as a grant.
+- **Audit:** the event log records each code an admin sends (`guest_code_sent`: who, to whom, the outcome) and each saved change to someone's agents (`guest_grant_changed`: who saved it, whether it applied at once or was confirmed in General, the agents added and removed, the level it went to when that changed, and the sessions a removal ended). The section's **Recent changes** list shows the newest of them, to admins only (never a guest, never over the public link). Every guest sign-in is also posted in General.
+- **Chat or Trusted (#2855):** each person's level. **Chat** (the default) is everything below; **Trusted** adds a read-only View of those agents and search of what the guest can already see. Making someone Trusted waits for a fleet admin's OK in General, like adding an agent; back to Chat applies at once.
+- **In `fleet.yaml`:** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …], level? } }`. Once `grants` exists it is the whole scope — default deny: connection access, rooms, `open_instances` and `narrow` give nothing then. **Start from today's guests** stages each current guest's reach as a grant.
 
 **What a guest reaches.** It is worked out on every request and never stored. With `grants`, only the agents granted to that account (of those that still exist). Without them (#1920's derived access):
 - **Its connection's agents:** the fleet topics and General, when that connection's access lets the account in (allowed or paired). On an `open` connection, only the agents named in `open_instances`.
@@ -1454,14 +1455,17 @@ web:
   - Answers are read in the background (at sign-in, when the guest's page connects, and again every 10 minutes). A room shows only on a "member" answer at most 15 minutes old. While a room is still being checked the page waits instead of signing the guest out.
 - **Then `narrow`,** which only takes away.
 
-Either way the server enforces it on every read a guest can make: chat, history, files and the event stream are limited to those agents; search, the task board, the org chart and the usage report (costs per agent) are never a guest's. A fleet admin is never a guest.
+Either way the server enforces it on every read a guest can make: chat, history, files and the event stream are limited to those agents; the task board, the org chart and the usage report (costs per agent) are never a guest's, and View and search are a Trusted guest's only. A fleet admin is never a guest.
 
 **What a guest can do.**
 - **Chat:** with those agents only. That means the history its channel showed, files, reply buttons and Cancel, unless `chat: false` makes guests read-only.
 - **Commands (#2855):** only those the chat's command table lets anyone run in that agent's channel: on the web, `/ctx`, `/steer`, `/btw` and `/cancel`. Its palette offers just those; any other is refused with why. At most 10 a minute, one at a time.
 - **Usage (#2855):** the usage panel (◔), every subscription's headroom on the host, as `/usage` shows anyone in chat. It never forces a refresh.
 - **What the agent sees:** `[user:<name> via web (guest), id:<id>]`, for typed messages and button clicks alike. A guest only chats: the agent takes nothing they ask as an admin's.
-- **Its app:** no Fleet, View, Settings, Needs you, New agent or widgets; a **Guest** chip says who is signed in.
+- **Its app:** no Fleet, Settings, Needs you, New agent or widgets; a **Guest** chip says who is signed in. A Chat-level guest has no View or search either.
+- **Trusted (#2855):**
+  - **View:** watching an agent's screen, read-only — no typing, no keys. A line says it is watching only. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets; chat and search stay limited to what the guest may see. At most 2 reads a second and 2 agents at once per guest; every guest watching an agent shares one capture of it per 500 ms; at most 256 KB per read. On the dashboard's own port too, a guest's View read goes through these checks (an anonymous read there, under `web.view_access: open`, is unchanged).
+  - **Search:** only chat messages of its agents that its channel showed or it wrote itself (the same rule as its chat), at most 20 results. No messages between agents, tasks, teams or settings. 6 searches a minute, one at a time; at most 3 guest searches run at once, so admins' searches always have room.
 - **Preferences (#2855):** its own theme, language, favourites, sort and filter, kept on the host under its account (the same on every device; deleted when the admin removes it); otherwise the host's look, and no preference that names an agent outside its scope. It can set its own web name.
 
 **Sessions.**

@@ -1,7 +1,7 @@
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
-import { guestChatRefusal, guestCommandText, guestDeliveries, GUEST_PREF_MAX_BYTES, guestFrameData, guestHistory, guestMessages, guestOwnPrefs, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
+import { guestChatRefusal, guestCommandText, guestDeliveries, GUEST_PREF_MAX_BYTES, GUEST_SEARCHES, guestFrameData, guestHistory, guestMessages, guestOwnPrefs, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
@@ -435,6 +435,8 @@ export interface WebApiContext {
   readonly guestPrefWrites?: OfficeWriteLimiter;
   /** #2855: a guest's commands, per account (GUEST_COMMAND_RUNS). */
   readonly guestCommandRuns?: OfficeWriteLimiter;
+  /** #2855: a trusted guest's searches, per account (GUEST_SEARCHES). */
+  readonly guestSearches?: OfficeWriteLimiter;
   /** #2578: the agents' live acts in the Office view (office_set); absent: /ui/office-acts is not offered. */
   readonly officeActs?: Pick<OfficeActs, "live">;
   /** #2636: Office share links (office-share-service.ts): the open ones, making and ending one. */
@@ -1256,6 +1258,73 @@ export function webPeerOf(req: IncomingMessage): WebPeer {
   const gateway = gatewayRequestContext(req);
   return gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
 }
+/** #2855: the guest accounts with a search running, and how many guest searches run in all (GUEST_SEARCHES). */
+const guestSearchesRunning = new Set<string>();
+let guestSearchesInFlight = 0;
+/**
+ * #2855: a trusted guest's search — chat messages of its in-scope agents that it can see now (guestSeesMessage, on the
+ * history's own row: one no longer kept is not shown, nothing else is), at most GUEST_SEARCHES.maxResults. Per account
+ * GUEST_SEARCHES a minute and one at a time; at most GUEST_SEARCHES.global guest searches running in all, so the
+ * index's queue always has room for the admins'. Its context: the same rows only.
+ */
+function guestSearch(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, guest: GuestRequest, path: string): void {
+  const refusal = (): [number, string] | null => {
+    if (!guest.current()) return [401, WEB_TOKEN_INVALID_MESSAGE];
+    if (!guest.trusted?.()) return [403, "guest_not_trusted"];
+    if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false) return [404, "search_not_over_public_link"];
+    if (ctx.fleetConfig?.web?.search?.enabled === false || !ctx.searchIndex || ctx.searchIndex.status() === "unavailable") return [404, "search_unavailable"];
+    return null;
+  };
+  const first = refusal();
+  if (first) { json(res, first[0], { error: first[1] }); return; }
+  const account = `${guest.owner.adapterId}:${guest.owner.userId}`;
+  const limit = ctx.guestSearches?.check(account);
+  if (limit && !limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_search_rate_limited", retry_after_s: limit.retry_after_s }); return; }
+  if (guestSearchesRunning.has(account)) { json(res, 429, { error: "guest_search_running" }); return; }
+  if (guestSearchesInFlight >= GUEST_SEARCHES.global) { res.setHeader("Retry-After", "2"); json(res, 503, { error: "search_busy" }); return; }
+  const index = ctx.searchIndex!, history = ctx.webChatHistory;
+  // What this guest may see of one indexed chat row: its history row, now, by the guest rule; else nothing.
+  const visible = (hit: { source: string; instance: string; ref: Record<string, unknown> }) => {
+    if (hit.source !== "chat" || !guest.scope().has(hit.instance) || !history) return false;
+    const row = history.find(hit.instance, String(hit.ref.boot ?? ""), Number(hit.ref.id));
+    return !!row && guestSeesMessage(row, guest, guest.scope());
+  };
+  const finish = (status: number, body: unknown) => { const now = refusal(); if (now) json(res, now[0], { error: now[1] }); else json(res, status, body); };
+  const failed = (reason: string) => finish(reason === "timeout" || reason === "busy" ? 503 : 404, { error: `search_${reason}` });
+  let run: Promise<unknown>;
+  if (path === "/ui/search/context") {
+    const key = url.searchParams.get("key") ?? "";
+    if (!key || key.length > 300) { json(res, 400, { error: "key required" }); return; }
+    run = index.context(key).then(r => {
+      if (!r.ok) return failed(r.reason);
+      const value = r.value;
+      if (!value?.doc || !visible(value.doc)) return finish(404, { error: "not_found" });
+      finish(200, { doc: value.doc, before: value.before.filter(visible), after: value.after.filter(visible), building: r.building });
+    }, () => failed("unavailable"));
+  } else {
+    // Never a team (whose members, and whether it exists, are the admin's) or "only mine" (an admin's own messages).
+    const own = new URL(url.href);
+    own.searchParams.delete("team"); own.searchParams.delete("mine");
+    const parsed = parseSearchQuery(own, ctx);
+    if ("error" in parsed) { json(res, 400, { error: parsed.error }); return; }
+    const scope = guest.scope();
+    const asked = parsed.filters.instances?.filter(n => scope.has(n)) ?? [...scope];
+    if (!asked.length) { json(res, 200, { hits: [], limited: false }); return; }
+    // Chat only, its scope only; more asked of the index than shown, since rows it can't see are left out after.
+    run = index.query({ q: parsed.filters.q, instances: asked, sources: ["chat"], limit: SEARCH_LIMIT_DEFAULT,
+      ...(parsed.filters.since !== undefined ? { since: parsed.filters.since } : {}), ...(parsed.filters.until !== undefined ? { until: parsed.filters.until } : {}) }).then(r => {
+      if (!r.ok) return failed(r.reason);
+      const hits = r.value.hits.filter(visible);
+      finish(200, { hits: hits.slice(0, GUEST_SEARCHES.maxResults).map(h => ({ ...h, live: true })), limited: r.value.limited || hits.length > GUEST_SEARCHES.maxResults, building: r.building });
+    }, () => failed("unavailable"));
+  }
+  ctx.guestSearches?.record(account);
+  guestSearchesRunning.add(account); guestSearchesInFlight++;
+  void run.catch(() => { if (!res.headersSent) json(res, 500, { error: "search_failed" }); })
+    .finally(() => { guestSearchesRunning.delete(account); guestSearchesInFlight--; });
+}
+
+
 /**
  * #2122: what let this request in, asked now — its session (by handle, under the token it was signed in with) or the
  * header token; null when nothing does any more (the gate also refuses a public link that is no longer the current
@@ -2794,9 +2863,11 @@ export function handleWebRequest(
   // #2478 (the user's request): over the public link too, unless web.search.public_link is false. Asked on arrival and
   // again before the answer is sent.
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) {
+    // #2855: a trusted guest searches only what it can see (guestSearch).
+    const searchGuest = guestRequestOf(req);
+    if (searchGuest) { guestSearch(req, res, url, ctx, searchGuest, path); return true; }
     const refusal = (): [number, string] | null => {
       if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false) return [404, "search_not_over_public_link"];
-      if (guestRequestOf(req)) return [403, "guest_forbidden"];
       if (ctx.fleetConfig?.web?.search?.enabled === false || !ctx.searchIndex || ctx.searchIndex.status() === "unavailable") return [404, "search_unavailable"];
       return null;
     };
@@ -3429,6 +3500,8 @@ export interface AppShellContext {
   readonly webSessions?: WebApiContext["webSessions"];
   /** #1920 phase 3: a guest's page says who it is signed in as (its web name and platform), for its "Guest" chip. */
   guestBadge?(owner: WebAccount): { name: string; platform: string };
+  /** #2855: whether this guest's access is Trusted (its page offers View and search). */
+  guestTrusted?(owner: WebAccount): boolean;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -3579,7 +3652,8 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
 
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
-  return ` data-tier="guest"${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
+  const trusted = ctx.guestTrusted?.(owner) ? ' data-guest-level="trusted"' : "";
+  return ` data-tier="guest"${trusted}${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
 }
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);

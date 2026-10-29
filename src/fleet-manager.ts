@@ -259,7 +259,7 @@ import { crossInstanceVisibility, runVisibilityCommand, xmsgVisibility } from ".
 import { SEARCH_RETENTION_DAYS, SearchIndex } from "./search/search-index.js";
 import { chatDoc, taskDoc, xmsgDoc, type CrossInstanceRecord, type XmsgVisibility } from "./search/search-docs.js";
 import { WebSettingsTools } from "./web-settings-tools.js";
-import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
+import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
@@ -324,7 +324,7 @@ import {
   type ToolSetName,
   type ToolSink,
 } from "./tool-permissions.js";
-import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
+import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
@@ -1057,7 +1057,7 @@ interface WebChatIdentity { generation: number; daemon: unknown }
 
 /** #2499 review: one line of Settings → Guests' Recent changes (guestOverview), from the event log. */
 export type GuestAuditEntry =
-  | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number }
+  | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }
   | { kind: "code"; at: number; account: string; name: string; outcome: string };
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
@@ -1609,6 +1609,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly guestPrefWrites = new OfficeWriteLimiter(undefined, GUEST_PREF_WRITES);
   /** #2855: a guest's commands, per account. */
   readonly guestCommandRuns = new OfficeWriteLimiter(undefined, GUEST_COMMAND_RUNS);
+  /** #2855: a trusted guest's searches, per account. */
+  readonly guestSearches = new OfficeWriteLimiter(undefined, { perWindow: GUEST_SEARCHES.perWindow, windowMs: GUEST_SEARCHES.windowMs });
   private officeSharesInstance?: OfficeShareService;
   /**
    * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of
@@ -7268,7 +7270,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { ...a, name: badge.name, platform: badge.platform, scope: [...this.guestScope(owner)].sort(), reach: [...this.guestReach(owner)].sort(),
         devices: devices.get(k) ?? 0, narrow: own(cfg?.narrow, `${a.adapterId}:${a.userId}`) ?? null,
         // #2348: the grant as fleet.yaml has it (null: none), and the last code an admin sent from Settings.
-        grant: grant ? { ...(grant.name ? { name: grant.name } : {}), instances: [...grant.instances] } : null,
+        grant: grant ? { ...(grant.name ? { name: grant.name } : {}), instances: [...grant.instances], ...(grant.level === "trusted" ? { level: "trusted" } : {}) } : null,
         ...(sent ? { code: { at: sent.at, outcome: sent.outcome.kind, ...(sent.outcome.kind === "sent" ? { expiresAt: sent.at + sent.outcome.expiresInMs } : {}),
           ...(sent.outcome.kind === "dm_failed" ? { reason: sent.outcome.reason, platform: sent.outcome.platform, ...(sent.outcome.startUrl ? { startUrl: sent.outcome.startUrl } : {}) } : {}) } } : {}) };
     }).sort((x, y) => (y.lastSeen ?? -1) - (x.lastSeen ?? -1));
@@ -7311,7 +7313,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const when = Date.parse(r.created_at.includes("T") ? r.created_at : `${r.created_at.replace(" ", "T")}Z`);
       return r.event_type === "guest_grant_changed"
         ? [{ kind: "grant" as const, at: when, account, name, via: p.via === "confirmed" ? "confirmed" as const : "direct" as const, added: names(p.added), removed: names(p.removed),
-          endedSessions: typeof p.endedSessions === "number" ? p.endedSessions : 0 }]
+          endedSessions: typeof p.endedSessions === "number" ? p.endedSessions : 0, ...(p.level === "chat" || p.level === "trusted" ? { level: p.level } : {}) }]
         : [{ kind: "code" as const, at: when, account, name, outcome: typeof p.outcome === "string" ? p.outcome : "unknown" }];
     });
   }
@@ -7349,8 +7351,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * session handle, the header token, or null when replayed for a confirmation), whether it applied at once or was
    * confirmed in General, the agents added and taken away, and the sessions a removal ended. Never message content.
    */
-  noteGuestGrantChange(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void {
-    this.logger.info({ account: change.account, via: change.via, added: change.added.length, removed: change.removed.length }, "Guest access changed in Settings");
+  noteGuestGrantChange(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }): void {
+    this.logger.info({ account: change.account, via: change.via, added: change.added.length, removed: change.removed.length, ...(change.level ? { level: change.level } : {}) }, "Guest access changed in Settings");
     try { this.eventLog?.insert("fleet", "guest_grant_changed", { ...change }); } catch { /* the log line stands */ }
   }
 
@@ -23326,6 +23328,21 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return scope.size ? scope : NO_GUEST_SCOPE;
   }
 
+  /** #2855: whether a request carries a guest's live session (its cookie; checked without counting as activity). */
+  private presentsGuestSession(req: IncomingMessage): boolean {
+    if (!this.webToken || !this.webSessions) return false;
+    const epoch = tokenEpoch(this.webToken);
+    return readSessionCookies(req, this.webToken).some(id => this.webSessions!.authenticate(id, epoch, { touch: false })?.tier === "guest");
+  }
+
+  /** #2855: whether the admin made this guest Trusted — only an explicit grant can (web.guests.grants[account].level). */
+  guestTrusted(owner: { readonly adapterId: string; readonly userId: string }): boolean {
+    const guests = this.fleetConfig?.web?.guests;
+    if (guests?.enabled !== true || !guests.grants) return false;
+    const key = `${owner.adapterId}:${owner.userId}`;
+    return Object.hasOwn(guests.grants, key) && guests.grants[key]?.level === "trusted";
+  }
+
   /**
    * #1920 (#2104 review): what an account reaches before an admin's narrowing — its connection's topics (an open one's
    * named agents), its own Telegram private room, its verified group rooms. Narrowing can only take from this set, so it
@@ -23494,8 +23511,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (handleWebIconRequest(req, res, requestPath)) return;
 
       // Public: the health probe, /agent (instance-token auth of its own), the
-      // sign-in surface, and /view's reads unless web.view_access says otherwise.
-      if (bypassesWebGate(req, requestPath, this.fleetConfig, p => !gatewayRequestContext(req) && (isViewPath(p) || isUsagePath(p)))) {
+      // sign-in surface, and /view's reads unless web.view_access says otherwise (#2855: never a guest's, which go
+      // through the guest gate and its limits on either listener).
+      if (bypassesWebGate(req, requestPath, this.fleetConfig, p => !gatewayRequestContext(req) && (isViewPath(p) || isUsagePath(p)) && !this.presentsGuestSession(req))) {
         // fall through to the handlers below
       } else {
         // All other endpoints require a session cookie or an X-Agend-Token
@@ -23554,7 +23572,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             streamOpened: () => { void this.refreshGuestRooms(owner, { mode: "force" }); },
             history: () => this.webChatHistory,
             // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
-            chat: () => this.fleetConfig?.web?.guests?.chat !== false });
+            chat: () => this.fleetConfig?.web?.guests?.chat !== false,
+            // #2855: the admin's level for this guest, read at each request (a change applies at once).
+            trusted: () => this.guestTrusted(owner) });
         }
         if (decision.via === "session" && this.webToken) {
           const upgrade = sessionCookieUpgrade(req, this.webToken, decision.session);

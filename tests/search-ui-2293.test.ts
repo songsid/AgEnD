@@ -30,8 +30,9 @@ function fakeFetch(answer: (url: string) => { status?: number; body?: unknown })
   return calls;
 }
 type Answer = (url: string) => { status?: number; body?: unknown };
-async function open(preset: Record<string, string> = {}, answer: Answer = (url) => (url.startsWith("/ui/teams") ? { body: { teams: { ops: { members: ["a"] } } } } : { body: { hits, limited: false, building: false } })) {
+async function open(preset: Record<string, string> = {}, answer: Answer = (url) => (url.startsWith("/ui/teams") ? { body: { teams: { ops: { members: ["a"] } } } } : { body: { hits, limited: false, building: false } }), guest = false) {
   p = page();
+  if (guest) { (p.document as any).body.dataset.tier = "guest"; (p.document as any).body.dataset.guestLevel = "trusted"; }
   const calls = fakeFetch(answer);
   const m = await load();
   ((await import("/assets/app-nav.js" as string)) as Served).startRouter(window);
@@ -256,6 +257,30 @@ describe("the dialog", () => {
   });
 });
 
+describe("#2855: a trusted guest's dialog", () => {
+  const chatHits = hits.filter((x) => x.source === "chat");
+  it("its chats only: chat asked for, no settings, teams, sources or \"only mine\"; its own words", async () => {
+    const d = await open({}, (url) => (url.startsWith("/ui/teams") ? { body: { teams: { ops: {} } } } : { body: { hits: chatHits, limited: false } }), true);
+    expect(d.input.getAttribute("placeholder")).toBe("Search your chats…");
+    expect(d.doc.querySelector(".search-hint").textContent).toContain("chats you can see");
+    await d.type("theme");                                       // a word an admin's dialog finds settings for
+    expect(d.searches()).toEqual(["/ui/search?q=theme&limit=60&source=chat"]);
+    expect(d.doc.querySelector(".search-settings")).toBeNull();
+    fire(d.doc.querySelector(".search-filters-toggle"), "click"); await settle();
+    expect([d.calls.filter((u) => u.startsWith("/ui/teams")), d.doc.querySelector(".search-mine"), d.doc.querySelectorAll(".search-filters .search-chips").length]).toEqual([[], null, 1]);
+  });
+  it("too many searches: the time to wait; one still finishing: asked once more, shortly", async () => {
+    const d = await open({}, () => ({ status: 429, body: { error: "guest_search_rate_limited", retry_after_s: 40 } }), true);
+    await d.type("nginx");
+    expect(d.doc.querySelector(".search-status.bad").textContent).toBe("Too many searches. Try again in 40 seconds.");
+    let n = 0;
+    const e = await open({}, () => (n++ === 0 ? { status: 429, body: { error: "guest_search_running" } } : { body: { hits: chatHits, limited: false } }), true);
+    await e.type("nginx");
+    await vi.waitFor(() => expect(e.doc.querySelectorAll(".search-badge").length).toBe(2), { timeout: 2000 });
+    expect(e.searches()).toHaveLength(2);
+  });
+});
+
 describe("how it opens", () => {
   it("Ctrl+K anywhere; Ctrl+F only in an agent's chat (elsewhere the browser's find); never over another dialog", async () => {
     p = page({ url: "http://127.0.0.1:19280/ui/fleet" });
@@ -296,6 +321,13 @@ describe("how it opens", () => {
     body.dataset.tier = "guest";
     const g = ev("k"); shell.handleSearchKey(g);
     expect(g.preventDefault).not.toHaveBeenCalled();
+    // #2855: a trusted guest's page has it (what it can see: the server's rule).
+    body.dataset.guestLevel = "trusted";
+    expect(shell.searchOffered(false)).toBe(true);
+    const tg = ev("k"); shell.handleSearchKey(tg);
+    expect(tg.preventDefault).toHaveBeenCalled();
+    shell.closeDialog();
+    delete body.dataset.guestLevel;
     delete body.dataset.tier;
     expect([shell.searchOffered(true), shell.searchOffered(false)]).toEqual([true, false]);
     shell.closeDialog();

@@ -175,7 +175,9 @@ function guestsChange(old: unknown, next: unknown): Array<[string, unknown, unkn
         if (same(before, after) || after === undefined) continue;                     // unchanged, or removed: narrows
         const bn = before === undefined ? [] : grantNames(before), an = grantNames(after);
         if (bn === null || an === null) { out.push([`grants.${entry}`, before, after]); continue; }   // not of its kind: never quietly
-        if (an.some(n => !bn.includes(n))) out.push([`grants.${entry}`, before, after]);
+        // #2855: Chat → Trusted widens (a read-only View and search); Trusted → Chat takes away.
+        const level = (v: unknown) => (object(v) && v.level === "trusted" ? "trusted" : "chat");
+        if (an.some(n => !bn.includes(n)) || (level(after) === "trusted" && level(before) !== "trusted")) out.push([`grants.${entry}`, before, after]);
       }
     }
   }

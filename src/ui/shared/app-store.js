@@ -34,6 +34,10 @@ export const appStore = createStore({ ready: false, instances: [], uptime: 0, ex
 export function guestPage() {
   return typeof document !== "undefined" && !!document.body && document.body.dataset.tier === "guest";
 }
+/** #2855: this guest's access is Trusted — its page offers View (read-only) and search (the server's, on <body>). */
+export function guestTrusted() {
+  return guestPage() && document.body.dataset.guestLevel === "trusted";
+}
 /** Who a guest's page is signed in as: its web name and its platform (the server's, on <body>). */
 export function guestBadge() {
   const d = typeof document !== "undefined" && document.body ? document.body.dataset : {};

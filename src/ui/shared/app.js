@@ -13,7 +13,7 @@ import { installSwipe } from "./app-swipe.js";
 import { installTextUndo } from "./text-undo.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
-import { appStore, applyStatus, applyActivity, guestPage } from "./app-store.js";
+import { appStore, applyStatus, applyActivity, guestPage, guestTrusted } from "./app-store.js";
 import { chatPath } from "./app-route.js";
 import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
@@ -128,8 +128,8 @@ if (!guest) installOwnerCss();
 }
 
 document.addEventListener("keydown", handleKey);
-// #2293: Ctrl+K / ⌘K (and Ctrl+F in a chat) — an admin's full app only; the server refuses a guest's search anyway.
-if (mode === "full" && !guest) document.addEventListener("keydown", handleSearchKey);
+// #2293: Ctrl+K / ⌘K (and Ctrl+F in a chat) — an admin's full app, and a trusted guest's (#2855: what it can see).
+if (mode === "full" && (!guest || guestTrusted())) document.addEventListener("keydown", handleSearchKey);
 // #2342: Ctrl/⌘+Z and Ctrl+Shift+Z / Ctrl+Y / ⌘⇧Z in every text field, one history per field (the browser's is one
 // for the whole page, and any script write wipes it).
 installTextUndo({ mac: isMacLike() });
