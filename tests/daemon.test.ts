@@ -1114,6 +1114,9 @@ describe("Daemon error monitor recovery", () => {
     daemon.on("pty_error", (e: any) => events.push(e));
     const patterns = createBackend("codex", tmpDir).getErrorPatterns!();
     const pane = "■ Your workspace is out of credits. Ask your workspace owner to refill in\norder to continue.";
+    // #2844: occurrences count from the spawn's first live composer (a resumed row is history); this one came after it.
+    const [credits] = patterns.filter(p => p.message.startsWith("Codex workspace credits"));
+    (daemon as any).nudgeBaselines = new Map([[`${credits.type}:${credits.pattern.source}`, 0]]);
 
     (daemon as any).evaluateErrorPatterns(pane, patterns, /READY/, 1_000_000);
 

@@ -1278,6 +1278,7 @@ export class InstanceLifecycle {
       message: string;
       fleetWide?: boolean;
       verifyQuota?: boolean;
+      skipUsageVerify?: boolean;
       inProgress?: boolean;
       pattern?: RegExp;
     }) => {
@@ -1307,7 +1308,7 @@ export class InstanceLifecycle {
       // ChatGPT-plan feature, so an account that cannot be asked is almost
       // always a plain one, and a wrongly paused reserve wakes with /wake while
       // a missed pause fails silently forever.
-      if (data.type === "quota" && data.action === "pause" && this.backendOf(name) === "codex") {
+      if (data.type === "quota" && data.action === "pause" && !data.skipUsageVerify && this.backendOf(name) === "codex") {
         const verdict = await this.verifyCodexQuota();
         this.ctx.logger.info({ name, backend: "codex", decision: verdict === "available" || verdict === "reserve" ? "ignore" : "pause", evidence: `usage-${verdict}` },
           `codex usage-limit decision: decision=${verdict === "available" || verdict === "reserve" ? "ignore" : "pause"} evidence=usage-${verdict}`);

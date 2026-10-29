@@ -546,6 +546,54 @@ function codexRateSwitchPickerVisible(pane: string): boolean {
     && take(/^\s*Approaching rate limits\s*$/, false);
 }
 
+/**
+ * The workspace-member limit prompt (#2844), as codex 0.160.0–0.165.0 paint it
+ * (`open_workspace_owner_nudge_prompt`, codex-rs/tui chatwidget/rate_limits.rs),
+ * captured live on 0.165.0 against the mock's wscredits/wsspend modes:
+ *
+ *   ■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.
+ *     Usage limit reached
+ *     Request a limit increase from your owner to continue using codex. Request increase?
+ *
+ *     1. Yes (y)
+ *   › 2. No (default) (n)
+ *
+ *     enter select · esc back
+ *
+ * The other title is "You've reached your workspace credit limit" with "…Ask your
+ * workspace owner to add more. Notify owner?". Yes emails the workspace owner;
+ * Escape (the prompt's cancel) and No only close it, send nothing, and leave the
+ * error row above the composer, where the quota pause reads it.
+ *
+ * Bottom-anchored, every row exact: the hint last, the two options directly
+ * above it, the question (wrapped onto up to three rows on a narrow pane) and its
+ * own title above those. A quote in the transcript is followed by the composer
+ * and never matches.
+ */
+const WORKSPACE_LIMIT_PROMPTS: ReadonlyArray<readonly [title: RegExp, question: string]> = [
+  [/^\s*Usage limit reached\s*$/, "Request a limit increase from your owner to continue using codex. Request increase?"],
+  [/^\s*You['’]ve reached your workspace credit limit\s*$/, "Your workspace is out of credits. Ask your workspace owner to add more. Notify owner?"],
+];
+
+function codexWorkspaceLimitPromptVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+  let i = rows.length - 1;
+  const take = (shape: RegExp): boolean => {
+    if (i < 0 || !shape.test(rows[i])) return false;
+    i--;
+    return true;
+  };
+  if (!(take(/^\s*enter select\s*[·•]\s*esc back\s*$/i)
+    && take(/^\s*[›❯>]?\s*2\.\s+No \(default\)\s+\(n\)\s*$/)
+    && take(/^\s*[›❯>]?\s*1\.\s+Yes\s+\(y\)\s*$/))) return false;
+  for (let lines = 1; lines <= 3 && i - lines >= 0; lines++) {
+    const question = rows.slice(i - lines + 1, i + 1).map(row => row.trim()).join(" ");
+    const title = rows[i - lines];
+    if (WORKSPACE_LIMIT_PROMPTS.some(([shape, text]) => question === text && shape.test(title))) return true;
+  }
+  return false;
+}
+
 /** Unknown pickers own stdin too; never type or press Enter into one. */
 function codexUnknownSelectionVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -1927,27 +1975,50 @@ export class CodexBackend implements CliBackend {
         skipCooldown: true,
         skipRecoveryWait: true,
       },
-      // Workspace (team) accounts report exhaustion differently from personal
-      // ones — the full line is:
-      //   "■ Your workspace is out of credits. Ask your workspace owner to
-      //    refill in order to continue."
+      // Workspace (business) accounts report exhaustion differently from personal
+      // ones, with codex's own rows (codex-rs/protocol error.rs and tui
+      // turn_runtime.rs, unchanged 0.160.0–0.165.0):
+      //   member: "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue."
+      //           "■ You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue."
+      //   owner:  "■ You're out of credits. Your workspace is out of credits. Add credits to continue using Codex."
+      //           "■ Your workspace is out of credits. Add credits to continue."
+      //           "■ You hit your spend cap set in your workspace. Increase your spend cap to continue."
+      //           "■ Usage limit reached. You've reached your usage limit. Increase your limits to continue using codex."
       // Neither `insufficient_quota|billing` nor `you've hit your usage limit`
-      // matches it, so this state went unreported.
+      // matches them.
       //
-      // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard
-      // wrap can land a newline anywhere in the phrase. The `■` prefix and the
-      // "Ask your workspace owner…" tail are deliberately left out — the prefix
-      // is decoration and the tail is what would wrap.
+      // pause, not notify: nothing works until someone refills or raises the cap.
+      // Anchored to the status glyph in COLUMN 0, because these skip the
+      // usage-window check (a workspace limit is not one of those windows, so the
+      // check would call it "available"): codex draws its own error cells there,
+      // while an agent's message, quote or code block is indented under its `•`
+      // (captured live, tests/fixtures/codex-0165-workspace-quoted.pane.txt).
+      // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard wrap
+      // can land a newline anywhere in the sentence. A resumed transcript reprints
+      // these rows, and the first live composer of a spawn takes them as history.
       {
-        pattern: /workspace\s+is\s+out\s+of\s+credits/i,
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+(?:You['’]re\s+out\s+of\s+credits\.\s+)?Your\s+workspace\s+is\s+out\s+of\s+credits\.`, "m"),
         type: "quota",
-        // pause, not notify: exhausted credits are a dead end until someone
-        // refills, so leaving the instance running just burns cycles failing.
-        // Matches how the other terminal quota states behave (claude-code's
-        // "credit balance is too low", codex's own "you've hit your usage
-        // limit"). Costs a manual resume after the refill.
         action: "pause",
         message: "Codex workspace credits exhausted — workspace owner must refill",
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
+      },
+      {
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+You\s+hit\s+your\s+spend\s+cap\s+set\s+(?:by\s+the\s+owner\s+of|in)\s+your\s+workspace\.`, "m"),
+        type: "quota",
+        action: "pause",
+        message: "Codex workspace spend cap reached — workspace owner must raise it",
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
+      },
+      {
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+Usage\s+limit\s+reached\.\s+You['’]ve\s+reached\s+your\s+usage\s+limit\.\s+Increase\s+your\s+limits`, "m"),
+        type: "quota",
+        action: "pause",
+        message: "Codex workspace usage limit reached — increase the workspace limits to continue",
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
       },
       // Codex warns at 10% and 5% remaining, and scopes the limit by period —
       // "weekly" alone missed every `monthly limit` warning.
@@ -2115,6 +2186,25 @@ export class CodexBackend implements CliBackend {
     };
   }
 
+  private workspaceLimitPromptDialog(): RuntimeDialog {
+    // Escape via sendSpecialKey, the same as the Luna Reserve menu: never a paste
+    // (its implicit Enter would confirm the cursor's row) and never "y". The error
+    // row codex printed above the prompt stays, and the quota pause takes it from
+    // there: one notice, no parked dialog.
+    return {
+      pattern: /^\s*enter select\s*[·•]\s*esc back\s*$/im,
+      keys: ["Escape"],
+      description: "Codex workspace limit prompt — pressing Escape (never asking the owner)",
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexWorkspaceLimitPromptVisible,
+      verifyAfterKeys: true,
+      autoResolutionKey: "codex-workspace-limit-prompt",
+      answeredByAgend: true,
+      marksLiveIncident: true,
+    };
+  }
+
   private unknownSelectionHoldDialog(): RuntimeDialog {
     return {
       pattern: /^\s*[›❯>]\s+\S/m,
@@ -2146,6 +2236,7 @@ export class CodexBackend implements CliBackend {
       },
       this.updatePickerDialog(),
       this.usageLimitLunaReserveDialog(),
+      this.workspaceLimitPromptDialog(),
       ...this.sessionHoldDialogs(),
       this.unknownSelectionHoldDialog(),
     ];

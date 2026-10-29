@@ -165,6 +165,12 @@ export interface ErrorPattern {
   formatMessage?: (match: RegExpMatchArray) => string;
   /** Run the backend's live quota check before surfacing a quota notice. */
   verifyQuota?: boolean;
+  /** A quota pause the live usage-window check cannot judge (codex workspace credits and spend caps are not one of
+   * its windows): pause without asking it. Only for rows anchored to the CLI's own error decoration. */
+  skipUsageVerify?: boolean;
+  /** Occurrences already on the first live composer of a spawn are resumed history (codex reprints its error rows
+   * on resume), not a new incident: only later ones count. */
+  historyUntilLiveComposer?: boolean;
   /** Skip the 5-min per-type notification cooldown so every occurrence notifies
    * (e.g. Kiro "Response timed out" — each timeout should reach the user). */
   skipCooldown?: boolean;
@@ -416,6 +422,17 @@ export interface RuntimeDialog {
   remoteCard?(pane: string): RemoteCard | null;
   /** Optional static presentation category; only structural predicates qualify. */
   interactionKind?: InteractionKind;
+  /**
+   * AgEnD answers this dialog itself (`keys`), so while it is on screen nobody else is waiting to: it is not a person's
+   * interaction (no awaiting_input, no Needs-you item) unless its answers are reported as ignored. Without it, a
+   * dialog the runtime scanner closes ~5 s after it paints raced the Needs-you ping (#2844).
+   */
+  answeredByAgend?: boolean;
+  /**
+   * This dialog only paints for a live incident: the newest `historyUntilLiveComposer` error row on screen with it is
+   * the current failure, never resumed history, even when no live composer was seen before it in this spawn (#2844).
+   */
+  marksLiveIncident?: boolean;
   /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
