@@ -1677,7 +1677,10 @@ export function handleWebRequest(
     const guest = guestRequestOf(req);
     const messages = !ctx.webChatHistory ? [] : guest ? guestHistory(ctx.webChatHistory, instance, limit, guest, guest.scope())
       : visibleMessages(ctx, !!gatewayRequestContext(req), ctx.webChatHistory.list(instance, limit));
-    json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
+    // #2848: the chat has messages, none of them a guest's to see (all between agents, or kept before they were marked):
+    // said, so its empty chat is explained rather than blank. Only that there are some — never how many, or what.
+    const allHidden = !!guest && messages.length === 0 && (ctx.webChatHistory?.list(instance, 1).length ?? 0) > 0;
+    json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0, ...(allHidden ? { allHidden: true } : {}) });
     return true;
   }
 

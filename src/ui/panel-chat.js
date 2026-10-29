@@ -408,7 +408,10 @@ function threadEntry(name, doc) {
   list.setAttribute("aria-label", t("chat.conversationWith", name));
   const e = { list, sink: null, lang: lang(), thread: null };
   const thread = createThread(list, doc.createElement("div"), {
-    t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j), onEmpty: (v) => e.sink?.setEmpty(v),
+    t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j),
+    // #2848: which empty — "hidden" (a guest's chat whose every message is hidden from it) differs from a plain empty
+    // chat, so the explanation shows when the history answer comes after the first (empty) draw.
+    onEmpty: (v) => e.sink?.setEmpty(v && store.allHidden(name) ? "hidden" : v),
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
@@ -510,7 +513,8 @@ function Thread({ name, th }) {
   }, [name]);
   return html`<div class="scroller" ref=${scroller}>
     <div class="thread-host" ref=${host}></div>
-    ${empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
+    ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
+      : empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
     <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;

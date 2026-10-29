@@ -43,7 +43,7 @@ const COMPACT_PAGE_LIMIT_MS = 11 * 60_000;
 export function createChatStore(deps) {
   const s = {
     msgs: {}, drafts: {}, replies: {}, pendingFiles: {}, sending: {}, outgoing: {}, instanceStatus: {}, waking: {},
-    prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
+    prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), allHidden: new Set(), rbBusy: new Set(),
     pollMine: readPollMine(),
     // #1823 (#1828 review): the server's clock minus this device's. A poll's deadline is the server's; a page whose clock
     // is a few seconds off would count a 10 s poll wrong. Only the server's explicit `clock` sets it (#1830 review): a
@@ -166,6 +166,8 @@ export function createChatStore(deps) {
       if (signal?.aborted) { s.historyRead.delete(name); return false; }
       if (!r || !Array.isArray(r.messages)) { s.historyRead.delete(name); return true; }
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
+      // #2848: a guest's chat whose every message is hidden from it (between agents): its empty chat says so.
+      if (r.allHidden === true) s.allHidden.add(name); else s.allHidden.delete(name);
       for (const m of r.messages) liveReplies.message(m);
       s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500);
       settleOutgoing(name);
@@ -575,5 +577,6 @@ export function createChatStore(deps) {
     uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
     startReply, clearReply, findQuoted,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
+    allHidden: (name) => s.allHidden.has(name),
   };
 }

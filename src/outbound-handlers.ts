@@ -613,10 +613,13 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const senderShown = senderText !== null && !senderIsGeneral;
   const placed = (instance: string, text: string, opts: import("./channel/types.js").SendOpts) =>
     ctx.renderPlacesFor?.(instance, text, opts) ?? { text: stripPlaceRefs(text), opts };
+  // #2848: whether each side's line is posted to its topic — one condition for the post and for the web line's mark.
+  const targetTopicId = targetInstance?.topic_id, senderTopicId = senderInstance?.topic_id;
+  const targetPosted = !!(groupId && ctx.adapter && targetShown && targetTopicId);
+  const senderPosted = !!(groupId && ctx.adapter && senderShown && senderTopicId);
   if (groupId && ctx.adapter) {
     // ── Target topic notification ──
-    const targetTopicId = targetInstance?.topic_id;
-    if (targetShown && targetTopicId) {
+    if (targetPosted) {
       const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
       const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
       const out = placed(targetInstanceName, targetText!, { threadId: String(targetTopicId) });
@@ -625,8 +628,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     }
 
     // ── Sender topic notification ──
-    const senderTopicId = senderInstance?.topic_id;
-    if (senderShown && senderTopicId) {
+    if (senderPosted) {
       const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
       const senderGroupId = ctx.getGroupIdForInstance?.(meta.instanceName) ?? String(groupId);
       const out = placed(meta.instanceName, senderText!, { threadId: String(senderTopicId) });
@@ -637,7 +639,9 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // #1672: the same notices in each instance's web chat — a muted status line, never an agent's or a person's message.
   // Not gated on a topic or a chat platform (a web-only fleet, a topic-less instance); recorded in its history (#1565).
   // #1990: on the web each line's other side opens that instance's chat (an in-app route; only fleet instances).
-  const webNotice = (instance: string, text: string) => {
+  // #2848: a line that was also posted to the instance's topic is marked as the channel's (`channel`), so a guest sees
+  // what the topic showed (full, or the one-line summary); one that was not (hidden, General, no topic) stays unmarked.
+  const webNotice = (instance: string, text: string, posted: boolean) => {
     const out = renderPlaceRefs(text, "web", target => {
       const route = target.kind === "instance" && Object.hasOwn(instances, target.name) ? webRoute("chat", target.name) : undefined;
       return route ? { url: route } : undefined;
@@ -645,10 +649,11 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     ctx.emitSseEvent?.("message", {
       instance, sender: displayLabel(senderLabel), role: "status", text: out.text, ts: new Date().toISOString(),
       ...(out.textLinks.length ? { links: out.textLinks } : {}),
+      ...(posted ? { channel: true } : {}),
     });
   };
-  if (targetShown) webNotice(targetInstanceName, targetText!);
-  if (senderShown) webNotice(meta.instanceName, senderText!);
+  if (targetShown) webNotice(targetInstanceName, targetText!, targetPosted);
+  if (senderShown) webNotice(meta.instanceName, senderText!, senderPosted);
 
   // #856: the same line, now carrying the envelope's message_id and a short
   // content digest, so a disputed message can be matched to its outbox row

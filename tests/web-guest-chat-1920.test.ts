@@ -87,6 +87,25 @@ describe("the rules", () => {
   });
 });
 
+describe("#2848: a chat whose messages are all hidden from the guest says so", () => {
+  it("cross-instance lines: unmarked → hidden and allHidden; marked as the topic's → shown; an admin is never told", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["c2848"])); guestsChat();
+    const guest = session("guest", ALICE), admin = session("admin");
+    const history = async (sid: string) => JSON.parse((await raw(port, "GET", "/ui/history?instance=c2848", { cookie: cookieOf(sid) })).body);
+    expect(await history(guest), "no messages at all: an ordinary empty chat").toEqual(expect.not.objectContaining({ allHidden: expect.anything() }));
+    const line = (text: string, channel?: true) => fm.emitSseEvent("message", { instance: "c2848", sender: "alice", role: "status", text, ts: new Date().toISOString(), ...(channel ? { channel } : {}) });
+    line("alice → c2848:\nnot posted to the topic");
+    const hidden = await history(guest);
+    expect([hidden.messages, hidden.allHidden]).toEqual([[], true]);
+    const forAdmin = await history(admin);
+    expect([forAdmin.messages.length, "allHidden" in forAdmin]).toEqual([1, false]);
+    line("alice → c2848:\nposted to the topic", true);
+    const shown = await history(guest);
+    expect([shown.messages.map((m: { text: string }) => m.text), "allHidden" in shown]).toEqual([["alice → c2848:\nposted to the topic"], false]);
+    expect(shown.messages[0]).not.toHaveProperty("channel");
+  });
+});
+
 describe("live: a guest scoped to `a`", () => {
   it("/ui/send: delivered to `a` as a guest's; out of scope 404; read-only 403; a command 403", async () => {
     scopedToA(); guestsChat();
