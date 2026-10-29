@@ -40,7 +40,7 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 ## Sessions
 
 - Each fleet uses its own browser cookie names, so dashboards on the same host at different ports can stay signed in together. Existing owned sessions migrate automatically after upgrade; ports can move without changing the cookie identity. Signing out affects that fleet, while token rotation still ends its old credentials.
-- A session is a record on the server, not a value in your browser. By default it ends **48 hours** after sign-in, or after **48 hours** without use, whichever comes first — on the dashboard reached directly these two can be set with `web.session.local.absolute_hours` / `idle_hours` (up to 720 hours; see [configuration](configuration.md)). Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
+- A session is a record on the server, not a value in your browser. By default it ends **48 hours** after sign-in, or after **48 hours** without use, whichever comes first — on the dashboard reached directly these two can be set with `web.session.local.absolute_hours` / `idle_hours` (up to 720 hours; see [configuration](configuration.md)). Local sessions survive a fleet restart. Public sessions are scoped to one exposure: they last as long as the link, at most 8 hours (and never longer than the account's own session limit — `web.session.local` for an admin, `web.guests.session` for a guest), end after 30 minutes unused, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
 - Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (48 hours locally unless configured, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
 - **The Session menu** (at the bottom of the sidebar) shows:
@@ -619,7 +619,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | | A. Direct | B. Temporary public link | C. Fixed address |
 |---|---|---|---|
 | Signing in | ✅ a one-time 8-character code, valid 5 minutes: `/web` in General, or `agend web` on the host | ✅ `/web` → other device: the link and the code come to you privately | ✅ as B; when `auto_open` reopens the link after a restart no code is sent, so ask `/web` for one |
-| Session length | ✅ 48 h, and 48 h unused, by default (`web.session.local.*`, 1–720 h) | ✅ fixed: 4 h, 30 minutes unused | ✅ as B |
+| Session length | ✅ 48 h, and 48 h unused, by default (`web.session.local.*`, 1–720 h) | ✅ as long as the link, at most 8 h (never longer than the account's own limit); 30 minutes unused | ✅ as B |
 | Link lifetime | — | ✅ 1–480 minutes (default 120); it never reopens by itself | ✅ 1–10080 minutes, or 0 for no expiry; `web.public_link.auto_open: true` reopens it after a restart (off by default) |
 | Chat | ✅ live updates | ✅ updates by polling; `/raw` and `/save` are refused | ✅ as B |
 | Uploads | ✅ 50 MB a file, 100 MB a message by default (`web.upload_max_file_mb`, `web.upload_max_total_mb`, 1–500) | ✅ at most 95 MB a file, whatever the config says | ✅ as B: at most 95 MB a file |
@@ -688,7 +688,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 |---|---|
 | **403** when opening the dashboard through a proxy or tunnel | Its `Host` is not allowed: add it to `web.allowed_hosts`. |
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
-| "Your session has ended" | 48 hours without use or since sign-in (the defaults); on a public link 4 hours, 30 minutes unused, or the link closed; or someone used `/web revoke`, **Sign out everywhere** or `agend web-token rotate`. Sign in again. |
+| "Your session has ended" | 48 hours without use or since sign-in (the defaults); on a public link the link ended (at most 8 hours), 30 minutes unused, or the link closed; or someone used `/web revoke`, **Sign out everywhere** or `agend web-token rotate`. Sign in again. |
 | Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds; the Log tab may lag up to 30 seconds. Nothing to do — it is not shown as a problem. |
 | A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Look** is never styled by it: fix the CSS there, or turn it off. |
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |

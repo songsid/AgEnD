@@ -201,6 +201,11 @@ export class PublicWebLink {
     if (!e || e.id !== exposureId || e.phase !== "open" || !this.current(e) || !e.preview) return null;
     return e.preview.status();
   }
+  /** The wall-clock end of this link (null: no expiry, or not the link open now): a session made over it ends by then. */
+  endOf(exposureId: string): number | null {
+    const e = this.entry;
+    return e && e.id === exposureId ? e.expiresAt : null;
+  }
   /** `noExpiry`: an open link without an expiry (no expiresAt / remainingSeconds then). */
   status(): { state: string; expiresAt?: number; remainingSeconds?: number; noExpiry?: true } {
     const e = this.entry;

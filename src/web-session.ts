@@ -44,10 +44,14 @@ export interface SessionPolicy {
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
 
-/** Design D4. The gateway numbers are shorter because a session there is reachable from the internet. */
+/**
+ * Design D4. The gateway numbers are shorter because a session there is reachable from the internet. Its 8 h is the
+ * longest a temporary link lives (user, 2026-10-29): a session over the link may last as long as the link, and never
+ * longer than the tier's own policy or the link itself (`exposureEnd`).
+ */
 export const DEFAULT_SESSION_POLICY: Readonly<Record<SessionSurface, SessionPolicy>> = {
   local: { absoluteMs: 48 * HOUR, idleMs: 48 * HOUR },   // #1670: two days without signing in again (user, 2026-10-12)
-  gateway: { absoluteMs: 4 * HOUR, idleMs: 30 * MINUTE },
+  gateway: { absoluteMs: 8 * HOUR, idleMs: 30 * MINUTE },
 };
 
 /**
@@ -72,7 +76,7 @@ export function localSessionPolicy(cfg: { absolute_hours?: unknown; idle_hours?:
 
 /**
  * #1920 §5.4: a guest's session — shorter than an admin's, never longer than the surface's own policy (on the public
- * link the link's 4 h / 30 min wins). `web.guests.session`: absolute 1–24 h, idle 15 min–12 h.
+ * link the link's 8 h / 30 min, and the link's own end, win). `web.guests.session`: absolute 1–24 h, idle 15 min–12 h.
  */
 export const GUEST_SESSION_POLICY: SessionPolicy = { absoluteMs: 12 * HOUR, idleMs: 2 * HOUR };
 export const GUEST_SESSION_BOUNDS = { absoluteHours: { min: 1, max: 24 }, idleMinutes: { min: 15, max: 720 } } as const;
@@ -84,6 +88,12 @@ export function guestSessionPolicy(cfg: { absolute_hours?: unknown; idle_minutes
     typeof v !== "number" || !Number.isFinite(v) || v > max ? fallback : Math.max(v, min) * unit;
   const absoluteMs = ms(cfg?.absolute_hours, a.min, a.max, HOUR, GUEST_SESSION_POLICY.absoluteMs);
   return { absoluteMs, idleMs: Math.min(ms(cfg?.idle_minutes, i.min, i.max, MINUTE, GUEST_SESSION_POLICY.idleMs), absoluteMs) };
+}
+
+/** The tighter of two policies, its idle window never past its absolute one. */
+function shorter(a: SessionPolicy, b: SessionPolicy): SessionPolicy {
+  const absoluteMs = Math.min(a.absoluteMs, b.absoluteMs);
+  return { absoluteMs, idleMs: Math.min(a.idleMs, b.idleMs, absoluteMs) };
 }
 
 /** More than this and the least recently used one is dropped (#1920: admins' and read sessions; guests count apart). */
@@ -213,6 +223,8 @@ export interface WebSessionStoreOptions {
   readonly localPolicy?: () => SessionPolicy;
   /** #1920: a guest's policy, read at every check (`web.guests.session`); never longer than the surface's. */
   readonly guestPolicy?: () => SessionPolicy;
+  /** The wall-clock end of the public link a session is made over (null: none, or not that link): it never outlives it. */
+  readonly exposureEnd?: (exposureId: string) => number | null;
   readonly maxSessions?: number;
   readonly onWarn?: (message: string) => void;
 }
@@ -252,6 +264,7 @@ export class WebSessionStore {
   private readonly policy: Record<SessionSurface, SessionPolicy>;
   private readonly localPolicy: (() => SessionPolicy) | null;
   private readonly guestPolicy: () => SessionPolicy;
+  private readonly exposureEnd: (exposureId: string) => number | null;
   private readonly maxSessions: number;
   private readonly path: string | null;
   private readonly warn: (message: string) => void;
@@ -269,6 +282,7 @@ export class WebSessionStore {
     };
     this.localPolicy = opts.localPolicy ?? null;
     this.guestPolicy = opts.guestPolicy ?? (() => GUEST_SESSION_POLICY);
+    this.exposureEnd = opts.exposureEnd ?? (() => null);
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
     this.warn = opts.onWarn ?? (() => {});
@@ -283,14 +297,13 @@ export class WebSessionStore {
 
   /**
    * The policy in force for a surface now (#1620: the local one as configured at this moment; the gateway's fixed).
-   * #1920: a guest's is its own policy, never longer than the surface's.
+   * #1920: a guest's is its own policy, never longer than the surface's. An admin's on the public link is never longer
+   * than its own `web.session.local` either (2026-10-29: the link's cap rose to 8 h).
    */
   private policyFor(surface: SessionSurface, tier: SessionTier): SessionPolicy {
-    const base = surface === "local" && this.localPolicy ? this.localPolicy() : this.policy[surface];
-    if (tier !== "guest") return base;
-    const guest = this.guestPolicy();
-    const absoluteMs = Math.min(base.absoluteMs, guest.absoluteMs);
-    return { absoluteMs, idleMs: Math.min(base.idleMs, guest.idleMs, absoluteMs) };
+    const local = this.localPolicy ? this.localPolicy() : this.policy.local;
+    if (surface === "local") return tier === "guest" ? shorter(local, this.guestPolicy()) : local;
+    return shorter(this.policy.gateway, tier === "guest" ? this.guestPolicy() : local);
   }
 
   /**
@@ -322,7 +335,8 @@ export class WebSessionStore {
     this.purgeExpired(now);
     const sessionId = randomBytes(32).toString("hex");
     const policy = this.policyFor(input.surface, input.tier);
-    const absoluteExpiry = now + policy.absoluteMs;
+    const linkEnd = input.exposureId ? this.exposureEnd(input.exposureId) : null;
+    const absoluteExpiry = Math.min(now + policy.absoluteMs, linkEnd ?? Infinity);
     const record: SessionRecord = {
       handle: randomBytes(8).toString("hex"),
       idHash: sessionIdHash(sessionId),
