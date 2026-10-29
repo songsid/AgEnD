@@ -462,6 +462,13 @@ describe("the General skill", () => {
     expect(move).toMatch(/Do not run `codex resume <id>` by hand/);
   });
 
+  it("session-management sends a profile or login switch here, at the top of each backend section that has profiles", () => {
+    const sm = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "general-knowledge", "skills", "session-management", "SKILL.md"), "utf8");
+    const pointer = "Switching an agent's profile or login and keeping its session → the `credential-profiles` skill (update_instance_config); never resume by hand.";
+    for (const backend of ["kiro-cli", "claude-code", "codex"]) expect(sm, backend).toContain(`\n## ${backend}\n\n${pointer}\n`);
+    expect(sm.split(pointer).length - 1, "only where a profile exists (not grok or antigravity)").toBe(3);
+  });
+
   it("says how to go back to the default login", () => {
     expect(skill).toContain("credential_profile\": null");
   });
