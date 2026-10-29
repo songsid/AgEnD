@@ -25,9 +25,9 @@ const work = join(root, "work"); mkdirSync(work, { recursive: true });
 const instanceDir = join(process.env.AGEND_HOME!, "instances", "smoke2800"); mkdirSync(instanceDir, { recursive: true });
 const logger = pino({ level: "debug" }, pino.destination({ dest: join(root, `daemon-${label}.log`), sync: true }));
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-/** Whether a turn links the What's-new notes: a URL in it whose host and path are the docs' (CodeQL #98: parsed, not a substring). */
+/** Whether a turn links the What's-new notes: a URL in it on the docs' exact origin and path (CodeQL #98: parsed, not a substring). */
 const linksWhatsNew = (text: string): boolean => (text.match(/https?:\/\/[^\s)"'<>]+/g) ?? []).some((raw) => {
-  try { const u = new URL(raw); return u.protocol === "https:" && u.hostname === "songsid.github.io" && u.pathname.startsWith("/AgEnD/docs/whats-new/"); } catch { return false; }
+  try { const u = new URL(raw); return u.origin === "https://songsid.github.io" && u.pathname.startsWith("/AgEnD/docs/whats-new/"); } catch { return false; }
 });
 const history = () => { try { return tmux("capture-pane", "-p", "-J", "-S", "-3000", "-t", "smoke2800"); } catch { return ""; } };
 const userEntries = (): string[] => {
