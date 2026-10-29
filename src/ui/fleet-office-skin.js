@@ -27,7 +27,7 @@
 // @property {(ctx, item, active, ms, env) => void} [drawFurniture]   zones: one furniture item (active: activeWhen holds)
 // @property {(ctx, L, env) => void} [drawForeground]     zones: a pack's foreground over the whole 1280×720 scene, above
 //   the people, furniture and items in the air, below the crowd counts, name tags and bubbles
-// @property {(ctx, x, y, look, env) => void} [drawTag]   zones: a name tag under feet at (x, y)
+// @property {(ctx, x, y, look, env, compact?) => void} [drawTag]   zones: a name tag under feet at (x, y) (compact: #2860)
 // @property {(ctx, area, n, env) => void} [drawCrowd]    zones: an area's "+n" (who found no spot in it)
 // @property {(ctx, desk, look, ms, env) => void} drawCharacter   the occupant in its pose at time `ms` (0: still); in
 //   zones `desk` is the character's box at its current position (its feet at desk.seat); walking, `look.heading` is
@@ -293,21 +293,44 @@ function drawBubble(ctx, x, y, text, env, lift = 0) {
 /** A zones name tag's widest text (logical units): longer names are cut with an ellipsis. */
 export const TAG_TEXT_W = 84;
 const TAG_FONT = "600 10px system-ui, sans-serif";
+/**
+ * #2860: the compact tag a crowded area keeps on (it used to show tags on hover only, #2513): a smaller font, a smaller
+ * plate, a shorter cut, the same level badge.
+ */
+const COMPACT = { font: "500 9px system-ui, sans-serif", textW: 48, pad: 6, top: 2, h: 11 };
+const NORMAL = { font: TAG_FONT, textW: TAG_TEXT_W, pad: 10, top: 3, h: 14 };
 /** The box a name tag under feet at (x, y) takes (what drawTag draws; bubbles keep clear of it, #2513). */
-export function tagBox(ctx, x, y, label) {
+export function tagBox(ctx, x, y, label, compact = false) {
+  const k = compact ? COMPACT : NORMAL;
   ctx.save();
-  ctx.font = TAG_FONT;
-  const t = fitText(ctx, label, TAG_TEXT_W), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 10);
+  ctx.font = k.font;
+  const t = fitText(ctx, label, k.textW), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad);
   ctx.restore();
-  return { x: Math.round(x - w / 2), y: y + 3, w, h: 14, text: t };
+  return { x: Math.round(x - w / 2), y: y + k.top, w, h: k.h, text: t };
+}
+/** #2860: what a tag covers with its level badge: on a full tag's top-left corner (half outside); left of a compact one. */
+export function tagFootprint(ctx, box, badge, compact = false) {
+  if (!badge) return box;
+  if (compact) { const w = badgeWidth(ctx, badge) + 1; return { x: box.x - w, y: box.y, w: box.w + w, h: box.h }; }
+  return { x: box.x - 10, y: box.y - 7, w: box.w + 10, h: box.h + 7 };
+}
+function badgeWidth(ctx, badge) {
+  if (badge.mark) return 8;
+  ctx.save();
+  ctx.font = BADGE_FONT;
+  const w = Math.max(12, Math.ceil((ctx.measureText ? ctx.measureText(badge.text).width : badge.text.length * 5) + 6));
+  ctx.restore();
+  return w;
 }
 /**
  * #2661: a level badge on a name tag's top-left corner (x, y: the tag's corner), overlapping its edge like an app's
  * badge — it takes none of the tag's width. `badge`: { text, tier } (fleet-office-levels.js badgeOf), or { mark } for a
  * pinned title that hides the number: a small diamond.
  */
-export function drawBadge(ctx, x, y, badge, pal) {
+export function drawBadge(ctx, x, y, badge, pal, inline = false) {
   if (!badge) return;
+  // #2860 inline (a compact tag): (x, y) is the tag's left edge and middle; the badge sits just left of it, whole.
+  if (inline) { const w = badgeWidth(ctx, badge); x = x - 1 - w + (badge.mark ? w / 2 : w / 2 - 3); y = y + (badge.mark ? 0 : 1); }
   const c = tierColours(badge.tier, pal);
   ctx.save();
   ctx.globalAlpha = 1;
@@ -331,18 +354,18 @@ export function drawBadge(ctx, x, y, badge, pal) {
 }
 const BADGE_FONT = "700 8px system-ui, sans-serif";
 
-/** Zones: a name tag under someone's feet at (x, y). */
-function drawTag(ctx, x, y, look, env) {
+/** Zones: a name tag under someone's feet at (x, y); `compact` (#2860): the smaller one a crowded area keeps on. */
+function drawTag(ctx, x, y, look, env, compact = false) {
   const { pal } = env;
+  const b = tagBox(ctx, x, y, look.label, compact);
   ctx.save();
   if (look.dim) ctx.globalAlpha = 0.35;
-  ctx.font = TAG_FONT;
-  const t = fitText(ctx, look.label, TAG_TEXT_W), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 10);
-  ctx.fillStyle = pal.surface; ctx.fillRect(Math.round(x - w / 2), y + 3, w, 14);
-  ctx.strokeStyle = look.match ? pal.focus : pal.border; ctx.lineWidth = look.match ? 2 : 1; ctx.strokeRect(Math.round(x - w / 2) + 0.5, y + 3.5, w - 1, 13);
-  ctx.fillStyle = pal.text; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t, x, y + 10.5);
+  ctx.font = compact ? COMPACT.font : TAG_FONT;
+  ctx.fillStyle = pal.surface; ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.strokeStyle = look.match ? pal.focus : pal.border; ctx.lineWidth = look.match ? 2 : 1; ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+  ctx.fillStyle = pal.text; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(b.text, x, b.y + b.h / 2 + 0.5);
   ctx.restore();
-  if (look.badge) drawBadge(ctx, Math.round(x - w / 2), y + 3, look.badge, pal);
+  if (look.badge) compact ? drawBadge(ctx, b.x, b.y + b.h / 2, look.badge, pal, true) : drawBadge(ctx, b.x, b.y, look.badge, pal);
 }
 
 /**

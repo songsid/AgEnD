@@ -33,8 +33,8 @@
 //   any part — an office names it as its style; one this page cannot load is drawn as Desks, and says so.
 // - Crowds (#2513): an area with more people than seats packs the rest into a tighter grid, then counts who is left
 //   ("+N", in its corner, never over its name); there idle and asleep people say nothing, at most a few speak (calls
-//   first, then work), no bubble covers a name tag, and the tags show on hover or focus only. "Hide paused and stopped"
-//   (per browser) leaves the sleepers out.
+//   first, then work), no bubble covers a name tag, and the tags are compact (#2860; one that would touch another shows
+//   on hover or focus only). "Hide paused and stopped" (per browser) leaves the sleepers out.
 // - Share… (#2636; an admin, on the dashboard reached directly or over the public link): a link anyone can open to watch an office live, read-only,
 //   until it ends (office-share-dialog.js; the page it opens is office-share-page.js).
 // - Edit layout (an admin, a stored office on a zones skin): fleet-office-layout.js, saved as the office's overrides.
@@ -64,7 +64,7 @@ import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
-import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, bubbleBox, loadCozySkin, loadPackSkin, modeOf, skinFor, tagBox } from "./fleet-office-skin.js";
+import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, bubbleBox, loadCozySkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf } from "./fleet-office-levels.js";
@@ -131,6 +131,8 @@ const deviceRatio = () => Math.max(0.5, Math.min(4, Number(globalThis.devicePixe
 const SIZE0 = { w: 960, h: 600 };
 /** #2554: All offices' Fit keeps this many CSS px clear round the tiles (the zoom controls' column and a margin). */
 const FIT_PAD = 60;
+/** #2860: how far below its place a crowded area's compact tag drops when a neighbour's is in the way (a tag's height + 1). */
+const COMPACT_ROW = 12;
 /** #2554: in All offices a tile's name tags show (always) from this many CSS px a unit up; below it on hover only. */
 export const TAG_MIN_K = 0.75;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -418,13 +420,31 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (sk.drawForeground) sk.drawForeground(ctx, p.L, env);
     // Who found no spot in an area: a count in its corner (never over its name).
     for (const [ar, n] of p.L.crowd || []) if (p.L.areas[ar] && sk.drawCrowd) sk.drawCrowd(ctx, p.L.areas[ar], n, env);
-    // In an area over capacity the name tags show on hover or focus only (#2513: a crowd's tags covered each other).
+    // In an area over capacity (#2513: a crowd's full tags covered each other) everyone keeps a compact tag (#2860:
+    // in Cozy, the default, most of a fleet is in a crowd, and hover-only hid names and levels); one that would touch
+    // a tag already drawn, its badge included, is left to hover or focus. The full tags go first.
     const over = p.L.over || new Set();
+    const crowded = (q) => over.has(q.d.area) && q.d.key !== hot && !q.look.match;
     const tagged = (q) => !((tagsOff || over.has(q.d.area)) && q.d.key !== hot && !q.look.match);
+    const taken = [];
+    const touches = (b) => taken.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
     for (const q of people) {
       if (live.hidden.has(q.look.name) || !tagged(q)) continue;
       sk.drawTag(ctx, q.at.x, q.at.y, q.look, env);
-      tags.push(tagBox(ctx, q.at.x, q.at.y, q.look.label));
+      const box = tagBox(ctx, q.at.x, q.at.y, q.look.label);
+      tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
+    }
+    // A crowd's grid is tighter than a compact tag is wide (OVERFLOW.STEPS down to 32): a neighbour's tag goes a row
+    // lower (COMPACT_ROW) rather than out, so a row of people reads as two staggered rows of names.
+    if (!tagsOff) for (const q of people) {
+      if (live.hidden.has(q.look.name) || !crowded(q)) continue;
+      for (const dy of [0, COMPACT_ROW]) {
+        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true), foot = tagFootprint(ctx, box, q.look.badge, true);
+        if (touches(foot)) continue;
+        sk.drawTag(ctx, q.at.x, q.at.y + dy, q.look, env, true);
+        tags.push(box); taken.push(foot);
+        break;
+      }
     }
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
