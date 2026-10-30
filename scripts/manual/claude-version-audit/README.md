@@ -180,3 +180,24 @@ The audit was run as `AUDIT_DIR=… OLD=311 NEW=312 PORT=18312 TMUX_TMPDIR=<shor
 - The model-fallback and 24-hook strings named in the release notes have the same counts in 2.1.311.
 
 **Predicate literals:** 268 checked, 73 in the binaries, 4 counts changed: `Esc to cancel` (9 → 13: the usage "waiting" row and new dialogs; AgEnD's resume footer only counts after the two `Resume …` rows), ` and the `, `as given`, `claude auth login` (prose).
+
+## 2.1.312 → 2.1.314
+
+The binaries were 2.1.312 (sha256 `4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d`) and 2.1.314 (sha256 `4487042b4c4f5d88d4568f68ae98aae0b1ffae58864cf57fb868641bc5f84594`, byte-identical to the host's `~/.local/share/claude/versions/2.1.314`), from the daily upstream watch (2026-10-30, MAJOR hard=3). The host had already self-updated to 2.1.314; 2.1.313 has no release notes.
+
+The audit was run as `AUDIT_DIR=… OLD=312 NEW=314 PORT=18314 bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.314-*.pane.txt` (the same 33 screens as 2.1.312, each from the capture its 2.1.312 fixture is byte-identical to), held by `tests/claude-2.1.314-surfaces.test.ts`.
+
+**LIVE: one change on a screen AgEnD reads — the auto-deny countdown.**
+- 56 steps: 34 SAME. The 22 DIFFs are spinner and "Worked for" verbs, the mock's reply counter, session ids, the working-directory name — and `99-dangerous-rm`'s countdown row, reworded:
+  - 2.1.312: `⚠ Claude Code will automatically deny this request in 1:54, to avoid blocking progress on an unattended session`
+  - 2.1.314: `⚠ Claude Code will automatically block this request in 1:55, to avoid holding up an unattended session`
+- `claudeCommandRequestIdentity` (the dangerous-command and Bash-permission dialogs' request identity) dropped that row by the old words only, so on 2.1.314 the identity ticked every second: the after-keys check ("the same request still there") read a new request, and a parked dialog's clock restarted. Fixed by `CLAUDE_AUTO_DENY_COUNTDOWN` (`deny` or `block`, any countdown form).
+- All 62 captures and the 24 error frames classify identically under the production predicates except `132-danger-fast` (Down and Enter written together the instant the menu paints): the timing race earlier audits showed; 2.1.314 kept the menu on `No`, which AgEnD confirms with Enter on the next poll.
+
+**The upstream watch's flags (binary):**
+- `Claude Code will automatically deny this request in` (MISSING): the reworded countdown above.
+- `Continue from where you left off and finish the response. Start a new code fence or table header first…` is a message Claude sends its own model after an output-token-limit cut, not a screen.
+- `usage limit resets to show a clock time (` and `usage limit messages to call the 5-hour window the…` are changelog prose. `You've reached your <model> limit.` and the `You've hit your …` forms are unchanged in count and shape.
+- `continue this in Projects` is a slash command's model-facing description.
+
+**Predicate literals:** 274 checked, 73 in the binaries, 7 counts changed: ` and the ` (minifier churn in prose), `Esc to cancel`, `claude auth login` (prose), `as given`, `launch after`, `no conversation to` (the `--continue` screen still classifies the same).

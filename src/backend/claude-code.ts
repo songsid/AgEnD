@@ -862,6 +862,14 @@ export function claudeBackgroundWorkExitActive(pane: string): boolean {
     && /^[ \t]*[❯›]?[ \t]*3\.[ \t]+Stay[ \t]*$/m.test(block);
 }
 
+/**
+ * Claude's own auto-deny countdown row on a permission prompt (2.1.288–2.1.312 "deny … blocking progress on",
+ * 2.1.314 "block … holding up"): the whole row, its ⚠ marker first and its countdown in either form ("M:SS", or
+ * "about N minute(s)/second(s)"); the fixed tail is optional (a narrow pane wraps it onto the next row). A command row
+ * that merely quotes these words is not this row, and stays part of the request (#2885 review).
+ */
+export const CLAUDE_AUTO_DENY_COUNTDOWN = /^[ \t]*⚠[ \t]+Claude Code will automatically (?:deny|block) this request in (?:\d+:\d\d|about \d+ (?:minute|second)s?)(?:, to avoid (?:blocking progress on|holding up) an unattended session)?[ \t]*$/;
+
 /** Private request text: excludes history, cursor motion, and native auto-deny countdown. */
 function claudeCommandRequestIdentity(pane: string): string {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -874,7 +882,9 @@ function claudeCommandRequestIdentity(pane: string): string {
     if (/^[ \t]*Bash command[ \t]*$/.test(rows[i])) { start = i; break; }
   }
   return rows.slice(Math.max(0, start), question + 1)
-    .filter(row => !/Claude Code will automatically deny this request in \d+:\d\d/.test(row))
+    // The countdown ticks every second: never part of the request. 2.1.314 says "block … to avoid holding up an
+    // unattended session" (before: "deny … to avoid blocking progress"), as "M:SS" or "about N minutes/seconds".
+    .filter(row => !CLAUDE_AUTO_DENY_COUNTDOWN.test(row))
     .map(row => row.trim()).filter(Boolean).join("\n");
 }
 
