@@ -354,6 +354,36 @@ describe("#1636: a new string order is a hint for the auditor, never an exemptio
   });
 });
 
+describe("a plain pool join (two or more spaces) between old strings is a new order, not a new string", () => {
+  // kiro-cli 2.35.1 → 2.36.0 (the 21:00 watch, 2026-10-30): the pool held "  Kiro rate limit reached:" then
+  // "Authentication Error"; 2.36.0 put "    q login" (the indented tail of the login-expired message) after it. Read as
+  // one hit, "rate limit reached:    q login" looked like a new rate-limit string beside kiro's detector literals: MAJOR.
+  // Its parts, split at the indent, are both old text: NONE, listed as REORDERED.
+  const LOGIN = "Your login session has expired. Please log in again using:\n\n    q login\n\n";
+  const kiroOld = `${OLD}${T}${pad(4)}  Kiro rate limit reached:Authentication Error\nYour prompt is too long even after truncation.${pad(4)}${LOGIN}${pad(4)}`;
+  const kiroNew = `${OLD}${T}${pad(4)}  Kiro rate limit reached:    q login\n\nThe conversation history has overflowed.${pad(4)}Your login session has expired. Please log in again using:\n\n/clear Authentication Error\nYour prompt is too long even after truncation.${pad(4)}`;
+  it("kiro 2.36.0's pool: the old rate-limit head + the old login tail: NONE, listed as REORDERED", () => {
+    const f = files(kiroOld, kiroNew);
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, r.out.trim().split("\n").at(-2)]).toEqual(["PRECHECK: NONE", "BASIS: hard=0; hinted=0"]);
+    expect(r.out).toMatch(/REORDERED \(old strings in a new pool order, every part in the old artifact\): 1\n  "rate limit reached: q login"   = "rate limit reached:" \| "q login"/);
+  });
+  it("control: a real new text after the same head (a part the old artifact never had) is still MAJOR", () => {
+    const f = files(kiroOld, kiroNew.replace("    q login", "    upgrade your plan now to keep going"));
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /REORDERED[^\n]*: 0/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("control: a new head before an old indented tail is still MAJOR (every part must be old)", () => {
+    const f = files(kiroOld, kiroNew.replace("Kiro rate limit reached:    q login", "Kiro rate limit reached for all workspaces:    q login"));
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("control: without a two-space join the #1636 rule holds (a glued half stays a new, hinted prompt)", () => {
+    const f = files(kiroOld, kiroNew.replace("Kiro rate limit reached:    q login", "Kiro rate limit reached:"));
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, r.out.trim().split("\n").at(-2)]).toEqual(["PRECHECK: MAJOR", "BASIS: hard=0; hinted=1"]);
+  });
+});
+
 describe("a scan that could not read everything is MAJOR, whatever else it saw (P1-3, P2-2)", () => {
   const MARKERS = [T, B, R].join("\0");
   it("an unreadable directory inside the artifact", () => {

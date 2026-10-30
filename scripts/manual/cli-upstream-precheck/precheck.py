@@ -25,6 +25,12 @@ A native binary keeps its strings side by side with no separator, so two strings
 that is one half of such an old pair (cut at a string boundary), whose other half is still somewhere in the new
 artifact, carries a hint that only the string order may have changed (#1636). It is still a new prompt: the bytes
 cannot show the two halves are still shown together.
+
+One join is plain in the bytes: a run of two or more spaces inside a hit (a string's own indent, as in kiro's
+"    q login") is where one pooled string ends and the next begins. A hit with such a run, every part of which the old
+artifact already has, is old strings in a new order, not a new string (kiro-cli 2.35.1 → 2.36.0: "Kiro rate limit
+reached:" followed by "    q login" instead of "Authentication Error"). It is listed as REORDERED, and nothing else
+changes: a hit without such a run, or with any part the old artifact lacks, is judged as before.
 """
 import bisect
 import io
@@ -282,8 +288,20 @@ def prompt_matches(data):
             yield run.start() + len(text[:c0].encode("utf-16-le")), run.start() + len(text[:c1].encode("utf-16-le")), m.group(0)
 
 
-def scan(path, literals, want_offsets, limit):
-    """Counts per literal, prompt-like strings (→ the literals they sit near), and what could not be read."""
+# Where two pooled strings meet, plainly: a run of two or more spaces (a string's own indent) inside a hit.
+POOL_JOIN_RE = re.compile(rb" {2,}")
+
+
+def pool_parts(raw):
+    """The normalized parts of a hit split at its plain pool joins (POOL_JOIN_RE), or None when it has none."""
+    pieces = [normalize(p) for p in POOL_JOIN_RE.split(raw.strip(b" "))]
+    pieces = [p for p in pieces if p]
+    return pieces if len(pieces) > 1 else None
+
+
+def scan(path, literals, want_offsets, limit, joins=None):
+    """Counts per literal, prompt-like strings (→ the literals they sit near), and what could not be read. `joins`, when
+    given, collects for each prompt-like string the parts it splits into at a plain pool join (pool_parts)."""
     counts = [0] * len(literals)
     prompts = {}
     files = 0
@@ -309,6 +327,10 @@ def scan(path, literals, want_offsets, limit):
             cand = normalize(raw)
             if len(cand) < 12:
                 continue
+            if joins is not None:
+                parts = pool_parts(raw)
+                if parts:
+                    joins.setdefault(cand, parts)
             near = prompts.setdefault(cand, set())
             if want_offsets and keys:
                 lo = bisect.bisect_left(keys, start - NEAR)
@@ -416,7 +438,8 @@ def main(argv):
     manifest, literals = load_manifest(manifest_path, backend)
 
     c_old, p_old, f_old, s_old, i_old, n_old = scan(old, literals, False, limit)
-    c_new, p_new, f_new, s_new, i_new, n_new = scan(new, literals, True, limit)
+    joins = {}
+    c_new, p_new, f_new, s_new, i_new, n_new = scan(new, literals, True, limit, joins)
 
     def where(l):
         return "%s:%s %s" % (l["file"], l["line"], l["symbol"])
@@ -449,6 +472,12 @@ def main(argv):
     # Every prompt-like string the old release does not have is new; beside a known detector literal, it is MAJOR. What
     # it looks like (embedded docs, an old prompt with another neighbour) is said as a hint for the auditor, not used.
     fresh = sorted(c for c in p_new if c not in p_old)
+    # Old strings in a new pool order: a hit split at a plain join (two or more spaces) whose every part the old
+    # artifact has. Not a new string; listed, and left out of what follows.
+    joined = {c: joins[c] for c in fresh if c in joins}
+    old_has = rests_present(old, sorted({p for parts in joined.values() for p in parts}), limit) if joined else set()
+    reordered = [c for c in fresh if c in joined and all(p in old_has for p in joined[c])]
+    fresh = [c for c in fresh if c not in reordered]
     gone_prompts = sorted(c for c in p_old if c not in p_new)
     # #1636: a string that was one half of an old glued pair, whose other half is still somewhere in the new artifact,
     # may be the old text in a new string order — said as a hint for the auditor; it stays a new prompt.
@@ -478,6 +507,9 @@ def main(argv):
         print("  " + json.dumps(c[:140], ensure_ascii=False) + (("   hint: " + "; ".join(hints)) if hints else ""))
     if len(elsewhere) > 40:
         print("  … %d more" % (len(elsewhere) - 40))
+    print("\nREORDERED (old strings in a new pool order, every part in the old artifact): %d" % len(reordered))
+    for c in reordered[:20]:
+        print("  " + json.dumps(c[:140], ensure_ascii=False) + "   = " + " | ".join(json.dumps(p[:60], ensure_ascii=False) for p in joined[c]))
     print("\nPROMPT-LIKE STRINGS gone in the new artifact: %d" % len(gone_prompts))
     for c in gone_prompts[:20]:
         print("  " + json.dumps(c[:140], ensure_ascii=False))
