@@ -216,7 +216,9 @@ describe("Claude Code 2.1.314: API 400 errors (real panes)", () => {
 
 describe("2.1.314: the reworded auto-deny countdown is never part of the request", () => {
   const prompt = pane("bypass-dangerous-rm-prompt");
-  const identity = (p: string) => acting(backend.getRuntimeDialogs() as never, p).map((d: { requestIdentity?: (x: string) => string }) => d.requestIdentity?.(p))[0];
+  const identity = (p: string) => backend.getRuntimeDialogs()
+    .filter(d => (d.isActive ? d.isActive(p) : d.pattern.test(p)))
+    .map(d => d.requestIdentity?.(p))[0];
   it("the capture shows the new words with a ticking M:SS", () => {
     expect(prompt).toMatch(/Claude Code will automatically block this request in \d+:\d\d, to avoid holding up an unattended session/);
   });
