@@ -2137,6 +2137,19 @@ program
     // 1–2. Installed systemd service. Selection is centralized and tested so
     // a service-owned fleet can never fall through to a detached duplicate.
     const systemServiceInstalled = plat !== "macos" && getSystemServicePath() !== null;
+    // #2879: a user unit's manager that runs but lost its sockets (WSL replaced /run/user/<uid>) or does not run: as
+    // root, repaired before anything asks it (the state query below would only say "unavailable" and refuse).
+    if (plat === "linux" && !systemServiceInstalled && getServicePath() !== null && !process.env.VITEST) {
+      const { repairUserManager } = await import("./user-systemd.js");
+      const repair = repairUserManager();
+      if (repair.kind === "needs-root") { console.error(t("cli.usermgr_needs_root", repair.socket, repair.command)); process.exitCode = 1; return; }
+      if (repair.kind === "failed") { console.error(t("cli.usermgr_failed", repair.command, repair.unit)); process.exitCode = 1; return; }
+      if (repair.kind !== "healthy") {
+        if (!repair.ready) { console.error(t("cli.usermgr_not_ready", repair.unit, Math.round(repair.waitedMs / 1000), repair.socket)); process.exitCode = 1; return; }
+        const uid = repair.unit.replace(/^user@(\d+)\.service$/, "$1");
+        console.log(repair.kind === "restarted" ? t("cli.usermgr_restarted", repair.unit, repair.socket.replace(/\/private$/, ""), uid) : t("cli.usermgr_started", repair.unit));
+      }
+    }
     const systemState = plat !== "macos" ? getSystemdServiceState("agend", false) : "stopped";
     const userServiceInstalled = plat !== "macos" && !systemServiceInstalled && getServicePath() !== null;
     const userState = plat !== "macos" && !systemServiceInstalled
