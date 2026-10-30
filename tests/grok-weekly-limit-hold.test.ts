@@ -32,7 +32,7 @@ function makeDaemon(pane: string) {
     capturePane: vi.fn(async () => pane),
     isWindowAlive: vi.fn(async () => true),
     sendSpecialKey: vi.fn(async () => true),
-    sendKeys: vi.fn(async () => true),
+    sendKeys: vi.fn(async (_key?: string) => true),
     pasteText: vi.fn(async () => true),
     pasteBuffer: vi.fn(async () => true),
   };
@@ -94,7 +94,7 @@ describe("Grok Build weekly limit modal (#992)", () => {
 
     let pane = WEEKLY_LIMIT;
     tmux.capturePane.mockImplementation(async () => pane);
-    tmux.sendKeys.mockImplementation(async (key: string) => { if (key === "X") pane = "╭──────╮\n│ ❯    │\n╰──────╯\n  Shift+Tab:mode  │  Ctrl+x:shortcuts"; return true; });
+    tmux.sendKeys.mockImplementation(async (key?: string) => { if (key === "X") pane = "╭──────╮\n│ ❯    │\n╰──────╯\n  Shift+Tab:mode  │  Ctrl+x:shortcuts"; return true; });
     daemon.startErrorMonitor();
     try {
       await vi.advanceTimersByTimeAsync(70_000);
