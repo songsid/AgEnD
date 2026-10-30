@@ -1016,12 +1016,12 @@ function Repair-WslUserManager([string]$distro, [string]$user) {
 function Restart-WslDistroIfConfirmed([string]$distro, [string]$state) {
   Write-Host ""
   Write-Host ("  [!!] {0} 的系統 systemd 沒有在執行（{1}），AgEnD 需要它。" -f $distro, $state) -ForegroundColor Yellow
-  Write-Host ("  可以只重新啟動 {0} 這一個 Linux 來修復：" -f $distro)
+  Write-Host ("  可以只重新啟動 AgEnD 所在的這個 Linux（{0}）來修復：" -f $distro)
   Write-Host ("    · {0} 裡的所有程式都會停止，包括每個 agent 正在做的工作。" -f $distro)
   Write-Host "    · 其他 Linux 和 Windows 不受影響。"
   $typed = Read-Host ("  要重新啟動 {0}，請輸入它的名稱（{0}）；直接按 Enter 取消" -f $distro)
   if (([string]$typed).Trim() -cne $distro) {
-      Write-Host ("  沒有重新啟動 {0}，也沒有重啟 AgEnD。" -f $distro)
+      Write-Host "  已取消：Linux 沒有重新啟動，AgEnD 也沒有重啟。"
       return $false
   }
   Write-Host ("  正在重新啟動 {0}…" -f $distro)

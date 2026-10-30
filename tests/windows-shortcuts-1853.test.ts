@@ -227,7 +227,7 @@ describe.skipIf(!pwsh)("with pwsh: the restart shortcut repairs first (#2879)", 
       expect(out).toContain("[!!] AgEnD 的系統 systemd 沒有在執行（offline），AgEnD 需要它。");
       expect(out).toContain("AgEnD 裡的所有程式都會停止，包括每個 agent 正在做的工作。");
       expect(out).toContain("其他 Linux 和 Windows 不受影響。");
-      expect(out).toContain("沒有重新啟動 AgEnD，也沒有重啟 AgEnD。");
+      expect(out).toContain("已取消：Linux 沒有重新啟動，AgEnD 也沒有重啟。");
       expect(out).toContain("RESULT=failed");
       expect(calls(bin)).not.toMatch(/--terminate|--shutdown|agend restart/);
     }
@@ -254,7 +254,7 @@ describe.skipIf(!pwsh)("with pwsh: the restart shortcut repairs first (#2879)", 
   it("no systemd at all (WSL without it): treated as offline, so (d) is offered", () => {
     const bin = fakeWsl({ system: "System has not been booted with systemd as init system (PID 1). Can't operate." });
     const { out } = restart(bin, "y\n\n");
-    expect(out).toContain("可以只重新啟動 AgEnD 這一個 Linux 來修復：");
+    expect(out).toContain("可以只重新啟動 AgEnD 所在的這個 Linux（AgEnD）來修復：");
     expect(restarted(bin)).toBe(false);
   });
 });
