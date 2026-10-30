@@ -141,6 +141,8 @@ It stays on the channel you installed from (a beta stays on beta), installs the 
 
 On Windows, the desktop shortcuts **AgEnD 儀表板** (the dashboard, its sign-in code filled in) and **AgEnD 重新啟動** (restart, after asking) come with the Windows installer. If you installed earlier, paste the [Windows one-liner](/AgEnD/install-windows/) again: it finds AgEnD already installed and only offers to add or update the shortcuts. Or, inside WSL, run `agend shortcuts`. After `agend update` in a WSL terminal without the shortcuts, one line says so, once; nothing is put on your desktop unless you run one of these. If `agend` itself stopped working (an update cut off half way: `agend: command not found`), the same one-liner repairs it in place, keeping your fleet's settings and data, and asks nothing about setup again.
 
+If the machine stopped in the middle of an update (a power loss or a forced OS restart) and the service now fails to start (systemd `status=203/EXEC`, or 0-byte files under the npm global `@songsid/agend`): run `systemctl --user reset-failed com.agend.fleet`, then re-run the install command (or the installer alone: `npm exec --yes --package @songsid/agend@<version> -- agend-install`; a plain `npm install -g` can fail with `ENOTEMPTY` here). The installer first puts back an intact copy npm moved aside (`@songsid/.agend-…`), then installs and starts the service; if the fleet still isn't running, `agend restart`. Your settings and data are kept.
+
 ## Next steps
 
 - [Web Guide](/AgEnD/docs/web-guide/) — sign in, use it from a phone, sign out
