@@ -115,63 +115,86 @@ describe("the menus come from the command table (#1177)", () => {
   });
 });
 
-describe("TopicCommands.registerBotCommands (#1191)", () => {
-  function commands(channels: ChannelConfig[]) {
+describe("TopicCommands.registerBotCommands (#1191; #2870: the ClassicBot menu only where it answers)", () => {
+  function commands(channels: ChannelConfig[], classic?: { rooms?: Array<{ adapterId?: string; channelId: string }>; defaults?: Record<string, unknown> }) {
     vi.stubEnv(TOKEN_ENV, "test-only");
     const info = vi.fn(), warn = vi.fn();
-    const tc = new TopicCommands({ fleetConfig: { channels }, logger: { info, warn } } as any);
+    const classicChannels = classic ? { getAll: () => classic.rooms ?? [], getDefaults: () => classic.defaults ?? {},
+      isClassicChannel: (id: string, adapterId?: string) => (classic.rooms ?? []).some(r => r.channelId === id && r.adapterId === adapterId) } : null;
+    const tc = new TopicCommands({ fleetConfig: { channels }, logger: { info, warn }, classicChannels } as any);
     return { tc, info, warn };
   }
+  const EMPTIED = [{ type: "default" }, { type: "all_private_chats" }, { type: "all_group_chats" }];
 
-  it("no group_id: the ClassicBot menu on all_group_chats and default — and nothing for a forum group it does not have", async () => {
+  it("#2870: no ClassicBot chats: the broad scopes are emptied explicitly (default, all_private_chats, all_group_chats) — no menu for strangers", async () => {
     const { sent } = stubTelegram();
     const { tc, info, warn } = commands([tg()]);
     await tc.registerBotCommands();
-    expect(sent().map(p => p.scope)).toEqual([{ type: "all_group_chats" }, { type: "default" }]);
-    for (const p of sent()) {
-      expect(p.url).toBe("https://api.telegram.org/bottest-only/setMyCommands");
-      expect(names(p.commands)).toEqual(CLASSIC_MENU.map(([n]) => n));
-    }
-    expect(sent()[0]!.commands.find((c: { command: string }) => c.command === "stop").description).toBe("🔒 Stop the agent in this channel");
+    expect(sent().map(p => [p.scope, p.commands])).toEqual(EMPTIED.map(scope => [scope, []]));
+    for (const p of sent()) expect(p.url).toBe("https://api.telegram.org/bottest-only/setMyCommands");
     expect(info).toHaveBeenCalledWith(
-      expect.objectContaining({ adapterId: "tg-classic", fleetCommandCount: 0, classicCommandCount: 11, scopes: ["all_group_chats", "default"] }),
+      expect.objectContaining({ adapterId: "tg-classic", fleetCommandCount: 0, classicCommandCount: 11, classicChats: 0, scopes: ["default", "all_private_chats", "all_group_chats"] }),
       expect.stringContaining("no group_id"),
     );
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("with a group_id: the fleet menu on the group's chat and chat_administrators, and the ClassicBot menu as above", async () => {
+  it("#2870: the ClassicBot menu on each chat ClassicBot answers: this bot's rooms, allowed_users, admin_users, allowed_groups — Telegram ids only, never the fleet group", async () => {
+    const { sent } = stubTelegram();
+    const { tc } = commands([tg({ group_id: "-1001234567890" })], {
+      rooms: [{ adapterId: "tg-classic", channelId: "333" }, { adapterId: "other-bot", channelId: "444" }, { adapterId: "tg-classic", channelId: "-1005" }],
+      defaults: { allowed_users: ["111", 1111, "123456789012345678"], admin_users: ["222", "111"], allowed_groups: ["-1009", "-1001234567890"] },
+    });
+    await tc.registerBotCommands();
+    const chats = sent().filter(p => p.scope.type === "chat" && p.scope.chat_id !== "-1001234567890");
+    expect(chats.map(p => p.scope.chat_id), "rooms, then the lists; a Discord snowflake and the fleet group left out; each once")
+      .toEqual([333, -1005, 111, 1111, 222, -1009]);
+    for (const p of chats) expect(names(p.commands)).toEqual(CLASSIC_MENU.map(([n]) => n));
+    expect(sent().filter(p => EMPTIED.some(e => e.type === p.scope.type)).map(p => p.commands)).toEqual([[], [], []]);
+  });
+
+  it("#2870 review (P3): a legacy room with no bot recorded is the primary bot's — as the stranger gate sees it (isClassicChannel) — never another bot's", async () => {
+    const { ClassicChannelManager } = await import("../src/classic-channel-manager.js");
+    const dir = mkdtempSync(join(tmpdir(), "agend-2870-legacy-")); dirs.push(dir);
+    const classic = new ClassicChannelManager(dir, { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any);
+    classic.configureAdapters([{ id: "tg-classic", type: "telegram" }, { id: "tg-other", type: "telegram" }]);
+    classic.register("777", undefined, "legacy-room", "room", "1");          // stored untyped: a legacy row
+    classic.register("888", "tg-other", "other-room", "room", "1");
+    expect([classic.get("777")?.adapterId, classic.isClassicChannel("777", "tg-classic"), classic.isClassicChannel("777", "tg-other")]).toEqual([undefined, true, false]);
+    vi.stubEnv(TOKEN_ENV, "test-only");
+    const tc = new TopicCommands({ fleetConfig: { channels: [tg()] }, logger: { info: vi.fn(), warn: vi.fn() }, classicChannels: classic } as any);
+    expect([tc.classicMenuChats("tg-classic"), tc.classicMenuChats("tg-other")]).toEqual([["777"], ["888"]]);
+  });
+
+  it("with a group_id: the fleet menu on the group's chat and chat_administrators, unchanged; then the emptied broad scopes", async () => {
     const { sent } = stubTelegram();
     const { tc } = commands([tg({ group_id: "-1001234567890" })]);
     await tc.registerBotCommands();
     expect(sent().map(p => p.scope)).toEqual([
-      { type: "chat", chat_id: "-1001234567890" }, { type: "chat_administrators", chat_id: "-1001234567890" },
-      { type: "all_group_chats" }, { type: "default" },
+      { type: "chat", chat_id: "-1001234567890" }, { type: "chat_administrators", chat_id: "-1001234567890" }, ...EMPTIED,
     ]);
     expect(names(sent()[0]!.commands)).toEqual(FLEET_MENU.map(([n]) => n));
     expect(names(sent()[1]!.commands)).toEqual(FLEET_MENU.map(([n]) => n));
-    expect(names(sent()[3]!.commands)).toEqual(CLASSIC_MENU.map(([n]) => n));
     expect(sent()[0]!.commands.find((c: { command: string }) => c.command === "collab").description).toContain("🔒");
-    // The argument hint #1145 added, in both menus, in the active locale.
-    const compact = (i: number) => sent()[i]!.commands.find((c: { command: string }) => c.command === "compact").description;
-    expect(compact(0)).toBe("🔒 Compact agent context window [optional summary focus — Claude Code only]");
-    expect(compact(3)).toBe("🔒 Compact agent context window [optional summary focus — Claude Code only]");
+    // The argument hint #1145 added, in the active locale.
+    expect(sent()[0]!.commands.find((c: { command: string }) => c.command === "compact").description).toBe("🔒 Compact agent context window [optional summary focus — Claude Code only]");
   });
 
-  it("the argument hint follows the locale", async () => {
+  it("the argument hint follows the locale (the ClassicBot menu of an allowed chat)", async () => {
     setLocale("zh-TW");
     const { sent } = stubTelegram();
-    const { tc } = commands([tg()]);
+    const { tc } = commands([tg()], { defaults: { allowed_users: ["111"] } });
     await tc.registerBotCommands();
-    expect(sent()[1]!.commands.find((c: { command: string }) => c.command === "compact").description)
-      .toBe("🔒 壓縮 Agent 的 Context [選填：摘要重點，僅 Claude Code]");
+    const chat = sent().find(p => p.scope.type === "chat")!;
+    expect(chat.commands.find((c: { command: string }) => c.command === "compact").description).toBe("🔒 壓縮 Agent 的 Context [選填：摘要重點，僅 Claude Code]");
+    expect(chat.commands.find((c: { command: string }) => c.command === "stop").description).toContain("🔒");
   });
 
   it("every call can end on its own: each carries a timeout signal", async () => {
     const { fetchMock } = stubTelegram();
-    const { tc } = commands([tg({ group_id: "-100" })]);
+    const { tc } = commands([tg({ group_id: "-100" })], { defaults: { allowed_users: ["111"] } });
     await tc.registerBotCommands();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     for (const [, init] of fetchMock.mock.calls) expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -179,13 +202,13 @@ describe("TopicCommands.registerBotCommands (#1191)", () => {
     const bodies: any[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)); bodies.push(body);
-      return body.scope.type === "chat"
+      return body.scope.type === "chat" && body.scope.chat_id === "-100"
         ? { ok: false, status: 400, json: async () => ({ ok: false, description: "Bad Request: chat not found" }) } as unknown as Response
         : telegramOk();
     }));
     const { tc, info, warn } = commands([tg({ group_id: "-100" })]);
     await tc.registerBotCommands();
-    expect(bodies.map(b => b.scope.type)).toEqual(["chat", "chat_administrators", "all_group_chats", "default"]);
+    expect(bodies.map(b => b.scope.type)).toEqual(["chat", "chat_administrators", "default", "all_private_chats", "all_group_chats"]);
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
     const err = warn.mock.calls[0]![0].err as AggregateError;
@@ -202,7 +225,7 @@ describe("TopicCommands.registerBotCommands (#1191)", () => {
     expect(new Set(sent().map(p => p.url))).toEqual(new Set(["https://api.telegram.org/botother-only/setMyCommands"]));
     fetchMock.mockClear();
     await tc.registerBotCommands();
-    expect(sent().map(p => p.url.split("/")[3])).toEqual(["bottest-only", "bottest-only", "botother-only", "botother-only"]);
+    expect(sent().map(p => p.url.split("/")[3])).toEqual([...Array(3).fill("bottest-only"), ...Array(3).fill("botother-only")]);
     fetchMock.mockClear();
     await tc.registerBotCommands(discord);
     vi.stubEnv(TOKEN_ENV, "");
@@ -216,12 +239,31 @@ describe("TopicCommands.registerBotCommands (#1191)", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { tc, info, warn } = commands([tg({ group_id: "-100" })]);
     await expect(tc.registerBotCommands()).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({ adapterId: "tg-classic", err: expect.objectContaining({ message: expect.stringContaining("chat not found") }) }),
       "Failed to register bot commands (non-fatal)",
     );
+  });
+
+  it("#2870: addClassicMenuChat — one chat's ClassicBot menu now; never the fleet group, a non-Telegram id or a Discord connection", async () => {
+    const { sent, fetchMock } = stubTelegram();
+    const discord = { id: "dc", type: "discord", bot_token_env: TOKEN_ENV } as ChannelConfig;
+    const { tc, info } = commands([tg({ group_id: "-100" }), discord]);
+    await tc.addClassicMenuChat("tg-classic", "555");
+    expect(sent().map(p => [p.scope, names(p.commands)])).toEqual([[{ type: "chat", chat_id: 555 }, CLASSIC_MENU.map(([n]) => n)]]);
+    expect(info).toHaveBeenCalledWith({ adapterId: "tg-classic" }, expect.stringContaining("newly allowed chat"));
+    fetchMock.mockClear();
+    for (const [a, c] of [["tg-classic", "-100"], ["tg-classic", "123456789012345678"], ["dc", "555"], ["nosuch", "555"]]) await tc.addClassicMenuChat(a!, c!);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("#2870: addClassicMenuChat failing is logged, never thrown", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ ok: false, description: "Bad Request: chat not found" }) }));
+    const { tc, warn } = commands([tg()]);
+    await expect(tc.addClassicMenuChat("tg-classic", "555")).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ adapterId: "tg-classic" }), expect.stringContaining("newly allowed chat"));
   });
 
   it("#1736: a custom telegram_api_root is used instead of api.telegram.org", async () => {

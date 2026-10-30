@@ -40,7 +40,11 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
-Registered via `setMyCommands` with `scope: all_group_chats` and `scope: default` on every Telegram connection — including one that runs ClassicBot only and has no `group_id` (before 2.1.11 such a connection got no menu at all, #1191). Locks generated from the command table, as above.
+**Where the menu shows (#2870).** Only in the chats ClassicBot answers: `setMyCommands` with `scope: chat` for each of this bot's ClassicBot rooms, and for each Telegram id in `classicBot.yaml`'s `allowed_users`, `admin_users` and `allowed_groups` (a private chat's id is its user's). Ids that cannot be Telegram chats, such as Discord snowflakes in the shared lists, are left out, and so is the fleet's forum group, which keeps its own menu.
+- **Everyone else sees no menu.** `default`, `all_private_chats` and `all_group_chats` are written empty on every start, because Telegram keeps a list once set.
+- **When it's written:** whenever the connection starts, including a connection that runs ClassicBot only and has no `group_id` (#1191). A chat General allows (Allow, or Allow + admin for the new admin's own chat too) gets its menu at once.
+- **Removing someone:** a chat taken off the lists keeps its menu until it is removed by hand, because Telegram cannot list the chats that have one. The command checks still refuse it.
+- **Stays as before:** the Start button is Telegram's own, and the bot's description (BotFather) is unchanged. Locks are generated from the command table, as above.
 
 | Command | Description | Permission |
 |---------|-------------|------------|
@@ -115,7 +119,9 @@ Typed (non-slash-menu) text behaves differently per platform:
 - **Telegram fleet topics:** a bare `/cmd` runs, but only through the adapter that owns the topic — other adapters say nothing. `/cmd@otherbot` is ignored; `/cmd@ourbot` runs.
 - **Telegram instance topics:** the menu is the forum group's, so it also lists the General-only commands (`/status`, `/sysinfo`, `/dashboard`, `/web`, `/restart`, `/update`, `/profile`, `/doctor`, `/login`, `/usage`, `/visibility`). Typed in an instance topic they answer "works in the General topic — please use it there"; they never reach the agent.
 - **Telegram ClassicBot groups:** a bare `/cmd` is ignored; only `/cmd@ourbot` runs.
-- **Telegram private chats:** unchanged — a bare `/cmd` runs.
+- **Telegram private chats:** a bare `/cmd` runs. **A stranger gets no answer (#2870):** in a private chat, a command from someone who is not on `allowed_users`, not a ClassicBot admin, not a fleet admin of that bot, and has no ClassicBot room there is not answered at all, and General is not told either. The exceptions:
+  - **`/start`** still sends "⏳ Access requested" and the Allow / Allow + admin / Ignore buttons to General.
+  - **A guest's `/web`** still gets its sign-in code.
 
 On every platform, only the topic/entry owner ever answers, so a `/cmd` typed in a multi-bot group never gets two replies.
 
