@@ -2062,7 +2062,8 @@ export class TopicCommands {
     const classic = this.ctx.classicChannels;
     if (!classic) return [];
     const ids = new Set<string>();
-    for (const room of classic.getAll()) if (room.adapterId === adapterId) ids.add(String(room.channelId));
+    // The gate's own test (isClassicChannel): this bot's rooms, and an untyped legacy room the primary adapter serves.
+    for (const room of classic.getAll()) if (classic.isClassicChannel(room.channelId, adapterId)) ids.add(String(room.channelId));
     const d = classic.getDefaults();
     for (const list of [d.allowed_users, d.admin_users, d.allowed_groups]) for (const id of Array.isArray(list) ? list : []) ids.add(String(id));
     return [...ids].filter(isTelegramChatId);

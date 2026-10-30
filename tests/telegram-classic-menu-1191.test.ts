@@ -119,7 +119,8 @@ describe("TopicCommands.registerBotCommands (#1191; #2870: the ClassicBot menu o
   function commands(channels: ChannelConfig[], classic?: { rooms?: Array<{ adapterId?: string; channelId: string }>; defaults?: Record<string, unknown> }) {
     vi.stubEnv(TOKEN_ENV, "test-only");
     const info = vi.fn(), warn = vi.fn();
-    const classicChannels = classic ? { getAll: () => classic.rooms ?? [], getDefaults: () => classic.defaults ?? {} } : null;
+    const classicChannels = classic ? { getAll: () => classic.rooms ?? [], getDefaults: () => classic.defaults ?? {},
+      isClassicChannel: (id: string, adapterId?: string) => (classic.rooms ?? []).some(r => r.channelId === id && r.adapterId === adapterId) } : null;
     const tc = new TopicCommands({ fleetConfig: { channels }, logger: { info, warn }, classicChannels } as any);
     return { tc, info, warn };
   }
@@ -150,6 +151,19 @@ describe("TopicCommands.registerBotCommands (#1191; #2870: the ClassicBot menu o
       .toEqual([333, -1005, 111, 1111, 222, -1009]);
     for (const p of chats) expect(names(p.commands)).toEqual(CLASSIC_MENU.map(([n]) => n));
     expect(sent().filter(p => EMPTIED.some(e => e.type === p.scope.type)).map(p => p.commands)).toEqual([[], [], []]);
+  });
+
+  it("#2870 review (P3): a legacy room with no bot recorded is the primary bot's — as the stranger gate sees it (isClassicChannel) — never another bot's", async () => {
+    const { ClassicChannelManager } = await import("../src/classic-channel-manager.js");
+    const dir = mkdtempSync(join(tmpdir(), "agend-2870-legacy-")); dirs.push(dir);
+    const classic = new ClassicChannelManager(dir, { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any);
+    classic.configureAdapters([{ id: "tg-classic", type: "telegram" }, { id: "tg-other", type: "telegram" }]);
+    classic.register("777", undefined, "legacy-room", "room", "1");          // stored untyped: a legacy row
+    classic.register("888", "tg-other", "other-room", "room", "1");
+    expect([classic.get("777")?.adapterId, classic.isClassicChannel("777", "tg-classic"), classic.isClassicChannel("777", "tg-other")]).toEqual([undefined, true, false]);
+    vi.stubEnv(TOKEN_ENV, "test-only");
+    const tc = new TopicCommands({ fleetConfig: { channels: [tg()] }, logger: { info: vi.fn(), warn: vi.fn() }, classicChannels: classic } as any);
+    expect([tc.classicMenuChats("tg-classic"), tc.classicMenuChats("tg-other")]).toEqual([["777"], ["888"]]);
   });
 
   it("with a group_id: the fleet menu on the group's chat and chat_administrators, unchanged; then the emptied broad scopes", async () => {
