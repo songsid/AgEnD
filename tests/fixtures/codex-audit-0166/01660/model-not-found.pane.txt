@@ -1,0 +1,45 @@
+
+
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or
+try again at 10:06 PM.
+
+
+› fourthb
+
+
+■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.
+
+
+› fourthc
+
+
+■ You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue.
+
+
+› fifth
+
+
+■ unexpected status 401 Unauthorized: Incorrect API key provided, url: http://127.0.0.1:18762/v1/responses
+
+
+› sixth
+
+
+■ We’re currently experiencing high demand, which may cause temporary errors.
+
+
+› seventh
+
+
+■ Selected model is at capacity. Please try a different model.
+
+
+› eighth
+
+
+■ The model `gpt-audit-missing` does not exist or you do not have access to it.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 4 warnings · f2 to view
