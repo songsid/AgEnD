@@ -47,18 +47,15 @@ const active = (dialogs: Array<{ pattern: RegExp; isActive?: (pane: string) => b
   dialogs.filter(dialog => dialog.isActive ? dialog.isActive(pane) : dialog.pattern.test(pane));
 
 describe("Grok Build weekly limit modal (#992)", () => {
-  it("recognizes the captured modal as a no-key hold in startup and runtime", () => {
+  it("recognizes the captured modal: a no-key hold at startup; at runtime Shift+x, verified, never a paid option (#2872)", () => {
     const backend = new GrokBackend("/tmp/grok-weekly-limit-test");
-    for (const dialogs of [backend.getStartupDialogs(), backend.getRuntimeDialogs()]) {
-      const hit = active(dialogs, WEEKLY_LIMIT).find(dialog => dialog.pattern.test(WEEKLY_LIMIT));
-      expect(hit).toMatchObject({
-        description: expect.stringMatching(/Grok 週限/),
-        keys: [],
-        blocksDelivery: true,
-        holdOnly: true,
-        inputBlocked: true,
-      });
-    }
+    const startup = active(backend.getStartupDialogs(), WEEKLY_LIMIT).find(dialog => dialog.pattern.test(WEEKLY_LIMIT));
+    expect(startup).toMatchObject({ description: expect.stringMatching(/Grok 週限/), keys: [], blocksDelivery: true, holdOnly: true, inputBlocked: true });
+    expect((startup as any).dismissIncident).toBeUndefined();
+    const runtime = active(backend.getRuntimeDialogs(), WEEKLY_LIMIT).find(dialog => dialog.pattern.test(WEEKLY_LIMIT));
+    expect(runtime).toMatchObject({ description: expect.stringMatching(/Grok 週限/), keys: ["X"], blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true,
+      answeredByAgend: true, dismissIncident: { type: "quota", action: "pause" } });
+    expect((runtime as any).holdOnly).toBeFalsy();
     // This is the regression pressure: the normal ready regex matches Grok Build
     // in the purchase option, so the blocking modal must take precedence.
     expect(backend.getReadyPattern().test(WEEKLY_LIMIT)).toBe(true);
@@ -85,25 +82,29 @@ describe("Grok Build weekly limit modal (#992)", () => {
     expect(tmux.pasteText).not.toHaveBeenCalled();
   });
 
-  it("blocks the ready pane, leaves delivery gated, and reports once without sending keys", async () => {
+  it("blocks the ready pane and delivery; the runtime scanner presses Shift+x once and raises one quota pause (#2872)", async () => {
     vi.useFakeTimers();
     const { daemon, tmux } = makeDaemon(WEEKLY_LIMIT);
-    const parked: Array<{ description: string; holdOnly: boolean }> = [];
-    daemon.on("dialog_parked", (event: { description: string; holdOnly: boolean }) => parked.push(event));
+    const parked: unknown[] = [], errors: Array<{ type: string; action: string; message: string; skipUsageVerify?: boolean }> = [];
+    daemon.on("dialog_parked", (event: unknown) => parked.push(event));
+    daemon.on("pty_error", (event: any) => errors.push(event));
 
     await expect(daemon.paneReadinessForDelivery("@grok")).resolves.toBe("dialog");
     expect((await daemon.probeBlockingDialog()).state).toBe("dialog");
 
+    let pane = WEEKLY_LIMIT;
+    tmux.capturePane.mockImplementation(async () => pane);
+    tmux.sendKeys.mockImplementation(async (key: string) => { if (key === "X") pane = "╭──────╮\n│ ❯    │\n╰──────╯\n  Shift+Tab:mode  │  Ctrl+x:shortcuts"; return true; });
     daemon.startErrorMonitor();
     try {
       await vi.advanceTimersByTimeAsync(70_000);
-      expect(daemon.isInputBlocked()).toBe(true);
-      expect(parked).toHaveLength(1);
-      expect(parked[0]).toMatchObject({ holdOnly: true, description: expect.stringMatching(/Grok 週限/) });
+      // Typed (send-keys -l), never a paste: a paste ends with Enter, which submits the option under the cursor.
+      expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual(["X"]);
+      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+      expect(parked).toEqual([]);
+      expect(errors).toEqual([expect.objectContaining({ type: "quota", action: "pause", skipUsageVerify: true, message: expect.stringMatching(/Grok/) })]);
       expect(tmux.pasteText).not.toHaveBeenCalled();
       expect(tmux.pasteBuffer).not.toHaveBeenCalled();
-      expect(tmux.sendKeys).not.toHaveBeenCalled();
-      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
     } finally {
       daemon.freezeRuntimeMonitors();
     }

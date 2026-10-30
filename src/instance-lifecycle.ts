@@ -1199,7 +1199,7 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
-    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null }) => {
+    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null; advice?: "claude-resume" }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
       // here on purpose: the General "Confirm" assist sends Enter, and Enter is
       // exactly the destructive default for Claude's resume prompt. The text
@@ -1230,7 +1230,8 @@ export class InstanceLifecycle {
       }
       const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
       const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
-        ? t("inst.dialog_parked_hold", name, data.description)
+        // #2872: the Claude session-resume advice only for that prompt (it read as nonsense under a grok or kiro dialog).
+        ? t("inst.dialog_parked_hold", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_hold_claude_resume") : "")
         : t("inst.dialog_parked_stuck", name, data.description);
       this.notifyIncident(name, "dialog_parked", text);
       // #1990: in General, the instance's name links to its topic.

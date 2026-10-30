@@ -4023,6 +4023,8 @@ export class Daemon extends EventEmitter {
               let sent = false;
               if (SPECIAL_KEYS.has(key)) {
                 sent = await pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+              } else if (dialog.literalKeys) {
+                sent = await pollTmux.sendKeys(key);                     // typed, no Enter (#2872)
               } else {
                 sent = await pollTmux.pasteText(key, this.systemPasteOptions());
               }
@@ -4062,6 +4064,7 @@ export class Daemon extends EventEmitter {
               } else {
                 resolved = true;
               }
+              if (dialog.dismissIncident) this.emitDismissIncident(dialog);
             } else if (dialog.keys.length > 0) {
               // Did the keys take? Read the pane again. The same request still there is an answer that did nothing. A request
               // the backend names as DIFFERENT (the next queued one), or no dialog at all, means it took. Without a
@@ -4299,6 +4302,17 @@ export class Daemon extends EventEmitter {
       this.emitErrorPattern(ep, key, pane, now);
       break; // Only handle first unsuppressed new error per scan
     }
+  }
+
+  /**
+   * #2872: the incident a dialog stood for, once AgEnD's own keys closed it (RuntimeDialog.dismissIncident). It skips
+   * the usage check (the modal was the proof) and arms no pane gate: nothing on screen is its evidence, so nothing
+   * stale can raise it again.
+   */
+  private emitDismissIncident(dialog: RuntimeDialog): void {
+    const inc = dialog.dismissIncident!;
+    this.logger.warn({ errorType: inc.type, action: inc.action, dialog: dialog.description }, `Dialog incident: ${inc.message}`);
+    this.emit("pty_error", { name: this.name, type: inc.type, action: inc.action, message: inc.message, skipUsageVerify: true });
   }
 
   /** Arm the recovery gates and emit one detected error pattern. */
@@ -8613,6 +8627,7 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ dialog: dialog.description, parkedForMs: Date.now() - this.dialogParkedSince },
         "CLI dialog is still on screen — not auto-answering, reporting for a human");
       this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true,
+        ...(dialog.parkedAdvice ? { advice: dialog.parkedAdvice } : {}),
         ...(episode !== null && interaction.kind ? { kind: interaction.kind, episode, backend: this.config.backend ?? "claude-code" } : {}),
         ...(unrecognised ? { unrecognised: true, question: this.unrecognisedPrompt?.shape.question ?? null } : {}) });
     }

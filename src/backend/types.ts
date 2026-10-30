@@ -434,6 +434,19 @@ export interface RuntimeDialog {
    */
   marksLiveIncident?: boolean;
   /**
+   * #2872: the incident this dialog IS, raised once AgEnD's own keys are verified to have closed it (verifyAfterKeys):
+   * a quota modal that leaves no error row behind (grok's weekly limit) still pauses the instance with one notice.
+   * Never from the pane: a stale screen cannot raise it, so a wake cannot pause again on it.
+   */
+  dismissIncident?: { type: ErrorType; action: ErrorActionType; message: string };
+  /**
+   * #2872: send `keys` that are not special keys as typed characters (`send-keys -l`), never as a paste: a paste ends
+   * with Enter, which on a picker submits the option under the cursor.
+   */
+  literalKeys?: boolean;
+  /** #2872: the parked notice adds this advice (Claude's session-resume prompt only). */
+  parkedAdvice?: "claude-resume";
+  /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
    * while safety-critical dialogs must prove that the prompt disappeared
