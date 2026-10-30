@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { quotaLine } from "../quota-notice.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
 const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
@@ -319,7 +320,7 @@ export class GrokBackend implements CliBackend {
       // quota: the weekly-limit dialog handles the modal; this is a backstop for any
       // plain-text quota message the dialog doesn't catch. The 403-usage form is idle
       // per the audit (#1792 follow-up).
-      { pattern: /quota|insufficient credits|out of credits/i, type: "quota", action: "notify", message: "Grok quota/credits exhausted" },
+      { pattern: /quota|insufficient credits|out of credits/i, type: "quota", action: "notify", message: "Grok quota/credits exhausted", notice: () => quotaLine("Grok", "quota_credits") },
       // #1066: the server refuses an outdated CLI (HTTP 426, Upgrade Required):
       //   Request failed (426) — Your Grok CLI version (1.0.5) is outdated.
       //   Please update to version 1.0.13 or later via `grok update` or …

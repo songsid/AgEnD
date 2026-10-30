@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputDraft, type ModelOption, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { quotaLine } from "../quota-notice.js";
 
 /** Session ids are UUIDs (e.g. "01a0c784-fb91-…"); guard before shell interpolation. */
 const SESSION_ID_RE = /^[0-9a-fA-F-]{8,}$/;
@@ -1049,7 +1050,7 @@ export class MuseBackend implements CliBackend {
           + ")", "m"),
         type: "auth_error", action: "pause", message: "Muse authentication error",
       },
-      { pattern: /quota|usage limit|out of credits/i, type: "quota", action: "notify", message: "Muse quota exhausted" },
+      { pattern: /quota|usage limit|out of credits/i, type: "quota", action: "notify", message: "Muse quota exhausted", notice: () => quotaLine("Muse", "quota") },
     ];
   }
 

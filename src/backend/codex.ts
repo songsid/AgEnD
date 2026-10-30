@@ -37,6 +37,7 @@ import { codexEffort } from "./launch-effort.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { type CodexResumePlan, type ExactCwdSession, codexSiblingState, codexStateDbAbsent, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
+import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
@@ -1878,6 +1879,7 @@ export class CodexBackend implements CliBackend {
         type: "quota",
         action: "pause",
         message: "OpenAI quota exceeded",
+        notice: () => quotaPausedLine("OpenAI", "api_quota"),
       },
       {
         // Codex already exhausted HTTP retries and returned to its composer.
@@ -1919,7 +1921,8 @@ export class CodexBackend implements CliBackend {
       // Codex writes the apostrophe as U+2019 ("You’ve hit your usage limit.") since
       // 0.156 and as ASCII before (0.153.4): both must match, or no usage limit
       // ever pauses the instance (#1098).
-      { pattern: /you['’]ve hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required" },
+      { pattern: /you['’]ve hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required",
+        notice: () => quotaPausedLine("Codex", "usage") },
       {
         // The terminal stage of a lost app-server (#1099): Codex has given up
         // reconnecting and says so, with a counter that never stops. Nothing
@@ -2001,6 +2004,7 @@ export class CodexBackend implements CliBackend {
         type: "quota",
         action: "pause",
         message: "Codex workspace credits exhausted — workspace owner must refill",
+        notice: () => quotaPausedLine("Codex", "workspace_credits"),
         skipUsageVerify: true,
         historyUntilLiveComposer: true,
       },
@@ -2009,6 +2013,7 @@ export class CodexBackend implements CliBackend {
         type: "quota",
         action: "pause",
         message: "Codex workspace spend cap reached — workspace owner must raise it",
+        notice: () => t("inst.quota_spend_cap"),
         skipUsageVerify: true,
         historyUntilLiveComposer: true,
       },
@@ -2017,6 +2022,7 @@ export class CodexBackend implements CliBackend {
         type: "quota",
         action: "pause",
         message: "Codex workspace usage limit reached — increase the workspace limits to continue",
+        notice: () => quotaPausedLine("Codex", "workspace_usage"),
         skipUsageVerify: true,
         historyUntilLiveComposer: true,
       },
@@ -2037,6 +2043,7 @@ export class CodexBackend implements CliBackend {
         action: "notify",
         message: "Codex usage limit running low",
         formatMessage: (m) => `Codex ${m[2].toLowerCase()} limit: less than ${m[1]}% left`,
+        notice: (m) => (m ? quotaLowLine(m[2]!, m[1]!) : quotaLine("Codex", "usage")),
       },
     ];
   }

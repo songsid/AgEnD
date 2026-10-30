@@ -71,6 +71,7 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, formatReplyDropDetection, turnExpectsPersonReply, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { CLAUDE_CREDIT_BALANCE_LOW, CLAUDE_MODEL_USAGE_LIMIT, CLAUDE_USAGE_LIMIT_PAUSE } from "./backend/claude-transcript-errors.js";
 import { t } from "./locale.js";
+import { claudeResetTime, quotaPausedLine } from "./quota-notice.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
@@ -2043,14 +2044,15 @@ export class Daemon extends EventEmitter {
     if (!match) return;
     const when = match[1]!.trim();
     this.emit("pty_error", { name: this.name, type: "quota", action: "notify", verifyQuota: true, skipCooldown: true, skipRecoveryWait: true,
-      message: `Claude Code usage limit reached — paused; continuing automatically ${when}` });
+      message: `Claude Code usage limit reached — paused; continuing automatically ${when}`,
+      notice: quotaPausedLine("Claude", "usage", claudeResetTime(when)) });
   }
 
   /** #2822: Claude recorded a failed API call. */
   private noteClaudeApiError(text: string, status: number | null, errorKind: string | null = null): void {
     const seq = ++this.transcriptEventSeq;
     if (errorKind === "billing_error" || (status === 400 && Daemon.CREDIT_BALANCE_LOW.test(text))) {
-      this.emit("pty_error", { name: this.name, type: "quota", action: "pause", message: "Insufficient API credits" });
+      this.emit("pty_error", { name: this.name, type: "quota", action: "pause", message: "Insufficient API credits", notice: quotaPausedLine("Claude", "api_credits") });
       return;
     }
     const match = status === 429 ? Daemon.MODEL_USAGE_LIMIT.exec(text.trim()) : null;
@@ -2062,7 +2064,7 @@ export class Daemon extends EventEmitter {
     const message = t("inst.model_usage_limit", model);
     this.logger.warn({ model }, "Usage-limit hold started (reset time unknown)");
     this.emit("usage_hold", { name: this.name, held: true });
-    this.emit("pty_error", { name: this.name, type: "quota", action: "notify", message, skipCooldown: true, skipRecoveryWait: true });
+    this.emit("pty_error", { name: this.name, type: "quota", action: "notify", message, notice: t("inst.quota_model_hold", model), skipCooldown: true, skipRecoveryWait: true });
   }
 
   /** #2822: Claude produced output (text or a tool call): the model answers again, so a hold ends. */
@@ -4316,7 +4318,9 @@ export class Daemon extends EventEmitter {
     const message = this.resolveErrorMessage(pane, ep);
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
     this.lastErrorEpisode = { key, pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
-    this.emit("pty_error", { name: this.name, ...ep, message });
+    const { notice: noticeOf, ...rest } = ep;
+    const notice = noticeOf ? this.resolveErrorNotice(pane, ep, noticeOf) : undefined;
+    this.emit("pty_error", { name: this.name, ...rest, message, ...(notice ? { notice } : {}) });
   }
 
   /**
@@ -4327,6 +4331,18 @@ export class Daemon extends EventEmitter {
    * Uses the LAST match in the pane: an older warning may still be scrolled up
    * (10% earlier, 5% now), and the newest one is the one worth reporting.
    */
+  /** The pattern's short notice from its last match on the pane (no match: from none); undefined if it throws. */
+  private resolveErrorNotice(pane: string, ep: ErrorPattern, noticeOf: (match: RegExpMatchArray | null) => string): string | undefined {
+    try {
+      const flags = ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g";
+      const matches = [...pane.matchAll(new RegExp(ep.pattern.source, flags))];
+      return noticeOf(matches[matches.length - 1] ?? null);
+    } catch (err) {
+      this.logger.debug({ err, errorType: ep.type }, "notice failed — posting the standard notification");
+      return undefined;
+    }
+  }
+
   private resolveErrorMessage(pane: string, ep: ErrorPattern): string {
     if (!ep.formatMessage) return ep.message;
     try {
