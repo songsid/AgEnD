@@ -127,7 +127,7 @@ function Get-WslSystemdState([string]$distro) {
 }
 function Repair-WslUserManager([string]$distro, [string]$user) {
   if ($user -cnotmatch '^[a-z_][a-z0-9_-]*$') { return 'ok' }
-  $script = 'u=$(id -u ' + $user + ') || exit 3; rt=/run/user/$u; s=$(systemctl is-active user@$u.service); if [ -S $rt/systemd/private ]; then echo OK $u; exit 0; fi; if [ x$s = xactive ]; then systemctl restart user@$u.service || { echo FAILED $u; exit 4; }; a=RESTARTED; elif [ x$s = xactivating ]; then a=WAITED; else systemctl start user@$u.service || { echo FAILED $u; exit 4; }; a=STARTED; fi; for i in $(seq 1 40); do if [ -S $rt/systemd/private ]; then echo $a $u; exit 0; fi; sleep 0.5; done; echo NOTREADY $u; exit 5'
+  $script = 'u=$(id -u ' + $user + ') || exit 3; rt=/run/user/$u; s=$(systemctl is-active user@$u.service); if [ -S $rt/systemd/private ]; then echo OK $u; exit 0; fi; if [ x$s = xactive ]; then systemctl restart user@$u.service || { systemctl reset-failed user@$u.service; systemctl start user@$u.service; } || { echo FAILED $u; exit 4; }; a=RESTARTED; elif [ x$s = xactivating ]; then a=WAITED; else systemctl start user@$u.service || { echo FAILED $u; exit 4; }; a=STARTED; fi; for i in $(seq 1 40); do if [ -S $rt/systemd/private ]; then echo $a $u; exit 0; fi; sleep 0.5; done; echo NOTREADY $u; exit 5'
   $r = Invoke-WslRoot $distro $script 60
   if ($r.Code -eq 3) { Write-Host ("  [!!] 在 {0} 裡找不到使用者 {1}，所以沒有重啟。" -f $distro, $user) -ForegroundColor Yellow; return 'failed' }
   $m = [regex]::Match([string]$r.Text, '\b(OK|RESTARTED|STARTED|WAITED|FAILED|NOTREADY) (\d+)')

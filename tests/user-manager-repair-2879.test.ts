@@ -16,7 +16,7 @@ function host(o: { uid?: number; state?: string; socket?: boolean; comesBackAfte
     run: (cmd, args) => {
       calls.push([cmd, ...args].join(" "));
       if (args[0] === "is-active") return { status: o.state === "active" ? 0 : 3, stdout: `${o.state ?? "active"}\n` };
-      if (o.fails && args[0] === o.fails) return { status: 1, stdout: "" };
+      if (o.fails && o.fails.split("+").includes(args[0]!)) return { status: 1, stdout: "" };
       cameBackAt = slept;
       return { status: 0, stdout: "" };
     },
@@ -52,8 +52,13 @@ describe("repairUserManager", () => {
     expect(repairUserManager(h.deps)).toEqual({ kind: "needs-root", command, socket: "/run/user/1000/systemd/private", active: state === "active" });
     expect(h.calls).toEqual(["systemctl is-active user@1000.service"]);
   });
-  it("the restart itself fails: failed, with what was run", () => {
-    const h = host({ state: "active", fails: "restart" });
+  it("the restart fails on the old manager's cgroup (219/CGROUP): reset-failed, then started", () => {
+    const h = host({ state: "active", fails: "restart", comesBackAfter: 500 });
+    expect(repairUserManager(h.deps)).toMatchObject({ kind: "restarted", ready: true });
+    expect(h.calls).toEqual(["systemctl is-active user@0.service", "systemctl restart user@0.service", "systemctl reset-failed user@0.service", "systemctl start user@0.service"]);
+  });
+  it("restart and the start after it both fail: failed, with what was run", () => {
+    const h = host({ state: "active", fails: "restart+start" });
     expect(repairUserManager(h.deps)).toEqual({ kind: "failed", command: "systemctl restart user@0.service", unit: "user@0.service" });
   });
   it("the socket never comes back: not ready, after the bounded wait", () => {

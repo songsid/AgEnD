@@ -118,7 +118,11 @@ export function repairUserManager(deps?: UserManagerRepairDeps, opts: { waitMs?:
   let kind: "started" | "restarted" = "started";
   if (active) {
     kind = "restarted";
-    if (d.run("systemctl", ["restart", unit]).status !== 0) return { kind: "failed", command: `systemctl restart ${unit}`, unit };
+    // A restart can fail on the old manager's cgroup not yet released (219/CGROUP): the start right after succeeds.
+    if (d.run("systemctl", ["restart", unit]).status !== 0) {
+      d.run("systemctl", ["reset-failed", unit]);
+      if (d.run("systemctl", ["start", unit]).status !== 0) return { kind: "failed", command: `systemctl restart ${unit}`, unit };
+    }
   } else if (!starting) {
     if (d.run("systemctl", ["start", unit]).status !== 0) return { kind: "failed", command: `systemctl start ${unit}`, unit };
   }
