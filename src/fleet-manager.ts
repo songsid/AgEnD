@@ -10256,6 +10256,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
 
+        // #2870 (the user's choice): in a private chat, a command from someone ClassicBot does not serve here — not an
+        // allowed user, not a ClassicBot admin, not a fleet admin, no room in this chat — gets no answer at all. /start
+        // above still asks for access; a guest's /web is handled before it.
+        if (isPrivateChat && text.startsWith("/") && this.isClassicPrivateStranger(msg.userId, chatId, msg.adapterId)) return;
+
         // Handle /stop command
         if (text === "/stop" || text.startsWith("/stop ")) {
           if (!this.classicChannels.isAdmin(msg.userId)) {
@@ -17519,6 +17524,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         adminUserId ?? ""));
     }
     this.notifyInstanceTopic(entry.instanceName, lines.join("\n"));
+    // #2870: the chat just allowed — and the new ClassicBot admin's own chat — get the ClassicBot menu now, not at the
+    // bot's next start (Telegram only; the menu is per chat there).
+    const reply = entry.classicReplyTo;
+    if (reply && reply.adapter.type === "telegram" && scope !== "guild") {
+      for (const chat of new Set([groupId, ...(adminUserId ? [adminUserId] : [])])) void this.topicCommands.addClassicMenuChat(reply.adapterId, chat);
+    }
     await this.notifyClassicRequester(entry, "classic.request_allowed");
   }
 
@@ -20813,6 +20824,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const generals = Object.entries(this.fleetConfig?.instances ?? {}).filter(([, cfg]) => cfg.general_topic === true);
     return (adapterId ? generals.find(([name, cfg]) => (cfg.channel_id ?? this.getInstanceAdapterId(name)) === adapterId) : undefined)?.[0]
       ?? generals[0]?.[0];
+  }
+
+  /**
+   * #2870: someone ClassicBot does not serve in this private chat: not on allowed_users, not a ClassicBot admin, not a
+   * fleet admin of this bot, and no ClassicBot room here. Their commands other than /start get no answer.
+   */
+  private isClassicPrivateStranger(userId: string, chatId: string, adapterId?: string): boolean {
+    const classic = this.classicChannels;
+    if (!classic) return false;
+    return !classic.isAdmin(userId) && !classic.isUserAllowed(userId) && !this.isFleetAdmin(userId, adapterId ?? "")
+      && !classic.isClassicChannel(chatId, adapterId);
   }
 
   /** Return a user-facing blocker without mutating ClassicBot state. */

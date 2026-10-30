@@ -61,7 +61,7 @@ function rig(platform: "telegram" | "discord" = "telegram") {
   vi.spyOn(s, "handleClassicStart").mockResolvedValue("started");
   const classicRoom = "-1004242";
   s.classicChannels = { isClassicChannel: (id: string) => id === classicRoom || id === "C1", hasChannel: (id: string) => id === classicRoom || id === "C1", getAll: () => [],
-    getChannelIdByInstance: () => undefined, getInstanceByChannel: () => undefined, isAdmin: () => false };
+    getChannelIdByInstance: () => undefined, getInstanceByChannel: () => undefined, isAdmin: () => false, isUserAllowed: () => false };
   const inbound = (chatId: string, text: string, userId = "alice") =>
     s.handleInboundMessage({ source: "telegram", adapterId: "owner", chatId, userId, username: userId, text, messageId: `m${Math.random()}`, timestamp: new Date() }).then(flush);
   const typedInGeneral = (user = "alice") =>
