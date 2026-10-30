@@ -32,8 +32,14 @@ describe("notifySocketProblem: exists / missing / abstract", () => {
   it("a user manager's socket that is gone: socketMissing and the linger hint, with that uid", () => {
     expect(notifySocketProblem("/run/user/0/systemd/notify", () => false)).toEqual({
       socketMissing: true, socket: "/run/user/0/systemd/notify",
-      hint: `the user manager's notify socket is gone (/run/user/0 was removed or replaced without its systemd/ dir): systemctl restart user@0.service (recreates /run/user/0/systemd/notify); if \`loginctl show-user ${user} -p Linger\` says no, also loginctl enable-linger ${user}`,
+      hint: `the user manager's notify socket is gone (/run/user/0 was removed or replaced without its systemd/ dir): systemctl restart user@0.service (recreates /run/user/0/systemd/notify; it also restarts the fleet and everything else that user runs, so run it from a host shell, not from an agent); if \`loginctl show-user ${user} -p Linger\` says no, also loginctl enable-linger ${user}`,
     });
+  });
+  it("a user who is not root: both commands with sudo (Fable P3)", () => {
+    const hint = String(notifySocketProblem("/run/user/1000/systemd/notify", () => false)!.hint);
+    expect(hint).toContain("sudo systemctl restart user@1000.service");
+    expect(hint).toContain(`also sudo loginctl enable-linger ${user}`);
+    expect(hint).toContain("it also restarts the fleet");
   });
   it("any other path that is gone: socketMissing and a plain hint (no linger advice for a system manager)", () => {
     const missing = join(tmp(), "gone", "notify");

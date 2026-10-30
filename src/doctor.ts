@@ -285,7 +285,7 @@ export async function collectDoctorReport(
       let user = "<user>";
       try { user = userInfo().username || user; } catch { /* no passwd entry: the placeholder */ }
       add("Service", missing ? "error" : "ok", t("doctor.notify_socket"),
-        missing ? t("doctor.notify_socket_missing", socket, user, uid) : t("doctor.notify_socket_ok", socket));
+        missing ? t("doctor.notify_socket_missing", socket, user, uid, uid === 0 ? "" : "sudo ") : t("doctor.notify_socket_ok", socket));
     }
   }
 
