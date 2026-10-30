@@ -1322,7 +1322,7 @@ export class ClaudeCodeBackend implements CliBackend {
       // elsewhere, wording changed, options reordered): recognised by its
       // two-option menu structure, never answered — a blind Enter would take
       // the default and drop the full context. Hold the pane, report for a human.
-      { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
+      { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, parkedAdvice: "claude-resume", description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
       // 2.1.295's cold-cache resume prompt on a resumed launch: Escape (the dialog's own "resume") keeps the context.
       { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeExact, keys: ["Escape"], description: COLD_RESUME_DESCRIPTION, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, autoResolutionKey: "claude-cold-resume-prompt" },
       { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeUnknown, keys: [], holdOnly: true, blocksDelivery: true, description: COLD_RESUME_HOLD_DESCRIPTION },
@@ -1369,6 +1369,7 @@ export class ClaudeCodeBackend implements CliBackend {
         keys: [],
         holdOnly: true,
         blocksDelivery: true,
+        parkedAdvice: "claude-resume",
         description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting",
       },
       // 2.1.295's cold-cache resume prompt: on a resume that loads late, and — the case that matters for a fleet — by a

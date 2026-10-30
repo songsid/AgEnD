@@ -34,6 +34,8 @@ const idle = { ready: true, busy: false, errors: [], startup: [], runtime: [] };
 const LOGO = "Grok intro logo[Enter]";
 const TRUST = "Grok workspace trust[y]";
 const WEEKLY = "Grok Build weekly limit (Grok 週限)[]";
+// #2872: at runtime AgEnD dismisses it with Shift+x (typed); at startup it stays a hold.
+const WEEKLY_RT = "Grok Build weekly limit (Grok 週限)[X]";
 /** The verdict each step gets — the same on 1.0.67 and 1.0.70, at both widths (and the same as the 1.0.60 and 1.0.67 audits). */
 const STEPS: Record<string, ReturnType<typeof verdict>> = {
   "01-trust": { ...idle, startup: [LOGO, TRUST], runtime: [LOGO] },
@@ -43,8 +45,8 @@ const STEPS: Record<string, ReturnType<typeof verdict>> = {
   "05-busy-before-cancel": { ...idle, busy: true },
   "06-after-cancel": idle,
   "07-err-401": idle, // grok's own 401 text has no status code (unchanged; #1792 follow-up)
-  "07-err-402": { ...idle, startup: [WEEKLY], runtime: [WEEKLY] },
-  "07-err-402-esc": idle,
+  "07-err-402": { ...idle, startup: [WEEKLY], runtime: [WEEKLY_RT] },
+  "07-err-402-esc": { ...idle, startup: [WEEKLY], runtime: [WEEKLY_RT] },   // #2872: Esc only moved focus to the scrollback
   "07-err-403": idle,
   "07-err-403-usage": idle, // a 403 "usage limit reached" body: not classified on either version (#1792 follow-up)
   "07-err-426": { ...idle, errors: ["outdated_cli"] },
