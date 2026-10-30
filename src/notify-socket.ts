@@ -21,8 +21,10 @@ export function notifySocketProblem(socket: string | undefined, exists: (path: s
   const runtime = /^\/run\/user\/(\d+)\//.exec(socket);
   let user = "<user>";
   try { user = userInfo().username || user; } catch { /* no passwd entry: the placeholder */ }
+  // Restarting user@<uid> ends everything that manager runs, the fleet included; a user who is not root needs sudo.
+  const sudo = runtime && runtime[1] !== "0" ? "sudo " : "";
   const hint = runtime
-    ? `the user manager's notify socket is gone (/run/user/${runtime[1]} was removed or replaced without its systemd/ dir): systemctl restart user@${runtime[1]}.service (recreates /run/user/${runtime[1]}/systemd/notify); if \`loginctl show-user ${user} -p Linger\` says no, also loginctl enable-linger ${user}`
+    ? `the user manager's notify socket is gone (/run/user/${runtime[1]} was removed or replaced without its systemd/ dir): ${sudo}systemctl restart user@${runtime[1]}.service (recreates /run/user/${runtime[1]}/systemd/notify; it also restarts the fleet and everything else that user runs, so run it from a host shell, not from an agent); if \`loginctl show-user ${user} -p Linger\` says no, also ${sudo}loginctl enable-linger ${user}`
     : `systemd's notify socket ${socket} does not exist`;
   return { socketMissing: true, socket, hint };
 }

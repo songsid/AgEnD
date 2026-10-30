@@ -214,12 +214,16 @@ describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => 
       const r = await doctor(healthy, tmp(), null, { uid: 0, problem: (s) => { asked.push(s); return { socketMissing: true }; } });
       expect(asked).toEqual(["/run/user/0/systemd/notify"]);
       expect(row(r)).toEqual([expect.objectContaining({ status: "error",
-        detail: expect.stringMatching(/^\/run\/user\/0\/systemd\/notify is missing .*Run: systemctl restart user@0\.service \(recreates \/run\/user\/0\/systemd\/notify\); if `loginctl show-user \S+ -p Linger` says no, also loginctl enable-linger \S+$/) })]);
+        detail: expect.stringMatching(/^\/run\/user\/0\/systemd\/notify is missing .*Run from a host shell, not from an agent: systemctl restart user@0\.service \(recreates \/run\/user\/0\/systemd\/notify; it also restarts the fleet and everything else \S+ runs\); if `loginctl show-user \S+ -p Linger` says no, also loginctl enable-linger \S+$/) })]);
     });
     it("systemctl cannot answer (the user bus lives in the same dir, gone with it): the row is still there", async () => {
       const r = await doctor("", tmp(), null, { uid: 0, problem: () => ({ socketMissing: true }) });
       expect(r.report.checks.filter((c) => c.label === "Loaded unit")).toEqual([]);
       expect(row(r)).toEqual([expect.objectContaining({ status: "error", detail: expect.stringContaining("/run/user/0/systemd/notify is missing") })]);
+    });
+    it("a user who is not root: sudo before both commands", async () => {
+      const r = await doctor("Type=notify\nNotifyAccess=all\nTimeoutStartUSec=15min\nFragmentPath=/f\nDropInPaths=\n", tmp(), null, { uid: 1000, problem: () => ({ socketMissing: true }) });
+      expect(row(r)[0]!.detail).toMatch(/sudo systemctl restart user@1000\.service .* also sudo loginctl enable-linger \S+$/);
     });
     it("present: ok", async () => {
       const r = await doctor(healthy, tmp(), null, { uid: 1000, problem: () => null });
