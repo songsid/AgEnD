@@ -141,12 +141,12 @@ describe("the parked-hold notice: Claude's resume advice only on Claude's resume
   });
 });
 
-describe("the notice", () => {
-  it.each([["en", /^Grok weekly limit reached — paused\. AgEnD closed grok's prompt without choosing an upgrade or credits/], ["zh-TW", /^Grok 週用量已達上限——已暫停。AgEnD 已關掉 grok 的提示，沒有選升級或購買額度/]] as const)(
-    "%s: one pause notice through the lifecycle, the usage check skipped", async (lang, rx) => {
+describe("the notice: the user's one line (hmsg-0687db4d), no name, no action suffix", () => {
+  it.each([["en", "⚠️ Grok weekly limit used up — paused"], ["zh-TW", "⚠️ Grok 週用量用完，已暫停"]] as const)(
+    "%s: exactly one notice, exactly that text; the instance is paused", async (lang, text) => {
       setLocale(lang);
       const inc = runtimeHit(MODAL)!.dismissIncident!;
-      expect(inc.message).toMatch(rx);
+      expect(inc).toMatchObject({ message: text, plainNotice: true });
       const notifyInstanceTopic = vi.fn();
       const ctx = { fleetConfig: { instances: { worker: { backend: "grok" } }, defaults: {} }, logger: { info() {}, warn() {}, error() {}, debug() {} },
         eventLog: null, isPlannedRestart: () => false, notifyInstanceTopic, webhookEmit: vi.fn(), clearCancelButton: vi.fn(), checkModelFailover() {},
@@ -156,7 +156,11 @@ describe("the notice", () => {
       lc.attachIncidentHandlers("worker", daemon as any);
       daemon.emit("pty_error", { name: "worker", ...inc, skipUsageVerify: true });
       await new Promise(r => setTimeout(r, 25));
-      expect(notifyInstanceTopic).toHaveBeenCalledTimes(1);
+      expect(notifyInstanceTopic.mock.calls.map((c: any[]) => c[1])).toEqual([text]);
       expect(daemon.requestPauseWhenIdle).toHaveBeenCalledTimes(1);
+      // Every other incident keeps the shared "<emoji> <name>: <message> (action: …)" shape.
+      daemon.emit("pty_error", { name: "worker", type: "quota", action: "notify", message: "Some other notice" });
+      await new Promise(r => setTimeout(r, 25));
+      expect(String(notifyInstanceTopic.mock.calls.at(-1)?.[1])).toMatch(/worker.*Some other notice/);
     });
 });

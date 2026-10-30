@@ -4312,7 +4312,8 @@ export class Daemon extends EventEmitter {
   private emitDismissIncident(dialog: RuntimeDialog): void {
     const inc = dialog.dismissIncident!;
     this.logger.warn({ errorType: inc.type, action: inc.action, dialog: dialog.description }, `Dialog incident: ${inc.message}`);
-    this.emit("pty_error", { name: this.name, type: inc.type, action: inc.action, message: inc.message, skipUsageVerify: true });
+    this.emit("pty_error", { name: this.name, type: inc.type, action: inc.action, message: inc.message, skipUsageVerify: true,
+      ...(inc.plainNotice ? { plainNotice: true } : {}) });
   }
 
   /** Arm the recovery gates and emit one detected error pattern. */

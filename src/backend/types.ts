@@ -438,7 +438,7 @@ export interface RuntimeDialog {
    * a quota modal that leaves no error row behind (grok's weekly limit) still pauses the instance with one notice.
    * Never from the pane: a stale screen cannot raise it, so a wake cannot pause again on it.
    */
-  dismissIncident?: { type: ErrorType; action: ErrorActionType; message: string };
+  dismissIncident?: { type: ErrorType; action: ErrorActionType; message: string; plainNotice?: boolean };
   /**
    * #2872: send `keys` that are not special keys as typed characters (`send-keys -l`), never as a paste: a paste ends
    * with Enter, which on a picker submits the option under the cursor.

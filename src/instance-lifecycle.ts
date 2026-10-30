@@ -1280,6 +1280,7 @@ export class InstanceLifecycle {
       fleetWide?: boolean;
       verifyQuota?: boolean;
       skipUsageVerify?: boolean;
+      plainNotice?: boolean;
       inProgress?: boolean;
       pattern?: RegExp;
     }) => {
@@ -1403,7 +1404,8 @@ export class InstanceLifecycle {
       } else if (notificationTarget && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
         // backoff_restart / nudge_continue notifications are handled in the action branch below
         // with per-attempt context (attempt N/max, delay).
-        this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, incidentMessage, data.action));
+        // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no name, no "(action: …)".
+        this.notifyIncident(notificationTarget, "pty_error", data.plainNotice ? data.message : t("inst.notification", emoji, name, incidentMessage, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 
