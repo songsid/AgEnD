@@ -1,6 +1,6 @@
 // Production CodexBackend.writeConfig + buildCommand for a scratch instance, pointed at the mock provider; prints the
 // launch command. Run with AGEND_HOME and CODEX_HOME set to scratch homes (short paths outside /tmp) and the audited
-// codex first on PATH. Args: instDir workDir port [resume|fresh] [trust|untrusted] [nudge]
+// codex first on PATH. Args: instDir workDir port [resume|fresh] [trust|untrusted] [nudge]. GEN_ASK=1: skipPermissions: false.
 //   resume    — production resume plan (exact-cwd thread from the state DB); fresh = skipResume
 //   untrusted — skip preTrust, so codex asks its own folder-trust question
 //   nudge     — drop AgEnD's hide_rate_limit_model_nudge so the rate-limit picker can paint
@@ -20,7 +20,8 @@ writeFileSync(join(shared, "config.toml"), [
   ...(process.env.GEN_EXTRA_TOML ? [process.env.GEN_EXTRA_TOML, ``] : []),
 ].join("\n"));
 const b = new CodexBackend(instDir);
-const config = { workingDirectory: workDir, instanceDir: instDir, instanceName: "audit", mcpServers: {}, skipPermissions: true, skipResume: resume !== "resume" };
+// GEN_ASK=1: skipPermissions: false — codex asks for approval in a workspace-write sandbox (#2886).
+const config = { workingDirectory: workDir, instanceDir: instDir, instanceName: "audit", mcpServers: {}, skipPermissions: process.env.GEN_ASK !== "1", skipResume: resume !== "resume" };
 b.writeConfig(config as any);
 if (trust === "trust") b.preTrust(workDir);
 const home = (b as any).isolatedCodexHome as string;

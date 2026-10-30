@@ -1200,9 +1200,11 @@ export class CodexBackend implements CliBackend {
   buildCommand(config: CliBackendConfig): string {
     this.lastKnownModel = config.model?.trim() || null;
     this.credentialProfile = this.readProfile(config);
+    // #2886: `--full-auto` is gone from codex (no supported version, 0.155 on, accepts it: the instance never started);
+    // spelled out, it was a workspace-write sandbox that asks for approval on request.
     const approvalFlag = config.skipPermissions !== false
       ? "--dangerously-bypass-approvals-and-sandbox"
-      : "--full-auto";
+      : "--sandbox workspace-write --ask-for-approval on-request";
 
     // #984: never trust `codex resume --last` to pick this instance's session.
     // Codex 0.157 scopes it to the git REPOSITORY, so in a worktree it resumes

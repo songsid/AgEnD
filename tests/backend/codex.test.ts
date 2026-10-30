@@ -67,10 +67,12 @@ describe("CodexBackend", () => {
       expect(cmd).toContain(`-c 'model="o3"'`);
     });
 
-    it("uses --full-auto when skipPermissions is false", () => {
+    // #2886: codex removed --full-auto (every supported version refuses it and exits); this is what it meant.
+    it("asks for approval in a workspace-write sandbox when skipPermissions is false, never with --full-auto", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ skipPermissions: false }));
-      expect(cmd).toContain("--full-auto");
+      expect(cmd).toContain(" --sandbox workspace-write --ask-for-approval on-request ");
+      expect(cmd).not.toContain("--full-auto");
       expect(cmd).not.toContain("--dangerously-bypass-approvals-and-sandbox");
     });
 
