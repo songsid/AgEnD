@@ -96,7 +96,7 @@ jobs:
       # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
       # has none; a Mac with the Command Line Tools' python3 does.
       - if: matrix.node == '16'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
       - name: tmux for the scratch daemon
@@ -134,7 +134,7 @@ jobs:
       # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
       # has none; a Mac with the Command Line Tools' python3 does.
       - if: matrix.node == '16'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
       # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per leg.
