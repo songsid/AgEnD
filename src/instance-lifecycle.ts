@@ -397,6 +397,17 @@ const AUTH_ALERT_COOLDOWN_MS = 5 * 60_000;
  */
 const AUTH_VERIFY_CACHE_MS = 60_000;
 
+/**
+ * #2872: a one-line notice ("⚠️ Grok weekly limit used up — paused") where it is posted. In the instance's own topic
+ * (`elsewhereName` null) as it is; anywhere else (General) it must say whose: "⚠️ <name>: Grok weekly limit used up —
+ * paused". A line without a leading emoji gets the name in front.
+ */
+export function plainNoticeLine(line: string, elsewhereName: string | null): string {
+  if (!elsewhereName) return line;
+  const m = /^(\p{Extended_Pictographic}\uFE0F?)\s*/u.exec(line);
+  return m ? t("inst.notice_named", m[1], elsewhereName, line.slice(m[0].length)) : t("inst.notice_named", "", elsewhereName, line).trimStart();
+}
+
 const CODEX_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
 /**
  * What the live usage endpoint says about whether this Codex login can work:
@@ -1199,7 +1210,7 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
-    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null }) => {
+    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null; advice?: "claude-resume" }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
       // here on purpose: the General "Confirm" assist sends Enter, and Enter is
       // exactly the destructive default for Claude's resume prompt. The text
@@ -1230,8 +1241,9 @@ export class InstanceLifecycle {
       }
       const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
       const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
-        ? t("inst.dialog_parked_hold", name, data.description)
-        : t("inst.dialog_parked_stuck", name, data.description);
+        // #2872: the Claude session-resume advice only for that prompt (it read as nonsense under a grok or kiro dialog).
+        ? t("inst.dialog_parked_hold", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_hold_claude_resume") : "")
+        : t("inst.dialog_parked_stuck", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_stuck_claude_resume") : "");
       this.notifyIncident(name, "dialog_parked", text);
       // #1990: in General, the instance's name links to its topic.
       this.ctx.notifyFleetError?.(category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
@@ -1279,6 +1291,8 @@ export class InstanceLifecycle {
       fleetWide?: boolean;
       verifyQuota?: boolean;
       skipUsageVerify?: boolean;
+      /** #2872: the person's whole one-line notice, localised (posted instead of inst.notification); `message` stays for logs and webhooks. */
+      notice?: string;
       inProgress?: boolean;
       pattern?: RegExp;
     }) => {
@@ -1402,7 +1416,11 @@ export class InstanceLifecycle {
       } else if (notificationTarget && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
         // backoff_restart / nudge_continue notifications are handled in the action branch below
         // with per-attempt context (attempt N/max, delay).
-        this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, incidentMessage, data.action));
+        // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no "(action: …)", and no
+        // name in the instance's own topic; elsewhere (a ClassicBot's go to General) the name follows its emoji.
+        this.notifyIncident(notificationTarget, "pty_error", data.notice
+          ? plainNoticeLine(data.notice, notificationTarget === name ? null : name)
+          : t("inst.notification", emoji, name, incidentMessage, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 

@@ -7,46 +7,87 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { t } from "../locale.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
 const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
 const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 
 /** The weekly-limit picker is a paid-action modal, not an error line to dismiss. */
+/**
+ * Grok Build's weekly-limit modal (#2872). Every option it offers is paid or useless while the limit lasts:
+ *
+ *   ┃  You hit your weekly limit.
+ *   ┃  1 (○) Upgrade tier      Upgrade to a higher tier for more usage
+ *   ┃  2 (○) Buy more credits  Purchase credits to keep using Grok Build
+ *   ┃  3 (○) Try Again         Resubmit the last prompt once you have usage again      (1.0.70; absent on older builds)
+ *   ┃  ↑/↓ navigate · y copy                                                Enter:submit
+ *   Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss
+ *
+ * AgEnD presses Shift+x (the key `X`): captured offline on 1.0.70 against the audit rig's 402 (#2872 PR), it closes
+ * the modal with nothing selected and no request, and grok is back at its composer — also after Esc moved focus to the
+ * scrollback (its legend then reads "Tab/Space:question │ …"). Never Enter, never a digit, never `y`. The modal leaves
+ * no error row behind, so the quota pause comes from the dismissal itself (dismissIncident), once.
+ */
+const GROK_LEGEND_QUESTION = /^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss$/;
+const GROK_LEGEND_SCROLLBACK = /^Tab\/Space:question\s+│\s+Ctrl\+e:collapse thinking\s+│\s+Ctrl\+x:shortcuts$/;
+/** One option row: its number and label exactly; its description whole, or cut by grok with "…" on a narrow pane (80 columns). */
+function grokOption(n: number, label: string, description: string) {
+  const row = new RegExp(`^${n} \\(○\\) ${label}(?:\\s{2,}(\\S.*))?$`);
+  return (line: string): boolean => {
+    const m = row.exec(line);
+    if (!m) return false;
+    const d = m[1];
+    return d === undefined || d === description || (d.endsWith("…") && description.startsWith(d.slice(0, -1)));
+  };
+}
 function grokWeeklyLimitDialog(): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
   return {
     pattern,
-    keys: [],
-    description: "Grok Build weekly limit (Grok 週限) — waiting for operator choice",
+    keys: ["X"],
+    literalKeys: true,
+    description: "Grok Build weekly limit (Grok 週限) — Shift+x dismisses it, never an upgrade or credits",
     blocksDelivery: true,
-    holdOnly: true,
     inputBlocked: true,
+    verifyAfterKeys: true,
+    autoResolutionKey: "grok-weekly-limit",
+    answeredByAgend: true,
+    // The user's wording (hmsg-0687db4d): one line, no name, no action suffix.
+    dismissIncident: { type: "quota", action: "pause", message: "Grok weekly limit used up — paused", notice: t("inst.grok_weekly_limit") },
     isActive(pane) {
       pattern.lastIndex = 0;
       if (!pattern.test(pane)) return false;
       const lines = pane.split(/\r?\n/).map(line => line.trimEnd());
       let end = lines.length - 1;
       while (end >= 0 && !lines[end].trim()) end--;
-      if (end < 0 || !/^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss\s*$/.test(lines[end].trim())) return false;
+      if (end < 0) return false;
+      const legend = lines[end].trim();
+      if (!GROK_LEGEND_QUESTION.test(legend) && !GROK_LEGEND_SCROLLBACK.test(legend)) return false;
 
       const text = (line: string) => line.replace(/^\s*┃\s?/, "").trim();
-      const first = Math.max(0, end - 12);
+      const first = Math.max(0, end - 14);
       const current = lines.slice(first, end + 1);
       const find = (predicate: (line: string) => boolean, from = 0) => {
         for (let i = from; i < current.length; i++) if (predicate(text(current[i]))) return i;
         return -1;
       };
       const title = find(line => line === "You hit your weekly limit.");
-      const upgrade = find(line => /^1 \(○\) Upgrade tier\s+Upgrade to a higher tier for more usage$/.test(line), title + 1);
-      const credits = find(line => /^2 \(○\) Buy more credits\s+Purchase credits to keep using Grok Build$/.test(line), upgrade + 1);
-      const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), credits + 1);
-      if (title < 0 || upgrade < 0 || credits < 0 || submit < 0) return false;
+      const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), title + 1);
+      if (title < 0 || submit < 0) return false;
+      // The WHOLE option list between the title and the footer, in order: exactly 1 Upgrade, 2 Credits and optionally
+      // 3 Try Again. Any other numbered row anywhere (a new paid choice, a duplicate) makes it a modal we do not know.
+      const options = current.slice(title + 1, submit).map((line, i) => ({ i: title + 1 + i, t: text(line) })).filter(r => /^\d+ \(/.test(r.t));
+      const known = [grokOption(1, "Upgrade tier", "Upgrade to a higher tier for more usage"),
+        grokOption(2, "Buy more credits", "Purchase credits to keep using Grok Build"),
+        grokOption(3, "Try Again", "Resubmit the last prompt once you have usage again")];
+      if (options.length < 2 || options.length > 3 || !options.every((r, k) => known[k](r.t))) return false;
+      const upgrade = options[0].i, credits = options[1].i;
       if (![title, upgrade, credits, submit].every(index => /^\s*┃/.test(current[index]))) return false;
       // The Grok keyboard legend must immediately follow the choice footer;
       // another composer or screen below the modal makes the old text stale.
       const between = current.slice(submit + 1).map(text).filter(Boolean);
-      return between.length === 1 && /^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss$/.test(between[0]);
+      return between.length === 1 && (GROK_LEGEND_QUESTION.test(between[0]) || GROK_LEGEND_SCROLLBACK.test(between[0]));
     },
   };
 }
@@ -347,7 +388,9 @@ export class GrokBackend implements CliBackend {
       // Grok Build's weekly-limit picker is a paid-action modal. Keep it ahead
       // of broad startup prompts and hold it for an operator: never choose a
       // tier, buy credits, or submit the menu automatically.
-      grokWeeklyLimitDialog(),
+      // #2872: hold-only here: the startup scan does not verify a dismissal, so it could not raise the pause; the
+      // runtime scanner (which does) answers it once the scan is over.
+      { ...grokWeeklyLimitDialog(), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined },
       // Animated intro logo (spinning braille X). It redraws continuously, so
       // AgEnD's idle detector (2s of silence) never fires and messages queue
       // forever. User-confirmed fix: one Enter skips to the ready prompt.
