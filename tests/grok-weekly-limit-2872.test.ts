@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { GrokBackend } from "../src/backend/grok.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
-import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
+import { InstanceLifecycle, plainNoticeLine, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { setLocale } from "../src/locale.js";
 
 const fx = (n: string) => readFileSync(new URL(`./fixtures/grok-1.0.70-weekly-limit/${n}.pane.txt`, import.meta.url), "utf8");
@@ -138,6 +138,33 @@ describe("the parked-hold notice: Claude's resume advice only on Claude's resume
     const backends = [new ClaudeCodeBackend(tmp()), new GrokBackend(tmp())];
     const withAdvice = backends.flatMap(b => [...b.getRuntimeDialogs(), ...b.getStartupDialogs()]).filter((d: any) => d.parkedAdvice).map(d => d.description);
     expect(new Set(withAdvice)).toEqual(new Set(["Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting"]));
+  });
+});
+
+describe("the one line outside the instance's own topic says whose (a ClassicBot's notices go to General)", () => {
+  it("own topic: as it is; elsewhere: the name after the emoji", () => {
+    setLocale("en");
+    expect(plainNoticeLine("⚠️ Grok weekly limit used up — paused", null)).toBe("⚠️ Grok weekly limit used up — paused");
+    expect(plainNoticeLine("⚠️ Grok weekly limit used up — paused", "classic-x-grok-bot")).toBe("⚠️ classic-x-grok-bot: Grok weekly limit used up — paused");
+    setLocale("zh-TW");
+    expect(plainNoticeLine("⚠️ Grok 週用量用完，已暫停", "classic-x-grok-bot")).toBe("⚠️ classic-x-grok-bot：Grok 週用量用完，已暫停");
+    expect(plainNoticeLine("no emoji here", "w")).toBe("w：no emoji here");
+  });
+  it("through the lifecycle: a ClassicBot grok's pause notice in General names it", async () => {
+    setLocale("en");
+    const inc = runtimeHit(MODAL)!.dismissIncident!;
+    const notifyInstanceTopic = vi.fn();
+    const ctx = { fleetConfig: { instances: { "classic-x": { backend: "grok" }, general: { backend: "claude-code", general: true } }, defaults: {} },
+      logger: { info() {}, warn() {}, error() {}, debug() {} }, eventLog: null, isPlannedRestart: () => false, notifyInstanceTopic,
+      webhookEmit: vi.fn(), clearCancelButton: vi.fn(), checkModelFailover() {}, restartSingleInstance: async () => {},
+      getInstanceDir: (n: string) => `/nonexistent/${n}`, isClassicInstance: (n: string) => n === "classic-x" } as unknown as LifecycleContext;
+    const lc = new InstanceLifecycle(ctx);
+    (lc as any).findGeneralInstance = () => "general";
+    const daemon = Object.assign(new EventEmitter(), { requestPauseWhenIdle: vi.fn() });
+    lc.attachIncidentHandlers("classic-x", daemon as any);
+    daemon.emit("pty_error", { name: "classic-x", ...inc, skipUsageVerify: true });
+    await new Promise(r => setTimeout(r, 25));
+    expect(notifyInstanceTopic.mock.calls.map((c: any[]) => [c[0], c[1]])).toEqual([["general", "⚠️ classic-x: Grok weekly limit used up — paused"]]);
   });
 });
 

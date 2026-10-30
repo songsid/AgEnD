@@ -397,6 +397,17 @@ const AUTH_ALERT_COOLDOWN_MS = 5 * 60_000;
  */
 const AUTH_VERIFY_CACHE_MS = 60_000;
 
+/**
+ * #2872: a one-line notice ("⚠️ Grok weekly limit used up — paused") where it is posted. In the instance's own topic
+ * (`elsewhereName` null) as it is; anywhere else (General) it must say whose: "⚠️ <name>: Grok weekly limit used up —
+ * paused". A line without a leading emoji gets the name in front.
+ */
+export function plainNoticeLine(line: string, elsewhereName: string | null): string {
+  if (!elsewhereName) return line;
+  const m = /^(\p{Extended_Pictographic}\uFE0F?)\s*/u.exec(line);
+  return m ? t("inst.notice_named", m[1], elsewhereName, line.slice(m[0].length)) : t("inst.notice_named", "", elsewhereName, line).trimStart();
+}
+
 const CODEX_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
 /**
  * What the live usage endpoint says about whether this Codex login can work:
@@ -1404,8 +1415,11 @@ export class InstanceLifecycle {
       } else if (notificationTarget && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
         // backoff_restart / nudge_continue notifications are handled in the action branch below
         // with per-attempt context (attempt N/max, delay).
-        // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no name, no "(action: …)".
-        this.notifyIncident(notificationTarget, "pty_error", data.plainNotice ? data.message : t("inst.notification", emoji, name, incidentMessage, data.action));
+        // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no "(action: …)", and no
+        // name in the instance's own topic; elsewhere (a ClassicBot's go to General) the name follows its emoji.
+        this.notifyIncident(notificationTarget, "pty_error", data.plainNotice
+          ? plainNoticeLine(data.message, notificationTarget === name ? null : name)
+          : t("inst.notification", emoji, name, incidentMessage, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 
