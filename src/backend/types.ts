@@ -163,6 +163,10 @@ export interface ErrorPattern {
    * when the match can't be re-derived. Receives the LAST match in the pane,
    * i.e. the most recent occurrence. */
   formatMessage?: (match: RegExpMatchArray) => string;
+  /** The short line a person reads (src/quota-notice.ts), built when it fires so it is in the fleet's language; with
+   * it the incident is posted as that line, and `message` stays the English one for logs and webhooks. Receives the
+   * last match, or null when it can't be re-derived. */
+  notice?: (match: RegExpMatchArray | null) => string;
   /** Run the backend's live quota check before surfacing a quota notice. */
   verifyQuota?: boolean;
   /** A quota pause the live usage-window check cannot judge (codex workspace credits and spend caps are not one of

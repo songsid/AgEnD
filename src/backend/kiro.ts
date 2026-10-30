@@ -27,6 +27,7 @@ import { KIRO_SESSION_ID_COMMAND, kiroTitleCommand } from "../kiro-session-proof
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
+import { quotaLine } from "../quota-notice.js";
 import { sharedKiroV2StoreLane } from "./kiro-v2-store.js";
 import { KIRO_CLASSIC_LINKS_NOT_PREPARED, type KiroClassicLinks } from "./kiro-classic-links.js";
 import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict, type KiroModelRecords, type KiroModelSwitch } from "./kiro-retired-model.js";
@@ -2244,6 +2245,7 @@ export class KiroBackend implements CliBackend {
         type: "rate_limit",
         action: "notify",
         message: "Kiro request limit reached — it resets on the date kiro shows",
+        notice: () => quotaLine("Kiro", "requests"),
       },
       // Real throttling, matched on the exceptions kiro actually raises (all four
       // are present in the binary) rather than on the shared header.

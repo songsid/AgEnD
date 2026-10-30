@@ -35,6 +35,7 @@ import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { t } from "../locale.js";
+import { quotaLine } from "../quota-notice.js";
 
 /**
  * Board 0340ec89: the instructions file agy reads, relative to the workspace. agy (verified 1.3.6) loads
@@ -571,9 +572,13 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
         action: "notify",
         message: "Antigravity quota reached",
         formatMessage: m => m[0].trim(),
+        notice: (m) => {
+          const resets = m ? /\bResets in ([0-9][0-9hms]*)/i.exec(m[0]) : null;
+          return quotaLine("Antigravity", "quota", resets ? { reset: { in: resets[1]! } } : {});
+        },
         skipRecoveryWait: true,
       },
-      { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted" },
+      { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted", notice: () => quotaLine("Antigravity", "quota") },
       { pattern: /error.*authentication|UNAUTHENTICATED/i, type: "auth_error", action: "pause", message: "Antigravity authentication error — needs re-login" },
       // Model generation change pins the resumed session to a dead model placeholder
       // (e.g. MODEL_PLACEHOLDER_M264) → every message returns "unknown model key".
