@@ -366,7 +366,7 @@ describe("a plain pool join (two or more spaces) between old strings is a new or
     const f = files(kiroOld, kiroNew);
     const r = run(f.old, f.neu, f.m);
     expect([r.verdict, r.out.trim().split("\n").at(-2)]).toEqual(["PRECHECK: NONE", "BASIS: hard=0; hinted=0"]);
-    expect(r.out).toMatch(/REORDERED \(old strings in a new pool order, every part in the old artifact\): 1\n  "rate limit reached: q login"   = "rate limit reached:" \| "q login"/);
+    expect(r.out).toMatch(/REORDERED \(old strings in a new pool order, every part in the old artifact\): 1\n  "rate limit reached: q login"   = "rate limit reached:" \| "    q login"/);
   });
   it("control: a real new text after the same head (a part the old artifact never had) is still MAJOR", () => {
     const f = files(kiroOld, kiroNew.replace("    q login", "    upgrade your plan now to keep going"));
@@ -375,6 +375,24 @@ describe("a plain pool join (two or more spaces) between old strings is a new or
   });
   it("control: a new head before an old indented tail is still MAJOR (every part must be old)", () => {
     const f = files(kiroOld, kiroNew.replace("Kiro rate limit reached:    q login", "Kiro rate limit reached for all workspaces:    q login"));
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("Prism #2883 R1: an old question's head + two or four spaces + an old fragment found elsewhere is a changed question: MAJOR", () => {
+    const old = `${OLD}${T}${pad(4)}Do you want to proceed: keep current settings?${pad(3000)}remove all files?${pad(4)}`;
+    for (const sp of ["  ", "    "]) {
+      const f = files(old, old.replace("Do you want to proceed: keep current settings?", `Do you want to proceed:${sp}remove all files?`));
+      expect(run(f.old, f.neu, f.m).verdict, JSON.stringify(sp)).toBe("PRECHECK: MAJOR");
+    }
+    // UTF-16LE text (bundled JS) too.
+    const u = (x: string) => Buffer.from(x, "utf16le");
+    const oldU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed: keep current settings?"), Buffer.from(pad(3000)), u("remove all files?"), Buffer.from(pad(4))]);
+    const newU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed:  remove all files?"), Buffer.from(pad(3000)), u("remove all files?"), Buffer.from(pad(4))]);
+    const fu = files(oldU, newU);
+    expect(run(fu.old, fu.neu, fu.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("…and the same fragment with that exact indent in the old artifact, but a head the old pool never ended there: MAJOR", () => {
+    const old = `${OLD}${T}${pad(4)}Do you want to proceed with everything now?${pad(3000)}  remove all files?${pad(4)}`;
+    const f = files(old, old.replace("Do you want to proceed with everything now?", "Do you want to proceed with:  remove all files?"));
     expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
   });
   it("control: without a two-space join the #1636 rule holds (a glued half stays a new, hinted prompt)", () => {

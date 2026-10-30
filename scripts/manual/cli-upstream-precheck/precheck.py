@@ -26,11 +26,14 @@ that is one half of such an old pair (cut at a string boundary), whose other hal
 artifact, carries a hint that only the string order may have changed (#1636). It is still a new prompt: the bytes
 cannot show the two halves are still shown together.
 
-One join is plain in the bytes: a run of two or more spaces inside a hit (a string's own indent, as in kiro's
-"    q login") is where one pooled string ends and the next begins. A hit with such a run, every part of which the old
-artifact already has, is old strings in a new order, not a new string (kiro-cli 2.35.1 → 2.36.0: "Kiro rate limit
-reached:" followed by "    q login" instead of "Authentication Error"). It is listed as REORDERED, and nothing else
-changes: a hit without such a run, or with any part the old artifact lacks, is judged as before.
+One join can be shown from the old release itself: an indented string. A hit that a run of two or more spaces splits
+into a head and indented tails is old strings in a new order, not a new string, only when
+  - the head is an old prompt-like string, or one cut at a string boundary of one (it ended there in the old pool), and
+  - every tail, WITH its exact indent, is in the old artifact (the spaces were that string's own, not glue).
+kiro-cli 2.35.1 → 2.36.0: "Kiro rate limit reached:" now sits before "    q login" (the login message's indented tail,
+indent and all in 2.35.1) instead of "Authentication Error". Such a hit is listed as REORDERED. Anything short of both
+proofs is judged as before: two spaces alone prove no boundary (Prism, #2883 R1: "Do you want to proceed:  remove all
+files?" from an old question's head and an old fragment found elsewhere is a changed question, MAJOR).
 """
 import bisect
 import io
@@ -288,15 +291,23 @@ def prompt_matches(data):
             yield run.start() + len(text[:c0].encode("utf-16-le")), run.start() + len(text[:c1].encode("utf-16-le")), m.group(0)
 
 
-# Where two pooled strings meet, plainly: a run of two or more spaces (a string's own indent) inside a hit.
+# Where an indented pooled string may begin inside a hit: a run of two or more spaces (its own indent).
 POOL_JOIN_RE = re.compile(rb" {2,}")
 
 
 def pool_parts(raw):
-    """The normalized parts of a hit split at its plain pool joins (POOL_JOIN_RE), or None when it has none."""
-    pieces = [normalize(p) for p in POOL_JOIN_RE.split(raw.strip(b" "))]
-    pieces = [p for p in pieces if p]
-    return pieces if len(pieces) > 1 else None
+    """(head, [tails]) of a hit cut where a run of two or more spaces begins, each tail keeping its exact indent; or None
+    when it has no such run. Text, decoded; the head normalized as a prompt-like string is."""
+    raw = raw.rstrip(b" ")
+    cuts = [m.start() for m in POOL_JOIN_RE.finditer(raw) if m.start() > 0]
+    if not cuts:
+        return None
+    pieces = [raw[a:b] for a, b in zip([0] + cuts, cuts + [len(raw)])]
+    head = normalize(pieces[0])
+    tails = [CUT_RE.sub("", p.decode("utf-8", "replace")) for p in pieces[1:]]
+    if not head or not all(t.strip() for t in tails):
+        return None
+    return head, tails
 
 
 def scan(path, literals, want_offsets, limit, joins=None):
@@ -472,11 +483,13 @@ def main(argv):
     # Every prompt-like string the old release does not have is new; beside a known detector literal, it is MAJOR. What
     # it looks like (embedded docs, an old prompt with another neighbour) is said as a hint for the auditor, not used.
     fresh = sorted(c for c in p_new if c not in p_old)
-    # Old strings in a new pool order: a hit split at a plain join (two or more spaces) whose every part the old
-    # artifact has. Not a new string; listed, and left out of what follows.
-    joined = {c: joins[c] for c in fresh if c in joins}
-    old_has = rests_present(old, sorted({p for parts in joined.values() for p in parts}), limit) if joined else set()
-    reordered = [c for c in fresh if c in joined and all(p in old_has for p in joined[c])]
+    # Old strings in a new pool order (the docstring): the head an old prompt-like string, or one cut at a string
+    # boundary of one; every tail, indent included, in the old artifact. Not a new string; listed, and left out.
+    def head_was_old(h):
+        return h in p_old or any(o.startswith(h) and len(h) in boundaries(o) for o in p_old)
+    joined = {c: joins[c] for c in fresh if c in joins and head_was_old(joins[c][0])}
+    old_has = rests_present(old, sorted({t for _, tails in joined.values() for t in tails}), limit) if joined else set()
+    reordered = [c for c in fresh if c in joined and all(t in old_has for t in joined[c][1])]
     fresh = [c for c in fresh if c not in reordered]
     gone_prompts = sorted(c for c in p_old if c not in p_new)
     # #1636: a string that was one half of an old glued pair, whose other half is still somewhere in the new artifact,
@@ -509,7 +522,7 @@ def main(argv):
         print("  … %d more" % (len(elsewhere) - 40))
     print("\nREORDERED (old strings in a new pool order, every part in the old artifact): %d" % len(reordered))
     for c in reordered[:20]:
-        print("  " + json.dumps(c[:140], ensure_ascii=False) + "   = " + " | ".join(json.dumps(p[:60], ensure_ascii=False) for p in joined[c]))
+        print("  " + json.dumps(c[:140], ensure_ascii=False) + "   = " + " | ".join(json.dumps(p[:60], ensure_ascii=False) for p in [joined[c][0]] + joined[c][1]))
     print("\nPROMPT-LIKE STRINGS gone in the new artifact: %d" % len(gone_prompts))
     for c in gone_prompts[:20]:
         print("  " + json.dumps(c[:140], ensure_ascii=False))
