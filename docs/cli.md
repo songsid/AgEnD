@@ -497,6 +497,14 @@ repair any interrupted update. The installer:
   manager from any shell (root on WSL included). `status` and `stop` only fill in `XDG_RUNTIME_DIR` and the bus
   address; they change no host setting.
 
+**If the machine stops in the middle of an update (#2854).** A power loss or a forced OS restart while npm is
+writing the new release can leave the service unable to start: systemd reports `status=203/EXEC`, or the files under
+the npm global `@songsid/agend` are 0 bytes. Your fleet's settings and data are not touched. To recover:
+1. Re-run the install command (or `npm install -g @songsid/agend@<version>`). The AgEnD installer first puts back an
+   intact copy npm moved aside (`@songsid/.agend-…`), then installs the release.
+2. Clear systemd's failed state and start the fleet: `systemctl --user reset-failed com.agend.fleet`, then
+   `agend start` (a legacy system-wide unit: `systemctl reset-failed agend` as root).
+
 `agend update` runs a release's installer only when that release has one. For an older release (for example
 `agend update --version` back to a release from before this change), and when the npm prefix needs sudo, it keeps the
 older update path described below. There, a system-wide copy is retired after a move to nvm only if that copy is a 2.1
