@@ -39,6 +39,12 @@ describe("the modal is matched by its rows, both builds, both focus states", () 
       MODAL.replace("3 (○) Try Again", "3 (○) Pay as you go"),
       MODAL.replace("↑/↓ navigate · y copy", "↑/↓ navigate"),
       MODAL.replace("  3 (○) Try Again", "  3 (○) Try Again\n  ┃  4 (○) Something else  Something"),
+      // Prism r1: an unknown or duplicate numbered row ANYWHERE in the list, not only after Credits.
+      MODAL.replace("  ┃  1 (○) Upgrade tier", "  ┃  0 (○) Subscribe now     A new paid choice\n  ┃  1 (○) Upgrade tier"),
+      MODAL.replace("  ┃  2 (○) Buy more credits", "  ┃  0 (○) Subscribe now     A new paid choice\n  ┃  2 (○) Buy more credits"),
+      MODAL.replace("  ┃  2 (○) Buy more credits", "  ┃  1 (○) Upgrade tier      Upgrade to a higher tier for more usage\n  ┃  2 (○) Buy more credits"),
+      OLD_MODAL.replace("  ┃  1 (○) Upgrade tier", "  ┃  0 (○) Subscribe now     A new paid choice\n  ┃  1 (○) Upgrade tier"),
+      MODAL.replace("2 (○) Buy more credits", "2 (○) Pay as you go"),
       `${MODAL}\n╭──╮\n│ ❯ │\n╰──╯\n  Shift+Tab:mode  │  Ctrl+x:shortcuts`]) expect(runtimeHit(pane), pane.slice(-120)).toBeUndefined();
   });
 });
@@ -134,10 +140,20 @@ describe("the parked-hold notice: Claude's resume advice only on Claude's resume
     expect(textOf(notifyInstanceTopic)).toMatch(/Resume full session as-is/);
   });
 
-  it("only that Claude prompt opts in: no other Claude or grok dialog carries the advice", () => {
+  it.each(["en", "zh-TW"] as const)("%s: an automatic answer that did not take (stuck): the advice only when the dialog opts in (Prism r1)", (lang) => {
+    setLocale(lang);
+    const { daemon, notifyInstanceTopic } = lifecycle();
+    daemon.emit("dialog_parked", { name: "worker", description: "Grok Build weekly limit (Grok 週限)", holdOnly: false });
+    expect(textOf(notifyInstanceTopic)).not.toMatch(/Resume full session as-is/);
+    daemon.emit("dialog_parked", { name: "worker", description: "Claude session resume prompt — select 'Resume full session as-is'", holdOnly: false, advice: "claude-resume" });
+    expect(textOf(notifyInstanceTopic)).toMatch(/Resume full session as-is/);
+  });
+
+  it("only Claude's session-resume prompts opt in: no other Claude or grok dialog carries the advice", () => {
     const backends = [new ClaudeCodeBackend(tmp()), new GrokBackend(tmp())];
     const withAdvice = backends.flatMap(b => [...b.getRuntimeDialogs(), ...b.getStartupDialogs()]).filter((d: any) => d.parkedAdvice).map(d => d.description);
-    expect(new Set(withAdvice)).toEqual(new Set(["Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting"]));
+    expect(new Set(withAdvice)).toEqual(new Set(["Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting",
+      "Claude session resume prompt — select 'Resume full session as-is'"]));
   });
 });
 

@@ -1317,7 +1317,7 @@ export class ClaudeCodeBackend implements CliBackend {
       // Only when the cursor is verifiably on option 1 ("❯ 1. Resume from
       // summary (recommended)") do we know that Down+Enter lands on "Resume
       // full session as-is". Any other shape is held by the guard below.
-      { pattern: CLAUDE_RESUME_PROMPT_DEFAULT, isActive: resumeDefaultActive, keys: ["Down", "Enter"], description: "Claude session resume prompt — select 'Resume full session as-is'", blocksDelivery: true },
+      { pattern: CLAUDE_RESUME_PROMPT_DEFAULT, isActive: resumeDefaultActive, keys: ["Down", "Enter"], parkedAdvice: "claude-resume", description: "Claude session resume prompt — select 'Resume full session as-is'", blocksDelivery: true },
       // The same prompt in a shape we do not know how to navigate (cursor
       // elsewhere, wording changed, options reordered): recognised by its
       // two-option menu structure, never answered — a blind Enter would take
@@ -1359,6 +1359,7 @@ export class ClaudeCodeBackend implements CliBackend {
         pattern: CLAUDE_RESUME_PROMPT_DEFAULT,
         isActive: resumeDefaultActive,
         keys: ["Down", "Enter"],
+        parkedAdvice: "claude-resume",
         description: "Claude session resume prompt — select 'Resume full session as-is'",
         blocksDelivery: true,
       },
