@@ -1291,7 +1291,8 @@ export class InstanceLifecycle {
       fleetWide?: boolean;
       verifyQuota?: boolean;
       skipUsageVerify?: boolean;
-      plainNotice?: boolean;
+      /** #2872: the person's whole one-line notice, localised (posted instead of inst.notification); `message` stays for logs and webhooks. */
+      notice?: string;
       inProgress?: boolean;
       pattern?: RegExp;
     }) => {
@@ -1417,8 +1418,8 @@ export class InstanceLifecycle {
         // with per-attempt context (attempt N/max, delay).
         // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no "(action: …)", and no
         // name in the instance's own topic; elsewhere (a ClassicBot's go to General) the name follows its emoji.
-        this.notifyIncident(notificationTarget, "pty_error", data.plainNotice
-          ? plainNoticeLine(data.message, notificationTarget === name ? null : name)
+        this.notifyIncident(notificationTarget, "pty_error", data.notice
+          ? plainNoticeLine(data.notice, notificationTarget === name ? null : name)
           : t("inst.notification", emoji, name, incidentMessage, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });

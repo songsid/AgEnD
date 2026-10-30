@@ -173,7 +173,7 @@ describe("the notice: the user's one line (hmsg-0687db4d), no name, no action su
     "%s: exactly one notice, exactly that text; the instance is paused", async (lang, text) => {
       setLocale(lang);
       const inc = runtimeHit(MODAL)!.dismissIncident!;
-      expect(inc).toMatchObject({ message: text, plainNotice: true });
+      expect(inc).toMatchObject({ message: "Grok weekly limit used up — paused", notice: text });   // message: logs and webhooks, unlocalised
       const notifyInstanceTopic = vi.fn();
       const ctx = { fleetConfig: { instances: { worker: { backend: "grok" } }, defaults: {} }, logger: { info() {}, warn() {}, error() {}, debug() {} },
         eventLog: null, isPlannedRestart: () => false, notifyInstanceTopic, webhookEmit: vi.fn(), clearCancelButton: vi.fn(), checkModelFailover() {},
@@ -184,6 +184,7 @@ describe("the notice: the user's one line (hmsg-0687db4d), no name, no action su
       daemon.emit("pty_error", { name: "worker", ...inc, skipUsageVerify: true });
       await new Promise(r => setTimeout(r, 25));
       expect(notifyInstanceTopic.mock.calls.map((c: any[]) => c[1])).toEqual([text]);
+      expect((ctx as any).webhookEmit).toHaveBeenCalledWith("pty_error", "worker", { type: "quota", action: "pause", message: "Grok weekly limit used up — paused" });
       expect(daemon.requestPauseWhenIdle).toHaveBeenCalledTimes(1);
       // Every other incident keeps the shared "<emoji> <name>: <message> (action: …)" shape.
       daemon.emit("pty_error", { name: "worker", type: "quota", action: "notify", message: "Some other notice" });

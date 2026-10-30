@@ -54,7 +54,7 @@ function grokWeeklyLimitDialog(): RuntimeDialog {
     autoResolutionKey: "grok-weekly-limit",
     answeredByAgend: true,
     // The user's wording (hmsg-0687db4d): one line, no name, no action suffix.
-    dismissIncident: { type: "quota", action: "pause", message: t("inst.grok_weekly_limit"), plainNotice: true },
+    dismissIncident: { type: "quota", action: "pause", message: "Grok weekly limit used up — paused", notice: t("inst.grok_weekly_limit") },
     isActive(pane) {
       pattern.lastIndex = 0;
       if (!pattern.test(pane)) return false;
