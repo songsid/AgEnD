@@ -3,6 +3,9 @@ import { execFile } from "./child-process.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgendHome } from "./paths.js";
+import { notifySocketProblem } from "./notify-socket.js";
+
+export { notifySocketProblem };
 
 /**
  * Keep systemd's notification socket private to the fleet process. The socket
@@ -104,7 +107,12 @@ export function sdNotify(state: string): void {
 /** Where a skipped or failed notification is said (the fleet's logger). Unset: nothing is said. */
 export type SdNotifyWarn = (fields: Record<string, unknown>, message: string) => void;
 let warnSink: SdNotifyWarn | null = null;
-export function setSdNotifyWarn(sink: SdNotifyWarn | null): void { warnSink = sink; }
+let startChecked = false;
+/** The fleet sets this as it starts: the first time, a socket that is already gone is said once (log only). */
+export function setSdNotifyWarn(sink: SdNotifyWarn | null): void {
+  warnSink = sink;
+  if (sink && !startChecked) { startChecked = true; reportNotifySocketAtStart(sink); }
+}
 
 /** Repeated unchanged ownership skips may coalesce; delivery failures never do. */
 export const SD_NOTIFY_WARN_INTERVAL_MS = 10 * 60_000;
@@ -124,6 +132,8 @@ export interface SdNotifierDeps {
   send: (state: string, socket: string, onDone: (error: Error | null) => void) => void;
   warn: () => SdNotifyWarn | null;
   now?: () => number;
+  /** Why the socket cannot be reached, added to a failure's fields (notifySocketProblem). */
+  socketProblem?: (socket: string) => Record<string, unknown> | null;
 }
 
 /**
@@ -164,10 +174,13 @@ export function createSdNotifier(deps: SdNotifierDeps): ((state: string) => void
       const detail = error as Error & { code?: unknown; signal?: unknown; killed?: boolean };
       // Every failed attempt is visible, including a failed retry. A later
       // successful ping needs no warning; only unchanged ownership skips coalesce.
-      try { deps.warn()?.({ state, retry, error: error.message, code: detail.code ?? null,
-        signal: detail.signal ?? null, killed: detail.killed ?? false,
-        elapsedMs: Math.max(0, Math.round(now() - startedAt)) },
-        "systemd-notify failed; systemd's watchdog may not be fed"); } catch { /* reporting must never break the ping */ }
+      try {
+        const why = deps.socket ? (deps.socketProblem ?? notifySocketProblem)(deps.socket) : null;
+        deps.warn()?.({ state, retry, error: error.message, code: detail.code ?? null,
+          signal: detail.signal ?? null, killed: detail.killed ?? false,
+          elapsedMs: Math.max(0, Math.round(now() - startedAt)), ...why },
+          "systemd-notify failed; systemd's watchdog may not be fed");
+      } catch { /* reporting must never break the ping */ }
       if (state === "WATCHDOG=1" && !retry && epoch === generation) {
         retryTimer = setTimeout(() => {
           retryTimer = null;
@@ -195,6 +208,18 @@ const defaultNotifier = createSdNotifier({
   send: (state, socket, onDone) => sendSystemdNotificationAsync(state, socket, process.env, undefined, onDone),
   warn: () => warnSink,
 });
+
+/**
+ * Once at startup (log only): the socket systemd gave this process is already gone, so READY will not arrive either.
+ * Returns whether it said so.
+ */
+export function reportNotifySocketAtStart(warn: SdNotifyWarn, socket: string | undefined = notifySocket,
+  problem: (socket: string | undefined) => Record<string, unknown> | null = notifySocketProblem): boolean {
+  const why = problem(socket);
+  if (!why) return false;
+  try { warn(why, "systemd's notify socket is missing; READY and WATCHDOG cannot reach systemd"); } catch { /* best effort */ }
+  return true;
+}
 
 /**
  * Blocking variant, for the one case where the process is about to exit.

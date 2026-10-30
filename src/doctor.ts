@@ -10,7 +10,8 @@ import { hasPausedMarker } from "./pause-marker.js";
 import { getTmuxSessionName, getTmuxSocketName } from "./paths.js";
 import { BACKENDS } from "./setup-wizard.js";
 import { getSystemServicePath, serviceLeftovers } from "./service-installer.js";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
+import { notifySocketProblem } from "./notify-socket.js";
 import type { ServiceInfo } from "./service-installer.js";
 import { t } from "./locale.js";
 import { checkStartFailure, fleetLogTail, type StartFailure } from "./start-failure.js";
@@ -56,6 +57,10 @@ interface DoctorDeps {
   startFailure: (dataDir: string) => StartFailure;
   /** #2481: the automatic restore this host made, if any (fleet-auto-restore.json). */
   autoRestore?: (dataDir: string) => RestoreRecord | null;
+  /** This user's id, for the user manager's notify socket (/run/user/<uid>/systemd/notify); null: not known. */
+  uid?: () => number | null;
+  /** Why a notify socket cannot be reached (sd-notify.ts notifySocketProblem); a file check, the fleet is never asked. */
+  notifySocketProblem?: (socket: string) => Record<string, unknown> | null;
   fetchFleetHealth: (port: number) => Promise<{
     adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; heartbeatAgeMs?: number | null; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
   }>;
@@ -269,6 +274,18 @@ export async function collectDoctorReport(
       for (const l of serviceLeftovers({ home: deps.env.HOME || homedir(), dropIns, systemUnit: system ? unit : null })) {
         add("Service", "warn", t("doctor.leftover"), `${l.path}: ${l.detail}`);
       }
+    }
+    // A user unit's NOTIFY_SOCKET is its manager's, in /run/user/<uid>: gone with that dir (logind removes it when the
+    // last session ends without linger), READY never arrives and systemd restarts the fleet every 15 minutes. Asked even
+    // when systemctl could not answer above: the user bus lives in the same dir and is gone with it.
+    const uid = system || (type && type !== "notify") ? null : (deps.uid ?? (() => typeof process.getuid === "function" ? process.getuid() : null))();
+    if (uid !== null) {
+      const socket = `/run/user/${uid}/systemd/notify`;
+      const missing = (deps.notifySocketProblem ?? notifySocketProblem)(socket);
+      let user = "<user>";
+      try { user = userInfo().username || user; } catch { /* no passwd entry: the placeholder */ }
+      add("Service", missing ? "error" : "ok", t("doctor.notify_socket"),
+        missing ? t("doctor.notify_socket_missing", socket, user, uid) : t("doctor.notify_socket_ok", socket));
     }
   }
 

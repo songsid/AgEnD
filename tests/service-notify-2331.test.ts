@@ -160,7 +160,7 @@ describe("3. leftovers, named and never removed", () => {
 
 describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => {
   const result = (status: number, stdout = "") => ({ status, stdout, stderr: "", pid: 1, signal: null, output: [], error: undefined }) as any;
-  async function doctor(show: string, home: string, systemUnit: string | null = null) {
+  async function doctor(show: string, home: string, systemUnit: string | null = null, socket?: { uid: number | null; problem: (s: string) => Record<string, unknown> | null }) {
     const dataDir = tmp();
     writeFileSync(join(dataDir, "fleet.yaml"), "instances: {}\n");
     const svc: ServiceInfo = { installed: true, path: join(home, ".config/systemd/user/com.agend.fleet.service"), manager: "systemd --user", enabled: true, active: true } as ServiceInfo;
@@ -170,6 +170,7 @@ describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => 
       networkFamily: () => ({ autoSelectFamily: true, attemptTimeoutMs: 2_500 }),
       fetchFleetHealth: async () => ({}), processAlive: () => false, connectSocket: async () => false, systemUnitPath: () => systemUnit,
       run: (file, args) => { calls.push([file, ...args]); return file === "systemctl" && args.includes("show") ? result(0, show) : result(1); },
+      ...(socket ? { uid: () => socket.uid, notifySocketProblem: socket.problem } : {}),
     });
     return { report, calls };
   }
@@ -202,5 +203,33 @@ describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => 
     expect(healthy.report.checks.filter((c) => c.label === "Leftover")).toEqual([]);
     const unknown = await doctor("", home);
     expect(unknown.report.checks.filter((c) => c.label === "Loaded unit" || c.label === "Unit files")).toEqual([]);
+  });
+
+  // Log only (user, 2026-10-30): a root user unit restarted every 15 minutes, its /run/user/0 gone without linger.
+  describe("the user manager's notify socket (a file check; the fleet is not asked)", () => {
+    const healthy = "Type=notify\nNotifyAccess=all\nTimeoutStartUSec=15min\nFragmentPath=/f\nDropInPaths=\n";
+    const row = (r: Awaited<ReturnType<typeof doctor>>) => r.report.checks.filter((c) => c.section === "Service" && c.label === "Notify socket");
+    it("missing: an error naming the socket and the fix, with this uid", async () => {
+      const asked: string[] = [];
+      const r = await doctor(healthy, tmp(), null, { uid: 0, problem: (s) => { asked.push(s); return { socketMissing: true }; } });
+      expect(asked).toEqual(["/run/user/0/systemd/notify"]);
+      expect(row(r)).toEqual([expect.objectContaining({ status: "error",
+        detail: expect.stringMatching(/^\/run\/user\/0\/systemd\/notify is missing .*Run: systemctl restart user@0\.service \(recreates \/run\/user\/0\/systemd\/notify\); if `loginctl show-user \S+ -p Linger` says no, also loginctl enable-linger \S+$/) })]);
+    });
+    it("systemctl cannot answer (the user bus lives in the same dir, gone with it): the row is still there", async () => {
+      const r = await doctor("", tmp(), null, { uid: 0, problem: () => ({ socketMissing: true }) });
+      expect(r.report.checks.filter((c) => c.label === "Loaded unit")).toEqual([]);
+      expect(row(r)).toEqual([expect.objectContaining({ status: "error", detail: expect.stringContaining("/run/user/0/systemd/notify is missing") })]);
+    });
+    it("present: ok", async () => {
+      const r = await doctor(healthy, tmp(), null, { uid: 1000, problem: () => null });
+      expect(row(r)).toEqual([expect.objectContaining({ status: "ok", detail: "/run/user/1000/systemd/notify exists" })]);
+    });
+    it("a system unit, a unit that is not Type=notify, or no uid: no row (nothing guessed)", async () => {
+      const problem = () => ({ socketMissing: true });
+      expect(row(await doctor(healthy, tmp(), "/etc/systemd/system/agend.service", { uid: 0, problem }))).toEqual([]);
+      expect(row(await doctor("Type=simple\nNotifyAccess=none\nTimeoutStartUSec=15min\nFragmentPath=/f\nDropInPaths=\n", tmp(), null, { uid: 0, problem }))).toEqual([]);
+      expect(row(await doctor(healthy, tmp(), null, { uid: null, problem }))).toEqual([]);
+    });
   });
 });
