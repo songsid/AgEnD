@@ -2114,7 +2114,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           void this.retireNonceButtons(entry, entry.messageId ?? "", t("settings_confirm.no_longer_pending"));
         };
         if (!current()) { retire(); continue; }
-        if (store.attachPrompt(view.id, retire)) return;
+        if (store.attachPrompt(view.id, retire, { platform: adapter.type, connection: adapterId })) return;
       } catch { retired = true; this.logger.info({ id: view.id, adapterId }, "Settings confirmation prompt unavailable; trying another General or host CLI"); }
     }
     // No platform confirmation was reachable. Host inspection is still required.

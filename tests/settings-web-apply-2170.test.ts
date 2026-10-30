@@ -56,7 +56,7 @@ function gateHarness(self: (req: any, id: string) => SettingsSelfConfirmation | 
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
   const asked = vi.fn(self);
   const gate = new SettingsHttpConfirmation(store, {
-    principal: req => req.headers.cookie ? { id: "session-a", label: "browser", source: "web_session", current: () => true } : null,
+    principal: req => req.headers.cookie ? { id: req.headers.cookie === "other" ? "session-b" : "session-a", label: "browser", source: "web_session", current: () => true } : null,
     baseline: () => baselines.read(), snapshot: () => baselines.snapshot(), selfConfirm: asked,
   });
   async function request(body: unknown, key = "k1") {
@@ -72,7 +72,18 @@ function gateHarness(self: (req: any, id: string) => SettingsSelfConfirmation | 
     });
   }
   const candidate = () => [{ ...config.channels[0], access: { mode: "locked", allowed_users: ["2"] } }];
-  return { config, save, store, notify, asked, request, candidate };
+  /** #2868: the pending routes (no body): a read, or "Apply now"; `cookie: false` — no session. */
+  function call(method: string, url: string, o: { cookie?: boolean; other?: boolean } = {}) {
+    return new Promise<{ status: number; body: any }>((resolve) => {
+      const req = new EventEmitter() as any;
+      req.method = method; req.url = url; req.headers = o.cookie === false ? {} : { cookie: o.other ? "other" : "opaque" }; req.destroy = () => undefined;
+      let status = 0;
+      const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
+        end(text: string) { resolve({ status, body: JSON.parse(text) }); } } as any;
+      expect(gate.handle(req, res, new URL(url, "http://localhost"), () => false), `${method} ${url} is the gate's`).toBe(true);
+    });
+  }
+  return { config, save, store, notify, asked, request, candidate, call };
 }
 
 describe("the gate: the request's own confirmation", () => {
@@ -90,9 +101,11 @@ describe("the gate: the request's own confirmation", () => {
   it("none: the change waits for a confirmation, as before", async () => {
     const h = gateHarness(() => null);
     const r = await h.request(h.candidate());
-    expect([r.body.pending_change.state, r.body.pending_change.confirmation.kind, h.save.mock.calls.length]).toEqual(["pending", "host_cli", 0]);
+    expect([r.body.pending_change.state, r.body.pending_change.confirmation.kind, h.save.mock.calls.length]).toEqual(["pending", "posting", 0]);
     await tick();
     expect(h.notify.mock.calls.map((c) => c[0].state)).toEqual(["pending"]);
+    // #2868: the notifier attached no General card: the host's command is then the way.
+    expect(h.store.get(r.body.pending_change.id, "session-a")?.confirmation.kind ?? h.store.list("session-a")[0]?.confirmation.kind).toBe("host_cli");
   });
   it("execution still checks it: a confirmation no longer current when it runs leaves the change applied by nobody", async () => {
     let asks = 0;
@@ -375,5 +388,61 @@ describe("the fleet: who may confirm by applying", () => {
     const f = fleet("discord"), p = f.propose();
     expect([f.any.settingsSelfConfirmation(f.store, f.session({ adapterId: "a", userId: "a-F" }).req, p.view.id) !== null,
       f.any.settingsSelfConfirmation(f.store, f.session({ adapterId: "b", userId: "b-F" }).req, p.view.id)]).toEqual([true, null]);
+  });
+});
+
+describe("#2868: where it is confirmed, and Apply now", () => {
+  it("the save answers \"posting\"; a General card attached makes it \"chat\" with where it went; none attached: \"host_cli\"", async () => {
+    const h = gateHarness(() => null);
+    const r = await h.request(h.candidate());
+    const id = r.body.pending_change.id;
+    expect(r.body.pending_change.confirmation).toEqual({ kind: "posting", code: id });
+    expect(h.store.attachPrompt(id, vi.fn(), { platform: "discord", connection: "dc" })).toBe(true);
+    await tick();
+    expect(h.store.get(id, "session-a")!.confirmation, "attached before the notifier settled: it stays chat").toEqual({ kind: "chat", code: id, where: [{ platform: "discord", connection: "dc" }] });
+    const h2 = gateHarness(() => null);
+    const r2 = await h2.request(h2.candidate());
+    await tick();
+    expect(h2.store.get(r2.body.pending_change.id, "session-a")!.confirmation).toEqual({ kind: "host_cli", code: r2.body.pending_change.id });
+  });
+  it("a store with no General notifier says host_cli from the start", () => {
+    const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
+    const { view } = store.propose({ session: "s", key: "k", bytes: 1, fingerprint: "f", source: "web_session", section: "access", requestedBy: "b", summary: ["x"],
+      current: () => true, unchanged: async () => true, apply: vi.fn() });
+    expect(view.confirmation.kind).toBe("host_cli");
+  });
+  it("its reads say whether this browser could confirm it itself now (can_self_confirm), asked at each read", async () => {
+    let allow = false;
+    const h = gateHarness(() => (allow ? { label: "Ada", current: () => true } : null));
+    const id = (await h.request(h.candidate())).body.pending_change.id;
+    expect([(await h.call("GET", `/api/settings/pending/${id}`)).body.can_self_confirm, (await h.call("GET", "/api/settings/pending")).body[0].can_self_confirm]).toEqual([undefined, undefined]);
+    allow = true;
+    expect([(await h.call("GET", `/api/settings/pending/${id}`)).body.can_self_confirm, (await h.call("GET", "/api/settings/pending")).body[0].can_self_confirm]).toEqual([true, true]);
+    expect(h.asked.mock.calls.at(-1)![1]).toBe(id);
+  });
+  it("Apply now: refused (403) while this browser may not, the change still waiting; allowed: applying at once (web), applied once, General told", async () => {
+    let allow = false;
+    const done = vi.fn();
+    const h = gateHarness(() => (allow ? { label: "Ada", current: () => true, done } : null));
+    const id = (await h.request(h.candidate())).body.pending_change.id;
+    const no = await h.call("POST", `/api/settings/pending/${id}/confirm`);
+    expect([no.status, no.body.error, h.store.get(id, "session-a")!.state, h.save.mock.calls.length]).toEqual([403, "self_confirm_unavailable", "pending", 0]);
+    allow = true;
+    const yes = await h.call("POST", `/api/settings/pending/${id}/confirm`);
+    expect([yes.status, yes.body.result, yes.body.pending_change.state, yes.body.pending_change.confirmation]).toEqual([202, "pending_confirmation", "applying", { kind: "web" }]);
+    await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
+    expect([done.mock.calls[0]![0].state, done.mock.calls[0]![0].outcome.decided_by_label, h.config.channels[0].access.allowed_users, h.save.mock.calls.length]).toEqual(["applied", "Ada", ["2"], 1]);
+    const again = await h.call("POST", `/api/settings/pending/${id}/confirm`);
+    expect([again.status, again.body.error, h.save.mock.calls.length], "decided: not again").toEqual([409, "confirmation_not_pending", 1]);
+  });
+  it("Apply now: only this session's own request, and only signed in", async () => {
+    let allow = false;
+    const h = gateHarness(() => (allow ? { label: "Ada", current: () => true } : null));
+    const id = (await h.request(h.candidate())).body.pending_change.id;
+    allow = true;
+    const theirs = await h.call("POST", `/api/settings/pending/${id}/confirm`, { other: true });
+    expect([theirs.status, h.store.get(id, "session-a")!.state, h.save.mock.calls.length], "another session's request: not found, still waiting").toEqual([404, "pending", 0]);
+    expect((await h.call("POST", `/api/settings/pending/${"0".repeat(32)}/confirm`)).status).toBe(404);
+    expect((await h.call("POST", `/api/settings/pending/${"0".repeat(32)}/confirm`, { cookie: false })).status).toBe(401);
   });
 });

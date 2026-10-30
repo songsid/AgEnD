@@ -17,6 +17,7 @@ import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
+import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
@@ -575,11 +576,44 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
     ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
-    ${p.state === "pending" ? html`<p class="note">${p.confirmation && p.confirmation.kind === "host_cli" ? t("app.pendingHost", `agend settings confirm ${p.id}`) : t("app.pendingChat")}</p>` : null}
+    ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}
     ${p.withdraw ? html`<div class="pending-actions"><button type="button" class="btn btn-sm" onClick=${p.withdraw}>${t("app.withdraw")}</button></div>` : null}
   </section>`)}</div>`;
+}
+
+/** #2868: where the confirm card was posted: "Discord", or "Discord (team-b)" for a connection with an id of its own. */
+function whereText(where) {
+  const names = (Array.isArray(where) ? where : []).map((w) => `${PLATFORM_NAMES[w.platform] || w.platform}${w.connection && w.connection !== w.platform ? ` (${w.connection})` : ""}`);
+  return names.length ? [...new Set(names)].join(" / ") : "Discord / Telegram";
+}
+/**
+ * #2868: how a pending change is confirmed, in the order a person can act on it. First where: the General card (naming
+ * the platform it was posted on), or the host's command when no General could take it. Then, when this browser could
+ * confirm it itself (the server's read says so: #2170's rule), "Apply now"; when it isn't verified but could be,
+ * "Authorize this browser" (the same DM card as the composer's). The host's command otherwise sits folded under
+ * "Advanced".
+ */
+function PendingHow({ p }) {
+  const a = useWebAuthorization();
+  const [refused, setRefused] = useState(false);
+  const c = p.confirmation || {}, cmd = `agend settings confirm ${p.id}`;
+  const lead = c.kind === "posting" ? t("app.pendingPosting") : c.kind === "host_cli" ? t("app.pendingHostOnly", cmd) : t("app.pendingChatWhere", whereText(c.where));
+  // A browser that isn't verified but could be: authorizing it makes this one (and later ones) "Apply now".
+  const route = c.kind !== "host_cli" && !p.applyNow && a.st;
+  const canAsk = route && a.st.state === "none" && (a.st.reason === "not_authorized" || a.st.reason === "authorization_expired");
+  const asking = route && a.st.state === "pending";
+  const apply = async () => { setRefused(false); const r = await p.applyNow(); if (!r || !r.ok) setRefused(true); };
+  return html`<p class="note">${lead}</p>
+    ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
+      <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
+    ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}
+    ${canAsk ? html`<div class="pending-self"><span class="note">${t("app.pendingAuthorize")}</span>
+      <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
+    ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
+    ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
+    ${c.kind !== "host_cli" ? html`<details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>` : null}`;
 }
 
 /** Settings' Apply, followed from another panel: one line, and the way back to it (§5: progress shows in any panel). */
