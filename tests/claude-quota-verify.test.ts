@@ -20,6 +20,7 @@ function percentUsage(used: number, hint?: string) {
 
 function lifecycle(verifier: () => Promise<ClaudeQuotaVerdict>, names = ["worker"]) {
   const notifyInstanceTopic = vi.fn();
+  const webhookEmit = vi.fn();
   const clearCancelButton = vi.fn();
   const ctx = {
     fleetConfig: {
@@ -30,7 +31,7 @@ function lifecycle(verifier: () => Promise<ClaudeQuotaVerdict>, names = ["worker
     eventLog: null,
     isPlannedRestart: () => false,
     notifyInstanceTopic,
-    webhookEmit: vi.fn(),
+    webhookEmit,
     clearCancelButton,
     checkModelFailover() {},
     restartSingleInstance: async () => {},
@@ -43,7 +44,7 @@ function lifecycle(verifier: () => Promise<ClaudeQuotaVerdict>, names = ["worker
     instanceLifecycle.attachIncidentHandlers(name, daemon as any);
     return daemon;
   });
-  return { daemons, notifyInstanceTopic, clearCancelButton };
+  return { daemons, notifyInstanceTopic, clearCancelButton, webhookEmit };
 }
 
 const quotaError = (name: string) => ({
@@ -108,14 +109,15 @@ describe("Claude quota second opinion", () => {
   );
 
   it("surfaces the hard pause line with its automatic resume time", async () => {
-    const { daemons, notifyInstanceTopic } = lifecycle(async () => "exhausted");
+    const { daemons, notifyInstanceTopic, webhookEmit } = lifecycle(async () => "exhausted");
     daemons[0].emit("pty_error", hardUsagePauseError("worker"));
 
     await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
-    expect(notifyInstanceTopic).toHaveBeenCalledWith(
-      "worker",
-      expect.stringMatching(/paused.*continuing automatically at 1:50pm/s),
-    );
+    // #2873: one short line in its own topic (no name, no "(action: …)"), its resume time kept.
+    expect(notifyInstanceTopic).toHaveBeenCalledWith("worker", "⚠️ Claude usage limit used up — paused (resets at 1:50pm)");
+    // …while a webhook gets the same English message as before.
+    expect(webhookEmit).toHaveBeenCalledWith("pty_error", "worker",
+      { type: "quota", action: "notify", message: "Claude Code usage limit reached — paused; continuing automatically at 1:50pm" });
     expect(daemons[0].requestPauseWhenIdle).not.toHaveBeenCalled();
   });
 

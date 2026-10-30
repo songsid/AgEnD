@@ -158,7 +158,8 @@ describe("in the real Daemon: Escape, then one pause; a wake does not pause agai
     expect(pasted).toEqual([]);
     expect(parked).toEqual([]);
     expect(errors).toEqual([expect.objectContaining({
-      type: "quota", action: "pause", message: "Codex workspace credits exhausted — workspace owner must refill" })]);
+      type: "quota", action: "pause", message: "Codex workspace credits exhausted — workspace owner must refill",
+      notice: "⚠️ Codex workspace credits used up — paused" })]);   // #2873: the short line, from the real pane scan
     daemon.freezeRuntimeMonitors();
   });
 
