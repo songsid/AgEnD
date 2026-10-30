@@ -51,6 +51,14 @@ The [0.164.0 → 0.165.0 audit](../../../tests/fixtures/codex-audit-0165/README.
 versions and the real-CLI e2e. `pass1.sh` gained a `notfound` step (mock mode: a 404 `model_not_found`), for #56445: 0.165
 shows the provider's message instead of retrying. No backend change was needed.
 
+## Codex 0.166.0
+
+The [0.165.0 → 0.166.0 audit](../../../tests/fixtures/codex-audit-0166/README.md) reran `pass1.sh` + `pass2.sh` on both
+versions under `unshare -rn` (no network). `pass1.sh` gained the workspace-limit prompts (mock `wscredits` / `wsspend`,
+#2847) and their Escape. The real-CLI e2e was not run: codex's TUI bootstrap reads the account API, and the audit makes no
+real-account calls without the user's OK. No backend change was needed for 0.166. A pre-existing bug the audit found,
+`--full-auto` refused by every supported codex, is fixed separately (#2886).
+
 ## A package without codex-code-mode-host (#2357)
 
 `companion-missing.sh <package-dir> <label> [toolexec|tool|toolshell]` launches a codex package layout through

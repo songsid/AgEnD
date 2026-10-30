@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The turn sequence on one codex (production config, trusted git work dir), every step captured at 25 ms:
-# launch → ok turn → slow turn (busy) → near-limit turn (nudge hidden by AgEnD) → usage limit → 401 → 500 → capacity → model not found →
+# launch → ok turn → slow turn (busy) → near-limit turn (nudge hidden by AgEnD) → usage limit → workspace limits (+ Escape) → 401 → 500 → capacity → model not found →
 # /compact with args → quit → production resume of the same thread → app-server killed (reconnect panes).
 # Usage: AUDIT=… PORT=… pass1.sh <VERSION>
 set -euo pipefail
@@ -13,6 +13,10 @@ r mode ok;   r send "hello";          r cap 02-turn-ok 5
 r mode slow; r send "again";          r cap 03-turn-slow 12
 r mode near; r send "third";          r cap 04-near-limit 6
 r mode usage; r send "fourth";        r cap 05-usage-limit 6
+r mode wscredits; r send "fourthb";  r cap 05b-ws-credits 8      # #2847: the workspace-limit prompt, then its Escape
+r key Escape;                         r cap 05b2-ws-credits-esc 4
+r mode wsspend; r send "fourthc";    r cap 05c-ws-spend 8
+r key Escape;                         r cap 05c2-ws-spend-esc 4
 r mode e401; r send "fifth";          r cap 06-e401 10
 r mode e500; r send "sixth";          r cap 07-e500 40
 r mode capacity; r send "seventh";    r cap 08-capacity 40
