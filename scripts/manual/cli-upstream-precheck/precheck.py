@@ -25,6 +25,11 @@ A native binary keeps its strings side by side with no separator, so two strings
 that is one half of such an old pair (cut at a string boundary), whose other half is still somewhere in the new
 artifact, carries a hint that only the string order may have changed (#1636). It is still a new prompt: the bytes
 cannot show the two halves are still shown together.
+
+A hit with a run of two or more spaces inside it may be two pooled strings read as one. It stays what it is (the
+verdict and BASIS never change for it), and the run lists it under POSSIBLE NEIGHBOUR REORDERS with how often each
+part occurs alone in both releases, so a quick look starts from the evidence (kiro-cli 2.35.1 → 2.36.0: "Kiro rate
+limit reached:" now before "    q login", each part once in each release; #2883: spaces prove no boundary).
 """
 import bisect
 import io
@@ -282,8 +287,35 @@ def prompt_matches(data):
             yield run.start() + len(text[:c0].encode("utf-16-le")), run.start() + len(text[:c1].encode("utf-16-le")), m.group(0)
 
 
-def scan(path, literals, want_offsets, limit):
-    """Counts per literal, prompt-like strings (→ the literals they sit near), and what could not be read."""
+# Where an indented pooled string may begin inside a hit: a run of two or more spaces (its own indent).
+POOL_JOIN_RE = re.compile(rb" {2,}")
+
+
+def pool_parts(raw):
+    """The parts of a hit cut where a run of two or more spaces begins (normalized, indent dropped), or None when it has
+    no such run. Evidence for the auditor only: the verdict never depends on it."""
+    raw = raw.rstrip(b" ")
+    cuts = [m.start() for m in POOL_JOIN_RE.finditer(raw) if m.start() > 0]
+    if not cuts:
+        return None
+    parts = [normalize(raw[a:b]) for a, b in zip([0] + cuts, cuts + [len(raw)])]
+    return parts if all(parts) else None
+
+
+def fragment_counts(path, texts, limit):
+    """How often each of `texts` occurs in the artifact, in any of a literal's byte forms (a second read, only when
+    needed)."""
+    want = {t: forms(t) for t in texts}
+    counts = dict.fromkeys(texts, 0)
+    for _, data in blobs(path, limit, [], []):
+        for t, fs in want.items():
+            counts[t] += sum(data.count(f) for f in fs)
+    return counts
+
+
+def scan(path, literals, want_offsets, limit, joins=None):
+    """Counts per literal, prompt-like strings (→ the literals they sit near), and what could not be read. `joins`, when
+    given, collects for each prompt-like string the parts it splits into at a plain pool join (pool_parts)."""
     counts = [0] * len(literals)
     prompts = {}
     files = 0
@@ -309,6 +341,10 @@ def scan(path, literals, want_offsets, limit):
             cand = normalize(raw)
             if len(cand) < 12:
                 continue
+            if joins is not None:
+                parts = pool_parts(raw)
+                if parts:
+                    joins.setdefault(cand, parts)
             near = prompts.setdefault(cand, set())
             if want_offsets and keys:
                 lo = bisect.bisect_left(keys, start - NEAR)
@@ -416,7 +452,8 @@ def main(argv):
     manifest, literals = load_manifest(manifest_path, backend)
 
     c_old, p_old, f_old, s_old, i_old, n_old = scan(old, literals, False, limit)
-    c_new, p_new, f_new, s_new, i_new, n_new = scan(new, literals, True, limit)
+    joins = {}
+    c_new, p_new, f_new, s_new, i_new, n_new = scan(new, literals, True, limit, joins)
 
     def where(l):
         return "%s:%s %s" % (l["file"], l["line"], l["symbol"])
@@ -449,6 +486,12 @@ def main(argv):
     # Every prompt-like string the old release does not have is new; beside a known detector literal, it is MAJOR. What
     # it looks like (embedded docs, an old prompt with another neighbour) is said as a hint for the auditor, not used.
     fresh = sorted(c for c in p_new if c not in p_old)
+    # #2883 (leader: conservative): a fresh hit with a run of spaces inside may be two pooled strings read as one. It
+    # stays fresh — the verdict and BASIS are untouched — and its parts' counts alone, in both releases, are listed.
+    joined = {c: joins[c] for c in fresh if c in joins}
+    texts = sorted({t for parts in joined.values() for t in parts})
+    in_old = fragment_counts(old, texts, limit) if texts else {}
+    in_new = fragment_counts(new, texts, limit) if texts else {}
     gone_prompts = sorted(c for c in p_old if c not in p_new)
     # #1636: a string that was one half of an old glued pair, whose other half is still somewhere in the new artifact,
     # may be the old text in a new string order — said as a hint for the auditor; it stays a new prompt.
@@ -478,6 +521,11 @@ def main(argv):
         print("  " + json.dumps(c[:140], ensure_ascii=False) + (("   hint: " + "; ".join(hints)) if hints else ""))
     if len(elsewhere) > 40:
         print("  … %d more" % (len(elsewhere) - 40))
+    print("\nPOSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): %d" % len(joined))
+    for c in sorted(joined)[:20]:
+        frags = " | ".join("%s (old %d, new %d)" % (json.dumps(t[:60], ensure_ascii=False), in_old[t], in_new[t]) for t in joined[c])
+        alone = all(in_old[t] and in_new[t] for t in joined[c])
+        print("  " + json.dumps(c[:140], ensure_ascii=False) + "   = " + frags + ("   — each part exists alone in both versions" if alone else ""))
     print("\nPROMPT-LIKE STRINGS gone in the new artifact: %d" % len(gone_prompts))
     for c in gone_prompts[:20]:
         print("  " + json.dumps(c[:140], ensure_ascii=False))
