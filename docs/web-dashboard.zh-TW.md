@@ -733,6 +733,11 @@ ssh -N -L 127.0.0.1:19290:127.0.0.1:19280 WSL_SSH_HOST
 變更存取／F／C 名單、secret、connection 目的地／順序、公開曝光、控制類 instance 設定，或放寬網頁設定（延長本機 session 或閒置時間、開啟瀏覽器終端機或增加分鐘數）會回傳 `202 pending_confirmation`。請求人可用 `GET /api/settings/pending[/:id]` 列出或輪詢，並用 `DELETE /api/settings/pending/:id` 撤回尚未被認領的請求；其他 session 會得到 404。輪詢屬被動讀取，不延長登入有效期；`remaining_ms` 用來倒數，顯示的時間戳不是授權期限。
 
 Fleet admin 在 General 核對遮蔽 secret 的 diff 後確認。Chat 不可用時執行本機命令 `agend settings confirm <id>`；Reject、到期或 session 撤銷都不套用變更。Apply 重試須沿用相同的 `Idempotency-Key` 與 body，回到同一個請求。終態失敗後應重新檢查並用新 key 提出；secret 必須重新輸入。在網頁 app 中，等待確認的請求會在任何面板顯示成一張卡片，附倒數時間和 **撤回**（見 [`/settings`](#settings)）。
+- **卡片上的說明（#2868）。**
+  - 先說要到哪裡確認：「正在把確認卡送到 General…」，接著「要套用，請到 Discord 的 General，在確認卡上按「確認」」（或 Telegram，也就是確認卡實際送到的平台）。
+  - 主機指令 `agend settings confirm <id>` 收在 **進階：在主機上確認** 底下；只有沒有任何 General 能收確認卡時才直接顯示。
+  - 這個瀏覽器已通過網頁驗證、且它的帳號可以確認這項變更時（與按套用即確認同一個規則），卡片會提供 **直接套用**，也會通知 General，和存檔時直接套用一樣。
+  - 這個瀏覽器還沒驗證、但可以授權時，卡片會提供 **授權這個瀏覽器**（和聊天框下方的同一張私訊確認卡）；確認後，等待中的卡片也會出現 **直接套用**。
 
 **哪個 bot 的 admin 能確認？** 既有連線的變更需要每個受影響連線的 admin
 資格；agent 搬移時包含原、新兩個 owner。共用 token 需要所有使用該環境變數的
