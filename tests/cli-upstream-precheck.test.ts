@@ -354,51 +354,46 @@ describe("#1636: a new string order is a hint for the auditor, never an exemptio
   });
 });
 
-describe("a plain pool join (two or more spaces) between old strings is a new order, not a new string", () => {
+describe("#2883: a possible neighbour reorder is annotated with evidence; the verdict and BASIS never change", () => {
   // kiro-cli 2.35.1 → 2.36.0 (the 21:00 watch, 2026-10-30): the pool held "  Kiro rate limit reached:" then
-  // "Authentication Error"; 2.36.0 put "    q login" (the indented tail of the login-expired message) after it. Read as
-  // one hit, "rate limit reached:    q login" looked like a new rate-limit string beside kiro's detector literals: MAJOR.
-  // Its parts, split at the indent, are both old text: NONE, listed as REORDERED.
+  // "Authentication Error"; 2.36.0 put "    q login" (the indented tail of the login-expired message) after it, read as
+  // one new rate-limit string. Spaces prove no boundary (Prism, #2883 R1/R2), so it stays MAJOR as before; the run lists
+  // each part's counts alone in both releases for the quick look.
   const LOGIN = "Your login session has expired. Please log in again using:\n\n    q login\n\n";
   const kiroOld = `${OLD}${T}${pad(4)}  Kiro rate limit reached:Authentication Error\nYour prompt is too long even after truncation.${pad(4)}${LOGIN}${pad(4)}`;
   const kiroNew = `${OLD}${T}${pad(4)}  Kiro rate limit reached:    q login\n\nThe conversation history has overflowed.${pad(4)}Your login session has expired. Please log in again using:\n\n/clear Authentication Error\nYour prompt is too long even after truncation.${pad(4)}`;
-  it("kiro 2.36.0's pool: the old rate-limit head + the old login tail: NONE, listed as REORDERED", () => {
+  const tail = (r: { out: string }) => r.out.trim().split("\n").slice(-2);
+  it("kiro 2.36.0's pool: still MAJOR with the same BASIS as before (hinted), annotated: each part once in each release", () => {
     const f = files(kiroOld, kiroNew);
     const r = run(f.old, f.neu, f.m);
-    expect([r.verdict, r.out.trim().split("\n").at(-2)]).toEqual(["PRECHECK: NONE", "BASIS: hard=0; hinted=0"]);
-    expect(r.out).toMatch(/REORDERED \(old strings in a new pool order, every part in the old artifact\): 1\n  "rate limit reached: q login"   = "rate limit reached:" \| "    q login"/);
+    expect(tail(r)).toEqual(["BASIS: hard=0; hinted=1", "PRECHECK: MAJOR"]);
+    expect(r.out).toContain('POSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): 1\n'
+      + '  "rate limit reached: q login"   = "rate limit reached:" (old 1, new 1) | "q login" (old 1, new 1)   — each part exists alone in both versions');
   });
-  it("control: a real new text after the same head (a part the old artifact never had) is still MAJOR", () => {
-    const f = files(kiroOld, kiroNew.replace("    q login", "    upgrade your plan now to keep going"));
-    const r = run(f.old, f.neu, f.m);
-    expect([r.verdict, /REORDERED[^\n]*: 0/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
-  });
-  it("control: a new head before an old indented tail is still MAJOR (every part must be old)", () => {
-    const f = files(kiroOld, kiroNew.replace("Kiro rate limit reached:    q login", "Kiro rate limit reached for all workspaces:    q login"));
-    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
-  });
-  it("Prism #2883 R1: an old question's head + two or four spaces + an old fragment found elsewhere is a changed question: MAJOR", () => {
-    const old = `${OLD}${T}${pad(4)}Do you want to proceed: keep current settings?${pad(3000)}remove all files?${pad(4)}`;
-    for (const sp of ["  ", "    "]) {
-      const f = files(old, old.replace("Do you want to proceed: keep current settings?", `Do you want to proceed:${sp}remove all files?`));
-      expect(run(f.old, f.neu, f.m).verdict, JSON.stringify(sp)).toBe("PRECHECK: MAJOR");
+  it("Prism R1/R2: an old question's head + spaces + an old fragment (plain or indented, 2 or 4 spaces, UTF-8 or UTF-16LE) is MAJOR", () => {
+    for (const frag of ["remove all files?", "    remove all files?"]) {
+      const old = `${OLD}${T}${pad(4)}Do you want to proceed: keep current settings?${pad(3000)}${frag}${pad(4)}`;
+      for (const sp of ["  ", "    "]) {
+        const f = files(old, old.replace("Do you want to proceed: keep current settings?", `Do you want to proceed:${sp}remove all files?`));
+        const r = run(f.old, f.neu, f.m);
+        expect([r.verdict, /POSSIBLE NEIGHBOUR REORDERS[^\n]*: 1/.test(r.out)], `${JSON.stringify(frag)} ${JSON.stringify(sp)}`).toEqual(["PRECHECK: MAJOR", true]);
+      }
     }
-    // UTF-16LE text (bundled JS) too.
     const u = (x: string) => Buffer.from(x, "utf16le");
-    const oldU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed: keep current settings?"), Buffer.from(pad(3000)), u("remove all files?"), Buffer.from(pad(4))]);
-    const newU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed:  remove all files?"), Buffer.from(pad(3000)), u("remove all files?"), Buffer.from(pad(4))]);
+    const oldU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed: keep current settings?"), Buffer.from(pad(3000)), u("    remove all files?"), Buffer.from(pad(4))]);
+    const newU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed:    remove all files?"), Buffer.from(pad(3000)), u("    remove all files?"), Buffer.from(pad(4))]);
     const fu = files(oldU, newU);
     expect(run(fu.old, fu.neu, fu.m).verdict).toBe("PRECHECK: MAJOR");
   });
-  it("…and the same fragment with that exact indent in the old artifact, but a head the old pool never ended there: MAJOR", () => {
-    const old = `${OLD}${T}${pad(4)}Do you want to proceed with everything now?${pad(3000)}  remove all files?${pad(4)}`;
-    const f = files(old, old.replace("Do you want to proceed with everything now?", "Do you want to proceed with:  remove all files?"));
-    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  it("a part the old release never had: MAJOR, and the annotation does not say each part exists in both", () => {
+    const f = files(kiroOld, kiroNew.replace("    q login", "    upgrade your plan now to keep going"));
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /\(old 0, new 1\)/.test(r.out), /each part exists alone/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true, false]);
   });
-  it("control: without a two-space join the #1636 rule holds (a glued half stays a new, hinted prompt)", () => {
+  it("no run of spaces: nothing annotated, the #1636 rule unchanged (MAJOR, hinted)", () => {
     const f = files(kiroOld, kiroNew.replace("Kiro rate limit reached:    q login", "Kiro rate limit reached:"));
     const r = run(f.old, f.neu, f.m);
-    expect([r.verdict, r.out.trim().split("\n").at(-2)]).toEqual(["PRECHECK: MAJOR", "BASIS: hard=0; hinted=1"]);
+    expect([...tail(r), /POSSIBLE NEIGHBOUR REORDERS[^\n]*: 0/.test(r.out)]).toEqual(["BASIS: hard=0; hinted=1", "PRECHECK: MAJOR", true]);
   });
 });
 

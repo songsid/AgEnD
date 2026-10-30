@@ -26,14 +26,10 @@ that is one half of such an old pair (cut at a string boundary), whose other hal
 artifact, carries a hint that only the string order may have changed (#1636). It is still a new prompt: the bytes
 cannot show the two halves are still shown together.
 
-One join can be shown from the old release itself: an indented string. A hit that a run of two or more spaces splits
-into a head and indented tails is old strings in a new order, not a new string, only when
-  - the head is an old prompt-like string, or one cut at a string boundary of one (it ended there in the old pool), and
-  - every tail, WITH its exact indent, is in the old artifact (the spaces were that string's own, not glue).
-kiro-cli 2.35.1 → 2.36.0: "Kiro rate limit reached:" now sits before "    q login" (the login message's indented tail,
-indent and all in 2.35.1) instead of "Authentication Error". Such a hit is listed as REORDERED. Anything short of both
-proofs is judged as before: two spaces alone prove no boundary (Prism, #2883 R1: "Do you want to proceed:  remove all
-files?" from an old question's head and an old fragment found elsewhere is a changed question, MAJOR).
+A hit with a run of two or more spaces inside it may be two pooled strings read as one. It stays what it is (the
+verdict and BASIS never change for it), and the run lists it under POSSIBLE NEIGHBOUR REORDERS with how often each
+part occurs alone in both releases, so a quick look starts from the evidence (kiro-cli 2.35.1 → 2.36.0: "Kiro rate
+limit reached:" now before "    q login", each part once in each release; #2883: spaces prove no boundary).
 """
 import bisect
 import io
@@ -296,18 +292,25 @@ POOL_JOIN_RE = re.compile(rb" {2,}")
 
 
 def pool_parts(raw):
-    """(head, [tails]) of a hit cut where a run of two or more spaces begins, each tail keeping its exact indent; or None
-    when it has no such run. Text, decoded; the head normalized as a prompt-like string is."""
+    """The parts of a hit cut where a run of two or more spaces begins (normalized, indent dropped), or None when it has
+    no such run. Evidence for the auditor only: the verdict never depends on it."""
     raw = raw.rstrip(b" ")
     cuts = [m.start() for m in POOL_JOIN_RE.finditer(raw) if m.start() > 0]
     if not cuts:
         return None
-    pieces = [raw[a:b] for a, b in zip([0] + cuts, cuts + [len(raw)])]
-    head = normalize(pieces[0])
-    tails = [CUT_RE.sub("", p.decode("utf-8", "replace")) for p in pieces[1:]]
-    if not head or not all(t.strip() for t in tails):
-        return None
-    return head, tails
+    parts = [normalize(raw[a:b]) for a, b in zip([0] + cuts, cuts + [len(raw)])]
+    return parts if all(parts) else None
+
+
+def fragment_counts(path, texts, limit):
+    """How often each of `texts` occurs in the artifact, in any of a literal's byte forms (a second read, only when
+    needed)."""
+    want = {t: forms(t) for t in texts}
+    counts = dict.fromkeys(texts, 0)
+    for _, data in blobs(path, limit, [], []):
+        for t, fs in want.items():
+            counts[t] += sum(data.count(f) for f in fs)
+    return counts
 
 
 def scan(path, literals, want_offsets, limit, joins=None):
@@ -483,14 +486,12 @@ def main(argv):
     # Every prompt-like string the old release does not have is new; beside a known detector literal, it is MAJOR. What
     # it looks like (embedded docs, an old prompt with another neighbour) is said as a hint for the auditor, not used.
     fresh = sorted(c for c in p_new if c not in p_old)
-    # Old strings in a new pool order (the docstring): the head an old prompt-like string, or one cut at a string
-    # boundary of one; every tail, indent included, in the old artifact. Not a new string; listed, and left out.
-    def head_was_old(h):
-        return h in p_old or any(o.startswith(h) and len(h) in boundaries(o) for o in p_old)
-    joined = {c: joins[c] for c in fresh if c in joins and head_was_old(joins[c][0])}
-    old_has = rests_present(old, sorted({t for _, tails in joined.values() for t in tails}), limit) if joined else set()
-    reordered = [c for c in fresh if c in joined and all(t in old_has for t in joined[c][1])]
-    fresh = [c for c in fresh if c not in reordered]
+    # #2883 (leader: conservative): a fresh hit with a run of spaces inside may be two pooled strings read as one. It
+    # stays fresh — the verdict and BASIS are untouched — and its parts' counts alone, in both releases, are listed.
+    joined = {c: joins[c] for c in fresh if c in joins}
+    texts = sorted({t for parts in joined.values() for t in parts})
+    in_old = fragment_counts(old, texts, limit) if texts else {}
+    in_new = fragment_counts(new, texts, limit) if texts else {}
     gone_prompts = sorted(c for c in p_old if c not in p_new)
     # #1636: a string that was one half of an old glued pair, whose other half is still somewhere in the new artifact,
     # may be the old text in a new string order — said as a hint for the auditor; it stays a new prompt.
@@ -520,9 +521,11 @@ def main(argv):
         print("  " + json.dumps(c[:140], ensure_ascii=False) + (("   hint: " + "; ".join(hints)) if hints else ""))
     if len(elsewhere) > 40:
         print("  … %d more" % (len(elsewhere) - 40))
-    print("\nREORDERED (old strings in a new pool order, every part in the old artifact): %d" % len(reordered))
-    for c in reordered[:20]:
-        print("  " + json.dumps(c[:140], ensure_ascii=False) + "   = " + " | ".join(json.dumps(p[:60], ensure_ascii=False) for p in [joined[c][0]] + joined[c][1]))
+    print("\nPOSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): %d" % len(joined))
+    for c in sorted(joined)[:20]:
+        frags = " | ".join("%s (old %d, new %d)" % (json.dumps(t[:60], ensure_ascii=False), in_old[t], in_new[t]) for t in joined[c])
+        alone = all(in_old[t] and in_new[t] for t in joined[c])
+        print("  " + json.dumps(c[:140], ensure_ascii=False) + "   = " + frags + ("   — each part exists alone in both versions" if alone else ""))
     print("\nPROMPT-LIKE STRINGS gone in the new artifact: %d" % len(gone_prompts))
     for c in gone_prompts[:20]:
         print("  " + json.dumps(c[:140], ensure_ascii=False))
