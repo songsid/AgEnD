@@ -229,6 +229,19 @@ describe("2.1.314: the reworded auto-deny countdown is never part of the request
     expect(base).not.toContain("automatically");
     for (const when of ["1:54", "0:07", "about 2 minutes", "about 30 seconds"]) expect(identity(at(when))).toBe(base);
   });
+  it("a command that merely quotes those words is part of the request: two such commands are two requests (#2885 review)", () => {
+    const quoting = (path: string) => prompt.replace(/bash -c 'rm -rf "\$\(echo \/tmp\/agend-safe-probe\)"\/\*'/g, `rg 'Claude Code will automatically block this request in ' ${path}`);
+    const a = quoting("src/backend/claude-code.ts"), b = quoting("tests/claude-2.1.314-surfaces.test.ts");
+    expect(a).not.toBe(prompt);
+    expect(identity(a)).toContain("rg 'Claude Code will automatically block this request in ' src/backend/claude-code.ts");
+    expect(identity(a)).not.toBe(identity(b));
+    // …while the countdown row itself still ticks out of it.
+    expect(identity(a.replace(/(⚠ Claude Code will automatically block this request in )\d+:\d\d/, "$10:03"))).toBe(identity(a));
+  });
+  it("the countdown row wrapped by a narrow pane (its tail on the next row) is still left out", () => {
+    const wrapped = (when: string) => prompt.replace(/(⚠ Claude Code will automatically block this request in )\d+:\d\d, to avoid holding up an unattended session/, `$1${when}\n   , to avoid holding up an unattended session`);
+    expect(identity(wrapped("1:20"))).toBe(identity(wrapped("1:19")));
+  });
   it("the 2.1.312 wording is still left out too", () => {
     const old = readFileSync(new URL("./fixtures/claude-2.1.312-bypass-dangerous-rm-prompt.pane.txt", import.meta.url), "utf8");
     const id = identity(old);
