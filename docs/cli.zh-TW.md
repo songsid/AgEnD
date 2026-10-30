@@ -335,10 +335,11 @@ OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且�
 
 **更新中途機器停止（#2854）。** npm 寫入新版本時遇到斷電或作業系統強制重新開機，服務可能就起不來：systemd 回報
 `status=203/EXEC`，或 npm 全域目錄下 `@songsid/agend` 的檔案都是 0 bytes。fleet 的設定與資料不受影響。復原方式：
-1. 再執行一次安裝指令（或 `npm install -g @songsid/agend@<版本>`）。AgEnD 安裝程式會先把 npm 移到旁邊、仍然完整的那份
-   （`@songsid/.agend-…`）放回去，再安裝該版本。
-2. 清除 systemd 的失敗狀態並啟動 fleet：`systemctl --user reset-failed com.agend.fleet`，接著 `agend start`
+1. 清除 systemd 的失敗狀態，讓服務在達到啟動次數上限後仍能再啟動：`systemctl --user reset-failed com.agend.fleet`
    （舊的系統層 unit：以 root 執行 `systemctl reset-failed agend`）。
+2. 再執行一次安裝指令（或只執行安裝程式：`npm exec --yes --package @songsid/agend@<版本> -- agend-install`；不要直接 `npm install -g`，它可能因 npm 留下的副本而以
+   `ENOTEMPTY` 失敗）。AgEnD 安裝程式會先把 npm 移到旁邊、仍然完整的那份（`@songsid/.agend-…`）放回去，再安裝該版本並啟動服務。
+3. 若 fleet 仍未執行，執行 `agend restart`（它也會清除失敗狀態）。
 
 `agend update` 只有在目標版本自帶安裝程式時才執行它。目標是較舊的版本（例如用 `agend update --version` 回到這次改動之前的版本），或 npm prefix 需要 sudo 時，沿用下面說明的舊更新流程。在那條流程裡，搬到 nvm 之後只有 2.1 版的系統層副本會被退役。
 
