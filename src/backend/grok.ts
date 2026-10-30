@@ -73,14 +73,16 @@ function grokWeeklyLimitDialog(): RuntimeDialog {
         return -1;
       };
       const title = find(line => line === "You hit your weekly limit.");
-      const upgrade = find(grokOption(1, "Upgrade tier", "Upgrade to a higher tier for more usage"), title + 1);
-      const credits = find(grokOption(2, "Buy more credits", "Purchase credits to keep using Grok Build"), upgrade + 1);
-      const retry = find(grokOption(3, "Try Again", "Resubmit the last prompt once you have usage again"), credits + 1);
-      const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), credits + 1);
-      if (title < 0 || upgrade < 0 || credits < 0 || submit < 0) return false;
-      // Exactly these options: nothing else numbered between the credits row and the footer (a 3rd only as Try Again).
-      const extra = current.slice(credits + 1, submit).map(text).filter(line => /^\d+ \(/.test(line));
-      if (extra.length > (retry > credits && retry < submit ? 1 : 0)) return false;
+      const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), title + 1);
+      if (title < 0 || submit < 0) return false;
+      // The WHOLE option list between the title and the footer, in order: exactly 1 Upgrade, 2 Credits and optionally
+      // 3 Try Again. Any other numbered row anywhere (a new paid choice, a duplicate) makes it a modal we do not know.
+      const options = current.slice(title + 1, submit).map((line, i) => ({ i: title + 1 + i, t: text(line) })).filter(r => /^\d+ \(/.test(r.t));
+      const known = [grokOption(1, "Upgrade tier", "Upgrade to a higher tier for more usage"),
+        grokOption(2, "Buy more credits", "Purchase credits to keep using Grok Build"),
+        grokOption(3, "Try Again", "Resubmit the last prompt once you have usage again")];
+      if (options.length < 2 || options.length > 3 || !options.every((r, k) => known[k](r.t))) return false;
+      const upgrade = options[0].i, credits = options[1].i;
       if (![title, upgrade, credits, submit].every(index => /^\s*┃/.test(current[index]))) return false;
       // The Grok keyboard legend must immediately follow the choice footer;
       // another composer or screen below the modal makes the old text stale.

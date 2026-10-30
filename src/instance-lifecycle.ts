@@ -1243,7 +1243,7 @@ export class InstanceLifecycle {
       const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
         // #2872: the Claude session-resume advice only for that prompt (it read as nonsense under a grok or kiro dialog).
         ? t("inst.dialog_parked_hold", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_hold_claude_resume") : "")
-        : t("inst.dialog_parked_stuck", name, data.description);
+        : t("inst.dialog_parked_stuck", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_stuck_claude_resume") : "");
       this.notifyIncident(name, "dialog_parked", text);
       // #1990: in General, the instance's name links to its topic.
       this.ctx.notifyFleetError?.(category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
