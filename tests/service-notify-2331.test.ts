@@ -214,7 +214,7 @@ describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => 
       const r = await doctor(healthy, tmp(), null, { uid: 0, problem: (s) => { asked.push(s); return { socketMissing: true }; } });
       expect(asked).toEqual(["/run/user/0/systemd/notify"]);
       expect(row(r)).toEqual([expect.objectContaining({ status: "error",
-        detail: expect.stringMatching(/^\/run\/user\/0\/systemd\/notify is missing: .*loginctl enable-linger \S+, then systemctl restart user@0\.service$/) })]);
+        detail: expect.stringMatching(/^\/run\/user\/0\/systemd\/notify is missing .*Run: systemctl restart user@0\.service \(recreates \/run\/user\/0\/systemd\/notify\); if `loginctl show-user \S+ -p Linger` says no, also loginctl enable-linger \S+$/) })]);
     });
     it("systemctl cannot answer (the user bus lives in the same dir, gone with it): the row is still there", async () => {
       const r = await doctor("", tmp(), null, { uid: 0, problem: () => ({ socketMissing: true }) });

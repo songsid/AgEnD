@@ -32,7 +32,7 @@ describe("notifySocketProblem: exists / missing / abstract", () => {
   it("a user manager's socket that is gone: socketMissing and the linger hint, with that uid", () => {
     expect(notifySocketProblem("/run/user/0/systemd/notify", () => false)).toEqual({
       socketMissing: true, socket: "/run/user/0/systemd/notify",
-      hint: `the user manager's runtime dir is gone (e.g. /run/user/0 removed without linger): loginctl enable-linger ${user}, then systemctl restart user@0.service`,
+      hint: `the user manager's notify socket is gone (/run/user/0 was removed or replaced without its systemd/ dir): systemctl restart user@0.service (recreates /run/user/0/systemd/notify); if \`loginctl show-user ${user} -p Linger\` says no, also loginctl enable-linger ${user}`,
     });
   });
   it("any other path that is gone: socketMissing and a plain hint (no linger advice for a system manager)", () => {
