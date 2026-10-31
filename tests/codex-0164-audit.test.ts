@@ -15,6 +15,7 @@ function reading(pane: string) {
 }
 const IDLE = { ready: true, busy: false, deliverable: true, resume: false, runtime: [], startup: [] };
 const HOLD = { ready: false, busy: false, deliverable: false, resume: false };
+const AUTO_TRUST = { description: "Codex folder trust — trusting the agent's own folder", keys: ["Enter"], holdOnly: false };
 describe("Codex 0.164.0 versus 0.163.0 native surfaces", () => {
   it.each(["idle", "turn-idle", "near-suppressed", "usage", "rate429", "insufficient", "resumed", "resumed-turn", "rate-dismissed", "permission-dismissed", "approval-declined"])("%s remains an ordinary composer", name => {
     expect(reading(frame("01640", name))).toEqual(IDLE);
@@ -26,7 +27,18 @@ describe("Codex 0.164.0 versus 0.163.0 native surfaces", () => {
       expect(reading(frame(v, "resume-loading"))).toEqual({ ...HOLD, resume: true, runtime: [], startup: [] });
     }
   });
-  it.each(["trust", "onboarding", "permissions-picker", "queued-permission", "tool-approval", "resume-picker"])("%s is held without automatic confirmation", name => {
+  // hmsg-53600a2c: an AgEnD session always trusts its folder — Enter on "Trust and continue", the only key-sending entry.
+  it("trust is answered Trust, never held", () => {
+    for (const v of ["01630", "01640"]) {
+      const value = reading(frame(v, "trust"));
+      expect(value).toMatchObject(HOLD);
+      for (const table of [value.runtime, value.startup]) {
+        expect(table[0]).toEqual(AUTO_TRUST);
+        expect(table.filter(d => d.keys.length > 0)).toEqual([AUTO_TRUST]);
+      }
+    }
+  });
+  it.each(["onboarding", "permissions-picker", "queued-permission", "tool-approval", "resume-picker"])("%s is held without automatic confirmation", name => {
     for (const v of ["01630", "01640"]) {
       const value = reading(frame(v, name));
       expect(value).toMatchObject(HOLD);

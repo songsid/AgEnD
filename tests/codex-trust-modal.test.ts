@@ -126,25 +126,22 @@ describe("Codex 0.156 trust prompt", () => {
       const pane = capturedTrustPane(variant, worktree, main);
       expect(active(auto, pane)).toBe(true);
       expect(active(hold, pane)).toBe(true);
+      // hmsg-53600a2c: the agent's own session trusts whatever root codex names; only the layout and cursor decide.
       const wrongRoot = pane.replace(main, join(dir, "stranger"));
-      expect(active(auto, wrongRoot)).toBe(false);
-      expect(active(hold, wrongRoot)).toBe(true);
+      expect(active(auto, wrongRoot)).toBe(true);
     }
   });
 
-  it("holds a root note that is present but cannot be parsed, even when the folder is authorized", () => {
+  it("trusts whatever folder or root the prompt names, read or not — preTrust or not (hmsg-53600a2c)", () => {
     const { dir, instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
-    backend.preTrust(cwd);
-    const [auto, hold] = backend.getStartupDialogs();
+    const [auto] = backend.getStartupDialogs();
     const pane = capturedTrustPane("wide", cwd, join(dir, "not-authorized"));
-    const malformed = pane.replace("repository root:", "repository root");
-    expect(active(auto, pane)).toBe(false);
-    expect(active(auto, malformed)).toBe(false);
-    expect(active(hold, malformed)).toBe(true);
-    const missingFolder = capturedTrustPane("wide", cwd, cwd).replace(`  ${cwd}\n\n`, "\n");
-    expect(active(auto, missingFolder)).toBe(false);
-    expect(active(hold, missingFolder)).toBe(true);
+    expect(active(auto, pane)).toBe(true);                                             // no preTrust at all
+    backend.preTrust(cwd);
+    expect(active(auto, pane)).toBe(true);
+    expect(active(auto, pane.replace("repository root:", "repository root"))).toBe(true);   // an unreadable root note
+    expect(active(auto, capturedTrustPane("wide", cwd, cwd).replace(`  ${cwd}\n\n`, "\n"))).toBe(true);   // no folder row
   });
 
   it("updates equivalent TOML table and quoted trust key without making config invalid", () => {
@@ -174,15 +171,14 @@ describe("Codex 0.156 trust prompt", () => {
     expect(readFileSync(configPath, "utf-8")).toBe(before);
   });
 
-  it("auto-enters only the authorized current folder with canonical options and cursor on Trust", () => {
+  it("auto-enters any folder, only with the trust layout's own options and the cursor on Trust", () => {
     const { instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(cwd);
     const [auto, hold] = backend.getStartupDialogs();
     expect(auto.keys).toEqual(["Enter"]);
     expect(active(auto, liveTrustPane(cwd))).toBe(true);
-    expect(active(auto, liveTrustPane(join(cwd, "stranger")))).toBe(false);
-    expect(active(hold, liveTrustPane(join(cwd, "stranger")))).toBe(true);
+    expect(active(auto, liveTrustPane(join(cwd, "stranger")))).toBe(true);
     expect(active(auto, liveTrustPane(cwd, undefined, "quit"))).toBe(false);
     expect(active(auto, liveTrustPane(cwd, undefined, "unknown"))).toBe(false);
     expect(active(hold, liveTrustPane(cwd, undefined, "quit"))).toBe(true);
@@ -231,7 +227,7 @@ describe("Codex 0.156 trust prompt", () => {
     expect(active(auto, "› User says: Trust this folder? I saw 1. Trust and continue in documentation.")).toBe(false);
   });
 
-  it("startup sends Enter for the authorized modal; an unknown folder stays blocked", async () => {
+  it("startup sends Enter for the trust modal, authorized folder or not (hmsg-53600a2c); an unknown layout stays blocked", async () => {
     const { instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(cwd);
@@ -249,9 +245,13 @@ describe("Codex 0.156 trust prompt", () => {
     };
     expect(await daemon.dismissDialogsUntilReady(1_000, 0)).toBe(true);
     expect(keys).toEqual(["Enter"]);
-    pane = liveTrustPane(join(cwd, "stranger"));
+    daemon.updateInputBlockedState(pane);                            // the prompt is gone: its one-answer claim ends
+    pane = liveTrustPane(join(cwd, "stranger"));                     // a folder preTrust never covered: trusted too
+    expect(await daemon.dismissDialogsUntilReady(1_000, 0)).toBe(true);
+    expect(keys).toEqual(["Enter", "Enter"]);
+    pane = liveTrustPane(cwd).replace("Trust this folder?", "Do you trust the files in this folder?");   // a layout AgEnD never answers
     expect((await daemon.probeBlockingDialog()).state).toBe("dialog");
-    expect(keys).toEqual(["Enter"]);
+    expect(keys).toEqual(["Enter", "Enter"]);
     const parked: unknown[] = [];
     daemon.on("dialog_parked", (event: unknown) => parked.push(event));
     const started = Date.now();

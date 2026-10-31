@@ -45,12 +45,16 @@ describe("Codex 0.165.0 versus 0.164.0 native surfaces", () => {
     }
   });
 
-  it("folder trust is held without automatic confirmation", () => {
+  // hmsg-53600a2c: an AgEnD session always trusts its folder — Enter on "Trust and continue", the only key-sending entry.
+  it("folder trust is answered Trust, never held", () => {
+    const AUTO_TRUST = { description: "Codex folder trust — trusting the agent's own folder", keys: ["Enter"], holdOnly: false };
     for (const v of VERSIONS) {
       const value = reading(frame(v, "trust"));
       expect(value, v).toMatchObject(HOLD);
-      expect(value.runtime.length).toBeGreaterThan(0);
-      for (const d of [...value.runtime, ...value.startup]) expect(d).toMatchObject({ keys: [], holdOnly: true });
+      for (const table of [value.runtime, value.startup]) {
+        expect(table[0], v).toEqual(AUTO_TRUST);
+        expect(table.filter(d => d.keys.length > 0), v).toEqual([AUTO_TRUST]);
+      }
     }
     expect(reading(frame("01650", "trust"))).toEqual(reading(frame("01640", "trust")));
   });
