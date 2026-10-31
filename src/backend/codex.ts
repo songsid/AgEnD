@@ -371,12 +371,14 @@ function codexTrustPromptState(pane: string): CodexTrustPrompt {
     && choices[1].cursor === "" && choices[1].number === "2" && choices[1].text === "Quit"
     && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
   const known = new Set(["Trust and continue", "Open restricted", "Quit"]);
-  const atCursor = choices.filter(choice => choice.cursor === "›");
+  // Exactly one selection marker, whichever form (› ❯ >), and it is on Trust; the footer is the one both 0.160 and 0.166
+  // show. Two markers, another footer mapping or an unknown option is held — never a guess where Enter lands (#2896 review).
+  const atCursor = choices.filter(choice => choice.cursor !== "");
   const trustCursor = choices.length >= 2 && choices.every(choice => known.has(choice.text))
     && choices.every((choice, index) => index === 0 || choice.row === choices[index - 1]!.row + 1)
     && rows.slice(choices[choices.length - 1]!.row + 1, last).every(row => row.trim() === "")
-    && atCursor.length === 1 && atCursor[0]!.text === "Trust and continue"
-    && /^\s*enter \w+\s*·\s*esc \w+\s*$/i.test(rows[last]);
+    && atCursor.length === 1 && atCursor[0]!.cursor === "›" && atCursor[0]!.text === "Trust and continue"
+    && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
   return { active: true, folder, root, rootNote, safeChoice, trustCursor };
 }
 
@@ -2117,6 +2119,8 @@ export class CodexBackend implements CliBackend {
       blocksDelivery: true,
       inputBlocked: true,
       autoResolutionKey: "codex-folder-auto-trust",
+      // One Enter per prompt (claimed, then checked): a prompt still up after it is held, never pressed again (#2896 review).
+      verifyAfterKeys: true,
       isActive: pane => codexTrustPromptState(pane).trustCursor,
       answerDetail: pane => ({ autoTrusted: true, ...this.trustPaneFields(pane) }),
     };

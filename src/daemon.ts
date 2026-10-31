@@ -4034,7 +4034,7 @@ export class Daemon extends EventEmitter {
             if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
             if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) return;
             if (dialog.verifyAfterKeys && autoKey) this.claimAutoDialog(dialog);
-            this.logger.info(Daemon.answerDetailOf(dialog, pane), `Auto-dismissing runtime dialog: ${dialog.description}`);
+            this.logger.info(Daemon.answerDetailOf(dialog, currentPane), `Auto-dismissing runtime dialog: ${dialog.description}`);
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
               if (stale()) return;
@@ -12658,7 +12658,6 @@ export class Daemon extends EventEmitter {
               matched = true;
               break;
             }
-            this.logger.info(Daemon.answerDetailOf(dialog, pane), `Dismissing startup dialog: ${dialog.description}`);
             // Restart is exactly when inbound messages pile up, and nothing gates
             // delivery on `spawning`. Take the pane lock for the key sequence so a
             // queued message cannot be pasted into a half-dismissed trust dialog.
@@ -12670,12 +12669,16 @@ export class Daemon extends EventEmitter {
               // the key send. A changed pane falls through to the next scan;
               // a pane that is no longer this launch's is not read or keyed.
               if (!owned()) return false;
+              let answeredPane = pane;
               if (dialog.inputBlocked) {
                 const currentPane = await this.tmux!.capturePane(); this.startupAdmission?.();
                 // The capture is an await too: a replacement launched during it must find no answer recorded as its own.
                 if (!owned()) return false;
                 if (!Daemon.dialogMatches(dialog, currentPane)) return false;
+                answeredPane = currentPane;
               }
+              // Said of the screen actually answered — the one re-read under the lock (#2896 review).
+              this.logger.info(Daemon.answerDetailOf(dialog, answeredPane), `Dismissing startup dialog: ${dialog.description}`);
               if (dialog.autoResolutionKey) {
                 attemptedSafetyChoices.add(dialog.autoResolutionKey);
                 this.claimAutoDialog(dialog);

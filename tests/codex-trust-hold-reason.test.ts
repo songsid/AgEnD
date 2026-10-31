@@ -79,6 +79,16 @@ describe("codex folder trust in an AgEnD session: answered Trust, or held with t
     expect(hold(backend).heldReason!(trustPane(cwd))).toMatchObject({ trustHoldReason: "Trust was already pressed for this prompt and it is still up" });
   });
 
+  it("two cursor markers, or another footer mapping, are never answered (#2896 review)", () => {
+    const { cwd, backend } = fixture();
+    const twoMarkers = trustPane(cwd).replace("  2. Quit", "❯ 2. Quit");
+    const swapped = trustPane(cwd).replace("enter continue · esc quit", "enter quit · esc continue");
+    for (const pane of [twoMarkers, swapped]) {
+      expect(active(auto(backend), pane)).toBe(false);
+      expect(hold(backend).isActive!(pane)).toBe(true);
+    }
+  });
+
   it("a trust layout AgEnD never answers (Open restricted / Trust and continue / Quit) is named as such", () => {
     const { backend } = fixture();
     const pane = ["  Folder access", "  /work/repo", "", "› 1. Trust and continue", "  2. Open restricted", "  3. Quit", "", "  enter continue · esc quit", ""].join("\n");
@@ -132,6 +142,47 @@ describe("codex folder trust in an AgEnD session: answered Trust, or held with t
       for (let i = 0; i < 2; i++) await vi.advanceTimersByTimeAsync(5_000);
       expect(held()).toHaveLength(2);
       expect(daemon.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    } finally {
+      daemon.freezeRuntimeMonitors();
+    }
+  });
+
+  it("the startup log names the prompt actually answered — the one re-read under the write lock (#2896 review)", async () => {
+    const { instance, cwd, backend } = fixture();
+    const { daemon, logger } = daemonFor(cwd, instance, backend);
+    const [a, b] = [join(cwd, "a"), join(cwd, "b")];
+    const panes = [trustPane(a), trustPane(b)];                         // the scan's capture, then the locked re-read
+    let after = false;
+    daemon.tmux = { capturePane: vi.fn(async () => (after ? "› Ask Codex to do anything\n\n  Context 100% left" : panes.shift() ?? trustPane(b))),
+      isWindowAlive: async () => true, sendSpecialKey: vi.fn(async () => { after = true; return true; }) };
+    await daemon.dismissDialogsUntilReady(1_000, 0);
+    const answered = logger.info.mock.calls.filter(([, msg]) => String(msg).startsWith("Dismissing startup dialog: Codex folder trust"));
+    expect(answered).toHaveLength(1);
+    expect(answered[0]![0]).toMatchObject({ autoTrusted: true, promptFolder: b });
+  });
+
+  it("one Enter per prompt: a prompt still up after it is held, at startup then runtime alike; a new prompt gets its own", async () => {
+    const { instance, cwd, backend } = fixture();
+    const { daemon, logger } = daemonFor(cwd, instance, backend);
+    let pane = trustPane(cwd);
+    const keys: string[] = [];
+    daemon.tmux = { capturePane: vi.fn(async () => pane), isWindowAlive: async () => true,
+      sendSpecialKey: vi.fn(async (k: string) => { keys.push(k); return true; }) };       // the key is ignored: the prompt stays
+    await daemon.dismissDialogsUntilReady(400, 0);
+    expect(keys).toEqual(["Enter"]);
+    vi.useFakeTimers();
+    daemon.startErrorMonitor();
+    try {
+      for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(5_000);
+      expect(keys).toEqual(["Enter"]);                                   // never pressed again
+      // Said once per hold, by whichever path saw it held first (the startup scan's last polls, or the monitor).
+      const held = logger.warn.mock.calls.filter(([, msg]) => /^(?:Startup|Runtime) dialog held/.test(String(msg)));
+      expect(held.filter(([f]) => (f as { trustHoldReason?: string }).trustHoldReason === "Trust was already pressed for this prompt and it is still up")).toHaveLength(1);
+      pane = "› Ask Codex to do anything\n\n  Context 100% left";        // the prompt goes
+      await vi.advanceTimersByTimeAsync(5_000);
+      pane = trustPane(cwd);                                             // a new prompt: its own one Enter
+      for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(5_000);
+      expect(keys).toEqual(["Enter", "Enter"]);
     } finally {
       daemon.freezeRuntimeMonitors();
     }
