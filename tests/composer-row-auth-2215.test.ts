@@ -121,7 +121,7 @@ describe("#2889: a tap on 'Not verified' shows why it can't be authorized here",
   const REASONS: Array<[string, string]> = [
     ["no_account", "This browser was not signed in as an account (agend web): sign in with /web to authorize."],
     ["not_admin", "Your account is not a fleet admin here."],
-    ["public_link", "Not on the temporary public link."],
+    ["public_link", "This sign-in can't be authorized over this link."],
     ["named_link_off", "Over your named link: turn on \"Also over my named link\" in Settings → Access & security on this computer."],
     ["disabled", "Web authority is turned off."],
     ["token_rotated", "The dashboard's token changed: sign in again."],

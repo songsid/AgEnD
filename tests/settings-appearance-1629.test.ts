@@ -50,6 +50,6 @@ describe("Settings → Appearance", () => {
   });
   it("over the public link: only that it is not available here; nothing is read", async () => {
     const { calls } = await mount({ publicLink: true });
-    expect([p!.root.querySelector(".s-css-text"), p!.root.textContent.includes("isn't available on a temporary public link"), calls]).toEqual([null, true, []]);
+    expect([p!.root.querySelector(".s-css-text"), p!.root.textContent.includes("isn't available over a public link"), calls]).toEqual([null, true, []]);
   });
 });
