@@ -29,7 +29,7 @@
         "exclude": ["stripAgendMcpTables", "tomlString", "codexTrustPaths", "setTomlTableBoolean", "effectiveTuiStatusLine",
           "projectTrustTable", "effectiveProjectTrust", "setProjectTrusted", "CODEX_CONTEXT_STATUS_ITEM", "CODEX_CONTEXT_STATUS_ITEMS",
           "CODEX_RUN_STATE_STATUS_ITEMS", "renderMcpServer", "buildCommand", "writeConfig", "consumeLaunchWarning", "cleanup",
-          "probeCLIEnv", "CODEX_FALLBACK_MODELS"],
+          "probeCLIEnv", "CODEX_FALLBACK_MODELS", "trustHoldReason"],
         "surfaces": { "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
           "getBottomReadyPattern": "idle-busy", "getQueuedInputMarker": "input-box", "CODEX_NATIVE_FOOTER_FIELDS": "idle-busy",
           "CODEX_STATUS_LINE_VALUE_PATTERNS": "idle-busy", "USAGE_LIMIT_ESC_HINT": "error", "USAGE_LIMIT_OPTION": "error",

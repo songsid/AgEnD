@@ -2130,14 +2130,19 @@ export class CodexBackend implements CliBackend {
     if (state.folder) {
       try { configTrust = effectiveProjectTrust(readFileSync(configPath, "utf-8"), state.root ?? state.folder) ?? "absent"; } catch { /* unreadable */ }
     }
+    // The same test as the startup entry's authorized answer: when it holds, nothing differs — say so, never a mismatch.
+    const rootMatches = authorized !== null && (state.rootNote === "absent" ? authorized.root === authorized.cwd
+      : state.rootNote === "parsed" && state.root === authorized.root);
+    const authorizedMatch = state.active && state.safeChoice && authorized !== null && state.folder === authorized.cwd && rootMatches;
     const reason = !state.active ? "a trust layout AgEnD never answers (Folder access options, or Do you trust the files…)"
       : authorized === null ? "preTrust did not authorize this launch"
       : !state.safeChoice ? "the cursor is not on the trust choice"
       : state.folder !== authorized.cwd ? "the folder codex asks about is not the one AgEnD trusted"
-      : state.rootNote === "absent" ? "codex names no repository root, but AgEnD trusted a different root"
+      : authorizedMatch ? "the prompt matches what AgEnD authorized; the automatic answer is made once, in the startup scan, so one that stays, comes back or appears later waits for a person"
+      : state.rootNote === "absent" ? "codex names no repository root, but AgEnD trusted a separate root"
       : state.rootNote !== "parsed" ? "the repository-root note could not be read"
       : "the repository root codex names is not the one AgEnD trusted";
-    return { trustHoldReason: reason, promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
+    return { trustHoldReason: reason, authorizedMatch, promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
       authorizedCwd: authorized?.cwd ?? null, authorizedRoot: authorized?.root ?? null, configPath, configTrust };
   }
 

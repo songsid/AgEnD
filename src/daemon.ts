@@ -1506,6 +1506,11 @@ export class Daemon extends EventEmitter {
   private dialogParkedSince = 0;
   /** Identity of that dialog: its pattern, not its description (two tables may describe one screen differently). */
   private dialogParkedKey: string | null = null;
+  /**
+   * #2893: the held dialog whose heldReason was last logged. Its own state, not the parked clock's: the delivery probe
+   * starts that clock too, and must not use up the one log line. Cleared with the hold, so a later hold logs again.
+   */
+  private heldReasonLoggedKey: string | null = null;
   private dialogParkedInteractionEpisode: number | null = null;
   private dialogParkedReported = false;
   /** #2675: the card on screen that a person can answer from the chat — what it asks, since when, and whether it was posted. */
@@ -3963,8 +3968,13 @@ export class Daemon extends EventEmitter {
           if (dialog.holdOnly) {
             // Recognised, deliberately not answered; trackDialogParked reports it. Why an automatic answer passed it by
             // is logged once, when this hold begins (#2893).
-            const reason = this.dialogParkedKey !== Daemon.dialogKey(dialog) ? Daemon.heldReasonOf(dialog, pane) : {};
-            if (Object.keys(reason).length) this.logger.warn({ description: dialog.description, ...reason }, "Runtime dialog held — not auto-answering");
+            if (this.heldReasonLoggedKey !== Daemon.dialogKey(dialog)) {
+              const reason = Daemon.heldReasonOf(dialog, pane);
+              if (Object.keys(reason).length) {
+                this.heldReasonLoggedKey = Daemon.dialogKey(dialog);
+                this.logger.warn({ description: dialog.description, ...reason }, "Runtime dialog held — not auto-answering");
+              }
+            }
             break;
           }
           // Reported as ignoring the daemon: the SAME request (the identity the count was made on — verbatim, the
@@ -8630,6 +8640,7 @@ export class Daemon extends EventEmitter {
       if (this.dialogParkedSince !== 0) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
       this.dialogParkedSince = 0;
       this.dialogParkedKey = null;
+      this.heldReasonLoggedKey = null;
       this.dialogParkedInteractionEpisode = null;
       this.dialogParkedReported = false;
       return;
@@ -12635,7 +12646,9 @@ export class Daemon extends EventEmitter {
             if (dialog.holdOnly) {
               // Recognised but deliberately not answered (see RuntimeDialog.holdOnly).
               if (firstSight) {
-                this.logger.warn({ description: dialog.description, ...Daemon.heldReasonOf(dialog, pane) }, "Startup dialog held — not auto-answering, deliveries stay blocked");
+                const reason = this.heldReasonLoggedKey !== Daemon.dialogKey(dialog) ? Daemon.heldReasonOf(dialog, pane) : {};
+                if (Object.keys(reason).length) this.heldReasonLoggedKey = Daemon.dialogKey(dialog);
+                this.logger.warn({ description: dialog.description, ...reason }, "Startup dialog held — not auto-answering, deliveries stay blocked");
               }
               this.trackDialogParked(dialog);
               matched = true;
