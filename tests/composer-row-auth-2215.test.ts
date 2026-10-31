@@ -90,21 +90,21 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
     fire(r.querySelector("button"), "click"); await settle(8);
     expect([p.root.querySelector(".webauth-notice").textContent, tip()]).toEqual(["Couldn't send you a DM. Open your DMs with the bot, then try again.", null]);
   });
-  it("can't be authorized here: 'Not verified', the reason in its tooltip and for screen readers; the switch off links to Settings → Web", async () => {
+  it("can't be authorized here: 'Not verified', a tap shows the reason (#2889); the switch off links to Settings → Web", async () => {
     const off = await row({ state: "none", reason: "disabled" });
-    const note = off.querySelector(".note");
-    expect([note.getAttribute("title"), note.querySelector(".sr-only").textContent, off.querySelector('a[href="/settings/access"]')?.textContent])
-      .toEqual(["Web authority is turned off.", ": Web authority is turned off.", "Settings"]);
-    expect(note.textContent.replace(note.querySelector(".sr-only").textContent, "")).toBe("Not verified");
+    const why = off.querySelector("button.webauth-why");
+    expect([why.textContent, why.getAttribute("title"), why.getAttribute("aria-label"), why.getAttribute("aria-controls") === tip().id, tip().hidden,
+      off.querySelector('a[href="/settings/access"]')?.textContent])
+      .toEqual(["Not verified", "Web authority is turned off.", "Not verified: Web authority is turned off.", true, true, "Settings"]);
     const admin = await row({ state: "none", reason: "not_admin" });
-    expect([admin.querySelector(".note").getAttribute("title"), admin.querySelector("a")]).toEqual(["Your account is not a fleet admin here.", null]);
+    expect([admin.querySelector("button.webauth-why").getAttribute("title"), admin.querySelector("a")]).toEqual(["Your account is not a fleet admin here.", null]);
   });
   // §0.3: the public link's row is the server's state like any other (its option off: why, in the tooltip; on: Authorize).
   it("the temporary public link: the option off says why (in the tooltip, no Settings link); on, Authorize; a guest's page: nothing", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const off = await row({ state: "none", reason: "quick_link_off" });
     const why = "Over the temporary public link: turn on \"Also over the temporary public link\" in Settings → Access & security on this computer.";
-    expect([off.dataset.state, off.querySelector(".note")?.getAttribute("title"), off.querySelector("a")]).toEqual(["none", why, null]);
+    expect([off.dataset.state, off.querySelector("button.webauth-why")?.getAttribute("title"), off.querySelector("a")]).toEqual(["none", why, null]);
     // #2525 review: the switch and "Only this computer" are changed on this computer — no Settings link over the link.
     const disabled = await row({ state: "none", reason: "disabled" });
     expect(disabled.querySelector('a[href="/settings/web"]')).toBeNull();
@@ -113,5 +113,73 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
     p.document.body.removeAttribute("data-public-link");
     p.document.body.setAttribute("data-tier", "guest");
     expect(await row({ state: "none", reason: "not_admin_session" })).toBeNull();
+  });
+});
+
+// #2889 (the user, hmsg-769c60a4): on a phone the reason was only in a tooltip, and touch has no hover.
+describe("#2889: a tap on 'Not verified' shows why it can't be authorized here", () => {
+  const REASONS: Array<[string, string]> = [
+    ["no_account", "This browser was not signed in as an account (agend web): sign in with /web to authorize."],
+    ["not_admin", "Your account is not a fleet admin here."],
+    ["public_link", "Not on the temporary public link."],
+    ["named_link_off", "Over your named link: turn on \"Also over my named link\" in Settings → Access & security on this computer."],
+    ["disabled", "Web authority is turned off."],
+    ["token_rotated", "The dashboard's token changed: sign in again."],
+    ["something_new", "This browser can't be authorized here."],
+  ];
+  for (const [reason, text] of REASONS) {
+    it(`${reason}: a tap opens it, a second tap closes it`, async () => {
+      const r = await row({ state: "none", reason });
+      const btn = r.querySelector("button.webauth-why");
+      expect([btn.getAttribute("aria-label"), btn.getAttribute("aria-expanded"), tip().hidden]).toEqual([`Not verified: ${text}`, "false", true]);
+      fire(btn, "click"); await settle(4);
+      expect([tip().hidden, tip().textContent, tip().getAttribute("role"), btn.getAttribute("aria-expanded")]).toEqual([false, text, "tooltip", "true"]);
+      fire(btn, "click"); await settle(4);
+      expect([tip().hidden, btn.getAttribute("aria-expanded")]).toEqual([true, "false"]);
+    });
+  }
+  it("closes on a tap elsewhere, even where the tapped button never took focus (Safari); a tap on it doesn't", async () => {
+    const r = await row({ state: "none", reason: "no_account" });
+    const btn = r.querySelector("button.webauth-why");
+    fire(btn, "click"); await settle(4);
+    fire(btn, "pointerdown"); await settle(4);
+    expect(tip().hidden).toBe(false);                                                   // its own tap is the toggle's
+    fire(p.document.body, "pointerdown"); await settle(4);
+    expect(tip().hidden).toBe(true);
+    fire(btn, "click"); await settle(4); fire(p.document.body, "focusin"); await settle(4);
+    expect(tip().hidden).toBe(true);                                                    // the message box taking focus
+    fire(btn, "click"); await settle(4); fire(btn, "blur"); await settle(4);
+    expect(tip().hidden).toBe(true);
+  });
+  it("a key typed anywhere else closes it (typing in the message box); a key on it doesn't", async () => {
+    const r = await row({ state: "none", reason: "public_link" });
+    const btn = r.querySelector("button.webauth-why");
+    fire(btn, "click"); await settle(4);
+    fire(btn, "keydown", { key: "Tab" }); await settle(4);
+    expect(tip().hidden).toBe(false);
+    fire(p.document.body, "keydown", { key: "h" }); await settle(4);
+    expect(tip().hidden).toBe(true);
+  });
+  it("Escape closes it, from the button or anywhere; closed, nothing is left listening", async () => {
+    const r = await row({ state: "none", reason: "not_admin" });
+    const btn = r.querySelector("button.webauth-why");
+    const base = (p.document as any).listenerCount("pointerdown");
+    fire(btn, "click"); await settle(4);
+    expect((p.document as any).listenerCount("pointerdown")).toBe(base + 1);
+    const esc = fire(btn, "keydown", { key: "Escape" }); await settle(4);
+    expect([tip().hidden, esc.propagationStopped]).toEqual([true, true]);
+    fire(btn, "click"); await settle(4); fire(p.document.body, "keydown", { key: "Escape" }); await settle(4);
+    expect([tip().hidden, (p.document as any).listenerCount("pointerdown")]).toEqual([true, base]);
+  });
+  it("the Settings link stays beside it where the reason is fixable; over the public link, none", async () => {
+    const r = await row({ state: "none", reason: "loopback_only" });
+    expect([r.querySelector("button.webauth-why")?.textContent, r.querySelector('a[href="/settings/access"]')?.textContent]).toEqual(["Not verified", "Settings"]);
+    p.document.body.setAttribute("data-public-link", "1");
+    const pub = await row({ state: "none", reason: "disabled" });
+    expect([pub.querySelector("button.webauth-why")?.textContent, pub.querySelector("a")]).toEqual(["Not verified", null]);
+  });
+  it("the not-authorized row is unchanged: no bubble, the Authorize button", async () => {
+    const r = await row({ state: "none", reason: "authorization_expired" });
+    expect([r.querySelector("button.webauth-why"), tip(), r.querySelector("button.webauth-ask")?.textContent]).toEqual([null, null, "Authorize"]);
   });
 });

@@ -916,15 +916,19 @@ img.amb-p { object-fit: contain; }
 /* A guest's note and the public link's sentence are kept whole: on a narrow screen they wrap rather than lose words. */
 .composer-row .guest-note, .composer-row .webauth-row[data-state="public"] { margin: 0; text-align: left; white-space: normal; flex-shrink: 1; }
 .webauth-row { display: inline-flex; align-items: center; gap: var(--s-1); }
-.webauth-row .webauth-ok, .webauth-row .webauth-ask { font: inherit; padding: 0 2px; border: 0; background: none; cursor: pointer; border-radius: var(--r-sm); }
+.webauth-row .webauth-ok, .webauth-row .webauth-ask, .webauth-row .webauth-why { font: inherit; padding: 0 2px; border: 0; background: none; cursor: pointer; border-radius: var(--r-sm); }
 .webauth-row .webauth-ok { color: var(--ok); }
 .webauth-row .webauth-ask { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-.webauth-row .webauth-ok:focus-visible, .webauth-row .webauth-ask:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* #2889: "Not verified" where it can't be authorized: the row's grey words, a dotted underline saying a tap tells why. */
+.webauth-row .webauth-why { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+.webauth-row .webauth-ok:focus-visible, .webauth-row .webauth-ask:focus-visible, .webauth-row .webauth-why:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 /* What pressing Authorize answered is said in the row, in the hint's place: nothing is laid over the composer. */
 .webauth-row .webauth-notice { white-space: normal; color: var(--text-2); }
 .webauth-row .webauth-notice::before { content: "·"; margin-right: var(--s-2); color: var(--text-3); }
 .composer-row:has(.webauth-notice) > .hint { display: none; }
-/* When "✓ Verified" ends, on a tap (touch has no hover): a bubble above the row while it has focus. */
+/* When "✓ Verified" ends, or why it can't be authorized (#2889), on a tap (touch has no hover): a bubble above the
+   composer (web-authorize.js lifts it by the composer's height: never over Attach or the text, #2216) until the next tap,
+   a tap or key elsewhere, or Escape. */
 .webauth-tip { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 5; max-width: min(420px, calc(100vw - 32px)); white-space: normal;
   padding: var(--s-1) var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); color: var(--text);
   box-shadow: var(--shadow-2); }
