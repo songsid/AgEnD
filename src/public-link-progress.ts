@@ -1,5 +1,6 @@
 /**
- * What opening a temporary public link is doing, step by step, for the message the admin clicked on.
+ * What opening the public link is doing, step by step, for the message the admin clicked on: a temporary one (a quick
+ * tunnel), or the admin's own permanent hostname (a named tunnel, `web.public_link.hostname`; its title says so).
  *
  *   ① check cloudflared  ② download it  ③ verify it      — only when AgEnD's pinned copy must be fetched
  *   ④ start the tunnel   ⑤ wait for the public address   ⑥ deliver the link privately
@@ -35,6 +36,8 @@ export interface PublicLinkProgress {
   /** `fallback`: the bytes come from GitHub because the pkg.cloudflare.com package was too slow or failed (#1554). */
   readonly download?: { readonly received: number; readonly total: number | null; readonly fallback?: "slow" | "failed" };
   readonly failed?: { readonly step: PublicLinkStep; readonly reason: PublicLinkFailure };
+  /** The admin's own permanent hostname (named tunnel), not a temporary link: the title says so (never the hostname). */
+  readonly named?: true;
 }
 
 /** The install's and the tunnel's error kinds, folded into the reasons a user is shown. */
@@ -65,9 +68,9 @@ export function failureOf(kind: CloudflaredInstallErrorKind | string | undefined
 /** Builds the snapshots; each change hands a new immutable one to `emit`. */
 export class PublicLinkProgressTracker {
   private state: PublicLinkProgress;
-  constructor(private readonly now: () => number, private readonly emit: (p: PublicLinkProgress) => void) {
+  constructor(private readonly now: () => number, private readonly emit: (p: PublicLinkProgress) => void, named = false) {
     const at = now();
-    this.state = { startedAt: at, steps: [{ step: "check", startedAt: at }], install: "checking" };
+    this.state = { startedAt: at, steps: [{ step: "check", startedAt: at }], install: "checking", ...(named ? { named: true as const } : {}) };
   }
   get snapshot(): PublicLinkProgress { return this.state; }
   private set(next: PublicLinkProgress): void { this.state = next; this.emit(next); }
@@ -115,7 +118,7 @@ export function renderPublicLinkProgress(p: PublicLinkProgress, now: number, out
   const shown = STEPS.filter(step => p.install === "download" || !["download", "verify"].includes(step))
     .filter(step => p.install !== "installed" || step !== "check");
   const end = Math.max(...p.steps.map(s => s.endedAt ?? now));
-  const lines = [t("dashboard.progress.title", seconds((outcome !== undefined || p.failed ? end : now) - p.startedAt))];
+  const lines = [t(p.named ? "dashboard.progress.title_named" : "dashboard.progress.title", seconds((outcome !== undefined || p.failed ? end : now) - p.startedAt))];
   for (const step of shown) {
     const begun = p.steps.find(s => s.step === step);
     const label = `${NUMBERS[step]} ${stepLabel(step, p)}`;

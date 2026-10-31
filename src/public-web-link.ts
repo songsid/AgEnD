@@ -146,8 +146,8 @@ export function logDetail(text: string | undefined): string | undefined {
  * The refusal when the one tunnel is someone else's. #1525: drawn on ④, not ① — the refusal short-circuits before any
  * install work, so ① renders ✅·0s while the lease-held sentence on ④ carries the truth.
  */
-function leaseHeldProgress(now: () => number): PublicLinkProgress {
-  const refused = new PublicLinkProgressTracker(now, () => {});
+function leaseHeldProgress(now: () => number, web: WebConfig | undefined): PublicLinkProgress {
+  const refused = new PublicLinkProgressTracker(now, () => {}, publicLinkNamedHostname(web));
   refused.begin("tunnel");
   refused.fail("lease-held");
   return refused.snapshot;
@@ -235,7 +235,7 @@ export class PublicWebLink {
       const created = this.create(owner);
       if (!created) {
         // The one tunnel is someone else's (a /login link, or one whose cleanup is unconfirmed): say so.
-        onProgress?.(leaseHeldProgress(this.now));
+        onProgress?.(leaseHeldProgress(this.now, this.deps.web()));
         return false;
       }
       e = created;
@@ -294,7 +294,7 @@ export class PublicWebLink {
       deadline: lasting ? this.now() + settings.ttlMs : Infinity, expiresAt: lasting ? (this.deps.wallNow ?? Date.now)() + settings.ttlMs : null,
       phase: "starting", gateway: null, starting: Promise.resolve(), requests: 0, delivered: false,
       progress: undefined as unknown as PublicLinkProgressTracker, watchers: new Set() };
-    e.progress = new PublicLinkProgressTracker(this.now, () => { for (const w of e.watchers) w(); });
+    e.progress = new PublicLinkProgressTracker(this.now, () => { for (const w of e.watchers) w(); }, publicLinkNamedHostname(this.deps.web()));
     this.entry = e;
     // No expiry: no timer at all (a setTimeout of Infinity would fire at once). Close, policy changes and shutdown end it.
     const expire = (): void => {
@@ -318,7 +318,7 @@ export class PublicWebLink {
     if (this.entry) return "busy";
     if (!this.deps.permitted(owner) || !publicLinkSettings(this.deps.web()).allowed) return "failed";
     const e = this.create(owner, "requested unattended");
-    if (!e) { onProgress?.(leaseHeldProgress(this.now)); return "failed"; }
+    if (!e) { onProgress?.(leaseHeldProgress(this.now, this.deps.web())); return "failed"; }
     // Nobody is owed a delivery: a request joining it later and failing its own delivery never closes it.
     e.delivered = true;
     const watcher = onProgress ? () => onProgress(e.progress.snapshot) : null;
