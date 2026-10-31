@@ -25,6 +25,7 @@ import {
   TUNNEL_STARTUP_DEADLINE_MS,
   TUNNEL_STOP_GRACE_MS,
   type PreflightResult,
+  type TunnelErrorKind,
   type TunnelExit,
   type TunnelHandle,
   type TunnelProvider,
@@ -307,7 +308,10 @@ export class CloudflaredProvider implements TunnelProvider {
       if (named) {
         if (exitedBeforeStop) await state.drainOutput();
         const originalKind = err instanceof TunnelStartError ? err.errorKind : "spawn-failed";
-        const kind = originalKind === "cancelled" ? originalKind : state.namedFailureKind() ?? namedReadinessFailure ?? originalKind;
+        let kind: TunnelErrorKind = originalKind === "cancelled" ? originalKind : state.namedFailureKind() ?? namedReadinessFailure ?? originalKind;
+        // #2906: once the connector registered, a connection failure is not the tunnel's (its output's transient dial
+        // errors included): a self-probe that could not connect is this machine's network, not Cloudflare's.
+        if (state.registered && kind === "named-connection-failed") kind = "named-self-unreachable";
         throw new TunnelStartError(kind, namedTunnelFailureMessage(kind) ?? "named tunnel failed; check the connector token, hostname and published application route",
           stopped.confirmed ? undefined : { pid: stopped.pid, identity: stopped.identity });
       }
@@ -411,6 +415,8 @@ class CloudflaredHandle implements TunnelHandle {
     const absorb = (chunk: Buffer | string) => {
       if (this.foundBase || this.published) return;
       this.buffered = (this.buffered + String(chunk)).slice(-MAX_BUFFERED_OUTPUT);
+      // #2906: a named connector that registered is up — a failed self-probe after it is this machine's network.
+      if (this.opts.named && !this.registered && /\bRegistered tunnel connection\b/i.test(this.buffered)) this.registered = true;
       if (this.opts.named) return; // Kept private and bounded, used only for a closed failure classification.
       const base = extractTunnelUrl(this.buffered);
       if (!base) return;
@@ -442,6 +448,8 @@ class CloudflaredHandle implements TunnelHandle {
     });
   }
 
+  /** #2906: the named connector printed "Registered tunnel connection" (it is connected to Cloudflare). */
+  registered = false;
   namedFailureKind(): NamedTunnelFailureKind | undefined {
     return this.opts.named ? classifyNamedTunnelOutput(this.buffered, this.opts.named.token) : undefined;
   }

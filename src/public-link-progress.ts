@@ -52,6 +52,7 @@ export function failureOf(kind: CloudflaredInstallErrorKind | string | undefined
     case "timeout":
       return "no-address";
     case "named-auth-failed": case "named-route-missing": case "named-hostname-mismatch": case "named-origin-unreachable": case "named-connection-failed":
+    case "named-self-unreachable":
     case "rate-limited": case "provisioning-failed":
       return kind;
     case "no-url":

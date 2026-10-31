@@ -935,6 +935,13 @@ img.amb-p { object-fit: contain; }
 .webauth-tip[hidden] { display: none; }
 /* #1920 phase 3 / #2348: Settings → Access & security → Guests. The fixed template (#2330): flat rows split by a rule,
    no rounded box or fill; an edited row is .s-dirty (the shared straight bar + tint, square). A state is coloured text. */
+/* #2906: the fixed address's Test connection — one row per step, ✓ / ✗ / – and what to do next. */
+.named-test-steps { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: grid; gap: var(--s-1); font-size: var(--fs-sm); }
+.named-test-steps li { overflow-wrap: anywhere; }
+.named-test-steps .nt-mark { display: inline-block; width: 1.2em; font-weight: var(--fw-semibold); }
+.named-test-steps .nt-ok .nt-mark { color: var(--ok); }
+.named-test-steps .nt-fail .nt-mark { color: var(--danger); }
+.named-test-steps .nt-skip { color: var(--text-3); }
 .s-guests .guest-names { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px var(--s-3); max-height: 220px; overflow: auto;
   padding: var(--s-1) 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .s-guests .guest-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

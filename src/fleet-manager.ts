@@ -27,6 +27,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
+import { runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
@@ -6753,6 +6754,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private getPreviewTunnel(): ManagedTunnel {
     return this.previewTunnel ??= new ManagedTunnel({ dataDir: join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR),
       log: () => this.logger.warn("Public preview tunnel cleanup requires attention") });
+  }
+  private namedLinkTestRunning = false;
+  /**
+   * #2906 (the user, 2026-11-01): Settings → Access → Test connection, on the fixed-address values as filled in (the
+   * typed connector token, else the saved one). One at a time; the result is closed step codes only — the token is
+   * never logged or returned. Admin only, never over the public link (settings-api.ts).
+   */
+  async testNamedLink(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown }): Promise<NamedTestResult | { busy: true }> {
+    if (this.namedLinkTestRunning) return { busy: true };
+    this.namedLinkTestRunning = true;
+    try {
+      const typed = typeof input.token === "string" && input.token.trim() ? input.token : null;
+      const result = await runNamedLinkTest({ hostname: input.hostname, port: input.port, protocol: input.protocol, token: typed ?? process.env[PUBLIC_TUNNEL_TOKEN_ENV] ?? null }, {
+        healthPort: this.fleetConfig?.health_port ?? 19280,
+        ensureBinary: async signal => (await ensureCloudflared({ dataDir: this.dataDir, pinnedOnly: true, signal })).path,
+        liveMarker: values => this.publicWebLink?.liveNamedMarker(values) ?? null,
+        reserve: () => {
+          const lane = this.getTunnelLane(), held = lane.reserve("named-test", `named-test-${Date.now()}`);
+          return held ? { release: () => held.releaseUnused() } : { busy: lane.holder() === "dashboard" ? "link-open" as const : "other" as const };
+        },
+      });
+      this.logger.info({ steps: result.steps.map(s => `${s.step}:${s.code}`), typedToken: !!typed }, "Named link test");
+      return result;
+    } finally { this.namedLinkTestRunning = false; }
   }
   private getTunnelLane(): TunnelPurposeLane {
     return this.tunnelPurposeLane ??= new TunnelPurposeLane(new ManagedTunnel({ dataDir: this.dataDir,
