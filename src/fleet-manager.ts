@@ -108,7 +108,8 @@ import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
 import { usesChannelAddress } from "./channel/mcp-tools.js";
-import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
+import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, SentMessage, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
+import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
 import { formatFleetTime } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
 import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
@@ -3363,6 +3364,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.clearSettledUpdateMarker(bootUpdateMarker);
     if (this.reloadPending) this.scheduleReconcile();
     void this.sweepOrphanedCancelButtons();
+    void this.parkedNotices.sweep();
   }
 
   /**
@@ -14202,11 +14204,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * would have to make this async and change every caller.
    */
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): boolean {
+    const send = this.sendToInstanceTopic(instanceName, text, extraOpts);
+    if (!send) return false;
+    send.sent.catch(e => this.logger.warn({ err: e, instanceName }, send.failure));
+    return true;
+  }
+
+  /**
+   * notifyInstanceTopic's routing, handing back the send itself — and which world sent it — for a caller that must
+   * edit or delete the message later (#2897). Null when there is no adapter or no postable target (already logged).
+   */
+  private sendToInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts):
+    { adapterId: string | undefined; sent: Promise<SentMessage>; failure: string } | null {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) {
       // Early startup: adapters are created well after the fleet object exists.
       this.logger.warn({ instanceName }, "No adapter yet — instance topic notification not sent");
-      return false;
+      return null;
     }
     const channelCfg = this.getChannelConfig(this.getInstanceAdapterId(instanceName));
     const groupId = channelCfg?.group_id;
@@ -14216,18 +14230,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const worldId = this.getInstanceAdapterId(instanceName);
     if (threadId != null && groupId) {
       const out = this.renderPlaces(worldId, text, { threadId: String(threadId), ...extraOpts });
-      adapter.sendText(String(groupId), out.text, out.opts)
-        .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
-      return true;
+      return { adapterId: worldId, sent: adapter.sendText(String(groupId), out.text, out.opts), failure: "Failed to send instance topic notification" };
     }
 
     // Classic instance: find its channelId from the classic manager
     const classicChatId = this.classicChannels?.getChannelIdByInstance(instanceName);
     if (classicChatId) {
       // #1990: a ClassicBot room's readers need not be in the fleet's group, so its notices name places as plain text.
-      adapter.sendText(classicChatId, stripPlaceRefs(text), extraOpts)
-        .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
-      return true;
+      return { adapterId: worldId, sent: adapter.sendText(classicChatId, stripPlaceRefs(text), extraOpts), failure: "Failed to send classic notification" };
     }
 
     // Fallback: the instance has neither a topic nor a classic channel, so post
@@ -14236,12 +14246,64 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const target = this.fleetNoticeTarget(worldId);
     if (target) {
       const out = this.renderPlaces(worldId, text, { ...target.opts, ...extraOpts });
-      adapter.sendText(target.chatId, out.text, out.opts)
-        .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
-      return true;
+      return { adapterId: worldId, sent: adapter.sendText(target.chatId, out.text, out.opts), failure: "Failed to send notification (no topic)" };
     }
     this.logger.warn({ instanceName }, "No postable target — instance topic notification not sent");
-    return false;
+    return null;
+  }
+
+  // ── Parked-dialog notices (#2897) ──
+
+  private parkedNoticesStore: ParkedNotices | null = null;
+  private get parkedNotices(): ParkedNotices {
+    this.parkedNoticesStore ??= new ParkedNotices({
+      file: join(this.dataDir, PARKED_NOTICE_LEDGER_FILE),
+      logger: this.logger,
+      post: (instanceName, place, text) => this.postParkedNotice(instanceName, place, text),
+      adapterFor: adapterId => this.worlds.get(adapterId)?.adapter
+        ?? (adapterId === this.getPrimaryAdapterId() ? this.adapter ?? undefined : undefined),
+      resolvedText: () => t("fleet.dialog_parked_resolved"),
+      // A ClassicBot room names places as plain text (#1990), as its post did.
+      render: (row, text) => row.place === "topic" && this.classicChannels?.getChannelIdByInstance(row.instanceName) === row.chatId
+        ? stripPlaceRefs(text) : this.renderPlaces(row.adapterId, text).text,
+    });
+    return this.parkedNoticesStore;
+  }
+
+  /**
+   * A held CLI dialog's notices: the instance-topic one and the General one, each edited in place while the
+   * dialog stays (one live message per place, never a pile), and taken back by resolveParkedNotice.
+   */
+  showParkedNotice(instanceName: string, topicText: string | null, generalText: string | null): void {
+    if (topicText !== null) void this.parkedNotices.show(instanceName, "topic", topicText);
+    if (generalText !== null) void this.parkedNotices.show(instanceName, "general", generalText);
+  }
+
+  /** The held dialog is resolved, or the instance stopped or restarted: delete its notices (no-op when none). */
+  resolveParkedNotice(instanceName: string): void {
+    void this.parkedNotices.resolve(instanceName);
+  }
+
+  private async postParkedNotice(instanceName: string, place: "topic" | "general", text: string): Promise<{ adapterId: string; chatId: string; threadId?: string; messageId: string } | null> {
+    let send: { adapterId: string | undefined; sent: Promise<SentMessage> } | null;
+    if (place === "topic") {
+      send = this.sendToInstanceTopic(instanceName, text);
+    } else {
+      // Where notifyFleetError posts, without its text throttle: the ledger is what keeps this to one message.
+      const general = Object.entries(this.fleetConfig?.instances ?? {})
+        .find(([, config]) => config.general_topic === true)?.[0];
+      const target = general ? null : this.fleetNoticeTarget();
+      if (general) send = this.sendToInstanceTopic(general, text);
+      else if (this.adapter && target) {
+        const out = this.renderPlaces(this.getPrimaryAdapterId(), text, target.opts);
+        send = { adapterId: this.getPrimaryAdapterId(), sent: this.adapter.sendText(target.chatId, out.text, out.opts) };
+      } else send = null;
+    }
+    if (!send) return null;
+    const sent = await send.sent;
+    const adapterId = send.adapterId ?? this.getPrimaryAdapterId();
+    if (!adapterId) return null;
+    return { adapterId, chatId: sent.chatId, ...(sent.threadId !== undefined ? { threadId: sent.threadId } : {}), messageId: sent.messageId };
   }
 
   // ── Nonce-armed button prompts (hang / assist / exit / clear) ──
@@ -21308,6 +21370,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.cancelButtonPublications.clear();
     for (const timer of this.cancelButtonIdleRetireTimers.values()) clearTimeout(timer);
     this.cancelButtonIdleRetireTimers.clear();
+    // #2897: notices still being retired stay in the ledger; the next fleet's sweep finishes them.
+    this.parkedNoticesStore?.dispose();
 
     if (this.topicCleanupTimer) {
       clearInterval(this.topicCleanupTimer);

@@ -1513,6 +1513,12 @@ export class Daemon extends EventEmitter {
   private heldReasonLoggedKey: string | null = null;
   private dialogParkedInteractionEpisode: number | null = null;
   private dialogParkedReported = false;
+  /**
+   * #2897: a "needs a human" notice is out for a dialog, and what it lives with: "parked" — the parked clock (retired when
+   * that dialog leaves the pane or another replaces it); "answer" — an answer episode of a dialog the parked clock does
+   * not track (a non-blocking one, whose scans pass no blocking dialog): retired when that episode ends.
+   */
+  private parkedNoticeOut: "parked" | "answer" | null = null;
   /** #2675: the card on screen that a person can answer from the chat — what it asks, since when, and whether it was posted. */
   private remoteCardShown: { identity: string; since: number; posted: boolean } | null = null;
   /** #2675: when (performance.now, taken before its capture) the newest read the card tracker used was started. */
@@ -4111,7 +4117,7 @@ export class Daemon extends EventEmitter {
         // Reached only when no dialog was answered this poll (none on screen, a fenced one, or one waiting out its
         // backoff): unless it is the one backing off, the screen that was being answered is gone, and the next dialog is
         // a new one.
-        if (!answersBackedOff) this.dialogAnswers = null;
+        if (!answersBackedOff && this.dialogAnswers) { this.dialogAnswers = null; this.retireParkedNotice("answer"); }
         this.trackDialogParked(blockingSeen);
         this.trackRemoteCard(blockingSeen, pane, captureMono);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
@@ -8517,6 +8523,7 @@ export class Daemon extends EventEmitter {
    */
   private endDialogEpisode(clearParked = true): void {
     this.dialogAnswers = null;
+    this.retireParkedNotice("answer");
     if (clearParked) this.trackDialogParked(null);
   }
 
@@ -8541,7 +8548,10 @@ export class Daemon extends EventEmitter {
    */
   private noteDialogAnswer(dialog: RuntimeDialog, outcome: "ignored" | "took" | "unproven", screen: string): void {
     const key = Daemon.answerKey(dialog);
-    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, screen, lastAnswerAt: 0 };   // the exact screen being counted: every answer in the episode saw this same one
+    if (!this.dialogAnswers || this.dialogAnswers.key !== key) {
+      if (this.dialogAnswers) this.retireParkedNotice("answer");   // #2897: a different screen: the reported one is over
+      this.dialogAnswers = { key, ignored: 0, reported: false, screen, lastAnswerAt: 0 };
+    }   // the exact screen being counted: every answer in the episode saw this same one
     const episode = this.dialogAnswers;
     if (outcome !== "ignored") {
       this.endDialogEpisode(outcome === "took");
@@ -8556,6 +8566,8 @@ export class Daemon extends EventEmitter {
     const holdsDeliveries = dialog.blocksDelivery === true || dialog.holdOnly === true;
     this.logger.warn({ dialog: dialog.description, attempts: episode.ignored, holdsDeliveries },
       "Runtime dialog is ignoring AgEnD's answer — reporting for a human");
+    // #2897: a dialog the parked clock tracks keeps its notice until it leaves the pane; any other, until this episode ends.
+    this.parkedNoticeOut = this.dialogParkedSince !== 0 && this.dialogParkedKey === Daemon.dialogKey(dialog) ? "parked" : "answer";
     this.emit("dialog_answer_ignored", { name: this.name, description: dialog.description, attempts: episode.ignored, holdsDeliveries });
   }
 
@@ -8639,6 +8651,13 @@ export class Daemon extends EventEmitter {
    * is safe. Identity is the pattern, so the delivery gate and the runtime
    * scanner (same canonical list) never reset each other's clock.
    */
+  /** #2897: the notice out for a dialog is out of date (its `owner` ended): the fleet takes it back. */
+  private retireParkedNotice(owner: "parked" | "answer"): void {
+    if (this.parkedNoticeOut !== owner) return;
+    this.parkedNoticeOut = null;
+    this.emit("dialog_unparked", { name: this.name });
+  }
+
   private trackDialogParked(dialog: RuntimeDialog | null): void {
     if (!dialog) {
       if (this.dialogParkedSince !== 0) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
@@ -8647,6 +8666,8 @@ export class Daemon extends EventEmitter {
       this.heldReasonLoggedKey = null;
       this.dialogParkedInteractionEpisode = null;
       this.dialogParkedReported = false;
+      // #2897: whatever it posted is out of date — the fleet takes its notices back.
+      this.retireParkedNotice("parked");
       return;
     }
     const key = Daemon.dialogKey(dialog);
@@ -8657,6 +8678,8 @@ export class Daemon extends EventEmitter {
     }
     if (episode !== null) this.dialogParkedInteractionEpisode = episode;
     if (this.dialogParkedSince === 0 || this.dialogParkedKey !== key) {
+      // #2897: a different dialog replaced the one being tracked — that one's notices are out of date.
+      if (this.dialogParkedSince !== 0) this.retireParkedNotice("parked");
       this.dialogParkedSince = Date.now();
       this.dialogParkedKey = key;
       this.dialogParkedReported = false;
@@ -8667,6 +8690,7 @@ export class Daemon extends EventEmitter {
     if (unrecognised && this.unrecognisedPrompt?.reportedElsewhere) this.dialogParkedReported = true;
     if (!this.dialogParkedReported && Date.now() - this.dialogParkedSince >= (unrecognised ? 0 : DIALOG_PARKED_NOTIFY_MS)) {
       this.dialogParkedReported = true;
+      this.parkedNoticeOut = "parked";
       this.logger.warn({ dialog: dialog.description, parkedForMs: Date.now() - this.dialogParkedSince },
         "CLI dialog is still on screen — not auto-answering, reporting for a human");
       this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true,
@@ -11377,6 +11401,9 @@ export class Daemon extends EventEmitter {
     this.recoveryNativeWork = false;
     this.recoveryCancelled = false;
     this.dialogAnswers = null;
+    // #2897: a relaunched CLI shows none of the old dialogs — whatever notice was out for one is out of date.
+    // A dialog still tracked when the new CLI shows it again is reported afresh (its old notice is gone).
+    if (this.parkedNoticeOut) { this.parkedNoticeOut = null; this.dialogParkedReported = false; this.emit("dialog_unparked", { name: this.name }); }
     this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.lastErrorEpisode = null;
     this.nudgeBaselines = null;
