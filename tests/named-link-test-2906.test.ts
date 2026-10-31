@@ -238,7 +238,7 @@ describe("#2907 review: bounded, cancelled before launch, ownership kept on an u
 });
 
 describe("#2907 review: the production lane — the managed start (lease, proven stop) of a connector ready once registered", () => {
-  function production(options: { output?: string | null; alive?: boolean; holder?: "dashboard" } = {}) {
+  function production(options: { output?: string | null; alive?: boolean; holder?: "dashboard"; registerMs?: number } = {}) {
     const dir = mkdtempSync(join(tmpdir(), "agend-2906-lane-")); roots.push(dir);
     const child = new Child();
     if (options.alive) child.kill.mockImplementation(() => true);                       // signals sent, never an exit
@@ -252,7 +252,7 @@ describe("#2907 review: the production lane — the managed start (lease, proven
     const lane = new TunnelPurposeLane(new ManagedTunnel({ dataDir: dir, probe, wait: async () => {}, graceMs: 1 }));
     if (options.holder) lane.reserve(options.holder, "open-link");
     const binary = join(dir, "cloudflared"); writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
-    const reserve = namedTestLane(lane, { registerMs: 300, provider: o => new CloudflaredProvider({ ...o, spawnProcess: spawn as never, probe, graceMs: 20, env: { PATH: "/usr/bin", HOST_SECRET: "x" } }) });
+    const reserve = namedTestLane(lane, { registerMs: options.registerMs ?? 300, provider: o => new CloudflaredProvider({ ...o, spawnProcess: spawn as never, probe, graceMs: 20, env: { PATH: "/usr/bin", HOST_SECRET: "x" } }) });
     return { lane, reserve, child, spawned, binary, dir };
   }
   const startInput = (binary: string, port: number, signal = new AbortController().signal) => ({ binary, hostname: HOST, token: TOKEN, protocol: "http2" as const, origin: new URL(`http://127.0.0.1:${port}`), signal });
@@ -266,16 +266,18 @@ describe("#2907 review: the production lane — the managed start (lease, proven
     expect(await held.stop()).toEqual({ confirmed: true });
     expect([p.child.kill.mock.calls[0]?.[0], p.lane.holder()]).toEqual(["SIGTERM", null]);
   });
+  // M-2208 (Prism saw a 250 ms bound flake under a CPU cap): the budget is 10 s here, so "at once" is anything far
+  // below it — < 2 s passes on a loaded runner, and a refusal that waits for the budget (10 s) still fails.
   it("a refused token is said at once (not after the registration budget); silence is a timeout", async () => {
-    const refused = production({ output: "ERR Provided Tunnel token is not valid (unexpected end of JSON input)\n" });
+    const refused = production({ output: "ERR Provided Tunnel token is not valid (unexpected end of JSON input)\n", registerMs: 10_000 });
     const a = refused.reserve(); if ("busy" in a) throw new Error("busy");
     const t0 = performance.now();
     expect(await a.start(startInput(refused.binary, 19282))).toEqual({ ok: false, kind: "named-auth-failed" });
-    expect(performance.now() - t0).toBeLessThan(250);
+    expect(performance.now() - t0).toBeLessThan(2_000);
     const quiet = production({ output: "" });
     const b = quiet.reserve(); if ("busy" in b) throw new Error("busy");
     expect(await b.start(startInput(quiet.binary, 19282))).toEqual({ ok: false, kind: "timeout" });
-  });
+  }, 20_000);
   it("a connector whose stop cannot be proven keeps the lane held (no /web, no second test) until resolved", async () => {
     const p = production({ alive: true });
     const held = p.reserve(); if ("busy" in held) throw new Error("busy");
