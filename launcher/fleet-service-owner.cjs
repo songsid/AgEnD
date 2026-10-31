@@ -47,11 +47,20 @@ function fields(text) {
   text.split("\n").forEach(function (line) { var at = line.indexOf("="); if (at > 0) out[line.slice(0, at)] = line.slice(at + 1); });
   return out;
 }
+// The process's systemd cgroup. Pure cgroup v2 lists one `0::` row; a hybrid host (WSL, older distros) lists both the
+// unified `0::` row and the v1 `N:name=systemd:` row, with the same path — the 0:: one is what systemd reports as the
+// unit's ControlGroup there too. A pure-v1 host has only the name=systemd row, or a bare `0::/` beside it (cgroup2
+// mounted but unused). Two rows of the same kind, or no usable path, stay unknown.
 function cgroup(text) {
-  var rows = text.trim().split("\n").filter(function (r) { return /^(?:0::|\d+:name=systemd:)/.test(r); });
-  if (rows.length !== 1) throw Error("unknown cgroup");
-  var p = rows[0].slice(rows[0].indexOf(":", rows[0].indexOf(":") + 1) + 1);
-  if (p[0] !== "/") throw Error("unknown cgroup");
+  var unified = null, named = null;
+  text.trim().split("\n").forEach(function (r) {
+    var m = /^(\d+):([^:]*):(.*)$/.exec(r);
+    if (!m) return;
+    if (m[1] === "0" && m[2] === "") { if (unified !== null) throw Error("unknown cgroup"); unified = m[3]; }
+    else if (m[2].split(",").indexOf("name=systemd") >= 0) { if (named !== null) throw Error("unknown cgroup"); named = m[3]; }
+  });
+  var p = unified !== null && unified !== "/" ? unified : named !== null ? named : unified;
+  if (!p || p[0] !== "/") throw Error("unknown cgroup");
   return p;
 }
 function inside(p, group) { return !!group && group !== "/" && (p === group || p.indexOf(group + "/") === 0); }

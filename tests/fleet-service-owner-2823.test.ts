@@ -149,3 +149,35 @@ it("CLI and target installer enforce the shared proof before install and before 
   expect(install.indexOf("var ownerRecheck")).toBeLessThan(install.indexOf("var fixed = repair("));
   expect(install).not.toContain("the previous service was never stopped");
 });
+
+describe("hybrid and v1 cgroup hosts (WSL): the fleet under its user unit is still managed", () => {
+  const unit = "/user.slice/user-0.slice/user@0.service/app.slice/com.agend.fleet.service";
+  const hostWith = (cgroupText: string) => {
+    const r = rig();
+    r.run.mockReturnValue({ status: 0, stdout: `MainPID=1234\nControlGroup=${unit}\nActiveState=active\nSubState=running\nWorkingDirectory=${r.home}` });
+    r.files.set(r.proc + "/cgroup", cgroupText);
+    return r;
+  };
+  const managedWith = (cgroupText: string) => { const r = hostWith(cgroupText); return owner.inspect(r.home, service, r.deps); };
+  // A hybrid host's /proc/<pid>/cgroup, as systemd 249 lays it out (v1 controllers, name=systemd, the unified 0:: row).
+  const hybrid = ["12:freezer:/", "11:devices:" + unit, "10:memory:" + unit, "9:pids:" + unit, "5:cpu,cpuacct:" + unit,
+    "1:name=systemd:" + unit, "0::" + unit, ""].join("\n");
+  it("hybrid (both 0:: and name=systemd): managed — the field host's refusal (update_unknown) is gone", () => {
+    expect(managedWith(hybrid)).toMatchObject({ kind: "managed", pid: 1234, mainPid: 1234 });
+    const r = hostWith(hybrid);
+    expect(owner.updateRefusal(r.home, r.deps)).toBeNull();
+    expect(owner.restartRefusal(r.home, service, r.deps)).toBeNull();
+  });
+  it("pure v1: the name=systemd row (alone, or beside an unused 0::/)", () => {
+    expect(managedWith(["4:pids:" + unit, "1:name=systemd:" + unit, ""].join("\n"))).toMatchObject({ kind: "managed" });
+    expect(managedWith(["1:name=systemd:" + unit, "0::/", ""].join("\n"))).toMatchObject({ kind: "managed" });
+  });
+  it("the 0:: row wins on a hybrid host: outside the unit there, not managed (never outside-proven either)", () => {
+    expect(managedWith(["1:name=systemd:" + unit, "0::/user.slice/session-c4.scope", ""].join("\n")).kind).toBe("unknown");
+  });
+  it("two rows of one kind, or no systemd row at all: unknown, as before", () => {
+    expect(managedWith(["0::" + unit, "0::" + unit, ""].join("\n")).kind).toBe("unknown");
+    expect(managedWith(["1:name=systemd:" + unit, "2:name=systemd:" + unit, ""].join("\n")).kind).toBe("unknown");
+    expect(managedWith(["4:pids:" + unit, ""].join("\n")).kind).toBe("unknown");
+  });
+});
