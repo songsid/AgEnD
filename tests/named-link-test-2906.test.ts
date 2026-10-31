@@ -9,7 +9,7 @@
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { createServer, request, type Server } from "node:http";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -216,6 +216,17 @@ describe("#2907 review: bounded, cancelled before launch, ownership kept on an u
     expect(codes(await runNamedLinkTest(input(late.port), late.deps)).at(-1)).toBe("tunnel:✗cancelled");
     expect([late.lane.start.mock.calls.length, late.lane.releaseUnused.mock.calls.length]).toEqual([0, 1]);
   });
+  it("#2907 r2: any step that throws is its closed failure, after the same cleanup (never a raw error)", async () => {
+    const thrown = await rig({ start: async () => { throw Object.assign(new Error("EACCES: lease"), { code: "EACCES" }); } });
+    expect(codes(await runNamedLinkTest(input(thrown.port), thrown.deps)).at(-1)).toBe("tunnel:✗stopped");
+    expect([thrown.lane.stop.mock.calls.length, await portFree(thrown.port)]).toEqual([1, true]);
+    const dnsThrows = await rig({ resolve4: async () => { throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }); }, systemLookup: async () => { throw "not an error"; } });
+    dnsThrows.deps.resolve4 = () => { throw new Error("sync throw"); };
+    expect(codes(await runNamedLinkTest(input(dnsThrows.port), dnsThrows.deps)).at(-1)).toBe("dns:✗dns-failed");
+    const reachThrows = await rig({ fetchPage: () => { throw new Error("sync throw"); } });
+    expect(codes(await runNamedLinkTest(input(reachThrows.port), reachThrows.deps)).at(-1)).toBe("reach:✗reach-failed");
+    expect([reachThrows.lane.stop.mock.calls.length, await portFree(reachThrows.port)]).toEqual([1, true]);
+  });
   it("(3) an unproven stop is reported, and the lane is not given back", async () => {
     const unproven = await rig({ stop: async () => ({ confirmed: false }) });
     const r1 = await runNamedLinkTest(input(unproven.port), unproven.deps);
@@ -271,6 +282,16 @@ describe("#2907 review: the production lane — the managed start (lease, proven
     expect(await held.start(startInput(p.binary, 19282))).toEqual({ ok: true });
     expect(await held.stop()).toEqual({ confirmed: false });
     expect([p.child.kill.mock.calls.map(c => c[0]), p.lane.holder(), "busy" in p.reserve()]).toEqual([["SIGTERM", "SIGKILL"], "named-test", true]);
+  });
+  it("#2907 r2: a managed start that throws (the lease write refused, EACCES) still stops through the lane, frees the port and the lane", async () => {
+    const p = production();
+    chmodSync(p.dir, 0o500);                                       // writes refused: the lease cannot be written
+    try {
+      const port = await freePort();
+      const result = await runNamedLinkTest(input(port), { healthPort: 19280, ensureBinary: async () => p.binary, liveMarker: () => null,
+        reserve: p.reserve, resolve4: async () => ["104.16.1.1"], systemLookup: async () => ({}), fetchPage: edgeTo(port), reachMs: 300, retryMs: 20 });
+      expect([codes(result).at(-1), result.cleanup, await portFree(port), p.lane.holder(), p.spawned.length]).toEqual(["tunnel:✗stopped", undefined, true, null, 0]);
+    } finally { chmodSync(p.dir, 0o700); }
   });
   it("an open link holds the lane: the test is told so", () => {
     expect(production({ holder: "dashboard" }).reserve()).toEqual({ busy: "link-open" });

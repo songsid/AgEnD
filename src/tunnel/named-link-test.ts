@@ -94,6 +94,8 @@ export interface NamedLinkTestDeps {
 }
 
 const DEADLINE = Symbol("deadline");
+/** A step that threw (not a closed answer): its own closed failure. */
+const UNEXPECTED: Record<NamedTestStep, NamedTestCode> = { values: "bad-token", origin: "origin-failed", tunnel: "stopped", dns: "dns-failed", reach: "reach-failed" };
 /** `p`, unless the signal fires first (then DEADLINE); `p` itself is left to settle on its own. */
 function within<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) { p.catch(() => {}); return Promise.reject(DEADLINE); }
@@ -186,24 +188,28 @@ export async function runNamedLinkTest(input: NamedTestInput, deps: NamedLinkTes
       return reach === "ok" ? (pass("reach"), { steps, hostname, port }) : fail("reach", reach);
     })();
   } catch (err) {
-    if (err !== DEADLINE) throw err;
-    result = fail(step, outer?.aborted ? "cancelled" : "timeout");
+    // #2907 review (r2): nothing thrown escapes before the cleanup below — the deadline is "timeout" (or "cancelled"),
+    // anything else (a lease write refused, an unexpected error) is the step's closed failure; never a raw error.
+    result = fail(step, err === DEADLINE ? (outer?.aborted ? "cancelled" : "timeout") : UNEXPECTED[step]);
   } finally {
     clearTimeout(hard);
     outer?.removeEventListener("abort", onOuter);
-  }
-  // Cleanup, with its own allowance: the lane is given back only once the connector's stop is proven.
-  const cleanupMs = deps.cleanupMs ?? NAMED_TEST_CLEANUP_MS;
-  if (lane) {
-    const held: NamedTestLane = lane;
-    if (started) {
-      const stopped = await settleWithin(held.stop().catch(() => ({ confirmed: false })), cleanupMs);
-      if (stopped === DEADLINE || !stopped.confirmed) result.cleanup = "unconfirmed";
-    } else held.releaseUnused();
-  }
-  if (server) {
-    const stand: Server = server;
-    await settleWithin(new Promise<void>(r => { stand.close(() => r()); stand.closeAllConnections?.(); }), cleanupMs);
+    // Cleanup, unconditionally and with its own allowance: what was started goes through the lane's managed stop
+    // (which gives the lane back only on a proven stop); the stand-in closes on every outcome.
+    const cleanupMs = deps.cleanupMs ?? NAMED_TEST_CLEANUP_MS;
+    let unconfirmed = false;
+    if (lane) {
+      const held: NamedTestLane = lane;
+      if (started) {
+        const stopped = await settleWithin(held.stop().catch(() => ({ confirmed: false })), cleanupMs);
+        unconfirmed = stopped === DEADLINE || !stopped.confirmed;
+      } else held.releaseUnused();
+    }
+    if (server) {
+      const stand: Server = server;
+      await settleWithin(new Promise<void>(r => { stand.close(() => r()); stand.closeAllConnections?.(); }), cleanupMs);
+    }
+    if (unconfirmed) result!.cleanup = "unconfirmed";
   }
   return result;
 }
