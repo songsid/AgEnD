@@ -268,10 +268,10 @@ describe("#2897: startup ordering — a notice posted before the sweep is this p
 
 describe("#2897: the production Discord delete reports a refusal", () => {
   /** DiscordAdapter.prototype.deleteMessage over a fake client: `exact` is the thread's fetch, `scan` the text channels'. */
-  function discordDelete(opts: { exact: () => Promise<any>; scan?: Array<() => Promise<any>>; guildFails?: unknown }) {
+  function discordDelete(opts: { exact?: () => Promise<any>; scan?: Array<() => Promise<any>>; guildFails?: unknown }) {
     const adapter = Object.create(DiscordAdapter.prototype) as any;
     adapter.guildId = "g1";
-    adapter._fetchTextChannel = async () => ({ messages: { fetch: opts.exact } });
+    if (opts.exact) adapter._fetchTextChannel = async () => ({ messages: { fetch: opts.exact } });
     adapter.readyClient = async () => ({ guilds: { fetch: async () => {
       if (opts.guildFails) throw opts.guildFails;
       const cache = new Map((opts.scan ?? []).map((fetch, i) => [String(i), { type: 0, messages: { fetch } }]));
@@ -300,6 +300,44 @@ describe("#2897: the production Discord delete reports a refusal", () => {
     const elsewhere = discordDelete({ exact: async () => { throw new Error("Channel g1 is not a text channel"); }, scan: [async () => ({ delete: async () => { deleted = true; } })] });
     await expect(elsewhere.deleteMessage("g1", "m1")).resolves.toBeUndefined();
     expect(deleted).toBe(true);
+  });
+
+  it("a lookup that could not run is no proof of absence (Prism r2): a gateway not ready, a scan refused", async () => {
+    // The real _fetchTextChannel, over a client that is still connecting.
+    const connecting = Object.create(DiscordAdapter.prototype) as any;
+    connecting.guildId = "g1";
+    connecting.readyClient = async () => { throw new Error("Discord gateway still connecting (first ready not reached)"); };
+    await expect(connecting.deleteMessage("g1", "m1", "t1")).rejects.toThrow("still connecting");
+    const scanRefused = discordDelete({ exact: async () => { throw new Error("Channel g1 is not a text channel"); }, guildFails: apiErr(50001, "Missing Access") });
+    await expect(scanRefused.deleteMessage("g1", "m1")).rejects.toThrow("Missing Access");
+    const scanPartial = discordDelete({ exact: async () => { throw new Error("Channel g1 is not a text channel"); },
+      scan: [async () => { throw apiErr(10008, "Unknown Message"); }, async () => { throw apiErr(50001, "Missing Access"); }] });
+    await expect(scanPartial.deleteMessage("g1", "m1")).rejects.toThrow("Missing Access");
+    // Unknown Channel for a bare chat id (the guild's own id) proves nothing; a complete scan that finds nothing does.
+    const bareChatId = discordDelete({ exact: async () => { throw apiErr(10003, "Unknown Channel"); }, scan: [async () => { throw apiErr(50001, "Missing Access"); }] });
+    await expect(bareChatId.deleteMessage("g1", "m1")).rejects.toThrow("Missing Access");
+    const scannedAll = discordDelete({ exact: async () => { throw apiErr(10003, "Unknown Channel"); }, scan: [async () => { throw apiErr(10008, "Unknown Message"); }] });
+    await expect(scannedAll.deleteMessage("g1", "m1")).resolves.toBeUndefined();
+    const threadGone = discordDelete({ exact: async () => { throw apiErr(10003, "Unknown Channel"); }, guildFails: apiErr(50001, "Missing Access") });
+    await expect(threadGone.deleteMessage("g1", "m1", "t1")).resolves.toBeUndefined();
+  });
+
+  it("a gateway not ready keeps the notice's ledger row for a retry (real _fetchTextChannel + deleteMessage)", async () => {
+    let text = "⚠️ held";
+    const adapter = Object.create(DiscordAdapter.prototype) as any;
+    adapter.guildId = "g1";
+    adapter.readyClient = async () => { throw new Error("Discord gateway still connecting (first ready not reached)"); };
+    adapter.editMessage = async () => { throw new Error("Discord gateway still connecting (first ready not reached)"); };
+    const notices = new ParkedNotices({
+      file: join(dir, PARKED_NOTICE_LEDGER_FILE), logger,
+      post: async () => ({ adapterId: "discord", chatId: "g1", threadId: "t1", messageId: "m1" }),
+      adapterFor: () => adapter, resolvedText: () => "✓ resolved", render: (_row, t) => t,
+    });
+    await notices.show("w", "topic", "⚠️ held");
+    await notices.resolve("w");
+    notices.dispose();
+    expect(text).toBe("⚠️ held");
+    expect(JSON.parse(readFileSync(join(dir, PARKED_NOTICE_LEDGER_FILE), "utf-8"))).toEqual([expect.objectContaining({ messageId: "m1", attempts: 1 })]);
   });
 
   it("a refused Discord delete leaves the notice saying ✓ resolved, not the held text", async () => {
