@@ -694,6 +694,22 @@ export function claudeLoginScreenActive(pane: string): boolean {
     return rows.slice(Math.max(0, rows.length - 14), rows.length - 1)
       .some(r => /Browser didn't open\? Use the url below to sign in|oauth\/authorize/.test(r));
   }
+  // Cloud gateway sign-in (2.1.314 audit capture, unchanged in 2.1.316; claude-2.1.316-gateway-url.pane.txt): the
+  // gateway URL screen ends with "Press Enter to connect" (+ " · Esc for other login methods" unless the screen is
+  // locked), under its "Cloud gateway" title. It is a sign-in a person finishes, like the menu below.
+  if (/^[ \t]*Press Enter to connect(?: · Esc for other login methods)?[ \t]*$/.test(rows[rows.length - 1])) {
+    return rows.slice(Math.max(0, rows.length - 10), rows.length - 1).some(r => /^[ \t]*Cloud gateway[ \t]*$/.test(r));
+  }
+  // …and its "Trust gateway <host>?" step (the gateway's certificate fingerprint, the cursor on its No row; from the
+  // 2.1.314/2.1.316 source, not reached offline: the rig's gateway stops at its OAuth discovery). Never a key of
+  // AgEnD's: trusting a gateway is the person's call.
+  // Bottom-anchored: the prompt's own option row is the last row (a quote of it above a composer is not the prompt).
+  const NO_ROW = /^[ \t]*[❯›]?[ \t]*(?:\d\.[ \t]*)?No, (?:cancel login|go back)[ \t]*$/;
+  if (NO_ROW.test(rows[rows.length - 1])) {
+    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 14); i--) {
+      if (/^[ \t]*Trust gateway \S+\?[ \t]*$/.test(rows[i])) return true;
+    }
+  }
   // Login-method menu: only numbered option rows may follow the title.
   let t = -1;
   for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Select login method:[ \t]*$/.test(rows[i])) { t = i; break; }

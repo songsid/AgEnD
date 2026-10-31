@@ -201,3 +201,20 @@ The audit was run as `AUDIT_DIR=… OLD=312 NEW=314 PORT=18314 bash pass1.sh`, t
 - `continue this in Projects` is a slash command's model-facing description.
 
 **Predicate literals:** 274 checked, 73 in the binaries, 7 counts changed: ` and the ` (minifier churn in prose), `Esc to cancel`, `claude auth login` (prose), `as given`, `launch after`, `no conversation to` (the `--continue` screen still classifies the same).
+
+## 2.1.314 → 2.1.316
+
+The binaries were 2.1.314 (sha256 `4487042b4c4f5d88d4568f68ae98aae0b1ffae58864cf57fb868641bc5f84594`, the same as the last audit's) and 2.1.316 (sha256 `fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824`, byte-identical to the host's `~/.local/share/claude/versions/2.1.316`), from the daily upstream watch (2026-10-31, MAJOR hard=1). The host had already self-updated to 2.1.316.
+
+The audit was run as `AUDIT_DIR=… OLD=314 NEW=316 PORT=18316 TMUX_TMPDIR=<short dir> bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.316-*.pane.txt` (the same 33 screens as 2.1.314, each matched to its 2.1.314 capture by content, `danger-enter-swallowed` from 2.1.316's own capture 132), plus two gateway screens, held by `tests/claude-2.1.316-surfaces.test.ts`.
+
+- **Classification:** all 62 captures and the error frames classify identically under the production predicates, except `132-danger-fast`. That is the timing race earlier audits showed; this time 2.1.316 kept the menu on `No`.
+- **The hard finding, `Trust gateway ${}?` beside "Sign in", is not a new screen.** The in-TUI Cloud gateway sign-in is in 2.1.314 already: its URL screen, the `Trust gateway <host>?` step and `Signed in to Cloud gateway as`. New in 2.1.316 is the template form used by `claude auth login`. Under managed settings it runs that sign-in in a terminal (2.1.314 printed "run interactive /login") and ends with `Login successful.`, which `LOGIN_FLOWS.claude-code.successPattern` matches.
+- **Gateway screens, captured offline on both versions.** User settings `forceLoginMethod: "gateway"` + `forceLoginGatewayUrl` (loopback, a self-signed TLS mock, then `env.NODE_EXTRA_CA_CERTS`).
+  - The URL screen ("Cloud gateway" … "Press Enter to connect · Esc for other login methods") is identical on both.
+  - The flow reaches the gateway's OAuth discovery (`GET /.well-known/oauth-authorization-server`); the mock's 404 ends it there, so the trust step was not reached.
+  - On both versions the production predicates read the URL screen as nothing at all: not ready, no dialog, not a sign-in. `claudeLoginScreenActive` now recognises it, and the bottom-anchored `Trust gateway <host>?` step (from the source), as a sign-in: an auth incident, never a key.
+- **Literals** (`predlits.py`, 359 checked, 86 in the binaries): 7 counts moved, all in bare substrings. Every exact form AgEnD matches has the same count, except `Login successful` (+1: the new gateway path) and `Bash command` (+2: the Bash permission capture is unchanged).
+  - The auto-deny countdown keeps 2.1.314's wording ("block … holding up an unattended session").
+  - Every cold-resume literal has the same count.
+- **The other new string**, "continue the last turn of the session it was copied from…", is the `--help` text of a hidden print-mode flag, `--session-began-as-copy`. It is not a screen.

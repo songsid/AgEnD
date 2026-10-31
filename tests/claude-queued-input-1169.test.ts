@@ -51,7 +51,9 @@ const QUEUED = ["busy-queued", "busy-queued-long", "long-busy-queued", "tool-que
   // …and the 2.1.312 audit's.
   .concat("claude-2.1.312-busy-queued.pane.txt")
   // …and the 2.1.314 audit's.
-  .concat("claude-2.1.314-busy-queued.pane.txt");
+  .concat("claude-2.1.314-busy-queued.pane.txt")
+  // …and the 2.1.316 audit's.
+  .concat("claude-2.1.316-busy-queued.pane.txt");
 
 describe("the backend", () => {
   const backend = new ClaudeCodeBackend("/nonexistent-1169");
