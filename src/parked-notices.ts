@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { atomicWriteFileSync } from "./atomic-write.js";
 import type { ChannelAdapter } from "./channel/types.js";
 import type { Logger } from "./logger.js";
 
@@ -201,7 +202,8 @@ export class ParkedNotices {
 
   private persist(): void {
     try {
-      writeFileSync(this.deps.file, JSON.stringify([...this.live.values(), ...this.retiring]));
+      // Atomic: a torn ledger is dropped by the sweep, which would orphan exactly the notices it exists to retire.
+      atomicWriteFileSync(this.deps.file, JSON.stringify([...this.live.values(), ...this.retiring]), { mode: 0o600 });
     } catch (err) {
       this.deps.logger.debug({ err }, "Parked-dialog notice ledger write failed");
     }
