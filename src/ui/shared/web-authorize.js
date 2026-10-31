@@ -1,7 +1,7 @@
 // #1939 S2b (design §0.1): "Authorize this browser". The app shows this browser's state — verified (until when), a
 // Confirm card waiting in the account's Discord or Telegram DM (with its countdown), or why it can't be authorized here —
 // and asks for the card. The card itself is the gate: nothing here can authorize anything.
-import { html, useEffect, useRef, useState } from "./app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { register, t } from "./app-i18n.js";
 import { guestPage } from "./app-store.js";
 
@@ -31,6 +31,7 @@ register("webauth", {
     verifiedShort: "Verified",
     authorizeShort: "Authorize",
     authorizeWhy: "Not verified: authorize this browser to speak as you",
+    notVerifiedWhy: "Not verified: {0}",
     waitingShort: "Waiting for your Confirm ({0})",
   },
   "zh-TW": {
@@ -58,6 +59,7 @@ register("webauth", {
     verifiedShort: "已驗證",
     authorizeShort: "授權",
     authorizeWhy: "未驗證：授權這個瀏覽器以你的身分發言",
+    notVerifiedWhy: "未驗證：{0}",
     waitingShort: "等待確認（{0}）",
   },
 });
@@ -155,26 +157,46 @@ export function AuthorizeChip() {
  * The composer's row (#2215, the user's request, 2026-10-19): the same states as AuthorizeChip, each kept to a few words so
  * they share one row with the key hint. What a state would have said at length is in its tooltip and its accessible
  * name: when "Verified" ends, why it can't be authorized, the countdown's ask. A tap on "✓ Verified" shows when it
- * ends (touch has no hover) in a bubble above the row, until the next tap, a tap elsewhere or Escape. What pressing
- * Authorize answered (sent, refused) is said in the row itself, in the hint's place (#2216 review: a bubble left over the
- * composer covered Attach and what was being typed, with nothing to close it).
+ * ends, and a tap on "Not verified" why it can't be authorized here (#2889; touch has no hover), in a bubble above the
+ * composer, until the next tap, a tap or key elsewhere, or Escape. What pressing Authorize answered (sent, refused) is
+ * said in the row itself, in the hint's place (#2216 review: a bubble left over the composer covered Attach and what was
+ * being typed, with nothing to close it).
  */
 export function ComposerAuth() {
   const a = useWebAuthorization();
   const [open, setOpen] = useState(false);
-  const tip = useRef("wa-tip-" + Math.random().toString(36).slice(2, 8));
+  const tip = useRef("wa-tip-" + Math.random().toString(36).slice(2, 8)), opener = useRef(null);
   useEffect(() => { setOpen(false); }, [a.st && a.st.state]);              // a new state closes the bubble
+  // #2889: a tap, focus or key (Escape too) anywhere else closes it, even where a tapped button never takes focus (Safari);
+  // on the button itself, its own handlers decide.
+  useEffect(() => {
+    if (!open) return undefined;
+    const doc = globalThis.document, kinds = ["pointerdown", "focusin", "keydown"];
+    const away = (e) => { if (!opener.current || !opener.current.contains(e.target)) setOpen(false); };
+    for (const k of kinds) doc.addEventListener(k, away, true);
+    return () => { for (const k of kinds) doc.removeEventListener(k, away, true); };
+  }, [open]);
+  // Above the whole composer, not over it (#2216): lifted by the composer's height, measured when it opens.
+  const bubble = useRef(null);
+  useLayoutEffect(() => {
+    const el = bubble.current, row = el && el.parentElement && el.parentElement.closest(".composer-row");
+    const composer = row && row.parentElement ? row.parentElement.querySelector(".composer") : null;
+    if (!el || !open || !composer) { if (el) el.style.removeProperty("bottom"); return; }
+    const lift = Math.max(0, Math.round(row.getBoundingClientRect().top - composer.getBoundingClientRect().top));
+    el.style.setProperty("bottom", `calc(100% + ${lift + 4}px)`);
+  }, [open]);
   if (guestPage()) return null;
   if (!a.st) return null;
   const st = a.st, id = tip.current;
   const said = a.notice ? html`<span class="webauth-notice" role="status">${a.notice}</span>` : null;
+  // The words in the row, a button whose tap shows `text` in the bubble; `title` keeps the hover on a desk.
+  const tipped = (cls, label, name, text) => html`<button type="button" class=${cls} ref=${opener} title=${text} aria-label=${name}
+      aria-expanded=${open ? "true" : "false"} aria-controls=${id} onClick=${() => setOpen((v) => !v)} onBlur=${() => setOpen(false)}
+      onKeyDown=${(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); } }}>${label}</button><span
+      id=${id} ref=${bubble} class="webauth-tip" role="tooltip" hidden=${!open}>${text}</span>`;
   if (st.state === "verified") {
     const until = tn("verified", clock(st.until));
-    return html`<span class="webauth-row" data-state="verified">
-      <button type="button" class="webauth-ok" title=${until} aria-label=${`✓ ${until}`} aria-expanded=${open ? "true" : "false"}
-        aria-controls=${id} onClick=${() => setOpen((v) => !v)} onBlur=${() => setOpen(false)}
-        onKeyDown=${(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); } }}>✓ ${tn("verifiedShort")}</button><span
-        id=${id} class="webauth-tip" role="tooltip" hidden=${!open}>${until}</span>${said}</span>`;
+    return html`<span class="webauth-row" data-state="verified">${tipped("webauth-ok", `✓ ${tn("verifiedShort")}`, `✓ ${until}`, until)}${said}</span>`;
   }
   if (st.state === "pending") {
     const asks = tn("waiting", mmss(a.left));
@@ -185,7 +207,7 @@ export function ComposerAuth() {
       title=${tn("authorizeWhy")} aria-label=${tn("authorizeWhy")} onClick=${a.ask}>${tn("authorizeShort")}</button>${said}</span>`;
   }
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
-  return html`<span class="webauth-row" data-state="none"><span class="note" title=${why}>${tn("notVerified")}<span class="sr-only">: ${why}</span></span>${fixable(st.reason)
+  return html`<span class="webauth-row" data-state="none">${tipped("webauth-why", tn("notVerified"), tn("notVerifiedWhy", why), why)}${fixable(st.reason)
     ? html` · <a href="/settings/access" title=${why}>${tn("settings")}</a>` : null}</span>`;
 }
 
