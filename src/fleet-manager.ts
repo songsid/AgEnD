@@ -7072,7 +7072,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
         + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : ""));
     const choices = [{ action: "local", label: t("dashboard.local_signin") },
-      ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
+      ...(publicLinkSettings(this.fleetConfig?.web).allowed
+        ? [{ action: "public", label: t(publicLinkNamedHostname(this.fleetConfig?.web) ? "dashboard.public_open_named" : "dashboard.public_open") }] : []),
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
     const posted = await this.postNonceButtonPrompt({
       prefix: "dashboard:", alertType: "login", instanceName: "dashboard", adapter, adapterId: owner.adapterId,
