@@ -30,12 +30,14 @@ describe("#2904: a page over a public link never calls a permanent link temporar
     expect(both("settings.cssPublicLink")).toEqual(["Custom CSS isn't available over a public link.", "透過公開連結無法使用自訂 CSS。"]);
     expect(both("webauth.reason_public_link")).toEqual(["This sign-in can't be authorized over this link.", "這個登入無法透過這個連結授權。"]);
   });
-  it("the session hint gives the gateway policy in force (8 h, 30 min idle), for both kinds, capped by the setting and the link", () => {
+  // #2905 review (Prism P2): these settings cap an ADMIN's session over the link; a guest's follows the guest settings
+  // (web-session.ts policyFor: shorter(gateway, local) for an admin, shorter(gateway, guestPolicy()) for a guest).
+  it("the session hint gives the gateway policy in force (8 h, 30 min idle) for both kinds, the link's end, and these settings for an admin only", () => {
     const g = DEFAULT_SESSION_POLICY.gateway, hours = g.absoluteMs / 3_600_000, minutes = g.idleMs / 60_000;
     expect([hours, minutes]).toEqual([8, 30]);
     const [en, zh] = both("settings.webSessionHint");
-    expect(en).toContain(`Over a public link (a temporary one or your permanent link), a session lasts at most ${hours} h and ends after ${minutes} min idle, never longer than these settings or the link itself.`);
-    expect(zh).toContain(`透過公開連結（臨時連結或你的固定網域）的 session 最長 ${hours} 小時、閒置 ${minutes} 分鐘就結束，也不會超過這裡的設定或連結本身。`);
+    expect(en).toContain(`Over a public link (a temporary one or your permanent link), a session lasts at most ${hours} h, ends after ${minutes} min idle and never outlives the link; an admin's also never lasts longer than these settings (a guest's follows the guest settings).`);
+    expect(zh).toContain(`透過公開連結（臨時連結或你的固定網域）的 session 最長 ${hours} 小時、閒置 ${minutes} 分鐘就結束，也不會超過連結本身；管理者的 session 也不會超過這裡的設定（訪客依訪客設定）。`);
     expect([/\b4 h\b/.test(en), /4 小時/.test(zh)]).toEqual([false, false]);
   });
 });
