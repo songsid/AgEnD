@@ -42,7 +42,7 @@ const hold = (backend: CodexBackend) => backend.getRuntimeDialogs().find(d => d.
 describe("a held codex trust prompt says why it was not answered", () => {
   it("no preTrust for this launch: said so, with the config path and that the folder is not trusted there", () => {
     const { cwd, backend } = fixture();
-    const why = hold(backend).heldReason!(trustPane(cwd));
+    const why = hold(backend).heldReason!(trustPane(cwd))!;
     expect(why).toMatchObject({ trustHoldReason: "preTrust did not authorize this launch", promptFolder: cwd, authorizedCwd: null, configTrust: "absent" });
     expect(String(why.configPath)).toMatch(/config\.toml$/);
   });
