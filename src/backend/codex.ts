@@ -320,11 +320,17 @@ type CodexTrustPrompt = {
   root: string | null;
   rootNote: "absent" | "parsed" | "invalid";
   safeChoice: boolean;
+  /**
+   * The user's decision (hmsg-53600a2c): an AgEnD session always trusts its folder. The cursor is on "Trust and continue"
+   * — the default row, where Enter trusts — among only the trust layout's own options, above its enter/esc footer.
+   * A digit does not answer this list (0.160 and 0.166: "1" leaves it up), so Enter on this row is the one safe key.
+   */
+  trustCursor: boolean;
 };
 
 /** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
 function codexTrustPromptState(pane: string): CodexTrustPrompt {
-  const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false };
+  const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false, trustCursor: false };
   const rows = pane.replace(/\r/g, "").split("\n");
   let last = rows.length - 1;
   while (last >= 0 && rows[last].trim() === "") last--;
@@ -364,7 +370,16 @@ function codexTrustPromptState(pane: string): CodexTrustPrompt {
     && choices[0].cursor === "›" && choices[0].number === "1" && choices[0].text === "Trust and continue"
     && choices[1].cursor === "" && choices[1].number === "2" && choices[1].text === "Quit"
     && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
-  return { active: true, folder, root, rootNote, safeChoice };
+  const known = new Set(["Trust and continue", "Open restricted", "Quit"]);
+  // Exactly one selection marker, whichever form (› ❯ >), and it is on Trust; the footer is the one both 0.160 and 0.166
+  // show. Two markers, another footer mapping or an unknown option is held — never a guess where Enter lands (#2896 review).
+  const atCursor = choices.filter(choice => choice.cursor !== "");
+  const trustCursor = choices.length >= 2 && choices.every(choice => known.has(choice.text))
+    && choices.every((choice, index) => index === 0 || choice.row === choices[index - 1]!.row + 1)
+    && rows.slice(choices[choices.length - 1]!.row + 1, last).every(row => row.trim() === "")
+    && atCursor.length === 1 && atCursor[0]!.cursor === "›" && atCursor[0]!.text === "Trust and continue"
+    && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
+  return { active: true, folder, root, rootNote, safeChoice, trustCursor };
 }
 
 /** Unknown/older trust layouts are still input-blocking, never auto-answered. */
@@ -2053,22 +2068,7 @@ export class CodexBackend implements CliBackend {
   getStartupDialogs(): StartupDialog[] {
     const trustHold = this.trustHoldDialog();
     return [
-      {
-        pattern: /^\s*Trust this folder\?/m,
-        keys: ["Enter"],
-        description: "Codex authorized folder trust dialog",
-        blocksDelivery: true,
-        inputBlocked: true,
-        autoResolutionKey: "codex-authorized-folder-trust",
-        isActive: pane => {
-          const state = codexTrustPromptState(pane);
-          const authorized = this.authorizedTrust;
-          return state.active && state.safeChoice && authorized !== null
-            && state.folder === authorized.cwd
-            && (state.rootNote === "absent" ? authorized.root === authorized.cwd
-              : state.rootNote === "parsed" && state.root === authorized.root);
-        },
-      },
+      this.autoTrustDialog(),
       trustHold,
       this.updatePickerDialog(),
       this.rateSwitchPickerDialog(),
@@ -2105,6 +2105,27 @@ export class CodexBackend implements CliBackend {
     ];
   }
 
+  /**
+   * The user's decision (hmsg-53600a2c): codex's folder-trust prompt in an AgEnD session is always answered Trust — the
+   * workspace is the agent's own, whatever preTrust covered (preTrust stays, so the prompt rarely shows at all). Enter,
+   * only with the cursor on "Trust and continue" among the known options (trustCursor); any other layout or row is
+   * held (trustHoldDialog). It trusts the folder only: per-action approvals are separate dialogs and are not touched.
+   */
+  private autoTrustDialog(): RuntimeDialog {
+    return {
+      pattern: /^\s*Trust this folder\?/m,
+      keys: ["Enter"],
+      description: "Codex folder trust — trusting the agent's own folder",
+      blocksDelivery: true,
+      inputBlocked: true,
+      autoResolutionKey: "codex-folder-auto-trust",
+      // One Enter per prompt (claimed, then checked): a prompt still up after it is held, never pressed again (#2896 review).
+      verifyAfterKeys: true,
+      isActive: pane => codexTrustPromptState(pane).trustCursor,
+      answerDetail: pane => ({ autoTrusted: true, ...this.trustPaneFields(pane) }),
+    };
+  }
+
   private trustHoldDialog(): RuntimeDialog {
     return {
       pattern: /^\s*(?:Folder access|Trust this folder\?|Do you trust the files in this folder\?)/im,
@@ -2134,16 +2155,20 @@ export class CodexBackend implements CliBackend {
     const rootMatches = authorized !== null && (state.rootNote === "absent" ? authorized.root === authorized.cwd
       : state.rootNote === "parsed" && state.root === authorized.root);
     const authorizedMatch = state.active && state.safeChoice && authorized !== null && state.folder === authorized.cwd && rootMatches;
+    // hmsg-53600a2c: Trust is pressed whenever the cursor is on it; a hold is a layout, a row, or a press that did not take.
     const reason = !state.active ? "a trust layout AgEnD never answers (Folder access options, or Do you trust the files…)"
-      : authorized === null ? "preTrust did not authorize this launch"
-      : !state.safeChoice ? "the cursor is not on the trust choice"
-      : state.folder !== authorized.cwd ? "the folder codex asks about is not the one AgEnD trusted"
-      : authorizedMatch ? "the prompt matches what AgEnD authorized; the automatic answer is made once, in the startup scan, so one that stays, comes back or appears later waits for a person"
-      : state.rootNote === "absent" ? "codex names no repository root, but AgEnD trusted a separate root"
-      : state.rootNote !== "parsed" ? "the repository-root note could not be read"
-      : "the repository root codex names is not the one AgEnD trusted";
+      : !state.trustCursor ? "the cursor is not on Trust and continue, or the options are not the known ones"
+      : "Trust was already pressed for this prompt and it is still up";
     return { trustHoldReason: reason, authorizedMatch, promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
       authorizedCwd: authorized?.cwd ?? null, authorizedRoot: authorized?.root ?? null, configPath, configTrust };
+  }
+
+  /** What an auto-trust answered (log only): the folder and root on the prompt, what preTrust covered, and the config path. */
+  private trustPaneFields(pane: string): Record<string, unknown> {
+    const state = codexTrustPromptState(pane), authorized = this.authorizedTrust;
+    return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
+      authorizedCwd: authorized?.cwd ?? null, authorizedRoot: authorized?.root ?? null,
+      configPath: join(this.isolatedCodexHome, "config.toml") };
   }
 
   /**
@@ -2257,6 +2282,7 @@ export class CodexBackend implements CliBackend {
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
+      this.autoTrustDialog(),
       this.trustHoldDialog(),
       this.rateSwitchPickerDialog(),
       {

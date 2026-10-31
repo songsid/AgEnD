@@ -58,8 +58,18 @@ describe("Codex 0.166.0 versus 0.165.0 native surfaces", () => {
     expect(reading(pane)).toMatchObject({ ready: false, deliverable: false, runtime: [], startup: [] });
   });
 
-  it("folder trust and an approval are held without automatic confirmation", () => {
-    for (const v of VERSIONS) for (const name of ["trust", "approval"]) {
+  // hmsg-53600a2c: an AgEnD session always trusts its folder; an approval is still held for a person.
+  it("folder trust is answered Trust; an approval is still held without automatic confirmation", () => {
+    const AUTO_TRUST = { description: "Codex folder trust — trusting the agent's own folder", keys: ["Enter"], holdOnly: false };
+    for (const v of VERSIONS) {
+      const value = reading(frame(v, "trust"));
+      expect(value, v).toMatchObject(HOLD);
+      for (const table of [value.runtime, value.startup]) {
+        expect(table[0], v).toEqual(AUTO_TRUST);
+        expect(table.filter(d => d.keys.length > 0), v).toEqual([AUTO_TRUST]);
+      }
+    }
+    for (const v of VERSIONS) for (const name of ["approval"]) {
       const value = reading(frame(v, name));
       expect(value, `${v} ${name}`).toMatchObject(HOLD);
       expect(value.runtime.length, `${v} ${name}`).toBeGreaterThan(0);

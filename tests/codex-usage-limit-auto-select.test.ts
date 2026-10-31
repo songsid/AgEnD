@@ -106,9 +106,14 @@ describe("usage-limit auto-dismiss with Escape (#945)", () => {
     expect(usageLimitDialog!.isActive!(scrollback)).toBe(false);
   });
 
-  it("trust modal is still holdOnly (no auto-select regression)", () => {
-    const trust = dialogs.find(d => d.description.toLowerCase().includes("trust"));
-    expect(trust?.holdOnly ?? trust?.keys?.length === 0).toBeTruthy();
+  // hmsg-53600a2c: the trust modal is answered Trust on purpose — Enter on its Trust row only, never the usage-limit's
+  // keys; every other trust layout keeps a hold-only entry.
+  it("trust modal: only its own auto-trust (Enter) answers it; other trust layouts stay holdOnly", () => {
+    const trust = dialogs.filter(d => d.description.toLowerCase().includes("trust"));
+    expect(trust.map(d => [d.description, d.keys, !!d.holdOnly])).toEqual([
+      ["Codex folder trust — trusting the agent's own folder", ["Enter"], false],
+      ["Codex folder trust needs human confirmation", [], true],
+    ]);
   });
 
   it("rate-switch dialog is still holdOnly (no auto-select regression)", () => {
