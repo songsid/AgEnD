@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/han/.cache/claude-audit-316/w/p316
+
+
+✻ Conversation compacted (ctrl+o for the summary)
+  Earlier messages are saved in ~/.claude/projects/-home-han--cache-claude-audit-316-w-p316/416fb998-5e2c-4b5b-a889-509c4c8c119c.jsonl
+
+
+● API Error: Repeated 529 Overloaded errors. The API is at capacity — this is usually temporary. Try again in a moment. If it persists, check your
+  inference gateway (127.0.0.1:18316).
+
+✻ Baked for 1s · done 9:09 PM · 1 shell still running
+
+❯ trigger E500 nowtrigger E401 nowtrigger E400LONG now
+  ⎿  Context limit reached · /compact or /clear to continue
+
+✻ Baked for 0s · done 9:10 PM · 1 shell still running
+
+❯ BGWORK start it
+
+  Ran 1 shell command
+
+● tool finished
+
+✻ Churned for 0s · done 9:11 PM · 1 shell still running
+
+
+
+
+
+
+
+
+
+
+
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Background work is running
+   The following will stop when you exit:
+
+   shell · sleep 900
+
+   ❯ 1. Exit and stop tasks
+     2. Move to background and exit
+     3. Stay
+
+   Enter to confirm · Esc to cancel
