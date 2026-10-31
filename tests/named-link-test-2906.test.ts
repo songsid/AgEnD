@@ -191,6 +191,12 @@ describe("#2907 review: bounded, cancelled before launch, ownership kept on an u
     expect(performance.now() - t0).toBeLessThan(1_500);
     expect([h.lane.stop.mock.calls.length, await portFree(h.port)]).toEqual([1, true]);
   });
+  it("(2) bounded in live mode too: a DNS lookup that never answers while checking the open link", async () => {
+    const h = await rig({ hardMs: 150, liveMarker: () => "marker", resolve4: async () => { throw Object.assign(new Error("ETIMEOUT"), { code: "ETIMEOUT" }); }, systemLookup: () => never() });
+    const t0 = performance.now();
+    expect(codes(await runNamedLinkTest(input(h.port), h.deps))).toEqual(["values:✓ok", "origin:✓live", "tunnel:✓live", "dns:✗timeout"]);
+    expect([performance.now() - t0 < 1_500, h.reserve.mock.calls.length]).toEqual([true, 0]);
+  });
   it("(2) a deadline during preparation is never followed by a start", async () => {
     const h = await rig({ hardMs: 100, ensureBinary: () => never() });
     expect(codes(await runNamedLinkTest(input(h.port), h.deps)).at(-1)).toBe("tunnel:✗timeout");
