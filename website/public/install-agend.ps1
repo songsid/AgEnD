@@ -973,6 +973,77 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
       try { [Console]::OutputEncoding = $prevEnc } catch { }
   }
 }
+function Invoke-WslRoot([string]$distro, [string]$script, [int]$TimeoutSeconds = 60) {
+  $prevEAP = $ErrorActionPreference
+  try {
+      $ErrorActionPreference = 'Continue'
+      return (Invoke-BoundedWsl -TimeoutSeconds $TimeoutSeconds -Arguments @('-d', $distro, '-u', 'root', '--exec', 'bash', '-lc', $script))
+  } catch {
+      return @{ Code = -1; Text = "$_" }
+  } finally {
+      $ErrorActionPreference = $prevEAP
+  }
+}
+function Get-WslSystemdState([string]$distro) {
+  for ($i = 0; $i -lt 10; $i++) {
+      $r = Invoke-WslRoot $distro 'systemctl is-system-running 2>&1 | head -n 1' 30
+      if ($r.Code -eq -1) { return 'nowsl' }
+      $state = ([string]$r.Text).Trim()
+      if ($state -match '^(running|degraded)$') { return $state }
+      if ($state -notmatch '^(starting|initializing)$') { if ($state) { return $state } else { return 'offline' } }
+      if ($i -eq 0) { Write-Host ("  {0} 的 systemd 還在啟動，稍等一下…" -f $distro) }
+      Start-Sleep -Seconds 3
+  }
+  return 'starting'
+}
+function Repair-WslUserManager([string]$distro, [string]$user) {
+  if ($user -cnotmatch '^[a-z_][a-z0-9_-]*$') { return 'ok' }
+  $script = 'u=$(id -u ' + $user + ') || exit 3; rt=/run/user/$u; s=$(systemctl is-active user@$u.service); if [ -S $rt/systemd/private ]; then echo OK $u; exit 0; fi; if [ x$s = xactive ]; then systemctl restart user@$u.service || { systemctl reset-failed user@$u.service; systemctl start user@$u.service; } || { echo FAILED $u; exit 4; }; a=RESTARTED; elif [ x$s = xactivating ]; then a=WAITED; else systemctl start user@$u.service || { echo FAILED $u; exit 4; }; a=STARTED; fi; for i in $(seq 1 40); do if [ -S $rt/systemd/private ]; then echo $a $u; exit 0; fi; sleep 0.5; done; echo NOTREADY $u; exit 5'
+  $r = Invoke-WslRoot $distro $script 60
+  if ($r.Code -eq 3) { Write-Host ("  [!!] 在 {0} 裡找不到使用者 {1}，所以沒有重啟。" -f $distro, $user) -ForegroundColor Yellow; return 'failed' }
+  $m = [regex]::Match([string]$r.Text, '\b(OK|RESTARTED|STARTED|WAITED|FAILED|NOTREADY) (\d+)')
+  if (-not $m.Success) { return 'ok' }
+  $uid = $m.Groups[2].Value
+  switch ($m.Groups[1].Value) {
+      'OK' { Write-Host ("  [OK] {0} 的使用者 systemd 正常。" -f $user) -ForegroundColor Green; return 'ok' }
+      'RESTARTED' { Write-Host ("  [OK] 已重建 /run/user/{0}/systemd（使用者 systemd 失去了它的 socket，例如 WSL 換掉了 /run/user/{0}）。" -f $uid) -ForegroundColor Green; return 'ok' }
+      'STARTED' { Write-Host ("  [OK] 已啟動 {0} 的使用者 systemd（它原本沒有執行）。" -f $user) -ForegroundColor Green; return 'ok' }
+      'WAITED' { Write-Host ("  [OK] {0} 的使用者 systemd 已啟動完成。" -f $user) -ForegroundColor Green; return 'ok' }
+      'FAILED' { Write-Host ("  [!!] 修復 {0} 的使用者 systemd 失敗，所以沒有重啟。在 {1} 裡執行 systemctl status user@{2}.service 查看原因。" -f $user, $distro, $uid) -ForegroundColor Yellow; return 'failed' }
+      default { Write-Host ("  [!!] {0} 的使用者 systemd 在 20 秒內沒有恢復，所以沒有重啟。在 {1} 裡執行 systemctl status user@{2}.service 查看原因。" -f $user, $distro, $uid) -ForegroundColor Yellow; return 'failed' }
+  }
+}
+function Restart-WslDistroIfConfirmed([string]$distro, [string]$state) {
+  Write-Host ""
+  Write-Host ("  [!!] {0} 的系統 systemd 沒有在執行（{1}），AgEnD 需要它。" -f $distro, $state) -ForegroundColor Yellow
+  Write-Host ("  可以只重新啟動 AgEnD 所在的這個 Linux（{0}）來修復：" -f $distro)
+  Write-Host ("    · {0} 裡的所有程式都會停止，包括每個 agent 正在做的工作。" -f $distro)
+  Write-Host "    · 其他 Linux 和 Windows 不受影響。"
+  $typed = Read-Host ("  要重新啟動 {0}，請輸入它的名稱（{0}）；直接按 Enter 取消" -f $distro)
+  if (([string]$typed).Trim() -cne $distro) {
+      Write-Host "  已取消：Linux 沒有重新啟動，AgEnD 也沒有重啟。"
+      return $false
+  }
+  Write-Host ("  正在重新啟動 {0}…" -f $distro)
+  $null = Invoke-BoundedWsl -TimeoutSeconds 60 -Arguments @('--terminate', $distro)
+  $null = Invoke-BoundedWsl -TimeoutSeconds 120 -Arguments @('-d', $distro, '--exec', 'true')
+  Write-Host ("  [OK] 已重新啟動 {0}。" -f $distro) -ForegroundColor Green
+  return $true
+}
+function Invoke-AgendRepairLayers([string]$distro, [string]$user) {
+  $state = Get-WslSystemdState $distro
+  if ($state -eq 'nowsl') { Write-Host "  [!!] 找不到 WSL（wsl.exe），所以沒有重啟。" -ForegroundColor Yellow; return $false }
+  if ($state -notmatch '^(running|degraded)$') {
+      if (-not (Restart-WslDistroIfConfirmed $distro $state)) { return $false }
+      $state = Get-WslSystemdState $distro
+      if ($state -notmatch '^(running|degraded)$') {
+          Write-Host ("  [!!] 重新啟動 {0} 之後 systemd 仍然沒有執行（{1}），所以沒有重啟。請確認 /etc/wsl.conf 有 [boot] systemd=true。" -f $distro, $state) -ForegroundColor Yellow
+          return $false
+      }
+  }
+  Write-Host ("  [OK] {0} 的系統 systemd 正在執行。" -f $distro) -ForegroundColor Green
+  return ((Repair-WslUserManager $distro $user) -eq 'ok')
+}
 function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int]$SettleSeconds = 3) {
   Write-Host ""
   $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)"
@@ -980,6 +1051,10 @@ function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int
       Write-Host "  沒有重啟。"
       if ($Wait) { $null = Read-Host "按 Enter 關閉" }
       return 'cancelled'
+  }
+  if (-not (Invoke-AgendRepairLayers $distro $user)) {
+      if ($Wait) { $null = Read-Host "按 Enter 關閉" }
+      return 'failed'
   }
   $r = Invoke-AgendInWsl $distro $user 'agend restart'
   $result = 'restarted'
