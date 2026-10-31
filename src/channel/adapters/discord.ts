@@ -71,6 +71,16 @@ function isDiscordReplyRefusal(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code;
   return code === 50035 || code === 10008 || code === 160002;
 }
+/** #2897: Unknown Message (10008) or Unknown Channel (10003) — what a delete may treat as already done. */
+function isDiscordGone(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 10008 || code === 10003;
+}
+/** #2897: our own refusal of an id that is not a text channel here (another world's, a category) — "look elsewhere". */
+function isDiscordNotHere(err: unknown): boolean {
+  const message = String((err as { message?: unknown } | null)?.message ?? "");
+  return (err as { code?: unknown } | null)?.code === undefined && /is not a text channel|Cannot send to Discord channel/.test(message);
+}
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
 const GATEWAY_STALE_MIN_MS = 180_000;
@@ -1771,27 +1781,46 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async deleteMessage(chatId: string, messageId: string, threadId?: string): Promise<void> {
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses); fall back to scanning top-level text channels.
+    // #2897: resolves only on proof — deleted, or shown to be gone (Discord said Unknown Message / Unknown Channel for
+    // the exact lookup, or a scan that ran to the end found it nowhere). Anything else rejects (Missing Permissions, a
+    // gateway not ready, a scan that could not run), so a caller can retry or fall back.
+    let gone = false;
+    let failure: unknown;
+    let msg: Message | undefined;
     try {
       const channel = await this._fetchTextChannel(threadId ?? chatId);
-      const msg = await channel.messages.fetch(messageId);
-      await msg.delete();
-      return;
-    } catch { /* not in that channel — fall through to scan */ }
-    try {
-      const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
-      const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
-      for (const [, ch] of channels) {
-        try {
-          const textCh = ch as TextChannel;
-          const msg = await textCh.messages.fetch(messageId);
-          await msg.delete();
-          return;
-        } catch {
-          continue;
+      msg = await channel.messages.fetch(messageId);
+    } catch (err) {
+      // Not found there — or no answer at all. A local "not a text channel" proves nothing either way: look elsewhere.
+      // Unknown Channel proves the message gone only for a named thread/channel: with none, chatId may be the guild's id.
+      const code = (err as { code?: unknown } | null)?.code;
+      if (code === 10008 || (code === 10003 && threadId !== undefined)) gone = true;
+      else if (!isDiscordNotHere(err) && code !== 10003) failure = err;
+    }
+    if (!msg) {
+      try {
+        const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
+        const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
+        let scanComplete = true;
+        for (const [, ch] of channels) {
+          try {
+            msg = await (ch as TextChannel).messages.fetch(messageId);
+            break;
+          } catch (err) {
+            if (!isDiscordGone(err)) { scanComplete = false; failure ??= err; }
+          }
         }
-      }
-    } catch { /* message already gone */ }
+        if (!msg && scanComplete && failure === undefined) gone = true;
+      } catch (err) { failure ??= err; }
+    }
+    if (msg) {
+      try { await msg.delete(); } catch (err) { if (!isDiscordGone(err)) throw err; }
+      return;
+    }
+    if (gone) return;
+    throw failure ?? new Error(`Discord message ${messageId} could not be found or deleted`);
   }
+
 
   /**
    * A server's custom emojis, for the Settings status-emoji picker (#1005);

@@ -267,6 +267,13 @@ export interface LifecycleContext {
   checkModelFailover(name: string, fiveHourPct: number): void;
   /** Retire (delete) any pending Cancel button for an instance. No-op if none. */
   clearCancelButton(name: string): void;
+  /**
+   * #2897: a held dialog's notices — the instance-topic one and the General one, each unless its text is null —
+   * edited in place on a re-report, never posted twice. Absent: each report is a fresh post (contexts without a ledger).
+   */
+  showParkedNotice?(name: string, topicText: string | null, generalText: string | null): void;
+  /** #2897: the held dialog is resolved, or the instance stopped/restarted: take its notices back. No-op if none. */
+  resolveParkedNotice?(name: string): void;
   /** Called after a replacement Daemon object is live, for generation fencing and post-resume notices. */
   onDaemonReady?(name: string, daemonBootId: string): void;
   /** Test/integration seam for the non-LLM Codex quota second opinion. */
@@ -615,6 +622,27 @@ export class InstanceLifecycle {
     // must not count as dispatched, or a later retraction would be an orphan.
     const dispatched = this.ctx.notifyInstanceTopic(name, text);
     return dispatched !== false;
+  }
+
+  /**
+   * #2897: a held dialog's notice in the instance's topic and in General — through the fleet's notice ledger when it
+   * has one (one live message per place, edited in place, taken back on resolve), else as two fresh posts. The topic
+   * notice is suppressed as before; the General text skips notifyFleetError's text throttle, as the ledger keeps it to one.
+   */
+  private notifyParked(name: string, kind: string, topicText: string, generalText: string): void {
+    if (!this.ctx.showParkedNotice) {
+      this.notifyIncident(name, kind, topicText);
+      this.ctx.notifyFleetError?.(generalText);
+      return;
+    }
+    if (this.ctx.isPlannedRestart()) {
+      this.ctx.logger.info({ name, kind }, "Incident notification suppressed — planned restart in progress");
+      return;
+    }
+    // As before: a storm folds the topic notice into its summary; General's is not part of that.
+    const stormed = this.ctx.stormSuppressed?.(kind) === true;
+    if (stormed) this.ctx.logger.info({ name, kind }, "Incident notification suppressed — included in tmux storm summary");
+    this.ctx.showParkedNotice(name, stormed ? null : topicText, generalText);
   }
 
   /**
@@ -1235,8 +1263,7 @@ export class InstanceLifecycle {
       if (data.unrecognised) {
         // #1990: the question is a pane line — it may not name a place of its own.
         const asked = data.question ? t("inst.unrecognised_prompt_question", noPlaceMarkers(data.question)) : "";
-        this.notifyIncident(name, "dialog_parked", t("inst.unrecognised_prompt", name, asked));
-        this.ctx.notifyFleetError?.(t("fleet.unrecognised_prompt", instancePlace(name), asked));
+        this.notifyParked(name, "dialog_parked", t("inst.unrecognised_prompt", name, asked), t("fleet.unrecognised_prompt", instancePlace(name), asked));
         return;
       }
       const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
@@ -1244,10 +1271,12 @@ export class InstanceLifecycle {
         // #2872: the Claude session-resume advice only for that prompt (it read as nonsense under a grok or kiro dialog).
         ? t("inst.dialog_parked_hold", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_hold_claude_resume") : "")
         : t("inst.dialog_parked_stuck", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_stuck_claude_resume") : "");
-      this.notifyIncident(name, "dialog_parked", text);
       // #1990: in General, the instance's name links to its topic.
-      this.ctx.notifyFleetError?.(category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
+      this.notifyParked(name, "dialog_parked", text, category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
     }, this.ctx.logger, `daemon.dialog_parked[${name}]`));
+
+    // #2897: the held dialog is gone (closed, answered, auto-answered) — its notices go with it.
+    daemon.on("dialog_unparked", safeHandler(() => this.ctx.resolveParkedNotice?.(name), this.ctx.logger, `daemon.dialog_unparked[${name}]`));
 
     daemon.on("dialog_answer_ignored", safeHandler((data: { name: string; description: string; attempts: number; holdsDeliveries: boolean }) => {
       // A runtime dialog the daemon DID answer, that did not go away. Same rule as dialog_parked: no assist
@@ -1257,8 +1286,7 @@ export class InstanceLifecycle {
       this.ctx.logger.warn({ name, description: data.description, attempts: data.attempts }, "A CLI dialog is not taking the daemon's answer");
       if (this.ctx.isPlannedRestart()) return;
       const text = t(data.holdsDeliveries ? "inst.dialog_answer_ignored_held" : "inst.dialog_answer_ignored", name, data.description, String(data.attempts));
-      this.notifyIncident(name, "dialog_answer_ignored", text);
-      this.ctx.notifyFleetError?.(t("fleet.dialog_answer_ignored", instancePlace(name), data.description, String(data.attempts)));
+      this.notifyParked(name, "dialog_answer_ignored", text, t("fleet.dialog_answer_ignored", instancePlace(name), data.description, String(data.attempts)));
     }, this.ctx.logger, `daemon.dialog_answer_ignored[${name}]`));
 
     daemon.on("instance_interaction", () => this.ctx.onAttentionChanged?.(name));
@@ -1902,6 +1930,8 @@ export class InstanceLifecycle {
     });
 
     this.attachIncidentHandlers(name, daemon);
+    // #2897: a new daemon starts with no dialog held; a notice the last one left (a crash, a respawn) is out of date.
+    this.ctx.resolveParkedNotice?.(name);
 
     daemon.on("pty_recovered", safeHandler((data: { name: string; downtime_s: number }) => {
       const mins = Math.floor(data.downtime_s / 60);
@@ -2062,6 +2092,8 @@ export class InstanceLifecycle {
     this.invalidate(name);
     this.wokeAt.delete(name);
     this.ctx.setTopicIcon(name, "remove");
+    // #2897: a stopped instance holds no dialog — its "needs a human" notices are out of date.
+    this.ctx.resolveParkedNotice?.(name);
     // B1: cancel any pending capacity backoff timer so a stopped/removed
     // instance is not restarted behind the user's back.
     const pendingBackoff = this.capacityBackoffTimers.get(name);
