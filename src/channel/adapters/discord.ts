@@ -71,6 +71,21 @@ function isDiscordReplyRefusal(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code;
   return code === 50035 || code === 10008 || code === 160002;
 }
+/** #2897: Unknown Message (10008) or Unknown Channel (10003) — what a delete may treat as already done. */
+function isDiscordGone(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 10008 || code === 10003;
+}
+/**
+ * #2897: a lookup the API refused (any Discord error code but "gone"), or that never reached it (an HTTP status or a
+ * transport failure) — not our own "that id is not a text channel here", which only means "look elsewhere".
+ */
+function isDiscordLookupFailure(err: unknown): boolean {
+  const e = err as { code?: unknown; status?: unknown; name?: unknown; message?: unknown } | null;
+  if (typeof e?.code === "number") return !isDiscordGone(err);
+  if (typeof e?.status === "number") return true;
+  return /HTTPError|AbortError|Timeout|ECONN|ETIMEDOUT|EAI_AGAIN|fetch failed/i.test(`${String(e?.name ?? "")} ${String(e?.code ?? "")} ${String(e?.message ?? "")}`);
+}
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
 const GATEWAY_STALE_MIN_MS = 180_000;
@@ -1771,26 +1786,34 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async deleteMessage(chatId: string, messageId: string, threadId?: string): Promise<void> {
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses); fall back to scanning top-level text channels.
+    // #2897: a message msg but not deleted (Missing Permissions, an API outage) rejects, so a caller can retry or
+    // fall back; only a message that is nowhere (already deleted, its channel gone) counts as deleted.
+    let lookupErr: unknown;
+    let msg: Message | undefined;
     try {
       const channel = await this._fetchTextChannel(threadId ?? chatId);
-      const msg = await channel.messages.fetch(messageId);
-      await msg.delete();
-      return;
-    } catch { /* not in that channel — fall through to scan */ }
-    try {
-      const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
-      const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
-      for (const [, ch] of channels) {
-        try {
-          const textCh = ch as TextChannel;
-          const msg = await textCh.messages.fetch(messageId);
-          await msg.delete();
-          return;
-        } catch {
-          continue;
+      msg = await channel.messages.fetch(messageId);
+    } catch (err) { lookupErr = err; /* not in that channel — fall through to scan */ }
+    if (!msg) {
+      try {
+        const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
+        const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
+        for (const [, ch] of channels) {
+          try {
+            msg = await (ch as TextChannel).messages.fetch(messageId);
+            break;
+          } catch {
+            continue;
+          }
         }
-      }
-    } catch { /* message already gone */ }
+      } catch (err) { lookupErr ??= err; }
+    }
+    if (msg) {
+      try { await msg.delete(); } catch (err) { if (!isDiscordGone(err)) throw err; }
+      return;
+    }
+    // Nowhere to be msg: already gone — unless the exact lookup failed at the API (no access, an outage).
+    if (lookupErr !== undefined && isDiscordLookupFailure(lookupErr)) throw lookupErr;
   }
 
   /**

@@ -64,7 +64,27 @@ export class ParkedNotices {
   private readonly chains = new Map<string, Promise<void>>();
   private disposed = false;
 
-  constructor(private readonly deps: ParkedNoticeDeps) {}
+  /** What the previous process left in the ledger, read before this one writes anything; the sweep retires these. */
+  private readonly previous: ParkedNoticeRow[];
+
+  /**
+   * Reads the ledger at once: a dialog reported early in a slow boot must not overwrite the previous process's rows
+   * before the sweep has read them (nor may the sweep then take this process's fresh notices for orphans).
+   */
+  constructor(private readonly deps: ParkedNoticeDeps) {
+    let rows: ParkedNoticeRow[] = [];
+    try {
+      if (existsSync(deps.file)) {
+        const parsed: unknown = JSON.parse(readFileSync(deps.file, "utf-8"));
+        rows = Array.isArray(parsed) ? parsed.filter(isRow) : [];
+      }
+    } catch (err) {
+      deps.logger.warn({ err }, "Parked-dialog notice ledger unreadable — dropping it");
+    }
+    this.previous = rows;
+    // Held in the retiring set until the sweep settles each one, so every write meanwhile still lists them.
+    for (const row of rows) this.retiring.add(row);
+  }
 
   /**
    * Show the notice for `instanceName` in `place`: edit the live one in place, else post one. A re-report that says
@@ -123,21 +143,12 @@ export class ParkedNotices {
   }
 
   /**
-   * Retire every notice the previous process left: nothing it posted can still be live from this process's point
-   * of view (the daemons start with fresh state and re-report a dialog that is still there). Run once adapters are up.
+   * Retire every notice the previous process left — only those: nothing it posted can still be live from this
+   * process's point of view (the daemons start with fresh state and re-report a dialog that is still there), while
+   * whatever this process has posted meanwhile stays live. Run once adapters are up; a second call does nothing.
    */
   async sweep(): Promise<void> {
-    let rows: ParkedNoticeRow[];
-    try {
-      if (!existsSync(this.deps.file)) return;
-      const parsed: unknown = JSON.parse(readFileSync(this.deps.file, "utf-8"));
-      rows = Array.isArray(parsed) ? parsed.filter(isRow) : [];
-    } catch (err) {
-      this.deps.logger.warn({ err }, "Parked-dialog notice ledger unreadable — dropping it");
-      rows = [];
-    }
-    // The retiring set holds these until each attempt settles, so the ledger written meanwhile still lists them.
-    for (const row of rows) this.retiring.add(row);
+    const rows = this.previous.splice(0);
     this.persist();
     await Promise.all(rows.map(row => this.retire(row)));
   }

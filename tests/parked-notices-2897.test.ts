@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { Daemon } from "../src/daemon.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { InstanceLifecycle, type IncidentEventSource, type LifecycleContext } from "../src/instance-lifecycle.js";
@@ -240,6 +241,83 @@ describe("#2897: the ledger survives a restart", () => {
   });
 });
 
+describe("#2897: startup ordering — a notice posted before the sweep is this process's, not an orphan", () => {
+  it("an early parked report in a slow boot keeps its notice; the sweep retires only what the last process left", async () => {
+    const discord = mockAdapter("discord");
+    const first = store({ discord });
+    await first.notices.show("w", "topic", "old warning");
+    first.notices.dispose();
+    const [oldId] = [...discord.messages.keys()];
+
+    const second = store({ discord });             // the new process: an instance reports before finishStartup's sweep
+    await second.notices.show("w", "topic", "still held");
+    const newId = [...discord.messages.keys()].find(id => id !== oldId)!;
+    expect(second.ledger().map(r => r.messageId).sort()).toEqual([oldId, newId].sort());   // the old row survives the write
+    await second.notices.sweep();
+    expect([...discord.messages.entries()]).toEqual([[newId, "still held"]]);
+    expect(second.ledger().map(r => r.messageId)).toEqual([newId]);
+    // Still live: an identical re-report touches nothing, a resolve deletes it.
+    await second.notices.show("w", "topic", "still held");
+    expect(discord.sent).toHaveLength(2);
+    await second.notices.sweep();                   // a second sweep has nothing of the last process's left
+    expect(discord.messages.has(newId)).toBe(true);
+    await second.notices.resolve("w");
+    expect(discord.messages.size).toBe(0);
+  });
+});
+
+describe("#2897: the production Discord delete reports a refusal", () => {
+  /** DiscordAdapter.prototype.deleteMessage over a fake client: `exact` is the thread's fetch, `scan` the text channels'. */
+  function discordDelete(opts: { exact: () => Promise<any>; scan?: Array<() => Promise<any>>; guildFails?: unknown }) {
+    const adapter = Object.create(DiscordAdapter.prototype) as any;
+    adapter.guildId = "g1";
+    adapter._fetchTextChannel = async () => ({ messages: { fetch: opts.exact } });
+    adapter.readyClient = async () => ({ guilds: { fetch: async () => {
+      if (opts.guildFails) throw opts.guildFails;
+      const cache = new Map((opts.scan ?? []).map((fetch, i) => [String(i), { type: 0, messages: { fetch } }]));
+      return { channels: { cache: { filter: (f: (c: any) => boolean) => new Map([...cache].filter(([, c]) => f(c))) } } };
+    } } });
+    return adapter as DiscordAdapter;
+  }
+  const apiErr = (code: number, message: string) => Object.assign(new Error(message), { code, status: code === 10008 ? 404 : 403 });
+
+  it("found but not deleted (Missing Permissions) rejects; already gone resolves", async () => {
+    const refused = discordDelete({ exact: async () => ({ delete: async () => { throw apiErr(50013, "Missing Permissions"); } }) });
+    await expect(refused.deleteMessage("g1", "m1", "t1")).rejects.toThrow("Missing Permissions");
+    const goneOnDelete = discordDelete({ exact: async () => ({ delete: async () => { throw apiErr(10008, "Unknown Message"); } }) });
+    await expect(goneOnDelete.deleteMessage("g1", "m1", "t1")).resolves.toBeUndefined();
+    const nowhere = discordDelete({ exact: async () => { throw apiErr(10008, "Unknown Message"); }, scan: [async () => { throw apiErr(10008, "Unknown Message"); }] });
+    await expect(nowhere.deleteMessage("g1", "m1", "t1")).resolves.toBeUndefined();
+  });
+
+  it("an exact lookup the API refused (Missing Access, an outage) rejects when the scan does not find it", async () => {
+    const noAccess = discordDelete({ exact: async () => { throw apiErr(50001, "Missing Access"); } });
+    await expect(noAccess.deleteMessage("g1", "m1", "t1")).rejects.toThrow("Missing Access");
+    const outage = discordDelete({ exact: async () => { throw Object.assign(new Error("Service Unavailable"), { status: 503 }); }, guildFails: new Error("fetch failed") });
+    await expect(outage.deleteMessage("g1", "m1", "t1")).rejects.toThrow();
+    // "Not a text channel here" only means look elsewhere: found by the scan, deleted.
+    let deleted = false;
+    const elsewhere = discordDelete({ exact: async () => { throw new Error("Channel g1 is not a text channel"); }, scan: [async () => ({ delete: async () => { deleted = true; } })] });
+    await expect(elsewhere.deleteMessage("g1", "m1")).resolves.toBeUndefined();
+    expect(deleted).toBe(true);
+  });
+
+  it("a refused Discord delete leaves the notice saying ✓ resolved, not the held text", async () => {
+    let text = "⚠️ held";
+    const adapter = discordDelete({ exact: async () => ({ delete: async () => { throw apiErr(50013, "Missing Permissions"); } }) }) as any;
+    adapter.editMessage = async (_c: string, _m: string, next: string) => { text = next; };
+    const notices = new ParkedNotices({
+      file: join(dir, PARKED_NOTICE_LEDGER_FILE), logger,
+      post: async () => ({ adapterId: "discord", chatId: "g1", threadId: "t1", messageId: "m1" }),
+      adapterFor: () => adapter, resolvedText: () => "✓ resolved", render: (_row, t) => t,
+    });
+    await notices.show("w", "topic", "⚠️ held");
+    await notices.resolve("w");
+    expect(text).toBe("✓ resolved");
+    expect(JSON.parse(readFileSync(join(dir, PARKED_NOTICE_LEDGER_FILE), "utf-8"))).toEqual([]);
+  });
+});
+
 describe("#2897: the daemon says when the held dialog is gone", () => {
   function daemon() {
     mkdirSync(join(dir, "inst"), { recursive: true });
@@ -267,6 +345,49 @@ describe("#2897: the daemon says when the held dialog is gone", () => {
     expect(events).toEqual(["parked"]);
     d.trackDialogParked(null);
     d.trackDialogParked(null);
+    expect(events).toEqual(["parked", "unparked"]);
+  });
+
+  it("a non-blocking dialog's answer-ignored notice stays while it is on screen and goes when the answer takes", () => {
+    vi.useFakeTimers();
+    const { d, events } = daemon();
+    d.on("dialog_answer_ignored", () => events.push("ignored"));
+    const intro = { pattern: /Welcome tour/, description: "Intro screen", keys: ["Escape"] };
+    for (let i = 0; i < 3; i++) { d.noteDialogAnswer(intro, "ignored", "screen-1"); d.trackDialogParked(null); }
+    expect(events).toEqual(["ignored"]);           // every scan passes no blocking dialog: the notice must stay
+    d.noteDialogAnswer(intro, "took", "screen-1");
+    expect(events).toEqual(["ignored", "unparked"]);
+  });
+
+  it("a non-blocking answer episode that ends because the screen changed retires its notice too", () => {
+    vi.useFakeTimers();
+    const { d, events } = daemon();
+    const intro = { pattern: /Welcome tour/, description: "Intro screen", keys: ["Escape"] };
+    const other = { pattern: /Feedback/, description: "Feedback screen", keys: ["Escape"] };
+    for (let i = 0; i < 3; i++) d.noteDialogAnswer(intro, "ignored", "screen-1");
+    d.noteDialogAnswer(other, "ignored", "screen-2");
+    expect(events).toEqual(["unparked"]);
+  });
+
+  it("a blocking dialog's answer-ignored notice lives with the parked clock, not the answer episode", () => {
+    vi.useFakeTimers();
+    const { d, events } = daemon();
+    const prompt = { pattern: /Trust this folder\?/, description: "Trust prompt", keys: ["Enter"], blocksDelivery: true };
+    d.trackDialogParked(prompt);
+    for (let i = 0; i < 3; i++) d.noteDialogAnswer(prompt, "ignored", "screen-1");
+    d.endDialogEpisode(false);                       // the episode ends, the dialog is still on screen
+    expect(events).toEqual([]);
+    d.trackDialogParked(null);
+    expect(events).toEqual(["unparked"]);
+  });
+
+  it("a relaunched CLI retires the notice out for the old one", () => {
+    vi.useFakeTimers();
+    const { d, events } = daemon();
+    d.trackDialogParked(trust);
+    vi.advanceTimersByTime(120_000);
+    d.trackDialogParked(trust);
+    d.beginSpawn();
     expect(events).toEqual(["parked", "unparked"]);
   });
 
@@ -326,6 +447,21 @@ describe("#2897: the lifecycle routes notices through the ledger", () => {
   });
 });
 
+describe("#2897: a stopped instance's notices are taken back", () => {
+  it("stop resolves the instance's parked notices", async () => {
+    const resolveParkedNotice = vi.fn();
+    const ctx = {
+      fleetConfig: { defaults: {}, instances: { w: {} } },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      dataDir: dir, getInstanceDir: (name: string) => join(dir, name),
+      setTopicIcon: vi.fn(), resolveParkedNotice,
+      ipcStoppingInstances: new Set<string>(), instanceIpcClients: new Map(), sessionRegistry: new Map(),
+    } as unknown as LifecycleContext;
+    await new InstanceLifecycle(ctx).stop("w");
+    expect(resolveParkedNotice).toHaveBeenCalledWith("w");
+  });
+});
+
 describe("#2897: the fleet posts, edits and deletes through the real routing", () => {
   function fleet() {
     const fm = new FleetManager(dir) as any;
@@ -374,6 +510,18 @@ describe("#2897: the fleet posts, edits and deletes through the real routing", (
     fm.resolveParkedNotice("tg");
     await vi.waitFor(() => expect(telegram.deletes).toHaveLength(1));
     await vi.waitFor(() => expect(discord.deletes).toHaveLength(1));
+  });
+
+  it("FleetManager: an instance parked before finishStartup's sweep keeps its notice; the dead process's row is swept", async () => {
+    const { fm, discord } = fleet();
+    discord.messages.set("77", "from the dead process");
+    writeFileSync(join(dir, PARKED_NOTICE_LEDGER_FILE), JSON.stringify([{ instanceName: "w", place: "topic", adapterId: "discord", chatId: "111111111111111111", threadId: "333333333333333333", messageId: "77" }]));
+    fm.showParkedNotice("w", "⚠️ w topic (this process)", null);
+    await vi.waitFor(() => expect(discord.sent).toHaveLength(1));
+    await fm.parkedNotices.sweep();
+    expect([...discord.messages.values()]).toEqual(["⚠️ w topic (this process)"]);
+    fm.resolveParkedNotice("w");
+    await vi.waitFor(() => expect(discord.messages.size).toBe(0));
   });
 
   it("a resolved notice the fleet could not delete is retried after a restart (FleetManager sweep)", async () => {
