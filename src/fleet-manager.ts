@@ -27,7 +27,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
-import { runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
+import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
@@ -6761,7 +6761,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * typed connector token, else the saved one). One at a time; the result is closed step codes only — the token is
    * never logged or returned. Admin only, never over the public link (settings-api.ts).
    */
-  async testNamedLink(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown }): Promise<NamedTestResult | { busy: true }> {
+  async testNamedLink(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown; current?: () => boolean }): Promise<NamedTestResult | { busy: true }> {
     if (this.namedLinkTestRunning) return { busy: true };
     this.namedLinkTestRunning = true;
     try {
@@ -6770,12 +6770,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         healthPort: this.fleetConfig?.health_port ?? 19280,
         ensureBinary: async signal => (await ensureCloudflared({ dataDir: this.dataDir, pinnedOnly: true, signal })).path,
         liveMarker: values => this.publicWebLink?.liveNamedMarker(values) ?? null,
-        reserve: () => {
-          const lane = this.getTunnelLane(), held = lane.reserve("named-test", `named-test-${Date.now()}`);
-          return held ? { release: () => held.releaseUnused() } : { busy: lane.holder() === "dashboard" ? "link-open" as const : "other" as const };
-        },
+        reserve: namedTestLane(this.getTunnelLane()),
+        current: input.current,
       });
-      this.logger.info({ steps: result.steps.map(s => `${s.step}:${s.code}`), typedToken: !!typed }, "Named link test");
+      this.logger[result.cleanup ? "warn" : "info"]({ steps: result.steps.map(s => `${s.step}:${s.code}`), typedToken: !!typed, ...(result.cleanup ? { cleanup: result.cleanup } : {}) },
+        result.cleanup ? "Named link test: the test connector's stop could not be proven; the tunnel lane stays held" : "Named link test");
       return result;
     } finally { this.namedLinkTestRunning = false; }
   }

@@ -9,7 +9,9 @@ import { createServer, request, type Server } from "node:http";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runNamedLinkTest } from "../../../src/tunnel/named-link-test.ts";
+import { namedTestLane, runNamedLinkTest } from "../../../src/tunnel/named-link-test.ts";
+import { TunnelPurposeLane } from "../../../src/tunnel/purpose-lane.ts";
+import { ManagedTunnel } from "../../../src/tunnel/manager.ts";
 import { handleSettingsRequest } from "../../../src/settings-api.ts";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../../../src/web-session.ts";
 import { bindGatewayRequest } from "../../../src/web-request-context.ts";
@@ -24,8 +26,9 @@ writeFileSync(stub, `#!${process.execPath}
 const fs = require("fs");
 fs.writeFileSync(${JSON.stringify(join(dir, "seen.json"))}, JSON.stringify({ argv: process.argv.slice(2), tokenInEnv: process.env.TUNNEL_TOKEN === ${JSON.stringify(TOKEN)}, tokenOnArgv: process.argv.join(" ").includes(${JSON.stringify(TOKEN)}), pid: process.pid }));
 const mode = fs.readFileSync(${JSON.stringify(join(dir, "mode"))}, "utf8").trim();
+if (mode === "ignore-term") process.on("SIGTERM", () => {});     // only SIGKILL ends it
 setTimeout(() => {
-  if (mode === "ok") process.stderr.write("2026-11-01T00:00:00Z INF Registered tunnel connection connIndex=0 location=tpe01 protocol=http2\\n");
+  if (mode === "ok" || mode === "ignore-term") process.stderr.write("2026-11-01T00:00:00Z INF Registered tunnel connection connIndex=0 location=tpe01 protocol=http2\\n");
   if (mode === "auth") { process.stderr.write("ERR Provided Tunnel token is not valid (unexpected end of JSON input)\\n"); process.exit(1); }
   if (mode === "network") process.stderr.write("ERR Failed to dial a quic connection: i/o timeout\\n");
 }, 200);
@@ -52,11 +55,13 @@ const edgeFetch = async (url: string) => {
   });
 };
 let dnsAnswer: string[] | "ENOTFOUND" = ["104.16.1.1"];
-const testNamedLink = (input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown }) => runNamedLinkTest(
+const testNamedLink = (input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown; current?: () => boolean }) => runNamedLinkTest(
   { hostname: input.hostname, port: input.port, protocol: input.protocol, token: typeof input.token === "string" ? input.token : TOKEN },
-  { healthPort: 19280, ensureBinary: async () => stub, liveMarker: () => null, reserve: () => ({ release() {} }),
+  // The production lane: the one tunnel lane, its managed start (lease, proven stop), a connector ready once registered.
+  { healthPort: 19280, ensureBinary: async () => stub, liveMarker: () => null, reserve: namedTestLane(lane, { registerMs: 5_000 }),
     resolve4: async () => { if (dnsAnswer === "ENOTFOUND") throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }); return dnsAnswer; },
-    systemLookup: async () => ({}), fetchPage: edgeFetch, registerMs: 5_000, reachMs: 2_000, retryMs: 100 });
+    systemLookup: async () => ({}), fetchPage: edgeFetch, reachMs: 2_000, retryMs: 100, current: input.current });
+const lane = new TunnelPurposeLane(new ManagedTunnel({ dataDir: dir }));
 
 // The real Settings route, a real admin session.
 const webToken = "c".repeat(48), sessions = new WebSessionStore({});
@@ -110,6 +115,10 @@ await scenario("④ the domain is not in DNS", () => { mode("ok"); dnsAnswer = "
 await scenario("⑤ route to the wrong service (530/1033)", () => { dnsAnswer = ["104.16.1.1"]; edge = 530; }, "✓values:ok ✓origin:ok ✓tunnel:ok ✓dns:ok ✗reach:wrong-service");
 await scenario("⑤ tunnel up, this machine's network resets its own address", () => { edge = "reset"; }, "✓values:ok ✓origin:ok ✓tunnel:ok ✓dns:ok ✗reach:self-unreachable");
 edge = "origin";
+await scenario("a connector that ignores SIGTERM (SIGKILL proves its exit)", () => { mode("ignore-term"); edge = "origin"; }, "✓values:ok ✓origin:ok ✓tunnel:ok ✓dns:ok ✓reach:ok");
+mode("ok");
+const laneFree = lane.holder() === null;
+rows.push(`| (after every run) the tunnel lane is free | ${laneFree} | | | | ${laneFree ? "PASS" : "FAIL"} |`); pass &&= laneFree;
 gateway = true;
 await scenario("over the public link (even an admin)", () => {}, "HTTP 403");
 gateway = false;

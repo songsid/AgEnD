@@ -91,7 +91,7 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 export interface SettingsApiContext extends AppShellContext {
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
   /** #2906: the fixed address's Test connection (closed step codes only; never the token). */
-  testNamedLink?(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown }): Promise<import("./tunnel/named-link-test.js").NamedTestResult | { busy: true }>;
+  testNamedLink?(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown; current?: () => boolean }): Promise<import("./tunnel/named-link-test.js").NamedTestResult | { busy: true }>;
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
   /** #2667: the ClassicBot rooms' instance names — a guest grant may name one, so a save's validation knows them. */
@@ -470,17 +470,21 @@ export function handleSettingsRequest(
   // only in the test connector's environment, and never echoed — the answer is closed step codes.
   if (method === "POST" && path === "/api/settings/public-link/test") {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }, true); return true; }
-    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "An admin sign-in is required" }, true); return true; }
+    const caller = guestSettingsCaller(req, url, ctx);
+    if (!caller) { json(res, 403, { error: "An admin sign-in is required" }, true); return true; }
     if (!ctx.testNamedLink) { json(res, 501, { error: "test unavailable" }, true); return true; }
+    // #2907 review: the same admin, still current, after the body's await — and again before anything is started.
+    const current = (): boolean => guestSettingsCaller(req, url, ctx) === caller;
     readBody(req, 16 * 1024).then(async buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
+      if (!current()) return json(res, 401, { error: "no longer authorized" }, true);
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }, true); }
       if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "invalid body" }, true);
-      const result = await ctx.testNamedLink!({ hostname: body.hostname, port: body.origin_port, protocol: body.protocol, token: body.token });
+      const result = await ctx.testNamedLink!({ hostname: body.hostname, port: body.origin_port, protocol: body.protocol, token: body.token, current });
       if ("busy" in result) return json(res, 409, { error: "test_running" }, true);
-      json(res, 200, { steps: result.steps, hostname: result.hostname, port: result.port }, true);
+      json(res, 200, { steps: result.steps, hostname: result.hostname, port: result.port, ...(result.cleanup ? { cleanup: result.cleanup } : {}) }, true);
     }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }, true); });
     return true;
   }

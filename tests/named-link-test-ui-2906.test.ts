@@ -81,6 +81,15 @@ describe("#2906 Test connection on the page", () => {
       }
     }
   });
+  it("#2907: the deadline, an ended sign-in, and a connector whose stop could not be proven", async () => {
+    answer = steps([["values", true, "ok"], ["origin", true, "ok"], ["tunnel", false, "timeout"]]);
+    expect((await run())[2]).toBe("✗ The tunnel connects to Cloudflare — The test took too long and was stopped. Test again; if it repeats, check this machine's network.");
+    answer = steps([["values", true, "ok"], ["origin", false, "cancelled"]]); await p.unmount();
+    expect((await run())[1]).toBe("✗ This machine answers on port 19282 — Your sign-in ended, so nothing was started. Sign in again and test again.");
+    answer = { status: 200, body: { ...(steps([["values", true, "ok"], ["origin", true, "ok"], ["tunnel", true, "ok"], ["dns", true, "ok"], ["reach", true, "ok"]]).body), cleanup: "unconfirmed" } };
+    i18n.setLang("zh-TW"); await p.unmount(); await run();
+    expect(p.root.querySelector(".named-test [role=alert]").textContent).toBe("無法確認測試用的連接器已經停止。請先執行 agend restart，再測試或開啟連結。");
+  });
   it("busy (409) and a failed request say so; the button is disabled while it runs", async () => {
     answer = { status: 409, body: { error: "test_running" } };
     await run();

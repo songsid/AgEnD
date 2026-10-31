@@ -13,7 +13,9 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runNamedLinkTest, type NamedLinkTestDeps, type NamedTestResult } from "../src/tunnel/named-link-test.js";
+import { namedTestLane, runNamedLinkTest, type NamedLinkTestDeps, type NamedTestResult } from "../src/tunnel/named-link-test.js";
+import { TunnelPurposeLane } from "../src/tunnel/purpose-lane.js";
+import { ManagedTunnel } from "../src/tunnel/manager.js";
 import { CloudflaredProvider } from "../src/tunnel/cloudflared.js";
 import { NAMED_TUNNEL_FAILURE_MESSAGES } from "../src/tunnel/named-diagnostics.js";
 import { failureOf } from "../src/public-link-progress.js";
@@ -54,22 +56,19 @@ function edgeTo(port: number) {
     }); req.on("error", reject); req.end();
   });
 }
-interface Rig { deps: NamedLinkTestDeps; child: Child; spawn: ReturnType<typeof vi.fn>; released: ReturnType<typeof vi.fn>; port: number }
-async function rig(over: Partial<NamedLinkTestDeps> & { output?: string | null; port?: number } = {}): Promise<Rig> {
+const never = <T>() => new Promise<T>(() => {});
+interface Rig { deps: NamedLinkTestDeps; lane: { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; releaseUnused: ReturnType<typeof vi.fn> }; reserve: ReturnType<typeof vi.fn>; port: number }
+/** The runner with a fake lane (its start/stop are what the managed lane answers); the stand-in and the edge are real. */
+async function rig(over: Partial<NamedLinkTestDeps> & { start?: () => Promise<{ ok: true } | { ok: false; kind: string }>; stop?: () => Promise<{ confirmed: boolean }>; port?: number } = {}): Promise<Rig> {
   const port = over.port ?? await freePort();
-  const child = new Child(), released = vi.fn();
-  const spawn = vi.fn(() => {
-    // A real connector prints its registration a moment after it starts.
-    if (over.output !== null) setTimeout(() => child.say(over.output ?? "INF Registered tunnel connection connIndex=0 location=tpe01 protocol=http2\n"), 5);
-    return child;
-  });
+  const lane = { start: vi.fn(over.start ?? (async () => ({ ok: true as const }))), stop: vi.fn(over.stop ?? (async () => ({ confirmed: true }))), releaseUnused: vi.fn() };
+  const reserve = vi.fn(() => lane);
   const deps: NamedLinkTestDeps = {
-    healthPort: 19280, ensureBinary: async () => "/private/cloudflared", liveMarker: () => null,
-    reserve: () => ({ release: released }), spawnProcess: spawn as never, env: { PATH: "/usr/bin", SECRET_OF_THE_HOST: "x" },
+    healthPort: 19280, ensureBinary: async () => "/private/cloudflared", liveMarker: () => null, reserve: reserve as never,
     resolve4: async () => ["104.16.1.1"], systemLookup: async () => ({}), fetchPage: edgeTo(port),
-    registerMs: 300, reachMs: 300, retryMs: 20, stopGraceMs: 50, ...over,
+    reachMs: 300, retryMs: 20, ...over,
   };
-  return { deps, child, spawn, released, port };
+  return { deps, lane, reserve, port };
 }
 const codes = (r: NamedTestResult) => r.steps.map(s => `${s.step}:${s.ok ? "✓" : "✗"}${s.code}`);
 const input = (port: number, extra: Record<string, unknown> = {}) => ({ hostname: HOST, port, protocol: "http2", token: TOKEN, ...extra });
@@ -84,14 +83,12 @@ describe("#2906 the Test connection runner: every step and every ✗", () => {
     const h = await rig();
     const result = await runNamedLinkTest(input(h.port), h.deps);
     expect(codes(result)).toEqual(["values:✓ok", "origin:✓ok", "tunnel:✓ok", "dns:✓ok", "reach:✓ok"]);
-    expect([result.hostname, result.port]).toEqual([HOST, h.port]);
-    // The token is in the child's environment only: never argv, and the host's own environment is not passed on.
-    const [binary, argv, opts] = h.spawn.mock.calls[0]! as [string, string[], { env: Record<string, string>; shell: boolean }];
-    expect([binary, argv, opts.shell, opts.env.TUNNEL_TOKEN === TOKEN, "SECRET_OF_THE_HOST" in opts.env])
-      .toEqual(["/private/cloudflared", ["tunnel", "--no-autoupdate", "--config", "/dev/null", "--protocol", "http2", "run"], false, true, false]);
+    expect([result.hostname, result.port, result.cleanup]).toEqual([HOST, h.port, undefined]);
+    const started = h.lane.start.mock.calls[0]![0] as { binary: string; hostname: string; token: string; protocol: string; origin: URL };
+    expect([started.binary, started.hostname, started.token === TOKEN, started.protocol, started.origin.href]).toEqual(["/private/cloudflared", HOST, true, "http2", `http://127.0.0.1:${h.port}/`]);
     expect(JSON.stringify(result)).not.toContain(TOKEN);
-    // Torn down: the child stopped, the port free again, the lane released.
-    expect([h.child.kill.mock.calls[0]?.[0], await portFree(h.port), h.released.mock.calls.length]).toEqual(["SIGTERM", true, 1]);
+    // Torn down: the connector stopped through the lane (which gives the lane back on a proven stop), the port free.
+    expect([h.lane.stop.mock.calls.length, h.lane.releaseUnused.mock.calls.length, await portFree(h.port)]).toEqual([1, 0, true]);
   });
   it.each([
     [{ hostname: "https://agend.example.com/path" }, "values:✗bad-hostname"],
@@ -101,60 +98,51 @@ describe("#2906 the Test connection runner: every step and every ✗", () => {
     [{ token: "" }, "values:✗no-token"],
     [{ token: null }, "values:✗no-token"],
     [{ token: "eyJ-not-a-token" }, "values:✗bad-token"],
-  ])("① %j → %s, and nothing is started", async (bad, expected) => {
+  ])("① %j → %s, and nothing is reserved or started", async (bad, expected) => {
     const h = await rig();
     const result = await runNamedLinkTest({ ...input(h.port), ...bad }, h.deps);
     expect(codes(result).at(-1)).toBe(expected);
-    expect([h.spawn.mock.calls.length, h.released.mock.calls.length]).toEqual([0, 0]);
+    expect([h.reserve.mock.calls.length, h.lane.start.mock.calls.length]).toEqual([0, 0]);
   });
-  it("② the dashboard's own port, a port another program holds, a link open with other values, another tunnel", async () => {
+  it("② the dashboard's own port, a port another program holds (the lane given back unused), a link open with other values, another tunnel", async () => {
     const dash = await rig();
     expect(codes(await runNamedLinkTest(input(19280), dash.deps)).at(-1)).toBe("origin:✗dashboard-port");
     const held = await rig();
     const other = createServer(); servers.push(other); await new Promise<void>(r => other.listen(held.port, "127.0.0.1", r));
     expect(codes(await runNamedLinkTest(input(held.port), held.deps)).at(-1)).toBe("origin:✗port-in-use");
-    expect([held.spawn.mock.calls.length, held.released.mock.calls.length]).toEqual([0, 1]);      // released, never started
+    expect([held.lane.start.mock.calls.length, held.lane.stop.mock.calls.length, held.lane.releaseUnused.mock.calls.length]).toEqual([0, 0, 1]);
     const open = await rig({ reserve: () => ({ busy: "link-open" }) });
     expect(codes(await runNamedLinkTest(input(open.port), open.deps)).at(-1)).toBe("origin:✗link-open-other");
     const busy = await rig({ reserve: () => ({ busy: "other" }) });
     expect(codes(await runNamedLinkTest(input(busy.port), busy.deps)).at(-1)).toBe("origin:✗tunnel-busy");
-    expect([open.spawn.mock.calls.length, busy.spawn.mock.calls.length]).toEqual([0, 0]);
   });
-  it("② with the link open on exactly these values: tested as it is — nothing started, the open link's page is the proof", async () => {
-    const h = await rig({ liveMarker: v => v.hostname === HOST && v.token === TOKEN ? "marker-of-the-open-link" : null,
+  it("② with the link open on exactly these values (protocol included): tested as it is — nothing reserved, its page is the proof", async () => {
+    const asked: unknown[] = [];
+    const h = await rig({ liveMarker: v => { asked.push(v); return v.hostname === HOST && v.token === TOKEN && v.protocol === "quic" ? "marker-of-the-open-link" : null; },
       fetchPage: async () => ({ status: 200, contentType: "text/html", body: "<p>marker-of-the-open-link</p>" }) });
-    const reserve = vi.spyOn(h.deps, "reserve");
-    expect(codes(await runNamedLinkTest(input(h.port), h.deps))).toEqual(["values:✓ok", "origin:✓live", "tunnel:✓live", "dns:✓ok", "reach:✓ok"]);
-    expect([h.spawn.mock.calls.length, reserve.mock.calls.length]).toEqual([0, 0]);
-  });
-  it("③ a refused token is said at once, not after the registration budget", async () => {
-    const h = await rig({ output: "ERR Provided Tunnel token is not valid (unexpected end of JSON input)\n", registerMs: 10_000 });
-    const t0 = performance.now();
-    expect(codes(await runNamedLinkTest(input(h.port), h.deps)).at(-1)).toBe("tunnel:✗auth");
-    expect(performance.now() - t0).toBeLessThan(2_000);
+    expect(codes(await runNamedLinkTest(input(h.port, { protocol: "quic" }), h.deps))).toEqual(["values:✓ok", "origin:✓live", "tunnel:✓live", "dns:✓ok", "reach:✓ok"]);
+    expect([asked, h.reserve.mock.calls.length]).toEqual([[{ hostname: HOST, port: h.port, token: TOKEN, protocol: "quic" }], 0]);
   });
   it.each([
-    ["auth: the token refused", "ERR Provided Tunnel token is not valid (unexpected end of JSON input)\n", "tunnel:✗auth"],
-    ["network: no registration in time", "ERR Failed to dial a quic connection: i/o timeout\n", "tunnel:✗network"],
-    ["network: silence", "", "tunnel:✗network"],
-  ])("③ %s", async (_why, output, expected) => {
-    const h = await rig({ output });
+    ["named-auth-failed", "tunnel:✗auth"],
+    ["named-connection-failed", "tunnel:✗network"],
+    ["timeout", "tunnel:✗network"],
+    ["no-url", "tunnel:✗stopped"],
+    ["spawn-failed", "tunnel:✗stopped"],
+    ["binary-missing", "tunnel:✗no-binary"],
+    ["lease-held", "tunnel:✗tunnel-busy"],
+  ])("③ the managed start answers %s → %s; what was started is stopped through the lane", async (kind, expected) => {
+    const h = await rig({ start: async () => ({ ok: false, kind }) });
     const result = await runNamedLinkTest(input(h.port), h.deps);
     expect(codes(result).at(-1)).toBe(expected);
-    expect([h.child.kill.mock.calls.length, await portFree(h.port), h.released.mock.calls.length]).toEqual([1, true, 1]);
-    expect(JSON.stringify(result)).not.toContain(TOKEN);
+    expect([h.lane.stop.mock.calls.length, h.lane.releaseUnused.mock.calls.length, await portFree(h.port)]).toEqual([1, 0, true]);
   });
-  it("③ the connector exits before registering, a spawn that throws, a binary that cannot be prepared", async () => {
-    const exits = await rig({ output: null });
-    exits.spawn.mockImplementation(() => { setTimeout(() => { exits.child.say("something unexpected\n"); exits.child.exitCode = 1; exits.child.emit("exit", 1, null); }, 5); return exits.child; });
-    expect(codes(await runNamedLinkTest(input(exits.port), exits.deps)).at(-1)).toBe("tunnel:✗stopped");
-    const throws = await rig(); throws.spawn.mockImplementation(() => { throw new Error("EACCES"); });
-    expect(codes(await runNamedLinkTest(input(throws.port), throws.deps)).at(-1)).toBe("tunnel:✗stopped");
-    const missing = await rig({ ensureBinary: async () => { throw new Error("download failed"); } });
-    expect(codes(await runNamedLinkTest(input(missing.port), missing.deps)).at(-1)).toBe("tunnel:✗no-binary");
-    expect(await portFree(missing.port)).toBe(true);
+  it("③ a binary that cannot be prepared: nothing started, the lane given back", async () => {
+    const h = await rig({ ensureBinary: async () => { throw new Error("download failed"); } });
+    expect(codes(await runNamedLinkTest(input(h.port), h.deps)).at(-1)).toBe("tunnel:✗no-binary");
+    expect([h.lane.start.mock.calls.length, h.lane.releaseUnused.mock.calls.length, await portFree(h.port)]).toEqual([0, 1, true]);
   });
-  it("④ not in DNS (public resolver), the public resolver unreachable but the system finds it, neither can answer", async () => {
+  it("④ not in DNS (public resolver), the public resolver unreachable but the system finds it, neither can answer, only private answers", async () => {
     const notFound = Object.assign(new Error("queryA ENOTFOUND"), { code: "ENOTFOUND" }), timeout = Object.assign(new Error("ETIMEOUT"), { code: "ETIMEOUT" });
     const missing = await rig({ resolve4: async () => { throw notFound; } });
     expect(codes(await runNamedLinkTest(input(missing.port), missing.deps)).at(-1)).toBe("dns:✗dns-missing");
@@ -178,29 +166,108 @@ describe("#2906 the Test connection runner: every step and every ✗", () => {
     const result = await runNamedLinkTest(input(h.port), h.deps);
     expect(codes(result).slice(0, 4)).toEqual(["values:✓ok", "origin:✓ok", "tunnel:✓ok", "dns:✓ok"]);
     expect(codes(result).at(-1)).toBe(expected);
-    expect([h.child.kill.mock.calls.length, await portFree(h.port)]).toEqual([1, true]);
+    expect([h.lane.stop.mock.calls.length, await portFree(h.port)]).toEqual([1, true]);
   });
   it("⑤ retries while the edge learns the new connector, then passes", async () => {
     const h = await rig({ reachMs: 2_000 });
     let n = 0; const edge = edgeTo(h.port);
-    h.deps.fetchPage = async (url, signal) => (++n < 3 ? { status: 530, contentType: "text/html", body: "" } : edge(url));
+    h.deps.fetchPage = async url => (++n < 3 ? { status: 530, contentType: "text/html", body: "" } : edge(url));
     expect(codes(await runNamedLinkTest(input(h.port), h.deps)).at(-1)).toBe("reach:✓ok");
     expect(n).toBe(3);
   });
-  it("a protocol other than http2/quic/auto is http2; auto passes no --protocol", async () => {
+  it("a protocol other than http2/quic/auto is http2", async () => {
     const h = await rig();
-    await runNamedLinkTest(input(h.port, { protocol: "auto" }), h.deps);
-    const g = await rig();
-    await runNamedLinkTest(input(g.port, { protocol: "--evil" }), g.deps);
-    expect([(h.spawn.mock.calls[0]![1] as string[]).includes("--protocol"), (g.spawn.mock.calls[0]![1] as string[]).join(" ")]).toEqual([false, "tunnel --no-autoupdate --config /dev/null --protocol http2 run"]);
+    await runNamedLinkTest(input(h.port, { protocol: "--evil" }), h.deps);
+    expect((h.lane.start.mock.calls[0]![0] as { protocol: string }).protocol).toBe("http2");
   });
-  it("an outer abort ends it at once and still tears everything down", async () => {
-    const h = await rig({ output: "" , registerMs: 10_000 });
-    const outer = new AbortController();
-    const running = runNamedLinkTest(input(h.port), h.deps, outer.signal);
-    setTimeout(() => outer.abort(), 30);
-    expect(codes(await running).at(-1)).toBe("tunnel:✗network");
-    expect([h.child.kill.mock.calls.length, await portFree(h.port), h.released.mock.calls.length]).toEqual([1, true, 1]);
+});
+
+describe("#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop", () => {
+  it("(2) a DNS lookup that never answers is ended by the hard deadline, and everything is torn down", async () => {
+    const h = await rig({ hardMs: 150, resolve4: async () => { throw Object.assign(new Error("ETIMEOUT"), { code: "ETIMEOUT" }); }, systemLookup: () => never() });
+    const t0 = performance.now();
+    const result = await runNamedLinkTest(input(h.port), h.deps);
+    expect(codes(result).at(-1)).toBe("dns:✗timeout");
+    expect(performance.now() - t0).toBeLessThan(1_500);
+    expect([h.lane.stop.mock.calls.length, await portFree(h.port)]).toEqual([1, true]);
+  });
+  it("(2) a deadline during preparation is never followed by a start", async () => {
+    const h = await rig({ hardMs: 100, ensureBinary: () => never() });
+    expect(codes(await runNamedLinkTest(input(h.port), h.deps)).at(-1)).toBe("tunnel:✗timeout");
+    expect([h.lane.start.mock.calls.length, h.lane.releaseUnused.mock.calls.length, await portFree(h.port)]).toEqual([0, 1, true]);
+  });
+  it("(2) a start that hangs is ended by the deadline, and still stopped through the lane", async () => {
+    const h = await rig({ hardMs: 100, start: () => never() });
+    expect(codes(await runNamedLinkTest(input(h.port), h.deps)).at(-1)).toBe("tunnel:✗timeout");
+    expect(h.lane.stop.mock.calls.length).toBe(1);
+  });
+  it("(1) the admin's session ended before anything starts: nothing reserved; ended while preparing: nothing started", async () => {
+    const early = await rig({ current: () => false });
+    expect(codes(await runNamedLinkTest(input(early.port), early.deps)).at(-1)).toBe("origin:✗cancelled");
+    expect(early.reserve.mock.calls.length).toBe(0);
+    let signedIn = true;
+    const late = await rig({ current: () => signedIn, ensureBinary: async () => { signedIn = false; return "/private/cloudflared"; } });
+    expect(codes(await runNamedLinkTest(input(late.port), late.deps)).at(-1)).toBe("tunnel:✗cancelled");
+    expect([late.lane.start.mock.calls.length, late.lane.releaseUnused.mock.calls.length]).toEqual([0, 1]);
+  });
+  it("(3) an unproven stop is reported, and the lane is not given back", async () => {
+    const unproven = await rig({ stop: async () => ({ confirmed: false }) });
+    const r1 = await runNamedLinkTest(input(unproven.port), unproven.deps);
+    expect([codes(r1).at(-1), r1.cleanup, unproven.lane.releaseUnused.mock.calls.length]).toEqual(["reach:✓ok", "unconfirmed", 0]);
+    const hangs = await rig({ cleanupMs: 100, stop: () => never() });
+    const r2 = await runNamedLinkTest(input(hangs.port), hangs.deps);
+    expect([r2.cleanup, hangs.lane.releaseUnused.mock.calls.length, await portFree(hangs.port)]).toEqual(["unconfirmed", 0, true]);
+  });
+});
+
+describe("#2907 review: the production lane — the managed start (lease, proven stop) of a connector ready once registered", () => {
+  function production(options: { output?: string | null; alive?: boolean; holder?: "dashboard" } = {}) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-2906-lane-")); roots.push(dir);
+    const child = new Child();
+    if (options.alive) child.kill.mockImplementation(() => true);                       // signals sent, never an exit
+    const spawned: Array<{ argv: string[]; env: Record<string, string> }> = [];
+    const spawn = vi.fn((_bin: string, argv: string[], opts: { env: Record<string, string> }) => {
+      spawned.push({ argv, env: opts.env });
+      if (options.output !== null) setTimeout(() => child.say(options.output ?? "INF Registered tunnel connection connIndex=0\n"), 5);
+      return child;
+    });
+    const probe = (pid: number) => ({ kind: "identified" as const, identity: `id-${pid}` });
+    const lane = new TunnelPurposeLane(new ManagedTunnel({ dataDir: dir, probe, wait: async () => {}, graceMs: 1 }));
+    if (options.holder) lane.reserve(options.holder, "open-link");
+    const binary = join(dir, "cloudflared"); writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
+    const reserve = namedTestLane(lane, { registerMs: 300, provider: o => new CloudflaredProvider({ ...o, spawnProcess: spawn as never, probe, graceMs: 20, env: { PATH: "/usr/bin", HOST_SECRET: "x" } }) });
+    return { lane, reserve, child, spawned, binary, dir };
+  }
+  const startInput = (binary: string, port: number, signal = new AbortController().signal) => ({ binary, hostname: HOST, token: TOKEN, protocol: "http2" as const, origin: new URL(`http://127.0.0.1:${port}`), signal });
+  it("registered → ready; the token only in the environment; stopped with proof, and the lane is free again", async () => {
+    const p = production();
+    const held = p.reserve(); if ("busy" in held) throw new Error("busy");
+    expect(p.lane.holder()).toBe("named-test");
+    expect(await held.start(startInput(p.binary, 19282))).toEqual({ ok: true });
+    const { argv, env } = p.spawned[0]!;
+    expect([argv, env.TUNNEL_TOKEN === TOKEN, "HOST_SECRET" in env, argv.join(" ").includes(TOKEN)]).toEqual([["tunnel", "--no-autoupdate", "--config", "/dev/null", "--protocol", "http2", "run"], true, false, false]);
+    expect(await held.stop()).toEqual({ confirmed: true });
+    expect([p.child.kill.mock.calls[0]?.[0], p.lane.holder()]).toEqual(["SIGTERM", null]);
+  });
+  it("a refused token is said at once (not after the registration budget); silence is a timeout", async () => {
+    const refused = production({ output: "ERR Provided Tunnel token is not valid (unexpected end of JSON input)\n" });
+    const a = refused.reserve(); if ("busy" in a) throw new Error("busy");
+    const t0 = performance.now();
+    expect(await a.start(startInput(refused.binary, 19282))).toEqual({ ok: false, kind: "named-auth-failed" });
+    expect(performance.now() - t0).toBeLessThan(250);
+    const quiet = production({ output: "" });
+    const b = quiet.reserve(); if ("busy" in b) throw new Error("busy");
+    expect(await b.start(startInput(quiet.binary, 19282))).toEqual({ ok: false, kind: "timeout" });
+  });
+  it("a connector whose stop cannot be proven keeps the lane held (no /web, no second test) until resolved", async () => {
+    const p = production({ alive: true });
+    const held = p.reserve(); if ("busy" in held) throw new Error("busy");
+    expect(await held.start(startInput(p.binary, 19282))).toEqual({ ok: true });
+    expect(await held.stop()).toEqual({ confirmed: false });
+    expect([p.child.kill.mock.calls.map(c => c[0]), p.lane.holder(), "busy" in p.reserve()]).toEqual([["SIGTERM", "SIGKILL"], "named-test", true]);
+  });
+  it("an open link holds the lane: the test is told so", () => {
+    expect(production({ holder: "dashboard" }).reserve()).toEqual({ busy: "link-open" });
   });
 });
 
@@ -271,20 +338,32 @@ describe("#2906 the route: admin only, never over the public link, closed codes 
     const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     const session = (tier: "admin" | "read" | "guest", surface: "local" | "gateway" = "local") => {
       const made = sessions.create({ tier, surface, label: "scratch", tokenEpoch: tokenEpoch(token), ...(surface === "gateway" ? { exposureId: "e".repeat(32) } : {}), ...(tier === "guest" ? { owner: { adapterId: "web", userId: "g" } } : {}) });
+      last = made.sessionId;
       return { cookie: `agend_session=${made.sessionId}`, origin, "x-agend-csrf": csrfTokenFor(made.sessionId), "content-type": "application/json" } as Record<string, string>;
     };
+    let last = "";
     const post = (headers: Record<string, string>, body: unknown) => new Promise<{ status: number; raw: string }>((resolve, reject) => {
       const req = request(origin + "/api/settings/public-link/test", { method: "POST", headers }, res => {
         let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve({ status: res.statusCode!, raw }));
       }); req.on("error", reject); req.end(JSON.stringify(body));
     });
-    return { post, session, testNamedLink, setGateway: (v: boolean) => { gateway = v; } };
+    /** Headers and the first chunk now; the rest of the body only after `between` ran. */
+    const slow = (headers: Record<string, string>, body: unknown, between: () => void) => new Promise<{ status: number; raw: string }>((resolve, reject) => {
+      const raw = JSON.stringify(body);
+      const req = request(origin + "/api/settings/public-link/test", { method: "POST", headers }, res => {
+        let out = ""; res.on("data", c => { out += c; }); res.on("end", () => resolve({ status: res.statusCode!, raw: out }));
+      }); req.on("error", reject);
+      req.write(raw.slice(0, 5));
+      setTimeout(() => { between(); req.end(raw.slice(5)); }, 100);
+    });
+    return { post, slow, session, testNamedLink, sessions, lastSession: () => last, setGateway: (v: boolean) => { gateway = v; } };
   }
   it("an admin's request reaches the test with the typed token; the answer never carries it", async () => {
     const h = await api();
     const r = await h.post(h.session("admin"), { hostname: HOST, origin_port: "19282", protocol: "http2", token: TOKEN });
     expect(r.status).toBe(200);
-    expect(h.testNamedLink.mock.calls[0]![0]).toEqual({ hostname: HOST, port: "19282", protocol: "http2", token: TOKEN });
+    const asked = h.testNamedLink.mock.calls[0]![0] as Record<string, unknown> & { current: () => boolean };
+    expect([asked.hostname, asked.port, asked.protocol, asked.token, asked.current()]).toEqual([HOST, "19282", "http2", TOKEN, true]);
     expect(r.raw).not.toContain(TOKEN);
     expect(JSON.parse(r.raw)).toEqual({ steps: [{ step: "values", ok: true, code: "ok" }], hostname: HOST, port: 19282 });
   });
@@ -295,6 +374,21 @@ describe("#2906 the route: admin only, never over the public link, closed codes 
     const over = await h.post(h.session("admin", "gateway"), { hostname: HOST });
     expect([over.status, JSON.parse(over.raw).error]).toEqual([403, "web_settings_not_over_public_link"]);
     expect(h.testNamedLink).not.toHaveBeenCalled();
+  });
+  it("#2907 review (1): a session revoked while its body is still arriving starts nothing (401)", async () => {
+    const h = await api();
+    const headers = h.session("admin");
+    const r = await h.slow(headers, { hostname: HOST, origin_port: "19282", token: TOKEN }, () => { h.sessions.revokeById(h.lastSession()); });
+    expect([r.status, JSON.parse(r.raw).error, h.testNamedLink.mock.calls.length]).toEqual([401, "no longer authorized", 0]);
+  });
+  it("#2907 review (1): the test is handed a check of the same admin, false once the session is revoked", async () => {
+    const h = await api();
+    let check: (() => boolean) | undefined;
+    h.testNamedLink.mockImplementationOnce(async (i: unknown) => { check = (i as { current: () => boolean }).current; return { steps: [], hostname: HOST, port: 19282 }; });
+    await h.post(h.session("admin"), { hostname: HOST });
+    expect(check!()).toBe(true);
+    h.sessions.revokeById(h.lastSession());
+    expect(check!()).toBe(false);
   });
   it("one at a time: a second request while one runs is told so (409)", async () => {
     const h = await api();

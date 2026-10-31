@@ -15,6 +15,9 @@ register("settings", {
     ntBusy: "A test is already running. Try again when it ends.",
     ntFailed: "The test could not run. Try again.",
     ntNotRun: "Not tested (an earlier step failed).",
+    ntTimeout: "The test took too long and was stopped. Test again; if it repeats, check this machine's network.",
+    ntCancelled: "Your sign-in ended, so nothing was started. Sign in again and test again.",
+    ntCleanup: "The test's connector could not be confirmed stopped. Run agend restart before testing or opening the link again.",
     ntStep_values: "The domain, port and token",
     ntStep_origin: "This machine answers on port {1}",
     ntStep_tunnel: "The tunnel connects to Cloudflare",
@@ -55,6 +58,9 @@ register("settings", {
     ntBusy: "已經有一個測試在進行，請等它結束再試。",
     ntFailed: "測試沒有執行成功，請再試一次。",
     ntNotRun: "未測試（前面的步驟失敗）。",
+    ntTimeout: "測試太久，已經停止。請再測一次；如果一直這樣，請檢查這台主機所在的網路。",
+    ntCancelled: "你的登入已結束，所以沒有啟動任何東西。請重新登入後再測。",
+    ntCleanup: "無法確認測試用的連接器已經停止。請先執行 agend restart，再測試或開啟連結。",
     ntStep_values: "網域、port 與 token",
     ntStep_origin: "這台主機在 port {1} 回應",
     ntStep_tunnel: "tunnel 連上 Cloudflare",
@@ -92,7 +98,11 @@ register("settings", {
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const STEPS = ["values", "origin", "tunnel", "dns", "reach"];
 
-/** The connector token typed in the token card below (not yet saved): the test uses it when there is one. */
+/**
+ * The connector token typed in the token card below (not yet saved): the test uses it when there is one. The card
+ * owns it: it sets it as typed and clears it when saved, cleared or unmounted (#2907 review: a hidden token from a
+ * card no longer on screen is never used).
+ */
 let typedToken = "";
 export function setTypedTunnelToken(value) { typedToken = typeof value === "string" ? value : ""; }
 
@@ -125,9 +135,10 @@ export function NamedLinkTest({ hostname, port, protocol }) {
     ${result ? html`<ol class="named-test-steps" role="status" aria-live="polite">${STEPS.map((step) => {
       const r = result.steps.find((s) => s.step === step);
       const mark = !r ? "–" : r.ok ? "✓" : "✗";
-      const said = !r ? tn("ntNotRun") : tn(`nt_${step}_${r.code}`, host, shownPort);
+      const said = !r ? tn("ntNotRun") : r.code === "timeout" ? tn("ntTimeout") : r.code === "cancelled" ? tn("ntCancelled") : tn(`nt_${step}_${r.code}`, host, shownPort);
       return html`<li key=${step} class=${!r ? "nt-skip" : r.ok ? "nt-ok" : "nt-fail"} data-step=${step} data-code=${r ? r.code : ""}>
         <span class="nt-mark" aria-hidden="true">${mark}</span> <strong>${tn(`ntStep_${step}`, host, shownPort)}</strong> — ${said}</li>`;
     })}</ol>` : null}
+    ${result?.cleanup ? html`<p class="feedback error" role="alert">${tn("ntCleanup")}</p>` : null}
   </div>`;
 }

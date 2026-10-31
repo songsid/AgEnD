@@ -196,6 +196,11 @@ export interface CloudflaredOptions {
   binaryName?: string;
   /** Dashboard-only remotely managed connector. Never put token in argv/errors. */
   named?: { hostname: string; token: string };
+  /**
+   * #2906 (the fixed address's Test connection): a named connector is ready once it has registered with Cloudflare;
+   * nothing is fetched through it here (the test checks DNS and the round-trip itself, step by step).
+   */
+  registeredOnly?: boolean;
   protocol?: CloudflaredProtocol;
   /** Public resolvers the readiness probe asks first. Empty disables that path (system DNS only). */
   publicResolvers?: readonly string[];
@@ -285,6 +290,11 @@ export class CloudflaredProvider implements TunnelProvider {
     try {
       const base = namedBase ?? await state.awaitUrl(deadline, ctx.signal, now);
       const pageUrl = `${base}${ctx.pagePath}`;
+      if (named && this.opts.registeredOnly) {
+        await state.awaitRegistered(deadline, ctx.signal, now);
+        state.publish(base, pageUrl);
+        return state;
+      }
       // After the validator, before the probe: cloudflared passes the public
       // Host through to the origin, so the origin has to be expecting it or it
       // will refuse our own readiness check.
@@ -523,6 +533,19 @@ class CloudflaredHandle implements TunnelHandle {
       else if (this.neverStarted) onSpawnFail(this.spawnError!);
       else if (signal.aborted) onAbort();
     });
+  }
+
+  /** #2906: until the named connector registers; a token refusal, an exit, a cancel or the deadline end it first. */
+  async awaitRegistered(deadline: number, signal: AbortSignal, now: () => number): Promise<void> {
+    for (;;) {
+      this.checkOutput();
+      if (this.registered) return;
+      if (signal.aborted) throw new TunnelStartError("cancelled", "cancelled while waiting for the connector to register");
+      if (this.namedFailureKind() === "named-auth-failed") throw new TunnelStartError("named-auth-failed", "named tunnel credentials were refused");
+      if (this.hasExited) throw new TunnelStartError("no-url", "the connector exited before it registered");
+      if (now() >= deadline) throw new TunnelStartError("timeout", "the connector did not register in time");
+      await new Promise(r => setTimeout(r, 100));
+    }
   }
 
   checkOutput(): void {

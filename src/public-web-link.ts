@@ -211,12 +211,14 @@ export class PublicWebLink {
    * #2906: the open named link's page marker, only while it runs on exactly these values (the fixed address's Test
    * connection then checks this link as it is, starting nothing beside it). Null otherwise.
    */
-  liveNamedMarker(values: { hostname: string; port: number; token: string }): string | null {
+  liveNamedMarker(values: { hostname: string; port: number; token: string; protocol: string }): string | null {
     const e = this.entry;
     if (!e || e.phase !== "open" || !e.gateway || !this.current(e)) return null;
     let named: ReturnType<typeof namedPublicLinkSettings>;
     try { named = namedPublicLinkSettings(this.deps.web()); } catch { return null; }
-    return named && named.hostname === values.hostname && named.port === values.port && named.token === values.token ? e.gateway.readinessMarker : null;
+    // #2907 review: the protocol too — a test of other values (QUIC against an open http2 link) is not this link's.
+    return named && named.hostname === values.hostname && named.port === values.port && named.token === values.token
+      && publicLinkSettings(this.deps.web()).protocol === values.protocol ? e.gateway.readinessMarker : null;
   }
   status(): { state: string; expiresAt?: number; remainingSeconds?: number; noExpiry?: true } {
     const e = this.entry;

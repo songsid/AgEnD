@@ -1550,7 +1550,7 @@ function PublicTunnelToken() {
     const result = await api(base);
     if (lease.current() && result.ok) setPresent(result.body?.[0]?.token_present === true);
   };
-  useEffect(() => { refresh().catch(() => {}); }, []);
+  useEffect(() => { refresh().catch(() => {}); return () => setTypedTunnelToken(""); }, []);
   const go = async (clear) => {
     if (inFlight.current || !clear && !secret) return;
     const value = secret;
