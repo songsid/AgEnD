@@ -3960,7 +3960,13 @@ export class Daemon extends EventEmitter {
           this.noteCodexReserveDialog(dialog, pane);
           this.noteLiveIncidentDialog(dialog, pane);
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
-          if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
+          if (dialog.holdOnly) {
+            // Recognised, deliberately not answered; trackDialogParked reports it. Why an automatic answer passed it by
+            // is logged once, when this hold begins (#2893).
+            const reason = this.dialogParkedKey !== Daemon.dialogKey(dialog) ? Daemon.heldReasonOf(dialog, pane) : {};
+            if (Object.keys(reason).length) this.logger.warn({ description: dialog.description, ...reason }, "Runtime dialog held — not auto-answering");
+            break;
+          }
           // Reported as ignoring the daemon: the SAME request (the identity the count was made on — verbatim, the
           // backend's own when it names one) is answered only once per DIALOG_ANSWER_BACKOFF_MS. Anything else — another
           // request, an unexplained difference, the dialog gone — is not held back here; the answer path below ends or
@@ -8606,6 +8612,11 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /** #2893: a held dialog's own account of why no automatic answer took it (RuntimeDialog.heldReason); {} when none. */
+  private static heldReasonOf(dialog: RuntimeDialog, pane: string): Record<string, unknown> {
+    try { return dialog.heldReason?.(pane) ?? {}; } catch { return {}; }
+  }
+
   /**
    * Remember how long a blocking dialog has been on screen. Once it has
    * outlived DIALOG_PARKED_NOTIFY_MS — the auto-dismiss did not take, or the
@@ -12593,6 +12604,8 @@ export class Daemon extends EventEmitter {
             this.noteCodexReserveDialog(dialog, pane);
             this.noteLiveIncidentDialog(dialog, pane);
             cleanReadyPolls = 0;
+            // Before the parked clock below claims it: a hold seen for the first time is said once, with its reason (#2893).
+            const firstSight = this.dialogParkedKey !== Daemon.dialogKey(dialog);
             // Start the parked clock for every delivery-blocking dialog, exact
             // ones included: if the auto-dismiss keeps failing here, the human
             // report should count from first sight, not from the runtime scan.
@@ -12621,8 +12634,8 @@ export class Daemon extends EventEmitter {
             }
             if (dialog.holdOnly) {
               // Recognised but deliberately not answered (see RuntimeDialog.holdOnly).
-              if (this.dialogParkedKey !== Daemon.dialogKey(dialog)) {
-                this.logger.warn({ description: dialog.description }, "Startup dialog held — not auto-answering, deliveries stay blocked");
+              if (firstSight) {
+                this.logger.warn({ description: dialog.description, ...Daemon.heldReasonOf(dialog, pane) }, "Startup dialog held — not auto-answering, deliveries stay blocked");
               }
               this.trackDialogParked(dialog);
               matched = true;

@@ -2114,7 +2114,31 @@ export class CodexBackend implements CliBackend {
       blocksDelivery: true,
       inputBlocked: true,
       isActive: codexTrustVariantActive,
+      heldReason: pane => this.trustHoldReason(pane),
     };
+  }
+
+  /**
+   * #2893: why the authorized folder-trust answer did not take this prompt (log only): what the pane shows against what
+   * preTrust authorized for this launch, and whether the instance's config trusts the folder codex is asking about. A
+   * field case of a held trust prompt then explains itself in daemon.log.
+   */
+  private trustHoldReason(pane: string): Record<string, unknown> {
+    const state = codexTrustPromptState(pane), authorized = this.authorizedTrust;
+    const configPath = join(this.isolatedCodexHome, "config.toml");
+    let configTrust: unknown = "unreadable";
+    if (state.folder) {
+      try { configTrust = effectiveProjectTrust(readFileSync(configPath, "utf-8"), state.root ?? state.folder) ?? "absent"; } catch { /* unreadable */ }
+    }
+    const reason = !state.active ? "a trust layout AgEnD never answers (Folder access options, or Do you trust the files…)"
+      : authorized === null ? "preTrust did not authorize this launch"
+      : !state.safeChoice ? "the cursor is not on the trust choice"
+      : state.folder !== authorized.cwd ? "the folder codex asks about is not the one AgEnD trusted"
+      : state.rootNote === "absent" ? "codex names no repository root, but AgEnD trusted a different root"
+      : state.rootNote !== "parsed" ? "the repository-root note could not be read"
+      : "the repository root codex names is not the one AgEnD trusted";
+    return { trustHoldReason: reason, promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
+      authorizedCwd: authorized?.cwd ?? null, authorizedRoot: authorized?.root ?? null, configPath, configTrust };
   }
 
   /**
