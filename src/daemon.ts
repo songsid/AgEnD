@@ -4034,7 +4034,7 @@ export class Daemon extends EventEmitter {
             if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
             if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) return;
             if (dialog.verifyAfterKeys && autoKey) this.claimAutoDialog(dialog);
-            this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
+            this.logger.info(Daemon.answerDetailOf(dialog, pane), `Auto-dismissing runtime dialog: ${dialog.description}`);
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
               if (stale()) return;
@@ -8626,6 +8626,10 @@ export class Daemon extends EventEmitter {
   private static heldReasonOf(dialog: RuntimeDialog, pane: string): Record<string, unknown> {
     try { return dialog.heldReason?.(pane) ?? {}; } catch { return {}; }
   }
+  /** What an answered dialog says about the answer (RuntimeDialog.answerDetail); {} when it gives none. */
+  private static answerDetailOf(dialog: RuntimeDialog, pane: string): Record<string, unknown> {
+    try { return dialog.answerDetail?.(pane) ?? {}; } catch { return {}; }
+  }
 
   /**
    * Remember how long a blocking dialog has been on screen. Once it has
@@ -12654,7 +12658,7 @@ export class Daemon extends EventEmitter {
               matched = true;
               break;
             }
-            this.logger.info(`Dismissing startup dialog: ${dialog.description}`);
+            this.logger.info(Daemon.answerDetailOf(dialog, pane), `Dismissing startup dialog: ${dialog.description}`);
             // Restart is exactly when inbound messages pile up, and nothing gates
             // delivery on `spawning`. Take the pane lock for the key sequence so a
             // queued message cannot be pasted into a half-dismissed trust dialog.

@@ -455,6 +455,8 @@ export interface RuntimeDialog {
    * per hold). Log only, never shown in a channel; null when there is nothing to add.
    */
   heldReason?: (pane: string) => Record<string, unknown> | null;
+  /** What the daemon answered, as log fields, written with its "dismissing" line (log only; null: nothing to add). */
+  answerDetail?: (pane: string) => Record<string, unknown> | null;
   /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
