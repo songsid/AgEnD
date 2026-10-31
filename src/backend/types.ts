@@ -451,6 +451,11 @@ export interface RuntimeDialog {
   /** #2872: the parked notice adds this advice (Claude's session-resume prompt only). */
   parkedAdvice?: "claude-resume";
   /**
+   * A held dialog that a sibling entry could have answered automatically: why it didn't, as log fields (daemon.log, once
+   * per hold). Log only, never shown in a channel; null when there is nothing to add.
+   */
+  heldReason?: (pane: string) => Record<string, unknown> | null;
+  /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
    * while safety-critical dialogs must prove that the prompt disappeared
