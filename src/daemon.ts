@@ -8637,12 +8637,15 @@ export class Daemon extends EventEmitter {
    */
   private trackDialogParked(dialog: RuntimeDialog | null): void {
     if (!dialog) {
-      if (this.dialogParkedSince !== 0) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
+      const tracked = this.dialogParkedSince !== 0;
+      if (tracked) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
       this.dialogParkedSince = 0;
       this.dialogParkedKey = null;
       this.heldReasonLoggedKey = null;
       this.dialogParkedInteractionEpisode = null;
       this.dialogParkedReported = false;
+      // #2897: whatever it posted is out of date — the fleet takes its notices back.
+      if (tracked) this.emit("dialog_unparked", { name: this.name });
       return;
     }
     const key = Daemon.dialogKey(dialog);
@@ -8653,6 +8656,8 @@ export class Daemon extends EventEmitter {
     }
     if (episode !== null) this.dialogParkedInteractionEpisode = episode;
     if (this.dialogParkedSince === 0 || this.dialogParkedKey !== key) {
+      // #2897: a different dialog replaced the one being tracked — that one's notices are out of date.
+      if (this.dialogParkedSince !== 0) this.emit("dialog_unparked", { name: this.name });
       this.dialogParkedSince = Date.now();
       this.dialogParkedKey = key;
       this.dialogParkedReported = false;
