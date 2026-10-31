@@ -240,6 +240,21 @@ describe("Settings → Web, as rendered", () => {
 });
 
 
+describe("#2907 review (5): the Test connection uses a typed token only while it is on screen", () => {
+  it("a token typed, then the page left and reopened: the test sends no token (the saved one is used)", async () => {
+    const withHost = { web: { public_link: { hostname: "agend.example.com" } } };
+    let w = await open(withHost);
+    await w.type(w.$("publicTunnelToken"), "eyJtyped-not-saved");
+    fire(w.$("namedLinkTest"), "click"); await settle(8);
+    expect(sent.filter(s => s.path === "/api/settings/public-link/test").at(-1)?.body.token).toBe("eyJtyped-not-saved");
+    await p.unmount();
+    w = await open(withHost);
+    expect(w.$("publicTunnelToken").value).toBe("");
+    fire(w.$("namedLinkTest"), "click"); await settle(8);
+    expect("token" in (sent.filter(s => s.path === "/api/settings/public-link/test").at(-1)?.body ?? { token: 1 })).toBe(false);
+  });
+});
+
 describe("#2307 fixed public link settings and write-only token", () => {
   it.each([
     ["en", "Set token", "Paste only the long string that starts with eyJ."],

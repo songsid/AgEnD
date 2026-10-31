@@ -17,7 +17,7 @@ import { setLocale, t } from "../src/locale.js";
 import { formatFleetTime } from "../src/tz-utils.js";
 import { existsSync } from "node:fs";
 import { syntheticTunnelToken } from "./helpers/named-tunnel-token.js";
-import { PUBLIC_TUNNEL_TOKEN_ENV } from "../src/public-tunnel-config.js";
+import { PUBLIC_TUNNEL_TOKEN_ENV, normalizePublicTunnelToken } from "../src/public-tunnel-config.js";
 import { PUBLIC_LINK_OWNER_FILE } from "../src/public-link-owner.js";
 const rigs: Array<{dir: string; fm: FleetManager; s: any}> = [];
 let mono = 0;
@@ -298,6 +298,18 @@ describe("#named-link-ttl: no expiry and auto_open in the real dispatcher", () =
     await h.typed(); await h.click(); await flush();
     const last = String((h.adapter.editMessageRemoveButtons.mock.calls.at(-1) as unknown[])[2]);
     expect([last.startsWith("🌐 Opening your permanent link · "), last.includes(t("dashboard.progress.fail.lease-held"))]).toEqual([true, true]);
+  });
+  // #2907 review (4): the fixed address's Test connection checks an open link "as it is" only on exactly its values —
+  // the protocol too (unsaved QUIC against an open http2 link is not this link's).
+  it("#2907: liveNamedMarker matches the open named link's hostname, port, token AND protocol", async () => {
+    const h = rig(); h.fm.fleetConfig!.web = NAMED(); await h.typed(); await h.click();
+    const token = normalizePublicTunnelToken(process.env[PUBLIC_TUNNEL_TOKEN_ENV])!;
+    const same = { hostname: "agend.example.com", port: 19282, token, protocol: "http2" };
+    expect([h.s.publicWebLink.liveNamedMarker(same), h.s.publicWebLink.liveNamedMarker({ ...same, protocol: "quic" }),
+      h.s.publicWebLink.liveNamedMarker({ ...same, port: 19283 }), h.s.publicWebLink.liveNamedMarker({ ...same, hostname: "other.example.com" })])
+      .toEqual(["stub", null, null, null]);
+    await h.s.publicWebLink.close("test");
+    expect(h.s.publicWebLink.liveNamedMarker(same)).toBeNull();
   });
   it("after a start, auto_open reopens it once for the remembered admin — nothing posted, no code issued", async () => {
     const h = rig(); h.fm.fleetConfig!.web = NAMED({ auto_open: true });

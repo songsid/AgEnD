@@ -25,6 +25,7 @@ import {
   TUNNEL_STARTUP_DEADLINE_MS,
   TUNNEL_STOP_GRACE_MS,
   type PreflightResult,
+  type TunnelErrorKind,
   type TunnelExit,
   type TunnelHandle,
   type TunnelProvider,
@@ -195,6 +196,11 @@ export interface CloudflaredOptions {
   binaryName?: string;
   /** Dashboard-only remotely managed connector. Never put token in argv/errors. */
   named?: { hostname: string; token: string };
+  /**
+   * #2906 (the fixed address's Test connection): a named connector is ready once it has registered with Cloudflare;
+   * nothing is fetched through it here (the test checks DNS and the round-trip itself, step by step).
+   */
+  registeredOnly?: boolean;
   protocol?: CloudflaredProtocol;
   /** Public resolvers the readiness probe asks first. Empty disables that path (system DNS only). */
   publicResolvers?: readonly string[];
@@ -284,6 +290,11 @@ export class CloudflaredProvider implements TunnelProvider {
     try {
       const base = namedBase ?? await state.awaitUrl(deadline, ctx.signal, now);
       const pageUrl = `${base}${ctx.pagePath}`;
+      if (named && this.opts.registeredOnly) {
+        await state.awaitRegistered(deadline, ctx.signal, now);
+        state.publish(base, pageUrl);
+        return state;
+      }
       // After the validator, before the probe: cloudflared passes the public
       // Host through to the origin, so the origin has to be expecting it or it
       // will refuse our own readiness check.
@@ -307,7 +318,10 @@ export class CloudflaredProvider implements TunnelProvider {
       if (named) {
         if (exitedBeforeStop) await state.drainOutput();
         const originalKind = err instanceof TunnelStartError ? err.errorKind : "spawn-failed";
-        const kind = originalKind === "cancelled" ? originalKind : state.namedFailureKind() ?? namedReadinessFailure ?? originalKind;
+        let kind: TunnelErrorKind = originalKind === "cancelled" ? originalKind : state.namedFailureKind() ?? namedReadinessFailure ?? originalKind;
+        // #2906: once the connector registered, a connection failure is not the tunnel's (its output's transient dial
+        // errors included): a self-probe that could not connect is this machine's network, not Cloudflare's.
+        if (state.registered && kind === "named-connection-failed") kind = "named-self-unreachable";
         throw new TunnelStartError(kind, namedTunnelFailureMessage(kind) ?? "named tunnel failed; check the connector token, hostname and published application route",
           stopped.confirmed ? undefined : { pid: stopped.pid, identity: stopped.identity });
       }
@@ -411,6 +425,8 @@ class CloudflaredHandle implements TunnelHandle {
     const absorb = (chunk: Buffer | string) => {
       if (this.foundBase || this.published) return;
       this.buffered = (this.buffered + String(chunk)).slice(-MAX_BUFFERED_OUTPUT);
+      // #2906: a named connector that registered is up — a failed self-probe after it is this machine's network.
+      if (this.opts.named && !this.registered && /\bRegistered tunnel connection\b/i.test(this.buffered)) this.registered = true;
       if (this.opts.named) return; // Kept private and bounded, used only for a closed failure classification.
       const base = extractTunnelUrl(this.buffered);
       if (!base) return;
@@ -442,6 +458,8 @@ class CloudflaredHandle implements TunnelHandle {
     });
   }
 
+  /** #2906: the named connector printed "Registered tunnel connection" (it is connected to Cloudflare). */
+  registered = false;
   namedFailureKind(): NamedTunnelFailureKind | undefined {
     return this.opts.named ? classifyNamedTunnelOutput(this.buffered, this.opts.named.token) : undefined;
   }
@@ -515,6 +533,19 @@ class CloudflaredHandle implements TunnelHandle {
       else if (this.neverStarted) onSpawnFail(this.spawnError!);
       else if (signal.aborted) onAbort();
     });
+  }
+
+  /** #2906: until the named connector registers; a token refusal, an exit, a cancel or the deadline end it first. */
+  async awaitRegistered(deadline: number, signal: AbortSignal, now: () => number): Promise<void> {
+    for (;;) {
+      this.checkOutput();
+      if (this.registered) return;
+      if (signal.aborted) throw new TunnelStartError("cancelled", "cancelled while waiting for the connector to register");
+      if (this.namedFailureKind() === "named-auth-failed") throw new TunnelStartError("named-auth-failed", "named tunnel credentials were refused");
+      if (this.hasExited) throw new TunnelStartError("no-url", "the connector exited before it registered");
+      if (now() >= deadline) throw new TunnelStartError("timeout", "the connector did not register in time");
+      await new Promise(r => setTimeout(r, 100));
+    }
   }
 
   checkOutput(): void {

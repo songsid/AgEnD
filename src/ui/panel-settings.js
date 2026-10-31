@@ -50,6 +50,7 @@ import { GuestsCard } from "./settings-guests.js";
 import { OfficeSharesCard } from "./office-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
+import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -1353,6 +1354,7 @@ function WebSection({ ctx, staged, part = "all" }) {
         <div class=${fc("field", "originPort")}><label for="publicWebOriginPort">${tn("namedOriginPort")}</label><input id="publicWebOriginPort" type="number" min="1024" max="65535" value=${f.originPort} class=${errors.originPort ? "invalid" : ""} onInput=${(e) => set("originPort")(e.target.value)} /><${Feedback} error=${errors.originPort} /></div>
       </div>
       <p class="note">${tn("namedTunnelHint")} <a href="https://github.com/songsid/AgEnD/blob/main/docs/named-tunnel.md" target="_blank" rel="noopener noreferrer">${tn("namedTunnelSetup")}</a></p>
+      ${String(f.hostname || "").trim() ? html`<${NamedLinkTest} hostname=${f.hostname} port=${f.originPort} protocol=${f.protocol} />` : null}
       <div class="grid2">
         <div class=${fc("field", "ttl")}><label for="publicWebTtl">${tn(named ? "publicTtlNamed" : "publicTtl")}</label><input id="publicWebTtl" type="number" min=${named ? "0" : "1"} max=${named ? "10080" : "480"} step="1" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
         <div class=${fc("field", "protocol")}><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>
@@ -1548,11 +1550,11 @@ function PublicTunnelToken() {
     const result = await api(base);
     if (lease.current() && result.ok) setPresent(result.body?.[0]?.token_present === true);
   };
-  useEffect(() => { refresh().catch(() => {}); }, []);
+  useEffect(() => { refresh().catch(() => {}); return () => setTypedTunnelToken(""); }, []);
   const go = async (clear) => {
     if (inFlight.current || !clear && !secret) return;
     const value = secret;
-    setSecret(""); inFlight.current = true; setBusy(true); setMessage("");
+    setSecret(""); setTypedTunnelToken(""); inFlight.current = true; setBusy(true); setMessage("");
     const key = newKey("tunnel-token");
     try {
       const prepared = await api(`${base}/verify`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(clear ? { clear: true } : { secret: value }) });
@@ -1576,7 +1578,7 @@ function PublicTunnelToken() {
   return html`<section class="card"><h3>${tn("namedToken")}</h3>
     <p class="note">${tn("namedTokenHint")}</p>
     <span class="tag">${present ? tn("keyConfigured") : tn("keyNotConfigured")}</span>
-    <input id="publicTunnelToken" type="password" autocomplete="new-password" aria-label=${tn("namedToken")} value=${secret} onInput=${e => setSecret(e.target.value)} />
+    <input id="publicTunnelToken" type="password" autocomplete="new-password" aria-label=${tn("namedToken")} value=${secret} onInput=${e => { setSecret(e.target.value); setTypedTunnelToken(e.target.value); }} />
     <button type="button" class="btn btn-sm" disabled=${busy || !secret} onClick=${() => go(false)}>${tn("namedTokenSet")}</button>
     <button type="button" class="btn btn-sm" disabled=${busy || !present} onClick=${() => go(true)}>${tn("namedTokenClear")}</button>
     ${message ? html`<p class="note" role="status">${message}</p>` : null}

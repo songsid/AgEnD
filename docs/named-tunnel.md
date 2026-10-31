@@ -172,13 +172,29 @@ shown. Check the matching setting, then reopen:
 | Published application not reached | Check the tunnel's own Routes tab, hostname and DNS. |
 | Different page answered | Point the published application at `http://127.0.0.1:19282`; check redirects or Cloudflare Access challenges. |
 | Local origin unreachable | Check the route's Service URL and that its port matches AgEnD's origin port. |
-| Cannot connect to Cloudflare | Check network, DNS and firewall access, then retry. |
+| Cannot connect to Cloudflare (the tunnel is down) | Ask the network administrator to allow outbound connections to Cloudflare (port 7844), or set the protocol to `http2`. |
+| Connected, but this machine can't open its own address | The tunnel is up; this machine's network blocks the domain or its DNS (some networks filter new domains). It may still work from another network, such as a phone on mobile data. Ask the network administrator to allow the domain. |
 | Local origin port already in use | Close the conflicting program, or choose another port in both AgEnD and the Cloudflare route. |
 
 A failed readiness check never opens the link. Unknown failures keep a generic
 next step rather than exposing arbitrary connector output. Saving a token is a
 local format check, not proof that Cloudflare accepts it; opening the link verifies
 credentials and routing.
+
+## Test connection
+
+**Settings → Access & security → Public link** has a **Test connection** button once a domain is filled in. It tests the
+values as they are in the form, saved or not. It uses the token typed in the token card if there is one, else the saved one.
+Each step shows ✓ or ✗, and every ✗ says what to do next:
+
+1. **The domain, port and token** are well-formed.
+2. **This machine answers on the port.** For the test, AgEnD answers on `127.0.0.1:<port>`, the address the Cloudflare route's service must point to. The step fails on the dashboard's own port, or on a port another program holds.
+3. **The tunnel connects to Cloudflare.** A test connector starts with the token, for up to 20 seconds. The token is passed in its environment and never shown.
+4. **The domain can be looked up** through a public resolver.
+5. **The domain reaches this AgEnD.** An HTTPS request to the domain must come back with this test's own random value. Any other page does not count.
+
+While your link is open with exactly these values, the test checks that link as it is and starts nothing beside it. With
+other values, close the link first. One test runs at a time; it ends within a minute and stops everything it started.
 
 ## Acceptance with your Cloudflare account
 
