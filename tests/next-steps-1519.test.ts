@@ -68,10 +68,13 @@ describe("agend quickstart", () => {
     expect(text.indexOf("Web dashboard"), "found at all").toBeGreaterThan(-1);
   });
 
-  it("its steps are numbered 1 to 4 out of 4 (was 1/3, 2/4 and two unnumbered)", () => {
+  it("its steps are numbered 1 to 4 out of 4 (was 1/3, 2/4 and two unnumbered); web only, 1 to 3 of 3 (#2910)", () => {
     const qs = SRC("quickstart.ts");
     const steps = [...qs.matchAll(/Step (\d)\/(\d)/g)].map(m => `${m[1]}/${m[2]}`);
-    expect([...new Set(steps)].sort()).toEqual(["1/4", "2/4", "3/4", "4/4"]);
+    expect([...new Set(steps)].sort()).toEqual(["2/4", "3/4"]);                                   // the bot path's own steps
+    // #2910: the first and last steps count the path's steps: 4 with a bot, 3 web only (its step 2 is the first agent).
+    expect([qs.includes("const steps = webOnly ? 3 : 4;"), qs.includes("bold(`Step 1/${steps}: Backend`)"),
+      qs.includes("bold(`Step ${steps}/${steps}: Project Roots (optional)`)"), qs.includes("askFirstAgent(rl, `2/${steps}`)")]).toEqual([true, true, true, true]);
     expect(qs).toContain('runTelegramFlow(rl, "Step 3/4")');
     expect(qs).toContain('runDiscordFlow(rl, "Step 3/4")');
     // Every way out that says Done says where the dashboard is first: one Done, printed by printDone (five exits).
