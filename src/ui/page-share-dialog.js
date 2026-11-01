@@ -16,6 +16,7 @@ register("pshare", {
     title: "Share this page", what: "Anyone with the link can open “{0}” from {1}'s reply ({2}).",
     runs: "It runs the page's own scripts in their browser, apart from this dashboard. They see the page only — not the chat, the agent or the fleet.",
     snapshot: "The link shows the page as it is now; a later version needs a new link. The chat is told when it starts and ends.",
+    cdn: "This page may load libraries from cdnjs / jsDelivr; viewers' browsers will request them.",
     how: "For", create: "Share", creating: "Starting the link…", cancel: "Cancel", close: "Close",
     made: "Anyone with this link can open the page until {0}. It is shown only now: copy it.", copy: "Copy link", copied: "Link copied",
     stop: "Stop sharing", stopAll: "Stop all", stopping: "Stopping…", stopped: "The page is no longer shared.", untitled: "this page",
@@ -36,6 +37,7 @@ register("pshare", {
     title: "分享這個頁面", what: "拿到連結的人都能開啟 {1} 回覆裡的「{0}」（{2}）。",
     runs: "頁面本身的腳本會在對方的瀏覽器執行，與這個儀表板分開。對方只看得到這個頁面——看不到對話、agent 或 fleet。",
     snapshot: "連結顯示的是頁面現在的樣子；之後的新版本需要新的連結。開始與結束分享時會告知這個對話。",
+    cdn: "這個頁面可能從 cdnjs / jsDelivr 載入函式庫；觀看者的瀏覽器會向它們發出請求。",
     how: "時間", create: "分享", creating: "正在啟動連結…", cancel: "取消", close: "關閉",
     made: "拿到這個連結的人可以開啟頁面到 {0}。連結只會顯示這一次：請複製。", copy: "複製連結", copied: "已複製連結",
     stop: "停止分享", stopAll: "全部停止", stopping: "正在停止…", stopped: "這個頁面已停止分享。", untitled: "這個頁面",
@@ -67,7 +69,7 @@ export function refusalText(d) {
 }
 
 // ── The open page shares, one read for the page (an admin's; anyone else gets null) ──
-let state = { loaded: false, canShare: false, enabled: false, shares: [] };
+let state = { loaded: false, canShare: false, enabled: false, cdn: false, shares: [] };
 const subs = new Set();
 let reading = null, expiry = null;
 function set(next) { state = next; for (const fn of [...subs]) { try { fn(state); } catch { /* one listener's error stops no other */ } } }
@@ -80,7 +82,7 @@ export function refreshPageShares(get = globalThis.fetch) {
     let d = null;
     if (admin) { try { const r = await get("/ui/page-share", { method: "GET", headers: JSON_HEADERS }); d = r.ok ? await r.json() : null; } catch { d = null; } }
     const shares = d && Array.isArray(d.shares) ? d.shares : [];
-    set({ loaded: true, canShare: admin && !!d && d.enabled !== false, enabled: !!d && d.enabled !== false, shares });
+    set({ loaded: true, canShare: admin && !!d && d.enabled !== false, enabled: !!d && d.enabled !== false, cdn: !!d && d.cdn === true, shares });
     // Read again when the soonest one ends, so its "Shared until" goes without a reload.
     if (expiry) clearTimeout(expiry);
     const soonest = Math.min(...shares.map((s) => s.expiresAt));
@@ -146,8 +148,9 @@ export function PageShareDialog({ block, share = null, get = globalThis.fetch, o
           <button type="button" class="btn btn-sm ps-copy" onClick=${copy}>${tp("copy")}</button>
           <p class="note">${tp("made", whenLong(made.share.expiresAt))}</p>
         </div>`
-        : share ? html`<p class="note ps-now">${tp("nowShared", whenLong(share.expiresAt))}</p>`
+        : share ? html`<p class="note ps-now">${tp("nowShared", whenLong(share.expiresAt))}</p>${share.cdn ? html`<p class="note ps-cdn">${tp("cdn")}</p>` : null}`
         : html`<p class="muted">${tp("snapshot")}</p>
+          ${state.cdn ? html`<p class="note ps-cdn">${tp("cdn")}</p>` : null}
           <label class="field"><span>${tp("how")}</span>
             <select class="tb-select ps-how" value=${String(minutes)} onChange=${(e) => setMinutes(Number(e.target.value))} disabled=${busy}>
               ${DURATIONS.map(([k, m]) => html`<option key=${k} value=${String(m)}>${tp(k)}</option>`)}

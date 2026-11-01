@@ -8,7 +8,8 @@
 //   top.location: none reaches another host — the wrapper's frame-src 'self' contains them;
 // - the frame opened by itself (a tab): 404; a dashboard path on the share host: 404; an ended link: the ended page;
 // - a positive control: the self-navigation page served top level, as #2917 first did, IS recorded leaving (the
-//   harness sees escapes: Prism's P1 reproduced, and the wrapper is what stops it).
+//   harness sees escapes: Prism's P1 reproduced, and the wrapper is what stops it);
+// - a jsDelivr library: a share made with web.preview_cdn off never requests it; one made with it on loads it.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2911-page-share.mts
 import { createRequire } from "node:module";
@@ -44,6 +45,12 @@ const ESCAPES: Record<string, string> = {
 };
 
 const pages = new PS.PageShares({});
+// #2924 review: a share follows web.preview_cdn as it was when made. The same page (a jsDelivr script), shared with it off
+// and with it on: only the second may request the library, and the setting's later changes change neither.
+const LIB = `<!doctype html><title>Lib</title><p id="o">waiting</p><script src="https://cdn.jsdelivr.net/npm/smoke-lib@1.0.0/lib.js"></script>
+<script>document.getElementById("o").textContent = window.__lib === 1 ? "lib loaded" : "lib blocked";</script>`;
+const libOff = (() => { const m = pages.create({ html: LIB, instance: "w", title: "lib-off", owner: "o", cdn: false }); if (!m.ok) throw new Error(m.error); return m.token; })();
+const libOn = (() => { const m = pages.create({ html: LIB, instance: "w", title: "lib-on", owner: "o", cdn: true }); if (!m.ok) throw new Error(m.error); return m.token; })();
 const mk = (html: string, title: string) => { const m = pages.create({ html, instance: "w", title, owner: "o" }); if (!m.ok) throw new Error(m.error); return m.token; };
 const probeToken = mk(PROBE, "Probe");
 const escapeTokens = Object.fromEntries(Object.entries(ESCAPES).map(([k, h]) => [k, mk(h, k)]));
@@ -55,10 +62,13 @@ const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const results: any = { browser: browser.version(), escapes: {} };
 const outbound: string[] = [];
+const cdnRequests: string[] = [];
 try {
   const ctx = await browser.newContext();
   await ctx.route("**/*", async (route: any) => {
     const u = new URL(route.request().url());
+    // The CDN, emulated: the library sets a flag. Each request is recorded (not counted as an escape).
+    if (u.host === "cdn.jsdelivr.net") { cdnRequests.push(u.pathname); return route.fulfill({ status: 200, headers: { "content-type": "application/javascript", "access-control-allow-origin": "*" }, body: "window.__lib = 1;" }); }
     if (u.host !== HOST) { outbound.push(`${route.request().method()} ${u.href.slice(0, 120)}`); return route.abort(); }
     // The positive control: the way #2917 first served a share (the page itself, top level, sandboxed by its CSP).
     if (u.pathname === "/control-top-level") return route.fulfill({ status: 200, headers: { "content-type": "text/html", "content-security-policy": PS.PAGE_SHARE_CSP.replace("frame-ancestors 'self'", "frame-ancestors 'none'") }, body: ESCAPES.selfNavigate });
@@ -92,6 +102,14 @@ try {
     await page.waitForTimeout(1500);
     results.escapes[k] = { topStill: page.url() === `https://${HOST}/p/${token}`, outbound: outbound.slice(before) };
   }
+  // The CDN library: made off → blocked (no request); made on → loaded.
+  for (const [k, token] of [["off", libOff], ["on", libOn]] as const) {
+    const before = cdnRequests.length;
+    await page.goto(`https://${HOST}/p/${token}`);
+    await page.waitForTimeout(1200);
+    const f = page.frames().find((x: any) => x !== page.mainFrame());
+    results[`lib_${k}`] = { text: f ? await f.textContent("#o") : null, cdnRequests: cdnRequests.length - before };
+  }
   // The frame by itself, a dashboard path, and an ended link.
   const direct = await page.goto(`https://${HOST}/p/${probeToken}/frame`);
   results.frameDirect = direct.status();
@@ -112,6 +130,7 @@ try {
     && p.ran === "yes" && p.origin === "null" && /^denied/.test(p.cookie) && /^denied/.test(p.storage) && p.popup === "null" && /^blocked/.test(p.fetch)
     && Object.values(results.escapes).every((e: any) => e.topStill && e.outbound.length === 0)
     && results.outboundBeforeControl.length === 0 && results.positiveControl.some((x: string) => x.includes("outbound.invalid/leak"))
+    && results.lib_off.text === "lib blocked" && results.lib_off.cdnRequests === 0 && results.lib_on.text === "lib loaded" && results.lib_on.cdnRequests === 1
     && results.frameDirect === 404 && results.dashboardPath === 404 && results.ended.status === 404 && /has ended/.test(results.ended.text) && results.cookiesInBrowser === 0;
   await ctx.close();
 } finally {

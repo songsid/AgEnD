@@ -228,6 +228,29 @@ function rig(over: Record<string, unknown> = {}, opts: { fail?: string } = {}) {
   return { svc, manager, exit: () => exit?.(), setPages: (v: boolean) => { pagesOn = v; }, owners, ended, logs };
 }
 
+describe("#2924 review: a page share follows web.preview_cdn as it was when the share was made", () => {
+  it("made with it off: never the CDN allowlist, even when it is switched on later; made with it on: always, even when switched off", async () => {
+    let cdn = false;
+    const r = rig({ pageCdn: () => cdn });
+    const off = await r.svc.createPage({ html: "<p>off</p>", instance: "w", title: "", owner: "o" });
+    cdn = true;
+    const on = await r.svc.createPage({ html: "<p>on</p>", instance: "w", title: "", owner: "o" });
+    if (!off.ok || !on.ok) throw new Error("refused");
+    expect([off.share.cdn, on.share.cdn]).toEqual([false, true]);
+    const g = createOfficeShareGateway({ shares: { find: () => null }, source, pages: r.svc.pages, statics: () => null });
+    const url = await g.listen(); g.setHost("cdn-check.trycloudflare.com"); closers.push(() => g.close());
+    const frameCsp = async (u: string) => String((await raw(Number(url.port), "GET", `/p/${u.split("/p/")[1]}/frame`, { host: "cdn-check.trycloudflare.com", "sec-fetch-dest": "iframe" })).headers["content-security-policy"]);
+    for (const setting of [true, false]) {
+      cdn = setting;                                              // switched after both were made: neither changes
+      const a = await frameCsp(off.url), b = await frameCsp(on.url);
+      expect(a, `off-share, setting ${setting}`).toBe(PS.PAGE_SHARE_CSP);
+      expect(a).not.toMatch(/cdnjs|jsdelivr/);
+      expect(b, `on-share, setting ${setting}`).toBe(PS.PAGE_SHARE_CDN_CSP);
+      for (const d of ["script-src 'unsafe-inline' https://cdnjs.cloudflare.com/ajax/libs/ https://cdn.jsdelivr.net/npm/", "connect-src 'none'", "frame-ancestors 'self'", "sandbox allow-scripts"]) expect(b, d).toContain(d);
+    }
+  });
+});
+
 describe("page shares on the share tunnel (#2911)", () => {
   it("one tunnel for Office and page shares; it stays while a page share is open and goes with the last", async () => {
     const r = rig();
@@ -353,6 +376,7 @@ describe("/ui/page-share (#2911)", () => {
     expect(f.channel[0]![1]).toContain("runs the page's own scripts");
     expect(f.channel[0]![1]).not.toMatch(/safe/i);
     const list = JSON.parse((await raw(f.port, "GET", "/ui/page-share", admin.read)).body);
+    expect(list.cdn, "the dialog is told whether a share made now may load CDN libraries").toBe(false);
     expect(list.shares.map((s: { id: string }) => s.id)).toEqual([d.share.id]);
     expect(JSON.stringify(list)).not.toContain(token);
     expect((await raw(f.port, "DELETE", `/ui/page-share/${d.share.id}`, admin.write)).status).toBe(200);

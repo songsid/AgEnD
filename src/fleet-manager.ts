@@ -1643,6 +1643,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2911: page shares on the same tunnel. Their end (expired, stopped, the feature off, the maker no longer an admin,
       // the fleet stopping) is said in the page's own channel, as its start is (pageShareNotice); never its URL.
       pageConfig: () => this.fleetConfig?.web?.page_share,
+      pageCdn: () => this.fleetConfig?.web?.preview_cdn === true,
       pagesChanged: (list, ended) => this.pageSharesChanged(list, ended),
       log: (event, detail) => this.logger.info({ event, ...(detail ? { detail } : {}) }, "Office share link"),
     }));

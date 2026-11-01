@@ -53,6 +53,11 @@ export interface PageShare {
    * the message's boot and id, and the ```html fence's number or the attachment's file id. Not secret: no token.
    */
   from: { boot: string; id: number; fence?: number; att?: string };
+  /**
+   * Whether it may load libraries from cdnjs / jsDelivr (the preview's allowlist, web.preview_cdn): decided when it was
+   * made, from the setting then — a later change of the setting never changes an open share (leader, #2924 review).
+   */
+  cdn: boolean;
   /** The snapshot's size in bytes. */
   bytes: number;
   /** Wall-clock ms, for display; the expiry itself runs on the monotonic clock. */
@@ -99,6 +104,8 @@ export function htmlFences(text: string): Array<{ code: string; terminated: bool
 
 /** /p/<token>/frame's CSP: the preview frame's (sandbox allow-scripts, no network, no forms), framed only by its wrapper. */
 export const PAGE_SHARE_CSP = previewFrameCsp(["'self'"]);
+/** The same with the preview's CDN allowlist (a share made while web.preview_cdn was on): connect-src stays 'none'. */
+export const PAGE_SHARE_CDN_CSP = previewFrameCsp(["'self'"], { cdn: true });
 /**
  * The wrapper's CSP: no script of its own, its one style block, and a frame only from its own origin — which every
  * navigation of the framed page is checked against (a page sending itself to another host is blocked by the browser).
@@ -143,7 +150,7 @@ export class PageShares {
   }
 
   /** A new share of `html` (a snapshot): `minutes` from 15 to `maxMinutes` (60 unless asked). */
-  create(opts: { html: string; instance: string; title: string; owner: string; from?: PageShare["from"]; minutes?: number; maxMinutes?: number }): PageShareCreate {
+  create(opts: { html: string; instance: string; title: string; owner: string; from?: PageShare["from"]; cdn?: boolean; minutes?: number; maxMinutes?: number }): PageShareCreate {
     // Shares past their deadline go now — and are announced now, once, whether this one is made or refused (#2917 review
     // P3: dropped silently, their end was never said and their bookkeeping never cleared).
     const ended = this.prune();
@@ -160,7 +167,7 @@ export class PageShares {
     let id = random(4).toString("hex");
     while (this.list().some(s => s.id === id)) id = random(4).toString("hex");
     const ms = minutes * MINUTE_MS, wall = this.wall();
-    const share: PageShare = { id, instance: opts.instance, title: oneLine(opts.title), owner: opts.owner, from: { ...(opts.from ?? { boot: "", id: 0 }) }, bytes, createdAt: wall, expiresAt: wall + ms };
+    const share: PageShare = { id, instance: opts.instance, title: oneLine(opts.title), owner: opts.owner, from: { ...(opts.from ?? { boot: "", id: 0 }) }, cdn: opts.cdn === true, bytes, createdAt: wall, expiresAt: wall + ms };
     const timer = (this.deps.setTimer ?? ((fn, t) => { const h = setTimeout(fn, t); h.unref?.(); return h; }))(() => { const ended = this.prune(); if (ended.length) this.announce(ended); }, ms + 50);
     this.byHash.set(hashShareToken(token), { share, html: opts.html, deadline: this.now() + ms, timer });
     this.announce([]);

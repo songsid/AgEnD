@@ -449,6 +449,7 @@ export interface WebApiContext {
     revoke(id: string): number;
     /** #2911: page share links on the same tunnel (page-share.ts); absent: /ui/page-share is not offered. */
     pagesEnabled?(): boolean;
+    pagesCdn?(): boolean;
     listPages?(): import("./page-share.js").PageShare[];
     createPage?(opts: { html: string; instance: string; title: string; owner: string; from?: import("./page-share.js").PageShare["from"]; minutes?: number; stillAllowed?(): boolean }): Promise<import("./office-share-service.js").PageShareMade>;
     revokePage?(id: string): import("./page-share.js").PageShare[];
@@ -733,7 +734,8 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
   const first = who();
   if ("status" in first) { refuse(first.status); return true; }
   res.setHeader("Cache-Control", "no-store");
-  if (method === "GET") { json(res, 200, { enabled: service.pagesEnabled(), shares: service.listPages() }); return true; }
+  // `cdn`: whether a share made now may load the preview's CDN libraries (the confirm dialog says so).
+  if (method === "GET") { json(res, 200, { enabled: service.pagesEnabled(), cdn: service.pagesCdn?.() === true, shares: service.listPages() }); return true; }
   if (method === "DELETE") {
     // Its end is said in the instance's channel by the service's change listener (as an expiry is).
     const n = service.revokePage(one![1]!).length;
