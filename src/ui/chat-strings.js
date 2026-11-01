@@ -56,6 +56,10 @@ register("chat", {
     pvOpenPanel: "Open in panel", pvInPanel: "Shown in the panel.", pvPanel: "HTML preview", pvSource: "From {0}, {1} — show the message",
     pvPage: "Page", pvCode: "Code", pvReload: "Reload", pvClose: "Close the panel", pvBack: "Back to the chat", pvResize: "Resize the preview panel",
     pvNewer: "A newer version is in the reply from {0}.", pvNewerShow: "Show it", pvPanelIdle: "Click Preview to run it here.",
+    // #2911 (M-2216): the panel's versions and their changes.
+    pvVersions: "Versions", pvVer: "v{0}/{1}", pvVerLong: "Version {0} of {1}", pvVerPrev: "Previous version", pvVerNext: "Next version",
+    pvChanges: "Changes", pvChangesFrom: "Changes from v{0}", pvChangesNone: "No changes from v{0}.",
+    pvChangesBig: "These versions are too large or too different to compare here. Download both to compare them.", pvChangesCut: "showing the first {0} lines",
     lbLabel: "Image: {0}", lbLabelNoName: "Image", lbClose: "Close", lbOpenOriginal: "Open original", lbPrev: "Previous image", lbNext: "Next image", lbCount: "{0} / {1}",
     // #2333: zoom in the lightbox.
     lbZoomIn: "Zoom in (+)", lbZoomOut: "Zoom out (−)", lbZoomLevel: "{0}% — click for fit or actual size (0 / 1)", lbFitWidth: "Fit width (W)",
@@ -180,6 +184,9 @@ register("chat", {
     pvOpenPanel: "在面板中開啟", pvInPanel: "已在面板中顯示。", pvPanel: "HTML 預覽", pvSource: "來自 {0}，{1}——顯示該訊息",
     pvPage: "頁面", pvCode: "程式碼", pvReload: "重新載入", pvClose: "關閉面板", pvBack: "回到對話", pvResize: "調整預覽面板寬度",
     pvNewer: "{0} 的回覆裡有較新的版本。", pvNewerShow: "顯示", pvPanelIdle: "按「預覽」在這裡執行。",
+    pvVersions: "版本", pvVer: "v{0}/{1}", pvVerLong: "第 {0} 版，共 {1} 版", pvVerPrev: "上一版", pvVerNext: "下一版",
+    pvChanges: "變更", pvChangesFrom: "與第 {0} 版相比的變更", pvChangesNone: "與第 {0} 版相比沒有變更。",
+    pvChangesBig: "這兩版太大或差異太多，無法在這裡比較。請下載兩版後再比較。", pvChangesCut: "只顯示前 {0} 行",
     lbLabel: "圖片：{0}", lbLabelNoName: "圖片", lbClose: "關閉", lbOpenOriginal: "開啟原圖", lbPrev: "上一張", lbNext: "下一張", lbCount: "{0} / {1}",
     lbZoomIn: "放大（+）", lbZoomOut: "縮小（−）", lbZoomLevel: "{0}%：點一下切換「符合視窗」與「實際大小」（0 / 1）", lbFitWidth: "符合寬度（W）",
     pvWhyOptin: "還沒允許 HTML 預覽。可從這張卡片的 ⋯ 選單或「設定 → 偏好設定」允許。",
