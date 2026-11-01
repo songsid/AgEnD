@@ -776,7 +776,7 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
     }
     const from = { boot: body.boot, id: body.id as number, ...(fence !== undefined ? { fence: fence as number } : { att: att as string }) };
     // The caller is asked again once the tunnel is up (#2917 review P2): the same admin, the session still live.
-    const stillAllowed = (): boolean => { const again = who(); return !("status" in again) && again.person === now.person; };
+    const stillAllowed = (): boolean => { const currentCaller = who(); return !("status" in currentCaller) && currentCaller.person === now.person; };
     const made = await service.createPage!({ html, instance: body.instance, title: htmlTitle(html) || name, owner: now.person, from, stillAllowed,
       ...(typeof body.minutes === "number" ? { minutes: body.minutes } : {}) });
     if (!made.ok) {
