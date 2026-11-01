@@ -11,6 +11,7 @@ import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
+import { sanitizeInstanceName } from "./instance-names.js";
 import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
@@ -31,7 +32,7 @@ import type { DeliveryStatus } from "./status-emojis.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, readPauseReason, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
-import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { GENERAL_PAUSE_ERROR, isGeneralInstance, GENERAL_NAME } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
@@ -207,6 +208,8 @@ export interface LifecycleContext {
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
+  /** #2910: no Discord or Telegram connection at all — a new agent gets no topic (it is reached from the dashboard). */
+  isWebOnlyFleet?(): boolean;
   /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
   deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
   /**
@@ -2511,7 +2514,9 @@ export class InstanceLifecycle {
     const topicDeleter = this.ctx.getForumTopicDeleter?.(adapterId) ?? null;
 
     try {
-      check(); createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId); check();
+      // #2910: a web-only fleet has no topics to create — the agent is reached from the dashboard.
+      const webOnly = this.ctx.isWebOnlyFleet?.() === true;
+      if (!webOnly) { check(); createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId); check(); }
 
       // Use explicit topic_name as name base when provided; fall back to directory basename
       const explicitTopicName = args.topic_name;
@@ -2522,7 +2527,15 @@ export class InstanceLifecycle {
       // (#1305 P1): full topic_id string equality, plus the adapter/world
       // check when the existing entry records one (channel_id). A dir-only
       // collision (no config entry) can never prove that.
-      {
+      if (webOnly) {
+        // No topic to suffix with: the name as asked, else the first free "-2", "-3"…. "general" is never handed out
+        // here (#2919 review): that name alone makes an instance the General (its create/start tools, never paused).
+        const instances = this.ctx.fleetConfig?.instances ?? {};
+        const taken = (candidate: string) => candidate === GENERAL_NAME || candidate in instances || existsSync(this.ctx.getInstanceDir(candidate));
+        const clean = sanitizeInstanceName(nameBase);
+        newInstanceName = clean;
+        for (let n = 2; taken(newInstanceName); n++) newInstanceName = `${clean}-${n}`;
+      } else {
         const instances = this.ctx.fleetConfig?.instances ?? {};
         const wanted = String(createdTopicId!);
         newInstanceName = uniqueInstanceName(nameBase, createdTopicId!, (candidate) =>
@@ -2551,7 +2564,7 @@ export class InstanceLifecycle {
         ...DEFAULT_INSTANCE_CONFIG,
         ...getEffectiveInstanceDefaults(this.ctx.fleetConfig!.defaults ?? {}),
         working_directory: workDir,
-        topic_id: createdTopicId,
+        ...(createdTopicId != null ? { topic_id: createdTopicId } : {}),
         ...(description ? { description } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(args.model ? { model: args.model } : {}),
@@ -2581,7 +2594,7 @@ export class InstanceLifecycle {
       const beforeCreate = structuredClone(this.ctx.fleetConfig);
       const persist = (): void => {
         this.ctx.fleetConfig!.instances[newInstanceName!] = instanceConfig;
-        this.ctx.routing.register(createdTopicId!, { kind: "instance", name: newInstanceName! });
+        if (createdTopicId != null) this.ctx.routing.register(createdTopicId, { kind: "instance", name: newInstanceName! });
         try { this.ctx.saveFleetConfig(); }
         finally { createUndo = settingsUndo((this.ctx.getSettingsConfigPath?.() ?? join(this.ctx.dataDir, "fleet.yaml")), beforeCreate, this.ctx.fleetConfig, [["instances", newInstanceName!]]); }
       };

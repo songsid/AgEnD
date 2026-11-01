@@ -783,6 +783,8 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 **從網頁 dashboard 登入（2.3，#2233）。** 在這台機器或它的網路上登入 dashboard 的 fleet 管理員（不是透過公開連結，也不是訪客）不需要任何聊天連線也能做同樣的事：**設定 → Agent → 登入** 列出每個 backend 的登入，以及代理使用的每個憑證設定檔，附 **登入** 按鈕；網頁的 `/backend` 選單在未登入的 backend 旁提供 **登入 <backend>**；**需要你** 在因登入而暫停的代理上提供 **登入**。對話框跑的是同一個流程：裝置碼直接顯示在對話框；瀏覽器終端機登入會顯示 **開啟登入終端機** 和一次性存取碼，只給這個瀏覽器工作階段（不經過私訊，所以只用網頁的 fleet 不需要 bot）。檢查、次數限制和 10 分鐘的時限都相同，公開連結仍是每次登入自行選擇；進行中時每個管理員頁面都會顯示，附 **開啟**（啟動它的瀏覽器看得到連結和代碼，其他人只看得到是誰、在哪裡，並可取消）。啟動它的瀏覽器工作階段結束時，登入會被取消。這裡不會安裝尚未安裝的 CLI：對話框會給出安裝指令。預設的 Kiro、Claude Code 與 Codex 帳號則改用具名的瀏覽器登入控制項（#2599；[詳細說明](configuration.zh-TW.md#首次設定時從瀏覽器登入後端)），首次設定時略過的後端，即使還沒有 agent 使用，也會列在 **Needs you**。
 
+**只用網頁的 fleet 也能完整運作（#2910）。**沒有 Discord 或 Telegram 連線的 fleet（例如用 `agend quickstart` → 只用網頁，或設定頁的「只用網頁」建立的）也擁有 AgEnD 其他的功能：排程、任務板和 fleet 決策都會運作；agent 之間可以用 `send_to_instance`、`delegate_task`、`report_result`、`broadcast` 互傳訊息，接收的 agent 會看到 `[from:<名稱>]`，和聊天 fleet 一樣。在儀表板按 **新增 agent** 會建立一個沒有聊天 topic 的 agent：名稱就是你輸入的（已被使用時依序加上 `-2`、`-3`…），透過儀表板的聊天和它對話。只有聊天平台才有的 `edit_message` 和 `download_attachment` 會回覆「純網頁的 fleet 無法使用」，而不是叫 agent 重試；`reply` 則回到網頁聊天。
+
 登入成功後，這個後端執行中的 instance 會重啟，以套用新的憑證。打字 `/install-cli` 只會印一行指向 `/login`，不會執行登入；它不會出現在任何指令選單裡。
 
 ## 憑證 profile 與第二份訂閱 (Credential profiles and a second subscription)

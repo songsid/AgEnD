@@ -68,7 +68,8 @@ describe("persisted pause markers", () => {
     const start = vi.spyOn(fm, "startInstance").mockRejectedValueOnce(new Error("boom"));
 
     await expect(fm.lifecycle.wake("worker")).rejects.toThrow("boom");
-    expect(start).toHaveBeenCalledWith("worker", config, false, "fleet-topic", false, expect.objectContaining({ name: "worker" }));
+    // #2910: no channel here — a web-only fleet, whose agents run in topic mode.
+    expect(start).toHaveBeenCalledWith("worker", config, true, "fleet-topic", false, expect.objectContaining({ name: "worker" }));
     expect(hasPausedMarker(instanceDir)).toBe(true);
 
     start.mockResolvedValueOnce(undefined);
