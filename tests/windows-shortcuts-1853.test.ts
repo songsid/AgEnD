@@ -53,17 +53,42 @@ describe("shortcuts and the fast path (static)", () => {
 /** The installer's probe of a Linux for AgEnD (found / broken / none), as it reaches bash. */
 const PROBE = /^\$AGEND_PROBE = '((?:[^']|'')*)'$/m.exec(text)![1]!.replace(/''/g, "'");
 const PRELUDE = "export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ";
+/** #2879: the restart shortcut's first two calls, as root: the system's systemd, then the user's manager (repaired). */
+const SYSTEM_CHECK = (distro: string) => `-d ${distro} -u root --exec timeout --signal=TERM --kill-after=2s 25 bash -lc systemctl is-system-running 2>&1 | head -n 1`;
+const USER_REPAIR = (distro: string, user: string) => `-d ${distro} -u root --exec timeout --signal=TERM --kill-after=2s 55 bash -lc u=$(id -u ${user}) || exit 3; rt=/run/user/$u;`;
+/** The calls after the two root layers must be exactly `rest`; the layers themselves are checked first. */
+function expectLayersThen(log: string, distro: string, user: string, rest: string) {
+  const lines = log.split("\n");
+  expect(lines[0]).toBe(SYSTEM_CHECK(distro));
+  expect(lines[1]!.startsWith(USER_REPAIR(distro, user))).toBe(true);
+  expect(lines.slice(2).join("\n")).toBe(rest);
+}
 const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 const scratch = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
 /** A native wsl.exe that logs each call's argv and answers per command: restart / status / the agend probe. */
-function fakeWsl(o: { restart?: [number, string]; status?: string; found?: string[] } = {}) {
+/**
+ * #2879 layers: `system` answers `systemctl is-system-running` (a list is answered in turn, the last repeating; after a
+ * `--terminate`, `afterRestart` instead); `userMgr` is the repair's own last line and exit code ("OK 0" by default).
+ */
+function fakeWsl(o: { restart?: [number, string]; status?: string; found?: string[]; system?: string | string[]; afterRestart?: string; userMgr?: [string, number] } = {}) {
   const bin = scratch("agend-1853sc-bin-");
   const [rc, rout] = o.restart ?? [0, "Fleet restarting in background."];
+  const states = Array.isArray(o.system) ? o.system : [o.system ?? "running"];
+  states.forEach((st, i) => writeFileSync(join(bin, `state.${i}`), st));
+  const [umOut, umRc] = o.userMgr ?? ["OK 0", 0];
   writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh
 printf '%s\\n' "$*" >> '${join(bin, "calls.txt")}'
 case "$*" in
+  *"--terminate"*) echo restarted > '${join(bin, "terminated")}'; exit 0 ;;
+  *"--exec true"*) exit 0 ;;
+  *"is-system-running"*)
+    if [ -f '${join(bin, "terminated")}' ]; then echo '${o.afterRestart ?? "running"}'; exit 0; fi
+    n=$(cat '${join(bin, "n")}' 2>/dev/null || echo 0); f='${join(bin, "state.")}'$n
+    [ -f "$f" ] || f='${join(bin, `state.${states.length - 1}`)}'
+    cat "$f"; echo; echo $((n + 1)) > '${join(bin, "n")}'; exit 0 ;;
+  *"systemctl is-active user@"*) [ -n '${umOut}' ] && echo '${umOut}'; exit ${umRc} ;;
   *"agend restart"*) echo '${rout}'; exit ${rc} ;;
   *"agend status"*) echo '${o.status ?? "worker  running"}'; exit 0 ;;
   *"echo AGEND_FOUND"*) for d in ${(o.found ?? []).map(d => `'${d}'`).join(" ")}; do case "$2" in "$d") echo AGEND_FOUND; exit 0 ;; esac; done; exit 1 ;;
@@ -127,7 +152,9 @@ describe.skipIf(!pwsh)("with pwsh: the restart shortcut", { timeout: 90_000 }, (
   it("y: exactly agend restart, then agend status, in the given Linux as the given user", () => {
     const bin = fakeWsl({ status: "worker  running  claude-code" });
     const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0))`, bin, "y\n");
-    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
+    expectLayersThen(calls(bin), "Ubuntu-22.04", "han", `-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
+    expect(out).toContain("[OK] Ubuntu-22.04 的系統 systemd 正在執行。");
+    expect(out).toContain("[OK] han 的使用者 systemd 正常。");
     expect(out).toContain("AgEnD 正在重新啟動。");
     expect(out).toContain("worker  running  claude-code");
     expect(out).toContain("RESULT=restarted");
@@ -156,7 +183,79 @@ if ($e2.Count) { throw "parse errors" }`, bin);
     const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "restart-agend.ps1")], { encoding: "utf8", timeout: 60_000, input: "y\n\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)");
-    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
+    expectLayersThen(calls(bin), "Ubuntu-22.04", "han", `-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
+  });
+});
+
+describe.skipIf(!pwsh)("with pwsh: the restart shortcut repairs first (#2879)", { timeout: 120_000 }, () => {
+  const restart = (bin: string, input: string, user = "root", distro = "AgEnD") =>
+    withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend '${distro}' '${user}' -SettleSeconds 0))`, bin, input);
+  const restarted = (bin: string) => /agend restart/.test(calls(bin));
+  it("(a) degraded counts as running; (b) a manager that lost its sockets is rebuilt, then (c) agend restart", () => {
+    const bin = fakeWsl({ system: "degraded", userMgr: ["RESTARTED 0", 0] });
+    const { out } = restart(bin, "y\n");
+    expect(out).toContain("[OK] AgEnD 的系統 systemd 正在執行。");
+    expect(out).toContain("[OK] 已重建 /run/user/0/systemd（使用者 systemd 失去了它的 socket，例如 WSL 換掉了 /run/user/0）。");
+    expect(out).toContain("RESULT=restarted");
+    expect(restarted(bin)).toBe(true);
+  });
+  it("(b) a manager that was not running is started", () => {
+    const bin = fakeWsl({ userMgr: ["STARTED 1000", 0] });
+    const { out } = restart(bin, "y\n", "han");
+    expect(out).toContain("[OK] 已啟動 han 的使用者 systemd（它原本沒有執行）。");
+    expect(out).toContain("RESULT=restarted");
+  });
+  it.each([["FAILED 0", 4, "修復 root 的使用者 systemd 失敗，所以沒有重啟。在 AgEnD 裡執行 systemctl status user@0.service 查看原因。"],
+    ["NOTREADY 0", 5, "root 的使用者 systemd 在 20 秒內沒有恢復，所以沒有重啟。"],
+    ["", 3, "在 AgEnD 裡找不到使用者 root，所以沒有重啟。"]] as const)("(b) %s: says so and stops before agend restart", (line, rc, text) => {
+    const bin = fakeWsl({ userMgr: [line, rc] });
+    const { out } = restart(bin, "y\n");
+    expect(out).toContain(text);
+    expect(out).toContain("RESULT=failed");
+    expect(restarted(bin)).toBe(false);
+  });
+  it("(a) still starting: waits, then goes on", () => {
+    const bin = fakeWsl({ system: ["starting", "running"] });
+    const { out } = restart(bin, "y\n");
+    expect(out).toContain("AgEnD 的 systemd 還在啟動，稍等一下…");
+    expect(out).toContain("RESULT=restarted");
+  });
+  it("(d) systemd offline: warns, and without the typed name restarts nothing (Enter, a wrong name, or a different case)", () => {
+    for (const typed of ["\n", "agend\n", "Ubuntu\n", "y\n"]) {
+      const bin = fakeWsl({ system: "offline" });
+      const { out } = restart(bin, "y\n" + typed);
+      expect(out).toContain("[!!] AgEnD 的系統 systemd 沒有在執行（offline），AgEnD 需要它。");
+      expect(out).toContain("AgEnD 裡的所有程式都會停止，包括每個 agent 正在做的工作。");
+      expect(out).toContain("其他 Linux 和 Windows 不受影響。");
+      expect(out).toContain("已取消：Linux 沒有重新啟動，AgEnD 也沒有重啟。");
+      expect(out).toContain("RESULT=failed");
+      expect(calls(bin)).not.toMatch(/--terminate|--shutdown|agend restart/);
+    }
+  });
+  it("(d) the exact name typed: only that Linux is restarted (--terminate it, start it), then a–c run again", () => {
+    const bin = fakeWsl({ system: "offline", afterRestart: "running" });
+    const { out } = restart(bin, "y\nAgEnD\n");
+    const log = calls(bin);
+    expect(log).toMatch(/^--terminate AgEnD$/m);
+    expect(log).toMatch(/^-d AgEnD --exec true$/m);
+    expect(log).not.toMatch(/--shutdown/);
+    expect(log.split("\n").filter(l => l.startsWith("--terminate"))).toEqual(["--terminate AgEnD"]);
+    expect(out).toContain("[OK] 已重新啟動 AgEnD。");
+    expect(out).toContain("[OK] AgEnD 的系統 systemd 正在執行。");
+    expect(out).toContain("RESULT=restarted");
+  });
+  it("(d) still no systemd after the restart: says what to check, no second offer", () => {
+    const bin = fakeWsl({ system: "offline", afterRestart: "offline" });
+    const { out } = restart(bin, "y\nAgEnD\n");
+    expect(out).toContain("重新啟動 AgEnD 之後 systemd 仍然沒有執行（offline），所以沒有重啟。請確認 /etc/wsl.conf 有 [boot] systemd=true。");
+    expect(calls(bin).split("\n").filter(l => l.startsWith("--terminate"))).toHaveLength(1);
+    expect(restarted(bin)).toBe(false);
+  });
+  it("no systemd at all (WSL without it): treated as offline, so (d) is offered", () => {
+    const bin = fakeWsl({ system: "System has not been booted with systemd as init system (PID 1). Can't operate." });
+    const { out } = restart(bin, "y\n\n");
+    expect(out).toContain("可以只重新啟動 AgEnD 所在的這個 Linux（AgEnD）來修復：");
+    expect(restarted(bin)).toBe(false);
   });
 });
 

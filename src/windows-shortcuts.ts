@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { t } from "./locale.js";
 
 /** Written in the data dir once the shortcuts exist (by this command or by the installer). */
@@ -90,7 +91,7 @@ export function buildShortcutsScript(shared: string, distro: string, user: strin
     "$ErrorActionPreference = 'Stop'",
     "try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }",
     "$script:OnWindows = $true",
-    shared,
+    packedPowershell(shared),
     `if (-not (Test-InstallRecordAsSeen ${seen} ${psQuote(distro)} ${psQuote(user)})) {`,
     `  $other = Get-InstallRecordConflict ${psQuote(distro)} ${psQuote(user)}`,
     "  Write-Output ('AGEND_RECORD_OTHER=' + $other.Distro + '|' + $other.User); exit 0",
@@ -98,6 +99,23 @@ export function buildShortcutsScript(shared: string, distro: string, user: strin
     `$made = @(Install-AgendShortcuts ${psQuote(distro)} ${psQuote(user)})`,
     "Write-Output ('AGEND_SHORTCUTS_MADE=' + $made.Count)",
     "",
+  ].join("\n");
+}
+
+/**
+ * #2879: the shared code, gzip-compressed and run in this scope (its functions and variables stay defined for the lines
+ * after it). -EncodedCommand doubles every character (UTF-16) and then base64s it: the shared code alone had brought
+ * the command to 29,992 of Windows' 32,767 characters, so the restart shortcut's repair layers could not fit inline.
+ * Windows PowerShell 5.1 has GzipStream (.NET 4); nothing else is needed.
+ */
+export function packedPowershell(code: string): string {
+  if (!code) return "";
+  const z = gzipSync(Buffer.from(code, "utf8"), { level: 9 }).toString("base64");
+  return [
+    `$agendPacked = '${z}'`,
+    "$agendGz = New-Object IO.Compression.GzipStream((New-Object IO.MemoryStream(,[Convert]::FromBase64String($agendPacked))), [IO.Compression.CompressionMode]::Decompress)",
+    "$agendCode = (New-Object IO.StreamReader($agendGz, [Text.Encoding]::UTF8)).ReadToEnd()",
+    ". ([scriptblock]::Create($agendCode))",
   ].join("\n");
 }
 

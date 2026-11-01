@@ -13,6 +13,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   SHORTCUTS_HINT_MARKER, SHORTCUTS_MARKER, buildShortcutsScript, detectWsl, encodePowershell, findPowershell, interopState,
@@ -95,7 +96,10 @@ describe("agend shortcuts", () => {
     expect(runs[0]!.args.slice(0, 5)).toEqual(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]);
     expect(runs[0]!.args).toHaveLength(6);
     const script = decode(runs[0]!.args);
-    expect(script).toContain(shared);
+    // #2879: the shared code travels gzip-compressed (it no longer fits the command line inline); unpacked it is exact.
+    const packed = /\$agendPacked = '([A-Za-z0-9+/=]+)'/.exec(script)![1]!;
+    expect(gunzipSync(Buffer.from(packed, "base64")).toString("utf8")).toBe(shared);
+    expect(script).toContain(". ([scriptblock]::Create($agendCode))");
     expect(script).toContain("$script:OnWindows = $true");
     expect(script).toContain("$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han')");
     expect(markers).toEqual([["/home/han/.agend/" + SHORTCUTS_MARKER, "2026-10-20T12:00:00.000Z\n"]]);
@@ -234,7 +238,8 @@ return Microsoft.PowerShell.Utility\\New-Object -TypeName $TypeName
   function scratchWindows() {
     const dir = mkdtempSync(join(tmpdir(), "agend-1853cli-")); dirs.push(dir);
     const bin = join(dir, "bin"); mkdirSync(bin);
-    writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\nexit 0\n`);
+    // #2879: the restart shortcut asks root about systemd and the user's manager first: running, and nothing to repair.
+    writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\ncase "$*" in *is-system-running*) echo running ;; *"systemctl is-active user@"*) echo OK 0 ;; esac\nexit 0\n`);
     chmodSync(join(bin, "wsl.exe"), 0o755);
     const local = join(dir, "local");
     mkdirSync(join(dir, "Desktop"));
@@ -312,8 +317,8 @@ Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[
       expect(r.stdout.split("\n").find(l => l.trim())!.trim(), file).toBe("AgEnD（Linux：AgEnD，使用者：root）");
     }
     const calls = readFileSync(join(w.dir, "wsl-calls.txt"), "utf8").trim().split("\n");
-    expect(calls.length).toBeGreaterThanOrEqual(3);                                  // restart, status, the dashboard's sign-in
-    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root --exec timeout --signal=TERM --kill-after=2s (?:25|355) bash -lc /);
+    expect(calls.length).toBeGreaterThanOrEqual(5);                                  // systemd, the user's manager (#2879), restart, status, the dashboard's sign-in
+    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root --exec timeout --signal=TERM --kill-after=2s (?:25|55|355) bash -lc /);
   });
   it("UTF-16LE base64 is what -EncodedCommand reads: Chinese comes through", () => {
     const r = spawnSync("pwsh", ["-NoProfile", "-EncodedCommand", encodePowershell("Write-Output '重新啟動 OK'")], { encoding: "utf8" });

@@ -70,3 +70,64 @@ export function ensureUserSystemd(deps?: UserSystemdDeps, opts: { waitMs?: numbe
   }
   return remember(result);
 }
+
+/**
+ * #2879 (user, 2026-10-30): the user manager running but unreachable. On WSL, /run/user/<uid> can be replaced while
+ * user@<uid> stays active: its systemd/ dir (the private socket `systemctl --user` talks to, and the notify socket) is
+ * gone, the fleet's READY never arrives, and every `agend restart` was refused ("Cannot reach the user service
+ * manager"); starting an active unit does nothing. Before a restart, as root: restart user@<uid> when it is active
+ * without its socket, start it when it is not running, and wait for the socket. Restarting it ends everything that
+ * manager runs, the fleet included (it is the fleet that is being restarted). A user who is not root is never sudo'd:
+ * the exact command is said instead.
+ */
+export interface UserManagerRepairDeps {
+  uid: number;
+  runtime: string;
+  exists(path: string): boolean;
+  run(command: string, args: string[]): { status: number | null; stdout: string };
+  sleep(ms: number): void;
+}
+export type UserManagerRepair =
+  | { kind: "healthy" }
+  | { kind: "started" | "restarted"; ready: boolean; unit: string; socket: string; waitedMs: number }
+  | { kind: "needs-root"; command: string; socket: string; active: boolean }
+  | { kind: "failed"; command: string; unit: string };
+
+const repairDeps = (): UserManagerRepairDeps => {
+  const uid = typeof process.getuid === "function" ? process.getuid() : -1;
+  return {
+    uid,
+    runtime: process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`,
+    exists: existsSync,
+    run: (command, args) => { const r = spawnSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 60_000 }); return { status: r.status, stdout: r.stdout ?? "" }; },
+    sleep: ms => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  };
+};
+
+export function repairUserManager(deps?: UserManagerRepairDeps, opts: { waitMs?: number } = {}): UserManagerRepair {
+  const d = deps ?? repairDeps();
+  if (d.uid < 0) return { kind: "healthy" };
+  const socket = `${d.runtime}/systemd/private`;
+  if (d.exists(socket)) return { kind: "healthy" };
+  const unit = `user@${d.uid}.service`;
+  // The system manager answers this for any user (it needs no user bus).
+  const state = d.run("systemctl", ["is-active", unit]).stdout.trim();
+  const active = state === "active" || state === "reloading";
+  const starting = state === "activating";
+  if (d.uid !== 0 && !starting) return { kind: "needs-root", command: `sudo systemctl ${active ? "restart" : "start"} ${unit}`, socket, active };
+  let kind: "started" | "restarted" = "started";
+  if (active) {
+    kind = "restarted";
+    // A restart can fail on the old manager's cgroup not yet released (219/CGROUP): the start right after succeeds.
+    if (d.run("systemctl", ["restart", unit]).status !== 0) {
+      d.run("systemctl", ["reset-failed", unit]);
+      if (d.run("systemctl", ["start", unit]).status !== 0) return { kind: "failed", command: `systemctl restart ${unit}`, unit };
+    }
+  } else if (!starting) {
+    if (d.run("systemctl", ["start", unit]).status !== 0) return { kind: "failed", command: `systemctl start ${unit}`, unit };
+  }
+  const limit = opts.waitMs ?? 20_000;
+  let waited = 0;
+  for (; !d.exists(socket) && waited < limit; waited += 250) d.sleep(250);
+  return { kind, ready: d.exists(socket), unit, socket, waitedMs: waited };
+}
