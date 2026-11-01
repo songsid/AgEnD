@@ -830,6 +830,14 @@ img.amb-p { object-fit: contain; }
 /* Three classes, so it wins over the desktop split's ".chat-split > .pv-panel { position: relative; z-index: 1 }" — #2918 review. */
 .pv-panel.pv-fs.pv-fs-native, .pv-panel.pv-fs.pv-fs-immersive { width: auto; min-width: 0; max-width: none; }
 .chat-split > .pv-panel.pv-fs-immersive, .pv-panel.pv-fs.pv-fs-immersive { position: fixed; inset: 0; z-index: 60; }
+/* #2911 (6): the thread's pages. */
+.pv-pages { list-style: none; margin: 0; padding: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--s-1); }
+.pv-page { width: 100%; display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.pv-page.on { border-color: var(--accent); }
+.pv-page-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-page-meta { flex: none; color: var(--text-3); font-size: var(--fs-xs); }
+.pv-pages-toggle { flex: none; }
 /* A narrow panel: two rows — versions and views; then the width, the run controls, the page's actions and Download. */
 @container (max-width: 560px) { .pv-panel-bar .grow { flex-basis: 100%; height: 0; } }
 .msg.flash { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); transition: outline-color var(--t-med); }
