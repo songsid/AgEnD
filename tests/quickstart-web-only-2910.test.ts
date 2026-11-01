@@ -10,6 +10,7 @@ import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { askFirstAgent, fetchWebSignInCode, firstAgentFolder, newQuickstartFleet, newWebOnlyFleet, prepareFirstAgent, quickstartMode, retireOldBotTokens } from "../src/quickstart.js";
 import { validateFleetConfig } from "../src/config-validator.js";
+import { parseEnvText } from "../src/env-file.js";
 import { setLocale, getLocale } from "../src/locale.js";
 
 const home = mkdtempSync(join(tmpdir(), "agend-qs-2910-"));
@@ -104,6 +105,14 @@ describe("#2912 review: web only is the default; the workspace; ~; old bot token
     expect(readFileSync(env, "utf8")).toBe("ANTHROPIC_API_KEY=keep-me\nAGEND_CLOUDFLARE_TUNNEL_TOKEN=keep-too\n");
     expect(readFileSync(`${env}.bak-${now}`, "utf8")).toContain("TG_TOKEN=111:aaa");
     expect([(statSync(env).mode & 0o777).toString(8), (statSync(`${env}.bak-${now}`).mode & 0o777).toString(8)]).toEqual(["600", "600"]);
+  });
+  it("(3) #2912 r2: lines keyed as the daemon's .env reader keys them — `export KEY=…`, spaces around =; comments kept", () => {
+    const env = join(home, "env-export");
+    writeFileSync(env, "export AGEND_BOT_TOKEN=secret1\nOTHER=keep\n  AGEND_DISCORD_TOKEN = secret2\n# AGEND_BOT_TOKEN=a comment\nexport\tKEEP_ME=1\n");
+    const old = { channels: [{ bot_token_env: "AGEND_BOT_TOKEN" }, { bot_token_env: "AGEND_DISCORD_TOKEN" }] };
+    expect(retireOldBotTokens(env, old, 9)?.keys).toEqual(["AGEND_BOT_TOKEN", "AGEND_DISCORD_TOKEN"]);
+    expect(readFileSync(env, "utf8")).toBe("OTHER=keep\n# AGEND_BOT_TOKEN=a comment\nexport\tKEEP_ME=1\n");
+    expect(parseEnvText(readFileSync(env, "utf8"))).toEqual(new Map([["OTHER", "keep"], ["KEEP_ME", "1"]]));
   });
   it("(3) nothing to retire: a single-channel fleet whose key is absent, no fleet before, no .env — nothing written", () => {
     const env = join(home, "env-none");

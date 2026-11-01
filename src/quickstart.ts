@@ -13,6 +13,7 @@ import { execSync, spawnSync as spawnSyncImpl } from "node:child_process";
 import yaml from "js-yaml";
 import { BACKENDS, validateBotToken, verifyBotToken } from "./setup-wizard.js";
 import { ensureWorkspaceGit, getAgendHome } from "./paths.js";
+import { envLineKey } from "./env-file.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
@@ -448,12 +449,14 @@ export function retireOldBotTokens(envPath: string, oldFleet: unknown, now = Dat
   if (!keys.length || !existsSync(envPath)) return null;
   const text = readFileSync(envPath, "utf-8");
   const lines = text.split("\n");
-  const kept = lines.filter(l => !keys.includes(l.split("=")[0]!.trim()));
+  // #2912 review: each line keyed the way the daemon's .env reader keys it (env-file.ts), `export KEY=…` included.
+  const keyOf = (l: string) => envLineKey(l);
+  const kept = lines.filter(l => !keys.includes(keyOf(l) ?? ""));
   if (kept.length === lines.length) return null;
   const backup = `${envPath}.bak-${now}`;
   warnIfEnvNotPrivate(writeSecretFile(backup, text));
   warnIfEnvNotPrivate(writeSecretFile(envPath, kept.join("\n")));
-  return { keys: [...new Set(keys)].filter(k => lines.some(l => l.split("=")[0]!.trim() === k)), backup };
+  return { keys: [...new Set(keys)].filter(k => lines.some(l => keyOf(l) === k)), backup };
 }
 
 /** #2910: the web-only path's first agent — a name, and a folder (none typed: its own workspace under AGEND_HOME). */
