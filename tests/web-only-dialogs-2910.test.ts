@@ -57,6 +57,16 @@ describe("#2910 D4 the card read from a CLI's own dialog", () => {
     const a = selectionCard(pane, "Claude Code")!, b = selectionCard(moved, "Claude Code")!;
     expect([b.cursor, b.identity === a.identity, selectionCard(pane.replace("sleep 900", "sleep 901"), "Claude Code")!.identity === a.identity]).toEqual([1, true, false]);
   });
+  // #2928 review (Fable): Codex's session header box above the transcript is a border too — it must not switch off the
+  // double-blank stop, or the transcript between it and the dialog becomes the dialog's words.
+  it("a Codex dialog under the session header box: its own words only, never the transcript above (real panes)", () => {
+    expect(selectionCard(fixture("codex-01561-model-picker.pane.txt"), "Codex")!.question).toBe("Select Model and Effort");
+    // The usage-limit menu's own explanation sits right on it (no blank row): its words; the header box above is not.
+    expect(selectionCard(fixture("codex-usage-limit-menu.pane.txt"), "Codex")!.question.split("\n")).toEqual([
+      "• Automatically switched to Luna Reserve xhigh due to usage limits.",
+      "You're now using Luna, a faster model for simpler tasks.",
+      "Use your reset to continue using the most advanced models, or wait for usage to reset after 08:00 on 27 Sep."]);
+  });
   it("a dialog with no border (Codex) ends at a double blank row: the transcript above it is not its words", () => {
     const pane = "• I looked at the repo and found the secret token abc\n\n\n  Working directory · resume\n  Session = latest cwd\n\n› 1. Use session directory\n  2. Use current directory\n";
     expect(selectionCard(pane, "Codex")!.question).toBe("Working directory · resume\nSession = latest cwd");

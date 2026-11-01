@@ -92,14 +92,15 @@ export function selectionCard(pane: string, title: string): RemoteQuestionCard |
   if (options.length < 2 || cursor === null || !options.every((o, i) => o.n === i + 1)) return null;
   for (const o of options) o.title = clean(o.title, OPTION_MAX);
 
-  // The dialog's words: up from the first option to its top border (Claude), separators skipped; a dialog with no border
-  // (Codex) ends at a double blank row — never the transcript above it.
+  // The dialog's words: up from the first option to its top border (Claude), separators skipped — and, border or not,
+  // never past a double blank row: what is above that is the transcript (Codex has no border of its own, and its session
+  // header box above the transcript is one; #2928 review).
   let border = -1;
   for (let i = first - 1; i >= 0 && first - i <= BODY_ROWS; i--) if (BORDER.test(rows[i]!)) { border = i; break; }
   const body: string[] = [];
   for (let i = first - 1, blanks = 0; i > border && first - i <= BODY_ROWS; i--) {
     const r = rows[i]!;
-    if (r.trim() === "") { if (border < 0 && ++blanks >= 2 && body.length) break; continue; }
+    if (r.trim() === "") { if (++blanks >= 2 && body.length) break; continue; }
     blanks = 0;
     if (SEPARATOR.test(r)) continue;
     body.unshift(clean(r));
