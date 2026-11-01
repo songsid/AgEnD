@@ -67,6 +67,20 @@ describe("#2910 D4 the card read from a CLI's own dialog", () => {
       "You're now using Luna, a faster model for simpler tasks.",
       "Use your reset to continue using the most advanced models, or wait for usage to reset after 08:00 on 27 Sep."]);
   });
+  // #2928 review r2 (Fable): Claude's own dialog may hold a double blank row (dangerous rm, Settings Error) — its words
+  // still reach its plain-rule border: the command a person approves is never cut off.
+  it("Claude's dangerous-rm and Settings Error dialogs keep every word up to their border (a double blank inside)", () => {
+    const rm = fixture("claude-2.1.316-bypass-dangerous-rm-prompt.pane.txt");
+    const card = selectionCard(rm, "Claude Code")!;
+    expect(card.question.split("\n")).toEqual(["Bash command", "cleanup", "bash -c 'rm -rf \"$(echo /tmp/agend-safe-probe)\"/*'",
+      "Dangerous rm operation on statically-unresolvable target: command substitution output",
+      "⚠ Claude Code will automatically block this request in 1:55, to avoid holding up an unattended session", "Do you want to proceed?"]);
+    expect(selectionCard(rm.replace("1:55", "1:54"), "Claude Code")!.identity).toBe(card.identity);     // its countdown ticking: the same card
+    for (const f of ["claude-2.1.286-settings-error.pane.txt", "claude-2.1.287-settingserr.pane.txt"]) {
+      const q = selectionCard(fixture(f), "Claude Code")?.question ?? "";
+      expect(/settings\.json/.test(q) && /Files with errors are skipped entirely/.test(q), `${f}: ${q}`).toBe(true);
+    }
+  });
   it("a dialog with no border (Codex) ends at a double blank row: the transcript above it is not its words", () => {
     const pane = "• I looked at the repo and found the secret token abc\n\n\n  Working directory · resume\n  Session = latest cwd\n\n› 1. Use session directory\n  2. Use current directory\n";
     expect(selectionCard(pane, "Codex")!.question).toBe("Working directory · resume\nSession = latest cwd");

@@ -15,8 +15,13 @@ import type { RemoteCardOption, RemoteQuestionCard } from "./backend/types.js";
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const CURSOR_OPTION = /^([ \t]*)[❯›][ \t]*(\d{1,2})[.)][ \t]+(\S.*)$/;
 const OPTION = /^([ \t]*)(?:[❯›][ \t]*)?(\d{1,2})[.)][ \t]+(\S.*)$/;
-/** The dialog's top border (Claude's `─`/`▔` rule, Codex's box). */
-const BORDER = /^[ \t]*[─━═▔▁╭╰┌└]{2}[─━═▔▁╮╯┐┘ \t]{6,}$/;
+/**
+ * The dialog's own top border: a plain rule (Claude's `─`/`▔`). Never a box row with corners (`╭─…╮`, `╰─…╯`): that is
+ * Codex's session header above the transcript, not the top of a dialog (#2928 review).
+ */
+const BORDER = /^[ \t]*[─━═▔▁]{8,}[ \t]*$/;
+/** A box's top or bottom row (Codex's session header): what is above or in it is never the dialog's words — reading stops. */
+const BOX_EDGE = /^[ \t]*[╭╰┌└][─━═]{6,}[╮╯┐┘]?[ \t]*$/;
 /** A separator inside the dialog (Claude's dashed rule around a command): skipped, not a boundary. */
 const SEPARATOR = /^[ \t]*[╌┄┈\-]{8,}[ \t]*$/;
 /** A box's side borders around a row (Codex): stripped. */
@@ -36,8 +41,8 @@ function clean(raw: string, max = SELECTION_LINE_MAX): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/** A countdown in the dialog's words ("auto-deny in 30s") is not what is asked: it never makes the card another card. */
-const COUNTDOWN = /\b\d+\s*(?:s|sec|secs|seconds?)\b/gi;
+/** A countdown in the dialog's words ("auto-deny in 30s", "block this request in 1:55") never makes the card another card. */
+const COUNTDOWN = /\b\d+\s*(?:s|sec|secs|seconds?)\b|\b\d{1,2}:\d{2}\b/gi;
 
 /**
  * The numbered-choice dialog at the bottom of `pane`, as a question card titled `title` (the CLI's name), or null.
@@ -92,16 +97,17 @@ export function selectionCard(pane: string, title: string): RemoteQuestionCard |
   if (options.length < 2 || cursor === null || !options.every((o, i) => o.n === i + 1)) return null;
   for (const o of options) o.title = clean(o.title, OPTION_MAX);
 
-  // The dialog's words: up from the first option to its top border (Claude), separators skipped — and, border or not,
-  // never past a double blank row: what is above that is the transcript (Codex has no border of its own, and its session
-  // header box above the transcript is one; #2928 review).
+  // The dialog's words: up from the first option to its top border (Claude's plain rule — its words may hold a double blank
+  // row, as the dangerous-rm dialog does), separators skipped; a dialog with no such border (Codex) ends at a double blank
+  // row — never the transcript above it (#2928 review).
   let border = -1;
   for (let i = first - 1; i >= 0 && first - i <= BODY_ROWS; i--) if (BORDER.test(rows[i]!)) { border = i; break; }
   const body: string[] = [];
   for (let i = first - 1, blanks = 0; i > border && first - i <= BODY_ROWS; i--) {
     const r = rows[i]!;
-    if (r.trim() === "") { if (++blanks >= 2 && body.length) break; continue; }
+    if (r.trim() === "") { if (border < 0 && ++blanks >= 2 && body.length) break; continue; }
     blanks = 0;
+    if (BOX_EDGE.test(r)) break;
     if (SEPARATOR.test(r)) continue;
     body.unshift(clean(r));
   }
