@@ -95,7 +95,7 @@ export class OfficeShareService {
    * #2911: a new page share of `html` (a snapshot the caller read from the chat history) and its URL, once the tunnel is
    * up. `minutes` 15–max_hours×60 (60 if not given). A tunnel that cannot start ends the share at once and says why.
    */
-  async createPage(opts: { html: string; instance: string; title: string; owner: string; minutes?: number }): Promise<PageShareMade> {
+  async createPage(opts: { html: string; instance: string; title: string; owner: string; from?: PageShare["from"]; minutes?: number }): Promise<PageShareMade> {
     if (!this.pagesEnabled()) return { ok: false, error: "disabled" };
     const made = this.pages.create({ ...opts, maxMinutes: pageShareMaxMinutes(this.deps.pageConfig?.()?.max_hours) });
     if (!made.ok) return { ok: false, error: made.error };

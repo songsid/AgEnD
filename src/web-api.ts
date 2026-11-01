@@ -449,7 +449,7 @@ export interface WebApiContext {
     /** #2911: page share links on the same tunnel (page-share.ts); absent: /ui/page-share is not offered. */
     pagesEnabled?(): boolean;
     listPages?(): import("./page-share.js").PageShare[];
-    createPage?(opts: { html: string; instance: string; title: string; owner: string; minutes?: number }): Promise<import("./office-share-service.js").PageShareMade>;
+    createPage?(opts: { html: string; instance: string; title: string; owner: string; from?: import("./page-share.js").PageShare["from"]; minutes?: number }): Promise<import("./office-share-service.js").PageShareMade>;
     revokePage?(id: string): import("./page-share.js").PageShare[];
   };
   /** #2911: a page share was made — said in that instance's channel (who, which page, for how long; never its URL). */
@@ -774,7 +774,8 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
       html = read.bytes.toString("utf8");
       name = a.name;
     }
-    const made = await service.createPage!({ html, instance: body.instance, title: htmlTitle(html) || name, owner: now.person,
+    const from = { boot: body.boot, id: body.id as number, ...(fence !== undefined ? { fence: fence as number } : { att: att as string }) };
+    const made = await service.createPage!({ html, instance: body.instance, title: htmlTitle(html) || name, owner: now.person, from,
       ...(typeof body.minutes === "number" ? { minutes: body.minutes } : {}) });
     if (!made.ok) {
       const status = made.error === "disabled" ? 404 : made.error === "tunnel" ? 503 : made.error === "too_many" ? 409 : made.error === "too_large" ? 413 : 400;

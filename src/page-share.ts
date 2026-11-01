@@ -45,6 +45,11 @@ export interface PageShare {
   title: string;
   /** Who made it. */
   owner: string;
+  /**
+   * Which block of which message it was made from (the panel's "Shared until … · Stop sharing" finds its page by this):
+   * the message's boot and id, and the ```html fence's number or the attachment's file id. Not secret: no token.
+   */
+  from: { boot: string; id: number; fence?: number; att?: string };
   /** The snapshot's size in bytes. */
   bytes: number;
   /** Wall-clock ms, for display; the expiry itself runs on the monotonic clock. */
@@ -120,7 +125,7 @@ export class PageShares {
   }
 
   /** A new share of `html` (a snapshot): `minutes` from 15 to `maxMinutes` (60 unless asked). */
-  create(opts: { html: string; instance: string; title: string; owner: string; minutes?: number; maxMinutes?: number }): PageShareCreate {
+  create(opts: { html: string; instance: string; title: string; owner: string; from?: PageShare["from"]; minutes?: number; maxMinutes?: number }): PageShareCreate {
     this.prune();
     const max = Math.min(opts.maxMinutes ?? PAGE_SHARE_LIMITS.maxHours * 60, PAGE_SHARE_LIMITS.maxHours * 60);
     const minutes = opts.minutes ?? Math.min(PAGE_SHARE_LIMITS.defaultMinutes, max);
@@ -134,7 +139,7 @@ export class PageShares {
     let id = random(4).toString("hex");
     while (this.list().some(s => s.id === id)) id = random(4).toString("hex");
     const ms = minutes * MINUTE_MS, wall = this.wall();
-    const share: PageShare = { id, instance: opts.instance, title: oneLine(opts.title), owner: opts.owner, bytes, createdAt: wall, expiresAt: wall + ms };
+    const share: PageShare = { id, instance: opts.instance, title: oneLine(opts.title), owner: opts.owner, from: { ...(opts.from ?? { boot: "", id: 0 }) }, bytes, createdAt: wall, expiresAt: wall + ms };
     const timer = (this.deps.setTimer ?? ((fn, t) => { const h = setTimeout(fn, t); h.unref?.(); return h; }))(() => { const ended = this.prune(); if (ended.length) this.announce(ended); }, ms + 50);
     this.byHash.set(hashShareToken(token), { share, html: opts.html, deadline: this.now() + ms, timer });
     this.announce([]);
@@ -153,7 +158,7 @@ export class PageShares {
   /** The open shares, soonest to end first. */
   list(): PageShare[] {
     const now = this.now();
-    return [...this.byHash.values()].filter(e => e.deadline > now).sort((a, b) => a.deadline - b.deadline).map(e => ({ ...e.share }));
+    return [...this.byHash.values()].filter(e => e.deadline > now).sort((a, b) => a.deadline - b.deadline).map(e => ({ ...e.share, from: { ...e.share.from } }));
   }
 
   /** End one share by id, or every one ("all"). Returns those that ended. */

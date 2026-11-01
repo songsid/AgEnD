@@ -282,7 +282,7 @@ describe("/ui/page-share (#2911)", () => {
     expect(made.status).toBe(200);
     const d = JSON.parse(made.body);
     expect(d.url).toMatch(/^https:\/\/s1\.trycloudflare\.com\/p\/[A-Za-z0-9_-]{43}$/);
-    expect(d.share).toMatchObject({ instance: "w", title: "Sales dash" });
+    expect(d.share).toMatchObject({ instance: "w", title: "Sales dash", from: { boot: m.boot, id: m.id, fence: 1 } });
     const token = d.url.split("/p/")[1];
     expect(f.fm.officeShares.pages.find(token).html).toBe("<title>Sales ‮dash</title><p>v2</p>");   // the snapshot is the agent's bytes
     expect(f.channel).toHaveLength(1);
@@ -317,7 +317,7 @@ describe("/ui/page-share (#2911)", () => {
     const m = f.fm.webChatHistory.record({ instance: "w", sender: "w", role: "agent", ts: new Date().toISOString(), text: "files\n```html\n<b>cut", attachments: [att(served), att(bigServed)] });
     const human = f.fm.webChatHistory.record({ instance: "w", sender: "web-user", role: "user", ts: new Date().toISOString(), text: "```html\n<p>mine</p>\n```" });
     const [s1, d1] = await post({ instance: "w", boot: m.boot, id: m.id, att: served.id });
-    expect([s1, d1.share.title]).toEqual([200, "Report"]);
+    expect([s1, d1.share.title, d1.share.from]).toEqual([200, "Report", { boot: m.boot, id: m.id, att: served.id }]);
     const read = vi.spyOn(f.fm.webFiles, "read");
     expect(await post({ instance: "w", boot: m.boot, id: m.id, att: bigServed.id })).toEqual([413, { error: "too_large" }]);
     expect(read, "a file over the limit is refused by its listed size, never read into memory").not.toHaveBeenCalled();
