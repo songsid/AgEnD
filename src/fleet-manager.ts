@@ -30,6 +30,7 @@ import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
+import type { PageShare } from "./page-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
 import { withinBudget } from "./monotonic-budget.js";
@@ -1638,6 +1639,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       officeExists: id => this.officeStore.list().offices.some(o => o.id === id),
       ownerCurrent: owner => this.officeShareOwnerCurrent(owner),
       changed: () => this.emitSseEvent("office_shares", {}),
+      // #2911: page shares on the same tunnel. Their end (expired, stopped, the feature off, the maker no longer an admin,
+      // the fleet stopping) is said in the page's own channel, as its start is (pageShareNotice); never its URL.
+      pageConfig: () => this.fleetConfig?.web?.page_share,
+      pagesChanged: (list, ended) => this.pageSharesChanged(list, ended),
       log: (event, detail) => this.logger.info({ event, ...(detail ? { detail } : {}) }, "Office share link"),
     }));
   }
@@ -1651,6 +1656,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const text = event === "created" ? t("office_share.created_notice", who, office, minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`)
       : share ? t("office_share.revoked_notice", who, office) : t("office_share.revoked_all_notice", who, count);
     this.notifyFleetError(text, { throttle: false });
+  }
+  /** #2911: the open page shares changed — the page hears it; each one handed out that ended is said in its channel. */
+  pageSharesChanged(_list: PageShare[], ended: PageShare[]): void {
+    this.emitSseEvent("page_shares", {});
+    for (const s of ended) this.notifyInstanceTopic(s.instance, t("page_share.ended_notice", s.title || t("page_share.untitled")));
+  }
+  /** #2911: a page share was made — said in the channel of the instance whose chat it came from (never its URL). */
+  pageShareNotice(who: string, share: PageShare): void {
+    const minutes = Math.round((share.expiresAt - share.createdAt) / 60_000);
+    this.notifyInstanceTopic(share.instance, t("page_share.created_notice", who, share.title || t("page_share.untitled"), minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`));
   }
   /** A share's owner: a person (`person:<adapter>:<user>`) still a fleet admin there; the host's own admin session stays. */
   private officeShareOwnerCurrent(owner: string): boolean {

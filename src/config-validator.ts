@@ -30,7 +30,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["experimental", "public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "office_share", "office_levels"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "office_share", "page_share", "office_levels"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -463,6 +463,16 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
         if (config.web.office_share.enabled !== undefined && typeof config.web.office_share.enabled !== "boolean") err("web.office_share.enabled", "must be a boolean");
         const h = config.web.office_share.max_hours;
         if (h !== undefined && (typeof h !== "number" || !Number.isInteger(h) || h < 1 || h > 24)) err("web.office_share.max_hours", "must be a whole number of hours (1-24)");
+      }
+    }
+    // #2911: page share links (as office_share).
+    if (config.web.page_share !== undefined) {
+      if (!isObj(config.web.page_share)) err("web.page_share", "must be a mapping");
+      else {
+        for (const k of Object.keys(config.web.page_share)) if (k !== "enabled" && k !== "max_hours") warn(`web.page_share.${k}`, "unknown key (known: enabled, max_hours) — ignored");
+        if (config.web.page_share.enabled !== undefined && typeof config.web.page_share.enabled !== "boolean") err("web.page_share.enabled", "must be a boolean");
+        const h = config.web.page_share.max_hours;
+        if (h !== undefined && (typeof h !== "number" || !Number.isInteger(h) || h < 1 || h > 24)) err("web.page_share.max_hours", "must be a whole number of hours (1-24)");
       }
     }
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
