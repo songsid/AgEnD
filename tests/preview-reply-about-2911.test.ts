@@ -116,6 +116,10 @@ describe("#2911 Reply about this page", () => {
     expect(s.replies.w, "no reply to the unrelated message").toBeUndefined();
   });
 
+  it("#2914 review: a title's format characters (bidi, zero-width) are removed", () => {
+    expect(pa.plainName("Re\u202Eport\u200B\u2067x\u2069")).toBe("Reportx");
+  });
+
   it("no <title>: the attached file's name; neither: \"this page\"", () => {
     expect(pa.aboutLine({ code: "<h1>x</h1>", att: { name: "report\n.html" } })).toBe("About the page “report .html”: ");
     expect(pa.aboutLine({ code: "<h1>x</h1>" })).toBe("About this page: ");

@@ -120,6 +120,14 @@ describe("#2911 the parent records a preview's errors, and passes nothing on", (
     expect(log.items.map((x: any) => x.message).slice(1)).toEqual(["E0", "E1", "E2", "E3"]);
   });
 
+  it("#2914 review: format characters (bidi overrides and isolates, zero-widths, BOM) never survive into a kept error", async () => {
+    const { key, err } = await running();
+    err({ message: "safe\u202Etxt.exe\u202C and\u200B hid\u200Fden\u2066x\u2069\uFEFF\u00AD!" });
+    const m = PV.errors(key).items[0].message as string;
+    expect(m).toBe("safetxt.exe and hiddenx!");
+    expect(/\p{Cf}/u.test(m)).toBe(false);
+  });
+
   it("a new run (Reload, another start) starts a fresh log", async () => {
     const { key, err } = await running();
     err();

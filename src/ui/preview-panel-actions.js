@@ -24,9 +24,10 @@ export function setPanelFeedback(deps) { chat = deps || null; }
 /** The most of a page's title or file name the line carries. */
 export const NAME_MAX = 80;
 
-/** One line of plain text: whitespace and control characters collapsed, cut at NAME_MAX characters. */
+/** One line of plain text: format characters removed, whitespace and control characters collapsed, cut at NAME_MAX characters. */
 export function plainName(value) {
-  const s = String(value == null ? "" : value).replace(/[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]+/gu, " ").trim();
+  // \p{Cf} first (bidi controls, zero-widths): what the person reads is what is sent (#2914 review).
+  const s = String(value == null ? "" : value).replace(/\p{Cf}+/gu, "").replace(/[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]+/gu, " ").trim();
   const chars = [...s];
   return chars.length > NAME_MAX ? `${chars.slice(0, NAME_MAX - 1).join("")}…` : s;
 }
