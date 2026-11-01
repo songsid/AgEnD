@@ -286,6 +286,7 @@
     var card = live.get(key);
     if (!card) return false;
     live.delete(key);
+    if (card.picking) { card.picking = false; tellPick(key, null, false); }
     if (card.readyTimer) root.clearTimeout(card.readyTimer);
     if (card.watchdogTimer) root.clearTimeout(card.watchdogTimer);
     if (card.iframe.parentNode) card.iframe.parentNode.removeChild(card.iframe);
@@ -311,7 +312,8 @@
 
   // ── Messages from frames (design §4.2) ──────────────────
 
-  var KEYS = { ready: "boot,ch,type,v", resize: "ch,height,type,v", heartbeat: "ch,type,v", error: "ch,col,kind,line,message,type,v" };
+  var KEYS = { ready: "boot,ch,type,v", resize: "ch,height,type,v", heartbeat: "ch,type,v", error: "ch,col,kind,line,message,type,v",
+    pick: "ch,h,selector,text,type,v,w,x,y", pickend: "ch,type,v" };
 
   // ── #2911: the errors a running preview reported (design §4.1 amendment) ──
   // Recorded only: a count, and the first few distinct ones as one line of plain text each. Nothing here passes them on;
@@ -358,14 +360,44 @@
     var log = errorLog.get(key);
     return log ? { count: log.count, items: log.items.map(function (x) { return { kind: x.kind, message: x.message, line: x.line, col: x.col }; }) } : null;
   }
+  // ── #2911: pick mode — the person points at an element of a running preview (design §4.1 amendment) ──
+  // Only on a person's request (pick(key, true)), and only one answer per request: a `pick` from a frame that was not
+  // asked is dropped. The answer is the page's text — a selector it built and the element's words — kept one line each
+  // and handed to the listeners; the panel puts it in the composer for the person to edit. Nothing here sends it.
+  var PICK = { selectorMax: 300, textMax: 200 };
+  var pickListeners = new Set();
+  function tellPick(key, result, on) { pickListeners.forEach(function (fn) { try { fn(key, result, on); } catch (e) { /* one listener's error stops no other */ } }); }
+  /** Turn pick mode on or off for the running preview `key`; false when it is not running (rendered). */
+  function pick(key, on) {
+    var card = live.get(key);
+    if (!card || !card.rendered) return false;
+    card.picking = !!on;
+    try { card.iframe.contentWindow.postMessage({ v: 1, type: "pick", ch: card.ch, on: !!on }, "*"); } catch (e) { /* the frame went: its stop says so */ }
+    tellPick(key, null, card.picking);
+    return true;
+  }
+  function picking(key) { var c = live.get(key); return !!(c && c.picking); }
+  /** fn(key, result | null, on): a picked element ({ selector, text, x, y, w, h }), or the mode changing; returns the unsubscribe. */
+  function onPick(fn) { pickListeners.add(fn); return function () { pickListeners.delete(fn); }; }
+  function recordPick(card, d) {
+    if (!card.picking) return;
+    if (d.type === "pickend") { card.picking = false; tellPick(card.key, null, false); return; }
+    var box = function (n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n >= 0 && n < 1e6; };
+    if (typeof d.selector !== "string" || d.selector.length > 1000 || typeof d.text !== "string" || d.text.length > 1000) return;
+    if (!box(d.x) || !box(d.y) || !box(d.w) || !box(d.h)) return;
+    card.picking = false;
+    tellPick(card.key, { selector: oneLine(d.selector, PICK.selectorMax), text: oneLine(d.text, PICK.textMax), x: d.x, y: d.y, w: d.w, h: d.h }, false);
+  }
+
   /** fn(key) after a preview's errors changed (at most every 200 ms per preview); returns the unsubscribe. */
   function onErrors(fn) { errorListeners.add(fn); return function () { errorListeners.delete(fn); }; }
 
   /**
    * The only window message listener. A message counts only from one of OUR frames (event.source is that frame's
-   * window, and its origin is the opaque "null"), with one of four exact shapes; each has one effect, on that frame
+   * window, and its origin is the opaque "null"), with one of six exact shapes; each has one effect, on that frame
    * only: ready → send the HTML once (boot checked, opt-in checked again), resize → its height, heartbeat → its
-   * watchdog, error (#2911) → its error log (recorded, never passed on). It has no reference to the chat, the
+   * watchdog, error (#2911) → its error log (recorded, never passed on), pick / pickend (#2911) → the answer to the
+   * person's own pick request, handed to the pick listeners (dropped when none was asked). It has no reference to the chat, the
    * composer, the fleet's API, navigation or storage.
    */
   function onMessage(event) {
@@ -395,6 +427,7 @@
       return;
     }
     if (d.type === "error") { recordError(card, d); return; }
+    if (d.type === "pick" || d.type === "pickend") { recordPick(card, d); return; }
     if (typeof d.height !== "number" || !isFinite(d.height) || Math.floor(d.height) !== d.height) return;
     requestHeight(card, d.height);
   }
@@ -428,7 +461,7 @@
 
   return {
     init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever, onChange: onChange, listeners: listeners, onStorage: onStorage,
-    errors: errors, onErrors: onErrors, ERRORS: ERRORS,
+    errors: errors, onErrors: onErrors, ERRORS: ERRORS, pick: pick, picking: picking, onPick: onPick, PICK: PICK,
     start: start, startCount: startCount, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveCount: liveCount, liveFrame: liveFrame,
     mountPreview: mountPreview, onMessage: onMessage, BANNER: BANNER, LIMITS: LIMITS,
     /** The banner every running preview carries, in the page's language (#1554); BANNER is its English. */

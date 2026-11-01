@@ -169,6 +169,8 @@ stays stateless: AgEnD does not put HTML in the transport URL, and the listener 
 { v: 1, type: "resize",    ch: "<id>", height: <integer> }
 { v: 1, type: "heartbeat", ch: "<id>" }
 { v: 1, type: "error",     ch: "<id>", kind: "error" | "rejection" | "console", message: "<≤ 1000 chars>", line: <int 0…1e7>, col: <int 0…1e7> }   // #2911
+{ v: 1, type: "pick",      ch: "<id>", selector: "<≤ 1000>", text: "<≤ 1000>", x, y, w, h: <int 0…1e6> }   // #2911, only when asked
+{ v: 1, type: "pickend",   ch: "<id>" }                                                                    // #2911
 ```
 
 **Amendment (#2911, user OK via the leader 2026-11-02): `error`.** The prologue reports the page's uncaught errors,
@@ -181,8 +183,20 @@ header saying the text is the page's, each error quoted, for the person to edit 
 The listener still has no reference to the composer (§4.2); the chip reads the log through `errors(key)` and
 `onErrors(fn)`.
 
-**Parent → frame** — exactly one message, sent only after a valid `ready` (boot matches), and only on a device that
-has opted in (§7):
+**Amendment (#2911): pick (annotate).** The parent may also send `{ v: 1, type: "pick", ch, on: true | false }`, only
+when the person clicks **Point at it** (or cancels). The prologue takes it only from `window.parent`. While it is on,
+it outlines the hovered element, takes one click from the page (prevented, never passed on) and posts `pick` with a
+selector it built (≤ 300), the element's words (≤ 200) and its box; the mode then ends. While the mode is on, the
+page's press events (pointer/mouse/touch down and up, dblclick, contextmenu, auxclick) and that click are stopped in a
+window capture listener registered before the page's code (`stopImmediatePropagation`), so none of the page's handlers
+runs; a touch is not prevented, or the tap would make no click. Esc in the frame posts `pickend` — when the frame has
+the keyboard focus; the panel's **Cancel pointing** always ends the mode. The parent accepts one `pick` per request and drops any it did not ask for. It keeps the strings one line
+each and hands the result to its pick listeners. The panel then adds a reply about the page and one line naming the
+element ("On `<selector>` (“<words>”, text from the page): ") to the composer, where the person writes the change
+and sends it. All of it is page text: bounded, labelled, never sent by itself.
+
+**Parent → frame** — one `render`, sent only after a valid `ready` (boot matches), and only on a device that
+has opted in (§7); since #2911 also `pick` on/off at the person's request (amendment below):
 
 ```js
 { v: 1, type: "render", ch: "<per-frame random id>", html: "<the HTML, ≤ 1 MiB>" }
