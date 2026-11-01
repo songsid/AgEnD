@@ -456,6 +456,13 @@ export function createChatStore(deps) {
   const isPasted = (f) => pastedTexts.has(f);
   /** Typing stays local. */
   function setDraft(target, value) { s.drafts[target] = value; }
+  /** #2911: a line added to the composer for the person to edit (after what is typed, on its own line; never twice). */
+  function addToDraft(target, line) {
+    const d = s.drafts[target] || "";
+    if (!target || !line || d.split("\n").includes(line)) return;
+    s.drafts[target] = d ? `${d.replace(/\n+$/, "")}\n${line}` : line;
+    changed(target);
+  }
   /**
    * #2272: reply to a message of this chat — what the bar above the composer shows (its sender and first words); only
    * its row is sent. One at a time per chat: a new one replaces it.
@@ -575,7 +582,7 @@ export function createChatStore(deps) {
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
     uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
-    startReply, clearReply, findQuoted,
+    startReply, clearReply, findQuoted, addToDraft,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
     allHidden: (name) => s.allHidden.has(name),
   };
