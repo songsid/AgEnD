@@ -147,6 +147,7 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   setPanelFeedback({
     findMsg: (instance, key) => (store.state.msgs[instance] || []).find((x) => msgKey(x) === key) || null,
     startReply: (instance, x) => store.startReply(instance, x),
+    clearReply: (instance) => store.clearReply(instance),
     addToDraft: (instance, line) => { recordEdit(composerField()); store.addToDraft(instance, line); },
     focus: () => {
       const el = composerField(); if (!el) return;
