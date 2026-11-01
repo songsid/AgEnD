@@ -11,6 +11,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { closePanel, frameKey, htmlTitle } from "./preview-panel.js";
+import { PageShareButton } from "./page-share-dialog.js";
 
 const P = () => globalThis.AgendPreview;
 
@@ -125,6 +126,22 @@ function useErrors(open) {
   return log;
 }
 
+/**
+ * #2911 item 8: what Share page names — the block of the message the open page came in ({ boot, id } and its fence
+ * number or attachment id; the server reads the page itself), its title, and whose reply. null while the thread no
+ * longer has that message.
+ */
+export function shareBlock(open, deps = chat) {
+  if (!open || !deps) return null;
+  const msg = open.msgKey ? deps.findMsg(open.instance, open.msgKey) : null;
+  if (!msg || typeof msg.boot !== "string" || typeof msg.id !== "number") return null;
+  const from = open.att && typeof open.att.id === "string" ? { boot: msg.boot, id: msg.id, att: open.att.id }
+    : Number.isInteger(open.n) ? { boot: msg.boot, id: msg.id, fence: open.n } : null;
+  if (!from) return null;
+  const title = plainName(htmlTitle(open.code || "")) || plainName(open.att && open.att.name);
+  return { instance: open.instance, from, title, sender: msg.sender || open.sender || "", ts: msg.ts || open.ts || "" };
+}
+
 const narrow = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(max-width: 899px)").matches;
 
 /** The bar's actions for the open page. props: open, name, run, view (as the panel has them). */
@@ -139,6 +156,6 @@ export function PanelActions({ open, run }) {
   const key = open && frameKey(open.key);
   const canPick = run && run.state === "running" && typeof P().pick === "function";
   const point = () => { P().pick(key, !picking); };
-  return html`${canPick ? html`<button type="button" class=${`btn btn-sm pv-fb-pick${picking ? " on" : ""}`} aria-pressed=${picking ? "true" : "false"}
+  return html`<${PageShareButton} block=${shareBlock(open)} Icon=${Icon} />${canPick ? html`<button type="button" class=${`btn btn-sm pv-fb-pick${picking ? " on" : ""}`} aria-pressed=${picking ? "true" : "false"}
       title=${t(picking ? "chat.pvFbPickCancelTitle" : "chat.pvFbPickTitle")} onClick=${point}><${Icon} name="edit" size=${14} /><span class="lbl">${t(picking ? "chat.pvFbPickCancel" : "chat.pvFbPick")}</span></button>` : null}${n ? html`<button type="button" class="btn btn-sm pv-fb-errors" title=${t("chat.pvFbErrTitle")} onClick=${send}><${Icon} name="alert" size=${14} /><span class="pv-fb-n">${n >= P().ERRORS.maxCount ? `${n}+` : String(n)}</span><span class="lbl">${t(n === 1 ? "chat.pvFbErrOne" : "chat.pvFbErrMany")}</span></button>` : null}<button type="button" class="btn btn-sm pv-fb-reply" title=${t("chat.pvFbReplyTitle")} onClick=${reply}><${Icon} name="chat" size=${14} /><span class="lbl">${t("chat.pvFbReply")}</span></button>`;
 }
