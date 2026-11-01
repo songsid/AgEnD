@@ -129,6 +129,38 @@ describe("full screen", () => {
     fire(doc, "fullscreenchange"); await settle();
     expect(doc.querySelector(".pv-panel").className).toBe("pv-panel");
   });
+  it("#2918 review: a request still pending when the panel closes answers nobody — a late refusal makes no later open immersive", async () => {
+    const doc = await opened();
+    let refuse: (e: Error) => void = () => {};
+    doc.querySelector(".pv-panel").requestFullscreen = () => new Promise((_ok, no) => { refuse = no; });
+    doc.fullscreenEnabled = true;
+    await click(doc.querySelector(".pv-panel-fs"));
+    const v1 = { ...pp.panelStore.get().open };
+    pp.closePanel(); await settle();
+    pp.openPanel(v1); await settle();
+    refuse(new Error("denied")); await settle(); await settle();
+    expect([shown(), doc.querySelector(".pv-panel").className]).toEqual(["b-1:f0", "pv-panel"]);
+  });
+  it("control: a refusal of the request still open makes the panel immersive", async () => {
+    const doc = await opened();
+    doc.querySelector(".pv-panel").requestFullscreen = () => Promise.reject(new Error("denied"));
+    doc.fullscreenEnabled = true;
+    await click(doc.querySelector(".pv-panel-fs")); await settle(); await settle();
+    expect(doc.querySelector(".pv-panel").className).toBe("pv-panel pv-fs pv-fs-immersive");
+  });
+  it("a late success after the panel closed takes back only its own full screen", async () => {
+    const doc = await opened();
+    const el = doc.querySelector(".pv-panel");
+    let grant: () => void = () => {};
+    el.requestFullscreen = function () { return new Promise<void>(ok => { grant = () => { doc.fullscreenElement = el; ok(); }; }); };
+    doc.fullscreenEnabled = true;
+    let exited = 0;
+    doc.exitFullscreen = () => { exited++; doc.fullscreenElement = null; return Promise.resolve(); };
+    await click(doc.querySelector(".pv-panel-fs"));
+    pp.closePanel(); await settle();
+    grant(); await settle(); await settle();
+    expect([exited, doc.fullscreenElement]).toEqual([1, null]);
+  });
   it("closing the panel in full screen leaves it", async () => {
     const doc = await opened();
     const el = doc.querySelector(".pv-panel");

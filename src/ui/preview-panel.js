@@ -155,24 +155,34 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   // or, where the page may not, the panel over the whole window ("immersive"). Esc leaves it before it closes the panel.
   const [fs, setFs] = useState("");
   const fsTarget = useRef(null);   // the element asked to go full screen (the panel may be gone when it is left)
+  // #2918 review: each request has a generation; leaving (Esc, the button, a close, the chat unmounting) moves it, so a
+  // request still pending answers nobody — a late refusal does not make a later open immersive, and a late success
+  // only takes back the full screen it made.
+  const fsGen = useRef(0);
+  const exitOwn = (el) => {
+    const d = globalThis.document;
+    if (!d || !el || fullscreenEl() !== el) return;
+    const ex = d.exitFullscreen || d.webkitExitFullscreen;
+    try { const r = typeof ex === "function" ? ex.call(d) : null; if (r && typeof r.catch === "function") r.catch(() => {}); } catch { /* already out */ }
+  };
   const enterFs = () => {
     const el = panel.current, d = globalThis.document; if (!el || fs) return;
+    const gen = ++fsGen.current;
     const req = el.requestFullscreen || el.webkitRequestFullscreen;
     const enabled = d ? (d.fullscreenEnabled ?? d.webkitFullscreenEnabled) : false;
     if (typeof req !== "function" || enabled === false) { setFs("immersive"); return; }
     let r;
     fsTarget.current = el;
-    try { r = req.call(el); } catch { setFs("immersive"); return; }
-    if (r && typeof r.then === "function") r.then(() => { if (fullscreenEl() === el) setFs("native"); }, () => setFs("immersive"));
-    else setFs("native");
+    try { r = req.call(el); } catch { fsTarget.current = null; setFs("immersive"); return; }
+    if (r && typeof r.then === "function") {
+      r.then(() => { if (fsGen.current === gen) { if (fullscreenEl() === el) setFs("native"); } else exitOwn(el); },
+        () => { if (fsGen.current === gen) { fsTarget.current = null; setFs("immersive"); } });
+    } else setFs("native");
   };
   function leaveFs() {
-    const d = globalThis.document;
+    fsGen.current++;
     const el = fsTarget.current; fsTarget.current = null;
-    if (d && el && fullscreenEl() === el) {
-      const ex = d.exitFullscreen || d.webkitExitFullscreen;
-      try { const r = typeof ex === "function" ? ex.call(d) : null; if (r && typeof r.catch === "function") r.catch(() => {}); } catch { /* already out */ }
-    }
+    exitOwn(el);
     setFs("");
   }
   const open = st.open?.instance === name ? st.open : null;
@@ -185,6 +195,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   useEffect(() => (P() ? P().onChange(() => { if (pending.current && ownAllow.current !== pending.current) pending.current = 0; choice(n => n + 1); }) : undefined), []);
   // Leaving the chat (another instance, another panel) closes the panel: its frame stops with the thread's.
   useEffect(() => () => closePanel(), []);
+  // Leaving the chat: a pending request answers nobody, and our own full screen is taken back.
+  useEffect(() => () => { fsGen.current++; exitOwn(fsTarget.current); fsTarget.current = null; }, []);
   // Full screen ends with the browser's own Esc or its exit control too: follow it.
   useEffect(() => {
     const d = globalThis.document; if (!d || !d.addEventListener) return undefined;
