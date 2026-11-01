@@ -31,8 +31,10 @@ describe("#2925 review P3-1: shown → read, when the tab comes back too", () =>
     app.appStore.set({ notices: app.addNotice(app.appStore.get().notices, n(3)) });
     await settle();
     expect(posted).toEqual([2]);                                    // hidden: not read yet
-    visibility("visible"); await settle();
-    expect(posted).toEqual([2, 3]);
+    // One listener for the visit, however many notices came (not one more per render).
+    expect((p.document as any).listenerCount("visibilitychange")).toBe(1);
+    visibility("visible"); visibility("visible"); await settle();     // twice before the first mark is answered
+    expect(posted).toEqual([2, 3]);                                 // …one mark
     await p.unmount();
     app.appStore.set({ notices: app.addNotice(app.appStore.get().notices, n(4)) });
     visibility("hidden"); visibility("visible"); await settle();
