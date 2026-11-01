@@ -49,7 +49,8 @@ import {
   WEB_CSRF_MESSAGE,
   type WebGateRequest,
 } from "./web-auth.js";
-import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
+import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionRecord, type SessionTier, type WebSessionStore } from "./web-session.js";
+import { classifyWebPeer, type WebPeer } from "./authority/web-authority.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
 import { fleetCookieName } from "./web-cookie-names.js";
@@ -76,6 +77,11 @@ export interface AuthApiContext {
   /** Told after every successful sign-in, so the operator can be shown one they did not make. */
   confirmPublicWebLogin?(info: { label: string; handle: string; owner: LoginCodeOwner }, isCurrent: () => boolean): Promise<void>;
   onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string; owner?: { adapterId: string; userId: string } }): void;
+  /**
+   * #2910 D1: a session signed in with the host's own code (`agend web --code`) — on a web-only fleet, from this computer,
+   * it is the host operator, authorized for its life (capped as every authorization). Anything else: nothing happens.
+   */
+  authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1920 step 4b: a guest's sign-in makes this browser a guest's returning device (its own caps). The cookie, or null. */
@@ -322,7 +328,9 @@ export function handleAuthRequest(
       // the web) — recognition only; no recipient (an `agend web` code): the operator, as before.
       const account = result.recipient;
       const { sessionId, record } = sessions.create({ tier: result.tier, surface: gateway?.surface ?? "local", label, tokenEpoch: tokenEpoch(token), exposureId: gateway?.exposureId, pending: !!gateway,
-        ...(account ? { owner: { adapterId: account.adapterId, userId: account.userId } } : {}) });
+        ...(account ? { owner: { adapterId: account.adapterId, userId: account.userId } } : {}),
+        // #2910 D1: only a code the host's shell asked for — never one sent to an account, never over the public link.
+        ...(result.host && !account && !gateway ? { host: true as const } : {}) });
       // …and that account's display name then is the name the person starts with (on every device of theirs). A code
       // re-sent to a returning device (#1570) carries no name: the one from their last sign-in stays.
       if (account?.username) {
@@ -348,6 +356,9 @@ export function handleAuthRequest(
         }
       }
       ctx.logger.info({ handle: record.handle, label, tier: record.tier, surface: record.surface }, "Web sign-in");
+      if (record.host) {
+        try { ctx.authorizeHostSession?.(record, classifyWebPeer(req)); } catch (err) { ctx.logger.debug({ err }, "host session not authorized"); }
+      }
       try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle, ...(record.owner ? { owner: record.owner } : {}) }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
       // #1570: a code delivered privately to its owner makes this browser a returning device (a separate cookie; the
       // session id above is unrelated to it). A code with no owner (`agend web --code`) does not.
@@ -411,7 +422,8 @@ export function handleAuthRequest(
       json(res, 401, { error: "X-Agend-Token required" });
       return true;
     }
-    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token) });
+    // #2910 D1: the shell's own code — the host operator's on a web-only fleet (fleet-manager authorizeHostSession).
+    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true });
     ctx.logger.info({ source: "cli" }, "Web login code issued");
     json(res, 200, { code: issued.display, expiresAt: issued.expiresAt });
     return true;

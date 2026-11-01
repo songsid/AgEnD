@@ -785,6 +785,8 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 **只用網頁的 fleet 也能完整運作（#2910）。**沒有 Discord 或 Telegram 連線的 fleet（例如用 `agend quickstart` → 只用網頁，或設定頁的「只用網頁」建立的）也擁有 AgEnD 其他的功能：排程、任務板和 fleet 決策都會運作；agent 之間可以用 `send_to_instance`、`delegate_task`、`report_result`、`broadcast` 互傳訊息，接收的 agent 會看到 `[from:<名稱>]`，和聊天 fleet 一樣。在儀表板按 **新增 agent** 會建立一個沒有聊天 topic 的 agent：名稱就是你輸入的（已被使用時依序加上 `-2`、`-3`…），透過儀表板的聊天和它對話。只有聊天平台才有的 `edit_message` 和 `download_attachment` 會回覆「純網頁的 fleet 無法使用」，而不是叫 agent 重試；`reply` 則回到網頁聊天。
 
+**只用網頁的 fleet：這台電腦的管理者（#2910）。**只用網頁的 fleet 沒有 Discord 或 Telegram 帳號可以證明你是誰，所以坐在 AgEnD 電腦前的人就是管理者。用 `agend web --code` 登入、並在這台電腦上（`localhost`）使用的瀏覽器，會立即以「**這台電腦的管理者**」身分通過驗證，效期就是這個 session 的效期（最多 `web.verified_authority.max_session_hours`）。它對 agent 說的話是 `via web (verified)`，回執的 `authority.actor` 是 adapter `host`、user `operator`。它自己按 **套用** 就能確認自己的設定變更（例如 **新增 agent**），不用再執行 `agend settings confirm`。從別台機器或透過公開連結都不會通過驗證；透過聊天（`/dashboard`）送出的登入碼不算這台電腦的；撤銷授權後，要再用 `agend web --code` 登入一次。有聊天連線的 fleet 規則不變：在那裡，`agend web --code` 的 session 不是帳號。
+
 登入成功後，這個後端執行中的 instance 會重啟，以套用新的憑證。打字 `/install-cli` 只會印一行指向 `/login`，不會執行登入；它不會出現在任何指令選單裡。
 
 ## 憑證 profile 與第二份訂閱 (Credential profiles and a second subscription)

@@ -73,7 +73,7 @@ export interface IssuedLoginCode {
 }
 
 export type LoginRedeemResult =
-  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner; readonly recipient?: LoginCodeRecipient }
+  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner; readonly recipient?: LoginCodeRecipient; readonly host?: true }
   /** Wrong, expired, spent, or none issued — deliberately indistinguishable. */
   | { readonly kind: "invalid" }
   /** The breaker is open. Even a correct code is refused until it closes. */
@@ -84,6 +84,8 @@ interface Outstanding {
   readonly audience: string;
   readonly owner?: LoginCodeOwner;
   readonly recipient?: LoginCodeRecipient;
+  /** #2910 D1: issued to the host's own shell (`agend web --code`, the web token in a header) — never inferred from no owner. */
+  readonly host?: true;
   readonly code: string;
   readonly expiresAt: number;
   readonly tier: SessionTier;
@@ -118,12 +120,14 @@ export class WebLoginCodes {
    * `epoch` is the current web token's (`tokenEpoch`): rotating the token — from this process or from
    * `agend web-token rotate` in another — withdraws an unused code, because redemption re-checks it.
    */
-  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient }): IssuedLoginCode {
+  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient; host?: true }): IssuedLoginCode {
     const code = this.generate();
     const tier = opts.tier ?? "admin";
     const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
     this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner,
+      // #2910 D1: a host code is the shell's own: an admin code for this computer, sent to no account.
+      ...(opts.host && !opts.owner && !opts.recipient && tier === "admin" && (opts.audience ?? "local") === "local" ? { host: true as const } : {}),
       // #1827: an owner is also who the code went to; a recipient alone is recognition only.
       ...(opts.owner || opts.recipient ? { recipient: opts.recipient ?? { adapterId: opts.owner!.adapterId, userId: opts.owner!.userId, ...(opts.owner!.username ? { username: opts.owner!.username } : {}) } } : {}) };
     this.onEvent("issued");
@@ -176,7 +180,7 @@ export class WebLoginCodes {
     if (constantTimeMatches(provided, active.code) && active.audience === audience) {
       this.outstanding = null;
       this.onEvent("spent");
-      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}) };
+      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}), ...(active.host ? { host: true as const } : {}) };
     }
 
     active.failures += 1;

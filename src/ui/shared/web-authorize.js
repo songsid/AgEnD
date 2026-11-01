@@ -15,6 +15,7 @@ register("webauth", {
     reason_disabled: "Web authority is turned off.",
     reason_loopback_only: "Only this computer can authorize, and this browser is not on it.",
     reason_no_account: "This browser was not signed in as an account (agend web): sign in with /web to authorize.",
+    reason_host_sign_in: "To speak as this computer's admin, sign in again on this computer with agend web --code.",
     reason_not_admin: "Your account is not a fleet admin here.",
     reason_not_admin_session: "Guests can't authorize.",
     reason_token_rotated: "The dashboard's token changed: sign in again.",
@@ -43,6 +44,7 @@ register("webauth", {
     reason_disabled: "網頁授權已關閉。",
     reason_loopback_only: "只有這台電腦可以授權，而這個瀏覽器不在這台電腦上。",
     reason_no_account: "這個瀏覽器不是用帳號登入的（agend web）：請用 /web 登入後再授權。",
+    reason_host_sign_in: "要以這台電腦的管理者身分發言，請在這台電腦上執行 agend web --code 重新登入。",
     reason_not_admin: "你的帳號在這裡不是 fleet 管理者。",
     reason_not_admin_session: "訪客無法授權。",
     reason_token_rotated: "儀表板的 token 已變更：請重新登入。",
@@ -66,7 +68,7 @@ register("webauth", {
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
 // The switch and "Only this computer" are changed in Settings on this computer — never over the public link (#2525 review).
 const fixable = (reason) => (reason === "disabled" || reason === "loopback_only") && globalThis.document?.body?.dataset?.publicLink !== "1";
-const REASONS = ["disabled", "loopback_only", "no_account", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "quick_link_off", "not_session"];
+const REASONS = ["disabled", "loopback_only", "no_account", "host_sign_in", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "quick_link_off", "not_session"];
 // Until when: the time, with the day when it isn't today (an authorization lasts up to 48 h).
 const clock = (ms) => {
   const d = new Date(ms), today = new Date().toDateString() === d.toDateString();
