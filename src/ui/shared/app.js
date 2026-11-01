@@ -13,7 +13,7 @@ import { installSwipe } from "./app-swipe.js";
 import { installTextUndo } from "./text-undo.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
-import { appStore, applyStatus, applyActivity, guestPage, guestTrusted, mergeNoticeList, addNotice, noticesCatchUp } from "./app-store.js";
+import { appStore, applyStatus, applyActivity, guestPage, guestTrusted, addNotice, createNoticesSync } from "./app-store.js";
 import { chatPath } from "./app-route.js";
 import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
@@ -95,21 +95,17 @@ if (mode === "full") {
     // again after a reconnect: a poll page hears no `notice`), then each new one from the stream.
     const loadNotices = retryable((a) => import(retryUrl("/ui/js/panel-notices.js", a)));
     panels.set("notices", { load: () => loadNotices().then((m) => m.NoticesPanel) });
-    // A list read and a live notice can cross: each is merged into what the page has (app-store.js mergeNoticeList).
-    let noticesRead = null, noticesAsked = 0;
-    const readNotices = () => (noticesRead ??= fetch("/ui/notices/list", { credentials: "same-origin", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null)).then((d) => {
-        if (d && Array.isArray(d.items)) appStore.set({ notices: mergeNoticeList(appStore.get().notices, d) });
-      }, () => {}).finally(() => { noticesRead = null; }));
+    // A list read and a live notice can cross: each is merged into what the page has (app-store.js mergeNoticeList); a
+    // read that leaves the page behind what the status frame names is asked again (createNoticesSync).
+    const notices = createNoticesSync({ store: appStore,
+      fetchList: () => fetch("/ui/notices/list", { credentials: "same-origin", cache: "no-store" }).then((r) => (r.ok ? r.json() : null)) });
+    const readNotices = () => notices.read();
     appStore.set({ readNotices });
-    let webOnly = false;
     appStore.subscribe((s) => {
-      if (s.connections === 0 && !webOnly) { webOnly = true; readNotices(); }
-      // A polling page hears no `notice`: the status frame's newest id moving past what it has is its catch-up (once per id).
-      const due = webOnly ? noticesCatchUp(s, noticesAsked) : 0;
-      if (due) { noticesAsked = due; readNotices(); }
+      if (s.connections === 0) notices.start();
+      notices.recheck();                       // a polling page hears no `notice`: the status frame's newest id is its catch-up
     });
-    stream.on("connection", (c) => { if ((c === "live" || c === "polling") && webOnly) readNotices(); });
+    stream.on("connection", (c) => { if ((c === "live" || c === "polling") && notices.started()) readNotices(); });
     stream.on("notice", (d) => {
       const cur = appStore.get().notices;
       if (!cur || !cur.enabled) { readNotices(); return; }

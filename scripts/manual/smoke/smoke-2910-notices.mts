@@ -97,6 +97,36 @@ for (const [i, c] of CASES.entries()) {
   await p.ctx.close();
 }
 
+// #2925 review r2 P2-2: a polling page whose list read is held after its snapshot was taken; a notice recorded meanwhile
+// (2 polls name it while held). Released, the stale answer lands — and the page must ask again (it used to stay behind).
+{
+  let holding = false;
+  const held: Array<() => Promise<void>> = [];
+  const p = await freshPage(fx, CASES[3] as any, { account: "operator", beforeNavigate: async (ctx: any) => {
+    await ctx.route("**/ui/events", (r: any) => r.abort());
+    await ctx.route("**/ui/notices/list", async (r: any) => {
+      if (!holding) return r.continue();
+      const answer = await r.fetch();                                     // the snapshot is taken now
+      held.push(() => r.fulfill({ response: answer }));
+    });
+  } });
+  await mounted(p.page, 30000);
+  await p.page.waitForTimeout(2500);
+  const read = async () => Number((await p.page.locator(`.side-nav a[href="/ui/notices"] .nav-count`).textContent().catch(() => "0")) ?? 0);
+  const before = await read();
+  holding = true;
+  fm.notifyFleetError("⚠️ Held-read case: A");
+  for (let i = 0; i < 30 && !held.length; i++) await p.page.waitForTimeout(500);   // a poll names A → a list read, held
+  fm.notifyFleetError("⚠️ Held-read case: B (recorded while the read is held)");
+  await p.page.waitForTimeout(11_000);                                               // two polls name B meanwhile
+  holding = false;
+  for (const release of held.splice(0)) await release();
+  let after = before;
+  for (let i = 0; i < 40 && after < before + 2; i++) { await p.page.waitForTimeout(500); after = await read(); }
+  results.push({ name: "polling page, an older read held while a new notice arrives", ok: after === before + 2, failed: after === before + 2 ? [] : [`count ${before} → ${after} (want +2)`] });
+  await p.ctx.close();
+}
+
 // Control: a chat connection — no Notices entry.
 fm.fleetConfig.channels = [{ id: "demo", type: "discord", bot_token_env: "DEMO_BOT_TOKEN", access: { mode: "locked", allowed_users: [] } }];
 {

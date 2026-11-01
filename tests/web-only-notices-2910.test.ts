@@ -239,15 +239,69 @@ describe("#2925 review P2-2: a polling page catches up from the status frame", (
     web.fm.notifyFleetError("one");
     expect([(web.fm.getUiStatus() as any).notices_newest, "notices_newest" in (chat.fm.getUiStatus() as any)]).toEqual([1, false]);
   });
-  it("the page reads the list when the frame's id passes what it has — once per id", async () => {
+  it("the page reads the list when the frame's id passes what it has", async () => {
     const S = await import("/assets/app-store.js" as string);
     const page = { notices: S.mergeNoticeList(null, { enabled: true, items: [{ id: 1, at: 1, kind: "fleet", text: "a" }], seen: 0 }) };
-    expect([S.noticesCatchUp({ ...page, noticesNewest: 1 }, 0), S.noticesCatchUp({ ...page, noticesNewest: 2 }, 0),
-      S.noticesCatchUp({ ...page, noticesNewest: 2 }, 2), S.noticesCatchUp({ ...page, noticesNewest: null }, 0)]).toEqual([0, 2, 0, 0]);
+    expect([S.noticesCatchUp({ ...page, noticesNewest: 1 }), S.noticesCatchUp({ ...page, noticesNewest: 2 }), S.noticesCatchUp({ ...page, noticesNewest: null })]).toEqual([0, 2, 0]);
     S.applyStatus({ instances: [], notices_newest: 7 });
     expect(S.appStore.get().noticesNewest).toBe(7);
     const app = readFileSync(join(process.cwd(), "src/ui/shared/app.js"), "utf8");
-    expect(app).toContain("const due = webOnly ? noticesCatchUp(s, noticesAsked) : 0;");
+    expect([app.includes("if (s.connections === 0) notices.start();"), app.includes("notices.recheck();")]).toEqual([true, true]);
+  });
+});
+
+// #2925 review r2 (Prism): the catch-up was a watermark set before the read succeeded — an older read already in flight,
+// or one that failed, left the page behind for good. The sync re-asks after each read settles, while still behind.
+describe("#2925 review r2 P2-2: reads that settle behind are asked again", () => {
+  const n = (id: number) => ({ id, at: id, kind: "fleet", text: `n${id}` });
+  async function harness() {
+    const S = await import("/assets/app-store.js" as string);
+    const store = S.createStore({ notices: null, noticesNewest: null });
+    const timers: Array<{ fn: () => void; ms: number }> = [];
+    let clock = 0;
+    const answers: Array<{ resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
+    const fetchList = vi.fn(() => new Promise((resolve, reject) => answers.push({ resolve, reject })));
+    const sync = S.createNoticesSync({ store, fetchList, setTimer: (fn: () => void, ms: number) => { timers.push({ fn, ms }); return timers.length; }, now: () => clock });
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const fire = async (advance: number) => { clock += advance; const t = timers.splice(0); for (const x of t) x.fn(); await tick(); };
+    return { S, store, timers, fetchList, sync, answers, tick, fire };
+  }
+  it("an older read in flight when a new notice is named: its stale answer lands, then the page asks again and catches up", async () => {
+    const h = await harness();
+    h.sync.start(); await h.tick();                                              // read 1 out (its snapshot: [1])
+    h.store.set({ noticesNewest: 2 }); h.sync.recheck(); await h.tick();         // a poll names 2 while read 1 is held
+    expect(h.fetchList).toHaveBeenCalledTimes(1);                                // joined, not a second read
+    h.answers[0]!.resolve({ enabled: true, items: [n(1)], seen: 0 }); await h.tick(); await h.tick();
+    expect([h.store.get().notices.items.map((x: any) => x.id), h.timers.map((t) => t.ms)]).toEqual([[1], [h.S.NOTICES_RETRY_MS.stale]]);
+    h.sync.recheck(); await h.tick();                                            // more polls before the retry is due: no flood
+    expect(h.fetchList).toHaveBeenCalledTimes(1);
+    await h.fire(h.S.NOTICES_RETRY_MS.stale);
+    expect(h.fetchList).toHaveBeenCalledTimes(2);
+    h.answers[1]!.resolve({ enabled: true, items: [n(2), n(1)], seen: 0 }); await h.tick(); await h.tick();
+    expect([h.store.get().notices.items.map((x: any) => x.id), h.timers.length]).toEqual([[2, 1], 0]);   // caught up: nothing more
+  });
+  it("a failed read is retried (after the longer wait) until it succeeds; a page not behind never retries", async () => {
+    const h = await harness();
+    h.store.set({ noticesNewest: 3 });
+    h.sync.start(); await h.tick();
+    h.answers[0]!.reject(new Error("offline")); await h.tick(); await h.tick();
+    expect(h.timers.map((t) => t.ms)).toEqual([h.S.NOTICES_RETRY_MS.failed]);
+    await h.fire(h.S.NOTICES_RETRY_MS.failed);
+    h.answers[1]!.resolve(null); await h.tick(); await h.tick();                // a non-list answer (401, 500) is a failure too
+    expect(h.timers.map((t) => t.ms)).toEqual([h.S.NOTICES_RETRY_MS.failed]);
+    await h.fire(h.S.NOTICES_RETRY_MS.failed);
+    h.answers[2]!.resolve({ enabled: true, items: [n(3)], seen: 0 }); await h.tick(); await h.tick();
+    expect([h.fetchList.mock.calls.length, h.store.get().notices.items[0].id, h.timers.length]).toEqual([3, 3, 0]);
+    const q = await harness();
+    q.sync.start(); await q.tick();
+    q.answers[0]!.resolve({ enabled: true, items: [n(1)], seen: 0 }); await q.tick(); await q.tick();
+    q.store.set({ noticesNewest: 1 }); q.sync.recheck(); await q.tick();
+    expect([q.fetchList.mock.calls.length, q.timers.length]).toEqual([1, 0]);
+  });
+  it("before the fleet is known to be web-only: nothing is read", async () => {
+    const h = await harness();
+    h.store.set({ noticesNewest: 5 }); h.sync.recheck(); await h.tick();
+    expect([h.fetchList.mock.calls.length, h.sync.started()]).toEqual([0, false]);
   });
 });
 

@@ -91,10 +91,45 @@ export function addNotice(cur, n) {
   if (!cur || !cur.enabled || !validNotice(n) || cur.items.some((x) => x.id === n.id)) return cur;
   return noticesState(true, new Map([...cur.items, n].map((x) => [x.id, x])), cur.seen | 0);
 }
-/** A polling page's catch-up (it hears no `notice`): the status frame's newest id past what the page has — once per id. 0: none. */
-export function noticesCatchUp(s, asked) {
+/** The newest Notice the status frame names that the page does not have yet (a polling page hears no `notice`). 0: none. */
+export function noticesCatchUp(s) {
   const have = s && s.notices && s.notices.items.length ? s.notices.items[0].id : 0;
-  return s && Number.isSafeInteger(s.noticesNewest) && s.noticesNewest > have && s.noticesNewest > asked ? s.noticesNewest : 0;
+  return s && Number.isSafeInteger(s.noticesNewest) && s.noticesNewest > have ? s.noticesNewest : 0;
+}
+/** After a read that left the page still behind: try again this soon (a failed read waits longer). */
+export const NOTICES_RETRY_MS = { stale: 1000, failed: 5000 };
+/**
+ * #2910 D2 (#2925 review r2): the page's reads of GET /ui/notices/list. One at a time (a second ask joins the read in
+ * flight); once a read settles, the page asks again if it is still behind what the status frame names (an older read
+ * that was already in flight, or one that failed) — after NOTICES_RETRY_MS, and again until it catches up. Never a
+ * watermark set before a read succeeded.
+ */
+export function createNoticesSync({ store, fetchList, setTimer = (fn, ms) => setTimeout(fn, ms), now = () => Date.now() }) {
+  let inFlight = null, retryAt = 0, timer = null, on = false;
+  const behind = () => on && noticesCatchUp(store.get()) > 0;
+  const recheck = () => { if (!inFlight && behind() && now() >= retryAt) read(); };
+  const later = (ms) => {
+    retryAt = now() + ms;
+    if (timer === null) timer = setTimer(() => { timer = null; recheck(); }, ms);
+  };
+  function read() {
+    return (inFlight ??= Promise.resolve().then(fetchList).then((d) => {
+      if (!d || !Array.isArray(d.items)) throw new Error("no list");
+      store.set({ notices: mergeNoticeList(store.get().notices, d) });
+      return true;
+    }).catch(() => false).then((ok) => {
+      inFlight = null;
+      if (behind()) later(ok ? NOTICES_RETRY_MS.stale : NOTICES_RETRY_MS.failed);
+      else retryAt = 0;
+    }));
+  }
+  return {
+    /** The fleet is web-only: start (the first read), and follow the status frame from now on. */
+    start() { if (!on) { on = true; read(); } },
+    read,
+    recheck,
+    started: () => on,
+  };
 }
 export function applyNoticesSeen(cur, seen) {
   if (!cur || !Number.isSafeInteger(seen) || seen <= (cur.seen | 0)) return cur;
