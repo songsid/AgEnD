@@ -10,7 +10,7 @@ import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, guestBadge, guestPage, guestTrusted, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { toast } from "./ui-toast.js";
-import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, NOTICES_PATH, fleetEntryPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { onPrefsChanged, savePref } from "./app-prefs.js";
 import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes.js";
@@ -328,8 +328,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const canCreate = useCanCreate();
   const on = (panel) => !!route && route.panel === panel;
   // A count badge is hidden at 0; its number is also in the link's accessible name.
-  const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
-    aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t("app.needsCount", count)})` : undefined} onClick=${closeDrawer}>
+  const navLink = (panel, href, icon, label, count = 0, countText = "app.needsCount") => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
+    aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t(countText, count)})` : undefined} onClick=${closeDrawer}>
     <${Icon} name=${icon} /><span class="grow">${label}</span>${count ? html`<span class="nav-count" aria-hidden="true">${count}</span>` : null}</a>`;
   const needsCount = Array.isArray(app.needs) ? app.needs.length : 0;
   // View-only (an anonymous reader, #1408 §3): View and a way to sign in — nothing that needs a session is rendered.
@@ -379,6 +379,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
+      ${/* #2910 D2: a web-only fleet (no chat connection) has Notices — what General would have said. */
+        app.connections === 0 && app.notices && app.notices.enabled ? navLink("notices", NOTICES_PATH, "bell", t("app.noticesNav"), app.notices.unread | 0, "app.noticesCount") : null}
       ${searchOffered(canCreate) ? searchRow() : null}
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>

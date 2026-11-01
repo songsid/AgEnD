@@ -504,6 +504,8 @@ export interface WebApiContext {
   setWebPersonName?(owner: WebAccount | undefined, raw: unknown): { ok: true; person: WebPerson } | { ok: false; status: number; error: string };
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
+  /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
+  webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
   /** `text`: #2675 — the typed answer, for the one action the page shows a text box for. */
   clickWebPrompt?(instance: string, nonce: string, action: string, text?: string): Promise<{ status: number; error?: string }>;
@@ -2334,6 +2336,32 @@ export function handleWebRequest(
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
   // token. Who did it is recorded by principal: the session's public handle, never the session id or a credential.
+  // #2910 D2: a web-only fleet's Notices — what General would have said. Admins only (never a guest: not in
+  // GUEST_ROUTES). GET /ui/notices/list lists them; POST /ui/notices/seen {id} marks everything up to it read (a session write).
+  if (path === "/ui/notices/list" && method === "GET") {
+    const feed = ctx.webNoticesFeed?.() ?? null;
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, feed ? { enabled: true, ...feed.view() } : { enabled: false, items: [], seen: 0, unread: 0 });
+    return true;
+  }
+  if (path === "/ui/notices/seen" && method === "POST") {
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const id = body && typeof body === "object" ? body.id : undefined;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) { json(res, 400, { error: "id required" }); return; }
+      const feed = ctx.webNoticesFeed?.() ?? null;
+      if (!feed) { json(res, 404, { error: "No notices here" }); return; }
+      const seen = feed.markSeen(id);
+      json(res, 200, { seen, unread: feed.unread() });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Notices mark-read failed");
+      try { json(res, 500, { error: "Mark read failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
   if (method === "POST" && path === "/ui/needs/ack") {
     if (!ctx.acknowledgeNeedsItem) { json(res, 404, { error: "Nothing to acknowledge here" }); return true; }
     const acknowledge = ctx.acknowledgeNeedsItem.bind(ctx);

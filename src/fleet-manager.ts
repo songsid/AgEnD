@@ -332,6 +332,7 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCooki
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
+import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
@@ -7738,7 +7739,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!loginNoticeMode(this.fleetConfig?.web)) return;
     // The session handle makes each notice distinct: notifyFleetError throttles by text, and a second
     // sign-in from the same kind of browser is exactly the one the operator most needs to hear about.
-    this.notifyFleetError(t("web.login_notice", info.label, info.surface, info.handle.slice(0, 8)));
+    // #2910 D2: a web-only fleet has no /web to revoke with — its Notice names the host's way (every browser signed out).
+    this.notifyFleetError(t(this.webOnlyPromptPlace() ? "web.login_notice_web_only" : "web.login_notice", info.label, info.surface, info.handle.slice(0, 8)));
   }
 
   getDashboardAccess(): { ready: boolean; token: string | null } {
@@ -11439,6 +11441,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // through the target's adapter, so a Telegram-created schedule for a
     // Discord target announced its failure into the wrong platform.
     const adapter = this.scheduleSourceAdapter(schedule);
+    // #2910 D2: a web-only fleet has no chat to say it in: a Notice about the schedule's target.
+    if (!adapter && this.recordWebNotice("schedule", `⏰ Schedule "${schedule.label ?? schedule.id}" trigger failed: instance ${schedule.target} is offline.`, schedule.target)) return;
     if (!adapter) {
       this.logger.warn({ scheduleId: schedule.id, chatId: schedule.reply_chat_id, source: schedule.source },
         "No adapter can reach the schedule's source chat — failure notice not sent");
@@ -14169,6 +14173,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * back to posting at the bare group id, which is the defect this replaced.
    */
   private postDailySummary(text: string): void {
+    if (this.recordWebNotice("summary", text)) return;                  // #2910 D2: a web-only fleet's Notices
     const target = this.fleetNoticeTarget();
     if (!this.adapter || !target) {
       this.logger.warn("Daily summary has no postable target — set a General topic or channel.options.general_channel_id");
@@ -14224,6 +14229,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
+    // #2910 D2: a web-only fleet has no General: the notice goes to the dashboard's Notices instead (and spends the
+    // throttle window like a post would).
+    if (!dispatched && this.recordWebNotice("fleet", body)) dispatched = true;
     if (!dispatched) {
       // Do NOT record the throttle key. It used to be claimed before delivery
       // was attempted, so a message nobody could receive — every fleet error
@@ -14247,6 +14255,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  private webNotices: WebNotices | null = null;
+  /** #2910 D2 (web-api): the Notices on a web-only fleet; null on any other (its General says them). */
+  webNoticesFeed(): WebNotices | null { return this.webOnlyPromptPlace() ? this.webNoticeStore() : null; }
+
+  /** #2910 D2: the web-only fleet's Notices (web-notices.json), read on first use. */
+  webNoticeStore(): WebNotices | null {
+    if (!this.dataDir) return null;
+    this.webNotices ??= new WebNotices(join(this.dataDir, WEB_NOTICES_FILE), this.logger);
+    return this.webNotices;
+  }
+
+  /**
+   * #2910 D2: on a web-only fleet (no chat connection at all), keep what General or an agent's topic would have been
+   * told as a Notice, and push it to the dashboard. False on any other fleet (its chat says it; nothing is kept).
+   */
+  private recordWebNotice(kind: NoticeKind, text: string, instance?: string): boolean {
+    if (!this.webOnlyPromptPlace()) return false;
+    const store = this.webNoticeStore();
+    if (!store) return false;
+    const known = instance !== undefined && Object.hasOwn(this.fleetConfig?.instances ?? {}, instance) ? instance : undefined;
+    const notice = store.add({ kind, text: stripPlaceRefs(text), ...(known ? { instance: known } : {}) });
+    this.emitSseEvent("notice", { notice, unread: store.unread() });
+    return true;
+  }
+
   private static readonly FLEET_ERROR_THROTTLE_MS = 10 * 60_000;
   private fleetErrorNotices = new Map<string, { at: number; suppressed: number }>();
 
@@ -14261,6 +14294,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * would have to make this async and change every caller.
    */
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): boolean {
+    // #2910 D2: a web-only fleet has no topics: what the agent's topic would have been told is a Notice about it.
+    if (this.webOnlyPromptPlace()) return this.recordWebNotice("instance", text, instanceName);
     const send = this.sendToInstanceTopic(instanceName, text, extraOpts);
     if (!send) return false;
     send.sent.catch(e => this.logger.warn({ err: e, instanceName }, send.failure));
@@ -16128,9 +16163,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ? [{ action: "resume", label: t("inst.session_oom_resume") }, { action: "fresh", label: t("inst.session_oom_fresh") }]
       : [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }];
     const extra = sessionOomRetry ? { sessionOomRetry, ...(current ? { confirmationCurrent: current } : {}) } : undefined;
-    this.notifyInstanceTopic(instanceName, (oom ? message : t("exit.instance_notice", instanceName)) + placeSuffix({ kind: "general" }, "General"));
-
     const web = this.webOnlyPromptPlace();
+    // A pointer to General's controls; on a web-only fleet (#2910 D2) the controls are in Needs you and nothing points there.
+    if (!web) this.notifyInstanceTopic(instanceName, (oom ? message : t("exit.instance_notice", instanceName)) + placeSuffix({ kind: "general" }, "General"));
+
     if (web) {
       await this.postNonceButtonPrompt({
         prefix, alertType: "exit_restart", instanceName, ...web,
@@ -16242,7 +16278,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * contain usernames or secret-adjacent text and stays in daemon.log.
    */
   async notifyInteractivePrompt(instanceName: string, kind: string): Promise<void> {
-    this.notifyInstanceTopic(instanceName, t("interactive.instance_notice", instanceName) + placeSuffix({ kind: "general" }, "General"));
+    // #2910 D2: on a web-only fleet the assist prompt is in Needs you; there is no General to point to.
+    if (!this.webOnlyPromptPlace()) this.notifyInstanceTopic(instanceName, t("interactive.instance_notice", instanceName) + placeSuffix({ kind: "general" }, "General"));
     // Multi-world fleets can have one General per bot/platform. Route the assist
     // request to the General bound to the same adapter as the blocked instance.
     const generalName = this.findGeneralInstance(this.getInstanceAdapterId(instanceName));
@@ -23414,7 +23451,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
-        const generalId = this.findGeneralInstance();
+        // #2910 D2 (#2925 review): a web-only fleet first — even with a General instance it has no chat for /update.
+        const generalId = this.webOnlyPromptPlace() ? null : this.findGeneralInstance();
         if (generalId) {
           // No release URL — Discord's SuppressEmbeds proved unreliable and the
           // link preview looked bad. Version + /update instruction is enough.
@@ -23423,6 +23461,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
           // #2775: null = a beta install and a stable target; beta users are never told to switch.
           if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
+        } else if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
+          // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily); installed from this computer.
+          const text = t("update.available_web_only", `v${target}`, `v${currentVersion}`);
+          if (this.webNoticeStore()?.latest("update")?.text !== text) this.recordWebNotice("update", text);
         }
       }
     } catch { /* silent — network issues */ }
@@ -24333,6 +24375,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // #1685: host memory pressure while it slows or holds new agents (the dashboard's indicator; macOS elevated is
       // shown here rather than in chat). null when normal, unknown or advisory.
       host_memory: this.hostMemoryIndicator(),
+      // #2910 D2: a web-only fleet's newest Notice — a polling page (no SSE `notice`) reads the list again when it moves.
+      ...(this.webOnlyPromptPlace() ? { notices_newest: this.webNoticeStore()?.newest() ?? 0 } : {}),
       // #2015: the largest processes while it lasts (name, pid, RSS, and whose: an instance, the fleet or tmux).
       ...(this.hostMemoryIndicator() && this.memoryTop ? { host_memory_top: this.memoryTop.processes } : {}),
     };

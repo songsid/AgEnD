@@ -63,7 +63,77 @@ export function applyStatus(d) {
     // #1685: host memory pressure slowing or holding new agents ("elevated" | "critical"), else null.
     hostMemory: d.host_memory === "elevated" || d.host_memory === "critical" ? d.host_memory : null,
     // #2015: while it lasts, the largest processes in the fleet and whose they are (at most 3; anything else dropped).
-    hostMemoryTop: hostMemoryTop(d.host_memory_top) });
+    hostMemoryTop: hostMemoryTop(d.host_memory_top),
+    // #2910 D2 (#2925 review): the newest Notice on a web-only fleet — a polling page reads the list again when it moves.
+    noticesNewest: Number.isSafeInteger(d.notices_newest) ? d.notices_newest : null });
+}
+
+/**
+ * #2910 D2 (#2925 review): a web-only fleet's Notices as the page keeps them. A list read (GET /ui/notices/list), a live
+ * one (SSE `notice`) and a read mark (POST /ui/notices/seen) can answer in any order, so each is merged, never
+ * replaced: the newest NOTICES_KEPT by id (a list read never drops one that arrived live after it was taken), and the
+ * read mark only moves forward. Unread is counted here from the two.
+ */
+export const NOTICES_KEPT = 500;
+function noticesState(enabled, byId, seen) {
+  const items = [...byId.values()].sort((a, b) => b.id - a.id).slice(0, NOTICES_KEPT);
+  return { enabled, items, seen, unread: items.filter((n) => n.id > seen).length };
+}
+const validNotice = (n) => !!n && Number.isSafeInteger(n.id) && n.id > 0 && typeof n.text === "string";
+export function mergeNoticeList(cur, d) {
+  const byId = new Map();
+  for (const n of Array.isArray(d && d.items) ? d.items : []) if (validNotice(n)) byId.set(n.id, n);
+  const listNewest = Math.max(0, ...byId.keys());
+  for (const n of cur && Array.isArray(cur.items) ? cur.items : []) if (n.id > listNewest && !byId.has(n.id)) byId.set(n.id, n);
+  return noticesState(!!(d && d.enabled === true), byId, Math.max(cur ? cur.seen | 0 : 0, d ? d.seen | 0 : 0));
+}
+export function addNotice(cur, n) {
+  if (!cur || !cur.enabled || !validNotice(n) || cur.items.some((x) => x.id === n.id)) return cur;
+  return noticesState(true, new Map([...cur.items, n].map((x) => [x.id, x])), cur.seen | 0);
+}
+/** The newest Notice the status frame names that the page does not have yet (a polling page hears no `notice`). 0: none. */
+export function noticesCatchUp(s) {
+  const have = s && s.notices && s.notices.items.length ? s.notices.items[0].id : 0;
+  return s && Number.isSafeInteger(s.noticesNewest) && s.noticesNewest > have ? s.noticesNewest : 0;
+}
+/** After a read that left the page still behind: try again this soon (a failed read waits longer). */
+export const NOTICES_RETRY_MS = { stale: 1000, failed: 5000 };
+/**
+ * #2910 D2 (#2925 review r2): the page's reads of GET /ui/notices/list. One at a time (a second ask joins the read in
+ * flight); once a read settles, the page asks again if it is still behind what the status frame names (an older read
+ * that was already in flight, or one that failed) — after NOTICES_RETRY_MS, and again until it catches up. Never a
+ * watermark set before a read succeeded.
+ */
+export function createNoticesSync({ store, fetchList, setTimer = (fn, ms) => setTimeout(fn, ms), now = () => Date.now() }) {
+  let inFlight = null, retryAt = 0, timer = null, on = false;
+  const behind = () => on && noticesCatchUp(store.get()) > 0;
+  const recheck = () => { if (!inFlight && behind() && now() >= retryAt) read(); };
+  const later = (ms) => {
+    retryAt = now() + ms;
+    if (timer === null) timer = setTimer(() => { timer = null; recheck(); }, ms);
+  };
+  function read() {
+    return (inFlight ??= Promise.resolve().then(fetchList).then((d) => {
+      if (!d || !Array.isArray(d.items)) throw new Error("no list");
+      store.set({ notices: mergeNoticeList(store.get().notices, d) });
+      return true;
+    }).catch(() => false).then((ok) => {
+      inFlight = null;
+      if (behind()) later(ok ? NOTICES_RETRY_MS.stale : NOTICES_RETRY_MS.failed);
+      else retryAt = 0;
+    }));
+  }
+  return {
+    /** The fleet is web-only: start (the first read), and follow the status frame from now on. */
+    start() { if (!on) { on = true; read(); } },
+    read,
+    recheck,
+    started: () => on,
+  };
+}
+export function applyNoticesSeen(cur, seen) {
+  if (!cur || !Number.isSafeInteger(seen) || seen <= (cur.seen | 0)) return cur;
+  return noticesState(cur.enabled, new Map(cur.items.map((x) => [x.id, x])), seen);
 }
 
 /** #2015: the status frame's host_memory_top, as the dashboard keeps it: well-formed entries only, at most 3. */

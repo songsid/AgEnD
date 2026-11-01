@@ -1632,6 +1632,11 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .n-detail { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
 .n-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-1); }
 .n-notify { display: flex; flex-direction: column; gap: var(--s-1); }
+/* #2910 D2: Notices (a web-only fleet's General) — the Needs you rows; a new one has an accent edge and a "New" tag. */
+.n-item.notice.unread { box-shadow: inset 3px 0 0 var(--accent); }
+.n-item.notice:not(.bad) .n-icon { color: var(--text-2); }
+.notice-new { font-size: var(--fs-xs); color: var(--accent); font-weight: var(--fw-semibold); }
+.notice-sub { margin: 0 var(--s-1) var(--s-3); }
 .confirm-text { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-2); }
 
 /* ── Org chart (#1389): General → teams → instances. Connectors are borders and pseudo-elements; no inline style.
@@ -2279,7 +2284,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 @media (min-width: 900px) { .chat-split > .pv-divider, .chat-split > .pv-panel { position: relative; z-index: 1; } }
 /* #1629: full-app bounded stock surfaces. Panel roots stay neutral; effects never raise the whole app. */
 .p-fleet > .seg, .p-settings > .seg,
-.p-fleet > .panel-body, .p-needs > .panel-body, .p-settings > .panel-body,
+.p-fleet > .panel-body, .p-needs > .panel-body, .p-notices > .panel-body, .p-settings > .panel-body,
 .p-log > .panel-body, .p-details > .panel-body, .p-view > .panel-body,
 .p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-watching { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */

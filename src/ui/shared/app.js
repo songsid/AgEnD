@@ -13,7 +13,7 @@ import { installSwipe } from "./app-swipe.js";
 import { installTextUndo } from "./text-undo.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
-import { appStore, applyStatus, applyActivity, guestPage, guestTrusted } from "./app-store.js";
+import { appStore, applyStatus, applyActivity, guestPage, guestTrusted, addNotice, createNoticesSync } from "./app-store.js";
 import { chatPath } from "./app-route.js";
 import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
@@ -91,6 +91,27 @@ if (mode === "full") {
     const loadApply = retryable((a) => import(retryUrl("/ui/js/settings-apply.js", a)));
     appStore.set({ restartRunner: (jobId) => loadApply().then((m) => m.restartPendingChanges(jobId)) });
     panels.set("needs", { load: () => loadNeeds().then((m) => m.NeedsPanel) });
+    // #2910 D2: a web-only fleet's Notices (/ui/notices): read once the status says there is no chat connection (and
+    // again after a reconnect: a poll page hears no `notice`), then each new one from the stream.
+    const loadNotices = retryable((a) => import(retryUrl("/ui/js/panel-notices.js", a)));
+    panels.set("notices", { load: () => loadNotices().then((m) => m.NoticesPanel) });
+    // A list read and a live notice can cross: each is merged into what the page has (app-store.js mergeNoticeList); a
+    // read that leaves the page behind what the status frame names is asked again (createNoticesSync).
+    const notices = createNoticesSync({ store: appStore,
+      fetchList: () => fetch("/ui/notices/list", { credentials: "same-origin", cache: "no-store" }).then((r) => (r.ok ? r.json() : null)) });
+    const readNotices = () => notices.read();
+    appStore.set({ readNotices });
+    appStore.subscribe((s) => {
+      if (s.connections === 0) notices.start();
+      notices.recheck();                       // a polling page hears no `notice`: the status frame's newest id is its catch-up
+    });
+    stream.on("connection", (c) => { if ((c === "live" || c === "polling") && notices.started()) readNotices(); });
+    stream.on("notice", (d) => {
+      const cur = appStore.get().notices;
+      if (!cur || !cur.enabled) { readNotices(); return; }
+      const next = addNotice(cur, d && d.notice);
+      if (next !== cur) appStore.set({ notices: next });
+    });
     // #1523 N2: one instance's Details (/ui/fleet/agent/<name>).
     panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });
     // #1218: one instance's Log (/ui/log/<name>).
