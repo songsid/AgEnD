@@ -110,6 +110,41 @@ describe("the panel's page list", () => {
     await click(cards(one)[0].querySelector(".pv-open"));
     expect(one.querySelector(".pv-pages-toggle")).toBeNull();
   });
+  it("#2920 review: a view button leaves the list (Code shows the code); a new open never starts behind an old list", async () => {
+    const doc = await chat([agent(1, FENCE(PAGE(1))), agent(2, FENCE(PAGE(1, "Other")))]);
+    await click(cards(doc)[0].querySelector(".pv-open"));
+    await click(doc.querySelector(".pv-pages-toggle"));
+    await click([...doc.querySelectorAll(".pv-panel-bar .seg-inline .btn")].find((b: any) => /Code/.test(b.textContent)));
+    expect([doc.querySelector(".pv-pages"), doc.querySelector(".pv-code code")?.textContent]).toEqual([null, PAGE(1)]);
+    await click(doc.querySelector(".pv-pages-toggle"));
+    pp.closePanel(); await settle();
+    await click(cards(doc)[1].querySelector(".pv-open"));
+    expect([shown(), doc.querySelector(".pv-pages"), doc.querySelector(".pv-panel-body").className.includes("show-code")]).toEqual(["b-2:f0", null, false]);
+  });
+  it("#2920 review: a newer pick supersedes a file still being read — the file's late answer is dropped", async () => {
+    let release = () => {};
+    globalThis.fetch = vi.fn(() => new Promise(r => { release = () => r({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(PAGE(1, "File")).buffer }); })) as any;
+    const doc = await chat([agent(1, FENCE(PAGE(1, "Other"))), withFile(2, ID1, "file.html"), agent(3, FENCE(PAGE(1)))]);
+    await click(cards(doc).at(-1).querySelector(".pv-open"));
+    await click(doc.querySelector(".pv-pages-toggle"));
+    const row = (name: string) => [...doc.querySelectorAll(".pv-page")].find((b: any) => b.querySelector(".pv-page-name").textContent === name);
+    await click(row("file.html"));                       // held
+    await click(doc.querySelector(".pv-pages-toggle"));
+    await click(row("Other"));                           // a newer choice, inline
+    expect(shown()).toBe("b-1:f0");
+    release(); await settle(); await settle();
+    expect(shown(), "the file's late answer does not replace Other").toBe("b-1:f0");
+  });
+  it("control: a sole file pick opens the file when it answers", async () => {
+    let release = () => {};
+    globalThis.fetch = vi.fn(() => new Promise(r => { release = () => r({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(PAGE(1, "File")).buffer }); })) as any;
+    const doc = await chat([withFile(1, ID1, "file.html"), agent(2, FENCE(PAGE(1)))]);
+    await click(cards(doc).at(-1).querySelector(".pv-open"));
+    await click(doc.querySelector(".pv-pages-toggle"));
+    await click([...doc.querySelectorAll(".pv-page")].find((b: any) => b.querySelector(".pv-page-name").textContent === "file.html"));
+    release(); await settle(); await settle();
+    expect([shown(), pp.panelStore.get().open.code]).toEqual([`b-1:a${ID1}`, PAGE(1, "File")]);
+  });
   it("a page's label is drawn as text (a title with markup stays text)", async () => {
     const doc = await chat([agent(1, FENCE(PAGE(1, "<img src=x onerror=1>"))), agent(2, FENCE(PAGE(1)))]);
     await click(cards(doc)[1].querySelector(".pv-open"));

@@ -227,6 +227,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   useEffect(() => {
     setRun({ state: "idle", reason: "" });
     if (!keepView.current) setView("preview");
+    setListing(false);                     // #2920 review: a new block on screen leaves the page list
     keepView.current = false;
     if (open && st.run) {
       if (P().availability().ok) start();
@@ -285,8 +286,10 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   // Show another version (the newer one offered, or a step of ‹ ›): an attached file's HTML is read first. A read the
   // panel moved on from is dropped. It is shown as Show it shows one — waiting for Preview, never started by the step.
   const attReason = (r) => t(r.reason === "over" ? "chat.pvAttOver" : r.reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed");
+  // #2920 review: a newer choice supersedes a read still waiting (it opens, or claims, and so moves the generation the
+  // waiting read checks) — it is never ignored because another read is pending.
   const show = async (spec, { keep = false } = {}) => {
-    if (!spec || reading.current) return;
+    if (!spec) return;
     const cached = spec.code == null ? loaded.current.get(spec.key) : undefined;
     if (spec.code != null || cached != null) { keepView.current = keep; openPanel(cached != null ? { ...spec, code: cached } : spec); return; }
     // #2915 review: the panel's generation, not just the key — a close and reopen of the same block while this read
@@ -304,6 +307,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     openPanel({ ...spec, code: r.code });
   };
   const showNewer = () => show(newer);
+  /** A view button: that view on screen — the page list, if open, gives way to it (#2920 review). */
+  const pickView = (v) => { setListing(false); setView(v); };
   const step = (by) => { const v = vers.list[vers.index + by]; if (vers.index >= 0 && v) show(v, { keep: true }); };
   // Changes: the previous version against this one, a line diff (bounded: DIFF_LIMITS). An attached previous version
   // is read for it, once.
@@ -380,9 +385,9 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
           <button type="button" class="icon-btn pv-ver-next" title=${t("chat.pvVerNext")} aria-label=${t("chat.pvVerNext")} disabled=${vers.index === vers.list.length - 1} onClick=${() => step(1)}><${Icon} name="next" size=${16} /></button>
         </div>` : null}
         <div class="seg-inline" role="group" aria-label=${t("chat.pvPanel")}>
-          <button type="button" class=${`btn btn-sm${shown === "preview" ? " on" : ""}`} aria-pressed=${shown === "preview" ? "true" : "false"} title=${t("chat.pvPage")} onClick=${() => setView("preview")}><${Icon} name="eye" size=${14} /><span class="lbl">${t("chat.pvPage")}</span></button>
-          <button type="button" class=${`btn btn-sm${shown === "code" ? " on" : ""}`} aria-pressed=${shown === "code" ? "true" : "false"} title=${t("chat.pvCode")} onClick=${() => setView("code")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvCode")}</span></button>
-          ${prev ? html`<button type="button" class=${`btn btn-sm pv-changes${shown === "changes" ? " on" : ""}`} aria-pressed=${shown === "changes" ? "true" : "false"} title=${t("chat.pvChanges")} onClick=${() => setView("changes")}><${Icon} name="diff" size=${14} /><span class="lbl">${t("chat.pvChanges")}</span></button>` : null}
+          <button type="button" class=${`btn btn-sm${shown === "preview" ? " on" : ""}`} aria-pressed=${shown === "preview" ? "true" : "false"} title=${t("chat.pvPage")} onClick=${() => pickView("preview")}><${Icon} name="eye" size=${14} /><span class="lbl">${t("chat.pvPage")}</span></button>
+          <button type="button" class=${`btn btn-sm${shown === "code" ? " on" : ""}`} aria-pressed=${shown === "code" ? "true" : "false"} title=${t("chat.pvCode")} onClick=${() => pickView("code")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvCode")}</span></button>
+          ${prev ? html`<button type="button" class=${`btn btn-sm pv-changes${shown === "changes" ? " on" : ""}`} aria-pressed=${shown === "changes" ? "true" : "false"} title=${t("chat.pvChanges")} onClick=${() => pickView("changes")}><${Icon} name="diff" size=${14} /><span class="lbl">${t("chat.pvChanges")}</span></button>` : null}
         </div>
         <span class="grow"></span>
         ${shown === "preview" ? html`<select class="pv-width" aria-label=${t("chat.pvWidth")} title=${t("chat.pvWidth")} value=${device} onChange=${(e) => setDevice(e.currentTarget.value)}>
