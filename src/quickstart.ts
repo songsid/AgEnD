@@ -419,6 +419,43 @@ export function newWebOnlyFleet(projectRoots: string[], backend: string, agent: 
   return fleetObj;
 }
 
+/** #2910: the first question — web only (Enter, "1", anything else) unless "2", with a bot. Web is the default. */
+export function quickstartMode(answer: string): "web" | "bot" {
+  return answer.trim() === "2" ? "bot" : "web";
+}
+
+/** #2910 review: a typed folder — `~` and `~/…` are the home directory; anything else must be absolute (else null). */
+export function firstAgentFolder(typed: string): string | null {
+  if (typed === "~" || typed.startsWith("~/")) return resolve(homedir() + typed.slice(1));
+  return typed.startsWith("/") ? resolve(typed) : null;
+}
+
+/** #2910: the agent's own workspace is made as the setup page makes it (a typed folder is the user's: left alone). */
+export function prepareFirstAgent(agent: { workingDirectory: string; ownWorkspace: boolean }): void {
+  if (!agent.ownWorkspace) return;
+  try { mkdirSync(agent.workingDirectory, { recursive: true, mode: 0o700 }); ensureWorkspaceGit(agent.workingDirectory); } catch { /* best effort */ }
+}
+
+/**
+ * #2910 review: "start fresh" from a bot fleet to web only — the old fleet's bot tokens leave .env (the daemon loads
+ * .env into every agent's environment), after the whole file is kept as a backup. Other secrets in it stay. Returns the
+ * keys taken out and the backup's path, or null when there was nothing to take out.
+ */
+export function retireOldBotTokens(envPath: string, oldFleet: unknown, now = Date.now()): { keys: string[]; backup: string } | null {
+  const cfg = (oldFleet && typeof oldFleet === "object" ? oldFleet : {}) as { channel?: { bot_token_env?: unknown }; channels?: Array<{ bot_token_env?: unknown }> };
+  const keys = [cfg.channel, ...(Array.isArray(cfg.channels) ? cfg.channels : [])]
+    .map(c => c?.bot_token_env).filter((k): k is string => typeof k === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(k));
+  if (!keys.length || !existsSync(envPath)) return null;
+  const text = readFileSync(envPath, "utf-8");
+  const lines = text.split("\n");
+  const kept = lines.filter(l => !keys.includes(l.split("=")[0]!.trim()));
+  if (kept.length === lines.length) return null;
+  const backup = `${envPath}.bak-${now}`;
+  warnIfEnvNotPrivate(writeSecretFile(backup, text));
+  warnIfEnvNotPrivate(writeSecretFile(envPath, kept.join("\n")));
+  return { keys: [...new Set(keys)].filter(k => lines.some(l => l.split("=")[0]!.trim() === k)), backup };
+}
+
 /** #2910: the web-only path's first agent — a name, and a folder (none typed: its own workspace under AGEND_HOME). */
 export async function askFirstAgent(rl: Pick<import("node:readline/promises").Interface, "question">, step: string): Promise<{ name: string; workingDirectory: string; ownWorkspace: boolean }> {
   const { defaultWorkingDirectory, instanceNameInvalid } = await import("./quickstart-api.js");
@@ -433,8 +470,8 @@ export async function askFirstAgent(rl: Pick<import("node:readline/promises").In
   for (;;) {
     const typed = (await rl.question(`  ${t("qs.agent_dir", own)} `)).trim();
     if (!typed) { console.log(`  ${green("✓")} ${name} → ${own}\n`); return { name, workingDirectory: own, ownWorkspace: true }; }
-    if (typed.startsWith("/") || typed.startsWith("~")) {
-      const dir = resolve(typed.replace(/^~/, homedir()));
+    const dir = firstAgentFolder(typed);
+    if (dir) {
       console.log(`  ${green("✓")} ${name} → ${dir}\n`);
       return { name, workingDirectory: dir, ownWorkspace: false };
     }
@@ -827,7 +864,7 @@ export async function runQuickstart(): Promise<void> {
     console.log(bold(t("qs.mode_title")));
     console.log(`    1. ${t("qs.mode_web")}`);
     console.log(`    2. ${t("qs.mode_chat")}`);
-    const webOnly = (await rl.question(`  Choose [1]: `)).trim() !== "2";
+    const webOnly = quickstartMode(await rl.question(`  Choose [1]: `)) === "web";
     if (webOnly) console.log(`  ${green("✓")} ${t("qs.mode_web_chosen")}`);
     console.log();
     const steps = webOnly ? 3 : 4;
@@ -923,6 +960,10 @@ export async function runQuickstart(): Promise<void> {
 
     const fleetObj = agent ? newWebOnlyFleet(projectRoots, backend, agent) : newQuickstartFleet(platforms, projectRoots, backend);
 
+    // #2910 review: what the fleet being replaced connected with (its bot tokens leave .env on the web-only path).
+    let oldFleet: unknown = null;
+    try { if (existsSync(FLEET_CONFIG_PATH)) oldFleet = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")); } catch { /* unreadable: nothing to retire */ }
+
     // Backup existing fleet.yaml before overwriting (action === "4" / start fresh).
     // Fail-closed: if the backup cannot be written, abort the overwrite so the
     // user does not lose their only copy while believing a backup exists.
@@ -940,10 +981,10 @@ export async function runQuickstart(): Promise<void> {
     console.log(`\n  ${green("✓")} ${FLEET_CONFIG_PATH}`);
 
     if (agent) {
-      // #2910: no token, so no .env; the agent's own workspace is made now (as the setup page does).
-      if (agent.ownWorkspace) {
-        try { mkdirSync(agent.workingDirectory, { recursive: true, mode: 0o700 }); ensureWorkspaceGit(agent.workingDirectory); } catch { /* best effort */ }
-      }
+      // #2910: no token, so no new .env; a replaced bot fleet's tokens leave it; the agent's own workspace is made.
+      const retired = retireOldBotTokens(ENV_PATH, oldFleet);
+      if (retired) console.log(`  ${green("✓")} ${t("qs.env_tokens_retired", retired.keys.join(", "), retired.backup)}`);
+      prepareFirstAgent(agent);
     } else {
       // Write .env with all tokens
       const envLines = platforms.map(p => `${p.tokenEnvName}=${p.token}`).join("\n") + "\n";

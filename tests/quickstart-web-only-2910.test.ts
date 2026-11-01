@@ -5,10 +5,10 @@
  * real transcripts with main).
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
-import { askFirstAgent, fetchWebSignInCode, newQuickstartFleet, newWebOnlyFleet } from "../src/quickstart.js";
+import { askFirstAgent, fetchWebSignInCode, firstAgentFolder, newQuickstartFleet, newWebOnlyFleet, prepareFirstAgent, quickstartMode, retireOldBotTokens } from "../src/quickstart.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { setLocale, getLocale } from "../src/locale.js";
 
@@ -75,5 +75,45 @@ describe("#2910 quickstart, web only: the sign-in code once the fleet runs", () 
     const run = vi.fn(() => ({ status: 1, stdout: "" }));
     expect(await fetchWebSignInCode(run, 50, 20)).toBeNull();
     expect(run.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// #2912 review (Fable).
+describe("#2912 review: web only is the default; the workspace; ~; old bot tokens", () => {
+  it("(1) the first question: Enter, 1 and anything else mean web only; only 2 means with a bot", () => {
+    expect(["", "  ", "1", " 1 ", "x", "web", "3", "2", " 2 "].map(quickstartMode))
+      .toEqual(["web", "web", "web", "web", "web", "web", "web", "bot", "bot"]);
+  });
+  it("(2) its own workspace is made with .git; a typed folder is the user's and left alone", () => {
+    const own = join(home, "workspaces", "ws-own");
+    prepareFirstAgent({ workingDirectory: own, ownWorkspace: true });
+    expect([existsSync(own), existsSync(join(own, ".git")), (statSync(own).mode & 0o777).toString(8)]).toEqual([true, true, "700"]);
+    const typed = join(home, "typed-folder");
+    prepareFirstAgent({ workingDirectory: typed, ownWorkspace: false });
+    expect(existsSync(typed)).toBe(false);
+  });
+  it("(4) ~ and ~/x are the home directory; ~bob/x and relative paths are not folders (asked again)", () => {
+    expect([firstAgentFolder("~"), firstAgentFolder("~/code/app"), firstAgentFolder("/srv/x/../y"), firstAgentFolder("~bob/x"), firstAgentFolder("code/app")])
+      .toEqual([homedir(), join(homedir(), "code/app"), "/srv/y", null, null]);
+  });
+  it("(3) start fresh from a bot fleet: its bot tokens leave .env (a backup keeps the whole file), other secrets stay", () => {
+    const env = join(home, "env-retire"), now = 1_793_000_000_000;
+    writeFileSync(env, "TG_TOKEN=111:aaa\nDISCORD_TOKEN=bbb\nANTHROPIC_API_KEY=keep-me\nAGEND_CLOUDFLARE_TUNNEL_TOKEN=keep-too\n");
+    const old = { channels: [{ type: "telegram", bot_token_env: "TG_TOKEN" }, { type: "discord", bot_token_env: "DISCORD_TOKEN" }] };
+    expect(retireOldBotTokens(env, old, now)).toEqual({ keys: ["TG_TOKEN", "DISCORD_TOKEN"], backup: `${env}.bak-${now}` });
+    expect(readFileSync(env, "utf8")).toBe("ANTHROPIC_API_KEY=keep-me\nAGEND_CLOUDFLARE_TUNNEL_TOKEN=keep-too\n");
+    expect(readFileSync(`${env}.bak-${now}`, "utf8")).toContain("TG_TOKEN=111:aaa");
+    expect([(statSync(env).mode & 0o777).toString(8), (statSync(`${env}.bak-${now}`).mode & 0o777).toString(8)]).toEqual(["600", "600"]);
+  });
+  it("(3) nothing to retire: a single-channel fleet whose key is absent, no fleet before, no .env — nothing written", () => {
+    const env = join(home, "env-none");
+    writeFileSync(env, "OTHER=1\n");
+    expect([retireOldBotTokens(env, { channel: { bot_token_env: "TG_TOKEN" } }), retireOldBotTokens(env, null), retireOldBotTokens(join(home, "no-env"), { channel: { bot_token_env: "X" } })])
+      .toEqual([null, null, null]);
+    expect(readFileSync(env, "utf8")).toBe("OTHER=1\n");
+    const single = join(home, "env-single");
+    writeFileSync(single, "TG=1\n");
+    expect(retireOldBotTokens(single, { channel: { bot_token_env: "TG" } }, 7)?.keys).toEqual(["TG"]);
+    expect(readFileSync(single, "utf8")).toBe("");
   });
 });
