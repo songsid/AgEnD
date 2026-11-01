@@ -52,6 +52,8 @@ export interface OfficeShareServiceDeps {
   log?(event: string, detail?: string): void;
   createGateway?: typeof createOfficeShareGateway;
   shares?: OfficeShares;
+  /** #2924 review: `web.preview_cdn` as it is now — read once when a page share is made, and kept on it. */
+  pageCdn?(): boolean;
   /** #2911: `web.page_share` as it is now. */
   pageConfig?(): { enabled?: boolean; max_hours?: number } | undefined;
   /**
@@ -89,6 +91,8 @@ export class OfficeShareService {
   list(): OfficeShare[] { return this.shares.list(); }
   /** #2911: `web.page_share.enabled` (default on). */
   pagesEnabled(): boolean { return this.deps.pageConfig?.()?.enabled !== false; }
+  /** Whether a page share made now may load the preview's CDN libraries (web.preview_cdn). */
+  pagesCdn(): boolean { return this.deps.pageCdn?.() === true; }
   listPages(): PageShare[] { return this.pages.list(); }
 
   /**
@@ -100,7 +104,7 @@ export class OfficeShareService {
     stillAllowed?(): boolean; }): Promise<PageShareMade> {
     const { stillAllowed, ...rest } = opts;
     if (!this.pagesEnabled()) return { ok: false, error: "disabled" };
-    const made = this.pages.create({ ...rest, maxMinutes: pageShareMaxMinutes(this.deps.pageConfig?.()?.max_hours) });
+    const made = this.pages.create({ ...rest, cdn: this.deps.pageCdn?.() === true, maxMinutes: pageShareMaxMinutes(this.deps.pageConfig?.()?.max_hours) });
     if (!made.ok) return { ok: false, error: made.error };
     const up = await this.up();
     if (!up.ok) { this.pages.revoke(made.share.id); return { ok: false, error: "tunnel", reason: up.reason }; }

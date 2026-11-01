@@ -31,7 +31,7 @@ import type { Socket } from "node:net";
 import { officeMembers, type OfficeAct, type OfficeChart } from "./web-office-acts.js";
 import { LEVEL, levelsFor, type OfficeLevel } from "./office-levels.js";
 import type { Office } from "./web-office-store.js";
-import { PAGE_ENDED, PAGE_SHARE_CSP, PAGE_SHARE_LIMITS, PAGE_SHARE_PERMISSIONS, PAGE_WRAPPER_CSP, pageWrapper, type PageShares } from "./page-share.js";
+import { PAGE_ENDED, PAGE_SHARE_CDN_CSP, PAGE_SHARE_CSP, PAGE_SHARE_LIMITS, PAGE_SHARE_PERMISSIONS, PAGE_WRAPPER_CSP, pageWrapper, type PageShares } from "./page-share.js";
 
 export const OFFICE_SHARE_LIMITS = {
   /** Shares open at once, fleet-wide. */
@@ -564,7 +564,7 @@ export function createOfficeShareGateway(opts: {
       pageLimiter.sent(id, bytes.length);
       if (frame) res.setHeader("X-Frame-Options", "SAMEORIGIN");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": String(bytes.length), "Cache-Control": "no-store", "X-DNS-Prefetch-Control": "off",
-        "Content-Security-Policy": frame ? PAGE_SHARE_CSP : PAGE_WRAPPER_CSP, "Permissions-Policy": PAGE_SHARE_PERMISSIONS });
+        "Content-Security-Policy": frame ? (found.share.cdn ? PAGE_SHARE_CDN_CSP : PAGE_SHARE_CSP) : PAGE_WRAPPER_CSP, "Permissions-Policy": PAGE_SHARE_PERMISSIONS });
       res.end(method === "HEAD" ? undefined : bytes);
       return;
     }
