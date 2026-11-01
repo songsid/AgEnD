@@ -55,6 +55,8 @@ const tp = (k, ...v) => t(`pshare.${k}`, ...v);
 export const DURATIONS = [["m15", 15], ["h1", 60], ["h8", 480], ["h24", 1440]];
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const when = (ms) => { try { return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(ms)); } catch { return ""; } };
+/** The end of a share for the bar: the time today, with the day when it is not today (a share may last 24 h). */
+const until = (ms) => { const d = new Date(ms), now = new Date(); return d.toDateString() === now.toDateString() ? when(ms) : whenLong(ms); };
 const whenLong = (ms) => { try { return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(ms)); } catch { return ""; } };
 
 /** What a refusal says (the host's `error` and `reason`). */
@@ -181,6 +183,6 @@ export function PageShareButton({ block, Icon }) {
   if (!block || !st.canShare) return null;
   const share = shareOf(st.shares, block.instance, block.from);
   return html`<button type="button" class=${`btn btn-sm ${share ? "pv-fb-shared on" : "pv-fb-share"}`} title=${tp(share ? "sharedTitle" : "shareTitle")} onClick=${() => setOpen(true)}>
-      <${Icon} name="globe" size=${14} /><span class="lbl">${share ? tp("shared", when(share.expiresAt)) : tp("share")}</span></button>
+      <${Icon} name="globe" size=${14} /><span class="lbl">${share ? tp("shared", until(share.expiresAt)) : tp("share")}</span></button>
     ${open ? html`<${PageShareDialog} block=${block} share=${share} onClose=${() => setOpen(false)} />` : null}`;
 }

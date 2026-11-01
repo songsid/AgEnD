@@ -11,9 +11,9 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { closePanel, frameKey, htmlTitle } from "./preview-panel.js";
+import { PageShareButton } from "./page-share-dialog.js";
 
 const P = () => globalThis.AgendPreview;
-import { PageShareButton } from "./page-share-dialog.js";
 
 /**
  * The chat registers how to reach its composer (panel-chat.js): { findMsg(instance, msgKey), startReply(instance, msg),

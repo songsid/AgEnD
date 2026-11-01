@@ -38,7 +38,7 @@ beforeAll(async () => {
 
 const URL_ = `https://s1.trycloudflare.com/p/${"T".repeat(43)}`;
 /** The host's /ui/page-share, recorded. */
-function host(over: { enabled?: boolean; post?: (b: any) => [number, unknown] } = {}) {
+function host(over: { enabled?: boolean; post?: (b: any) => [number, unknown]; expiresInMs?: number } = {}) {
   const calls: Array<{ method: string; path: string; body?: any }> = [];
   let shares: any[] = [];
   const fetchMock = vi.fn(async (path: string, o: { method?: string; body?: string } = {}): Promise<any> => {
@@ -50,10 +50,10 @@ function host(over: { enabled?: boolean; post?: (b: any) => [number, unknown] } 
       return { ok: true, status: 200, headers: { get: () => null }, arrayBuffer: async () => bytes.buffer, json: async () => ({}) };
     }
     if (path !== "/ui/page-share" && !path.startsWith("/ui/page-share/")) return reply(404, {});
-    if (method === "GET") return reply(200, { enabled: over.enabled !== false, shares });
+    if (method === "GET") { shares = shares.filter((x) => x.expiresAt > Date.now()); return reply(200, { enabled: over.enabled !== false, shares }); }
     if (method === "POST") {
       const b = JSON.parse(o.body!);
-      const share = { id: "a1b2c3d4", instance: b.instance, title: "Counter", owner: "person:discord:1", from: { boot: b.boot, id: b.id, ...(b.att ? { att: b.att } : { fence: b.fence }) }, bytes: 10, createdAt: Date.now(), expiresAt: Date.now() + b.minutes * 60_000 };
+      const share = { id: "a1b2c3d4", instance: b.instance, title: "Counter", owner: "person:discord:1", from: { boot: b.boot, id: b.id, ...(b.att ? { att: b.att } : { fence: b.fence }) }, bytes: 10, createdAt: Date.now(), expiresAt: Date.now() + (over.expiresInMs ?? b.minutes * 60_000) };
       const [status, body] = over.post ? over.post(b) : [200, { share, url: URL_ }];
       if (status === 200) shares = [share];
       return reply(status, body);
@@ -79,7 +79,7 @@ const agent = (id: number, text: string, extra: object = {}) => ({ boot: "b", id
 const FENCE = (body: string) => "```html\n" + body + "\n```";
 const click = async (el: any) => { if (typeof el.onclick === "function") el.onclick(); else el.click(); await settle(); };
 
-async function chat(msgs: unknown[], opts: { admin?: boolean; enabled?: boolean; post?: (b: any) => [number, unknown] } = {}) {
+async function chat(msgs: unknown[], opts: { admin?: boolean; enabled?: boolean; post?: (b: any) => [number, unknown]; expiresInMs?: number } = {}) {
   const hst = host(opts);
   current = page({ storage: { agend_html_preview: "on", agend_tour_done: "1" } });
   (globalThis as any).fetch = hst.fetchMock;
@@ -146,6 +146,21 @@ describe("#2911 Share page in the preview panel", () => {
     await current?.unmount(); current?.restore(); current = null; pp.closePanel();
     const b = await chat([agent(1, FENCE("<title>X</title>"))], { enabled: false });
     expect(b.doc.querySelector(".pv-fb-share")).toBe(null);
+  });
+
+  it("#2924 review: when the share ends, the open shares are read again by themselves — the bar goes back to Share page without a reload", async () => {
+    const { doc, hst } = await chat([agent(1, FENCE("<title>Counter</title>"))], { expiresInMs: 200 });
+    await click(doc.querySelector(".pv-panel .pv-fb-share")); await settle(2);
+    await click(doc.querySelector(".ps-create")); await settle(4);
+    doc.querySelectorAll(".dlg-actions button").at(-1).click(); await settle(3);
+    expect(doc.querySelector(".pv-panel .pv-fb-shared"), "shared").toBeTruthy();
+    const gets = () => hst.calls.filter(c => c.method === "GET").length;
+    const before = gets();
+    await new Promise((r) => setTimeout(r, 1600));             // its end + the 1 s margin (never sooner than 1 s)
+    await settle(4);
+    expect(gets(), "read again at its end").toBe(before + 1);
+    expect(doc.querySelector(".pv-panel .pv-fb-shared")).toBe(null);
+    expect(doc.querySelector(".pv-panel .pv-fb-share"), "Share page again").toBeTruthy();
   });
 
   it("refusal words", () => {
