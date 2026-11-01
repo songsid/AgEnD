@@ -16285,6 +16285,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // request to the General bound to the same adapter as the blocked instance.
     const generalName = this.findGeneralInstance(this.getInstanceAdapterId(instanceName));
     if (!generalName) {
+      // #2910 D4: a web-only fleet with no General to ask for help — and a password or sudo prompt is not answered from a
+      // web page: a Notice says where it waits (its View, where the person types it).
+      if (this.webOnlyPromptPlace()) {
+        this.recordWebNotice("instance", t("interactive.web_only_notice", instanceName, this.interactivePromptLabel(kind)), instanceName);
+        return;
+      }
       this.logger.warn({ instanceName }, "Interactive prompt has no General topic notification target");
       return;
     }
@@ -16481,6 +16487,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * was gone; this is the fallback).
    */
   async postRemoteCard(instanceName: string, card: RemoteCard): Promise<void> {
+    // #2910 D4: a CLI's own dialog read as a card (selection-card.ts) is put to people only on a web-only fleet — the
+    // dashboard; a chat fleet keeps its parked notice and its General's controls, as before.
+    if (card.kind === "question" && card.webOnly && !this.webOnlyPromptPlace()) return;
     this.retireRemoteCard(instanceName, null, t("card.answered_in_pane"));
     const place = this.remoteCardPlace(instanceName);
     if (!place) {

@@ -159,6 +159,7 @@ export async function answerRemoteCard(
       return closed();
     }
     case "skip": {
+      if (question.noSkip) return { outcome: "refused", reason: "this dialog's Esc is not a skip" };
       if (question.page !== "options") return { outcome: "refused", reason: `the card is on its ${question.page} page` };
       if (!await press(card => card.kind === "question" && card.page === "options", "Escape")) return { outcome: "stale" };
       return closed();

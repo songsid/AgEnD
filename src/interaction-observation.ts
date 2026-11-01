@@ -119,7 +119,7 @@ export function presentationState(
     && !interaction.stale && !interaction.suspected ? "awaiting_input" : execution;
 }
 
-const BACKEND_LABELS: Record<string, string> = {
+export const BACKEND_LABELS: Record<string, string> = {
   "claude-code": "Claude Code", codex: "Codex", "kiro-cli": "Kiro",
   grok: "Grok", muse: "Muse", antigravity: "Antigravity", opencode: "OpenCode",
 };

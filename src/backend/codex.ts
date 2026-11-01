@@ -39,6 +39,13 @@ import { type CodexResumePlan, type ExactCwdSession, codexSiblingState, codexSta
 import { t } from "../locale.js";
 import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
+import { selectionCard } from "../selection-card.js";
+/**
+ * #2910 D4: a Codex selection AgEnD holds for a person (an approval, a trust variant, a model switch, a session picker),
+ * as a card to answer from the dashboard of a web-only fleet. Never the sign-in screen: it is signed in from the
+ * dashboard's own sign-in (#2233), not by picking a row in the pane.
+ */
+const codexSelectionCard = (pane: string) => (/Sign in with ChatGPT|Provide your own API key|Sign in with Device Code/.test(pane) ? null : selectionCard(pane, "Codex"));
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
@@ -2091,6 +2098,7 @@ export class CodexBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: codexSelectionCard,
         isActive: codexSessionLockVisible,
       },
       {
@@ -2100,6 +2108,7 @@ export class CodexBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: codexSelectionCard,
         isActive: codexResumeCwdPickerVisible,
       },
     ];
@@ -2135,6 +2144,7 @@ export class CodexBackend implements CliBackend {
       blocksDelivery: true,
       inputBlocked: true,
       isActive: codexTrustVariantActive,
+      remoteCard: codexSelectionCard,
       heldReason: pane => this.trustHoldReason(pane),
     };
   }
@@ -2276,6 +2286,7 @@ export class CodexBackend implements CliBackend {
       holdOnly: true,
       blocksDelivery: true,
       inputBlocked: true,
+      remoteCard: codexSelectionCard,
       isActive: codexUnknownSelectionVisible,
     };
   }
@@ -2296,6 +2307,7 @@ export class CodexBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: codexSelectionCard,
         isActive: codexRateSwitchVisible,
       },
       this.updatePickerDialog(),

@@ -97,8 +97,9 @@ import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
 import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
 import { MuseBackend } from "./backend/muse.js";
-import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
+import { BACKEND_LABELS, InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
+import { selectionCard } from "./selection-card.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 import type { KiroLogLaunch } from "./kiro-log-gate.js";
 
@@ -1553,6 +1554,12 @@ export class Daemon extends EventEmitter {
     holdOnly: true,
     isActive: (pane: string) => this.unrecognisedPromptActive(pane),
     requestIdentity: () => this.unrecognisedPrompt?.block ?? null,
+    // #2910 D4: a numbered prompt no table knows (Claude's Edit / Write / MCP tool permission menus among them) is put to
+    // a web-only fleet's dashboard as its own options; still never answered by the scanner.
+    remoteCard: (pane: string) => {
+      const backend = this.config.backend ?? "claude-code";
+      return selectionCard(pane, Object.hasOwn(BACKEND_LABELS, backend) ? BACKEND_LABELS[backend]! : "CLI");
+    },
   };
   /**
    * #1690: AgEnD's own runtime `/model` in flight — from the moment its paste went in until its "Switch model?" dialog
