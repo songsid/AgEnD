@@ -1636,6 +1636,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .n-item.notice.unread { box-shadow: inset 3px 0 0 var(--accent); }
 .n-item.notice:not(.bad) .n-icon { color: var(--text-2); }
 .notice-new { font-size: var(--fs-xs); color: var(--accent); font-weight: var(--fw-semibold); }
+.notice-sub { margin: 0 var(--s-1) var(--s-3); }
 .confirm-text { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-2); }
 
 /* ── Org chart (#1389): General → teams → instances. Connectors are borders and pseudo-elements; no inline style.

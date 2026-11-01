@@ -68,8 +68,9 @@ export function NoticesPanel({ navKey }) {
   const known = new Set((instances || []).map((i) => i && i.name));
   const nowMs = Date.now();
   return html`<div data-effect-panel="notices" class="panel p-notices">
-    <${PanelHeader} title=${tn("title")} sub=${tn("sub")} />
+    <${PanelHeader} title=${tn("title")} />
     <div data-trust="panel-content" class="panel-body"><div class="col">
+      ${items.length ? html`<p class="note notice-sub">${tn("sub")}</p>` : null}
       ${!items.length ? html`<${Empty} icon="bell" title=${tn("empty")} hint=${tn("emptyHint")} />`
         : items.map((n) => html`<article key=${n.id} class=${`n-item notice${n.id > seenAtOpen ? " unread" : ""}${n.kind === "fleet" ? " bad" : ""}`}>
           <span class="n-icon"><${Icon} name=${ICON[n.kind] || "info"} size=${18} /></span>
