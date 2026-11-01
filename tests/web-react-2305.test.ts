@@ -179,7 +179,8 @@ describe("the fleet takes a react on a web id (MCP path)", () => {
   });
   it("a react on a platform message still goes to the adapter path (not taken here)", async () => {
     const { react } = await fleet();
-    expect((await react({ message_id: "12345", emoji: "👍" })).error).toMatch(/Channel adapters are not ready/);
+    // #2910: on this web-only fleet that path says it is not available there (no adapter will ever come).
+    expect((await react({ message_id: "12345", emoji: "👍" })).error).toMatch(/react is not available on a web-only fleet/);
   });
 });
 

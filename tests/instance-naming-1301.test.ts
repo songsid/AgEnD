@@ -152,7 +152,8 @@ describe("displayInstanceName (#1301)", () => {
 function makeFleet(): { fm: FleetManager; configPath: string } {
   const dataDir = makeTempDir("agend-1301-");
   const configPath = join(dataDir, "fleet.yaml");
-  writeFileSync(configPath, "instances: {}\n");
+  // #2910: a chat fleet (a channel): topics are created for it; a fleet with none is web-only (no topics).
+  writeFileSync(configPath, "channel:\n  type: telegram\n  mode: topic\n  bot_token_env: T\n  group_id: -100\n  access: { mode: locked, allowed_users: [1] }\ninstances: {}\n");
   const fm = new FleetManager(dataDir);
   fm.loadConfig(configPath);
   return { fm, configPath };

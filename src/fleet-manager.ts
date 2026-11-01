@@ -28,6 +28,7 @@ import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, pub
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
+import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
 import type { PageShare } from "./page-share.js";
@@ -5883,8 +5884,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Recreate a daemon for a marker-only paused instance after an explicit wake/delivery. */
   async startPersistedPausedInstance(name: string, transition?: TransitionHandle): Promise<void> {
-    const topicMode = this.fleetConfig?.channel?.mode === "topic"
-      || !!this.fleetConfig?.channels?.some(channel => channel.mode === "topic");
+    const topicMode = daemonTopicMode(this.fleetConfig);
     const fleetConfig = this.fleetConfig?.instances[name];
     if (fleetConfig) {
       await this.startInstance(name, fleetConfig, topicMode, "fleet-topic", false, transition);
@@ -6096,8 +6096,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ name, attempt: attempt + 1 }, "Startup retry deferred — tmux storm window is blocking spawns");
       return;
     }
-    const topicMode = this.fleetConfig?.channel?.mode === "topic"
-      || !!this.fleetConfig?.channels?.some(channel => channel.mode === "topic");
+    const topicMode = daemonTopicMode(this.fleetConfig);
     this.startupRetriesRunning.add(name);
     try {
       await this.spawnGate.run({
@@ -6614,7 +6613,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
         return { backend, profile: credentialHomeSpec(backend) ? instanceCredentialProfile(config, this.fleetConfig?.defaults, backend) : null };
       });
-      const topicMode = this.fleetConfig?.channel?.mode === "topic";
+      const topicMode = daemonTopicMode(this.fleetConfig);
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason,
         () => opts?.kiroMigration ? this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition, undefined, opts.kiroMigration)
           : this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition));
@@ -8142,7 +8141,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Must run before the first General/CLI spawn: pressure can hold startup.
     // Logs remain available even before the adapters and health listener exist.
     this.memoryPressure.start();
-    const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
+    // #2910: a web-only fleet's agents run in topic mode too (their cross-instance tools work; the dashboard is their place).
+    const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
     const { getTmuxSocketName: getSocket } = await import("./paths.js");
@@ -8382,7 +8382,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (generalsCreated && !this.configHistory?.isFallback(this.configPath)) this.saveFleetConfig();
 
-    if (topicMode && (fleet.channel || fleet.channels?.length)) {
+    // #2910: the scheduler (schedules, the task board, decisions) runs on a web-only fleet too; it needs no chat.
+    if (topicMode) {
       const schedulerConfig: SchedulerConfig = {
         ...DEFAULT_SCHEDULER_CONFIG,
         ...this.fleetConfig?.defaults.scheduler,
@@ -10879,7 +10880,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // else to go, and "retry shortly" would have the agent retry forever. It goes to the web chat.
     const webOnlyReply = tool === "reply" && this.worlds.size === 0 && this.isWebOnlyFleet();
     if (this.worlds.size === 0 && !webOnlyReply) {
-      respond(null, "Channel adapters are not ready — retry shortly");
+      // #2910: on a web-only fleet there will never be an adapter — say so, so the agent does not retry forever.
+      respond(null, this.isWebOnlyFleet()
+        ? `${tool} is not available on a web-only fleet (no Discord or Telegram connection); answer with reply`
+        : "Channel adapters are not ready — retry shortly");
       return;
     }
 
@@ -11068,9 +11072,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Side effects of a routed reply: cancel-button lifecycle, logs, SSE, chat log. */
   /** No chat platform is configured at all: the web dashboard is the fleet's only surface. */
-  private isWebOnlyFleet(): boolean {
-    const config = this.fleetConfig;
-    return config != null && !config.channel && !(config.channels?.length);
+  /** #2910: no Discord or Telegram connection at all (src/web-only-fleet.ts). */
+  isWebOnlyFleet(): boolean {
+    return isWebOnlyFleetConfig(this.fleetConfig);
   }
 
   /** On a fleet with no chat platform, the dashboard is where an instance-health prompt is posted (#1307 item 6). */
@@ -21740,7 +21744,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.publicWebLink?.refresh();
 
     const newInstances = this.fleetConfig!.instances;
-    const topicMode = this.fleetConfig?.channel?.mode === "topic";
+    const topicMode = daemonTopicMode(this.fleetConfig);
 
     // Only what a fresh process can adopt, and only relative to the signature
     // this process came up on: a Settings edit mutates this.fleetConfig in place
@@ -23212,7 +23216,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const fleet = this.loadConfig(this.configPath);
     this.fleetConfig = fleet;
-    const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
+    const topicMode = daemonTopicMode(fleet);
     const restartProgress = new RestartProgress(
       this.runnableStartupCount(fleet, topicMode),
       restartStartedAt,
@@ -23874,7 +23878,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         (async () => {
           let held = false;
           try {
-            const topicMode = this.fleetConfig?.channel?.mode === "topic";
+            const topicMode = daemonTopicMode(this.fleetConfig);
             await withSpawnHoldReply(async message => {
               held = true; res.writeHead(202, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ held: true, message, instance: name }));

@@ -26,7 +26,8 @@ describe("create_instance backend_options", () => {
     const dataDir = makeTempDir("agend-create-backend-options-");
     const projectDir = makeTempDir("agend-create-backend-options-project-");
     const configPath = join(dataDir, "fleet.yaml");
-    writeFileSync(configPath, "instances: {}\n");
+    // #2910: a chat fleet (a channel), where create_instance makes a topic; with none the fleet is web-only.
+    writeFileSync(configPath, "channel:\n  type: telegram\n  mode: topic\n  bot_token_env: T\n  group_id: -100\n  access: { mode: locked, allowed_users: [1] }\ninstances: {}\n");
 
     const fm = new FleetManager(dataDir);
     fm.loadConfig(configPath);

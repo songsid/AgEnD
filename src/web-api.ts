@@ -1,4 +1,5 @@
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
+import { daemonTopicMode } from "./web-only-fleet.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { guestChatRefusal, guestCommandText, guestDeliveries, GUEST_PREF_MAX_BYTES, GUEST_SEARCHES, guestFrameData, guestHistory, guestMessages, guestOwnPrefs, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
@@ -2483,7 +2484,7 @@ export function handleWebRequest(
       json(res, 404, { error: `Instance not found: ${name}` });
       return true;
     }
-    const topicMode = ctx.fleetConfig?.channel?.mode === "topic";
+    const topicMode = daemonTopicMode(ctx.fleetConfig);
     (async () => {
       let held = false;
       try {
