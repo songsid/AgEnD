@@ -6902,6 +6902,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       createPreview: ({ id, expiresAt, binary, protocol, dashboardOrigin, isCurrent }) => {
         if (!publicPreviewWanted(this.fleetConfig?.web)) return null;
         return new PublicPreview({ exposureId: id, expiresAt, dashboardOrigin, isCurrent, manager: this.getPreviewTunnel(),
+          cdn: () => this.fleetConfig?.web?.preview_cdn === true,
           provider: () => new CloudflaredProvider({ binaryName: binary, protocol }),
           log: (event, detail) => this.logger.info({ event, exposureId: id, ...(detail ? { detail } : {}) }, "Public web link") });
       },
@@ -24132,7 +24133,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig,
       // #1723: with a web.preview_origin, the open public link's dashboard frames this listener's preview too.
-      extraOrigins: () => { const o = settings.origin ? this.publicWebLink?.openDashboardOrigin() : null; return o ? [o] : []; } });
+      extraOrigins: () => { const o = settings.origin ? this.publicWebLink?.openDashboardOrigin() : null; return o ? [o] : []; },
+      // #2911 (7): CDN libraries in previews, as fleet.yaml says now (a change applies to the next preview started).
+      cdn: () => this.fleetConfig?.web?.preview_cdn === true });
     this.previewListener = listener;
     listener.server.on("error", (err: NodeJS.ErrnoException) => {
       if (this.previewListener !== listener) return;

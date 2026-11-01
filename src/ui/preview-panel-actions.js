@@ -61,7 +61,7 @@ export function replyAboutPage(open, deps = chat) {
  */
 export function errorLines(log) {
   if (!log || !log.count) return [];
-  const kind = { error: "", rejection: t("chat.pvFbErrRejection"), console: "console.error: " };
+  const kind = { error: "", rejection: t("chat.pvFbErrRejection"), console: "console.error: ", blocked: t("chat.pvCdnBlocked") };
   const lines = [t(log.count === 1 ? "chat.pvFbErrHeadOne" : "chat.pvFbErrHead", String(log.count))];
   for (const x of log.items) lines.push(`> ${kind[x.kind] ?? ""}${plainName(x.message)}${x.line ? ` (${t("chat.pvFbErrAt", String(x.line), String(x.col))})` : ""}`);
   const more = log.count - log.items.length;

@@ -80,12 +80,14 @@ export function createPublicPreviewGateway(opts: {
   isCurrent(): boolean;
   bootId?: string;
   create?: typeof createServer;
+  /** #2911 (7): `web.preview_cdn`, read per /frame response (the public link follows the same setting). */
+  cdn?(): boolean;
 }): PublicPreviewGateway {
   let host: string | null = null;
   const bootId = opts.bootId ?? randomBytes(16).toString("hex");
   const marker = `agend-preview-${opts.exposureId}`;
   const sockets = new Set<Socket>();
-  let frame: { origin: string; body: Buffer; headers: Record<string, string> } | null = null;
+  let frame: { origin: string; cdn: boolean; body: Buffer; headers: Record<string, string> } | null = null;
   const empty = (res: ServerResponse, status: number): void => {
     res.writeHead(status, { "Content-Length": "0", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" });
     res.end();
@@ -102,8 +104,9 @@ export function createPublicPreviewGateway(opts: {
       if (req.url !== "/frame") return empty(res, 404);
       const origin = opts.dashboardOrigin();
       if (!origin) return empty(res, 503);
-      // Built for the one dashboard origin this exposure has; rebuilt only if that ever changes.
-      if (frame?.origin !== origin) frame = { origin, ...previewFrameResponse(bootId, [origin]) };
+      // Built for the one dashboard origin this exposure has; rebuilt only if that, or the CDN setting, ever changes.
+      const cdn = opts.cdn?.() === true;
+      if (frame?.origin !== origin || frame.cdn !== cdn) frame = { origin, cdn, ...previewFrameResponse(bootId, [origin], { cdn }) };
       res.writeHead(200, frame.headers);
       res.end(frame.body);
     } catch {
@@ -167,6 +170,8 @@ export class PublicPreview {
     manager: Pick<ManagedTunnel, "start" | "stop">;
     provider(): TunnelProvider;
     createGateway?: (opts: Parameters<typeof createPublicPreviewGateway>[0]) => PublicPreviewGateway;
+    /** #2911 (7): `web.preview_cdn`, handed to the gateway. */
+    cdn?(): boolean;
     /** Monotonic clock (ms) for the retry's bound; performance.now by default. */
     now?(): number;
     /** Told once when the preview settles (ready or failed), for the link's progress message. */
@@ -201,7 +206,7 @@ export class PublicPreview {
     const startedAt = now();
     const gateway = (this.deps.createGateway ?? createPublicPreviewGateway)({
       exposureId: this.deps.exposureId, dashboardOrigin: () => this.deps.dashboardOrigin(),
-      isCurrent: () => this.live() && this.current.state !== "failed",
+      isCurrent: () => this.live() && this.current.state !== "failed", cdn: () => this.deps.cdn?.() === true,
     });
     this.gateway = gateway;
     const origin = await gateway.listen().catch(() => { throw new PreviewStartFailure("gateway-failed"); });

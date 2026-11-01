@@ -65,6 +65,7 @@ const ROWS = [
   // Fleet · Web dashboard
   ["dash.log-tab", "web-dashboard", "#webLogTab", "settings.webLogTab", "web.log_tab", ["log tab", "steps", "log"], ["Log 分頁", "紀錄", "步驟"]],
   ["dash.usage-public", "web-dashboard", "#webUsagePublic", "settings.webUsagePublic", "web.usage_report_on_public_link", ["usage", "public link", "cost", "tokens"], ["用量", "公開連結", "費用"]],
+  ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
   ["dash.app-icon", "web-dashboard", ".s-app-icon", "settings.appIconTitle", null, ["app icon", "favicon", "home screen", "icon"], ["App 圖示", "圖示", "主畫面"]],
   ["dash.card-limits", "web-dashboard", ".s-card-limits", "settings.cardLimitsTitle", "web.appearance", ["upload limits", "portrait", "banner", "card limits"], ["上傳限制", "身分卡上傳限制"]],

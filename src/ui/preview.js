@@ -319,7 +319,7 @@
   // Recorded only: a count, and the first few distinct ones as one line of plain text each. Nothing here passes them on;
   // a person's click in the panel (preview-panel-actions.js) puts them in the composer, quoted, for them to edit.
   var ERRORS = { maxCount: 999, keep: 5, messageMax: 200, rawMax: 1000, notifyMs: 200 };
-  var ERROR_KINDS = { error: 1, rejection: 1, console: 1 };
+  var ERROR_KINDS = { error: 1, rejection: 1, console: 1, blocked: 1 };   // blocked: #2911 (7), a CSP-blocked script/style/font URL
   var errorLog = new Map();               // frame key → { count, items: [{ kind, message, line, col }] }
   var errorListeners = new Set();
   var errorNotify = new Map();            // frame key → a pending notification's timer
