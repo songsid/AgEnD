@@ -57,7 +57,12 @@ describe("#2910 D4 the card read from a CLI's own dialog", () => {
     const a = selectionCard(pane, "Claude Code")!, b = selectionCard(moved, "Claude Code")!;
     expect([b.cursor, b.identity === a.identity, selectionCard(pane.replace("sleep 900", "sleep 901"), "Claude Code")!.identity === a.identity]).toEqual([1, true, false]);
   });
-  it("not a dialog: a numbered list in the transcript above the composer, a list with no cursor, one option, a long footer", () => {
+  it("a dialog with no border (Codex) ends at a double blank row: the transcript above it is not its words", () => {
+    const pane = "• I looked at the repo and found the secret token abc\n\n\n  Working directory · resume\n  Session = latest cwd\n\n› 1. Use session directory\n  2. Use current directory\n";
+    expect(selectionCard(pane, "Codex")!.question).toBe("Working directory · resume\nSession = latest cwd");
+  });
+  it("not a dialog: a numbered list in the transcript above the composer, a list with no cursor, one option, a long footer, numbers that skip", () => {
+    expect(selectionCard("Pick:\n❯ 1. a\n  3. b\n", "x")).toBeNull();
     const transcript = "Here is the plan:\n❯ 1. Read the file\n  2. Fix it\n\nThen I will report.\nMore text\nAnd more\n\n> \n";
     expect([selectionCard(transcript, "x"), selectionCard("Pick:\n  1. a\n  2. b\n", "x"), selectionCard("Pick:\n❯ 1. only\n", "x"),
       selectionCard("Pick:\n❯ 1. a\n  2. b\nf1\nf2\nf3\nf4\n", "x")]).toEqual([null, null, null, null]);
@@ -147,13 +152,14 @@ describe("#2910 D4 the fleet: only a web-only fleet puts it to people", () => {
     await web.fm.postRemoteCard("agent-1", card);
     const args = web.posted.mock.calls[0]![0] as any;
     expect([args.prefix, args.adapterId, args.choices.map((c: any) => c.action), args.remoteCard ?? args.extra?.remoteCard?.identity === card.identity]).toEqual(["card-answer:", "web", ["opt-1", "opt-2", "opt-3"], true]);
+    // A chat fleet whose agent has a topic to post in: still not posted (the gate, not a missing place, refuses it)…
     const chat = fleet(CHAT);
+    vi.spyOn(chat.any, "remoteCardPlace").mockReturnValue({ adapter: {}, adapterId: "tg", chatId: "-100", threadId: "7" });
     await chat.fm.postRemoteCard("agent-1", card);
     expect(chat.posted).not.toHaveBeenCalled();
-    // A kiro card (not webOnly) is still posted on a chat fleet's topic (unchanged): it reaches the place lookup.
-    const place = vi.spyOn(chat.any, "remoteCardPlace");
+    // …while a kiro card (not webOnly) is posted in that topic, as before.
     await chat.fm.postRemoteCard("agent-1", { ...card, webOnly: undefined, noSkip: undefined });
-    expect(place).toHaveBeenCalled();
+    expect((chat.posted.mock.calls[0]?.[0] as any)?.adapterId).toBe("tg");
   });
   it("a shell prompt on a web-only fleet with no General: a Notice pointing at its View; with a General: the assist prompt on the dashboard (as before)", async () => {
     setLocale("en");
