@@ -16,6 +16,7 @@ import { CodexBackend } from "../src/backend/codex.js";
 import { remoteCardPrompt } from "../src/remote-card-prompt.js";
 import { answerRemoteCard, type RemoteCardIo } from "../src/remote-card-answer.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { Daemon } from "../src/daemon.js";
 import { setLocale } from "../src/locale.js";
 import type { RemoteQuestionCard } from "../src/backend/types.js";
 
@@ -46,6 +47,10 @@ describe("#2910 D4 the card read from a CLI's own dialog", () => {
     const card = selectionCard(fixture(file), title)!;
     expect([card.options.map(o => o.title), card.cursor, question.test(card.question)], card.question).toEqual([options, 0, true]);
   });
+  it("a countdown in the dialog's words never makes it another card", () => {
+    const at = (n: number) => `\n────────────────────\n Do you want to proceed? (auto-deny in ${n}s)\n ❯ 1. Yes\n   2. No\n`;
+    expect(selectionCard(at(30), "x")!.identity).toBe(selectionCard(at(29), "x")!.identity);
+  });
   it("the same card wherever the cursor is (identity is what is asked); another question is another card", () => {
     const pane = fixture("claude-2.1.291-background-work-exit.pane.txt");
     const moved = pane.replace("❯ 1. Exit", "  1. Exit").replace("  2. Move", "❯ 2. Move");
@@ -68,10 +73,30 @@ describe("#2910 D4 the card read from a CLI's own dialog", () => {
     expect(claude.filter(d => d.remoteCard).every(d => d.holdOnly === true && d.keys.length === 0)).toBe(true);
     const codex = new CodexBackend(temp("agend-2910-cx-")).getRuntimeDialogs();
     const selection = codex.find(d => /interactive selection needs human input/.test(d.description))!;
+    // The sign-in screen with a `›` cursor (as a later version may draw it) is still never a card…
+    const signin = fixture("codex-0156-signin.pane.txt").replace("> 1. Sign in with ChatGPT", "› 1. Sign in with ChatGPT").replace(/\n\n  ([23])\. /g, "\n  $1. ");
+    expect(selection.remoteCard?.(signin)).toBeNull();
+    expect(selectionCard(signin, "Codex")).not.toBeNull();                            // control: the shape alone would read as one
     expect([(selection.remoteCard?.(fixture("codex-0160-resume-cwd-picker.pane.txt")) as RemoteQuestionCard | null)?.options.length, selection.remoteCard?.(fixture("codex-0156-signin.pane.txt"))])
       .toEqual([4, null]);
     expect(codex.filter(d => d.remoteCard).every(d => d.holdOnly === true && d.keys.length === 0)).toBe(true);
     expect(codex.filter(d => d.remoteCard).map(d => d.description).length).toBe(5);
+  });
+});
+
+describe("#2910 D4 the #1691 catch-all (a numbered prompt no table knows — Claude's Edit / Write / MCP permission menus)", () => {
+  it("offers the prompt as a card titled with the instance's CLI; a yes/no prompt is not one", () => {
+    const dir = temp("agend-2910-d-");
+    const make = (backend: string) => new Daemon("worker", { working_directory: dir, backend, log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    } as any, dir, false, { binaryName: backend, getRuntimeDialogs: () => [], getErrorPatterns: () => [] } as any, undefined,
+      { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any) as any;
+    const edit = "\n─────────────────────────────\n Edit file\n src/app.ts\n Do you want to make this edit to app.ts?\n ❯ 1. Yes\n   2. Yes, allow all edits during this session\n   3. No\n\n Esc to cancel\n";
+    const claude = make("claude-code").unrecognisedPromptDialog.remoteCard(edit) as RemoteQuestionCard;
+    expect([claude.title, claude.question, claude.options.map(o => o.title), claude.noSkip, claude.webOnly])
+      .toEqual(["Claude Code", "Edit file\nsrc/app.ts\nDo you want to make this edit to app.ts?", ["Yes", "Yes, allow all edits during this session", "No"], true, true]);
+    expect([make("codex").unrecognisedPromptDialog.remoteCard(edit).title, make("mystery").unrecognisedPromptDialog.remoteCard(edit).title, make("codex").unrecognisedPromptDialog.remoteCard("Overwrite? [y/n]")])
+      .toEqual(["Codex", "CLI", null]);
   });
 });
 
