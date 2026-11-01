@@ -19,6 +19,7 @@ import { loadHtmlAttachment } from "./html-attachment.js";
 import { chatTime, onDayChange } from "./chat-time.js";
 import { PanelActions } from "./preview-panel-actions.js";
 import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./preview-versions.js";
+import { pagesOf, pageIdOf } from "./preview-pages.js";
 
 export { htmlTitle };
 
@@ -142,6 +143,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [newer, setNewer] = useState(null);
   const [newerNote, setNewerNote] = useState("");
   const [vers, setVers] = useState({ list: [], index: -1 });   // #2911 (1): the shown block's versions in the thread
+  const [pages, setPages] = useState([]);                      // #2911 (6): every page in the thread, newest first
+  const [listing, setListing] = useState(false);               // the page list is on screen (instead of the page)
   const [changes, setChanges] = useState(null);                // the Changes view: { state, from, hunks, shown, total }
   const keepView = useRef(false);                               // a version step keeps Code / Changes on screen
   const loaded = useRef(new Map());                             // an attached version's HTML, read once (key → code)
@@ -238,7 +241,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   useEffect(() => {
     setNewerNote(""); reading.current = null;
     if (!open) { setNewer(null); return undefined; }
-    const check = () => { const all = msgs() || []; setNewer(newerVersion(open, all, keyOf)); setVers(versionsOf(open, all, keyOf)); };
+    const check = () => { const all = msgs() || []; setNewer(newerVersion(open, all, keyOf)); setVers(versionsOf(open, all, keyOf)); setPages(pagesOf(all, keyOf, name)); };
     check();
     return subscribe((instance, kind) => { if (instance === name && kind === "msgs") check(); });
   }, [open && open.key, name]);
@@ -366,6 +369,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
         <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
         <div class="pv-panel-title"><strong>${t("chat.pvPanel")}</strong>
           <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
+        ${pages.length > 1 ? html`<button type="button" class=${`btn btn-sm pv-pages-toggle${listing ? " on" : ""}`} aria-pressed=${listing ? "true" : "false"} title=${t("chat.pvPagesTitle")}
+          onClick=${() => setListing(v => !v)}><${Icon} name="file" size=${14} />${t("chat.pvPagesCount", pages.length)}</button>` : null}
         <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
       </div>
       <div class="pv-panel-bar">
@@ -397,10 +402,11 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
       ${going && !P().bannerAcked() ? html`<div class="pv-banner"><span class="pv-banner-text">${P().banner()}</span>
         <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P().bannerAckTitle()} onClick=${() => P().ackBanner()}>${P().bannerAckLabel()}</button></div>` : null}
       ${note && shown === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
-      <div class=${`pv-panel-body${shown !== "preview" ? " show-code" : ` w-${device}`}`}>
+      <div class=${`pv-panel-body${listing || shown !== "preview" ? " show-code" : ` w-${device}`}`}>
         <div class="pv-holder" ref=${holder}></div>
-        ${shown === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}
-        ${shown === "changes" ? html`<${Changes} changes=${changes} />` : null}
+        ${listing ? html`<${PageList} pages=${pages} current=${pageIdOf(open)} pick=${(p) => { setListing(false); if (p.id !== pageIdOf(open)) show(p.latest); }} />` : null}
+        ${!listing && shown === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}
+        ${!listing && shown === "changes" ? html`<${Changes} changes=${changes} />` : null}
       </div>
     </aside>`;
 }
@@ -424,4 +430,14 @@ function Changes({ changes }) {
   }
   return html`<div class="pv-diff-wrap"><div class="pv-diff-head">${t("chat.pvChangesFrom", changes.from)}${changes.total > DIFF_LIMITS.maxLines ? html` · <span class="pv-diff-cut">${t("chat.pvChangesCut", DIFF_LIMITS.maxLines)}</span>` : null}</div>
     <pre class="pv-code pv-diff"><code>${rows}</code></pre></div>`;
+}
+
+/** #2911 (6): the thread's pages, newest first — one row each, its newest version opened by a click (waiting for Preview). */
+function PageList({ pages, current, pick }) {
+  return html`<ul class="pv-pages" aria-label=${t("chat.pvPagesTitle")}>${pages.map(p => html`<li key=${p.id}>
+    <button type="button" class=${`pv-page${p.id === current ? " on" : ""}`} aria-current=${p.id === current ? "true" : undefined} onClick=${() => pick(p)}>
+      <${Icon} name=${p.kind === "file" ? "attach" : "code"} size=${14} />
+      <span class="pv-page-name">${p.label || t("chat.pvPagesUntitled")}</span>
+      <span class="pv-page-meta">${p.versions > 1 ? t("chat.pvPagesVersions", p.versions) : ""}${p.versions > 1 ? " · " : ""}${timeOf(p.latest.ts)}</span>
+    </button></li>`)}</ul>`;
 }
