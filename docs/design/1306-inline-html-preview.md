@@ -168,7 +168,18 @@ stays stateless: AgEnD does not put HTML in the transport URL, and the listener 
 { v: 1, type: "ready",     ch: null, boot: "<listener boot id>" }
 { v: 1, type: "resize",    ch: "<id>", height: <integer> }
 { v: 1, type: "heartbeat", ch: "<id>" }
+{ v: 1, type: "error",     ch: "<id>", kind: "error" | "rejection" | "console", message: "<≤ 1000 chars>", line: <int 0…1e7>, col: <int 0…1e7> }   // #2911
 ```
+
+**Amendment (#2911, user OK via the leader 2026-11-02): `error`.** The prologue reports the page's uncaught errors,
+unhandled rejections and `console.error` calls: at most 50 per run, each message cut at 300 characters. The page can
+post this shape itself, so its text is the page's: untrusted. The parent validates it like every frame message (exact
+keys, kind, sizes, integers, the card's `ch`, after `render`). It records only a count (capped at 999) and the first five
+distinct errors, each collapsed to one line of at most 200 characters. It passes nothing on. The panel's errors chip
+shows the count. Only a person's click on it puts the errors in the composer: as a reply about the page, under a
+header saying the text is the page's, each error quoted, for the person to edit and send. Nothing is sent by itself.
+The listener still has no reference to the composer (§4.2); the chip reads the log through `errors(key)` and
+`onErrors(fn)`.
 
 **Parent → frame** — exactly one message, sent only after a valid `ready` (boot matches), and only on a device that
 has opted in (§7):
@@ -200,7 +211,7 @@ One `window` `message` listener for all cards:
 |---|---|
 | Source | `event.source === card.iframe.contentWindow` for a live card; otherwise dropped silently. `event.origin` must be `"null"` (the opaque sandbox), checked *in addition*, never instead. |
 | Shape | A plain object with exactly the keys above, `v === 1`, `type` in the set, `ch` equal to the card's (for `resize`/`heartbeat`), `height` a finite integer, `boot` a string. Anything else is dropped. |
-| Effect | `ready` → validate the boot id and the device's opt-in (§7), then send `render` once (or unload with a reason). `resize` → set the height (rules below). `heartbeat` → reset the watchdog. **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class). |
+| Effect | `ready` → validate the boot id and the device's opt-in (§7), then send `render` once (or unload with a reason). `resize` → set the height (rules below). `heartbeat` → reset the watchdog. `error` (#2911) → record it in that frame's error log (§4.1 amendment). **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class). |
 | Height | Clamp to [40, 4000] px; at most once per animation frame and 10 times per second; ignore changes < 2 px; after 5 consecutive increases within 2 s, freeze the height and let the frame scroll. |
 | Watchdog | Best effort, §8. |
 

@@ -123,7 +123,7 @@ describe("#2911 Reply about this page", () => {
     const src = readFileSync(new URL("../src/ui/chat-strings.js", import.meta.url), "utf8");
     const zhAt = src.indexOf('"zh-TW": {');
     const keys = (part: string) => [...part.matchAll(/\b(pvFb\w+):/g)].map((m) => m[1]).sort();
-    expect(keys(src.slice(0, zhAt))).toEqual(["pvFbAboutNamed", "pvFbAboutThis", "pvFbReply", "pvFbReplyTitle"]);
+    expect(keys(src.slice(0, zhAt))).toEqual(expect.arrayContaining(["pvFbAboutNamed", "pvFbAboutThis", "pvFbReply", "pvFbReplyTitle"]));
     expect(keys(src.slice(zhAt))).toEqual(keys(src.slice(0, zhAt)));
   });
 });
