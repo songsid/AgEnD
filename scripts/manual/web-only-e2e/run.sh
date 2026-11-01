@@ -35,8 +35,7 @@ elif [ "$P" = start ]; then
   X 'tar -xf /opt/acc/app.tar -C /opt/app && install -m 755 /opt/acc/claude /usr/local/bin/claude && install -m 755 /opt/acc/codex /usr/local/bin/codex && chmod -R a+rX /opt/app /opt/acc'
   X 'E=/opt/app/scripts/manual/web-only-e2e
 (cd /tmp && MOCK_LOG=/tmp/mock-anthropic.log node $E/mock-anthropic.mjs 18300 > /tmp/mock-anthropic.out 2>&1 &)
-echo approval > /tmp/codex-mode
-(cd /tmp && PORT=18762 MOCK_MODE_FILE=/tmp/codex-mode MOCK_LOG=/tmp/mock-codex.log BODY_LOG=/tmp/mock-codex-bodies.log node /opt/app/scripts/manual/codex-version-audit/mock.mjs > /tmp/mock-codex.out 2>&1 &)
+(cd /tmp && PORT=18762 BODY_LOG=/tmp/mock-codex-bodies.log node $E/mock-codex.mjs > /tmp/mock-codex.out 2>&1 &)
 sleep 1
 mkdir -p /home/rh/.agend /home/rh/w/lead/.claude /home/rh/w/worker /home/rh/w/coder /home/rh/.codex
 # The fleet quickstart writes for "Web only": no channel. lead and coder ask before acting (no permission bypass).
@@ -50,8 +49,8 @@ instances:
   coder: { working_directory: /home/rh/w/coder, backend: codex, skipPermissions: false }
 Y
 # Claude Code 2.1.30x defaults to auto mode (runs what it judges low-risk without asking): a person who wants to be asked
-# sets the default mode.
-printf "{\"permissions\":{\"defaultMode\":\"default\"}}\n" > /home/rh/w/lead/.claude/settings.json
+# sets the default mode — and allows the AgEnD tools (reply, send_to_instance…), as they would.
+printf "{\"permissions\":{\"defaultMode\":\"default\",\"allow\":[\"mcp__agend\"]}}\n" > /home/rh/w/lead/.claude/settings.json
 # Codex: the mock provider (no OpenAI account); AgEnD copies this into the instance home.
 printf "model = \"mock-model\"\nmodel_provider = \"mock\"\n[model_providers.mock]\nname = \"mock\"\nbase_url = \"http://127.0.0.1:18762/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = false\n" > /home/rh/.codex/config.toml
 printf "ANTHROPIC_API_KEY=sk-ant-e2e-dummy\nANTHROPIC_BASE_URL=http://127.0.0.1:18300\n" > /home/rh/.agend/.env

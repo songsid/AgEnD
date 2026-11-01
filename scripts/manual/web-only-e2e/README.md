@@ -12,8 +12,7 @@ What `drive.mjs` checks, in order:
 4. A **Notice**: `worker`'s CLI is killed, and its crash is listed in Notices (unread).
 5. **Claude Code's own permission dialog** (`lead` asks before acting) answered from the web: **Yes** runs the
    command, **No** does not.
-6. **Codex's own approval dialog** (`coder` asks before acting; the mock's `approval` turn asks to run `echo probe` with
-   escalation) answered from the web: **Yes** runs it, **No** does not.
+6. **Codex's own approval dialog** (`coder` asks before acting; the mock asks to run `echo probe` with escalation) answered from the web: **Yes** runs it, **No** does not.
 
 ## Run
 
@@ -37,4 +36,5 @@ Notes:
 - Claude Code 2.1.30x defaults to **auto mode** (it runs what it judges low-risk without asking), so `lead`'s project
   sets `permissions.defaultMode: "default"` — as a person who wants to be asked would.
 - `coder`'s Codex reads the mock provider from `~/.codex/config.toml` (AgEnD copies it into the instance's home).
-- The mocks: `mock-anthropic.mjs` (here) and `../codex-version-audit/mock.mjs` (its `approval` mode).
+- The mocks: `mock-anthropic.mjs` and `mock-codex.mjs` (here; every Codex turn asks to run `echo probe` with escalation).
+- `lead` also allows AgEnD's own tools (`mcp__agend`): asked about Bash, not about replying.

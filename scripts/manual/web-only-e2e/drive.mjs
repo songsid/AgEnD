@@ -28,7 +28,6 @@ function http(method, path, { headers = {}, body } = {}) {
 const T = { "X-Agend-Token": token };
 const lines = (file) => { try { return readFileSync(file, "utf8").split("\n").filter(Boolean); } catch { return []; } };
 const anthropic = () => lines("/tmp/mock-anthropic.log").map((l) => JSON.parse(l));
-const codexBodies = () => lines("/tmp/mock-codex-bodies.log");
 const pane = (name) => { try { return execSync(`tmux capture-pane -p -t agend:${name}`, { encoding: "utf8" }); } catch { return ""; } };
 const checks = []; let pass = true;
 const check = (name, ok, detail = "") => { checks.push(`| ${name} | ${ok ? "PASS" : "FAIL"} | ${String(detail).replace(/\|/g, "/").replace(/\s+/g, " ").slice(0, 300)} |`); pass &&= !!ok; };
@@ -100,22 +99,20 @@ check("5. Claude Code's own permission dialog from the web: its words and option
   !!c1.card && !c1.card.actions.some((a) => a.id === "skip") && c1.status === 200 && !!ran1 && !!c1.gone && c2.status === 200 && !!c2.gone && !existsSync(`${HOME}/w/lead/no-two.txt`),
   `buttons: ${(c1.card?.actions ?? []).map((a) => a.label).join(" | ")}; yes ${c1.status} file ${ran1 ? "made" : "absent"}; no ${c2.status} (${c2.action?.label}) file ${existsSync(`${HOME}/w/lead/no-two.txt`) ? "MADE" : "absent"}`);
 
-// 6. Codex's approval dialog (the mock's `approval` turn: `echo probe`, asking for escalation).
-const before = codexBodies().length;
+// 6. Codex's approval dialog (mock-codex.mjs: every turn asks to run `echo probe` with escalation). Whether it ran is
+// Codex's own account in its pane: "• Ran echo probe" once per command run.
+const ranCount = () => (pane("coder").match(/• Ran echo probe/g) ?? []).length;
 await http("POST", "/ui/send", { headers: S(), body: { instance: "coder", message: "run the probe" } });
 const x1 = await answer("coder", /echo probe/, yes);
-const ran = await until(() => codexBodies().slice(before).find((b) => /function_call_output/.test(b) && /probe/.test(b.slice(b.indexOf("function_call_output")))), 60_000);
+const ran = await until(() => ranCount() === 1, 60_000);
 await sleep(5_000);
-const mid = codexBodies().length;
 await http("POST", "/ui/send", { headers: S(), body: { instance: "coder", message: "run the probe again" } });
 const x2 = await answer("coder", /echo probe/, no);
 await sleep(10_000);
-const after = codexBodies().slice(mid).filter((b) => /function_call_output/.test(b));
-const after2 = pane("coder").split("\n").filter((l) => l.trim()).slice(-12).join(" ⏎ ");
+const tail = pane("coder").split("\n").filter((l) => l.trim()).slice(-14).join(" ⏎ ");
 check("6. Codex's own approval dialog from the web: its options, no Skip; Yes ran the command, No did not",
-  !!x1.card && !x1.card.actions.some((a) => a.id === "skip") && x1.status === 200 && !!ran && !!x1.gone && x2.status === 200 && !!x2.gone
-    && !after.some((b) => /"output":"probe|probe\\n/.test(b)),
-  `card: ${(x1.card?.text ?? "none").split("\n").slice(0, 4).join(" ⏎ ")} / buttons: ${(x1.card?.actions ?? []).map((a) => a.label).join(" | ")}; yes ${x1.status} ran ${ran ? "yes" : "no"}; no ${x2.status} (${x2.action?.label}); pane: ${after2.slice(-160)}`);
+  !!x1.card && !x1.card.actions.some((a) => a.id === "skip") && x1.status === 200 && !!ran && !!x1.gone && !!x2.card && x2.status === 200 && !!x2.gone && ranCount() === 1,
+  `card: ${(x1.card?.text ?? "none").split("\n").slice(1, 4).join(" ⏎ ")} / buttons: ${(x1.card?.actions ?? []).map((a) => a.label).join(" | ")}; yes ${x1.status} (ran ${ran ? "once" : "no"}); no ${x2.status} (${x2.action?.label ?? "no card"}); runs ${ranCount()}; pane: ${tail.slice(-200)}`);
 
 console.log(`label: ${process.env.LABEL}\n\n| check | result | detail |\n|---|---|---|\n` + checks.join("\n"));
 console.log(`\nRESULT ${pass ? "PASS" : "FAIL"}`);
