@@ -291,6 +291,13 @@ Cache-Control: no-store
 (no X-Frame-Options)
 ```
 
+**Amendment (#2911 item 7, approved by the leader 2026-11-02, issuecomment-6561430534 / 6561437401):** with
+`web.preview_cdn: true` (default false), `script-src`, `style-src` and `font-src` also list
+`https://cdnjs.cloudflare.com/ajax/libs/ https://cdn.jsdelivr.net/npm/` — exact origins with a path prefix, never a
+wildcard, no unpkg. Everything else above is unchanged (`connect-src 'none'` included), and off is byte-identical. The
+path is checked on the first request only (a same-host redirect could widen it). Read per `/frame` response, on the
+local listener and the public link's gateway alike. The leak class it adds is the one §1 already accepts.
+
 - `default-src 'none'` is required: directives without their own fetch directive fall back to it (CSP3 §8.6).
 - `webrtc 'block'` is forward-looking only: no browser is relied on to enforce it (§4.3).
 - `img-src data: blob:` lets content show inlined images. A navigation to `data:`/`blob:` is a different check,

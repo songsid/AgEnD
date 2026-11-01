@@ -161,11 +161,20 @@ export function dashboardOrigins(settings: PreviewSettings, healthPort: number, 
 
 const PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=(), usb=(), serial=(), hid=(), bluetooth=(), payment=(), display-capture=(), fullscreen=()";
 
-/** The /frame response's Content-Security-Policy (design §5.1): exact, no 'self', no *. */
-export function previewFrameCsp(ancestors: readonly string[]): string {
+/**
+ * #2911 (7): the CDN libraries a preview may load when `web.preview_cdn` is on (design: #2911 issuecomment-6561430534,
+ * amended 6561437401). Exact origins with a path prefix, never a wildcard; scripts, styles and fonts only — a library
+ * still cannot fetch (connect-src stays 'none'). CSP checks the path on the first request only: a same-host redirect
+ * could widen it (CSP3 §6.7.2.12), which the docs say.
+ */
+export const PREVIEW_CDN_SOURCES = ["https://cdnjs.cloudflare.com/ajax/libs/", "https://cdn.jsdelivr.net/npm/"] as const;
+
+/** The /frame response's Content-Security-Policy (design §5.1): exact, no 'self', no *. `cdn`: #2911 (7). */
+export function previewFrameCsp(ancestors: readonly string[], opts: { cdn?: boolean } = {}): string {
+  const cdn = opts.cdn ? ` ${PREVIEW_CDN_SOURCES.join(" ")}` : "";
   return [
-    "default-src 'none'", "script-src 'unsafe-inline'", "style-src 'unsafe-inline'",
-    "img-src data: blob:", "font-src data:", "media-src data: blob:",
+    "default-src 'none'", `script-src 'unsafe-inline'${cdn}`, `style-src 'unsafe-inline'${cdn}`,
+    "img-src data: blob:", `font-src data:${cdn}`, "media-src data: blob:",
     "connect-src 'none'", "worker-src 'none'", "frame-src 'none'", "child-src 'none'",
     "form-action 'none'", "base-uri 'none'", "manifest-src 'none'", "object-src 'none'",
     "webrtc 'block'",
@@ -173,6 +182,14 @@ export function previewFrameCsp(ancestors: readonly string[]): string {
     "sandbox allow-scripts",
   ].join("; ");
 }
+
+/**
+ * #2911 (7): the prologue's report of a script, stylesheet or font the CSP blocked (a CDN library while web.preview_cdn
+ * is off): posted through the errors chip's `err` (same caps: 50 in all, 300 characters) as kind "blocked", with only the
+ * URL's origin and path — never `sample`, which can hold the page's inline text, nor its query or fragment. Inline
+ * violations (blockedURI "inline") and anything not http(s) are not reported. Runs inside the prologue's closure (err).
+ */
+export const BLOCKED_PROLOGUE = "addEventListener(\"securitypolicyviolation\",function(e){var d=String(e.effectiveDirective||e.violatedDirective||\"\");if(!/^(script-src|style-src|font-src)/.test(d))return;var u;try{u=new URL(String(e.blockedURI));}catch(x){return;}if(u.protocol!==\"https:\"&&u.protocol!==\"http:\")return;err(\"blocked\",u.origin+u.pathname,0,0);});";
 
 /**
  * #2911: the prologue's pick mode (element annotate). Off until its parent turns it on ({v:1, type:"pick", ch, on}, from
@@ -223,6 +240,7 @@ export function buildShim(bootId: string, origins: readonly string[]): string {
       "try{var ce=console.error;console.error=function(){try{err(\\"console\\",Array.prototype.map.call(arguments,function(a){" +
       "try{return a&&a.message?(a.name||\\"Error\\")+\\": \\"+a.message:typeof a===\\"object\\"?JSON.stringify(a):String(a);}catch(x){return \\"?\\";}}).join(\\" \\"),0,0);}catch(x){}" +
       "return ce.apply(console,arguments);};}catch(x){}" +
+      ${JSON.stringify(BLOCKED_PROLOGUE)} +
       ${JSON.stringify(PICK_PROLOGUE)} +
       "})();<\\/script>";
     document.open();
@@ -252,17 +270,17 @@ export interface PreviewListener {
  * The /frame response for one set of dashboard origins (design §5.1): the shim and its exact headers. Shared by the
  * local preview listener and the public link's own preview gateway (#1723), so both serve the very same frame.
  */
-export function previewFrameResponse(bootId: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
-  return shimResponse(buildShim(bootId, origins), origins);
+export function previewFrameResponse(bootId: string, origins: readonly string[], opts: { cdn?: boolean } = {}): { body: Buffer; headers: Record<string, string> } {
+  return shimResponse(buildShim(bootId, origins), origins, opts);
 }
 
-function shimResponse(html: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
+function shimResponse(html: string, origins: readonly string[], opts: { cdn?: boolean } = {}): { body: Buffer; headers: Record<string, string> } {
   const body = Buffer.from(html, "utf8");
   return {
     body,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Content-Security-Policy": previewFrameCsp(origins),
+      "Content-Security-Policy": previewFrameCsp(origins, opts),
       "Permissions-Policy": PERMISSIONS_POLICY,
       "Referrer-Policy": "no-referrer",
       "Cross-Origin-Resource-Policy": "same-origin",
@@ -280,19 +298,19 @@ export function createPreviewListener(opts: {
    * configured (it is used instead of a preview tunnel). Asked per request; never cached past the answer.
    */
   extraOrigins?(): readonly string[];
+  /** #2911 (7): `web.preview_cdn`, read per /frame response — a change applies to the next preview started. */
+  cdn?(): boolean;
 }): PreviewListener {
   const bootId = opts.bootId ?? randomBytes(16).toString("hex");
   const origins = dashboardOrigins(opts.settings, opts.healthPort, opts.config);
-  const { body, headers } = previewFrameResponse(bootId, origins);
-  // Public-link origins may widen /frame.
-  let widened: { key: string; body: Buffer; headers: Record<string, string> } | null = null;
+  // Public-link origins may widen /frame; the CDN setting may change it. Built once per (origins, cdn).
+  let built: { key: string; body: Buffer; headers: Record<string, string> } | null = null;
   const frameFor = (): { body: Buffer; headers: Record<string, string> } => {
     const extra = (opts.extraOrigins?.() ?? []).filter(o => !origins.includes(o));
-    if (extra.length === 0) return { body, headers };
-    const all = [...origins, ...extra];
-    const key = all.join(" ");
-    if (widened?.key !== key) widened = { key, ...previewFrameResponse(bootId, all) };
-    return widened;
+    const all = [...origins, ...extra], cdn = opts.cdn?.() === true;
+    const key = `${cdn ? "cdn" : "-"} ${all.join(" ")}`;
+    if (built?.key !== key) built = { key, ...previewFrameResponse(bootId, all, { cdn }) };
+    return built;
   };
   const hosts = new Set<string>(LOOPBACK_HOST_NAMES);
   if (opts.settings.origin) { const h = hostnameOf(new URL(opts.settings.origin).host); if (h) hosts.add(h); }

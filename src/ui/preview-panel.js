@@ -117,6 +117,20 @@ export function clampWidth(w, total) {
   return Math.round(Math.min(max, Math.max(MIN_PANEL, w)));
 }
 
+// ── #2911 (7): a CDN library the preview blocked (web.preview_cdn off) — the panel says where to allow it ──
+
+/** web-preview.ts PREVIEW_CDN_SOURCES (a test keeps the two equal): what web.preview_cdn allows. */
+export const CDN_PREFIXES = ["https://cdnjs.cloudflare.com/ajax/libs/", "https://cdn.jsdelivr.net/npm/"];
+/** The CDN host of the first blocked library in a frame's error log that the setting would allow, or null. */
+export function blockedCdnHost(log) {
+  for (const x of (log && log.items) || []) {
+    if (x.kind !== "blocked") continue;
+    const p = CDN_PREFIXES.find(pre => String(x.message).startsWith(pre));
+    if (p) return new URL(p).host;
+  }
+  return null;
+}
+
 // ── #2911 (2): the page's width in the panel (a phone, a tablet, or the panel's own), this device's choice ──
 
 const DEVICE_KEY = "agend_preview_panel_device";
@@ -144,6 +158,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [newerNote, setNewerNote] = useState("");
   const [vers, setVers] = useState({ list: [], index: -1 });   // #2911 (1): the shown block's versions in the thread
   const [pages, setPages] = useState([]);                      // #2911 (6): every page in the thread, newest first
+  const [cdnHost, setCdnHost] = useState(null);                // #2911 (7): a CDN library this page's run was refused
   const [listing, setListing] = useState(false);               // the page list is on screen (instead of the page)
   const [changes, setChanges] = useState(null);                // the Changes view: { state, from, hunks, shown, total }
   const keepView = useRef(false);                               // a version step keeps Code / Changes on screen
@@ -238,6 +253,14 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   }, [open && open.key, st.run]);
   // The panel closing, or showing another instance's block: out of full screen.
   useEffect(() => { if (!open) leaveFs(); }, [!!open]);
+  // #2911 (7): the running page's blocked CDN library, read from its error log (preview.js), kept as it changes.
+  useEffect(() => {
+    const key = open ? frameKey(open.key) : null;
+    const read = () => setCdnHost(key && P() && typeof P().errors === "function" ? blockedCdnHost(P().errors(key)) : null);
+    read();
+    if (!key || !P() || typeof P().onErrors !== "function") return undefined;
+    return P().onErrors((k) => { if (k === key) read(); });
+  }, [open && open.key]);
   // A later reply with a newer version of this block: offered, not swapped in.
   useEffect(() => {
     setNewerNote(""); reading.current = null;
@@ -406,6 +429,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
       ${newerNote && !(newer && newer.key !== open.key) ? html`<div class="pv-note pv-ver-note" role="status">${newerNote}</div>` : null}
       ${going && !P().bannerAcked() ? html`<div class="pv-banner"><span class="pv-banner-text">${P().banner()}</span>
         <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P().bannerAckTitle()} onClick=${() => P().ackBanner()}>${P().bannerAckLabel()}</button></div>` : null}
+      ${cdnHost && shown === "preview" ? html`<div class="pv-note pv-cdn-note" role="status">${t("chat.pvCdnNote", cdnHost)}</div>` : null}
       ${note && shown === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
       <div class=${`pv-panel-body${listing || shown !== "preview" ? " show-code" : ` w-${device}`}`}>
         <div class="pv-holder" ref=${holder}></div>

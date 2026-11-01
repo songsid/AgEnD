@@ -465,6 +465,11 @@ export interface WebConfig {
    */
   preview_on_public_link?: boolean;
   /**
+   * #2911 (7): previews may load libraries from cdnjs (/ajax/libs/) and jsDelivr (/npm/) — scripts, styles and fonts
+   * only (connect-src stays 'none'). Default false. Those requests leave this machine.
+   */
+  preview_cdn?: boolean;
+  /**
    * #1629: agents' own web themes and effects. `agent_edit` (default true): false refuses every agent appearance write,
    * fleet-wide; what is stored stays, and people can still reset and lock.
    */
