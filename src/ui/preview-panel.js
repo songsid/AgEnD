@@ -18,6 +18,9 @@ import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
 import { chatTime, onDayChange } from "./chat-time.js";
 import { PanelActions } from "./preview-panel-actions.js";
+import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./preview-versions.js";
+
+export { htmlTitle };
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -60,12 +63,6 @@ export function closePanel() {
 }
 /** The card key the panel shows, or null. */
 export const shownKey = () => (state.open ? state.open.key : null);
-
-/** The text of a block's <title>, or "" — what says two blocks are versions of one thing. */
-export function htmlTitle(code) {
-  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(String(code || ""));
-  return m ? m[1].replace(/\s+/g, " ").trim() : "";
-}
 
 /**
  * A newer version of the shown block: the last complete ```html block in an agent reply after the one it came from.
@@ -134,6 +131,10 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [run, setRun] = useState({ state: "idle", reason: "" });
   const [newer, setNewer] = useState(null);
   const [newerNote, setNewerNote] = useState("");
+  const [vers, setVers] = useState({ list: [], index: -1 });   // #2911 (1): the shown block's versions in the thread
+  const [changes, setChanges] = useState(null);                // the Changes view: { state, from, hunks, shown, total }
+  const keepView = useRef(false);                               // a version step keeps Code / Changes on screen
+  const loaded = useRef(new Map());                             // an attached version's HTML, read once (key → code)
   const reading = useRef(null);   // the newer version whose file is being read (one at a time)
   const pending = useRef(0);      // #1704: the card's click, waiting for this device's Allow (the st.run it came with)
   const ownAllow = useRef(0);     // while this panel's own Allow commits its choice: the click it answers (not cancelled by it)
@@ -167,7 +168,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   // change of this device's choice cancels it.
   useEffect(() => {
     setRun({ state: "idle", reason: "" });
-    setView("preview");
+    if (!keepView.current) setView("preview");
+    keepView.current = false;
     if (open && st.run) {
       if (P().availability().ok) start();
       else pending.current = st.run;
@@ -179,7 +181,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   useEffect(() => {
     setNewerNote(""); reading.current = null;
     if (!open) { setNewer(null); return undefined; }
-    const check = () => setNewer(newerVersion(open, msgs() || [], keyOf));
+    const check = () => { const all = msgs() || []; setNewer(newerVersion(open, all, keyOf)); setVers(versionsOf(open, all, keyOf)); };
     check();
     return subscribe((instance, kind) => { if (instance === name && kind === "msgs") check(); });
   }, [open && open.key, name]);
@@ -220,21 +222,59 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
   };
-  // Show the newer version: an attached file's HTML is read first. A read the panel moved on from is dropped.
-  const showNewer = async () => {
-    if (!newer || reading.current) return;
-    if (newer.code != null) { openPanel(newer); return; }
-    const was = open && open.key, mine = reading.current = newer;
+  // Show another version (the newer one offered, or a step of ‹ ›): an attached file's HTML is read first. A read the
+  // panel moved on from is dropped. It is shown as Show it shows one — waiting for Preview, never started by the step.
+  const attReason = (r) => t(r.reason === "over" ? "chat.pvAttOver" : r.reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed");
+  const show = async (spec, { keep = false } = {}) => {
+    if (!spec || reading.current) return;
+    const cached = spec.code == null ? loaded.current.get(spec.key) : undefined;
+    if (spec.code != null || cached != null) { keepView.current = keep; openPanel(cached != null ? { ...spec, code: cached } : spec); return; }
+    // #2915 review: the panel's generation, not just the key — a close and reopen of the same block while this read
+    // waits moves it, and the read is then dropped (claimPanel also drops any earlier click still reading).
+    const gen = claimPanel(), mine = reading.current = spec;
     setNewerNote(t("chat.pvLoading"));
-    // A click on the newer version reads it whatever its size (up to the 50 MB ceiling); over 8 MB the panel then asks.
-    const r = await loadHtmlAttachment(newer.att, undefined, { anyway: true });
-    if (reading.current !== mine) return;
-    reading.current = null;
-    const now = panelStore.get().open;
-    if (!now || now.key !== was) return;
-    if (!r.ok) { setNewerNote(t(r.reason === "over" ? "chat.pvAttOver" : r.reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed")); return; }
-    openPanel({ ...newer, code: r.code });
+    // A click on a version reads it whatever its size (up to the 50 MB ceiling); over 8 MB the panel then asks.
+    const r = await loadHtmlAttachment(spec.att, undefined, { anyway: true });
+    if (reading.current === mine) reading.current = null;
+    if (panelVersion() !== gen) return;
+    if (!r.ok) { setNewerNote(attReason(r)); return; }
+    setNewerNote("");
+    loaded.current.set(spec.key, r.code);
+    keepView.current = keep;
+    openPanel({ ...spec, code: r.code });
   };
+  const showNewer = () => show(newer);
+  const step = (by) => { const v = vers.list[vers.index + by]; if (vers.index >= 0 && v) show(v, { keep: true }); };
+  // Changes: the previous version against this one, a line diff (bounded: DIFF_LIMITS). An attached previous version
+  // is read for it, once.
+  const prev = vers.index > 0 ? vers.list[vers.index - 1] : null;
+  // A step to the first version from Changes: nothing to compare it with, so the page is shown (Changes is kept as the
+  // choice, and comes back with the next step that has a previous version).
+  const shown = view === "changes" && !prev ? "preview" : view;
+  useEffect(() => {
+    if (shown !== "changes" || !open) { setChanges(null); return undefined; }
+    let live = true;
+    const from = vers.index;   // "Changes from v{from}" (1-based: the previous one)
+    const diff = (before) => {
+      const ops = lineDiff(before, open.code);
+      if (!ops) return { state: "big", from };
+      const hunks = diffHunks(ops);
+      let total = 0; for (const h of hunks) total += h.lines.length + 1;
+      return { state: "ready", from, hunks, total };
+    };
+    const known = prev.code != null ? prev.code : loaded.current.get(prev.key);
+    if (known != null) setChanges(diff(known));
+    else {
+      setChanges({ state: "loading", from });
+      loadHtmlAttachment(prev.att, undefined, { anyway: true }).then((r) => {
+        if (!live) return;
+        if (!r.ok) { setChanges({ state: "failed", from, reason: attReason(r) }); return; }
+        loaded.current.set(prev.key, r.code);
+        setChanges(diff(r.code));
+      });
+    }
+    return () => { live = false; };
+  }, [shown, open && open.key, prev && prev.key]);
   const fileName = open && open.att ? open.att.name : undefined;
   // Esc in the panel closes it (and is not the chat's "stop the reply").
   const onPanelKey = (e) => { if (e.key === "Escape" && !e.isComposing) { e.preventDefault(); closePanel(); } };
@@ -268,9 +308,15 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
         <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
       </div>
       <div class="pv-panel-bar">
+        ${vers.list.length > 1 && vers.index >= 0 ? html`<div class="pv-ver" role="group" aria-label=${t("chat.pvVersions")}>
+          <button type="button" class="icon-btn pv-ver-prev" title=${t("chat.pvVerPrev")} aria-label=${t("chat.pvVerPrev")} disabled=${vers.index === 0} onClick=${() => step(-1)}><${Icon} name="prev" size=${16} /></button>
+          <span class="pv-ver-at" aria-live="polite" title=${t("chat.pvVerLong", vers.index + 1, vers.list.length)} aria-label=${t("chat.pvVerLong", vers.index + 1, vers.list.length)}>${t("chat.pvVer", vers.index + 1, vers.list.length)}</span>
+          <button type="button" class="icon-btn pv-ver-next" title=${t("chat.pvVerNext")} aria-label=${t("chat.pvVerNext")} disabled=${vers.index === vers.list.length - 1} onClick=${() => step(1)}><${Icon} name="next" size=${16} /></button>
+        </div>` : null}
         <div class="seg-inline" role="group" aria-label=${t("chat.pvPanel")}>
-          <button type="button" class=${`btn btn-sm${view === "preview" ? " on" : ""}`} aria-pressed=${view === "preview" ? "true" : "false"} onClick=${() => setView("preview")}><${Icon} name="eye" size=${14} />${t("chat.pvPage")}</button>
-          <button type="button" class=${`btn btn-sm${view === "code" ? " on" : ""}`} aria-pressed=${view === "code" ? "true" : "false"} onClick=${() => setView("code")}><${Icon} name="code" size=${14} />${t("chat.pvCode")}</button>
+          <button type="button" class=${`btn btn-sm${shown === "preview" ? " on" : ""}`} aria-pressed=${shown === "preview" ? "true" : "false"} title=${t("chat.pvPage")} onClick=${() => setView("preview")}><${Icon} name="eye" size=${14} /><span class="lbl">${t("chat.pvPage")}</span></button>
+          <button type="button" class=${`btn btn-sm${shown === "code" ? " on" : ""}`} aria-pressed=${shown === "code" ? "true" : "false"} title=${t("chat.pvCode")} onClick=${() => setView("code")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvCode")}</span></button>
+          ${prev ? html`<button type="button" class=${`btn btn-sm pv-changes${shown === "changes" ? " on" : ""}`} aria-pressed=${shown === "changes" ? "true" : "false"} title=${t("chat.pvChanges")} onClick=${() => setView("changes")}><${Icon} name="diff" size=${14} /><span class="lbl">${t("chat.pvChanges")}</span></button>` : null}
         </div>
         <span class="grow"></span>
         ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(true); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
@@ -282,12 +328,35 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
       </div>
       ${newer && newer.key !== open.key ? html`<div class="pv-newer" role="status"><span>${t("chat.pvNewer", timeOf(newer.ts))}</span>
         <button type="button" class="btn btn-sm pv-newer-show" onClick=${showNewer}>${t("chat.pvNewerShow")}</button>${newerNote ? html`<span class="pv-newer-note">${newerNote}</span>` : null}</div>` : null}
+      ${newerNote && !(newer && newer.key !== open.key) ? html`<div class="pv-note pv-ver-note" role="status">${newerNote}</div>` : null}
       ${going && !P().bannerAcked() ? html`<div class="pv-banner"><span class="pv-banner-text">${P().banner()}</span>
         <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P().bannerAckTitle()} onClick=${() => P().ackBanner()}>${P().bannerAckLabel()}</button></div>` : null}
-      ${note && view === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
-      <div class=${`pv-panel-body${view === "code" ? " show-code" : ""}`}>
+      ${note && shown === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
+      <div class=${`pv-panel-body${shown !== "preview" ? " show-code" : ""}`}>
         <div class="pv-holder" ref=${holder}></div>
-        ${view === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}
+        ${shown === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}
+        ${shown === "changes" ? html`<${Changes} changes=${changes} />` : null}
       </div>
     </aside>`;
+}
+
+/** The Changes view: hunks of the line diff as a unified diff shows them, drawn as text (never as HTML). */
+function Changes({ changes }) {
+  if (!changes || changes.state === "loading") return html`<div class="pv-note pv-diff-note">${t("chat.pvLoading")}</div>`;
+  if (changes.state === "failed") return html`<div class="pv-note pv-diff-note">${changes.reason}</div>`;
+  if (changes.state === "big") return html`<div class="pv-note pv-diff-note">${t("chat.pvChangesBig")}</div>`;
+  if (!changes.hunks.length) return html`<div class="pv-note pv-diff-note">${t("chat.pvChangesNone", changes.from)}</div>`;
+  const rows = [];
+  let left = DIFF_LIMITS.maxLines;
+  for (const h of changes.hunks) {
+    if (left <= 0) break;
+    rows.push(html`<span class="d-hunk">${`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n`}</span>`);
+    left--;
+    for (const l of h.lines) {
+      if (left-- <= 0) break;
+      rows.push(html`<span class=${l.t === "+" ? "d-add" : l.t === "-" ? "d-del" : "d-ctx"}>${`${l.t} ${l.text}\n`}</span>`);
+    }
+  }
+  return html`<div class="pv-diff-wrap"><div class="pv-diff-head">${t("chat.pvChangesFrom", changes.from)}${changes.total > DIFF_LIMITS.maxLines ? html` · <span class="pv-diff-cut">${t("chat.pvChangesCut", DIFF_LIMITS.maxLines)}</span>` : null}</div>
+    <pre class="pv-code pv-diff"><code>${rows}</code></pre></div>`;
 }

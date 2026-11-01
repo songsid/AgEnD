@@ -807,6 +807,18 @@ img.amb-p { object-fit: contain; }
 .preview-frame.fill { flex: 1; height: 100%; min-height: 0; }
 .pv-code { flex: 1; min-height: 0; margin: 0; overflow: auto; font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.5;
   background: var(--surface); border-radius: var(--r-sm); padding: var(--s-3); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+/* preview panel chrome (M-2216) — #2911: the version step and the Changes view. */
+.pv-ver { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+.pv-ver-at { min-width: 6ch; text-align: center; font-variant-numeric: tabular-nums; }
+.pv-panel > .pv-ver-note { margin: 0 var(--s-3) var(--s-2); }
+.pv-diff-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.pv-diff-head { font-size: var(--fs-xs); color: var(--text-2); }
+.pv-diff { white-space: pre; overflow-wrap: normal; }
+.pv-diff > code > span { display: block; }
+.pv-diff .d-add { background: var(--ok-bg); color: var(--ok); }
+.pv-diff .d-del { background: var(--danger-bg); color: var(--danger); }
+.pv-diff .d-hunk { color: var(--text-3); }
+.pv-diff-note { margin: 0; }
 .msg.flash { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); transition: outline-color var(--t-med); }
 /* #2272: a message's reply action (top right, on hover or focus), the quote a reply shows, the message menu, a swipe. */
 .msg[data-key] { position: relative; }
