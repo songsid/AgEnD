@@ -175,6 +175,51 @@ describe("#2911 Point at it in the panel", () => {
 });
 
 describe("#2911 the shim's pick prologue", () => {
+  /** The prologue in a vm-like scope: a window whose listeners run in order (capture on window), as a browser would. */
+  function sandbox() {
+    const listeners: Array<{ type: string; fn: (e: any) => void }> = [];
+    const posted: any[] = [];
+    const p = { postMessage: (m: unknown) => posted.push(m) };
+    const win: any = { addEventListener: (type: string, fn: (e: any) => void) => listeners.push({ type, fn }) };
+    const target: any = { nodeType: 1, tagName: "BUTTON", id: "buy", style: { outline: "" }, innerText: "Buy", parentElement: null,
+      getBoundingClientRect: () => ({ left: 1, top: 2, width: 3, height: 4 }) };
+    const documentStub = { documentElement: { style: {} } };
+    new Function("addEventListener", "document", "ch", "p", PICK_PROLOGUE)(win.addEventListener, documentStub, "c", p);
+    const dispatch = (type: string, extra: object = {}) => {
+      const e: any = { type, target, key: "", defaultPrevented: false, stopped: false, source: null, data: null, ...extra };
+      e.preventDefault = () => { e.defaultPrevented = true; };
+      e.stopImmediatePropagation = () => { e.stopped = true; };
+      e.stopPropagation = () => {};
+      for (const l of listeners.filter((x) => x.type === type)) { if (e.stopped) break; l.fn(e); }
+      return e;
+    };
+    return { win, listeners, posted, p, dispatch };
+  }
+  const PRESS = ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick", "contextmenu", "auxclick", "click"];
+
+  it("#2916 review: in pick mode no handler of the page runs — press events and the click are stopped (a touch is not prevented)", () => {
+    const sb = sandbox();
+    const page: string[] = [];
+    for (const k of PRESS) sb.win.addEventListener(k, () => page.push(k));        // the page's own, registered after the prologue
+    sb.dispatch("message", { source: sb.p, data: { v: 1, type: "pick", ch: "c", on: true } });
+    const events = PRESS.map((k) => sb.dispatch(k));
+    expect(page, "none of the page's handlers ran").toEqual([]);
+    expect(events.map((e) => [e.type, e.defaultPrevented])).toEqual(PRESS.map((k) => [k, !k.startsWith("touch")]));
+    expect(sb.posted.filter((m) => m.type === "pick").length, "the click picked").toBe(1);
+    // The mode ended with the pick: the page takes every event again.
+    for (const k of PRESS) sb.dispatch(k);
+    expect(page).toEqual(PRESS);
+  });
+
+  it("pick mode is turned on only by its parent (another source's message is ignored)", () => {
+    const sb = sandbox();
+    const page: string[] = [];
+    sb.win.addEventListener("click", () => page.push("click"));
+    sb.dispatch("message", { source: {}, data: { v: 1, type: "pick", ch: "c", on: true } });
+    sb.dispatch("click");
+    expect([page, sb.posted]).toEqual([["click"], []]);
+  });
+
   it("is in the prologue, parses, takes on/off from its parent only, and posts the fixed shapes", () => {
     const shim = buildShim(BOOT, ["http://127.0.0.1:19280"]);
     expect(shim).toContain(JSON.stringify(PICK_PROLOGUE).slice(1, 40));
@@ -182,6 +227,6 @@ describe("#2911 the shim's pick prologue", () => {
     expect(PICK_PROLOGUE).toContain('if(e.source!==p)return');
     expect(PICK_PROLOGUE).toContain('{v:1,type:"pick",ch:ch,selector:path(t),text:tx,x:n(r.left),y:n(r.top),w:n(r.width),h:n(r.height)}');
     expect(PICK_PROLOGUE).toContain('{v:1,type:"pickend",ch:ch}');
-    expect(PICK_PROLOGUE).toContain("e.preventDefault();e.stopPropagation()");
+    expect(PICK_PROLOGUE).toContain("e.stopImmediatePropagation()");
   });
 });
