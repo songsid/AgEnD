@@ -1,6 +1,6 @@
 import { ensureAgendHome } from "./agend-home.js";
 import { createInterface } from "node:readline/promises";
-import { writeFileSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, readdirSync, statSync, mkdirSync } from "node:fs";
 import { discordInviteUrl } from "./discord-permissions.js";
 import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
 // The same probes the Settings wizard makes — one copy, one behaviour.
@@ -9,10 +9,10 @@ import { t } from "./locale.js";
 import { join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import { stdin, stdout } from "node:process";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync as spawnSyncImpl } from "node:child_process";
 import yaml from "js-yaml";
 import { BACKENDS, validateBotToken, verifyBotToken } from "./setup-wizard.js";
-import { getAgendHome } from "./paths.js";
+import { ensureWorkspaceGit, getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
@@ -408,6 +408,57 @@ export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: st
   return fleetObj;
 }
 
+/**
+ * #2910 (the user, hmsg-41f549f7: web first): a web-only fleet — no channel, no token — and its one agent, bound to
+ * no connection (the setup page's web-only write, src/quickstart-api.ts draftWebOnly, makes the same entry).
+ */
+export function newWebOnlyFleet(projectRoots: string[], backend: string, agent: { name: string; workingDirectory: string }): Record<string, any> {
+  const fleetObj = newQuickstartFleet([], projectRoots, backend);
+  delete fleetObj.channels;
+  fleetObj.instances = { [agent.name]: { working_directory: agent.workingDirectory, backend } };
+  return fleetObj;
+}
+
+/** #2910: the web-only path's first agent — a name, and a folder (none typed: its own workspace under AGEND_HOME). */
+export async function askFirstAgent(rl: Pick<import("node:readline/promises").Interface, "question">, step: string): Promise<{ name: string; workingDirectory: string; ownWorkspace: boolean }> {
+  const { defaultWorkingDirectory, instanceNameInvalid } = await import("./quickstart-api.js");
+  console.log(`\n${bold(t("qs.agent_title", step))}`);
+  let name: string;
+  for (;;) {
+    name = (await rl.question(`  ${t("qs.agent_name", "agent-1")} `)).trim() || "agent-1";
+    if (!instanceNameInvalid(name)) break;
+    console.log(`  ${yellow(t("qs.agent_name_invalid"))}`);
+  }
+  const own = defaultWorkingDirectory(name);
+  for (;;) {
+    const typed = (await rl.question(`  ${t("qs.agent_dir", own)} `)).trim();
+    if (!typed) { console.log(`  ${green("✓")} ${name} → ${own}\n`); return { name, workingDirectory: own, ownWorkspace: true }; }
+    if (typed.startsWith("/") || typed.startsWith("~")) {
+      const dir = resolve(typed.replace(/^~/, homedir()));
+      console.log(`  ${green("✓")} ${name} → ${dir}\n`);
+      return { name, workingDirectory: dir, ownWorkspace: false };
+    }
+    console.log(`  ${yellow(t("qs.agent_dir_invalid"))}`);
+  }
+}
+
+/**
+ * #2910: the sign-in code for a fleet that has just started (its web listener may take a few seconds): `agend web
+ * --code`, retried until the deadline. Null: not reachable in time (the caller then says how to get one).
+ */
+export async function fetchWebSignInCode(run: () => { status: number | null; stdout: string } = () => {
+  const r = spawnSyncImpl(process.execPath, [canonicalCliEntry(), "web", "--code"], { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] });
+  return { status: r.status, stdout: r.stdout ?? "" };
+}, deadlineMs = 30_000, waitMs = 2_000): Promise<string | null> {
+  const end = performance.now() + deadlineMs;
+  for (;;) {
+    const r = run();
+    if (r.status === 0 && r.stdout.trim()) return r.stdout.trim();
+    if (performance.now() + waitMs > end) return null;
+    await new Promise(res => setTimeout(res, waitMs));
+  }
+}
+
 export function buildChannelConfig(p: PlatformResult): Record<string, any> {
   if (!isAdminUserId(p.type, p.userId)) throw new Error(t(`setup.admin.${p.type}_invalid`));
   const cfg: Record<string, any> = {
@@ -769,9 +820,21 @@ export async function runQuickstart(): Promise<void> {
       process.exit(1);
     }
 
+    // ── Web only, or with a bot ─────────────────────────
+    // #2910 (the user, hmsg-41f549f7): web first — a fleet with no Discord or Telegram is the first choice (and the
+    // default). The bot path below it is as it was.
+
+    console.log(bold(t("qs.mode_title")));
+    console.log(`    1. ${t("qs.mode_web")}`);
+    console.log(`    2. ${t("qs.mode_chat")}`);
+    const webOnly = (await rl.question(`  Choose [1]: `)).trim() !== "2";
+    if (webOnly) console.log(`  ${green("✓")} ${t("qs.mode_web_chosen")}`);
+    console.log();
+    const steps = webOnly ? 3 : 4;
+
     // ── Step 1: Backend ──────────────────────────────────
 
-    console.log(bold("Step 1/4: Backend"));
+    console.log(bold(`Step 1/${steps}: Backend`));
     const found = detectBackends();
 
     let backend: string;
@@ -795,30 +858,34 @@ export async function runQuickstart(): Promise<void> {
       console.log(`  ${green("✓")} Selected: ${found[idx].label}`);
     }
 
-    // ── Step 2: Channel ────────────────────────────────
+    // ── Step 2: Channel (or, web only, the first agent) ──
 
-    console.log(`\n${bold("Step 2/4: Channel")}`);
-    console.log("    1. Telegram");
-    console.log("    2. Discord");
-    console.log("    3. Both (Telegram + Discord)");
-    const chChoice = await rl.question(`  Choose [1]: `);
-    const channelChoice = chChoice.trim() === "3" ? "both" : chChoice.trim() === "2" ? "discord" : "telegram";
-    console.log(`  ${green("✓")} ${channelChoice}\n`);
-
-    // Collect platform configs
     const platforms: PlatformResult[] = [];
-    if (channelChoice === "telegram" || channelChoice === "both") {
-      platforms.push(await runTelegramFlow(rl, "Step 3/4"));
-    }
-    if (channelChoice === "discord" || channelChoice === "both") {
-      platforms.push(await runDiscordFlow(rl, "Step 3/4"));
+    let agent: Awaited<ReturnType<typeof askFirstAgent>> | null = null;
+    if (webOnly) agent = await askFirstAgent(rl, `2/${steps}`);
+    else {
+      console.log(`\n${bold("Step 2/4: Channel")}`);
+      console.log("    1. Telegram");
+      console.log("    2. Discord");
+      console.log("    3. Both (Telegram + Discord)");
+      const chChoice = await rl.question(`  Choose [1]: `);
+      const channelChoice = chChoice.trim() === "3" ? "both" : chChoice.trim() === "2" ? "discord" : "telegram";
+      console.log(`  ${green("✓")} ${channelChoice}\n`);
+
+      // Collect platform configs
+      if (channelChoice === "telegram" || channelChoice === "both") {
+        platforms.push(await runTelegramFlow(rl, "Step 3/4"));
+      }
+      if (channelChoice === "discord" || channelChoice === "both") {
+        platforms.push(await runDiscordFlow(rl, "Step 3/4"));
+      }
     }
 
     const primaryPlatform = platforms[0];
 
     // ── Project roots ────────────────────────────────────
 
-    console.log(bold("Step 4/4: Project Roots (optional)"));
+    console.log(bold(`Step ${steps}/${steps}: Project Roots (optional)`));
     console.log(`  ${dim("Directories containing your projects. Agents use these to find repos.")}\n`);
 
     const roots = detectProjectRoots();
@@ -854,7 +921,7 @@ export async function runQuickstart(): Promise<void> {
 
     ensureAgendHome(DATA_DIR);
 
-    const fleetObj = newQuickstartFleet(platforms, projectRoots, backend);
+    const fleetObj = agent ? newWebOnlyFleet(projectRoots, backend, agent) : newQuickstartFleet(platforms, projectRoots, backend);
 
     // Backup existing fleet.yaml before overwriting (action === "4" / start fresh).
     // Fail-closed: if the backup cannot be written, abort the overwrite so the
@@ -872,10 +939,17 @@ export async function runQuickstart(): Promise<void> {
     writeFileSync(FLEET_CONFIG_PATH, yaml.dump(fleetObj, { quotingType: '"', forceQuotes: false }));
     console.log(`\n  ${green("✓")} ${FLEET_CONFIG_PATH}`);
 
-    // Write .env with all tokens
-    const envLines = platforms.map(p => `${p.tokenEnvName}=${p.token}`).join("\n") + "\n";
-    warnIfEnvNotPrivate(writeSecretFile(ENV_PATH, envLines));
-    console.log(`  ${green("✓")} ${ENV_PATH}`);
+    if (agent) {
+      // #2910: no token, so no .env; the agent's own workspace is made now (as the setup page does).
+      if (agent.ownWorkspace) {
+        try { mkdirSync(agent.workingDirectory, { recursive: true, mode: 0o700 }); ensureWorkspaceGit(agent.workingDirectory); } catch { /* best effort */ }
+      }
+    } else {
+      // Write .env with all tokens
+      const envLines = platforms.map(p => `${p.tokenEnvName}=${p.token}`).join("\n") + "\n";
+      warnIfEnvNotPrivate(writeSecretFile(ENV_PATH, envLines));
+      console.log(`  ${green("✓")} ${ENV_PATH}`);
+    }
 
     // ── ClassicBot setup (Discord only) ──────────────────
 
@@ -948,7 +1022,16 @@ export async function runQuickstart(): Promise<void> {
     if (!serviceRunning && !serviceFailed) {
       console.log(`  ${t("qs.start_fleet", bold("agend start"))}`);
     }
-    printDashboard();
+    if (agent) {
+      // #2910: no bot to send /web to — the code from this machine, or how to get it.
+      console.log(`\n  ${bold(t("qs.web_signin_title"))}`);
+      const code = serviceRunning ? (console.log(`  ${dim(t("qs.web_signin_wait"))}`), await fetchWebSignInCode()) : null;
+      if (code) for (const line of code.split("\n")) console.log(`  ${line}`);
+      else {
+        console.log(`  ${t("qs.web_dashboard", `http://localhost:${dashboardPort(FLEET_CONFIG_PATH)}/`)}`);
+        console.log(`  ${t("qs.web_signin_next", bold("agend web --code"))}`);
+      }
+    } else printDashboard();
 
     // Shell completion. bash costs nothing to say yes to (a static file, no
     // rc edit); zsh is asked separately because it appends a line to ~/.zshrc.
@@ -982,7 +1065,9 @@ export async function runQuickstart(): Promise<void> {
 
     console.log("");
     const hasDiscord = platforms.some(p => p.type === "discord");
-    if (hasDiscord) {
+    if (agent) {
+      console.log(`    • ${t("qs.web_talk", agent.name)}\n`);
+    } else if (hasDiscord) {
       for (const p of platforms) {
         if (p.type === "discord") console.log(`    • Talk to ${p.botUsername} in your Discord server`);
         else console.log(`    • Talk to @${p.botUsername} in your Telegram group`);
