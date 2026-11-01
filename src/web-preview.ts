@@ -203,7 +203,17 @@ export function buildShim(bootId: string, origins: readonly string[]): string {
       "setInterval(function(){p.postMessage({v:1,type:\\"heartbeat\\",ch:ch},\\"*\\");},2000);" +
       "p.postMessage({v:1,type:\\"heartbeat\\",ch:ch},\\"*\\");" +
       "try{new ResizeObserver(size).observe(document.documentElement);}catch(e){setInterval(size,500);}" +
-      "addEventListener(\\"load\\",size);setTimeout(size,0);})();<\\/script>";
+      "addEventListener(\\"load\\",size);setTimeout(size,0);" +
+      // #2911: the page's errors, for the panel's errors chip — at most 50, each one line cut at 300 characters. The
+      // page can send this shape too: the parent treats it as untrusted text and only records it.
+      "var n=0;function err(k,m,l,c){if(n>=50)return;n++;try{m=String(m==null?\\"\\":m);}catch(x){m=\\"(unprintable)\\";}" +
+      "p.postMessage({v:1,type:\\"error\\",ch:ch,kind:k,message:m.slice(0,300),line:l>>>0,col:c>>>0},\\"*\\");}" +
+      "addEventListener(\\"error\\",function(e){if(!e||(e.target&&e.target!==window))return;err(\\"error\\",e.message,e.lineno,e.colno);},true);" +
+      "addEventListener(\\"unhandledrejection\\",function(e){var r=e&&e.reason;err(\\"rejection\\",r&&r.message?(r.name||\\"Error\\")+\\": \\"+r.message:r,0,0);});" +
+      "try{var ce=console.error;console.error=function(){try{err(\\"console\\",Array.prototype.map.call(arguments,function(a){" +
+      "try{return a&&a.message?(a.name||\\"Error\\")+\\": \\"+a.message:typeof a===\\"object\\"?JSON.stringify(a):String(a);}catch(x){return \\"?\\";}}).join(\\" \\"),0,0);}catch(x){}" +
+      "return ce.apply(console,arguments);};}catch(x){}" +
+      "})();<\\/script>";
     document.open();
     document.write(prologue + d.html);
     document.close();
