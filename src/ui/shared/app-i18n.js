@@ -105,7 +105,7 @@ register("app", {
     restartRefused: "Restart refused: {0}",
     pendingSent: "Sent for confirmation — a fleet admin confirms it in chat.",
     pendingSelfSent: "Confirmed by your account (this browser is web-verified) — applying.",
-    needsNav: "Needs you", needsTab: "Needs you", needsCount: "{0} waiting",
+    needsNav: "Needs you", needsTab: "Needs you", needsCount: "{0} waiting", noticesNav: "Notices", noticesCount: "{0} unread",
     // #2293: global search — chats, cross-instance messages and tasks (not the sidebar's filter of agents).
     search: "Search", searchTitle: "Search chats, messages between agents and tasks ({0})",
     confirmTitle: "Please confirm", confirmOk: "Continue", cancel: "Cancel",
@@ -152,7 +152,7 @@ register("app", {
     restartRefused: "重新啟動被拒絕：{0}",
     pendingSent: "已送出確認——由 fleet 管理員在聊天中確認。",
     pendingSelfSent: "已由你的帳號確認（這個瀏覽器已通過網頁驗證）——套用中。",
-    needsNav: "等你處理", needsTab: "待處理", needsCount: "{0} 件待處理",
+    needsNav: "等你處理", needsTab: "待處理", needsCount: "{0} 件待處理", noticesNav: "通知", noticesCount: "{0} 則未讀",
     search: "搜尋", searchTitle: "搜尋聊天、agent 之間的訊息與任務（{0}）",
     confirmTitle: "請確認", confirmOk: "繼續", cancel: "取消",
     sidePanelLeave: "不儲存就離開「{0}」？你在那裡的修改會遺失。", sidePanelDiscard: "捨棄修改",
