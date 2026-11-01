@@ -212,7 +212,7 @@ register("chat", {
     pvFbErrHeadOne: "預覽回報了 1 個錯誤（文字來自頁面）：", pvFbErrHead: "預覽回報了 {0} 個錯誤（文字來自頁面）：",
     pvFbErrRejection: "未處理的 rejection：", pvFbErrAt: "第 {0} 行第 {1} 欄", pvFbErrMore: "……還有 {0} 個。",
     pvCdnBlocked: "被預覽封鎖：",
-    pvCdnNote: "這個頁面要從 {0} 載入函式庫，但預覽會封鎖它，除非開啟「設定 → 網頁儀表板 →「HTML 預覽可從 cdnjs / jsDelivr 載入函式庫」」。",
+    pvCdnNote: "這個頁面要從 {0} 載入函式庫，但預覽會封鎖它，除非開啟 設定 → 網頁儀表板 中的「HTML 預覽可從 cdnjs / jsDelivr 載入函式庫」。",
     pvFbPick: "指出位置", pvFbPickTitle: "在頁面上點一個元素，說明要怎麼改",
     pvFbPickCancel: "取消指出", pvFbPickCancelTitle: "停止指出——頁面恢復接收點擊",
     pvFbPickWords: "在 `{0}`（「{1}」，文字來自頁面）：", pvFbPickAt: "在 `{0}`（來自頁面）：",
