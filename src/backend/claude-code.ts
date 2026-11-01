@@ -1,4 +1,5 @@
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { selectionCard } from "../selection-card.js";
 import { flagEffort } from "./launch-effort.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -935,6 +936,12 @@ export const CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE =
  * CLI quit, in 3 of 4 trials. Each step is idempotent: a refused Down is simply
  * repeated, a refused Enter is repeated, and no state ever sends Enter on "No".
  */
+/**
+ * #2910 D4: a Claude dialog AgEnD holds for a person (a Bash permission, a trust / Bypass screen it did not recognise,
+ * "Background work is running", "Switch model?"), as a card to answer from the dashboard of a web-only fleet.
+ */
+const claudeSelectionCard = (pane: string) => selectionCard(pane, "Claude Code");
+
 function claudeConfirmDialogEntries(
   pattern: RegExp,
   name: string,
@@ -957,6 +964,7 @@ function claudeConfirmDialogEntries(
       holdOnly: true,
       blocksDelivery: true,
       inputBlocked: true,
+      remoteCard: claudeSelectionCard,
       description: `${name} (unrecognised cursor) — holding for a human, never auto-selecting`,
     },
   ];
@@ -1470,6 +1478,7 @@ export class ClaudeCodeBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: claudeSelectionCard,
         description: "Claude \"Background work is running\" exit prompt — holding, never answering with Enter",
       },
       {
@@ -1481,6 +1490,7 @@ export class ClaudeCodeBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: claudeSelectionCard,
         description: "Claude Bash permission — waiting for a human choice, never auto-approving",
       },
       // Trust and Bypass Permissions are STARTUP dialogs, but on a first run
@@ -1491,7 +1501,7 @@ export class ClaudeCodeBackend implements CliBackend {
       // claudeConfirmDialogEntries).
       ...claudeConfirmDialogEntries(CLAUDE_TRUST_DIALOG_PATTERN, "Claude workspace trust dialog", CLAUDE_TRUST_ENTRIES, trustUnknown),
       ...claudeConfirmDialogEntries(CLAUDE_BYPASS_DIALOG_PATTERN, "Claude Bypass Permissions warning", CLAUDE_BYPASS_ENTRIES, bypassUnknown),
-      { pattern: CLAUDE_CONFIRM_IDENTITY_PATTERN, isActive: claudeUnrecognisedConfirmActive, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, description: "Claude trust/Bypass Permissions screen (unrecognised shape) — holding for a human, never auto-selecting" },
+      { pattern: CLAUDE_CONFIRM_IDENTITY_PATTERN, isActive: claudeUnrecognisedConfirmActive, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, remoteCard: claudeSelectionCard, description: "Claude trust/Bypass Permissions screen (unrecognised shape) — holding for a human, never auto-selecting" },
       // The sign-in screen can arrive after the startup scan ended too (theme →
       // login on a first run). No key answers it: hold delivery; the daemon's
       // runtime monitor reports the auth incident (LOGIN_FLOWS loginScreenActive).
@@ -1510,6 +1520,7 @@ export class ClaudeCodeBackend implements CliBackend {
         keys: [],
         holdOnly: true,
         blocksDelivery: true,
+        remoteCard: claudeSelectionCard,
         description: "Claude model/effort switch confirmation (\u201cSwitch model?\u201d) — not asked for by AgEnD, or its answer did not take",
       },
     ];

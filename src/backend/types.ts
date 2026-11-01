@@ -346,6 +346,13 @@ export interface RemoteQuestionCard {
   typed: string | null;
   /** The card's width in columns (its dividers'): how long a typed-answer row clipped at the edge is. */
   rowWidth: number;
+  /**
+   * #2910 D4: Esc is not offered — on this dialog it is not a harmless skip (Claude's trust screen exits the CLI); its
+   * own options say every choice there is (selection-card.ts).
+   */
+  noSkip?: true;
+  /** #2910 D4: put to people only on a web-only fleet (the dashboard); a chat fleet keeps its parked notice, as before. */
+  webOnly?: true;
 }
 
 /**

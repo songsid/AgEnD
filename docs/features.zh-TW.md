@@ -789,6 +789,8 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 **只用網頁的 fleet：通知（#2910）。**儀表板的**通知**（`/ui/notices`，在側欄）會保留原本 General 會說的事：fleet 錯誤、agent 當掉、額度或登入的通知、網頁登入、無法執行的排程、每日摘要，以及新版本（每個版本一次，附上要在這台電腦上執行的 `agend update`）。最新的 500 則會保留，重新啟動後也還在。新的通知會即時出現，側欄會顯示未讀數量，打開頁面就會標成已讀。有按鈕的提示（agent 停止、等你輸入或卡住）則在 **等你處理**。有聊天連線的 fleet 沒有通知頁：General 照舊會說這些事。
 
+**agent 的對話框，在網頁上回答（#2910）。**只用網頁的 fleet 上，AgEnD 留給人回答的 Claude Code 或 Codex 對話框會送到儀表板：agent 的聊天和 **等你處理** 會顯示對話框本身的文字，以及它自己的選項按鈕；你的選擇會在確認過游標位置後輸入到 agent 的終端機。涵蓋的對話框包括：Bash、Edit、Write 或 MCP 工具的權限（設定 `skipPermissions: false` 時）、AgEnD 認不得的信任或 Bypass Permissions 畫面、「Background work is running」、不是 AgEnD 要求的「Switch model?」、Codex 等人處理的選單，以及任何 AgEnD 暫停等人的編號選單。不提供 Esc，因為在某些對話框上它會讓 CLI 直接結束。如果你點下去之前對話框已經變了，就不會輸入任何按鍵，卡片也會說明。終端機裡的密碼或 sudo 提示會變成一則通知，請你到 agent 的 View 回答。登入畫面不做成卡片：請從儀表板登入。有聊天連線的 fleet 照舊使用暫停通知和 General 的控制按鈕。
+
 登入成功後，這個後端執行中的 instance 會重啟，以套用新的憑證。打字 `/install-cli` 只會印一行指向 `/login`，不會執行登入；它不會出現在任何指令選單裡。
 
 ## 憑證 profile 與第二份訂閱 (Credential profiles and a second subscription)
