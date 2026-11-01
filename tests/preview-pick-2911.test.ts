@@ -158,6 +158,16 @@ describe("#2911 Point at it in the panel", () => {
     expect(doc.querySelector(".pv-panel .pv-fb-pick")).toBe(null);
   });
 
+  it("#2914 review: format characters (bidi, zero-width) are taken out of the selector and the words", async () => {
+    const { key, picked } = await running();
+    const got: any[] = [];
+    const off = PV.onPick((_k: string, r: unknown) => { if (r) got.push(r); });
+    PV.pick(key, true);
+    picked({ selector: "div#a\u202Eb", text: "Bu\u200By\u2066!\u2069" });
+    expect([got[0].selector, got[0].text]).toEqual(["div#ab", "Buy!"]);
+    off();
+  });
+
   it("pickLine: without words; backticks out of the selector", () => {
     expect(pa.pickLine({ selector: "div", text: "" })).toBe("On `div` (from the page): ");
     expect(pa.pickLine({ selector: "a`b", text: "x" })).toBe("On `ab` (“x”, text from the page): ");
