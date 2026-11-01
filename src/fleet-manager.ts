@@ -23754,7 +23754,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           if (decision.reason === "no-credential" && req.method === "GET"
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
-            serveSigninPage(res, 401);
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet() });
             return;
           }
           res.writeHead(decision.status);

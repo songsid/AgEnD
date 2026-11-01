@@ -71,7 +71,12 @@ Once the fleet is running you can also do this from chat: `/login` in General in
 agend quickstart
 ```
 
-It runs in four steps:
+It first asks how you will use AgEnD:
+
+- **1. Web only** (the default — press Enter): no bot and no token. It sets up your AI coding CLI, your first agent (a name, and its own workspace or a folder you give) and where your projects live, writes a fleet with no chat connection, and ends by showing the sign-in code from `agend web --code` (or the address and that command) for the web dashboard. Everything else — more agents, schedules, Settings — is done there, and a Telegram or Discord bot can be added later in Settings.
+- **2. With a Discord or Telegram bot**: the four steps below.
+
+With a bot, it runs in four steps:
 
 1. It finds the AI coding CLI you have, and asks which one if there are several.
 2. It asks for Telegram, Discord, or both. Discord is built in, so there is nothing extra to install.

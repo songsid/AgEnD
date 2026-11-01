@@ -71,7 +71,12 @@ fleet 跑起來之後，也可以在聊天裡做這件事：在 General 用 `/lo
 agend quickstart
 ```
 
-它分四步：
+它會先問你要怎麼使用 AgEnD：
+
+- **1. Web only（只用網頁）**（預設——直接按 Enter）：不用 bot、不用 token。它會設定你的 AI coding CLI、你的第一個 agent（名稱，以及它自己的工作區或你指定的資料夾）和專案位置，寫好沒有聊天連線的 fleet，最後顯示 `agend web --code` 的登入碼（或網址加上那個指令），讓你登入網頁儀表板。其他事情——更多 agent、排程、設定——都在那裡完成；之後也可以在設定裡加上 Telegram 或 Discord bot。
+- **2. 接 Discord 或 Telegram bot**：照下面四步。
+
+接 bot 時分四步：
 
 1. 找出你已安裝的 AI coding CLI，有好幾個時讓你選。
 2. 問你要用 Telegram、Discord 還是兩者都要。Discord 是內建的，不用另外裝東西。

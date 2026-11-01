@@ -31,7 +31,7 @@ const COPY = {
 } as const;
 
 /** Load the page script for one browser language; `answer` is /auth/login's status. Every data-i18n element is returned. */
-async function page(language: string, answer = 401) {
+async function page(language: string, answer = 401, webOnly = false) {
   const vm = await import("node:vm");
   vi.useRealTimers();
   const handlers: Record<string, (e?: unknown) => Promise<void>> = {};
@@ -41,8 +41,12 @@ async function page(language: string, answer = 401) {
   const i18n = ["lead", "hint", "nobot", "nobot_body"].map(attr => ({ attr, textContent: "", children: null as unknown[] | null,
     getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } }));
   const logins: unknown[] = [];
+  // #2910 D5: the server marks a web-only fleet's page on <body>; the "No chat bot?" help is a <details> the page hides.
+  const help = [{ hidden: false, querySelector: (sel: string) => (sel.includes("nobot") ? {} : null) }, { hidden: false, querySelector: () => null }];
   const context = vm.createContext({
-    document: { documentElement: {}, getElementById: (id: string) => (elements[id] ??= el(id)), querySelectorAll: () => i18n,
+    document: { documentElement: {}, getElementById: (id: string) => (elements[id] ??= el(id)),
+      querySelectorAll: (sel: string) => (sel === "details.help" ? help : i18n),
+      ...(webOnly ? { body: { getAttribute: (name: string) => (name === "data-web-only" ? "1" : null) } } : {}),
       createElement: (tag: string) => ({ tag, textContent: "" }) },
     location: { href: "http://127.0.0.1:1/signin", pathname: "/signin", search: "", hash: "", origin: "http://127.0.0.1:1", replace() {} },
     history: { replaceState() {} }, navigator: { language }, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
@@ -58,7 +62,7 @@ async function page(language: string, answer = 401) {
   for (let n = 0; n < 50; n++) await new Promise(r => setImmediate(r));
   const $ = (id: string) => elements[id] ??= el(id);
   const text = (attr: string) => { const e = i18n.find(x => x.attr === attr)!; return e.children ? e.children.map(c => typeof c === "string" ? c : (c as { textContent: string }).textContent).join("") : e.textContent; };
-  return { $, text, i18n, logins, submit: async () => { await handlers["form:submit"]!({ preventDefault() {} }); } };
+  return { $, text, i18n, help, logins, submit: async () => { await handlers["form:submit"]!({ preventDefault() {} }); } };
 }
 
 describe("#1854 rank 2: the sign-in page", () => {
@@ -78,6 +82,23 @@ describe("#1854 rank 2: the sign-in page", () => {
         await p.submit();
         expect(p.$("msg").textContent, String(status)).toBe(COPY[language].unconfirmed);
       }
+    });
+  }
+  // #2910 D5: a web-only fleet (no chat connection) — there is no /web to send: the code comes from the AgEnD computer.
+  for (const [language, hint, refused] of [
+    ["en", "On the AgEnD computer, run agend web --code to get a sign-in code.", "The code is invalid or no longer works. Run agend web --code on the AgEnD computer for a new one."],
+    ["zh-TW", "在 AgEnD 電腦上執行 agend web --code 取得登入碼。", "登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。"],
+  ] as const) {
+    it(`#2910 ${language}: a web-only fleet's page leads with agend web --code (as <code>); its "No chat bot?" help is hidden; a wrong code says the same`, async () => {
+      const p = await page(language, 401, true);
+      const hintEl = p.i18n.find(x => x.attr === "hint")!;
+      expect([p.text("hint"), hintEl.children!.map(c => typeof c === "string" ? "text" : (c as { tag: string }).tag), p.help.map(h => h.hidden)])
+        .toEqual([hint, ["text", "code", "text"], [true, false]]);
+      await p.submit();
+      expect(p.$("msg").textContent).toBe(refused);
+      // A chat fleet's page is unchanged (no mark): the /web words, the help shown.
+      const chat = await page(language, 401, false);
+      expect([chat.text("hint"), chat.help.map(h => h.hidden)]).toEqual([COPY[language].hint, [false, false]]);
     });
   }
   it("429 keeps its own message (rate limit, not the code)", async () => {
