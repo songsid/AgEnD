@@ -849,6 +849,9 @@ img.amb-p { object-fit: contain; }
 @container (max-width: 560px) {
   .pv-panel-bar :not(.pv-panel-run) > .lbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 }
+/* preview feedback (M-2217, #2911): the errors chip — its count stays when a narrow bar hides the word. */
+.pv-fb-errors { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.pv-fb-errors .pv-fb-n { font-variant-numeric: tabular-nums; font-weight: var(--fw-semibold); }
 /* #1266: an agent reply's buttons — choices under the text; one answers for everyone. */
 .rb-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
 .rb-btn { max-width: 100%; white-space: normal; text-align: left; }

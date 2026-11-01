@@ -60,6 +60,12 @@ register("chat", {
     pvVersions: "Versions", pvVer: "v{0}/{1}", pvVerLong: "Version {0} of {1}", pvVerPrev: "Previous version", pvVerNext: "Next version",
     pvChanges: "Changes", pvChangesFrom: "Changes from v{0}", pvChangesNone: "No changes from v{0}.",
     pvChangesBig: "These versions are too large or too different to compare here. Download both to compare them.", pvChangesCut: "showing the first {0} lines",
+    // #2911 (M-2217): the preview's feedback actions.
+    pvFbReply: "Reply about this page", pvFbReplyTitle: "Reply to the message this page came in, naming the page — you write what to change",
+    pvFbAboutNamed: "About the page “{0}”: ", pvFbAboutThis: "About this page: ",
+    pvFbErrOne: "error", pvFbErrMany: "errors", pvFbErrTitle: "The page reported errors: put them in the message box, quoted, for you to check and send. Their text is the page's",
+    pvFbErrHeadOne: "The preview reported 1 error (text from the page):", pvFbErrHead: "The preview reported {0} errors (text from the page):",
+    pvFbErrRejection: "Unhandled rejection: ", pvFbErrAt: "line {0}:{1}", pvFbErrMore: "…and {0} more.",
     lbLabel: "Image: {0}", lbLabelNoName: "Image", lbClose: "Close", lbOpenOriginal: "Open original", lbPrev: "Previous image", lbNext: "Next image", lbCount: "{0} / {1}",
     // #2333: zoom in the lightbox.
     lbZoomIn: "Zoom in (+)", lbZoomOut: "Zoom out (−)", lbZoomLevel: "{0}% — click for fit or actual size (0 / 1)", lbFitWidth: "Fit width (W)",
@@ -187,6 +193,12 @@ register("chat", {
     pvVersions: "版本", pvVer: "v{0}/{1}", pvVerLong: "第 {0} 版，共 {1} 版", pvVerPrev: "上一版", pvVerNext: "下一版",
     pvChanges: "變更", pvChangesFrom: "與第 {0} 版相比的變更", pvChangesNone: "與第 {0} 版相比沒有變更。",
     pvChangesBig: "這兩版太大或差異太多，無法在這裡比較。請下載兩版後再比較。", pvChangesCut: "只顯示前 {0} 行",
+    // #2911 (M-2217): 預覽的回饋動作。
+    pvFbReply: "回覆這個頁面", pvFbReplyTitle: "回覆這個頁面所在的訊息並註明頁面——要改什麼由你來寫",
+    pvFbAboutNamed: "關於頁面「{0}」：", pvFbAboutThis: "關於這個頁面：",
+    pvFbErrOne: "個錯誤", pvFbErrMany: "個錯誤", pvFbErrTitle: "頁面回報了錯誤：以引用的方式放進輸入框，由你確認後送出。錯誤文字來自頁面本身",
+    pvFbErrHeadOne: "預覽回報了 1 個錯誤（文字來自頁面）：", pvFbErrHead: "預覽回報了 {0} 個錯誤（文字來自頁面）：",
+    pvFbErrRejection: "未處理的 rejection：", pvFbErrAt: "第 {0} 行第 {1} 欄", pvFbErrMore: "……還有 {0} 個。",
     lbLabel: "圖片：{0}", lbLabelNoName: "圖片", lbClose: "關閉", lbOpenOriginal: "開啟原圖", lbPrev: "上一張", lbNext: "下一張", lbCount: "{0} / {1}",
     lbZoomIn: "放大（+）", lbZoomOut: "縮小（−）", lbZoomLevel: "{0}%：點一下切換「符合視窗」與「實際大小」（0 / 1）", lbFitWidth: "符合寬度（W）",
     pvWhyOptin: "還沒允許 HTML 預覽。可從這張卡片的 ⋯ 選單或「設定 → 偏好設定」允許。",

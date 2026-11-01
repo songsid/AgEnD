@@ -249,6 +249,7 @@
     if (bytes > LIMITS.askBytes && !(opts && opts.anyway)) { ui.state("large", say("pvLarge", "This file is large ({0}). Preview anyway?", sizeLabel(bytes))); return false; }
     stopAll("another");
     starts++;
+    resetErrors(key);
     var doc = holder.ownerDocument;
     var iframe = mountPreview(doc);
     var card = {
@@ -310,13 +311,62 @@
 
   // ── Messages from frames (design §4.2) ──────────────────
 
-  var KEYS = { ready: "boot,ch,type,v", resize: "ch,height,type,v", heartbeat: "ch,type,v" };
+  var KEYS = { ready: "boot,ch,type,v", resize: "ch,height,type,v", heartbeat: "ch,type,v", error: "ch,col,kind,line,message,type,v" };
+
+  // ── #2911: the errors a running preview reported (design §4.1 amendment) ──
+  // Recorded only: a count, and the first few distinct ones as one line of plain text each. Nothing here passes them on;
+  // a person's click in the panel (preview-panel-actions.js) puts them in the composer, quoted, for them to edit.
+  var ERRORS = { maxCount: 999, keep: 5, messageMax: 200, rawMax: 1000, notifyMs: 200 };
+  var ERROR_KINDS = { error: 1, rejection: 1, console: 1 };
+  var errorLog = new Map();               // frame key → { count, items: [{ kind, message, line, col }] }
+  var errorListeners = new Set();
+  var errorNotify = new Map();            // frame key → a pending notification's timer
+  function oneLine(v, max) {
+    // Format characters (\p{Cf}: bidi overrides and isolates, zero-widths, U+FEFF…) go first: a quoted line must read
+    // as its bytes say (#2914 review — the Trojan Source reordering, text hidden between zero-widths).
+    var t = String(v).replace(/\p{Cf}+/gu, "").replace(/[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim();
+    var chars = Array.from(t);
+    return chars.length > max ? chars.slice(0, max - 1).join("") + "\u2026" : t;
+  }
+  function tellErrors(key) {
+    if (errorNotify.has(key)) return;
+    errorNotify.set(key, root.setTimeout(function () {
+      errorNotify.delete(key);
+      errorListeners.forEach(function (fn) { try { fn(key); } catch (e) { /* one listener's error stops no other */ } });
+    }, ERRORS.notifyMs));
+  }
+  // A new run: its chip goes at once (not after the notification delay), and a notification still pending is dropped.
+  function resetErrors(key) {
+    if (!errorLog.delete(key)) return;
+    if (errorNotify.has(key)) { root.clearTimeout(errorNotify.get(key)); errorNotify.delete(key); }
+    errorListeners.forEach(function (fn) { try { fn(key); } catch (e) { /* one listener's error stops no other */ } });
+  }
+  function recordError(card, d) {
+    if (!Object.prototype.hasOwnProperty.call(ERROR_KINDS, d.kind) || typeof d.message !== "string" || d.message.length > ERRORS.rawMax) return;
+    var pos = function (n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n >= 0 && n <= 1e7; };
+    if (!pos(d.line) || !pos(d.col)) return;
+    var log = errorLog.get(card.key);
+    if (!log) { log = { count: 0, items: [] }; errorLog.set(card.key, log); }
+    if (log.count >= ERRORS.maxCount) return;
+    log.count++;
+    var item = { kind: d.kind, message: oneLine(d.message, ERRORS.messageMax) || "(no message)", line: d.line, col: d.col };
+    if (log.items.length < ERRORS.keep && !log.items.some(function (x) { return x.kind === item.kind && x.message === item.message && x.line === item.line && x.col === item.col; })) log.items.push(item);
+    tellErrors(card.key);
+  }
+  /** What the preview under `key` reported since it started: { count, items } (copies), or null when nothing. */
+  function errors(key) {
+    var log = errorLog.get(key);
+    return log ? { count: log.count, items: log.items.map(function (x) { return { kind: x.kind, message: x.message, line: x.line, col: x.col }; }) } : null;
+  }
+  /** fn(key) after a preview's errors changed (at most every 200 ms per preview); returns the unsubscribe. */
+  function onErrors(fn) { errorListeners.add(fn); return function () { errorListeners.delete(fn); }; }
 
   /**
    * The only window message listener. A message counts only from one of OUR frames (event.source is that frame's
-   * window, and its origin is the opaque "null"), with one of three exact shapes; each has one effect, on that frame
+   * window, and its origin is the opaque "null"), with one of four exact shapes; each has one effect, on that frame
    * only: ready → send the HTML once (boot checked, opt-in checked again), resize → its height, heartbeat → its
-   * watchdog. It has no reference to the chat, the composer, the fleet's API, navigation or storage.
+   * watchdog, error (#2911) → its error log (recorded, never passed on). It has no reference to the chat, the
+   * composer, the fleet's API, navigation or storage.
    */
   function onMessage(event) {
     var card = null;
@@ -344,6 +394,7 @@
       armWatchdog(card);
       return;
     }
+    if (d.type === "error") { recordError(card, d); return; }
     if (typeof d.height !== "number" || !isFinite(d.height) || Math.floor(d.height) !== d.height) return;
     requestHeight(card, d.height);
   }
@@ -377,6 +428,7 @@
 
   return {
     init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever, onChange: onChange, listeners: listeners, onStorage: onStorage,
+    errors: errors, onErrors: onErrors, ERRORS: ERRORS,
     start: start, startCount: startCount, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveCount: liveCount, liveFrame: liveFrame,
     mountPreview: mountPreview, onMessage: onMessage, BANNER: BANNER, LIMITS: LIMITS,
     /** The banner every running preview carries, in the page's language (#1554); BANNER is its English. */

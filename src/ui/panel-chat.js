@@ -76,6 +76,7 @@ import { installMessageActions } from "./chat-msg-actions.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
+import { setPanelFeedback } from "./preview-panel-actions.js";
 import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
@@ -142,6 +143,19 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     if (auth && typeof auth.sessionHandle === "function") auth.sessionHandle().then((h) => P().setBannerScope(h), () => P().setBannerScope(null));
     else P().setBannerScope(null);
   }
+  // #2911: the preview panel's "Reply about this page" reaches the composer through these (an undoable edit, as typing).
+  setPanelFeedback({
+    findMsg: (instance, key) => (store.state.msgs[instance] || []).find((x) => msgKey(x) === key) || null,
+    startReply: (instance, x) => store.startReply(instance, x),
+    clearReply: (instance) => store.clearReply(instance),
+    addToDraft: (instance, line) => { recordEdit(composerField()); store.addToDraft(instance, line); },
+    focus: () => {
+      const el = composerField(); if (!el) return;
+      el.focus();
+      // After the render that shows the line: the caret at its end.
+      setTimeout(() => { try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
+    },
+  });
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
   return store;
