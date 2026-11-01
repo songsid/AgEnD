@@ -64,6 +64,22 @@ describe("PageShares (#2911)", () => {
     expect(p.find(a.token), "ended at its deadline").toBe(null);
   });
 
+  it("#2917 review P3: a create that prunes a share past its deadline announces its end once (made or refused)", () => {
+    let now = 0;
+    const heard: string[][] = [];
+    const p = new PS.PageShares({ now: () => now, setTimer: () => null, changed: (_l, ended) => { if (ended.length) heard.push(ended.map(s => s.id)); } });
+    const a = p.create({ html: "a", instance: "w", title: "", owner: "o", minutes: 15 });
+    if (!a.ok) throw new Error(a.error);
+    now = 15 * 60_000;                                            // A's deadline; its (held) timer has not run
+    expect(p.create({ html: "b", instance: "w", title: "", owner: "o" }).ok).toBe(true);
+    expect(heard).toEqual([[a.share.id]]);
+    const c = p.create({ html: "c", instance: "w", title: "", owner: "o", minutes: 15 });
+    if (!c.ok) throw new Error(c.error);
+    now = 2 * 15 * 60_000;
+    expect(p.create({ html: "", instance: "w", title: "", owner: "o" })).toEqual({ ok: false, error: "empty" });   // refused: still said
+    expect(heard).toEqual([[a.share.id], [c.share.id]]);
+  });
+
   it("revoke and endWhere hand back the ended shares; changed hears them", () => {
     const heard: Array<[number, string[]]> = [];
     const p = new PS.PageShares({ setTimer: () => null, changed: (list, ended) => heard.push([list.length, ended.map(s => s.id)]) });
@@ -99,23 +115,48 @@ async function gateway(html = "<title>T</title><h1>hi</h1>") {
   g.setHost(HOST);
   closers.push(() => g.close());
   const get = (path: string, headers: Record<string, string> = {}, method = "GET") => raw(Number(url.port), method, path, { host: HOST, ...headers }, undefined);
-  return { g, pages, token: made.token, HOST, get, port: Number(url.port) };
+  /** The frame, as a browser asks for it from its wrapper. */
+  const frame = (headers: Record<string, string> = {}, method = "GET") => get(`/p/${made.token}/frame`, { "sec-fetch-dest": "iframe", ...headers }, method);
+  return { g, pages, token: made.token, HOST, get, frame, port: Number(url.port) };
 }
 
 describe("/p/<token> on the share gateway (#2911)", () => {
-  it("serves the snapshot as a sandboxed document: the preview CSP with sandbox allow-scripts, no network, framed by no one", async () => {
+  it("#2917 review P1: /p/<token> is our wrapper — no script, frame-src 'self' — framing /p/<token>/frame, the sandboxed snapshot", async () => {
     const t = await gateway();
     const r = await t.get(`/p/${t.token}`);
     expect(r.status).toBe(200);
-    expect(r.body).toBe("<title>T</title><h1>hi</h1>");
-    const csp = String(r.headers["content-security-policy"]);
-    for (const d of ["sandbox allow-scripts", "connect-src 'none'", "frame-ancestors 'none'", "form-action 'none'", "default-src 'none'", "webrtc 'block'", "frame-src 'none'"]) expect(csp, d).toContain(d);
+    expect(r.body).toBe(PS.pageWrapper(t.token, "T"));
+    expect(r.body).toContain(`<iframe src="/p/${t.token}/frame" sandbox="allow-scripts" referrerpolicy="no-referrer"`);
+    expect(r.body).not.toContain("<h1>hi</h1>");                     // the page itself never at the top
+    expect(r.body).not.toMatch(/<script/i);
+    const wcsp = String(r.headers["content-security-policy"]);
+    for (const d of ["default-src 'none'", "script-src 'none'", "frame-src 'self'", "child-src 'self'", "frame-ancestors 'none'", "form-action 'none'"]) expect(wcsp, d).toContain(d);
+    expect([r.headers["x-frame-options"], r.headers["x-dns-prefetch-control"]]).toEqual(["DENY", "off"]);
+    const f = await t.frame();
+    expect(f.status).toBe(200);
+    expect(f.body).toBe("<title>T</title><h1>hi</h1>");
+    const csp = String(f.headers["content-security-policy"]);
+    for (const d of ["sandbox allow-scripts", "connect-src 'none'", "frame-ancestors 'self'", "form-action 'none'", "default-src 'none'", "webrtc 'block'", "frame-src 'none'"]) expect(csp, d).toContain(d);
     expect(csp).not.toMatch(/allow-same-origin|allow-forms|allow-popups|allow-top-navigation/);
-    expect(r.headers["permissions-policy"]).toBe(PS.PAGE_SHARE_PERMISSIONS);
-    expect([r.headers["x-frame-options"], r.headers["referrer-policy"], r.headers["x-robots-tag"], r.headers["cache-control"], r.headers["x-content-type-options"]])
-      .toEqual(["DENY", "no-referrer", "noindex, nofollow", "no-store", "nosniff"]);
-    expect(r.headers["set-cookie"]).toBeUndefined();
-    expect((await t.get(`/p/${t.token}`, {}, "HEAD")).body).toBe("");
+    expect(f.headers["permissions-policy"]).toBe(PS.PAGE_SHARE_PERMISSIONS);
+    expect([f.headers["x-frame-options"], f.headers["referrer-policy"], f.headers["x-robots-tag"], f.headers["cache-control"], f.headers["x-content-type-options"]])
+      .toEqual(["SAMEORIGIN", "no-referrer", "noindex, nofollow", "no-store", "nosniff"]);
+    for (const x of [r, f]) expect(x.headers["set-cookie"]).toBeUndefined();
+    expect((await t.frame({}, "HEAD")).body).toBe("");
+  });
+
+  it("the frame only as a frame: opened top level (a tab, a link) it is an empty 404", async () => {
+    const t = await gateway();
+    for (const dest of [undefined, "document", "empty", "script"]) {
+      const r = await t.get(`/p/${t.token}/frame`, dest ? { "sec-fetch-dest": dest } : {});
+      expect([r.status, r.body], String(dest)).toEqual([404, ""]);
+    }
+  });
+
+  it("the wrapper's title is the share's, escaped", () => {
+    const html = PS.pageWrapper("A".repeat(43), `x"><script>alert(1)</script>`);
+    expect(html).not.toContain("<script>alert");
+    expect(html).toContain("<title>x&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;</title>");
   });
 
   it("an ended or unknown token: the ended page; nothing below /p/<token>; a malformed one 404", async () => {
@@ -123,9 +164,11 @@ describe("/p/<token> on the share gateway (#2911)", () => {
     const unknown = await t.get(`/p/${"A".repeat(43)}`);
     expect([unknown.status, unknown.body]).toEqual([404, PS.PAGE_ENDED]);
     expect((await t.get(`/p/${t.token}/x`)).status).toBe(404);
+    expect((await t.frame()).status).toBe(200);
     expect((await t.get(`/p/short`)).status).toBe(404);
     t.pages.revoke("all");
     expect((await t.get(`/p/${t.token}`)).body).toBe(PS.PAGE_ENDED);
+    expect([(await t.frame()).status, (await t.frame()).body]).toEqual([404, ""]);
   });
 
   it("condition 1 — the viewer probe: no dashboard route, cookie or session is reachable from the share's origin", async () => {
@@ -139,9 +182,9 @@ describe("/p/<token> on the share gateway (#2911)", () => {
       expect(r.body.includes("agend_session"), path).toBe(false);
     }
     for (const method of ["POST", "PUT", "DELETE", "OPTIONS"]) expect((await t.get(`/p/${t.token}`, cookie, method)).status, method).toBe(405);
-    // The page itself: no cookie set, and its origin is opaque (CSP sandbox without allow-same-origin): it can read none.
-    const page = await t.get(`/p/${t.token}`, cookie);
-    expect(page.headers["set-cookie"]).toBeUndefined();
+    // The wrapper and the page: no cookie set; the page's origin is opaque (CSP sandbox without allow-same-origin): it can read none.
+    const wrapper = await t.get(`/p/${t.token}`, cookie), page = await t.frame(cookie);
+    for (const x of [wrapper, page]) expect(x.headers["set-cookie"]).toBeUndefined();
     expect(String(page.headers["content-security-policy"])).toMatch(/sandbox allow-scripts(;|$)/);
   });
 
@@ -214,12 +257,30 @@ describe("page shares on the share tunnel (#2911)", () => {
     expect(await q.svc.createPage({ html: "x", instance: "w", title: "", owner: "o" })).toEqual({ ok: false, error: "disabled" });
   });
 
+  it("#2917 review P2: what allowed it is asked again once the tunnel is up — turned off, the maker demoted, the caller's own fence", async () => {
+    for (const change of ["off", "demoted", "fence"] as const) {
+      let release!: () => void;
+      const held = new Promise<void>(r => { release = r; });
+      const r = rig({ ensure: async () => { await held; return { path: "/bin/cloudflared" }; } });
+      let allowed = true;
+      const p = r.svc.createPage({ html: "x", instance: "w", title: "", owner: "o", stillAllowed: () => allowed });
+      await new Promise(res => setTimeout(res, 5));
+      if (change === "off") r.setPages(false); else if (change === "demoted") r.owners.delete("o"); else allowed = false;
+      release();
+      const m = await p;
+      expect(m, change).toEqual({ ok: false, error: change === "off" ? "disabled" : "not_allowed" });
+      expect(r.svc.listPages(), change).toEqual([]);
+      expect(r.ended.flat(), `${change}: never handed out, never announced`).toEqual([]);
+    }
+  });
+
   it("the sweep ends page shares when the feature is off or their maker is no longer an admin; a tunnel gone ends them all", async () => {
     const r = rig();
+    r.owners.add("gone");
     const a = await r.svc.createPage({ html: "a", instance: "w", title: "", owner: "o" });
     const b = await r.svc.createPage({ html: "b", instance: "w", title: "", owner: "gone" });
     if (!a.ok || !b.ok) throw new Error("refused");
-    r.owners.add("gone"); r.owners.delete("gone");
+    r.owners.delete("gone");
     expect(r.svc.sweep()).toBe(1);
     expect(r.svc.listPages().map(s => s.id)).toEqual([a.share.id]);
     r.setPages(false);
@@ -234,7 +295,7 @@ describe("page shares on the share tunnel (#2911)", () => {
 });
 
 /** A real FleetManager on a fake share tunnel. */
-async function fleet(opts: { pagesOn?: () => boolean } = {}) {
+async function fleet(opts: { pagesOn?: () => boolean; ensure?: () => Promise<{ path: string }> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-page-share-")); dirs.push(dir);
   const fm = new FleetManager(dir) as any;
   const logs: string[] = [];
@@ -251,7 +312,7 @@ async function fleet(opts: { pagesOn?: () => boolean } = {}) {
       start: async (_p: unknown, ctx: { onCandidateHost?(h: string): void }) => { const host = `s${++n}.trycloudflare.com`; ctx.onCandidateHost?.(host); return { ok: true, handle: { pageUrl: `https://${host}/ready`, onUnexpectedExit: () => () => {} } } as never; },
       stop: async () => ({ confirmed: true }) as never,
     },
-    ensure: async () => ({ path: "/bin/cloudflared" }), provider: () => ({}) as never,
+    ensure: opts.ensure ?? (async () => ({ path: "/bin/cloudflared" })), provider: () => ({}) as never,
     config: () => ({ enabled: true }), officeExists: () => true, ownerCurrent: () => true,
     pageConfig: () => ({ enabled: opts.pagesOn ? opts.pagesOn() : true }),
     pagesChanged: (l: unknown, e: unknown) => fm.pageSharesChanged(l, e),
@@ -263,7 +324,7 @@ async function fleet(opts: { pagesOn?: () => boolean } = {}) {
   const session = (tier: "admin" | "read" = "admin") => {
     const { sessionId } = fm.webSessions.create({ tier, surface: "local", label: "t", tokenEpoch: tokenEpoch(fm.webToken) });
     const cookie = `agend_session=${sessionId}`;
-    return { read: { cookie }, write: { cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" } };
+    return { id: sessionId, read: { cookie }, write: { cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" } };
   };
   closers.push(async () => { await fm.officeSharesInstance.close(); await new Promise<void>(r => (fm.healthServer as Server).close(() => r())); });
   return { fm, port, session, channel, logs, dir };
@@ -331,6 +392,23 @@ describe("/ui/page-share (#2911)", () => {
       expect((await post(bad))[0], JSON.stringify(bad)).toBe(400);
     on = false;
     expect(await post({ instance: "w", boot: m.boot, id: m.id, att: served.id })).toEqual([404, { error: "disabled" }]);
+  });
+
+  it("#2917 review P2: the requesting session revoked while the tunnel starts → 403, no URL, no notice", async () => {
+    let release!: () => void;
+    const held = new Promise<void>(r => { release = r; });
+    const f = await fleet({ ensure: async () => { await held; return { path: "/bin/cloudflared" }; } });
+    const m = f.fm.webChatHistory.record({ instance: "w", sender: "w", role: "agent", ts: new Date().toISOString(), text: "```html\n<title>P</title>\n```" });
+    const admin = f.session("admin");
+    const pending = raw(f.port, "POST", "/ui/page-share", admin.write, JSON.stringify({ instance: "w", boot: m.boot, id: m.id, fence: 0 }));
+    await new Promise(res => setTimeout(res, 50));
+    f.fm.webSessions.revokeById(admin.id);
+    release();
+    const r = await pending;
+    expect(r.status).toBe(403);
+    expect(r.body).not.toContain("trycloudflare");
+    expect(f.fm.officeShares.listPages()).toEqual([]);
+    expect(f.channel).toEqual([]);
   });
 
   it("over the public link: the same routes as Office share (an admin session; the handler refuses the rest)", () => {

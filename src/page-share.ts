@@ -9,9 +9,12 @@
  *   complete ```html fence of an agent message, or its .html attachment) — never HTML from the browser. Memory only: a
  *   restart ends every share.
  * - The token is 32 random bytes (base64url), shown once; only its SHA-256 is kept. The URL holds nothing else.
- * - `/p/<token>` serves the snapshot as the document itself under the preview frame's CSP (web-preview.ts), which
- *   includes `sandbox allow-scripts`: even opened as a top-level page it has an opaque origin, no network, no forms, and
- *   `frame-ancestors 'none'` instead of the dashboard origins.
+ * - `/p/<token>` is a trusted wrapper of ours — no script, `frame-src 'self'` — that frames `/p/<token>/frame`, where
+ *   the snapshot runs under the preview frame's CSP (web-preview.ts: `sandbox allow-scripts`, an opaque origin, no
+ *   network, no forms) with `frame-ancestors 'self'`. The wrapper is what contains a navigation (#2917 review P1): a
+ *   top-level sandboxed page could still send itself, its URL and its text away with `location` or a meta refresh;
+ *   framed, every navigation of the page is checked against the wrapper's `frame-src 'self'` (and it may not navigate
+ *   the top: no allow-top-navigation, no popups). The frame is served only as a frame (`Sec-Fetch-Dest: iframe`).
  */
 import { createHash, randomBytes } from "node:crypto";
 import { previewFrameCsp } from "./web-preview.js";
@@ -94,8 +97,23 @@ export function htmlFences(text: string): Array<{ code: string; terminated: bool
   return out;
 }
 
-/** The /p/<token> response's CSP: the preview frame's (sandbox allow-scripts, no network, no forms), framed by no one. */
-export const PAGE_SHARE_CSP = previewFrameCsp(["'none'"]);
+/** /p/<token>/frame's CSP: the preview frame's (sandbox allow-scripts, no network, no forms), framed only by its wrapper. */
+export const PAGE_SHARE_CSP = previewFrameCsp(["'self'"]);
+/**
+ * The wrapper's CSP: no script of its own, its one style block, and a frame only from its own origin — which every
+ * navigation of the framed page is checked against (a page sending itself to another host is blocked by the browser).
+ */
+export const PAGE_WRAPPER_CSP = ["default-src 'none'", "script-src 'none'", "style-src 'unsafe-inline'", "img-src 'none'", "frame-src 'self'", "child-src 'self'",
+  "connect-src 'none'", "form-action 'none'", "base-uri 'none'", "object-src 'none'", "frame-ancestors 'none'"].join("; ");
+
+const escapeHtml = (s: string): string => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]!);
+/** The wrapper for a share: its title (escaped) and the one sandboxed frame of /p/<token>/frame. */
+export function pageWrapper(token: string, title: string): string {
+  const name = escapeHtml(oneLine(title) || "Shared page");
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">`
+    + `<meta name="referrer" content="no-referrer"><title>${name}</title><style>html,body{margin:0;height:100%;background:#fff}iframe{display:block;border:0;width:100%;height:100%}</style></head>`
+    + `<body><iframe src="/p/${token}/frame" sandbox="allow-scripts" referrerpolicy="no-referrer" title="${name}"></iframe></body></html>`;
+}
 /** As the preview listener's /frame (web-preview.ts). */
 export const PAGE_SHARE_PERMISSIONS = "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=(), usb=(), serial=(), hid=(), bluetooth=(), payment=(), display-capture=(), fullscreen=()";
 
@@ -126,7 +144,10 @@ export class PageShares {
 
   /** A new share of `html` (a snapshot): `minutes` from 15 to `maxMinutes` (60 unless asked). */
   create(opts: { html: string; instance: string; title: string; owner: string; from?: PageShare["from"]; minutes?: number; maxMinutes?: number }): PageShareCreate {
-    this.prune();
+    // Shares past their deadline go now — and are announced now, once, whether this one is made or refused (#2917 review
+    // P3: dropped silently, their end was never said and their bookkeeping never cleared).
+    const ended = this.prune();
+    if (ended.length) this.announce(ended);
     const max = Math.min(opts.maxMinutes ?? PAGE_SHARE_LIMITS.maxHours * 60, PAGE_SHARE_LIMITS.maxHours * 60);
     const minutes = opts.minutes ?? Math.min(PAGE_SHARE_LIMITS.defaultMinutes, max);
     if (!Number.isInteger(minutes) || minutes < PAGE_SHARE_LIMITS.minMinutes || minutes > max) return { ok: false, error: "duration" };

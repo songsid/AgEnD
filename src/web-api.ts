@@ -449,7 +449,7 @@ export interface WebApiContext {
     /** #2911: page share links on the same tunnel (page-share.ts); absent: /ui/page-share is not offered. */
     pagesEnabled?(): boolean;
     listPages?(): import("./page-share.js").PageShare[];
-    createPage?(opts: { html: string; instance: string; title: string; owner: string; from?: import("./page-share.js").PageShare["from"]; minutes?: number }): Promise<import("./office-share-service.js").PageShareMade>;
+    createPage?(opts: { html: string; instance: string; title: string; owner: string; from?: import("./page-share.js").PageShare["from"]; minutes?: number; stillAllowed?(): boolean }): Promise<import("./office-share-service.js").PageShareMade>;
     revokePage?(id: string): import("./page-share.js").PageShare[];
   };
   /** #2911: a page share was made — said in that instance's channel (who, which page, for how long; never its URL). */
@@ -775,10 +775,12 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
       name = a.name;
     }
     const from = { boot: body.boot, id: body.id as number, ...(fence !== undefined ? { fence: fence as number } : { att: att as string }) };
-    const made = await service.createPage!({ html, instance: body.instance, title: htmlTitle(html) || name, owner: now.person, from,
+    // The caller is asked again once the tunnel is up (#2917 review P2): the same admin, the session still live.
+    const stillAllowed = (): boolean => { const again = who(); return !("status" in again) && again.person === now.person; };
+    const made = await service.createPage!({ html, instance: body.instance, title: htmlTitle(html) || name, owner: now.person, from, stillAllowed,
       ...(typeof body.minutes === "number" ? { minutes: body.minutes } : {}) });
     if (!made.ok) {
-      const status = made.error === "disabled" ? 404 : made.error === "tunnel" ? 503 : made.error === "too_many" ? 409 : made.error === "too_large" ? 413 : 400;
+      const status = made.error === "disabled" ? 404 : made.error === "tunnel" ? 503 : made.error === "too_many" ? 409 : made.error === "too_large" ? 413 : made.error === "not_allowed" ? 403 : 400;
       json(res, status, { error: made.error, ...(made.reason ? { reason: made.reason } : {}) });
       return;
     }

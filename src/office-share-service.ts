@@ -29,7 +29,7 @@ export type OfficeShareRefusal = "disabled" | "office" | "duration" | "too_many"
 /** #2911: a page share made, or why not. */
 export type PageShareMade =
   | { ok: true; share: PageShare; url: string }
-  | { ok: false; error: "disabled" | "duration" | "too_many" | "too_large" | "empty" | "tunnel"; reason?: PublicLinkFailure | "exited" };
+  | { ok: false; error: "disabled" | "duration" | "too_many" | "too_large" | "empty" | "tunnel" | "not_allowed"; reason?: PublicLinkFailure | "exited" };
 export type OfficeShareMade =
   | { ok: true; share: OfficeShare; url: string }
   | { ok: false; error: OfficeShareRefusal; reason?: PublicLinkFailure | "exited" };
@@ -95,13 +95,21 @@ export class OfficeShareService {
    * #2911: a new page share of `html` (a snapshot the caller read from the chat history) and its URL, once the tunnel is
    * up. `minutes` 15–max_hours×60 (60 if not given). A tunnel that cannot start ends the share at once and says why.
    */
-  async createPage(opts: { html: string; instance: string; title: string; owner: string; from?: PageShare["from"]; minutes?: number }): Promise<PageShareMade> {
+  async createPage(opts: { html: string; instance: string; title: string; owner: string; from?: PageShare["from"]; minutes?: number;
+    /** The caller's own fence, asked again after the tunnel came up (its session still the same admin's: web-api.ts). */
+    stillAllowed?(): boolean; }): Promise<PageShareMade> {
+    const { stillAllowed, ...rest } = opts;
     if (!this.pagesEnabled()) return { ok: false, error: "disabled" };
-    const made = this.pages.create({ ...opts, maxMinutes: pageShareMaxMinutes(this.deps.pageConfig?.()?.max_hours) });
+    const made = this.pages.create({ ...rest, maxMinutes: pageShareMaxMinutes(this.deps.pageConfig?.()?.max_hours) });
     if (!made.ok) return { ok: false, error: made.error };
     const up = await this.up();
     if (!up.ok) { this.pages.revoke(made.share.id); return { ok: false, error: "tunnel", reason: up.reason }; }
     if (!this.pages.find(made.token)) return { ok: false, error: "tunnel", reason: "closed" };
+    // #2917 review P2: what allowed it may have changed while the tunnel came up — the feature turned off, the maker no
+    // longer an admin, the caller's session ended. Asked again before the URL is handed out; refused, the snapshot goes
+    // unannounced (it was never handed out: no created notice, no ended one).
+    const refused = !this.pagesEnabled() ? "disabled" as const : !this.deps.ownerCurrent(rest.owner) || (stillAllowed && !stillAllowed()) ? "not_allowed" as const : null;
+    if (refused) { this.pages.revoke(made.share.id); return { ok: false, error: refused }; }
     this.handedOut.add(made.share.id);
     return { ok: true, share: made.share, url: `${up.origin}/p/${made.token}` };
   }
