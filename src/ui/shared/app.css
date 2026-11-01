@@ -839,6 +839,7 @@ img.amb-p { object-fit: contain; }
 }
 /* preview feedback (M-2217, #2911): the errors chip — its count stays when a narrow bar hides the word. */
 .pv-fb-errors { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.pv-fb-pick.on { color: var(--warn); border-color: var(--warn); }
 .pv-fb-errors .pv-fb-n { font-variant-numeric: tabular-nums; font-weight: var(--fw-semibold); }
 /* #1266: an agent reply's buttons — choices under the text; one answers for everyone. */
 .rb-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }

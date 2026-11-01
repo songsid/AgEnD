@@ -76,6 +76,41 @@ export function sendErrors(open, log, deps = chat) {
   return true;
 }
 
+/**
+ * #2911: the line a picked element adds — where in the page (the selector the page's frame built, as code) and its
+ * words, marked as the page's text. Backticks are taken out of the selector so it stays one code span.
+ */
+export function pickLine(result) {
+  if (!result) return "";
+  const where = plainName(String(result.selector || "").replace(/`/g, "")) || "?";
+  const words = plainName(result.text);
+  return words ? t("chat.pvFbPickWords", where, words) : t("chat.pvFbPickAt", where);
+}
+
+/** A picked element: reply about the page, then its line — the person writes what to change after it. */
+export function sendPick(open, result, deps = chat) {
+  if (!result || !replyAboutPage(open, deps)) return false;
+  deps.addToDraft(open.instance, pickLine(result));
+  deps.focus();
+  return true;
+}
+
+/** Whether the open page's frame is in pick mode, and its answer handed to sendPick. */
+function usePick(open) {
+  const key = open ? frameKey(open.key) : null;
+  const [on, setOn] = useState(() => !!(key && P() && P().picking && P().picking(key)));
+  useEffect(() => {
+    setOn(!!(key && P() && P().picking && P().picking(key)));
+    if (!key || !P() || typeof P().onPick !== "function") return undefined;
+    return P().onPick((k, result, now) => {
+      if (k !== key) return;
+      setOn(!!now);
+      if (result) { if (narrow()) closePanel(); sendPick(open, result); }
+    });
+  }, [key]);
+  return on;
+}
+
 /** The errors the open page's frame reported, re-read when they change. */
 function useErrors(open) {
   const key = open ? frameKey(open.key) : null;
@@ -92,12 +127,17 @@ function useErrors(open) {
 const narrow = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(max-width: 899px)").matches;
 
 /** The bar's actions for the open page. props: open, name, run, view (as the panel has them). */
-export function PanelActions({ open }) {
+export function PanelActions({ open, run }) {
   const log = useErrors(open);
+  const picking = usePick(open);
   if (!open || !chat) return null;
   // On a phone the panel is a sheet over the composer: it closes, so the composer is there to type in.
   const reply = () => { if (narrow()) closePanel(); replyAboutPage(open); };
   const send = () => { const now = P().errors(frameKey(open.key)); if (narrow()) closePanel(); sendErrors(open, now); };
   const n = log ? log.count : 0;
-  return html`${n ? html`<button type="button" class="btn btn-sm pv-fb-errors" title=${t("chat.pvFbErrTitle")} onClick=${send}><${Icon} name="alert" size=${14} /><span class="pv-fb-n">${n >= P().ERRORS.maxCount ? `${n}+` : String(n)}</span><span class="lbl">${t(n === 1 ? "chat.pvFbErrOne" : "chat.pvFbErrMany")}</span></button>` : null}<button type="button" class="btn btn-sm pv-fb-reply" title=${t("chat.pvFbReplyTitle")} onClick=${reply}><${Icon} name="chat" size=${14} /><span class="lbl">${t("chat.pvFbReply")}</span></button>`;
+  const key = open && frameKey(open.key);
+  const canPick = run && run.state === "running" && typeof P().pick === "function";
+  const point = () => { P().pick(key, !picking); };
+  return html`${canPick ? html`<button type="button" class=${`btn btn-sm pv-fb-pick${picking ? " on" : ""}`} aria-pressed=${picking ? "true" : "false"}
+      title=${t(picking ? "chat.pvFbPickCancelTitle" : "chat.pvFbPickTitle")} onClick=${point}><${Icon} name="edit" size=${14} /><span class="lbl">${t(picking ? "chat.pvFbPickCancel" : "chat.pvFbPick")}</span></button>` : null}${n ? html`<button type="button" class="btn btn-sm pv-fb-errors" title=${t("chat.pvFbErrTitle")} onClick=${send}><${Icon} name="alert" size=${14} /><span class="pv-fb-n">${n >= P().ERRORS.maxCount ? `${n}+` : String(n)}</span><span class="lbl">${t(n === 1 ? "chat.pvFbErrOne" : "chat.pvFbErrMany")}</span></button>` : null}<button type="button" class="btn btn-sm pv-fb-reply" title=${t("chat.pvFbReplyTitle")} onClick=${reply}><${Icon} name="chat" size=${14} /><span class="lbl">${t("chat.pvFbReply")}</span></button>`;
 }

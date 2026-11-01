@@ -175,6 +175,14 @@ export function previewFrameCsp(ancestors: readonly string[]): string {
 }
 
 /**
+ * #2911: the prologue's pick mode (element annotate). Off until its parent turns it on ({v:1, type:"pick", ch, on}, from
+ * window.parent only); then a hovered element is outlined, one click is taken from the page (prevented, not passed on)
+ * and posted as {v:1, type:"pick", ch, selector (≤ 300), text (≤ 200), x, y, w, h}, and the mode ends; Esc ends it with
+ * {v:1, type:"pickend", ch}. Runs inside the prologue's closure (ch, p).
+ */
+export const PICK_PROLOGUE = "var pk=false,hov=null,old=\"\";function unhl(){if(hov){try{hov.style.outline=old;}catch(x){}hov=null;}}function mode(on){pk=on;if(!on)unhl();try{document.documentElement.style.cursor=on?\"crosshair\":\"\";}catch(x){}}function path(el){var out=[],n=el,i=0;while(n&&n.nodeType===1&&i<5){var s=String(n.tagName).toLowerCase();if(n.id)s+=\"#\"+n.id;else if(typeof n.className===\"string\"&&n.className.trim())s+=\".\"+n.className.trim().split(/\\s+/).slice(0,2).join(\".\");out.unshift(s);if(n.id)break;n=n.parentElement;i++;}return out.join(\" > \").slice(0,300);}addEventListener(\"mouseover\",function(e){if(!pk)return;var t=e.target;if(t===hov)return;unhl();if(t&&t.style){hov=t;old=t.style.outline;t.style.outline=\"2px solid #f59e0b\";}},true);addEventListener(\"click\",function(e){if(!pk)return;e.preventDefault();e.stopPropagation();var t=e.target;mode(false);if(!t||t.nodeType!==1)return;var r=t.getBoundingClientRect();var tx=String(t.innerText||t.textContent||\"\").replace(/\\s+/g,\" \").trim().slice(0,200);function n(v){v=Math.round(v);return v>0&&v<1e6?v:0;}p.postMessage({v:1,type:\"pick\",ch:ch,selector:path(t),text:tx,x:n(r.left),y:n(r.top),w:n(r.width),h:n(r.height)},\"*\");},true);addEventListener(\"keydown\",function(e){if(pk&&e.key===\"Escape\"){e.preventDefault();e.stopPropagation();mode(false);p.postMessage({v:1,type:\"pickend\",ch:ch},\"*\");}},true);addEventListener(\"message\",function(e){if(e.source!==p)return;var d=e.data;if(!d||typeof d!==\"object\"||d.v!==1||d.type!==\"pick\"||d.ch!==ch||typeof d.on!==\"boolean\")return;mode(d.on);});";
+
+/**
  * The shim (design §4): posts `ready` with the listener's boot id; takes ONE `render` — from its parent window, from
  * an exact listed dashboard origin (never "null"), with exactly {v, type, ch, html}, html ≤ PREVIEW_HTML_MAX_BYTES — removes the WebRTC
  * entry points from its realm (defence in depth only), and writes a heartbeat/height prologue and the HTML into its
@@ -213,6 +221,7 @@ export function buildShim(bootId: string, origins: readonly string[]): string {
       "try{var ce=console.error;console.error=function(){try{err(\\"console\\",Array.prototype.map.call(arguments,function(a){" +
       "try{return a&&a.message?(a.name||\\"Error\\")+\\": \\"+a.message:typeof a===\\"object\\"?JSON.stringify(a):String(a);}catch(x){return \\"?\\";}}).join(\\" \\"),0,0);}catch(x){}" +
       "return ce.apply(console,arguments);};}catch(x){}" +
+      ${JSON.stringify(PICK_PROLOGUE)} +
       "})();<\\/script>";
     document.open();
     document.write(prologue + d.html);
