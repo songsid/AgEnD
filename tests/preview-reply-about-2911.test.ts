@@ -104,6 +104,18 @@ describe("#2911 Reply about this page", () => {
     expect(name.endsWith("…")).toBe(true);
   });
 
+  it("#2913 review: the page's message gone from the thread, a reply to another message started earlier is dropped — not sent with the page's line", async () => {
+    const doc = await chat([agent(1, FENCE("<title>Page A</title>")), agent(2, "unrelated")]);
+    const btn = await openFirst(doc);
+    const s = panel.store.state;
+    panel.store.startReply("w", s.msgs.w[1]);
+    expect(s.replies.w?.id).toBe(2);
+    s.msgs.w = [s.msgs.w[1]];                                  // message 1 no longer retained
+    await click(btn);
+    expect(s.drafts.w).toBe("About the page “Page A”: ");
+    expect(s.replies.w, "no reply to the unrelated message").toBeUndefined();
+  });
+
   it("no <title>: the attached file's name; neither: \"this page\"", () => {
     expect(pa.aboutLine({ code: "<h1>x</h1>", att: { name: "report\n.html" } })).toBe("About the page “report .html”: ");
     expect(pa.aboutLine({ code: "<h1>x</h1>" })).toBe("About this page: ");
@@ -113,9 +125,9 @@ describe("#2911 Reply about this page", () => {
   it("the page's message no longer in the thread: no reply, the line still goes in", () => {
     const calls: string[] = [];
     const ok = pa.replyAboutPage({ instance: "w", msgKey: "gone", code: "<title>T</title>" }, {
-      findMsg: () => null, startReply: () => calls.push("reply"), addToDraft: (_i: string, l: string) => calls.push(l), focus: () => calls.push("focus"),
+      findMsg: () => null, startReply: () => calls.push("reply"), clearReply: () => calls.push("clear"), addToDraft: (_i: string, l: string) => calls.push(l), focus: () => calls.push("focus"),
     });
-    expect([ok, calls]).toEqual([true, ["About the page “T”: ", "focus"]]);
+    expect([ok, calls]).toEqual([true, ["clear", "About the page “T”: ", "focus"]]);
   });
 
   it("every pvFb key has English and zh-TW words", async () => {

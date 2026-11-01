@@ -14,7 +14,7 @@ import { closePanel, htmlTitle } from "./preview-panel.js";
 
 /**
  * The chat registers how to reach its composer (panel-chat.js): { findMsg(instance, msgKey), startReply(instance, msg),
- * addToDraft(instance, line), focus() }. null: no chat is mounted, and the actions are not shown.
+ * clearReply(instance), addToDraft(instance, line), focus() }. null: no chat is mounted, and the actions are not shown.
  */
 let chat = null;
 export function setPanelFeedback(deps) { chat = deps || null; }
@@ -43,7 +43,10 @@ export function aboutLine(open) {
 export function replyAboutPage(open, deps = chat) {
   if (!open || !deps) return false;
   const msg = open.msgKey ? deps.findMsg(open.instance, open.msgKey) : null;
+  // The page's message gone from the thread: no reply — and not one to another message started earlier, which the
+  // line naming this page would be sent as (#2913 review).
   if (msg) deps.startReply(open.instance, msg);
+  else deps.clearReply(open.instance);
   deps.addToDraft(open.instance, aboutLine(open));
   deps.focus();
   return true;
