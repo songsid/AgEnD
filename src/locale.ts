@@ -135,6 +135,7 @@ const enMessages = {
     "web_auth.refusal_quick_link_off": "it is on the temporary public link, and authorizing over it is off (Settings → Access & security → Web authority, on this computer).",
     "web_auth.refusal_not_admin_session": "it is not an admin's session.",
     "web_auth.refusal_no_account": "it was not signed in as an account.",
+    "web_auth.refusal_host_sign_in": "it holds no authority of this computer's admin now (sign in again on this computer with agend web --code).",
     "web_auth.refusal_not_session": "it is not a signed-in browser.",
     "web_auth.refusal_other_namespace": "it belongs to another connection.",
     "web_auth.refusal_not_authorized": "it is not authorized.",
@@ -1481,6 +1482,7 @@ const enMessages = {
     "settings_confirm.cli_question": "Apply this exact change? [y/N] ",
     "settings_confirm.cli_interactive": "Interactive confirmation required; --yes explicitly confirms the printed diff.",
     "settings_confirm.web_verified_label": "{0} (web-verified)",
+    "settings_confirm.host_operator_label": "This computer's admin",
     "settings_confirm.host_operator": "host operator",
 
 } as const;
@@ -1597,6 +1599,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "web_auth.refusal_quick_link_off": "它在臨時公開連結上，而透過臨時公開連結授權目前關閉（請在這台電腦的 設定 → 存取與安全 → 網頁授權 開啟）。",
     "web_auth.refusal_not_admin_session": "它不是管理者的 session。",
     "web_auth.refusal_no_account": "它不是用帳號登入的。",
+    "web_auth.refusal_host_sign_in": "它目前沒有這台電腦管理者的授權（請在這台電腦上執行 agend web --code 重新登入）。",
     "web_auth.refusal_not_session": "它不是已登入的瀏覽器。",
     "web_auth.refusal_other_namespace": "它屬於另一個連線。",
     "web_auth.refusal_not_authorized": "它尚未授權。",
@@ -2941,6 +2944,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "settings_confirm.cli_question": "要套用這個變更嗎？[y/N] ",
     "settings_confirm.cli_interactive": "需要互動確認；--yes 表示明確確認上面列出的差異。",
     "settings_confirm.web_verified_label": "{0}（網頁驗證）",
+    "settings_confirm.host_operator_label": "這台電腦的管理者",
     "settings_confirm.host_operator": "主機操作者",
 
 };

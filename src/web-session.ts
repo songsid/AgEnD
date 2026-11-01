@@ -133,6 +133,12 @@ export interface SessionRecord {
    * For recognition only: never an authorization input (#1756 — a web message has no verified platform actor).
    */
   readonly owner?: { readonly adapterId: string; readonly userId: string };
+  /**
+   * #2910 D1: signed in with a code the host's own shell asked for (`agend web --code`) — never a code sent to an
+   * account. On a web-only fleet such a session, on this computer, is the host operator (authority/web-authority.ts).
+   * Always an admin session with no owner.
+   */
+  readonly host?: true;
 }
 
 export interface SessionSummary {
@@ -250,6 +256,7 @@ function isRecord(value: unknown): value is SessionRecord {
     && (v.surface === "local" || v.surface === "gateway")
     && (v.exposureId === undefined || (typeof v.exposureId === "string" && /^[0-9a-f]{32}$/.test(v.exposureId)))
     && (v.owner === undefined || isOwner(v.owner))
+    && (v.host === undefined || (v.host === true && v.tier === "admin" && v.owner === undefined && v.surface === "local"))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
@@ -328,7 +335,7 @@ export class WebSessionStore {
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.
    */
-  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string } }): { sessionId: string; record: SessionRecord } {
+  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true }): { sessionId: string; record: SessionRecord } {
     // #1920: a guest is always someone's own account; never a guest of nobody.
     if (input.tier === "guest" && !input.owner) throw new Error("a guest session needs its owner");
     const now = this.now();
@@ -350,6 +357,7 @@ export class WebSessionStore {
       label: sanitizeLabel(input.label),
       tokenEpoch: input.tokenEpoch,
       ...(input.owner ? { owner: { adapterId: input.owner.adapterId, userId: input.owner.userId } } : {}),
+      ...(input.host === true && input.tier === "admin" && !input.owner && input.surface === "local" ? { host: true as const } : {}),
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);

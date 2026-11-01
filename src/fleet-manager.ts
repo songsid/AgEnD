@@ -332,7 +332,7 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCooki
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
-import { authorityNow, classifyWebPeer, evaluateWebAuthority, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
@@ -2004,6 +2004,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     const actor = verified();
     if (!actor) return null;
+    // #2910 D1: a web-only fleet's host operator (its `agend web --code` session on this computer) confirms its own
+    // change — the trust `agend settings confirm` has here; there is no account to be an admin of and no General to
+    // ask. Asked again at execution: still the host operator now (this computer, not revoked or run out), still web-only.
+    const hostOperator = (a: { adapter_id: string; user_id: string } | null): boolean =>
+      !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId && this.isWebOnlyFleet();
+    if (hostOperator(actor)) {
+      return {
+        label: t("settings_confirm.host_operator_label"),
+        current: () => hostOperator(verified()),
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin"); },
+      };
+    }
     const chat = this.settingsChatAuthority(store, id);
     if (!chat) return null;
     const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
@@ -15590,6 +15602,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
       policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now: Date.now(),
+      hostOperator: this.isWebOnlyFleet(),
     });
   }
 
@@ -15620,6 +15633,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
     store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
     return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
+  }
+
+  /**
+   * #2910 D1 (auth-api, at sign-in): a web-only fleet's host session — signed in with the host's own code (`agend web
+   * --code`) on this computer — is the host operator, authorized from now for max_session_hours (as an account's
+   * Confirm would be), under the current epoch: a revocation ends it, and only a new sign-in on this computer gives it
+   * again. A fleet with a chat connection, another session, or another peer: nothing (§3 as before).
+   */
+  authorizeHostSession(session: SessionRecord, peer: WebPeer): void {
+    const store = this.sessionAuthorizationStore();
+    if (!store || !session.host || session.owner || !this.isWebOnlyFleet()) return;
+    const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    const check = evaluateWebAuthority({
+      session, gateway: false, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      isAdmin: () => false,
+      authorization: { handle: session.handle, owner: HOST_OPERATOR, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
+      hostOperator: true,
+    });
+    if (check.refusal) { this.logger.info({ handle: session.handle, refusal: check.refusal }, "Host web session not authorized"); return; }
+    const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+    store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
+    const { durable } = store.authorize(session.handle, HOST_OPERATOR, now, state.epoch, now + policy.maxSessionMs, peer);
+    this.logger.info({ handle: session.handle, durable }, "Host web session authorized (this computer's admin)");
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
@@ -15677,7 +15714,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const sessions = new Map((this.webSessions?.list(undefined, () => true) ?? []).map(r => [r.handle, r]));
     const authorized = state.enabled ? (this.sessionAuthorizationStore()?.list() ?? [])
       .filter(a => a.epoch === state.epoch && sessions.has(a.handle) && now <= Math.min(a.until, a.authorizedAt + maxMs))
-      .map(a => ({ handle: a.handle, label: sessions.get(a.handle)!.label, account: `${a.owner.adapterId}:${a.owner.userId}`, authorizedAt: a.authorizedAt,
+      .map(a => ({ handle: a.handle, label: sessions.get(a.handle)!.label,
+        // #2910 D1: the host operator's own session says whose it is, not "host:operator".
+        account: a.owner.adapterId === HOST_OPERATOR.adapterId && a.owner.userId === HOST_OPERATOR.userId && this.isWebOnlyFleet()
+          ? t("settings_confirm.host_operator_label") : `${a.owner.adapterId}:${a.owner.userId}`, authorizedAt: a.authorizedAt,
         until: Math.min(a.until, a.authorizedAt + maxMs, sessions.get(a.handle)!.absoluteExpiry),
         // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
         ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
@@ -15771,6 +15811,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
       policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
+      // #2910 D1: a host operator's session is never asked about (no account to ask): only a sign-in authorizes it.
+      hostOperator: this.isWebOnlyFleet(),
     });
     return r.refusal;
   }

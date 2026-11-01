@@ -44,6 +44,7 @@ export type WebAuthorityRefusal =
   | "not_admin_session"    // §3.1: a guest (or read) session
   | "token_rotated"        // §3.1: the session's token epoch is not the current one
   | "no_account"           // §3.2: an `agend web --code` session — the host operator, not an account
+  | "host_sign_in"         // #2910 D1 (web-only fleet): no host operator's authorization now (none, revoked, run out): sign in again on this computer
   | "not_admin"            // §3.3: no longer in its adapter's access.allowed_users
   | "other_namespace"      // §3.3: the target instance belongs to another adapter
   | "loopback_only"        // §3.4: "Only this computer can authorize" is on and this request is not loopback
@@ -134,9 +135,21 @@ export interface WebAuthorityInput {
   policy: WebAuthorityPolicy;
   epoch: number;
   now: number;
+  /**
+   * #2910 D1: this is a web-only fleet — its host sessions (SessionRecord.host) are the host operator (HOST_OPERATOR),
+   * on this computer only. Absent or false: a host session is the operator, not an account (no_account), as before.
+   */
+  hostOperator?: boolean;
 }
 
 export const noAuthority = (epoch: number): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: epoch });
+
+/**
+ * #2910 D1: the host operator — on a web-only fleet (no Discord or Telegram connection, so no account to prove anything
+ * with), a session signed in on this computer with the host's own code (`agend web --code`: shell access to this
+ * computer, the same trust as `agend settings confirm`). Its receipts name this actor.
+ */
+export const HOST_OPERATOR: { readonly adapterId: string; readonly userId: string } = Object.freeze({ adapterId: "host", userId: "operator" });
 
 /** §3: every check, in order, for one request. The first that fails is the refusal; all passing is `web-verified`. */
 export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
@@ -155,16 +168,25 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   if (s.tier !== "admin") return refuse("not_admin_session");
   if (s.surface !== (i.gateway ? "gateway" : "local")) return refuse("public_link");
   if (!i.tokenEpoch || s.tokenEpoch !== i.tokenEpoch) return refuse("token_rotated");
-  const owner = s.owner;
-  if (!owner?.adapterId || !owner.userId) return refuse("no_account");
-  if (!i.isAdmin(owner.userId, owner.adapterId)) return refuse("not_admin");
-  if (i.target && i.target.adapterId !== owner.adapterId) return refuse("other_namespace");
-  if (i.policy.loopbackOnly && i.peer !== "loopback") return refuse("loopback_only");
+  // #2910 D1: the host operator — a host session with no account, on a web-only fleet. It has no adapter to be an admin
+  // of or a namespace in (a web-only fleet has none): it is this computer's admin, so only from this computer.
+  const host = s.host === true && !s.owner && i.hostOperator === true;
+  const owner = host ? HOST_OPERATOR : s.owner;
+  // #2910 D1: on a web-only fleet a session with no account (one from before, or another `agend web` sign-in) is told
+  // the one way there: a new sign-in with the host's code on this computer.
+  if (!owner?.adapterId || !owner.userId) return refuse(i.hostOperator === true ? "host_sign_in" : "no_account");
+  if (host) {
+    if (i.peer !== "loopback") return refuse("loopback_only");
+  } else {
+    if (!i.isAdmin(owner.userId, owner.adapterId)) return refuse("not_admin");
+    if (i.target && i.target.adapterId !== owner.adapterId) return refuse("other_namespace");
+    if (i.policy.loopbackOnly && i.peer !== "loopback") return refuse("loopback_only");
+  }
   // §0: authorized once, by this account, for this session, under the current epoch, and not longer ago than allowed.
   const a = i.authorization;
-  if (!a || a.handle !== s.handle || a.owner.adapterId !== owner.adapterId || a.owner.userId !== owner.userId || a.epoch !== i.epoch) return refuse("not_authorized");
+  if (!a || a.handle !== s.handle || a.owner.adapterId !== owner.adapterId || a.owner.userId !== owner.userId || a.epoch !== i.epoch) return refuse(host ? "host_sign_in" : "not_authorized");
   // §0.1: the end it was given with, or sooner if the hours were lowered since — never later.
-  if (!(i.now <= Math.min(a.until, a.authorizedAt + i.policy.maxSessionMs))) return refuse("authorization_expired");
+  if (!(i.now <= Math.min(a.until, a.authorizedAt + i.policy.maxSessionMs))) return refuse(host ? "host_sign_in" : "authorization_expired");
   return {
     authority: {
       kind: "web-verified", actor: { adapter_id: owner.adapterId, user_id: owner.userId },
