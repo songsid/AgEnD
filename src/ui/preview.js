@@ -324,7 +324,9 @@
   var errorListeners = new Set();
   var errorNotify = new Map();            // frame key → a pending notification's timer
   function oneLine(v, max) {
-    var t = String(v).replace(/[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim();
+    // Format characters (\p{Cf}: bidi overrides and isolates, zero-widths, U+FEFF…) go first: a quoted line must read
+    // as its bytes say (#2914 review — the Trojan Source reordering, text hidden between zero-widths).
+    var t = String(v).replace(/\p{Cf}+/gu, "").replace(/[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim();
     var chars = Array.from(t);
     return chars.length > max ? chars.slice(0, max - 1).join("") + "\u2026" : t;
   }
