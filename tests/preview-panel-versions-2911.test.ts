@@ -119,6 +119,27 @@ describe("lineDiff / diffHunks", () => {
     const at = "x\n".repeat(pv.DIFF_LIMITS.maxInputLines);
     expect(pv.lineDiff(at, at)?.length, "exactly at the budget: still compared").toBe(pv.DIFF_LIMITS.maxInputLines);
   });
+  it("#2915 review r2: the budget counts lines as the diff splits them — CR and CRLF end lines, a last unterminated line counts", () => {
+    const max = pv.DIFF_LIMITS.maxInputLines;
+    const t0 = performance.now();
+    expect(pv.lineDiff("\r".repeat(5_000_000), "\r".repeat(5_000_000)), "5M lone CRs").toBeNull();
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(pv.lineDiff("a", "\r".repeat(max + 1)), "max + 1 lone CRs").toBeNull();
+    expect(pv.lineDiff("a", "x\n".repeat(max) + "x"), "max LFs and an unterminated last line").toBeNull();
+    expect(pv.lineDiff("a", "x\r\n".repeat(max + 1)), "max + 1 CRLFs").toBeNull();
+    const crlf = "x\r\n".repeat(max);
+    expect(pv.lineDiff(crlf, crlf)?.length, "exactly max CRLF lines: compared").toBe(max);
+    const last = "x\n".repeat(max - 1) + "x";
+    expect(pv.lineDiff(last, last)?.length, "max lines, the last unterminated: compared").toBe(max);
+  });
+  it("lineCount agrees with how the diff splits lines (random LF / CR / CRLF / text)", () => {
+    let seed = 11; const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+    for (let i = 0; i < 2000; i++) {
+      const s = Array.from({ length: rnd(12) }, () => ["\n", "\r", "\r\n", "x", ""][rnd(5)]).join("");
+      const ops = pv.lineDiff(s, s, { ...pv.DIFF_LIMITS, maxInputLines: 1e9 });
+      expect(pv.lineCount(s), JSON.stringify(s)).toBe(ops.length);
+    }
+  });
   it("hunks: context around each change, merged when they touch, 1-based starts and counts as a unified diff has them", () => {
     const a = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"], b = [...a];
     b[1] = "two"; b[8] = "nine";

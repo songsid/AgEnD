@@ -53,11 +53,23 @@ export function versionsOf(open, msgs, keyOf) {
 /** Past these, "Changes" says the versions are too large or too different to compare here. */
 export const DIFF_LIMITS = { maxChars: 5 * 1024 * 1024, maxInputLines: 50000, maxEdits: 2000, context: 3, maxLines: 3000 };
 
-/** More than `max` lines in `s`? Counted without splitting it (#2915 review: a budget before anything is built). */
-function overLines(s, max) {
-  let n = 0;
-  for (let i = s.indexOf("\n"); i >= 0; i = s.indexOf("\n", i + 1)) if (++n > max) return true;
-  return false;
+/**
+ * How many lines `lines()` makes of `s`, counted without splitting it (#2915 review: a budget before anything is
+ * built) — LF, CRLF and a lone CR each end a line, and a last line without one counts; it stops counting past `max`
+ * (anything over `max` is then reported as max + 1).
+ */
+export function lineCount(s, max = Infinity) {
+  if (!s) return 0;
+  let breaks = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 10 || c === 13) {
+      if (c === 13 && s.charCodeAt(i + 1) === 10) i++;
+      if (++breaks > max) return max + 1;
+    }
+  }
+  const last = s.charCodeAt(s.length - 1);
+  return Math.min(breaks + (last === 10 || last === 13 ? 0 : 1), max + 1);
 }
 
 const lines = (s) => { if (!s) return []; const v = String(s).replace(/\r\n?/g, "\n").split("\n"); if (v.length > 1 && v[v.length - 1] === "") v.pop(); return v; };
@@ -70,7 +82,7 @@ const lines = (s) => { if (!s) return []; const v = String(s).replace(/\r\n?/g, 
 export function lineDiff(a, b, limits = DIFF_LIMITS) {
   const sa = String(a ?? ""), sb = String(b ?? "");
   if (sa.length > limits.maxChars || sb.length > limits.maxChars) return null;
-  if (overLines(sa, limits.maxInputLines) || overLines(sb, limits.maxInputLines)) return null;
+  if (lineCount(sa, limits.maxInputLines) > limits.maxInputLines || lineCount(sb, limits.maxInputLines) > limits.maxInputLines) return null;
   a = sa; b = sb;
   const A = lines(a), B = lines(b);
   let head = 0;
