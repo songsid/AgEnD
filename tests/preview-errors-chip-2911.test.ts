@@ -127,8 +127,12 @@ describe("#2911 the parent records a preview's errors, and passes nothing on", (
     const holder = PV.liveFrame(key).parentNode;
     PV.stop(key, "stopped", "");
     expect(PV.errors(key).count, "kept after a stop: the person may still send them").toBe(1);
+    const told: string[] = [];
+    const off = PV.onErrors((k: string) => told.push(k));
     PV.start(key, holder, "<p>again</p>", { state() {} }, { fill: true });
     expect(PV.errors(key)).toBe(null);
+    expect(told, "the chip is told at once, not after the delay").toEqual([key]);
+    off();
   });
 
   it("preview.js still references no composer, store or API (the design §4.2 rule)", async () => {

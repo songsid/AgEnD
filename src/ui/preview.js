@@ -333,7 +333,12 @@
       errorListeners.forEach(function (fn) { try { fn(key); } catch (e) { /* one listener's error stops no other */ } });
     }, ERRORS.notifyMs));
   }
-  function resetErrors(key) { if (errorLog.delete(key)) tellErrors(key); }
+  // A new run: its chip goes at once (not after the notification delay), and a notification still pending is dropped.
+  function resetErrors(key) {
+    if (!errorLog.delete(key)) return;
+    if (errorNotify.has(key)) { root.clearTimeout(errorNotify.get(key)); errorNotify.delete(key); }
+    errorListeners.forEach(function (fn) { try { fn(key); } catch (e) { /* one listener's error stops no other */ } });
+  }
   function recordError(card, d) {
     if (!Object.prototype.hasOwnProperty.call(ERROR_KINDS, d.kind) || typeof d.message !== "string" || d.message.length > ERRORS.rawMax) return;
     var pos = function (n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n >= 0 && n <= 1e7; };
