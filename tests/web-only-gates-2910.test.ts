@@ -15,6 +15,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { CreateInstanceArgs } from "../src/outbound-schemas.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "../src/web-only-fleet.js";
 import { sanitizeInstanceName } from "../src/instance-names.js";
+import { isGeneralInstance } from "../src/general-instance.js";
 
 const dirs: string[] = [];
 const temp = (prefix: string) => { const d = mkdtempSync(join(tmpdir(), prefix)); dirs.push(d); return d; };
@@ -80,6 +81,18 @@ describe("#2910 web-only fleet: a new agent has no topic", () => {
     expect((await h.create({ topic_name: "helper" })).result.name).toBe("helper-4");
     const project = temp("agend-2910-project-");
     expect((await h.create({ directory: project })).result.name).toBe(sanitizeInstanceName(project.split("/").at(-1)!));
+  });
+  // #2919 review (Prism): "general" alone makes an instance the General (General's tools, never paused) — an ordinary
+  // New agent is never given that name, whether asked for ("General") or from its folder's name.
+  it("never 'general': an asked-for General, or a folder named general, is general-2 (a worker: no General tools, pausable)", async () => {
+    const h = webOnlyFleet();
+    const asked = (await h.create({ topic_name: "General" })).result.name;
+    const folder = join(temp("agend-2919-"), "general"); mkdirSync(folder);
+    const fromDir = (await h.create({ directory: folder })).result.name;
+    expect([asked, fromDir, "general" in h.fm.fleetConfig!.instances]).toEqual(["general-2", "general-3", false]);
+    for (const name of [asked, fromDir]) {
+      expect([isGeneralInstance(h.fm.fleetConfig, name), (h.fm as any).checkToolPermission("ipc-outbound", name, "create_instance").allowed]).toEqual([false, false]);
+    }
   });
   it("a fleet with a channel still creates its topic and suffixes the name with it (unchanged)", async () => {
     const h = webOnlyFleet("channel:\n  type: telegram\n  mode: topic\n  bot_token_env: T\n  group_id: -100\n  access: { mode: locked, allowed_users: [1] }\n");

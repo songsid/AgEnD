@@ -32,7 +32,7 @@ import type { DeliveryStatus } from "./status-emojis.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, readPauseReason, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
-import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { GENERAL_PAUSE_ERROR, isGeneralInstance, GENERAL_NAME } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
@@ -2528,9 +2528,10 @@ export class InstanceLifecycle {
       // check when the existing entry records one (channel_id). A dir-only
       // collision (no config entry) can never prove that.
       if (webOnly) {
-        // No topic to suffix with: the name as asked, else the first free "-2", "-3"….
+        // No topic to suffix with: the name as asked, else the first free "-2", "-3"…. "general" is never handed out
+        // here (#2919 review): that name alone makes an instance the General (its create/start tools, never paused).
         const instances = this.ctx.fleetConfig?.instances ?? {};
-        const taken = (candidate: string) => candidate in instances || existsSync(this.ctx.getInstanceDir(candidate));
+        const taken = (candidate: string) => candidate === GENERAL_NAME || candidate in instances || existsSync(this.ctx.getInstanceDir(candidate));
         const clean = sanitizeInstanceName(nameBase);
         newInstanceName = clean;
         for (let n = 2; taken(newInstanceName); n++) newInstanceName = `${clean}-${n}`;
