@@ -59,6 +59,8 @@ register("chat", {
     // #2911 (M-2216): the panel's versions and their changes.
     pvVersions: "Versions", pvVer: "v{0}/{1}", pvVerLong: "Version {0} of {1}", pvVerPrev: "Previous version", pvVerNext: "Next version",
     pvChanges: "Changes", pvChangesFrom: "Changes from v{0}", pvChangesNone: "No changes from v{0}.",
+    pvWidth: "Width the page is shown at", pvWidthFull: "Full width", pvWidthTablet: "Tablet · 768", pvWidthPhone: "Phone · 390",
+    pvFs: "Full screen", pvFsExit: "Leave full screen (Esc)",
     pvChangesBig: "These versions are too large or too different to compare here. Download both to compare them.", pvChangesCut: "showing the first {0} lines",
     // #2911 (M-2217): the preview's feedback actions.
     pvFbReply: "Reply about this page", pvFbReplyTitle: "Reply to the message this page came in, naming the page — you write what to change",
@@ -195,6 +197,8 @@ register("chat", {
     pvNewer: "{0} 的回覆裡有較新的版本。", pvNewerShow: "顯示", pvPanelIdle: "按「預覽」在這裡執行。",
     pvVersions: "版本", pvVer: "v{0}/{1}", pvVerLong: "第 {0} 版，共 {1} 版", pvVerPrev: "上一版", pvVerNext: "下一版",
     pvChanges: "變更", pvChangesFrom: "與第 {0} 版相比的變更", pvChangesNone: "與第 {0} 版相比沒有變更。",
+    pvWidth: "頁面顯示寬度", pvWidthFull: "完整寬度", pvWidthTablet: "平板 · 768", pvWidthPhone: "手機 · 390",
+    pvFs: "全螢幕", pvFsExit: "離開全螢幕（Esc）",
     pvChangesBig: "這兩版太大或差異太多，無法在這裡比較。請下載兩版後再比較。", pvChangesCut: "只顯示前 {0} 行",
     // #2911 (M-2217): 預覽的回饋動作。
     pvFbReply: "回覆這個頁面", pvFbReplyTitle: "回覆這個頁面所在的訊息並註明頁面——要改什麼由你來寫",

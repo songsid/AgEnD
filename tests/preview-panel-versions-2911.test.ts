@@ -251,7 +251,7 @@ describe("Changes", () => {
     await click(doc.querySelector(".pv-changes"));
     await click(doc.querySelector(".pv-ver-prev"));
     expect([shown(), doc.querySelector(".pv-diff-note"), doc.querySelector(".pv-panel-body").className, !!doc.querySelector(".pv-panel-run")])
-      .toEqual(["b-1:f0", null, "pv-panel-body", true]);
+      .toEqual(["b-1:f0", null, "pv-panel-body w-full", true]);
     await click(doc.querySelector(".pv-ver-next"));
     expect(doc.querySelector(".pv-diff-head")?.textContent).toBe("Changes from v1");
   });
