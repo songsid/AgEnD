@@ -63,7 +63,42 @@ export function applyStatus(d) {
     // #1685: host memory pressure slowing or holding new agents ("elevated" | "critical"), else null.
     hostMemory: d.host_memory === "elevated" || d.host_memory === "critical" ? d.host_memory : null,
     // #2015: while it lasts, the largest processes in the fleet and whose they are (at most 3; anything else dropped).
-    hostMemoryTop: hostMemoryTop(d.host_memory_top) });
+    hostMemoryTop: hostMemoryTop(d.host_memory_top),
+    // #2910 D2 (#2925 review): the newest Notice on a web-only fleet — a polling page reads the list again when it moves.
+    noticesNewest: Number.isSafeInteger(d.notices_newest) ? d.notices_newest : null });
+}
+
+/**
+ * #2910 D2 (#2925 review): a web-only fleet's Notices as the page keeps them. A list read (GET /ui/notices/list), a live
+ * one (SSE `notice`) and a read mark (POST /ui/notices/seen) can answer in any order, so each is merged, never
+ * replaced: the newest NOTICES_KEPT by id (a list read never drops one that arrived live after it was taken), and the
+ * read mark only moves forward. Unread is counted here from the two.
+ */
+export const NOTICES_KEPT = 500;
+function noticesState(enabled, byId, seen) {
+  const items = [...byId.values()].sort((a, b) => b.id - a.id).slice(0, NOTICES_KEPT);
+  return { enabled, items, seen, unread: items.filter((n) => n.id > seen).length };
+}
+const validNotice = (n) => !!n && Number.isSafeInteger(n.id) && n.id > 0 && typeof n.text === "string";
+export function mergeNoticeList(cur, d) {
+  const byId = new Map();
+  for (const n of Array.isArray(d && d.items) ? d.items : []) if (validNotice(n)) byId.set(n.id, n);
+  const listNewest = Math.max(0, ...byId.keys());
+  for (const n of cur && Array.isArray(cur.items) ? cur.items : []) if (n.id > listNewest && !byId.has(n.id)) byId.set(n.id, n);
+  return noticesState(!!(d && d.enabled === true), byId, Math.max(cur ? cur.seen | 0 : 0, d ? d.seen | 0 : 0));
+}
+export function addNotice(cur, n) {
+  if (!cur || !cur.enabled || !validNotice(n) || cur.items.some((x) => x.id === n.id)) return cur;
+  return noticesState(true, new Map([...cur.items, n].map((x) => [x.id, x])), cur.seen | 0);
+}
+/** A polling page's catch-up (it hears no `notice`): the status frame's newest id past what the page has — once per id. 0: none. */
+export function noticesCatchUp(s, asked) {
+  const have = s && s.notices && s.notices.items.length ? s.notices.items[0].id : 0;
+  return s && Number.isSafeInteger(s.noticesNewest) && s.noticesNewest > have && s.noticesNewest > asked ? s.noticesNewest : 0;
+}
+export function applyNoticesSeen(cur, seen) {
+  if (!cur || !Number.isSafeInteger(seen) || seen <= (cur.seen | 0)) return cur;
+  return noticesState(cur.enabled, new Map(cur.items.map((x) => [x.id, x])), seen);
 }
 
 /** #2015: the status frame's host_memory_top, as the dashboard keeps it: well-formed entries only, at most 3. */

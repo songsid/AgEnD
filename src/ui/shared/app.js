@@ -13,7 +13,7 @@ import { installSwipe } from "./app-swipe.js";
 import { installTextUndo } from "./text-undo.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
-import { appStore, applyStatus, applyActivity, guestPage, guestTrusted } from "./app-store.js";
+import { appStore, applyStatus, applyActivity, guestPage, guestTrusted, mergeNoticeList, addNotice, noticesCatchUp } from "./app-store.js";
 import { chatPath } from "./app-route.js";
 import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
@@ -95,21 +95,26 @@ if (mode === "full") {
     // again after a reconnect: a poll page hears no `notice`), then each new one from the stream.
     const loadNotices = retryable((a) => import(retryUrl("/ui/js/panel-notices.js", a)));
     panels.set("notices", { load: () => loadNotices().then((m) => m.NoticesPanel) });
-    let noticesRead = null;
+    // A list read and a live notice can cross: each is merged into what the page has (app-store.js mergeNoticeList).
+    let noticesRead = null, noticesAsked = 0;
     const readNotices = () => (noticesRead ??= fetch("/ui/notices/list", { credentials: "same-origin", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null)).then((d) => {
-        if (d && Array.isArray(d.items)) appStore.set({ notices: { enabled: d.enabled === true, items: d.items, seen: d.seen | 0, unread: d.unread | 0 } });
+        if (d && Array.isArray(d.items)) appStore.set({ notices: mergeNoticeList(appStore.get().notices, d) });
       }, () => {}).finally(() => { noticesRead = null; }));
     appStore.set({ readNotices });
     let webOnly = false;
-    appStore.subscribe((s) => { if (s.connections === 0 && !webOnly) { webOnly = true; readNotices(); } });
+    appStore.subscribe((s) => {
+      if (s.connections === 0 && !webOnly) { webOnly = true; readNotices(); }
+      // A polling page hears no `notice`: the status frame's newest id moving past what it has is its catch-up (once per id).
+      const due = webOnly ? noticesCatchUp(s, noticesAsked) : 0;
+      if (due) { noticesAsked = due; readNotices(); }
+    });
     stream.on("connection", (c) => { if ((c === "live" || c === "polling") && webOnly) readNotices(); });
     stream.on("notice", (d) => {
-      const n = d && d.notice, cur = appStore.get().notices;
-      if (!n || typeof n.id !== "number") return;
+      const cur = appStore.get().notices;
       if (!cur || !cur.enabled) { readNotices(); return; }
-      if (cur.items.some((x) => x.id === n.id)) return;
-      appStore.set({ notices: { ...cur, items: [n, ...cur.items].slice(0, 500), unread: typeof d.unread === "number" ? d.unread : cur.unread + 1 } });
+      const next = addNotice(cur, d && d.notice);
+      if (next !== cur) appStore.set({ notices: next });
     });
     // #1523 N2: one instance's Details (/ui/fleet/agent/<name>).
     panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });

@@ -207,3 +207,75 @@ describe("#2910 D2 the page", () => {
     expect(readFileSync(join(process.cwd(), "src/ui/shared/app-stream.js"), "utf8")).toMatch(/const EVENTS = \[[^\]]*"notice"\]/);
   });
 });
+
+// ── #2925 review (Prism) ──
+describe("#2925 review P2-1: the page merges what crosses — a list read, a live notice, a read mark", () => {
+  const n = (id: number) => ({ id, at: id, kind: "fleet", text: `n${id}` });
+  it("a list read taken before a live notice never drops it; unread is counted from both", async () => {
+    const S = await import("/assets/app-store.js" as string);
+    let cur = S.mergeNoticeList(null, { enabled: true, items: [n(2), n(1)], seen: 0, unread: 2 });
+    cur = S.addNotice(cur, n(3));                                                        // SSE: arrives after the read was taken
+    const stale = S.mergeNoticeList(cur, { enabled: true, items: [n(2), n(1)], seen: 0, unread: 2 });   // …whose answer lands now
+    expect([stale.items.map((x: any) => x.id), stale.unread]).toEqual([[3, 2, 1], 3]);
+    expect(S.addNotice(stale, n(3))).toBe(stale);                                       // the same one twice: nothing
+    // A list that already has newer ones is the truth for what it covers (an id it no longer keeps is gone).
+    expect(S.mergeNoticeList(stale, { enabled: true, items: [n(4), n(3)], seen: 1 }).items.map((x: any) => x.id)).toEqual([4, 3]);
+  });
+  it("a read mark only moves forward, and a newer notice stays unread whatever the ack's count said", async () => {
+    const S = await import("/assets/app-store.js" as string);
+    let cur = S.mergeNoticeList(null, { enabled: true, items: [n(2), n(1)], seen: 0 });
+    cur = S.addNotice(cur, n(3));                              // arrives while the ack for 2 is out
+    cur = S.applyNoticesSeen(cur, 2);                           // the ack (its own unread said 0)
+    expect([cur.seen, cur.unread]).toEqual([2, 1]);
+    expect(S.applyNoticesSeen(cur, 1)).toBe(cur);              // an older ack, held back: nothing
+    expect(S.mergeNoticeList(cur, { enabled: true, items: [n(3), n(2), n(1)], seen: 1 }).seen).toBe(2);   // nor an older list
+  });
+});
+
+describe("#2925 review P2-2: a polling page catches up from the status frame", () => {
+  it("the status frame carries the newest notice's id on a web-only fleet only", () => {
+    const web = fleet(), chat = fleet(CHAT);
+    expect((web.fm.getUiStatus() as any).notices_newest).toBe(0);
+    web.fm.notifyFleetError("one");
+    expect([(web.fm.getUiStatus() as any).notices_newest, "notices_newest" in (chat.fm.getUiStatus() as any)]).toEqual([1, false]);
+  });
+  it("the page reads the list when the frame's id passes what it has — once per id", async () => {
+    const S = await import("/assets/app-store.js" as string);
+    const page = { notices: S.mergeNoticeList(null, { enabled: true, items: [{ id: 1, at: 1, kind: "fleet", text: "a" }], seen: 0 }) };
+    expect([S.noticesCatchUp({ ...page, noticesNewest: 1 }, 0), S.noticesCatchUp({ ...page, noticesNewest: 2 }, 0),
+      S.noticesCatchUp({ ...page, noticesNewest: 2 }, 2), S.noticesCatchUp({ ...page, noticesNewest: null }, 0)]).toEqual([0, 2, 0, 0]);
+    S.applyStatus({ instances: [], notices_newest: 7 });
+    expect(S.appStore.get().noticesNewest).toBe(7);
+    const app = readFileSync(join(process.cwd(), "src/ui/shared/app.js"), "utf8");
+    expect(app).toContain("const due = webOnly ? noticesCatchUp(s, noticesAsked) : 0;");
+  });
+});
+
+describe("#2925 review P2-3: the page's own notice reads and read marks are not the person's activity", () => {
+  it("GET list and POST seen leave the session's idle expiry where it was (still authorized, CSRF-checked); a page load moves it", async () => {
+    const h = await served();
+    try {
+      h.fm.notifyFleetError("one");
+      const record = (h.fm as any).webSessions.authenticate(h.S.cookie.split("=")[1], (await import("../src/web-session.js")).tokenEpoch(h.fm.getDashboardAccess().token!), { touch: false });
+      record.lastSeen -= 60_000; record.idleExpiry -= 60_000;                 // last active a minute ago
+      const was = [record.lastSeen, record.idleExpiry];
+      expect((await raw(h.port, "GET", "/ui/notices/list", { cookie: h.S.cookie })).status).toBe(200);
+      expect((await raw(h.port, "POST", "/ui/notices/seen", h.S, JSON.stringify({ id: 1 }))).status).toBe(200);
+      expect([record.lastSeen, record.idleExpiry]).toEqual(was);
+      expect((await raw(h.port, "POST", "/ui/notices/seen", { cookie: h.S.cookie, origin: h.S.origin, "content-type": "application/json" }, JSON.stringify({ id: 1 }))).status).toBe(403);
+      await raw(h.port, "GET", "/ui", { cookie: h.S.cookie });
+      expect(record.lastSeen).toBeGreaterThan(was[0]!);
+    } finally { await h.stop(); }
+  }, 20_000);
+});
+
+describe("#2925 review P3-2: a web-only fleet with a General instance still gets the web-only update notice", () => {
+  it("routed web-only first: worded for this computer, once per version (never the General's /update text)", async () => {
+    setLocale("en");
+    const f = fleet({ instances: { general: { working_directory: "/tmp/g", general_topic: true }, "agent-1": { working_directory: "/tmp/a" } } });
+    vi.spyOn(f.any, "findGeneralInstance").mockReturnValue("general");
+    registry.tags = { "@songsid/agend": "2.3.4" };
+    await f.any.checkForUpdates(); await f.any.checkForUpdates();
+    expect(f.notices().map(n => [n.kind, n.text])).toEqual([["update", "🆕 AgEnD v2.3.4 available (current: v2.3.3). Install it on this computer: agend update"]]);
+  });
+});

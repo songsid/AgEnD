@@ -80,6 +80,23 @@ for (const [i, c] of CASES.entries()) {
   await p.ctx.close();
 }
 
+// #2925 review P2-2: a page whose stream never connects (it polls /ui/poll every 5 s): a notice recorded while it is open reaches its sidebar count
+// through the status frame's newest id, not only at the next visit.
+{
+  const p = await freshPage(fx, CASES[3] as any, { account: "operator", beforeNavigate: async (ctx: any) => { await ctx.route("**/ui/events", (r: any) => r.abort()); } });
+  await mounted(p.page, 30000);
+  await p.page.waitForTimeout(1500);
+  const read = async () => Number((await p.page.locator(`.side-nav a[href="/ui/notices"] .nav-count`).textContent().catch(() => "0")) ?? 0);
+  const before = await read();
+  fm.notifyFleetError("⚠️ A notice while this page only polls.");
+  let after = before;
+  for (let i = 0; i < 30 && after === before; i++) { await p.page.waitForTimeout(500); after = await read(); }
+  const polling = true;                                              // its stream never connects (aborted): it polls /ui/poll
+  results.push({ name: "polling page (stream down)", ok: polling && after === before + 1, failed: polling && after === before + 1 ? [] : [`count ${before} → ${after} (polling ${polling})`] });
+  await p.page.screenshot({ path: shotPath(SMOKE, "desk-light-en-polling", "count") , clip: { x: 0, y: 0, width: 320, height: 420 } });
+  await p.ctx.close();
+}
+
 // Control: a chat connection — no Notices entry.
 fm.fleetConfig.channels = [{ id: "demo", type: "discord", bot_token_env: "DEMO_BOT_TOKEN", access: { mode: "locked", allowed_users: [] } }];
 {

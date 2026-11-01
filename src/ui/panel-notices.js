@@ -4,7 +4,7 @@
 // new one from SSE `notice`); opening the page marks what it shows as read (POST /ui/notices/seen).
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
-import { appStore, useStore } from "/assets/app-store.js";
+import { appStore, applyNoticesSeen, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { chatPath } from "/assets/app-route.js";
@@ -39,14 +39,27 @@ export function noticeAge(at, nowMs) {
   return hours < 24 ? tn("ageHour", hours) : tn("ageDay", Math.floor(hours / 24));
 }
 
+/** The highest id a mark was sent for (a second ask for it, while the first is out or after it landed, sends nothing). */
+let markAsked = 0;
 /** Everything up to `id` is read: the server's mark, then the store's (a failure leaves both as they were). */
 export async function markNoticesSeen(id) {
+  if (id <= markAsked) return;
+  markAsked = id;
   try {
     const r = await fetch("/ui/notices/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     const d = r.ok ? await r.json() : null;
-    const cur = appStore.get().notices;
-    if (d && cur && typeof d.seen === "number") appStore.set({ notices: { ...cur, seen: Math.max(cur.seen | 0, d.seen), unread: d.unread | 0 } });
-  } catch { /* stays unread; the next visit marks it */ }
+    // The mark only moves forward, and unread is counted from what the page has (a notice that arrived meanwhile stays unread).
+    if (d && typeof d.seen === "number") { const cur = appStore.get().notices, next = applyNoticesSeen(cur, d.seen); if (next !== cur) appStore.set({ notices: next }); }
+    else markAsked = Math.min(markAsked, id - 1);
+  } catch { markAsked = Math.min(markAsked, id - 1); /* stays unread; the next view marks it */ }
+}
+
+/** The newest notice the page has, marked read — while the page is visible and it is not read yet. */
+function markShown() {
+  const cur = appStore.get().notices, top = cur && cur.items.length ? cur.items[0].id : 0;
+  if (!top || top <= (cur.seen | 0)) return;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  markNoticesSeen(top);
 }
 
 export function NoticesPanel({ navKey }) {
@@ -60,11 +73,9 @@ export function NoticesPanel({ navKey }) {
   useEffect(() => { lease.interval(() => tick((n) => n + 1), 30_000); }, [lease]);
   // Shown → read: the newest one on the page, whenever a newer one arrives while it is open and visible.
   const newest = items.length ? items[0].id : 0;
-  useEffect(() => {
-    if (!newest || (notices && newest <= (notices.seen | 0))) return;
-    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-    markNoticesSeen(newest);
-  }, [newest]);
+  // …and, if one arrived while the tab was hidden, when it is shown again (#2925 review): one listener per visit.
+  useEffect(() => { markShown(); }, [newest]);
+  useEffect(() => { if (typeof document !== "undefined") lease.on(document, "visibilitychange", markShown); }, [lease]);
   const known = new Set((instances || []).map((i) => i && i.name));
   const nowMs = Date.now();
   return html`<div data-effect-panel="notices" class="panel p-notices">

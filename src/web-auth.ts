@@ -392,13 +392,15 @@ function authorize(
  * - `GET /ui/steps`: the Log tab (#1218), on each new-step tick (or every few seconds over the public link) while it is open.
  * - `GET /ui/authorization`: this browser's authorization (#1939 S2b), every 3 s while its Confirm card waits (the ask
  *   itself is a POST: the person).
+ * - `GET /ui/notices/list` and `POST /ui/notices/seen` (#2910 D2): a web-only fleet's Notices, read again when the stream
+ *   or the status frame says one arrived, and marked read by the page that shows them.
  *
  * Everything else a session authorizes — a page load, a chat's history, any write — is the person, and slides the
  * idle expiry. Only these matter when a session is required for them: `/view`'s reads and the usage panel are open by
  * default and then touch nothing at all.
  */
 // #1665: /ui/prefs is read by the page when another device changed a preference — the page's doing, not the person's.
-const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/browser-backend-signins", "/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization", "/ui/offices", "/ui/office-acts", "/ui/office-levels"]);   // #1918: the public link polls traffic; the Office view reads offices again when the stream says they changed (and its agents' acts, #2578)
+const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/browser-backend-signins", "/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization", "/ui/offices", "/ui/office-acts", "/ui/office-levels", "/ui/notices/list"]);   // #1918: the public link polls traffic; the Office view reads offices again when the stream says they changed (and its agents' acts, #2578)
 const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
 /** #1630: the pictures a page draws (avatars, server emoji) and the emoji list are loaded by the page, not done by a person. */
 const PASSIVE_GET_IMAGES = /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/;   // #1682: mention names too
@@ -420,6 +422,9 @@ const PASSIVE_GET_OFFICE_SKINS = /^\/ui\/office-skins(?:\/[A-Za-z0-9_-]{1,40}(?:
 const PASSIVE_APPLY_STATUS = /^\/api\/settings\/(?:apply\/[A-Za-z0-9-]+|(?:provider-secrets|secrets)\/[^/]+\/apply\/[A-Za-z0-9_-]+|connections\/[^/]+\/(?:secret|binding)\/apply\/[A-Za-z0-9_-]+)$/;
 
 export function isPassiveWebRead(method: string | undefined, path: string): boolean {
+  // #2910 D2 (#2925 review): the Notices page marks what it shows as read on its own (on open, as one arrives, when the
+  // tab is shown again) — not the person. Still a session write: authorized, CSRF-checked; only no activity.
+  if (method === "POST") return path === "/ui/notices/seen";
   if ((method ?? "GET") !== "GET") return false;
   return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path) || PASSIVE_GET_THEMES.test(path) || PASSIVE_GET_CARD.test(path) || PASSIVE_GET_OFFICE_SKINS.test(path)
     || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)

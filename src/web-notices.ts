@@ -98,6 +98,9 @@ export class WebNotices {
     return this.seen;
   }
 
+  /** The newest id kept (0: none). */
+  newest(): number { return this.items.at(-1)?.id ?? 0; }
+
   unread(): number {
     let n = 0;
     for (let i = this.items.length - 1; i >= 0 && this.items[i]!.id > this.seen; i--) n++;

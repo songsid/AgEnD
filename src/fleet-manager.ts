@@ -23451,7 +23451,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
-        const generalId = this.findGeneralInstance();
+        // #2910 D2 (#2925 review): a web-only fleet first — even with a General instance it has no chat for /update.
+        const generalId = this.webOnlyPromptPlace() ? null : this.findGeneralInstance();
         if (generalId) {
           // No release URL — Discord's SuppressEmbeds proved unreliable and the
           // link preview looked bad. Version + /update instruction is enough.
@@ -24374,6 +24375,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // #1685: host memory pressure while it slows or holds new agents (the dashboard's indicator; macOS elevated is
       // shown here rather than in chat). null when normal, unknown or advisory.
       host_memory: this.hostMemoryIndicator(),
+      // #2910 D2: a web-only fleet's newest Notice — a polling page (no SSE `notice`) reads the list again when it moves.
+      ...(this.webOnlyPromptPlace() ? { notices_newest: this.webNoticeStore()?.newest() ?? 0 } : {}),
       // #2015: the largest processes while it lasts (name, pid, RSS, and whose: an instance, the fleet or tmux).
       ...(this.hostMemoryIndicator() && this.memoryTop ? { host_memory_top: this.memoryTop.processes } : {}),
     };
