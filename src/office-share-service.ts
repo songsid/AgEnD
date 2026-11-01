@@ -13,6 +13,7 @@ import { fleetWide, OfficeShareLimiter, OfficeShares, createOfficeShareGateway, 
   type OfficeShareSource } from "./office-share.js";
 import { OFFICE_SHARE_PAGE_CSP, officeSharePage, officeShareStatic } from "./office-share-page.js";
 import { failureOf, type PublicLinkFailure } from "./public-link-progress.js";
+import { PAGE_SHARE_LIMITS, PageShares, pageShareMaxMinutes, type PageShare } from "./page-share.js";
 import { newTunnelSid, type ManagedTunnel } from "./tunnel/manager.js";
 import type { TunnelProvider } from "./tunnel/types.js";
 
@@ -25,6 +26,10 @@ const NO_EXPIRY_WALL = Number.MAX_SAFE_INTEGER;
 export const SWEEP_MS = 30_000;
 
 export type OfficeShareRefusal = "disabled" | "office" | "duration" | "too_many" | "theme" | "tunnel";
+/** #2911: a page share made, or why not. */
+export type PageShareMade =
+  | { ok: true; share: PageShare; url: string }
+  | { ok: false; error: "disabled" | "duration" | "too_many" | "too_large" | "empty" | "tunnel"; reason?: PublicLinkFailure | "exited" };
 export type OfficeShareMade =
   | { ok: true; share: OfficeShare; url: string }
   | { ok: false; error: OfficeShareRefusal; reason?: PublicLinkFailure | "exited" };
@@ -47,6 +52,14 @@ export interface OfficeShareServiceDeps {
   log?(event: string, detail?: string): void;
   createGateway?: typeof createOfficeShareGateway;
   shares?: OfficeShares;
+  /** #2911: `web.page_share` as it is now. */
+  pageConfig?(): { enabled?: boolean; max_hours?: number } | undefined;
+  /**
+   * #2911: every change to the open page shares, with those that just ended — only shares that were handed out (a
+   * share whose tunnel never came up was never announced, so its end is not either).
+   */
+  pagesChanged?(shares: PageShare[], ended: PageShare[]): void;
+  pages?: PageShares;
 }
 
 export class OfficeShareService {
@@ -61,12 +74,40 @@ export class OfficeShareService {
   /** #2662: the shares' pack pictures, each share's own minute — kept here so an ended share's key goes with it. */
   private readonly pictureLimiter = new OfficeShareLimiter();
 
+  /** #2911: the page shares, on this same tunnel and gateway (`/p/<token>`). */
+  readonly pages: PageShares;
+  private readonly pageLimiter = new OfficeShareLimiter(undefined, { requests: PAGE_SHARE_LIMITS.requestsPerMinute, bytes: PAGE_SHARE_LIMITS.bytesPerMinute });
+  /** Page shares handed out (their URL given): only their end is announced. */
+  private readonly handedOut = new Set<string>();
+
   constructor(private readonly deps: OfficeShareServiceDeps) {
     this.shares = deps.shares ?? new OfficeShares({ changed: list => this.onChanged(list) });
+    this.pages = deps.pages ?? new PageShares({ changed: (list, ended) => this.onPagesChanged(list, ended) });
   }
 
   enabled(): boolean { return this.deps.config()?.enabled !== false; }
   list(): OfficeShare[] { return this.shares.list(); }
+  /** #2911: `web.page_share.enabled` (default on). */
+  pagesEnabled(): boolean { return this.deps.pageConfig?.()?.enabled !== false; }
+  listPages(): PageShare[] { return this.pages.list(); }
+
+  /**
+   * #2911: a new page share of `html` (a snapshot the caller read from the chat history) and its URL, once the tunnel is
+   * up. `minutes` 15–max_hours×60 (60 if not given). A tunnel that cannot start ends the share at once and says why.
+   */
+  async createPage(opts: { html: string; instance: string; title: string; owner: string; minutes?: number }): Promise<PageShareMade> {
+    if (!this.pagesEnabled()) return { ok: false, error: "disabled" };
+    const made = this.pages.create({ ...opts, maxMinutes: pageShareMaxMinutes(this.deps.pageConfig?.()?.max_hours) });
+    if (!made.ok) return { ok: false, error: made.error };
+    const up = await this.up();
+    if (!up.ok) { this.pages.revoke(made.share.id); return { ok: false, error: "tunnel", reason: up.reason }; }
+    if (!this.pages.find(made.token)) return { ok: false, error: "tunnel", reason: "closed" };
+    this.handedOut.add(made.share.id);
+    return { ok: true, share: made.share, url: `${up.origin}/p/${made.token}` };
+  }
+
+  /** #2911: end one page share by id, or every one ("all"); returns those that ended. */
+  revokePage(id: string): PageShare[] { return this.pages.revoke(id); }
 
   /**
    * A new share and its URL, once the tunnel is up. `minutes` 15–max_hours×60 (60 if not given); `office` ALL_OFFICES,
@@ -87,13 +128,16 @@ export class OfficeShareService {
 
   /** Shares no longer allowed: the feature off (all), an owner no longer an admin, an office deleted. */
   sweep(): number {
-    if (!this.enabled()) return this.shares.revoke("all");
-    return this.shares.endWhere(s => !this.deps.ownerCurrent(s.owner) || (!fleetWide(s.office) && !this.deps.officeExists(s.office)));
+    // #2911: page shares too — the feature off ends them all, an owner no longer an admin ends theirs.
+    const pages = this.pagesEnabled() ? this.pages.endWhere(s => !this.deps.ownerCurrent(s.owner)).length : this.pages.revoke("all").length;
+    if (!this.enabled()) return this.shares.revoke("all") + pages;
+    return this.shares.endWhere(s => !this.deps.ownerCurrent(s.owner) || (!fleetWide(s.office) && !this.deps.officeExists(s.office))) + pages;
   }
 
   /** The fleet is stopping: every share ends and the tunnel goes. */
   async close(): Promise<void> {
     this.shares.revoke("all");
+    this.pages.revoke("all");
     await this.down("fleet stopping");
   }
 
@@ -101,12 +145,25 @@ export class OfficeShareService {
     const open = new Set(list.map(s => s.id));
     for (const id of this.known) if (!open.has(id)) { this.limiter.forget(id); this.pictureLimiter.forget(id); }
     this.known = open;
-    // While any is open, who may still have it is asked again every SWEEP_MS (an admin removed, the feature turned
-    // off, an office deleted end theirs without anyone looking).
-    if (list.length && !this.sweeper) { this.sweeper = setInterval(() => this.sweep(), SWEEP_MS); this.sweeper.unref?.(); }
-    if (!list.length && this.sweeper) { clearInterval(this.sweeper); this.sweeper = null; }
-    if (!list.length) void this.down("no shares");
+    this.settle();
     try { this.deps.changed?.(list); } catch { /* a listener never keeps a share or the tunnel */ }
+  }
+  /** #2911: a page share made or ended — the same tunnel, kept while either kind is open. */
+  private onPagesChanged(list: PageShare[], ended: PageShare[]): void {
+    for (const s of ended) this.pageLimiter.forget(s.id);
+    const told = ended.filter(s => this.handedOut.delete(s.id));
+    this.settle();
+    try { this.deps.pagesChanged?.(list, told); } catch { /* a listener never keeps a share or the tunnel */ }
+  }
+  /**
+   * While any share (Office or page) is open, who may still have it is asked again every SWEEP_MS (an admin removed, the
+   * feature turned off, an office deleted end theirs without anyone looking); none left, the tunnel goes.
+   */
+  private settle(): void {
+    const any = this.shares.list().length + this.pages.list().length > 0;
+    if (any && !this.sweeper) { this.sweeper = setInterval(() => this.sweep(), SWEEP_MS); this.sweeper.unref?.(); }
+    if (!any && this.sweeper) { clearInterval(this.sweeper); this.sweeper = null; }
+    if (!any) void this.down("no shares");
   }
   private known = new Set<string>();
   private sweeper: ReturnType<typeof setInterval> | null = null;
@@ -122,6 +179,7 @@ export class OfficeShareService {
     const abort = this.abort = new AbortController();
     const gateway = (this.deps.createGateway ?? createOfficeShareGateway)({
       shares: this.shares, source: this.deps.source, limiter: this.limiter, pictureLimiter: this.pictureLimiter, statics: officeShareStatic,
+      pages: this.pages, pageLimiter: this.pageLimiter,
       page: share => ({ body: officeSharePage(share.theme), csp: OFFICE_SHARE_PAGE_CSP }),
     });
     this.gateway = gateway;
@@ -151,6 +209,7 @@ export class OfficeShareService {
         this.deps.log?.("tunnel exited");
         this.origin = null;
         this.shares.revoke("all");
+        this.pages.revoke("all");
       });
       this.deps.log?.("tunnel ready");
       return { ok: true, origin: published.origin };

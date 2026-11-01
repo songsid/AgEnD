@@ -56,6 +56,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // (the handler refuses read-only sessions and guests; the share itself runs on its own tunnel, never this one).
   if ((method === "GET" || method === "POST") && path === "/ui/office-share") return true;
   if (method === "DELETE" && /^\/ui\/office-share\/(?:[0-9a-f]{8}|all)$/.test(path)) return true;
+  // #2911: page share links, the same rule (an admin session; the share runs on the Office share's own tunnel).
+  if ((method === "GET" || method === "POST") && path === "/ui/page-share") return true;
+  if (method === "DELETE" && /^\/ui\/page-share\/(?:[0-9a-f]{8}|all)$/.test(path)) return true;
   // #2478 (the user's request): global search, an admin's (the handler refuses a guest, and web.search.public_link: false).
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) return true;
   // #1827: the person's own name (a profile edit, which the public link may make).

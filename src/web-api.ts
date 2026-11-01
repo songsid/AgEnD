@@ -53,7 +53,8 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
+import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
+import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
@@ -445,7 +446,14 @@ export interface WebApiContext {
     list(): import("./office-share.js").OfficeShare[];
     create(opts: { office: string; minutes?: number; text?: boolean; owner: string }): Promise<import("./office-share-service.js").OfficeShareMade>;
     revoke(id: string): number;
+    /** #2911: page share links on the same tunnel (page-share.ts); absent: /ui/page-share is not offered. */
+    pagesEnabled?(): boolean;
+    listPages?(): import("./page-share.js").PageShare[];
+    createPage?(opts: { html: string; instance: string; title: string; owner: string; minutes?: number }): Promise<import("./office-share-service.js").PageShareMade>;
+    revokePage?(id: string): import("./page-share.js").PageShare[];
   };
+  /** #2911: a page share was made — said in that instance's channel (who, which page, for how long; never its URL). */
+  pageShareNotice?(who: string, share: import("./page-share.js").PageShare): void;
   /** #2636: a share was made or ended from the page — said in General (who, which office, until when). */
   officeShareNotice?(event: "created" | "revoked", who: string, share: import("./office-share.js").OfficeShare | null, count: number): void;
   /** #2692: the agents' skin-pack changes (approval mode, pending changes, log); absent: /ui/office-pack-changes is not offered. */
@@ -696,6 +704,88 @@ function handleOfficeShare(req: IncomingMessage, res: ServerResponse, url: URL, 
   })().catch(err => {
     ctx.logger.error({ err: (err as Error).message }, "Office share failed");
     try { json(res, 500, { error: "Office share failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * #2911 item 8: page share links — GET /ui/page-share (the open ones, and whether this fleet offers them), POST
+ * { instance, boot, id, fence | att, minutes? } (a new one: the server reads the HTML itself — the n-th complete ```html
+ * fence of that agent message, or its .html attachment — and answers the URL once the tunnel is up), DELETE
+ * /ui/page-share/<id|all>. The same admin check as the Office share's (handleOfficeShare): an admin session, directly
+ * or over the /web public link; never the CLI token, a read-only session or a guest. Asked again once the body is in.
+ */
+function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const service = ctx.officeShares;
+  if (!service?.createPage || !service.listPages || !service.revokePage || !service.pagesEnabled) { json(res, 404, { error: "Page share links are not kept on this fleet" }); return true; }
+  const one = /^\/ui\/page-share\/([0-9a-f]{8}|all)$/.exec(path);
+  const known = (method === "GET" && path === "/ui/page-share") || (method === "POST" && path === "/ui/page-share") || (method === "DELETE" && !!one);
+  if (!known) { json(res, 404, { error: "not found" }); return true; }
+  const who = (): { person: string; name: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    if (verdict.via !== "session" || verdict.session?.tier !== "admin") return { status: 403 };
+    const owner = verdict.session.owner;
+    return { person: owner ? webPersonKey(owner) : "admin-session", name: owner ? ctx.webPerson?.(owner)?.name ?? owner.userId : "admin" };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "page_share_needs_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  res.setHeader("Cache-Control", "no-store");
+  if (method === "GET") { json(res, 200, { enabled: service.pagesEnabled(), shares: service.listPages() }); return true; }
+  if (method === "DELETE") {
+    // Its end is said in the instance's channel by the service's change listener (as an expiry is).
+    const n = service.revokePage(one![1]!).length;
+    json(res, n ? 200 : 404, n ? { revoked: n } : { error: "not_found" });
+    return true;
+  }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    const fence = body?.fence, att = body?.att;
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.instance !== "string" || !body.instance
+      || typeof body.boot !== "string" || !/^[0-9a-f]{1,32}$/.test(body.boot) || !Number.isSafeInteger(body.id) || (body.id as number) < 1
+      || (fence === undefined) === (att === undefined)
+      || (fence !== undefined && (!Number.isInteger(fence) || (fence as number) < 0 || (fence as number) > 999))
+      || (att !== undefined && (typeof att !== "string" || !isFileId(att)))
+      || (body.minutes !== undefined && typeof body.minutes !== "number")) {
+      json(res, 400, { error: "instance, boot, id, and fence (number) or att (file id); minutes? (number)" });
+      return;
+    }
+    const msg = ctx.webChatHistory?.find(body.instance, body.boot, body.id as number) ?? null;
+    if (!msg || msg.instance !== body.instance) { json(res, 404, { error: "message_gone" }); return; }
+    if (msg.role !== "agent") { json(res, 400, { error: "not_an_agent_page" }); return; }
+    let html: string, name = "";
+    if (fence !== undefined) {
+      const f = htmlFences(msg.text)[fence as number];
+      if (!f || !f.terminated) { json(res, 404, { error: "page_gone" }); return; }
+      html = f.code;
+    } else {
+      const a = (msg.attachments ?? []).find((x): x is WebChatAttachment => !("gone" in x) && x.id === att);
+      if (!a || a.kind === "photo" || !/\.html?$/i.test(a.name.trim())) { json(res, 404, { error: "page_gone" }); return; }
+      const served = ctx.webFiles?.servedFile?.(a.id) ?? null;
+      if (!served) { json(res, 404, { error: "page_gone" }); return; }
+      if (served.size > PAGE_SHARE_LIMITS.maxBytes) { json(res, 413, { error: "too_large" }); return; }
+      const read = ctx.webFiles?.read?.(a.id) ?? null;
+      if (!read) { json(res, 404, { error: "page_gone" }); return; }
+      html = read.bytes.toString("utf8");
+      name = a.name;
+    }
+    const made = await service.createPage!({ html, instance: body.instance, title: htmlTitle(html) || name, owner: now.person,
+      ...(typeof body.minutes === "number" ? { minutes: body.minutes } : {}) });
+    if (!made.ok) {
+      const status = made.error === "disabled" ? 404 : made.error === "tunnel" ? 503 : made.error === "too_many" ? 409 : made.error === "too_large" ? 413 : 400;
+      json(res, status, { error: made.error, ...(made.reason ? { reason: made.reason } : {}) });
+      return;
+    }
+    ctx.pageShareNotice?.(now.name, made.share);
+    json(res, 200, { share: made.share, url: made.url });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, "Page share failed");
+    try { json(res, 500, { error: "Page share failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -2024,6 +2114,7 @@ export function handleWebRequest(
   if (path === "/ui/office-skins" || path.startsWith("/ui/office-skins/")) return handleOfficeSkins(req, res, url, ctx, path, method);
   if (path === "/ui/office-pack-changes" || path.startsWith("/ui/office-pack-changes/")) return handleOfficePackChanges(req, res, url, ctx, path, method);
   if (path === "/ui/office-share" || path.startsWith("/ui/office-share/")) return handleOfficeShare(req, res, url, ctx, path, method);
+  if (path === "/ui/page-share" || path.startsWith("/ui/page-share/")) return handlePageShare(req, res, url, ctx, path, method);
 
   // ── #1630: avatars and Discord server emoji, same-origin (the page never loads a platform's CDN; img-src stays 'self') ──
 

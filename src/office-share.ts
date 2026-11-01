@@ -31,6 +31,7 @@ import type { Socket } from "node:net";
 import { officeMembers, type OfficeAct, type OfficeChart } from "./web-office-acts.js";
 import { LEVEL, levelsFor, type OfficeLevel } from "./office-levels.js";
 import type { Office } from "./web-office-store.js";
+import { PAGE_ENDED, PAGE_SHARE_CSP, PAGE_SHARE_LIMITS, PAGE_SHARE_PERMISSIONS, type PageShares } from "./page-share.js";
 
 export const OFFICE_SHARE_LIMITS = {
   /** Shares open at once, fleet-wide. */
@@ -470,6 +471,9 @@ export interface OfficeShareGateway {
  *   /o/<t>/office-skins/<id>                one of them, its instance names cut to the share (never cached)
  *   /o/<t>/office-skins/<id>/img/<sha>.png  its picture (immutable)
  *
+ * #2911: `/p/<token>` — a page share's snapshot (page-share.ts), the document itself under PAGE_SHARE_CSP (sandboxed to
+ * an opaque origin, no network, framed by no one); nothing below it. Its own limiter (`pageLimiter`).
+ *
  * and, with no token, the page's static files at the dashboard's own paths (`statics`: `/assets/<name>`, `/ui/js/<name>`;
  * office-share-page.ts names them), limited together (OFFICE_SHARE_LIMITS.static*).
  *
@@ -490,6 +494,9 @@ export function createOfficeShareGateway(opts: {
   pictureLimiter?: OfficeShareLimiter;
   create?: typeof createServer;
   marker?: string;
+  /** #2911: the open page shares (page-share.ts); none, and /p/ is an empty 404. */
+  pages?: Pick<PageShares, "find">;
+  pageLimiter?: OfficeShareLimiter;
 }): OfficeShareGateway {
   let host: string | null = null;
   const marker = opts.marker ?? `agend-office-share-${randomBytes(8).toString("hex")}`;
@@ -497,6 +504,7 @@ export function createOfficeShareGateway(opts: {
   const staticLimiter = opts.staticLimiter
     ?? new OfficeShareLimiter(undefined, { requests: OFFICE_SHARE_LIMITS.staticRequestsPerMinute, bytes: OFFICE_SHARE_LIMITS.staticBytesPerMinute });
   const pictureLimiter = opts.pictureLimiter ?? new OfficeShareLimiter();
+  const pageLimiter = opts.pageLimiter ?? new OfficeShareLimiter(undefined, { requests: PAGE_SHARE_LIMITS.requestsPerMinute, bytes: PAGE_SHARE_LIMITS.bytesPerMinute });
   const tooMany = (res: ServerResponse, seconds = 60): void => {
     res.writeHead(429, { "Content-Length": "0", "Cache-Control": "no-store", "Retry-After": String(seconds) });
     res.end();
@@ -533,6 +541,24 @@ export function createOfficeShareGateway(opts: {
       staticLimiter.sent("static", file.body.length);
       res.writeHead(200, { "Content-Type": file.type, "Content-Length": String(file.body.length), "Cache-Control": "no-cache" });
       res.end(method === "HEAD" ? undefined : file.body);
+      return;
+    }
+    // #2911: a page share — exactly /p/<token>, nothing below it.
+    const pg = /^\/p\/([A-Za-z0-9_-]{43})\/?$/.exec(url.pathname);
+    if (pg) {
+      const found = opts.pages?.find(pg[1]!) ?? null;
+      if (!found) {
+        res.writeHead(404, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'" });
+        res.end(method === "HEAD" ? undefined : PAGE_ENDED);
+        return;
+      }
+      const id = found.share.id;
+      if (!pageLimiter.admit(id)) return tooMany(res, pageLimiter.retryAfter(id));
+      const bytes = Buffer.from(found.html, "utf8");
+      pageLimiter.sent(id, bytes.length);
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": String(bytes.length), "Cache-Control": "no-store",
+        "Content-Security-Policy": PAGE_SHARE_CSP, "Permissions-Policy": PAGE_SHARE_PERMISSIONS });
+      res.end(method === "HEAD" ? undefined : bytes);
       return;
     }
     const m = /^\/o\/([A-Za-z0-9_-]{43})(\/.*)?$/.exec(url.pathname);

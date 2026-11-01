@@ -420,6 +420,8 @@ export interface WebConfig {
    * longest a share may live.
    */
   office_share?: { enabled?: boolean; max_hours?: number };
+  /** #2911: page share links — one agent page, read-only, for a limited time, on the Office share's tunnel (default on; 24 h at most). */
+  page_share?: { enabled?: boolean; max_hours?: number };
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
   /**
