@@ -30,7 +30,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["experimental", "public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "office_share", "page_share", "office_levels"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "preview_cdn", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "office_share", "page_share", "office_levels"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -497,6 +497,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (config.web.preview !== undefined && typeof config.web.preview !== "boolean") err("web.preview", "must be a boolean");
     // #1723: previews over the temporary public link (a second quick tunnel of the link's own).
     if (config.web.preview_on_public_link !== undefined && typeof config.web.preview_on_public_link !== "boolean") err("web.preview_on_public_link", "must be a boolean");
+    if (config.web.preview_cdn !== undefined && typeof config.web.preview_cdn !== "boolean") err("web.preview_cdn", "must be a boolean");
     if (config.web.preview_port !== undefined) {
       const p = config.web.preview_port;
       if (typeof p !== "number" || !Number.isInteger(p) || p < 1 || p > 65535) err("web.preview_port", "must be a port number (1-65535)");

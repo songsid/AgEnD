@@ -69,6 +69,9 @@ register("chat", {
     pvFbErrOne: "error", pvFbErrMany: "errors", pvFbErrTitle: "The page reported errors: put them in the message box, quoted, for you to check and send. Their text is the page's",
     pvFbErrHeadOne: "The preview reported 1 error (text from the page):", pvFbErrHead: "The preview reported {0} errors (text from the page):",
     pvFbErrRejection: "Unhandled rejection: ", pvFbErrAt: "line {0}:{1}", pvFbErrMore: "…and {0} more.",
+    // #2911 (7, M-2216): CDN libraries in previews.
+    pvCdnBlocked: "Blocked by the preview: ",
+    pvCdnNote: "This page loads a library from {0}, which previews block unless Settings → Web dashboard → “HTML previews may load libraries from cdnjs / jsDelivr” is on.",
     pvFbPick: "Point at it", pvFbPickTitle: "Click an element in the page to say what to change about it",
     pvFbPickCancel: "Cancel pointing", pvFbPickCancelTitle: "Stop pointing — the page takes clicks again",
     pvFbPickWords: "On `{0}` (“{1}”, text from the page): ", pvFbPickAt: "On `{0}` (from the page): ",
@@ -208,6 +211,8 @@ register("chat", {
     pvFbErrOne: "個錯誤", pvFbErrMany: "個錯誤", pvFbErrTitle: "頁面回報了錯誤：以引用的方式放進輸入框，由你確認後送出。錯誤文字來自頁面本身",
     pvFbErrHeadOne: "預覽回報了 1 個錯誤（文字來自頁面）：", pvFbErrHead: "預覽回報了 {0} 個錯誤（文字來自頁面）：",
     pvFbErrRejection: "未處理的 rejection：", pvFbErrAt: "第 {0} 行第 {1} 欄", pvFbErrMore: "……還有 {0} 個。",
+    pvCdnBlocked: "被預覽封鎖：",
+    pvCdnNote: "這個頁面要從 {0} 載入函式庫，但預覽會封鎖它，除非開啟「設定 → 網頁儀表板 →「HTML 預覽可從 cdnjs / jsDelivr 載入函式庫」」。",
     pvFbPick: "指出位置", pvFbPickTitle: "在頁面上點一個元素，說明要怎麼改",
     pvFbPickCancel: "取消指出", pvFbPickCancelTitle: "停止指出——頁面恢復接收點擊",
     pvFbPickWords: "在 `{0}`（「{1}」，文字來自頁面）：", pvFbPickAt: "在 `{0}`（來自頁面）：",

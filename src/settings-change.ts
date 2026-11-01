@@ -80,6 +80,11 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   { path: ["fleet", "web", "usage_report_on_public_link"], def: false, looser: () => false },
   // #2661: Office levels apply at once either way: a level is a badge (the numbers behind it follow the usage report's rules).
   { path: ["fleet", "web", "office_levels"], def: true, looser: () => false },
+  // #2911 (7): CDN libraries in previews apply at once either way (design, approved by the leader): the default (off) is
+  // the gate. Its threat is third-party requests that can carry data out — the leak class previews already have (WebRTC,
+  // navigation; the banner says so); the account boundary (G1) does not change. The switch is reached only from a
+  // signed-in session on the dashboard reached directly (never over the public link), so a confirmation stops nothing more.
+  { path: ["fleet", "web", "preview_cdn"], def: false, looser: () => false },
   // #1629 r4.1 Q3 (b): the card's upload limits and the picture quota — a lower one applies directly, a higher one is
   // confirmed. Judged as the limit they GIVE (clamped to the bounds, as the loader does): 9999 → 5000 changes nothing.
   ...Object.entries(APPEARANCE_BOUNDS).flatMap(([group, keys]) => Object.entries(keys as Record<string, readonly [number, number]>).map(([key, [floor, ceiling]]) => {

@@ -62,6 +62,10 @@ Close it with **Close public link** → **Close link (signs public browsers out)
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Access & security, Look,
 schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
+HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
+jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
+only — those requests leave the machine. The preview panel steps between a page's versions (‹ v2/3 ›, **Changes**),
+lists every page (**Pages (N)**), shows a page at phone or tablet width, and goes full screen.
 
 **Sessions.**
 - Local: 48 h from sign-in and 48 h unused (`web.session.local.absolute_hours` / `idle_hours`, 1–720). Background
