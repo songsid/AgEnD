@@ -110,6 +110,15 @@ describe("lineDiff / diffHunks", () => {
     expect(pv.diffHunks(pv.lineDiff(big.join("\n"), edited.join("\n"))).length).toBe(1);
     expect(performance.now() - t0).toBeLessThan(2000);
   });
+  it("#2915 review: many short or blank lines are refused before anything is split or built (the 20k-line edit above still diffs)", () => {
+    const blank = "\n".repeat(5_000_000);
+    const t0 = performance.now();
+    expect(pv.lineDiff(blank, blank)).toBeNull();
+    expect(pv.lineDiff("a", "x\n".repeat(pv.DIFF_LIMITS.maxInputLines + 1))).toBeNull();
+    expect(performance.now() - t0).toBeLessThan(500);
+    const at = "x\n".repeat(pv.DIFF_LIMITS.maxInputLines);
+    expect(pv.lineDiff(at, at)?.length, "exactly at the budget: still compared").toBe(pv.DIFF_LIMITS.maxInputLines);
+  });
   it("hunks: context around each change, merged when they touch, 1-based starts and counts as a unified diff has them", () => {
     const a = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"], b = [...a];
     b[1] = "two"; b[8] = "nine";
@@ -165,6 +174,40 @@ describe("the panel's ‹ v of n › step", () => {
     await click(doc.querySelector(".pv-ver-next")); await settle();
     await click(doc.querySelector(".pv-ver-prev")); await settle();
     expect([shown(), (globalThis.fetch as any).mock.calls.filter((c: any) => c[0].endsWith(ID1)).length]).toEqual([`b-1:a${ID1}`, 1]);
+  });
+});
+
+describe("#2915 review: a version still being read never replaces a later open", () => {
+  it("‹ to an attached v1 whose read is held; the panel closes and v2 is opened again; v1's late answer is dropped", async () => {
+    const held: Record<string, () => void> = {};
+    const files: Record<string, string> = { [ID1]: PAGE(1), [ID2]: PAGE(2) };
+    globalThis.fetch = vi.fn((url: string) => {
+      const id = /\/ui\/file\/([0-9a-f]{32})$/.exec(url)![1];
+      const answer = { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(files[id]).buffer };
+      return id === ID1 ? new Promise(r => { held[id] = () => r(answer); }) : Promise.resolve(answer);
+    }) as any;
+    const doc = await chat([withFile(1, ID1, "page.html"), withFile(2, ID2, "page.html")]);
+    await click(cards(doc)[1].querySelector(".pv-open")); await settle(); await settle();
+    expect(shown()).toBe(`b-2:a${ID2}`);
+    await click(doc.querySelector(".pv-ver-prev"));             // v1's read is held
+    const v2 = { ...pp.panelStore.get().open };
+    pp.closePanel(); await settle();
+    pp.openPanel(v2); await settle();                          // the same block again, before v1 answers
+    held[ID1](); await settle(); await settle();
+    expect([shown(), pp.panelStore.get().open.code]).toEqual([`b-2:a${ID2}`, PAGE(2)]);
+  });
+  it("control: with nothing in between, the held read shows v1 when it answers", async () => {
+    let release = () => {};
+    globalThis.fetch = vi.fn((url: string) => {
+      const id = /\/ui\/file\/([0-9a-f]{32})$/.exec(url)![1];
+      const answer = { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(id === ID1 ? PAGE(1) : PAGE(2)).buffer };
+      return id === ID1 ? new Promise(r => { release = () => r(answer); }) : Promise.resolve(answer);
+    }) as any;
+    const doc = await chat([withFile(1, ID1, "page.html"), withFile(2, ID2, "page.html")]);
+    await click(cards(doc)[1].querySelector(".pv-open")); await settle(); await settle();
+    await click(doc.querySelector(".pv-ver-prev"));
+    release(); await settle(); await settle();
+    expect(shown()).toBe(`b-1:a${ID1}`);
   });
 });
 

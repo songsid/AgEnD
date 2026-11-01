@@ -228,14 +228,14 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     if (!spec || reading.current) return;
     const cached = spec.code == null ? loaded.current.get(spec.key) : undefined;
     if (spec.code != null || cached != null) { keepView.current = keep; openPanel(cached != null ? { ...spec, code: cached } : spec); return; }
-    const was = open && open.key, mine = reading.current = spec;
+    // #2915 review: the panel's generation, not just the key — a close and reopen of the same block while this read
+    // waits moves it, and the read is then dropped (claimPanel also drops any earlier click still reading).
+    const gen = claimPanel(), mine = reading.current = spec;
     setNewerNote(t("chat.pvLoading"));
     // A click on a version reads it whatever its size (up to the 50 MB ceiling); over 8 MB the panel then asks.
     const r = await loadHtmlAttachment(spec.att, undefined, { anyway: true });
-    if (reading.current !== mine) return;
-    reading.current = null;
-    const now = panelStore.get().open;
-    if (!now || now.key !== was) return;
+    if (reading.current === mine) reading.current = null;
+    if (panelVersion() !== gen) return;
     if (!r.ok) { setNewerNote(attReason(r)); return; }
     setNewerNote("");
     loaded.current.set(spec.key, r.code);

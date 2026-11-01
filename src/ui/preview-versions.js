@@ -51,16 +51,27 @@ export function versionsOf(open, msgs, keyOf) {
 // ── Changes: a line diff (Myers), bounded ──
 
 /** Past these, "Changes" says the versions are too large or too different to compare here. */
-export const DIFF_LIMITS = { maxChars: 5 * 1024 * 1024, maxEdits: 2000, context: 3, maxLines: 3000 };
+export const DIFF_LIMITS = { maxChars: 5 * 1024 * 1024, maxInputLines: 50000, maxEdits: 2000, context: 3, maxLines: 3000 };
+
+/** More than `max` lines in `s`? Counted without splitting it (#2915 review: a budget before anything is built). */
+function overLines(s, max) {
+  let n = 0;
+  for (let i = s.indexOf("\n"); i >= 0; i = s.indexOf("\n", i + 1)) if (++n > max) return true;
+  return false;
+}
 
 const lines = (s) => { if (!s) return []; const v = String(s).replace(/\r\n?/g, "\n").split("\n"); if (v.length > 1 && v[v.length - 1] === "") v.pop(); return v; };
 
 /**
  * The line edits from `a` to `b`: [{ t: " " | "-" | "+", text }] in order, or null when it cannot be done within
- * DIFF_LIMITS (either side over maxChars, or more than maxEdits lines differ after the common head and tail).
+ * DIFF_LIMITS: either side over maxChars or maxInputLines (checked before anything is split or built: an op per line
+ * is made only under that budget), or more than maxEdits lines differ after the common head and tail.
  */
 export function lineDiff(a, b, limits = DIFF_LIMITS) {
-  if (String(a ?? "").length > limits.maxChars || String(b ?? "").length > limits.maxChars) return null;
+  const sa = String(a ?? ""), sb = String(b ?? "");
+  if (sa.length > limits.maxChars || sb.length > limits.maxChars) return null;
+  if (overLines(sa, limits.maxInputLines) || overLines(sb, limits.maxInputLines)) return null;
+  a = sa; b = sb;
   const A = lines(a), B = lines(b);
   let head = 0;
   while (head < A.length && head < B.length && A[head] === B[head]) head++;
