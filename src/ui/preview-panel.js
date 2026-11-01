@@ -116,6 +116,16 @@ export function clampWidth(w, total) {
   return Math.round(Math.min(max, Math.max(MIN_PANEL, w)));
 }
 
+// ── #2911 (2): the page's width in the panel (a phone, a tablet, or the panel's own), this device's choice ──
+
+const DEVICE_KEY = "agend_preview_panel_device";
+/** The widths a preview can be shown at: CSS px, or null for the panel's full width. */
+export const DEVICE_WIDTHS = { full: null, tablet: 768, phone: 390 };
+export function storedDevice() { try { const v = localStorage.getItem(DEVICE_KEY); return Object.hasOwn(DEVICE_WIDTHS, v) ? v : "full"; } catch { return "full"; } }
+function storeDevice(v) { try { localStorage.setItem(DEVICE_KEY, v); } catch { /* this page only */ } }
+/** The element the page has fullscreen (standard, else webkit's), or null. */
+const fullscreenEl = () => { const d = globalThis.document; return (d && (d.fullscreenElement || d.webkitFullscreenElement)) || null; };
+
 /** #1770: as the thread shows it — the fleet's zone, with the day when it is not today. */
 const timeOf = (ts) => (ts ? chatTime(ts, { yesterday: (hm) => t("chat.yesterdayAt", hm) }) : "");
 
@@ -139,6 +149,32 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const pending = useRef(0);      // #1704: the card's click, waiting for this device's Allow (the st.run it came with)
   const ownAllow = useRef(0);     // while this panel's own Allow commits its choice: the click it answers (not cancelled by it)
   const holder = useRef(null), divider = useRef(null), panel = useRef(null);
+  const [device, setDeviceState] = useState(storedDevice);   // #2911 (2): the page's width
+  const setDevice = (v) => { setDeviceState(v); storeDevice(v); };
+  // Full screen: the Fullscreen API on the panel (the dashboard's document — the frame's own policy still denies it),
+  // or, where the page may not, the panel over the whole window ("immersive"). Esc leaves it before it closes the panel.
+  const [fs, setFs] = useState("");
+  const fsTarget = useRef(null);   // the element asked to go full screen (the panel may be gone when it is left)
+  const enterFs = () => {
+    const el = panel.current, d = globalThis.document; if (!el || fs) return;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    const enabled = d ? (d.fullscreenEnabled ?? d.webkitFullscreenEnabled) : false;
+    if (typeof req !== "function" || enabled === false) { setFs("immersive"); return; }
+    let r;
+    fsTarget.current = el;
+    try { r = req.call(el); } catch { setFs("immersive"); return; }
+    if (r && typeof r.then === "function") r.then(() => { if (fullscreenEl() === el) setFs("native"); }, () => setFs("immersive"));
+    else setFs("native");
+  };
+  function leaveFs() {
+    const d = globalThis.document;
+    const el = fsTarget.current; fsTarget.current = null;
+    if (d && el && fullscreenEl() === el) {
+      const ex = d.exitFullscreen || d.webkitExitFullscreen;
+      try { const r = typeof ex === "function" ? ex.call(d) : null; if (r && typeof r.catch === "function") r.catch(() => {}); } catch { /* already out */ }
+    }
+    setFs("");
+  }
   const open = st.open?.instance === name ? st.open : null;
 
   useEffect(() => panelStore.subscribe(setSt), []);
@@ -149,6 +185,13 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   useEffect(() => (P() ? P().onChange(() => { if (pending.current && ownAllow.current !== pending.current) pending.current = 0; choice(n => n + 1); }) : undefined), []);
   // Leaving the chat (another instance, another panel) closes the panel: its frame stops with the thread's.
   useEffect(() => () => closePanel(), []);
+  // Full screen ends with the browser's own Esc or its exit control too: follow it.
+  useEffect(() => {
+    const d = globalThis.document; if (!d || !d.addEventListener) return undefined;
+    const sync = () => setFs(f => (f === "native" && fullscreenEl() !== fsTarget.current ? "" : f));
+    d.addEventListener("fullscreenchange", sync); d.addEventListener("webkitfullscreenchange", sync);
+    return () => { d.removeEventListener("fullscreenchange", sync); d.removeEventListener("webkitfullscreenchange", sync); };
+  }, []);
   // #1770: the source and newer-version labels say the day as the thread does — drawn again when the fleet's day
   // changes, while a block is open. A render: the frame and the run are left as they are.
   const [, dayTick] = useState(0);
@@ -177,6 +220,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     // Focus goes to the panel's close control that is on screen (Back on a phone, × beside the thread).
     if (panel.current) { const f = [...panel.current.querySelectorAll(".pv-panel-close")].find(b => b.offsetParent !== null); if (f) f.focus(); }
   }, [open && open.key, st.run]);
+  // The panel closing, or showing another instance's block: out of full screen.
+  useEffect(() => { if (!open) leaveFs(); }, [!!open]);
   // A later reply with a newer version of this block: offered, not swapped in.
   useEffect(() => {
     setNewerNote(""); reading.current = null;
@@ -277,7 +322,11 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   }, [shown, open && open.key, prev && prev.key]);
   const fileName = open && open.att ? open.att.name : undefined;
   // Esc in the panel closes it (and is not the chat's "stop the reply").
-  const onPanelKey = (e) => { if (e.key === "Escape" && !e.isComposing) { e.preventDefault(); closePanel(); } };
+  const onPanelKey = (e) => {
+    if (e.key !== "Escape" || e.isComposing) return;
+    e.preventDefault();
+    if (fs) leaveFs(); else closePanel();
+  };
 
   if (!open) return null;
   const going = run.state === "starting" || run.state === "running";
@@ -300,7 +349,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
   return html`<div data-trust="preview" class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
       aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>
-    <aside data-trust="preview" class="pv-panel" ref=${panel} aria-label=${t("chat.pvPanel")} onKeyDown=${onPanelKey}>
+    <aside data-trust="preview" class=${`pv-panel${fs ? ` pv-fs pv-fs-${fs}` : ""}`} ref=${panel} aria-label=${t("chat.pvPanel")} onKeyDown=${onPanelKey}>
       <div class="pv-panel-head">
         <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
         <div class="pv-panel-title"><strong>${t("chat.pvPanel")}</strong>
@@ -319,10 +368,14 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
           ${prev ? html`<button type="button" class=${`btn btn-sm pv-changes${shown === "changes" ? " on" : ""}`} aria-pressed=${shown === "changes" ? "true" : "false"} title=${t("chat.pvChanges")} onClick=${() => setView("changes")}><${Icon} name="diff" size=${14} /><span class="lbl">${t("chat.pvChanges")}</span></button>` : null}
         </div>
         <span class="grow"></span>
+        ${shown === "preview" ? html`<select class="pv-width" aria-label=${t("chat.pvWidth")} title=${t("chat.pvWidth")} value=${device} onChange=${(e) => setDevice(e.currentTarget.value)}>
+          <option value="full">${t("chat.pvWidthFull")}</option><option value="tablet">${t("chat.pvWidthTablet")}</option><option value="phone">${t("chat.pvWidthPhone")}</option></select>` : null}
         ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(true); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
           <button type="button" class="btn btn-sm pv-panel-stop" title=${t("chat.pvStop")} onClick=${stop}><${Icon} name="stop" size=${14} /><span class="lbl">${t("chat.pvStop")}</span></button>`
           : run.state === "large" ? html`<button type="button" class="btn btn-sm btn-primary pv-panel-anyway" title=${t("chat.pvAnyway")} disabled=${!a.ok} onClick=${() => start(true)}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvAnyway")}</span></button>`
           : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${() => start()}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
+        <button type="button" class=${`btn btn-sm only-wide pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+          onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
         <${PanelActions} open=${open} name=${name} run=${run} view=${view} />
         <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
       </div>
@@ -332,7 +385,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
       ${going && !P().bannerAcked() ? html`<div class="pv-banner"><span class="pv-banner-text">${P().banner()}</span>
         <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P().bannerAckTitle()} onClick=${() => P().ackBanner()}>${P().bannerAckLabel()}</button></div>` : null}
       ${note && shown === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
-      <div class=${`pv-panel-body${shown !== "preview" ? " show-code" : ""}`}>
+      <div class=${`pv-panel-body${shown !== "preview" ? " show-code" : ` w-${device}`}`}>
         <div class="pv-holder" ref=${holder}></div>
         ${shown === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}
         ${shown === "changes" ? html`<${Changes} changes=${changes} />` : null}

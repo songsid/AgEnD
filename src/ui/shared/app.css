@@ -819,6 +819,16 @@ img.amb-p { object-fit: contain; }
 .pv-diff .d-del { background: var(--danger-bg); color: var(--danger); }
 .pv-diff .d-hunk { color: var(--text-3); }
 .pv-diff-note { margin: 0; }
+/* #2911 (2): the page at a phone's or a tablet's width, centred; a panel narrower than that scrolls sideways. */
+.pv-panel-body.w-phone, .pv-panel-body.w-tablet { overflow-x: auto; }
+.pv-panel-body.w-phone .pv-holder { flex: 1 0 auto; width: 390px; max-width: none; margin-inline: auto; }
+.pv-panel-body.w-tablet .pv-holder { flex: 1 0 auto; width: 768px; max-width: none; margin-inline: auto; }
+.pv-width { font: inherit; font-size: var(--fs-xs); padding: 2px var(--s-1); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); }
+/* Full screen: the API's (:fullscreen), or the panel over the whole window where the page may not use it. */
+.pv-panel.pv-fs { width: auto; max-width: none; }
+.pv-panel.pv-fs-immersive { position: fixed; inset: 0; z-index: 60; }
+/* A narrow panel: two rows — versions and views; then the width, the run controls, the page's actions and Download. */
+@container (max-width: 560px) { .pv-panel-bar .grow { flex-basis: 100%; height: 0; } }
 .msg.flash { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); transition: outline-color var(--t-med); }
 /* #2272: a message's reply action (top right, on hover or focus), the quote a reply shows, the message menu, a swipe. */
 .msg[data-key] { position: relative; }
