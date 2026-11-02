@@ -6,8 +6,7 @@
   "bin": {
     "agend": "./launcher/agend",
     "agend-agent": "./launcher/agend-agent",
-    "agend-install": "./launcher/agend-install.cjs",
-    "agend-runtime": "./dist/runtime-cli.js"
+    "agend-install": "./launcher/agend-install.cjs"
   },
   "exports": {
     ".": "./dist/cli.js",
