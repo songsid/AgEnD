@@ -64,3 +64,23 @@ it('host facade retains handle identity and exposes no remote PID as a local sig
  expect(await host.getServerPid()).toBeNull();expect(await host.getPanePid()).toBeNull();expect(await host.listPanePids()).toEqual([]);
  expect(await host.listWindows()).toEqual([{id:f.port.getWindowId(),name:f.launch.instance}]);
 });
+
+import {PANE_TRANSCRIPT_EMPTY_ANCHOR}from'../src/runtime-pane-transcript-protocol.js';
+it('pins one conversation, preserves it on reattach, and refuses foreign transcript scope',async()=>{
+ const f=await fixture(),sessionId=randomUUID(),cursor={sessionId,offset:0,fileId:null,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR};
+ expect(()=>f.port.runtimeTranscriptReference(cursor)).toThrow('not pinned');f.output(`Session: ${sessionId}\r\n`);
+ await f.port.bindConversation(sessionId);const ref=f.port.runtimeTranscriptReference(cursor);
+ expect(f.port.isTranscriptObservationCurrent(ref)).toBe(true);
+ for(const key of ['machineId','hostBootId','paneId','launchId','agentId']as const)expect(f.port.isTranscriptObservationCurrent({...ref,[key]:randomUUID()})).toBe(false);
+ expect(f.port.isTranscriptObservationCurrent({...ref,provider:'claude-code'})).toBe(false);
+ expect(f.port.isTranscriptObservationCurrent({...ref,cursor:{...cursor,sessionId:randomUUID()}})).toBe(false);
+ const next=f.make();await next.open();expect(next.ownedSnapshot()?.sessionId).toBe(sessionId);expect(f.write).not.toHaveBeenCalled();
+});
+it.each(['disconnect','lease'])('rejects a transcript response after %s without changing the cursor or sending keys',async kind=>{
+ const f=await fixture(),sessionId=randomUUID(),cursor={sessionId,offset:0,fileId:null,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR};
+ f.output(`Session: ${sessionId}\r\n`);await f.port.bindConversation(sessionId);const before=readFileSync(f.file,'utf8');
+ let release!:(value:unknown)=>void,current=true;f.endpoint.call=vi.fn(()=>new Promise(done=>{release=done;}));
+ const pending=f.port.readTranscript(cursor,()=>current);if(kind==='disconnect')f.offline();else current=false;
+ release({state:'pending',cursor,data:'',complete:false,gap:false});await expect(pending).rejects.toThrow('stale');
+ expect(readFileSync(f.file,'utf8')).toBe(before);expect(f.write).not.toHaveBeenCalled();
+});

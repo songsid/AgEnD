@@ -2,6 +2,7 @@
 import { validNativeSessionId, validateNativeModel } from "./windows-cli-providers.js";
 import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
 import type { PaneKey, PaneSize } from "./pane-port.js";
+import { validatePaneTranscriptCursor, type PaneTranscriptCursor } from "./runtime-pane-transcript-protocol.js";
 
 export const RUNTIME_PANE_PROTOCOL = 1;
 export const PANE_EDIT_KEYS = { "C-a": "\x01", "C-e": "\x05", "C-u": "\x15", "C-k": "\x0b", BSpace: "\x7f", DC: "\x1b[3~", Home: "\x1b[H", End: "\x1b[F", Left: "\x1b[D", Right: "\x1b[C" } as const;
@@ -32,12 +33,15 @@ export interface RuntimePaneSnapshot extends PaneSize {
   outputAt: number;
   commandSequence: number;
   exitCode?: number;
+  sessionId?: string;
 }
 export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: string }
 export type RuntimePaneRequest =
   | { action: "list" }
   | { action: "open"; operationId: string; launch: RuntimePaneLaunch }
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
+  | { action: "bind-session"; paneId: string; launchId: string; sessionId: string }
+  | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; kind: "literal" | "paste"; text: string }
   | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; key: PaneKey }
   | { action: "resize"; paneId: string; launchId: string; operationId: string; sequence: number; columns: number; rows: number }
@@ -79,6 +83,12 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
       if (value.history !== undefined) dimension(value.history, 0, 2000);
       if ([value.joined, value.ansi].some(item => item !== undefined && typeof item !== "boolean")) throw Error("Invalid pane capture options");
       break;
+    case "bind-session":
+      closed(value, ["action", "paneId", "launchId", "sessionId"]);
+      if (!validNativeSessionId("codex", value.sessionId)) throw Error("Invalid pane conversation identity");
+      break;
+    case "transcript":
+      closed(value, ["action", "paneId", "launchId", "cursor"]); validatePaneTranscriptCursor(value.cursor); break;
     case "input":
       closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "kind", "text"]);
       if (value.kind !== "literal" && value.kind !== "paste") throw Error("Invalid pane input kind");
@@ -104,13 +114,13 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
   }
   if (value.action !== "list") {
     id(value.paneId); id(value.launchId);
-    if (value.action !== "capture") { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
+    if (!["capture", "transcript", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
   }
   return value as unknown as RuntimePaneRequest;
 }
 
 export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot {
-  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "columns", "rows", "exitCode"]);
+  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "columns", "rows", "exitCode", "sessionId"]);
   id(value.hostBootId); id(value.paneId); id(value.agentId); id(value.launchId);
   if (typeof value.instance !== "string" || !/^[\p{L}\p{N}_.-]{1,160}$/u.test(value.instance)
     || !["starting", "running", "exited", "unknown"].includes(String(value.state))) throw Error("Invalid pane snapshot");
@@ -118,5 +128,6 @@ export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot
   dimension(value.seq, 0, Number.MAX_SAFE_INTEGER); dimension(value.commandSequence, 0, Number.MAX_SAFE_INTEGER);
   if (typeof value.outputAt !== "number" || !Number.isFinite(value.outputAt) || value.outputAt < 0
     || value.exitCode !== undefined && (!Number.isSafeInteger(value.exitCode) || (value.exitCode as number) < 0)) throw Error("Invalid pane snapshot state");
+  if (value.sessionId !== undefined && !validNativeSessionId("codex", value.sessionId)) throw Error("Invalid pane conversation identity");
   return value as unknown as RuntimePaneSnapshot;
 }

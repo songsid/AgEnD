@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSyn
 import { join } from "node:path"; import { tmpdir } from "node:os"; import { randomUUID, createHash } from "node:crypto";
 import { NativePaneTranscriptReader, nativeClaudeProjectKey, validatePaneTranscriptCursor } from "../src/runtime-pane-transcript.js";
 import { claudeProjectKey } from "../src/backend/claude-code.js";
+import { validatePaneTranscriptWireBatch } from "../src/runtime-pane-transcript-protocol.js";
 const roots: string[] = []; afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 function rig(provider: "codex" | "claude-code" = "codex") {
  const root = mkdtempSync(join(tmpdir(), "agend-pane-transcript-")); roots.push(root);
@@ -68,12 +69,28 @@ it("rejects replacement, truncation and checkpoint-byte changes without advancin
  writeFileSync(f.path, f.line(f.meta)); await expect(reader.read(first.cursor)).rejects.toThrow("truncated");
  renameSync(f.path, f.path + ".old"); writeFileSync(f.path, f.line(f.meta)); await expect(reader.read(first.cursor)).rejects.toThrow("identity changed"); expect(JSON.stringify(first.cursor)).toBe(saved);
 });
-it("an oversized line or invalid UTF-8/JSON cannot manufacture a completed boundary", async () => {
+it("skips an oversized record with an explicit gap and never parses its partial tail as a turn boundary", async () => {
  const f = rig(), reader = f.reader(); writeFileSync(f.path, f.line(f.meta)); const first = await reader.read();
- appendFileSync(f.path, "x".repeat(256 * 1024)); await expect(reader.read(first.cursor)).rejects.toThrow("bounded read size");
+ appendFileSync(f.path, "x".repeat(256 * 1024)); const skipped = await reader.read(first.cursor); expect(skipped).toMatchObject({ gap: true, complete: false, lines: [], cursor: { skipping: true } }); expect(skipped.cursor.offset).toBeGreaterThan(first.cursor.offset);
+ appendFileSync(f.path, f.line({ type: "event_msg", payload: { type: "task_complete", turn_id: "forged-tail" } }) + f.line({ type: "event_msg", payload: { type: "task_started", turn_id: "real-new-turn" } }));
+ const next = await reader.read(skipped.cursor); expect(next.gap).toBe(true); expect(next.cursor.skipping).toBeUndefined(); expect(next.lines).toHaveLength(1); expect(JSON.parse(next.lines[0]).payload.turn_id).toBe("real-new-turn"); expect(next.complete).toBe(true);
+});
+it("invalid UTF-8/JSON cannot manufacture a completed boundary or leak source text into an error", async () => {
+ const f = rig();
  writeFileSync(f.path, Buffer.concat([Buffer.from(f.line(f.meta)), Buffer.from([0xff, 10])])); await expect(f.reader().read()).rejects.toThrow();
  writeFileSync(f.path, f.line(f.meta) + "not-json\n"); await expect(f.reader().read()).rejects.toThrow();
  writeFileSync(f.path, f.line(f.meta) + "PRIVATE_PROVIDER_OUTPUT\n"); const error = await f.reader().read().catch(e => e); expect(error.message).toBe("Pane transcript contains an invalid JSON record"); expect(error.message).not.toContain("PRIVATE_PROVIDER_OUTPUT");
+});
+it("keeps escaped transcript data below a runtime frame and validates the closed wire response", async () => {
+ const f = rig(); writeFileSync(f.path, f.line(f.meta) + f.line({ type: "response_item", payload: { type: "message", role: "user", content: [{ text: "\\".repeat(64000) }] } }));
+ const batch = await f.reader().read(); const { lines, ...wire } = batch; expect(lines).toHaveLength(2); expect(Buffer.byteLength(JSON.stringify(wire))).toBeLessThan(256 * 1024);
+ expect(validatePaneTranscriptWireBatch(wire, f.sessionId)).toEqual(wire); expect(Buffer.from(wire.data, "base64").toString("utf8").trimEnd().split("\n")).toEqual(lines);
+ for (const extra of [{ path: f.path }, { data: "not base64" }, { cursor: { ...wire.cursor, sessionId: randomUUID() } }, { state: "pending" }, { gap: "yes" }]) expect(() => validatePaneTranscriptWireBatch({ ...wire, ...extra }, f.sessionId)).toThrow();
+});
+it("validates a large initial metadata record once, then reports its skipped event bytes explicitly", async () => {
+ const f = rig(); writeFileSync(f.path, f.line({ ...f.meta, payload: { ...(f.meta as any).payload, base_instructions: "x".repeat(200000) } }) + f.line({ type: "event_msg", payload: { type: "task_started", turn_id: "owned" } }));
+ const reader = f.reader(), first = await reader.read(); expect(first.cursor.fileId).toMatch(/^[a-f0-9]{64}$/); expect(first.gap).toBe(true);
+ const next = await reader.read(first.cursor); expect(next.lines).toHaveLength(1); expect(JSON.parse(next.lines[0]).payload.turn_id).toBe("owned");
 });
 it("a revoked read and concurrent look cannot publish late ownership evidence", async () => {
  const f = rig(), reader = f.reader(); writeFileSync(f.path, f.line(f.meta)); let current = true;

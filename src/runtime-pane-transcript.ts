@@ -9,17 +9,14 @@ import { createHash } from "node:crypto";
 import { validNativeSessionId } from "./windows-cli-providers.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { PANE_TRANSCRIPT_EMPTY_ANCHOR as EMPTY, PANE_TRANSCRIPT_MAX_FILE_BYTES as MAX_FILE, validatePaneTranscriptCursor,
-  type PaneTranscriptCursor, type PaneTranscriptProvider } from "./runtime-pane-transcript-protocol.js";
+  type PaneTranscriptCursor, type PaneTranscriptProvider, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { validatePaneTranscriptCursor, type PaneTranscriptCursor, type PaneTranscriptProvider } from "./runtime-pane-transcript-protocol.js";
-export interface PaneTranscriptBatch {
-  state: "pending" | "ready";
-  cursor: PaneTranscriptCursor;
+export interface PaneTranscriptBatch extends PaneTranscriptWireBatch {
   /** Complete UTF-8 JSONL records only. A partial/oversized record never becomes a turn boundary. */
   lines: string[];
-  complete: boolean;
 }
 export interface PaneTranscriptRoots { codex: string; claude: string }
-const CHUNK = 256 * 1024, META = 64 * 1024, ANCHOR = 4096;
+const CHUNK = 160 * 1024, META = 1024 * 1024, ANCHOR = 4096;
 const hash = (value: string | Buffer): string => createHash("sha256").update(value).digest("hex");
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "ENOENT";
 const comparable = (path: string): string => /^[a-z]:[\\/]/i.test(path)
@@ -77,9 +74,26 @@ function metadata(lines: string[], provider: PaneTranscriptProvider, sessionId: 
   }
   if (!proved) throw Error("Pane transcript has no exact session and workspace proof yet");
 }
+function ownedHeader(head: Buffer, provider: PaneTranscriptProvider, sessionId: string, cwd: string): Buffer {
+  const lines: string[] = [];
+  for (let start = 0; start < head.length;) {
+    const end = head.indexOf(10, start); if (end < 0) break;
+    const line = decode(head.subarray(start, end)).replace(/\r$/, ""); start = end + 1;
+    if (!line) continue;
+    const entry = record(line); lines.push(line);
+    if (provider === "codex" || entry.sessionId === sessionId && typeof entry.cwd === "string") {
+      metadata(lines, provider, sessionId, cwd); return head.subarray(0, start);
+    }
+    if (entry.sessionId !== undefined && entry.sessionId !== sessionId || entry.cwd !== undefined && comparable(String(entry.cwd)) !== comparable(cwd)
+      || entry.isSidechain === true) throw Error("Pane transcript session metadata differs from its pinned conversation");
+  }
+  if (!lines.length) throw Error("Pane transcript metadata is incomplete");
+  throw Error("Pane transcript has no exact session and workspace proof yet");
+}
 export class NativePaneTranscriptReader {
   private busy = false;
   private pinnedFile: string | undefined;
+  private metadataBytes = 0;
   private discovery: AsyncGenerator<string | null> | undefined;
   private discoveryMatches: string[] = [];
   private canonicalCwd: string | undefined;
@@ -152,7 +166,7 @@ export class NativePaneTranscriptReader {
     const found = this.pinnedFile ? { path: this.pinnedFile, pending: false } : await this.locate(current), path = found.path; check();
     if (!path) {
       if (cursor.fileId && !found.pending) throw Error("Pinned pane transcript disappeared");
-      return { state: "pending", cursor, lines: [], complete: false };
+      return { state: "pending", cursor, lines: [], data: "", complete: false, gap: false };
     }
     let file: FileHandle;
     try {
@@ -162,10 +176,8 @@ export class NativePaneTranscriptReader {
       try {
         const stat = await file.stat(); regular(stat);
         if (!sameFile(before, stat) || comparable(await realpath(path)) !== comparable(path)) throw Error("Pane transcript changed while opening");
-        const head = await bytes(file, 0, Math.min(stat.size, META)), end = head.lastIndexOf(10);
-        if (end < 0) throw Error("Pane transcript metadata is incomplete");
-        const header = head.subarray(0, end + 1);
-        metadata(decode(header).split(/\r?\n/).filter(Boolean), this.provider, this.sessionId, this.cwd);
+        const head = await bytes(file, 0, Math.min(stat.size, this.metadataBytes || META));
+        const header = ownedHeader(head, this.provider, this.sessionId, this.cwd);
         // File identity excludes append-sensitive mtime/size; its first record is immutable session metadata.
         const firstEnd = header.indexOf(10) + 1;
         const fileId = hash(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}:${hash(header.subarray(0, firstEnd))}`);
@@ -173,27 +185,40 @@ export class NativePaneTranscriptReader {
         const anchor = await bytes(file, Math.max(0, cursor.offset - ANCHOR), Math.min(cursor.offset, ANCHOR));
         if (hash(anchor) !== cursor.anchor) throw Error("Pane transcript checkpoint bytes changed");
         const chunk = await bytes(file, cursor.offset, Math.min(CHUNK, stat.size - cursor.offset));
-        const last = chunk.lastIndexOf(10), completeBytes = last < 0 ? Buffer.alloc(0) : chunk.subarray(0, last + 1);
-        if (last < 0 && chunk.length === CHUNK) throw Error("Pane transcript record exceeds the bounded read size");
+        let start = 0, consumed = 0, skipping = cursor.skipping === true, gap = skipping;
+        if (skipping) {
+          const next = chunk.indexOf(10);
+          if (next < 0) start = consumed = chunk.length;
+          else { start = consumed = next + 1; skipping = false; }
+        }
+        const last = chunk.lastIndexOf(10);
+        const completeBytes = last < start ? Buffer.alloc(0) : chunk.subarray(start, last + 1);
+        consumed = Math.max(consumed, start + completeBytes.length);
+        if (!skipping && !consumed && chunk.length === CHUNK) { consumed = chunk.length; skipping = true; gap = true; }
         const lines = decode(completeBytes).split(/\r?\n/).filter(Boolean);
         // Reject corrupted JSON instead of dropping a possible user or turn-boundary record.
-        for (const line of lines) record(line);
-        const offset = cursor.offset + completeBytes.length;
+        for (const line of lines) {
+          const entry = record(line);
+          if (this.provider === "claude-code" && (entry.sessionId !== undefined && entry.sessionId !== this.sessionId
+            || entry.cwd !== undefined && comparable(String(entry.cwd)) !== comparable(this.cwd) || entry.isSidechain === true)) throw Error("Pane transcript record belongs to another conversation");
+          if (this.provider === "codex" && entry.type === "session_meta") metadata([line], this.provider, this.sessionId, this.cwd);
+        }
+        const offset = cursor.offset + consumed;
         const nextAnchor = await bytes(file, Math.max(0, offset - ANCHOR), Math.min(offset, ANCHOR));
-        if (hash(await bytes(file, cursor.offset, completeBytes.length)) !== hash(completeBytes)
+        if (hash(await bytes(file, cursor.offset, consumed)) !== hash(chunk.subarray(0, consumed))
           || hash(await bytes(file, Math.max(0, cursor.offset - ANCHOR), Math.min(cursor.offset, ANCHOR))) !== cursor.anchor) throw Error("Pane transcript checkpoint bytes changed during its read");
         const after = await file.stat(), named = await lstat(path); regular(named);
         if (!sameFile(stat, after) || !sameFile(stat, named) || after.size < stat.size
           || after.size !== named.size || after.mtimeMs !== named.mtimeMs || after.ctimeMs !== named.ctimeMs
           || after.size === stat.size && (after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs)) throw Error("Pane transcript changed during its read");
-        check(); this.pinnedFile = path;
-        return { state: "ready", cursor: { sessionId: this.sessionId, fileId, offset, anchor: hash(nextAnchor) }, lines,
-          complete: offset === stat.size && after.size === stat.size };
+        check(); this.pinnedFile = path; this.metadataBytes = header.length;
+        return { state: "ready", cursor: { sessionId: this.sessionId, fileId, offset, anchor: hash(nextAnchor), ...(skipping ? { skipping: true } : {}) }, lines,
+          data: completeBytes.toString("base64"), gap, complete: !skipping && offset === stat.size && after.size === stat.size };
       } finally { await file.close(); }
     } catch (error) {
       if (!missing(error)) throw error;
       if (cursor.fileId || this.pinnedFile) throw Error("Pinned pane transcript disappeared");
-      return { state: "pending", cursor, lines: [], complete: false };
+      return { state: "pending", cursor, lines: [], data: "", gap: false, complete: false };
     }
   }
 }

@@ -57,6 +57,8 @@ export class RuntimePaneStore {
         const launch = validateRuntimePaneLaunch(row?.launch);
         validateRuntimePaneSnapshot(row.snapshot);
         if (launch.launchId !== undefined && launch.launchId !== row.snapshot.launchId || id !== launch.paneId || row.snapshot?.paneId !== id || row.snapshot.agentId !== launch.agentId
+          || row.snapshot.sessionId !== undefined && (launch.sessionId !== undefined && row.snapshot.sessionId !== launch.sessionId
+            || launch.cli === "claude-code" && row.snapshot.sessionId !== (launch.sessionId ?? row.snapshot.launchId))
           || row.snapshot.instance !== launch.instance || !/^[a-f0-9-]{36}$/i.test(row.snapshot.launchId)
           || !["starting", "running", "exited", "unknown"].includes(row.snapshot.state)
           || !Number.isSafeInteger(row.snapshot.commandSequence) || row.snapshot.commandSequence < 0

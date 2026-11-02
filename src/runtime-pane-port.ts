@@ -7,6 +7,7 @@ import { runtimeJobDigest } from "./runtime-client-store.js";
 import { PANE_EDIT_KEYS, validateRuntimePaneRequest, validateRuntimePaneSnapshot, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type { Pane, PaneHost, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
+import { validateRuntimeTranscriptReference, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 export interface PaneEndpoint {
   online(): boolean;
   call(request: RuntimePaneRequest): Promise<unknown>;
@@ -44,7 +45,10 @@ export class RuntimePanePort implements Pane {
     const snapshot = validateRuntimePaneSnapshot(value);
     const launch = this.record.launch;
     if (launch.launchId !== undefined && snapshot.launchId !== launch.launchId || snapshot.paneId !== launch.paneId || snapshot.agentId !== launch.agentId || snapshot.instance !== launch.instance
+      || launch.sessionId !== undefined && snapshot.sessionId !== launch.sessionId
+      || launch.cli === "claude-code" && snapshot.sessionId !== (launch.sessionId ?? snapshot.launchId)
       || this.record.snapshot && (snapshot.launchId !== this.record.snapshot.launchId || snapshot.hostBootId !== this.record.snapshot.hostBootId)
+      || this.record.snapshot?.sessionId && snapshot.sessionId !== this.record.snapshot.sessionId
       || this.record.snapshot && snapshot.commandSequence < this.record.snapshot.commandSequence) throw Error("Pane ownership proof differs");
     return snapshot;
   }
@@ -62,6 +66,37 @@ export class RuntimePanePort implements Pane {
       if (snapshot.state !== "running") throw Error("Pane is not confirmed running");
       return { windowId: snapshot.paneId, reattached };
     });
+  }
+  /** Idempotent metadata binding; it never types into the CLI or replays an input. */
+  async bindConversation(sessionId: string): Promise<RuntimePaneSnapshot> {
+    return this.serialize(async () => {
+      const before = this.record.snapshot;
+      if (!before || !this.endpoint.online() || this.record.pending) throw Error("Pane session owner is unavailable or its input needs reconciliation");
+      const request = validateRuntimePaneRequest({ action: "bind-session", paneId: before.paneId, launchId: before.launchId, sessionId });
+      const snapshot = this.accept(await this.endpoint.call(request));
+      if (!this.endpoint.online() || snapshot.sessionId !== sessionId) throw Error("Pane conversation binding is unconfirmed");
+      this.record.snapshot = snapshot; this.save(); return structuredClone(snapshot);
+    });
+  }
+  runtimeTranscriptReference(cursor: PaneTranscriptCursor): RuntimeTranscriptReference {
+    const pane = this.record.snapshot;
+    if (!pane?.sessionId || pane.sessionId !== cursor.sessionId) throw Error("Pane transcript conversation is not pinned");
+    return validateRuntimeTranscriptReference({ version: 1, machineId: this.endpoint.machineId, hostBootId: pane.hostBootId,
+      paneId: pane.paneId, launchId: pane.launchId, agentId: pane.agentId, provider: this.record.launch.cli, cursor });
+  }
+  async readTranscript(cursor: PaneTranscriptCursor, current: () => boolean = () => true): Promise<PaneTranscriptWireBatch> {
+    const ref = this.runtimeTranscriptReference(cursor);
+    if (!this.isTranscriptObservationCurrent(ref) || !current()) throw Error("Pane transcript observation is disconnected");
+    const result = await this.endpoint.call({ action: "transcript", paneId: ref.paneId, launchId: ref.launchId, cursor: ref.cursor });
+    if (!this.isTranscriptObservationCurrent(ref) || !current()) throw Error("Pane transcript observation became stale");
+    return validatePaneTranscriptWireBatch(result, ref.cursor.sessionId);
+  }
+  isTranscriptObservationCurrent(ref: RuntimeTranscriptReference): boolean {
+    try {
+      const pane = this.record.snapshot;
+      return this.endpoint.online() && !!pane && (pane.state === "running" || pane.state === "exited")
+        && sameRuntimeTranscriptScope(ref, this.runtimeTranscriptReference(ref.cursor));
+    } catch { return false; }
   }
   private async mutate(make: (snapshot: RuntimePaneSnapshot) => RuntimePaneRequest): Promise<boolean> {
     return this.serialize(async () => {

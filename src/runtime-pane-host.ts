@@ -8,6 +8,8 @@ import { spawnNativePane } from "./runtime-pane-process.js";
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
+import { NativePaneTranscriptReader } from "./runtime-pane-transcript.js";
+import { validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
 export type RuntimePaneProcess = Pick<IPty, "pid" | "write" | "resize" | "kill" | "pause" | "resume" | "onData" | "onExit"> & {
@@ -21,6 +23,8 @@ export interface RuntimePaneHostOptions {
   /** Internal local launch factory, never a field in the remote request. */
   spawn?(launch: RuntimePaneLaunch, owner: NativePaneOwner): Promise<RuntimePaneProcess>;
   mcpConnection?(owner: PaneMcpOwner, tools: string[]): PaneMcpConnection;
+  /** Internal runner seam. A remote request never provides roots or a path. */
+  transcript?(launch: RuntimePaneLaunch, sessionId: string): Pick<NativePaneTranscriptReader, "read" | "close">;
   output?(snapshot: RuntimePaneSnapshot): void;
 }
 interface LivePane {
@@ -30,6 +34,7 @@ interface LivePane {
   parsed: Promise<void>;
   exited: Promise<void>;
   finish(): void;
+  transcript?: Pick<NativePaneTranscriptReader, "read" | "close">;
 }
 const KEYS = { Enter: "\r", Escape: "\x1b", Up: "\x1b[A", Down: "\x1b[B", Right: "\x1b[C", Left: "\x1b[D", "C-c": "\x03", "C-q": "\x11" } as const;
 
@@ -89,6 +94,8 @@ export class RuntimePaneHost {
       snapshot: { hostBootId: this.options.bootId, paneId: launch.paneId, agentId: launch.agentId, instance: launch.instance, launchId: launch.launchId ?? randomUUID(), columns: launch.columns, rows: launch.rows,
         state: "starting", seq: 0, outputAt: 0, commandSequence: 0 },
     };
+    const sessionId = launch.sessionId ?? (launch.cli === "claude-code" ? record.snapshot.launchId : undefined);
+    if (sessionId) record.snapshot.sessionId = sessionId;
     // Synchronous reservation before the first await: parallel opens cannot oversubscribe the machine.
     this.options.store.put(record);
     let process: RuntimePaneProcess | undefined;
@@ -130,6 +137,7 @@ export class RuntimePaneHost {
         try { this.options.output?.(structuredClone(record.snapshot)); } catch { /* process exit is independent of its observer */ }
         const retired = [...this.live.values()].filter(row => row.record.snapshot.state === "exited");
         for (const old of retired.slice(0, Math.max(0, retired.length - 16))) {
+          void old.transcript?.close().catch(() => {});
           old.screen.dispose(); this.live.delete(old.record.launch.paneId);
         }
       });
@@ -152,6 +160,23 @@ export class RuntimePaneHost {
     const record = live.record;
     await live.parsed;
     if (request.action === "capture") return { snapshot: structuredClone(record.snapshot), text: await live.screen.capture(request) };
+    if (request.action === "bind-session") {
+      const expected = record.snapshot.sessionId ?? record.launch.sessionId ?? (record.launch.cli === "claude-code" ? record.snapshot.launchId : undefined);
+      if (expected && expected !== request.sessionId) throw Error("Pane conversation identity is already pinned elsewhere");
+      if (!expected) {
+        if (record.snapshot.state !== "running") throw Error("An unowned pane cannot establish a conversation identity");
+        const text = await live.screen.capture({ history: 200, joined: true });
+        const ids = [...text.matchAll(/\bSession:\s*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\b/gi)].map(match => match[1]);
+        if (ids.length !== 1 || ids[0] !== request.sessionId) throw Error("The owned pane has no unique matching status identity");
+      }
+      if (!current() || !this.options.online() || this.closing) throw Error("Pane session binding lease expired");
+      if (record.snapshot.sessionId !== request.sessionId) {
+        record.snapshot.sessionId = request.sessionId;
+        try { this.options.store.put(record); } catch (error) { delete record.snapshot.sessionId; throw error; }
+      }
+      return structuredClone(record.snapshot);
+    }
+    if (request.action === "transcript") return this.readTranscript(live, request.cursor, current);
     if (request.action === "reconcile") {
       if (record.snapshot.commandSequence !== request.sequence || record.lastCommand?.id !== request.operationId
         || record.lastCommand.digest !== request.digest || record.lastCommand.state !== "applied") throw Error("Pane command outcome is unconfirmed");
@@ -188,6 +213,20 @@ export class RuntimePaneHost {
     this.options.store.put(record);
     return structuredClone(record.snapshot);
   }
+  private async readTranscript(live: LivePane, cursor: PaneTranscriptCursor, current: () => boolean): Promise<PaneTranscriptWireBatch> {
+    const { launch, snapshot } = live.record;
+    if (!snapshot.sessionId || cursor.sessionId !== snapshot.sessionId) throw Error("Transcript identity differs from its owned pane");
+    if (snapshot.state !== "running" && snapshot.state !== "exited") throw Error("Transcript pane ownership is unconfirmed");
+    live.transcript ??= this.options.transcript?.(launch, snapshot.sessionId) ?? new NativePaneTranscriptReader(launch.cli, launch.cwd, snapshot.sessionId);
+    let settled = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const lease = (): boolean => !settled && !this.closing && current() && this.options.online();
+    const read = live.transcript.read(cursor, lease);
+    try {
+      const batch = await Promise.race([read, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(Error("Pane transcript read deadline exceeded")), 1000); })]);
+      if (!lease()) throw Error("Pane transcript read lease expired");
+      return validatePaneTranscriptWireBatch({ state: batch.state, cursor: batch.cursor, data: batch.data, complete: batch.complete, gap: batch.gap }, snapshot.sessionId);
+    } finally { settled = true; clearTimeout(timer); void read.catch(() => {}); }
+  }
   async stop(): Promise<void> {
     this.closing = true;
     for (const live of this.live.values()) if (live.record.snapshot.state !== "exited") {
@@ -202,7 +241,7 @@ export class RuntimePaneHost {
     clearTimeout(timer);
     for (const live of this.live.values()) {
       if (live.record.snapshot.state !== "exited") live.record.snapshot.state = "unknown";
-      try { this.options.store.put(live.record); } finally { live.screen.dispose(); }
+      try { this.options.store.put(live.record); } finally { live.screen.dispose(); void live.transcript?.close().catch(() => {}); }
     }
   }
 }

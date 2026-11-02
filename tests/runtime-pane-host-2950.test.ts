@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { RuntimePaneHost, persistentNativeArguments, type RuntimePaneProcess } from "../src/runtime-pane-host.js";
+import { RuntimePaneHost, persistentNativeArguments, type RuntimePaneProcess, type RuntimePaneHostOptions } from "../src/runtime-pane-host.js";
+import { PANE_TRANSCRIPT_EMPTY_ANCHOR } from "../src/runtime-pane-transcript-protocol.js";
+import type { PaneTranscriptBatch } from "../src/runtime-pane-transcript.js";
 import { RuntimePaneStore, writeNativePaneExit } from "../src/runtime-pane-store.js";
 import { RuntimePaneScreen } from "../src/runtime-pane-screen.js";
 import { validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
@@ -19,13 +21,13 @@ function fakeProcess() {
     onData: (fn: typeof data) => { data = fn; return { dispose() {} }; }, onExit: (fn: typeof exit) => { exit = fn; return { dispose() {} }; },
     emit: (value: string) => data(value), finish: (code: number) => exit({ exitCode: code }) };
 }
-function setup(max = 4) {
+function setup(max = 4, overrides: Partial<RuntimePaneHostOptions> = {}) {
   const directory = mkdtempSync(join(tmpdir(), "agend-pane-host-")); directories.push(directory);
   const store = new RuntimePaneStore(directory);
   const processes: ReturnType<typeof fakeProcess>[] = [];
   const spawn = vi.fn(async () => { const process = fakeProcess(); processes.push(process); return process as RuntimePaneProcess; });
   let online = true, limit = max;
-  const host = new RuntimePaneHost({ store, bootId: randomUUID(), online: () => online, maxAgents: () => limit, spawn });
+  const host = new RuntimePaneHost({ store, bootId: randomUUID(), online: () => online, maxAgents: () => limit, spawn, ...overrides });
   const open = async (config = launch(), operationId = randomUUID()) => await host.request({ action: "open", launch: config, operationId }) as RuntimePaneSnapshot;
   const key = (snapshot: RuntimePaneSnapshot, sequence: number, operationId = randomUUID()) => ({ action: "key", paneId: snapshot.paneId, launchId: snapshot.launchId, key: "Enter", sequence, operationId });
   return { directory, store, host, processes, spawn, open, key, offline: () => { online = false; }, limit: (value: number) => { limit = value; } };
@@ -229,4 +231,26 @@ it('reserves the coordinator-selected launch before issuing an exact helper scop
  const host=new RuntimePaneHost({store,bootId,online:()=>true,maxAgents:()=>4,mcpConnection:grant,spawn});
  const pane=await host.request({action:'open',launch:config,operationId:randomUUID()})as RuntimePaneSnapshot;expect(pane.launchId).toBe(config.launchId);expect(grant).toHaveBeenCalledOnce();expect(spawn).toHaveBeenCalledOnce();
  await expect(host.request({action:'open',launch:{...config,paneId:randomUUID(),agentId:randomUUID()},operationId:randomUUID()})).rejects.toThrow('launch identity');await host.stop();
+});
+
+it.each(['disconnect','lease'])('drops a transcript read when its %s expires during I/O',async kind=>{
+ let release!:(batch:PaneTranscriptBatch)=>void,lease!:()=>boolean;
+ const read=vi.fn((_cursor,current)=>{lease=current;return new Promise<PaneTranscriptBatch>(done=>{release=done;});});
+ const fixture=setup(4,{transcript:()=>({read,close:async()=>{}})}),sessionId=randomUUID();
+ const pane=await fixture.open({...launch(),sessionId}),cursor={sessionId,offset:0,fileId:null,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR};
+ let current=true;const pending=fixture.host.request({action:'transcript',paneId:pane.paneId,launchId:pane.launchId,cursor},()=>current);
+ await vi.waitFor(()=>expect(read).toHaveBeenCalledOnce());expect(lease()).toBe(true);
+ if(kind==='disconnect')fixture.offline();else current=false;
+ release({state:'pending',cursor,data:'',lines:[],complete:false,gap:false});
+ await expect(pending).rejects.toThrow('lease expired');expect(lease()).toBe(false);expect(fixture.processes[0].write).not.toHaveBeenCalled();await fixture.host.stop();
+});
+it('bounds a held transcript read and invalidates its lease before any late completion',async()=>{
+ let release!:(batch:PaneTranscriptBatch)=>void,lease!:()=>boolean;
+ const read=vi.fn((_cursor,current)=>{lease=current;return new Promise<PaneTranscriptBatch>(done=>{release=done;});});
+ const fixture=setup(4,{transcript:()=>({read,close:async()=>{}})}),sessionId=randomUUID(),pane=await fixture.open({...launch(),sessionId});
+ const cursor={sessionId,offset:0,fileId:null,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR};vi.useFakeTimers();
+ const result=fixture.host.request({action:'transcript',paneId:pane.paneId,launchId:pane.launchId,cursor});
+ const rejected=expect(result).rejects.toThrow('deadline');await vi.advanceTimersByTimeAsync(1000);await rejected;expect(lease()).toBe(false);
+ release({state:'pending',cursor,data:'',lines:[],complete:false,gap:false});await vi.advanceTimersByTimeAsync(0);
+ expect(await fixture.host.request({action:'capture',paneId:pane.paneId,launchId:pane.launchId})).toHaveProperty('snapshot');expect(fixture.processes[0].write).not.toHaveBeenCalled();await fixture.host.stop();
 });
