@@ -1,3 +1,4 @@
+import {RuntimePaneScreen} from "../src/runtime-pane-screen.js";
 import {afterEach,expect,it,vi} from 'vitest';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';import{tmpdir}from'node:os';import{randomUUID}from'node:crypto';
@@ -100,4 +101,8 @@ it('a lost close response is recovered by positive exit without replaying close 
 });
 it('the automatic status request has a durable one-shot intent across coordinator restart',async()=>{
  const f=await fixture();expect(await f.port.beginStatusRequest()).toBe(true);const next=f.make();await next.open();expect(await next.beginStatusRequest()).toBe(false);expect(f.write).not.toHaveBeenCalled();
+});
+
+it('explicit close needs owned metadata but never a healthy terminal capture',async()=>{
+ const f=await fixture();vi.spyOn(RuntimePaneScreen.prototype,'capture').mockRejectedValue(Error('parser unavailable'));expect(await f.port.killWindowConfirmed()).toBe(true);expect(f.native.kill).toHaveBeenCalledOnce();expect(f.write).not.toHaveBeenCalled();
 });

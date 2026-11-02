@@ -1,3 +1,4 @@
+import { RuntimePaneOutputBuffer } from "./runtime-pane-output.js";
 /** Runner-owned, persistent CLI panes. A coordinator reconnect neither launches nor replays anything. */
 import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
@@ -32,6 +33,7 @@ interface LivePane {
   screen: RuntimePaneScreen;
   process: RuntimePaneProcess;
   parsed: Promise<void>;
+  output: RuntimePaneOutputBuffer;
   exited: Promise<void>;
   finish(): void;
   transcript?: (Pick<NativePaneTranscriptReader, "read" | "close"> & Partial<Pick<NativePaneTranscriptReader, "baseline">>);
@@ -111,7 +113,7 @@ export class RuntimePaneHost {
       const screen = new RuntimePaneScreen(launch.columns, launch.rows, data => {
         if (this.live.get(launch.paneId)?.record === record && record.snapshot.state === "running") process!.write(data);
       });
-      const live: LivePane = { record, process, screen, parsed: Promise.resolve(), exited, finish };
+      const live: LivePane = { record, process, screen, parsed: Promise.resolve(), output: new RuntimePaneOutputBuffer(), exited, finish };
       this.live.set(launch.paneId, live);
       record.pid = process.pid;
       record.snapshot.state = "running";
@@ -122,6 +124,7 @@ export class RuntimePaneHost {
       });
       process.onData(data => {
         if (this.live.get(launch.paneId) !== live) return;
+        live.output.append(data);
         live.parsed = screen.write(data).then(() => {
           record.snapshot.seq++; record.snapshot.outputAt = Date.now();
           try { this.options.output?.(structuredClone(record.snapshot)); } catch { /* observer backpressure cannot change process ownership */ }
@@ -156,9 +159,11 @@ export class RuntimePaneHost {
     const live = this.live.get(request.paneId);
     const stored = this.options.store.get(request.paneId);
     if (!stored || stored.snapshot.launchId !== request.launchId) throw Error("Pane launch identity is stale");
+    if (request.action === "snapshot") return structuredClone(live?.record.snapshot ?? stored.snapshot);
     if (!live && request.action === "capture" && stored.snapshot.state === "exited") return { snapshot: structuredClone(stored.snapshot), text: "" };
     if (!live) throw Error("Pane process is not owned by this runner; its reservation is retained");
     const record = live.record;
+    if (request.action === "output") return live.output.read(request.offset, record.snapshot.state === "exited");
     await live.parsed;
     if (request.action === "capture") return { snapshot: structuredClone(record.snapshot), text: await live.screen.capture(request) };
     if (request.action === "bind-session") {

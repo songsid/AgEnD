@@ -1,3 +1,5 @@
+import { NativePaneOutputLog } from "./native-pane-output-log.js";
+import { validatePaneOutputBatch } from "./runtime-pane-output.js";
 /** Coordinator-side pane handle. Remote PIDs are never exposed as local supervision targets. */
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
@@ -21,6 +23,7 @@ export class RuntimePanePort implements Pane {
   private tail: Promise<unknown> = Promise.resolve();
   private error: string | null = null;
   private closing: Promise<boolean> | undefined;
+  private outputLog: NativePaneOutputLog | undefined;
   constructor(private endpoint: PaneEndpoint, private file: string, launch: RuntimePaneLaunch) {
     this.record = { version: 1, machineId: endpoint.machineId, launch, openId: randomUUID() };
     try {
@@ -79,8 +82,8 @@ export class RuntimePanePort implements Pane {
     return this.serialize(async () => {
       const launch = this.record.launch;
       if (!this.endpoint.online() || !launch.launchId) throw Error("Retained native owner is unavailable");
-      const result = await this.endpoint.call({ action: "capture", paneId: launch.paneId, launchId: launch.launchId }) as RuntimePaneCapture;
-      const snapshot = this.accept(result.snapshot);
+      const result = await this.endpoint.call({ action: "snapshot", paneId: launch.paneId, launchId: launch.launchId });
+      const snapshot = this.accept(result);
       if (!this.endpoint.online()) throw Error("Retained native observation became disconnected");
       this.record.snapshot = snapshot; this.save(); return structuredClone(snapshot);
     });
@@ -160,8 +163,7 @@ export class RuntimePanePort implements Pane {
     try {
       const before = this.record.snapshot;
       if (!before || !this.endpoint.online()) return false;
-      const capture = await this.endpoint.call({ action: "capture", paneId: before.paneId, launchId: before.launchId }) as RuntimePaneCapture;
-      const snapshot = this.accept(capture.snapshot);
+      const snapshot = this.accept(await this.endpoint.call({ action: "snapshot", paneId: before.paneId, launchId: before.launchId }));
       if (snapshot.state === "exited") {
         this.record.snapshot = snapshot; delete this.record.pending; delete this.record.pendingClose; this.save(); return true;
       }
@@ -213,7 +215,15 @@ export class RuntimePanePort implements Pane {
       return { action: "input", ...this.target(snapshot), kind: "paste", text };
     });
   }
-  async pipeOutput(): Promise<void> { throw Error("Native output streaming has not been attached"); }
+  async pipeOutput(logPath: string): Promise<void> {
+    this.closeOutput(); const snapshot = this.record.snapshot;
+    if (!snapshot) throw Error("Native output owner is missing");
+    const owner = runtimeJobDigest({ machine: this.endpoint.machineId, host: snapshot.hostBootId, pane: snapshot.paneId, launch: snapshot.launchId });
+    const feed = new NativePaneOutputLog(logPath, owner, () => this.outputLog === feed && this.endpoint.online() && this.record.snapshot?.hostBootId === snapshot.hostBootId && this.record.snapshot?.launchId === snapshot.launchId,
+      async offset => validatePaneOutputBatch(await this.endpoint.call({ action: "output", paneId: snapshot.paneId, launchId: snapshot.launchId, offset }), offset));
+    this.outputLog = feed; try { await feed.start(); } catch (error) { this.closeOutput(); throw error; }
+  }
+  closeOutput(): void { this.outputLog?.stop(); this.outputLog = undefined; }
   private async capture(options: { history?: number; ansi?: boolean; joined?: boolean }): Promise<string> {
     if (!this.endpoint.online() || !this.record.snapshot) throw Error("Pane observation is disconnected");
     const result = await this.endpoint.call({ action: "capture", paneId: this.record.launch.paneId, launchId: this.record.snapshot.launchId, ...options }) as RuntimePaneCapture;

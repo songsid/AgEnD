@@ -2853,7 +2853,7 @@ export class Daemon extends EventEmitter {
       // previous stuck splash (hundreds of MB of ANSI frames) is truncated before
       // we attach — pipe-pane uses `cat >>` on the same inode, so copytruncate
       // keeps the writer attached after size resets.
-      if (!this.nativePaneLifecycle) await this.attachPipePaneLog(); this.startupAdmission?.();
+      await this.attachPipePaneLog(); this.startupAdmission?.();
 
       // 4. Transcript monitor. claude-code is handled inside the monitor
       // (statusline transcript); codex/kiro/opencode read their CLI's own

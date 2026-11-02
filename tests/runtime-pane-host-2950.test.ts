@@ -258,3 +258,8 @@ it('a restarted host exposes only a retained positive exit receipt without adopt
  const f=setup(),snapshot=await f.open();f.processes[0].finish(0);const spawn=vi.fn(async()=>fakeProcess()),restarted=new RuntimePaneHost({store:new RuntimePaneStore(f.directory),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn});
  expect(await restarted.request({action:'capture',paneId:snapshot.paneId,launchId:snapshot.launchId})).toEqual({snapshot:{...f.host.list()[0]},text:''});expect(spawn).not.toHaveBeenCalled();await restarted.stop();
 });
+it('owned metadata and close remain usable when the terminal parser is unavailable',async()=>{
+ const f=setup(),pane=await f.open();vi.spyOn(RuntimePaneScreen.prototype,'write').mockRejectedValueOnce(Error('parser unavailable'));f.processes[0].emit('unparsed diagnostic');await vi.waitFor(()=>expect(f.host.list()[0].state).toBe('unknown'));vi.spyOn(RuntimePaneScreen.prototype,'capture').mockRejectedValue(Error('no screen'));
+ await expect(f.host.request({action:'capture',paneId:pane.paneId,launchId:pane.launchId})).rejects.toThrow('no screen');expect(await f.host.request({action:'snapshot',paneId:pane.paneId,launchId:pane.launchId})).toMatchObject({state:'unknown',launchId:pane.launchId});
+ expect(await f.host.request({action:'close',paneId:pane.paneId,launchId:pane.launchId,sequence:1,operationId:randomUUID()})).toMatchObject({state:'exited'});expect(f.processes[0].kill).toHaveBeenCalledOnce();await f.host.stop();
+});

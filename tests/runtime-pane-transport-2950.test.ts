@@ -145,3 +145,10 @@ it('feeds the ordinary monitor and positive delivery proof through the authentic
   expect(use).toHaveBeenCalledExactlyOnceWith('read',{path:'canary'});expect(text).toHaveBeenCalledExactlyOnceWith('done');expect(turns).toHaveBeenCalledOnce();expect(turns.mock.calls[0][0].map((event:any)=>event.kind)).toEqual(['start','user','end']);expect(monitor.currentPath()).toBeNull();expect(f.processes[0].write).not.toHaveBeenCalled();
  }finally{monitor.stop();}
 });
+it('streams only the owned pane raw output into its ordinary diagnostic log across the authenticated channel',async()=>{
+ const f=await fixture(),launch=f.launch(),port=new RuntimePanePort({machineId:f.machineId,online:()=>f.hub().machine(f.machineId)?.status==='online',call:request=>f.hub().callPane(f.machineId,request),subscribe:listener=>f.hub().subscribe(listener)},join(f.home,'output-pane.json'),launch);await port.open();const path=join(f.home,'output.log');
+ try{await port.pipeOutput(path);f.processes[0].emit('\x1b[31mowned 中文\x1b[0m\r\n');await vi.waitFor(()=>expect(readFileSync(path,'utf8')).toBe('\x1b[31mowned 中文\x1b[0m\r\n'));
+  const other=await f.hub().callPane(f.machineId,{action:'open',operationId:randomUUID(),launch:f.launch()}) as RuntimePaneSnapshot;f.processes[1].emit('other pane private output\r\n');await new Promise(resolve=>setTimeout(resolve,550));expect(readFileSync(path,'utf8')).not.toContain('other pane');
+  await expect(f.hub().callPane(f.machineId,{action:'output',paneId:launch.paneId,launchId:other.launchId,offset:0})).rejects.toThrow('stale');expect(f.processes[0].write).not.toHaveBeenCalled();
+ }finally{port.closeOutput();}
+});

@@ -40,6 +40,8 @@ export type RuntimePaneRequest =
   | { action: "list" }
   | { action: "open"; operationId: string; launch: RuntimePaneLaunch }
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
+  | { action: "snapshot"; paneId: string; launchId: string }
+  | { action: "output"; paneId: string; launchId: string; offset: number }
   | { action: "bind-session"; paneId: string; launchId: string; sessionId: string }
   | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "transcript-baseline"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
@@ -84,6 +86,10 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
       if (value.history !== undefined) dimension(value.history, 0, 2000);
       if ([value.joined, value.ansi].some(item => item !== undefined && typeof item !== "boolean")) throw Error("Invalid pane capture options");
       break;
+    case "snapshot":
+      closed(value, ["action", "paneId", "launchId"]); break;
+    case "output":
+      closed(value, ["action", "paneId", "launchId", "offset"]); dimension(value.offset, 0, Number.MAX_SAFE_INTEGER); break;
     case "bind-session":
       closed(value, ["action", "paneId", "launchId", "sessionId"]);
       if (!validNativeSessionId("codex", value.sessionId)) throw Error("Invalid pane conversation identity");
@@ -116,7 +122,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
   }
   if (value.action !== "list") {
     id(value.paneId); id(value.launchId);
-    if (!["capture", "transcript", "transcript-baseline", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
+    if (!["capture", "snapshot", "output", "transcript", "transcript-baseline", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
   }
   return value as unknown as RuntimePaneRequest;
 }
