@@ -26,7 +26,7 @@ let input='';process.stdin.on('data',b=>{const t=b.toString();input+=t;if(input.
 await writeFile(join(bin,'codex.cmd'),'@echo off\r\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
 // No installed CLI or credential directory is visible to findCli. Only the known scratch npm shim may be selected.
 process.env.PATH=[bin,dirname(process.execPath),join(process.env.SystemRoot||'C:\\Windows','System32')].join(delimiter);
-for(const key of ['USERPROFILE','HOME','APPDATA','LOCALAPPDATA'])process.env[key]=root;
+for(const key of ['USERPROFILE','HOME','APPDATA','LOCALAPPDATA','CODEX_HOME','CLAUDE_CONFIG_DIR'])process.env[key]=root;
 const executable=await findCli('codex');assert.equal(executable?.path.toLowerCase(),join(bin,'codex.cmd').toLowerCase(),'Only the inert CLI shim may be selected');
 const store=new RuntimePaneStore(join(root,'profile'));
 const host=new RuntimePaneHost({store,bootId:randomUUID(),online:()=>true,maxAgents:()=>4});
@@ -75,7 +75,7 @@ const pane=await client.request(${JSON.stringify(clientOpen)});process.stdout.wr
   try {
    const after=await replacement.request(clientOpen);assert.equal(after.launchId,before.launchId);assert.equal(after.hostBootId,before.hostBootId);
    await until(async()=>(await replacement.request({action:'capture',paneId:after.paneId,launchId:after.launchId})).text.includes('READY client-crash'));
-   assert.equal((await replacement.request({action:'close',paneId:after.paneId,launchId:after.launchId,operationId:randomUUID(),sequence:1})).state,'exited');
+   await replacement.retireOwned();const retired=await replacement.request({action:'snapshot',paneId:after.paneId,launchId:after.launchId});assert.equal(retired.state,'exited');await assert.rejects(()=>replacement.request({action:'open',launch:clientLaunch,operationId:randomUUID()}));
   }finally{await replacement.stop();}
  }finally{await service.close();}
  const crashProfile=join(root,'crash-profile'),runner=join(root,'inert-runner.mjs'),crashCwd=join(root,'crash');await mkdir(crashCwd);
@@ -95,7 +95,7 @@ process.stdout.write(JSON.stringify(pane)+String.fromCharCode(10));setInterval((
  const resumed=await resumedHost.request({action:'open',operationId:randomUUID(),launch:{...crashLaunch,paneId:randomUUID(),sessionId:randomUUID()}});
  await resumedHost.request({action:'close',paneId:resumed.paneId,launchId:resumed.launchId,operationId:randomUUID(),sequence:1});await resumedHost.stop();
  receipt={passed:true,stage:2,kind:'production host+worker; inert CLI-shaped fixtures, no coding CLI/account',platform:process.platform,node:process.version,
-  panes:2,launchMs,launchMeasurement:"first+second inert CLI opens, no cache flush or AV changes",unicode:true,perAgentInstructions:true,sameCwdRoleIsolation:true,commandLineLimitBeforeCli:true,bracketedPaste:true,independentScreens:true,resize:true,naturalExit:true,ownedCancellation:true,positiveHelperExit:true,connectionClientCrashReattach:true,sameHostAndCliAfterClientCrash:true,privateCurrentUserAcl:true,runnerDeathExitReceipt:true,restartAdmissionFromExitProof:true};
+  panes:2,launchMs,launchMeasurement:"first+second inert CLI opens, no cache flush or AV changes",unicode:true,perAgentInstructions:true,sameCwdRoleIsolation:true,commandLineLimitBeforeCli:true,bracketedPaste:true,independentScreens:true,resize:true,naturalExit:true,ownedCancellation:true,positiveHelperExit:true,explicitEnrollmentRetirement:true,connectionClientCrashReattach:true,sameHostAndCliAfterClientCrash:true,privateCurrentUserAcl:true,runnerDeathExitReceipt:true,restartAdmissionFromExitProof:true};
 }finally{
  await host.stop();
  for(const child of runners)if(child.exitCode===null&&child.signalCode===null){const closed=once(child,'close');child.kill();await closed;}

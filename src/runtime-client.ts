@@ -150,7 +150,7 @@ export class RuntimeClient {
         void this.stop();
       } else socket.terminate();
     });
-    socket.on("close", code => {
+    socket.on("close", (code,reason) => {
       if (this.socket !== socket) return;
       this.socket = null; this.welcomed = false; this.paneEpoch = randomUUID();
       if (this.paneHost && "connectionChanged" in this.paneHost) this.paneHost.connectionChanged();
@@ -158,7 +158,7 @@ export class RuntimeClient {
       if (this.stopped) return;
       if (code === 1008) {
         this.report("Runtime connection was refused, revoked or replaced. Check pairing and protocol compatibility before reconnecting.");
-        void this.stop(); return;
+        void this.stop({retirePanes:reason.toString()==="Machine revoked"}); return;
       }
       this.report("Disconnected. Existing execution is not replayed; reconnecting…");
       if (!this.graceTimer) this.graceTimer = setTimeout(() => {
@@ -192,7 +192,7 @@ export class RuntimeClient {
       for (const job of this.options.store.list()) this.publish(job);
       return;
     }
-    if (value.type === "revoked") { this.report("This machine was revoked by AgEnD."); await this.stop(); return; }
+    if (value.type === "revoked") { this.report("This machine was revoked by AgEnD."); await this.stop({retirePanes:true}); return; }
     if (!this.welcomed) throw new Error("Runtime handshake is incomplete");
     if (value.type === "ping") { this.send({ v: 1, type: "pong" }); return; }
     if (value.type === "tool.result") {
@@ -383,7 +383,7 @@ export class RuntimeClient {
     for (const pending of this.pendingPaneTools.values()) { clearTimeout(pending.timer); pending.reject(Error("Pane MCP disconnected; no call was replayed")); }
     this.pendingPaneTools.clear();
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
-  async stop(): Promise<void> {
+  async stop(options:{retirePanes?:boolean}={}): Promise<void> {
     if (this.stopped) return;
     this.stopped = true; this.welcomed = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -395,7 +395,10 @@ export class RuntimeClient {
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }
     // A cancelled start may still finish its durable credential write. Do not release the profile to another writer.
     await this.startupRotation?.catch(() => {});
-    await this.paneOpening?.then(host => host.stop()).catch(() => this.report("Pane cleanup is unconfirmed; its durable reservations remain held."));
+    await this.paneOpening?.then(async host=>{
+      try{if(options.retirePanes&&"retireOwned" in host)await host.retireOwned();}
+      finally{await host.stop();}
+    }).catch(() => this.report("Pane cleanup is unconfirmed; its durable reservations remain held."));
     // Keep the profile lock until cancellation is confirmed or the journal is explicitly marked uncertain.
     const deadline = Date.now() + 5000;
     while (this.active.size && Date.now() < deadline) {

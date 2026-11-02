@@ -26,6 +26,7 @@ export class RuntimePaneLink {
   private pending = new Map<string, Pending>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
+  private cleanupOnly=false;
   private readonly clientEpoch = randomUUID();
   private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp">) {}
   static async open(options: PaneLinkOptions): Promise<RuntimePaneLink> {
@@ -79,7 +80,7 @@ export class RuntimePaneLink {
           if (value?.type === "mcp.request") {
             if (Object.keys(value).some(key => !["type", "id", "epoch", "body"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id) || value.epoch !== link.epoch()) throw Error("Invalid pane MCP frame");
             const body = validatePaneMcpBody(value.body), epoch = value.epoch;
-            const current = (): boolean => !link.closed && socket.readyState === WebSocket.OPEN && options.online() && link.epoch() === epoch;
+            const current = (): boolean => !link.closed && !link.cleanupOnly && socket.readyState === WebSocket.OPEN && options.online() && link.epoch() === epoch;
             if (link.mcpPending >= 32) throw Error("Pane MCP transport backlog");
             link.mcpPending++;
             void (async () => {
@@ -112,11 +113,12 @@ export class RuntimePaneLink {
     if (this.socket.readyState !== WebSocket.OPEN || this.closed) return;
     const maxAgents = this.options.maxAgents();
     if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) { this.socket.close(1008, "Invalid machine limit"); return; }
-    this.socket.send(JSON.stringify({ type: "lease", epoch: this.epoch(), online: this.options.online(), maxAgents }));
+    this.socket.send(JSON.stringify({ type: "lease", epoch: this.epoch(), online: this.cleanupOnly || this.options.online(), maxAgents }));
   }
   request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (!current() || this.closed || this.socket.readyState !== WebSocket.OPEN || !this.options.online()) return Promise.reject(Error("Pane client is disconnected"));
+    if(this.cleanupOnly&&!["list","snapshot","close"].includes(request.action))return Promise.reject(Error("Pane link only permits owned retirement"));
+    if (!current() || this.closed || this.socket.readyState !== WebSocket.OPEN || !(this.cleanupOnly || this.options.online())) return Promise.reject(Error("Pane client is disconnected"));
     if (this.pending.size >= 64 || this.socket.bufferedAmount > 256 * 1024) return Promise.reject(Error("Pane client backpressure limit"));
     this.lease();
     const id = randomUUID();
@@ -133,6 +135,28 @@ export class RuntimePaneLink {
     this.closed = true; clearInterval(this.timer);
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(Error("Pane connection closed; terminal ownership is retained")); }
     this.pending.clear();
+  }
+  /** An authenticated explicit machine revocation retires only this enrollment's owned panes. A disconnect never does. */
+  async retireOwned():Promise<void>{
+    this.cleanupOnly=true;
+    const deadline=performance.now()+125_000;
+    const request=(value:unknown):Promise<unknown>=>{
+      const remaining=deadline-performance.now();if(remaining<=0)return Promise.reject(Error("Owned pane retirement deadline"));
+      return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error("Owned pane retirement deadline")),remaining);timer.unref();this.request(value).then(result=>{clearTimeout(timer);resolve(result);},error=>{clearTimeout(timer);reject(error);});});
+    };
+    const inventory=await request({action:"list"}) as {hostBootId?:unknown;panes?:unknown};
+    if(inventory?.hostBootId!==this.hostBootId||!Array.isArray(inventory.panes)||inventory.panes.length>4096)throw Error("Owned pane inventory is unconfirmed");
+    const panes=inventory.panes.map(validateRuntimePaneSnapshot);
+    if(new Set(panes.map(pane=>pane.paneId)).size!==panes.length)throw Error("Owned pane inventory contains duplicate identities");
+    // Retire positively observed running Jobs before encountering old unknown reservations.
+    panes.sort((a,b)=>Number(b.state==="running")-Number(a.state==="running"));
+    for(const pane of panes){if(pane.state==="exited")continue;if(pane.hostBootId!==this.hostBootId)throw Error("Owned pane host changed");
+      const current=validateRuntimePaneSnapshot(await request({action:"snapshot",paneId:pane.paneId,launchId:pane.launchId}));
+      if(current.hostBootId!==this.hostBootId||current.paneId!==pane.paneId||current.launchId!==pane.launchId||current.agentId!==pane.agentId||current.instance!==pane.instance)throw Error("Owned pane retirement identity changed");
+      if(current.state==="exited")continue;
+      const exited=validateRuntimePaneSnapshot(await request({action:"close",paneId:current.paneId,launchId:current.launchId,sequence:current.commandSequence+1,operationId:randomUUID()}));
+      if(exited.hostBootId!==this.hostBootId||exited.paneId!==pane.paneId||exited.launchId!==pane.launchId||exited.agentId!==pane.agentId||exited.instance!==pane.instance||exited.state!=="exited")throw Error("Owned pane retirement exit is unconfirmed");
+    }
   }
   async stop(): Promise<void> { this.closePending(); this.socket.terminate(); }
 }
