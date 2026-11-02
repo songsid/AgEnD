@@ -2,6 +2,7 @@
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import type { NativeTaskInput } from "./windows-cli-worker.js";
 import { createHash } from "node:crypto";
+import type { PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import type { RuntimePaneRequest, RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 
 export const RUNTIME_PROTOCOL_VERSION = 1;
@@ -57,5 +58,7 @@ export interface RuntimeToolResult { v: 1; type: "tool.result"; id: string; ok: 
 export interface RuntimePaneCall { v: 1; type: "pane.request"; id: string; maxAgents: number; request: RuntimePaneRequest }
 export interface RuntimePaneReply { v: 1; type: "pane.response"; id: string; ok: boolean; result?: unknown; error?: string }
 export interface RuntimePaneOutput { v: 1; type: "pane.output"; snapshot: RuntimePaneSnapshot }
-export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall;
-export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput;
+export interface RuntimePaneToolCall { v: 1; type: "pane.tool.request"; id: string; body: PaneMcpBody }
+export interface RuntimePaneToolResult { v: 1; type: "pane.tool.result"; id: string; ok: boolean; result?: unknown }
+export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall | RuntimePaneToolResult;
+export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput | RuntimePaneToolCall;

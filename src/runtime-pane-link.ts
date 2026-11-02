@@ -9,6 +9,7 @@ import { runtimeJobDigest } from "./runtime-client-store.js";
 import { protectPaneDirectory, readPaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type {} from "./runtime-pane-service.js";
+import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 export interface PaneLinkOptions {
   directory: string;
   server: string;
@@ -17,14 +18,16 @@ export interface PaneLinkOptions {
   maxAgents(): number;
   epoch?(): string;
   output?(snapshot: RuntimePaneSnapshot): void;
+  mcp?(body: PaneMcpBody, current: () => boolean): Promise<unknown>;
 }
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
 export class RuntimePaneLink {
+  private mcpPending = 0;
   private pending = new Map<string, Pending>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
   private readonly clientEpoch = randomUUID();
-  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch">) {}
+  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp">) {}
   static async open(options: PaneLinkOptions): Promise<RuntimePaneLink> {
     if (process.platform !== "win32") throw Error("Persistent pane host requires Windows Node");
     const directory = join(options.directory, "pane-host");
@@ -56,7 +59,7 @@ export class RuntimePaneLink {
     return this.attach(descriptor, options);
   }
   /** Authenticated discovery seam; fixtures bind only private loopback services. */
-  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch">): Promise<RuntimePaneLink> {
+  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp">): Promise<RuntimePaneLink> {
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(`ws://127.0.0.1:${descriptor.port}/pane/v1`, { headers: { Authorization: `Bearer ${descriptor.token}` },
         handshakeTimeout: 10_000, maxPayload: 256 * 1024, followRedirects: false, perMessageDeflate: false });
@@ -73,6 +76,22 @@ export class RuntimePaneLink {
             if (value?.type !== "hello" || value.hostBootId !== descriptor.hostBootId) throw Error("Pane host boot changed");
             ready = true; clearTimeout(deadline); link.lease(); link.timer = setInterval(() => link.lease(), 5000); link.timer.unref(); resolve(link); return;
           }
+          if (value?.type === "mcp.request") {
+            if (Object.keys(value).some(key => !["type", "id", "epoch", "body"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id) || value.epoch !== link.epoch()) throw Error("Invalid pane MCP frame");
+            const body = validatePaneMcpBody(value.body), epoch = value.epoch;
+            const current = (): boolean => !link.closed && socket.readyState === WebSocket.OPEN && options.online() && link.epoch() === epoch;
+            if (link.mcpPending >= 32) throw Error("Pane MCP transport backlog");
+            link.mcpPending++;
+            void (async () => {
+              try {
+                if (!current() || !options.mcp) throw Error("Pane MCP lease unavailable");
+                const result = await options.mcp(body, current);
+                if (current()) link.mcpReply(value.id, epoch, true, result);
+              } catch { if (current()) link.mcpReply(value.id, epoch, false); }
+              finally { link.mcpPending--; }
+            })();
+            return;
+          }
           if (value?.type === "output") { options.output?.(validateRuntimePaneSnapshot(value.snapshot)); return; }
           if (value?.type !== "response" || typeof value.id !== "string" || typeof value.ok !== "boolean") throw Error("Invalid pane reply");
           const pending = link.pending.get(value.id); if (!pending) return;
@@ -81,6 +100,11 @@ export class RuntimePaneLink {
         } catch { socket.close(1008, "Invalid pane host frame"); }
       });
     });
+  }
+  private mcpReply(id: string, epoch: string, ok: boolean, result?: unknown): void {
+    const frame = JSON.stringify({ type: "mcp.result", id, epoch, ok, ...(ok ? { result } : {}) });
+    if (Buffer.byteLength(frame) > 256 * 1024 || this.socket.bufferedAmount > 256 * 1024) { this.socket.terminate(); return; }
+    this.socket.send(frame);
   }
   connectionChanged(): void { this.lease(); }
   private epoch(): string { return this.options.epoch?.() ?? this.clientEpoch; }

@@ -335,7 +335,9 @@ export async function dispatchAgentOperation(
   instance: string,
   op: string,
   args: Record<string, unknown>,
+  trustedOperationId?: string,
 ): Promise<unknown> {
+  if (trustedOperationId !== undefined && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(trustedOperationId)) throw Error("Invalid internal operation identity");
   // Sink 3 of 3, before any branch below: the early-returning ops are as much
   // a tool call as the mapped ones. Enforce policy for the token-resolved identity
   // here; this does not isolate hostile shell processes sharing that identity.
@@ -366,7 +368,7 @@ export async function dispatchAgentOperation(
   // handler. The returned operation_id lets the CLI report/query the exact
   // accepted operation instead of retrying it as a new tool call.
   const operationId = requestedTool && DURABLE_HTTP_TOOLS.has(requestedTool)
-    ? randomUUID()
+    ? trustedOperationId ?? randomUUID()
     : undefined;
 
   // Schedule CRUD

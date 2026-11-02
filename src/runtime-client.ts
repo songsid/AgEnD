@@ -9,7 +9,9 @@ import { validateNativeTask, validWindowsAgentId, type NativeTaskInput } from ".
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
+import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest } from "./runtime-pane-protocol.js";
+import type { PaneLinkOptions } from "./runtime-pane-link.js";
 import type { RuntimePaneLink } from "./runtime-pane-link.js";
 import type { RuntimePaneHost } from "./runtime-pane-host.js";
 import type { RuntimePaneHostOptions } from "./runtime-pane-host.js";
@@ -36,6 +38,7 @@ export interface RuntimeClientOptions {
   /** Tests may use an isolated fake worker. Production always uses the Windows bridge. */
   socketFactory?: (url: string, credential: string) => WebSocket;
   /** Offline transport acceptance supplies its own process factory, never a public configuration field. */
+  openPaneLink?: (options: PaneLinkOptions) => Promise<RuntimePaneLink>;
   createPaneHost?: (options: RuntimePaneHostOptions) => RuntimePaneHost;
 }
 const MAX_FRAME = 256 * 1024;
@@ -84,6 +87,7 @@ export class RuntimeClient {
   private paneEpoch = randomUUID();
   private readonly active = new Set<string>();
   private readonly snapshots = new Map<string, string>();
+  private readonly pendingPaneTools = new Map<string, PendingTool>();
   private readonly pendingTools = new Map<string, PendingTool>();
   private readonly mcpTokens = new Map<string, { runId: string; tools: string[] }>();
   private mcpServer: Server | null = null;
@@ -130,7 +134,7 @@ export class RuntimeClient {
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform,
-        ...(process.platform === "win32" || this.options.createPaneHost ? { paneProtocol: 1 } : {}),
+        ...(process.platform === "win32" || this.options.createPaneHost || this.options.openPaneLink ? { paneProtocol: 1 } : {}),
         ...(this.inventory ? { inventory: this.inventory } : {}) });
     });
     socket.on("message", (bytes, binary) => {
@@ -198,6 +202,13 @@ export class RuntimeClient {
       if (value.ok === true) pending.accept(value.result); else pending.reject(new Error("AgEnD MCP request was refused"));
       return;
     }
+    if (value.type === "pane.tool.result") {
+      if (Object.keys(value).some(key => !["v", "type", "id", "ok", "result"].includes(key)) || !validWindowsAgentId(value.id) || typeof value.ok !== "boolean") throw Error("Invalid pane MCP reply");
+      const pending = this.pendingPaneTools.get(value.id); if (!pending) return;
+      this.pendingPaneTools.delete(value.id); clearTimeout(pending.timer);
+      if (value.ok) pending.accept(value.result); else pending.reject(Error("Pane MCP request was refused"));
+      return;
+    }
     if (value.type === "pane.request") {
       if (Object.keys(value).some(key => !["v", "type", "id", "maxAgents", "request"].includes(key))
         || typeof value.id !== "string" || !validWindowsAgentId(value.id) || !Number.isInteger(value.maxAgents)
@@ -225,12 +236,23 @@ export class RuntimeClient {
         const store = new RuntimePaneStore(join(this.options.store.directory, "panes")); store.recoverInterrupted();
         return this.paneHost = this.options.createPaneHost!({ store, bootId: this.bootId, online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, output });
       });
-      else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => RuntimePaneLink.open({
+      else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => (this.options.openPaneLink ?? RuntimePaneLink.open.bind(RuntimePaneLink))({
         directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
-        online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, output,
+        online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, output, mcp: (body, current) => this.paneMcp(body, current),
       })).then(host => this.paneHost = host);
     }
     return this.paneOpening;
+  }
+  private paneMcp(raw: PaneMcpBody, current: () => boolean): Promise<unknown> {
+    const body = validatePaneMcpBody(raw), epoch = this.paneEpoch;
+    if (!current() || !this.online() || this.pendingPaneTools.size >= 32) return Promise.reject(Error("Pane MCP transport is unavailable"));
+    const id = randomUUID();
+    return new Promise((accept, reject) => {
+      const timer = setTimeout(() => { this.pendingPaneTools.delete(id); reject(Error("Pane MCP response is unconfirmed")); }, 85_000); timer.unref();
+      this.pendingPaneTools.set(id, { timer, reject, accept: value => current() && this.online() && this.paneEpoch === epoch ? accept(value) : reject(Error("Pane MCP lease expired")) });
+      try { this.send({ v: 1, type: "pane.tool.request", id, body }); }
+      catch { this.pendingPaneTools.delete(id); clearTimeout(timer); reject(Error("Pane MCP response is unconfirmed")); }
+    });
   }
   private update(task: WindowsCliTask): void {
     if (this.closed) return;
@@ -357,7 +379,10 @@ export class RuntimeClient {
       this.send({ v: 1, type: "tool.call", id, runId, body });
     });
   }
-  private rejectTools(): void { for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
+  private rejectTools(): void {
+    for (const pending of this.pendingPaneTools.values()) { clearTimeout(pending.timer); pending.reject(Error("Pane MCP disconnected; no call was replayed")); }
+    this.pendingPaneTools.clear();
+    for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true; this.welcomed = false;

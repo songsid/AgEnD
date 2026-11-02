@@ -29,3 +29,9 @@ it('passes native Fleet/task execution through the lease-aware mutation dispatch
  expect(await f.daemon.handlePaneToolCall({tool:'task',args:{action:'list'}},{current:()=>true,allowed,dispatch})).toEqual({result:{status:'ok'}});
  expect(dispatch).toHaveBeenCalledExactlyOnceWith('task',{action:'list'});expect(f.broadcast).not.toHaveBeenCalled();expect(allowed).toHaveBeenCalledWith('task',{action:'list'});
 });
+it('accepts a written ACK only while its exact daemon lease is current',()=>{
+ const f=fixture(),written=vi.fn();f.daemon.on('mcp_tool_response_written',written);const operationId='12345678-1234-4234-8234-123456789abc';
+ f.daemon.paneToolResponseWritten(operationId,()=>false);f.daemon.paneToolResponseWritten('invalid',()=>true);expect(written).not.toHaveBeenCalled();
+ f.daemon.paneToolResponseWritten(operationId,()=>true);expect(written).toHaveBeenCalledExactlyOnceWith({operationId,daemonBootId:f.daemon.bootId});
+ f.daemon['deliveryWritesStopping']=true;f.daemon.paneToolResponseWritten(operationId,()=>true);expect(written).toHaveBeenCalledOnce();
+});

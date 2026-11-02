@@ -5,6 +5,8 @@ import { RuntimePaneStore, type RuntimePaneRecord } from "./runtime-pane-store.j
 import { RuntimePaneScreen } from "./runtime-pane-screen.js";
 import { PANE_EDIT_KEYS, validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { spawnNativePane } from "./runtime-pane-process.js";
+import type { PaneMcpConnection } from "./windows-pane-mcp.js";
+import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
 export type RuntimePaneProcess = Pick<IPty, "pid" | "write" | "resize" | "kill" | "pause" | "resume" | "onData" | "onExit"> & {
@@ -17,6 +19,7 @@ export interface RuntimePaneHostOptions {
   maxAgents(): number;
   /** Internal local launch factory, never a field in the remote request. */
   spawn?(launch: RuntimePaneLaunch): Promise<RuntimePaneProcess>;
+  mcpConnection?(owner: PaneMcpOwner, tools: string[]): PaneMcpConnection;
   output?(snapshot: RuntimePaneSnapshot): void;
 }
 interface LivePane {
@@ -37,6 +40,15 @@ export class RuntimePaneHost {
   list(): RuntimePaneSnapshot[] {
     for (const row of this.options.store.list()) if (!this.live.has(row.launch.paneId)) this.options.store.reconcileExit(row.launch.paneId);
     return this.options.store.list().map(row => structuredClone(this.live.get(row.launch.paneId)?.record.snapshot ?? row.snapshot));
+  }
+  /** Exact live reservation; no PID adoption or scans of other panes. */
+  owns(owner: PaneMcpOwner): boolean {
+    if (this.closing || owner.hostBootId !== this.options.bootId) return false;
+    try {
+      const pane = this.live.get(owner.paneId)?.record.snapshot ?? this.options.store.get(owner.paneId)?.snapshot;
+      return !!pane && pane.hostBootId === owner.hostBootId && pane.launchId === owner.launchId && pane.agentId === owner.agentId
+        && pane.instance === owner.instance && (pane.state === "starting" || pane.state === "running");
+    } catch { return false; }
   }
   async request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);

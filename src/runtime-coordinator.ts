@@ -10,6 +10,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
+import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
@@ -76,6 +77,7 @@ interface Pending { machineId: string; generation: number; resolve(value: unknow
 export interface RuntimeCoordinatorEvent { type: "machine" | "task" | "pane"; machineId: string; task?: WindowsCliTask; pane?: RuntimePaneSnapshot }
 export interface RuntimeCoordinatorOptions {
   changed?(event?: RuntimeCoordinatorEvent): void;
+  handlePaneMcp?(machineId: string, body: PaneMcpBody, current: () => boolean): Promise<unknown>;
   handleMcp?(machineId: string, runId: string, body: unknown): Promise<unknown>;
   /** Injectable clock for pairing expiry and offline tests. */
   now?(): number;
@@ -89,6 +91,7 @@ export class RuntimeCoordinator {
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: RUNTIME_MAX_FRAME_BYTES, perMessageDeflate: false });
   private readonly connections = new Map<string, Connection>();
   private readonly pending = new Map<string, Pending>();
+  private readonly paneToolPending = new Set<string>();
   private readonly panePending = new Map<string, Pending>();
   private readonly listeners = new Set<(event: RuntimeCoordinatorEvent) => void>();
   private readonly limits = new Map<string, { count: number; until: number }>();
@@ -346,6 +349,25 @@ export class RuntimeCoordinator {
       this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId }); return;
     }
     row.machine.lastSeenAt = this.now();
+    if (value.type === "pane.tool.request") {
+      if (row.machine.paneProtocol !== 1 || Object.keys(value).some(key => !["v", "type", "id", "body"].includes(key)) || !UUID.test(String(value.id))) throw Error("Invalid pane MCP transport request");
+      const body = validatePaneMcpBody(value.body), id = value.id as string;
+      const key = `${connection.machineId}:${connection.generation}:${id}`;
+      if (this.paneToolPending.size >= 128 || this.paneToolPending.has(key)) throw Error("Pane MCP transport backlog or duplicate request");
+      let active = true;
+      const current = (): boolean => active && !this.closed && this.current(connection) && connection.ready && connection.ws.readyState === WebSocket.OPEN;
+      this.paneToolPending.add(key);
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        if (!current() || !this.options.handlePaneMcp) throw Error("Pane MCP scope unavailable");
+        const result = await Promise.race([this.options.handlePaneMcp(connection.machineId, body, current), new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => { active = false; reject(Error("Pane MCP deadline")); }, 80_000); timer.unref();
+        })]);
+        if (current()) this.send(connection, { v: 1, type: "pane.tool.result", id, ok: true, result });
+      } catch { if (current()) this.send(connection, { v: 1, type: "pane.tool.result", id, ok: false }); }
+      finally { active = false; clearTimeout(timer); this.paneToolPending.delete(key); }
+      return;
+    }
     if (value.type === "pane.output") {
       if (row.machine.paneProtocol !== 1) throw Error("Pane protocol was not negotiated");
       const snapshot = validateRuntimePaneSnapshot(value.snapshot);

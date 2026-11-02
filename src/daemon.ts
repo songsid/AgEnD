@@ -10841,6 +10841,12 @@ export class Daemon extends EventEmitter {
     });
   }
 
+  /** Only the authority lease with a verified helper stdout ACK calls this internal barrier. */
+  paneToolResponseWritten(operationId: string, current: () => boolean): void {
+    if (!current() || this.deliveryWritesStopping || !/^[a-f0-9-]{36}$/i.test(operationId)) return;
+    this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
+  }
+
   private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }): void {
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;

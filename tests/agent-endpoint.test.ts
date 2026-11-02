@@ -8,7 +8,8 @@ describe("agent CLI reply context", () => {
   it.each([
     ["send", { instance_name: "worker", message: "hello" }],
     ["broadcast", { targets: ["worker"], message: "hello" }],
-  ])("assigns a durable operation_id for HTTP %s ingress without MCP metadata", async (op, args) => {
+    ["send", { instance_name: "worker", message: "stable native identity" }, "12345678-1234-4234-8234-123456789abc"],
+  ])("assigns a durable operation_id for HTTP %s ingress without MCP metadata", async (op, args, trustedOperationId) => {
     const admitDurableDelivery = vi.fn(input => ({ deliveryId: "delivery-http", state: "queued", duplicate: false }));
     const ctx = {
       fleetConfig: { defaults: {}, instances: { agy: { tool_set: "worker" }, worker: {} } },
@@ -23,9 +24,10 @@ describe("agent CLI reply context", () => {
       queueMirrorMessage: vi.fn(),
     } as any;
 
-    const result = await dispatchAgentOperation(ctx, "agy", op, args as Record<string, unknown>);
+    const result = await dispatchAgentOperation(ctx, "agy", op, args as Record<string, unknown>, trustedOperationId as string | undefined);
 
     expect(result).toMatchObject({ operation_id: expect.any(String), durable: true, delivery_state: "queued" });
+    if (trustedOperationId) expect((result as any).operation_id).toBe(trustedOperationId);
     expect(admitDurableDelivery).toHaveBeenCalled();
     expect(admitDurableDelivery).toHaveBeenCalledWith(expect.objectContaining({
       operationId: (result as any).operation_id,
