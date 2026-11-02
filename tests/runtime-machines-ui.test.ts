@@ -18,6 +18,7 @@ beforeAll(async()=>{
   globalThis.fetch=(async(path:string,options:any={})=>{
     const body=options.body?JSON.parse(options.body):null;requests.push({path,body});
     if(path==="/ui/runtimes")return response({enabled,machines});
+    if(path==="/api/settings/runtimes")return response({switches:{windows_cli:{on:false,configured:false,environment:null},remote_runtime:{on:enabled,configured:enabled,environment:null}},max_agents_per_machine:{value:4,min:1,max:16,default:4},local_origin:"http://127.0.0.1:19280"});
     if(path==="/ui/runtimes/pairing")return response({pairingId:"test",code:"PAIR-TEST-CODE",expiresAt:Date.now()+60000});
     if(path===`/ui/runtimes/machines/${idB}/approve`){machines=machines.map(item=>item.id===idB?{...item,status:"online"}:item);return response({ok:true});}
     if(path.startsWith("/ui/models?")){const id=new URL(path,"http://localhost").searchParams.get("machineId");return response({models:[{id:id===idA?"model-a":"model-b",label:id===idA?"Model A":"Model B"}],source:"cli-cache"});}
@@ -59,7 +60,7 @@ describe("remote machine UI",()=>{
   });
   it("keeps local Runtime settings visible while remote connections are disabled",async()=>{
     enabled=false;machines=[];await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
-    expect(p.root.textContent).toContain("not enabled");expect(p.root.textContent).toContain("This computer");expect(button("Connect a computer").disabled).toBe(true);
+    expect(p.root.textContent).toContain("Other Windows PCs can connect once “Allow other Windows PCs to pair” is on.");expect(p.root.textContent).toContain("This computer");expect(button("Connect a computer").disabled).toBe(true);
   });
   it("creates a remote agent with an optional workspace while local Windows CLI is disabled",async()=>{
     expect(app.appStore.get().windowsCli).toBe(false);

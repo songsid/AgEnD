@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
   "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "windows-cli.js", "windows-cli-worker.js",
   "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js",
+  // M-2255: windows-cli.js reads the coordinator's switches (the runner itself never consults them).
+  "runtime-switches.js",
 ]);
 const WS_FILES = Object.freeze([
   "package.json", "index.js", "wrapper.mjs", "browser.js", "LICENSE",

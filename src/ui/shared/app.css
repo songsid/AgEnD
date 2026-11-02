@@ -2806,6 +2806,31 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .runtime-heading h2, .runtime-machine h3 { margin: 0; }
 .runtime-local, .runtime-machine, .runtime-pairing { padding: 18px; margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .runtime-local h3 { display: flex; align-items: center; gap: 8px; }
+/* M-2255: Settings → Runtime's switches. */
+.runtime-switches { padding: 18px; margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.runtime-switches > h3 { margin: 0 0 6px; }
+.runtime-switch { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.runtime-switch-row { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.runtime-switch-row input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
+.runtime-switch-row input:disabled { cursor: not-allowed; }
+.runtime-switch-row > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.runtime-switch-row small { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.runtime-switch-env, .runtime-switch-pending { display: block; margin: 8px 0 0 32px; font-size: var(--fs-sm); }
+.runtime-switch-env { color: var(--warn); }
+.runtime-switches > .note { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--text-3); }
+.runtime-guide { margin: 10px 0 0 32px; font-size: var(--fs-sm); }
+.runtime-guide > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.runtime-guide p { margin: 8px 0; line-height: 1.5; }
+/* A command wraps only between its words (never inside an address), so all of it is in view, on a phone too. */
+.runtime-guide pre { margin: 6px 0 10px; padding: 8px 10px; border-radius: 8px; background: var(--bg); overflow-x: auto; white-space: pre-wrap; overflow-wrap: normal; word-break: normal; max-width: 100%; }
+.runtime-guide-link { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.runtime-guide-warn { color: var(--warn); }
+.runtime-limit { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.runtime-limit label { display: flex; flex-direction: column; gap: 4px; }
+.runtime-limit small { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
+.runtime-limit > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.runtime-limit input { width: 6em; font-size: var(--fs-md); }
+@media (max-width: 600px) { .runtime-guide, .runtime-switch-env, .runtime-switch-pending { margin-left: 0; } }
 .runtime-machine > header > div { flex: 1; min-width: 140px; }
 .runtime-machine > header p, .runtime-machine .note { margin: 7px 0; font-size: var(--fs-sm); color: var(--text-3); }
 .runtime-machine-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; background: var(--bg); }

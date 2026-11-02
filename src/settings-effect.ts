@@ -13,6 +13,7 @@ import { validateFleetConfig, validateClassicBotConfig } from "./config-validato
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
 import { quickLinkEffective } from "./authority/web-authority.js";
 import { parseNativeInstanceCreate } from "./native-instance-input.js";
+import { parseRuntimesSettingsBody } from "./runtime-switches.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -26,7 +27,7 @@ export interface SettingsEffectContext {
 export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "POST" && path === "/api/settings/public-tunnel-token/apply") return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
-  return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
+  return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
     || path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path);
 }
 function record(body: unknown): Record<string, any> {
@@ -114,6 +115,12 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       const applied = applyVerifiedAuthorityPatch(cfg.web?.verified_authority, parsed.verifiedAuthority);
       if (applied.next) after.fleet.web.verified_authority = applied.next; else delete after.fleet.web.verified_authority;
     }
+  } else if (path === "/api/settings/fleet/runtimes") {
+    if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
+    // M-2255: one parser with the handler; each switch is judged by direction (settings-change.ts).
+    const parsed = parseRuntimesSettingsBody(body);
+    if ("error" in parsed) throw new SettingsConfirmationError(parsed.status, parsed.error);
+    after.fleet.runtimes = { ...cfg.runtimes, ...parsed.patch };
   } else if (path === "/api/settings/fleet/appearance") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     // #1629 r4.1 Q3 (b): one parser with the handler; each limit is judged by direction (settings-change.ts).

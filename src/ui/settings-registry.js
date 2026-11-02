@@ -32,6 +32,10 @@ const ROWS = [
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],
   ["agents.provider-keys", "agents", ".s-provider-keys", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
+  // M-2255: the two switches (fleet.yaml runtimes.*).
+  ["runtimes.windows-cli", "runtimes", "#runtimeWindowsCli", null, "runtimes.windows_cli", ["windows cli", "this pc", "local windows", "AGEND_WINDOWS_CLI", "codex", "claude code"], ["Windows CLI", "這台電腦", "本機"], L("Use this PC's Windows CLIs", "使用這台電腦 Windows 上的 CLI")],
+  ["runtimes.remote-runtime", "runtimes", "#runtimeRemoteRuntime", null, "runtimes.remote_runtime", ["pair", "remote", "other computer", "AGEND_REMOTE_RUNTIME", "tailscale", "ssh"], ["配對", "遠端", "其他電腦"], L("Allow other Windows PCs to pair", "允許其他 Windows 電腦配對")],
+  ["runtimes.max-agents", "runtimes", "#runtimeMaxAgents", null, "runtimes.max_agents_per_machine", ["concurrent", "at once", "limit", "parallel", "how many agents"], ["同時", "上限", "並行", "數量"], L("Agents at once on each Windows PC", "每台 Windows 電腦同時執行的 Agent 數")],
   ["runtimes.machines", "runtimes", ".runtime-settings", "settings.sec_runtimes", null, ["runtime", "computer", "machine", "pair", "connect", "windows", "linux", "CLI"], ["執行環境", "電腦", "機器", "配對", "連接", "Windows", "CLI"]],
   ["defaults.tips", "agent-defaults", "#g-tips", "settings.dailyTips", "defaults.tips", ["daily tips", "notices"], ["每日提示"]],
   ["web.notify-login", "access", "#webNotifyLogin", "settings.webNotifyLogin", "web.notify_login", ["sign in", "login", "notices"], ["登入通知"]],

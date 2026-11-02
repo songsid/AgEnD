@@ -1,4 +1,5 @@
 /** Opt-in, single-task Windows CLI bridge. The existing Linux fleet remains unchanged. */
+import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
 import { spawn, execFile } from "./child-process.js";
 import type { ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
@@ -39,7 +40,18 @@ const TEXT_LIMIT = 64 * 1024;
 export const WINDOWS_CLI_INVENTORY_FILE = "windows-cli-inventory.json";
 const NEVER_PROBED: WindowsCliProbe = { clis: [], home: "", probedAt: null };
 
-export function windowsCliEnabled(): boolean { return process.env.AGEND_WINDOWS_CLI === "1" || process.env.AGEND_REMOTE_RUNTIME === "1"; }
+/** Either Windows runtime is on (M-2255: Settings → Runtime, or its environment override): the native agent plumbing. */
+export function windowsCliEnabled(): boolean { return localWindowsCliEnabled() || remoteRuntimeEnabled(); }
+/** M-2255: what a local Windows operation says while "Use this PC's Windows CLIs" is off. */
+export const LOCAL_WINDOWS_CLI_OFF = "This PC's Windows CLIs are turned off. Turn them on in Settings → Runtime.";
+/**
+ * M-2255: the one place a local Windows process starts from (detection, a workspace, a task): it asks the switch each
+ * time, so turning "Use this PC's Windows CLIs" off starts nothing more on this PC — whatever else is on.
+ */
+export async function switchedWindowsTransport(): Promise<WindowsTransport> {
+  if (!localWindowsCliEnabled()) throw new Error(LOCAL_WINDOWS_CLI_OFF);
+  return nativeWindowsTransport();
+}
 export async function nativeWindowsTransport(): Promise<WindowsTransport> {
   const worker = join(dirname(fileURLToPath(import.meta.url)), "windows-cli-worker.js");
   if (process.platform === "win32") return { executable: process.execPath, args: [worker] };
@@ -267,7 +279,7 @@ function visible(task: WindowsCliTask): WindowsCliTask {
 const bridges = new WeakMap<object, WindowsCliBridge>();
 export function windowsBridgeFor(owner: object & { dataDir?: string }): WindowsCliBridge {
   let bridge = bridges.get(owner);
-  if (!bridge) { bridge = new WindowsCliBridge(nativeWindowsTransport, owner.dataDir ? join(owner.dataDir, WINDOWS_CLI_INVENTORY_FILE) : undefined); bridges.set(owner, bridge); }
+  if (!bridge) { bridge = new WindowsCliBridge(switchedWindowsTransport, owner.dataDir ? join(owner.dataDir, WINDOWS_CLI_INVENTORY_FILE) : undefined); bridges.set(owner, bridge); }
   return bridge;
 }
 

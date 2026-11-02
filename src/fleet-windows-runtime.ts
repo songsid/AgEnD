@@ -2,7 +2,11 @@
 import { randomUUID } from "node:crypto";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import { windowsAgentsFor, type WindowsAgent, type WindowsAgents } from "./windows-agents.js";
-import { windowsBridgeFor, windowsCliEnabled, type WindowsCliExecutor, type WindowsCliTask } from "./windows-cli.js";
+import { LOCAL_WINDOWS_CLI_OFF, windowsBridgeFor, windowsCliEnabled, type WindowsCliExecutor, type WindowsCliTask } from "./windows-cli.js";
+import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
+
+/** M-2255: the switch for where this agent runs — this PC's Windows CLIs, or the other Windows computers. */
+const switchedOn = (agent: { machineId?: string }): boolean => agent.machineId ? remoteRuntimeEnabled() : localWindowsCliEnabled();
 import { isWindowsInstance, nativeAgentId, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, syncWindowsProfile } from "./native-instance-registry.js";
 import { validWindowsAgentId } from "./windows-cli-worker.js";
 import type { NativeHistoryMessage, WebChatHistory } from "./web-chat-history.js";
@@ -80,18 +84,18 @@ export class FleetWindowsRuntime {
   status(name: string): "running"|"paused"|"stopped"|"crashed" {
     let agent:ReturnType<FleetWindowsRuntime["get"]>;
     try { agent=this.get(name); } catch { return "crashed"; }
-    if (!agent || !windowsCliEnabled()) return "stopped";
+    if (!agent || !switchedOn(agent)) return "stopped";
     return agent.blocked ? "crashed" : agent.paused ? "paused" : "running";
   }
   execution(name: string): "working"|"idle"|null {
     let agent:ReturnType<FleetWindowsRuntime["get"]>;
     try { agent=this.get(name); } catch { return null; }
-    return !agent || agent.paused || agent.blocked || !windowsCliEnabled() ? null : agent.activeId ? "working" : "idle";
+    return !agent || agent.paused || agent.blocked || !switchedOn(agent) ? null : agent.activeId ? "working" : "idle";
   }
   available(name: string): boolean {
     let agent:ReturnType<FleetWindowsRuntime["get"]>;
     try { agent=this.get(name); } catch { return false; }
-    return !!agent && windowsCliEnabled() && !this.host.stopping() && !agent.blocked && !agent.paused
+    return !!agent && switchedOn(agent) && !this.host.stopping() && !agent.blocked && !agent.paused
       && (!agent.machineId || this.host.machineAvailable?.(agent.machineId) === true)
       && !this.bridge.hasActiveTask(agent.machineId);
   }
@@ -103,7 +107,7 @@ export class FleetWindowsRuntime {
     if (profile.machineId !== undefined) {
       if (typeof profile.machineId !== "string" || !this.host.validateMachine) throw new Error("Remote runtime is not enabled");
       this.host.validateMachine(profile.machineId,String(profile.cli ?? "codex"),profile.sandbox);
-    }
+    } else if (!localWindowsCliEnabled()) throw new Error(LOCAL_WINDOWS_CLI_OFF);   // M-2255: refused before anything is made
     const agent = await this.store.create(profile,authorized), name = nativeInstanceName(agent.id), before=fleet.instances[name];
     try {
       const persist=()=>{
@@ -201,6 +205,7 @@ export class FleetWindowsRuntime {
     const config=this.config(name);
     if (!config || !this.has(name)) throw new Error("Windows instance not found");
     const agent=syncWindowsProfile(config,this.store);
+    if(!switchedOn(agent))throw new Error(agent.machineId ? "Other Windows computers are turned off. Turn them on in Settings → Runtime." : LOCAL_WINDOWS_CLI_OFF);
     if(agent.machineId && this.host.machineAvailable?.(agent.machineId)!==true)throw new Error("This runtime machine is offline. Reconnect it before sending a message.");
     const raw = typeof payload.content === "string" ? payload.content : typeof payload.text === "string" ? payload.text
       : payload.payload && typeof payload.payload === "object" ? (payload.payload as {message?:unknown}).message : undefined;
@@ -215,7 +220,7 @@ export class FleetWindowsRuntime {
     if (!existing && nativeProviderMcpSupported(agent.cli) && this.host.openMcp) {
       this.closeMcp(name);
       lease=this.host.openMcp(name,requestId,agent.sandbox,()=>{
-        if (this.host.stopping() || !windowsCliEnabled() || authority?.() === false
+        if (this.host.stopping() || !switchedOn(agent) || authority?.() === false
           || agent.machineId && this.host.machineAvailable?.(agent.machineId) !== true) return false;
         try { const current=this.get(name);return !!current && current.activeId===requestId && !current.paused && !current.blocked; }
         catch { return false; }

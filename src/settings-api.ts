@@ -11,6 +11,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
 import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { parseRuntimesSettingsBody, runtimeSettingsView } from "./runtime-switches.js";
 import { evaluateWebRequest } from "./web-auth.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
 /**
@@ -833,6 +834,42 @@ export function handleSettingsRequest(
   }
 
   // One hot web toggle; an unrelated Settings edit never materializes defaults.
+  // ── M-2255: Settings → Runtime's switches — "Use this PC's Windows CLIs" (runtimes.windows_cli) and "Allow other
+  // Windows computers to pair" (runtimes.remote_runtime). Off by default; the environment overrides them (said here).
+  // Never over the public link. Switching one on is confirmed by a General admin (settings-change.ts); off applies at once.
+  if (method === "GET" && path === "/api/settings/runtimes") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    json(res, 200, runtimeSettingsView(cfg));
+    return true;
+  }
+  if (method === "PUT" && path === "/api/settings/fleet/runtimes") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    readBody(req, 4096).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      let body: unknown;
+      try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      const parsed = parseRuntimesSettingsBody(body);
+      if ("error" in parsed) return json(res, parsed.status, { error: parsed.error });
+      const changes: RawConfigPatch[] = Object.entries(parsed.patch).map(([key, value]) => ({ path: ["runtimes", key], value }));
+      if (!changes.length) return json(res, 200, { ok: true });
+      const runtimes = { ...cfg.runtimes, ...parsed.patch };
+      const before = validateFleet(cfg), after = validateFleet({ ...cfg, runtimes });
+      if (rejectIfWorse(res, before, after)) return;
+      const previous = { runtimes: cfg.runtimes, had: "runtimes" in cfg };
+      try {
+        settingsWrite(req, () => { cfg.runtimes = runtimes; ctx.saveFleetConfig(changes); });
+      } catch (err) {
+        // The save refused (fleet.yaml unchanged): memory goes back to what the file still says.
+        if (previous.had) cfg.runtimes = previous.runtimes; else delete (cfg as { runtimes?: unknown }).runtimes;
+        ctx.logger.warn({ err }, "settings: runtime switches save refused");
+        return json(res, 500, { ok: false, error: (err as Error).message });
+      }
+      json(res, 200, { ok: true, ...runtimeSettingsView(cfg), warnings: saveWarnings(before, after) });
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
   if (method === "PUT" && path === "/api/settings/fleet/web") {
     // #1620: never over the temporary public link — refused before the body is read (the confirmation gate refuses it
     // first; this is the second wall, for any path that reaches the handler without it).
