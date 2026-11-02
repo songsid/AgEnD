@@ -74,6 +74,17 @@ export class RuntimePanePort implements Pane {
       return { windowId: snapshot.paneId, reattached };
     });
   }
+  /** Read-only recovery of an open whose ACK was lost. Never sends open or starts a process. */
+  async inspectRetained(): Promise<RuntimePaneSnapshot> {
+    return this.serialize(async () => {
+      const launch = this.record.launch;
+      if (!this.endpoint.online() || !launch.launchId) throw Error("Retained native owner is unavailable");
+      const result = await this.endpoint.call({ action: "capture", paneId: launch.paneId, launchId: launch.launchId }) as RuntimePaneCapture;
+      const snapshot = this.accept(result.snapshot);
+      if (!this.endpoint.online()) throw Error("Retained native observation became disconnected");
+      this.record.snapshot = snapshot; this.save(); return structuredClone(snapshot);
+    });
+  }
   /** Idempotent metadata binding; it never types into the CLI or replays an input. */
   async bindConversation(sessionId: string): Promise<RuntimePaneSnapshot> {
     return this.serialize(async () => {

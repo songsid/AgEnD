@@ -129,8 +129,8 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     }
     // Detaching revokes coordinator tool authority but preserves the runner, its helper and the profile reservation.
     if (intent === "close") {
-      const pane = this.port.ownedSnapshot();
-      if (pane && pane.state !== "exited" && !await this.port.killWindowConfirmed()) throw Error("Native pane exit is unconfirmed; its reservation is retained");
+      const pane = this.port.ownedSnapshot() ?? await this.port.inspectRetained();
+      if (pane.state !== "exited" && !await this.port.killWindowConfirmed()) throw Error("Native pane exit is unconfirmed; its reservation is retained");
       const exited = this.port.ownedSnapshot(); if (exited && !this.releasedExit) { this.options.exited(exited); this.releasedExit = true; }
     }
     this.detached = true; this.source?.close(); this.observation.stop(); this.options.releaseAuthority();
