@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createRuntimeBundle, RUNTIME_BUNDLE_MODULES } from "../src/runtime-bundle.js";
+import { RUNTIME_PANE_ASSETS, PANE_NATIVE_SHA256 } from "../src/runtime-pane-assets.js";
 
 const homes: string[] = [];
 function fixture(version = "8.22.0") {
@@ -15,6 +16,10 @@ function fixture(version = "8.22.0") {
   writeFileSync(join(moduleDirectory,"runtime-cli.js"),"123456789");
   const ws = JSON.parse(readFileSync(join(wsDirectory,"package.json"),"utf8"));ws.version=version;writeFileSync(join(wsDirectory,"package.json"),JSON.stringify(ws));
   writeFileSync(licensePath,"MIT License\nRuntime fixture\n");
+  for (const pkg of RUNTIME_PANE_ASSETS) for (const file of pkg.files) {
+    const target = join(moduleDirectory,"runtime-assets",pkg.name,file);mkdirSync(dirname(target),{recursive:true});
+    writeFileSync(target, pkg.name === "node-pty" && PANE_NATIVE_SHA256[file] ? readFileSync(join("node_modules/node-pty",file)) : file === "package.json" ? JSON.stringify({name:pkg.name,version:pkg.version}) : "verified fixed program fixture");
+  }
   return {root,moduleDirectory,wsDirectory,licensePath,packageVersion:"2.3.5-preview.1"};
 }
 /** Parse through the standard end-of-central-directory offsets, independently of the producer's file list. */
@@ -28,7 +33,7 @@ function unzip(bytes:Buffer):Map<string,Buffer> {
     expect(bytes.readUInt16LE(at+8)&0x0800).toBe(0x0800);
     const size=bytes.readUInt32LE(at+24),length=bytes.readUInt16LE(at+28),extra=bytes.readUInt16LE(at+30),comment=bytes.readUInt16LE(at+32),local=bytes.readUInt32LE(at+42);
     const name=bytes.subarray(at+46,at+46+length).toString("utf8");
-    expect(name).toMatch(/^agend-runtime\/[a-zA-Z0-9/_.-]+$/);expect(name).not.toContain("..");expect(files.has(name)).toBe(false);
+    expect(name).toMatch(/^agend-runtime\/[a-zA-Z0-9/_.@-]+$/);expect(name).not.toContain("..");expect(files.has(name)).toBe(false);
     expect(bytes.readUInt32LE(local)).toBe(0x04034b50);expect(bytes.readUInt16LE(local+8)).toBe(0);
     const localLength=bytes.readUInt16LE(local+26),localExtra=bytes.readUInt16LE(local+28);
     expect(bytes.subarray(local+30,local+30+localLength).toString("utf8")).toBe(name);
@@ -57,12 +62,17 @@ describe("Windows runtime download archive",()=>{
     expect(bundle.sha256).toBe(createHash("sha256").update(bundle.bytes).digest("hex"));
     expect([...files.keys()].filter(name=>name.startsWith("agend-runtime/dist/"))).toEqual(RUNTIME_BUNDLE_MODULES.map(name=>"agend-runtime/dist/"+name));
     expect(files.get("agend-runtime/agend-runtime.cmd")?.toString()).toBe('@echo off\r\nnode.exe "%~dp0dist\\runtime-cli.js" %*\r\n');
-    const pkg=JSON.parse(files.get("agend-runtime/package.json")!.toString());expect(pkg.dependencies).toEqual({ws:version});expect(pkg.type).toBe("module");
-    expect(JSON.parse(files.get("agend-runtime/bundle-manifest.json")!.toString())).toMatchObject({nativeDependencies:[],modules:RUNTIME_BUNDLE_MODULES});
+    const pkg=JSON.parse(files.get("agend-runtime/package.json")!.toString());expect(pkg.dependencies).toEqual({ws:version,"node-pty":"1.1.0","@xterm/headless":"6.0.0","@xterm/addon-serialize":"0.14.0"});expect(pkg.type).toBe("module");
+    expect(JSON.parse(files.get("agend-runtime/bundle-manifest.json")!.toString())).toMatchObject({nativeDependencies:[{name:"node-pty",version:"1.1.0",platforms:["win32-x64","win32-arm64"],backend:"ConPTY"}],modules:RUNTIME_BUNDLE_MODULES});
     expect(files.get("agend-runtime/README.txt")!.toString()).toContain("one-time code");expect(files.get("agend-runtime/LICENSE")!.toString()).toContain("MIT License");
     expect(files.get("agend-runtime/node_modules/ws/LICENSE")!.toString()).toContain("Permission is hereby granted");
     expect(bundle.bytes.includes(Buffer.from(canary))).toBe(false);
     expect([...files.keys()]).not.toContain("agend-runtime/node_modules/ws/lib/private-extra.js");
+  });
+  it("refuses a modified native prebuild before offering the runtime download",()=>{
+    const f=fixture(),file=Object.keys(PANE_NATIVE_SHA256)[0];
+    writeFileSync(join(f.moduleDirectory,"runtime-assets/node-pty",file),"changed native program");
+    expect(()=>createRuntimeBundle(f)).toThrow("checksum");
   });
   it("uses standard ZIP CRC32 for the known check vector and deterministic package bytes",()=>{
     const f=fixture(),a=createRuntimeBundle(f),b=createRuntimeBundle(f);

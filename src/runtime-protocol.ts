@@ -2,6 +2,7 @@
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import type { NativeTaskInput } from "./windows-cli-worker.js";
 import { createHash } from "node:crypto";
+import type { RuntimePaneRequest, RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 
 export const RUNTIME_PROTOCOL_VERSION = 1;
 export const RUNTIME_CONNECT_PATH = "/runtime/v1/connect";
@@ -40,11 +41,12 @@ export interface RuntimeMachine {
   bootId?: string;
   generation: number;
   pairingFingerprint?: string;
+  paneProtocol?: 1;
 }
 export interface RuntimePairing { pairingId: string; code: string; expiresAt: number }
 export interface RuntimePairResult { machineId: string; claimSecret: string; status: "pending"; expiresAt: number }
 export type RuntimeClaimResult = { status: "pending" } | { status: "approved"; machineId: string; credential: string };
-export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string }
+export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1 }
 export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number }
 export interface RuntimeRequest { v: 1; type: "request"; id: string; operation: RuntimeOperation; payload: unknown }
 export interface RuntimeResponse { v: 1; type: "response"; id: string; ok: boolean; result?: unknown; error?: string }
@@ -52,5 +54,8 @@ export interface RuntimeTaskEvent { v: 1; type: "task"; seq: number; task: Windo
 export interface RuntimeInventoryEvent { v: 1; type: "inventory"; inventory: WindowsCliProbe }
 export interface RuntimeToolCall { v: 1; type: "tool.call"; id: string; runId: string; body: unknown }
 export interface RuntimeToolResult { v: 1; type: "tool.result"; id: string; ok: boolean; result?: unknown; error?: string }
-export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult;
-export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall;
+export interface RuntimePaneCall { v: 1; type: "pane.request"; id: string; maxAgents: number; request: RuntimePaneRequest }
+export interface RuntimePaneReply { v: 1; type: "pane.response"; id: string; ok: boolean; result?: unknown; error?: string }
+export interface RuntimePaneOutput { v: 1; type: "pane.output"; snapshot: RuntimePaneSnapshot }
+export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall;
+export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput;

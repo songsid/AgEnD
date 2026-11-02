@@ -4,10 +4,11 @@ import { lstatSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { RUNTIME_PANE_MODULES, RUNTIME_PANE_ASSETS, PANE_NATIVE_SHA256 } from "./runtime-pane-assets.js";
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
   "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "runtime-protocol.js", "windows-cli.js", "windows-cli-worker.js",
-  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js",
+  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", ...RUNTIME_PANE_MODULES,
 ]);
 const WS_FILES = Object.freeze([
   "package.json", "index.js", "wrapper.mjs", "browser.js", "LICENSE",
@@ -16,7 +17,7 @@ const WS_FILES = Object.freeze([
   "lib/validation.js", "lib/websocket-server.js", "lib/websocket.js",
 ]);
 const MAX_FILE_BYTES = 1024 * 1024;
-const MAX_ARCHIVE_BYTES = 4 * 1024 * 1024;
+const MAX_ARCHIVE_BYTES = 8 * 1024 * 1024;
 const ROOT = "agend-runtime/";
 const CMD = '@echo off\r\nnode.exe "%~dp0dist\\runtime-cli.js" %*\r\n';
 const README = `AgEnD native Windows runtime preview
@@ -43,14 +44,16 @@ export interface RuntimeBundleOptions {
   wsDirectory?: string;
   packageVersion?: string;
   licensePath?: string;
+  /** Fixed code assets prepared during the package build, not CLI installations or user profiles. */
+  paneAssetDirectory?: string;
 }
 export interface RuntimeBundle { bytes: Buffer; filename: string; sha256: string }
 
-function readCodeFile(path: string): Buffer {
+function readCodeFile(path: string, limit = MAX_FILE_BYTES): Buffer {
   const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_FILE_BYTES) throw new Error("Runtime bundle file is missing, unsafe or too large");
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > limit) throw new Error("Runtime bundle file is missing, unsafe or too large");
   const bytes = readFileSync(path);
-  if (bytes.length > MAX_FILE_BYTES) throw new Error("Runtime bundle file exceeded its size limit");
+  if (bytes.length > limit) throw new Error("Runtime bundle file exceeded its size limit");
   return bytes;
 }
 function crc32(bytes: Uint8Array): number {
@@ -106,11 +109,24 @@ export function createRuntimeBundle(options: RuntimeBundleOptions = {}): Runtime
   };
   for (const file of RUNTIME_BUNDLE_MODULES) add(`dist/${file}`, readCodeFile(join(moduleDirectory, file)));
   for (const file of WS_FILES) add(`node_modules/ws/${file}`, file === "package.json" ? wsPackage : readCodeFile(join(wsDirectory, file)));
+  const assets = options.paneAssetDirectory ?? join(moduleDirectory, "runtime-assets");
+  for (const pkg of RUNTIME_PANE_ASSETS) {
+    const directory = join(assets, pkg.name);
+    const manifest = JSON.parse(readCodeFile(join(directory, "package.json")).toString("utf8"));
+    if (manifest.name !== pkg.name || manifest.version !== pkg.version) throw Error("Unverified runtime pane dependency");
+    for (const file of pkg.files) {
+      const bytes = readCodeFile(join(directory, file), 2 * 1024 * 1024);
+      if (pkg.name === "node-pty" && PANE_NATIVE_SHA256[file] && createHash("sha256").update(bytes).digest("hex") !== PANE_NATIVE_SHA256[file]) throw Error("Native pane prebuild checksum differs");
+      add(`node_modules/${pkg.name}/${file}`, bytes);
+    }
+  }
   add("LICENSE", readCodeFile(options.licensePath ?? join(packageDirectory, "LICENSE")));
   add("package.json", Buffer.from(JSON.stringify({ name: "@songsid/agend-runtime", version, private: true, type: "module",
-    bin: { "agend-runtime": "./dist/runtime-cli.js" }, engines: { node: "^22.14.0 || ^23.6.0 || >=24" }, dependencies: { ws: ws.version } }, null, 2) + "\n"));
+    bin: { "agend-runtime": "./dist/runtime-cli.js" }, engines: { node: "^22.14.0 || ^23.6.0 || >=24" }, dependencies: { ws: ws.version, ...Object.fromEntries(RUNTIME_PANE_ASSETS.map(pkg => [pkg.name, pkg.version])) } }, null, 2) + "\n"));
   add("agend-runtime.cmd", Buffer.from(CMD)); add("README.txt", Buffer.from(README));
-  add("bundle-manifest.json", Buffer.from(JSON.stringify({ version, modules: RUNTIME_BUNDLE_MODULES, ws: ws.version, nativeDependencies: [] }, null, 2) + "\n"));
+  add("bundle-manifest.json", Buffer.from(JSON.stringify({ version, modules: RUNTIME_BUNDLE_MODULES, ws: ws.version,
+    nativeDependencies: [{ name: "node-pty", version: "1.1.0", platforms: ["win32-x64", "win32-arm64"], backend: "ConPTY" }],
+    sha256: Object.fromEntries(entries.map(([name, bytes]) => [name, createHash("sha256").update(bytes).digest("hex")])) }, null, 2) + "\n"));
   const bytes = zip(entries);
   return { bytes, filename: `agend-runtime-windows-${version}.zip`, sha256: createHash("sha256").update(bytes).digest("hex") };
 }

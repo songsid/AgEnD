@@ -4,13 +4,14 @@ import { validateNativeTask } from "./windows-cli-worker.js";
 import { nativeMcpHttp, type NativeMcpRequest } from "./windows-native-mcp.js";
 import type { NativeMcpConnection } from "./windows-cli-providers.js";
 import type { RuntimeOperation } from "./runtime-protocol.js";
+import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 
 export interface RuntimeExecutionCoordinator {
   machine(id: string): {status: string; platform: string; inventory?: WindowsCliProbe} | null;
   call(machineId: string, operation: RuntimeOperation, payload: unknown): Promise<unknown>;
   task(id: string): WindowsCliTask | null;
   hasActiveTask(machineId: string): boolean;
-  subscribe(listener: (event: {type: "machine"|"task"; machineId: string; task?: WindowsCliTask}) => void): () => void;
+  subscribe(listener: (event: RuntimeCoordinatorEvent) => void): () => void;
 }
 type Pending = {machineId: string; task: WindowsCliTask; settle?: WindowsRunOptions["onSettled"]; timer: ReturnType<typeof setTimeout>};
 

@@ -10,6 +10,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
+import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
@@ -72,7 +73,7 @@ const COMMAND_HARD_CAP = 4096, COMMAND_SOFT_CAP = 2048, COMMAND_KEEP_MS = 7 * 24
 const TOMBSTONE_CAP = 65_536, TOMBSTONE_KEEP_MS = 30 * 24 * 3_600_000;
 interface Connection { ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout }
 interface Pending { machineId: string; generation: number; resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
-export interface RuntimeCoordinatorEvent { type: "machine" | "task"; machineId: string; task?: WindowsCliTask }
+export interface RuntimeCoordinatorEvent { type: "machine" | "task" | "pane"; machineId: string; task?: WindowsCliTask; pane?: RuntimePaneSnapshot }
 export interface RuntimeCoordinatorOptions {
   changed?(event?: RuntimeCoordinatorEvent): void;
   handleMcp?(machineId: string, runId: string, body: unknown): Promise<unknown>;
@@ -88,6 +89,7 @@ export class RuntimeCoordinator {
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: RUNTIME_MAX_FRAME_BYTES, perMessageDeflate: false });
   private readonly connections = new Map<string, Connection>();
   private readonly pending = new Map<string, Pending>();
+  private readonly panePending = new Map<string, Pending>();
   private readonly listeners = new Set<(event: RuntimeCoordinatorEvent) => void>();
   private readonly limits = new Map<string, { count: number; until: number }>();
   private readonly heartbeat: NodeJS.Timeout;
@@ -303,6 +305,9 @@ export class RuntimeCoordinator {
     connection.ws.send(frame);
   }
   private rejectPending(connection: Connection, reason: string): void {
+    for (const [id, pending] of this.panePending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
+      this.panePending.delete(id); clearTimeout(pending.timer); pending.reject(Error(reason));
+    }
     let changed = false;
     for (const [id, pending] of this.pending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
       this.pending.delete(id); clearTimeout(pending.timer);
@@ -336,10 +341,27 @@ export class RuntimeCoordinator {
       if (value.type !== "hello" || !text(value.bootId, 128)) throw Error("Runtime hello required");
       connection.ready = true; connection.bootId = value.bootId; clearTimeout(connection.helloTimer);
       row.machine.bootId = value.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
+      if (value.paneProtocol === 1) row.machine.paneProtocol = 1; else delete row.machine.paneProtocol;
       if (value.inventory !== undefined) { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); }
       this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId }); return;
     }
     row.machine.lastSeenAt = this.now();
+    if (value.type === "pane.output") {
+      if (row.machine.paneProtocol !== 1) throw Error("Pane protocol was not negotiated");
+      const snapshot = validateRuntimePaneSnapshot(value.snapshot);
+      this.emit({ type: "pane", machineId: connection.machineId, pane: snapshot });
+      return;
+    }
+    if (value.type === "pane.response") {
+      if (row.machine.paneProtocol !== 1 || !UUID.test(String(value.id)) || typeof value.ok !== "boolean") throw Error("Invalid pane transport response");
+      const pending = this.panePending.get(value.id as string);
+      if (!pending) return; // A late reply proves nothing and never replays a command.
+      if (pending.machineId !== connection.machineId || pending.generation !== connection.generation) throw Error("Pane response belongs to another connection");
+      this.panePending.delete(value.id as string); clearTimeout(pending.timer);
+      if (value.ok) pending.resolve(value.result);
+      else pending.reject(Error(typeof value.error === "string" ? value.error.slice(0, 1000) : "Pane operation failed"));
+      return;
+    }
     if (value.type === "inventory") { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); this.save(); this.emit({ type: "machine", machineId: connection.machineId }); return; }
     if (value.type === "task") {
       if (!record(value.task) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1) throw Error("Invalid runtime task event");
@@ -432,6 +454,22 @@ export class RuntimeCoordinator {
   task(id: string): WindowsCliTask | null { const task = this.state.commands.find(command => command.id === id && command.operation === "run")?.task; return task ? structuredClone(task) : null; }
   tasks(): Array<{ machineId: string; task: WindowsCliTask }> { return this.state.commands.flatMap(command => command.operation === "run" && command.task ? [{ machineId: command.machineId, task: structuredClone(command.task) }] : []); }
   hasActiveTask(machineId: string): boolean { return this.state.commands.some(command => command.machineId === machineId && command.operation === "run" && command.state !== "failed" && (!command.task || !terminal(command.task) || command.task.outcomeConfirmed === false)); }
+  /** Pane input replay/sequence authority lives in its pane ledger; reads never fill the exec-task journal. */
+  async callPane(machineId: string, raw: RuntimePaneRequest, maxAgents = 4): Promise<unknown> {
+    const request = validateRuntimePaneRequest(raw);
+    if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) throw Error("Invalid machine pane limit");
+    const machine = this.entry(machineId).machine, connection = this.connections.get(machineId);
+    if (this.closed || machine.status !== "online" || machine.paneProtocol !== 1 || !connection?.ready || !this.current(connection)) throw Error("Pane runtime is offline or unsupported");
+    if (this.panePending.size >= 64) throw Error("Pane transport capacity reached");
+    const id = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.panePending.delete(id); reject(Error("Pane response timed out; reconcile before another input")); }, this.options.requestTimeoutMs ?? 30_000);
+      timer.unref();
+      this.panePending.set(id, { machineId, generation: connection.generation, resolve, reject, timer });
+      try { this.send(connection, { v: 1, type: "pane.request", id, maxAgents, request }); }
+      catch (error) { this.panePending.delete(id); clearTimeout(timer); reject(error); }
+    });
+  }
   async call(machineId: string, operation: RuntimeOperation, payload: unknown): Promise<unknown> {
     if (this.closed || !["probe", "workspace", "run", "cancel", "reconcile", "recover"].includes(operation)) throw Error("Unsupported runtime operation");
     const machine = this.entry(machineId).machine;

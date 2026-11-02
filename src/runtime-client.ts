@@ -9,6 +9,11 @@ import { validateNativeTask, validWindowsAgentId, type NativeTaskInput } from ".
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
+import { validateRuntimePaneRequest } from "./runtime-pane-protocol.js";
+import type { RuntimePaneLink } from "./runtime-pane-link.js";
+import type { RuntimePaneHost } from "./runtime-pane-host.js";
+import type { RuntimePaneHostOptions } from "./runtime-pane-host.js";
+export { RUNTIME_PANE_MODULES } from "./runtime-pane-assets.js";
 
 export interface RuntimeBridge {
   probe(options?: { force?: boolean }): Promise<WindowsCliProbe>;
@@ -30,6 +35,8 @@ export interface RuntimeClientOptions {
   pollMs?: number;
   /** Tests may use an isolated fake worker. Production always uses the Windows bridge. */
   socketFactory?: (url: string, credential: string) => WebSocket;
+  /** Offline transport acceptance supplies its own process factory, never a public configuration field. */
+  createPaneHost?: (options: RuntimePaneHostOptions) => RuntimePaneHost;
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
@@ -71,6 +78,9 @@ export class RuntimeClient {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private credentials: RuntimeCredentials | null = null;
   private startupRotation: Promise<RuntimeCredentials> | null = null;
+  private paneHost: RuntimePaneHost | RuntimePaneLink | null = null;
+  private paneOpening: Promise<RuntimePaneHost | RuntimePaneLink> | null = null;
+  private machinePaneLimit = 4;
   private readonly active = new Set<string>();
   private readonly snapshots = new Map<string, string>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -119,6 +129,7 @@ export class RuntimeClient {
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform,
+        ...(process.platform === "win32" || this.options.createPaneHost ? { paneProtocol: 1 } : {}),
         ...(this.inventory ? { inventory: this.inventory } : {}) });
     });
     socket.on("message", (bytes, binary) => {
@@ -185,6 +196,18 @@ export class RuntimeClient {
       if (value.ok === true) pending.accept(value.result); else pending.reject(new Error("AgEnD MCP request was refused"));
       return;
     }
+    if (value.type === "pane.request") {
+      if (Object.keys(value).some(key => !["v", "type", "id", "maxAgents", "request"].includes(key))
+        || typeof value.id !== "string" || !validWindowsAgentId(value.id) || !Number.isInteger(value.maxAgents)
+        || (value.maxAgents as number) < 1 || (value.maxAgents as number) > 16) throw Error("Invalid pane transport envelope");
+      const request = validateRuntimePaneRequest(value.request);
+      this.machinePaneLimit = value.maxAgents as number;
+      try {
+        const result = await (await this.panes()).request(request);
+        this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
+      } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
+      return;
+    }
     if (value.type !== "request" || typeof value.id !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)
       || typeof value.operation !== "string" || !object(value.payload)) throw new Error("Invalid runtime request");
     const command = value as unknown as Command;
@@ -192,6 +215,20 @@ export class RuntimeClient {
     catch (error) { this.send({ v: 1, type: "response", id: command.id, ok: false, error: message(error) }); }
   }
   private publish(job: RuntimeStoredJob): void { if (this.online()) this.send({ v: 1, type: "task", seq: job.seq, task: job.task }); }
+  private panes(): Promise<RuntimePaneHost | RuntimePaneLink> {
+    if (!this.paneOpening) {
+      const output: RuntimePaneHostOptions["output"] = snapshot => { if (this.online()) this.send({ v: 1, type: "pane.output", snapshot }); };
+      if (this.options.createPaneHost) this.paneOpening = import("./runtime-pane-store.js").then(({ RuntimePaneStore }) => {
+        const store = new RuntimePaneStore(join(this.options.store.directory, "panes")); store.recoverInterrupted();
+        return this.paneHost = this.options.createPaneHost!({ store, bootId: this.bootId, online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, output });
+      });
+      else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => RuntimePaneLink.open({
+        directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
+        online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, output,
+      })).then(host => this.paneHost = host);
+    }
+    return this.paneOpening;
+  }
   private update(task: WindowsCliTask): void {
     if (this.closed) return;
     const serialized = JSON.stringify(task);
@@ -330,6 +367,7 @@ export class RuntimeClient {
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }
     // A cancelled start may still finish its durable credential write. Do not release the profile to another writer.
     await this.startupRotation?.catch(() => {});
+    await this.paneOpening?.then(host => host.stop()).catch(() => this.report("Pane cleanup is unconfirmed; its durable reservations remain held."));
     // Keep the profile lock until cancellation is confirmed or the journal is explicitly marked uncertain.
     const deadline = Date.now() + 5000;
     while (this.active.size && Date.now() < deadline) {
