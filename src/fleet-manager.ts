@@ -4511,7 +4511,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.lifecycle.isPaused(name)) return "paused";
     const daemon = this.lifecycle.daemons.get(name) as { getProcessStatus?: () => "running" | "crashed" | "stopped" } | undefined;
     if(isNativePaneInstance(this.fleetConfig?.instances[name])){
-      if(daemon)return daemon.getProcessStatus?.()??"crashed";
+      const config=this.fleetConfig!.instances[name];
+      if(config.machine_id?!remoteRuntimeEnabled():!localWindowsCliEnabled())return "stopped";
+      if(daemon){
+        const native=daemon as Daemon,status=native.getProcessStatus?.()??"crashed";
+        return status==="running"&&native.nativePaneCurrent?.()!==true?"crashed":status;
+      }
       try{return this.nativeInstanceRuntime().get(name)?.activeId?"crashed":"stopped";}catch{return "crashed";}
     }
     const processStatus = this.instanceProcessStatus.get(name);

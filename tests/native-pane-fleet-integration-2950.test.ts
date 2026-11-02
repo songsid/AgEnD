@@ -194,3 +194,7 @@ it('offline switch cleanup retains the reservation and never manufactures an exi
  const f=await fixture();await f.fleet.startInstance('native',f.config,true);const hub:any=f.hub;hub.close=vi.fn();hub.machine=()=>({status:'offline'});f.fleet.runtimeEffects={windows_cli:false,remote_runtime:true};setConfiguredRuntimeSwitches({});f.fleet.applyRuntimeSwitches();await f.fleet.remotePaneDrain;
  expect(hub.close).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).activeId).toBeTruthy();expect(f.cli.kill).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();
 });
+
+it('a disconnected native pane is held and never reports a live process from stale metadata; switch-off shows stopped',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);expect(f.fleet.getInstanceStatus('native')).toBe('running');f.hub.machine=()=>({status:'offline'});expect(f.fleet.getInstanceStatus('native')).toBe('crashed');setConfiguredRuntimeSwitches({});expect(f.fleet.getInstanceStatus('native')).toBe('stopped');expect(f.cli.kill).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).activeId).toBeTruthy();
+});
