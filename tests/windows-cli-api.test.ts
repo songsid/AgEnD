@@ -27,6 +27,9 @@ beforeEach(() => vi.stubEnv("AGEND_WINDOWS_CLI", "1"));
 const scratchDirs:string[]=[];
 afterEach(() => {vi.unstubAllEnvs();vi.restoreAllMocks();for(const path of scratchDirs.splice(0)){if(!resolve(path).startsWith(resolve(tmpdir())+(process.platform==="win32"?"\\":"/")))throw Error("Unsafe scratch directory");rmSync(path,{recursive:true,force:true});}});
 
+/** M-2239 P2-5: no test reaches Windows — a bridge here is given a launcher that refuses. */
+const noWindows = async (): Promise<never> => { throw new Error("tests never reach Windows"); };
+
 describe("optional Windows agent workspace API",()=>{
   const agentUrl=new URL("http://localhost/ui/windows-cli/agents");
   const createContext=()=>{const dataDir=mkdtempSync(join(tmpdir(),"agend-workspace-api-"));scratchDirs.push(dataDir);return {webToken:token as string|null,dataDir};};
@@ -58,7 +61,7 @@ describe("optional Windows agent workspace API",()=>{
 describe("Windows execution uses the dashboard authorization boundary", () => {
   it("is off by default and starts no worker", () => {
     vi.stubEnv("AGEND_WINDOWS_CLI", ""); const req = request(), res = response(req);
-    const bridge = new WindowsCliBridge(); const start = vi.spyOn(bridge, "start");
+    const bridge = new WindowsCliBridge(noWindows); const start = vi.spyOn(bridge, "start");
     handleWindowsCliRequest(req,res,url,{ webToken:token },bridge);
     expect(res.status).toBe(404); expect(start).not.toHaveBeenCalled();
   });
@@ -86,12 +89,12 @@ describe("Windows execution uses the dashboard authorization boundary", () => {
   });
   it("rechecks revocation after body reception, before invoking the execution service", async () => {
     const req = request(), res = response(req), ctx: { webToken: string | null } = { webToken:token };
-    const bridge = new WindowsCliBridge(); const start = vi.spyOn(bridge,"start");
+    const bridge = new WindowsCliBridge(noWindows); const start = vi.spyOn(bridge,"start");
     handleWindowsCliRequest(req,res,url,ctx,bridge); ctx.webToken = null;
     await vi.waitFor(() => expect(res.status).toBe(403)); expect(start).not.toHaveBeenCalled();
   });
   it("passes the validated body to the service and returns a task rather than waiting for model output", async () => {
-    const req = request(), res = response(req), bridge = new WindowsCliBridge();
+    const req = request(), res = response(req), bridge = new WindowsCliBridge(noWindows);
     const start = vi.spyOn(bridge,"start").mockReturnValue({ id:input.requestId, cli:"codex", cwd:input.cwd, sandbox:"read-only", status:"starting", startedAt:1, output:"" });
     handleWindowsCliRequest(req,res,url,{ webToken:token },bridge);
     await vi.waitFor(() => expect(res.status).toBe(202)); expect(start).toHaveBeenCalledWith(input,expect.any(Function));
@@ -102,7 +105,7 @@ describe("Windows CLI discovery refresh API", () => {
   const probeUrl = new URL("http://localhost/ui/windows-cli/probe");
   const value = { home:"C:\\User",clis:[],probedAt:1 };
   it.each([{}, {force:true}, {force:false}])("passes supported refresh options %j to discovery", async body => {
-    const req = request("POST",body), res = response(req), bridge = new WindowsCliBridge(); req.url = probeUrl.pathname;
+    const req = request("POST",body), res = response(req), bridge = new WindowsCliBridge(noWindows); req.url = probeUrl.pathname;
     const probe = vi.spyOn(bridge,"probe").mockResolvedValue(value);
     handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
     await vi.waitFor(() => expect(res.status).toBe(200));
@@ -121,18 +124,18 @@ describe("Windows CLI discovery refresh API", () => {
   it("accepts an empty POST body as ordinary cached discovery", async () => {
     const req = Readable.from([]) as unknown as IncomingMessage;
     req.method = "POST"; req.url = probeUrl.pathname; req.headers = {host:"localhost","x-agend-token":token};
-    const res = response(req), bridge = new WindowsCliBridge(), probe = vi.spyOn(bridge,"probe").mockResolvedValue(value);
+    const res = response(req), bridge = new WindowsCliBridge(noWindows), probe = vi.spyOn(bridge,"probe").mockResolvedValue(value);
     handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
     await vi.waitFor(() => expect(res.status).toBe(200)); expect(probe).toHaveBeenCalledWith({}, expect.any(Function));
   });
   it.each([null, [], "force", {force:"true"}, {force:1}, {force:true,unexpected:true}])("rejects malformed refresh options %j before discovery", async body => {
-    const req = request("POST",body), res = response(req), bridge = new WindowsCliBridge(); req.url = probeUrl.pathname;
+    const req = request("POST",body), res = response(req), bridge = new WindowsCliBridge(noWindows); req.url = probeUrl.pathname;
     const probe = vi.spyOn(bridge,"probe");
     handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
     await vi.waitFor(() => expect(res.status).toBe(400)); expect(probe).not.toHaveBeenCalled();
   });
   it("rechecks revocation before returning a discovery result", async () => {
-    const req = request("POST",{}), res = response(req), bridge = new WindowsCliBridge(), ctx: WindowsCliApiContext = {webToken:token}; req.url = probeUrl.pathname;
+    const req = request("POST",{}), res = response(req), bridge = new WindowsCliBridge(noWindows), ctx: WindowsCliApiContext = {webToken:token}; req.url = probeUrl.pathname;
     let finish!: (result: typeof value) => void;
     const probe = vi.spyOn(bridge,"probe").mockImplementation(() => new Promise(resolve => { finish=resolve; }));
     handleWindowsCliRequest(req,res,probeUrl,ctx,bridge);
@@ -141,7 +144,7 @@ describe("Windows CLI discovery refresh API", () => {
     await vi.waitFor(() => expect(res.status).toBe(403)); expect(res.body).not.toContain("C:\\\\User");
   });
   it("does not expose a cached result to an unauthenticated request", () => {
-    const req = request("POST",{}), res = response(req), bridge = new WindowsCliBridge(); req.url = probeUrl.pathname;
+    const req = request("POST",{}), res = response(req), bridge = new WindowsCliBridge(noWindows); req.url = probeUrl.pathname;
     delete req.headers["x-agend-token"];
     const probe = vi.spyOn(bridge,"probe").mockResolvedValue(value);
     handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);

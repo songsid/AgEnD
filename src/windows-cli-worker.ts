@@ -83,13 +83,35 @@ export function codexEventText(line: string): string | null {
 
 export interface NativeCliExecutable { path: string; command: string; args: string[] }
 interface NativeCommandOutput { ok: boolean; text: string }
-/** Never let the WSL daemon's instance settings or Node injection flags reach a native tool. */
-export function nativeCliEnvironment(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  for (const key of ["HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIRO_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"])
-    if (env[key]?.startsWith("/")) delete env[key];
-  for (const key of Object.keys(env)) if (/^AGEND_/i.test(key)) delete env[key];
-  for (const key of ["CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "ANTIGRAVITY_CONVERSATION_ID", "MUSE_SESSION_ID", "MUSE_THREAD_ID", "NODE_OPTIONS", "NODE_PATH"]) delete env[key];
+/**
+ * M-2239 P3-6: what a Windows CLI may see of the worker's environment — an allowlist, never "everything but". Windows'
+ * own system and user variables a program needs to start, find files and reach the network (proxy, certificates),
+ * the locale, and a CLI's own config directory when it names a Windows path. Nothing else: no fleet secret, provider
+ * API key, bot token or AgEnD setting reaches a native CLI, whatever the host put in the environment.
+ */
+const NATIVE_ENV_ALLOWED = new Set([
+  // Windows itself: where it is, how it finds programs, who and where the user is.
+  "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATH", "PATHEXT", "TEMP", "TMP", "OS",
+  "USERPROFILE", "USERNAME", "USERDOMAIN", "USERDOMAIN_ROAMINGPROFILE", "COMPUTERNAME", "HOMEDRIVE", "HOMEPATH", "LOGONSERVER",
+  "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "ALLUSERSPROFILE", "PUBLIC",
+  "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432",
+  "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "NUMBER_OF_PROCESSORS",
+  "DRIVERDATA", "PSMODULEPATH",
+  // The network the user configured: proxies and certificate stores.
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+  // Language and terminal.
+  "LANG", "LANGUAGE", "TZ", "TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR",
+]);
+/** A CLI's own config directory: kept when it is the Windows user's (a drive path), never a WSL path. */
+const NATIVE_ENV_WINDOWS_PATH = new Set(["CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIRO_HOME", "GEMINI_HOME", "GROK_HOME", "OPENCODE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]);
+export function nativeCliEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined) continue;
+    const name = key.toUpperCase();
+    if (NATIVE_ENV_ALLOWED.has(name) || /^LC_[A-Z]+$/.test(name)) env[key] = value;
+    else if (NATIVE_ENV_WINDOWS_PATH.has(name) && validWindowsDirectory(value)) env[key] = value;
+  }
   // M-2239 P1-2: every CLI's own "do not update" switch, on every run (the Linux backends' NO_UPDATE_ENV, plus kiro and
   // muse's). codex and grok take theirs as argv (nativeUpdateGuard).
   env.DISABLE_AUTOUPDATER = "1";
