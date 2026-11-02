@@ -8,6 +8,7 @@ import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
 import { checkTestProcess, processGuard, registerExecutableFixture } from "./support/process-guard.js";
 import { WindowsCliBridge } from "../src/windows-cli.js";
 
@@ -86,5 +87,13 @@ describe("M-2239 P2-5: the test process guard refuses Windows interop", () => {
     expect(spawnSync("/bin/sh", ["-c", `env -u BAR --unset=BAZ ${viaEnv.file}`]).status).toBe(0);
     expect(existsSync(viaEnv.marker)).toBe(true);
     expect(processGuard.takeViolations()).toEqual([]);
+  });
+
+  it("on Windows itself the rule is off — Vitest's own node.exe workers must start there (#2936 review)", () => {
+    const { isWindowsInterop } = createRequire(import.meta.url)("./support/process-guard.cjs") as { isWindowsInterop(file: string, platform?: string): boolean };
+    for (const file of ["C:\\Program Files\\nodejs\\node.exe", "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", "wslpath"]) {
+      expect(isWindowsInterop(file, "win32")).toBe(false);
+      expect(isWindowsInterop(file, "linux")).toBe(true);
+    }
   });
 });

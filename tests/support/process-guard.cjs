@@ -141,7 +141,10 @@ function operandOf(base, argv) {
   return i < words.length ? { file: words[i], argv: words.slice(i + 1) } : null;
 }
 /** A program that would run on Windows from WSL: a drvfs path (/mnt/<drive>/…), a drive path, a Windows executable, or wslpath. */
-function isWindowsInterop(file) {
+function isWindowsInterop(file, platform = process.platform) {
+  // On Windows itself every program is a Windows program — Vitest's own node.exe workers included (#2936 review): the
+  // rule is about reaching the real Windows from WSL, so it applies off Windows only.
+  if (platform === 'win32') return false;
   const text = String(file);
   const base = path.basename(text).toLowerCase();
   if (/^\/mnt\/[a-z]\//i.test(text) || /^[a-z]:[\\/]/i.test(text)) return true;
@@ -372,5 +375,5 @@ function install() {
   globalThis[KEY] = state;
   return state;
 }
-module.exports = { selfFleetStart, install, checkInvocation, scrubEnvironment, privateSocket };
+module.exports = { selfFleetStart, install, checkInvocation, scrubEnvironment, privateSocket, isWindowsInterop };
 install();
