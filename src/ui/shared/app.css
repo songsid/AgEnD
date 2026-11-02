@@ -289,7 +289,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    name was cut to two letters. The name keeps at least ~10 characters; the chip row is what clips. */
 @media (max-width: 479px) {
   .p-chat .panel-title h1 { flex: 0 1 auto; min-width: min(10ch, 45%); }
-  .p-chat .panel-sub { flex: 1 1 0; min-width: 0; overflow: hidden; }
+  .p-chat .panel-sub { flex: 1 1 0; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: var(--s-2); }
+  .p-chat .panel-sub > .status { flex: none; }               /* the state ("idle", "閒置") stays whole … */
+  .p-chat .panel-sub > :not(.status) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* … chips give way */
 }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 /* #2015: the largest processes, after the host memory chip's text. */
@@ -945,6 +947,8 @@ img.amb-p { object-fit: contain; }
 .failed-send { padding: var(--s-2) var(--s-3); border-radius: var(--r-md); font-size: var(--fs-xs); background: var(--danger-bg); border: 1px solid var(--danger-line); display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
 .failed-send .txt { flex: 1; min-width: 120px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 4.5em; overflow: hidden; }
 .composer-box { background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--shadow-1); }
+/* S-30: a state note above the composer ("Connection revoked…", "still working") sat flush on the box's edge. */
+.composer-box > .note { margin: 0; padding: var(--s-2) var(--s-3) 0; }
 .composer-box:focus-within { box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-1); }
 .composer { display: flex; align-items: flex-end; gap: var(--s-1); padding: var(--s-2); }
 .composer textarea {
