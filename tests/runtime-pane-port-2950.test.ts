@@ -84,3 +84,20 @@ it.each(['disconnect','lease'])('rejects a transcript response after %s without 
  release({state:'pending',cursor,data:'',complete:false,gap:false});await expect(pending).rejects.toThrow('stale');
  expect(readFileSync(f.file,'utf8')).toBe(before);expect(f.write).not.toHaveBeenCalled();
 });
+it('explicit close remains available after an uncertain input and never repeats that input',async()=>{
+ const f=await fixture();f.write.mockImplementationOnce(()=>{throw Error('write may have landed');});expect(await f.port.sendSpecialKey('Enter')).toBe(false);
+ expect(await f.port.killWindowConfirmed()).toBe(true);expect(f.native.kill).toHaveBeenCalledOnce();expect(f.write).toHaveBeenCalledOnce();expect(f.port.ownedSnapshot()?.state).toBe('exited');
+});
+it('close bypasses a held input response and rejects all later input until its exit is confirmed',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let release!:(value:unknown)=>void;
+ f.endpoint.call=async request=>{const result=await call(request);if(request.action==='key')return new Promise(done=>{release=()=>done(result);});return result;};
+ const write=f.port.sendSpecialKey('Enter');await vi.waitFor(()=>expect(release).toBeDefined());const close=f.port.killWindowConfirmed();expect(await close).toBe(true);
+ const after=f.port.sendKeys('never after close');release(undefined);expect(await write).toBe(false);expect(await after).toBe(false);expect(f.native.kill).toHaveBeenCalledOnce();expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');
+});
+it('a lost close response is recovered by positive exit without replaying close or Enter',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let lost=true;f.endpoint.call=async request=>{const result=await call(request);if(request.action==='close'&&lost){lost=false;throw Error('lost close response');}return result;};
+ expect(await f.port.killWindowConfirmed()).toBe(false);await expect(f.make().open()).rejects.toThrow('close outcome');const recovered=f.make();expect(await recovered.killWindowConfirmed()).toBe(true);expect(f.native.kill).toHaveBeenCalledOnce();expect(f.write).not.toHaveBeenCalled();
+});
+it('the automatic status request has a durable one-shot intent across coordinator restart',async()=>{
+ const f=await fixture();expect(await f.port.beginStatusRequest()).toBe(true);const next=f.make();await next.open();expect(await next.beginStatusRequest()).toBe(false);expect(f.write).not.toHaveBeenCalled();
+});

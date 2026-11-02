@@ -156,6 +156,7 @@ export class RuntimePaneHost {
     const live = this.live.get(request.paneId);
     const stored = this.options.store.get(request.paneId);
     if (!stored || stored.snapshot.launchId !== request.launchId) throw Error("Pane launch identity is stale");
+    if (!live && request.action === "capture" && stored.snapshot.state === "exited") return { snapshot: structuredClone(stored.snapshot), text: "" };
     if (!live) throw Error("Pane process is not owned by this runner; its reservation is retained");
     const record = live.record;
     await live.parsed;

@@ -254,3 +254,7 @@ it('bounds a held transcript read and invalidates its lease before any late comp
  release({state:'pending',cursor,data:'',lines:[],complete:false,gap:false});await vi.advanceTimersByTimeAsync(0);
  expect(await fixture.host.request({action:'capture',paneId:pane.paneId,launchId:pane.launchId})).toHaveProperty('snapshot');expect(fixture.processes[0].write).not.toHaveBeenCalled();await fixture.host.stop();
 });
+it('a restarted host exposes only a retained positive exit receipt without adopting a process',async()=>{
+ const f=setup(),snapshot=await f.open();f.processes[0].finish(0);const spawn=vi.fn(async()=>fakeProcess()),restarted=new RuntimePaneHost({store:new RuntimePaneStore(f.directory),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn});
+ expect(await restarted.request({action:'capture',paneId:snapshot.paneId,launchId:snapshot.launchId})).toEqual({snapshot:{...f.host.list()[0]},text:''});expect(spawn).not.toHaveBeenCalled();await restarted.stop();
+});

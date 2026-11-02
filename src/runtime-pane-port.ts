@@ -14,11 +14,13 @@ export interface PaneEndpoint {
   subscribe(listener: (event: RuntimeCoordinatorEvent) => void): () => void;
   machineId: string;
 }
-interface OwnedPane { version: 1; machineId: string; launch: RuntimePaneLaunch; openId: string; snapshot?: RuntimePaneSnapshot; pending?: Extract<RuntimePaneRequest, { action: "reconcile" }> }
+interface OwnedPane { version: 1; machineId: string; launch: RuntimePaneLaunch; openId: string; snapshot?: RuntimePaneSnapshot; statusRequested?: boolean;
+  pending?: Extract<RuntimePaneRequest, { action: "reconcile" }>; pendingClose?: Extract<RuntimePaneRequest, { action: "close" }> }
 export class RuntimePanePort implements Pane {
   private record: OwnedPane;
   private tail: Promise<unknown> = Promise.resolve();
   private error: string | null = null;
+  private closing: Promise<boolean> | undefined;
   constructor(private endpoint: PaneEndpoint, private file: string, launch: RuntimePaneLaunch) {
     this.record = { version: 1, machineId: endpoint.machineId, launch, openId: randomUUID() };
     try {
@@ -27,12 +29,16 @@ export class RuntimePanePort implements Pane {
       const stored = JSON.parse(readFileSync(file, "utf8")) as OwnedPane;
       if (stored?.version !== 1 || stored.machineId !== endpoint.machineId || stored.launch?.agentId !== launch.agentId
         || stored.launch.instance !== launch.instance || runtimeJobDigest(stored.launch) !== runtimeJobDigest(launch)
-        || !/^[a-f0-9-]{36}$/i.test(stored.openId)) throw Error("Coordinator pane receipt scope differs");
+        || !/^[a-f0-9-]{36}$/i.test(stored.openId) || stored.statusRequested !== undefined && typeof stored.statusRequested !== "boolean") throw Error("Coordinator pane receipt scope differs");
       if (stored.snapshot) validateRuntimePaneSnapshot(stored.snapshot);
       if (stored.pending) {
         const pending = validateRuntimePaneRequest(stored.pending);
         if (pending.action !== "reconcile" || !stored.snapshot || pending.paneId !== stored.snapshot.paneId
           || pending.launchId !== stored.snapshot.launchId || pending.sequence !== stored.snapshot.commandSequence + 1) throw Error("Pane command receipt scope differs");
+      }
+      if (stored.pendingClose) {
+        const close = validateRuntimePaneRequest(stored.pendingClose);
+        if (close.action !== "close" || !stored.snapshot || close.paneId !== stored.snapshot.paneId || close.launchId !== stored.snapshot.launchId) throw Error("Pane close receipt scope differs");
       }
       this.record = stored;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -54,6 +60,7 @@ export class RuntimePanePort implements Pane {
   }
   async open(): Promise<{ windowId: string; reattached: boolean }> {
     return this.serialize(async () => {
+      if (this.closing || this.record.pendingClose) throw Error("Pane close outcome is retained; inspect its exit before starting again");
       const reattached = !!this.record.snapshot;
       this.save(); // The open identity exists before the runtime may spawn.
       const snapshot = this.accept(await this.endpoint.call({ action: "open", operationId: this.record.openId, launch: this.record.launch }));
@@ -71,11 +78,19 @@ export class RuntimePanePort implements Pane {
   async bindConversation(sessionId: string): Promise<RuntimePaneSnapshot> {
     return this.serialize(async () => {
       const before = this.record.snapshot;
-      if (!before || !this.endpoint.online() || this.record.pending) throw Error("Pane session owner is unavailable or its input needs reconciliation");
+      if (!before || !this.endpoint.online() || this.closing || this.record.pending || this.record.pendingClose) throw Error("Pane session owner is unavailable or its input needs reconciliation");
       const request = validateRuntimePaneRequest({ action: "bind-session", paneId: before.paneId, launchId: before.launchId, sessionId });
       const snapshot = this.accept(await this.endpoint.call(request));
       if (!this.endpoint.online() || snapshot.sessionId !== sessionId) throw Error("Pane conversation binding is unconfirmed");
       this.record.snapshot = snapshot; this.save(); return structuredClone(snapshot);
+    });
+  }
+  /** Intent before the one automatic /status. A lost coordinator must inspect its result, never type it twice. */
+  beginStatusRequest(): Promise<boolean> {
+    return this.serialize(async () => {
+      if (!this.endpoint.online() || this.closing || this.record.pending || this.record.pendingClose || this.record.snapshot?.state !== "running") throw Error("Status request owner is unconfirmed");
+      if (this.record.statusRequested) return false;
+      this.record.statusRequested = true; this.save(); return true;
     });
   }
   runtimeTranscriptReference(cursor: PaneTranscriptCursor): RuntimeTranscriptReference {
@@ -94,14 +109,14 @@ export class RuntimePanePort implements Pane {
   isTranscriptObservationCurrent(ref: RuntimeTranscriptReference): boolean {
     try {
       const pane = this.record.snapshot;
-      return this.endpoint.online() && !!pane && (pane.state === "running" || pane.state === "exited")
+      return this.endpoint.online() && !this.closing && !this.record.pendingClose && !!pane && (pane.state === "running" || pane.state === "exited")
         && sameRuntimeTranscriptScope(ref, this.runtimeTranscriptReference(ref.cursor));
     } catch { return false; }
   }
   private async mutate(make: (snapshot: RuntimePaneSnapshot) => RuntimePaneRequest): Promise<boolean> {
     return this.serialize(async () => {
       try {
-        if (!this.endpoint.online() || !this.record.snapshot || this.record.pending) throw Error("Pane input needs reconciliation");
+        if (!this.endpoint.online() || this.closing || this.record.snapshot?.state !== "running" || this.record.pending || this.record.pendingClose) throw Error("Pane input needs reconciliation");
         const request = validateRuntimePaneRequest(make(this.record.snapshot));
         if (!("operationId" in request) || !("sequence" in request) || !("paneId" in request)) throw Error("Expected pane mutation");
         this.record.pending = { action: "reconcile", paneId: request.paneId, launchId: request.launchId,
@@ -118,7 +133,30 @@ export class RuntimePanePort implements Pane {
   async createWindow(): Promise<string> { throw Error("Native panes require a typed configured launch, never a shell command"); }
   async respawnWindow(): Promise<void> { throw Error("Native pane replacement requires confirmed owned exit and a new launch receipt"); }
   async killWindow(): Promise<void> { if (!await this.killWindowConfirmed()) throw Error("Native pane exit is unconfirmed"); }
-  async killWindowConfirmed(): Promise<boolean> { return await this.mutate(snapshot => ({ action: "close", ...this.target(snapshot) })) && this.record.snapshot?.state === "exited"; }
+  async killWindowConfirmed(): Promise<boolean> {
+    if (this.closing) return this.closing;
+    this.closing = this.closeOwned().finally(() => { this.closing = undefined; });
+    return this.closing;
+  }
+  private async closeOwned(): Promise<boolean> {
+    try {
+      const before = this.record.snapshot;
+      if (!before || !this.endpoint.online()) return false;
+      const capture = await this.endpoint.call({ action: "capture", paneId: before.paneId, launchId: before.launchId }) as RuntimePaneCapture;
+      const snapshot = this.accept(capture.snapshot);
+      if (snapshot.state === "exited") {
+        this.record.snapshot = snapshot; delete this.record.pending; delete this.record.pendingClose; this.save(); return true;
+      }
+      if (!this.record.pendingClose) {
+        // Independent of an uncertain input RPC. Capture runs behind any accepted write on the host's pane queue.
+        this.record.pendingClose = { action: "close", ...this.target(snapshot) }; this.save();
+      }
+      const result = this.accept(await this.endpoint.call(this.record.pendingClose));
+      if (result.state !== "exited") return false;
+      this.record.snapshot = result; delete this.record.pending; delete this.record.pendingClose; this.save();
+      return true;
+    } catch { this.error = "Pane close outcome is unconfirmed; its reservation is retained"; return false; }
+  }
   async isWindowAlive(): Promise<boolean> { const status = await this.getPaneStatus(); if (!status) throw Error("Native pane observation is unconfirmed"); return status.alive; }
   async setRemainOnExit(): Promise<void> { /* Exit receipts are always retained by the runtime. */ }
   async getPaneStatus(): Promise<PaneStatus | null> {

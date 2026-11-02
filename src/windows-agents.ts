@@ -1,5 +1,6 @@
 /** Named Windows CLI conversations; independent of Linux/tmux instances. Local administrator only. */
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { atomicWriteFileSync } from "./atomic-write.js";
 import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getAgendHome } from "./paths.js";
@@ -50,8 +51,7 @@ export class WindowsAgents {
       const body = JSON.stringify(this.data);
       if (Buffer.byteLength(body) > 20 * 1024 * 1024) throw new Error("Windows agent history limit reached");
       mkdirSync(dirname(this.file), { recursive: true });
-      const temp = `${this.file}.${randomUUID()}.tmp`;
-      writeFileSync(temp, body, { mode: 0o600 }); renameSync(temp, this.file);
+      atomicWriteFileSync(this.file, body, { mode: 0o600 });
       for (const listener of [...this.listeners]) { try { listener(); } catch { /* Observers cannot roll back committed data. */ } }
       return result;
     } catch (e) { this.data = JSON.parse(before); throw e; }
