@@ -43,7 +43,7 @@ export class RuntimePanePort implements Pane {
   private accept(value: unknown): RuntimePaneSnapshot {
     const snapshot = validateRuntimePaneSnapshot(value);
     const launch = this.record.launch;
-    if (snapshot.paneId !== launch.paneId || snapshot.agentId !== launch.agentId || snapshot.instance !== launch.instance
+    if (launch.launchId !== undefined && snapshot.launchId !== launch.launchId || snapshot.paneId !== launch.paneId || snapshot.agentId !== launch.agentId || snapshot.instance !== launch.instance
       || this.record.snapshot && (snapshot.launchId !== this.record.snapshot.launchId || snapshot.hostBootId !== this.record.snapshot.hostBootId)
       || this.record.snapshot && snapshot.commandSequence < this.record.snapshot.commandSequence) throw Error("Pane ownership proof differs");
     return snapshot;

@@ -6,6 +6,7 @@ import { RuntimePaneScreen } from "./runtime-pane-screen.js";
 import { PANE_EDIT_KEYS, validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { spawnNativePane } from "./runtime-pane-process.js";
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
+import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
@@ -18,7 +19,7 @@ export interface RuntimePaneHostOptions {
   online(): boolean;
   maxAgents(): number;
   /** Internal local launch factory, never a field in the remote request. */
-  spawn?(launch: RuntimePaneLaunch): Promise<RuntimePaneProcess>;
+  spawn?(launch: RuntimePaneLaunch, owner: NativePaneOwner): Promise<RuntimePaneProcess>;
   mcpConnection?(owner: PaneMcpOwner, tools: string[]): PaneMcpConnection;
   output?(snapshot: RuntimePaneSnapshot): void;
 }
@@ -52,7 +53,7 @@ export class RuntimePaneHost {
   }
   async request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (request.action === "list") return { panes: this.list() };
+    if (request.action === "list") return { hostBootId: this.options.bootId, panes: this.list() };
     if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
     const id = request.action === "open" ? request.launch.paneId : request.paneId;
     const queue = this.queues.get(id) ?? { tail: Promise.resolve(), count: 0 };
@@ -82,16 +83,22 @@ export class RuntimePaneHost {
     const limit = this.options.maxAgents();
     if (!Number.isInteger(limit) || limit < 1 || limit > 16) throw Error("Invalid machine pane limit");
     if (rows.filter(row => row.snapshot.state !== "exited").length >= limit) throw Error("Machine concurrent-agent limit reached");
+    if (launch.launchId && rows.some(row => row.snapshot.launchId === launch.launchId)) throw Error("Pane launch identity already belongs to another pane");
     const record: RuntimePaneRecord = {
       launch, openDigest: digest, openOperationId: operationId, bootId: this.options.bootId,
-      snapshot: { hostBootId: this.options.bootId, paneId: launch.paneId, agentId: launch.agentId, instance: launch.instance, launchId: randomUUID(), columns: launch.columns, rows: launch.rows,
+      snapshot: { hostBootId: this.options.bootId, paneId: launch.paneId, agentId: launch.agentId, instance: launch.instance, launchId: launch.launchId ?? randomUUID(), columns: launch.columns, rows: launch.rows,
         state: "starting", seq: 0, outputAt: 0, commandSequence: 0 },
     };
     // Synchronous reservation before the first await: parallel opens cannot oversubscribe the machine.
     this.options.store.put(record);
     let process: RuntimePaneProcess | undefined;
     try {
-      process = await (this.options.spawn ? this.options.spawn(launch) : spawnNativePane(launch, { directory: this.options.store.directory, launchId: record.snapshot.launchId }));
+      const owner: NativePaneOwner = { directory: this.options.store.directory, launchId: record.snapshot.launchId };
+      if (launch.mcpTools) {
+        if (!this.options.mcpConnection) throw Error("Persistent pane MCP authority is unavailable");
+        owner.mcp = this.options.mcpConnection({ hostBootId: this.options.bootId, paneId: launch.paneId, launchId: record.snapshot.launchId, agentId: launch.agentId, instance: launch.instance }, launch.mcpTools);
+      }
+      process = await (this.options.spawn ? this.options.spawn(launch, owner) : spawnNativePane(launch, owner));
       let finish!: () => void;
       const exited = new Promise<void>(resolve => { finish = resolve; });
       const screen = new RuntimePaneScreen(launch.columns, launch.rows, data => {

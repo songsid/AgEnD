@@ -17,6 +17,9 @@ export interface RuntimePaneLaunch extends PaneSize {
   sandbox: "read-only" | "workspace-write";
   model?: string;
   sessionId?: string;
+  launchId?: string;
+  instructions?: string;
+  mcpTools?: string[];
 }
 export interface RuntimePaneSnapshot extends PaneSize {
   hostBootId: string;
@@ -51,8 +54,12 @@ function dimension(value: unknown, min: number, max: number): asserts value is n
   if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) throw Error("Invalid pane dimensions");
 }
 export function validateRuntimePaneLaunch(value: unknown): RuntimePaneLaunch {
-  closed(value, ["paneId", "agentId", "instance", "cli", "cwd", "sandbox", "model", "sessionId", "columns", "rows"]);
+  closed(value, ["paneId", "agentId", "instance", "cli", "cwd", "sandbox", "model", "sessionId", "launchId", "instructions", "mcpTools", "columns", "rows"]);
   id(value.paneId); id(value.agentId);
+  if (value.launchId !== undefined) id(value.launchId);
+  if (value.instructions !== undefined && (typeof value.instructions !== "string" || Buffer.byteLength(value.instructions) > 64 * 1024 || value.instructions.includes("\0"))) throw Error("Invalid pane instructions");
+  if (value.mcpTools !== undefined && (!Array.isArray(value.mcpTools) || !value.mcpTools.length || value.mcpTools.length > 128
+    || new Set(value.mcpTools).size !== value.mcpTools.length || value.mcpTools.some(tool => typeof tool !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(tool)))) throw Error("Invalid pane MCP tools");
   if (typeof value.instance !== "string" || !/^[\p{L}\p{N}_.-]{1,160}$/u.test(value.instance)) throw Error("Invalid pane instance");
   if (value.cli !== "codex" && value.cli !== "claude-code") throw Error("This provider has no verified persistent pane adapter");
   if (!validWindowsDirectory(value.cwd)) throw Error("Invalid pane working directory");

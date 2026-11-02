@@ -222,3 +222,11 @@ describe("#2950 persistent pane ownership and replay", () => {
     expect(fixture.host.list()[0].state).toBe("unknown");
   });
 });
+it('reserves the coordinator-selected launch before issuing an exact helper scope, including before the open ACK',async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'agend-pane-scope-'));directories.push(directory);const store=new RuntimePaneStore(directory),bootId=randomUUID(),config={...launch(),launchId:randomUUID(),mcpTools:['reply']};
+ const grant=vi.fn((owner,tools)=>{expect(store.get(config.paneId)?.snapshot).toMatchObject(owner);return{endpoint:'http://127.0.0.1:12345/agent',token:'a'.repeat(64),tools,owner};});
+ const spawn=vi.fn(async(_launch,owner)=>{expect(owner.mcp.owner).toEqual({hostBootId:bootId,paneId:config.paneId,launchId:config.launchId,agentId:config.agentId,instance:config.instance});return fakeProcess();});
+ const host=new RuntimePaneHost({store,bootId,online:()=>true,maxAgents:()=>4,mcpConnection:grant,spawn});
+ const pane=await host.request({action:'open',launch:config,operationId:randomUUID()})as RuntimePaneSnapshot;expect(pane.launchId).toBe(config.launchId);expect(grant).toHaveBeenCalledOnce();expect(spawn).toHaveBeenCalledOnce();
+ await expect(host.request({action:'open',launch:{...config,paneId:randomUUID(),agentId:randomUUID()},operationId:randomUUID()})).rejects.toThrow('launch identity');await host.stop();
+});

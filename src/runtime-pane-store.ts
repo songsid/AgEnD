@@ -56,7 +56,7 @@ export class RuntimePaneStore {
       for (const [id, row] of Object.entries(raw.panes) as Array<[string, RuntimePaneRecord]>) {
         const launch = validateRuntimePaneLaunch(row?.launch);
         validateRuntimePaneSnapshot(row.snapshot);
-        if (id !== launch.paneId || row.snapshot?.paneId !== id || row.snapshot.agentId !== launch.agentId
+        if (launch.launchId !== undefined && launch.launchId !== row.snapshot.launchId || id !== launch.paneId || row.snapshot?.paneId !== id || row.snapshot.agentId !== launch.agentId
           || row.snapshot.instance !== launch.instance || !/^[a-f0-9-]{36}$/i.test(row.snapshot.launchId)
           || !["starting", "running", "exited", "unknown"].includes(row.snapshot.state)
           || !Number.isSafeInteger(row.snapshot.commandSequence) || row.snapshot.commandSequence < 0
