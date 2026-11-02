@@ -91,7 +91,9 @@ export class RuntimeClient {
       this.options.store.recoverInterrupted(); this.credentials = credentials; this.stopped = false; this.closed = false;
       // Connect immediately. Discovery can be slow; send an explicit inventory update when it completes.
       this.connect();
-      this.pollTimer = setInterval(() => this.poll(), this.options.pollMs ?? 250); this.pollTimer.unref?.();
+      // A foreground runtime must remain alive while an idle connection is down. Promises and unref'ed retry
+      // timers do not keep Node running after the last socket closes; stop() owns and clears this liveness ref.
+      this.pollTimer = setInterval(() => this.poll(), this.options.pollMs ?? 250);
       this.inventoryTimer = setInterval(() => {
         if (this.online() && !this.active.size) void this.refreshInventory(true).catch(() => this.report("Background CLI discovery failed; the last successful inventory is retained."));
       }, 5 * 60_000); this.inventoryTimer.unref?.();
