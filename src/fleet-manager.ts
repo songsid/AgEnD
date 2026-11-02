@@ -225,10 +225,10 @@ import { windowsCliEnabled, closeWindowsBridge } from "./windows-cli.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
-import { FleetWindowsRuntime, type NativeExecutionResult } from "./fleet-windows-runtime.js";
+import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
-import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED } from "./native-instance-registry.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
@@ -1238,6 +1238,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event === "activity") this.scheduleDeliveryOutboxPump();
       },
     },{bridge:this.runtimeWindowsExecutor()});
+  }
+  /** Admin-only settings path: validate first, then close the exact old launch before changing cold fields. */
+  async updateNativePaneConfig(name: string, patch: Partial<NativeRuntimePatch>, authorized: () => boolean): Promise<ReturnType<FleetWindowsRuntime["update"]>> {
+    return this.lifecycle.runTransition(name,async transition=>{
+      const before=this.fleetConfig?.instances[name];
+      if(!isNativePaneInstance(before))throw Error("Persistent Windows instance not found");
+      const runtime=this.nativeInstanceRuntime(), generation=this.explicitStopGeneration.get(name)??0;
+      let expectedGeneration=generation;
+      const current=()=>authorized()&&!this.shuttingDown&&this.fleetConfig?.instances[name]===before
+        &&(this.explicitStopGeneration.get(name)??0)===expectedGeneration
+        &&(before.machine_id ? remoteRuntimeEnabled() : localWindowsCliEnabled());
+      if(!current())throw Error("Native settings authority expired");
+      runtime.previewUpdate(name,patch);
+      const cold=(["working_directory","model","systemPrompt","native_sandbox"] as const).some(key=>Object.hasOwn(patch,key)&&(patch[key]??"")!==(before[key]??""));
+      const running=this.daemons.get(name);
+      if(cold){
+        if(running&&(!await running.nativePauseReady({current,accepts:()=>true,revalidate:async()=>current()})||!running.nativePauseStillReady()))throw Error("Wait for this Windows agent to be idle before changing its launch settings");
+        if(!current())throw Error("Native settings authority expired before closing its old pane");
+        await this.stopInstance(name,transition);expectedGeneration=generation+1;
+        if(!current())throw Error("Native settings authority expired after closing its old pane");
+        if(runtime.get(name)?.activeId)throw Error("Native pane exit is unconfirmed; its settings were not changed");
+      }
+      const result=runtime.update(name,patch,current),next=this.fleetConfig!.instances[name];
+      if(cold&&running){
+        if(!authorized()||this.shuttingDown||this.fleetConfig?.instances[name]!==next||(this.explicitStopGeneration.get(name)??0)!==expectedGeneration)throw Error("Native settings saved; restart authority expired");
+        await this.startInstance(name,next,true,"fleet-topic",false,transition);
+      }
+      return result;
+    });
   }
   private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
     const admit = (): void => { if (this.shuttingDown || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off"); };
@@ -20915,6 +20944,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (/[\x00-\x1f\x7f]/.test(model)) {
       return t("model.invalid_chars");
     }
+    const native=this.fleetConfig?.instances[instanceName];
+    if(isWindowsInstance(native)){
+      if(!isNativePaneInstance(native))return WINDOWS_CONFIG_REFUSED;
+      const catalog=await this.listModelCatalog({instanceName});
+      if(!catalog.models.some(row=>row.id===model))return t("model.unknown_name",model,catalog.models.map(row=>row.id).join(", "));
+      const id=native.native_agent_id,machine=native.machine_id;
+      await this.updateNativePaneConfig(instanceName,{model},()=>{
+        const now=this.fleetConfig?.instances[instanceName];return isNativePaneInstance(now)&&now.native_agent_id===id&&now.machine_id===machine;
+      });
+      return t("model.restart_success",instanceName,model);
+    }
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" = "restart";
     try {
@@ -24758,6 +24798,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return {
         name,
         ...(isNativePaneInstance(nativeConfig) ? { runtime: "windows", native_adapter: "pane", native_agent_id: nativeConfig.native_agent_id,
+          capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:true,
+            commands:true,effort:false,log:true,details:true,channels:false,terminal:false,attachments:false,usage:false,send_while_busy:true},
           ...(nativeConfig.machine_id ? { machine_id: nativeConfig.machine_id, machine_name: this.runtimeHub?.machine(nativeConfig.machine_id)?.name,
             machine_status: this.runtimeHub?.machine(nativeConfig.machine_id)?.status ?? "offline" } : {}) } : {}),
         display_name: identity.display_name || undefined,

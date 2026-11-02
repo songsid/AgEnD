@@ -79,3 +79,48 @@ it('native model/effort presentation and menus never read coordinator configurat
  f.hub.machine=()=>({status:'online',platform:'win32',inventory:{clis:[{id:'claude-code',runnable:true,version:'Claude Code 2.1.316',models:[{id:'native-only'}]}],probedAt:123}});
  expect(await f.fleet.getModelOptionsWithSource('native',{refresh:true})).toMatchObject({source:'cache',models:[{id:'native-only'}]});expect(local).not.toHaveBeenCalled();expect(probe).not.toHaveBeenCalled();
 });
+it('hot native identity settings leave the same pane and conversation running',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);f.models.mockRestore();const daemon=f.fleet.daemons.get('native'),before=f.store.get(f.agent.id);
+ await f.fleet.updateNativePaneConfig('native',{display_name:'Renamed',description:'New description',tags:['windows']},()=>true);
+ expect(f.fleet.daemons.get('native')).toBe(daemon);expect(f.cli.kill).not.toHaveBeenCalled();expect(f.store.get(f.agent.id)).toMatchObject({name:'Renamed',description:'New description',threadId:before.threadId,activeId:before.activeId});
+ expect(f.fleet.fleetConfig.instances.native.tags).toEqual(['windows']);
+});
+it('cold native settings close positively before updating and resume the same session once',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);f.models.mockRestore();const daemon=f.fleet.daemons.get('native'),pin=f.store.get(f.agent.id).threadId;
+ vi.spyOn(daemon,'nativePauseReady').mockResolvedValue(true);vi.spyOn(daemon,'nativePauseStillReady').mockReturnValue(true);
+ const update=f.store.update.bind(f.store);vi.spyOn(f.store,'update').mockImplementation((id:any,patch:any,authorized:any)=>{expect(f.cli.kill).toHaveBeenCalledOnce();expect(f.store.get(id).activeId).toBeUndefined();return update(id,patch,authorized);});
+ await f.fleet.updateNativePaneConfig('native',{model:' native-model '},()=>true);
+ expect(f.fleet.fleetConfig.instances.native.model).toBe('native-model');expect(f.fleet.daemons.get('native')).not.toBe(daemon);expect(f.store.get(f.agent.id)).toMatchObject({model:'native-model',threadId:pin});expect(f.spawn).toHaveBeenCalledTimes(2);
+ const launch=f.fleet.daemons.get('native').nativePaneLifecycle.port.ownedSnapshot();expect(launch.sessionId).toBe(pin);expect(f.exec).not.toHaveBeenCalled();
+});
+it.each([{working_directory:'C:\\other'},{model:'bad\nmodel'},{native_adapter:'exec'},{tags:[42]}])('invalid native settings %j refuse before stopping or changing the profile',async patch=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const before=f.store.get(f.agent.id),daemon=f.fleet.daemons.get('native');vi.spyOn(daemon,'nativePauseReady').mockResolvedValue(true);vi.spyOn(daemon,'nativePauseStillReady').mockReturnValue(true);
+ await expect(f.fleet.updateNativePaneConfig('native',patch,()=>true)).rejects.toThrow();expect(f.cli.kill).not.toHaveBeenCalled();expect(f.store.get(f.agent.id)).toEqual(before);
+});
+it('unknown owned exit cannot save cold settings or launch a replacement',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native');vi.spyOn(daemon,'nativePauseReady').mockResolvedValue(true);vi.spyOn(daemon,'nativePauseStillReady').mockReturnValue(true);
+ vi.spyOn(daemon.nativePaneLifecycle,'release').mockRejectedValueOnce(Error('exit unconfirmed'));
+ await expect(f.fleet.updateNativePaneConfig('native',{model:'native-model'},()=>true)).rejects.toThrow('unconfirmed');expect(f.store.get(f.agent.id).model).toBeUndefined();expect(f.store.get(f.agent.id).activeId).toBeTruthy();expect(f.spawn).toHaveBeenCalledOnce();
+});
+it('revoked authority after positive close leaves old settings stopped without a replacement',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);let allowed=true;const daemon=f.fleet.daemons.get('native');vi.spyOn(daemon,'nativePauseReady').mockResolvedValue(true);vi.spyOn(daemon,'nativePauseStillReady').mockReturnValue(true);
+ const kill=f.cli.kill.getMockImplementation()!;f.cli.kill.mockImplementation(()=>{allowed=false;return kill();});
+ await expect(f.fleet.updateNativePaneConfig('native',{model:'native-model'},()=>allowed)).rejects.toThrow('expired');expect(f.store.get(f.agent.id).model).toBeUndefined();expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).toHaveBeenCalledOnce();
+});
+
+it('a retained pane allows identity previews but keeps effective launch fields fenced until positive close',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const before=f.store.get(f.agent.id);
+ expect(f.store.previewUpdate(f.agent.id,{instructions:'new role'}).instructions).toBe('new role');expect(f.store.get(f.agent.id)).toEqual(before);
+ expect(()=>f.store.update(f.agent.id,{instructions:'new role'})).toThrow('finish');expect(()=>f.store.update(f.agent.id,{model:'new-model'})).toThrow('finish');expect(f.store.get(f.agent.id)).toEqual(before);
+});
+it('native model selection validates that machine inventory and uses the exact close/resume settings transaction',async()=>{
+ const f=await fixture();f.models.mockRestore();f.hub.machine=()=>({status:'online',platform:'win32',inventory:{clis:[{id:'claude-code',runnable:true,version:'Claude Code 2.1.316',models:[{id:'native-only'}]}],probedAt:123}});await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native');
+ const local=vi.spyOn(f.fleet,'claudeModelKnown').mockImplementation(()=>{throw Error('No coordinator account');});vi.spyOn(f.fleet,'readCliEnv').mockImplementation(()=>{throw Error('No coordinator cache');});
+ await f.fleet.applyModel('native','unknown');expect(f.cli.kill).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).model).toBeUndefined();
+ vi.spyOn(daemon,'nativePauseReady').mockResolvedValue(true);vi.spyOn(daemon,'nativePauseStillReady').mockReturnValue(true);
+ expect(await f.fleet.applyModel('native','native-only')).toContain('native-only');expect(f.cli.kill).toHaveBeenCalledOnce();expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).model).toBe('native-only');expect(local).not.toHaveBeenCalled();
+});
+it('native status offers pane controls without coordinator cost/context or effort',async()=>{
+ const f=await fixture();f.models.mockRestore();vi.spyOn(f.fleet,'readCliEnv').mockImplementation(()=>{throw Error('No coordinator cache');});
+ const row=f.fleet.getUiStatus().instances.find((value:any)=>value.name==='native');expect(row).toMatchObject({runtime:'windows',native_adapter:'pane',cost:null,context_pct:null,effort:null,capabilities:{commands:true,effort:false,log:true,details:true,attachments:false,terminal:false,send_while_busy:true}});
+});

@@ -137,3 +137,13 @@ it("native pane compatibility Cancel/Delete routes through the ordinary Fleet li
  const req=request("POST",{},url("/cancel")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/cancel"),f.context);await finish(res,202);expect(cancel).toHaveBeenCalledExactlyOnceWith(name);expect(f.service.cancel).not.toHaveBeenCalled();
  const del=request("DELETE",{},url()),delRes=new Response(del);handleNativeInstanceRequest(del,delRes,url(),f.context);await finish(delRes,200);expect(remove).toHaveBeenCalledWith(name,expect.objectContaining({source:"dashboard-confirmed"}),undefined);expect(f.service.remove).not.toHaveBeenCalled();
 });
+describe('persistent pane adapters use shared lifecycle rather than per-turn compatibility',()=>{
+ it('PATCH calls the serialized native pane settings transaction and never the exec updater',async()=>{
+  const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:'pane'});const update=vi.fn(async()=>({name,agent:f.agent}));f.context.updateNativePaneConfig=update;
+  const patch={display_name:'Renamed'},req=request('PATCH',patch,url()),res=new Response(req);expect(handleNativeInstanceRequest(req,res,url(),f.context)).toBe(true);await finish(res,200);expect(update).toHaveBeenCalledWith(name,patch,expect.any(Function));expect(f.service.update).not.toHaveBeenCalled();
+ });
+ it.each(['messages','recover'])('refuses the exec-only %s alias without entering its journal or recovery',async operation=>{
+  const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:'pane'});const req=request('POST',operation==='messages'?{requestId,prompt:'hello'}:{confirmedStopped:true},url('/'+operation)),res=new Response(req);
+  handleNativeInstanceRequest(req,res,url('/'+operation),f.context);await finish(res,400);expect(f.ctx.deliverToInstance).not.toHaveBeenCalled();expect(f.service.recover).not.toHaveBeenCalled();expect(f.service.cancel).not.toHaveBeenCalled();
+ });
+});

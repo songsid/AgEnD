@@ -63,3 +63,9 @@ it('only bounded declarative instructions/tools/launch ids cross the pane protoc
  const f=rig(),base={...f.launch,cwd:'C:\\scratch',launchId:randomUUID()};expect(validateRuntimePaneLaunch(base)).toEqual(base);
  for(const extra of [{instructions:'x'.repeat(65537)},{instructions:'NUL\0'},{mcpTools:['reply','reply']},{mcpTools:['reply;whoami']},{mcp:{token:'secret'}},{launchId:'not-an-id'}])expect(()=>validateRuntimePaneLaunch({...base,...extra})).toThrow();
 });
+it('Codex trusts only its exact configured AgEnD helper menu while preserving shell approval and sandbox policy',()=>{
+ const f=rig(),config=f.prepare(),args=persistentNativeArguments(f.launch,config);
+ const approved=args.filter(arg=>arg.includes('default_tools_approval_mode='));expect(approved).toEqual([`mcp_servers.${config.mcp!.serverName}.default_tools_approval_mode="approve"`]);
+ expect(args.slice(args.indexOf('--ask-for-approval'),args.indexOf('--ask-for-approval')+2)).toEqual(['--ask-for-approval','on-request']);expect(args.slice(args.indexOf('--sandbox'),args.indexOf('--sandbox')+2)).toEqual(['--sandbox','read-only']);expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+ expect(persistentNativeArguments(f.launch).some(arg=>arg.includes('default_tools_approval_mode='))).toBe(false);config.cleanup();
+});

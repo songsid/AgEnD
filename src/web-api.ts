@@ -73,7 +73,7 @@ import { xmsgShown } from "./search/search-docs.js";
 import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
 import { handleWindowsCliRequest, nativeCliAuthorization } from "./windows-cli-api.js";
 import { createNativeInstance, handleNativeInstanceRequest } from "./native-instance-api.js";
-import { isWindowsInstance } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
 import { handleNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
@@ -351,6 +351,7 @@ export const SSE_HEARTBEAT_MS = 10_000;
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
   nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
+  updateNativePaneConfig?(name:string,patch:Partial<import("./fleet-windows-runtime.js").NativeRuntimePatch>,authorized:()=>boolean):Promise<unknown>;
   runtimeCoordinator?(): RuntimeCoordinator;
   readonly webToken: string | null;
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
@@ -2467,7 +2468,11 @@ export function handleWebRequest(
       const str = (v: unknown, max: number): string | undefined => (typeof v === "string" && v.length <= max ? v : undefined);
       const instance = str(body?.instance, 128), command = str(body?.command, 32);
       if (!instance || !isSafeInstanceName(instance) || !command) { json(res, 400, { error: "instance and command required" }); return; }
-      if(isWindowsInstance(ctx.fleetConfig?.instances[instance])){json(res,400,{error:"This runtime does not support CLI control commands; use Agent settings or Cancel"});return;}
+      if(isNativeExecInstance(ctx.fleetConfig?.instances[instance])){json(res,400,{error:"This runtime does not support CLI control commands; use Agent settings or Cancel"});return;}
+      if(isNativePaneInstance(ctx.fleetConfig?.instances[instance])){
+        if(!nativeCliAuthorization(req,url,ctx)){json(res,403,{error:"Windows runtime requires an administrator on the local dashboard"});return;}
+        if(command!=="model"){json(res,400,{error:"This persistent Windows runtime supports the model command; use its shared controls for other actions"});return;}
+      }
       if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
@@ -3420,7 +3425,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx, instance));
       const ts = new Date().toISOString();
       // The id the agent is given, and the one its delivery reports come back under: the page's ticks.
-      const nativeRequestId = native ? (()=>{
+      const nativeRequestId = isNativeExecInstance(ctx.fleetConfig?.instances[instance]) ? (()=>{
         if(!clientId)return randomUUID();
         const hash=createHash("sha256").update(`agend-native-web\0${WebSendDedupe.key(person.key,instance,clientId)}`).digest("hex");
         return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;

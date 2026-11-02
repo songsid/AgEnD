@@ -39,7 +39,9 @@ export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: Na
   const model = launch.model ? ["--model", launch.model] : [];
   const mcp = config?.mcp;
   const prefix = mcp ? ["-c", `mcp_servers.${mcp.serverName}.command=${JSON.stringify(mcp.nodePath)}`, "-c",
-    `mcp_servers.${mcp.serverName}.args=${JSON.stringify([mcp.helperPath, "--connection-file", mcp.connectionPath])}`] : [];
+    `mcp_servers.${mcp.serverName}.args=${JSON.stringify([mcp.helperPath, "--connection-file", mcp.connectionPath])}`, "-c",
+    // Only this launch's authenticated AgEnD server; its live Fleet permissions and General confirms still decide each call.
+    `mcp_servers.${mcp.serverName}.default_tools_approval_mode="approve"`] : [];
   // Each owned Job must contain only its own CLI tree. A shared Codex app-server would outlive or couple panes.
   // This is the fleet agent's own developer-role slot. Built-in model and project instructions remain provider-owned.
   // A shared AGENTS.md identity block would give concurrent same-cwd agents each other's roles.

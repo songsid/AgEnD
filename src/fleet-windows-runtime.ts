@@ -7,7 +7,7 @@ import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches
 
 /** M-2255: the switch for where this agent runs — this PC's Windows CLIs, or the other Windows computers. */
 const switchedOn = (agent: { machineId?: string }): boolean => agent.machineId ? remoteRuntimeEnabled() : localWindowsCliEnabled();
-import { isWindowsInstance, isNativeExecInstance, nativeAgentId, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, syncWindowsProfile } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativeExecInstance, nativeAgentId, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, previewWindowsProfile, syncWindowsProfile } from "./native-instance-registry.js";
 import { validWindowsAgentId } from "./windows-cli-worker.js";
 import type { NativeHistoryMessage, WebChatHistory } from "./web-chat-history.js";
 import type { SettingsExecution } from "./settings-transaction.js";
@@ -128,12 +128,22 @@ export class FleetWindowsRuntime {
     this.changed(name);
     return {name,runtime:"windows",agent};
   }
+  previewUpdate(name: string, patch: Partial<NativeRuntimePatch>): WindowsAgent {
+    if(!patch||typeof patch!=="object"||Array.isArray(patch)||Object.keys(patch).some(key=>!["display_name","description","systemPrompt","model","working_directory","native_sandbox","tags"].includes(key)))throw Error("Unknown Windows instance setting");
+    if(Object.hasOwn(patch,"tags")&&(!Array.isArray(patch.tags)||patch.tags.length>32||patch.tags.some(tag=>typeof tag!=="string"||!tag||tag.length>64)))throw Error("Invalid Windows instance tags");
+    this.enabled();const before=this.config(name);if(!before||!this.has(name))throw Error("Windows instance not found");
+    return previewWindowsProfile({...before,...patch},this.store);
+  }
   update(name: string, patch: Partial<NativeRuntimePatch>, authorized: () => boolean): {name:string;agent:WindowsAgent} {
     this.enabled();
     const fleet = this.host.fleet(), before = this.config(name);
     if (!fleet || !before || !this.has(name)) throw new Error("Windows instance not found");
     const id = this.id(name), old = this.store.get(id);
-    const next = {...before,...patch};
+    const checked=this.previewUpdate(name,patch);
+    const next = {...before,...structuredClone(patch)};
+    // Persist the provider validator's canonical values as well as the profile: launch ownership compares both.
+    const fields={display_name:"name",description:"description",systemPrompt:"instructions",model:"model",working_directory:"cwd",native_sandbox:"sandbox"} as const;
+    for(const field of Object.keys(fields) as Array<keyof typeof fields>)if(Object.hasOwn(patch,field))(next as Record<string,unknown>)[field]=checked[fields[field]]??"";
     const updated = syncWindowsProfile(next,this.store,authorized);
     try { if (!authorized()) throw new Error("Authorization expired"); fleet.instances[name] = next; this.host.save(); }
     catch(error) {

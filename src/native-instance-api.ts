@@ -57,7 +57,10 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
     if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
     const body=raw.length?JSON.parse(raw.toString("utf8")):{};
     if(method==="PATCH" && !operation){
-      const result=await service.update(name,Patch.parse(body),allowed);
+      const patch=Patch.parse(body);
+      const result=isNativePaneInstance(ctx.fleetConfig?.instances[name])
+        ? await (()=>{if(!ctx.updateNativePaneConfig)throw Error("Persistent pane settings are unavailable");return ctx.updateNativePaneConfig(name,patch,allowed);})()
+        : await service.update(name,patch,allowed);
       if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,result);return;
     }
@@ -69,6 +72,7 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,{deleted:name});return;
     }
     if(method==="POST" && operation==="messages"){
+      if(isNativePaneInstance(ctx.fleetConfig?.instances[name]))throw Error("Use the shared chat endpoint for a persistent Windows pane");
       const input=Message.parse(body);
       if(!input.prompt.trim())throw new Error("Enter a message");
       const existing=service.get(name)?.turns.find(turn=>turn.id===input.requestId);
@@ -90,6 +94,7 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
       const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
     }
     if(method==="POST" && operation==="recover"){
+      if(isNativePaneInstance(ctx.fleetConfig?.instances[name]))throw Error("Use the shared Start or Restart control to reconcile the retained pane");
       const input=z.object({confirmedStopped:z.literal(true)}).strict().parse(body);json(res,200,{agent:service.recoverAsync ? await service.recoverAsync(name,input.confirmedStopped) : service.recover(name,input.confirmedStopped)});return;
     }
     json(res,405,{error:"Unsupported instance operation"});

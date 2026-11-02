@@ -121,10 +121,10 @@ export class WindowsAgents {
     if(agent.fleet_instance===name)return;
     this.change(()=>{agent.fleet_instance=name;});
   }
-  update(id: string, patch: WindowsAgentPatch, authorized: () => boolean = () => true): WindowsAgent {
+  /** Validate without changing the retained launch or profile (used before an explicit cold-settings stop). */
+  previewUpdate(id: string, patch: WindowsAgentPatch): WindowsAgent {
     const current = this.find(id);
     if (!patch || typeof patch !== "object" || Array.isArray(patch) || Object.keys(patch).some(key => !["name","cwd","description","instructions","sandbox","cli","model"].includes(key))) throw new Error("Unknown Windows agent field");
-    if (current.activeId) throw new Error("Wait for the Windows agent to finish before changing its settings");
     const next = structuredClone(current);
     if (Object.hasOwn(patch,"name")) {
       if (!shortText(patch.name,64) || !patch.name.trim() || /[\x00-\x1f\x7f]/.test(patch.name)) throw new Error("Enter a Windows agent name (1–64 characters)");
@@ -141,6 +141,13 @@ export class WindowsAgents {
     const provider = nativeProvider(next.cli);
     if (!provider.supports.execution || !provider.supports.resume) throw new Error(provider.reason || "This CLI cannot create Windows conversations yet");
     if (next.sandbox === "read-only" && !provider.readOnlySupport) throw new Error(`${provider.name} does not support read-only execution`);
+    return next;
+  }
+  update(id: string, patch: WindowsAgentPatch, authorized: () => boolean = () => true): WindowsAgent {
+    const current = this.find(id), next = this.previewUpdate(id,patch);
+    // Only identity metadata is hot. A retained/unknown pane still fences every effective launch setting.
+    const cold = (["cwd","cli","instructions","sandbox","model"] as const).some(key=>(next[key]??"")!==(current[key]??""));
+    if (current.activeId && (!current.paneLaunchId || cold)) throw new Error("Wait for the Windows agent to finish before changing its settings");
     if (!authorized()) throw new Error("Authorization expired before changing the Windows agent");
     if (JSON.stringify(next) === JSON.stringify(current)) return structuredClone(current);
     this.change(() => { this.data.agents[this.data.agents.findIndex(agent => agent.id === id)] = next; });
