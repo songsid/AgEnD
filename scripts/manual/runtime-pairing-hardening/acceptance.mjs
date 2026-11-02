@@ -81,4 +81,6 @@ try{
  rmSync(state,{recursive:true,force:true});
 }
 
-console.log(JSON.stringify(receipt,null,2));
+// The ConPTY library can retain native pipe handles after its child has positively exited.
+// All owned children and HTTP state are already closed; finish only this fixture host after stdout drains.
+process.stdout.write(JSON.stringify(receipt,null,2)+'\n',()=>process.exit(0));
