@@ -6,13 +6,19 @@ import type { WindowsCliTask } from "./windows-cli.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 
 const MAX_JOBS = 128;
-const MAX_IDS = 4096;
+/**
+ * M-2239 P2-1 (#2936 review): `used` is the replay tombstone (id → digest) — it was capped at 4096 and never pruned, so
+ * a long-lived runtime stopped. It now holds up to MAX_IDS, and beyond that the oldest tombstones older than
+ * ID_KEEP_MS (and with no job snapshot) give way; a younger one never does, so a replay is refused for at least that.
+ */
+const MAX_IDS = 65_536;
+const ID_KEEP_MS = 30 * 24 * 3_600_000;
 const MAX_STORE_BYTES = 12 * 1024 * 1024;
 const ID = /^[A-Za-z0-9-]{16,80}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export interface RuntimeCredentials { server: string; machineId: string; credential: string; name: string }
 export interface RuntimeStoredJob { digest: string; seq: number; task: WindowsCliTask; uncertain: boolean }
-interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string> }
+interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string>; usedAt?: Record<string, number> }
 
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function canonical(value: unknown): string {
@@ -72,6 +78,7 @@ export class RuntimeClientStore {
     if (!object(raw) || raw.version !== 1 || !object(raw.jobs) || !object(raw.used)
       || Object.keys(raw.jobs).length > MAX_JOBS || Object.keys(raw.used).length > MAX_IDS) throw new Error("Invalid runtime job ledger");
     for (const [id, digest] of Object.entries(raw.used)) if (!ID.test(id) || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid runtime job identity");
+    if (raw.usedAt !== undefined && (!object(raw.usedAt) || Object.entries(raw.usedAt).some(([id, at]) => !Object.hasOwn(raw.used as object, id) || typeof at !== "number" || !Number.isFinite(at)))) throw new Error("Invalid runtime job identity times");
     for (const [id, value] of Object.entries(raw.jobs)) {
       if (!ID.test(id) || !object(value) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1
         || typeof value.uncertain !== "boolean" || !object(value.task) || value.task.id !== id || value.digest !== raw.used[id]
@@ -80,6 +87,13 @@ export class RuntimeClientStore {
     return raw as unknown as Ledger;
   }
   private save(): void { atomic(this.file, this.data); }
+  /** Oldest first; only past ID_KEEP_MS and with no job snapshot. An id from an older ledger (no time) counts as oldest. */
+  private evictTombstones(): void {
+    const now = this.now(), at = this.data.usedAt ?? {};
+    const old = Object.keys(this.data.used).filter(id => !this.data.jobs[id] && now - (at[id] ?? 0) > ID_KEEP_MS)
+      .sort((a, b) => (at[a] ?? 0) - (at[b] ?? 0));
+    for (const id of old.slice(0, Object.keys(this.data.used).length - MAX_IDS + 1)) { delete this.data.used[id]; delete at[id]; }
+  }
   get(id: string): RuntimeStoredJob | null { const row = this.data.jobs[id]; return row ? structuredClone(row) : null; }
   list(): RuntimeStoredJob[] { return Object.values(this.data.jobs).map(job => structuredClone(job)); }
   blocked(): boolean { return Object.values(this.data.jobs).some(job => job.uncertain || !job.task.finishedAt); }
@@ -92,10 +106,11 @@ export class RuntimeClientStore {
       return { duplicate: true, job: old };
     }
     if (this.blocked()) throw new Error("Runtime already has an active or unconfirmed execution");
-    if (Object.keys(this.data.used).length >= MAX_IDS) throw new Error("Runtime execution identity limit reached");
+    if (Object.keys(this.data.used).length >= MAX_IDS) this.evictTombstones();
+    if (Object.keys(this.data.used).length >= MAX_IDS) throw new Error("Runtime execution identity limit reached: every remembered execution is younger than 30 days");
     const before = structuredClone(this.data);
     const job: RuntimeStoredJob = { digest, seq: 1, task: { ...task, output: task.output.slice(-65_536) }, uncertain: false };
-    this.data.jobs[task.id] = job; this.data.used[task.id] = digest;
+    this.data.jobs[task.id] = job; this.data.used[task.id] = digest; (this.data.usedAt ??= {})[task.id] = this.now();
     while (Object.keys(this.data.jobs).length > MAX_JOBS) {
       const oldest = Object.values(this.data.jobs).filter(row => row.task.id !== task.id && row.task.finishedAt && !row.uncertain)
         .sort((a, b) => a.task.startedAt - b.task.startedAt)[0];

@@ -59,7 +59,17 @@ interface CommandRecord {
   createdAt: number; state: "pending" | "accepted" | "failed" | "uncertain";
   task?: WindowsCliTask; seq: number; result?: unknown; error?: string;
 }
-interface State { version: 1; machines: MachineRecord[]; pairings: PairRecord[]; commands: CommandRecord[] }
+/** A compacted settled command: enough to keep refusing its id (replay protection) without its payload or task. */
+interface CommandTombstone { id: string; machineId: string; digest: string; at: number }
+interface State { version: 1; machines: MachineRecord[]; pairings: PairRecord[]; commands: CommandRecord[]; tombstones?: CommandTombstone[] }
+/**
+ * M-2239 P2-1 (#2936 review): the journal is compacted, never just capped. A settled command (failed, or accepted with a
+ * terminal, process-confirmed outcome) older than COMMAND_KEEP_MS, or the oldest settled ones beyond COMMAND_SOFT_CAP,
+ * become tombstones; pending and uncertain commands are never compacted. Tombstones are evicted only beyond
+ * TOMBSTONE_CAP and only when older than TOMBSTONE_KEEP_MS — a replayed id is refused for at least that long.
+ */
+const COMMAND_HARD_CAP = 4096, COMMAND_SOFT_CAP = 2048, COMMAND_KEEP_MS = 7 * 24 * 3_600_000;
+const TOMBSTONE_CAP = 65_536, TOMBSTONE_KEEP_MS = 30 * 24 * 3_600_000;
 interface Connection { ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout }
 interface Pending { machineId: string; generation: number; resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
 export interface RuntimeCoordinatorEvent { type: "machine" | "task"; machineId: string; task?: WindowsCliTask }
@@ -90,8 +100,11 @@ export class RuntimeCoordinator {
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_STORE_BYTES) throw Error("Invalid runtime machine store file");
     }
     this.state = existsSync(this.path) ? JSON.parse(readFileSync(this.path, "utf8")) : { version: 1, machines: [], pairings: [], commands: [] };
-    if (this.state.version !== 1 || !Array.isArray(this.state.machines) || !Array.isArray(this.state.pairings) || !Array.isArray(this.state.commands)) throw Error("Invalid runtime machine store");
-    if (this.state.machines.length > 256 || this.state.pairings.length > 16 || this.state.commands.length > 4096
+    if (this.state.version !== 1 || !Array.isArray(this.state.machines) || !Array.isArray(this.state.pairings) || !Array.isArray(this.state.commands)
+      || this.state.tombstones !== undefined && !Array.isArray(this.state.tombstones)) throw Error("Invalid runtime machine store");
+    this.state.tombstones ??= [];
+    if (this.state.machines.length > 256 || this.state.pairings.length > 16 || this.state.commands.length > COMMAND_HARD_CAP || this.state.tombstones.length > TOMBSTONE_CAP
+      || this.state.tombstones.some(row => !record(row) || !text(row.id, 128) || !UUID.test(String(row.machineId)) || !/^[a-f0-9]{64}$/.test(row.digest) || !Number.isFinite(row.at))
       || this.state.machines.some(row => !record(row) || !record(row.machine) || !UUID.test(String(row.machine.id)) || !text(row.machine.name, 100)
         || row.machine.platform !== "win32" || !["pending", "offline", "online", "revoked"].includes(String(row.machine.status))
         || !Number.isSafeInteger(row.machine.generation) || row.machine.generation < 0
@@ -323,6 +336,26 @@ export class RuntimeCoordinator {
     }
     throw Error("Unknown runtime message");
   }
+  /** M-2239 P2-1: settled commands to tombstones (see COMMAND_KEEP_MS); never a pending, uncertain or unconfirmed one. */
+  private compact(): void {
+    const now = this.now();
+    const settled = (command: CommandRecord): boolean => !this.pending.has(command.id) && (command.state === "failed"
+      || command.state === "accepted" && (command.operation !== "run" || !!command.task && terminal(command.task) && command.task.outcomeConfirmed === true));
+    const drop = new Set(this.state.commands.filter(command => settled(command) && now - command.createdAt > COMMAND_KEEP_MS));
+    const excess = this.state.commands.length - drop.size - COMMAND_SOFT_CAP;
+    if (excess > 0) for (const command of this.state.commands.filter(command => settled(command) && !drop.has(command)).sort((a, b) => a.createdAt - b.createdAt).slice(0, excess)) drop.add(command);
+    if (!drop.size) return;
+    const tombstones = this.state.tombstones!;
+    for (const command of drop) tombstones.push({ id: command.id, machineId: command.machineId, digest: command.digest, at: now });
+    this.state.commands = this.state.commands.filter(command => !drop.has(command));
+    if (tombstones.length > TOMBSTONE_CAP) {
+      // Oldest first, and only those past TOMBSTONE_KEEP_MS: a younger tombstone is never given up for space.
+      const evictable = tombstones.filter(row => now - row.at > TOMBSTONE_KEEP_MS).sort((a, b) => a.at - b.at).slice(0, tombstones.length - TOMBSTONE_CAP);
+      const gone = new Set(evictable);
+      this.state.tombstones = tombstones.filter(row => !gone.has(row));
+    }
+    this.save();
+  }
   task(id: string): WindowsCliTask | null { const task = this.state.commands.find(command => command.id === id && command.operation === "run")?.task; return task ? structuredClone(task) : null; }
   tasks(): Array<{ machineId: string; task: WindowsCliTask }> { return this.state.commands.flatMap(command => command.operation === "run" && command.task ? [{ machineId: command.machineId, task: structuredClone(command.task) }] : []); }
   hasActiveTask(machineId: string): boolean { return this.state.commands.some(command => command.machineId === machineId && command.operation === "run" && command.state !== "failed" && (!command.task || !terminal(command.task) || command.task.outcomeConfirmed === false)); }
@@ -356,8 +389,14 @@ export class RuntimeCoordinator {
       if (existing.task) return structuredClone(existing.task);
       throw Error("Runtime command is already recorded; reconcile it before retrying");
     }
+    const tombstone = this.state.tombstones!.find(row => row.id === id);
+    if (tombstone) {
+      if (tombstone.machineId !== machineId || tombstone.digest !== digest) throw Error("Runtime task ID belongs to a different request or machine");
+      throw Error("Runtime command already ran and its record was compacted; do not retry it");
+    }
     if (operation === "run" && this.hasActiveTask(machineId)) throw Error("Runtime machine is busy or has an unconfirmed task");
-    if (this.state.commands.length >= 4096) throw Error("Runtime command journal limit reached");
+    this.compact();
+    if (this.state.commands.length >= COMMAND_HARD_CAP) throw Error("Runtime command journal limit reached: too many unsettled commands; reconcile them");
     const command: CommandRecord = { id, machineId, operation, digest, payload: normalized, createdAt: this.now(), state: "pending", seq: 0 };
     // Journal is committed before the first byte reaches the execution computer. Never auto-send it again.
     this.state.commands.push(command); this.save();
