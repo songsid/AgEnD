@@ -11,7 +11,7 @@ afterEach(()=>{setConfiguredRuntimeSwitches({});for(const dir of dirs.splice(0))
 function fixture(){const dir=mkdtempSync(join(tmpdir(),"agend-native-limit-"));dirs.push(dir);const start=vi.fn((task:any)=>({...task,id:task.requestId,status:"working",output:"",startedAt:1}));const bridge:any={start,get:()=>null,prepareWorkspace:vi.fn()};return{dir,start,bridge,store:new WindowsAgents(dir,bridge)};}
 async function agent(f:ReturnType<typeof fixture>,machineId?:string){return f.store.create({name:randomUUID(),cwd:"C:\\scratch",sandbox:"read-only",...(machineId?{machineId}:{})});}
 it("default permits four persistent agents on each machine rather than one fleet-wide slot",async()=>{
- const f=fixture(),machine=randomUUID();for(const id of [undefined,machine])for(let n=0;n<4;n++){const a=await agent(f,id);f.store.reservePane(a.id,randomUUID());}
+ const f=fixture(),machine=randomUUID();for(const id of [undefined,machine])for(let n=0;n<4;n++){const a=await agent(f,id);expect(()=>f.store.reservePane(a.id,randomUUID())).not.toThrow();}
  for(const id of [undefined,machine]){const a=await agent(f,id);expect(()=>f.store.reservePane(a.id,randomUUID())).toThrow("concurrent agent limit");expect(f.store.get(a.id).activeId).toBeUndefined();}expect(f.start).not.toHaveBeenCalled();
 });
 it("unknown exec and pane owners occupy the same per-machine cap across coordinator recreation",async()=>{
