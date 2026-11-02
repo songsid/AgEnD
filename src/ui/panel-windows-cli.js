@@ -17,8 +17,8 @@ register("wincli", {
 });
 const tn = key => t(`wincli.${key}`);
 register("wincli", {
-  "zh-TW": { newTask:"派送 Windows CLI 任務", taskHint:"選擇本機 CLI 與模型，在指定專案中執行任務。", ready:"CLI 已就緒", unavailable:"請先確認 CLI 已安裝並登入", model:"模型", defaultModel:"使用 CLI 預設模型", write:"使用本機 CLI 權限", writeHint:"依照此 CLI 的本機核准設定", writeHintClaude:"沒有核准提示：Claude Code 設定未允許的動作（含修改檔案）會被拒絕", noReadOnly:"此 CLI 無法保證唯讀，請明確選擇本機 CLI 權限。", noProviders:"沒有找到已安裝的 CLI。安裝後可重新偵測。" },
-  en: { newTask:"Run a Windows CLI task", taskHint:"Choose a local CLI and model, then run a task in your project.", ready:"CLI is ready", unavailable:"Check that the CLI is installed and signed in", model:"Model", defaultModel:"Use the CLI default model", write:"Use native CLI permissions", writeHint:"Uses this CLI's local approval settings", writeHintClaude:"No approval prompt: anything Claude Code's own settings do not allow, file edits included, is denied", noReadOnly:"This CLI cannot guarantee read-only access. Choose native CLI permissions explicitly.", noProviders:"No installed CLIs found. Detect again after installation." },
+  "zh-TW": { newTask:"派送 Windows CLI 任務", taskHint:"選擇本機 CLI 與模型，在指定專案中執行任務。", ready:"CLI 已就緒", unavailable:"請先確認 CLI 已安裝並登入", model:"模型", defaultModel:"使用 CLI 預設模型", write:"使用本機 CLI 權限", writeHint:"依照此 CLI 的本機核准設定", writeHintClaude:"可修改工作目錄內的檔案；目錄外、Shell 與網路會被拒絕", noReadOnly:"此 CLI 無法保證唯讀，請明確選擇本機 CLI 權限。", noProviders:"沒有找到已安裝的 CLI。安裝後可重新偵測。" },
+  en: { newTask:"Run a Windows CLI task", taskHint:"Choose a local CLI and model, then run a task in your project.", ready:"CLI is ready", unavailable:"Check that the CLI is installed and signed in", model:"Model", defaultModel:"Use the CLI default model", write:"Use native CLI permissions", writeHint:"Uses this CLI's local approval settings", writeHintClaude:"Edits files in the working directory; outside it, shell and network are denied", noReadOnly:"This CLI cannot guarantee read-only access. Choose native CLI permissions explicitly.", noProviders:"No installed CLIs found. Detect again after installation." },
 });
 const active = task => ["starting","running","cancelling"].includes(task.status);
 

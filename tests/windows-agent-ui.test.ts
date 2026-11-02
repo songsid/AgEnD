@@ -225,10 +225,10 @@ describe("runtime-first creation",()=>{
   it("S-30: Claude Code's native permissions say plainly that writes not allowed in its own settings are denied",async()=>{
     probe=allCliProbe();await openWindows();await chooseCli("claude-code");await next();await setWindowsIdentity("Claude helper");
     await setNativePermissions();
-    expect(p.root.textContent).toContain("Claude Code gets no approval prompt here: anything its own settings do not already allow, file edits included, is denied.");
+    expect(p.root.textContent).toContain("Claude Code may edit files inside this agent's working directory. There is no approval prompt here, so files outside it, shell commands and network access are denied");
     expect(p.root.textContent).not.toContain("Uses this CLI's local access and approval settings");
     permissionSelect().value="read-only";fire(permissionSelect(),"change");await settle();
-    expect(p.root.textContent).not.toContain("Claude Code gets no approval prompt here");
+    expect(p.root.textContent).not.toContain("Claude Code may edit files inside this agent");
   });
   it("keeps the selected Windows CLI, model and native permissions when returning to earlier steps or runtimes",async()=>{
     probe=allCliProbe();await openWindows();await chooseCli("grok");await next();await setWindowsIdentity("Grok game helper");
@@ -296,7 +296,7 @@ describe("runtime-first creation",()=>{
     expect(writeHint()).toBe("Uses this CLI's local approval settings");                              // Codex (the default)
     p.root.querySelector(".windows-cli-composer .cli-picker-trigger").click();await settle();
     p.root.querySelectorAll('[role="menuitemradio"]').find((item:any)=>item.querySelector('[data-cli="claude-code"]')).click();await settle(4);
-    expect(writeHint()).toBe("No approval prompt: anything Claude Code's own settings do not allow, file edits included, is denied");
+    expect(writeHint()).toBe("Edits files in the working directory; outside it, shell and network are denied");
   });
   it("lets a pending probe finish across closing and reopening the dialog",async()=>{
     const gate=deferredProbe();probeFetch=()=>gate.promise;
