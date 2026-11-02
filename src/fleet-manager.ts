@@ -437,6 +437,7 @@ import {
 } from "./tips.js";
 
 import { getTmuxSession } from "./config.js";
+import { OwnStatusMessages } from "./chat-log-ids.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
@@ -9189,6 +9190,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!isCurrentAdapter()) return;
       await this.handleInboundMessage(msg);
     }, this.logger, "adapter.message"));
+    // #2940: a deleted message's chat-log line goes (and it is never logged after this).
+    adapter.on("message_deleted", (e: { messageId?: string }) => { if (isCurrentAdapter()) this.onPlatformMessageDeleted(e?.messageId); });
 
     adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
       if (!isCurrentAdapter()) return;
@@ -9337,6 +9340,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!isCurrentAdapter()) return;
       await this.handleInboundMessage(msg);
     }, this.logger, `adapter[${adapterId}].message`));
+    // #2940: a deleted message's chat-log line goes (and it is never logged after this).
+    adapter.on("message_deleted", (e: { messageId?: string }) => { if (isCurrentAdapter()) this.onPlatformMessageDeleted(e?.messageId); });
 
     adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
       if (!isCurrentAdapter()) return;
@@ -16811,6 +16816,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }, threadId ? { threadId } : undefined);
 
       publication.inFlight = false;
+      // #2940: a status bubble of ours — never a chat-log line, for any bot of this fleet in the room; one a sibling
+      // already logged (its gateway event can come before this answer) is taken out again.
+      this.noteOwnStatusMessage(sent.messageId);
 
       const entry: CancelButtonEntry = {
         instanceName,
@@ -19011,6 +19019,32 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return true;
   }
 
+  /** #2940: this fleet's own status bubbles and the messages the platform said were deleted (ids, never text). */
+  readonly ownStatusMessages = new OwnStatusMessages();
+
+  /** #2940: a status bubble of ours was posted: never logged, and a line already logged for it (by a sibling bot) goes. */
+  private noteOwnStatusMessage(messageId: string | undefined): void {
+    if (!messageId) return;
+    this.ownStatusMessages.addStatus(messageId);
+    const removed = ClassicChannelManager.loggedLines.remove(messageId);
+    if (removed) this.logger.debug({ messageId, removed }, "A status bubble logged before its id was known was taken out of the chat log");
+  }
+
+  /** #2940: the platform says a message was deleted — any chat-log line for it goes, and it is never logged after this. */
+  onPlatformMessageDeleted(messageId: string | undefined): void {
+    if (!messageId) return;
+    this.ownStatusMessages.markDeleted(messageId);
+    const removed = ClassicChannelManager.loggedLines.remove(messageId);
+    if (removed) this.logger.debug({ messageId, removed }, "A deleted message was taken out of the chat log");
+  }
+
+  /** #2940: whether `msg` must not enter the chat log (only its id is looked at; the debug trail names ids, not text). */
+  private chatLogExcludes(instanceName: string, msg: InboundMessage): boolean {
+    if (!this.ownStatusMessages.excluded(msg.messageId)) return false;
+    this.logger.debug({ instanceName, messageId: msg.messageId }, "Not logged: a status bubble of this fleet, or a deleted message");
+    return true;
+  }
+
   /** Handle a message in a classic channel: log it, forward only /chat messages */
   private async handleClassicChannelMessage(instanceName: string, msg: InboundMessage): Promise<void> {
     const text = msg.text ?? "";
@@ -19055,7 +19089,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         : (msg.attachments?.length
             ? ` [${msg.attachments.map(a => `${a.kind === "photo" ? "📷" : "📎"} ${a.filename || a.kind}`).join(", ")}]`
             : "");
-      ClassicChannelManager.logMessage(instanceName, msg.username, text + collabAttachTag, msg.timestamp, msg.replyToText);
+      // #2940: one of this fleet's own status bubbles (any bot's), or a message already deleted, never enters the log.
+      if (this.chatLogExcludes(instanceName, msg)) return;
+      ClassicChannelManager.logMessage(instanceName, msg.username, text + collabAttachTag, msg.timestamp, msg.replyToText, msg.messageId);
       this.logger.info({ instanceName, user: msg.username, textLen: text.length, attachments: msg.attachments?.length ?? 0, source: msg.source }, "Collab mode message");
 
       // Check for @mention trigger: must be exact <@BOT_USER_ID>, not @everyone/@here.
@@ -19159,7 +19195,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const attachmentTag = saved ? ` [${saved.kind === "photo" ? "📷" : "📎"} saved: ${saved.paths.join(", ")}]`
       : msg.attachments?.length ? ` [${msg.attachments.map(a => `📎 ${a.kind}${a.filename ? `: ${a.filename}` : ""}`).join(", ")}]`
       : "";
-    ClassicChannelManager.logMessage(instanceName, msg.username, text + attachmentTag, msg.timestamp, msg.replyToText);
+    // #2940: likewise in a room without collab (a bot's message reaches here only through a /chat text command).
+    if (!this.chatLogExcludes(instanceName, msg)) ClassicChannelManager.logMessage(instanceName, msg.username, text + attachmentTag, msg.timestamp, msg.replyToText, msg.messageId);
 
     // Bare attachment without /chat: save + log only, don't trigger agent
     if (!isChat) {

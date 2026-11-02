@@ -515,6 +515,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     };
     client.on("messageReactionAdd", (reaction, user) => void onReaction(reaction, user, "add"));
     client.on("messageReactionRemove", (reaction, user) => void onReaction(reaction, user, "remove"));
+    // #2940: a message deleted in a channel this bot sees (its id only: the message may not be cached — Partials.Message).
+    // The fleet takes a chat-log line recorded for it out again (a bot's deleted status bubble, a person's deleted line).
+    const onDeleted = (id: string, channelId: string) => {
+      try { this.emit("message_deleted", { messageId: id, channelId }); }
+      catch (err) { console.warn(`[discord] message delete handler error (${(err as Error).message})`); }
+    };
+    client.on("messageDelete", (msg) => onDeleted(msg.id, msg.channelId));
+    client.on("messageDeleteBulk", (msgs, channel) => { for (const id of msgs.keys()) onDeleted(id, channel.id); });
 
     client.on("messageCreate", async (msg: Message) => {
       try {
