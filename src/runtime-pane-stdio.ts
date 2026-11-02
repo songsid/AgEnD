@@ -17,7 +17,8 @@ export function serveLocalPaneRelay(input:Readable,output:Writable,open:(options
   if(value.type==="init"){
    if(initializing||link||epoch)throw Error("Local pane init already exists");initializing=true;epoch=value.epoch;maxAgents=value.maxAgents;online=true;lastLease=performance.now();
    // The coordinator supplies an opaque installation digest, never a user-chosen path.
-   const directory=join(process.env.LOCALAPPDATA||join(homedir(),"AppData","Local"),"AgEnD","pane-adapter",value.scope,"state");
+   // Keep the path short for PS5.1 Job exit receipts; the descriptor still verifies the full digest.
+   const directory=join(process.env.LOCALAPPDATA||join(homedir(),"AppData","Local"),"AgEnD","pane-adapter",value.scope.slice(0,16),"state");
    void open({directory,server:"http://127.0.0.1",machineId:value.scope,online:current,maxAgents:()=>maxAgents,epoch:()=>epoch,
     output:snapshot=>{if(!link)return;try{send({type:"output",epoch,snapshot});}catch{stop();}},
     mcp:(body,owner)=>new Promise((resolve,reject)=>{
