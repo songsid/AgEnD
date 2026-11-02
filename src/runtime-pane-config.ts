@@ -6,7 +6,7 @@ import { validateNativeMcpConnection } from "./windows-cli-providers.js";
 import { validatePaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
-export interface NativePaneConfig { instructionsFile?: string; mcp?: { nodePath: string; helperPath: string; connectionPath: string; configPath: string; tools: string[]; serverName: string }; cleanup(): void }
+export interface NativePaneConfig { sessionId?: string; instructionsFile?: string; mcp?: { nodePath: string; helperPath: string; connectionPath: string; configPath: string; tools: string[]; serverName: string }; cleanup(): void }
 function realDirectory(path: string): void { const stat = lstatSync(path); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error("Pane configuration must stay in its owned directory"); }
 /** Merge under an exclusive sibling lock, preserving all text outside this exact launch's block. */
 function codexInstructions(cwd: string, marker: string, content: string | null): void {
@@ -47,7 +47,7 @@ export function prepareNativePaneConfig(launch: RuntimePaneLaunch, owner: Native
   // The host admits a new launch only after the previous owned process has positively exited.
   // A stable agent marker replaces instructions left by an interrupted worker, rather than accumulating stale blocks.
   const marker = launch.agentId;
-  const config: NativePaneConfig = { cleanup: () => {
+  const config: NativePaneConfig = { ...(launch.cli === "claude-code" ? { sessionId: launch.sessionId ?? owner.launchId } : {}), cleanup: () => {
     if (markerWritten) { try { codexInstructions(launch.cwd, marker, null); markerWritten = false; } catch { /* Preserve user text when cleanup cannot prove the bounded marker. */ } }
     for (const file of files) { try { unlinkSync(file); } catch { /* Only exact files created by this launch. */ } }
     try { rmdirSync(directory); } catch { /* Unknown extra files are never deleted. */ }

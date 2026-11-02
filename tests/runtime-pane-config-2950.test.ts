@@ -17,10 +17,15 @@ it('keeps account credentials and host tokens out of argv; scopes the helper to 
  expect(JSON.parse(readFileSync(config.mcp!.connectionPath,'utf8'))).toMatchObject({owner:f.owner.mcp!.owner,token:f.owner.mcp!.token});expect(readFileSync(config.instructionsFile!,'utf8')).toBe(f.launch.instructions);
  const files=[config.mcp!.connectionPath,config.mcp!.configPath,config.instructionsFile!];config.cleanup();expect(files.every(path=>!existsSync(path))).toBe(true);
 });
+it('pins a fresh Claude conversation before the first turn and resumes only the explicit saved id',()=>{
+ const f=rig('claude-code'),config=f.prepare();expect(config.sessionId).toBe(f.owner.launchId);
+ const args=persistentNativeArguments(f.launch,config);expect(args.slice(-2)).toEqual(['--session-id',f.owner.launchId]);expect(args).not.toContain('--resume');
+ const saved=randomUUID();expect(persistentNativeArguments({...f.launch,sessionId:saved},config).slice(-2)).toEqual(['--resume',saved]);config.cleanup();
+});
 it('adds and removes only the owned Codex workspace marker, preserving other text and agents',()=>{
  const f=rig();const original='# User instructions\n\n<!-- AGEND-PANE:other:BEGIN -->\nother rules\n<!-- AGEND-PANE:other:END -->\n';writeFileSync(join(f.cwd,'AGENTS.md'),original);
  const config=f.prepare();expect(readFileSync(join(f.cwd,'AGENTS.md'),'utf8')).toContain(original);expect(readFileSync(join(f.cwd,'AGENTS.md'),'utf8')).toContain(f.launch.instructions);
- const args=persistentNativeArguments(f.launch,config);expect(args).toContain('tui.status_line=["context-remaining"]');expect(args.join(' ')).not.toContain(f.owner.mcp!.token);expect(args).toContain(`mcp_servers.${config.mcp!.serverName}.command="C:\\\\Node\\\\node.exe"`);
+ const args=persistentNativeArguments(f.launch,config);expect(args[0]).toBe('--no-daemon');expect(args).toContain('tui.status_line=["context-remaining"]');expect(args.join(' ')).not.toContain(f.owner.mcp!.token);expect(args).toContain(`mcp_servers.${config.mcp!.serverName}.command="C:\\\\Node\\\\node.exe"`);
  config.cleanup();expect(readFileSync(join(f.cwd,'AGENTS.md'),'utf8')).toBe(original);
 });
 it('a positively replaced launch updates its stable agent marker instead of retaining stale instructions',()=>{

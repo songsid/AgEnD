@@ -108,7 +108,13 @@ export class RuntimePanePort implements Pane {
   getLastSendSpecialKeyError(): string | null { return this.error; }
   getLastPasteError(): string | null { return this.error; }
   isLastPasteFailureRecoverable(): boolean { return false; }
-  async pasteText(text: string): Promise<boolean> { return await this.pasteBuffer(text) && this.sendSpecialKey("Enter"); }
+  async pasteText(text: string): Promise<boolean> {
+    if (!await this.pasteBuffer(text)) return false;
+    // Same settle margin as TmuxManager: Codex otherwise keeps the Enter inside its input/paste burst.
+    // Exactly one Enter; an uncertain submission must never be "fixed" with a second bare Enter.
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return this.sendSpecialKey("Enter");
+  }
   async pasteBuffer(text: string, opts: { guard?: () => boolean } = {}): Promise<boolean> {
     if (opts.guard && !opts.guard()) return false;
     return this.mutate(snapshot => {

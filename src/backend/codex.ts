@@ -960,7 +960,7 @@ function codexUnboxedResumeLoading(rows: string[]): boolean {
 
 /** Pane-only detectors: construction performs no provider, config or session discovery. */
 export class CodexPaneDetectors {
-  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean }) {}
+  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean }) {}
   protected readConfiguredStatusLineItems(): string[] | null { return this.paneDetectorContext?.statusLineItems()?.slice() ?? null; }
   protected trustPaneFields(pane: string): Record<string, unknown> { const state = codexTrustPromptState(pane); return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote }; }
   protected trustHoldReason(pane: string): Record<string, unknown> { return { ...this.trustPaneFields(pane), reason: "Folder permission needs confirmation on this execution machine" }; }
@@ -1008,6 +1008,9 @@ export class CodexPaneDetectors {
     if (codexAppServerDisconnected(pane)) return false;
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    if (this.paneDetectorContext?.windowsConpty && /^[ \t]*\? for shortcuts[ \t]*$/.test(rows.at(-1) ?? "")) {
+      rows.pop(); while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    }
     const footer = rows.pop() ?? "";
     // Codex preserves other configured status-line items after the context
     // meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra"). They
@@ -1111,7 +1114,9 @@ export class CodexPaneDetectors {
     // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
     // prompt, between prompt/footer, and below the footer. A drafted composer
     // is also idle once this same bottom footer proves it owns the screen.
-    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    const nativeTail = (pattern: RegExp): RegExp => this.paneDetectorContext?.windowsConpty
+      ? new RegExp(pattern.source.slice(0, -1) + String.raw`(?:\r?\n[ \t]*\? for shortcuts[ \t]*)?(?:\r?\n[ \t⋆]*)*$`, pattern.flags) : pattern;
+    const contextReady = nativeTail(/(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i);
     const footerPattern = this.configuredStatusLineFooterPattern();
     if (!footerPattern) return contextReady;
 
@@ -1120,19 +1125,19 @@ export class CodexPaneDetectors {
     // configured, that value must specifically be Ready. This is positive
     // structural proof, never a deny-list of known dialogs.
     const footerSource = footerPattern.source.slice(1, -1);
-    const noContextReady = new RegExp(
+    const noContextReady = nativeTail(new RegExp(
       String.raw`(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${footerSource}(?:\r?\n[ \t⋆]*)*$`,
       "iu",
-    );
+    ));
     // #978: a configured footer that carries a Context item in any position
     // is the Context footer: same drafted-composer rule as Context-first. The
     // whole row must match the configured item grammar, so an arbitrary
     // indented line that merely contains `Context N% left` cannot pass.
     const configuredContextReady = this.configuredHasContextItem()
-      ? new RegExp(
+      ? nativeTail(new RegExp(
         String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
         "iu",
-      )
+      ))
       : null;
     return new RegExp(
       [contextReady.source, noContextReady.source, configuredContextReady?.source]

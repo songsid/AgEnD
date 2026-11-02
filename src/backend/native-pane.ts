@@ -11,7 +11,7 @@ export interface NativePaneBackendState {
 export function createNativePaneBackend(provider: "codex" | "claude-code", snapshot: () => NativePaneBackendState): CliBackend {
   const forbidden = (): never => { throw Error("Native pane launch preparation must run on its owned Windows host"); };
   const detectors = provider === "codex"
-    ? new CodexPaneDetectors({ statusLineItems: () => snapshot().statusLineItems, launchMayResume: () => snapshot().resumes })
+    ? new CodexPaneDetectors({ statusLineItems: () => snapshot().statusLineItems, launchMayResume: () => snapshot().resumes, windowsConpty: true })
     : new ClaudePaneDetectors();
   const originalStartup = detectors.getStartupDialogs.bind(detectors);
   const backend = Object.assign(detectors, {

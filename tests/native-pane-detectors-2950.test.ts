@@ -21,6 +21,14 @@ function verdict(detectors:ClaudePaneDetectors|CodexPaneDetectors,pane:string){r
  runtime:detectors.getRuntimeDialogs().map(d=>({description:d.description,active:d.pattern.test(pane)&&(!d.isActive||d.isActive(pane)),keys:d.keys})),
  errors:detectors.getErrorPatterns().map(d=>({type:d.type,active:d.pattern.test(pane)}))};}
 describe('native detector extraction preserves local pane behavior',()=>{
+ it('native Codex permits only its exact trailing shortcut hint after a proved footer; local behavior stays unchanged',()=>{
+  const base='› Ask Codex to do anything\n\n  Context 100% left\n',pane=base+'  ? for shortcuts\n',context={statusLineItems:()=>['context-remaining'],launchMayResume:()=>false};
+  const local=new CodexPaneDetectors(context),native=new CodexPaneDetectors({...context,windowsConpty:true});
+  expect(local.isDeliveryInputReadyPane(pane)).toBe(false);expect(local.getReadyPattern().test(pane)).toBe(false);expect(native.isDeliveryInputReadyPane(pane)).toBe(true);expect(native.getReadyPattern().test(pane)).toBe(true);
+  for(const invalid of ['› 1. Update now\n\n  Context 100% left\n  ? for shortcuts\n',base+'  arbitrary transcript footer\n  ? for shortcuts\n',base+'  ? for shortcuts\n  unknown\n','› Ask Codex to do anything\n  ? for shortcuts\n']){
+   expect(native.isDeliveryInputReadyPane(invalid)).toBe(false);expect(native.getReadyPattern().test(invalid)).toBe(false);
+  }
+ });
  it.each(claudeFixtures)('Claude parity on %s',file=>{
   const pane=readFileSync('tests/fixtures/'+file,'utf8'),local=Object.create(ClaudeCodeBackend.prototype) as ClaudeCodeBackend;
   expect(verdict(new ClaudePaneDetectors(),pane)).toEqual(verdict(local,pane));

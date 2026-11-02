@@ -15,9 +15,10 @@ export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: Na
   const mcp = config?.mcp;
   const prefix = mcp ? ["-c", `mcp_servers.${mcp.serverName}.command=${JSON.stringify(mcp.nodePath)}`, "-c",
     `mcp_servers.${mcp.serverName}.args=${JSON.stringify([mcp.helperPath, "--connection-file", mcp.connectionPath])}`] : [];
-  if (launch.cli === "codex") return [...nativeUpdateGuard("codex"), ...prefix, "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
+  // Each owned Job must contain only its own CLI tree. A shared Codex app-server would outlive or couple panes.
+  if (launch.cli === "codex") return ["--no-daemon", ...nativeUpdateGuard("codex"), ...prefix, "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
     ...model, ...(launch.sessionId ? ["resume", launch.sessionId] : [])];
   return [...model, ...(config?.instructionsFile ? ["--append-system-prompt-file", config.instructionsFile] : []),
     ...(mcp ? ["--strict-mcp-config", "--mcp-config", mcp.configPath, "--allowedTools", mcp.tools.map(tool => `mcp__${mcp.serverName}__${tool}`).join(",")] : []), "--permission-mode", "default", ...(launch.sandbox === "read-only" ? ["--tools", "Read,Glob,Grep"] : []),
-    ...(launch.sessionId ? ["--resume", launch.sessionId] : [])];
+    ...(launch.sessionId ? ["--resume", launch.sessionId] : config?.sessionId ? ["--session-id", config.sessionId] : [])];
 }

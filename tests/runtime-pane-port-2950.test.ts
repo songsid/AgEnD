@@ -38,6 +38,13 @@ it('keeps edits closed and pasteText submits exactly once without Enter retry',a
  expect(await f.port.sendKeySequence(['C-a','C-k'])).toBe(true);expect(await f.port.deleteBackward(3)).toBe(true);expect(await f.port.pasteText('message')).toBe(true);
  expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x01\x0b','\x7f\x7f\x7f','message','\r']);
 });
+it('settles the paste before Enter and a disconnect in that interval sends nothing else',async()=>{
+ const f=await fixture();vi.useFakeTimers();
+ try{
+  const result=f.port.pasteText('settled message');await vi.advanceTimersByTimeAsync(0);expect(f.write.mock.calls.map(x=>x[0])).toEqual(['settled message']);
+  await vi.advanceTimersByTimeAsync(499);expect(f.write).toHaveBeenCalledTimes(1);f.offline();await vi.advanceTimersByTimeAsync(1);expect(await result).toBe(false);expect(f.write).toHaveBeenCalledTimes(1);
+ }finally{vi.useRealTimers();}
+});
 it('observation is blind offline and rejects output from another launch',async()=>{
  const f=await fixture(),owned=f.port.ownedSnapshot()!,observation=new RuntimePaneObservation(f.endpoint,()=>f.port.ownedSnapshot(),0);clean.push(()=>observation.stop());observation.start();await observation.registerWindow(owned.paneId);
  f.emit({type:'pane',machineId:f.endpoint.machineId,pane:{...owned,launchId:randomUUID()}});expect(observation.isIdle(owned.paneId)).toBe(false);

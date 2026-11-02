@@ -7,6 +7,7 @@ import type { IPty } from "node-pty";
 import type {} from "./windows-pane-mcp.js";
 import type {} from "./transcript-records.js";
 import type {} from "./transcript-needles.js";
+import type {} from "./runtime-pane-transcript.js";
 import { findCli, nativeCliEnvironment, validWindowsDirectory, validWindowsAgentId } from "./windows-cli-worker.js";
 import { validateRuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { prepareNativePaneConfig, type NativePaneConfig } from "./runtime-pane-config.js";
