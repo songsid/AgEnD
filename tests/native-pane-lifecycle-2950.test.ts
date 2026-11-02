@@ -17,7 +17,7 @@ it('fresh Codex asks status once after the real idle detector, pins it and expos
 });
 it('coordinator reconnect reattaches a busy pinned pane without typing, respawning or waiting for idle',async()=>{
  const f=await fixture(),first=f.make();await first.acquire(()=>{});await first.release('detach');f.output('\x1b[2J\x1b[HWorking on the existing task...\r\n');
- const next=f.make(),acquisition=await next.acquire(()=>{});expect(acquisition.disposition).toBe('reattached');expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);expect(f.process.kill).not.toHaveBeenCalled();await next.release('detach');
+ const next=f.make(),acquisition=await next.acquire(()=>{});expect(acquisition.disposition).toBe('reattached');expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);expect(f.process.kill).not.toHaveBeenCalled();await expect(first.release('close')).rejects.toThrow('detached');expect(f.process.kill).not.toHaveBeenCalled();await next.release('detach');
 });
 it('a resumed pane that displays another id is held without any model prompt or fresh fallback',async()=>{
  const f=await fixture('codex',randomUUID()),native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('different conversation');expect(f.options.pin).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);await native.release('detach');expect(f.process.kill).not.toHaveBeenCalled();

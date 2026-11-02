@@ -41,6 +41,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
   readonly observation: RuntimePaneObservation;
   readonly backend: CliBackend;
   private detached = false;
+  private releasedExit = false;
   private source: RuntimeTranscriptSource | undefined;
   private readonly transcriptPort: RuntimeTranscriptPort;
   constructor(private options: NativePaneLifecycleOptions) {
@@ -119,11 +120,15 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     return new RuntimeTranscriptDeltaReader(this.transcriptPort, reference, needle);
   }
   async release(intent: "detach" | "close"): Promise<void> {
+    if (this.detached) {
+      if (intent === "close" && !this.releasedExit) throw Error("Native close lease was detached; refresh its current owner first");
+      return;
+    }
     // Detaching revokes coordinator tool authority but preserves the runner, its helper and the profile reservation.
     if (intent === "close") {
       const pane = this.port.ownedSnapshot();
       if (pane && pane.state !== "exited" && !await this.port.killWindowConfirmed()) throw Error("Native pane exit is unconfirmed; its reservation is retained");
-      const exited = this.port.ownedSnapshot(); if (exited) this.options.exited(exited);
+      const exited = this.port.ownedSnapshot(); if (exited && !this.releasedExit) { this.options.exited(exited); this.releasedExit = true; }
     }
     this.detached = true; this.source?.close(); this.observation.stop(); this.options.releaseAuthority();
   }

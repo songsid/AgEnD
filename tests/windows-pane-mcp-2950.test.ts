@@ -25,13 +25,18 @@ it('closed pane identities and method shapes refuse foreign or arbitrary fields'
  expect(()=>validatePaneMcpOwner({...owner(),machine:'arbitrary'})).toThrow();expect(()=>validatePaneMcpBody({...body,command:'whoami'})).toThrow();
  expect(()=>validatePaneMcpBody({...body,method:'response-written',callId:'x',responseId:'b'.repeat(64)})).toThrow();
 });
-it('helper presence starts only after its initialize response is written and stops with the helper',async()=>{
- const http=vi.fn(async(_body:PaneMcpBody)=>({result:{ok:true}})),session=new PaneMcpSession(connection(),http);
+it('helper presence starts only after initialize AND tool-list responses are written, and stops with the helper',async()=>{
+ const http=vi.fn(async(_body:PaneMcpBody)=>({result:{tools:[]}})),session=new PaneMcpSession(connection(),http);
  await session.heartbeat();expect(http).not.toHaveBeenCalled();const initialized=(await session.rpc({jsonrpc:'2.0',id:9,method:'initialize',params:{protocolVersion:'2025-06-18'}}))!;
- await session.heartbeat();expect(http).not.toHaveBeenCalled();await session.responseWritten(initialized);expect(http).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({method:'presence',helperId:session.helperId,params:{}}));session.close();await session.heartbeat();expect(http).toHaveBeenCalledOnce();
+ await session.heartbeat();expect(http).not.toHaveBeenCalled();await session.responseWritten(initialized);await session.heartbeat();expect(http).not.toHaveBeenCalled();
+ const list=(await session.rpc({jsonrpc:'2.0',id:10,method:'tools/list'}))!;await session.heartbeat();expect(http).toHaveBeenCalledOnce();await session.responseWritten(list);expect(http).toHaveBeenNthCalledWith(2,expect.objectContaining({method:'presence',helperId:session.helperId,params:{}}));session.close();await session.heartbeat();expect(http).toHaveBeenCalledTimes(2);
 });
 it('a held presence request never fans out into overlapping requests',async()=>{
- const releases:Array<(value:unknown)=>void>=[];const http=vi.fn((_body:PaneMcpBody)=>new Promise(done=>{releases.push(done);})),session=new PaneMcpSession(connection(),http);
- const initialized=(await session.rpc({jsonrpc:'2.0',id:9,method:'initialize'}))!,pending=[session.responseWritten(initialized),session.heartbeat(),session.heartbeat()];
- try{expect(http).toHaveBeenCalledOnce();}finally{for(const release of releases)release({result:{ok:true}});await Promise.all(pending);session.close();}
+ const releases:Array<(value:unknown)=>void>=[];const http=vi.fn((body:PaneMcpBody)=>body.method==='tools/list'?Promise.resolve({result:{tools:[]}}):new Promise(done=>{releases.push(done);})),session=new PaneMcpSession(connection(),http);
+ const initialized=(await session.rpc({jsonrpc:'2.0',id:9,method:'initialize'}))!;await session.responseWritten(initialized);const list=(await session.rpc({jsonrpc:'2.0',id:10,method:'tools/list'}))!,pending=[session.responseWritten(list),session.heartbeat(),session.heartbeat()];
+ try{expect(http.mock.calls.filter(([body])=>body.method==='presence')).toHaveLength(1);}finally{for(const release of releases)release({result:{ok:true}});await Promise.all(pending);session.close();}
+});
+it('a failed tool-list response does not advertise a serving helper',async()=>{
+ const http=vi.fn(async()=>{throw Error('coordinator offline');}),session=new PaneMcpSession(connection(),http);
+ const initialized=(await session.rpc({jsonrpc:'2.0',id:9,method:'initialize'}))!;await session.responseWritten(initialized);const failed=(await session.rpc({jsonrpc:'2.0',id:10,method:'tools/list'}))!;expect(failed).toHaveProperty('error');await session.responseWritten(failed);await session.heartbeat();expect(http).toHaveBeenCalledOnce();
 });

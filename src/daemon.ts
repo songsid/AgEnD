@@ -2211,6 +2211,8 @@ export class Daemon extends EventEmitter {
   /** Lazy default also preserves bare-prototype diagnostic/test construction. */
   private get paneHost(): PaneHost { return this.paneTransport ?? tmuxPaneHost; }
   private nativePaneLifecycle?: NativePaneLifecycle;
+  private nativeTranscriptSource?: TranscriptSource;
+  usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
 
   /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
@@ -2705,6 +2707,7 @@ export class Daemon extends EventEmitter {
       }
     } catch { /* corrupt/missing — ignore */ }
 
+    if (!this.nativePaneLifecycle) {
     // 1. IPC server — bridge between MCP server (Claude's child) and daemon
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath, this.logger);
@@ -2779,6 +2782,20 @@ export class Daemon extends EventEmitter {
       }
     });
 
+    }
+
+    let nativeDisposition: "reattached" | "resumed" | "fresh" | undefined;
+    if (this.nativePaneLifecycle) {
+      this.beginSpawn();
+      try {
+        const acquired = await this.nativePaneLifecycle.acquire(() => {
+          this.startupAdmission?.(); if (this.startupAborted) throw Error("Native launch was superseded");
+        });
+        this.tmux = acquired.pane; this.nativeTranscriptSource = acquired.source; nativeDisposition = acquired.disposition;
+        this.lastSpawnAt = Date.now(); this.setProcessStatus("running");
+        this.bindInstanceStateOutputListener(this.tmux.getWindowId()); this.saveSessionId();
+      } finally { this.endSpawn(); }
+    } else {
     // 2. Tmux — ensure session, create window if not alive
     await this.paneHost.ensureSession(this.tmuxSessionName); this.startupAdmission?.();
     this.tmux = this.paneHost.bind(
@@ -2813,10 +2830,13 @@ export class Daemon extends EventEmitter {
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
     }
 
+    }
+    if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
+
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached; the gate
     // consumes its one-shot marker first and never throws into boot.
-    const legacyResume = this.maybeResumeInterruptedTurn().catch(() => "unknown");
+    const legacyResume = this.nativePaneLifecycle ? Promise.resolve("unknown") : this.maybeResumeInterruptedTurn().catch(() => "unknown");
 
     const recoveryOwner = JSON.stringify(this.interactionOwner());
     void Promise.allSettled([legacyResume]).then(() => {
@@ -2828,13 +2848,13 @@ export class Daemon extends EventEmitter {
       // previous stuck splash (hundreds of MB of ANSI frames) is truncated before
       // we attach — pipe-pane uses `cat >>` on the same inode, so copytruncate
       // keeps the writer attached after size resets.
-      await this.attachPipePaneLog(); this.startupAdmission?.();
+      if (!this.nativePaneLifecycle) await this.attachPipePaneLog(); this.startupAdmission?.();
 
       // 4. Transcript monitor. claude-code is handled inside the monitor
       // (statusline transcript); codex/kiro/opencode read their CLI's own
       // conversation store via a pluggable source. Backends with no known
       // source stay inert exactly as before.
-      this.transcriptMonitor = this.buildTranscriptMonitor(createTranscriptSource(
+      this.transcriptMonitor = this.buildTranscriptMonitor(this.nativeTranscriptSource ?? createTranscriptSource(
         this.config.backend ?? "claude-code",
         this.config.working_directory,
         this.credentialProfileStore(),
@@ -2899,6 +2919,7 @@ export class Daemon extends EventEmitter {
         this.hangDetector = new HangDetector();
       }
 
+      if (!this.nativePaneLifecycle) {
       // 8. Context guardian
       const statusFile = join(this.instanceDir, "statusline.json");
       this.guardian = new ContextGuardian(this.config.context_guardian ?? {}, this.logger, statusFile);
@@ -2907,6 +2928,7 @@ export class Daemon extends EventEmitter {
       this.guardian.on("status_update", () => {
         this.saveSessionId();
       });
+      }
       // Context rotation removed: all CLI backends have built-in auto-compact.
       // Crash recovery (health check + respawn with snapshot) is retained below.
 
@@ -2983,6 +3005,10 @@ export class Daemon extends EventEmitter {
 
     private checkMcpServerAlive(): void {
     if (this.isPaused) return;
+    if (this.nativePaneLifecycle) {
+      if (this.nativePaneLifecycle.mcpProof() === "alive") this.noteMcpProofOfLife("connection");
+      return; // No native PID/socket guessing or restart from an unknown helper observation.
+    }
     const status = mcpServerState(this.instanceDir);
     if (status.state === "alive") {
       this.mcpServedGeneration = this.spawnGeneration;
@@ -3066,6 +3092,7 @@ export class Daemon extends EventEmitter {
    * server from a third-party one, and failed the whole launch for either.
    */
   private checkFleetMcpNeverConnected(): void {
+    if (this.nativePaneLifecycle) return; // Native helper presence owns this observation.
     if (this.config.agent_mode === "cli") return; // no MCP server by design
     if (this.lastSpawnAt === 0 || this.mcpServedGeneration === this.spawnGeneration) return;
     if (this.mcpNeverConnectedReportedGeneration === this.spawnGeneration) return;
@@ -3268,6 +3295,7 @@ export class Daemon extends EventEmitter {
    * proof that tools are being served, whatever channel.mcp.pid says.
    */
   private mcpServerAlive(): { alive: boolean; source: "pid" | "connection" | "none"; pid?: number } {
+    if (this.nativePaneLifecycle) return this.nativePaneLifecycle.mcpProof() === "alive" ? { alive: true, source: "connection" } : { alive: false, source: "none" };
     const status = mcpServerState(this.instanceDir);
     if (status.state === "alive") return { alive: true, source: "pid", pid: status.pid };
     const sockets = this.liveMcpSockets();
@@ -3327,7 +3355,7 @@ export class Daemon extends EventEmitter {
     this.mcpDeathNotifiedForPid = null;
     this.mcpDeathDeferredForPid = null;
     this.clearMcpRestartRequest();
-    if (pid && mcpServerState(this.instanceDir).state !== "alive") this.repairMcpPidSlot(pid, source);
+    if (!this.nativePaneLifecycle && pid && mcpServerState(this.instanceDir).state !== "alive") this.repairMcpPidSlot(pid, source);
   }
 
   private emitMcpRecovered(source: string, pid?: number): void {
@@ -3376,6 +3404,18 @@ export class Daemon extends EventEmitter {
         // ended this instance's health loop because scheduleNext() sat after the
         // throwing code. Catch, log, and keep checking.
         try {
+          if (this.nativePaneLifecycle) {
+            if (this.healthCheckPaused) { scheduleNext(); return; }
+            const native = this.nativePaneLifecycle, pane = this.tmux;
+            const status = await pane?.getPaneStatus();
+            if (this.runtimeMonitorsFrozen || native !== this.nativePaneLifecycle || pane !== this.tmux) return;
+            if (status?.alive === false) {
+              this.healthCheckPaused = true;
+              this.setProcessStatus("crashed");
+              this.emit("native_pane_exited", { name: this.name, exitCode: status.exitCode });
+            } else if (status?.alive) this.checkMcpServerAlive();
+            scheduleNext(); return;
+          }
           // Instance directory removed externally (e.g. `rm -rf ~/.agend/instances/<name>`).
           // Stop the loop permanently — otherwise every tick triggers a respawn, whose
           // writeRotationSnapshot fails with ENOENT and gets caught as "Failed to respawn",
@@ -4990,7 +5030,7 @@ export class Daemon extends EventEmitter {
     return true;
   }
 
-  async stop(): Promise<void> {
+  async stop(options: { nativePane?: "detach" | "close" } = {}): Promise<void> {
     this.publishWorkingState("before_stop");
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
@@ -5010,6 +5050,13 @@ export class Daemon extends EventEmitter {
       clearMuseUsageSnapshot(this.instanceDir);
     }
     if (this.adapter) await this.adapter.stop();
+
+    if (this.nativePaneLifecycle) {
+      this.healthCheckPaused = true; this.saveSessionId();
+      await this.nativePaneLifecycle.release(options.nativePane ?? "detach");
+      try { unlinkSync(join(this.instanceDir, "daemon.pid")); } catch { /* metadata only */ }
+      return;
+    }
 
     // Notify MCP servers of graceful shutdown (prevents reconnect attempts)
     this.ipcServer?.broadcast({ type: "shutdown" });
@@ -5408,6 +5455,7 @@ export class Daemon extends EventEmitter {
   private pendingPauseReason: PauseReason = "auth";
 
   async pause(reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
+    if (this.nativePaneLifecycle) throw Error("Native pause is owned by its Fleet lifecycle transition");
     if (admission && !admission.current()) return;
     if (this.pauseWakeState === "paused") return;
     if (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking") {
@@ -6086,7 +6134,7 @@ export class Daemon extends EventEmitter {
     // outbound action suppresses a duplicate proxy; only a delivered
     // human-facing channel action satisfies the completion guard below.
     if (!turn.outboundDelivered && this.config.mcp_proxy_reply === true
-      && mcpServerState(this.instanceDir).state === "dead") {
+      && (this.nativePaneLifecycle ? this.nativePaneLifecycle.mcpProof() === "dead" : mcpServerState(this.instanceDir).state === "dead")) {
       this.turnReplyGuard.complete(turn.generation);
       void this.sendProxyReply(pane, turn.target);
       return;
@@ -11678,6 +11726,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async spawnClaudeWindow(): Promise<boolean> {
+    if (this.nativePaneLifecycle) throw Error("Native panes never enter local resume/fresh fallback");
     this.assertSessionOomAdmission();
     this.beginSpawn();
     let resumedSuccessfully = false;
@@ -12193,6 +12242,11 @@ export class Daemon extends EventEmitter {
       await this.museUsageRelay.stop().catch(() => {});
       this.museUsageRelay = null;
     }
+    if (this.nativePaneLifecycle) {
+      await this.nativePaneLifecycle.release("detach");
+      try { unlinkSync(join(this.instanceDir, "daemon.pid")); } catch { /* metadata only */ }
+      return;
+    }
     try { await this.killProcessTree("SIGTERM", "startup aborted"); } catch { /* nothing running */ }
     if (this.tmux) {
       const windowId = this.tmux.getWindowId();
@@ -12431,6 +12485,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    if (this.nativePaneLifecycle) throw Error("Native relaunch requires its owned exit and a new lifecycle reservation");
     this.assertSessionOomAdmission();
     this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
@@ -12969,6 +13024,11 @@ export class Daemon extends EventEmitter {
   }
 
   private saveSessionId(): void {
+    if (this.nativePaneLifecycle) {
+      try { this.nativePaneLifecycle.checkpointSession(); this.ownedWorkingSession = this.backend?.getSessionId() ?? null; }
+      catch (err) { this.logger.warn({ err }, "Native conversation checkpoint is unconfirmed"); }
+      return;
+    }
     // When a resume failure has forced a fresh start, don't persist the stale id
     // back from statusline.json — that would re-arm --continue and re-loop.
     if (this.skipResume) return;

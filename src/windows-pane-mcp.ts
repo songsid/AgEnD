@@ -32,6 +32,9 @@ export class PaneMcpSession {
   readonly helperId = randomUUID();
   private readonly receipts = new Map<string, string>();
   private initializeId: string | number | undefined;
+  private listId: string | number | undefined;
+  private initializeWritten = false;
+  private listWritten = false;
   private ready = false;
   private closed = false;
   private pinging = false;
@@ -48,6 +51,8 @@ export class PaneMcpSession {
     const response = await nativeMcpRpc(input, this.connection, transport, { clientSessionId: this.helperId, instructions: "AgEnD tools belong to this persistent agent and its current configured permissions." });
     if (input && typeof input === "object" && !Array.isArray(input) && (input as any).method === "initialize"
       && response && Object.hasOwn(response, "result") && (typeof response.id === "string" || typeof response.id === "number")) this.initializeId = response.id;
+    if (input && typeof input === "object" && !Array.isArray(input) && (input as any).method === "tools/list"
+      && response && Object.hasOwn(response, "result") && (typeof response.id === "string" || typeof response.id === "number")) this.listId = response.id;
     return response;
   }
   close(): void { this.closed = true; this.ready = false; }
@@ -60,7 +65,10 @@ export class PaneMcpSession {
   async responseWritten(value: Record<string, unknown>): Promise<void> {
     const id = value.id;
     if (!Object.hasOwn(value, "result") || typeof id !== "string" && typeof id !== "number") return;
-    if (id === this.initializeId) { this.initializeId = undefined; this.ready = true; await this.heartbeat(); }
+    const result = value.result as Record<string, unknown> | undefined;
+    if (id === this.initializeId && result?.protocolVersion) { this.initializeId = undefined; this.initializeWritten = true; }
+    if (id === this.listId && Array.isArray(result?.tools)) { this.listId = undefined; this.listWritten = true; }
+    if (!this.ready && this.initializeWritten && this.listWritten) { this.ready = true; await this.heartbeat(); }
     const callId = nativeMcpCallId(this.connection.token, id, this.helperId), responseId = this.receipts.get(callId);
     if (!responseId) return;
     this.receipts.delete(callId);
