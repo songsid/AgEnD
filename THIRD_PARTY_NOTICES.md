@@ -41,25 +41,53 @@ SOFTWARE.
 
 ## CLI provider marks
 
-The CLI panel and selectors use product marks from these official sources,
-retrieved on 2026-11-02:
+The CLI panel and selectors identify each supported CLI by its product mark. All
+third-party trademarks, logos and icons belong to their respective owners and are
+used only to identify the supported runtimes; no affiliation with or endorsement
+by their owners is implied. Each mark is bundled unmodified (complete SVGs byte for
+byte, as base64 data images; single-colour marks as their vector paths, drawn in
+the text colour), retrieved on 2026-11-02:
 
-- OpenAI Blossom: https://openai.com/brand/ (official website's inline vector).
-- Claude: https://claude.com/icon.svg (original vector path and orange fill).
-- Antigravity: https://antigravity.google/favicon.svg (original complete SVG).
-- Kiro: https://kiro.dev/icon.svg (original complete SVG).
-- Grok: https://apps.apple.com/us/app/grok/id6670324846 (official product app
-  icon, linked from https://x.ai/legal/brand-guidelines). The 100 x 100 JPEG
-  artwork is retrieved from the listing's `artworkUrl100` field in Apple's
-  https://itunes.apple.com/lookup?id=6670324846 response and bundled unchanged.
+| Mark | Source | Terms |
+|---|---|---|
+| OpenAI (Codex) | https://openai.com/brand/ (the official website's inline Blossom vector) | the owner's brand page |
+| Claude (Claude Code) | https://claude.com/icon.svg (original vector path and orange fill) | the owner's website |
+| Anthropic | https://www.anthropic.com/ (company mark; Claude Code uses the Claude product mark) | the owner's website |
+| Kiro | https://kiro.dev/icon.svg (original complete SVG) | the owner's website |
+| Antigravity | https://antigravity.google/press, the press kit's "Icon - Full Color" SVG (`/assets/image/brand/antigravity-icon__full-color.svg`) | the press kit (its page states no further usage terms) |
+| Grok | @lobehub/icons 1.102.0, `grok.svg` ("Grok (xAI)") — https://github.com/lobehub/lobe-icons | MIT |
+| OpenCode | @lobehub/icons 1.102.0, `opencode.svg` ("opencode", opencode.ai) | MIT |
+| Muse (Meta Muse Code) | @lobehub/icons 1.102.0, `muse-color.svg` ("Muse (Meta)", muse.ai) | MIT |
 
-The compact Anthropic company mark (https://www.anthropic.com/) remains available
-separately as `anthropic`; Claude Code uses the `claude` product mark, not the
-company mark. Complete SVGs are isolated as data images to preserve their
-original colours, masks, and filters without conflicting element ids.
-These marks identify the corresponding installed software or its publisher.
-Their respective owners retain ownership of these marks; no affiliation or
-endorsement is implied. Generic code symbols are used for products without a
-verified bundled brand asset.
-Vector paths and image data are bundled in `src/ui/provider-marks.js`; no remote image
-requests are made by the dashboard.
+@lobehub/icons (https://github.com/lobehub/lobe-icons) is distributed under the
+following licence, which covers the icon set's code and files; the marks
+themselves remain their owners' trademarks:
+
+```
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+A generic two-letter tile per provider (AgEnD's own) replaces any mark at once:
+`MARK_SWITCH` in `src/ui/provider-marks.js` turns every mark off, or withholds one
+provider's. Vector paths and image data are bundled in `src/ui/provider-marks.js`;
+no remote image requests are made by the dashboard.

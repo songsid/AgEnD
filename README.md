@@ -307,3 +307,5 @@ The channel's `backend_options` are merged over the fleet.yaml defaults'. Profil
 ## License
 
 MIT
+
+All third-party trademarks, logos and icons shown in AgEnD (the supported CLIs' marks) belong to their respective owners and are used only to identify the supported runtimes; no affiliation or endorsement is implied. Each mark's source and licence: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#cli-provider-marks).

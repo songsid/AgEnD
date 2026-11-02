@@ -307,3 +307,5 @@ channels:
 ## 授權
 
 MIT
+
+AgEnD 中出現的第三方商標、標誌和圖示（支援的 CLI 的標誌）皆屬於其各自的擁有者，僅用來辨識支援的執行環境，不代表與其有任何關聯或獲得其背書。各標誌的來源與授權見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#cli-provider-marks)。

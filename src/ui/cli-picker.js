@@ -12,8 +12,8 @@ const PRODUCTS = {
   grok: { label: "Grok", mark: "grok" },
   "kiro-cli": { label: "Kiro", mark: "kiro" },
   kiro: { label: "Kiro", mark: "kiro" },
-  opencode: { label: "OpenCode" },
-  muse: { label: "Muse" },
+  opencode: { label: "OpenCode", mark: "opencode" },
+  muse: { label: "Muse", mark: "muse" },
 };
 
 export function cliLabel(id) { return PRODUCTS[id]?.label || id || ""; }
