@@ -49,9 +49,14 @@ export const LOCAL_WINDOWS_CLI_OFF = "This PC's Windows CLIs are turned off. Tur
  * time, so turning "Use this PC's Windows CLIs" off starts nothing more on this PC — whatever else is on.
  */
 export async function switchedWindowsTransport(): Promise<WindowsTransport> {
-  if (!localWindowsCliEnabled()) throw new Error(LOCAL_WINDOWS_CLI_OFF);
+  admitLocalWindowsCli();
   return nativeWindowsTransport();
 }
+/**
+ * #2955 review (Prism P2): finding the transport awaits (PowerShell, wslpath), and the switch can be turned off
+ * meanwhile — its close is queued after the save. So the switch is asked again synchronously right before the spawn.
+ */
+export function admitLocalWindowsCli(): void { if (!localWindowsCliEnabled()) throw new Error(LOCAL_WINDOWS_CLI_OFF); }
 export async function nativeWindowsTransport(): Promise<WindowsTransport> {
   const worker = join(dirname(fileURLToPath(import.meta.url)), "windows-cli-worker.js");
   if (process.platform === "win32") return { executable: process.execPath, args: [worker] };
@@ -74,8 +79,13 @@ export class WindowsCliBridge {
   private workerGeneration = 0;
   private readonly pendingWorkers = new Map<ChildProcess, () => void>();
   private cachedProbe: WindowsCliProbe | null;
-  /** `inventoryFile`: where the last detection is kept (absent: memory only). */
-  constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport, private readonly inventoryFile?: string) {
+  /**
+   * `inventoryFile`: where the last detection is kept (absent: memory only). `admit` (M-2255, #2955 review): asked
+   * synchronously immediately before each Windows process starts — after every await — and throws to refuse it; the
+   * coordinator's bridge passes this PC's switch (admitLocalWindowsCli), the standalone runner passes nothing.
+   */
+  constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport, private readonly inventoryFile?: string,
+    readonly admit?: () => void) {
     this.cachedProbe = inventoryFile ? readInventory(inventoryFile) : null;
   }
 
@@ -119,6 +129,7 @@ export class WindowsCliBridge {
     const transport = await this.launcher();
     if (generation !== this.workerGeneration) throw new Error("Windows operation was cancelled");
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
+    this.admit?.();                                  // no await between this and spawn
     return new Promise((resolve, reject) => {
       const child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
       let text = "", settled = false;
@@ -201,6 +212,7 @@ export class WindowsCliBridge {
       const transport = await this.launcher();
       if (task.status === "cancelling") { task.status = "cancelled"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; return; }
       if (!authorized()) throw new Error("Web authorization expired before the Windows task started");
+      this.admit?.();                                // no await between this and spawn (the executor runs at once)
       await new Promise<void>((resolve) => {
         const child = this.child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
         let wire = "", provider = "", stderr = "", received = 0, finished = false, turnCompleted = false;
@@ -279,7 +291,7 @@ function visible(task: WindowsCliTask): WindowsCliTask {
 const bridges = new WeakMap<object, WindowsCliBridge>();
 export function windowsBridgeFor(owner: object & { dataDir?: string }): WindowsCliBridge {
   let bridge = bridges.get(owner);
-  if (!bridge) { bridge = new WindowsCliBridge(switchedWindowsTransport, owner.dataDir ? join(owner.dataDir, WINDOWS_CLI_INVENTORY_FILE) : undefined); bridges.set(owner, bridge); }
+  if (!bridge) { bridge = new WindowsCliBridge(switchedWindowsTransport, owner.dataDir ? join(owner.dataDir, WINDOWS_CLI_INVENTORY_FILE) : undefined, admitLocalWindowsCli); bridges.set(owner, bridge); }
   return bridge;
 }
 
