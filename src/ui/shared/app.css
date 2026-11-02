@@ -2799,7 +2799,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .windows-agent-composer { padding: 12px 24px 18px; border-top: 1px solid var(--border); }
 .windows-agent-composer > div, .windows-agent-composer > p { max-width: 900px; margin-left: auto; margin-right: auto; }
 .windows-agent-input { padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
-.windows-agent-input > textarea { display: block; width: 100%; border: 0; resize: vertical; padding: 4px; background: transparent; color: var(--text); font-family: inherit; font-size: var(--fs-md); min-height: 60px; max-height: 180px; }
+.windows-agent-input > textarea { display: block; width: 100%; border: 0; resize: vertical; padding: 4px; background: transparent; color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); min-height: 60px; max-height: 180px; }
 .windows-agent-input > div { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
 .windows-agent-composer > .note { margin-top: 8px; font-size: 10px; }
 .p-windows-agent .error, .agent-draft-assistant .error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }

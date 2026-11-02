@@ -2,12 +2,14 @@
 import { register } from "/assets/app-i18n.js";
 
 register("chat", {
-  "zh-TW": { runtimeNoAttachments:"這個 Runtime 目前不支援附件，請貼上文字。", runtimeNoCommands:"這個 Runtime 目前不支援此 CLI 指令，請在 Agent 設定中調整。", nativeBusy:"Windows CLI 正在執行其他任務，完成後即可傳送；輸入內容會保留。", nativeBlocked:"上次 Windows 執行的結束狀態不明。請先確認相關程序已停止，再解除鎖定。", nativeRecover:"已確認程序停止，解除鎖定", nativeComposerHint:"Enter 送出 · Shift+Enter 換行", nativeComposerHintTouch:"Return 換行 · 按「送出」傳送" },
-  en: { runtimeNoAttachments:"This runtime does not support attachments yet. Paste text instead.", runtimeNoCommands:"This runtime does not support this CLI command yet. Use Agent settings instead.", nativeBusy:"Windows CLI is running another task. Your draft is kept until it is ready.", nativeBlocked:"The last Windows execution outcome is unknown. Verify its processes have stopped before unlocking.", nativeRecover:"Processes stopped — unlock agent", nativeComposerHint:"Enter to send · Shift+Enter for a new line", nativeComposerHintTouch:"Return adds a line · tap Send to send" },
-});
-
-register("chat", {
   en: {
+    runtimeNoAttachments: "This runtime does not support attachments yet. Paste text instead.",
+    runtimeNoCommands: "This runtime does not support this CLI command yet. Use Agent settings instead.",
+    nativeBusy: "Windows CLI is running another task. Your draft is kept until it is ready.",
+    nativeBlocked: "The last Windows execution outcome is unknown. Verify its processes have stopped before unlocking.",
+    nativeRecover: "Processes stopped — unlock agent",
+    nativeComposerHint: "Enter to send · Shift+Enter for a new line",
+    nativeComposerHintTouch: "Return adds a line · tap Send to send",
     waking: "Waking {0}…", retrySend: "Retry send",
     // A message being sent (its own bubble at once) and its files' uploads.
     you: "You", sending: "Sending…", uploadingFile: "Uploading {0}", uploadWaiting: "waiting", uploadFailed: "failed",
@@ -152,6 +154,13 @@ register("chat", {
     configured: "(configured)", fleetDefault: "(fleet default)",
   },
   "zh-TW": {
+    runtimeNoAttachments: "這個 Runtime 目前不支援附件，請貼上文字。",
+    runtimeNoCommands: "這個 Runtime 目前不支援此 CLI 指令，請在 Agent 設定中調整。",
+    nativeBusy: "Windows CLI 正在執行其他任務，完成後即可傳送；輸入內容會保留。",
+    nativeBlocked: "上次 Windows 執行的結束狀態不明。請先確認相關程序已停止，再解除鎖定。",
+    nativeRecover: "已確認程序停止，解除鎖定",
+    nativeComposerHint: "Enter 送出 · Shift+Enter 換行",
+    nativeComposerHintTouch: "Return 換行 · 按「送出」傳送",
     waking: "正在喚醒 {0}…", retrySend: "重試傳送",
     you: "你", sending: "傳送中…", uploadingFile: "正在上傳 {0}", uploadWaiting: "等待中", uploadFailed: "失敗",
     uploadNoConnection: "上傳中斷了，請檢查網路連線", sendNoConnection: "沒有送到 AgEnD，請檢查網路連線", notSentBecause: "沒有送出：{0}", deleteUnsent: "刪除",
