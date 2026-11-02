@@ -861,6 +861,11 @@ interface PendingClassicStart {
 }
 
 export interface DeliveryOptions {
+  /**
+   * A Windows instance only: the sender's authority after the handoff (see NativeRuntimeDeliveryOptions.authorityCurrent).
+   * stillCurrent fences the handoff itself; this one is rechecked before the Windows process starts.
+   */
+  authorityCurrent?: () => boolean;
   /** Explicitly identify agent-to-agent delivery when metadata is unavailable. */
   isCrossInstance?: boolean;
   /** Force or bypass the idle gate. Schedules set this explicitly. */
@@ -5228,7 +5233,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     options: DeliveryOptions = {},
   ): Promise<boolean | void> {
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) {
-      return this.nativeInstanceRuntime().deliver(instanceName,payload,{stillCurrent:options.stillCurrent});
+      return this.nativeInstanceRuntime().deliver(instanceName,payload,{stillCurrent:options.stillCurrent,
+        ...(options.authorityCurrent ? {authorityCurrent:options.authorityCurrent} : {})});
     }
     const deliveryEpoch = this.getDeliveryEpoch(instanceName);
     const deliveryPayload = { ...payload, delivery_epoch: deliveryEpoch };

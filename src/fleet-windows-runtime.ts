@@ -24,7 +24,14 @@ export interface FleetWindowsRuntimeHost {
   validateMachine?(machineId: string, cli: string, sandbox?: unknown): void;
 }
 export interface NativeRuntimeDeliveryOptions {
+  /** The handoff fence: checked before the turn is journaled (it may include the sending request's own lifetime). */
   stillCurrent?: () => boolean;
+  /**
+   * The sender's authority after the handoff — rechecked by the bridge before the Windows process is spawned and by the
+   * turn's MCP lease. It must not depend on the sending HTTP request still being open (that request is answered once
+   * the turn is journaled). Defaults to stillCurrent.
+   */
+  authorityCurrent?: () => boolean;
   /** A durable outbox fences its attempt immediately before the native task is claimed. */
   beforeStart?: () => void;
 }
@@ -202,12 +209,13 @@ export class FleetWindowsRuntime {
     const requestId=validWindowsAgentId(payload.requestId) ? payload.requestId : randomUUID();
     options.beforeStart?.();
     const meta=payload.meta && typeof payload.meta === "object" ? payload.meta as Record<string,unknown> : {};
+    const authority=options.authorityCurrent ?? options.stillCurrent;
     const existing=agent.turns.some(turn=>turn.id===requestId);
     let lease:NativeMcpLease|null=null;
     if (!existing && nativeProviderMcpSupported(agent.cli) && this.host.openMcp) {
       this.closeMcp(name);
       lease=this.host.openMcp(name,requestId,agent.sandbox,()=>{
-        if (this.host.stopping() || !windowsCliEnabled() || options.stillCurrent?.() === false
+        if (this.host.stopping() || !windowsCliEnabled() || authority?.() === false
           || agent.machineId && this.host.machineAvailable?.(agent.machineId) !== true) return false;
         try { const current=this.get(name);return !!current && current.activeId===requestId && !current.paused && !current.blocked; }
         catch { return false; }
@@ -220,7 +228,7 @@ export class FleetWindowsRuntime {
       ...(typeof meta.from_instance === "string" ? [`Incoming Fleet context: ${JSON.stringify({from_instance:meta.from_instance.slice(0,128),correlation_id:typeof meta.correlation_id === "string" ? meta.correlation_id.slice(0,256) : undefined,requires_reply:meta.requires_reply === "true"})}`] : []),
     ].join("\n") : undefined;
     let task:ReturnType<WindowsAgents["send"]>;
-    try { task=this.store.send(agent.id,{requestId,prompt:raw},()=>!this.host.stopping() && options.stillCurrent?.() !== false,{...(lease ? {mcp:lease.connection,context} : {}),onSettled:task=>{
+    try { task=this.store.send(agent.id,{requestId,prompt:raw},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection,context} : {}),onSettled:task=>{
       const reportedCorrelationIds=lease?.reportedCorrelations(typeof meta.from_instance === "string" ? meta.from_instance : undefined) ?? [];
       closeLease();
       const replyId=`native:${task.id}:reply`;
