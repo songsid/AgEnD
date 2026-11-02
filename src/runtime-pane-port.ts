@@ -163,7 +163,12 @@ export class RuntimePanePort implements Pane {
   private async closeOwned(): Promise<boolean> {
     try {
       const before = this.record.snapshot;
-      if (!before || !this.endpoint.online()) return false;
+      if (!before) return false;
+      // A prior exact host exit receipt remains positive proof after disconnect. It is never inferred from a lost link.
+      if(this.lastObservation?.state==="exited"){
+        const exited=this.accept(this.lastObservation);this.record.snapshot=exited;delete this.record.pending;delete this.record.pendingClose;this.save();return true;
+      }
+      if (!this.endpoint.online()) return false;
       const snapshot = this.accept(await this.endpoint.call({ action: "snapshot", paneId: before.paneId, launchId: before.launchId }));
       if (snapshot.state === "exited") {
         this.record.snapshot = snapshot; delete this.record.pending; delete this.record.pendingClose; this.save(); return true;

@@ -109,3 +109,6 @@ it('explicit close needs owned metadata but never a healthy terminal capture',as
 it.each(['starting','unknown'] as const)('%s metadata cannot be reported as a positive pane exit',async state=>{
  const f=await fixture(),call=f.endpoint.call;f.endpoint.call=async request=>request.action==='snapshot'?{...f.port.ownedSnapshot(),state}:call(request);expect(await f.port.getPaneStatus()).toBeNull();expect(f.native.kill).not.toHaveBeenCalled();expect(f.write).not.toHaveBeenCalled();
 });
+it('a positively observed exact native exit can be finalized after disconnect without another host call',async()=>{
+ const f=await fixture();f.native.kill();expect(await f.port.getPaneStatus()).toEqual({alive:false,exitCode:0});f.offline();const call=vi.spyOn(f.endpoint,'call');expect(await f.port.killWindowConfirmed()).toBe(true);expect(call).not.toHaveBeenCalled();expect(f.port.ownedSnapshot()?.state).toBe('exited');expect(f.native.kill).toHaveBeenCalledOnce();
+});

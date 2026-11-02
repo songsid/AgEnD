@@ -2217,6 +2217,18 @@ export class Daemon extends EventEmitter {
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
+  nativePaneHasExited():boolean{
+    const snapshot=this.nativePaneLifecycle?.snapshot?.();return snapshot?.state==="exited"&&snapshot.instance===this.name&&this.tmux?.getWindowId()===snapshot.paneId;
+  }
+  /** Positive native exit evidence only, fenced to this exact launch and Daemon owner. */
+  nativePaneExitCurrent(snapshot: import("./runtime-pane-protocol.js").RuntimePaneSnapshot, owner: InteractionOwner): boolean {
+    const actual=this.nativePaneLifecycle?.snapshot?.();
+    return !!actual && actual.state==="exited" && snapshot.state==="exited" && !!snapshot.sessionId
+      && sameInteractionOwner(owner,this.interactionOwner()) && !this.runtimeMonitorsFrozen && !this.startupAborted
+      && ["hostBootId","paneId","launchId","agentId","instance","sessionId","commandSequence","exitCode"].every(key=>actual[key as keyof typeof actual]===snapshot[key as keyof typeof snapshot])
+      && this.tmux?.getWindowId()===snapshot.paneId;
+  }
+
   async reconcileNativeDeliveries(outbox: import("./delivery-outbox.js").DeliveryOutbox, current: () => boolean): Promise<boolean> {
     if (!this.nativePaneLifecycle) return false;
     return reconcileNativePaneTarget(outbox, this.name, this.nativePaneLifecycle, current);
@@ -3417,7 +3429,7 @@ export class Daemon extends EventEmitter {
             const snapshot = native.snapshot?.();
             if (status?.alive === false && snapshot?.state === "exited") {
               this.healthCheckPaused = true;
-              this.setProcessStatus("crashed");
+              this.setProcessStatus(snapshot.exitCode===0?"stopped":"crashed");
               this.emit("native_pane_exited", { name: this.name, snapshot, owner: this.interactionOwner() });
             } else if (status?.alive) this.checkMcpServerAlive();
             scheduleNext(); return;

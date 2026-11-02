@@ -1254,7 +1254,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const cold=(["working_directory","model","systemPrompt","native_sandbox"] as const).some(key=>Object.hasOwn(patch,key)&&(patch[key]??"")!==(before[key]??""));
       const running=this.daemons.get(name);
       if(cold){
-        if(running&&(!await running.nativePauseReady({current,accepts:()=>true,revalidate:async()=>current()})||!running.nativePauseStillReady()))throw Error("Wait for this Windows agent to be idle before changing its launch settings");
+        if(running&&!running.nativePaneHasExited()&&(!await running.nativePauseReady({current,accepts:()=>true,revalidate:async()=>current()})||!running.nativePauseStillReady()))throw Error("Wait for this Windows agent to be idle before changing its launch settings");
         if(!current())throw Error("Native settings authority expired before closing its old pane");
         await this.stopInstance(name,transition);expectedGeneration=generation+1;
         if(!current())throw Error("Native settings authority expired after closing its old pane");
@@ -1339,6 +1339,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async nativePaneFor(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle> {
     return (await this.nativePanes()).prepare(name, config, assertCurrent);
   }
+  nativePanePinnedSession(name:string):string|null{
+    const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
+    const agent=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id);
+    return agent.fleet_instance===name&&agent.machineId===config.machine_id?agent.threadId??null:null;
+  }
+  onNativePaneRecoverySettled(name:string):void{this.onAttentionChanged(name);this.scheduleDeliveryOutboxPump();}
   setNativePanePaused(name: string, paused: boolean): void {
     const id = this.fleetConfig?.instances[name]?.native_agent_id; if (!id) throw Error("Native profile is missing");
     windowsAgentsFor(this, this.runtimeWindowsExecutor()).setPaused(id, paused);
@@ -4445,6 +4451,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (isNativeExecInstance(this.fleetConfig?.instances[name])) {try{return this.nativeInstanceRuntime().status(name);}catch{return "crashed";}}
     if (this.lifecycle.isPaused(name)) return "paused";
     const daemon = this.lifecycle.daemons.get(name) as { getProcessStatus?: () => "running" | "crashed" | "stopped" } | undefined;
+    if(isNativePaneInstance(this.fleetConfig?.instances[name])){
+      if(daemon)return daemon.getProcessStatus?.()??"crashed";
+      try{return this.nativeInstanceRuntime().get(name)?.activeId?"crashed":"stopped";}catch{return "crashed";}
+    }
     const processStatus = this.instanceProcessStatus.get(name);
     // IPC can be disconnected during a respawn, so the event which announces
     // the new live pane may be missed.  The in-process daemon is authoritative
@@ -6824,6 +6834,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (runtime.get(name)?.blocked) throw new Error("Verify the disconnected Windows process stopped and recover this agent before restarting");
       runtime.cancel(name);runtime.setPaused(name,false);return;
     }
+    if(opts?.explicit&&isNativePaneInstance(this.fleetConfig?.instances[name]))this.lifecycle.resetNativeCrashBudget(name);
     const migration = this.kiroMigrationRuns?.get(name);
     if (migration && migration.token !== opts?.kiroMigration) throw new Error(t("kiro_migrate.in_progress"));
     if (opts?.recoveryCurrent && !opts.recoveryCurrent()) throw new Error(t("exit.expired", name));
@@ -6880,7 +6891,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   isInstanceRestarting(name: string): boolean {
-    return this.restartsInFlight.has(name) || this.kiroMigrationRuns?.has(name) === true;
+    return this.restartsInFlight.has(name) || this.kiroMigrationRuns?.has(name) === true || this.lifecycle?.nativeRecoveryPending?.(name) === true;
   }
 
   /** InstanceLifecycleContext: an explicit wake joins the restart in flight. */
@@ -21782,6 +21793,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * settles, so a later genuine stop (after a restart) still does the work.
    */
   stopAll(): Promise<void> {
+    this.lifecycle.cancelNativeRecovery?.();
     this.nativeMcpStore?.closeAll();
     this.runtimeExecutor?.close();this.runtimeExecutor=null;
     this.fleetWindowsRuntime=null;

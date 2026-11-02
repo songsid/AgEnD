@@ -124,3 +124,59 @@ it('native status offers pane controls without coordinator cost/context or effor
  const f=await fixture();f.models.mockRestore();vi.spyOn(f.fleet,'readCliEnv').mockImplementation(()=>{throw Error('No coordinator cache');});
  const row=f.fleet.getUiStatus().instances.find((value:any)=>value.name==='native');expect(row).toMatchObject({runtime:'windows',native_adapter:'pane',cost:null,context_pct:null,effort:null,capabilities:{commands:true,effort:false,log:true,details:true,attachments:false,terminal:false,send_while_busy:true}});
 });
+async function nativeExit(f:Awaited<ReturnType<typeof fixture>>,code=1){
+ const daemon=f.fleet.daemons.get('native');f.cli.kill();await daemon.tmux.getPaneStatus();
+ const snapshot={...daemon.nativePaneLifecycle.snapshot(),exitCode:code};
+ // The inert host reported zero; replace only this exact private observation for nonzero-exit policy cases.
+ daemon.nativePaneLifecycle.port.lastObservation=snapshot;daemon.setProcessStatus(code===0?"stopped":"crashed");
+ const event={name:'native',snapshot,owner:daemon.getInteractionSnapshot().owner};daemon.emit('native_pane_exited',event);return{daemon,event};
+}
+it('positive native crashes close only their owned receipt and resume the same pin through a replacement daemon',async()=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,reset_after:300000};await f.fleet.startInstance('native',f.config,true);const pin=f.store.get(f.agent.id).threadId;vi.useFakeTimers();
+ try{const {daemon}=await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());expect(f.fleet.isInstanceRestarting('native')).toBe(true);expect(f.spawn).toHaveBeenCalledOnce();
+ await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.daemons.get('native')).not.toBe(daemon));await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.exec).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
+});
+it.each(['stop','pause','planned'])('a %s during native retry backoff prevents any replacement',async action=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);vi.useFakeTimers();
+ try{await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());
+ if(action==='stop')await f.fleet.stopInstance('native');else if(action==='pause'){await f.fleet.lifecycle.pause('native');expect(f.fleet.getInstanceStatus('native')).toBe('paused');}else{vi.spyOn(f.fleet,'isPlannedRestart').mockReturnValue(true);f.fleet.lifecycle.cancelNativeRecovery();}
+ await vi.advanceTimersByTimeAsync(60000);expect(f.spawn).toHaveBeenCalledOnce();expect(f.exec).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
+});
+it.each([0,1])('native exit %i with no automatic retries stays stopped/crashed without a fresh launch',async code=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,max_retries:0};await f.fleet.startInstance('native',f.config,true);const normal=vi.spyOn(f.fleet,'notifyNormalExit').mockResolvedValue(undefined),notice=vi.spyOn(f.fleet.lifecycle,'notifyIncident').mockReturnValue(true);vi.useFakeTimers();
+ try{await nativeExit(f,code);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(60000);expect(f.spawn).toHaveBeenCalledOnce();expect(f.fleet.isInstanceRestarting('native')).toBe(false);expect(f.fleet.getInstanceStatus('native')).toBe(code===0?'stopped':'crashed');if(code===0)expect(normal).toHaveBeenCalledOnce();else expect(notice).toHaveBeenCalled();expect(f.store.get(f.agent.id).threadId).toBeTruthy();
+ }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
+});
+it('three native crashes preserve the pin and trip one shared budget across replacement daemons',async()=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,reset_after:300000};await f.fleet.startInstance('native',f.config,true);const pin=f.store.get(f.agent.id).threadId,notice=vi.spyOn(f.fleet.lifecycle,'notifyIncident').mockReturnValue(true);vi.useFakeTimers();
+ try{for(let n=0;n<3;n++){const {daemon}=await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());if(n<2){await vi.advanceTimersByTimeAsync(2**n*1000+1);await vi.waitFor(()=>expect(f.fleet.daemons.get('native')).not.toBe(daemon));await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));}}
+ await vi.advanceTimersByTimeAsync(60000);expect(f.spawn).toHaveBeenCalledTimes(3);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(notice).toHaveBeenCalledWith('native','crash_loop',expect.any(String));
+ }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
+});
+it('a forged native exit from another launch never releases or restarts the retained owner',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native'),before=f.store.get(f.agent.id);daemon.emit('native_pane_exited',{name:'native',snapshot:{...daemon.nativePaneLifecycle.port.ownedSnapshot(),state:'exited',launchId:randomUUID()},owner:daemon.getInteractionSnapshot().owner});await f.fleet.lifecycle.runTransition('native',async()=>{});expect(f.fleet.isInstanceRestarting('native')).toBe(false);expect(f.store.get(f.agent.id)).toEqual(before);expect(f.cli.kill).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();
+});
+
+it('an operator stop while native close is awaiting cannot be undone by the automatic retry',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native'),native=daemon.nativePaneLifecycle,release=native.release.bind(native);let finish!:()=>void;const gate=new Promise<void>(done=>{finish=done;});
+ const closing=vi.spyOn(native,'release').mockImplementationOnce(async intent=>{await gate;return release(intent);});vi.useFakeTimers();
+ try{await nativeExit(f);await vi.waitFor(()=>expect(closing).toHaveBeenCalledOnce());const stopping=f.fleet.stopInstance('native');finish();await stopping;await vi.advanceTimersByTimeAsync(60000);expect(f.spawn).toHaveBeenCalledOnce();expect(f.fleet.daemons.has('native')).toBe(false);expect(f.store.get(f.agent.id).activeId).toBeUndefined();
+ }finally{finish();vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
+});
+it('native exit reconciles the old outbox before releasing its launch authority',async()=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,max_retries:0};await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native'),outbox={markTargetReconciliationPending:vi.fn(),getReconciliationCandidates:vi.fn(()=>[]),reconcileAttempt:vi.fn()};f.fleet.deliveryOutbox=outbox;
+ const native=daemon.nativePaneLifecycle,release=native.release.bind(native);vi.spyOn(native,'release').mockImplementation(async intent=>{expect(outbox.markTargetReconciliationPending).toHaveBeenCalledWith('native',daemon.bootId);expect(outbox.getReconciliationCandidates).toHaveBeenCalledWith('native');return release(intent);});
+ await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());expect(f.spawn).toHaveBeenCalledOnce();f.fleet.deliveryOutbox=null;f.fleet.lifecycle.cancelNativeRecovery();
+});
+
+it('a stop during native factory preparation releases the unacquired binding so the next start can own it',async()=>{
+ const f=await fixture(),prepare=f.fleet.nativePaneFor.bind(f.fleet);const hook=vi.spyOn(f.fleet,'nativePaneFor').mockImplementationOnce(async(name:any,config:any,current:any)=>{const native=await prepare(name,config,current);f.fleet.lifecycle.invalidate(name);return native;});
+ await expect(f.fleet.startInstance('native',f.config,true)).rejects.toThrow('superseded');expect(f.spawn).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).activeId).toBeUndefined();hook.mockRestore();
+ await expect(f.fleet.startInstance('native',f.config,true)).resolves.toBeUndefined();expect(f.spawn).toHaveBeenCalledOnce();expect(f.fleet.daemons.get('native').usesNativePane()).toBe(true);
+});
+
+it('native process status cannot fall back to the coordinator daemon.pid or a stale IPC status',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native');daemon.setProcessStatus('crashed');f.fleet.instanceProcessStatus.set('native','running');const kill=vi.spyOn(process,'kill').mockImplementation(()=>{throw Error('No native local-PID probe');});expect(f.fleet.getInstanceStatus('native')).toBe('crashed');expect(kill).not.toHaveBeenCalled();kill.mockRestore();
+});
