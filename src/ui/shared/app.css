@@ -623,9 +623,21 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    Its class is `status-line`, never `status`: that is the header's inline-flex badge class, and on a message it turned
    the meta, body and tools into one flex row. */
 .msg.status-line { align-self: stretch; font-size: var(--fs-sm); color: var(--text-3); }
-.msg.status-line .st-text { white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: var(--s-3); }
-.msg.status-line.folded .st-text { max-height: 9em; overflow: hidden; mask-image: linear-gradient(to bottom, #000 60%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+/* Each line is a row (.st-ln); the line breaks between rows are text for copying, not extra rows. */
+.msg.status-line .st-text { border-left: 2px solid var(--border); padding-left: var(--s-3); }
+.msg.status-line .st-ln { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.status-line .st-ln:empty::after { content: " "; }
+/* Folded (the user, hmsg-d6ac6dfb): two lines — the header and the first line — each one row with an ellipsis; the
+   button sits at the end of line 2. The text opens it too. */
+.msg.status-line.folded .body { display: flex; align-items: flex-end; gap: var(--s-2); }
+.msg.status-line.folded .st-text { flex: 1 1 auto; min-width: 0; }
+.msg.status-line.folded.overflows .st-text { cursor: pointer; }
+/* Its control only while something is hidden (two short rows that fit: plain, no control). */
+.msg.status-line.folded:not(.overflows) .st-more { display: none; }
+.msg.status-line.folded .st-ln { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.msg.status-line.folded .st-ln:nth-child(n+3) { display: none; }
 .msg.status-line .st-more { border: 0; background: none; color: var(--text-2); cursor: pointer; font-size: var(--fs-xs); padding: var(--s-1) 0 0 var(--s-3); }
+.msg.status-line.folded .st-more { flex: none; padding: 0 var(--s-2) 0 0; white-space: nowrap; }
 .msg.status-line .st-more:hover { color: var(--text); }
 .msg-tools { display: flex; gap: var(--s-1); margin-top: var(--s-1); opacity: 0; transition: opacity var(--t-fast); }
 /* #2147: bounded stock toolbar paint, including fixed descendants. Padding preserves focus outlines. */

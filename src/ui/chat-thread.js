@@ -31,8 +31,14 @@ export const TEXT_PREVIEW_COLUMNS = 50;
 export const TEXT_CARD_MAX = 1024 * 1024;
 const P = () => globalThis.AgendPreview;
 /** #1672: a status line longer than this (lines, or characters) is folded until it is opened. */
-export const STATUS_FOLD_LINES = 6;
-export const STATUS_FOLD_CHARS = 600;
+/**
+ * #1672 / the user (hmsg-d6ac6dfb): a status line shows two lines — its header ("A → B:") and the first line of the
+ * message, each one row (clipped with an ellipsis). Its "open" control shows when that hides something: more lines than
+ * two, or a row clipped at the width it is drawn at (measured after each draw and resize: fitStatus). Where nothing is
+ * measured (no layout), a line longer than STATUS_LINE_CHARS stands for "clipped".
+ */
+export const STATUS_FOLD_LINES = 2;
+export const STATUS_LINE_CHARS = 100;
 const REPLY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
 const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
@@ -224,15 +230,19 @@ export function createThread(list, scroller, opts) {
    */
   function statusHtml(x, time) {
     const text = String(x.text == null ? "" : x.text);
-    const lines = R().lineCount(text);
+    // Rows split on any line break (a CRLF is one break, never a row and a stray CR); the text itself is not changed.
+    const lines = R().lineCount(text.replace(/\r\n?/g, "\n"));
     const manyLines = lines > STATUS_FOLD_LINES;
-    const more = manyLines || text.length > STATUS_FOLD_CHARS
-      ? `<button data-trust="thread-control" type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
-      : "";
+    const overflows = manyLines || text.split(/\r\n?|\n/).some(l => l.length > STATUS_LINE_CHARS);
+    // Its control: a short label at the end of line 2; its full name (and whether it is open) for a screen reader. Shown
+    // only while the line overflows (class `overflows`, kept by fitStatus at the width it is drawn at).
+    const more = `<button data-trust="thread-control" type="button" class="st-more" data-act="toggleFold" aria-expanded="false"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""} aria-label="${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}">${escAttr(manyLines ? trf("chat.showAllShort", lines) : tr("chat.showMoreShort"))}</button>`;
     const tools = `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     // #1990: the other instance's name opens its chat (an in-app link the router takes: no target).
-    const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a data-trust="link" class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("");
-    return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
+    // Each line its own row (folded: the first two, each clipped to one row); the line breaks stay in the text.
+    const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a data-trust="link" class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("")
+      .split(/\r\n?|\n/).map(l => `<span class="st-ln">${l}</span>`).join("\n");
+    return `<div class="msg status-line folded${overflows ? " overflows" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -610,7 +620,25 @@ export function createThread(list, scroller, opts) {
   }
   // Sizes change without a scroll event (layout after the render, the dock under the thread): while pinned, the view
   // stays flush with the bottom; a reader who scrolled up is never moved.
-  const resized = () => { if (pinned && !atBottom()) toBottom(); reportJump(); };
+  const resized = () => { fitStatus(); if (pinned && !atBottom()) toBottom(); reportJump(); };
+  /**
+   * The user (hmsg-d6ac6dfb): a folded status line whose first two rows fit is plain two lines, no control; one with a
+   * row clipped at the width it is drawn at gets its "open" control (`overflows`). Measured after each draw and resize;
+   * a line with more than two rows always overflows (data-lines). Nothing laid out (no width): the guess it was drawn with.
+   */
+  function fitStatus() {
+    for (const m of list.querySelectorAll(".msg.status-line.folded")) {
+      const btn = m.querySelector(".st-more");
+      if (!btn || btn.dataset.lines) continue;
+      let measured = false, over = false;
+      for (const row of [...m.querySelectorAll(".st-ln")].slice(0, STATUS_FOLD_LINES)) {
+        if (!row.clientWidth) continue;
+        measured = true;
+        if (row.scrollWidth > row.clientWidth + 1) over = true;
+      }
+      if (measured && m.classList.contains("overflows") !== over) m.classList.toggle("overflows", over);
+    }
+  }
   let ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
   // #2158: the reader's own hand on the thread — a wheel, a touch, the scrollbar (a pointer held), a scrolling key
@@ -725,6 +753,7 @@ export function createThread(list, scroller, opts) {
     armPolls();
     rove();
     progress();
+    fitStatus();
     return added;
   }
   /**
@@ -802,13 +831,26 @@ export function createThread(list, scroller, opts) {
   function onClick(e) {
     if (onImageClick(e)) return;
     const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
-    if (!el || !list.contains(el)) return;
+    if (!el || !list.contains(el)) {
+      // A folded status line opens by a click on its text too (not on a link in it); its button is the keyboard's way.
+      const text = e.target && e.target.closest ? e.target.closest(".msg.status-line.folded.overflows .st-text") : null;
+      const btn = text && !e.target.closest("a") ? text.parentNode.querySelector(".st-more") : null;
+      if (btn && list.contains(btn)) onClick({ target: btn });
+      return;
+    }
     const act = el.dataset.act;
     if (act === "copyMsg") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) copyFrom(el, x.text); }
     else if (act === "copyCode") { const pre = el.closest(".codeblock")?.querySelector("pre"); if (pre) copyFrom(el, pre.textContent); }
     else if (act === "toggleFold") {
       const box = el.closest(".codeblock, .msg.status-line"); if (!box) return;
       const folded = box.classList.toggle("folded");
+      if (box.classList.contains("status-line")) {
+        // A status line's own label: short at the end of line 2 while folded, its full name for a screen reader.
+        el.setAttribute("aria-expanded", folded ? "false" : "true");
+        el.setAttribute("aria-label", !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAll", el.dataset.lines) : tr("chat.showMore"));
+        el.textContent = !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAllShort", el.dataset.lines) : tr("chat.showMoreShort");
+        return;
+      }
       el.textContent = !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAll", el.dataset.lines) : tr("chat.showMore");
     } else if (act === "toggleWrap") opts.toggleWrap();
     else if (act === "replyButton") {
