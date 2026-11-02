@@ -67,8 +67,10 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
   useEffect(() => { setTyping(false); }, [backend, instance, runtime]);
   const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
   const managed = catalogOverride === undefined && !!backend;
+  const sourceNote = state.source === "cli-list" ? "modelCatalogCliList" : state.source === "cli-cache" ? "modelCatalogCliCache"
+    : ["documented", "official-catalog", "cli-alias"].includes(state.source) ? "modelCatalogOfficial" : "modelCatalogCached";
   const note = state.loading ? "modelCatalogLoading" : state.error ? "modelCatalogFailed" : !catalog?.length ? "modelCatalogEmpty"
-    : ["documented", "official-catalog", "cli-alias"].includes(state.source) ? "modelCatalogSuggested" : "modelCatalogListed";
+    : sourceNote;
   return html`<div class="model-pick">
     <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled} aria-busy=${managed && state.loading ? "true" : undefined}
       onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>

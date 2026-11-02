@@ -155,6 +155,13 @@ describe("provider protocol completion proof", () => {
 });
 
 describe("native model listings", () => {
+  it("parses the tab-separated native Antigravity listing and bullet-style Grok listing",()=>{
+    const agy="gemini-4-argon-medium\tGemini 4 Argon (Medium)\nclaude-opus-5-5-high\tClaude Opus 5.5 (High)\n\nFetching available models...\n";
+    expect(parseNativeModels("antigravity",agy)).toEqual([{id:"gemini-4-argon-medium",name:"Gemini 4 Argon (Medium)"},{id:"claude-opus-5-5-high",name:"Claude Opus 5.5 (High)"}]);
+    const grok="You are logged in with grok.com.\nDefault model: grok-4.7\nAvailable models:\n  * grok-4.7 (default)\n  - grok-4.7-build-fast\n  - grok-4.6\n  - grok-4.5\n";
+    expect(parseNativeModels("grok",grok)).toEqual([{id:"grok-4.7"},{id:"grok-4.7-build-fast"},{id:"grok-4.6"},{id:"grok-4.5"}]);
+    expect(parseNativeModels("grok","│ grok-4.7 │ Grok 4.7 │")).toEqual([{id:"grok-4.7"}]);
+  });
   it("extracts model IDs, retaining labels without promoting headings into choices", () => {
     expect(parseNativeModels("antigravity", "Available models\ngemini-3.8-flash-medium   Gemini 3.8 Flash (Medium)\nNot authenticated")).toEqual([{ id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)" }]);
     expect(parseNativeModels("opencode", "INFO loading models\nanthropic/claude-sonnet-4-6\nopenai/gpt-5.4\n")).toEqual([{ id: "anthropic/claude-sonnet-4-6" }, { id: "openai/gpt-5.4" }]);

@@ -328,10 +328,10 @@ export function parseNativeModels(cli: NativeProviderId, output: string): Native
     if (cli === "opencode") {
       const value = line.trim(); if (/^[A-Za-z0-9._-]+\/[A-Za-z0-9._:/[\]\-]+$/.test(value)) add(value);
     } else if (cli === "antigravity") {
-      const match = /^\s*([A-Za-z0-9][A-Za-z0-9._:/[\]\-]*[-.][A-Za-z0-9._:/[\]\-]*)\s{2,}(.+?)\s*$/.exec(line);
+      const match = /^\s*([A-Za-z0-9][A-Za-z0-9._:/[\]\-]*[-.][A-Za-z0-9._:/[\]\-]*)(?:\t+| {2,})(.+?)\s*$/.exec(line);
       if (match) add(match[1], match[2]);
     } else if (cli === "grok") {
-      const match = /(?:^|[│|]\s*)(grok-[A-Za-z0-9._:/[\]\-]+)(?:\s|[│|]|$)/.exec(line.trim());
+      const match = /(?:^(?:[*-]\s+)?|[│|]\s*)(grok-[A-Za-z0-9._:/[\]\-]+)(?:\s|[│|]|$)/.exec(line.trim());
       if (match) add(match[1]);
     }
   }
