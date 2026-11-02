@@ -459,9 +459,10 @@ export function CreateInstanceDialog({ onClose }) {
     if (value === runtime) return;
     if (runtime) drafts.current[runtime] = { form:{...f}, sandbox };
     const saved = drafts.current[value];
+    const { sandbox: savedFileAccess } = saved || {};
     setRuntime(value);
     setF(saved?.form || {dir:"",topic:"",desc:"",prompt:"",tags:"",branch:"",model:"",backend:value === "windows" ? native?.clis?.find(b => b.path && b.runnable)?.id || "codex" : backends?.find(b => b.installed && !b.deprecated && !b.fallback)?.name || ""});
-    setSandbox(saved?.sandbox || "read-only");
+    setSandbox(savedFileAccess || "read-only");
   };
   const [sandbox,setSandbox] = useState("read-only");
   const nativeCli = native?.clis?.find(cli => cli.id === f.backend);

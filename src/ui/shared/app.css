@@ -2699,10 +2699,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-windows-cli .windows-cli-section-head p { margin-top: 4px; color: var(--text-2); font-size: 11px; line-height: 1.6; }
 .p-windows-cli .windows-cli-field { margin-bottom: 18px; }
 .p-windows-cli .windows-cli-field > label, .p-windows-cli .windows-cli-access > legend { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600; }
-.p-windows-cli .windows-cli-field > input, .p-windows-cli .windows-cli-field > textarea { display: block; width: 100%; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.6; }
+.p-windows-cli .windows-cli-field > input, .p-windows-cli .windows-cli-field > textarea { display: block; width: 100%; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--text); font-size: var(--fs-sm); line-height: 1.6; }
 .p-windows-cli .windows-cli-field > input:focus, .p-windows-cli .windows-cli-field > textarea:focus { border-color: var(--focus); outline: none; box-shadow: 0 0 0 3px var(--accent-dim); }
 .p-windows-cli .windows-cli-field > textarea { min-height: 120px; resize: vertical; }
-.p-windows-cli .windows-cli-field .windows-cli-directory { font-family: var(--font-mono); font-size: 12px; }
+.p-windows-cli .windows-cli-field .windows-cli-directory { font-family: var(--font-mono); font-size: var(--fs-xs); }
 .p-windows-cli .windows-cli-field > p { margin-top: 6px; font-size: 11px; line-height: 1.6; color: var(--text-3); }
 .p-windows-cli .windows-cli-field ::placeholder { color: var(--text-3); }
 .p-windows-cli .windows-cli-access-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -2799,7 +2799,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .windows-agent-composer { padding: 12px 24px 18px; border-top: 1px solid var(--border); }
 .windows-agent-composer > div, .windows-agent-composer > p { max-width: 900px; margin-left: auto; margin-right: auto; }
 .windows-agent-input { padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
-.windows-agent-input > textarea { display: block; width: 100%; border: 0; resize: vertical; padding: 4px; background: transparent; color: var(--text); font: inherit; min-height: 60px; max-height: 180px; }
+.windows-agent-input > textarea { display: block; width: 100%; border: 0; resize: vertical; padding: 4px; background: transparent; color: var(--text); font-family: inherit; font-size: var(--fs-md); min-height: 60px; max-height: 180px; }
 .windows-agent-input > div { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
 .windows-agent-composer > .note { margin-top: 8px; font-size: 10px; }
 .p-windows-agent .error, .agent-draft-assistant .error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }

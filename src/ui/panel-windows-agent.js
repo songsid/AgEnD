@@ -48,6 +48,7 @@ export function WindowsAgentPanel({ route, navKey }) {
   };
   useEffect(() => { request.current = null; setSubmitting(false); setPrompt(""); setError(""); void refresh(); },[lease]);
   const agent = data?._route === route.instance ? data : null;
+  const { sandbox: fileAccess } = agent || {};
   const busy = !!agent?.activeId;
   useEffect(() => {
     if (!busy || agent?.blocked) return;
@@ -73,7 +74,7 @@ export function WindowsAgentPanel({ route, navKey }) {
       <a class="btn btn-ghost btn-sm" href="/settings/agents"><${Icon} name="settings" size=${16} />${t("app.settings")}</a>
     </${PanelHeader}>
     <div class="panel-body"><div class="col windows-agent-conversation">
-      ${agent ? html`<div class="windows-agent-identity"><span class="windows-cli-brand"><${CliProductMark} id=${agent.cli || "codex"} size=${24} /></span><div><strong>Windows · ${cliLabel(agent.cli || "codex")}${agent.model ? ` · ${agent.model}` : ""}</strong><code>${agent.cwd}</code></div><span class="pill">${tn(agent.sandbox === "read-only" ? "read" : "write")}</span></div>
+      ${agent ? html`<div class="windows-agent-identity"><span class="windows-cli-brand"><${CliProductMark} id=${agent.cli || "codex"} size=${24} /></span><div><strong>Windows · ${cliLabel(agent.cli || "codex")}${agent.model ? ` · ${agent.model}` : ""}</strong><code>${agent.cwd}</code></div><span class="pill">${tn(fileAccess === "read-only" ? "read" : "write")}</span></div>
         ${agent.description ? html`<p class="note">${agent.description}</p>` : null}
         ${!agent.turns.length ? html`<div class="windows-agent-empty"><${Icon} name="chat" size=${32} /><h2>${tn("empty")}</h2><p>${tn("emptyHint")}</p></div>` : agent.turns.map(turn => html`<article key=${turn.id} class="windows-agent-turn"><div class="windows-agent-human"><strong>${tn("you")}</strong><p>${turn.prompt}</p></div><div class="windows-agent-reply"><strong><${CliProductMark} id=${agent.cli || "codex"} size=${18} />${cliLabel(agent.cli || "codex")}</strong><pre tabIndex="0">${turn.output || tn(["starting","running","cancelling"].includes(turn.status) ? "waiting" : "noOutput")}</pre>${turn.error ? html`<p class="error">${turn.error}</p>` : null}<small>${tn(turn.status)}</small></div></article>`)}
       ` : html`<p class="note">${tn("loading")}</p>`}

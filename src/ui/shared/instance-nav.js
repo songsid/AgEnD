@@ -499,9 +499,11 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const [editing, setEditing] = useState(false);
   // Where a row goes: the view the page is in (#1523 §3.1). View → View; Details → Details; everywhere else, a Fleet tab
   // included (#1917: the user's call, replacing Q4 = A), → Chat. The anonymous reader only ever has View.
-  const rowPath = viewOnly || (route && route.panel === "view") ? viewPath
+  const panelPath = viewOnly || (route && route.panel === "view") ? viewPath
     : route && route.panel === "log" ? logPath                                  // #1218: Log → Log
     : route && route.panel === "details" ? detailsPath : chatPath;
+  const rowPath = (name) => byName.get(name)?.runtime === "windows" && ["view", "log", "details"].includes(route?.panel)
+    ? chatPath(name) : panelPath(name);
   const active = route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") ? route.instance : null;
   const own = (map, name) => Object.prototype.hasOwnProperty.call(map, name);
   const byName = new Map(items.map((it) => [nameOf(it), it]));
@@ -613,7 +615,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     const mins = ageOf(name), fade = replyFade(mins);
     const two = !!secondary || mins != null;
     return html`<li key=${name} class=${`v-li${two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
-        ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${it.runtime === "windows" && ["view","log","details"].includes(route?.panel) ? chatPath(name) : rowPath(name)} title=${instanceTooltip(it)}
+        ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${fav ? {} : dragProps({ type: "instance", name, group: g })}>
       <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
       <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${label}>${label}</span>

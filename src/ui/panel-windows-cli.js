@@ -26,10 +26,11 @@ function CliCard({ cli, probing }) {
   const signedIn = cli.authenticated === true;
   const checking = probing && !cli.path;
   const authKey = checking ? "checking" : !cli.path ? "missing" : signedIn ? "signedIn" : cli.authenticated === false ? "signedOut" : "unknown";
+  const providerLabel = cli.company || ({codex:"OpenAI","claude-code":"Anthropic",antigravity:"Google",grok:"xAI","kiro-cli":"AWS",opencode:"Anomaly",muse:"Meta"})[cli.id];
   return html`<article class=${`windows-cli-provider is-${cli.id}`}>
     <div class="windows-cli-provider-head">
       <span class="windows-cli-brand"><${CliProductMark} id=${cli.id} size=${28} /></span>
-      <div class="windows-cli-provider-name"><span>${cli.company || ({codex:"OpenAI","claude-code":"Anthropic",antigravity:"Google",grok:"xAI","kiro-cli":"AWS",opencode:"Anomaly",muse:"Meta"})[cli.id]}</span><h3>${cliLabel(cli.id)}</h3></div>
+      <div class="windows-cli-provider-name"><span>${providerLabel}</span><h3>${cliLabel(cli.id)}</h3></div>
       <span class=${`windows-cli-badge ${cli.runnable ? "tone-ready" : "tone-neutral"}`}>${tn(cli.runnable ? "available" : cli.supports?.execution === false ? "detectionOnly" : checking ? "checking" : "unavailableBadge")}</span>
     </div>
     <div class="windows-cli-provider-status"><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><span class="windows-cli-version">${cli.version || "—"}</span></div>
@@ -122,7 +123,7 @@ export function WindowsCliPanel({ navKey, embedded = false }) {
           <form onSubmit=${e => { e.preventDefault(); if (runnable && !submitting && !running && cwd.trim() && prompt.trim()) void run(); }}>
             <div class="windows-cli-field"><label>CLI</label><${CliPicker} label="CLI" value=${selected} choices=${choices} disabled=${!choices.length || submitting || running} onChange=${value => { setSelected(value); setModel(""); }} /></div>
             <div class="windows-cli-field"><label for="windows-model">${tn("model")}</label><${ModelSelect} key=${selected} id="windows-model" value=${model} onChange=${setModel} catalogOverride=${current?.models || []} inherit=${tn("defaultModel")} /></div>
-            <div class="windows-cli-field"><label for="windows-cwd">${tn("folder")}</label><input id="windows-cwd" class="windows-cli-directory" value=${cwd} placeholder="J:\\Project\\Game" aria-describedby="windows-cwd-hint" required spellcheck="false" onInput=${e => setCwd(e.target.value)} /><p id="windows-cwd-hint">${tn("folderHint")}</p></div>
+            <div class="windows-cli-field"><label for="windows-cwd">${tn("folder")}</label><input id="windows-cwd" class="windows-cli-directory" value=${cwd} placeholder="J:\\Project\\Game" aria-describedby="windows-cwd-hint" required spellcheck=${false} onInput=${e => setCwd(e.target.value)} /><p id="windows-cwd-hint">${tn("folderHint")}</p></div>
             <div class="windows-cli-field"><label for="windows-prompt">${tn("prompt")}</label><textarea id="windows-prompt" rows="5" value=${prompt} placeholder=${tn("promptPlaceholder")} required maxLength=${16384} onInput=${e => setPrompt(e.target.value)} /></div>
             <fieldset class="windows-cli-access"><legend>${tn("access")}</legend><div class="windows-cli-access-options">
               ${[["read-only","readOnly","readHint","eye"],["workspace-write","write","writeHint","edit"]].map(([value,label,hint,icon]) => html`<label key=${value} class=${`windows-cli-access-option${sandbox === value ? " selected" : ""}`}><input type="radio" name="windows-sandbox" value=${value} checked=${sandbox === value} disabled=${value === "read-only" && current?.readOnlySupport === false} onChange=${() => setSandbox(value)} /><span><strong><${Icon} name=${icon} size=${15} />${tn(label)}</strong><small>${tn(hint)}</small></span></label>`)}

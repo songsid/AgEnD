@@ -2,7 +2,8 @@
  * Built-ins only: this file must not load AgEnD's Linux native dependencies.
  * One JSON request, then optional cancellation, over stdin; JSON events over stdout.
  */
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn } from "./child-process.js";
+import type { ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve, win32 } from "node:path";

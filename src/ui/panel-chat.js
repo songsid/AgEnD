@@ -7,7 +7,7 @@
 // The instance's own actions (details, start, stop, restart, delete) are in the header's ⋯ menu, and only the ones
 // that apply to its state are offered (#1408 rough edges 4 and 7).
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
-import { lang, t, register } from "/assets/app-i18n.js";
+import { lang, t } from "/assets/app-i18n.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
@@ -29,15 +29,6 @@ import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeM
 import { colorMenuItem } from "/assets/identity-color.js";
 import { brokenPictures, cardFoldable, IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
-register("chat", {
-  "zh-TW": { runtimeNoAttachments:"這個 Runtime 目前不支援附件，請貼上文字。", runtimeNoCommands:"這個 Runtime 目前不支援此 CLI 指令，請在 Agent 設定中調整。", nativeBusy:"Windows CLI 正在執行其他任務，完成後即可傳送；輸入內容會保留。", nativeBlocked:"上次 Windows 執行的結束狀態不明。請先確認相關程序已停止，再解除鎖定。", nativeRecover:"已確認程序停止，解除鎖定" },
-  en: { runtimeNoAttachments:"This runtime does not support attachments yet. Paste text instead.", runtimeNoCommands:"This runtime does not support this CLI command yet. Use Agent settings instead.", nativeBusy:"Windows CLI is running another task. Your draft is kept until it is ready.", nativeBlocked:"The last Windows execution outcome is unknown. Verify its processes have stopped before unlocking.", nativeRecover:"Processes stopped — unlock agent" },
-});
-register("chat", {
-  "zh-TW": { nativeComposerHint:"Enter 送出 · Shift+Enter 換行", nativeComposerHintTouch:"Return 換行 · 按「送出」傳送" },
-  en: { nativeComposerHint:"Enter to send · Shift+Enter for a new line", nativeComposerHintTouch:"Return adds a line · tap Send to send" },
-});
-
 // #1629 r4 §1: the identity card under the chat's header — hidden by default; shown or not is this device's choice.
 // #2217 (the user, 2026-10-19): no row of its own; its picture and bio can be folded away (the banner stays) — this
 // device's choice too, kept the same way. The user (2026-10-20): no control on the card — one card button in the header

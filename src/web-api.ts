@@ -1635,7 +1635,7 @@ export function handleWebRequest(
   const nativePath=/^\/ui\/(?:chat|instance|cancel|stop|start|restart)\/([^/]+)$/.exec(path);
   let nativeTarget=url.searchParams.get("instance") ?? "";
   if(nativePath){try{nativeTarget=decodeURIComponent(nativePath[1]);}catch{nativeTarget="";}}
-  if(isWindowsInstance(ctx.fleetConfig?.instances[nativeTarget]) && !nativeCliAuthorization(req,url,ctx)){
+  if(isWindowsInstance(ctx.fleetConfig?.instances?.[nativeTarget]) && !nativeCliAuthorization(req,url,ctx)){
     json(res,403,{error:"Windows runtime requires an administrator on the local dashboard"});return true;
   }
 

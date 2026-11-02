@@ -75,7 +75,7 @@ describe("module admission (#1408 §4)", () => {
       // The vendored files are part of it.
       for (const v of ["/assets/preact.module.js", "/assets/preact-hooks.module.js", "/assets/htm.module.js"]) expect(seen.has(v), v).toBe(true);
       // What needs a session stays behind the gate.
-      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
+      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-windows-agent.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
         expect((await get(h.port, p)).status, p).toBe(401);
       }
     } finally { await h.stop(); }
@@ -95,11 +95,12 @@ describe("module admission (#1408 §4)", () => {
     expect(dynamic.sort()).toEqual(['"/ui/js/backend-signin.js"', 'retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-details.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-log.js", a', 'retryUrl("/ui/js/panel-needs.js", a',
       'retryUrl("/ui/js/panel-notices.js", a',                     // #2910 D2: a web-only fleet's Notices
       'retryUrl("/ui/js/panel-settings.js", a',
+      'retryUrl("/ui/js/panel-windows-agent.js", a',              // legacy native agent links resolve behind the session gate
       // #2347: the restart banner's Restart now runs Settings' runner (behind the session gate), in any panel.
       'retryUrl("/ui/js/settings-apply.js", a']);
     // The private ones only in "full" mode: nothing under /ui/ is reached from the View-only branch.
     const fullBranch = app.slice(app.indexOf('if (mode === "full") {'), app.indexOf("} else appStore.set"));
-    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-needs.js", "/ui/js/panel-notices.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js", "/ui/js/settings-apply.js"]) {
+    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-windows-agent.js", "/ui/js/panel-needs.js", "/ui/js/panel-notices.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js", "/ui/js/settings-apply.js"]) {
       expect(app.indexOf(p), p).toBeGreaterThan(app.indexOf('if (mode === "full") {'));
       expect(fullBranch, p).toContain(p);
     }

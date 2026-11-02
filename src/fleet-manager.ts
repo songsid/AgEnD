@@ -8238,9 +8238,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.rotateFleetLogs();
 
     const fleet = this.loadConfig(configPath, { startup: true });
-    this.initializeNativeInstances();
     this.slimFleetConfigAtStartup();
     this.logConfigWarningsAtStartup();
+    this.initializeNativeInstances();
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
     // #1737 review: the marker this boot adopts — the startup clear may only ever clear this one.
     const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
