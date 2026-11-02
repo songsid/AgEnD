@@ -97,6 +97,30 @@ function privateSocket(argv, env = process.env) {
   try { return canonical === path.join(fs.realpathSync(os.tmpdir()), relative); }
   catch { return false; }
 }
+/** Programs that run their operand as the program. */
+const RUNS_OPERAND = new Set(['env', 'nice', 'nohup', 'timeout', 'setsid', 'stdbuf', 'ionice', 'command', 'exec', 'chrt', 'taskset']);
+/** The program a wrapper runs, and its arguments; `{ split }` for `env -S '<command line>'`; null when it runs none. */
+function operandOf(base, argv) {
+  let i = 0;
+  const words = argv.map(a => String(a));
+  if (base === 'env') {
+    for (; i < words.length; i++) {
+      const a = words[i];
+      if (a === '--') { i++; break; }
+      if (a === '-S' || a === '--split-string') return { split: words[i + 1] || '' };
+      if (a.startsWith('--split-string=')) return { split: a.slice('--split-string='.length) };
+      if (/^-[uCP]$/.test(a)) { i++; continue; }        // -u NAME, -C DIR, -P PATH take a value
+      if (a.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) continue;
+      break;
+    }
+  } else {
+    // An option taking a value: timeout -s/-k, nice -n, ionice -c/-n, chrt -p, taskset -p, stdbuf -i/-o/-e.
+    const valued = { timeout: /^-[sk]$/, nice: /^-n$/, ionice: /^-[cnp]$/, stdbuf: /^-[ioe]$/, chrt: /^-p$/, taskset: /^-[pc]$/ }[base];
+    for (; i < words.length && words[i].startsWith('-') && words[i] !== '-'; i++) { if (words[i] === '--') { i++; break; } if (valued && valued.test(words[i])) i++; }
+    if (base === 'timeout' || base === 'chrt' || base === 'taskset') i++;   // the duration / priority / mask
+  }
+  return i < words.length ? { file: words[i], argv: words.slice(i + 1) } : null;
+}
 /** A program that would run on Windows from WSL: a drvfs path (/mnt/<drive>/…), a drive path, a Windows executable, or wslpath. */
 function isWindowsInterop(file) {
   const text = String(file);
@@ -152,7 +176,19 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
         const self = typeof argv[k] === 'string' && selfFleetStart(argv[k], argv.slice(k + 1), env, cwd);
         if (self) throw new Error(`a real \`agend ${self}\` from a test is forbidden`);
       }
+      // M-2239 P2-5 (#2939 review): a script that runs its positionals ("$@", $1, $*) runs $1 — the argument after $0 —
+      // as a program: check it like one (a Windows program, a backend CLI…).
+      if (typeof argv[c + 1] === 'string' && /"?\$(?:@|\*|1|\{1\}|\{@\})"?/.test(argv[c + 1]) && typeof argv[c + 3] === 'string') {
+        checkInvocation(argv[c + 3], argv.slice(c + 4), env, cwd, opts);
+      }
     }
+  }
+  // M-2239 P2-5 (#2939 review): a wrapper that runs its operand (`env powershell.exe`, `timeout 5 x.exe`) — the operand
+  // is the program, and is checked as one.
+  if (RUNS_OPERAND.has(base)) {
+    const inner = operandOf(base, argv);
+    if (inner && 'split' in inner) checkShell(inner.split, env, cwd);
+    else if (inner) checkInvocation(inner.file, inner.argv, env, cwd, opts);
   }
   if (/^node(?:js)?$/.test(base) && !argv.some(arg => ['-e', '--eval', '-p', '--print'].includes(arg))) {
     const script = argv.find(arg => !arg.startsWith('-') && (BACKENDS.has(path.basename(arg).replace(/\.(?:m?js|cjs|exe)$/, ''))
