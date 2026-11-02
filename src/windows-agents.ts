@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSyn
 import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getAgendHome } from "./paths.js";
-import { validWindowsDirectory } from "./windows-cli-worker.js";
+import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
+import { validNativeSessionId } from "./windows-cli-providers.js";
+import { validateRuntimePaneSnapshot, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId, nativeProvider, validateNativeModel, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
@@ -13,6 +15,8 @@ export interface WindowsAgent {
   cli: NativeProviderId; model?: string;
   sandbox: "read-only" | "workspace-write"; createdAt: number; threadId?: string;
   activeId?: string; turns: WindowsTurn[];
+  /** Also occupies activeId so an older exec-only coordinator fails closed after rollback. */
+  paneLaunchId?: string;
   paused?: boolean;
   /** Once linked, removal from fleet.yaml must not import this provider state again. */
   fleet_instance?: string;
@@ -62,7 +66,7 @@ export class WindowsAgents {
     // A paired runtime can finish while the coordinator is restarting. Reconcile its durable result before
     // interpreting a saved active turn as an orphan; provider session IDs still belong to the same machine.
     const saved = this.find(id), recovered = saved.activeId ? this.bridge.get(saved.activeId) : null;
-    if (saved.activeId && recovered?.finishedAt && recovered.outcomeConfirmed === true) {
+    if (saved.activeId && !saved.paneLaunchId && recovered?.finishedAt && recovered.outcomeConfirmed === true) {
       this.change(() => {
         const turn = saved.turns.find(row => row.id === saved.activeId);
         if (turn) Object.assign(turn,{output:recovered.output,status:recovered.status,finishedAt:recovered.finishedAt,error:recovered.error});
@@ -82,6 +86,27 @@ export class WindowsAgents {
     return this.data.agents.map(a => { const { turns: _turns, instructions: _instructions, ...row } = this.get(a.id); return row; });
   }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  /** Metadata reservation before a pane can spawn. Exec and persistent adapters can never own one profile together. */
+  reservePane(id: string, launchId: string): WindowsAgent {
+    const agent = this.find(id);
+    if (!validWindowsAgentId(launchId) || agent.paused || agent.activeId && agent.activeId !== launchId
+      || agent.paneLaunchId && agent.paneLaunchId !== launchId || agent.activeId === launchId && agent.paneLaunchId !== launchId) throw Error("Windows profile has another active or unconfirmed owner");
+    if (agent.paneLaunchId !== launchId || agent.activeId !== launchId) this.change(() => { agent.activeId = launchId; agent.paneLaunchId = launchId; });
+    return structuredClone(agent);
+  }
+  pinPaneSession(id: string, launchId: string, sessionId: string): void {
+    const agent = this.find(id);
+    if (agent.activeId !== launchId || agent.paneLaunchId !== launchId || !validNativeSessionId(agent.cli, sessionId)
+      || agent.threadId && agent.threadId !== sessionId) throw Error("Windows pane conversation differs from its reserved profile");
+    if (agent.threadId !== sessionId) this.change(() => { agent.threadId = sessionId; });
+  }
+  /** Only an exact positive owned-exit snapshot releases the old exec-compatible reservation. */
+  releasePane(id: string, raw: RuntimePaneSnapshot): void {
+    const snapshot = validateRuntimePaneSnapshot(raw), agent = this.find(id);
+    if (snapshot.agentId !== id || snapshot.state !== "exited" || agent.activeId !== snapshot.launchId || agent.paneLaunchId !== snapshot.launchId
+      || agent.fleet_instance && agent.fleet_instance !== snapshot.instance || agent.threadId && snapshot.sessionId !== agent.threadId) throw Error("Windows pane exit identity is unconfirmed");
+    this.change(() => { delete agent.activeId; delete agent.paneLaunchId; });
+  }
   bindInstance(id: string, name: string): void {
     if (!name || name.length > 128 || /[\\/\x00-\x1f\x7f]/.test(name) || name.includes("..")) throw new Error("Invalid Fleet instance name");
     const agent=this.find(id);
@@ -184,6 +209,7 @@ export class WindowsAgents {
       if (!turn) throw new Error("This message was already sent; its visible history has expired");
       return turn;
     }
+    if (agent.paneLaunchId) throw new Error("This Windows profile is reserved by its persistent pane");
     if (agent.activeId) throw new Error(this.get(id).blocked ? "Check Windows processes and unlock this agent before continuing" : "This Windows agent is still working");
     if (agent.paused) throw new Error("This Windows agent is paused; resume it before sending work");
     if (Object.keys(this.data.requests).length >= 4096) throw new Error("Windows agent preview message limit reached");
@@ -221,6 +247,7 @@ export class WindowsAgents {
   }
   recover(id: string, confirmedStopped: unknown): WindowsAgent & { blocked: boolean } {
     const agent = this.find(id);
+    if (agent.paneLaunchId) throw new Error("A persistent pane needs its exact owned exit receipt before unlocking");
     if (confirmedStopped !== true || !agent.activeId || !this.get(id).blocked) throw new Error("Confirm the disconnected Windows process has stopped before unlocking");
     this.bridge.releaseUnknown(agent.activeId);
     this.change(() => {

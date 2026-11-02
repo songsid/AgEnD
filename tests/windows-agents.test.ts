@@ -183,3 +183,25 @@ describe("native Windows agents", () => {
     expect(restored.turns[0]).toMatchObject({status:"failed",error:expect.stringContaining("no conversation id")});
   });
 });
+
+import{randomUUID}from'node:crypto';import type{RuntimePaneSnapshot}from'../src/runtime-pane-protocol.js';
+it('reserves a profile before pane launch and keeps exec-only rollback blocked by activeId',async()=>{
+ const f=fixture(),agent=await f.store.create(input),launchId=randomUUID();f.store.reservePane(agent.id,launchId);
+ expect(f.store.get(agent.id)).toMatchObject({activeId:launchId,paneLaunchId:launchId,blocked:true});
+ expect(()=>new WindowsAgents(f.dir,f.bridge).send(agent.id,{requestId:first,prompt:'must not launch'},()=>true)).toThrow('persistent pane');
+ const file=join(f.dir,'windows-agents.json'),raw=JSON.parse(readFileSync(file,'utf8'));delete raw.agents[0].paneLaunchId;writeFileSync(file,JSON.stringify(raw));
+ expect(()=>new WindowsAgents(f.dir,f.bridge).send(agent.id,{requestId:first,prompt:'old reader must hold'},()=>true)).toThrow('unlock');expect(f.start).not.toHaveBeenCalled();
+});
+it('a pane reservation cannot take over an exec turn, another pane, or a paused profile',async()=>{
+ const f=fixture(),agent=await f.store.create(input),launchId=randomUUID();f.store.setPaused(agent.id,true);expect(()=>f.store.reservePane(agent.id,launchId)).toThrow('owner');f.store.setPaused(agent.id,false);
+ f.store.send(agent.id,{requestId:first,prompt:'exec turn'},()=>true);expect(()=>f.store.reservePane(agent.id,launchId)).toThrow('owner');
+ const other=await f.store.create({...input,name:'other'});f.store.reservePane(other.id,launchId);expect(()=>f.store.reservePane(other.id,randomUUID())).toThrow('owner');expect(()=>f.store.recover(other.id,true)).toThrow('owned exit');
+});
+it('pins the native conversation monotonically and releases only its exact positive exit',async()=>{
+ const f=fixture(),agent=await f.store.create(input),launchId=randomUUID(),sessionId=randomUUID();f.store.bindInstance(agent.id,'pane-agent');f.store.reservePane(agent.id,launchId);f.store.pinPaneSession(agent.id,launchId,sessionId);
+ expect(()=>f.store.pinPaneSession(agent.id,launchId,randomUUID())).toThrow('conversation');
+ const snapshot:RuntimePaneSnapshot={hostBootId:randomUUID(),paneId:randomUUID(),agentId:agent.id,launchId,instance:'pane-agent',state:'exited',exitCode:0,seq:0,outputAt:0,commandSequence:0,columns:80,rows:24,sessionId};
+ for(const extra of [{state:'running'},{launchId:randomUUID()},{agentId:randomUUID()},{instance:'other'},{sessionId:randomUUID()}])expect(()=>f.store.releasePane(agent.id,{...snapshot,...extra}as RuntimePaneSnapshot)).toThrow('identity');
+ expect(new WindowsAgents(f.dir,f.bridge).get(agent.id).activeId).toBe(launchId);f.store.releasePane(agent.id,snapshot);expect(f.store.get(agent.id)).toMatchObject({threadId:sessionId,blocked:false});expect(f.store.get(agent.id).activeId).toBeUndefined();
+ f.store.send(agent.id,{requestId:first,prompt:'explicit rollback after owned exit'},()=>true);expect(f.start.mock.calls[0][2].resumeSessionId).toBe(sessionId);
+});
