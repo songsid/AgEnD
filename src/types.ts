@@ -613,6 +613,13 @@ export interface FleetConfig {
   fleet_label?: string;
   login?: LoginConfig;
   web_terminal?: WebTerminalConfig;
+  /**
+   * M-2255: Settings → Runtime. `windows_cli`: agents may run this PC's Windows CLIs (through WSL); `remote_runtime`:
+   * other Windows computers may pair with this fleet and run its agents. Both off by default; AGEND_WINDOWS_CLI /
+   * AGEND_REMOTE_RUNTIME ("1" on, "0" off) override them. `max_agents_per_machine` (#2953 1.8): Windows agents running at
+   * once on each Windows computer, 1..16, default 4.
+   */
+  runtimes?: { windows_cli?: boolean; remote_runtime?: boolean; max_agents_per_machine?: number };
 }
 
 /**

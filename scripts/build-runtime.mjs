@@ -11,7 +11,7 @@ const compiled = process.argv[3] ? resolve(process.argv[3]) : join(root, 'dist')
 const { RUNTIME_PANE_MODULES, RUNTIME_PANE_ASSETS } = await import(pathToFileURL(join(compiled, 'runtime-pane-assets.js')).href);
 if (output === root || root.startsWith(output + '/') || root.startsWith(output + '\\')) throw new Error('Choose a dedicated runtime bundle directory');
 const files = ['runtime-cli.js', 'runtime-client.js', 'runtime-client-store.js', 'runtime-protocol.js', 'windows-cli.js', 'windows-cli-worker.js',
-  'windows-cli-providers.js', 'child-process.js', 'windows-native-mcp.js', 'model-catalog-defaults.js', 'atomic-write.js', ...RUNTIME_PANE_MODULES];
+  'windows-cli-providers.js', 'child-process.js', 'windows-native-mcp.js', 'model-catalog-defaults.js', 'atomic-write.js', 'runtime-switches.js', ...RUNTIME_PANE_MODULES];
 await mkdir(join(output, 'dist'), { recursive: true });
 await copyFile(join(root, 'LICENSE'), join(output, 'LICENSE'));
 for (const file of files) await copyFile(file.endsWith('.ps1') ? join(root, 'templates/runtime-assets', file) : join(compiled, file), join(output, 'dist', file));

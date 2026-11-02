@@ -211,6 +211,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
     health_port?: number;
     web?: FleetConfig["web"];
     needs_you?: unknown;
+    runtimes?: unknown;
     hostname?: string;
     fleet_label?: string;
     login?: FleetConfig["login"];
@@ -283,6 +284,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
     health_port: parsed.health_port,
     web: parsed.web,
     needs_you: needsYouConfig(parsed.needs_you),
+    runtimes: runtimesConfig(parsed.runtimes),
     hostname: parsed.hostname,
     fleet_label: parsed.fleet_label,
     login: validateLoginConfig(parsed.login),
@@ -297,6 +299,16 @@ function needsYouConfig(raw: unknown): FleetConfig["needs_you"] {
   if (typeof raw.live_message === "boolean") out.live_message = raw.live_message;
   if (typeof raw.dm === "boolean") out.dm = raw.dm;
   if (typeof raw.task_board === "boolean") out.task_board = raw.task_board;
+  return out;
+}
+
+/** M-2255: Settings → Runtime's two switches; only booleans are kept (the validator reports anything else). */
+function runtimesConfig(raw: unknown): FleetConfig["runtimes"] {
+  if (!isPlainObject(raw)) return undefined;
+  const out: NonNullable<FleetConfig["runtimes"]> = {};
+  if (typeof raw.windows_cli === "boolean") out.windows_cli = raw.windows_cli;
+  if (typeof raw.remote_runtime === "boolean") out.remote_runtime = raw.remote_runtime;
+  if (Number.isInteger(raw.max_agents_per_machine)) out.max_agents_per_machine = raw.max_agents_per_machine as number;
   return out;
 }
 

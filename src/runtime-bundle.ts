@@ -8,7 +8,7 @@ import { RUNTIME_PANE_MODULES, RUNTIME_PANE_ASSETS, PANE_NATIVE_SHA256 } from ".
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
   "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "runtime-protocol.js", "windows-cli.js", "windows-cli-worker.js",
-  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", ...RUNTIME_PANE_MODULES,
+  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", "runtime-switches.js", ...RUNTIME_PANE_MODULES,
 ]);
 const WS_FILES = Object.freeze([
   "package.json", "index.js", "wrapper.mjs", "browser.js", "LICENSE",

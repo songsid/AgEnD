@@ -18,6 +18,7 @@ beforeAll(async()=>{
   globalThis.fetch=(async(path:string,options:any={})=>{
     const body=options.body?JSON.parse(options.body):null;requests.push({path,body});
     if(path==="/ui/runtimes")return response({enabled,machines});
+    if(path==="/api/settings/runtimes")return response({switches:{windows_cli:{on:false,configured:false,environment:null},remote_runtime:{on:enabled,configured:enabled,environment:null}},max_agents_per_machine:{value:4,min:1,max:16,default:4},local_origin:"http://127.0.0.1:19280"});
     if(path==="/ui/runtimes/pairing")return response({pairingId:"test",code:"PAIR-TEST-CODE",expiresAt:Date.now()+60000});
     if(path===`/ui/runtimes/machines/${idB}/approve`){machines=machines.map(item=>item.id===idB?{...item,status:"online"}:item);return response({ok:true});}
     if(path.startsWith("/ui/models?")){const id=new URL(path,"http://localhost").searchParams.get("machineId");return response({models:[{id:id===idA?"model-a":"model-b",label:id===idA?"Model A":"Model B"}],source:"cli-cache"});}
@@ -56,11 +57,21 @@ describe("remote machine UI",()=>{
     expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
     expect(p.root.querySelector(".runtime-command").value).toContain("agend-runtime.cmd connect --server");
     expect(p.root.querySelector(".runtime-command").value).not.toContain("PAIR-TEST-CODE");
+    // S-30: while pairing, the ZIP is the panel's step 1 — one download button, not one in the header too.
+    expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);
     button("Hide pairing code").click();await settle();expect(p.root.querySelector(".runtime-pair-code")).toBeNull();
+    expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);   // the header's is back
+  });
+  it("S-30: a computer card names its platform and host name, never a version slot that is always \"Not reported\"",async()=>{
+    machines=[{...machine(idA,"Desktop"),version:undefined,hostname:"DESKTOP-7Q2"},{...machine(idB,"Laptop","pending"),version:undefined}];
+    await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
+    expect(p.root.querySelector(`[data-machine-id="${idA}"] header p`).textContent).toBe("win32 · DESKTOP-7Q2");
+    expect(p.root.querySelector(`[data-machine-id="${idB}"] header p`).textContent).toBe("win32");
+    expect(p.root.textContent).not.toContain("Not reported");
   });
   it("keeps local Runtime settings visible while remote connections are disabled",async()=>{
     enabled=false;machines=[];await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
-    expect(p.root.textContent).toContain("not enabled");expect(p.root.textContent).toContain("This computer");expect(button("Connect a computer").disabled).toBe(true);
+    expect(p.root.textContent).toContain("Other Windows PCs can connect once “Allow other Windows PCs to pair” is on.");expect(p.root.textContent).toContain("This computer");expect(button("Connect a computer").disabled).toBe(true);
   });
   it("creates a remote agent with an optional workspace while local Windows CLI is disabled",async()=>{
     expect(app.appStore.get().windowsCli).toBe(false);

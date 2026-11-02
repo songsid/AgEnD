@@ -69,6 +69,8 @@ export const RUNTIME_READ_FLEET_KEYS = [
   "web_terminal",
   // #1386: read on every "Needs you" recompute.
   "needs_you",
+  // M-2255: applied when the configuration in force changes (observeRuntimeSwitches), and read by every gate.
+  "runtimes",
 ] as const;
 
 /**

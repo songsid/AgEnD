@@ -83,9 +83,17 @@ describe("native argv and prompt boundaries", () => {
     expect(invocation.args).toEqual(expect.arrayContaining(["--print", "--permission-prompts", "none", "--tools", "Read,Glob,Grep", "--strict-mcp-config", "--resume", sessionId, "--model", "opus[1m]"]));
     expect(invocation.args).not.toContain(prompt);
     expect(invocation.args).not.toContain("--allowedTools");
+    // S-30 (leader decision): workspace = edits accepted inside the working directory only — acceptEdits, no extra
+    // directories, no tool allow-list; the rest still needs an approval that headless never gives.
     const write = buildNativeInvocation({ ...task, cli: "claude-code", sandbox: "workspace-write" });
-    expect(write.args).not.toContain("--permission-mode");
-    expect(write.args).not.toContain("--tools");
+    const mode = write.args.indexOf("--permission-mode");
+    expect(write.args.slice(mode, mode + 2)).toEqual(["--permission-mode", "acceptEdits"]);
+    expect(write.args.filter(arg => arg === "--permission-mode")).toHaveLength(1);
+    expect(write.args).toEqual(expect.arrayContaining(["--permission-prompts", "none"]));
+    for (const flag of ["--tools", "--add-dir", "--allowedTools", "--dangerously-skip-permissions"]) expect(write.args).not.toContain(flag);
+    const read = buildNativeInvocation({ ...task, cli: "claude-code", sandbox: "read-only" });
+    expect(read.args.slice(read.args.indexOf("--permission-mode"), read.args.indexOf("--permission-mode") + 2)).toEqual(["--permission-mode", "plan"]);
+    expect(read.args).not.toContain("acceptEdits");
   });
   it("uses Antigravity's documented stdin user event and exact conversation resume", () => {
     const invocation = buildNativeInvocation({ ...task, cli: "antigravity", sandbox: "workspace-write", model: "Gemini 3.8 Flash (Medium)" }, { resumeSessionId: sessionId });
@@ -117,7 +125,9 @@ describe("native argv and prompt boundaries", () => {
       if (!nativeProvider(cli).supports.execution) continue;
       const invocation = buildNativeInvocation({ ...task, cli, sandbox: "workspace-write" }, { promptFile: "C:\\Temp\\private\\prompt.txt" });
       expect(invocation.args).not.toContain(prompt);
-      expect(invocation.args.join(" ")).not.toMatch(/bypass|dangerously|yolo|always-approve|disable-approval|trust-all|acceptEdits|--auto|--continue|--last/);
+      expect(invocation.args.join(" ")).not.toMatch(/bypass|dangerously|yolo|always-approve|disable-approval|trust-all|--auto|--continue|--last|--add-dir/);
+      // acceptEdits only for Claude Code's workspace mode (cwd edits; S-30), never for another CLI.
+      if (cli !== "claude-code") expect(invocation.args.join(" ")).not.toMatch(/acceptEdits/);
     }
   });
   it("validates custom model IDs and exact session IDs before launch", () => {

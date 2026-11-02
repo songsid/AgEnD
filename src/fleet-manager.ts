@@ -218,6 +218,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge } from "./windows-cli.js";
+import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches } from "./runtime-switches.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeExecutionResult } from "./fleet-windows-runtime.js";
@@ -1180,7 +1181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly reconciledRemoteResults = new Set<string>();
   /** Machine credentials are separate from dashboard sessions and per-turn agent capabilities. */
   runtimeCoordinator(): RuntimeCoordinator {
-    if (process.env.AGEND_REMOTE_RUNTIME !== "1") throw new Error("Remote runtimes are not enabled");
+    if (!remoteRuntimeEnabled()) throw new Error("Remote runtimes are not enabled");
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
       changed:event=>{
@@ -1202,7 +1203,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
   private runtimeWindowsExecutor(): RuntimeWindowsBridge {
-    return this.runtimeExecutor ??= new RuntimeWindowsBridge(this,()=>process.env.AGEND_REMOTE_RUNTIME==="1" && !this.shuttingDown ? this.runtimeCoordinator() : null);
+    return this.runtimeExecutor ??= new RuntimeWindowsBridge(this,()=>remoteRuntimeEnabled() && !this.shuttingDown ? this.runtimeCoordinator() : null);
   }
   /** Per-turn capabilities for native MCP, separate from browser and Linux-agent credentials. */
   nativeMcpSessions(): NativeMcpSessions {
@@ -1216,7 +1217,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
-      machineAvailable:id=>process.env.AGEND_REMOTE_RUNTIME==="1" && this.runtimeCoordinator().machine(id)?.status==="online",
+      machineAvailable:id=>remoteRuntimeEnabled() && this.runtimeCoordinator().machine(id)?.status==="online",
       validateMachine:(id,cli,sandbox)=>{
         const machine=this.runtimeCoordinator().machine(id);
         const provider=machine?.inventory?.clis.find(row=>row.id===cli && row.runnable && row.supports.resume);
@@ -1228,6 +1229,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event === "activity") this.scheduleDeliveryOutboxPump();
       },
     },{bridge:this.runtimeWindowsExecutor()});
+  }
+  /** M-2255: the Windows runtimes' switches the fleet's own state reflects (null until the start-up has applied them). */
+  private runtimeEffects: { windows_cli: boolean; remote_runtime: boolean } | null = null;
+  private runtimeEffectsScheduled = false;
+  /**
+   * M-2255: Settings → Runtime's switches (fleet.yaml `runtimes`, or their environment override) in force — set each time
+   * the configuration in force changes (a load, a save, a reload's rollback), next to the web authority's. Every gate reads
+   * them at once; what the fleet itself holds (paired computers' connections, this PC's Windows process, agents' tool
+   * sessions) follows just after, outside the save that changed them (applyRuntimeSwitches): no restart is needed.
+   */
+  private observeRuntimeSwitches(): void {
+    setConfiguredRuntimeSwitches(this.fleetConfig?.runtimes);
+    if (!this.runtimeEffects || this.runtimeEffectsScheduled) return;
+    this.runtimeEffectsScheduled = true;
+    queueMicrotask(() => { this.runtimeEffectsScheduled = false; this.applyRuntimeSwitches(); });
+  }
+  /**
+   * Turned off: what it allowed ends now — the paired computers' connections (their agents show as offline) or this PC's
+   * Windows process (a turn in progress is cancelled, as when the fleet stops), and those agents' tool sessions.
+   * Turned on: the Windows agents are registered and their chat history read, as at start-up.
+   */
+  private applyRuntimeSwitches(): void {
+    const was = this.runtimeEffects;
+    if (!was || this.shuttingDown) return;
+    const now = { windows_cli: localWindowsCliEnabled(), remote_runtime: remoteRuntimeEnabled() };
+    if (was.windows_cli === now.windows_cli && was.remote_runtime === now.remote_runtime) return;
+    this.runtimeEffects = now;
+    const instances = Object.entries(this.fleetConfig?.instances ?? {});
+    try {
+      if (was.remote_runtime && !now.remote_runtime) {
+        for (const [name, config] of instances) if (isWindowsInstance(config) && config.machine_id) this.nativeMcpStore?.closeInstance(name);
+        this.runtimeHub?.close(); this.runtimeHub = null;
+      }
+      if (was.windows_cli && !now.windows_cli) {
+        for (const [name, config] of instances) if (isWindowsInstance(config) && !config.machine_id) this.nativeMcpStore?.closeInstance(name);
+        closeWindowsBridge(this);
+      }
+      if (!was.windows_cli && !was.remote_runtime) { this.initializeNativeInstances(); this.initializeNativeInstances(true); }
+      this.logger.info({ windows_cli: now.windows_cli, remote_runtime: now.remote_runtime }, "Windows runtime switches applied");
+    } catch (error) { this.logger.warn({ err: error }, "Windows runtime switches could not be applied in full"); }
+    try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next status frame carries it */ }
   }
   /** An unavailable opt-in runtime must not prevent the Linux fleet from starting or restoring its own history. */
   private initializeNativeInstances(history = false): void {
@@ -3722,6 +3764,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.warnAboutRemovedLoginMode(loaded);
     this.enforceGuestSwitch();
     this.observeWebAuthority();                      // #2453 review: a reload's web-authority switches are seen at once
+    this.observeRuntimeSwitches();                   // M-2255: so are the Windows runtimes' switches
     // Child tool/guidance readers must follow this fleet's actual config, including --config.
     // Scope the path to its owning data directory so another inherited home's override cannot enable CW.
     process.env.AGEND_FLEET_DATA_DIR = resolvePath(this.dataDir);
@@ -8328,6 +8371,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.slimFleetConfigAtStartup();
     this.logConfigWarningsAtStartup();
     this.initializeNativeInstances();
+    // M-2255: from here on a change to the Windows runtimes' switches applies live (observeRuntimeSwitches).
+    this.runtimeEffects = { windows_cli: localWindowsCliEnabled(), remote_runtime: remoteRuntimeEnabled() };
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
     // #1737 review: the marker this boot adopts — the startup clear may only ever clear this one.
     const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
@@ -12780,6 +12825,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { path: this.configPath, strippedDefaults: redundantPaths.length },
       "Saved fleet config (lossless patch)",
     );
+    this.observeRuntimeSwitches();                   // M-2255: a saved Windows runtime switch applies now
   }
 
   /** A permission tightening is effective when its save returns, independently of the later apply job or IPC. */
@@ -22004,6 +22050,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.savedFleetConfigSnapshot = previousSavedSnapshot;
       this.loadedFleetSource = previousSource;
       this.observeWebAuthority();                    // #2453 review: the configuration back in force is the one seen
+      this.observeRuntimeSwitches();                 // M-2255: and the Windows runtimes' switches
       this.logger.error({
         oldCount,
         newCount,
@@ -23958,7 +24005,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
-      if(process.env.AGEND_REMOTE_RUNTIME==="1" && !gatewayRequestContext(req)
+      if(remoteRuntimeEnabled() && !gatewayRequestContext(req)
         && this.runtimeCoordinator().handlePublicRequest(req,res,new URL(req.url ?? "/",`http://localhost:${port}`)))return;
 
       // Branding is public, after Host admission: automatic favicon requests
@@ -24319,7 +24366,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const server = createServer((req, res) => this.dispatchWebHttp(req, res, port, drain.closing));
     server.on("upgrade",(req,socket,head)=>{
-      if(!this.shuttingDown && process.env.AGEND_REMOTE_RUNTIME==="1" && isHostAllowed(req.headers.host,allowedHostNames(this.fleetConfig))
+      if(!this.shuttingDown && remoteRuntimeEnabled() && isHostAllowed(req.headers.host,allowedHostNames(this.fleetConfig))
         && this.runtimeCoordinator().handleUpgrade(req,socket,head))return;
       socket.destroy();
     });
@@ -24638,7 +24685,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
       // #1519 P7: how many chat connections are configured — 0 is a web-only fleet, which gets the first-run card.
       connections: (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).length,
-      windows_cli: process.env.AGEND_WINDOWS_CLI === "1",
+      windows_cli: localWindowsCliEnabled(),
       // #1665: the host preferences' revision — a page that has another re-reads /ui/prefs (no values in this frame).
       prefs_rev: this.webPrefs.rev(),
       // #1629: the themes' revision — the page re-reads GET /ui/themes when it moves.

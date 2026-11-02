@@ -69,6 +69,8 @@ export class SettingsHttpConfirmation {
     if ((path === "/api/settings/fleet/web" || path.startsWith("/api/settings/public-tunnel-token/")) && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     // #1629 r4.1 Q3 (b): the card's upload limits too (absent from the public link's manifest as well).
     if (path === "/api/settings/fleet/appearance" && gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
+    // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
+    if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
     void this.prepare(req, res, url, next).catch(err => json(res, err instanceof SettingsConfirmationError ? err.status : 409,
       { error: err instanceof SettingsConfirmationError ? err.code : "settings_confirmation_unavailable" }));
     return true;

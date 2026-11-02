@@ -78,6 +78,13 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   // be shared with people who should not see 400 days of usage; the switch is reached only from a signed-in session on
   // the dashboard reached directly, and it shows counts and amounts, not content: a second confirmation stops nothing more.
   { path: ["fleet", "web", "usage_report_on_public_link"], def: false, looser: () => false },
+  // M-2255: Settings → Runtime. Switching a Windows runtime on lets agents run more — this PC's Windows CLIs, or other
+  // computers that pair with the fleet — so it waits for a General admin; switching one off applies at once.
+  { path: ["fleet", "runtimes", "windows_cli"], def: false, looser: (a, b) => b === true && a !== true },
+  { path: ["fleet", "runtimes", "remote_runtime"], def: false, looser: (a, b) => b === true && a !== true },
+  // #2953 1.8: how many Windows agents run at once on each computer applies at once either way — it is load, not reach
+  // (the switches above decide what may run at all). A value not of its kind is still never applied quietly.
+  { path: ["fleet", "runtimes", "max_agents_per_machine"], def: 4, looser: () => false },
   // #2661: Office levels apply at once either way: a level is a badge (the numbers behind it follow the usage report's rules).
   { path: ["fleet", "web", "office_levels"], def: true, looser: () => false },
   // #2911 (7): CDN libraries in previews apply at once either way (design, approved by the leader): the default (off) is

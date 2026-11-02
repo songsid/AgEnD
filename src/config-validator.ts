@@ -388,6 +388,18 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
   if (config.health_port === 65535 && !(isObj(config.web) && (config.web.preview === false || config.web.preview_port !== undefined))) {
     warn("web.preview_port", "health_port is 65535, so there is no default preview port (health_port + 1) — set web.preview_port, or previews are off");
   }
+  // M-2255: Settings → Runtime's two switches (off by default; the environment can override them).
+  if (config.runtimes !== undefined && !isObj(config.runtimes)) {
+    err("runtimes", "must be a mapping");
+  } else if (isObj(config.runtimes)) {
+    for (const key of Object.keys(config.runtimes)) {
+      const value = (config.runtimes as Record<string, unknown>)[key];
+      if (key === "max_agents_per_machine") {
+        if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 16) err("runtimes.max_agents_per_machine", "must be a whole number from 1 to 16");
+      } else if (key !== "windows_cli" && key !== "remote_runtime") err(`runtimes.${key}`, "unknown key (windows_cli, remote_runtime, max_agents_per_machine)");
+      else if (typeof value !== "boolean") err(`runtimes.${key}`, "must be a boolean");
+    }
+  }
   if (config.needs_you !== undefined && !isObj(config.needs_you)) {
     err("needs_you", "must be a mapping");
   } else if (isObj(config.needs_you)) {

@@ -1,4 +1,5 @@
 /** Model discovery for the native runtime, behind the shared Settings surface. */
+import { remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { WebApiContext } from "./web-api.js";
 import { nativeCliAuthorization } from "./windows-cli-api.js";
@@ -37,7 +38,7 @@ export function handleNativeModelCatalog(req: IncomingMessage, res: ServerRespon
     // Detection is an explicit administrator POST; a model-list `refresh` never launches a CLI.
     let catalog;
     if(machineId){
-      if(process.env.AGEND_REMOTE_RUNTIME!=="1" || !ctx.runtimeCoordinator)throw new Error("Remote runtimes are not enabled");
+      if(!remoteRuntimeEnabled() || !ctx.runtimeCoordinator)throw new Error("Remote runtimes are not enabled");
       const hub=ctx.runtimeCoordinator(), machine=hub.machine(machineId);
       if(!machine || machine.status==="pending" || machine.status==="revoked")throw new Error("Unknown runtime machine");
       catalog=machine.inventory;

@@ -8,7 +8,11 @@ Design references, source-review scope and bundled license notices are recorded 
 
 ## First connection
 
-Enable the coordinator preview with `AGEND_REMOTE_RUNTIME=1` in the environment used to start AgEnD, then restart it. This flag enables remote Windows Agents even when the coordinator is a Linux machine without Windows interoperability. `AGEND_WINDOWS_CLI=1` remains the separate switch for this coordinator's own local Windows CLI discovery.
+Turn on **Allow other Windows PCs to pair** in **Settings → Runtime** (fleet.yaml `runtimes.remote_runtime: true`; off by default). Turning it on asks a fleet admin to confirm, like other access settings; it applies without a restart. This machine stays your fleet; the other PC runs only the small runner below, never a fleet. Remote Windows agents work even when this machine is a Linux machine without Windows interoperability. **Use this PC's Windows CLIs** (`runtimes.windows_cli`) is the separate switch for this machine's own Windows CLIs.
+
+Turning the switch off disconnects paired PCs at once and keeps their approvals; their agents stay stopped until it is on again. **Agents at once on each Windows PC** (`runtimes.max_agents_per_machine`, 1–16, default 4) limits each PC once Windows agents keep running between messages.
+
+The environment variable `AGEND_REMOTE_RUNTIME` still overrides the setting: `1` forces it on and `0` forces it off (Settings then shows "Set by the environment" and cannot change it). Any other value, or none, leaves it to Settings.
 
 1. On the coordinator, open **Settings → Runtimes** and create a pairing code.
 2. Click **Download Windows Runtime (ZIP)** on that page. Transfer the ZIP to the Windows computer and extract its `agend-runtime` folder. The package comes from the currently installed AgEnD program, so no repository checkout or build is required. It contains only the runtime modules and reviewed pure-JavaScript `ws` dependency; it does not install the full coordinator, SQLite, Linux native dependencies or a Node binary. Install a supported Windows Node release separately.
