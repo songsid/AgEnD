@@ -37,14 +37,16 @@ describe("#2940 the id registry and the line index", () => {
   it("removes exactly the line recorded for an id (the last such line, whole lines only), keeps the file's modified time, once", () => {
     const dir = temp("agend-2940-lines-"), file = join(dir, "2026-11-02.log");
     const a = "[2026-11-02T20:51:30] <BotB> 👀 處理中…\n", human = "[2026-11-02T20:51:31] <ann> 處理中 means processing\n";
-    writeFileSync(file, a + human + "x" + a + a);     // a copy glued to "x" is not a whole line
+    writeFileSync(file, a + human + a + "x" + a);     // the last copy is glued to "x": not a whole line
     utimesSync(file, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
     const lines = new ChatLogLines();
     lines.record("s1", file, a);
     expect(lines.remove("s1")).toBe(1);
-    expect(readFileSync(file, "utf8")).toBe(a + human + "x" + a);
+    expect(readFileSync(file, "utf8")).toBe(a + human + "x" + a);      // the last whole one went
     expect(statSync(file).mtimeMs).toBe(1_700_000_000_000);
-    expect([lines.remove("s1"), lines.remove("never")]).toEqual([0, 0]);
+    // Once: the same words written again later (another message) are not taken out by a second removal of s1.
+    writeFileSync(file, readFileSync(file, "utf8") + a);
+    expect([lines.remove("s1"), lines.remove("never"), readFileSync(file, "utf8").endsWith("x" + a + a)]).toEqual([0, 0, true]);
     lines.record("gone", join(dir, "rotated-away.log"), a);
     expect(lines.remove("gone")).toBe(0);                 // the file is gone: nothing, no throw
   });

@@ -82,8 +82,10 @@ export class ChatLogLines {
       try {
         const before = statSync(file);
         const text = readFileSync(file, "utf8");
-        const at = text.lastIndexOf(line);
-        if (at < 0 || (at > 0 && text[at - 1] !== "\n")) continue;
+        // The last whole-line occurrence (one glued to text before it is not this line).
+        let at = text.lastIndexOf(line);
+        while (at > 0 && text[at - 1] !== "\n") at = text.lastIndexOf(line, at - 1);
+        if (at < 0) continue;
         writeFileSync(file, text.slice(0, at) + text.slice(at + line.length));
         utimesSync(file, before.atime, before.mtime);
         removed++;
