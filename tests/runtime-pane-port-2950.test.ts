@@ -106,3 +106,6 @@ it('the automatic status request has a durable one-shot intent across coordinato
 it('explicit close needs owned metadata but never a healthy terminal capture',async()=>{
  const f=await fixture();vi.spyOn(RuntimePaneScreen.prototype,'capture').mockRejectedValue(Error('parser unavailable'));expect(await f.port.killWindowConfirmed()).toBe(true);expect(f.native.kill).toHaveBeenCalledOnce();expect(f.write).not.toHaveBeenCalled();
 });
+it.each(['starting','unknown'] as const)('%s metadata cannot be reported as a positive pane exit',async state=>{
+ const f=await fixture(),call=f.endpoint.call;f.endpoint.call=async request=>request.action==='snapshot'?{...f.port.ownedSnapshot(),state}:call(request);expect(await f.port.getPaneStatus()).toBeNull();expect(f.native.kill).not.toHaveBeenCalled();expect(f.write).not.toHaveBeenCalled();
+});

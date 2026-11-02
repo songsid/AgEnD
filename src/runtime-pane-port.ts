@@ -24,6 +24,7 @@ export class RuntimePanePort implements Pane {
   private error: string | null = null;
   private closing: Promise<boolean> | undefined;
   private outputLog: NativePaneOutputLog | undefined;
+  private lastObservation: RuntimePaneSnapshot | undefined;
   constructor(private endpoint: PaneEndpoint, private file: string, launch: RuntimePaneLaunch) {
     this.record = { version: 1, machineId: endpoint.machineId, launch, openId: randomUUID() };
     try {
@@ -180,8 +181,12 @@ export class RuntimePanePort implements Pane {
   async isWindowAlive(): Promise<boolean> { const status = await this.getPaneStatus(); if (!status) throw Error("Native pane observation is unconfirmed"); return status.alive; }
   async setRemainOnExit(): Promise<void> { /* Exit receipts are always retained by the runtime. */ }
   async getPaneStatus(): Promise<PaneStatus | null> {
-    try { await this.capture({}); return this.record.snapshot?.state === "unknown" ? null : { alive: this.record.snapshot?.state === "running", ...(this.record.snapshot?.exitCode !== undefined ? { exitCode: this.record.snapshot.exitCode } : {}) }; }
-    catch { return null; }
+    try {
+      const before = this.record.snapshot; if (!before || !this.endpoint.online()) return null;
+      const snapshot = this.accept(await this.endpoint.call({ action: "snapshot", paneId: before.paneId, launchId: before.launchId }));
+      if (!this.endpoint.online()) return null; this.lastObservation = snapshot;
+      return snapshot.state === "running" || snapshot.state === "exited" ? { alive: snapshot.state === "running", ...(snapshot.exitCode !== undefined ? { exitCode: snapshot.exitCode } : {}) } : null;
+    } catch { return null; }
   }
   async getWindowGeometry(): Promise<PaneSize & { mode: string }> {
     await this.capture({}); const snapshot = this.record.snapshot!; return { columns: snapshot.columns, rows: snapshot.rows, mode: "native-pane" };
@@ -238,6 +243,7 @@ export class RuntimePanePort implements Pane {
   capturePaneWithHistory(lines = 50): Promise<string> { return this.capture({ history: lines }); }
   capturePaneJoined(lines = 0): Promise<string> { return this.capture({ history: lines, joined: true }); }
   getWindowId(): string { return this.record.snapshot?.paneId ?? ""; }
+  observedSnapshot(): RuntimePaneSnapshot | null { return this.lastObservation ? structuredClone(this.lastObservation) : this.ownedSnapshot(); }
   ownedSnapshot(): RuntimePaneSnapshot | null { return this.record.snapshot ? structuredClone(this.record.snapshot) : null; }
 }
 

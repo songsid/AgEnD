@@ -22,6 +22,7 @@ export interface NativePaneLifecycle {
   current(reference?: RuntimeTranscriptReference): boolean;
   mcpProof(): "alive" | "dead" | "unknown";
   checkpointSession(): void;
+  snapshot?(): RuntimePaneSnapshot | null;
 }
 export interface NativePaneLifecycleOptions {
   endpoint: PaneEndpoint;
@@ -63,6 +64,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     if (reference) return this.port.isTranscriptObservationCurrent(reference);
     return this.port.ownedSnapshot()?.state === "running";
   }
+  snapshot(): RuntimePaneSnapshot | null { return this.port.observedSnapshot(); }
   mcpProof(): "alive" | "dead" | "unknown" { return this.current() ? this.options.mcpProof() : "unknown"; }
   checkpointSession(): void {
     const pane = this.port.ownedSnapshot();

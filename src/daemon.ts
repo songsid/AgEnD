@@ -3414,10 +3414,11 @@ export class Daemon extends EventEmitter {
             const native = this.nativePaneLifecycle, pane = this.tmux;
             const status = await pane?.getPaneStatus();
             if (this.runtimeMonitorsFrozen || native !== this.nativePaneLifecycle || pane !== this.tmux) return;
-            if (status?.alive === false) {
+            const snapshot = native.snapshot?.();
+            if (status?.alive === false && snapshot?.state === "exited") {
               this.healthCheckPaused = true;
               this.setProcessStatus("crashed");
-              this.emit("native_pane_exited", { name: this.name, exitCode: status.exitCode });
+              this.emit("native_pane_exited", { name: this.name, snapshot, owner: this.interactionOwner() });
             } else if (status?.alive) this.checkMcpServerAlive();
             scheduleNext(); return;
           }

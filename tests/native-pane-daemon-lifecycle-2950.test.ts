@@ -7,7 +7,7 @@ function fixture(){
  const forbidden=vi.fn(()=>{throw Error('No local host/process operation is permitted');}),pane={getWindowId:()=>paneId,getPaneStatus:vi.fn(async()=>({alive:true})),capturePane:vi.fn(async()=>''),capturePaneWithHistory:vi.fn(async()=>''),pipeOutput:vi.fn(async()=>{}),killWindow:forbidden,sendSpecialKey:forbidden};
  const observation=Object.assign(new EventEmitter(),{start:vi.fn(),stop:vi.fn(),registerWindow:vi.fn(async()=>{}),unregisterWindow:vi.fn(),getObservationResetAt:()=>Date.now(),isObservationBlind:()=>false,isIdle:()=>true,getLastOutputAt:()=>undefined,hasOutputSince:()=>false});
  const backend=createNativePaneBackend('codex',()=>({sessionId,contextPercentage:null,statusLineItems:['context-remaining'],resumes:true})),source={initialize:vi.fn(async()=>{}),poll:vi.fn(async()=>({toolUses:[],toolResults:[],assistantTexts:[]})),close:vi.fn(),reset:vi.fn(),currentPath:()=>null,following:()=>true,turnStateKnown:()=>true};
- const native={backend,host:{executionHost:'remote',bind:forbidden,ensureSession:forbidden,getPanePid:forbidden},observation,acquire:vi.fn(async(assert:()=>void)=>{assert();return{pane,source,disposition:'reattached'};}),release:vi.fn(async()=>{}),checkpointSession:vi.fn(),mcpProof:vi.fn(()=> 'unknown'),current:()=>true};
+ const native={snapshot:vi.fn(()=>null as any),backend,host:{executionHost:'remote',bind:forbidden,ensureSession:forbidden,getPanePid:forbidden},observation,acquire:vi.fn(async(assert:()=>void)=>{assert();return{pane,source,disposition:'reattached'};}),release:vi.fn(async()=>{}),checkpointSession:vi.fn(),mcpProof:vi.fn(()=> 'unknown'),current:()=>true};
  const daemon:any=new Daemon('native-agent',{...structuredClone(DEFAULT_INSTANCE_CONFIG),working_directory:'C:\\not-a-coordinator-path',runtime:'windows',backend:'codex',agent_mode:'mcp',log_level:'silent'},dir,true,backend,undefined,pino({level:'silent'})as never);daemon.setNativePaneLifecycle(native as never);clean.push(async()=>{await daemon.abortStartup();await daemon.ipcServer?.close();});
  return{dir,daemon,native,forbidden,pane,source};
 }
@@ -27,8 +27,8 @@ it('native MCP readiness ignores a live coordinator-local pid slot and reports o
  const f=fixture();writeFileSync(join(f.dir,'channel.mcp.pid'),String(process.pid));expect(f.daemon.mcpServerAlive()).toEqual({alive:false,source:'none'});f.native.mcpProof.mockReturnValue('alive');expect(f.daemon.mcpServerAlive()).toEqual({alive:true,source:'connection'});expect(f.forbidden).not.toHaveBeenCalled();
 });
 it('native health reports a positive exit once, never probes local PIDs or runs a fresh fallback',async()=>{
- const f=fixture();f.daemon.config.restart_policy.health_check_interval_ms=1000;vi.useFakeTimers();await f.daemon.start();const ended=vi.fn();f.daemon.on('native_pane_exited',ended);f.pane.getPaneStatus.mockResolvedValue({alive:false});
- await vi.advanceTimersByTimeAsync(2100);expect(ended).toHaveBeenCalledExactlyOnceWith({name:'native-agent',exitCode:undefined});expect(f.forbidden).not.toHaveBeenCalled();expect(f.native.acquire).toHaveBeenCalledOnce();await f.daemon.stop();
+ const f=fixture();f.daemon.config.restart_policy.health_check_interval_ms=1000;vi.useFakeTimers();await f.daemon.start();const ended=vi.fn();f.daemon.on('native_pane_exited',ended);f.pane.getPaneStatus.mockResolvedValue({alive:false});const snapshot={hostBootId:randomUUID(),paneId:f.pane.getWindowId(),launchId:randomUUID(),agentId:randomUUID(),instance:'native-agent',state:'exited',columns:120,rows:40,seq:1,outputAt:0,commandSequence:0,sessionId:randomUUID()};f.native.snapshot.mockReturnValue(snapshot);
+ await vi.advanceTimersByTimeAsync(2100);expect(ended).toHaveBeenCalledExactlyOnceWith({name:'native-agent',snapshot,owner:expect.any(Object)});expect(f.forbidden).not.toHaveBeenCalled();expect(f.native.acquire).toHaveBeenCalledOnce();await f.daemon.stop();
 });
 it('native pause rechecks idle, paste queue and pane owner after its capture, and never signals anything',async()=>{
  const f=fixture();await f.daemon.start();f.daemon.instanceState='working';expect(await f.daemon.nativePauseReady()).toBe(false);f.daemon.instanceState='idle';vi.spyOn(f.daemon,'paneAuthoritativelyIdle').mockReturnValue(true);expect(await f.daemon.nativePauseReady()).toBe(true);
@@ -41,4 +41,8 @@ it('native person turns arm the reply guard without scanning any coordinator pro
 });
 it('even a stale concrete window id cannot make native cleanup resolve or signal a coordinator PID',async()=>{
  const f=fixture();f.daemon.tmux=f.pane;await expect(f.daemon.killProcessTree('SIGTERM','test')).rejects.toThrow('owned runtime pane');expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it('starting or unknown observations never become positive native exit evidence',async()=>{
+ const f=fixture();f.daemon.config.restart_policy.health_check_interval_ms=1000;vi.useFakeTimers();await f.daemon.start();const ended=vi.fn();f.daemon.on('native_pane_exited',ended);f.pane.getPaneStatus.mockResolvedValue({alive:false});f.native.snapshot.mockReturnValue({state:'starting'});await vi.advanceTimersByTimeAsync(1100);f.native.snapshot.mockReturnValue({state:'unknown'});await vi.advanceTimersByTimeAsync(1100);expect(ended).not.toHaveBeenCalled();expect(f.native.acquire).toHaveBeenCalledOnce();await f.daemon.stop();
 });
