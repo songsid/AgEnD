@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { maxAgentsPerMachine } from "./runtime-switches.js";
 import { getAgendHome } from "./paths.js";
 import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
 import { validNativeSessionId } from "./windows-cli-providers.js";
@@ -86,11 +87,18 @@ export class WindowsAgents {
     return this.data.agents.map(a => { const { turns: _turns, instructions: _instructions, ...row } = this.get(a.id); return row; });
   }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  /** Synchronous profile reservation is shared by exec and pane starts. Unknown owners still occupy a slot. */
+  private admitMachineSlot(agent: WindowsAgent): void {
+    const machine = agent.machineId?.toLowerCase();
+    const occupied = this.data.agents.filter(other => other.id !== agent.id && other.machineId?.toLowerCase() === machine && !!other.activeId).length;
+    if (occupied >= maxAgentsPerMachine()) throw Error("This Windows computer has reached its concurrent agent limit");
+  }
   /** Metadata reservation before a pane can spawn. Exec and persistent adapters can never own one profile together. */
   reservePane(id: string, launchId: string): WindowsAgent {
     const agent = this.find(id);
     if (!validWindowsAgentId(launchId) || agent.paused || agent.activeId && agent.activeId !== launchId
       || agent.paneLaunchId && agent.paneLaunchId !== launchId || agent.activeId === launchId && agent.paneLaunchId !== launchId) throw Error("Windows profile has another active or unconfirmed owner");
+    if (!agent.activeId) this.admitMachineSlot(agent);
     if (agent.paneLaunchId !== launchId || agent.activeId !== launchId) this.change(() => { agent.activeId = launchId; agent.paneLaunchId = launchId; });
     return structuredClone(agent);
   }
@@ -213,6 +221,7 @@ export class WindowsAgents {
     if (agent.activeId) throw new Error(this.get(id).blocked ? "Check Windows processes and unlock this agent before continuing" : "This Windows agent is still working");
     if (agent.paused) throw new Error("This Windows agent is paused; resume it before sending work");
     if (Object.keys(this.data.requests).length >= 4096) throw new Error("Windows agent preview message limit reached");
+    this.admitMachineSlot(agent);
     this.launching.add(requestId);
     try { this.change(() => {
       agent.activeId = requestId;
