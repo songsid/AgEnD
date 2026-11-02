@@ -97,28 +97,47 @@ function privateSocket(argv, env = process.env) {
   try { return canonical === path.join(fs.realpathSync(os.tmpdir()), relative); }
   catch { return false; }
 }
-/** Programs that run their operand as the program. */
-const RUNS_OPERAND = new Set(['env', 'nice', 'nohup', 'timeout', 'setsid', 'stdbuf', 'ionice', 'command', 'exec', 'chrt', 'taskset']);
+/**
+ * Programs that run their operand as the program (#2939 review), each with the options it takes: `flags` take no value,
+ * `valued` take the next word (or an attached / `=` value), `lookup` means it runs nothing (`command -v`), `positional`
+ * words come before the program (timeout's duration, chrt's priority, taskset's mask). Any other option is refused:
+ * the guard cannot tell which word would run, so the call does not happen.
+ */
+const WRAPPERS = {
+  env: { flags: ['-i', '--ignore-environment', '-0', '--null', '-v', '--debug', '-'], valued: ['-u', '--unset', '-C', '--chdir', '-P'], split: ['-S', '--split-string'], assigns: true },
+  timeout: { flags: ['--preserve-status', '--foreground', '-v', '--verbose'], valued: ['-s', '--signal', '-k', '--kill-after'], positional: 1 },
+  nice: { flags: [], valued: ['-n', '--adjustment'], numeric: true },
+  nohup: { flags: [], valued: [] },
+  setsid: { flags: ['-c', '--ctty', '-f', '--fork', '-w', '--wait'], valued: [] },
+  stdbuf: { flags: [], valued: ['-i', '-o', '-e', '--input', '--output', '--error'] },
+  ionice: { flags: ['-t', '--ignore'], valued: ['-c', '--class', '-n', '--classdata', '-p', '--pid', '-P', '--pgid', '-u', '--uid'] },
+  command: { flags: ['-p'], valued: [], lookup: ['-v', '-V'] },
+  exec: { flags: ['-c', '-l'], valued: ['-a'] },
+  chrt: { flags: ['-a', '--all-tasks', '-b', '--batch', '-d', '--deadline', '-f', '--fifo', '-i', '--idle', '-o', '--other', '-r', '--rr', '-R', '--reset-on-fork', '-v', '--verbose'], valued: ['-T', '--sched-runtime', '-P', '--sched-period', '-D', '--sched-deadline'], positional: 1 },
+  taskset: { flags: ['-a', '--all-tasks', '-c', '--cpu-list'], valued: [], positional: 1 },
+};
+const RUNS_OPERAND = new Set(Object.keys(WRAPPERS));
 /** The program a wrapper runs, and its arguments; `{ split }` for `env -S '<command line>'`; null when it runs none. */
 function operandOf(base, argv) {
-  let i = 0;
+  const spec = WRAPPERS[base];
   const words = argv.map(a => String(a));
-  if (base === 'env') {
-    for (; i < words.length; i++) {
-      const a = words[i];
-      if (a === '--') { i++; break; }
-      if (a === '-S' || a === '--split-string') return { split: words[i + 1] || '' };
-      if (a.startsWith('--split-string=')) return { split: a.slice('--split-string='.length) };
-      if (/^-[uCP]$/.test(a)) { i++; continue; }        // -u NAME, -C DIR, -P PATH take a value
-      if (a.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) continue;
-      break;
-    }
-  } else {
-    // An option taking a value: timeout -s/-k, nice -n, ionice -c/-n, chrt -p, taskset -p, stdbuf -i/-o/-e.
-    const valued = { timeout: /^-[sk]$/, nice: /^-n$/, ionice: /^-[cnp]$/, stdbuf: /^-[ioe]$/, chrt: /^-p$/, taskset: /^-[pc]$/ }[base];
-    for (; i < words.length && words[i].startsWith('-') && words[i] !== '-'; i++) { if (words[i] === '--') { i++; break; } if (valued && valued.test(words[i])) i++; }
-    if (base === 'timeout' || base === 'chrt' || base === 'taskset') i++;   // the duration / priority / mask
+  let i = 0;
+  for (; i < words.length; i++) {
+    const a = words[i];
+    if (a === '--') { i++; break; }
+    if (spec.assigns && /^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) continue;
+    if (!a.startsWith('-') || a === '-' && !spec.flags.includes('-')) break;
+    const [name, inline] = a.startsWith('--') && a.includes('=') ? [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)] : [a, undefined];
+    if (spec.lookup && spec.lookup.includes(name)) return null;
+    if (spec.split && spec.split.includes(name)) return { split: inline !== undefined ? inline : (words[i + 1] || '') };
+    if (spec.flags.includes(name)) continue;
+    if (spec.valued.includes(name)) { if (inline === undefined) i++; continue; }
+    // A short valued option with its value attached (-uBAR, -k1, -oL), or nice's -5 / -n5.
+    if (!a.startsWith('--') && spec.valued.some(v => v.length === 2 && a.startsWith(v) && a.length > 2)) continue;
+    if (spec.numeric && /^-n?\d+$/.test(a)) continue;
+    throw new Error(`a test's \`${base} ${a}\` is not an option the process guard understands: refused (it cannot tell which word runs)`);
   }
+  i += spec.positional || 0;
   return i < words.length ? { file: words[i], argv: words.slice(i + 1) } : null;
 }
 /** A program that would run on Windows from WSL: a drvfs path (/mnt/<drive>/…), a drive path, a Windows executable, or wslpath. */
@@ -137,11 +156,11 @@ function checkShell(command, env, cwd) {
     if (/^[;|&\n]$/.test(word)) { start = true; continue; }
     if (!start) continue;
     if (/^[\w]+=.*/.test(word)) continue;
-    if (word === 'exec' && words[i + 1] === '-a') { i += 2; continue; }
-    if (word === 'timeout') { while (words[i + 1]?.startsWith('-')) i++; i++; continue; }
-    if (['exec', 'env', 'command', 'nohup', 'sudo'].includes(word) || word.startsWith('-')) continue;
-    // command -v and which inspect PATH; they do not execute a backend.
-    if (word === 'which' || (words[i - 1] === '-v' || words[i - 1] === '-V')) { start = false; continue; }
+    // #2939 review: a wrapper (env, timeout, exec, command, nohup, …) is checked by checkInvocation, which finds the
+    // program it runs with the same option table as a direct call; `command -v` runs nothing.
+    if (word === 'sudo' || word.startsWith('-')) continue;
+    // which inspects PATH; it does not execute a backend.
+    if (word === 'which') { start = false; continue; }
     const rest = words.slice(i + 1);
     const end = rest.findIndex(w => /^[;|&\n]$/.test(w));
     checkInvocation(word, end < 0 ? rest : rest.slice(0, end), env, cwd, { inShell: true });

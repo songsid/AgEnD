@@ -51,12 +51,29 @@ describe("M-2239 P2-5: the test process guard refuses Windows interop", () => {
     ["timeout", (f: string) => ["-k", "1", "5", f]],
     ["nice", (f: string) => ["-n", "5", f]],
     ["/bin/sh", (f: string) => ["-c", 'exec "$@"', "sh", f, "-NoProfile"]],
-  ] as const)("%s refuses a Windows program it would run, which never starts", (wrapper, args) => {
+    // #2939 review round 2: long options with a separate value, and a wrapper inside a literal shell command.
+    ["/usr/bin/env", (f: string) => ["--unset", "BAR", f]],
+    ["/usr/bin/env", (f: string) => ["--unset=BAR", "-uBAZ", f]],
+    ["timeout", (f: string) => ["--kill-after", "1", "5", f]],
+    ["/bin/sh", (f: string) => ["-c", `env -u BAR "${f}"`]],
+    ["/bin/sh", (f: string) => ["-c", `timeout --kill-after 1 5 ${f}`]],
+    ["/bin/sh", (f: string) => ["-c", `exec -a name ${f}`]],
+  ] as const)("%s %# refuses a Windows program it would run, which never starts", (wrapper, args) => {
     const { file, marker } = standIn("powershell.exe");
     expect(() => { const r = spawnSync(wrapper, args(file)); if (r.error) throw r.error; }).toThrow(/Windows program from a test is forbidden/);
     expect(existsSync(marker)).toBe(false);
     expect(processGuard.takeViolations().join("\n")).toMatch(/Windows program from a test is forbidden: powershell\.exe/);
   });
+  it.each([
+    [["--not-an-env-option", "x"]],
+    [["--block-signal=INT"]],        // a real env option the table does not model: refused, not guessed
+  ])("an option the guard does not understand (%j) is refused before anything runs", options => {
+    const { file, marker } = standIn("powershell.exe");
+    expect(() => { const r = spawnSync("/usr/bin/env", [...options, file]); if (r.error) throw r.error; }).toThrow(/not an option the process guard understands/);
+    expect(existsSync(marker)).toBe(false);
+    expect(processGuard.takeViolations().join("\n")).toMatch(/not an option the process guard understands/);
+  });
+
   it("a registered private fixture still runs through a wrapper; a Linux program too", () => {
     const { file, marker } = standIn("powershell.exe");
     registerExecutableFixture(file);
@@ -65,6 +82,9 @@ describe("M-2239 P2-5: the test process guard refuses Windows interop", () => {
     const shell = standIn("tool");
     expect(spawnSync("/bin/sh", ["-c", 'exec "$@"', "sh", shell.file]).status).toBe(0);
     expect(existsSync(shell.marker)).toBe(true);
+    const viaEnv = standIn("tool");
+    expect(spawnSync("/bin/sh", ["-c", `env -u BAR --unset=BAZ ${viaEnv.file}`]).status).toBe(0);
+    expect(existsSync(viaEnv.marker)).toBe(true);
     expect(processGuard.takeViolations()).toEqual([]);
   });
 });
