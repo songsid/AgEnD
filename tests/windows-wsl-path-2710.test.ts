@@ -3,6 +3,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { registerExecutableFixture } from './support/process-guard.js';
 
 const installer = resolve('website/public/install-agend.ps1');
 const source = readFileSync(installer, 'utf8');
@@ -29,6 +30,8 @@ fs.writeFileSync(process.env.WSL_ARGV,JSON.stringify(a));
 if(a[0]!=='-u'||a[1]!==process.env.WSL_EXPECTED){process.stderr.write('wslpath: '+a[1]+'\\n');process.exit(1);}
 process.stdout.write(process.env.WSL_CONVERTED||'/mnt/c/ProgramData/AgEnD-install/step.sh');
 `); chmodSync(join(dir, 'wslpath'), 0o755);
+  // M-2239 P2-5: both are private stand-ins, never Windows' own — registered, so the guard's Windows rule lets them run.
+  registerExecutableFixture(join(dir, 'wsl.exe')); registerExecutableFixture(join(dir, 'wslpath'));
   const run = (body: string, env: Record<string, string> = {}) => {
     writeFileSync(ps, `$ErrorActionPreference='Stop'
 $t=$null;$e=$null;$ast=[System.Management.Automation.Language.Parser]::ParseFile('${installer}',[ref]$t,[ref]$e)
