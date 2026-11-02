@@ -93,8 +93,14 @@ describe("#2940 the id registry and the line index", () => {
     for (let i = 0; i < CHAT_LOG_OCCURRENCES_PER_ID + 5; i++) lines.record("k", "/f", 1, i * 10, "x\n");
     lines.record("k", "/f", 1, (CHAT_LOG_OCCURRENCES_PER_ID + 4) * 10, "x\n");
     expect((lines as any).byKey.get("k").length).toBe(CHAT_LOG_OCCURRENCES_PER_ID);
-    for (let i = 0; i < CHAT_LOG_OCCURRENCES_MAX + 10; i++) lines.record(`id${i}`, "/f", 1, i, "y\n");
-    expect((lines as any).total).toBeLessThanOrEqual(CHAT_LOG_OCCURRENCES_MAX);
+    // Few keys, many occurrences each: the total bound holds even under the key count's.
+    const many = new ChatLogLines();
+    const keys = Math.ceil((CHAT_LOG_OCCURRENCES_MAX + 100) / CHAT_LOG_OCCURRENCES_PER_ID);
+    for (let k = 0; k < keys; k++) for (let i = 0; i < CHAT_LOG_OCCURRENCES_PER_ID; i++) many.record(`id${k}`, "/f", 1, k * 1000 + i, "y\n");
+    expect([(many as any).total <= CHAT_LOG_OCCURRENCES_MAX, (many as any).byKey.size < keys]).toEqual([true, true]);
+    const once = new ChatLogLines();
+    once.record("d", "/f", 1, 7, "z\n"); once.record("d", "/f", 1, 7, "z\n");
+    expect([(once as any).byKey.get("d").length, (once as any).total]).toEqual([1, 1]);
   });
   it("discordMessageKey: Discord only, scoped by channel", () => {
     expect([discordMessageKey("c1", "42"), discordMessageKey("c2", "42") === discordMessageKey("c1", "42"), discordMessageKey(undefined, "42"), discordMessageKey("c1", undefined)])
@@ -188,6 +194,9 @@ describe("#2943 review: Telegram ids are not Discord's", () => {
       const person = () => f.x.handleClassicChannelMessage("alpha", { source: "telegram", adapterId: "tg", chatId: "-100B", messageId: "42", userId: "u", username: "ann", text: "a real question", isBotMessage: false, timestamp: new Date() });
       if (order === "person first") { await person(); await f.post("42"); } else { await f.post("42"); await person(); }
       expect(f.log("alpha")).toContain("<ann> a real question");
+      // Nothing is tracked for Telegram: no status id registered, no line indexed.
+      const own = (f.fm as any).ownStatusMessages, idx = (ClassicChannelManager.loggedLines as any).byKey as Map<string, unknown>;
+      expect([own.excluded(discordMessageKey("room-1", "42")), own.excluded(discordMessageKey("guild", "42")), [...idx.keys()].some(k => k.endsWith(":42"))]).toEqual([false, false, false]);
     });
   }
 });
