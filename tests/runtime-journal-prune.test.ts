@@ -131,14 +131,14 @@ describe("M-2239 P2-1: the coordinator compacts settled commands into replay tom
 
 describe("M-2239 P2-1: the client keeps its replay tombstones past 4096 and evicts only old ones", () => {
   const task = (n: number): WindowsCliTask => ({ id: `job-${String(n).padStart(12, "0")}`, cli: "codex", cwd: "C:\\t", sandbox: "read-only", status: "completed", startedAt: n, finishedAt: n + 1, output: "", outcomeConfirmed: true });
-  it("#2945 review: below the id cap, byte pressure frees settled snapshots and old ids — and refuses only when nothing may go", () => {
+  it("#2945 review: below the id cap, byte pressure frees settled snapshots and old ids — and refuses only when nothing may go", { timeout: 30_000 }, () => {
     const MAX = 12 * 1024 * 1024, BUDGET = MAX - 512 * 1024;
     const dir = home(), now = 200 * DAY, used: Record<string, string> = {}, usedAt: Record<string, number> = {}, jobs: Record<string, unknown> = {};
     for (let n = 1; n <= 100; n++) { const t = task(n); used[t.id] = hex(n); usedAt[t.id] = now - 100 * DAY; jobs[t.id] = { digest: hex(n), seq: 2, uncertain: false, task: { ...t, output: "x".repeat(65_536) } }; }
     // Old replay ids (no snapshot) until the ledger sits between the budget and the hard cap, far below the id cap.
-    let n = 1_000; while (JSON.stringify({ version: 1, jobs, used, usedAt }).length < BUDGET + 128 * 1024) {
-      for (let k = 0; k < 500; k++, n++) { used[task(n).id] = hex(n); usedAt[task(n).id] = now - 100 * DAY; }
-    }
+    // Sized once, then grown by each member's exact bytes (key:value, — ASCII), not by re-serializing (#2945 CI shard time).
+    let n = 1_000, size = JSON.stringify({ version: 1, jobs, used, usedAt }).length;
+    while (size < BUDGET + 128 * 1024) { const k = task(n).id; used[k] = hex(n); usedAt[k] = now - 100 * DAY; size += 2 * (JSON.stringify(k).length + 2) + 66 + String(now - 100 * DAY).length; n++; }
     const ids = Object.keys(used).length;
     expect(ids).toBeLessThan(65_536);
     writeFileSync(join(dir, "jobs.json"), JSON.stringify({ version: 1, jobs, used, usedAt }));
@@ -158,9 +158,8 @@ describe("M-2239 P2-1: the client keeps its replay tombstones past 4096 and evic
     // the client refuses and keeps its ledger as it was. (An unsettled job already blocks a new one; see blocked().)
     const dir2 = home(), used2: Record<string, string> = {}, at2: Record<string, number> = {}, jobs2: Record<string, unknown> = {};
     const long = (k: number) => `id-${String(k).padStart(77, "0")}`;
-    let m = 1; while (JSON.stringify({ version: 1, jobs: jobs2, used: used2, usedAt: at2 }).length < BUDGET + 128 * 1024) {
-      for (let k = 0; k < 500; k++, m++) { used2[long(m)] = hex(m); at2[long(m)] = now - DAY; }
-    }
+    let m = 1, size2 = JSON.stringify({ version: 1, jobs: jobs2, used: used2, usedAt: at2 }).length;
+    while (size2 < BUDGET + 128 * 1024) { const k = long(m); used2[k] = hex(m); at2[k] = now - DAY; size2 += 2 * (JSON.stringify(k).length + 2) + 66 + String(now - DAY).length; m++; }
     expect(Object.keys(used2).length).toBeLessThan(65_536);
     const before = JSON.stringify({ version: 1, jobs: jobs2, used: used2, usedAt: at2 });
     writeFileSync(join(dir2, "jobs.json"), before);
@@ -180,7 +179,7 @@ describe("M-2239 P2-1: the client keeps its replay tombstones past 4096 and evic
     expect(Object.keys(pruned.used).length).toBeGreaterThan(Object.keys(used2).length - 2_000);
   });
 
-  it("#2945 R2: legacy ids with no usedAt free only their own bytes — eviction goes on to the real size, never refuses with eligible room", () => {
+  it("#2945 R2: legacy ids with no usedAt free only their own bytes — eviction goes on to the real size, never refuses with eligible room", { timeout: 30_000 }, () => {
     const BUDGET = 12 * 1024 * 1024 - 512 * 1024, now = 200 * DAY;
     const id = (k: number) => `L${String(k).padStart(79, "0")}`, used: Record<string, string> = {}, usedAt: Record<string, number> = {};
     for (let k = 1; k <= 50_000; k++) { used[id(k)] = hex(k); if (k > 1_000) usedAt[id(k)] = now - DAY; }   // 1,000 legacy (no time), 49,000 young
