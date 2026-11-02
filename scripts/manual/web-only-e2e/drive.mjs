@@ -118,3 +118,5 @@ check("6. Codex's own approval dialog from the web: its options, no Skip; Yes ra
 
 console.log(`label: ${process.env.LABEL}\n\n| check | result | detail |\n|---|---|---|\n` + checks.join("\n"));
 console.log(`\nRESULT ${pass ? "PASS" : "FAIL"}`);
+// The verdict is the exit status too (run.sh drive returns it; #2929 review): a failed check fails the run.
+process.exitCode = pass ? 0 : 1;

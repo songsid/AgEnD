@@ -11,12 +11,13 @@
 # Env: OUT (results dir, default ~/.cache/agend-web-only-e2e), IMAGE (node 22 + tmux; a user `rh` is made if missing),
 #      CLAUDE_BIN (a Claude Code executable), CODEX_BIN (the codex binary, e.g. node_modules/@openai/codex-linux-x64/vendor/
 #      x86_64-unknown-linux-musl/bin/codex), REPO (this checkout, for `git archive`; default: the script's repo).
-set -u
+# Any failing step stops the run with its status (#2929 review): a build or setup that did not happen is never "started".
+set -euo pipefail
 OUT=${OUT:-~/.cache/agend-web-only-e2e}; mkdir -p "$OUT"
 REPO=${REPO:-$(cd "$(dirname "$0")/../../.." && pwd)}
 P=$1; shift
 C() { echo "agend-web-only-e2e-$1"; }
-X() { docker exec "$(C "$L")" bash -c "$1"; }
+X() { docker exec "$(C "$L")" bash -c "set -e; $1"; }
 R() { docker exec "$(C "$L")" su - rh -c "$1"; }
 
 if [ "$P" = build ]; then
@@ -26,7 +27,7 @@ if [ "$P" = build ]; then
   mv "$B/app.tar" "$OUT/app-$L.tar"; rm -rf "$B"; echo "built $SHA → $OUT/app-$L.tar"
 elif [ "$P" = start ]; then
   L=$1; : "${IMAGE:?set IMAGE}" "${CLAUDE_BIN:?set CLAUDE_BIN}" "${CODEX_BIN:?set CODEX_BIN}"
-  docker rm -f "$(C "$L")" >/dev/null 2>&1
+  docker rm -f "$(C "$L")" >/dev/null 2>&1 || true            # none there yet is fine
   docker run -d --name "$(C "$L")" --network none --memory=3g --entrypoint sleep "$IMAGE" infinity >/dev/null
   X 'mkdir -p /opt/app /opt/acc; id rh >/dev/null 2>&1 || useradd -m -s /bin/bash rh'
   docker cp "$OUT/app-$L.tar" "$(C "$L")":/opt/acc/app.tar >/dev/null
@@ -58,7 +59,10 @@ chown -R rh:rh /home/rh'
   R 'cd ~ && nohup node /opt/app/dist/cli.js fleet start > /tmp/fleet.out 2>&1 &'
   echo "$L: started"
 elif [ "$P" = drive ]; then
-  L=$1; R "cd ~ && LABEL=$L node /opt/app/scripts/manual/web-only-e2e/drive.mjs" > "$OUT/drive-$L.log" 2>&1; echo "drive rc=$?" >> "$OUT/drive-$L.log"; cat "$OUT/drive-$L.log"
+  # The driver's own status is the run's: RESULT FAIL (or a driver that could not run) exits non-zero, after the log is shown.
+  L=$1; rc=0
+  R "cd ~ && LABEL=$L node /opt/app/scripts/manual/web-only-e2e/drive.mjs" > "$OUT/drive-$L.log" 2>&1 || rc=$?
+  echo "drive rc=$rc" >> "$OUT/drive-$L.log"; cat "$OUT/drive-$L.log"; exit "$rc"
 elif [ "$P" = collect ]; then
   L=$1
   R 'grep -E "^\[[0-9: -]+\] (WARN|ERROR|FATAL)" ~/.agend/daemon.log | cut -c1-300' > "$OUT/daemon-warn-$L.log" 2>&1
@@ -67,5 +71,7 @@ elif [ "$P" = collect ]; then
   X 'cat /tmp/mock-codex-bodies.log' > "$OUT/mock-codex-bodies-$L.log" 2>&1
   echo collected
 elif [ "$P" = stop ]; then
-  L=$1; docker rm -f "$(C "$L")" >/dev/null 2>&1; echo stopped
+  L=$1; docker rm -f "$(C "$L")" >/dev/null 2>&1 || true; echo stopped
+else
+  echo "usage: run.sh build <sha> <label> | start|drive|collect|stop <label>" >&2; exit 2
 fi
