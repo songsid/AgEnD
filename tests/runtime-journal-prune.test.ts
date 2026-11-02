@@ -180,6 +180,24 @@ describe("M-2239 P2-1: the client keeps its replay tombstones past 4096 and evic
     expect(Object.keys(pruned.used).length).toBeGreaterThan(Object.keys(used2).length - 2_000);
   });
 
+  it("#2945 R2: legacy ids with no usedAt free only their own bytes — eviction goes on to the real size, never refuses with eligible room", () => {
+    const BUDGET = 12 * 1024 * 1024 - 512 * 1024, now = 200 * DAY;
+    const id = (k: number) => `L${String(k).padStart(79, "0")}`, used: Record<string, string> = {}, usedAt: Record<string, number> = {};
+    for (let k = 1; k <= 50_000; k++) { used[id(k)] = hex(k); if (k > 1_000) usedAt[id(k)] = now - DAY; }   // 1,000 legacy (no time), 49,000 young
+    const text = JSON.stringify({ version: 1, jobs: {}, used, usedAt });
+    expect(text.length).toBeGreaterThan(BUDGET);
+    // The positive control: without the legacy ids the ledger fits — so the eligible room is enough.
+    const control = { ...used }; for (let k = 1; k <= 1_000; k++) delete control[id(k)];
+    expect(JSON.stringify({ version: 1, jobs: {}, used: control, usedAt }).length).toBeLessThan(BUDGET - 2_048);
+    const dir = home(); writeFileSync(join(dir, "jobs.json"), text);
+    const store = new RuntimeClientStore(dir, () => now);
+    expect(store.accept(task(900_002), hex(900_002)).duplicate).toBe(false);
+    const after = JSON.parse(readFileSync(join(dir, "jobs.json"), "utf8"));
+    expect(readFileSync(join(dir, "jobs.json")).length).toBeLessThanOrEqual(BUDGET);
+    for (let k = 1_001; k <= 50_000; k++) expect(after.used[id(k)]).toBe(hex(k));   // every young id kept
+    expect(after.jobs[task(900_002).id]).toBeDefined();
+  });
+
   it("accepts past 4096 remembered executions (the old cap), and still refuses a remembered id", () => {
     const dir = home(), now = 100 * DAY, used: Record<string, string> = {};
     for (let n = 1; n <= 4096; n++) used[task(n).id] = hex(n);           // an older ledger: no times at all

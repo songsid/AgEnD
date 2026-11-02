@@ -96,26 +96,29 @@ export class RuntimeClientStore {
    * first; then from replay ids past ID_KEEP_MS with no snapshot. False when even that does not make room.
    */
   private fitBytes(newId: string): boolean {
-    const budget = MAX_STORE_BYTES - BYTE_HEADROOM;
-    let size = Buffer.byteLength(JSON.stringify(this.data));
-    if (size <= budget) return true;
+    const budget = MAX_STORE_BYTES - BYTE_HEADROOM, actual = () => Buffer.byteLength(JSON.stringify(this.data));
+    const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+    // Each removal subtracts what that member actually occupied (key, colon, value, comma; a usedAt member only when it
+    // exists). The estimate only paces the loop: whenever it says "fits", the real size is measured and, if still over,
+    // eviction goes on from the remaining candidates (#2945 R2: legacy ids without usedAt were over-counted).
+    let size = actual();
+    const fitted = (): boolean => { if (size > budget) return false; size = actual(); return size <= budget; };
+    if (fitted()) return true;
     const jobs = Object.values(this.data.jobs).filter(row => row.task.id !== newId && row.task.finishedAt && !row.uncertain && row.task.outcomeConfirmed !== false)
       .sort((a, b) => a.task.startedAt - b.task.startedAt);
     for (const row of jobs) {
-      if (size <= budget) break;
-      size -= Buffer.byteLength(JSON.stringify(row)) + Buffer.byteLength(JSON.stringify(row.task.id)) + 2;
+      size -= bytes(row.task.id) + 1 + bytes(row) + 1;
       delete this.data.jobs[row.task.id];
+      if (fitted()) return true;
     }
-    if (size > budget) {
-      const now = this.now(), at = this.data.usedAt ?? {};
-      const old = Object.keys(this.data.used).filter(id => !this.data.jobs[id] && now - (at[id] ?? 0) > ID_KEEP_MS).sort((a, b) => (at[a] ?? 0) - (at[b] ?? 0));
-      for (const id of old) {
-        if (size <= budget) break;
-        size -= Buffer.byteLength(JSON.stringify(id)) * 2 + 64 + 2 + (at[id] !== undefined ? String(at[id]).length + 2 : 0);
-        delete this.data.used[id]; delete at[id];
-      }
+    const now = this.now(), at = this.data.usedAt ?? {};
+    const old = Object.keys(this.data.used).filter(id => !this.data.jobs[id] && now - (at[id] ?? 0) > ID_KEEP_MS).sort((a, b) => (at[a] ?? 0) - (at[b] ?? 0));
+    for (const id of old) {
+      size -= bytes(id) + 1 + bytes(this.data.used[id]) + 1 + (Object.hasOwn(at, id) ? bytes(id) + 1 + bytes(at[id]) + 1 : 0);
+      delete this.data.used[id]; delete at[id];
+      if (fitted()) return true;
     }
-    return Buffer.byteLength(JSON.stringify(this.data)) <= budget;
+    return actual() <= budget;
   }
   /** Oldest first; only past ID_KEEP_MS and with no job snapshot. An id from an older ledger (no time) counts as oldest. */
   private evictTombstones(): void {
