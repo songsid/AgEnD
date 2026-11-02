@@ -222,6 +222,14 @@ describe("runtime-first creation",()=>{
     expect(p.root.textContent).toContain("Uses this CLI's local access and approval settings");
     expect(sent.some(request=>request.path==="/ui/instances" || request.path==="/ui/windows-cli/agents")).toBe(false);
   });
+  it("S-30: Claude Code's native permissions say plainly that writes not allowed in its own settings are denied",async()=>{
+    probe=allCliProbe();await openWindows();await chooseCli("claude-code");await next();await setWindowsIdentity("Claude helper");
+    await setNativePermissions();
+    expect(p.root.textContent).toContain("Claude Code gets no approval prompt here: anything its own settings do not already allow, file edits included, is denied.");
+    expect(p.root.textContent).not.toContain("Uses this CLI's local access and approval settings");
+    permissionSelect().value="read-only";fire(permissionSelect(),"change");await settle();
+    expect(p.root.textContent).not.toContain("Claude Code gets no approval prompt here");
+  });
   it("keeps the selected Windows CLI, model and native permissions when returning to earlier steps or runtimes",async()=>{
     probe=allCliProbe();await openWindows();await chooseCli("grok");await next();await setWindowsIdentity("Grok game helper");
     await setOtherModel("grok-code-fast-1");await setNativePermissions();
@@ -280,6 +288,15 @@ describe("runtime-first creation",()=>{
     await p.unmount();await openWindows();
     expect(probeRequests()).toHaveLength(1);expect(button("Next").disabled).toBe(false);
     expect(p.root.querySelector('.cli-discovery-status[role="status"]')).toBeNull();
+  });
+  it("S-30: the Settings task form says the same for Claude Code's native permissions, and only for Claude Code",async()=>{
+    probe=allCliProbe();app.appStore.set({windowsCli:true});
+    await p.mount(h(WindowsCliPanel,{navKey:"windows-settings-claude-hint",embedded:true}));await settle(8);
+    const writeHint=()=>p.root.querySelectorAll(".windows-cli-access-option")[1].querySelector("small").textContent;
+    expect(writeHint()).toBe("Uses this CLI's local approval settings");                              // Codex (the default)
+    p.root.querySelector(".windows-cli-composer .cli-picker-trigger").click();await settle();
+    p.root.querySelectorAll('[role="menuitemradio"]').find((item:any)=>item.querySelector('[data-cli="claude-code"]')).click();await settle(4);
+    expect(writeHint()).toBe("No approval prompt: anything Claude Code's own settings do not allow, file edits included, is denied");
   });
   it("lets a pending probe finish across closing and reopening the dialog",async()=>{
     const gate=deferredProbe();probeFetch=()=>gate.promise;

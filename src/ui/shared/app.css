@@ -285,6 +285,12 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .panel-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); min-height: calc(var(--header-h) - 2 * var(--s-1)); }
 .panel-title h1 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; outline: none; }
 .panel-sub { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
+/* S-30: on a phone the chat's status and chips (status, Windows, computer, model…) gave way to nothing, and the agent's
+   name was cut to two letters. The name keeps at least ~10 characters; the chip row is what clips. */
+@media (max-width: 479px) {
+  .p-chat .panel-title h1 { flex: 0 1 auto; min-width: min(10ch, 45%); }
+  .p-chat .panel-sub { flex: 1 1 0; min-width: 0; overflow: hidden; }
+}
 .status { display: inline-flex; align-items: center; gap: 6px; }
 /* #2015: the largest processes, after the host memory chip's text. */
 .host-mem-top { margin-left: var(--s-2); opacity: 0.8; overflow-wrap: anywhere; }
@@ -2819,6 +2825,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .runtime-cli-list li > span:nth-child(2) { flex: 1; }
 .runtime-cli-list small { display: block; color: var(--text-3); font-size: var(--fs-sm); }
 .runtime-machine-actions { margin-top: 14px; }
+/* S-30: the ZIP step is a button with its hint beside it (wrapping under it on a phone), not text flush against it. */
+.runtime-bundle-step { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
+.runtime-bundle-step .note { margin: 0; flex: 1 1 220px; }
 .runtime-pairing label, .runtime-rename label { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; }
 .runtime-pairing input, .runtime-rename input { width: 100%; min-width: 0; font-family: var(--font-ui); font-size: var(--fs-md); }
 .runtime-pair-code { letter-spacing: .14em; }
@@ -2829,7 +2838,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .runtime-remote-targets h4 { margin: 0 0 4px; font-size: var(--fs-md); }
 .runtime-remote-targets .agent-runtime-choice { min-width: 0; width: 100%; }
 .runtime-manage-link { display: inline-block; margin-top: 12px; }
-.inst-machine { display: flex; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-3); }
+.inst-machine { display: flex; gap: 5px; overflow: hidden; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-3); }
+/* S-30: the machine name gives way; "Connection revoked" / "Offline" always stays readable. */
+.inst-machine-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.inst-machine-status { flex: none; }
 .inst-machine.offline, .runtime-machine-offline { color: var(--warn); }
 .runtime-machine-tag { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 600px) {
@@ -2851,7 +2863,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 /* Agent creation wizard: one active stage per screen, with persistent navigation actions. */
 .agent-create-wizard { display: flex; flex-direction: column; gap: 24px; }
-.agent-create-steps { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: center; gap: 8px; padding-bottom: 20px; margin: 0; list-style: none; border-bottom: 1px solid var(--border); }
+/* S-30: the body's top padding scrolled content through above the sticky steps (a phone showed card edges there); a
+   background-coloured copy of the bar, shifted up, covers that strip. */
+.agent-create-steps { position: sticky; top: 0; z-index: 2; background: var(--bg); box-shadow: 0 calc(-1 * var(--s-5)) 0 var(--bg); display: flex; align-items: center; gap: 8px; padding-bottom: 20px; margin: 0; list-style: none; border-bottom: 1px solid var(--border); }
 .agent-create-steps > li { display: flex; align-items: center; gap: 7px; color: var(--text-3); font-size: 12px; min-width: 0; }
 .agent-create-steps > li:not(:last-child)::after { content: ""; width: 28px; height: 1px; background: var(--border); margin: 0 6px; }
 .agent-create-steps > li.current { color: var(--text); font-weight: 600; }

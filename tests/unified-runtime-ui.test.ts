@@ -109,6 +109,9 @@ describe("one fleet UI across runtimes",()=>{
     const panels=new Map([["chat",{load:async()=>()=>h("div",{},"Shared chat")}]]);await p.mount(h(shell.Shell,{panels,onNewInstance(){}}));await settle(8);
     const link=p.root.querySelector(`a[href="/ui/chat/${nativeName}"]`);expect(link.querySelector(".inst-machine").textContent).toContain("Build desktop");expect(link.querySelector(".inst-machine").textContent).toContain("Computer offline");
     expect(link.getAttribute("title")).toContain("Status: Running");
+    // S-30: the name and the status are separate, so the name is what gives way on a narrow row — never the status.
+    expect(link.querySelector(".inst-machine .inst-machine-name").textContent).toBe("Build desktop");
+    expect(link.querySelector(".inst-machine .inst-machine-status").textContent).toBe("Computer offline");
   });
   it("offers explicit interrupted-process recovery on the shared chat",async()=>{
     const status={instances:[linuxRow,{...nativeRow(),native_blocked:true}],windows_cli:true};app.applyStatus(status);emit("status",status);

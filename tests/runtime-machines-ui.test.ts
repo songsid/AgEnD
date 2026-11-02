@@ -55,7 +55,17 @@ describe("remote machine UI",()=>{
     expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
     expect(p.root.querySelector(".runtime-command").value).toContain("agend-runtime.cmd connect --server");
     expect(p.root.querySelector(".runtime-command").value).not.toContain("PAIR-TEST-CODE");
+    // S-30: while pairing, the ZIP is the panel's step 1 — one download button, not one in the header too.
+    expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);
     button("Hide pairing code").click();await settle();expect(p.root.querySelector(".runtime-pair-code")).toBeNull();
+    expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);   // the header's is back
+  });
+  it("S-30: a computer card names its platform and host name, never a version slot that is always \"Not reported\"",async()=>{
+    machines=[{...machine(idA,"Desktop"),version:undefined,hostname:"DESKTOP-7Q2"},{...machine(idB,"Laptop","pending"),version:undefined}];
+    await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
+    expect(p.root.querySelector(`[data-machine-id="${idA}"] header p`).textContent).toBe("win32 · DESKTOP-7Q2");
+    expect(p.root.querySelector(`[data-machine-id="${idB}"] header p`).textContent).toBe("win32");
+    expect(p.root.textContent).not.toContain("Not reported");
   });
   it("keeps local Runtime settings visible while remote connections are disabled",async()=>{
     enabled=false;machines=[];await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
