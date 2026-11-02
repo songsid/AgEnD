@@ -410,7 +410,8 @@ fi
 
 echo -e "\n${BOLD}═══ Installation Complete ═══${NC}\n"
 echo "  Run the setup wizard:"
-echo -e "  ${BOLD}agend quickstart${NC}\n"
+echo -e "  ${BOLD}agend quickstart${NC}"
+echo -e "  ${DIM}Web only by default: no bot token is needed. A Discord or Telegram bot can be added later.${NC}\n"
 
 warn "If 'agend' is not found in a new terminal, run: source ~/.profile"
 echo ""

@@ -16,7 +16,7 @@ import { ensureWorkspaceGit, getAgendHome } from "./paths.js";
 import { envLineKey } from "./env-file.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
-import { dashboardLines, dashboardPort } from "./next-steps.js";
+import { dashboardLines, dashboardPort, webOnlyConfigFile } from "./next-steps.js";
 import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 
 /** `agend restart` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH): the service-aware
@@ -685,7 +685,7 @@ export async function runQuickstart(): Promise<void> {
 
   // #1519 P7: every way out of a quickstart that leaves a fleet says where its dashboard is and how to sign in.
   const printDashboard = () => {
-    const [where, signIn] = dashboardLines(dashboardPort(FLEET_CONFIG_PATH));
+    const [where, signIn] = dashboardLines(dashboardPort(FLEET_CONFIG_PATH), { webOnly: webOnlyConfigFile(FLEET_CONFIG_PATH) });
     console.log(`\n  ${bold(where)}`);
     console.log(`  ${dim(signIn)}`);
   };

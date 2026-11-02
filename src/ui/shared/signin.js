@@ -23,6 +23,10 @@
       resend: "Send me a new code", resent: "A new code was sent to you privately in chat. Enter it above.",
       resend_wait: "A code was asked for a moment ago — wait a little and try again.",
       resend_refused: "A new code could not be sent. Ask for one with /web.",
+      // #2910 D5: a web-only fleet (no chat connection): there is no /web to send — the code comes from the AgEnD computer.
+      hint_web: "On the AgEnD computer, run agend web --code to get a sign-in code.",
+      refused_web: "The code is invalid or no longer works. Run agend web --code on the AgEnD computer for a new one.",
+      resend_refused_web: "A new code could not be sent. Run agend web --code on the AgEnD computer for one.",
     },
     "zh-TW": {
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
@@ -37,10 +41,17 @@
       resend: "傳一組新的登入碼給我", resent: "新的登入碼已私訊給你，請在上方輸入。",
       resend_wait: "剛剛才要過登入碼，請稍候再試。",
       resend_refused: "無法傳送新的登入碼。請用 /web 再要一個。",
+      hint_web: "在 AgEnD 電腦上執行 agend web --code 取得登入碼。",
+      refused_web: "登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。",
+      resend_refused_web: "無法傳送新的登入碼。請在 AgEnD 電腦上執行 agend web --code 取得。",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
-  const t = (k) => T[lang][k] || T.en[k] || k;
+  // #2910 D5: the server marks a web-only fleet's page (<body data-web-only="1">): its own words where it has them.
+  const webOnly = !!document.body && document.body.getAttribute("data-web-only") === "1";
+  const t = (k) => (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
+  // …and no "No chat bot?" help: the hint above already is it.
+  if (webOnly) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
 
   // An old dashboard link carries `?token=`. It is not a credential any more (the server ignored it and

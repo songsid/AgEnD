@@ -82,6 +82,8 @@ export interface AuthApiContext {
    * it is the host operator, authorized for its life (capped as every authorization). Anything else: nothing happens.
    */
   authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
+  /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
+  isWebOnlyFleet?(): boolean;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1920 step 4b: a guest's sign-in makes this browser a guest's returning device (its own caps). The cookie, or null. */
@@ -185,10 +187,14 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
   res.end(JSON.stringify(body));
 }
 
-/** The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. */
-export function serveSigninPage(res: ServerResponse, status = 200): void {
+/**
+ * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
+ * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
+ */
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean } = {}): void {
   try {
-    const html = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
+    const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
+    const html = opts.webOnly ? page.replace("<body>", '<body data-web-only="1">') : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
     json(res, 500, { error: "signin.html not found" });
@@ -248,7 +254,7 @@ export function handleAuthRequest(
   // ── The page and its scripts: public, inert ──
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
-    serveSigninPage(res);
+    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true });
     return true;
   }
 
