@@ -26,7 +26,9 @@ export function handleNativeModelCatalog(req: IncomingMessage, res: ServerRespon
     json(res, 400, { error: "The selected runtime and CLI do not match this instance" }); return true;
   }
   void (async () => {
-    const catalog = await (bridge ?? windowsBridgeFor(ctx)).probe({ force: url.searchParams.get("refresh") === "1" });
+    // M-2239 P1-2: a read starts nothing — the models are those the administrator's last detection found. Detecting
+    // again is a POST (/ui/windows-cli/probe {force:true}), never a GET's `refresh`.
+    const catalog = await (bridge ?? windowsBridgeFor(ctx)).probe();
     if (!allowed()) { json(res, 403, { error: "Authorization expired" }); return; }
     const cli = catalog.clis.find(row => row.id === backend);
     json(res, 200, {

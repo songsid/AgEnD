@@ -86,12 +86,12 @@ function invoke(path: string, bridge: unknown, config: Record<string, unknown> =
 }
 
 describe("shared native model endpoint", () => {
-  it("returns the native inventory rather than the WSL account and forwards a requested refresh", async () => {
+  it("returns the native inventory rather than the WSL account, and a GET's refresh detects nothing (M-2239 P1-2)", async () => {
     vi.stubEnv("AGEND_WINDOWS_CLI", "1");
     const probe = vi.fn(async () => ({ clis: [{ id: "codex", modelsSource: "cli-cache", models: [{ id: "native-model", name: "Native Model", description: "From Windows" }] }], home: "C:\\WindowsUser" }));
     const response = invoke("/ui/models?backend=codex&runtime=windows&refresh=1", { probe });
     await vi.waitFor(() => expect(response.status()).toBe(200));
-    expect(probe).toHaveBeenCalledWith({ force: true });
+    expect(probe).toHaveBeenCalledOnce(); expect(probe).not.toHaveBeenCalledWith({ force: true });
     expect(response.body()).toEqual({ backend: "codex", runtime: "windows", models: [{ id: "native-model", label: "Native Model", description: "From Windows" }], source: "cli-cache" });
   });
   it("infers the native runtime from a registered instance even when the query omits runtime", async () => {
