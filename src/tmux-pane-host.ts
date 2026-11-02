@@ -11,6 +11,7 @@ function readPort(observation?: PaneObservation): TmuxReadPort | undefined {
 
 /** Delegation preserves native handle identity, optional read lanes and all existing defaults. */
 export class TmuxPaneHost implements PaneHost {
+  readonly executionHost = "local" as const;
   bind(session: string, id: string, size?: PaneSize, observation?: PaneObservation) {
     return new TmuxManager(session, id, size, readPort(observation));
   }

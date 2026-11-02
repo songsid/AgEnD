@@ -958,7 +958,13 @@ function codexUnboxedResumeLoading(rows: string[]): boolean {
   return after.slice(composer + 1).every(row => row === "");
 }
 
-export class CodexBackend implements CliBackend {
+/** Pane-only detectors: construction performs no provider, config or session discovery. */
+export class CodexPaneDetectors {
+  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean }) {}
+  protected readConfiguredStatusLineItems(): string[] | null { return this.paneDetectorContext?.statusLineItems()?.slice() ?? null; }
+  protected trustPaneFields(pane: string): Record<string, unknown> { const state = codexTrustPromptState(pane); return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote }; }
+  protected trustHoldReason(pane: string): Record<string, unknown> { return { ...this.trustPaneFields(pane), reason: "Folder permission needs confirmation on this execution machine" }; }
+
   /**
    * #1510: the reply-completion guard covers codex, its turn end read from the rollout (task_complete /
    * turn_aborted, recorded on 0.162.0 in tests/fixtures/reply-guard-1510): the pane alone stays busy through a tool
@@ -967,121 +973,10 @@ export class CodexBackend implements CliBackend {
   readonly replyCompletionGuard = true;
   readonly turnEndFromTranscript = true;
   readonly binaryName = "codex";
-  private binaryPath: string;
-  private readonly sharedCodexHome: string;
-  private readonly isolatedCodexHome: string;
-  /** Which subscription this instance runs on, or null for the shared login. */
-  private credentialProfile: string | null = null;
-  /** Set only after preTrust wrote and read back this instance's private config. */
-  private authorizedTrust: { cwd: string; root: string } | null = null;
-  private configuredStatusLineItems: string[] | null | undefined;
-  private configuredStatusLinePattern: RegExp | null | undefined;
-  /** Set by buildCommand when the resume plan fell back; read once by the daemon. */
-  private launchWarning: string | null = null;
+  protected configuredStatusLineItems: string[] | null | undefined;
+  protected configuredStatusLinePattern: RegExp | null | undefined;
   /** Whether the last buildCommand launched a resume (`resume <id>` or `--last`). */
-  private lastLaunchResumes = true;
-  /** Set by writeConfig when the status_line could not be made verifiable (#931). */
-  private statusLineWarning: string | null = null;
-  /** #2357: set by buildCommand when the codex being launched lacks a package companion (codex-code-mode-host). */
-  private packageWarning: string | null = null;
-
-  constructor(private instanceDir: string) {
-    this.binaryPath = resolveBinary("codex");
-    this.sharedCodexHome = resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"));
-    this.isolatedCodexHome = CodexBackend.resolveShortHome(instanceDir);
-  }
-
-  /**
-   * Compute and (on first call for an existing instance) migrate to a SHORT
-   * persistent CODEX_HOME under `~/.agend/cx/<8-char-hash>/`.
-   *
-   * Background (#953): codex 0.157.0 added `app-server-control.sock` under
-   * CODEX_HOME. For instances with long `-t<topic_id>` suffixes the full path
-   * exceeds the Unix socket SUN_LEN (~107 chars). codex canonicalises the path
-   * before binding the socket, so a symlink workaround does not help — the real
-   * path must be short.
-   *
-   * Migration steps (each is idempotent; half-completed states self-heal):
-   *  1. If shortHome does not exist AND legacyHome is a real directory (not a
-   *     symlink) → atomic renameSync. On EXDEV or any other error, fall back
-   *     safely: keep using the legacy long path (instance can still start, just
-   *     without the short-path fix).
-   *  2. If shortHome exists but legacyHome is missing → recreate the backward-
-   *     compat symlink (self-heal for rename-succeeded-but-symlink-failed crash).
-   *  3. If both shortHome and legacyHome (as symlink) exist → nothing to do.
-   *  4. New instance (no legacyHome) → create shortHome directly.
-   *
-   * Fail-safe guarantee: migration failure must never make the instance worse.
-   * The caller always receives a valid path it can use as CODEX_HOME.
-   */
-  /** Exposed for fleet-manager to delete the short home on instance removal. */
-  static shortHomeFor(instanceDir: string): string {
-    return codexShortHomeFor(instanceDir);
-  }
-
-  private static resolveShortHome(instanceDir: string): string {
-    const shortHome = CodexBackend.shortHomeFor(instanceDir);
-    const shortBase = join(getAgendHome(), "cx");
-    const canonical = resolve(instanceDir);
-    const legacyHome = resolve(instanceDir, "codex-home");
-
-    // Only migrate/create when the instance directory itself exists.
-    // Constructing CodexBackend for a non-existent dir (cli-env probes, test
-    // backends that never ran) must not litter ~/.agend/cx/ with orphan dirs.
-    if (!existsSync(canonical)) return shortHome;
-
-    const legacyExists = existsSync(legacyHome);
-    const legacyIsRealDir = legacyExists && !lstatSync(legacyHome).isSymbolicLink();
-    const shortExists = existsSync(shortHome);
-
-    if (!shortExists) {
-      mkdirSync(shortBase, { recursive: true, mode: 0o700 });
-      if (legacyIsRealDir) {
-        // Attempt atomic rename. Requires same device; fails with EXDEV otherwise.
-        try {
-          renameSync(legacyHome, shortHome);
-          // Log the one-time migration for observability.
-          try {
-            const logPath = join(shortBase, `${shortHome.split("/").at(-1)}.migrated`);
-            writeFileSync(logPath, `${new Date().toISOString()} migrated from ${legacyHome}\n`);
-          } catch { /* log failure is non-fatal */ }
-        } catch (err) {
-          // EXDEV (cross-device) or any other rename failure → fail-safe:
-          // fall back to the legacy long path so the instance still works.
-          // The socket-length bug persists for this instance but no data is lost.
-          const code = (err as NodeJS.ErrnoException).code ?? "unknown";
-          try {
-            const warnPath = join(shortBase, `${shortHome.split("/").at(-1)}.migration-failed`);
-            writeFileSync(warnPath,
-              `${new Date().toISOString()} rename failed (${code}): ${(err as Error).message}\n`
-              + `legacy path remains in use: ${legacyHome}\n`);
-          } catch { /* warn log failure is also non-fatal */ }
-          // Return legacy long path so the instance starts (socket may still fail
-          // on 0.157.0 for long names, but no data is lost or corrupted).
-          return legacyHome;
-        }
-      } else if (!legacyExists) {
-        // New instance — no data to migrate.
-        mkdirSync(shortHome, { recursive: true, mode: 0o700 });
-      }
-      // If legacyExists but is already a symlink: shortHome was deleted externally
-      // while the symlink still points to it. Re-create shortHome as a fresh dir.
-      if (!existsSync(shortHome)) {
-        mkdirSync(shortHome, { recursive: true, mode: 0o700 });
-      }
-    }
-
-    // Backward-compat symlink: instanceDir/codex-home → shortHome.
-    // Also serves as self-heal: if a previous run renamed successfully but
-    // crashed before creating the symlink, we recreate it here.
-    if (!legacyExists || legacyIsRealDir) {
-      // legacyIsRealDir means rename just happened (now shortHome exists, legacyHome gone).
-      // !legacyExists means new instance or symlink was deleted — create it.
-      try { symlinkSync(shortHome, legacyHome); } catch { /* race or already exists */ }
-    }
-
-    return shortHome;
-  }
+  protected lastLaunchResumes = true;
 
   supportsQueuedInput(): boolean {
     return true;
@@ -1204,6 +1099,670 @@ export class CodexBackend implements CliBackend {
     const activeRegion = rows.slice(Math.max(0, prompt - 8), prompt);
     if (activeRegion.some(row => /^•\s+\S.*\besc to interrupt\b/i.test(row))) return false;
     return true;
+  }
+
+  getReadyPattern(): RegExp {
+    // Header and context text persist in inline scrollback and even while the
+    // CLI is loading or a modal owns stdin. Require the live prompt followed
+    // by the Context footer at the *end* of the capture. A valid custom
+    // status_line without Context gets a separate configured-item pattern;
+    // unknown footer values still fail closed. getBusyPattern vetoes a working
+    // turn whose empty composer remains visible.
+    // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
+    // prompt, between prompt/footer, and below the footer. A drafted composer
+    // is also idle once this same bottom footer proves it owns the screen.
+    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    const footerPattern = this.configuredStatusLineFooterPattern();
+    if (!footerPattern) return contextReady;
+
+    // The no-Context alternative requires the exact empty composer followed by
+    // a recognized configured Codex status_line value. If run-state is
+    // configured, that value must specifically be Ready. This is positive
+    // structural proof, never a deny-list of known dialogs.
+    const footerSource = footerPattern.source.slice(1, -1);
+    const noContextReady = new RegExp(
+      String.raw`(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${footerSource}(?:\r?\n[ \t⋆]*)*$`,
+      "iu",
+    );
+    // #978: a configured footer that carries a Context item in any position
+    // is the Context footer: same drafted-composer rule as Context-first. The
+    // whole row must match the configured item grammar, so an arbitrary
+    // indented line that merely contains `Context N% left` cannot pass.
+    const configuredContextReady = this.configuredHasContextItem()
+      ? new RegExp(
+        String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
+        "iu",
+      )
+      : null;
+    return new RegExp(
+      [contextReady.source, noContextReady.source, configuredContextReady?.source]
+        .filter((source): source is string => !!source)
+        .map(source => `(?:${source})`)
+        .join("|"),
+      "iu",
+    );
+  }
+
+  protected configuredStatusLineFooterPattern(): RegExp | null {
+    if (this.configuredStatusLinePattern !== undefined) return this.configuredStatusLinePattern;
+    const items = this.readConfiguredStatusLineItems();
+    if (!items?.length) return this.configuredStatusLinePattern = null;
+    const configuredPatterns = items
+      .map(item => CODEX_STATUS_LINE_VALUE_PATTERNS[item])
+      .filter((pattern): pattern is string => pattern !== undefined);
+    if (!configuredPatterns.length) return this.configuredStatusLinePattern = null;
+
+    const segment = `(?:${configuredPatterns.join("|")})`;
+    const separator = String.raw`[ \t]+·[ \t]+`;
+    const hasRunState = items.some(item => CODEX_RUN_STATE_STATUS_ITEMS.has(item));
+    // Ready must occupy its own status-line segment. Other configured items
+    // may precede/follow it, as Codex joins visible values with ` · `.
+    const line = hasRunState
+      ? `(?:${segment}${separator})*Ready(?:${separator}${segment})*`
+      : `${segment}(?:${separator}${segment})*`;
+    // The configured items, then (optionally) the CLI's own native fields — the same rule as the Context-first footer, so a
+    // `model · Context 46% left    Goal achieved (1h 6m)` row is the footer too, and the readiness regex built from this
+    // source (footerSource) says the same.
+    this.configuredStatusLinePattern = new RegExp(`^[ \t⋆]*${line}(?:${CODEX_NATIVE_FOOTER_FIELDS})?[ \t⋆]*$`, "iu");
+    return this.configuredStatusLinePattern;
+  }
+
+  private isConfiguredStatusLineFooter(row: string): boolean {
+    const pattern = this.configuredStatusLineFooterPattern();
+    if (!pattern) return false;
+    pattern.lastIndex = 0;
+    return pattern.test(row);
+  }
+
+  protected configuredHasContextItem(): boolean {
+    return (this.readConfiguredStatusLineItems() ?? []).some(item => CODEX_CONTEXT_STATUS_ITEMS.has(item));
+  }
+
+  /**
+   * #978: a Context item in ANY position, accepted only as part of a footer
+   * whose every segment matches the configured status_line items. Codex keeps
+   * the user's order (`gpt-5.6-sol medium · Context 46% left · ~/x`); an
+   * arbitrary indented transcript line that happens to contain the item does
+   * not match that grammar. A stale config fails closed, and the daemon's
+   * stable-composer escape hatch then keeps the instance from latching.
+   */
+  // The configured grammar already makes Context a whole segment, so the item
+  // test only has to establish that one is present.
+  private isConfiguredContextFooter(row: string): boolean {
+    return this.configuredHasContextItem()
+      && new RegExp(CODEX_CONTEXT_ITEM, "iu").test(row)
+      && this.isConfiguredStatusLineFooter(row);
+  }
+
+  /** Any footer that proves the Context meter owns the bottom row. */
+  private isAnyContextFooter(row: string): boolean {
+    return isCodexContextFooter(row) || this.isConfiguredContextFooter(row);
+  }
+
+  /**
+   * #978 escape hatch: the live, EMPTY Codex composer within the last few
+   * non-blank rows, no busy marker, and none of the known selection screens.
+   * Deliberately says nothing about the footer, which is what is unknown.
+   */
+  isStableUnknownLayoutIdlePane(pane: string): boolean {
+    if (this.getBusyPattern().test(pane)) return false;
+    // The composer is live-looking and the footer is unknown — exactly this
+    // proof's blind spot — but there is no server behind it (#1099).
+    if (codexAppServerDisconnected(pane)) return false;
+    // (No second, wider "esc to interrupt" match here: getBusyPattern() above already reads a live status row of ANY
+    // title — #964 — and anchors it to the whole row at column zero, so a reply that quotes the phrase, indented or
+    // in prose, cannot pin the escape hatch shut (#991).)
+    // A retained queued message (`↳ …` under "Messages to be submitted after
+    // next tool call") means work is pending, whatever the composer shows.
+    if (/↳|Messages to be submitted/i.test(pane)) return false;
+    if (codexUsageLimitMenuVisible(pane) || codexRateSwitchVisible(pane)
+      || codexUnknownSelectionVisible(pane) || codexUpdatePickerVisible(pane)) return false;
+    const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+    return rows.slice(-6).some(row => /^[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*$/.test(row));
+  }
+
+  private isCodexIdleFooter(row: string): boolean {
+    return isCodexContextFooter(row) || this.isConfiguredStatusLineFooter(row);
+  }
+
+  /** A proxy reply filters chrome per line; whole-pane readiness is separate. */
+  isProxyReplyChromeLine(line: string): boolean {
+    return /^\s*[›>]\s+Ask Codex to do anything\s*$/.test(line)
+      || this.isAnyContextFooter(line);
+  }
+
+  getErrorPatterns(): ErrorPattern[] {
+    return [
+      // Specific quota codes must precede the generic HTTP 429 classifier:
+      // OpenAI returns insufficient_quota with status 429, but switching models
+      // cannot repair an exhausted account and would only start a failover loop.
+      {
+        pattern: new RegExp(
+          String.raw`^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceeded\s+your\s+current\s+quota)\b|^(?:${CODEX_STATUS_GLYPH}) Quota exceeded\. Check your plan and billing details\.\r?$`,
+          "im",
+        ),
+        type: "quota",
+        action: "pause",
+        message: "OpenAI quota exceeded",
+        notice: () => quotaPausedLine("OpenAI", "api_quota"),
+      },
+      {
+        // Codex already exhausted HTTP retries and returned to its composer.
+        // The existing conditional continuation preserves context without
+        // replaying earlier tool effects. Quota remains a preceding pause.
+        pattern: new RegExp(`^${CODEX_EXHAUSTED_429_ROW}$`, "im"),
+        type: "rate_limit",
+        action: "nudge_continue",
+        message: t("inst.codex_rate_retry_stopped"),
+        skipCooldown: true,
+        skipRecoveryWait: true,
+      },
+      {
+        // Pane history contains the agent's own prose, source code and search
+        // results. Bare `rate limit` used to fail over an otherwise healthy
+        // Codex merely for discussing this regex. Match machine-readable API
+        // forms or an error-decorated terminal line instead.
+        pattern: new RegExp(
+          String.raw`^\s*unexpected\s+status\s+429\b|^(?![\s\S]{0,240}?${CODEX_EXHAUSTED_429_ROW})[ \t]*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)`,
+          "im",
+        ),
+        type: "rate_limit",
+        action: "failover",
+        message: "OpenAI rate limit reached",
+      },
+      {
+        // Same false-positive boundary as rate limits: `authentication` is a
+        // normal English/code word. Require a structured 401/code or a
+        // decorated CLI error line before pausing every instance on the shared
+        // credential.
+        pattern: new RegExp(
+          String.raw`^\s*unexpected\s+status\s+401\b|^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*401\b|\b(?:invalid_api_key|authentication_error)\b|\b401\s+Unauthorized\b|\bauthentication (?:failed|error)\b|\binvalid api key\b)`,
+          "im",
+        ),
+        type: "auth_error",
+        action: "pause",
+        message: "OpenAI authentication error",
+      },
+      // Codex writes the apostrophe as U+2019 ("You’ve hit your usage limit.") since
+      // 0.156 and as ASCII before (0.153.4): both must match, or no usage limit
+      // ever pauses the instance (#1098).
+      { pattern: /you['’]ve hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required",
+        notice: () => quotaPausedLine("Codex", "usage") },
+      {
+        // The terminal stage of a lost app-server (#1099): Codex has given up
+        // reconnecting and says so, with a counter that never stops. Nothing
+        // recovers from here without a relaunch, and every message sent in the
+        // meantime waits for an idle that cannot come. Only the LIVE row counts:
+        // directly above the LAST composer with no later transcript item or composer
+        // (the same test as codexAppServerDisconnected, as a lookahead), so text that
+        // merely quotes it does not raise this.
+        pattern: new RegExp(
+          String.raw`^[ \t]*•[ \t]+Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch[ \t]+\(\d+[hms](?:[ \t]+\d+[hms])*\)[ \t]*$`
+          + String.raw`(?=\n(?:[ \t]*\n)*[›>][^\n]*(?:\n(?![•■⚠›>])[^\n]*)*(?![\s\S]))`,
+          "mu",
+        ),
+        type: "network",
+        action: "notify",
+        message: "Codex lost its app-server connection and could not reconnect — restart the instance (messages cannot be delivered until then)",
+      },
+      {
+        // Codex reports an unknown model either as a TUI metadata fallback or
+        // as a ChatGPT-account API rejection. Use whitespace-aware phrases so
+        // capture-pane hard wraps do not hide either form.
+        // Codex quotes the slug with BACKTICKS ("Model metadata for `x` not found.",
+        // verified live on 0.160.0 and in the 0.153.4–0.160.0 binaries). The old
+        // pattern only took ASCII quotes, so it could never match a real line.
+        pattern: /model\s+metadata\s+for\s+['"`‘’“”][^'"`‘’“”]+['"`‘’“”]\s+not\s+found\.\s+defaulting\s+to\s+fallback\s+metadata|model\s+is\s+not\s+supported\s+when\s+using\s+codex\s+with\s+a\s+chatgpt\s+account/i,
+        type: "model_error",
+        action: "notify",
+        message: "Codex model unavailable — use /model to switch",
+      },
+      {
+        // A capacity rejection is a completed failed turn: Codex returns to its
+        // prompt without an answer, with its context intact. Keep this anchored to
+        // the exact decorated TUI line so ordinary prose about model capacity
+        // cannot trigger anything on an otherwise healthy instance. The status
+        // glyph is decoration that changes between Codex versions and error classes
+        // (`■` U+25A0 on 0.159.2 and 0.160.0, `⚠` U+26A0 before), so any one
+        // "Other Symbol" glyph (optionally with its emoji selector) opens the line —
+        // never a bullet, dash, quote marker or number, which prose and the model's
+        // own transcript items use (`•`, `-`, `>`). The sentence must fill the line,
+        // from column 0. Box drawing and block elements (U+2500–U+259F) are
+        // excluded up front: they are `So` too, but a left-border popup or
+        // table row (`│ …`) is chrome, not a status line. The CLI is
+        // already back at the prompt, so skipRecoveryWait avoids an extra wait.
+        // action "nudge_continue": tell the user, then about a minute later tell
+        // the agent to keep going (the lifecycle bounds this to 3 per 30 minutes,
+        // then pauses; see #905). No restart — nothing would re-send the turn — and
+        // no model switch. skipCooldown: each NEW capacity line is a new episode,
+        // including a second one right after the nudge.
+        pattern: /^(?![─-▟])\p{So}\uFE0F? Selected model is at capacity\. Please try a different model\.\r?$/mu,
+        type: "model_error",
+        action: "nudge_continue",
+        message: t("inst.codex_model_capacity"),
+        skipCooldown: true,
+        skipRecoveryWait: true,
+      },
+      // Workspace (business) accounts report exhaustion differently from personal
+      // ones, with codex's own rows (codex-rs/protocol error.rs and tui
+      // turn_runtime.rs, unchanged 0.160.0–0.165.0):
+      //   member: "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue."
+      //           "■ You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue."
+      //   owner:  "■ You're out of credits. Your workspace is out of credits. Add credits to continue using Codex."
+      //           "■ Your workspace is out of credits. Add credits to continue."
+      //           "■ You hit your spend cap set in your workspace. Increase your spend cap to continue."
+      //           "■ Usage limit reached. You've reached your usage limit. Increase your limits to continue using codex."
+      // Neither `insufficient_quota|billing` nor `you've hit your usage limit`
+      // matches them.
+      //
+      // pause, not notify: nothing works until someone refills or raises the cap.
+      // Anchored to the status glyph in COLUMN 0, because these skip the
+      // usage-window check (a workspace limit is not one of those windows, so the
+      // check would call it "available"): codex draws its own error cells there,
+      // while an agent's message, quote or code block is indented under its `•`
+      // (captured live, tests/fixtures/codex-0165-workspace-quoted.pane.txt).
+      // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard wrap
+      // can land a newline anywhere in the sentence. A resumed transcript reprints
+      // these rows, and the first live composer of a spawn takes them as history.
+      {
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+(?:You['’]re\s+out\s+of\s+credits\.\s+)?Your\s+workspace\s+is\s+out\s+of\s+credits\.`, "m"),
+        type: "quota",
+        action: "pause",
+        message: "Codex workspace credits exhausted — workspace owner must refill",
+        notice: () => quotaPausedLine("Codex", "workspace_credits"),
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
+      },
+      {
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+You\s+hit\s+your\s+spend\s+cap\s+set\s+(?:by\s+the\s+owner\s+of|in)\s+your\s+workspace\.`, "m"),
+        type: "quota",
+        action: "pause",
+        message: "Codex workspace spend cap reached — workspace owner must raise it",
+        notice: () => t("inst.quota_spend_cap"),
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
+      },
+      {
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+Usage\s+limit\s+reached\.\s+You['’]ve\s+reached\s+your\s+usage\s+limit\.\s+Increase\s+your\s+limits`, "m"),
+        type: "quota",
+        action: "pause",
+        message: "Codex workspace usage limit reached — increase the workspace limits to continue",
+        notice: () => quotaPausedLine("Codex", "workspace_usage"),
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
+      },
+      // Codex warns at 10% and 5% remaining, and scopes the limit by period —
+      // "weekly" alone missed every `monthly limit` warning.
+      //
+      // `\s+` at EVERY word gap (not literal spaces) because capture-pane runs without -J,
+      // so tmux's hard wrap can land a newline (plus continuation-line padding)
+      // at any of these word gaps. The trailing "Run /status for a breakdown."
+      // is deliberately NOT part of the pattern — that tail is what actually
+      // wrapped in the reported case.
+      //
+      // `of your <period> limit` is load-bearing: it's what keeps the pattern
+      // off the agent's own prose about percentages.
+      {
+        pattern: /less\s+than\s+(\d+)\s*%\s+of\s+your\s+(hourly|daily|weekly|monthly)\s+limit/i,
+        type: "quota",
+        action: "notify",
+        message: "Codex usage limit running low",
+        formatMessage: (m) => `Codex ${m[2].toLowerCase()} limit: less than ${m[1]}% left`,
+        notice: (m) => (m ? quotaLowLine(m[2]!, m[1]!) : quotaLine("Codex", "usage")),
+      },
+    ];
+  }
+
+  getStartupDialogs(): StartupDialog[] {
+    const trustHold = this.trustHoldDialog();
+    return [
+      this.autoTrustDialog(),
+      trustHold,
+      this.updatePickerDialog(),
+      this.rateSwitchPickerDialog(),
+      ...this.sessionHoldDialogs(),
+      this.unknownSelectionHoldDialog(),
+    ];
+  }
+
+  /**
+   * #984: session-selection screens only a human may answer. Held (never
+   * keyed) so the delivery gate keeps messages queued and dialog_parked tells
+   * the operator; listed before the generic selection hold for a clear notice.
+   */
+  private sessionHoldDialogs(): RuntimeDialog[] {
+    return [
+      {
+        pattern: /This conversation is open in another app/,
+        keys: [],
+        description: "Codex session is open in another process (thread lock) — close the other one and press r, or fork manually",
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        remoteCard: codexSelectionCard,
+        isActive: codexSessionLockVisible,
+      },
+      {
+        pattern: /Working directory · resume/,
+        keys: [],
+        description: "Codex resume selected a session from another directory (sibling git worktree) — needs a human choice",
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        remoteCard: codexSelectionCard,
+        isActive: codexResumeCwdPickerVisible,
+      },
+    ];
+  }
+
+  /**
+   * The user's decision (hmsg-53600a2c): codex's folder-trust prompt in an AgEnD session is always answered Trust — the
+   * workspace is the agent's own, whatever preTrust covered (preTrust stays, so the prompt rarely shows at all). Enter,
+   * only with the cursor on "Trust and continue" among the known options (trustCursor); any other layout or row is
+   * held (trustHoldDialog). It trusts the folder only: per-action approvals are separate dialogs and are not touched.
+   */
+  private autoTrustDialog(): RuntimeDialog {
+    return {
+      pattern: /^\s*Trust this folder\?/m,
+      keys: ["Enter"],
+      description: "Codex folder trust — trusting the agent's own folder",
+      blocksDelivery: true,
+      inputBlocked: true,
+      autoResolutionKey: "codex-folder-auto-trust",
+      // One Enter per prompt (claimed, then checked): a prompt still up after it is held, never pressed again (#2896 review).
+      verifyAfterKeys: true,
+      isActive: pane => codexTrustPromptState(pane).trustCursor,
+      answerDetail: pane => ({ autoTrusted: true, ...this.trustPaneFields(pane) }),
+    };
+  }
+
+  private trustHoldDialog(): RuntimeDialog {
+    return {
+      pattern: /^\s*(?:Folder access|Trust this folder\?|Do you trust the files in this folder\?)/im,
+      keys: [],
+      description: "Codex folder trust needs human confirmation",
+      holdOnly: true,
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexTrustVariantActive,
+      remoteCard: codexSelectionCard,
+      heldReason: pane => this.trustHoldReason(pane),
+    };
+  }
+
+  /**
+   * #1008: the rate-limit model-switch picker parked unattended instances (it
+   * waits forever and its default option changes the model). Prevention is
+   * `notice.hide_rate_limit_model_nudge` (hideRateLimitModelNudge — real and
+   * effective on 0.157.1 and 0.159.2, verified live); this is the answer for a
+   * picker that appears anyway (config not applied, a CLI that moved the key).
+   *
+   * Escape, not a navigated Enter: it selects nothing, so it can never take
+   * option 1 (switch model) or option 3 (writes "never show again" into the
+   * config). Deliberately not one-shot: if the picker swallowed the key it is
+   * simply sent again on the next poll, and a repeated Escape is harmless.
+   */
+  private rateSwitchPickerDialog(): RuntimeDialog {
+    return {
+      // Documentation only: Daemon.dialogMatches uses isActive INSTEAD of this
+      // pattern, so it filters nothing here — the structural check below is the
+      // whole decision, and ordinary prose about the picker fails it. The words
+      // are the picker's own, kept so a reader can find the screen from the log.
+      pattern: /Keep current model \(never show again\)/,
+      keys: ["Escape"],
+      description: "Codex rate-limit model-switch picker — Escape keeps the current model",
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexRateSwitchPickerVisible,
+    };
+  }
+
+  private updatePickerDialog(): RuntimeDialog {
+    return {
+      // Defense in depth for config written by older AgEnD versions or a Codex
+      // regression. Match the release URL as well as the banner so ordinary
+      // agent prose cannot trigger a keypress.
+      pattern: /Update available![\s\S]{0,200}Release notes: https:\/\/github\.com\/openai\/codex\/releases/m,
+      keys: ["Escape"],
+      description: "Codex startup update-available picker",
+      // A delivery must never land on this screen. Its selected option is
+      // `› 1. Update now (runs … curl … | sh)` — the same `›` the input row
+      // uses — so an Enter here runs an installer instead of sending a message.
+      // The runtime dismisser presses Escape, but it only polls every few
+      // seconds and a delivery can arrive first (hit live on codex-cli 0.153.4,
+      // which parks on this picker for as long as nobody answers it).
+      blocksDelivery: true,
+      // Daemon.dialogMatches uses isActive INSTEAD OF pattern when present.
+      // Check the complete current picker here; a different Enter-only menu
+      // must never receive this automatic Escape key.
+      isActive: codexUpdatePickerVisible,
+    };
+  }
+
+  private usageLimitLunaReserveDialog(): RuntimeDialog {
+    // The real codex usage-limit dialog states codex has ALREADY switched to
+    // Luna Reserve and labels Escape as "continue working". Pressing Escape via
+    // sendSpecialKey is the ONLY safe key:
+    //
+    //   • Escape is sent via sendSpecialKey — never via pasteText (which adds
+    //     an implicit bracketed-paste Enter that could confirm the highlighted
+    //     server action: Upgrade, Reset usage, Add Credits, …).
+    //   • A digit selects its row at once, and pasted its implicit Enter would
+    //     confirm whatever it landed on. This path is explicitly NOT used.
+    //
+    // verifyAfterKeys: true — confirm the menu is gone after Escape.
+    // No confirmBeforeEnter / keysAfterConfirm: Escape needs no confirm gate.
+    return {
+      pattern: /Press enter to confirm or esc to continue working/i,
+      keys: ["Escape"],
+      description: "Codex usage limit — pressing Escape to continue with Luna Reserve",
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexUsageLimitMenuVisible,
+      verifyAfterKeys: true,
+      autoResolutionKey: "codex-usage-limit-luna-reserve",
+      postDismissNotice: {
+        text: t("inst.codex_usage_limit_luna_reserve", ""),  // instance name injected by daemon
+        label: "codex-usage-limit-selected",
+      },
+    };
+  }
+
+  private workspaceLimitPromptDialog(): RuntimeDialog {
+    // Escape via sendSpecialKey, the same as the Luna Reserve menu: never a paste
+    // (its implicit Enter would confirm the cursor's row) and never "y". The error
+    // row codex printed above the prompt stays, and the quota pause takes it from
+    // there: one notice, no parked dialog.
+    return {
+      pattern: /^\s*enter select\s*[·•]\s*esc back\s*$/im,
+      keys: ["Escape"],
+      description: "Codex workspace limit prompt — pressing Escape (never asking the owner)",
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexWorkspaceLimitPromptVisible,
+      verifyAfterKeys: true,
+      autoResolutionKey: "codex-workspace-limit-prompt",
+      answeredByAgend: true,
+      marksLiveIncident: true,
+    };
+  }
+
+  private unknownSelectionHoldDialog(): RuntimeDialog {
+    return {
+      pattern: /^\s*[›❯>]\s+\S/m,
+      keys: [],
+      description: "Codex interactive selection needs human input",
+      holdOnly: true,
+      blocksDelivery: true,
+      inputBlocked: true,
+      remoteCard: codexSelectionCard,
+      isActive: codexUnknownSelectionVisible,
+    };
+  }
+
+  getRuntimeDialogs(): RuntimeDialog[] {
+    return [
+      this.autoTrustDialog(),
+      this.trustHoldDialog(),
+      this.rateSwitchPickerDialog(),
+      {
+        // Codex 0.156 may change the wording/order of this credit-cost choice.
+        // Never navigate it by position: a moved option could switch to a
+        // more expensive model. A live picker holds delivery and notifies a
+        // human; old transcript mentions are excluded by the tail matcher.
+        pattern: /(?:Approaching rate limits|Switch to [^\r\n]{1,120} for lower credit usage\?)/i,
+        keys: [],
+        description: "Codex rate limit model switch dialog needs human choice",
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        remoteCard: codexSelectionCard,
+        isActive: codexRateSwitchVisible,
+      },
+      this.updatePickerDialog(),
+      this.usageLimitLunaReserveDialog(),
+      this.workspaceLimitPromptDialog(),
+      ...this.sessionHoldDialogs(),
+      this.unknownSelectionHoldDialog(),
+    ];
+  }
+
+  getInputUnavailableTransients(): InputUnavailableTransient[] {
+    return [{
+      pattern: /(?:^|\n)\s*Resuming session…\s*(?:\n|$)/,
+      description: "Codex session resume in progress",
+      isActive: (pane: string) => {
+        const rows = pane.split(/\r?\n/);
+        return codexBoxedResumeLoading(rows) || codexUnboxedResumeLoading(rows);
+      },
+    }];
+  }
+
+  /** Only a resume paints "Resuming session…"; a fresh launch never does. */
+  launchMayShowInputTransient(): boolean {
+    return this.paneDetectorContext?.launchMayResume() ?? this.lastLaunchResumes;
+  }
+
+  getQuitCommand(): string { return "/quit"; }
+
+  getCompactCommand(): string { return "/compact"; }
+  getClearCommand(): string { return "/clear"; }
+
+  getCancelKey(): string { return "Escape"; }
+}
+
+export class CodexBackend extends CodexPaneDetectors implements CliBackend {
+  private binaryPath: string;
+  private readonly sharedCodexHome: string;
+  private readonly isolatedCodexHome: string;
+  /** Which subscription this instance runs on, or null for the shared login. */
+  private credentialProfile: string | null = null;
+  /** Set only after preTrust wrote and read back this instance's private config. */
+  private authorizedTrust: { cwd: string; root: string } | null = null;
+  /** Set by buildCommand when the resume plan fell back; read once by the daemon. */
+  private launchWarning: string | null = null;
+  /** Set by writeConfig when the status_line could not be made verifiable (#931). */
+  private statusLineWarning: string | null = null;
+  /** #2357: set by buildCommand when the codex being launched lacks a package companion (codex-code-mode-host). */
+  private packageWarning: string | null = null;
+
+  constructor(private instanceDir: string) {
+    super();
+    this.binaryPath = resolveBinary("codex");
+    this.sharedCodexHome = resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"));
+    this.isolatedCodexHome = CodexBackend.resolveShortHome(instanceDir);
+  }
+
+  /**
+   * Compute and (on first call for an existing instance) migrate to a SHORT
+   * persistent CODEX_HOME under `~/.agend/cx/<8-char-hash>/`.
+   *
+   * Background (#953): codex 0.157.0 added `app-server-control.sock` under
+   * CODEX_HOME. For instances with long `-t<topic_id>` suffixes the full path
+   * exceeds the Unix socket SUN_LEN (~107 chars). codex canonicalises the path
+   * before binding the socket, so a symlink workaround does not help — the real
+   * path must be short.
+   *
+   * Migration steps (each is idempotent; half-completed states self-heal):
+   *  1. If shortHome does not exist AND legacyHome is a real directory (not a
+   *     symlink) → atomic renameSync. On EXDEV or any other error, fall back
+   *     safely: keep using the legacy long path (instance can still start, just
+   *     without the short-path fix).
+   *  2. If shortHome exists but legacyHome is missing → recreate the backward-
+   *     compat symlink (self-heal for rename-succeeded-but-symlink-failed crash).
+   *  3. If both shortHome and legacyHome (as symlink) exist → nothing to do.
+   *  4. New instance (no legacyHome) → create shortHome directly.
+   *
+   * Fail-safe guarantee: migration failure must never make the instance worse.
+   * The caller always receives a valid path it can use as CODEX_HOME.
+   */
+  /** Exposed for fleet-manager to delete the short home on instance removal. */
+  static shortHomeFor(instanceDir: string): string {
+    return codexShortHomeFor(instanceDir);
+  }
+
+  private static resolveShortHome(instanceDir: string): string {
+    const shortHome = CodexBackend.shortHomeFor(instanceDir);
+    const shortBase = join(getAgendHome(), "cx");
+    const canonical = resolve(instanceDir);
+    const legacyHome = resolve(instanceDir, "codex-home");
+
+    // Only migrate/create when the instance directory itself exists.
+    // Constructing CodexBackend for a non-existent dir (cli-env probes, test
+    // backends that never ran) must not litter ~/.agend/cx/ with orphan dirs.
+    if (!existsSync(canonical)) return shortHome;
+
+    const legacyExists = existsSync(legacyHome);
+    const legacyIsRealDir = legacyExists && !lstatSync(legacyHome).isSymbolicLink();
+    const shortExists = existsSync(shortHome);
+
+    if (!shortExists) {
+      mkdirSync(shortBase, { recursive: true, mode: 0o700 });
+      if (legacyIsRealDir) {
+        // Attempt atomic rename. Requires same device; fails with EXDEV otherwise.
+        try {
+          renameSync(legacyHome, shortHome);
+          // Log the one-time migration for observability.
+          try {
+            const logPath = join(shortBase, `${shortHome.split("/").at(-1)}.migrated`);
+            writeFileSync(logPath, `${new Date().toISOString()} migrated from ${legacyHome}\n`);
+          } catch { /* log failure is non-fatal */ }
+        } catch (err) {
+          // EXDEV (cross-device) or any other rename failure → fail-safe:
+          // fall back to the legacy long path so the instance still works.
+          // The socket-length bug persists for this instance but no data is lost.
+          const code = (err as NodeJS.ErrnoException).code ?? "unknown";
+          try {
+            const warnPath = join(shortBase, `${shortHome.split("/").at(-1)}.migration-failed`);
+            writeFileSync(warnPath,
+              `${new Date().toISOString()} rename failed (${code}): ${(err as Error).message}\n`
+              + `legacy path remains in use: ${legacyHome}\n`);
+          } catch { /* warn log failure is also non-fatal */ }
+          // Return legacy long path so the instance starts (socket may still fail
+          // on 0.157.0 for long names, but no data is lost or corrupted).
+          return legacyHome;
+        }
+      } else if (!legacyExists) {
+        // New instance — no data to migrate.
+        mkdirSync(shortHome, { recursive: true, mode: 0o700 });
+      }
+      // If legacyExists but is already a symlink: shortHome was deleted externally
+      // while the symlink still points to it. Re-create shortHome as a fresh dir.
+      if (!existsSync(shortHome)) {
+        mkdirSync(shortHome, { recursive: true, mode: 0o700 });
+      }
+    }
+
+    // Backward-compat symlink: instanceDir/codex-home → shortHome.
+    // Also serves as self-heal: if a previous run renamed successfully but
+    // crashed before creating the symlink, we recreate it here.
+    if (!legacyExists || legacyIsRealDir) {
+      // legacyIsRealDir means rename just happened (now shortHome exists, legacyHome gone).
+      // !legacyExists means new instance or symlink was deleted — create it.
+      try { symlinkSync(shortHome, legacyHome); } catch { /* race or already exists */ }
+    }
+
+    return shortHome;
   }
 
   /**
@@ -1745,49 +2304,7 @@ export class CodexBackend implements CliBackend {
     }
   }
 
-  getReadyPattern(): RegExp {
-    // Header and context text persist in inline scrollback and even while the
-    // CLI is loading or a modal owns stdin. Require the live prompt followed
-    // by the Context footer at the *end* of the capture. A valid custom
-    // status_line without Context gets a separate configured-item pattern;
-    // unknown footer values still fail closed. getBusyPattern vetoes a working
-    // turn whose empty composer remains visible.
-    // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
-    // prompt, between prompt/footer, and below the footer. A drafted composer
-    // is also idle once this same bottom footer proves it owns the screen.
-    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
-    const footerPattern = this.configuredStatusLineFooterPattern();
-    if (!footerPattern) return contextReady;
-
-    // The no-Context alternative requires the exact empty composer followed by
-    // a recognized configured Codex status_line value. If run-state is
-    // configured, that value must specifically be Ready. This is positive
-    // structural proof, never a deny-list of known dialogs.
-    const footerSource = footerPattern.source.slice(1, -1);
-    const noContextReady = new RegExp(
-      String.raw`(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${footerSource}(?:\r?\n[ \t⋆]*)*$`,
-      "iu",
-    );
-    // #978: a configured footer that carries a Context item in any position
-    // is the Context footer: same drafted-composer rule as Context-first. The
-    // whole row must match the configured item grammar, so an arbitrary
-    // indented line that merely contains `Context N% left` cannot pass.
-    const configuredContextReady = this.configuredHasContextItem()
-      ? new RegExp(
-        String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
-        "iu",
-      )
-      : null;
-    return new RegExp(
-      [contextReady.source, noContextReady.source, configuredContextReady?.source]
-        .filter((source): source is string => !!source)
-        .map(source => `(?:${source})`)
-        .join("|"),
-      "iu",
-    );
-  }
-
-  private readConfiguredStatusLineItems(): string[] | null {
+  protected readConfiguredStatusLineItems(): string[] | null {
     if (this.configuredStatusLineItems !== undefined) return this.configuredStatusLineItems;
     try {
       const config = tomlTable(parseToml(readFileSync(join(this.isolatedCodexHome, "config.toml"), "utf-8")));
@@ -1802,359 +2319,12 @@ export class CodexBackend implements CliBackend {
     return this.configuredStatusLineItems;
   }
 
-  private configuredStatusLineFooterPattern(): RegExp | null {
-    if (this.configuredStatusLinePattern !== undefined) return this.configuredStatusLinePattern;
-    const items = this.readConfiguredStatusLineItems();
-    if (!items?.length) return this.configuredStatusLinePattern = null;
-    const configuredPatterns = items
-      .map(item => CODEX_STATUS_LINE_VALUE_PATTERNS[item])
-      .filter((pattern): pattern is string => pattern !== undefined);
-    if (!configuredPatterns.length) return this.configuredStatusLinePattern = null;
-
-    const segment = `(?:${configuredPatterns.join("|")})`;
-    const separator = String.raw`[ \t]+·[ \t]+`;
-    const hasRunState = items.some(item => CODEX_RUN_STATE_STATUS_ITEMS.has(item));
-    // Ready must occupy its own status-line segment. Other configured items
-    // may precede/follow it, as Codex joins visible values with ` · `.
-    const line = hasRunState
-      ? `(?:${segment}${separator})*Ready(?:${separator}${segment})*`
-      : `${segment}(?:${separator}${segment})*`;
-    // The configured items, then (optionally) the CLI's own native fields — the same rule as the Context-first footer, so a
-    // `model · Context 46% left    Goal achieved (1h 6m)` row is the footer too, and the readiness regex built from this
-    // source (footerSource) says the same.
-    this.configuredStatusLinePattern = new RegExp(`^[ \t⋆]*${line}(?:${CODEX_NATIVE_FOOTER_FIELDS})?[ \t⋆]*$`, "iu");
-    return this.configuredStatusLinePattern;
-  }
-
-  private isConfiguredStatusLineFooter(row: string): boolean {
-    const pattern = this.configuredStatusLineFooterPattern();
-    if (!pattern) return false;
-    pattern.lastIndex = 0;
-    return pattern.test(row);
-  }
-
-  private configuredHasContextItem(): boolean {
-    return (this.readConfiguredStatusLineItems() ?? []).some(item => CODEX_CONTEXT_STATUS_ITEMS.has(item));
-  }
-
-  /**
-   * #978: a Context item in ANY position, accepted only as part of a footer
-   * whose every segment matches the configured status_line items. Codex keeps
-   * the user's order (`gpt-5.6-sol medium · Context 46% left · ~/x`); an
-   * arbitrary indented transcript line that happens to contain the item does
-   * not match that grammar. A stale config fails closed, and the daemon's
-   * stable-composer escape hatch then keeps the instance from latching.
-   */
-  // The configured grammar already makes Context a whole segment, so the item
-  // test only has to establish that one is present.
-  private isConfiguredContextFooter(row: string): boolean {
-    return this.configuredHasContextItem()
-      && new RegExp(CODEX_CONTEXT_ITEM, "iu").test(row)
-      && this.isConfiguredStatusLineFooter(row);
-  }
-
-  /** Any footer that proves the Context meter owns the bottom row. */
-  private isAnyContextFooter(row: string): boolean {
-    return isCodexContextFooter(row) || this.isConfiguredContextFooter(row);
-  }
-
-  /**
-   * #978 escape hatch: the live, EMPTY Codex composer within the last few
-   * non-blank rows, no busy marker, and none of the known selection screens.
-   * Deliberately says nothing about the footer, which is what is unknown.
-   */
-  isStableUnknownLayoutIdlePane(pane: string): boolean {
-    if (this.getBusyPattern().test(pane)) return false;
-    // The composer is live-looking and the footer is unknown — exactly this
-    // proof's blind spot — but there is no server behind it (#1099).
-    if (codexAppServerDisconnected(pane)) return false;
-    // (No second, wider "esc to interrupt" match here: getBusyPattern() above already reads a live status row of ANY
-    // title — #964 — and anchors it to the whole row at column zero, so a reply that quotes the phrase, indented or
-    // in prose, cannot pin the escape hatch shut (#991).)
-    // A retained queued message (`↳ …` under "Messages to be submitted after
-    // next tool call") means work is pending, whatever the composer shows.
-    if (/↳|Messages to be submitted/i.test(pane)) return false;
-    if (codexUsageLimitMenuVisible(pane) || codexRateSwitchVisible(pane)
-      || codexUnknownSelectionVisible(pane) || codexUpdatePickerVisible(pane)) return false;
-    const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
-    return rows.slice(-6).some(row => /^[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*$/.test(row));
-  }
-
-  private isCodexIdleFooter(row: string): boolean {
-    return isCodexContextFooter(row) || this.isConfiguredStatusLineFooter(row);
-  }
-
-  /** A proxy reply filters chrome per line; whole-pane readiness is separate. */
-  isProxyReplyChromeLine(line: string): boolean {
-    return /^\s*[›>]\s+Ask Codex to do anything\s*$/.test(line)
-      || this.isAnyContextFooter(line);
-  }
-
-  getErrorPatterns(): ErrorPattern[] {
-    return [
-      // Specific quota codes must precede the generic HTTP 429 classifier:
-      // OpenAI returns insufficient_quota with status 429, but switching models
-      // cannot repair an exhausted account and would only start a failover loop.
-      {
-        pattern: new RegExp(
-          String.raw`^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceeded\s+your\s+current\s+quota)\b|^(?:${CODEX_STATUS_GLYPH}) Quota exceeded\. Check your plan and billing details\.\r?$`,
-          "im",
-        ),
-        type: "quota",
-        action: "pause",
-        message: "OpenAI quota exceeded",
-        notice: () => quotaPausedLine("OpenAI", "api_quota"),
-      },
-      {
-        // Codex already exhausted HTTP retries and returned to its composer.
-        // The existing conditional continuation preserves context without
-        // replaying earlier tool effects. Quota remains a preceding pause.
-        pattern: new RegExp(`^${CODEX_EXHAUSTED_429_ROW}$`, "im"),
-        type: "rate_limit",
-        action: "nudge_continue",
-        message: t("inst.codex_rate_retry_stopped"),
-        skipCooldown: true,
-        skipRecoveryWait: true,
-      },
-      {
-        // Pane history contains the agent's own prose, source code and search
-        // results. Bare `rate limit` used to fail over an otherwise healthy
-        // Codex merely for discussing this regex. Match machine-readable API
-        // forms or an error-decorated terminal line instead.
-        pattern: new RegExp(
-          String.raw`^\s*unexpected\s+status\s+429\b|^(?![\s\S]{0,240}?${CODEX_EXHAUSTED_429_ROW})[ \t]*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)`,
-          "im",
-        ),
-        type: "rate_limit",
-        action: "failover",
-        message: "OpenAI rate limit reached",
-      },
-      {
-        // Same false-positive boundary as rate limits: `authentication` is a
-        // normal English/code word. Require a structured 401/code or a
-        // decorated CLI error line before pausing every instance on the shared
-        // credential.
-        pattern: new RegExp(
-          String.raw`^\s*unexpected\s+status\s+401\b|^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*401\b|\b(?:invalid_api_key|authentication_error)\b|\b401\s+Unauthorized\b|\bauthentication (?:failed|error)\b|\binvalid api key\b)`,
-          "im",
-        ),
-        type: "auth_error",
-        action: "pause",
-        message: "OpenAI authentication error",
-      },
-      // Codex writes the apostrophe as U+2019 ("You’ve hit your usage limit.") since
-      // 0.156 and as ASCII before (0.153.4): both must match, or no usage limit
-      // ever pauses the instance (#1098).
-      { pattern: /you['’]ve hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required",
-        notice: () => quotaPausedLine("Codex", "usage") },
-      {
-        // The terminal stage of a lost app-server (#1099): Codex has given up
-        // reconnecting and says so, with a counter that never stops. Nothing
-        // recovers from here without a relaunch, and every message sent in the
-        // meantime waits for an idle that cannot come. Only the LIVE row counts:
-        // directly above the LAST composer with no later transcript item or composer
-        // (the same test as codexAppServerDisconnected, as a lookahead), so text that
-        // merely quotes it does not raise this.
-        pattern: new RegExp(
-          String.raw`^[ \t]*•[ \t]+Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch[ \t]+\(\d+[hms](?:[ \t]+\d+[hms])*\)[ \t]*$`
-          + String.raw`(?=\n(?:[ \t]*\n)*[›>][^\n]*(?:\n(?![•■⚠›>])[^\n]*)*(?![\s\S]))`,
-          "mu",
-        ),
-        type: "network",
-        action: "notify",
-        message: "Codex lost its app-server connection and could not reconnect — restart the instance (messages cannot be delivered until then)",
-      },
-      {
-        // Codex reports an unknown model either as a TUI metadata fallback or
-        // as a ChatGPT-account API rejection. Use whitespace-aware phrases so
-        // capture-pane hard wraps do not hide either form.
-        // Codex quotes the slug with BACKTICKS ("Model metadata for `x` not found.",
-        // verified live on 0.160.0 and in the 0.153.4–0.160.0 binaries). The old
-        // pattern only took ASCII quotes, so it could never match a real line.
-        pattern: /model\s+metadata\s+for\s+['"`‘’“”][^'"`‘’“”]+['"`‘’“”]\s+not\s+found\.\s+defaulting\s+to\s+fallback\s+metadata|model\s+is\s+not\s+supported\s+when\s+using\s+codex\s+with\s+a\s+chatgpt\s+account/i,
-        type: "model_error",
-        action: "notify",
-        message: "Codex model unavailable — use /model to switch",
-      },
-      {
-        // A capacity rejection is a completed failed turn: Codex returns to its
-        // prompt without an answer, with its context intact. Keep this anchored to
-        // the exact decorated TUI line so ordinary prose about model capacity
-        // cannot trigger anything on an otherwise healthy instance. The status
-        // glyph is decoration that changes between Codex versions and error classes
-        // (`■` U+25A0 on 0.159.2 and 0.160.0, `⚠` U+26A0 before), so any one
-        // "Other Symbol" glyph (optionally with its emoji selector) opens the line —
-        // never a bullet, dash, quote marker or number, which prose and the model's
-        // own transcript items use (`•`, `-`, `>`). The sentence must fill the line,
-        // from column 0. Box drawing and block elements (U+2500–U+259F) are
-        // excluded up front: they are `So` too, but a left-border popup or
-        // table row (`│ …`) is chrome, not a status line. The CLI is
-        // already back at the prompt, so skipRecoveryWait avoids an extra wait.
-        // action "nudge_continue": tell the user, then about a minute later tell
-        // the agent to keep going (the lifecycle bounds this to 3 per 30 minutes,
-        // then pauses; see #905). No restart — nothing would re-send the turn — and
-        // no model switch. skipCooldown: each NEW capacity line is a new episode,
-        // including a second one right after the nudge.
-        pattern: /^(?![─-▟])\p{So}\uFE0F? Selected model is at capacity\. Please try a different model\.\r?$/mu,
-        type: "model_error",
-        action: "nudge_continue",
-        message: t("inst.codex_model_capacity"),
-        skipCooldown: true,
-        skipRecoveryWait: true,
-      },
-      // Workspace (business) accounts report exhaustion differently from personal
-      // ones, with codex's own rows (codex-rs/protocol error.rs and tui
-      // turn_runtime.rs, unchanged 0.160.0–0.165.0):
-      //   member: "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue."
-      //           "■ You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue."
-      //   owner:  "■ You're out of credits. Your workspace is out of credits. Add credits to continue using Codex."
-      //           "■ Your workspace is out of credits. Add credits to continue."
-      //           "■ You hit your spend cap set in your workspace. Increase your spend cap to continue."
-      //           "■ Usage limit reached. You've reached your usage limit. Increase your limits to continue using codex."
-      // Neither `insufficient_quota|billing` nor `you've hit your usage limit`
-      // matches them.
-      //
-      // pause, not notify: nothing works until someone refills or raises the cap.
-      // Anchored to the status glyph in COLUMN 0, because these skip the
-      // usage-window check (a workspace limit is not one of those windows, so the
-      // check would call it "available"): codex draws its own error cells there,
-      // while an agent's message, quote or code block is indented under its `•`
-      // (captured live, tests/fixtures/codex-0165-workspace-quoted.pane.txt).
-      // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard wrap
-      // can land a newline anywhere in the sentence. A resumed transcript reprints
-      // these rows, and the first live composer of a spawn takes them as history.
-      {
-        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+(?:You['’]re\s+out\s+of\s+credits\.\s+)?Your\s+workspace\s+is\s+out\s+of\s+credits\.`, "m"),
-        type: "quota",
-        action: "pause",
-        message: "Codex workspace credits exhausted — workspace owner must refill",
-        notice: () => quotaPausedLine("Codex", "workspace_credits"),
-        skipUsageVerify: true,
-        historyUntilLiveComposer: true,
-      },
-      {
-        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+You\s+hit\s+your\s+spend\s+cap\s+set\s+(?:by\s+the\s+owner\s+of|in)\s+your\s+workspace\.`, "m"),
-        type: "quota",
-        action: "pause",
-        message: "Codex workspace spend cap reached — workspace owner must raise it",
-        notice: () => t("inst.quota_spend_cap"),
-        skipUsageVerify: true,
-        historyUntilLiveComposer: true,
-      },
-      {
-        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+Usage\s+limit\s+reached\.\s+You['’]ve\s+reached\s+your\s+usage\s+limit\.\s+Increase\s+your\s+limits`, "m"),
-        type: "quota",
-        action: "pause",
-        message: "Codex workspace usage limit reached — increase the workspace limits to continue",
-        notice: () => quotaPausedLine("Codex", "workspace_usage"),
-        skipUsageVerify: true,
-        historyUntilLiveComposer: true,
-      },
-      // Codex warns at 10% and 5% remaining, and scopes the limit by period —
-      // "weekly" alone missed every `monthly limit` warning.
-      //
-      // `\s+` at EVERY word gap (not literal spaces) because capture-pane runs without -J,
-      // so tmux's hard wrap can land a newline (plus continuation-line padding)
-      // at any of these word gaps. The trailing "Run /status for a breakdown."
-      // is deliberately NOT part of the pattern — that tail is what actually
-      // wrapped in the reported case.
-      //
-      // `of your <period> limit` is load-bearing: it's what keeps the pattern
-      // off the agent's own prose about percentages.
-      {
-        pattern: /less\s+than\s+(\d+)\s*%\s+of\s+your\s+(hourly|daily|weekly|monthly)\s+limit/i,
-        type: "quota",
-        action: "notify",
-        message: "Codex usage limit running low",
-        formatMessage: (m) => `Codex ${m[2].toLowerCase()} limit: less than ${m[1]}% left`,
-        notice: (m) => (m ? quotaLowLine(m[2]!, m[1]!) : quotaLine("Codex", "usage")),
-      },
-    ];
-  }
-
-  getStartupDialogs(): StartupDialog[] {
-    const trustHold = this.trustHoldDialog();
-    return [
-      this.autoTrustDialog(),
-      trustHold,
-      this.updatePickerDialog(),
-      this.rateSwitchPickerDialog(),
-      ...this.sessionHoldDialogs(),
-      this.unknownSelectionHoldDialog(),
-    ];
-  }
-
-  /**
-   * #984: session-selection screens only a human may answer. Held (never
-   * keyed) so the delivery gate keeps messages queued and dialog_parked tells
-   * the operator; listed before the generic selection hold for a clear notice.
-   */
-  private sessionHoldDialogs(): RuntimeDialog[] {
-    return [
-      {
-        pattern: /This conversation is open in another app/,
-        keys: [],
-        description: "Codex session is open in another process (thread lock) — close the other one and press r, or fork manually",
-        holdOnly: true,
-        blocksDelivery: true,
-        inputBlocked: true,
-        remoteCard: codexSelectionCard,
-        isActive: codexSessionLockVisible,
-      },
-      {
-        pattern: /Working directory · resume/,
-        keys: [],
-        description: "Codex resume selected a session from another directory (sibling git worktree) — needs a human choice",
-        holdOnly: true,
-        blocksDelivery: true,
-        inputBlocked: true,
-        remoteCard: codexSelectionCard,
-        isActive: codexResumeCwdPickerVisible,
-      },
-    ];
-  }
-
-  /**
-   * The user's decision (hmsg-53600a2c): codex's folder-trust prompt in an AgEnD session is always answered Trust — the
-   * workspace is the agent's own, whatever preTrust covered (preTrust stays, so the prompt rarely shows at all). Enter,
-   * only with the cursor on "Trust and continue" among the known options (trustCursor); any other layout or row is
-   * held (trustHoldDialog). It trusts the folder only: per-action approvals are separate dialogs and are not touched.
-   */
-  private autoTrustDialog(): RuntimeDialog {
-    return {
-      pattern: /^\s*Trust this folder\?/m,
-      keys: ["Enter"],
-      description: "Codex folder trust — trusting the agent's own folder",
-      blocksDelivery: true,
-      inputBlocked: true,
-      autoResolutionKey: "codex-folder-auto-trust",
-      // One Enter per prompt (claimed, then checked): a prompt still up after it is held, never pressed again (#2896 review).
-      verifyAfterKeys: true,
-      isActive: pane => codexTrustPromptState(pane).trustCursor,
-      answerDetail: pane => ({ autoTrusted: true, ...this.trustPaneFields(pane) }),
-    };
-  }
-
-  private trustHoldDialog(): RuntimeDialog {
-    return {
-      pattern: /^\s*(?:Folder access|Trust this folder\?|Do you trust the files in this folder\?)/im,
-      keys: [],
-      description: "Codex folder trust needs human confirmation",
-      holdOnly: true,
-      blocksDelivery: true,
-      inputBlocked: true,
-      isActive: codexTrustVariantActive,
-      remoteCard: codexSelectionCard,
-      heldReason: pane => this.trustHoldReason(pane),
-    };
-  }
-
   /**
    * #2893: why the authorized folder-trust answer did not take this prompt (log only): what the pane shows against what
    * preTrust authorized for this launch, and whether the instance's config trusts the folder codex is asking about. A
    * field case of a held trust prompt then explains itself in daemon.log.
    */
-  private trustHoldReason(pane: string): Record<string, unknown> {
+  protected trustHoldReason(pane: string): Record<string, unknown> {
     const state = codexTrustPromptState(pane), authorized = this.authorizedTrust;
     const configPath = join(this.isolatedCodexHome, "config.toml");
     let configTrust: unknown = "unreadable";
@@ -2174,159 +2344,11 @@ export class CodexBackend implements CliBackend {
   }
 
   /** What an auto-trust answered (log only): the folder and root on the prompt, what preTrust covered, and the config path. */
-  private trustPaneFields(pane: string): Record<string, unknown> {
+  protected trustPaneFields(pane: string): Record<string, unknown> {
     const state = codexTrustPromptState(pane), authorized = this.authorizedTrust;
     return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
       authorizedCwd: authorized?.cwd ?? null, authorizedRoot: authorized?.root ?? null,
       configPath: join(this.isolatedCodexHome, "config.toml") };
-  }
-
-  /**
-   * #1008: the rate-limit model-switch picker parked unattended instances (it
-   * waits forever and its default option changes the model). Prevention is
-   * `notice.hide_rate_limit_model_nudge` (hideRateLimitModelNudge — real and
-   * effective on 0.157.1 and 0.159.2, verified live); this is the answer for a
-   * picker that appears anyway (config not applied, a CLI that moved the key).
-   *
-   * Escape, not a navigated Enter: it selects nothing, so it can never take
-   * option 1 (switch model) or option 3 (writes "never show again" into the
-   * config). Deliberately not one-shot: if the picker swallowed the key it is
-   * simply sent again on the next poll, and a repeated Escape is harmless.
-   */
-  private rateSwitchPickerDialog(): RuntimeDialog {
-    return {
-      // Documentation only: Daemon.dialogMatches uses isActive INSTEAD of this
-      // pattern, so it filters nothing here — the structural check below is the
-      // whole decision, and ordinary prose about the picker fails it. The words
-      // are the picker's own, kept so a reader can find the screen from the log.
-      pattern: /Keep current model \(never show again\)/,
-      keys: ["Escape"],
-      description: "Codex rate-limit model-switch picker — Escape keeps the current model",
-      blocksDelivery: true,
-      inputBlocked: true,
-      isActive: codexRateSwitchPickerVisible,
-    };
-  }
-
-  private updatePickerDialog(): RuntimeDialog {
-    return {
-      // Defense in depth for config written by older AgEnD versions or a Codex
-      // regression. Match the release URL as well as the banner so ordinary
-      // agent prose cannot trigger a keypress.
-      pattern: /Update available![\s\S]{0,200}Release notes: https:\/\/github\.com\/openai\/codex\/releases/m,
-      keys: ["Escape"],
-      description: "Codex startup update-available picker",
-      // A delivery must never land on this screen. Its selected option is
-      // `› 1. Update now (runs … curl … | sh)` — the same `›` the input row
-      // uses — so an Enter here runs an installer instead of sending a message.
-      // The runtime dismisser presses Escape, but it only polls every few
-      // seconds and a delivery can arrive first (hit live on codex-cli 0.153.4,
-      // which parks on this picker for as long as nobody answers it).
-      blocksDelivery: true,
-      // Daemon.dialogMatches uses isActive INSTEAD OF pattern when present.
-      // Check the complete current picker here; a different Enter-only menu
-      // must never receive this automatic Escape key.
-      isActive: codexUpdatePickerVisible,
-    };
-  }
-
-  private usageLimitLunaReserveDialog(): RuntimeDialog {
-    // The real codex usage-limit dialog states codex has ALREADY switched to
-    // Luna Reserve and labels Escape as "continue working". Pressing Escape via
-    // sendSpecialKey is the ONLY safe key:
-    //
-    //   • Escape is sent via sendSpecialKey — never via pasteText (which adds
-    //     an implicit bracketed-paste Enter that could confirm the highlighted
-    //     server action: Upgrade, Reset usage, Add Credits, …).
-    //   • A digit selects its row at once, and pasted its implicit Enter would
-    //     confirm whatever it landed on. This path is explicitly NOT used.
-    //
-    // verifyAfterKeys: true — confirm the menu is gone after Escape.
-    // No confirmBeforeEnter / keysAfterConfirm: Escape needs no confirm gate.
-    return {
-      pattern: /Press enter to confirm or esc to continue working/i,
-      keys: ["Escape"],
-      description: "Codex usage limit — pressing Escape to continue with Luna Reserve",
-      blocksDelivery: true,
-      inputBlocked: true,
-      isActive: codexUsageLimitMenuVisible,
-      verifyAfterKeys: true,
-      autoResolutionKey: "codex-usage-limit-luna-reserve",
-      postDismissNotice: {
-        text: t("inst.codex_usage_limit_luna_reserve", ""),  // instance name injected by daemon
-        label: "codex-usage-limit-selected",
-      },
-    };
-  }
-
-  private workspaceLimitPromptDialog(): RuntimeDialog {
-    // Escape via sendSpecialKey, the same as the Luna Reserve menu: never a paste
-    // (its implicit Enter would confirm the cursor's row) and never "y". The error
-    // row codex printed above the prompt stays, and the quota pause takes it from
-    // there: one notice, no parked dialog.
-    return {
-      pattern: /^\s*enter select\s*[·•]\s*esc back\s*$/im,
-      keys: ["Escape"],
-      description: "Codex workspace limit prompt — pressing Escape (never asking the owner)",
-      blocksDelivery: true,
-      inputBlocked: true,
-      isActive: codexWorkspaceLimitPromptVisible,
-      verifyAfterKeys: true,
-      autoResolutionKey: "codex-workspace-limit-prompt",
-      answeredByAgend: true,
-      marksLiveIncident: true,
-    };
-  }
-
-  private unknownSelectionHoldDialog(): RuntimeDialog {
-    return {
-      pattern: /^\s*[›❯>]\s+\S/m,
-      keys: [],
-      description: "Codex interactive selection needs human input",
-      holdOnly: true,
-      blocksDelivery: true,
-      inputBlocked: true,
-      remoteCard: codexSelectionCard,
-      isActive: codexUnknownSelectionVisible,
-    };
-  }
-
-  getRuntimeDialogs(): RuntimeDialog[] {
-    return [
-      this.autoTrustDialog(),
-      this.trustHoldDialog(),
-      this.rateSwitchPickerDialog(),
-      {
-        // Codex 0.156 may change the wording/order of this credit-cost choice.
-        // Never navigate it by position: a moved option could switch to a
-        // more expensive model. A live picker holds delivery and notifies a
-        // human; old transcript mentions are excluded by the tail matcher.
-        pattern: /(?:Approaching rate limits|Switch to [^\r\n]{1,120} for lower credit usage\?)/i,
-        keys: [],
-        description: "Codex rate limit model switch dialog needs human choice",
-        holdOnly: true,
-        blocksDelivery: true,
-        inputBlocked: true,
-        remoteCard: codexSelectionCard,
-        isActive: codexRateSwitchVisible,
-      },
-      this.updatePickerDialog(),
-      this.usageLimitLunaReserveDialog(),
-      this.workspaceLimitPromptDialog(),
-      ...this.sessionHoldDialogs(),
-      this.unknownSelectionHoldDialog(),
-    ];
-  }
-
-  getInputUnavailableTransients(): InputUnavailableTransient[] {
-    return [{
-      pattern: /(?:^|\n)\s*Resuming session…\s*(?:\n|$)/,
-      description: "Codex session resume in progress",
-      isActive: (pane: string) => {
-        const rows = pane.split(/\r?\n/);
-        return codexBoxedResumeLoading(rows) || codexUnboxedResumeLoading(rows);
-      },
-    }];
   }
 
   getContextUsage(): number | null {
@@ -2375,11 +2397,6 @@ export class CodexBackend implements CliBackend {
     });
   }
 
-  /** Only a resume paints "Resuming session…"; a fresh launch never does. */
-  launchMayShowInputTransient(): boolean {
-    return this.lastLaunchResumes;
-  }
-
   consumeLaunchWarning(): string | null {
     const warnings = [this.packageWarning, this.statusLineWarning, this.launchWarning].filter((w): w is string => !!w);
     this.packageWarning = null;
@@ -2387,13 +2404,6 @@ export class CodexBackend implements CliBackend {
     this.launchWarning = null;
     return warnings.length ? warnings.join("\n") : null;
   }
-
-  getQuitCommand(): string { return "/quit"; }
-
-  getCompactCommand(): string { return "/compact"; }
-  getClearCommand(): string { return "/clear"; }
-
-  getCancelKey(): string { return "Escape"; }
 
   // Codex has no `/effort`; reasoning effort is the `model_reasoning_effort`
   // config key (settable per launch with `-c`). The TUI reads it at startup, so

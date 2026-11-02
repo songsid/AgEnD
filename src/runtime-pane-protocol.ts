@@ -4,6 +4,8 @@ import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker
 import type { PaneKey, PaneSize } from "./pane-port.js";
 
 export const RUNTIME_PANE_PROTOCOL = 1;
+export const PANE_EDIT_KEYS = { "C-a": "\x01", "C-e": "\x05", "C-u": "\x15", "C-k": "\x0b", BSpace: "\x7f", DC: "\x1b[3~", Home: "\x1b[H", End: "\x1b[F", Left: "\x1b[D", Right: "\x1b[C" } as const;
+export type PaneEditKey = keyof typeof PANE_EDIT_KEYS;
 export const PANE_MAX_INPUT_BYTES = 64 * 1024;
 export const PANE_MAX_CAPTURE_BYTES = 192 * 1024;
 export interface RuntimePaneLaunch extends PaneSize {
@@ -36,6 +38,8 @@ export type RuntimePaneRequest =
   | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; kind: "literal" | "paste"; text: string }
   | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; key: PaneKey }
   | { action: "resize"; paneId: string; launchId: string; operationId: string; sequence: number; columns: number; rows: number }
+  | { action: "edit"; paneId: string; launchId: string; operationId: string; sequence: number; keys: PaneEditKey[]; repeat?: number }
+  | { action: "reconcile"; paneId: string; launchId: string; operationId: string; sequence: number; digest: string }
   | { action: "close"; paneId: string; launchId: string; operationId: string; sequence: number };
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -78,6 +82,16 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
       if (!["Enter", "Escape", "Up", "Down", "Right", "Left", "C-c", "C-q"].includes(String(value.key))) throw Error("Invalid pane key");
       break;
     case "resize": closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "columns", "rows"]); dimension(value.columns, 40, 300); dimension(value.rows, 10, 120); break;
+    case "edit":
+      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "keys", "repeat"]);
+      if (!Array.isArray(value.keys) || !value.keys.length || value.keys.length > 64 || value.keys.some(key => typeof key !== "string" || !Object.hasOwn(PANE_EDIT_KEYS, key))
+        || value.repeat !== undefined && (!Number.isInteger(value.repeat) || (value.repeat as number) < 1)
+        || value.keys.length * ((value.repeat as number | undefined) ?? 1) > 8192) throw Error("Invalid pane editing keys");
+      break;
+    case "reconcile":
+      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "digest"]);
+      if (typeof value.digest !== "string" || !/^[a-f0-9]{64}$/.test(value.digest)) throw Error("Invalid pane command digest");
+      break;
     case "close": closed(value, ["action", "paneId", "launchId", "operationId", "sequence"]); break;
     default: throw Error("Unknown pane operation");
   }

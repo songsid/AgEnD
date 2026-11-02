@@ -20,7 +20,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   await protectPaneDirectory(options.directory);
   const bootId = randomUUID(), token = randomBytes(32).toString("hex");
   const unlock = new RuntimeClientStore(options.directory).lock(bootId);
-  let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false;
+  let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false, leaseEpoch = "";
   const store = new RuntimePaneStore(join(options.directory, "state")); store.recoverInterrupted();
   const output = new Map<string, RuntimePaneSnapshot>();
   const hostOptions: RuntimePaneHostOptions = { store, bootId, online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
@@ -43,7 +43,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     wss.handleUpgrade(req, socket, head, peer => wss.emit("connection", peer));
   });
   wss.on("connection", (socket: WebSocket) => {
-    const epoch = ++generation; const previous = current; current = socket; onlineUntil = 0;
+    const epoch = ++generation; const previous = current; current = socket; onlineUntil = 0; leaseEpoch = "";
     previous?.close(1008, "Pane client replaced");
     send(socket, { type: "hello", hostBootId: bootId });
     socket.on("error", () => {});
@@ -51,18 +51,17 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     let pending = 0;
     socket.on("message", (bytes, binary) => {
       if (current !== socket || generation !== epoch || binary || pending >= 64) { socket.close(1008, "Invalid pane connection"); return; }
-      const valid = (): boolean => current === socket && generation === epoch && hostOptions.online();
       void (async () => {
         const value = JSON.parse(bytes.toString());
         if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid pane frame");
         if (value.type === "lease") {
-          if (Object.keys(value).some(key => !["type", "online", "maxAgents"].includes(key)) || typeof value.online !== "boolean"
+          if (Object.keys(value).some(key => !["type", "epoch", "online", "maxAgents"].includes(key)) || typeof value.online !== "boolean" || !/^[a-f0-9-]{36}$/i.test(value.epoch)
             || !Number.isInteger(value.maxAgents) || value.maxAgents < 1 || value.maxAgents > 16) throw Error("Invalid pane lease");
-          onlineUntil = value.online ? performance.now() + 15_000 : 0; limit = value.maxAgents; return;
+          leaseEpoch = value.epoch; onlineUntil = value.online ? performance.now() + 15_000 : 0; limit = value.maxAgents; return;
         }
-        if (value.type !== "request" || Object.keys(value).some(key => !["type", "id", "request"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id)) throw Error("Invalid pane frame");
+        if (value.type !== "request" || Object.keys(value).some(key => !["type", "id", "epoch", "request"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id) || value.epoch !== leaseEpoch) throw Error("Invalid pane frame");
         pending++;
-        try { const result = await host.request(value.request, valid); if (current === socket) send(socket, { type: "response", id: value.id, ok: true, result }); }
+        try { const result = await host.request(value.request, () => current === socket && generation === epoch && value.epoch === leaseEpoch && hostOptions.online()); if (current === socket) send(socket, { type: "response", id: value.id, ok: true, result }); }
         catch { if (current === socket) send(socket, { type: "response", id: value.id, ok: false, error: "Pane operation refused; refresh its owned state before retrying" }); }
         finally { pending--; }
       })().catch(() => socket.close(1008, "Invalid pane frame"));

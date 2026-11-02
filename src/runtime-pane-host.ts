@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
 import { RuntimePaneStore, type RuntimePaneRecord } from "./runtime-pane-store.js";
 import { RuntimePaneScreen } from "./runtime-pane-screen.js";
-import { validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { PANE_EDIT_KEYS, validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { spawnNativePane } from "./runtime-pane-process.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
@@ -133,6 +133,11 @@ export class RuntimePaneHost {
     const record = live.record;
     await live.parsed;
     if (request.action === "capture") return { snapshot: structuredClone(record.snapshot), text: await live.screen.capture(request) };
+    if (request.action === "reconcile") {
+      if (record.snapshot.commandSequence !== request.sequence || record.lastCommand?.id !== request.operationId
+        || record.lastCommand.digest !== request.digest || record.lastCommand.state !== "applied") throw Error("Pane command outcome is unconfirmed");
+      return structuredClone(record.snapshot);
+    }
     if (!current() || !this.options.online()) throw Error("Pane input lease expired");
     const digest = RuntimePaneStore.digest(request);
     if (request.sequence === record.snapshot.commandSequence) {
@@ -148,6 +153,7 @@ export class RuntimePaneHost {
     // Durable before input: a crash after this write must hold, never duplicate Enter.
     this.options.store.put(record);
     if (request.action === "input") live.process.write(request.kind === "paste" ? live.screen.bracketedPaste(request.text) : request.text);
+    else if (request.action === "edit") live.process.write(request.keys.map(key => PANE_EDIT_KEYS[key]).join("").repeat(request.repeat ?? 1));
     else if (request.action === "key") live.process.write(KEYS[request.key]);
     else if (request.action === "resize") {
       live.process.resize(request.columns, request.rows); await live.screen.resize(request.columns, request.rows);

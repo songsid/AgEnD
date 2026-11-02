@@ -15,6 +15,7 @@ export interface PaneLinkOptions {
   machineId: string;
   online(): boolean;
   maxAgents(): number;
+  epoch?(): string;
   output?(snapshot: RuntimePaneSnapshot): void;
 }
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
@@ -22,7 +23,8 @@ export class RuntimePaneLink {
   private pending = new Map<string, Pending>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
-  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output">) {}
+  private readonly clientEpoch = randomUUID();
+  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch">) {}
   static async open(options: PaneLinkOptions): Promise<RuntimePaneLink> {
     if (process.platform !== "win32") throw Error("Persistent pane host requires Windows Node");
     const directory = join(options.directory, "pane-host");
@@ -54,7 +56,7 @@ export class RuntimePaneLink {
     return this.attach(descriptor, options);
   }
   /** Authenticated discovery seam; fixtures bind only private loopback services. */
-  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output">): Promise<RuntimePaneLink> {
+  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch">): Promise<RuntimePaneLink> {
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(`ws://127.0.0.1:${descriptor.port}/pane/v1`, { headers: { Authorization: `Bearer ${descriptor.token}` },
         handshakeTimeout: 10_000, maxPayload: 256 * 1024, followRedirects: false, perMessageDeflate: false });
@@ -80,22 +82,24 @@ export class RuntimePaneLink {
       });
     });
   }
+  connectionChanged(): void { this.lease(); }
+  private epoch(): string { return this.options.epoch?.() ?? this.clientEpoch; }
   private lease(): void {
     if (this.socket.readyState !== WebSocket.OPEN || this.closed) return;
     const maxAgents = this.options.maxAgents();
     if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) { this.socket.close(1008, "Invalid machine limit"); return; }
-    this.socket.send(JSON.stringify({ type: "lease", online: this.options.online(), maxAgents }));
+    this.socket.send(JSON.stringify({ type: "lease", epoch: this.epoch(), online: this.options.online(), maxAgents }));
   }
-  request(raw: unknown): Promise<unknown> {
+  request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (this.closed || this.socket.readyState !== WebSocket.OPEN || !this.options.online()) return Promise.reject(Error("Pane client is disconnected"));
+    if (!current() || this.closed || this.socket.readyState !== WebSocket.OPEN || !this.options.online()) return Promise.reject(Error("Pane client is disconnected"));
     if (this.pending.size >= 64 || this.socket.bufferedAmount > 256 * 1024) return Promise.reject(Error("Pane client backpressure limit"));
     this.lease();
     const id = randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(Error("Pane result unconfirmed; no input is replayed")); }, 125_000); timer.unref();
       this.pending.set(id, { resolve, reject, timer });
-      this.socket.send(JSON.stringify({ type: "request", id, request }), error => {
+      this.socket.send(JSON.stringify({ type: "request", id, epoch: this.epoch(), request }), error => {
         if (!error) return;
         const pending = this.pending.get(id); if (pending) { clearTimeout(timer); this.pending.delete(id); reject(Error("Pane result unconfirmed")); }
       });

@@ -10814,7 +10814,26 @@ export class Daemon extends EventEmitter {
    * Handle a tool call from the MCP server (forwarded by Claude).
    * Routes to the channel adapter via MessageBus.
    */
-  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket): void {
+  /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string): boolean }): Promise<{ result: unknown; error?: string }> {
+    if (!lease.current() || !lease.allowed(input.tool) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
+    const fence = this.launchFenceEpoch;
+    const current = (): boolean => lease.current() && lease.allowed(input.tool) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (value: { result: unknown; error?: string }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
+      timer.unref?.();
+      try {
+        this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
+          current, // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
+          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}) }); return false; },
+        });
+      } catch { finish({ result: null, error: "Pane tool operation failed" }); }
+    });
+  }
+
+  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean }): void {
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
@@ -10823,8 +10842,8 @@ export class Daemon extends EventEmitter {
     this.logger.debug({ tool, requestId }, "Tool call from MCP server");
     // A tool call can only come from a live MCP server of ours — proof of life
     // that outranks whatever the pid slot says.
-    if (this.socketSessionNames.get(socket) === this.name) {
-      this.noteMcpProofOfLife("tool_call", this.socketPids.get(socket));
+    if (peer?.current() || socket && this.socketSessionNames.get(socket) === this.name) {
+      this.noteMcpProofOfLife("tool_call", socket ? this.socketPids.get(socket) : undefined);
     }
 
     // A tool invocation is not delivery evidence. Capture which obligation it
@@ -10832,7 +10851,7 @@ export class Daemon extends EventEmitter {
     // Explicitly mapped sibling sessions must not satisfy this instance's turn;
     // an unmapped socket is retained for legacy/tests where mcp_ready was not
     // observed before the first tool call.
-    const sourceSession = this.socketSessionNames.get(socket);
+    const sourceSession = peer ? this.name : socket ? this.socketSessionNames.get(socket) : undefined;
     const replyAttempt = TURN_OUTBOUND_TOOLS.has(tool) && (!sourceSession || sourceSession === this.name)
       ? this.turnReplyGuard.beginToolAttempt(tool === "reply", TURN_COMPLETION_TOOLS.has(tool))
       : null;
@@ -10878,9 +10897,11 @@ export class Daemon extends EventEmitter {
         // failed" and report unknown immediately rather than starting recovery.
         this.turnReplyGuard.settleToolAttempt(replyAttempt, false);
       }
-      const sent = this.ipcServer?.send(socket, { requestId, result, error, operationId }) ?? false;
+      const packet = { requestId, result, error, operationId };
+      const sent = peer ? peer.current() && peer.send(packet) : socket ? this.ipcServer?.send(socket, packet) ?? false : false;
       if (!sent) {
-        this.logger.warn({ tool, requestId }, "Tool result could not be returned — originating MCP socket is closed");
+        if (peer) this.logger.debug({ tool, requestId }, "Native MCP result awaits transport-written confirmation");
+        else this.logger.warn({ tool, requestId }, "Tool result could not be returned — originating MCP socket is closed");
       } else if (operationId) {
         this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
       }
@@ -11069,7 +11090,7 @@ export class Daemon extends EventEmitter {
         // Use fleetRequestId (not requestId) to avoid MCP server resolving the
         // pending tool call prematurely when it receives the broadcast.
         const fleetReqId = `xmsg_${++this.fleetRequestSeq}_${requestId}`;
-        const senderSessionName = this.socketSessionNames.get(socket);
+        const senderSessionName = sourceSession;
         // Shared table, so delete_instance and the deployment tools get the same
         // budget here as the MCP client expects (the ad-hoc list omitted them).
         const crossTimeoutMs = daemonBudgetMs(tool);

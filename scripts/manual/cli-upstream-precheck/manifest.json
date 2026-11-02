@@ -633,199 +633,199 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1253,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1118,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "rate_limit",
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1253,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
+     "line": 1118,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
      "text": "API Error: Request rejected (429",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1259,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1124,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "Login expired",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1263,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1128,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "Not logged in",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1263,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1128,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "Please run /login",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1263,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1128,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "auth_error",
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1263,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
+     "line": 1128,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
      "text": "API Error: Authentication",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1264,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1129,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "There's an issue with the selected model",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1273,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1138,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "is not available on your",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1273,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1138,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "model_access",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1273,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1138,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "or ask your admin to enable this model",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1273,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1138,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "unrecognized_model",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1273,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1138,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "model_error",
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1274,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
+     "line": 1139,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
      "text": "API Error: Overloaded",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1278,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1143,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "API Error: Repeated 529 Overloaded errors",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1282,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1147,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "config_error",
      "kind": "string",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1307,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
+     "line": 1172,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.type"
     },
     {
      "text": "API key",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1323,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1188,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "Fix external",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1323,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1188,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "auth token",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
-     "line": 1323,
-     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+     "line": 1188,
+     "symbol": "ClaudePaneDetectors.getErrorPatterns.pattern"
     },
     {
      "text": "Configuration error",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1344,
-     "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
+     "line": 1209,
+     "symbol": "ClaudePaneDetectors.getStartupDialogs.pattern"
     },
     {
      "text": "contains invalid JSON",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1344,
-     "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
+     "line": 1209,
+     "symbol": "ClaudePaneDetectors.getStartupDialogs.pattern"
     },
     {
      "text": "Resume Session",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1382,
-     "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
+     "line": 1247,
+     "symbol": "ClaudePaneDetectors.getStartupDialogs.pattern"
     },
     {
      "text": "dangerous_command",
      "kind": "string",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
-     "line": 1438,
-     "symbol": "ClaudeCodeBackend.getRuntimeDialogs.interactionKind"
+     "line": 1303,
+     "symbol": "ClaudePaneDetectors.getRuntimeDialogs.interactionKind"
     },
     {
      "text": "no conversation found",
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1538,
+     "line": 1543,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -833,7 +833,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1538,
+     "line": 1543,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -841,7 +841,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1538,
+     "line": 1543,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -1465,11 +1465,323 @@
      "symbol": "codexBoxedResumeLoading.resume"
     },
     {
+     "text": "Messages to be submitted",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 1217,
+     "symbol": "CodexPaneDetectors.isStableUnknownLayoutIdlePane"
+    },
+    {
+     "text": "API Error",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1241,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Quota exceeded. Check your plan and billing details",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1241,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "billing_hard_limit_reached",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1241,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "exceeded your current quota",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1241,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "insufficient_quota",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1241,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "api_quota",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1247,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.notice"
+    },
+    {
+     "text": "rate_limit",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1254,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.type"
+    },
+    {
+     "text": "nudge_continue",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1255,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.action"
+    },
+    {
+     "text": "rate limit",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1266,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "rate_limit_exceeded",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1266,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "too many requests",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1266,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "too_many_requests",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1266,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "unexpected status 429",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1266,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "401 Unauthorized",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1279,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "authentication_error",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1279,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "invalid api key",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1279,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "invalid_api_key",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1279,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "unexpected status 401",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1279,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1282,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.type"
+    },
+    {
+     "text": "ve hit your usage limit",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1289,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "model is not supported when using codex with a chatgpt account",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1315,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "model metadata for",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1315,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "not found. defaulting to fallback metadata",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1315,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "model_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1316,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.type"
+    },
+    {
+     "text": "Selected model is at capacity. Please try a different model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1339,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Your workspace is out of credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1368,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "re out of credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1368,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "workspace_credits",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1372,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.notice"
+    },
+    {
+     "text": "You hit your spend cap set",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1377,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "by the owner of",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1377,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "your workspace",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1377,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Usage limit reached. You",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1386,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "ve reached your usage limit. Increase your limits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1386,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "workspace_usage",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1390,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.notice"
+    },
+    {
+     "text": "less than",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1406,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "of your",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1406,
+     "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Keep current model (never show again",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1511,
+     "symbol": "CodexPaneDetectors.rateSwitchPickerDialog.pattern"
+    },
+    {
+     "text": "Release notes: https://github.com/openai/codex/releases",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 1525,
+     "symbol": "CodexPaneDetectors.updatePickerDialog.pattern"
+    },
+    {
      "text": " migrated from ",
      "kind": "template",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1046,
+     "line": 1728,
      "symbol": "CodexBackend.resolveShortHome"
     },
     {
@@ -1477,7 +1789,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1056,
+     "line": 1738,
      "symbol": "CodexBackend.resolveShortHome"
     },
     {
@@ -1485,7 +1797,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1057,
+     "line": 1739,
      "symbol": "CodexBackend.resolveShortHome"
     },
     {
@@ -1493,7 +1805,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1364,
+     "line": 1923,
      "symbol": "CodexBackend.disableStartupUpdateCheck.existing"
     },
     {
@@ -1501,7 +1813,7 @@
      "kind": "string",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1366,
+     "line": 1925,
      "symbol": "CodexBackend.disableStartupUpdateCheck.updated"
     },
     {
@@ -1509,7 +1821,7 @@
      "kind": "string",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1373,
+     "line": 1932,
      "symbol": "CodexBackend.disableStartupUpdateCheck.LINE"
     },
     {
@@ -1517,7 +1829,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 1442,
+     "line": 2001,
      "symbol": "CodexBackend.enableContextStatusLine"
     },
     {
@@ -1525,7 +1837,7 @@
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 1454,
+     "line": 2013,
      "symbol": "CodexBackend.enableContextStatusLine"
     },
     {
@@ -1533,7 +1845,7 @@
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 1475,
+     "line": 2034,
      "symbol": "CodexBackend.enableContextStatusLine.reason"
     },
     {
@@ -1541,7 +1853,7 @@
      "kind": "string",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 1475,
+     "line": 2034,
      "symbol": "CodexBackend.enableContextStatusLine.reason"
     },
     {
@@ -1549,320 +1861,8 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/codex.ts",
-     "line": 1528,
+     "line": 2087,
      "symbol": "CodexBackend.SHARED_SESSION_DIRS"
-    },
-    {
-     "text": "Messages to be submitted",
-     "kind": "regex",
-     "surface": "idle-busy",
-     "file": "src/backend/codex.ts",
-     "line": 1876,
-     "symbol": "CodexBackend.isStableUnknownLayoutIdlePane"
-    },
-    {
-     "text": "API Error",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1900,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "Quota exceeded. Check your plan and billing details",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1900,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "billing_hard_limit_reached",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1900,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "exceeded your current quota",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1900,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "insufficient_quota",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1900,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "api_quota",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1906,
-     "symbol": "CodexBackend.getErrorPatterns.notice"
-    },
-    {
-     "text": "rate_limit",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1913,
-     "symbol": "CodexBackend.getErrorPatterns.type"
-    },
-    {
-     "text": "nudge_continue",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1914,
-     "symbol": "CodexBackend.getErrorPatterns.action"
-    },
-    {
-     "text": "rate limit",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1925,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "rate_limit_exceeded",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1925,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "too many requests",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1925,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "too_many_requests",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1925,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "unexpected status 429",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1925,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "401 Unauthorized",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1938,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "authentication_error",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1938,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "invalid api key",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1938,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "invalid_api_key",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1938,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "unexpected status 401",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1938,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "auth_error",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1941,
-     "symbol": "CodexBackend.getErrorPatterns.type"
-    },
-    {
-     "text": "ve hit your usage limit",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1948,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "model is not supported when using codex with a chatgpt account",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1974,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "model metadata for",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1974,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "not found. defaulting to fallback metadata",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1974,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "model_error",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1975,
-     "symbol": "CodexBackend.getErrorPatterns.type"
-    },
-    {
-     "text": "Selected model is at capacity. Please try a different model",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 1998,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "Your workspace is out of credits",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2027,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "re out of credits",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2027,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "workspace_credits",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2031,
-     "symbol": "CodexBackend.getErrorPatterns.notice"
-    },
-    {
-     "text": "You hit your spend cap set",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2036,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "by the owner of",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2036,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "your workspace",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2036,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "Usage limit reached. You",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2045,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "ve reached your usage limit. Increase your limits",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2045,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "workspace_usage",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2049,
-     "symbol": "CodexBackend.getErrorPatterns.notice"
-    },
-    {
-     "text": "less than",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2065,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "of your",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2065,
-     "symbol": "CodexBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "Keep current model (never show again",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/codex.ts",
-     "line": 2202,
-     "symbol": "CodexBackend.rateSwitchPickerDialog.pattern"
-    },
-    {
-     "text": "Release notes: https://github.com/openai/codex/releases",
-     "kind": "regex",
-     "surface": "dialog",
-     "file": "src/backend/codex.ts",
-     "line": 2216,
-     "symbol": "CodexBackend.updatePickerDialog.pattern"
     },
     {
      "text": "no conversation found",
@@ -2049,7 +2049,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12590,
+     "line": 12611,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2057,7 +2057,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12591,
+     "line": 12612,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2065,7 +2065,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12591,
+     "line": 12612,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2073,7 +2073,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12591,
+     "line": 12612,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2081,7 +2081,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12591,
+     "line": 12612,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2089,7 +2089,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12591,
+     "line": 12612,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2097,7 +2097,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12591,
+     "line": 12612,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2105,7 +2105,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12592,
+     "line": 12613,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2113,7 +2113,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12685,
+     "line": 12706,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2121,7 +2121,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12802,
+     "line": 12823,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2129,7 +2129,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12802,
+     "line": 12823,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]

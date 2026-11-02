@@ -53,6 +53,8 @@ export interface PaneObservation {
 
 /** Session supervision stays with the host. PID methods refer only to host-local processes. */
 export interface PaneHost {
+  /** Only local hosts can prove a coordinator-local PID. */
+  readonly executionHost?: "local" | "remote";
   bind(session: string, id: string, size?: PaneSize, observation?: PaneObservation): Pane;
   ensureSession(session: string): Promise<void>;
   sessionExists(session: string): Promise<boolean>;

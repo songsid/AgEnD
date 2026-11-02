@@ -81,6 +81,7 @@ export class RuntimeClient {
   private paneHost: RuntimePaneHost | RuntimePaneLink | null = null;
   private paneOpening: Promise<RuntimePaneHost | RuntimePaneLink> | null = null;
   private machinePaneLimit = 4;
+  private paneEpoch = randomUUID();
   private readonly active = new Set<string>();
   private readonly snapshots = new Map<string, string>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -125,7 +126,7 @@ export class RuntimeClient {
     const socket = this.socket = this.options.socketFactory?.(url.href, this.credentials.credential)
       ?? new WebSocket(url.href, { headers: { Authorization: `Bearer ${this.credentials.credential}` }, followRedirects: false,
         maxPayload: MAX_FRAME, handshakeTimeout: 15_000, perMessageDeflate: false });
-    this.welcomed = false;
+    this.welcomed = false; this.paneEpoch = randomUUID();
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform,
@@ -147,7 +148,8 @@ export class RuntimeClient {
     });
     socket.on("close", code => {
       if (this.socket !== socket) return;
-      this.socket = null; this.welcomed = false;
+      this.socket = null; this.welcomed = false; this.paneEpoch = randomUUID();
+      if (this.paneHost && "connectionChanged" in this.paneHost) this.paneHost.connectionChanged();
       this.rejectTools();
       if (this.stopped) return;
       if (code === 1008) {
@@ -202,8 +204,9 @@ export class RuntimeClient {
         || (value.maxAgents as number) < 1 || (value.maxAgents as number) > 16) throw Error("Invalid pane transport envelope");
       const request = validateRuntimePaneRequest(value.request);
       this.machinePaneLimit = value.maxAgents as number;
+      const epoch = this.paneEpoch;
       try {
-        const result = await (await this.panes()).request(request);
+        const result = await (await this.panes()).request(request, () => epoch === this.paneEpoch && this.online());
         this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
       return;
@@ -224,7 +227,7 @@ export class RuntimeClient {
       });
       else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => RuntimePaneLink.open({
         directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
-        online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, output,
+        online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, output,
       })).then(host => this.paneHost = host);
     }
     return this.paneOpening;
