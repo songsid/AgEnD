@@ -109,7 +109,8 @@ import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
-import { IpcClient } from "./channel/ipc-bridge.js";
+import { IpcClient, type InstanceClient } from "./channel/ipc-bridge.js";
+import { NativeDaemonClient } from "./native-daemon-client.js";
 import { usesChannelAddress } from "./channel/mcp-tools.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, SentMessage, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
@@ -1311,7 +1312,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   readonly routing = new RoutingEngine();
   get routingTable(): Map<string, RouteTarget> { return this.routing.map; }
-  instanceIpcClients: Map<string, IpcClient> = new Map();
+  instanceIpcClients: Map<string, InstanceClient> = new Map();
   scheduler: Scheduler | null = null;
   private configPath: string = "";
   /** SIGHUPs received before startAll finishes are replayed once startup is safe. */
@@ -9667,10 +9668,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
+    const daemon = this.daemons.get(name);
+    const native = daemon?.usesNativePane?.();
     const sockPath = join(this.getInstanceDir(name), "channel.sock");
-    if (!existsSync(sockPath)) return;
+    if (!native && !existsSync(sockPath)) return;
 
-    const ipc = new IpcClient(sockPath);
+    const ipc: InstanceClient = native
+      ? new NativeDaemonClient(daemon!, () => this.daemons.get(name) === daemon && (!this.instanceIpcClients.has(name) || this.instanceIpcClients.get(name) === ipc))
+      : new IpcClient(sockPath);
     try {
       await ipc.connect();
       this.instanceIpcClients.set(name, ipc);
@@ -9773,7 +9778,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // connected, so seed the cache instead of waiting for another transition.
       ipc.send({ type: "query_instance_state", requestId: `fleet-state-${Date.now()}` });
       this.logger.debug({ name }, "Connected to instance IPC");
-      if (!this.statuslineWatcher.has(name)) {
+      if (!native && !this.statuslineWatcher.has(name)) {
         this.statuslineWatcher.watch(name);
       }
 

@@ -2211,8 +2211,35 @@ export class Daemon extends EventEmitter {
   /** Lazy default also preserves bare-prototype diagnostic/test construction. */
   private get paneHost(): PaneHost { return this.paneTransport ?? tmuxPaneHost; }
   private nativePaneLifecycle?: NativePaneLifecycle;
+  private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+
+  /** Same-process transport for the owned native daemon; never exposed as a runner RPC. */
+  setNativeFleetBridge(bridge: { current(): boolean; send(message: Record<string, unknown>): void }): void {
+    if (!this.nativePaneLifecycle || this.nativeFleetBridge?.current()) throw Error("Native Fleet bridge requires one bound pane owner");
+    this.nativeFleetBridge = bridge;
+  }
+
+  /** Fleet admission and generation checks happen before this synchronous handoff. */
+  acceptNativeFleetMessage(message: Record<string, unknown>): boolean {
+    if (!this.nativePaneLifecycle || !this.nativeFleetBridge?.current() || this.deliveryWritesStopping || this.runtimeMonitorsFrozen) return false;
+    if (typeof message.type === "string" && FLEET_RESPONSE_TYPES.has(message.type)) { this.routeFleetResponse(message); return true; }
+    const bridge = this.nativeFleetBridge;
+    const current = () => this.nativeFleetBridge === bridge && bridge.current() && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen;
+    return this.handleFleetMessage(message, reply => { if (current()) this.broadcastFleetMessage(reply); }, current);
+  }
+
+  private broadcastFleetMessage(message: Record<string, unknown>): void {
+    if (this.nativePaneLifecycle) {
+      if (this.nativeFleetBridge?.current() && !this.runtimeMonitorsFrozen && !this.deliveryWritesStopping) this.nativeFleetBridge.send(message);
+    } else this.ipcServer?.broadcast(message);
+  }
+
+  private fleetTransportAvailable(): boolean {
+    return this.nativePaneLifecycle ? !!this.nativeFleetBridge?.current() && !this.runtimeMonitorsFrozen : !!this.ipcServer;
+  }
+
 
   /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
@@ -2749,37 +2776,7 @@ export class Daemon extends EventEmitter {
         }
         // Batch response for prune path
         this.ipcServer?.send(socket, { type: "query_sessions_response", sessions });
-      } else if (msg.type === "fleet_inbound") {
-        // Fleet manager routed a message to us (topic mode)
-        const meta = msg.meta as Record<string, string>;
-        const targetSession = msg.targetSession as string | undefined;
-        const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
-        void this.wake().then(() => {
-          this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
-        }).catch(err => {
-          this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
-          this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
-        });
-      } else if (msg.type === "raw_paste") {
-        this.handleRawPasteIpcMessage(msg);
-      } else if (msg.type === "config_update") {
-        this.applyConfigUpdate(msg.config);
-      } else if (msg.type === "steer") {
-        const meta = (msg.meta ?? {}) as Record<string, string>;
-        this.steerMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
-      } else if (msg.type === "btw") {
-        const meta = (msg.meta ?? {}) as Record<string, string>;
-        this.btwMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
-      } else if (msg.type === "fleet_schedule_trigger") {
-        const payload = msg.payload as Record<string, unknown>;
-        const meta = msg.meta as Record<string, string>;
-        const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
-        void this.wake().then(() => this.pushChannelMessage(payload.message as string, meta, undefined, deliveryEpoch)).catch(err => {
-          this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
-        });
-      } else if (msg.type === "query_instance_state") {
-        void this.respondToInstanceStateQuery(msg, socket);
-      }
+      } else this.handleFleetMessage(msg, reply => { this.ipcServer?.send(socket, reply); });
     });
 
     }
@@ -2983,7 +2980,7 @@ export class Daemon extends EventEmitter {
         this.socketPids.delete(socket);
         // Notify fleet manager so it can clean up sessionRegistry
         if (sessionName !== this.name) {
-          this.ipcServer?.broadcast({ type: "session_disconnected", sessionName });
+          this.broadcastFleetMessage({ type: "session_disconnected", sessionName });
         }
       });
     }
@@ -3000,7 +2997,7 @@ export class Daemon extends EventEmitter {
       // sub-agent's server may have left a dead pid in the slot).
       this.noteMcpProofOfLife("mcp_ready", typeof msg.pid === "number" ? msg.pid : undefined);
     }
-    this.ipcServer?.broadcast({ type: "mcp_ready", sessionName });
+    this.broadcastFleetMessage({ type: "mcp_ready", sessionName });
   }
 
     private checkMcpServerAlive(): void {
@@ -3938,7 +3935,7 @@ export class Daemon extends EventEmitter {
       // Force the next ready capture to emit a fresh transition after respawn.
       this.instanceState = "working";
     }
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "instance_process_state",
       instanceName: this.name,
       status,
@@ -4538,7 +4535,7 @@ export class Daemon extends EventEmitter {
       try { pane = await tmux.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES); } catch { continue; }
       if (!standing()) return;
       const outcome = follower.look(pane);
-      if (outcome) { this.ipcServer?.broadcast({ type: "compact_pane_result", id, owner, outcome }); return; }
+      if (outcome) { this.broadcastFleetMessage({ type: "compact_pane_result", id, owner, outcome }); return; }
     }
   }
 
@@ -4564,7 +4561,7 @@ export class Daemon extends EventEmitter {
   ): void {
     const reportSwitch = (result: OwnSwitchOutcome) => {
       if (!ownSwitch) return;
-      this.ipcServer?.broadcast({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
+      this.broadcastFleetMessage({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
     };
     // Board 003648ac: the fleet follows a web /compact from just before its paste is written: the transcript's end then
     // (taken here, under this launch, before the write) and the launch it was written under ride with the notice — once.
@@ -4578,7 +4575,7 @@ export class Daemon extends EventEmitter {
     const tellWritten = (written: boolean) => {
       if (!notifyWritten || told) return;
       told = true;
-      this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
+      this.broadcastFleetMessage({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
         ...(written ? { owner, checkpoint, ...(paneFollower ? { pane: true } : {}) } : {}) });
       if (written && paneFollower) void this.followCompactPane(notifyWritten, owner, paneFollower);
     };
@@ -5059,7 +5056,7 @@ export class Daemon extends EventEmitter {
     }
 
     // Notify MCP servers of graceful shutdown (prevents reconnect attempts)
-    this.ipcServer?.broadcast({ type: "shutdown" });
+    this.broadcastFleetMessage({ type: "shutdown" });
 
     // Quit CLI FIRST — this kills MCP server child processes cleanly.
     // IPC must stay open during quit so MCP servers receive the shutdown message.
@@ -5305,7 +5302,7 @@ export class Daemon extends EventEmitter {
       this.logger.debug({ err }, "Interaction listener failed");
     }
     try {
-      this.ipcServer?.broadcast({ type: "instance_interaction", instanceName: this.name, interaction });
+      this.broadcastFleetMessage({ type: "instance_interaction", instanceName: this.name, interaction });
     } catch (err) {
       this.logger.debug({ err }, "Interaction broadcast failed");
     }
@@ -5388,6 +5385,44 @@ export class Daemon extends EventEmitter {
     return true;
   }
 
+  /** Shared Fleet inputs: socket and native transports retain the same wake, epoch and raw-paste semantics. */
+  private handleFleetMessage(msg: Record<string, unknown>, send: (reply: Record<string, unknown>) => void, current = () => true): boolean {
+    if (msg.type === "query_sessions") {
+      send({ type: "query_sessions_response", sessions: [] });
+    } else if (msg.type === "fleet_inbound") {
+      const meta = msg.meta as Record<string, string>;
+      const targetSession = msg.targetSession as string | undefined;
+      const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
+      void this.wake().then(() => {
+        if (!current()) { this.deferDurableDelivery(meta, "native channel owner changed before pane submission"); return; }
+        this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
+      }).catch(err => {
+        this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
+        this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
+      });
+    } else if (msg.type === "raw_paste") {
+      this.handleRawPasteIpcMessage(msg);
+    } else if (msg.type === "config_update") {
+      this.applyConfigUpdate(msg.config);
+    } else if (msg.type === "steer") {
+      const meta = (msg.meta ?? {}) as Record<string, string>;
+      this.steerMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
+    } else if (msg.type === "btw") {
+      const meta = (msg.meta ?? {}) as Record<string, string>;
+      this.btwMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
+    } else if (msg.type === "fleet_schedule_trigger") {
+      const payload = msg.payload as Record<string, unknown>;
+      const meta = msg.meta as Record<string, string>;
+      const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
+      void this.wake().then(() => { if (current()) this.pushChannelMessage(payload.message as string, meta, undefined, deliveryEpoch); }).catch(err => {
+        this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
+      });
+    } else if (msg.type === "query_instance_state") {
+      void this.respondToInstanceStateQuery(msg, undefined, send);
+    } else return false;
+    return true;
+  }
+
   /**
    * Answer a FleetManager state query. Most callers only need the cached state,
    * but lifecycle decisions such as post-reply Cancel retirement need an
@@ -5397,7 +5432,8 @@ export class Daemon extends EventEmitter {
    */
   private async respondToInstanceStateQuery(
     msg: Record<string, unknown>,
-    socket: import("node:net").Socket,
+    socket: import("node:net").Socket | undefined,
+    send?: (reply: Record<string, unknown>) => void,
   ): Promise<void> {
     try {
       if (msg.deliveryIdle === true) {
@@ -5406,7 +5442,7 @@ export class Daemon extends EventEmitter {
         await this.captureAndEvaluateInstanceState("state_query");
       }
       const snapshot = this.getInstanceStateSnapshot();
-      this.ipcServer?.send(socket, {
+      const reply = {
         type: "instance_state_response",
         requestId: msg.requestId,
         instanceName: this.name,
@@ -5414,7 +5450,8 @@ export class Daemon extends EventEmitter {
         state: this.isPaused ? "paused" : snapshot.state,
         processStatus: this.processStatus,
         pausedAt: this.lastPausedAt,
-      });
+      };
+      if (send) send(reply); else if (socket) this.ipcServer?.send(socket, reply);
     } catch (err) {
       this.logger.debug({ err: (err as Error).message }, "Instance state query failed");
     }
@@ -5545,7 +5582,7 @@ export class Daemon extends EventEmitter {
         writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), reason);
         this.publishWorkingState("execution");
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
-        this.ipcServer?.broadcast({
+        this.broadcastFleetMessage({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
         });
         this.emit("auto_paused", { name: this.name, pausedAt: this.lastPausedAt });
@@ -5631,7 +5668,7 @@ export class Daemon extends EventEmitter {
         this.resumeRuntimeMonitors();
         this.publishWorkingState("execution");
         this.logger.info("Instance auto-woke");
-        this.ipcServer?.broadcast({
+        this.broadcastFleetMessage({
           type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
         });
         this.emit("auto_woke", { name: this.name });
@@ -5788,7 +5825,7 @@ export class Daemon extends EventEmitter {
       this.logStateEdge(previous, snapshot);
       this.publishWorkingState("execution");
       this.emit("instance_state", { name: this.name, ...snapshot });
-      this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
+      this.broadcastFleetMessage({ type: "instance_state", instanceName: this.name, ...snapshot });
       if (snapshot.state === "stuck" && pane && this.instanceStateReadyPattern) {
         this.handleStuckTransition(pane, snapshot, this.instanceStateReadyPattern);
       }
@@ -6516,7 +6553,7 @@ export class Daemon extends EventEmitter {
         }
       });
     }
-    if (!this.ipcServer) {
+    if (!this.fleetTransportAvailable()) {
       this.logger.error(`${logLabel} failed — no adapter or fleet IPC route`);
       return Promise.resolve(false);
     }
@@ -6538,7 +6575,7 @@ export class Daemon extends EventEmitter {
         resolve(delivered);
       });
       try {
-        this.ipcServer!.broadcast({
+        this.broadcastFleetMessage({
           type: "fleet_outbound",
           tool: "reply",
           args,
@@ -7099,7 +7136,7 @@ export class Daemon extends EventEmitter {
     const next = activity && activity.trim() ? activity.trim() : null;
     if (next === this.currentActivity) return;
     this.currentActivity = next;
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "instance_activity",
       instanceName: this.name,
       activity: next,
@@ -7237,7 +7274,7 @@ export class Daemon extends EventEmitter {
     if (rendered === this.lastProgressBroadcast) return;
     this.lastProgressBroadcast = rendered;
     this.lastProgressBroadcastAt = Date.now();
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "instance_progress",
       instanceName: this.name,
       progress: rendered,
@@ -7254,7 +7291,7 @@ export class Daemon extends EventEmitter {
     if (this.lastProgressBroadcast !== "") {
       this.lastProgressBroadcast = "";
       this.lastProgressBroadcastAt = Date.now();
-      this.ipcServer?.broadcast({ type: "instance_progress", instanceName: this.name, progress: "" });
+      this.broadcastFleetMessage({ type: "instance_progress", instanceName: this.name, progress: "" });
     }
   }
 
@@ -7406,7 +7443,7 @@ export class Daemon extends EventEmitter {
   /** Tell the fleet when an already-accepted cross-instance pane write failed. */
   private reportCrossInstanceDeliveryFailure(meta: Record<string, string>, verdict?: DeliveryVerdict, error?: string): void {
     if (!meta.from_instance) return;
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "cross_instance_delivery_failed",
       senderSession: meta.from_instance,
       targetInstance: this.name,
@@ -11035,7 +11072,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type,
         payload: args,
         meta: { instance_name: this.name },
@@ -11061,7 +11098,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
         });
-        this.ipcServer?.broadcast({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
+        this.broadcastFleetMessage({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
       void (async () => {
         if (tool === "preview_web_appearance") {
@@ -11115,7 +11152,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: "fleet_task",
         payload: args,
         meta: { instance_name: this.name },
@@ -11139,7 +11176,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: typeMap[tool],
         payload: args,
         meta: { instance_name: this.name, working_directory: this.config.working_directory },
@@ -11169,7 +11206,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: typeMap[tool],
         payload: args,
         meta: {
@@ -11185,7 +11222,7 @@ export class Daemon extends EventEmitter {
 
     if (CROSS_INSTANCE_TOOLS.has(tool)) {
       // Route to fleet manager via IPC (topic mode only)
-      if (this.topicMode && this.ipcServer) {
+      if (this.topicMode && this.fleetTransportAvailable()) {
         // Use fleetRequestId (not requestId) to avoid MCP server resolving the
         // pending tool call prematurely when it receives the broadcast.
         const fleetReqId = `xmsg_${++this.fleetRequestSeq}_${requestId}`;
@@ -11201,7 +11238,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           respond(respMsg.result, respMsg.error as string | undefined);
         });
-        this.ipcServer.broadcast({
+        this.broadcastFleetMessage({
           type: "fleet_outbound",
           tool,
           args,
@@ -11260,7 +11297,7 @@ export class Daemon extends EventEmitter {
       // Register the waiter before broadcasting. A fast/mock adapter can settle
       // immediately; broadcasting first left a response-before-registration
       // window that degraded into a timeout despite a completed POST.
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: "fleet_outbound",
         tool,
         args,

@@ -24,7 +24,7 @@ import {
   secureGitHubRemotesForWorktree,
 } from "./remote-credential-check.js";
 import type { Logger } from "./logger.js";
-import type { IpcClient } from "./channel/ipc-bridge.js";
+import type { InstanceClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
@@ -181,7 +181,7 @@ export interface LifecycleContext {
   readonly dataDir: string;
   getSettingsConfigPath?(): string;
   readonly routing: RoutingEngine;
-  readonly instanceIpcClients: Map<string, IpcClient>;
+  readonly instanceIpcClients: Map<string, InstanceClient>;
   readonly ipcStoppingInstances: Set<string>;
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
