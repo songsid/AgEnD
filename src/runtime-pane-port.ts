@@ -132,7 +132,8 @@ export class RuntimePanePort implements Pane {
     if (!this.record.pending) this.record.snapshot = snapshot;
     return result.text;
   }
-  capturePane(): Promise<string> { return this.capture({ ansi: true }); }
+  // Match TmuxManager's ordinary capture-pane -p. VT replay serialization is not detector-ready text.
+  capturePane(): Promise<string> { return this.capture({}); }
   capturePaneWithHistory(lines = 50): Promise<string> { return this.capture({ history: lines }); }
   capturePaneJoined(lines = 0): Promise<string> { return this.capture({ history: lines, joined: true }); }
   getWindowId(): string { return this.record.snapshot?.paneId ?? ""; }

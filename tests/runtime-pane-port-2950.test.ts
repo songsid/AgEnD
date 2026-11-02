@@ -4,17 +4,23 @@ import {join} from 'node:path';import{tmpdir}from'node:os';import{randomUUID}fro
 import {RuntimePanePort,RuntimePaneObservation,RuntimePaneHostPort,type PaneEndpoint}from'../src/runtime-pane-port.js';
 import{RuntimePaneHost}from'../src/runtime-pane-host.js';import{RuntimePaneStore}from'../src/runtime-pane-store.js';
 import type{RuntimePaneLaunch}from'../src/runtime-pane-protocol.js';import type{RuntimeCoordinatorEvent}from'../src/runtime-coordinator.js';
+import{CodexPaneDetectors}from'../src/backend/codex.js';
 const clean:Array<()=>void|Promise<void>>=[];afterEach(async()=>{for(const f of clean.splice(0).reverse())await f();vi.restoreAllMocks();});
 async function fixture(){
  const root=mkdtempSync(join(tmpdir(),'agend-remote-port-'));clean.push(()=>rmSync(root,{recursive:true,force:true}));
- let exit:(v:{exitCode:number})=>void=()=>{},online=true;const write=vi.fn();
- const native={pid:55555,write,resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:()=>({dispose(){}}),onExit:(f:typeof exit)=>{exit=f;return{dispose(){}};}};
+ let exit:(v:{exitCode:number})=>void=()=>{},output:(data:string)=>void=()=>{},online=true;const write=vi.fn();
+ const native={pid:55555,write,resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(listener:typeof output)=>{output=listener;return{dispose(){}};},onExit:(f:typeof exit)=>{exit=f;return{dispose(){}};}};
  const spawn=vi.fn(async()=>native),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>online,maxAgents:()=>4,spawn});clean.push(()=>host.stop());
  const listeners=new Set<(e:RuntimeCoordinatorEvent)=>void>();const endpoint:PaneEndpoint={machineId:randomUUID(),online:()=>online,call:r=>host.request(r),subscribe:f=>{listeners.add(f);return()=>{listeners.delete(f);};}};
  const launch:RuntimePaneLaunch={paneId:randomUUID(),agentId:randomUUID(),instance:'test-中文',cli:'codex',cwd:'C:\\scratch',sandbox:'read-only',columns:80,rows:24};
  const file=join(root,'receipt.json');const make=()=>new RuntimePanePort(endpoint,file,launch);const port=make();await port.open();
- return{host,spawn,native,write,endpoint,port,make,file,launch,offline:()=>{online=false;},emit:(e:RuntimeCoordinatorEvent)=>{for(const f of listeners)f(e);}};
+ return{host,spawn,native,write,endpoint,port,make,file,launch,output:(data:string)=>output(data),offline:()=>{online=false;},emit:(e:RuntimeCoordinatorEvent)=>{for(const f of listeners)f(e);}};
 }
+it('feeds ordinary detectors rendered plain cells rather than VT replay control sequences',async()=>{
+ const f=await fixture(),detector=new CodexPaneDetectors({statusLineItems:()=>['context-remaining'],launchMayResume:()=>false});
+ f.output('\x1b[32m› Ask Codex to do anything\x1b[0m\r\n\r\n  Context 100% left\r\n');
+ const pane=await f.port.capturePane();expect(pane).not.toContain('\x1b[');expect(detector.getReadyPattern().test(pane)).toBe(true);expect(detector.isDeliveryInputReadyPane(pane)).toBe(true);
+});
 it('reconciles a lost response by command digest with no plaintext or second Enter',async()=>{
  const f=await fixture(),call=f.endpoint.call;let lost=false;
  f.endpoint.call=async request=>{const result=await call(request);if(request.action==='input'&&!lost){lost=true;throw Error('lost response');}return result;};

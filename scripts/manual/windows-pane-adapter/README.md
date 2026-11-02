@@ -1,0 +1,13 @@
+# Windows pane adapter probes
+
+These are manual acceptance harnesses for draft #2954. They do not start a fleet or a service. Build the standalone runtime with `npx tsc` and `node scripts/build-runtime.mjs <scratch-output>` first.
+
+`native-screen.mjs` runs on native Windows Node in an explicitly approved scratch folder. It exposes only an inert CLI-shaped fixture through a private PATH and private provider homes. It checks two simultaneous panes in the same cwd, separate instruction arguments and screens, Unicode, paste, resize, owned exit, reconnect after client death, host-death receipts and the command-line limit. Removing the production worker's length guard must fail its oversized-launch assertion **below** Windows' own hard limit. No installed coding CLI or account is used by this harness.
+
+`status-session.mjs` and `status-session-controller.mjs` are signed-in manual probes. They require separate authorization to use the person's native CLI. The controller keeps raw captures in its in-memory pipe and prints only fixed diagnostic categories, UUIDs and boolean evidence. Its default Codex run submits `/status`, with no model turn; `--turn` adds one fixed read-only canary turn. `--claude` uses the worker-reserved session UUID instead. `--trust-scratch` may be used only after approval for the exact scratch path; it verifies the displayed path and cursor before each single key. A successful trust choice leaves the provider's ordinary scratch-folder trust entry in place. It never edits an account config or credential file by hand.
+
+Native Codex runs with `--no-daemon`. Each pane therefore owns its own app-server process tree instead of depending on a shared background daemon. Its agent role is supplied through the invocation's `developer_instructions` config slot. This supplements the provider's built-in model instructions and leaves project AGENTS files untouched; for this managed invocation it replaces any user-configured value of that **same developer-instructions slot**. It writes no profile file or account config. Roles are not merged into a shared project file: two agents may work in the same directory with different identities.
+
+Windows bounds apply to the entire escaped command line, including the CLI launcher, paths and MCP arguments. The worker refuses commands over 30,000 UTF-16 units before starting the CLI. It never truncates role instructions or switches to a shared-file fallback. Claude uses a private launch-local append-instructions file.
+
+These probes establish components only. The combined PR still requires ordinary daemon/MCP/delivery integration and exact-head crash, security and signed-in multi-agent acceptance before review. The exec adapter remains the default.

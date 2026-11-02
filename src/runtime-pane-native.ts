@@ -9,6 +9,31 @@ export type NativePaneCommand = { type: "start"; launch: RuntimePaneLaunch; owne
   | { type: "pause" | "resume" | "close" };
 export type NativePaneFrame = { type: "ready"; pid: number } | { type: "output"; data: string }
   | { type: "exit" | "tree.exit"; code: number } | { type: "error"; message: string };
+/** JSON's basic-string escapes are valid TOML; DEL needs an explicit escape and invalid Unicode is refused. */
+export function nativeDeveloperInstructions(text: string): string {
+  if (Buffer.from(text, "utf8").toString("utf8") !== text) throw Error("Pane instructions contain invalid Unicode");
+  return `developer_instructions=${JSON.stringify(text).replace(/\x7f/g, "\\u007f")}`;
+}
+/** Count node-pty 1.1.0's exact Windows quoting, including its treatment of already-enclosed arguments. */
+export function nativePaneCommandLineLength(executable: string, args: readonly string[]): number {
+  const argv = [executable, ...args]; let size = argv.length - 1;
+  for (const arg of argv) {
+    const quote = arg === "" || /[ \t]/.test(arg) && arg.length > 1 && !(arg.startsWith('"') && arg.endsWith('"'));
+    if (quote) size += 2;
+    let slashes = 0;
+    for (let i = 0; i < arg.length; i++) {
+      if (arg[i] === "\\") slashes++;
+      else if (arg[i] === '"') { size += slashes * 2 + 2; slashes = 0; }
+      else { size += slashes + 1; slashes = 0; }
+    }
+    size += slashes * (quote ? 2 : 1);
+  }
+  return size;
+}
+export function assertNativePaneCommandLine(executable: string, args: readonly string[]): void {
+  // CreateProcessW's limit is 32,767 UTF-16 units including NUL. Leave margin; never truncate role/tool instructions.
+  if (nativePaneCommandLineLength(executable, args) > 30_000) throw Error("Native pane launch exceeds the Windows command-line limit; reduce this agent's instructions");
+}
 /** Provider arguments come from validated configuration, never a shell RPC. */
 export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: NativePaneConfig): string[] {
   const model = launch.model ? ["--model", launch.model] : [];
@@ -16,7 +41,11 @@ export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: Na
   const prefix = mcp ? ["-c", `mcp_servers.${mcp.serverName}.command=${JSON.stringify(mcp.nodePath)}`, "-c",
     `mcp_servers.${mcp.serverName}.args=${JSON.stringify([mcp.helperPath, "--connection-file", mcp.connectionPath])}`] : [];
   // Each owned Job must contain only its own CLI tree. A shared Codex app-server would outlive or couple panes.
-  if (launch.cli === "codex") return ["--no-daemon", ...nativeUpdateGuard("codex"), ...prefix, "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
+  // This is the fleet agent's own developer-role slot. Built-in model and project instructions remain provider-owned.
+  // A shared AGENTS.md identity block would give concurrent same-cwd agents each other's roles.
+  if (launch.cli === "codex") return ["--no-daemon", ...nativeUpdateGuard("codex"), ...prefix,
+    ...(launch.instructions ? ["-c", nativeDeveloperInstructions(launch.instructions)] : []),
+    "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
     ...model, ...(launch.sessionId ? ["resume", launch.sessionId] : [])];
   return [...model, ...(config?.instructionsFile ? ["--append-system-prompt-file", config.instructionsFile] : []),
     ...(mcp ? ["--strict-mcp-config", "--mcp-config", mcp.configPath, "--allowedTools", mcp.tools.map(tool => `mcp__${mcp.serverName}__${tool}`).join(",")] : []), "--permission-mode", "default", ...(launch.sandbox === "read-only" ? ["--tools", "Read,Glob,Grep"] : []),

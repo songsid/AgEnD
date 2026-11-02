@@ -13,7 +13,7 @@ import { validateRuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { prepareNativePaneConfig, type NativePaneConfig } from "./runtime-pane-config.js";
 import { validatePaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import { validateNativeMcpConnection } from "./windows-cli-providers.js";
-import { persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
+import { assertNativePaneCommandLine, persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
 
 export async function nativePaneWorker(): Promise<void> {
   if (process.platform !== "win32") throw Error("ConPTY helper requires native Windows Node");
@@ -59,7 +59,9 @@ export async function nativePaneWorker(): Promise<void> {
         if (disconnected || finished) throw Error("Pane helper was disconnected before launch");
         config = prepareNativePaneConfig(launch, owner, process.execPath, join(dirname(fileURLToPath(import.meta.url)), "windows-pane-mcp.js"));
         // The bundled ConPTY DLL owns a stable process HANDLE; it avoids the OS-backend's late PID enumeration.
-        pty = binding.spawn(executable.command, [...executable.args, ...persistentNativeArguments(launch, config)], {
+        const args = [...executable.args, ...persistentNativeArguments(launch, config)];
+        assertNativePaneCommandLine(executable.command, args);
+        pty = binding.spawn(executable.command, args, {
           cwd: actual, cols: launch.columns, rows: launch.rows, name: "xterm-256color", useConpty: true, useConptyDll: true,
           env: { ...nativeCliEnvironment(), TERM: "xterm-256color", COLORTERM: "truecolor" },
         });

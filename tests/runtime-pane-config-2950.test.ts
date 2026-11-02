@@ -3,7 +3,8 @@ import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';import { join } from 'node:path';import { randomUUID } from 'node:crypto';
 import { prepareNativePaneConfig } from '../src/runtime-pane-config.js';
-import { persistentNativeArguments, type NativePaneOwner } from '../src/runtime-pane-native.js';
+import { persistentNativeArguments, nativeDeveloperInstructions, nativePaneCommandLineLength, assertNativePaneCommandLine, type NativePaneOwner } from '../src/runtime-pane-native.js';
+import { parse } from 'smol-toml'; import { createRequire } from 'node:module';
 import { validateRuntimePaneLaunch, type RuntimePaneLaunch } from '../src/runtime-pane-protocol.js';
 const roots:string[]=[];afterEach(()=>{for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
 function rig(cli:'codex'|'claude-code'='codex'){
@@ -22,20 +23,34 @@ it('pins a fresh Claude conversation before the first turn and resumes only the 
  const args=persistentNativeArguments(f.launch,config);expect(args.slice(-2)).toEqual(['--session-id',f.owner.launchId]);expect(args).not.toContain('--resume');
  const saved=randomUUID();expect(persistentNativeArguments({...f.launch,sessionId:saved},config).slice(-2)).toEqual(['--resume',saved]);config.cleanup();
 });
-it('adds and removes only the owned Codex workspace marker, preserving other text and agents',()=>{
- const f=rig();const original='# User instructions\n\n<!-- AGEND-PANE:other:BEGIN -->\nother rules\n<!-- AGEND-PANE:other:END -->\n';writeFileSync(join(f.cwd,'AGENTS.md'),original);
- const config=f.prepare();expect(readFileSync(join(f.cwd,'AGENTS.md'),'utf8')).toContain(original);expect(readFileSync(join(f.cwd,'AGENTS.md'),'utf8')).toContain(f.launch.instructions);
- const args=persistentNativeArguments(f.launch,config);expect(args[0]).toBe('--no-daemon');expect(args).toContain('tui.status_line=["context-remaining"]');expect(args.join(' ')).not.toContain(f.owner.mcp!.token);expect(args).toContain(`mcp_servers.${config.mcp!.serverName}.command="C:\\\\Node\\\\node.exe"`);
- config.cleanup();expect(readFileSync(join(f.cwd,'AGENTS.md'),'utf8')).toBe(original);
+it('keeps Codex role instructions launch-local and leaves the workspace AGENTS file untouched',()=>{
+ const f=rig(),file=join(f.cwd,'AGENTS.md'),original='# User instructions\n';writeFileSync(file,original);
+ const config=f.prepare(),args=persistentNativeArguments(f.launch,config);expect(readFileSync(file,'utf8')).toBe(original);
+ expect(args[0]).toBe('--no-daemon');expect(args).toContain('tui.status_line=["context-remaining"]');expect(args.join(' ')).not.toContain(f.owner.mcp!.token);
+ const role=args.find(arg=>arg.startsWith('developer_instructions='))!;expect(role).toBeTypeOf('string');expect(parse(role).developer_instructions).toBe(f.launch.instructions);expect(args).not.toContain('--model-instructions-file');
+ config.cleanup();expect(readFileSync(file,'utf8')).toBe(original);expect(existsSync(join(f.cwd,'.agend-pane-instructions.lock'))).toBe(false);
 });
-it('a positively replaced launch updates its stable agent marker instead of retaining stale instructions',()=>{
- const f=rig();f.prepare();f.owner.launchId=randomUUID();f.owner.mcp!.owner.launchId=f.owner.launchId;f.launch.instructions='new owned rules';const config=f.prepare();
- const text=readFileSync(join(f.cwd,'AGENTS.md'),'utf8');expect(text).not.toContain('Own fleet instructions');expect(text).toContain('new owned rules');expect(text.match(/:BEGIN/g)).toHaveLength(1);config.cleanup();
+it('two same-cwd Codex launches have separate role slots and exact helper identities',()=>{
+ const f=rig(),first=f.prepare(),secondLaunch={...f.launch,agentId:randomUUID(),instructions:'Second agent role only'},secondOwner=structuredClone(f.owner);secondOwner.launchId=randomUUID();Object.assign(secondOwner.mcp!.owner,{launchId:secondOwner.launchId,agentId:secondLaunch.agentId});
+ const second=prepareNativePaneConfig(secondLaunch,secondOwner,'C:\\Node\\node.exe','C:\\program\\helper.js');
+ const role=(launch:RuntimePaneLaunch,config:typeof first)=>parse(persistentNativeArguments(launch,config).find(arg=>arg.startsWith('developer_instructions='))!).developer_instructions;
+ expect(role(f.launch,first)).toBe(f.launch.instructions);expect(role(secondLaunch,second)).toBe(secondLaunch.instructions);expect(first.mcp!.serverName).not.toBe(second.mcp!.serverName);expect(existsSync(join(f.cwd,'AGENTS.md'))).toBe(false);
+ first.cleanup();second.cleanup();
 });
-it('refuses symlink workspace instructions, incomplete owned markers and competing writers',()=>{
- const f=rig();const file=join(f.cwd,'AGENTS.md'),target=join(f.root,'unrelated');writeFileSync(target,'do not touch');symlinkSync(target,file);expect(f.prepare).toThrow('regular');expect(readFileSync(target,'utf8')).toBe('do not touch');rmSync(file);
- writeFileSync(file,`<!-- AGEND-PANE:${f.launch.agentId}:BEGIN -->\npartial`);expect(f.prepare).toThrow('incomplete');expect(readFileSync(file,'utf8')).toContain('partial');rmSync(file);
- mkdirSync(join(f.cwd,'.agend-pane-instructions.lock'));expect(f.prepare).toThrow();expect(existsSync(file)).toBe(false);
+it('never follows or rewrites a user workspace instruction link, marker or lock',()=>{
+ const f=rig(),file=join(f.cwd,'AGENTS.md'),target=join(f.root,'unrelated');writeFileSync(target,'do not touch');symlinkSync(target,file);const config=f.prepare();expect(readFileSync(target,'utf8')).toBe('do not touch');config.cleanup();rmSync(file);
+ const original=`<!-- AGEND-PANE:${f.launch.agentId}:BEGIN -->\nuser text`;writeFileSync(file,original);mkdirSync(join(f.cwd,'.agend-pane-instructions.lock'));
+ f.owner.launchId=randomUUID();f.owner.mcp!.owner.launchId=f.owner.launchId;const next=f.prepare();next.cleanup();expect(readFileSync(file,'utf8')).toBe(original);
+});
+it('encodes the whole developer instruction as one TOML string, without shell interpretation or Unicode loss',()=>{
+ const text=Array.from({length:128},(_,n)=>String.fromCharCode(n)).join('')+' 中文 😀 \" $() ` ;';expect(parse(nativeDeveloperInstructions(text)).developer_instructions).toBe(text);
+ expect(()=>nativeDeveloperInstructions('bad\ud800')).toThrow('invalid Unicode');expect(()=>nativeDeveloperInstructions('bad\udc00')).toThrow('invalid Unicode');
+});
+it('counts the reviewed node-pty escaping and rejects an oversized Windows command before spawn',()=>{
+ const {argsToCommandLine}=createRequire(import.meta.url)('node-pty/lib/windowsPtyAgent.js');
+ const file='C:\\Program Files\\Node\\node.exe';let checked=0;
+ for(const args of [[],[''],['plain','two words','中文 😀'],['path with space\\','a\\\"b','\"enclosed argument\"'],[nativeDeveloperInstructions('one\n中文 \\ \"quoted\"')]]){expect(nativePaneCommandLineLength(file,args)).toBe(argsToCommandLine(file,args).length);checked++;}expect(checked).toBe(5);
+ expect(()=>assertNativePaneCommandLine(file,['x'.repeat(40000)])).toThrow('command-line limit');expect(()=>assertNativePaneCommandLine(file,['small'])).not.toThrow();
 });
 it('a mismatched MCP agent or tool scope fails before any workspace instructions are written',()=>{
  const f=rig();f.owner.mcp!.owner.agentId=randomUUID();expect(f.prepare).toThrow('scope differs');expect(existsSync(join(f.cwd,'AGENTS.md'))).toBe(false);

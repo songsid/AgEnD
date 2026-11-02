@@ -18,7 +18,7 @@ const shape=pane=>({inputReady:inputReady(pane),busy:detector.getBusyPattern().t
  composer:/^[>›]/m.test(pane),context:/\bcontext\b/i.test(pane),
  footerWords:pane.trimEnd().split('\n').slice(-6).map(row=>(row.toLowerCase().match(/\b(?:context|left|remaining|used|codex|ask|shortcuts|help|approval|sandbox|session|error|failed|update|login|trust|folder|permissions|sign|in|chatgpt)\b/g)||[])),
  fixedUiRows:pane.split('\n').filter(row=>/^\s*(?:\? for shortcuts|Context \d+% left|\d+% context left|[›>] Ask Codex to do anything)\s*$/.test(row)).map(row=>row.trim())});
-const pause=()=>new Promise(r=>setTimeout(r,250));let receipt,trustMoved=false,trustAccepted=false;
+const pause=()=>new Promise(r=>setTimeout(r,250));let receipt,trustMoved=false,trustAccepted=false,trustStepAt=0;
 const trustedScratch=pane=>{
  const paths=pane.split('\n').map(row=>/^(?:Accessing workspace:\s*)?([a-z]:[\\/][^\r\n]*)$/i.exec(row.trim())?.[1]).filter(Boolean).map(path=>win32.normalize(path).toLowerCase());
  const approved='c:\\users\\changhansung\\agend-adapter-proto';
@@ -33,9 +33,12 @@ try{
   before=(await call('capture')).text;if(ready(before))break;
   if(provider==='claude-code'&&process.argv.includes('--trust-scratch')&&claudeTrustDialogState(before).active){
    const trust=trustedScratch(before);
-   if(trust.cursor==='decline'&&trust.declineLabel==='No, exit'&&!trustMoved&&!trustAccepted){await call('trust-down');trustMoved=true;await pause();continue;}
-   if(trust.cursor==='accept'&&!trustAccepted){await call('trust-confirm');trustAccepted=true;await pause();continue;}
-   throw Error('Trust cursor was not proved stepwise; no further key sent');
+   if(trust.cursor==='decline'&&trust.declineLabel==='No, exit'&&!trustMoved&&!trustAccepted){await call('trust-down');trustMoved=true;trustStepAt=Date.now();await pause();continue;}
+   if(trust.cursor==='accept'&&!trustAccepted){await call('trust-confirm');trustAccepted=true;trustStepAt=Date.now();await pause();continue;}
+   if(trustMoved&&trust.cursor==='decline'&&!trustAccepted||trustAccepted&&trust.cursor==='accept'){
+    if(Date.now()-trustStepAt<4000){await pause();continue;}
+   }
+   throw Error('Trust cursor was not proved stepwise; no further key sent: '+JSON.stringify({trustMoved,trustAccepted,state:trust}));
   }
   if(Date.now()>deadline)throw Error('Production idle detector did not prove the native composer: '+JSON.stringify(shape(before)));await pause();
  }
@@ -51,5 +54,6 @@ try{
   for(;;){result=await call('metadata',{sessionId});const pane=(await call('capture')).text;if(result.answer&&result.ownedUser&&ready(pane))break;if(Date.now()>deadline)throw Error('Owned minimal turn did not produce exact transcript and idle proofs');await pause();}
   Object.assign(receipt,{kind:'native exact session plus one minimal read-only turn',exactTranscript:true,ownedUser:result.ownedUser,answer:result.answer,metadataRecords:result.records});
  }
-}finally{if(!exited)await call('close').catch(()=>{});child.stdin.end();input.close();}
+}catch(error){error.message+=' '+JSON.stringify({trustMoved,trustAccepted});throw error;}
+finally{if(!exited)await call('close').catch(()=>{});child.stdin.end();input.close();}
 process.stdout.write(JSON.stringify(receipt)+'\n');
