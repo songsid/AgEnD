@@ -466,3 +466,5 @@ export async function pairRuntime(input: { server: string; code: string; name: s
   }
   throw new Error("Runtime pairing was cancelled or expired");
 }
+
+import type {} from "./runtime-pane-stdio.js";

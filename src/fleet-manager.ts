@@ -1180,6 +1180,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
   private paneManager: import("./native-pane-manager.js").NativePaneManager | null = null;
+  private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
+  private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
   private runtimeHub: RuntimeCoordinator | null = null;
   private runtimeExecutor: RuntimeWindowsBridge | null = null;
   private runtimeStatusScheduled = false;
@@ -1237,6 +1239,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     },{bridge:this.runtimeWindowsExecutor()});
   }
+  private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
+    const admit = (): void => { if (this.shuttingDown || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off"); };
+    admit(); if (this.localPaneRelay?.online()) return this.localPaneRelay;
+    if (this.openingLocalPane) return this.openingLocalPane;
+    const opening = (async () => {
+      const [{ LocalPaneEndpoint }, { launchLocalPaneRelay, localPaneScope }, inventory] = await Promise.all([
+        import("./local-pane-endpoint.js"), import("./local-pane-launcher.js"), this.runtimeWindowsExecutor().probe({ force: false }),
+      ]); admit(); this.localPaneRelay?.stop();
+      const relay = await LocalPaneEndpoint.open({ scope: localPaneScope(this.dataDir), admit, maxAgents: maxAgentsPerMachine,
+        version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
+        launch: () => launchLocalPaneRelay(this.dataDir, admit),
+        mcp: async (body, current) => (await this.nativePanes()).handle("local", body, current),
+      });
+      try { admit(); this.localPaneRelay = relay; return relay; } catch (error) { relay.stop(); throw error; }
+    })(); this.openingLocalPane = opening;
+    try { return await opening; } finally { if (this.openingLocalPane === opening) this.openingLocalPane = null; }
+  }
   /** Persistent ownership is independent of the exec worker's per-turn capabilities. */
   private async nativePanes(): Promise<import("./native-pane-manager.js").NativePaneManager> {
     if (this.paneManager) return this.paneManager;
@@ -1256,7 +1275,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (config.machine_id ? !remoteRuntimeEnabled() : !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
       },
       endpoint: async agent => {
-        if (!agent.machineId) throw Error("Local persistent-pane transport is not available yet; exec remains the default");
+        if (!agent.machineId) return this.localNativePaneEndpoint();
         const hub = this.runtimeCoordinator(), machineId = agent.machineId;
         return { machineId, online: () => !this.shuttingDown && remoteRuntimeEnabled() && this.runtimeHub === hub && hub.machine(machineId)?.status === "online",
           call: request => hub.callPane(machineId, request, maxAgentsPerMachine()), subscribe: listener => hub.subscribe(listener),
@@ -21722,6 +21741,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.runtimeExecutor?.close();this.runtimeExecutor=null;
     this.fleetWindowsRuntime=null;
     this.runtimeHub?.close();this.runtimeHub=null;
+    this.localPaneRelay?.stop(); this.localPaneRelay = null;
     closeWindowsBridge(this);
     this.stopAllInFlight ??= this.doStopAll().finally(() => {
       // #1956: after the stop's own tmux work; anything later goes direct. A later startAll starts it again.
