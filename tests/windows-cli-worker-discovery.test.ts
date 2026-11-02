@@ -159,6 +159,24 @@ describe("native Node shims and environment", () => {
     expect(env.CLAUDE_CONFIG_DIR).toBe("C:\\Users\\Windows\\.claude");
   });
 
+  it("M-2239 P3-6: an allowlist — Windows' own variables, proxy, certificates and locale pass; nothing else does", () => {
+    const env = nativeCliEnvironment({
+      SystemRoot: "C:\\Windows", Path: "C:\\Windows\\System32;C:\\Program Files\\nodejs", PATHEXT: ".COM;.EXE", USERPROFILE: "C:\\Users\\U",
+      APPDATA: "C:\\Users\\U\\AppData\\Roaming", LOCALAPPDATA: "C:\\Users\\U\\AppData\\Local", "ProgramFiles(x86)": "C:\\Program Files (x86)",
+      HTTPS_PROXY: "http://proxy:8080", NODE_EXTRA_CA_CERTS: "C:\\certs\\corp.pem", LANG: "zh_TW.UTF-8", LC_ALL: "C.UTF-8",
+      CODEX_HOME: "D:\\codex-home", GEMINI_HOME: "/home/linux/.gemini",
+      // none of these may reach a native CLI
+      AGEND_BOT_TOKEN: "123:abc", DISCORD_BOT_TOKEN: "x", MY_TELEGRAM_TOKEN: "y", ANTHROPIC_API_KEY: "k", OPENAI_API_KEY: "k", XAI_API_KEY: "k",
+      CLOUDFLARE_TUNNEL_TOKEN: "t", GITHUB_TOKEN: "g", NODE_OPTIONS: "--require x.js", NODE_PATH: "/x", HOME: "/home/linux", WSLENV: "X/u",
+      CLAUDE_CODE_SESSION_ID: "s", SOME_RANDOM_SECRET: "r",
+    });
+    expect(Object.keys(env).sort()).toEqual([
+      "APPDATA", "CODEX_HOME", "DISABLE_AUTOUPDATER", "HTTPS_PROXY", "KIRO_NO_AUTO_UPDATE", "LANG", "LC_ALL", "LOCALAPPDATA", "MUSE_UPDATE_INTERVAL_SECONDS",
+      "NODE_EXTRA_CA_CERTS", "NO_UPDATE_NOTIFIER", "OPENCODE_DISABLE_AUTOUPDATE", "PATHEXT", "Path", "ProgramFiles(x86)", "SystemRoot", "USERPROFILE",
+    ].sort());
+    expect(env.Path).toBe("C:\\Windows\\System32;C:\\Program Files\\nodejs");
+  });
+
   it("accepts literal model selection and rejects providers that cannot enforce the requested policy", () => {
     const task = { requestId: "windows-task-12345678", cli: "antigravity", cwd: "J:\\Project\\Game", prompt: "Inspect the project", sandbox: "workspace-write", model: "gemini-3.1-pro-high" };
     expect(validateNativeTask(task)).toEqual(task);

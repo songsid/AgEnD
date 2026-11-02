@@ -124,6 +124,23 @@ input and CLI control commands are unavailable and hidden in the shared UI.
 External channel binding is also unavailable; migration never creates topics or
 binds native agents to an existing bot's General channel.
 
+## What a Windows CLI sees of the environment
+
+A Windows CLI gets an **allowlist** of the worker's environment (M-2239 P3-6), never "everything except":
+
+- Windows' own variables a program needs (`SystemRoot`, `Path`, `PATHEXT`, `TEMP`, `USERPROFILE`, `APPDATA`,
+  `LOCALAPPDATA`, the `ProgramFiles` family, processor and user/computer names);
+- the network the user configured: `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY`, `NODE_EXTRA_CA_CERTS`,
+  `SSL_CERT_FILE`, `SSL_CERT_DIR`;
+- language and terminal: `LANG`, `LANGUAGE`, `LC_*`, `TZ`, `TERM`, `COLORTERM`, `NO_COLOR`, `FORCE_COLOR`;
+- a CLI's own config directory (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `KIRO_HOME`, `GEMINI_HOME`, `GROK_HOME`,
+  `OPENCODE_CONFIG_DIR`, `XDG_*_HOME`) only when it is a Windows drive path;
+- plus the update switches above.
+
+Nothing else is passed: no AgEnD setting, bot token, tunnel token, provider API key, `NODE_OPTIONS` or session id,
+whatever the host has in its environment. A CLI signs in with its own Windows login; one that needs an API key keeps it
+in its own configuration.
+
 ## Models and provider support
 
 The model picker in both **New agent** and an existing agent's Settings uses the

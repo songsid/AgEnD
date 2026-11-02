@@ -97,6 +97,14 @@ function privateSocket(argv, env = process.env) {
   try { return canonical === path.join(fs.realpathSync(os.tmpdir()), relative); }
   catch { return false; }
 }
+/** A program that would run on Windows from WSL: a drvfs path (/mnt/<drive>/…), a drive path, a Windows executable, or wslpath. */
+function isWindowsInterop(file) {
+  const text = String(file);
+  const base = path.basename(text).toLowerCase();
+  if (/^\/mnt\/[a-z]\//i.test(text) || /^[a-z]:[\\/]/i.test(text)) return true;
+  if (/\.(?:exe|com|bat|cmd|ps1)$/i.test(base)) return true;
+  return base === 'wslpath';
+}
 function checkShell(command, env, cwd) {
   const words = tokens(command);
   let start = true;
@@ -120,6 +128,9 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
   cwd = childCwd(cwd);
   const base = path.basename(String(file));
   if (BACKENDS.has(base) && !fixtureAllowed(file, env, cwd)) throw new Error(`real backend CLI forbidden: ${base}`);
+  // M-2239 P2-5: no test reaches Windows. On a WSL host (the user's), a Windows program runs on the real Windows
+  // through interop — powershell.exe, the Windows node.exe a native worker uses, any CLI under /mnt/<drive>.
+  if (isWindowsInterop(file) && !fixtureAllowed(file, env, cwd)) throw new Error(`Windows program from a test is forbidden: ${base}`);
   // #1450: a fleet start of AgEnD itself, in any form. Refused — unless a DIRECT call (not a shell string) runs where
   // the test asked for it to be recorded (AGEND_TEST_SELF_SPAWN_LOG): the caller then makes it inert.
   const self = selfFleetStart(file, argv, env, cwd);
