@@ -5,6 +5,11 @@ import { validWindowsAgentId } from "./windows-cli-worker.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import type { WindowsAgent, WindowsAgents, WindowsAgentPatch } from "./windows-agents.js";
 
+/** M-2239 P1-1: why create_instance (and every path through handleCreate) refuses a Windows agent. */
+export const WINDOWS_CREATE_REFUSED = "Windows agents can only be created by an administrator in the web dashboard (Fleet → New agent → Native Windows), not through create_instance or a template";
+/** M-2239 P1-1: why another agent's MCP call may not reconfigure or replace a Windows agent. */
+export const WINDOWS_CONFIG_REFUSED = "A Windows agent's settings are changed by an administrator in the web dashboard, not through MCP";
+
 export type NativeInstanceConfig = InstanceConfig & { runtime:"windows"; native_agent_id:string; native_sandbox:"read-only"|"workspace-write" };
 export function nativeInstanceName(agentId: string): string {
   if (!validWindowsAgentId(agentId)) throw new Error("Invalid Windows agent id");

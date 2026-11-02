@@ -532,11 +532,8 @@ export const ReplaceInstanceArgs = z.object({
 // any unknown keys so internal callers (deploy_template) can forward extras
 // (profile-derived fields, start_point, …) without the schema stripping them.
 export const CreateInstanceArgs = z.object({
-  runtime: z.enum(["wsl", "windows"]).optional().describe("Execution runtime. Defaults to WSL/Linux. Windows uses the fleet's native Windows CLI adapter and the same instance registry."),
-  machineId: z.string().uuid().optional().describe("Paired execution machine ID for a Windows runtime. Omit to use the local machine. The selected machine must be online and offer this CLI."),
-  sandbox: z.enum(["read-only", "workspace-write"]).optional().describe("Windows runtime file-access policy. Defaults to read-only; providers without a read-only policy require explicit workspace-write. Not a Linux sandbox override."),
   directory: z.string().optional().describe(
-    "Working directory. WSL/Linux accepts an absolute or ~-prefixed path; Windows requires an absolute drive path. Omit to create an independent workspace on the selected runtime.",
+    "Absolute path or ~-prefixed path to the project directory. Optional — omit to auto-create a workspace at ~/.agend/workspaces/<name>.",
   ),
   topic_name: z.string().optional().describe(
     "Name for the Telegram topic. Defaults to directory basename. Required when directory is omitted.",
@@ -548,7 +545,7 @@ export const CreateInstanceArgs = z.object({
     "Model to use. Claude: sonnet, opus, haiku, opusplan, best, Fable, sonnet[1m], opus[1m]. Codex: gpt-4o, o3. Omit for default.",
   ),
   backend: z.enum(["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"]).optional()
-    .describe("CLI backend to use. Defaults to claude-code on WSL/Linux or codex on Windows."),
+    .describe("CLI backend to use. Defaults to claude-code."),
   backend_options: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe(
     "Backend-specific options keyed by backend name. For a Codex custom provider, use { codex: { provider: \"glm\" } }.",
   ),
