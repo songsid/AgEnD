@@ -80,6 +80,8 @@ import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
 import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
 import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
+import type { NativePaneLifecycle } from "./native-pane-lifecycle.js";
+import type { RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -648,7 +650,7 @@ interface SubmissionSignature {
    */
   transcript?: {
     /** Bounded, incremental looks from the attempt's checkpoint (each ≤256 KiB, ≤250 ms). */
-    reader: TranscriptDeltaReader;
+    reader: Pick<TranscriptDeltaReader, "look">;
     /**
      * The write's fence: its spawn and launch, not stopping, and the caller's own fence. Asked after every await
      * before a hit is used — a look that returns after a stop or respawn proves nothing for the replacement.
@@ -819,6 +821,10 @@ type DurableDeliveryAttempt = {
   /** sha256 of the text as this daemon received it, before formatting (#856). */
   contentSha256?: string;
 };
+type DurableTranscriptCheckpoint = { backend: string } & (
+  | { path: string; offset: number; runtime?: never }
+  | { path?: never; offset?: never; runtime: RuntimeTranscriptReference }
+);
 type DeliveryVerdict = {
   reached: boolean;
   phase?: string;
@@ -830,7 +836,7 @@ type DeliveryVerdict = {
   /** #829: the caller's lifecycle fence went stale before anything was written. */
   fenced?: boolean;
   /** Where this attempt's transcript stood before the paste (#758), for a delivery only the output edge vouches for. */
-  transcriptCheckpoint?: { backend: string; path: string; offset: number };
+  transcriptCheckpoint?: DurableTranscriptCheckpoint;
   /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
   submissionMode?: DurableSubmissionMode;
   /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
@@ -2204,6 +2210,13 @@ export class Daemon extends EventEmitter {
 
   /** Lazy default also preserves bare-prototype diagnostic/test construction. */
   private get paneHost(): PaneHost { return this.paneTransport ?? tmuxPaneHost; }
+  private nativePaneLifecycle?: NativePaneLifecycle;
+
+  /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
+  setNativePaneLifecycle(native: NativePaneLifecycle): void {
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle) throw Error("Native pane adapter must be bound before daemon startup");
+    this.nativePaneLifecycle = native; this.backend = native.backend; this.paneTransport = native.host; this.controlClient = native.observation;
+  }
 
   constructor(
     private name: string,
@@ -2315,9 +2328,14 @@ export class Daemon extends EventEmitter {
     steer: boolean,
     rawPaste = false,
   ): Promise<DeliveryAttemptEvidence> {
-    let checkpoint = null;
-    try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
-    catch (err) { this.logger.debug({ err }, "Could not checkpoint transcript before durable delivery"); }
+    let checkpoint = null, runtimeTranscript: RuntimeTranscriptReference | null = null;
+    if (this.nativePaneLifecycle) {
+      runtimeTranscript = await this.transcriptMonitor?.reconciliationRuntimeCheckpoint() ?? null;
+      if (!runtimeTranscript || !this.nativePaneLifecycle.current(runtimeTranscript)) throw Error("Native transcript checkpoint is not current; no delivery was written");
+    } else {
+      try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
+      catch (err) { this.logger.debug({ err }, "Could not checkpoint transcript before durable delivery"); }
+    }
     const submissionMode: DurableSubmissionMode = rawPaste ? "raw_paste" : steer
       ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
@@ -2332,8 +2350,9 @@ export class Daemon extends EventEmitter {
       backendVersion,
       windowId: windowId ?? this.tmux?.getWindowId() ?? null,
       transcriptPath: checkpoint?.path ?? null,
-      transcriptOffset: checkpoint?.offset ?? null,
-      transcriptSessionId: checkpoint?.sessionId ?? null,
+      transcriptOffset: runtimeTranscript?.cursor.offset ?? checkpoint?.offset ?? null,
+      transcriptSessionId: runtimeTranscript?.cursor.sessionId ?? checkpoint?.sessionId ?? null,
+      ...(runtimeTranscript ? { runtimeTranscript } : {}),
       submissionMode,
       queueResumePolicy: queueResumePolicyForAttempt(backend, backendVersion, submissionMode),
     };
@@ -2378,15 +2397,18 @@ export class Daemon extends EventEmitter {
     const checkpoint = verdict.transcriptCheckpoint;
     const outbox = this.deliveryOutbox;
     if (!checkpoint || !outbox?.markConsumed) return;
+    if (this.nativePaneLifecycle && !checkpoint.runtime) return;
     if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff") return;
     if (!["claude-code", "codex"].includes(checkpoint.backend)) return;
     const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, boot = this.bootId;
+    let location: { path: string; offset: number } | { reader: ReturnType<NativePaneLifecycle["proofReader"]> };
+    try { location = checkpoint.runtime ? { reader: this.nativeTranscriptReader(checkpoint.runtime, delivery.deliveryId) } : { path: checkpoint.path, offset: checkpoint.offset }; }
+    catch { return; } // The owner changed; an unavailable consumed watch proves nothing.
     consumedWatches.start({
       deliveryId: delivery.deliveryId,
       attemptNo: delivery.attemptNo,
       backend: checkpoint.backend,
-      path: checkpoint.path,
-      offset: checkpoint.offset,
+      ...location,
       current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch,
       consumed: (via, evidence) => {
         try {
@@ -2469,29 +2491,34 @@ export class Daemon extends EventEmitter {
    */
   private async proveDeliveryFromTranscript(
     delivery: { deliveryId: string; attemptNo: number },
-    checkpoint: { backend: string; path: string; offset: number },
+    checkpoint: DurableTranscriptCheckpoint,
     rawPaste?: { text: string; unproven: string },
   ): Promise<void> {
     const spawn = this.spawnGeneration;
     const fence = this.launchFenceEpoch;
     let last: "no-match" | "unavailable" = "unavailable";
-    let outcome: "delivered" | "uncertain" = "delivered";
-    let evidence = OUTPUT_EDGE_ONLY_EVIDENCE;
+    const native = !!checkpoint.runtime || !!this.nativePaneLifecycle;
+    let outcome: "delivered" | "uncertain" = native ? "uncertain" : "delivered";
+    let evidence = native ? "runtime-transcript-unconfirmed" : OUTPUT_EDGE_ONLY_EVIDENCE;
     // #1647: a raw paste has no marker; its text is the needle, and its pane proof already failed — so without the turn
     // in the transcript it stays uncertain (with the pane's reason), never the output-edge outcome.
     const needle: TranscriptNeedle = rawPaste ? { rawText: rawPaste.text } : delivery.deliveryId;
     let found = false;
     try {
+      if (this.nativePaneLifecycle && !checkpoint.runtime) throw Error("Native proof cannot read a coordinator-local transcript path");
+      const nativeReader = checkpoint.runtime ? this.nativeTranscriptReader(checkpoint.runtime, needle) : null;
       for (let polls = 0; polls <= TRANSCRIPT_PROOF_WINDOW_MS / TRANSCRIPT_PROOF_POLL_MS; polls++) {
         if (this.deliveryWritesStopping) return; // reconciliation owns the row now
-        const look = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, needle);
+        const look = nativeReader ? await nativeReader.look() : await scanTranscriptForDeliveryMarker(checkpoint.path!, checkpoint.offset!, checkpoint.backend, needle);
+        if (this.deliveryWritesStopping) return;
+        if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
         if (look === "user" || look === "absorbed" || look === "queued") {
           found = true;
           outcome = "delivered";
           evidence = transcriptMarkerEvidence(look, !!rawPaste);
           break;
         }
-        last = look;
+        last = look === "pending" ? "unavailable" : look;
         if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
         await new Promise(r => setTimeout(r, TRANSCRIPT_PROOF_POLL_MS));
       }
@@ -2499,12 +2526,12 @@ export class Daemon extends EventEmitter {
       // pause/freeze or respawn during the final sleep must end the wait with today's labelled outcome, not
       // `uncertain`: re-check the same fixed epochs after the last await, before settling (#1207 P2).
       if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) last = "unavailable";
-      if (last === "no-match" && evidence === OUTPUT_EDGE_ONLY_EVIDENCE) {
+      if (last === "no-match" && !found) {
         outcome = "uncertain";
         evidence = "unverifiable-no-transcript-marker";
       }
     } catch (err) {
-      this.logger.debug({ err }, "Transcript proof of a delivery failed — keeping the output-edge outcome");
+      this.logger.debug({ err }, "Transcript proof unavailable — preserving the conservative outcome");
     }
     if (rawPaste && !found) {
       outcome = "uncertain";
@@ -9670,11 +9697,11 @@ export class Daemon extends EventEmitter {
         }
         verdict.durableBeginCommitted = true;
         verdict.submissionMode = attemptEvidence.submissionMode;
-        if (attemptEvidence.transcriptPath && attemptEvidence.transcriptOffset !== null) {
-          verdict.transcriptCheckpoint = {
+        if (attemptEvidence.runtimeTranscript || attemptEvidence.transcriptPath && attemptEvidence.transcriptOffset !== null) {
+          verdict.transcriptCheckpoint = attemptEvidence.runtimeTranscript ? { backend: attemptEvidence.backend, runtime: attemptEvidence.runtimeTranscript } : {
             backend: attemptEvidence.backend,
-            path: attemptEvidence.transcriptPath,
-            offset: attemptEvidence.transcriptOffset,
+            path: attemptEvidence.transcriptPath!,
+            offset: attemptEvidence.transcriptOffset!,
           };
           // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
           // reply, or still be painting the paste) — this delivery's exact marker only, or a raw paste's exact text (#1647).
@@ -10355,19 +10382,26 @@ export class Daemon extends EventEmitter {
    * and the caller's own fence — so a look that lands after any of them is never used (#1380 review).
    */
   private transcriptProofFor(
-    checkpoint: { backend: string; path: string; offset: number },
+    checkpoint: DurableTranscriptCheckpoint,
     needle: TranscriptNeedle,
     spawnAtWrite: number,
     stillCurrent: (() => boolean) | undefined,
     onProof: (kind: TranscriptMarkerKind) => void,
   ): NonNullable<SubmissionSignature["transcript"]> {
+    if (this.nativePaneLifecycle && !checkpoint.runtime) throw Error("Native proof cannot read a coordinator-local transcript path");
     const launchAtWrite = this.launchFenceEpoch;
     return {
-      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle),
+      reader: checkpoint.runtime ? this.nativeTranscriptReader(checkpoint.runtime, needle) : new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle),
       current: () => !this.deliveryWritesStopping && this.spawnGeneration === spawnAtWrite
-        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true),
+        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true)
+        && (!checkpoint.runtime || this.nativePaneLifecycle?.current(checkpoint.runtime) === true),
       onProof,
     };
+  }
+
+  private nativeTranscriptReader(reference: RuntimeTranscriptReference, needle: TranscriptNeedle): ReturnType<NativePaneLifecycle["proofReader"]> {
+    if (!this.nativePaneLifecycle || !this.nativePaneLifecycle.current(reference)) throw Error("Native delivery transcript owner is unavailable");
+    return this.nativePaneLifecycle.proofReader(reference, needle);
   }
 
   /** The CLI this daemon drives, for log lines shared by every backend ("claude-code", "codex", …). */
