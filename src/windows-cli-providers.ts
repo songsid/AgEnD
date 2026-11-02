@@ -10,13 +10,29 @@
 export const NATIVE_PROVIDER_IDS = ["codex", "claude-code", "antigravity", "grok", "kiro-cli", "opencode", "muse"] as const;
 export type NativeProviderId = typeof NATIVE_PROVIDER_IDS[number];
 export type NativeSandbox = "read-only" | "workspace-write";
+/** Internal execution capability. Never accepted as part of a public task input or persisted with a turn. */
+export interface NativeMcpConnection { endpoint: string; token: string; tools: string[] }
+export const NATIVE_MCP_SERVER = "agend_native";
+export function nativeProviderMcpSupported(cli: unknown): boolean { return cli === "codex" || cli === "claude-code"; }
+export function validateNativeMcpConnection(value: unknown): NativeMcpConnection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid native MCP connection");
+  const v = value as Record<string,unknown>;
+  if (Object.keys(v).some(key => !["endpoint","token","tools"].includes(key)) || typeof v.endpoint !== "string" || typeof v.token !== "string"
+    || !/^[a-f0-9]{64}$/i.test(v.token) || !Array.isArray(v.tools) || !v.tools.length || v.tools.length > 128
+    || v.tools.some(tool => typeof tool !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(tool))) throw new Error("Invalid native MCP connection");
+  let endpoint: URL;
+  try { endpoint = new URL(v.endpoint); } catch { throw new Error("Invalid native MCP endpoint"); }
+  if (endpoint.protocol !== "http:" || !["127.0.0.1","[::1]"].includes(endpoint.hostname) || endpoint.pathname !== "/agent"
+    || !endpoint.port || endpoint.port === "0" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error("Invalid native MCP endpoint");
+  return { endpoint:endpoint.href, token:v.token, tools:[...new Set(v.tools as string[])] };
+}
 export interface NativeProviderDescriptor {
   id: NativeProviderId;
   name: string;
   company: string;
   /** Executable basenames only. IDE launchers such as kiro.cmd are deliberately excluded. */
   binaryNames: readonly string[];
-  supports: { execution: boolean; resume: boolean; model: boolean };
+  supports: { execution: boolean; resume: boolean; model: boolean; mcp?: boolean };
   readOnlySupport: boolean;
   permission: "os-sandbox" | "read-tools" | "native-policy";
   permissionNote: string;
@@ -31,13 +47,13 @@ export interface NativeProviderDescriptor {
 const PROVIDERS: Record<NativeProviderId, NativeProviderDescriptor> = {
   codex: {
     id: "codex", name: "Codex", company: "OpenAI", binaryNames: ["codex.exe"],
-    supports: { execution: true, resume: true, model: true }, readOnlySupport: true,
+    supports: { execution: true, resume: true, model: true, mcp: true }, readOnlySupport: true,
     permission: "os-sandbox", permissionNote: "Uses Codex's native read-only or workspace-write sandbox. Approval policy is unchanged.",
     promptTransport: "stdin-text", authProbe: ["login", "status"], modelProbe: null,
   },
   "claude-code": {
     id: "claude-code", name: "Claude Code", company: "Anthropic", binaryNames: ["claude.exe"],
-    supports: { execution: true, resume: true, model: true }, readOnlySupport: true,
+    supports: { execution: true, resume: true, model: true, mcp: true }, readOnlySupport: true,
     permission: "read-tools", permissionNote: "Read-only exposes Read, Glob and Grep only, with MCP disabled; it is a tool restriction, not an OS sandbox. Permission requests are denied in headless mode.",
     promptTransport: "stdin-text", authProbe: ["auth", "status"], modelProbe: null,
   },
@@ -119,6 +135,18 @@ export interface NativeInvocationOptions {
   resumeSessionId?: string;
   /** For file transports, a private file containing exactly task.prompt, owned/cleaned up by the worker. */
   promptFile?: string;
+  mcp?: NativeMcpLaunch;
+}
+export interface NativeMcpLaunch { nodePath: string; helperPath: string; connectionPath: string; configPath: string; tools: string[]; serverName?: string }
+function checkMcpLaunch(value: NativeMcpLaunch): void {
+  const path = (v: unknown): v is string => typeof v === "string" && /^(?:[a-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)/i.test(v) && !/[\x00-\x1f\x7f]/.test(v);
+  if (![value.nodePath,value.helperPath,value.connectionPath,value.configPath].every(path) || !/[\\/]node\.exe$/i.test(value.nodePath)
+    || !/[\\/]windows-native-mcp\.js$/.test(value.helperPath) || !Array.isArray(value.tools) || !value.tools.length || value.tools.length > 128
+    || value.tools.some(tool => !/^[a-z][a-z0-9_]{0,63}$/.test(tool)) || value.serverName !== undefined && !/^agend_native_[a-f0-9]{12}$/.test(value.serverName)) throw new Error("Invalid native MCP launch");
+}
+export function nativeMcpServerConfig(launch: NativeMcpLaunch): { mcpServers: Record<string,{command:string;args:string[]}> } {
+  checkMcpLaunch(launch);
+  return { mcpServers:{[launch.serverName ?? NATIVE_MCP_SERVER]:{ command:launch.nodePath,args:[launch.helperPath,"--connection-file",launch.connectionPath] }} };
 }
 export interface NativeInvocation {
   args: string[];
@@ -132,7 +160,8 @@ export function buildNativeInvocation(task: NativeProviderTask, options: NativeI
   if (!provider.supports.execution) throw new Error(provider.reason || "Windows CLI execution is not supported");
   if (task.sandbox !== "read-only" && task.sandbox !== "workspace-write") throw new Error("Invalid sandbox mode");
   if (task.sandbox === "read-only" && !provider.readOnlySupport) throw new Error(`${provider.name} cannot guarantee read-only execution; choose native CLI permissions instead`);
-  if (typeof task.prompt !== "string" || !task.prompt.trim() || task.prompt.includes("\0") || task.prompt.length > 16_384) throw new Error("Invalid Windows CLI prompt");
+  if (typeof task.prompt !== "string" || !task.prompt.trim() || task.prompt.includes("\0") || task.prompt.length > 24_576) throw new Error("Invalid Windows CLI prompt");
+  if (options.mcp) { if (!nativeProviderMcpSupported(task.cli)) throw new Error("This Windows CLI does not support scoped AgEnD MCP tools"); checkMcpLaunch(options.mcp); }
   const model = validateNativeModel(task.model);
   const resume = options.resumeSessionId;
   if (resume !== undefined && !validNativeSessionId(task.cli, resume)) throw new Error("Invalid Windows conversation id");
@@ -143,15 +172,20 @@ export function buildNativeInvocation(task: NativeProviderTask, options: NativeI
       const args = resume
         ? ["-C", task.cwd, "--sandbox", task.sandbox, "exec", "resume", "--json", "--skip-git-repo-check", resume]
         : ["exec", "--json", "--skip-git-repo-check", "--sandbox", task.sandbox, "-C", task.cwd];
-      return { args: [...nativeUpdateGuard("codex"), ...withModel(args), "-"], stdin: task.prompt };
+      const mcp = options.mcp;
+      const namespace = mcp?.serverName ?? NATIVE_MCP_SERVER;
+      const prefix = mcp ? ["-c",`mcp_servers.${namespace}.command=${JSON.stringify(mcp.nodePath)}`,"-c",`mcp_servers.${namespace}.args=${JSON.stringify([mcp.helperPath,"--connection-file",mcp.connectionPath])}`] : [];
+      return { args: [...nativeUpdateGuard("codex"),...prefix,...withModel(args), "-"], stdin: task.prompt };
     }
     case "claude-code": {
       const args = ["--print", "--verbose", "--input-format", "text", "--output-format", "stream-json", "--permission-prompts", "none"];
       if (task.sandbox === "read-only") {
         // Only built-in read tools; disallow MCP tools even if user/project config enables them.
         // No allowedTools flag: that would override the user's approval policy for the listed tools.
-        args.push("--permission-mode", "plan", "--tools", "Read,Glob,Grep", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}');
+        args.push("--permission-mode", "plan", "--tools", "Read,Glob,Grep", "--strict-mcp-config");
+        if (!options.mcp) args.push("--mcp-config", '{"mcpServers":{}}');
       }
+      if (options.mcp) args.push("--mcp-config",options.mcp.configPath,"--allowedTools",options.mcp.tools.map(tool=>`mcp__${options.mcp!.serverName ?? NATIVE_MCP_SERVER}__${tool}`).join(","));
       if (resume) args.push("--resume", resume);
       return { args: withModel(args), stdin: task.prompt };
     }

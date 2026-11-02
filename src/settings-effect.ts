@@ -12,6 +12,7 @@ import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
 import { quickLinkEffective } from "./authority/web-authority.js";
+import { parseNativeInstanceCreate } from "./native-instance-input.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -167,6 +168,15 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     return { diff: scoped(settingsChangeDiff(normalizedBefore, draft, { operation: `${operation} ${what}`, force: true, secret: { key: patch.token_env, after: patch.token } })) };
   } else if (path === "/ui/instances") {
     const payload = record(body), channels = cfg?.channels ?? (cfg?.channel ? [cfg.channel] : []);
+    if (payload.runtime === "windows") {
+      // Validate the same fields and defaults the native handler will execute. Native Agents do not allocate
+      // Linux topics or bind the first chat connection; the machine and file-access policy stay visible in approval.
+      let draft;
+      try { draft = parseNativeInstanceCreate(payload).input; }
+      catch { throw new SettingsConfirmationError(400, "invalid_native_instance"); }
+      return { diff: scoped(settingsChangeDiff({}, { new_instance: draft }, { operation, force: true }),
+        { connections: [], primaryGeneral: false, unknown: false }) };
+    }
     const name = payload.topic_name ?? (typeof payload.directory === "string" ? basename(payload.directory) : null);
     if (typeof name !== "string" || !name) throw new SettingsConfirmationError(400, "invalid_instance_name");
     const draft = { topic_name: name, directory: payload.directory,

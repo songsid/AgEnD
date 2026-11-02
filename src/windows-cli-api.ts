@@ -7,6 +7,7 @@ import { windowsBridgeFor, windowsCliEnabled, type WindowsCliBridge } from "./wi
 import { windowsAgentsFor } from "./windows-agents.js";
 import { nativeAgentId } from "./native-instance-registry.js";
 import type { FleetWindowsRuntime } from "./fleet-windows-runtime.js";
+import { isSettingsReplay, settingsRequestLocalAdmin } from "./settings-request-capability.js";
 
 export interface WindowsCliApiContext {
   readonly webToken: string | null;
@@ -25,6 +26,12 @@ function json(res: ServerResponse, code: number, value: unknown): void {
 /** The ordinary dashboard gate AND an explicit admin-only, non-public boundary. Rechecked after every await. */
 export function nativeCliAuthorization(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): boolean {
   if (gatewayRequestContext(req)) return false;
+  // Confirmed creation replays intentionally carry no browser cookies or bearer headers. Only the server-owned,
+  // still-current administrator capability may continue this exact operation; it grants no other native route.
+  if (isSettingsReplay(req)) {
+    try { return req.method === "POST" && url.pathname === "/ui/instances" && settingsRequestLocalAdmin(req); }
+    catch { return false; }
+  }
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });
   return v.kind === "allow" && (v.via === "header-token" || v.session.tier === "admin");
 }
@@ -72,7 +79,7 @@ export function handleWindowsCliRequest(req: IncomingMessage, res: ServerRespons
         json(res,202,{accepted:true,agent:runtime.get(name)});
       }
       else if (agent?.[2] === "messages") json(res, 202, { task: store.send(agent[1], input, authorized) });
-      else if (agent?.[2] === "recover") json(res, 200, { agent: runtime ? runtime.recover(canonical(agent[1]),input.confirmedStopped) : store.recover(agent[1], input.confirmedStopped) });
+      else if (agent?.[2] === "recover") json(res, 200, { agent: runtime ? runtime.recoverAsync ? await runtime.recoverAsync(canonical(agent[1]),input.confirmedStopped) : runtime.recover(canonical(agent[1]),input.confirmedStopped) : store.recover(agent[1], input.confirmedStopped) });
       else json(res, 404, { error: "Unknown Windows agent operation" });
     })().catch(error => {
       const allowed = authorized();

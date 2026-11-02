@@ -7,15 +7,9 @@ import { windowsCliEnabled } from "./windows-cli.js";
 import { isWindowsInstance } from "./native-instance-registry.js";
 import type { WebApiContext } from "./web-api.js";
 import { settingsRequestExecution } from "./settings-request-capability.js";
+import { parseNativeInstanceCreate } from "./native-instance-input.js";
 
-const Provider = z.enum(["codex","claude-code","antigravity","grok","kiro-cli","opencode","muse"]);
 const Tags = z.array(z.string().min(1).max(64)).max(32);
-const Create = z.object({
-  runtime:z.literal("windows"), topic_name:z.string().max(64).optional(),
-  directory:z.string().max(1024).optional(), backend:Provider.default("codex"),
-  model:z.string().max(160).optional(), description:z.string().max(512).optional(),
-  systemPrompt:z.string().max(8000).optional(), sandbox:z.enum(["read-only","workspace-write"]).default("read-only"), tags:Tags.optional(),
-}).strict();
 const Patch = z.object({
   display_name:z.string().min(1).max(64).optional(), description:z.string().max(512).optional(),
   working_directory:z.string().min(1).max(1024).optional(), model:z.string().max(160).optional(),
@@ -38,14 +32,12 @@ function admission(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiCont
 export async function createNativeInstance(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiContext,body:unknown):Promise<void> {
   const allowed=admission(req,res,url,ctx);if(!allowed)return;
   try {
-    const input=Create.parse(body);
-    const name=input.topic_name?.trim() || input.directory?.trim().replace(/[\\/]+$/,"").split(/[\\/]/).pop() || "";
-    if(!name)throw new Error("Enter an agent name");
-    const profile={name,cli:input.backend,...(input.directory?.trim()?{cwd:input.directory.trim()}:{}),
-      model:input.model,description:input.description ?? "",instructions:input.systemPrompt ?? "",sandbox:input.sandbox,...(input.tags?{tags:input.tags}:{})};
+    const {profile}=parseNativeInstanceCreate(body);
     const runtime=ctx.nativeInstanceRuntime!(),execution=settingsRequestExecution(req);
     const result=execution ? await runtime.create(profile,allowed,execution) : await runtime.create(profile,allowed);
-    if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
+    // A committed settings execution has already checked authority and persisted the identity. Its capability
+    // cannot authorize another write, but the completed operation must still return its success receipt.
+    if(!execution?.completed && !allowed()){json(res,403,{error:"Authorization expired"});return;}
     ctx.emitSseEvent("status",ctx.getUiStatus());json(res,201,result);
   } catch(error) {json(res,allowed()?400:403,{error:allowed()?(error instanceof Error?error.message:"Could not create instance"):"Authorization expired"});}
 }
@@ -90,7 +82,7 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
       z.object({}).strict().parse(body);const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
     }
     if(method==="POST" && operation==="recover"){
-      const input=z.object({confirmedStopped:z.literal(true)}).strict().parse(body);json(res,200,{agent:service.recover(name,input.confirmedStopped)});return;
+      const input=z.object({confirmedStopped:z.literal(true)}).strict().parse(body);json(res,200,{agent:service.recoverAsync ? await service.recoverAsync(name,input.confirmedStopped) : service.recover(name,input.confirmedStopped)});return;
     }
     json(res,405,{error:"Unsupported instance operation"});
   })().catch(error=>json(res,allowed()?400:403,{error:allowed()?(error instanceof Error?error.message:"Instance operation failed"):"Authorization expired"}));

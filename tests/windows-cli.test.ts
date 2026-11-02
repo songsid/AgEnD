@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WindowsCliBridge } from "../src/windows-cli.js";
 import { codexTaskArgs, codexEventText, validateNativeTask, validWindowsDirectory } from "../src/windows-cli-worker.js";
-import type { NativeProviderId } from "../src/windows-cli-providers.js";
+import { nativeProvider, type NativeProviderId } from "../src/windows-cli-providers.js";
 
 const input = { requestId: "12345678-1234-4321-abcd-123456789012", cli: "codex", cwd: "J:\\Project\\Game", prompt: 'Read a file; do not execute: $(whoami) & "quoted"', sandbox: "read-only" } as const;
 const launcher = async () => ({ executable: "/native/node.exe", args: ["C:\\AgEnD\\worker.js"] });
@@ -16,7 +16,7 @@ const launcher = async () => ({ executable: "/native/node.exe", args: ["C:\\AgEn
 const DETECTED_DIR = mkdtempSync(join(tmpdir(), "agend-windows-inventory-"));
 const DETECTED = join(DETECTED_DIR, "windows-cli-inventory.json");
 writeFileSync(DETECTED, JSON.stringify({ home: "C:\\Users\\Test", probedAt: 1, clis: ["codex", "claude-code", "antigravity", "grok", "opencode", "muse"]
-  .map(id => ({ id, path: `C:\\${id}.exe`, version: "1.0", authenticated: true, runnable: true, readOnlySupport: true, models: [] })) }));
+  .map(id => ({ id, path: `C:\\${id}.exe`, version: "1.0", authenticated: true, runnable: true, readOnlySupport: true, supports: nativeProvider(id as NativeProviderId).supports, models: [] })) }));
 const conversationId = "87654321-4321-4321-abcd-123456789012";
 const differentConversationId = "87654321-4321-4321-abcd-123456789013";
 const providerCases: Array<{
@@ -50,6 +50,29 @@ class FakeChild extends EventEmitter {
 let child: FakeChild;
 beforeEach(() => { vi.clearAllMocks(); child = new FakeChild(); vi.mocked(spawn).mockReturnValue(child as never); });
 async function launched() { await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(1)); }
+
+describe("trusted native execution metadata",()=>{
+  it("forwards a scoped MCP capability and task context only to the worker pipe",async()=>{
+    const service=new WindowsCliBridge(launcher,DETECTED),mcp={endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["query_task"]},context="trusted task context";
+    service.start(input,()=>true,{mcp,context});await launched();
+    expect(JSON.parse(child.stdin.read().toString())).toEqual({op:"run",task:input,mcp,context});
+    expect(JSON.stringify(service.list())).not.toContain(mcp.token);expect(JSON.stringify(service.get(input.requestId))).not.toContain(context);
+    child.send({type:"finished",code:1});child.close();
+  });
+  it("rejects a public MCP or context injection before starting a Windows process",()=>{
+    const service=new WindowsCliBridge(launcher);
+    expect(()=>service.start({...input,mcp:{endpoint:"http://evil.example/agent"}})).toThrow();
+    expect(()=>service.start({...input,context:"fake sender"})).toThrow();
+    expect(spawn).not.toHaveBeenCalled();
+  });
+  it("requires scoped MCP support in the last explicit detection without starting a new probe",()=>{
+    const file=join(DETECTED_DIR,"no-mcp.json"),inventory=JSON.parse(readFileSync(DETECTED,"utf8"));
+    inventory.clis[0].supports.mcp=false;writeFileSync(file,JSON.stringify(inventory));
+    const service=new WindowsCliBridge(launcher,file),mcp={endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["query_task"]};
+    expect(()=>service.start(input,()=>true,{mcp})).toThrow(/detect it again.*MCP/);
+    expect(spawn).not.toHaveBeenCalled();expect(service.hasActiveTask()).toBe(false);
+  });
+});
 
 describe("managed Windows workspace transport", () => {
   const id=input.requestId, cwd=`C:\\Users\\Test\\.agend\\workspaces\\${id}`;
@@ -122,7 +145,8 @@ describe("Windows CLI detection (M-2239 P1-2: only on an explicit refresh)", () 
     const service = new WindowsCliBridge(launcher, file), forced = service.probe({ force: true });
     await complete(child); const value = await forced;
     expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(value);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    // Native Windows does not expose POSIX mode bits; keep the 0600 guarantee checked on POSIX hosts.
+    if(process.platform!=="win32")expect(statSync(file).mode & 0o777).toBe(0o600);
     vi.mocked(spawn).mockClear();
     expect(await new WindowsCliBridge(launcher, file).probe()).toEqual(value);
     expect(spawn).not.toHaveBeenCalled();

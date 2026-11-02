@@ -24,6 +24,7 @@ export function nativeAgentId(config: Partial<InstanceConfig> | null | undefined
 export function nativeInstanceConfig(agent: Omit<WindowsAgent,"turns"|"instructions"> & {instructions?:string}): NativeInstanceConfig {
   return {
     ...structuredClone(DEFAULT_INSTANCE_CONFIG), runtime:"windows",native_agent_id:agent.id,native_sandbox:agent.sandbox,
+    ...(agent.machineId ? {machine_id:agent.machineId} : {}),
     working_directory:agent.cwd,display_name:agent.name,description:agent.description,backend:agent.cli,
     // Explicit empties prevent a Linux fleet's model/prompt from being inherited on config reload.
     model:agent.model || "",systemPrompt:agent.instructions || "",agent_mode:"cli",
@@ -61,6 +62,7 @@ export function syncWindowsProfile(config: InstanceConfig, store: WindowsAgents,
   const id = nativeAgentId(config);
   if (!id) throw new Error("Instance does not name a Windows runtime agent");
   const current = store.get(id);
+  if(config.machine_id!==current.machineId)throw new Error("This conversation belongs to a different runtime machine; create a new agent to move it");
   const patch: WindowsAgentPatch = {};
   const desired: WindowsAgentPatch = {
     name:config.display_name ?? current.name,cwd:config.working_directory,

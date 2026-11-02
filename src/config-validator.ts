@@ -626,6 +626,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       }
       if (inst.runtime !== undefined && inst.runtime !== "wsl" && inst.runtime !== "windows") err(`instances.${name}.runtime`, "must be wsl or windows");
       if (inst.runtime === "windows") {
+        if (inst.machine_id !== undefined && !validWindowsAgentId(inst.machine_id)) err(`instances.${name}.machine_id`, "must name a paired runtime machine UUID");
         if (!validWindowsAgentId(inst.native_agent_id)) err(`instances.${name}.native_agent_id`, "must name an existing Windows agent UUID");
         else {
           const id = inst.native_agent_id.toLowerCase(), owner = nativeOwners.get(id);
@@ -639,6 +640,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
           else if (inst.native_sandbox === "read-only" && !nativeProvider(inst.backend).readOnlySupport) err(`instances.${name}.native_sandbox`, "this Windows CLI does not support read-only execution");
         }
       } else {
+        if (inst.machine_id !== undefined) err(`instances.${name}.machine_id`, "is only supported for a Windows runtime");
         if (inst.native_agent_id !== undefined) err(`instances.${name}.native_agent_id`, "is only valid for a Windows runtime");
         if (inst.native_sandbox !== undefined) err(`instances.${name}.native_sandbox`, "is only valid for a Windows runtime");
       }

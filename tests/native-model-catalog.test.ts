@@ -76,14 +76,58 @@ describe("native model metadata", () => {
 });
 
 const token = "b".repeat(48);
-function invoke(path: string, bridge: unknown, config: Record<string, unknown> = {}, authorized = true) {
+function invoke(path: string, bridge: unknown, config: Record<string, unknown> = {}, authorized = true, extra: Record<string,unknown> = {}) {
   const req = Object.assign(new EventEmitter(), { method: "GET", headers: { host: "localhost:19280", "x-agend-token": authorized ? token : "wrong" }, socket: { remoteAddress: "127.0.0.1" } });
   let status = 0, body: unknown;
   const res = { writeHead(code: number) { status = code; }, end(text: string) { body = JSON.parse(text); } };
-  const ctx = { webToken: token as string | null, fleetConfig: { instances: config } };
+  const ctx = { webToken: token as string | null, fleetConfig: { instances: config }, ...extra };
   const handled = handleNativeModelCatalog(req as never, res as never, new URL(path, "http://localhost:19280"), ctx as never, bridge as never);
   return { ctx, handled, status: () => status, body: () => body };
 }
+
+describe("machine-scoped native model catalogs",()=>{
+  const first="11111111-1111-4111-8111-111111111111", second="22222222-2222-4222-8222-222222222222";
+  const catalog=(id:string)=>({home:`C:\\${id}`,clis:[{id:"codex",modelsSource:"cli-cache",models:[{id:`${id}-model`,name:`${id} Model`}]}]});
+  function remote(){
+    vi.stubEnv("AGEND_REMOTE_RUNTIME","1");vi.stubEnv("AGEND_WINDOWS_CLI","0");
+    return {machine:vi.fn((id:string)=>[first,second].includes(id)?{id,status:"online",inventory:catalog(id)}:null),call:vi.fn(async(id:string)=>catalog(id))};
+  }
+  it("isolates two Windows machines without probing the coordinator's local Windows tools",async()=>{
+    const hub=remote(),probe=vi.fn();
+    for(const id of [first,second]){
+      const res=invoke(`/ui/models?backend=codex&runtime=windows&machineId=${id}`,{probe},{},true,{runtimeCoordinator:()=>hub});
+      await vi.waitFor(()=>expect(res.status()).toBe(200));
+      expect(res.body()).toMatchObject({machineId:id,source:"cli-cache",models:[{id:`${id}-model`}]});
+    }
+    expect(probe).not.toHaveBeenCalled();expect(hub.call).not.toHaveBeenCalled();
+  });
+  it("infers the fixed machine from an instance and refuses another machine's model query",async()=>{
+    const hub=remote(),config={worker:{runtime:"windows",backend:"codex",machine_id:first}},extra={runtimeCoordinator:()=>hub};
+    const inferred=invoke("/ui/models?backend=codex&instance=worker",{},config,true,extra);
+    await vi.waitFor(()=>expect(inferred.status()).toBe(200));expect(inferred.body()).toMatchObject({machineId:first});
+    const crossed=invoke(`/ui/models?backend=codex&instance=worker&machineId=${second}`,{},config,true,extra);
+    expect(crossed.status()).toBe(400);
+  });
+  it("a remote GET refresh reads only the selected machine's saved inventory",async()=>{
+    const hub=remote(),result=invoke(`/ui/models?backend=codex&runtime=windows&machineId=${first}&refresh=1`,{}, {},true,{runtimeCoordinator:()=>hub});
+    await vi.waitFor(()=>expect(result.status()).toBe(200));
+    expect(result.body()).toMatchObject({machineId:first,models:[{id:`${first}-model`}]});
+    expect(hub.call).not.toHaveBeenCalled();
+  });
+  it("does not dispatch detection when a remote GET refresh has no saved inventory",async()=>{
+    remote();const call=vi.fn(),machine=vi.fn(()=>({id:first,status:"online"}));
+    const result=invoke(`/ui/models?backend=codex&runtime=windows&machineId=${first}&refresh=1`,{}, {},true,{runtimeCoordinator:()=>({machine,call})});
+    await vi.waitFor(()=>expect(result.status()).toBe(503));expect(call).not.toHaveBeenCalled();
+  });
+  it("does not treat a machine ID as a WSL model catalog",()=>{
+    remote();const result=invoke(`/ui/models?backend=codex&runtime=wsl&machineId=${first}`,{});
+    expect(result.status()).toBe(400);expect(result.handled).toBe(true);
+  });
+  it("rejects revoked or unknown machine inventory rather than falling back to local models",async()=>{
+    const hub=remote(),probe=vi.fn(),result=invoke("/ui/models?backend=codex&runtime=windows&machineId=33333333-3333-4333-8333-333333333333",{probe},{},true,{runtimeCoordinator:()=>hub});
+    await vi.waitFor(()=>expect(result.status()).toBe(503));expect(probe).not.toHaveBeenCalled();
+  });
+});
 
 describe("shared native model endpoint", () => {
   it("returns the native inventory rather than the WSL account, and a GET's refresh detects nothing (M-2239 P1-2)", async () => {

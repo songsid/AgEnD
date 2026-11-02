@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getAgendHome } from "./paths.js";
 import { validWindowsDirectory } from "./windows-cli-worker.js";
-import { windowsBridgeFor, type WindowsCliBridge, type WindowsCliTask } from "./windows-cli.js";
-import { isNativeProviderId, nativeProvider, validateNativeModel, type NativeProviderId } from "./windows-cli-providers.js";
+import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliTask } from "./windows-cli.js";
+import { isNativeProviderId, nativeProvider, validateNativeModel, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 export interface WindowsTurn { id: string; prompt: string; output: string; status: string; startedAt: number; finishedAt?: number; error?: string }
 export interface WindowsAgent {
@@ -16,9 +16,10 @@ export interface WindowsAgent {
   paused?: boolean;
   /** Once linked, removal from fleet.yaml must not import this provider state again. */
   fleet_instance?: string;
+  machineId?: string;
 }
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
-export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void }
+export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string }
 interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string }> }
 const idPattern = /^[a-f0-9-]{36}$/i;
 const shortText = (value: unknown, limit: number): value is string => typeof value === "string" && value.length <= limit && !value.includes("\0");
@@ -27,7 +28,7 @@ export class WindowsAgents {
   private file: string;
   private listeners = new Set<() => void>();
   private launching = new Set<string>();
-  constructor(home: string, private bridge: WindowsCliBridge) {
+  constructor(home: string, private bridge: WindowsCliExecutor) {
     this.file = join(home, "windows-agents.json");
     if (existsSync(this.file)) {
       if (statSync(this.file).size > 20 * 1024 * 1024) throw new Error("Windows agent store is too large");
@@ -56,7 +57,19 @@ export class WindowsAgents {
     if (!agent) throw new Error("Windows agent not found");
     return agent;
   }
+  useExecutor(executor: WindowsCliExecutor): void { this.bridge = executor; }
   get(id: string): WindowsAgent & { blocked: boolean } {
+    // A paired runtime can finish while the coordinator is restarting. Reconcile its durable result before
+    // interpreting a saved active turn as an orphan; provider session IDs still belong to the same machine.
+    const saved = this.find(id), recovered = saved.activeId ? this.bridge.get(saved.activeId) : null;
+    if (saved.activeId && recovered?.finishedAt && recovered.outcomeConfirmed === true) {
+      this.change(() => {
+        const turn = saved.turns.find(row => row.id === saved.activeId);
+        if (turn) Object.assign(turn,{output:recovered.output,status:recovered.status,finishedAt:recovered.finishedAt,error:recovered.error});
+        if (recovered.threadId) saved.threadId = recovered.threadId;
+        delete saved.activeId;
+      });
+    }
     const agent = structuredClone(this.find(id));
     const task = agent.activeId ? this.bridge.get(agent.activeId) : null;
     const blocked = !!agent.activeId && ((!task && !this.launching.has(agent.activeId)) || task?.outcomeConfirmed === false || !!task?.finishedAt);
@@ -127,7 +140,8 @@ export class WindowsAgents {
   async create(input: unknown, authorized: () => boolean = () => true): Promise<WindowsAgent> {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Agent must be an object");
     const v = input as Record<string, unknown>;
-    if (Object.keys(v).some(k => !["name", "cwd", "description", "instructions", "sandbox", "cli", "model"].includes(k))) throw new Error("Unknown Windows agent field");
+    if (Object.keys(v).some(k => !["name", "cwd", "description", "instructions", "sandbox", "cli", "model", "machineId"].includes(k))) throw new Error("Unknown Windows agent field");
+    if (v.machineId !== undefined && (typeof v.machineId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v.machineId))) throw new Error("Choose a paired runtime machine");
     const cli = v.cli ?? "codex";
     if (!isNativeProviderId(cli)) throw new Error("Choose a supported Windows CLI");
     const provider = nativeProvider(cli), model = validateNativeModel(v.model);
@@ -142,9 +156,11 @@ export class WindowsAgents {
     if (this.data.agents.some(a => a.name.toLowerCase() === (v.name as string).trim().toLowerCase())) throw new Error("A Windows agent already uses that name");
     if (!authorized()) throw new Error("Authorization expired before creating the Windows agent");
     const id = randomUUID(), name = v.name.trim();
-    const cwd = suppliedCwd || await this.bridge.prepareWorkspace(id, authorized);
+    const machineId = v.machineId as string | undefined;
+    // Managed workspaces are created by the selected machine; supplied paths are checked again before execution.
+    const cwd = suppliedCwd || await (machineId ? this.bridge.prepareWorkspace(id, authorized, machineId) : this.bridge.prepareWorkspace(id, authorized));
     if (!validWindowsDirectory(cwd)) throw new Error("Could not create a valid Windows workspace");
-    const agent: WindowsAgent = { id, name, cli, ...(model ? { model } : {}), cwd, sandbox: v.sandbox, description: String(v.description ?? ""), instructions: String(v.instructions ?? ""), createdAt: Date.now(), turns: [] };
+    const agent: WindowsAgent = { id, name, cli, ...(model ? { model } : {}), ...(machineId ? {machineId} : {}), cwd, sandbox: v.sandbox, description: String(v.description ?? ""), instructions: String(v.instructions ?? ""), createdAt: Date.now(), turns: [] };
     this.change(() => {
       if (!authorized()) throw new Error("Authorization expired while creating the Windows agent");
       // Another creation may have completed while native Windows prepared this workspace.
@@ -182,6 +198,8 @@ export class WindowsAgents {
       return this.bridge.start({ requestId, cli: agent.cli, ...(agent.model ? { model: agent.model } : {}), cwd: agent.cwd, sandbox: agent.sandbox,
         prompt: agent.instructions ? `Agent instructions:\n${agent.instructions}\n\nUser task:\n${prompt}` : prompt }, authorized, {
         resumeSessionId: agent.threadId,
+        ...(agent.machineId ? {machineId:agent.machineId} : {}),
+        ...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),
         onSettled: task => { try { this.change(() => {
           const current = this.find(id), turn = current.turns.find(t => t.id === requestId)!;
           Object.assign(turn, { output: task.output, status: task.status, finishedAt: task.finishedAt, error: task.error });
@@ -214,8 +232,9 @@ export class WindowsAgents {
   }
 }
 const stores = new WeakMap<object, WindowsAgents>();
-export function windowsAgentsFor(owner: object & { dataDir?: string }): WindowsAgents {
+export function windowsAgentsFor(owner: object & { dataDir?: string }, executor?: WindowsCliExecutor): WindowsAgents {
   let store = stores.get(owner);
-  if (!store) { store = new WindowsAgents(owner.dataDir ?? getAgendHome(), windowsBridgeFor(owner)); stores.set(owner, store); }
+  if (!store) { store = new WindowsAgents(owner.dataDir ?? getAgendHome(), executor ?? windowsBridgeFor(owner)); stores.set(owner, store); }
+  else if (executor) store.useExecutor(executor);
   return store;
 }

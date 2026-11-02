@@ -73,8 +73,9 @@ const CASES: Array<[string, string]> = [
   ["/view/%E0%A4", "malformed"],
   ["/view/a/b", "none"],
   ["/ui/needs", "needs:"],
-  ["/ui/windows-cli", "settings:windows-cli"],
-  ["/settings/windows-cli", "settings:windows-cli"],
+  ["/ui/windows-cli", "settings:runtimes"],
+  ["/settings/windows-cli", "settings:runtimes"],
+  ["/settings/runtimes", "settings:runtimes"],
   ["/ui/windows-agents/12345678-1234-4321-abcd-123456789012", "windows-agent:12345678-1234-4321-abcd-123456789012"],
   ["/ui/windows-agents/invalid", "none"],
   ["/ui/notices", "notices:"],                                   // #2910 D2

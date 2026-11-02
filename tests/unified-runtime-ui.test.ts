@@ -93,6 +93,23 @@ describe("one fleet UI across runtimes",()=>{
     expect(input.value).toBe("Keep my draft");expect(sent.some(item=>item.path==="/ui/send")).toBe(false);
     expect(p.root.textContent).toContain("Your draft is kept");
   });
+  it("keeps a remote draft while its computer is offline and enables sending after reconnect",async()=>{
+    const remote={...nativeRow(),machine_id:nativeId,machine_name:"Build desktop",machine_status:"offline"};
+    const status={instances:[linuxRow,remote],windows_cli:true};app.applyStatus(status);emit("status",status);
+    await mountNative();expect(p.root.querySelector(".runtime-machine-tag").textContent).toBe("Build desktop");
+    expect(p.root.querySelector(".runtime-machine-offline").textContent).toBe("Computer offline");
+    const input=p.root.querySelector("#msgIn");input.value="Keep remote draft";fire(input,"input");await settle();fire(input,"keydown",{key:"Enter"});await settle();
+    expect(p.root.querySelector("#sendBtn").disabled).toBe(true);expect(input.value).toBe("Keep remote draft");expect(sent.some(item=>item.path==="/ui/send")).toBe(false);
+    expect(p.root.querySelector(".runtime-machine-unavailable").textContent).toContain("Build desktop");
+    const online={instances:[linuxRow,{...remote,machine_status:"online"}],windows_cli:true};app.applyStatus(online);emit("status",online);await settle();
+    expect(p.root.querySelector("#sendBtn").disabled).toBe(false);expect(input.value).toBe("Keep remote draft");expect(p.root.querySelector(".runtime-machine-unavailable")).toBeNull();
+  });
+  it("shows a remote computer on the same Instances row without changing its Agent state",async()=>{
+    const status={instances:[linuxRow,{...nativeRow(),machine_id:nativeId,machine_name:"Build desktop",machine_status:"offline"}],windows_cli:true};app.applyStatus(status);emit("status",status);
+    const panels=new Map([["chat",{load:async()=>()=>h("div",{},"Shared chat")}]]);await p.mount(h(shell.Shell,{panels,onNewInstance(){}}));await settle(8);
+    const link=p.root.querySelector(`a[href="/ui/chat/${nativeName}"]`);expect(link.querySelector(".inst-machine").textContent).toContain("Build desktop");expect(link.querySelector(".inst-machine").textContent).toContain("Computer offline");
+    expect(link.getAttribute("title")).toContain("Status: Running");
+  });
   it("offers explicit interrupted-process recovery on the shared chat",async()=>{
     const status={instances:[linuxRow,{...nativeRow(),native_blocked:true}],windows_cli:true};app.applyStatus(status);emit("status",status);
     await mountNative();const recover=p.root.querySelectorAll("button").find((button:any)=>button.textContent.includes("Processes stopped"));

@@ -387,6 +387,16 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (ordinary(path, old, next) || plainList(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
+    // Native creation projects a strictly validated request at this exact root. These fields affect where code
+    // runs and what it can write, so display and confirm them rather than making them globally public/immediate.
+    if (path.length === 2 && path[0] === "new_instance" && ["runtime", "sandbox", "machineId", "tags"].includes(key)) {
+      const valid = (value: unknown) => value === undefined || (key === "runtime" ? value === "windows"
+        : key === "sandbox" ? value === "read-only" || value === "workspace-write"
+        : key === "tags" ? Array.isArray(value) && value.length <= 32 && value.every(tag => typeof tag === "string" && tag.length > 0 && tag.length <= 64)
+        : typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value));
+      if (!valid(old) || !valid(next)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
+      add(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`); return;
+    }
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
     if (unknownImmediateChild(path) && !SETTINGS_SECRET_KEY.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
     if (SETTINGS_SECRET_KEY.test(key)) { section = "secret"; add(`${label}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(old)} → ${fingerprint(next)}`); return; }

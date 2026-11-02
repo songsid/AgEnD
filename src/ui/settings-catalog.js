@@ -46,8 +46,8 @@ export function useBackendRows() {
 }
 
 /** Runtime and account are part of the key: Windows never borrows a WSL catalog. */
-export function useModelCatalogState(backend, instance, runtime) {
-  const url = backend ? `/ui/models?backend=${encodeURIComponent(backend)}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}${runtime === "windows" ? "&runtime=windows" : ""}` : null;
+export function useModelCatalogState(backend, instance, runtime, machineId) {
+  const url = backend ? `/ui/models?backend=${encodeURIComponent(backend)}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}${runtime === "windows" ? "&runtime=windows" : ""}${machineId ? `&machineId=${encodeURIComponent(machineId)}` : ""}` : null;
   const [state, setState] = useState({ url:null, answer:null, loading:false });
   const generation = useRef(0), active = useRef(url);
   active.current = url;

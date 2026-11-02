@@ -17,6 +17,15 @@ function fixture() {
   return { dir, bridge, start, prepareWorkspace, store:new WindowsAgents(dir,bridge) };
 }
 describe("native Windows agents", () => {
+  it("forwards the execution-only MCP lease and context without storing them in conversations",async()=>{
+    const f=fixture(),agent=await f.store.create(input);
+    const mcp={endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["query_task"]},context="from_instance: coordinator; correlation_id: test-context";
+    f.store.send(agent.id,{requestId:first,prompt:"raw user prompt"},()=>true,{mcp,context});
+    expect(f.start.mock.calls[0][2]).toMatchObject({mcp,context});
+    expect(f.store.get(agent.id).turns[0].prompt).toBe("raw user prompt");
+    const stored=readFileSync(join(f.dir,"windows-agents.json"),"utf8");
+    expect(stored).not.toContain(mcp.token);expect(stored).not.toContain(context);expect(stored).not.toContain(mcp.endpoint);
+  });
   it.each([undefined,"","   "])("creates a distinct durable workspace when cwd is %j", async cwd => {
     const f=fixture(), agent=await f.store.create({...input,cwd});
     expect(f.prepareWorkspace).toHaveBeenCalledWith(agent.id,expect.any(Function));

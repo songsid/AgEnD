@@ -7,7 +7,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
-import { parseNativeProviderEvent, type NativeProviderId } from "./windows-cli-providers.js";
+import { parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 const exec = promisify(execFile);
 /** `probedAt`: when an administrator last ran detection (ms), null when it never ran — then `clis` is empty. */
@@ -18,7 +18,19 @@ export interface WindowsCliTask {
   startedAt: number; finishedAt?: number; output: string; error?: string;
   threadId?: string; outcomeConfirmed?: boolean;
 }
-export interface WindowsRunOptions { resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void }
+export interface WindowsRunOptions { resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; machineId?: string }
+/** The conversation store uses this port for both the existing local worker and paired runtimes. */
+export interface WindowsCliExecutor {
+  probe(options?: {force?: boolean; machineId?: string}): Promise<WindowsCliProbe>;
+  prepareWorkspace(agentId: string, authorized?: () => boolean, machineId?: string): Promise<string>;
+  start(value: unknown, authorized?: () => boolean, options?: WindowsRunOptions): WindowsCliTask;
+  get(id: string): WindowsCliTask | null;
+  list(): WindowsCliTask[];
+  hasActiveTask(machineId?: string): boolean;
+  cancel(id: string): WindowsCliTask;
+  releaseUnknown(id: string): void;
+  close(): void;
+}
 export interface WindowsTransport { executable: string; args: string[] }
 export type WindowsLauncher = () => Promise<WindowsTransport>;
 const MAX_TASKS = 20;
@@ -27,7 +39,7 @@ const TEXT_LIMIT = 64 * 1024;
 export const WINDOWS_CLI_INVENTORY_FILE = "windows-cli-inventory.json";
 const NEVER_PROBED: WindowsCliProbe = { clis: [], home: "", probedAt: null };
 
-export function windowsCliEnabled(): boolean { return process.env.AGEND_WINDOWS_CLI === "1"; }
+export function windowsCliEnabled(): boolean { return process.env.AGEND_WINDOWS_CLI === "1" || process.env.AGEND_REMOTE_RUNTIME === "1"; }
 export async function nativeWindowsTransport(): Promise<WindowsTransport> {
   const worker = join(dirname(fileURLToPath(import.meta.url)), "windows-cli-worker.js");
   if (process.platform === "win32") return { executable: process.execPath, args: [worker] };
@@ -47,6 +59,8 @@ export class WindowsCliBridge {
   private child: ChildProcess | null = null;
   private active: string | null = null;
   private pendingProbe: Promise<WindowsCliProbe> | null = null;
+  private workerGeneration = 0;
+  private readonly pendingWorkers = new Map<ChildProcess, () => void>();
   private cachedProbe: WindowsCliProbe | null;
   /** `inventoryFile`: where the last detection is kept (absent: memory only). */
   constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport, private readonly inventoryFile?: string) {
@@ -89,16 +103,19 @@ export class WindowsCliBridge {
   }
   private async workerResult(request: { op: "probe" } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
+    const generation = this.workerGeneration;
     const transport = await this.launcher();
+    if (generation !== this.workerGeneration) throw new Error("Windows operation was cancelled");
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
     return new Promise((resolve, reject) => {
       const child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
       let text = "", settled = false;
       const timer = setTimeout(() => { child.kill(); finish(new Error(`Windows CLI ${request.op} timed out`)); }, timeoutMs);
       const finish = (error?: Error, value?: Record<string, unknown>): void => {
-        if (settled) return; settled = true; clearTimeout(timer);
+        if (settled) return; settled = true; clearTimeout(timer); this.pendingWorkers.delete(child);
         if (error) reject(error); else resolve(value!);
       };
+      this.pendingWorkers.set(child, () => { child.kill(); finish(new Error(`Windows CLI ${request.op} was cancelled`)); });
       child.on("error", e => finish(e));
       child.stdout!.setEncoding("utf8").on("data", (part: string) => {
         text += part;
@@ -118,6 +135,8 @@ export class WindowsCliBridge {
   }
   start(value: unknown, authorized: () => boolean = () => true, options: WindowsRunOptions = {}): WindowsCliTask {
     const input = validateNativeTask(value);
+    if (options.mcp) options = {...options,mcp:validateNativeMcpConnection(options.mcp)};
+    if (options.context !== undefined && (typeof options.context !== "string" || options.context.length > 2000 || options.context.includes("\0"))) throw new Error("Invalid native task context");
     const old = this.tasks.get(input.requestId);
     if (old) {
       if (JSON.stringify(old.input) !== JSON.stringify(input)) throw new Error("requestId already belongs to another task");
@@ -128,6 +147,7 @@ export class WindowsCliBridge {
     const detected = this.cachedProbe?.clis.find(row => row.id === input.cli);
     if (!detected) throw new Error("Detect the Windows CLIs first (Settings → Windows CLI → Detect again)");
     if (!detected.runnable) throw new Error(detected.reason || "This Windows CLI could not run at the last detection; detect again after fixing it");
+    if (options.mcp && !detected.supports?.mcp) throw new Error("Update this Windows CLI and detect it again to use scoped AgEnD MCP tools");
     if (input.sandbox === "read-only" && !detected.readOnlySupport) throw new Error("The installed Windows CLI cannot enforce the selected read-only policy");
     if (this.submitted.size >= 4096) throw new Error("Preview request limit reached; restart AgEnD before submitting new tasks");
     if (this.active) throw new Error("A Windows CLI task is already running");
@@ -151,6 +171,9 @@ export class WindowsCliBridge {
     return { ...task };
   }
   close(): void {
+    this.workerGeneration++;
+    for (const cancel of this.pendingWorkers.values()) cancel();
+    this.pendingWorkers.clear();
     if (this.active) this.cancel(this.active);
     this.child?.stdin?.end();
   }
@@ -223,7 +246,7 @@ export class WindowsCliBridge {
           if (finished) this.active = null;
           resolve();
         });
-        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}) })}\n`);
+        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}) })}\n`);
       });
     } catch (e) { task.error = e instanceof Error ? e.message : "Windows CLI launch failed"; task.status = "failed"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; }
     finally { try { options.onSettled?.({ ...task }); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }

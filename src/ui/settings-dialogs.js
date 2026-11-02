@@ -60,8 +60,8 @@ export function BackendSelect({ value, onChange, disabled, id }) {
  * the current value in it: choosing "Other…" alone changes nothing — emptying the box is what inherits, #2098 review).
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
-export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, inherit, catalogOverride }) {
-  const state = useModelCatalogState(catalogOverride === undefined ? backend : null, instance, runtime);
+export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, machineId, inherit, catalogOverride }) {
+  const state = useModelCatalogState(catalogOverride === undefined ? backend : null, instance, runtime, machineId);
   const catalog = catalogOverride === undefined ? state.models : catalogOverride;
   const [typing, setTyping] = useState(false);
   useEffect(() => { setTyping(false); }, [backend, instance, runtime]);
