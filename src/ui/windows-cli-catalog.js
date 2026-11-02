@@ -9,7 +9,8 @@ import { Icon } from "/assets/ui-icons.js";
 export const WINDOWS_CLI_CATALOG_TTL_MS = 60_000;
 const initial = () => ({ data:null, loading:false, error:"", checkedAt:0, startedAt:0 });
 
-/** Successful inventory only, in memory. No polling, localStorage, credential data or model tasks. */
+/** Successful inventory only, in memory. No polling, localStorage, credential data or model tasks. A plain load reads the
+ * server's last detection (which starts nothing, M-2239 P1-2); only `force` (Detect again) runs detection. */
 export function createWindowsCliCatalog({ fetcher = (...args) => fetch(...args), now = () => Date.now(), ttlMs = WINDOWS_CLI_CATALOG_TTL_MS, timeoutMs = 80_000 } = {}) {
   const store = createStore(initial());
   let pending = null, controller = null, generation = 0;
@@ -56,8 +57,8 @@ export function useWindowsCliCatalog(enabled = true) {
 }
 
 register("windetect", {
-  "zh-TW": { loading:"正在偵測 Windows CLI…", refreshing:"正在更新 Windows CLI…", hint:"正在確認已安裝的 CLI、版本與登入狀態。完成後會重用結果，不必每次重新等待。", elapsed:"已等待 {0} 秒，仍在檢查中。", failed:"無法完成 Windows CLI 偵測", previous:"更新未完成，目前顯示上次成功偵測的結果。", retry:"重試偵測", refresh:"重新偵測", cached:"已載入最近的偵測結果" },
-  en: { loading:"Detecting Windows CLIs…", refreshing:"Updating Windows CLIs…", hint:"Checking installed CLIs, versions and sign-ins. Results are reused so reopening does not repeat the wait.", elapsed:"Still checking after {0} seconds.", failed:"Windows CLI detection failed", previous:"Refresh failed. Showing the last successful inventory.", retry:"Retry detection", refresh:"Detect again", cached:"Loaded the recent inventory" },
+  "zh-TW": { loading:"正在偵測 Windows CLI…", refreshing:"正在更新 Windows CLI…", hint:"正在確認已安裝的 CLI、版本與登入狀態。完成後會重用結果，不必每次重新等待。", elapsed:"已等待 {0} 秒，仍在檢查中。", failed:"無法完成 Windows CLI 偵測", previous:"更新未完成，目前顯示上次成功偵測的結果。", retry:"重試偵測", refresh:"重新偵測", cached:"已載入最近的偵測結果", never:"尚未偵測 Windows CLI。偵測會逐一啟動已安裝的 CLI 一次，讀取版本與登入狀態；之後只在你按下「重新偵測」時再做。", detect:"偵測 Windows CLI" },
+  en: { loading:"Detecting Windows CLIs…", refreshing:"Updating Windows CLIs…", hint:"Checking installed CLIs, versions and sign-ins. Results are reused so reopening does not repeat the wait.", elapsed:"Still checking after {0} seconds.", failed:"Windows CLI detection failed", previous:"Refresh failed. Showing the last successful inventory.", retry:"Retry detection", refresh:"Detect again", cached:"Loaded the recent inventory", never:"Windows CLIs have not been detected yet. Detection starts each installed CLI once to read its version and sign-in; after that, only when you press Detect again.", detect:"Detect Windows CLIs" },
 });
 export const detectionText = key => t(`windetect.${key}`);
 
@@ -71,6 +72,8 @@ export function WindowsCliDiscoveryStatus({ state }) {
     return () => lease.clear(timer);
   },[lease,state.loading,state.startedAt]);
   if (state.error) return html`<div class="cli-discovery-status is-error" role="alert"><${Icon} name="alert" size=${18} /><div><strong>${detectionText("failed")}</strong><p>${state.data ? detectionText("previous") : state.error}</p>${state.data ? html`<small>${state.error}</small>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${detectionText("retry")}</button></div></div>`;
+  // M-2239 P1-2: nothing is detected on its own — the first detection is the administrator's press too.
+  if (!state.loading && state.data && state.data.probedAt === null) return html`<div class="cli-discovery-status" role="status"><${Icon} name="info" size=${18} /><div><p>${detectionText("never")}</p><button type="button" class="btn btn-sm" onClick=${state.refresh}>${detectionText("detect")}</button></div></div>`;
   if (!state.loading && state.data) return null;
   return html`<div class="cli-discovery-status" role="status" aria-live="polite" aria-busy="true"><span class="out-spin" aria-hidden="true"></span><div><strong>${detectionText(state.data ? "refreshing" : "loading")}</strong><p>${detectionText("hint")}</p>${seconds >= 8 ? html`<small>${t("windetect.elapsed",seconds)}</small>` : null}</div></div>`;
 }

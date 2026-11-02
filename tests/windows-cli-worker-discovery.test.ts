@@ -57,7 +57,7 @@ describe("native Windows CLI discovery", () => {
         calls.push(`${id}:${args.join(" ")}`);
         if (args.includes("--help")) return { ok: true, text: help };
         if (args.includes("--version")) return { ok: true, text: "1.2.3" };
-        if (args.join(" ") === "login status") return { ok: false, text: "Not logged in" };
+        if (args.join(" ").endsWith("login status")) return { ok: false, text: "Not logged in" };
         if (args.join(" ") === "auth status") return { ok: false, text: "unsupported status response" };
         return { ok: true, text: "gemini-3.1-pro-high  Gemini 3.1 Pro (High)" };
       },
@@ -66,6 +66,27 @@ describe("native Windows CLI discovery", () => {
     expect(result.clis.find(row => row.id === "claude-code")).toMatchObject({ authenticated: null, runnable: true, readOnlySupport: true });
     expect(result.clis.find(row => row.id === "antigravity")).toMatchObject({ authenticated: null, runnable: true, readOnlySupport: false, models: [{ id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)" }] });
     expect(calls.filter(call => call.startsWith("antigravity:")).sort()).toEqual(["antigravity:--help", "antigravity:--version", "antigravity:models"].sort());
+  });
+
+  it("M-2239 P1-2: every probe argv carries the CLI's own update switch, and muse is never started", async () => {
+    const home = scratchHome(); writeFileSync(join(home, ".muse-version"), "1.4.6\n");
+    const calls: string[][] = [];
+    const result = await probeNativeClis({
+      find: async id => id === "muse" ? { path: join(home, "muse.exe"), command: join(home, "muse.exe"), args: [] } : ["codex", "grok", "opencode"].includes(id) ? executable(id) : null,
+      run: async (entry, args) => { calls.push([entry.path.split(/[\\/]/).at(-1)!, ...args]); return { ok: true, text: args.includes("--version") ? "1.0.0" : help }; },
+      readModels: () => [],
+    });
+    const of = (bin: string) => calls.filter(c => c[0] === bin).map(c => c.slice(1));
+    expect(of("codex.exe").length).toBeGreaterThan(0);
+    for (const args of of("codex.exe")) expect(args.slice(0, 2)).toEqual(["-c", "check_for_update_on_startup=false"]);
+    expect(of("grok.exe").length).toBeGreaterThan(0);
+    for (const args of of("grok.exe")) expect(args[0]).toBe("--no-auto-update");
+    expect(of("muse.exe")).toEqual([]);
+    expect(result.clis.find(row => row.id === "muse")).toMatchObject({ version: "1.4.6", runnable: true });
+  });
+
+  it("M-2239 P1-2: every Windows CLI run carries the env update switches", () => {
+    expect(nativeCliEnvironment()).toMatchObject({ DISABLE_AUTOUPDATER: "1", OPENCODE_DISABLE_AUTOUPDATE: "1", NO_UPDATE_NOTIFIER: "1", KIRO_NO_AUTO_UPDATE: "1", MUSE_UPDATE_INTERVAL_SECONDS: "31536000" });
   });
 
   it("does not mark an outdated CLI ready merely because its executable and version exist", async () => {

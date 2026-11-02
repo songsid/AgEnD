@@ -51,7 +51,7 @@ const PROVIDERS: Record<NativeProviderId, NativeProviderDescriptor> = {
     id: "grok", name: "Grok", company: "xAI", binaryNames: ["grok.exe"],
     supports: { execution: true, resume: true, model: true }, readOnlySupport: false,
     permission: "native-policy", permissionNote: "Uses the native CLI permission policy; no blanket approval or sandbox bypass is added.",
-    promptTransport: "file", authProbe: null, modelProbe: ["--no-auto-update", "models"],
+    promptTransport: "file", authProbe: null, modelProbe: ["models"],
   },
   "kiro-cli": {
     id: "kiro-cli", name: "Kiro", company: "AWS", binaryNames: ["kiro-cli.exe"],
@@ -80,6 +80,15 @@ export function isNativeProviderId(value: unknown): value is NativeProviderId {
 export function nativeProvider(id: NativeProviderId): NativeProviderDescriptor {
   if (!isNativeProviderId(id)) throw new Error("Unknown Windows CLI provider");
   return PROVIDERS[id];
+}
+
+/**
+ * M-2239 P1-2: each CLI's own "do not update" switch, put in front of every argv AgEnD runs (probe and task), as the
+ * Linux backends do (codex.ts, grok.ts). The env switches are in nativeCliEnvironment. Antigravity has no documented
+ * switch: it is started only by an administrator's explicit detection or a task, never on a timer or a read.
+ */
+export function nativeUpdateGuard(id: NativeProviderId): string[] {
+  return id === "codex" ? ["-c", "check_for_update_on_startup=false"] : id === "grok" ? ["--no-auto-update"] : [];
 }
 
 /** Empty means native CLI default. Models remain literal argv, never shell source. */
@@ -134,7 +143,7 @@ export function buildNativeInvocation(task: NativeProviderTask, options: NativeI
       const args = resume
         ? ["-C", task.cwd, "--sandbox", task.sandbox, "exec", "resume", "--json", "--skip-git-repo-check", resume]
         : ["exec", "--json", "--skip-git-repo-check", "--sandbox", task.sandbox, "-C", task.cwd];
-      return { args: [...withModel(args), "-"], stdin: task.prompt };
+      return { args: [...nativeUpdateGuard("codex"), ...withModel(args), "-"], stdin: task.prompt };
     }
     case "claude-code": {
       const args = ["--print", "--verbose", "--input-format", "text", "--output-format", "stream-json", "--permission-prompts", "none"];
@@ -154,7 +163,7 @@ export function buildNativeInvocation(task: NativeProviderTask, options: NativeI
     }
     case "grok": {
       const file = promptFile(options.promptFile);
-      const args = ["--no-auto-update", "--prompt-file", file, "--output-format", "streaming-json", "--cwd", task.cwd];
+      const args = [...nativeUpdateGuard("grok"), "--prompt-file", file, "--output-format", "streaming-json", "--cwd", task.cwd];
       if (resume) args.push("--resume", resume);
       return { args: withModel(args), stdin: "" };
     }

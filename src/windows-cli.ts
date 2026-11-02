@@ -2,13 +2,16 @@
 import { spawn, execFile } from "./child-process.js";
 import type { ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
+import { readFileSync } from "node:fs";
+import { atomicWriteFileSync } from "./atomic-write.js";
 import { dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
 import { parseNativeProviderEvent, type NativeProviderId } from "./windows-cli-providers.js";
 
 const exec = promisify(execFile);
-export interface WindowsCliProbe { clis: NativeCliRow[]; home: string }
+/** `probedAt`: when an administrator last ran detection (ms), null when it never ran — then `clis` is empty. */
+export interface WindowsCliProbe { clis: NativeCliRow[]; home: string; probedAt: number | null }
 export interface WindowsCliTask {
   id: string; cli: NativeProviderId; model?: string; cwd: string; sandbox: NativeTaskInput["sandbox"];
   status: "starting" | "running" | "cancelling" | "completed" | "failed" | "cancelled";
@@ -20,7 +23,9 @@ export interface WindowsTransport { executable: string; args: string[] }
 export type WindowsLauncher = () => Promise<WindowsTransport>;
 const MAX_TASKS = 20;
 const TEXT_LIMIT = 64 * 1024;
-export const WINDOWS_CLI_PROBE_TTL_MS = 60_000;
+/** M-2239 P1-2: the last detection, kept across restarts; never refreshed on a timer or a read. */
+export const WINDOWS_CLI_INVENTORY_FILE = "windows-cli-inventory.json";
+const NEVER_PROBED: WindowsCliProbe = { clis: [], home: "", probedAt: null };
 
 export function windowsCliEnabled(): boolean { return process.env.AGEND_WINDOWS_CLI === "1"; }
 export async function nativeWindowsTransport(): Promise<WindowsTransport> {
@@ -42,17 +47,24 @@ export class WindowsCliBridge {
   private child: ChildProcess | null = null;
   private active: string | null = null;
   private pendingProbe: Promise<WindowsCliProbe> | null = null;
-  private cachedProbe: { value: WindowsCliProbe; expiresAt: number } | null = null;
-  constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport) {}
+  private cachedProbe: WindowsCliProbe | null;
+  /** `inventoryFile`: where the last detection is kept (absent: memory only). */
+  constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport, private readonly inventoryFile?: string) {
+    this.cachedProbe = inventoryFile ? readInventory(inventoryFile) : null;
+  }
 
   list(): WindowsCliTask[] { return [...this.tasks.values()].map(v => ({ ...v.task })).reverse(); }
   hasActiveTask(): boolean { return this.active !== null; }
   get(id: string): WindowsCliTask | null { const task = this.tasks.get(id)?.task; return task ? { ...task } : null; }
+  /**
+   * M-2239 P1-2: the last detection, as it was — starting nothing. Only `force` (an administrator's explicit "Detect
+   * again") starts the Windows CLIs, once each, with their own "do not update" switches. Never on a timer or a read.
+   */
   async probe(options: { force?: boolean } = {}): Promise<WindowsCliProbe> {
-    if (options.force) this.cachedProbe = null;
-    if (!this.pendingProbe && this.cachedProbe && Date.now() < this.cachedProbe.expiresAt) return structuredClone(this.cachedProbe.value);
+    if (!options.force) return structuredClone(this.pendingProbe ? await this.pendingProbe : this.cachedProbe ?? NEVER_PROBED);
     this.pendingProbe ??= this.doProbe().then(value => {
-      this.cachedProbe = { value: structuredClone(value), expiresAt: Date.now() + WINDOWS_CLI_PROBE_TTL_MS };
+      this.cachedProbe = structuredClone(value);
+      if (this.inventoryFile) writeInventory(this.inventoryFile, value);
       return value;
     }).finally(() => { this.pendingProbe = null; });
     // Neither callers nor another request may mutate a cached/pending result.
@@ -71,7 +83,7 @@ export class WindowsCliBridge {
   private async doProbe(): Promise<WindowsCliProbe> {
     const value = await this.workerResult({ op: "probe" }, 60_000);
     if (value.type !== "probe" || !Array.isArray(value.clis) || typeof value.home !== "string") throw new Error(String(value.message || "Windows CLI probe failed"));
-    return { clis: value.clis, home: value.home };
+    return { clis: value.clis, home: value.home, probedAt: Date.now() };
   }
   private async workerResult(request: { op: "probe" } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
@@ -110,6 +122,11 @@ export class WindowsCliBridge {
       return { ...old.task };
     }
     if (this.submitted.has(input.requestId)) throw new Error("This requestId was already used; its task history has expired");
+    // M-2239 P1-2: a task starts no probe; the administrator's last detection says whether this CLI can run here.
+    const detected = this.cachedProbe?.clis.find(row => row.id === input.cli);
+    if (!detected) throw new Error("Detect the Windows CLIs first (Settings → Windows CLI → Detect again)");
+    if (!detected.runnable) throw new Error(detected.reason || "This Windows CLI could not run at the last detection; detect again after fixing it");
+    if (input.sandbox === "read-only" && !detected.readOnlySupport) throw new Error("The installed Windows CLI cannot enforce the selected read-only policy");
     if (this.submitted.size >= 4096) throw new Error("Preview request limit reached; restart AgEnD before submitting new tasks");
     if (this.active) throw new Error("A Windows CLI task is already running");
     const task: WindowsCliTask = { id: input.requestId, cli: input.cli, ...(input.model ? { model: input.model } : {}), cwd: input.cwd, sandbox: input.sandbox, status: "starting", startedAt: Date.now(), output: "" };
@@ -212,7 +229,20 @@ export class WindowsCliBridge {
 }
 
 const bridges = new WeakMap<object, WindowsCliBridge>();
-export function windowsBridgeFor(owner: object): WindowsCliBridge {
-  let bridge = bridges.get(owner); if (!bridge) { bridge = new WindowsCliBridge(); bridges.set(owner, bridge); } return bridge;
+export function windowsBridgeFor(owner: object & { dataDir?: string }): WindowsCliBridge {
+  let bridge = bridges.get(owner);
+  if (!bridge) { bridge = new WindowsCliBridge(nativeWindowsTransport, owner.dataDir ? join(owner.dataDir, WINDOWS_CLI_INVENTORY_FILE) : undefined); bridges.set(owner, bridge); }
+  return bridge;
+}
+
+function readInventory(file: string): WindowsCliProbe | null {
+  try {
+    const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+    const v = value as Partial<WindowsCliProbe> | null;
+    return v && Array.isArray(v.clis) && typeof v.home === "string" && typeof v.probedAt === "number" ? { clis: v.clis, home: v.home, probedAt: v.probedAt } : null;
+  } catch { return null; }
+}
+function writeInventory(file: string, value: WindowsCliProbe): void {
+  try { atomicWriteFileSync(file, JSON.stringify(value), { mode: 0o600 }); } catch { /* kept in memory; detected again after a restart */ }
 }
 export function closeWindowsBridge(owner: object): void { bridges.get(owner)?.close(); }

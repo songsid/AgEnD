@@ -100,7 +100,7 @@ describe("Windows execution uses the dashboard authorization boundary", () => {
 
 describe("Windows CLI discovery refresh API", () => {
   const probeUrl = new URL("http://localhost/ui/windows-cli/probe");
-  const value = { home:"C:\\User",clis:[] };
+  const value = { home:"C:\\User",clis:[],probedAt:1 };
   it.each([{}, {force:true}, {force:false}])("passes supported refresh options %j to discovery", async body => {
     const req = request("POST",body), res = response(req), bridge = new WindowsCliBridge(); req.url = probeUrl.pathname;
     const probe = vi.spyOn(bridge,"probe").mockResolvedValue(value);

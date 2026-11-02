@@ -25,14 +25,30 @@ its task adapter remains disabled pending verification of its terminal JSON
 protocol. No credential files are copied between Windows and Linux. A provider
 without a reliable sign-in status command is marked unknown, never signed out.
 
-Successful inventory is cached for 60 seconds in both the bridge and the page.
-Settings and New agent share one in-flight read. Reopening uses the last result
-immediately; an expired result stays visible while it refreshes in the background.
-Cold detection displays a spinner and explanatory status, with elapsed seconds
-after eight seconds. Errors are distinct from an empty inventory and offer Retry.
-Detect again explicitly bypasses the cache. Failed refreshes retain the page's
-last successful inventory with a warning; execution still checks the actual CLI
-and its sign-in before each task. Nothing is persisted to browser storage.
+**Detection runs only when an administrator asks for it** (M-2239 P1-2): the
+first time with **Detect Windows CLIs**, later with **Detect again**. It is
+never started by a timer, by opening a page, by a model list (a GET) or by a
+task. Detection starts each installed CLI once (`--version`, `--help`, and where
+a CLI has them its sign-in status and model listing), always with that CLI's own
+"do not update" switch:
+
+| CLI | Update switch on every run AgEnD makes |
+| --- | --- |
+| Codex | `-c check_for_update_on_startup=false` |
+| Claude Code | `DISABLE_AUTOUPDATER=1` |
+| Grok | `--no-auto-update` |
+| OpenCode | `OPENCODE_DISABLE_AUTOUPDATE=1` |
+| Kiro CLI | `KIRO_NO_AUTO_UPDATE=1` |
+| Muse | `MUSE_UPDATE_INTERVAL_SECONDS=31536000`; never started for detection (its version is read from `.muse-version` beside the launcher, #2078) |
+| Antigravity | none documented: started only by Detect again or a task |
+
+`NO_UPDATE_NOTIFIER=1` is set for all of them. The result is kept in the AgEnD
+home (`windows-cli-inventory.json`) and survives a restart; every page and every
+task reads it. A task starts no probe: it runs only a CLI that the last
+detection found runnable (and, for read-only, able to enforce it), after
+checking that its executable is still installed. Failed refreshes retain the
+page's last successful inventory with a warning. Nothing is persisted to
+browser storage.
 
 One-off tasks in the Windows CLI settings section use an existing Windows
 directory, such as `C:\Projects\example`. Registered agents may leave their
@@ -123,7 +139,7 @@ reuse a late response from the previous CLI.
 | Codex | Available; native read-only and workspace-write policies | The native account's `models_cache.json`; no credential file is read for this list |
 | Claude Code | Available; read-tool restriction or native CLI policy | Documented Claude choices, gated by installed CLI version |
 | Antigravity | Available; native CLI policy | The CLI's `models` listing |
-| Grok | Available; native CLI policy | The CLI's model listing, with auto-update disabled during the probe |
+| Grok | Available; native CLI policy | The CLI's model listing (at detection), with auto-update disabled |
 | OpenCode | Available; native CLI policy | The CLI's `models` listing |
 | Muse | Available; native CLI policy | CLI default or a custom model ID; no machine-readable catalog is assumed |
 | Kiro CLI | Detection only; terminal JSON completion/resume protocol remains unverified | Hidden from the task-capable CLI picker; installing Kiro IDE does not install Kiro CLI |
@@ -141,9 +157,9 @@ choices are not an account entitlement check; the UI says actual availability
 depends on the account and provider. WSL keeps its existing cached account
 catalog and uses this Claude fallback only when that catalog is empty.
 
-The page shares model answers for 30 seconds. Native discovery uses the bridge's
-60-second inventory cache and coalesces simultaneous requests. Refresh models
-bypasses that native inventory cache. The WSL model endpoint remains a read of
+The page shares model answers for 30 seconds. Native model lists come from the
+last detection; reading them starts nothing, and Refresh models does not detect
+again (use Detect again in Settings → Windows CLI). The WSL model endpoint remains a read of
 the coordinator's cached account catalog. Listing models does not send a model
 inference request or modify an agent's settings.
 
