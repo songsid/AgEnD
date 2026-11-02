@@ -48,6 +48,10 @@ describe("remote machine UI",()=>{
   });
   it("creates a transient pairing code with an interactive CLI command, then hides it",async()=>{
     await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);button("Connect a computer").click();await settle(8);
+    const download=p.root.querySelector(".runtime-pairing .runtime-bundle-download");
+    expect(download.textContent).toContain("Download Windows Runtime");
+    expect(download.getAttribute("href")).toBe("/ui/runtimes/download/windows");
+    expect(p.root.textContent).toContain("transfer the ZIP to the Windows computer");
     expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
     expect(p.root.querySelector(".runtime-command").value).toContain("agend-runtime.cmd connect --server");
     expect(p.root.querySelector(".runtime-command").value).not.toContain("PAIR-TEST-CODE");

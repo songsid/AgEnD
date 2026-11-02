@@ -3,18 +3,29 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
 import { nativeCliAuthorization, type WindowsCliApiContext } from "./windows-cli-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
+import { createRuntimeBundle } from "./runtime-bundle.js";
 
 export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator }
 function json(res: ServerResponse, status: number, value: unknown): void {
   if (res.destroyed || res.writableEnded) return;
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(value));
 }
-export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, url: URL, ctx: RuntimeApiContext): boolean {
+export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, url: URL, ctx: RuntimeApiContext, bundle = createRuntimeBundle): boolean {
   if (url.pathname !== "/ui/runtimes" && !url.pathname.startsWith("/ui/runtimes/")) return false;
   const method = req.method ?? "GET";
   if (!nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Runtime settings require a local dashboard administrator" }); return true; }
   const enabled = process.env.AGEND_REMOTE_RUNTIME === "1" && !!ctx.runtimeCoordinator;
   if (!enabled) { json(res, method === "GET" && url.pathname === "/ui/runtimes" ? 200 : 404, { enabled: false, machines: [] }); return true; }
+  if ((method === "GET" || method === "HEAD") && url.pathname === "/ui/runtimes/download/windows") {
+    if (url.search) { json(res,400,{error:"Runtime downloads do not accept file paths or options"});return true; }
+    try {
+      const file=bundle();
+      res.writeHead(200,{"Content-Type":"application/zip","Content-Disposition":`attachment; filename="${file.filename}"`,
+        "Content-Length":file.bytes.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","X-Agend-SHA256":file.sha256});
+      res.end(method === "HEAD" ? undefined : file.bytes);
+    } catch { json(res,503,{error:"The matching Windows Runtime package is unavailable on this host. Update or reinstall AgEnD and retry."}); }
+    return true;
+  }
   const hub = ctx.runtimeCoordinator!();
   if (method === "GET" && url.pathname === "/ui/runtimes") { json(res, 200, { enabled: true, machines: hub.listMachines() }); return true; }
   const route = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})(?:\/(approve|revoke|rename|refresh|probe|inventory))?$/.exec(url.pathname);

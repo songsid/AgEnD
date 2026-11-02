@@ -22,9 +22,9 @@ function request(path: string, method = "GET", body: unknown = {}): IncomingMess
   Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true }); return req;
 }
 class Response extends ServerResponse {
-  status = 0; body = "";
-  override writeHead(code: number): this { this.status = code; return this; }
-  override end(chunk?: unknown): this { this.body += String(chunk ?? ""); return this; }
+  status = 0; body = ""; bytes = Buffer.alloc(0); sentHeaders: Record<string, string | number | readonly string[] | undefined> = {};
+  override writeHead(code: number, headers?: unknown): this { this.status = code; this.sentHeaders = headers && typeof headers === "object" && !Array.isArray(headers) ? headers as import("node:http").OutgoingHttpHeaders : {}; return this; }
+  override end(chunk?: unknown): this { this.body += String(chunk ?? ""); if (chunk !== undefined) this.bytes = Buffer.concat([this.bytes, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))]); return this; }
 }
 function run(ctx: RuntimeApiContext, path: string, method = "GET", body: unknown = {}) {
   const req = request(path, method, body), res = new Response(req); const handled = handleRuntimeRequest(req, res, new URL(path, "http://localhost"), ctx); return { req, res, handled };
@@ -81,6 +81,62 @@ describe("runtime administration API", () => {
   it.each([null, [], { unexpected: true }])("rejects malformed pairing input %j", async body => {
     const { ctx, hub } = context(), create = vi.spyOn(hub, "createPairing"), { res } = run(ctx, "/ui/runtimes/pairing", "POST", body);
     await vi.waitFor(() => expect(res.status).toBe(400)); expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe("runtime package download", () => {
+  const path = "/ui/runtimes/download/windows";
+  function setup() {
+    const coordinator = vi.fn((): RuntimeCoordinator => { throw Error("Downloads must not create a coordinator"); });
+    const ctx: RuntimeApiContext = { webToken: token, runtimeCoordinator: coordinator };
+    const file = { bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff]), filename: "agend-runtime-windows-2.3.3.zip", sha256: "a".repeat(64) };
+    const bundle = vi.fn(() => file);
+    const download = (req = request(path)) => {
+      const res = new Response(req);
+      expect(handleRuntimeRequest(req, res, new URL(req.url!, "http://localhost"), ctx, bundle)).toBe(true);
+      return res;
+    };
+    return { ctx, file, bundle, coordinator, download };
+  }
+  it("serves an exact binary attachment, and HEAD metadata, without starting the execution service", () => {
+    const { file, bundle, coordinator, download } = setup();
+    const get = download();
+    expect(get.status).toBe(200); expect(get.bytes).toEqual(file.bytes);
+    expect(get.sentHeaders).toMatchObject({ "Content-Type": "application/zip", "Content-Length": file.bytes.length,
+      "Content-Disposition": 'attachment; filename="agend-runtime-windows-2.3.3.zip"', "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff", "X-Agend-SHA256": file.sha256 });
+    const head = download(request(path, "HEAD")); expect(head.status).toBe(200); expect(head.bytes.length).toBe(0);
+    expect(head.sentHeaders).toEqual(get.sentHeaders); expect(bundle).toHaveBeenCalledTimes(2); expect(coordinator).not.toHaveBeenCalled();
+  });
+  it("uses the local administrator session for ordinary browser downloads", () => {
+    const { ctx, download } = setup(), store = new WebSessionStore(); Object.assign(ctx, { webSessions: store });
+    const session = store.create({ tier: "admin", surface: "local", label: "download", tokenEpoch: tokenEpoch(token) });
+    const req = request(path); delete req.headers["x-agend-token"]; req.headers.cookie = `${WEB_SESSION_COOKIE}=${session.sessionId}`;
+    expect(download(req).status).toBe(200);
+  });
+  it("rejects unauthenticated, public gateway and read/guest sessions before reading program files", () => {
+    const { ctx, bundle, coordinator, download } = setup(), store = new WebSessionStore(); Object.assign(ctx, { webSessions: store });
+    const missing = request(path); delete missing.headers["x-agend-token"]; expect(download(missing).status).toBe(403);
+    const gateway = request(path); bindGatewayRequest(gateway, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
+    expect(download(gateway).status).toBe(403);
+    for (const tier of ["read", "guest"] as const) {
+      const session = store.create({ tier, surface: "local", label: "denied", tokenEpoch: tokenEpoch(token), ...(tier === "guest" ? { owner: { adapterId: "tg", userId: "1" } } : {}) });
+      const req = request(path); delete req.headers["x-agend-token"]; req.headers.cookie = `${WEB_SESSION_COOKIE}=${session.sessionId}`;
+      expect(download(req).status).toBe(403);
+    }
+    expect(bundle).not.toHaveBeenCalled(); expect(coordinator).not.toHaveBeenCalled();
+  });
+  it("rejects caller-selected paths and remains unavailable when the preview is disabled", () => {
+    const { bundle, coordinator, download } = setup();
+    expect(download(request(path + "?path=connection.json")).status).toBe(400);
+    vi.stubEnv("AGEND_REMOTE_RUNTIME", ""); expect(download().status).toBe(404);
+    expect(bundle).not.toHaveBeenCalled(); expect(coordinator).not.toHaveBeenCalled();
+  });
+  it("returns an actionable unavailable response without leaking host paths or a partial ZIP", () => {
+    const { bundle, coordinator, download } = setup(); bundle.mockImplementation(() => { throw Error("ENOENT /private/profile/connection.json"); });
+    const res = download(); expect(res.status).toBe(503); expect(res.sentHeaders["Content-Type"]).toContain("application/json");
+    expect(JSON.parse(res.body).error).toContain("Update or reinstall AgEnD"); expect(res.body).not.toMatch(/private|connection\.json|ENOENT/);
+    expect(coordinator).not.toHaveBeenCalled();
   });
 });
 

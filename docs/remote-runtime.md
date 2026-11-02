@@ -9,7 +9,7 @@ The coordinator still owns the shared Fleet, Agent settings, task board, delegat
 Enable the coordinator preview with `AGEND_REMOTE_RUNTIME=1` in the environment used to start AgEnD, then restart it. This flag enables remote Windows Agents even when the coordinator is a Linux machine without Windows interoperability. `AGEND_WINDOWS_CLI=1` remains the separate switch for this coordinator's own local Windows CLI discovery.
 
 1. On the coordinator, open **Settings → Runtimes** and create a pairing code.
-2. Build the standalone runtime with `npm run build:runtime` after the normal TypeScript build. Copy the resulting `.artifacts/runtime-bundle` folder to the Windows computer. It contains only the runtime modules and reviewed pure-JavaScript `ws` dependency; it does not install the full coordinator, SQLite, Linux native dependencies or a Node binary. Install a supported Windows Node release separately.
+2. Click **Download Windows Runtime (ZIP)** on that page. Transfer the ZIP to the Windows computer and extract its `agend-runtime` folder. The package comes from the currently installed AgEnD program, so no repository checkout or build is required. It contains only the runtime modules and reviewed pure-JavaScript `ws` dependency; it does not install the full coordinator, SQLite, Linux native dependencies or a Node binary. Install a supported Windows Node release separately.
 3. In a Windows terminal, under the user whose CLIs are installed and signed in, run:
 
    ```powershell
@@ -21,6 +21,8 @@ Enable the coordinator preview with `AGEND_REMOTE_RUNTIME=1` in the environment 
 6. In **New Agent**, select the paired machine, its CLI, then configure the Agent. Working directories are paths on that selected computer; leaving the directory empty creates its managed local workspace.
 
 The initial preview runs in the foreground. It does not install an auto-start task or a SYSTEM service. SYSTEM would use a different login, PATH and device permissions from the signed-in Windows user.
+
+The download requires an administrator session on the local dashboard and is unavailable through public gateway links. It includes program assets and license notices only, without pairing codes, machine credentials, CLI sign-ins or workspaces. If installed runtime assets are missing, update or reinstall AgEnD and retry. Developers can also run `npm run build:runtime` after the normal TypeScript build and transfer the resulting `.artifacts/runtime-bundle` folder.
 
 ## Network connection
 

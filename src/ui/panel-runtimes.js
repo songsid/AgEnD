@@ -11,7 +11,7 @@ import { useRuntimeCatalog } from "./runtime-catalog.js";
 register("machines", {
   en: {
     title:"Runtime", lead:"Connect computers to run agents with each computer's own CLIs, sign-ins and files.",
-    connect:"Connect a computer", refresh:"Refresh machines", loading:"Loading machines…", empty:"No remote computers connected yet.",
+    connect:"Connect a computer", download:"Download Windows Runtime (ZIP)", downloadHint:"Download here, then transfer the ZIP to the Windows computer and extract it. Windows Node.js is required.", refresh:"Refresh machines", loading:"Loading machines…", empty:"No remote computers connected yet.",
     disabled:"Remote runtime connections are not enabled on this AgEnD host.", local:"This computer", localHint:"WSL / Linux agents run on the AgEnD host. Native Windows diagnostics are below when enabled.",
     localWindows:"Local Windows CLI diagnostics", online:"Online", offline:"Offline", pending:"Awaiting approval", revoked:"Revoked", unknown:"Not reported",
     lastSeen:"Last seen: {0}", inventoryAt:"CLI inventory: {0}", noInventory:"CLI inventory has not been reported yet.", noClis:"No installed CLIs reported.",
@@ -25,7 +25,7 @@ register("machines", {
   },
   "zh-TW": {
     title:"Runtime", lead:"連接電腦，讓 Agent 使用各台電腦上的 CLI、登入與檔案。",
-    connect:"連接電腦", refresh:"更新機器清單", loading:"正在載入機器…", empty:"尚未連接其他電腦。",
+    connect:"連接電腦", download:"下載 Windows Runtime（ZIP）", downloadHint:"下載後，將 ZIP 傳到要執行 CLI 的 Windows 電腦並解壓縮。需要 Windows Node.js。", refresh:"更新機器清單", loading:"正在載入機器…", empty:"尚未連接其他電腦。",
     disabled:"這個 AgEnD 主機尚未啟用遠端 Runtime 連線。", local:"這台電腦", localHint:"WSL / Linux Agent 在 AgEnD 主機上執行。啟用後可在下方查看本機 Windows 診斷。",
     localWindows:"本機 Windows CLI 診斷", online:"在線", offline:"離線", pending:"等待核准", revoked:"已撤銷", unknown:"尚未回報",
     lastSeen:"最近連線：{0}", inventoryAt:"CLI 清單更新：{0}", noInventory:"尚未回報 CLI 清單。", noClis:"尚未回報已安裝的 CLI。",
@@ -95,12 +95,13 @@ export function RuntimesPanel({navKey}) {
   };
   const machines=state.data?.machines || [];
   const command=runtimeConnectCommand(server);
+  const download=()=>html`<a class="btn btn-sm runtime-bundle-download" href="/ui/runtimes/download/windows" download><${Icon} name="download" size=${15} />${machineText("download")}</a>`;
   return html`<section class="runtime-settings">
-    <header class="runtime-heading"><div><h2>${machineText("title")}</h2><p class="note">${machineText("lead")}</p></div><div><button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button></div></header>
+    <header class="runtime-heading"><div><h2>${machineText("title")}</h2><p class="note">${machineText("lead")}</p></div><div>${state.data?.enabled === true ? download() : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button></div></header>
     ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
     ${state.loading && !state.data ? html`<p role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${machineText("loading")}</p>` : null}
     ${error || state.error ? html`<div class="runtime-error" role="alert"><p>${error || state.error}</p>${state.data && state.error ? html`<p>${machineText("seenCached")}</p>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${machineText("retry")}</button></div>` : null}
-    ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><h3>${machineText("pairing")}</h3><p>${machineText("pairingHint")}</p><label><span>${machineText("server")}</span><input type="url" value=${server} spellcheck=${false} onInput=${event => setServer(event.target.value)} /></label><p class="note">${machineText("serverHint")}</p>${command ? html`<label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label>` : html`<p role="alert">${machineText("serverInvalid")}</p>`}<label><span>${machineText("pairingCode")}</span><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p role="status">${machineText("pairingWait")}</p><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></section>` : null}
+    ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><h3>${machineText("pairing")}</h3><p>${machineText("pairingHint")}</p><div class="runtime-bundle-step">${download()}<p class="note">${machineText("downloadHint")}</p></div><label><span>${machineText("server")}</span><input type="url" value=${server} spellcheck=${false} onInput=${event => setServer(event.target.value)} /></label><p class="note">${machineText("serverHint")}</p>${command ? html`<label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label>` : html`<p role="alert">${machineText("serverInvalid")}</p>`}<label><span>${machineText("pairingCode")}</span><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p role="status">${machineText("pairingWait")}</p><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></section>` : null}
     <article class="runtime-local"><h3><${Icon} name="code" size=${18} />${machineText("local")}</h3><p class="note">${machineText("localHint")}</p></article>
     <section aria-label=${machineText("machines")}>${machines.map(machine => html`<${MachineCard} key=${machine.id} machine=${machine} busy=${!!busy} action=${action} />`)}${state.data && !machines.length ? html`<p class="note">${machineText("empty")}</p>` : null}</section>
     ${windowsCli ? html`<details class="runtime-local-diagnostics"><summary>${machineText("localWindows")}</summary><${WindowsCliPanel} navKey=${`${navKey}:local`} embedded=${true} /></details>` : null}
