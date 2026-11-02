@@ -101,7 +101,7 @@ export class FleetWindowsRuntime {
       && (!agent.machineId || this.host.machineAvailable?.(agent.machineId) === true)
       && !this.bridge.hasActiveTask(agent.machineId);
   }
-  async create(input: Record<string,unknown>, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">): Promise<{name:string;runtime:"windows";agent:WindowsAgent}> {
+  async create(input: Record<string,unknown>, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">,binding?:{native_adapter:"pane";topic_id?:number|string;channel_id?:string}): Promise<{name:string;runtime:"windows";agent:WindowsAgent}> {
     this.enabled();
     const fleet = this.host.fleet();
     if (!fleet) throw new Error("Fleet configuration is unavailable");
@@ -115,7 +115,7 @@ export class FleetWindowsRuntime {
       const persist=()=>{
         if (!authorized()) throw new Error("Authorization expired");
         if (Object.hasOwn(fleet.instances,name)) throw new Error("Instance name already exists");
-        fleet.instances[name] = {...nativeInstanceConfig(agent),...(Array.isArray(tags) ? {tags:tags as string[]} : {})};
+        fleet.instances[name] = {...nativeInstanceConfig(agent),...binding,...(Array.isArray(tags) ? {tags:tags as string[]} : {})};
         this.host.save();
       };
       if(transaction)transaction.mutate(persist);else persist();

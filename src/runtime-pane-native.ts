@@ -50,6 +50,6 @@ export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: Na
     "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
     ...model, ...(launch.sessionId ? ["resume", launch.sessionId] : [])];
   return [...model, ...(config?.instructionsFile ? ["--append-system-prompt-file", config.instructionsFile] : []),
-    ...(mcp ? ["--strict-mcp-config", "--mcp-config", mcp.configPath, "--allowedTools", mcp.tools.map(tool => `mcp__${mcp.serverName}__${tool}`).join(",")] : []), "--permission-mode", "default", ...(launch.sandbox === "read-only" ? ["--tools", "Read,Glob,Grep"] : []),
+    ...(mcp ? ["--strict-mcp-config", "--mcp-config", mcp.configPath, "--allowedTools", mcp.tools.map(tool => `mcp__${mcp.serverName}__${tool}`).join(",")] : []), "--permission-mode", launch.sandbox === "workspace-write" ? "acceptEdits" : "default", ...(launch.sandbox === "read-only" ? ["--tools", "Read,Glob,Grep"] : []),
     ...(launch.sessionId ? ["--resume", launch.sessionId] : config?.sessionId ? ["--session-id", config.sessionId] : [])];
 }

@@ -427,6 +427,7 @@ export function CreateInstanceDialog({ onClose }) {
   const { windowsCli } = useStore(appStore);
   const [runtime,setRuntime] = useState("");
   const [machineId,setMachineId] = useState("");
+  const [nativeAdapter,setNativeAdapter]=useState("exec");
   const machineCatalog = useRuntimeCatalog();
   const machines = machineCatalog.data?.machines || [];
   const machine = machines.find(item => item.id === machineId);
@@ -463,30 +464,31 @@ export function CreateInstanceDialog({ onClose }) {
   const targetKey = `${runtime}:${machineId || "local"}`;
   const chooseRuntime = (value, nextMachineId = "") => {
     if (value === runtime && nextMachineId === machineId) return;
-    if (runtime) drafts.current[targetKey] = { form:{...f}, sandbox };
+    if (runtime) drafts.current[targetKey] = { form:{...f}, sandbox,nativeAdapter };
     const saved = drafts.current[`${value}:${nextMachineId || "local"}`];
     const nextInventory = nextMachineId ? machines.find(item => item.id === nextMachineId)?.inventory : discovery.data;
     const { sandbox: savedFileAccess } = saved || {};
     setRuntime(value);
     setMachineId(nextMachineId);
     setF(saved?.form || {dir:"",topic:"",desc:"",prompt:"",tags:"",branch:"",model:"",backend:value === "windows" ? nextInventory?.clis?.find(b => b.path && b.runnable)?.id || "codex" : backends?.find(b => b.installed && !b.deprecated && !b.fallback)?.name || ""});
-    setSandbox(savedFileAccess || "read-only");
+    setSandbox(savedFileAccess || "read-only");setNativeAdapter(saved?.nativeAdapter||"exec");
   };
   const [sandbox,setSandbox] = useState("read-only");
   const nativeCli = native?.clis?.find(cli => cli.id === f.backend);
   const nativeChoices = (native?.clis || []).filter(cli => cli.path && cli.supports?.execution !== false && cli.supports?.resume !== false).map(cli => ({value:cli.id,label:productLabel(cli.id),disabled:!cli.runnable,description:cli.authenticated === false ? t("fleet.notSignedIn") : cli.version || "Windows"}));
   useEffect(() => {
+    if(nativeAdapter==="pane"&&!['codex','claude-code'].includes(f.backend))setNativeAdapter("exec");
     if (windows && native && !nativeChoices.some(choice => choice.value === f.backend)) {
       const first = nativeChoices.find(choice => !choice.disabled) || nativeChoices[0];
       if (first) setF(current => ({...current,backend:first.value,model:""}));
     }
-  },[native,runtime,machineId]);
+  },[native,runtime,machineId,f.backend,nativeAdapter]);
   const submit = { path: "/ui/instances", done: windows ? tr("created") : t("fleet.instanceCreated"),
     collect: () => {
     if (windows) {
       const name = f.topic.trim() || f.dir.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop();
       if (!name) { toast(tr("required"),false); return null; }
-      return {runtime:"windows",...(machineId ? {machineId} : {}),topic_name:name,backend:f.backend,...(f.model.trim() ? {model:f.model.trim()} : {}),...(f.dir.trim() ? {directory:f.dir.trim()} : {}),description:f.desc.trim(),systemPrompt:f.prompt.trim(),sandbox};
+      return {runtime:"windows",...(nativeAdapter==="pane"?{native_adapter:"pane"}:{}),...(machineId ? {machineId} : {}),topic_name:name,backend:f.backend,...(f.model.trim() ? {model:f.model.trim()} : {}),...(f.dir.trim() ? {directory:f.dir.trim()} : {}),description:f.desc.trim(),systemPrompt:f.prompt.trim(),sandbox};
     }
     if (!f.dir.trim() && !f.topic.trim()) { toast(t("fleet.topicRequired"), false); return null; }
     const body = {};
@@ -534,7 +536,7 @@ export function CreateInstanceDialog({ onClose }) {
     ${field(machineId ? t("runtime.remoteDirectory",machine?.name || machineId) : windows ? tr("directory") : t("fleet.directory"), html`<input value=${f.dir} onInput=${set("dir")} placeholder=${windows ? tr("directoryHint") : t("fleet.directoryHint")} />`)}
     ${field(`${t("fleet.topic")}${f.dir.trim() ? "" : " *"}`, html`<input value=${f.topic} onInput=${set("topic")} placeholder=${windows ? tr("nameHint") : t("fleet.topicHint")} />`)}
     ${field(t("fleet.description"), html`<input value=${f.desc} onInput=${set("desc")} placeholder=${t("fleet.descriptionHint")} />`)}
-    ${windows ? html`${field(t("fleet.model"),html`<${ModelSelect} key=${`${targetKey}:${f.backend}`} value=${f.model} onChange=${value => setF(x => ({...x,model:value}))} backend=${f.backend} runtime="windows" machineId=${machineId} inherit=${tr("model")} />`)}${field(tr("access"),html`<select value=${sandbox} onChange=${e => setSandbox(e.target.value)}><option value="read-only" disabled=${nativeCli?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select>`)}<p class="note">${!permissionReady ? tr("noReadOnly") : sandbox === "workspace-write" ? tr(nativeCli?.id === "claude-code" ? "nativePolicyClaude" : "nativePolicy") : ""}</p><${NativeAgendToolsHint} cli=${nativeCli} sandbox=${sandbox} />` : html`
+    ${windows ? html`${field(tr("adapter"),html`<select id="native-create-adapter" value=${nativeAdapter} onChange=${e=>setNativeAdapter(e.target.value)}><option value="exec">${tr("adapterExec")}</option><option value="pane" disabled=${!["codex","claude-code"].includes(f.backend)}>${tr("adapterPane")}</option></select>`)}<p class="note">${tr(nativeAdapter==="pane"?"paneTopic":"execTopic")}</p>${field(t("fleet.model"),html`<${ModelSelect} key=${`${targetKey}:${f.backend}`} value=${f.model} onChange=${value => setF(x => ({...x,model:value}))} backend=${f.backend} runtime="windows" machineId=${machineId} inherit=${tr("model")} />`)}${field(tr("access"),html`<select id="native-create-sandbox" value=${sandbox} onChange=${e => setSandbox(e.target.value)}><option value="read-only" disabled=${nativeCli?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select>`)}<p class="note">${!permissionReady ? tr("noReadOnly") : sandbox === "workspace-write" ? tr(nativeAdapter==="pane"?"panePolicy":nativeCli?.id === "claude-code" ? "nativePolicyClaude" : "nativePolicy") : ""}</p><${NativeAgendToolsHint} cli=${nativeCli} sandbox=${sandbox} />` : html`
       ${field(t("fleet.model"), html`<${ModelSelect} value=${f.model} onChange=${(v) => setF(x => ({ ...x, model: v }))} backend=${f.backend || defaultBackend} inherit=${t("fleet.fleetDefault")} />`)}
       ${field(t("fleet.branch"), html`<input value=${f.branch} onInput=${set("branch")} placeholder=${t("fleet.branchHint")} />`)}
       ${field(t("fleet.tags"), html`<input value=${f.tags} onInput=${set("tags")} placeholder=${t("fleet.tagsHint")} />`)}

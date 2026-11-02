@@ -180,3 +180,17 @@ it('a stop during native factory preparation releases the unacquired binding so 
 it('native process status cannot fall back to the coordinator daemon.pid or a stale IPC status',async()=>{
  const f=await fixture();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native');daemon.setProcessStatus('crashed');f.fleet.instanceProcessStatus.set('native','running');const kill=vi.spyOn(process,'kill').mockImplementation(()=>{throw Error('No native local-PID probe');});expect(f.fleet.getInstanceStatus('native')).toBe('crashed');expect(kill).not.toHaveBeenCalled();kill.mockRestore();
 });
+
+it('switch-off drains the exact pane before disconnect; quick re-enable admits no replacement during cleanup',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native'),hub:any=f.hub;hub.close=vi.fn();
+ f.fleet.runtimeEffects={windows_cli:false,remote_runtime:true};let close!:(value:any)=>void;const call=hub.callPane.getMockImplementation();hub.callPane.mockImplementation((machine:string,request:any)=>request.action==='close'?new Promise(resolve=>{close=async()=>resolve(await call(machine,request));}):call(machine,request));
+ setConfiguredRuntimeSwitches({});f.fleet.applyRuntimeSwitches();await vi.waitFor(()=>expect(close).toBeTypeOf('function'));
+ expect(hub.close).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).activeId).toBeTruthy();
+ const invokes=vi.spyOn(f.fleet,'handleOutboundFromInstance');await expect(f.fleet.paneManager.handle(f.config.machine_id,{op:'pane-mcp',owner:f.owner(),helperId:randomUUID(),method:'tools/list',params:{}},()=>true)).rejects.toThrow();expect(invokes).not.toHaveBeenCalled();
+ setConfiguredRuntimeSwitches({remote_runtime:true});f.fleet.applyRuntimeSwitches();const second=await f.store.create({name:'Second',cwd:'C:\\scratch',cli:'claude-code',sandbox:'read-only',machineId:f.config.machine_id});f.store.bindInstance(second.id,'second');const secondConfig={...nativeInstanceConfig(second),native_adapter:'pane'};f.fleet.fleetConfig.instances.second=secondConfig;await expect(f.fleet.nativePaneFor('second',secondConfig,()=>{})).rejects.toThrow();expect(f.spawn).toHaveBeenCalledOnce();
+ const drain=f.fleet.remotePaneDrain;await close(undefined);await drain;await Promise.resolve();expect(hub.close).toHaveBeenCalledOnce();expect(f.fleet.runtimeHub).toBeNull();expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.fleet.daemons.has('native')).toBe(false);expect(f.cli.kill).toHaveBeenCalledOnce();expect(daemon.nativePaneCurrent()).toBe(false);
+});
+it('offline switch cleanup retains the reservation and never manufactures an exit',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const hub:any=f.hub;hub.close=vi.fn();hub.machine=()=>({status:'offline'});f.fleet.runtimeEffects={windows_cli:false,remote_runtime:true};setConfiguredRuntimeSwitches({});f.fleet.applyRuntimeSwitches();await f.fleet.remotePaneDrain;
+ expect(hub.close).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).activeId).toBeTruthy();expect(f.cli.kill).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();
+});

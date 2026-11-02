@@ -69,7 +69,7 @@ describe("native AgEnD tool capability hints",()=>{
     windows.checked=true;fire(windows,"change");await settle();
     expect(note()).toBeNull();button("Next").click();await settle(8);
     expect(note()?.textContent).toContain("read-only mode can query");
-    const access=p.root.querySelectorAll(".agent-runtime-fields select").find((item:any)=>!item.closest(".model-pick"));
+    const access=p.root.querySelector("#native-create-sandbox");
     access.value="workspace-write";fire(access,"change");await settle();
     expect(note()?.textContent).toContain("messaging, delegation and task actions");
     expect(requests).not.toContain("/ui/instances");

@@ -12,7 +12,7 @@ import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
 import { quickLinkEffective } from "./authority/web-authority.js";
-import { parseNativeInstanceCreate } from "./native-instance-input.js";
+import { parseNativeInstanceCreate, nativePaneTopicTarget } from "./native-instance-input.js";
 import { parseRuntimesSettingsBody } from "./runtime-switches.js";
 
 export interface SettingsSecretProof {
@@ -176,13 +176,11 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   } else if (path === "/ui/instances") {
     const payload = record(body), channels = cfg?.channels ?? (cfg?.channel ? [cfg.channel] : []);
     if (payload.runtime === "windows") {
-      // Validate the same fields and defaults the native handler will execute. Native Agents do not allocate
-      // Linux topics or bind the first chat connection; the machine and file-access policy stay visible in approval.
-      let draft;
-      try { draft = parseNativeInstanceCreate(payload).input; }
+      let draft,target;
+      try { draft = parseNativeInstanceCreate(payload).input;target=draft.native_adapter==="pane"?nativePaneTopicTarget(cfg,draft.channel_id):null; }
       catch { throw new SettingsConfirmationError(400, "invalid_native_instance"); }
-      return { diff: scoped(settingsChangeDiff({}, { new_instance: draft }, { operation, force: true }),
-        { connections: [], primaryGeneral: false, unknown: false }) };
+      return { diff: scoped(settingsChangeDiff({}, { new_instance: {...draft,...(target?{topic_destination:target}:{})} }, { operation, force: true }),
+        { connections: target?[target.id]:[], primaryGeneral: false, unknown: false }) };
     }
     const name = payload.topic_name ?? (typeof payload.directory === "string" ? basename(payload.directory) : null);
     if (typeof name !== "string" || !name) throw new SettingsConfirmationError(400, "invalid_instance_name");

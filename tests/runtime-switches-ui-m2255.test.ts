@@ -63,7 +63,7 @@ describe("what the page says", () => {
     expect(text()).toContain("Turning one on asks a fleet admin to confirm, like other access settings. Turning one off needs no fleet admin; it applies as soon as you confirm here.");
     expect([input("runtimeMaxAgents").value, input("runtimeMaxAgents").getAttribute("min"), input("runtimeMaxAgents").getAttribute("max")]).toEqual(["4", "1", "16"]);
     expect(text()).toContain("runs at most this many agents at the same time (1–16, default 4)");
-    expect(text()).toContain("It takes effect once Windows agents keep running between messages; until then each PC runs one agent at a time.");
+    expect(text()).toContain("This limit applies to persistent terminal agents. Per-message execution keeps its existing admission limit.");
     expect(local.getAttribute("aria-describedby")).toBe("runtimeWindowsCliHelp");
     expect(p.root.querySelector("#runtimeWindowsCliHelp").textContent).toContain("Windows Node.js is required");
   });

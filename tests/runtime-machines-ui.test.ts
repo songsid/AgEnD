@@ -86,10 +86,12 @@ describe("remote machine UI",()=>{
   });
   it("isolates machine drafts, directories and model catalogs",async()=>{
     machines=[machine(idA,"Desktop"),machine(idB,"Laptop")];await p.mount(h(Create,{onClose(){}}));await settle(8);await choose(idA);button("Next").click();await settle(8);
+    const adapter=()=>p.root.querySelector("#native-create-adapter");adapter().value="pane";fire(adapter(),"change");await settle();
     let dir=p.root.querySelector(".agent-runtime-fields input");dir.value="C:\\DesktopOnly";fire(dir,"input");await settle();button("Back").click();await settle();await choose(idB);button("Next").click();await settle(8);
-    dir=p.root.querySelector(".agent-runtime-fields input");expect(dir.value).toBe("");
+    dir=p.root.querySelector(".agent-runtime-fields input");expect(dir.value).toBe("");expect(adapter().value).toBe("exec");
     const ids=p.root.querySelectorAll(".model-pick option").map((item:any)=>item.value);expect(ids).toContain("model-b");expect(ids).not.toContain("model-a");
-    button("Back").click();await settle();await choose(idA);button("Next").click();await settle(8);expect(p.root.querySelector(".agent-runtime-fields input").value).toBe("C:\\DesktopOnly");
+    button("Back").click();await settle();await choose(idA);button("Next").click();await settle(8);expect(p.root.querySelector(".agent-runtime-fields input").value).toBe("C:\\DesktopOnly");expect(adapter().value).toBe("pane");
+    button("Create").click();await settle(8);expect(requests.find(row=>row.path==="/ui/instances")?.body).toMatchObject({native_adapter:"pane",machineId:idA});
   });
   it("shows offline machines without enabling selection or silently falling back to another computer",async()=>{
     machines=[machine(idA,"Desktop","offline")];await p.mount(h(Create,{onClose(){}}));await settle(8);

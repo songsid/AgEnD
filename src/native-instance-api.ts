@@ -33,9 +33,11 @@ function admission(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiCont
 export async function createNativeInstance(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiContext,body:unknown):Promise<void> {
   const allowed=admission(req,res,url,ctx);if(!allowed)return;
   try {
-    const {profile}=parseNativeInstanceCreate(body);
+    const {profile,input}=parseNativeInstanceCreate(body);
     const runtime=ctx.nativeInstanceRuntime!(),execution=settingsRequestExecution(req);
-    const result=execution ? await runtime.create(profile,allowed,execution) : await runtime.create(profile,allowed);
+    const result=input.native_adapter==="pane"
+      ? await (()=>{if(!execution||!ctx.createNativePaneInstance)throw Error("Persistent pane creation requires its approved Settings operation");return ctx.createNativePaneInstance(profile,input.channel_id,allowed,execution);})()
+      : execution ? await runtime.create(profile,allowed,execution) : await runtime.create(profile,allowed);
     // A committed settings execution has already checked authority and persisted the identity. Its capability
     // cannot authorize another write, but the completed operation must still return its success receipt.
     if(!execution?.completed && !allowed()){json(res,403,{error:"Authorization expired"});return;}

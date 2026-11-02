@@ -1239,6 +1239,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     },{bridge:this.runtimeWindowsExecutor()});
   }
+  /** Explicit dashboard opt-in, with the same General confirmation and ordinary topic/Daemon routing. */
+  async createNativePaneInstance(profile:Record<string,unknown>,channelId:string|undefined,authorized:()=>boolean,execution:SettingsExecution){
+    const {createNativePane}=await import("./native-pane-create.js");
+    return createNativePane({fleet:()=>this.fleetConfig,runtime:this.nativeInstanceRuntime(),
+      topic:target=>{
+        const world=this.worlds.get(target.id),adapter=world?.adapter;
+        if(!world||!adapter?.createTopic||!adapter.deleteTopic)throw Error("The approved connection cannot create and compensate a topic");
+        const same=()=>{
+          const channels=this.fleetConfig?.channels??(this.fleetConfig?.channel?[this.fleetConfig.channel]:[]);
+          const matches=channels.filter(row=>(row.id??row.type)===target.id);
+          return !this.shuttingDown&&this.worlds.get(target.id)===world&&world.adapter===adapter&&matches.length===1&&matches[0].type===target.type&&matches[0].group_id===target.group_id;
+        };
+        return{current:same,create:name=>adapter.createTopic!(name),remove:id=>adapter.deleteTopic!(id)};
+      },
+      epoch:name=>this.lifecycle.epochOf(name),
+      start:async(name,config,current)=>{
+        if(!current())throw Error("Native creation expired before start");
+        await this.startInstance(name,config,true);if(!current())throw Error("Native creation expired during start");
+        await this.connectIpcToInstance(name);if(!current())throw Error("Native creation expired during channel connection");
+      },
+      close:(name,config,epoch)=>this.lifecycle.runTransition(name,async transition=>{
+        if(this.fleetConfig?.instances[name]!==config||this.lifecycle.epochOf(name)!==epoch)return false;
+        await this.stopInstance(name,transition);
+        return this.fleetConfig?.instances[name]===config&&this.lifecycle.epochOf(name)===epoch+1;
+      }),
+      routes:()=>{if(this.fleetConfig)this.routing.rebuild(this.fleetConfig);},
+      warn:error=>this.logger.warn({err:error},"Native creation cleanup is held; retained identity and topic require attention"),
+    },profile,channelId,()=>!this.shuttingDown&&authorized(),execution);
+  }
   /** Admin-only settings path: validate first, then close the exact old launch before changing cold fields. */
   async updateNativePaneConfig(name: string, patch: Partial<NativeRuntimePatch>, authorized: () => boolean): Promise<ReturnType<FleetWindowsRuntime["update"]>> {
     return this.lifecycle.runTransition(name,async transition=>{
@@ -1269,8 +1298,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
   private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
-    const admit = (): void => { if (this.shuttingDown || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off"); };
-    admit(); if (this.localPaneRelay?.online()) return this.localPaneRelay;
+    const admit = (): void => { if (this.shuttingDown || this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off or draining"); };
+    admit(); if(this.localPaneDrain)throw Error("Local Windows runtime cleanup is pending"); if (this.localPaneRelay?.online()) return this.localPaneRelay;
     if (this.openingLocalPane) return this.openingLocalPane;
     const opening = (async () => {
       const [{ LocalPaneEndpoint }, { launchLocalPaneRelay, localPaneScope }, inventory] = await Promise.all([
@@ -1301,13 +1330,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           || now?.machine_id !== config.machine_id || now?.working_directory !== config.working_directory || now?.backend !== config.backend
           || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow)
           throw Error("Native pane configuration or lifetime changed");
-        if (config.machine_id ? !remoteRuntimeEnabled() : !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
+        if (config.machine_id ? this.remotePaneDrain || !remoteRuntimeEnabled() : this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
       },
-      endpoint: async agent => {
-        if (!agent.machineId) return this.localNativePaneEndpoint();
-        const hub = this.runtimeCoordinator(), machineId = agent.machineId;
-        return { machineId, online: () => !this.shuttingDown && remoteRuntimeEnabled() && this.runtimeHub === hub && hub.machine(machineId)?.status === "online",
-          call: request => hub.callPane(machineId, request, maxAgentsPerMachine()), subscribe: listener => hub.subscribe(listener),
+      endpoint: async (agent,cleanup=false) => {
+        if (!agent.machineId) {
+          if(!cleanup)return this.localNativePaneEndpoint();
+          if(!this.localPaneRelay)throw Error("Local cleanup transport is unavailable; pane remains reserved");
+          return this.localPaneRelay;
+        }
+        const hub = cleanup ? this.runtimeHub : this.runtimeCoordinator(), machineId = agent.machineId;
+        if(!hub)throw Error("Remote cleanup transport is unavailable; pane remains reserved");
+        const draining=()=>!!this.remotePaneDrain;
+        return { machineId, online: () => !this.shuttingDown && (draining() || remoteRuntimeEnabled()) && this.runtimeHub === hub && hub.machine(machineId)?.status === "online",
+          call: request => {
+            if(this.runtimeHub!==hub || !(draining() || remoteRuntimeEnabled()) || draining() && request.action!=="snapshot" && request.action!=="close")return Promise.reject(Error("Remote pane transport only permits owned cleanup"));
+            return hub.callPane(machineId, request, maxAgentsPerMachine());
+          }, subscribe: listener => hub.subscribe(listener),
           epoch: () => hub.paneTransportEpoch(machineId), version: provider => hub.machine(machineId)?.inventory?.clis.find(row => row.id === provider && row.runnable)?.version ?? null };
       },
       instructions: (name, config) => buildFleetInstructions({ instanceName: name, workingDirectory: config.working_directory,
@@ -1361,6 +1399,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** M-2255: the Windows runtimes' switches the fleet's own state reflects (null until the start-up has applied them). */
   private runtimeEffects: { windows_cli: boolean; remote_runtime: boolean } | null = null;
   private runtimeEffectsScheduled = false;
+  private localPaneDrain:Promise<void>|null=null;
+  private remotePaneDrain:Promise<void>|null=null;
+  /** Revoke admissions synchronously; keep the captured transport only long enough for exact owned closes. */
+  private drainNativeRuntime(remote:boolean):Promise<void>{
+    const existing=remote?this.remotePaneDrain:this.localPaneDrain;if(existing)return existing;
+    const hub=this.runtimeHub,relay=this.localPaneRelay;
+    if(!remote)relay?.beginCleanup();
+    const targets=Object.entries(this.fleetConfig?.instances??{}).filter(([,config])=>isWindowsInstance(config)&&!!config.machine_id===remote);
+    for(const [name,config] of targets){this.nativeMcpStore?.closeInstance(name);if(isNativePaneInstance(config)){this.lifecycle.cancelNativeRecovery(name);this.lifecycle.invalidate(name);this.daemons.get(name)?.fenceDeliveryWritesForStop();}}
+    const run=Promise.resolve().then(async()=>{
+      const results=await Promise.allSettled(targets.filter(([,config])=>isNativePaneInstance(config)).map(([name])=>this.stopInstance(name)));
+      results.forEach((result,index)=>{if(result.status==="rejected")this.logger.warn({err:result.reason,remote,index},"Windows pane cleanup unconfirmed; its reservation is retained");});
+    }).finally(()=>{
+      if(remote){hub?.close();if(this.runtimeHub===hub)this.runtimeHub=null;}
+      else{relay?.stop();if(this.localPaneRelay===relay)this.localPaneRelay=null;closeWindowsBridge(this);}
+    });
+    if(remote)this.remotePaneDrain=run;else this.localPaneDrain=run;
+    void run.finally(()=>{
+      if(remote){if(this.remotePaneDrain===run)this.remotePaneDrain=null;}else if(this.localPaneDrain===run)this.localPaneDrain=null;
+      if(!this.shuttingDown&&(remote?remoteRuntimeEnabled():localWindowsCliEnabled())){this.initializeNativeInstances();this.initializeNativeInstances(true);}
+      try{this.emitSseEvent("status",this.getUiStatus());}catch{}
+    }).catch(error=>this.logger.warn({err:error},"Windows runtime cleanup failed; retained ownership requires reconciliation"));
+    return run;
+  }
   /**
    * M-2255: Settings → Runtime's switches (fleet.yaml `runtimes`, or their environment override) in force — set each time
    * the configuration in force changes (a load, a save, a reload's rollback), next to the web authority's. Every gate reads
@@ -1384,17 +1446,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const now = { windows_cli: localWindowsCliEnabled(), remote_runtime: remoteRuntimeEnabled() };
     if (was.windows_cli === now.windows_cli && was.remote_runtime === now.remote_runtime) return;
     this.runtimeEffects = now;
-    const instances = Object.entries(this.fleetConfig?.instances ?? {});
     try {
       if (was.remote_runtime && !now.remote_runtime) {
-        for (const [name, config] of instances) if (isWindowsInstance(config) && config.machine_id) this.nativeMcpStore?.closeInstance(name);
-        this.runtimeHub?.close(); this.runtimeHub = null;
+        void this.drainNativeRuntime(true);
       }
       if (was.windows_cli && !now.windows_cli) {
-        for (const [name, config] of instances) if (isWindowsInstance(config) && !config.machine_id) this.nativeMcpStore?.closeInstance(name);
-        closeWindowsBridge(this);
+        void this.drainNativeRuntime(false);
       }
-      if (!was.windows_cli && !was.remote_runtime) { this.initializeNativeInstances(); this.initializeNativeInstances(true); }
+      if (!was.windows_cli && !was.remote_runtime && !this.localPaneDrain && !this.remotePaneDrain) { this.initializeNativeInstances(); this.initializeNativeInstances(true); }
       this.logger.info({ windows_cli: now.windows_cli, remote_runtime: now.remote_runtime }, "Windows runtime switches applied");
     } catch (error) { this.logger.warn({ err: error }, "Windows runtime switches could not be applied in full"); }
     try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next status frame carries it */ }

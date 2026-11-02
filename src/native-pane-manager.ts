@@ -19,7 +19,7 @@ export interface NativePaneManagerOptions {
  home:string;
  store:WindowsAgents;
  config(name:string):InstanceConfig|undefined;
- endpoint(agent:WindowsAgent):Promise<NativeMachineEndpoint>;
+ endpoint(agent:WindowsAgent,cleanup?:boolean):Promise<NativeMachineEndpoint>;
  admit(name:string,config:InstanceConfig):void;
  instructions(name:string,config:InstanceConfig):string;
  menu(name:string):Array<{name:string;[key:string]:unknown}>;
@@ -128,7 +128,7 @@ export class NativePaneManager {
   const receiptFile=join(directory,`${manifest.launch.launchId}.pane.json`);
   // No open intent or reservation was ever committed: this prepared factory cannot have started a process.
   try{lstatSync(receiptFile);}catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;if(!agent.activeId)return;throw Error("Native open intent is missing; its process outcome is unknown");}
-  const endpoint=await this.options.endpoint(agent);assertCurrent();
+  const endpoint=await this.options.endpoint(agent,true);assertCurrent();
   if(endpoint.machineId!==manifest.machineId)throw Error("Native close endpoint differs");
   const native=new RuntimeNativePaneLifecycle({endpoint,launch:manifest.launch,receiptFile,
    admit:assertCurrent,reserve:()=>{throw Error("Close never reserves a new launch");},pin:()=>{},mcpProof:()=>"unknown",releaseAuthority:()=>{},

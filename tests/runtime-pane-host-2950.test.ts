@@ -263,3 +263,7 @@ it('owned metadata and close remain usable when the terminal parser is unavailab
  await expect(f.host.request({action:'capture',paneId:pane.paneId,launchId:pane.launchId})).rejects.toThrow('no screen');expect(await f.host.request({action:'snapshot',paneId:pane.paneId,launchId:pane.launchId})).toMatchObject({state:'unknown',launchId:pane.launchId});
  expect(await f.host.request({action:'close',paneId:pane.paneId,launchId:pane.launchId,sequence:1,operationId:randomUUID()})).toMatchObject({state:'exited'});expect(f.processes[0].kill).toHaveBeenCalledOnce();await f.host.stop();
 });
+
+it('persistent Claude workspace access follows the native acceptEdits policy without a global bypass',()=>{
+ const launch={cli:'claude-code',cwd:'C:\\scratch',sandbox:'workspace-write',paneId:randomUUID(),agentId:randomUUID(),instance:'native',columns:120,rows:40} as const;const args=persistentNativeArguments(launch);expect(args).toContain('acceptEdits');expect(args).not.toContain('--dangerously-skip-permissions');expect(args).not.toContain('--add-dir');expect(persistentNativeArguments({...launch,sandbox:'read-only'})).toEqual(['--permission-mode','default','--tools','Read,Glob,Grep']);
+});

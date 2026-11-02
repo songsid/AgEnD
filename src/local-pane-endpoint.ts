@@ -12,14 +12,16 @@ export interface LocalPaneOptions {
  launch():Promise<ChildProcess>;mcp(body:PaneMcpBody,current:()=>boolean):Promise<unknown>;
 }
 export class LocalPaneEndpoint implements NativeMachineEndpoint {
- readonly machineId="local";private readonly attachment=randomUUID();private child:ChildProcess|undefined;private connected=false;private stopped=false;private mcpPending=0;private lastLease=0;
+ readonly machineId="local";private readonly attachment=randomUUID();private child:ChildProcess|undefined;private connected=false;private stopped=false;private mcpPending=0;private cleanupOnly=false;private lastLease=0;
  private pending=new Map<string,Pending>();private listeners=new Set<(event:RuntimeCoordinatorEvent)=>void>();private interval:ReturnType<typeof setInterval>|undefined;
  private constructor(private options:LocalPaneOptions){}
  static async open(options:LocalPaneOptions):Promise<LocalPaneEndpoint>{
   const endpoint=new LocalPaneEndpoint(options);options.admit();const child=await options.launch();endpoint.child=child;
   try{options.admit();await endpoint.attach(child);options.admit();return endpoint;}catch(error){endpoint.stop();throw error;}
  }
- online():boolean{if(this.stopped||!this.connected||performance.now()-this.lastLease>=15_000)return false;try{this.options.admit();return true;}catch{return false;}}
+ online():boolean{if(this.stopped||!this.connected||performance.now()-this.lastLease>=15_000)return false;if(this.cleanupOnly)return true;try{this.options.admit();return true;}catch{return false;}}
+ /** Irreversible transport drain: only exact snapshot/close RPC remains; no new helper work or input. */
+ beginCleanup():void{this.cleanupOnly=true;}
  epoch():string|null{return this.online()?this.attachment:null;}
  version(provider:string):string|null{return this.options.version(provider);}
  subscribe(listener:(event:RuntimeCoordinatorEvent)=>void):()=>void{this.listeners.add(listener);return()=>this.listeners.delete(listener);}
@@ -38,7 +40,8 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
     if(value.type==="hello")throw Error("Duplicate local pane hello");
     if(value.type==="output"){for(const listener of this.listeners)listener({type:"pane",machineId:"local",pane:value.snapshot});return;}
     if(value.type==="response"){const row=this.pending.get(value.id);if(!row)return;this.pending.delete(value.id);clearTimeout(row.timer);if(value.ok)row.resolve(value.result);else row.reject(Error("Local pane operation unconfirmed; inspect its owned receipt"));return;}
-    if(this.mcpPending>=32)throw Error("Local pane MCP backlog");this.mcpPending++;const current=()=>this.online();
+    if(this.cleanupOnly){this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:false});return;}
+    if(this.mcpPending>=32)throw Error("Local pane MCP backlog");this.mcpPending++;const current=()=>!this.cleanupOnly&&this.online();
     void this.options.mcp(value.body,current).then(result=>{if(current())this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:true,result});},()=>{if(current())this.send({type:"mcp.result",epoch:this.attachment,id:value.id,ok:false});}).catch(()=>this.stop()).finally(()=>{this.mcpPending--;});
    });}catch{lost();}});
    try{this.send({type:"init",scope:this.options.scope,epoch:this.attachment,maxAgents:this.options.maxAgents()});}catch(error){clearTimeout(timer);reject(error);this.stop();}
@@ -46,6 +49,7 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
  }
  private lease():void{if(this.stopped)return;if(!this.online()){this.stop();return;}this.lastLease=performance.now();try{this.send({type:"lease",epoch:this.attachment,online:this.online(),maxAgents:this.options.maxAgents()});}catch{this.stop();}}
  call(request:RuntimePaneRequest):Promise<unknown>{
+  if(this.cleanupOnly&&request.action!=="snapshot"&&request.action!=="close")return Promise.reject(Error("Local pane relay only permits owned cleanup"));
   if(!this.online()||this.pending.size>=64)return Promise.reject(Error("Local pane relay unavailable or busy"));
   return new Promise((resolve,reject)=>{const id=randomUUID(),timer=setTimeout(()=>{this.pending.delete(id);reject(Error("Local pane result unconfirmed; input was not replayed"));},125_000);timer.unref();this.pending.set(id,{resolve,reject,timer});try{this.send({type:"request",epoch:this.attachment,id,request});}catch(error){clearTimeout(timer);this.pending.delete(id);reject(error);}});
  }

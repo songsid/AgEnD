@@ -34,3 +34,13 @@ it('expired parent progress revokes the relay lease even when its own timer stil
  // A child timer can run while the coordinator loop does not. Remove only the parent's interval to model that gap.
  const endpoint:any=f.endpoint;clearInterval(endpoint.interval);await vi.advanceTimersByTimeAsync(20_000);expect(f.settings.online()).toBe(false);expect(f.endpoint.online()).toBe(false);expect(f.child.kill).not.toHaveBeenCalled();
 });
+
+it('switch cleanup keeps only snapshot/close alive while refusing every input and MCP dispatch',async()=>{
+ const f=await fixture(),paneId=randomUUID(),launchId=randomUUID();f.endpoint.beginCleanup();f.setAllowed(false);
+ expect(f.endpoint.online()).toBe(true);
+ await f.endpoint.call({action:'snapshot',paneId,launchId});await f.endpoint.call({action:'close',paneId,launchId,operationId:randomUUID(),sequence:1});
+ for(const action of ['list','open','input','key','resize','capture','transcript'])await expect(f.endpoint.call({action} as never)).rejects.toThrow('cleanup');
+ const body={op:'pane-mcp' as const,owner:{hostBootId:randomUUID(),paneId,launchId,agentId:randomUUID(),instance:'native'},helperId:randomUUID(),method:'tools/list' as const,params:{}};
+ void f.settings.mcp!(body,()=>true).catch(()=>{});await new Promise(resolve=>setTimeout(resolve,20));expect(f.mcp).not.toHaveBeenCalled();
+ expect(f.request.mock.calls.map(([value])=>(value as any).action)).toEqual(['snapshot','close']);expect(f.child.kill).not.toHaveBeenCalled();
+});
