@@ -42,6 +42,7 @@ export type RuntimePaneRequest =
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
   | { action: "bind-session"; paneId: string; launchId: string; sessionId: string }
   | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
+  | { action: "transcript-baseline"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; kind: "literal" | "paste"; text: string }
   | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; key: PaneKey }
   | { action: "resize"; paneId: string; launchId: string; operationId: string; sequence: number; columns: number; rows: number }
@@ -87,6 +88,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
       closed(value, ["action", "paneId", "launchId", "sessionId"]);
       if (!validNativeSessionId("codex", value.sessionId)) throw Error("Invalid pane conversation identity");
       break;
+    case "transcript-baseline":
     case "transcript":
       closed(value, ["action", "paneId", "launchId", "cursor"]); validatePaneTranscriptCursor(value.cursor); break;
     case "input":
@@ -114,7 +116,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
   }
   if (value.action !== "list") {
     id(value.paneId); id(value.launchId);
-    if (!["capture", "transcript", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
+    if (!["capture", "transcript", "transcript-baseline", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
   }
   return value as unknown as RuntimePaneRequest;
 }

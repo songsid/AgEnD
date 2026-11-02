@@ -7,7 +7,7 @@ import { runtimeJobDigest } from "./runtime-client-store.js";
 import { PANE_EDIT_KEYS, validateRuntimePaneRequest, validateRuntimePaneSnapshot, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type { Pane, PaneHost, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
-import { validateRuntimeTranscriptReference, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
+import { validateRuntimeTranscriptReference, validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 export interface PaneEndpoint {
   online(): boolean;
   call(request: RuntimePaneRequest): Promise<unknown>;
@@ -116,6 +116,13 @@ export class RuntimePanePort implements Pane {
     const result = await this.endpoint.call({ action: "transcript", paneId: ref.paneId, launchId: ref.launchId, cursor: ref.cursor });
     if (!this.isTranscriptObservationCurrent(ref) || !current()) throw Error("Pane transcript observation became stale");
     return validatePaneTranscriptWireBatch(result, ref.cursor.sessionId);
+  }
+  async readTranscriptBaseline(cursor: PaneTranscriptCursor, current: () => boolean = () => true): Promise<PaneTranscriptBaseline> {
+    const ref = this.runtimeTranscriptReference(cursor);
+    if (!this.isTranscriptObservationCurrent(ref) || !current()) throw Error("Pane baseline observation is disconnected");
+    const result = await this.endpoint.call({ action: "transcript-baseline", paneId: ref.paneId, launchId: ref.launchId, cursor: ref.cursor });
+    if (!this.isTranscriptObservationCurrent(ref) || !current()) throw Error("Pane baseline observation became stale");
+    return validatePaneTranscriptBaseline(result, ref.cursor.sessionId);
   }
   isTranscriptObservationCurrent(ref: RuntimeTranscriptReference): boolean {
     try {

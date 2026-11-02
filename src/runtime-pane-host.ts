@@ -9,7 +9,7 @@ import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import { NativePaneTranscriptReader } from "./runtime-pane-transcript.js";
-import { validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
+import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
 export type RuntimePaneProcess = Pick<IPty, "pid" | "write" | "resize" | "kill" | "pause" | "resume" | "onData" | "onExit"> & {
@@ -24,7 +24,7 @@ export interface RuntimePaneHostOptions {
   spawn?(launch: RuntimePaneLaunch, owner: NativePaneOwner): Promise<RuntimePaneProcess>;
   mcpConnection?(owner: PaneMcpOwner, tools: string[]): PaneMcpConnection;
   /** Internal runner seam. A remote request never provides roots or a path. */
-  transcript?(launch: RuntimePaneLaunch, sessionId: string): Pick<NativePaneTranscriptReader, "read" | "close">;
+  transcript?(launch: RuntimePaneLaunch, sessionId: string): (Pick<NativePaneTranscriptReader, "read" | "close"> & Partial<Pick<NativePaneTranscriptReader, "baseline">>);
   output?(snapshot: RuntimePaneSnapshot): void;
 }
 interface LivePane {
@@ -34,7 +34,7 @@ interface LivePane {
   parsed: Promise<void>;
   exited: Promise<void>;
   finish(): void;
-  transcript?: Pick<NativePaneTranscriptReader, "read" | "close">;
+  transcript?: (Pick<NativePaneTranscriptReader, "read" | "close"> & Partial<Pick<NativePaneTranscriptReader, "baseline">>);
 }
 const KEYS = { Enter: "\r", Escape: "\x1b", Up: "\x1b[A", Down: "\x1b[B", Right: "\x1b[C", Left: "\x1b[D", "C-c": "\x03", "C-q": "\x11" } as const;
 
@@ -177,7 +177,7 @@ export class RuntimePaneHost {
       }
       return structuredClone(record.snapshot);
     }
-    if (request.action === "transcript") return this.readTranscript(live, request.cursor, current);
+    if (request.action === "transcript" || request.action === "transcript-baseline") return this.readTranscript(live, request.cursor, current, request.action === "transcript-baseline");
     if (request.action === "reconcile") {
       if (record.snapshot.commandSequence !== request.sequence || record.lastCommand?.id !== request.operationId
         || record.lastCommand.digest !== request.digest || record.lastCommand.state !== "applied") throw Error("Pane command outcome is unconfirmed");
@@ -214,17 +214,19 @@ export class RuntimePaneHost {
     this.options.store.put(record);
     return structuredClone(record.snapshot);
   }
-  private async readTranscript(live: LivePane, cursor: PaneTranscriptCursor, current: () => boolean): Promise<PaneTranscriptWireBatch> {
+  private async readTranscript(live: LivePane, cursor: PaneTranscriptCursor, current: () => boolean, baseline = false): Promise<PaneTranscriptWireBatch | PaneTranscriptBaseline> {
     const { launch, snapshot } = live.record;
     if (!snapshot.sessionId || cursor.sessionId !== snapshot.sessionId) throw Error("Transcript identity differs from its owned pane");
     if (snapshot.state !== "running" && snapshot.state !== "exited") throw Error("Transcript pane ownership is unconfirmed");
     live.transcript ??= this.options.transcript?.(launch, snapshot.sessionId) ?? new NativePaneTranscriptReader(launch.cli, launch.cwd, snapshot.sessionId);
     let settled = false, timer: ReturnType<typeof setTimeout> | undefined;
     const lease = (): boolean => !settled && !this.closing && current() && this.options.online();
-    const read = live.transcript.read(cursor, lease);
+    const read = baseline ? live.transcript.baseline?.(cursor, lease) ?? Promise.resolve({ state: "pending" as const, cursor, complete: false, turnKnown: false, openTurn: null }) : live.transcript.read(cursor, lease);
     try {
       const batch = await Promise.race([read, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(Error("Pane transcript read deadline exceeded")), 1000); })]);
       if (!lease()) throw Error("Pane transcript read lease expired");
+      if (baseline) return validatePaneTranscriptBaseline(batch, snapshot.sessionId);
+      if (!("data" in batch)) throw Error("Pane transcript response has no records");
       return validatePaneTranscriptWireBatch({ state: batch.state, cursor: batch.cursor, data: batch.data, complete: batch.complete, gap: batch.gap }, snapshot.sessionId);
     } finally { settled = true; clearTimeout(timer); void read.catch(() => {}); }
   }

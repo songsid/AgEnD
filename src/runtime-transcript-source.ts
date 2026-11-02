@@ -3,7 +3,7 @@ import type { TranscriptSource, TranscriptEvents } from "./transcript-sources.js
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
 import { codexTurnRecord, codexToolRecord, claudeTranscriptRecord, type CodexRecordState } from "./transcript-records.js";
 import { decodeRuntimeTranscriptBatch, type RuntimeTranscriptPort } from "./runtime-transcript-delta-reader.js";
-import { PANE_TRANSCRIPT_EMPTY_ANCHOR, validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
+import { PANE_TRANSCRIPT_EMPTY_ANCHOR, validatePaneTranscriptBaseline, validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 const empty = (): TranscriptEvents => ({ toolUses: [], toolResults: [], assistantTexts: [], records: [], turns: [] });
 export class RuntimeTranscriptSource implements TranscriptSource {
   private reference: RuntimeTranscriptReference;
@@ -72,11 +72,25 @@ export class RuntimeTranscriptSource implements TranscriptSource {
     let abandoned = false, timer: ReturnType<typeof setTimeout> | undefined;
     const current = (): boolean => !abandoned && !this.stopped && epoch === this.generation && this.port.isTranscriptObservationCurrent(before);
     this.inFlight = true;
-    const read = this.port.readTranscript(before.cursor, current).finally(() => { this.inFlight = false; });
+    const baselining = this.baseline && !!this.port.readTranscriptBaseline;
+    const read = (baselining ? this.port.readTranscriptBaseline!(before.cursor, current) : this.port.readTranscript(before.cursor, current)).finally(() => { this.inFlight = false; });
     try {
       const raw = await Promise.race([read, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 1000); timer.unref?.(); })]);
       if (raw === null) { this.followed = false; return empty(); }
       if (!current()) return empty();
+      if (baselining) {
+        const batch = validatePaneTranscriptBaseline(raw, before.cursor.sessionId);
+        if (before.cursor.fileId && batch.cursor.fileId !== before.cursor.fileId || batch.cursor.offset < before.cursor.offset) throw Error("Native baseline identity differs");
+        if (batch.state === "pending") {
+          this.followed = false;
+          if (initial && this.allowDeferredFresh && before.cursor.fileId === null) { this.baseline = false; this.deferred = true; }
+          return empty();
+        }
+        this.reference = { ...before, cursor: batch.cursor }; this.baseline = false; this.followed = batch.complete; this.deferred = false;
+        this.state = { turnKnown: batch.turnKnown, openTurn: batch.openTurn, openTurnId: batch.openTurn ?? "" };
+        if (batch.openTurn) this.pendingTurns.push({ kind: "start", turnId: batch.openTurn });
+        return empty();
+      }
       const { batch, text } = decodeRuntimeTranscriptBatch(raw, before.cursor);
       if (batch.state === "pending") {
         this.followed = false;

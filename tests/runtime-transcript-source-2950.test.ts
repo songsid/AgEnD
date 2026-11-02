@@ -59,3 +59,12 @@ it('a held runner read times out without cursor progress or overlapping filesyst
   expect((await source.poll()).turns).toEqual([{kind:'start',turnId:'late'}]);
  }finally{vi.useRealTimers();}
 });
+it('uses the runner bounded baseline instead of replaying a resumed history, preserving its open turn',async()=>{
+ const f=rig(),offset=9*1024*1024,seed={state:'ready' as const,cursor:{...f.reference.cursor,fileId:'a'.repeat(64),offset,anchor:'b'.repeat(64)},complete:true,turnKnown:true,openTurn:'running'};
+ const baseline=vi.fn(async()=>seed);Object.assign(f.port,{readTranscriptBaseline:baseline});const source=f.source();await source.initialize();expect(baseline).toHaveBeenCalledOnce();expect(f.port.readTranscript).not.toHaveBeenCalled();expect(source.takeTurns()).toEqual([{kind:'start',turnId:'running'}]);expect(source.turnStateKnown()).toBe(true);
+ const text=line(end('running'));vi.mocked(f.port.readTranscript).mockImplementationOnce(async cursor=>({state:'ready',cursor:{...cursor,offset:cursor.offset+Buffer.byteLength(text),anchor:'c'.repeat(64)},data:Buffer.from(text).toString('base64'),gap:false,complete:true}));expect((await source.poll()).turns).toEqual([{kind:'end',turnId:'running',end:'complete'}]);expect(f.port.readTranscript).toHaveBeenCalledWith(seed.cursor,expect.any(Function));
+});
+it('an unknown runner tail stays unknown through an orphan end until a new start arrives',async()=>{
+ const f=rig(),offset=9*1024*1024;Object.assign(f.port,{readTranscriptBaseline:vi.fn(async()=>({state:'ready',cursor:{...f.reference.cursor,fileId:'a'.repeat(64),offset,anchor:'b'.repeat(64)},complete:true,turnKnown:false,openTurn:null}))});const source=f.source();await source.initialize();expect(source.turnStateKnown()).toBe(false);
+ const orphan=line(end('unproven'));vi.mocked(f.port.readTranscript).mockImplementationOnce(async cursor=>({state:'ready',cursor:{...cursor,offset:cursor.offset+Buffer.byteLength(orphan),anchor:'c'.repeat(64)},data:Buffer.from(orphan).toString('base64'),gap:false,complete:true}));expect((await source.poll()).turns).toEqual([]);expect(source.turnStateKnown()).toBe(false);
+});

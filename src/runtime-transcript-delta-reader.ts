@@ -4,7 +4,7 @@ import type { TranscriptLook } from "./transcript-delta-reader.js";
 import { transcriptDeltaNeedle, type TranscriptNeedle } from "./transcript-needles.js";
 import { validatePaneTranscriptWireBatch, validateRuntimeTranscriptReference, type RuntimeTranscriptReference,
   type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
-export type RuntimeTranscriptPort = Pick<RuntimePanePort, "readTranscript" | "isTranscriptObservationCurrent">;
+export type RuntimeTranscriptPort = Pick<RuntimePanePort, "readTranscript" | "isTranscriptObservationCurrent"> & Partial<Pick<RuntimePanePort, "readTranscriptBaseline">>;
 
 /** Validate both the closed frame and its relation to the exact checkpoint requested. */
 export function decodeRuntimeTranscriptBatch(raw: unknown, before: PaneTranscriptCursor): { batch: PaneTranscriptWireBatch; text: string } {

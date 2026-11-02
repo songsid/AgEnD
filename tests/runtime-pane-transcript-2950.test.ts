@@ -105,3 +105,21 @@ it("cursor validation accepts no host paths, foreign ids, unbound offsets or inv
  for (const extra of [{ path: f.path }, { sessionId: randomUUID() }, { offset: 1 }, { anchor: "a".repeat(64) }, { fileId: "not-a-hash" }]) expect(() => validatePaneTranscriptCursor({ ...cursor, ...extra }, f.sessionId)).toThrow();
  expect(cursor.anchor).toBe(createHash("sha256").update("").digest("hex"));
 });
+it('baselines a multi-megabyte owned history in one bounded look without returning old content',async()=>{
+ const f=rig();writeFileSync(f.path,f.line(f.meta)+f.line({type:'event_msg',payload:{type:'task_started',turn_id:'old'}})+f.line({type:'padding',text:'x'.repeat(5*1024*1024)})+f.line({type:'event_msg',payload:{type:'task_started',turn_id:'current'}}));const reader=f.reader();
+ const baseline=await reader.baseline();expect(baseline).toMatchObject({state:'ready',complete:true,turnKnown:true,openTurn:'current'});expect(baseline.cursor.offset).toBe(readFileSync(f.path).length);expect(JSON.stringify(baseline).length).toBeLessThan(512);expect(JSON.stringify(baseline)).not.toContain(f.path);expect(JSON.stringify(baseline)).not.toContain('old');
+ appendFileSync(f.path,f.line({type:'event_msg',payload:{type:'task_complete',turn_id:'current',last_agent_message:'done'}}));const delta=await reader.read(baseline.cursor);expect(delta.lines).toHaveLength(1);expect(delta.lines[0]).toContain('task_complete');
+});
+it('a tail with no provable turn start cannot fabricate a closed Codex ledger',async()=>{
+ const f=rig();writeFileSync(f.path,f.line(f.meta)+f.line({type:'event_msg',payload:{type:'task_started',turn_id:'beyond-tail'}})+f.line({type:'padding',text:'x'.repeat(5*1024*1024)})+f.line({type:'event_msg',payload:{type:'task_complete',turn_id:'beyond-tail',last_agent_message:'done'}}));
+ expect(await f.reader().baseline()).toMatchObject({state:'ready',turnKnown:false,openTurn:null});
+});
+it.each(['codex','claude-code'] as const)('%s baseline keeps exact-session, workspace and replacement fences',async provider=>{
+ const f=rig(provider);writeFileSync(f.path,f.line(f.meta));const reader=f.reader(),first=await reader.baseline();
+ renameSync(f.path,f.path+'.old');writeFileSync(f.path,f.line(f.meta));await expect(reader.baseline({...first.cursor,offset:0,anchor:reader.initial.anchor})).rejects.toThrow('identity changed');
+ const wrong=provider==='codex'?{...f.meta,payload:{id:f.sessionId,cwd:join(f.root,'other')}}:{...f.meta,cwd:join(f.root,'other')};writeFileSync(f.path,f.line(wrong));await expect(f.reader().baseline()).rejects.toThrow('metadata differs');
+});
+it('Claude tail baseline does not split a partial final record or replay earlier tool use',async()=>{
+ const f=rig('claude-code');writeFileSync(f.path,f.line(f.meta)+f.line({type:'assistant',sessionId:f.sessionId,cwd:f.cwd,message:{content:[{type:'tool_use',name:'Read',input:{file:'old'}}]}})+'{"type":"assistant"');
+ const reader=f.reader(),baseline=await reader.baseline();expect(baseline).toMatchObject({state:'ready',complete:false,openTurn:null});expect(baseline.cursor.offset).toBeLessThan(readFileSync(f.path).length);appendFileSync(f.path,',"message":{"content":"new"}}\n');const delta=await reader.read(baseline.cursor);expect(delta.lines).toHaveLength(1);expect(delta.lines[0]).toContain('new');
+});

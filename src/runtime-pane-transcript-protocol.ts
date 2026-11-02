@@ -22,7 +22,7 @@ export interface RuntimeTranscriptReference {
   provider: PaneTranscriptProvider;
   cursor: PaneTranscriptCursor;
 }
-export const PANE_TRANSCRIPT_MAX_FILE_BYTES = 128 * 1024 * 1024;
+export const PANE_TRANSCRIPT_MAX_FILE_BYTES = 16 * 1024 * 1024 * 1024;
 export const PANE_TRANSCRIPT_EMPTY_ANCHOR = createHash("sha256").update("").digest("hex");
 const uuid = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 function closed(value: unknown, keys: string[]): Record<string, unknown> {
@@ -62,4 +62,15 @@ export function sameRuntimeTranscriptScope(a: RuntimeTranscriptReference, b: Run
   return a.version === b.version && a.machineId === b.machineId && a.hostBootId === b.hostBootId
     && a.paneId === b.paneId && a.launchId === b.launchId && a.agentId === b.agentId
     && a.provider === b.provider && a.cursor.sessionId === b.cursor.sessionId;
+}
+
+/** Runner-owned baseline jumps over old content while carrying only a bounded turn-state proof. */
+export interface PaneTranscriptBaseline { state: "pending" | "ready"; cursor: PaneTranscriptCursor; complete: boolean; turnKnown: boolean; openTurn: string | null }
+export function validatePaneTranscriptBaseline(value: unknown, sessionId: string): PaneTranscriptBaseline {
+  const v = closed(value, ["state", "cursor", "complete", "turnKnown", "openTurn"]), cursor = validatePaneTranscriptCursor(v.cursor, sessionId);
+  if (v.state !== "pending" && v.state !== "ready" || typeof v.complete !== "boolean" || typeof v.turnKnown !== "boolean"
+    || v.openTurn !== null && (typeof v.openTurn !== "string" || !v.openTurn || v.openTurn.length > 256 || /[\r\n\0]/.test(v.openTurn))
+    || !v.turnKnown && v.openTurn !== null || v.state === "ready" && cursor.fileId === null
+    || v.state === "pending" && (v.complete || v.turnKnown || v.openTurn !== null) || cursor.skipping) throw Error("Invalid native transcript baseline");
+  return { state: v.state, cursor, complete: v.complete, turnKnown: v.turnKnown, openTurn: v.openTurn as string | null };
 }

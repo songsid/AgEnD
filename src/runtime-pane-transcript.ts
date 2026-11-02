@@ -1,4 +1,6 @@
 /** Exact-session reads on the runner. No caller-supplied path and no newest-by-cwd discovery. */
+import { codexTurnRecord, type CodexRecordState } from "./transcript-records.js";
+import type { PaneTranscriptBaseline } from "./runtime-pane-transcript-protocol.js";
 import { constants } from "node:fs";
 import { lstat, open, opendir, realpath } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
@@ -111,6 +113,49 @@ export class NativePaneTranscriptReader {
     if (this.busy) throw Error("Pane transcript read is already pending");
     this.busy = true;
     try { return await this.readOwned(cursor, current); } finally { this.busy = false; }
+  }
+  /** At most 4 MiB of tail content, independent of history size; no historical text leaves the runner. */
+  async baseline(cursor: PaneTranscriptCursor = this.initial, current: () => boolean = () => true): Promise<PaneTranscriptBaseline> {
+    validatePaneTranscriptCursor(cursor, this.sessionId);
+    if (cursor.offset !== 0 || this.busy || this.stopped) throw Error("Native transcript baseline is not available");
+    this.busy = true;
+    const check = (): void => { if (this.stopped || !current()) throw Error("Pane baseline lease expired"); };
+    const pending = (): PaneTranscriptBaseline => ({ state: "pending", cursor, complete: false, turnKnown: false, openTurn: null });
+    try {
+      check(); const found = this.pinnedFile ? { path: this.pinnedFile } : await this.locate(current), path = found.path; check();
+      if (!path) return pending();
+      await realDirectory(dirname(path)); const before = await lstat(path); regular(before);
+      const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      try {
+        const stat = await file.stat(); regular(stat);
+        if (!sameFile(before, stat) || comparable(await realpath(path)) !== comparable(path)) throw Error("Pane baseline changed while opening");
+        const header = ownedHeader(await bytes(file, 0, Math.min(stat.size, this.metadataBytes || META)), this.provider, this.sessionId, this.cwd);
+        const fileId = hash(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}:${hash(header.subarray(0, header.indexOf(10) + 1))}`);
+        if (cursor.fileId && cursor.fileId !== fileId) throw Error("Pane baseline file identity changed");
+        const start = Math.max(0, stat.size - 4 * 1024 * 1024), tail = await bytes(file, start, stat.size - start), last = tail.lastIndexOf(10);
+        if (last < 0) return pending();
+        const first = start ? tail.indexOf(10) + 1 : 0, offset = start + last + 1;
+        const state: CodexRecordState = { openTurnId: "", openTurn: null, turnKnown: start === 0 || this.provider !== "codex" };
+        for (const line of decode(tail.subarray(first, last + 1)).split(/\r?\n/)) if (line) {
+          const entry = record(line);
+          if (this.provider === "codex") {
+            if (entry.type === "session_meta") metadata([line], this.provider, this.sessionId, this.cwd);
+            const orphanEnd = !state.turnKnown && entry.type === "event_msg" && ["task_complete", "turn_aborted"].includes(entry.payload?.type);
+            if (!orphanEnd) codexTurnRecord(entry, state, []);
+          } else if (entry.sessionId !== undefined && entry.sessionId !== this.sessionId || entry.cwd !== undefined && comparable(String(entry.cwd)) !== comparable(this.cwd) || entry.isSidechain === true)
+            throw Error("Pane baseline belongs to another conversation");
+        }
+        const anchor = await bytes(file, Math.max(0, offset - ANCHOR), Math.min(offset, ANCHOR));
+        if (hash(await bytes(file, start, tail.length)) !== hash(tail) || hash(await bytes(file, 0, header.length)) !== hash(header)) throw Error("Pane baseline bytes changed during read");
+        const after = await file.stat(), named = await lstat(path); regular(named);
+        if (!sameFile(stat, after) || !sameFile(stat, named) || after.size < stat.size || after.size !== named.size || after.mtimeMs !== named.mtimeMs || after.ctimeMs !== named.ctimeMs
+          || after.size === stat.size && (after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs)) throw Error("Pane baseline changed during read");
+        check(); this.pinnedFile = path; this.metadataBytes = header.length;
+        return { state: "ready", cursor: { sessionId: this.sessionId, offset, fileId, anchor: hash(anchor) }, complete: offset === stat.size && after.size === stat.size,
+          turnKnown: state.turnKnown, openTurn: state.turnKnown ? state.openTurn : null };
+      } finally { await file.close(); }
+    } catch (error) { if (!missing(error)) throw error; if (cursor.fileId || this.pinnedFile) throw Error("Pinned pane baseline disappeared"); return pending(); }
+    finally { this.busy = false; }
   }
   async close(): Promise<void> { this.stopped = true; await this.discovery?.return(undefined); this.discovery = undefined; }
   private async *candidates(): AsyncGenerator<string | null> {
