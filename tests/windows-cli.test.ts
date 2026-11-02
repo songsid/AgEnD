@@ -259,6 +259,29 @@ describe("one Windows task at a time", () => {
     child.send({ type: "finished", code: 1, cancelled: true }); child.close();
     expect(service.get(input.requestId)?.status).toBe("cancelled");
   });
+  it("#2945 CI: between the worker's finished line and its close, a snapshot is still running and a cancel cannot overwrite the outcome", async () => {
+    const service = new WindowsCliBridge(launcher, DETECTED); service.start(input); await launched();
+    child.stdin.read();
+    child.send({ type: "started" });
+    child.send({ type: "stdout", text: JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "done" } }) + "\n" + JSON.stringify({ type: "turn.completed" }) + "\n" });
+    child.send({ type: "finished", code: 0, cancelled: false });                    // not closed yet
+    const between = service.get(input.requestId)!;
+    expect(between.status).toBe("running"); expect(between.finishedAt).toBeUndefined();
+    expect(service.list()[0].status).toBe("running");
+    expect(service.cancel(input.requestId).status).toBe("running");               // the outcome is already decided
+    expect(child.stdin.read().toString()).toContain('{"cancel":true}');            // the cancel is still sent
+    child.close();
+    expect(service.get(input.requestId)).toMatchObject({ status: "completed", outcomeConfirmed: true, output: "done\n" });
+    expect(service.get(input.requestId)?.finishedAt).toEqual(expect.any(Number));
+  });
+  it("#2945 CI: a failure decided before close is published only with finishedAt", async () => {
+    const service = new WindowsCliBridge(launcher, DETECTED); service.start(input); await launched();
+    child.stdin.read(); child.send({ type: "started" });
+    child.send({ type: "error", message: "provider failed", terminal: true });
+    expect(service.get(input.requestId)?.status).toBe("running");
+    child.close();
+    expect(service.get(input.requestId)).toMatchObject({ status: "failed", error: "provider failed" });
+  });
   it("does not report an exit code alone as a completed AI turn", async () => {
     const service = new WindowsCliBridge(launcher, DETECTED); service.start(input); await launched();
     child.send({ type: "finished", code: 0, cancelled: false }); child.close();

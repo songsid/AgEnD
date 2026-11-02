@@ -84,6 +84,27 @@ describe("outbound runtime with the real coordinator protocol", () => {
     await vi.waitFor(() => expect(f.state.hub.task(task.requestId)?.output).toBe("after reconnect"));
     expect(f.bridge.launches).toBe(1);
   });
+  it("M-2239 P2-1 (#2945 review): a client that reconnects with the snapshot of a run since compacted stays connected and reruns nothing", async () => {
+    let now = Date.now();
+    const f = await fixture({ now: () => now }), task = input();
+    await f.state.hub.call(f.machineId, "run", { task });
+    f.bridge.complete(task.requestId);
+    await vi.waitFor(() => expect(f.state.hub.task(task.requestId)?.status).toBe("completed"));
+    now += 8 * 24 * 3_600_000;
+    await f.state.hub.call(f.machineId, "probe", { force: true });          // compacts the settled run
+    expect(f.state.hub.task(task.requestId)).toBeNull();
+    // The runtime restarts with its retained store and republishes the completed job on welcome.
+    await f.client.stop();
+    const again = new RuntimeClient({ store: new RuntimeClientStore(f.store.directory), bridge: f.bridge, reconnectMs: 25, disconnectGraceMs: 500, pollMs: 10 });
+    clients.push(again); await again.start();
+    await vi.waitFor(() => expect(again.online()).toBe(true));
+    await new Promise(done => setTimeout(done, 300));
+    expect(again.online()).toBe(true);
+    expect(f.state.hub.machine(f.machineId)?.status).toBe("online");
+    expect(f.bridge.launches).toBe(1);
+    // Still refused, by its tombstone, if asked to run again.
+    await expect(f.state.hub.call(f.machineId, "run", { task })).rejects.toThrow(/compacted/);
+  });
   it("cancels only the named active execution and confirms the terminal snapshot", async () => {
     const f = await fixture(), task = input(); await f.state.hub.call(f.machineId, "run", { task });
     expect(await f.state.hub.call(f.machineId, "cancel", { runId: task.requestId })).toMatchObject({ id: task.requestId, status: "cancelled", outcomeConfirmed: true });
@@ -130,6 +151,28 @@ createInterface({input:process.stdin}).once('line',line=>{
       throw Error(`${error instanceof Error ? error.message : error}\nBridge: ${JSON.stringify(bridge.get(task.requestId))}\nJournal: ${JSON.stringify(f.store.get(task.requestId))}\nOnline: ${client.online()}`);
     });
     expect(f.store.get(task.requestId)?.task.status).toBe("completed");
+  }, 20_000);
+  it("#2945 CI: a worker that exits well after its finished line leaves the run completed and the machine online", async () => {
+    const f = await fixture(); await f.client.stop();
+    const worker = join(home(), "slow-exit-runtime-worker.mjs");
+    writeFileSync(worker, `import {createInterface} from 'node:readline';
+const emit=value=>process.stdout.write(JSON.stringify(value)+'\\n');
+createInterface({input:process.stdin}).once('line',line=>{
+ const request=JSON.parse(line);
+ if(request.op==='probe'){emit({type:'probe',home:'C:\\\\Users\\\\fixture',clis:[{id:'codex',path:'C:\\\\fixture\\\\codex.exe',version:'fixture',authenticated:true,runnable:true,readOnlySupport:true,supports:{execution:true,resume:true,model:true,mcp:true},permissionNote:'Isolated fixture',models:[]}]});setTimeout(()=>process.exit(0),20);return;}
+ emit({type:'started'});
+ const events=[{type:'thread.started',thread_id:'12345678-1234-4321-abcd-123456789012'},{type:'item.completed',item:{type:'agent_message',text:'slow exit'}},{type:'turn.completed'}];
+ emit({type:'stdout',text:events.map(JSON.stringify).join('\\n')+'\\n'});emit({type:'finished',code:0});
+ setTimeout(()=>process.exit(0),400);   // the client polls every 10 ms in between
+});`);
+    const bridge = new WindowsCliBridge(async () => ({ executable: process.execPath, args: [worker] }));
+    const client = new RuntimeClient({ store: f.store, bridge, pollMs: 10 }); clients.push(client); await client.start();
+    await vi.waitFor(() => expect(client.online()).toBe(true));
+    await f.state.hub.call(f.machineId, "probe", { force: true });
+    const task = input(); await f.state.hub.call(f.machineId, "run", { task });
+    await vi.waitFor(() => expect(f.state.hub.task(task.requestId)).toMatchObject({ status: "completed", outcomeConfirmed: true, output: "slow exit\n" }), { timeout: 10_000 });
+    expect(client.online()).toBe(true);
+    expect(f.state.hub.machine(f.machineId)?.status).toBe("online");
   }, 20_000);
   it("relays scoped MCP over the machine channel without exposing machine credentials to the CLI", async () => {
     const handler = vi.fn(async () => ({ content: [{ type: "text", text: "isolated task list" }] }));

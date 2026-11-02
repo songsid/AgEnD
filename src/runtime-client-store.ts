@@ -6,13 +6,21 @@ import type { WindowsCliTask } from "./windows-cli.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 
 const MAX_JOBS = 128;
-const MAX_IDS = 4096;
+/**
+ * M-2239 P2-1 (#2936 review): `used` is the replay tombstone (id → digest) — it was capped at 4096 and never pruned, so
+ * a long-lived runtime stopped. It now holds up to MAX_IDS, and beyond that the oldest tombstones older than
+ * ID_KEEP_MS (and with no job snapshot) give way; a younger one never does, so a replay is refused for at least that.
+ */
+const MAX_IDS = 65_536;
+const ID_KEEP_MS = 30 * 24 * 3_600_000;
+/** Kept free below MAX_STORE_BYTES when a job is accepted: its own later updates (≤ 64 KiB characters of output, UTF-8). */
+const BYTE_HEADROOM = 512 * 1024;
 const MAX_STORE_BYTES = 12 * 1024 * 1024;
 const ID = /^[A-Za-z0-9-]{16,80}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export interface RuntimeCredentials { server: string; machineId: string; credential: string; name: string }
 export interface RuntimeStoredJob { digest: string; seq: number; task: WindowsCliTask; uncertain: boolean }
-interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string> }
+interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string>; usedAt?: Record<string, number> }
 
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function canonical(value: unknown): string {
@@ -72,6 +80,7 @@ export class RuntimeClientStore {
     if (!object(raw) || raw.version !== 1 || !object(raw.jobs) || !object(raw.used)
       || Object.keys(raw.jobs).length > MAX_JOBS || Object.keys(raw.used).length > MAX_IDS) throw new Error("Invalid runtime job ledger");
     for (const [id, digest] of Object.entries(raw.used)) if (!ID.test(id) || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid runtime job identity");
+    if (raw.usedAt !== undefined && (!object(raw.usedAt) || Object.entries(raw.usedAt).some(([id, at]) => !Object.hasOwn(raw.used as object, id) || typeof at !== "number" || !Number.isFinite(at)))) throw new Error("Invalid runtime job identity times");
     for (const [id, value] of Object.entries(raw.jobs)) {
       if (!ID.test(id) || !object(value) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1
         || typeof value.uncertain !== "boolean" || !object(value.task) || value.task.id !== id || value.digest !== raw.used[id]
@@ -80,6 +89,44 @@ export class RuntimeClientStore {
     return raw as unknown as Ledger;
   }
   private save(): void { atomic(this.file, this.data); }
+  /**
+   * #2945 review: the byte budget, not only the id count. Before a new job is saved the ledger must fit MAX_STORE_BYTES
+   * with BYTE_HEADROOM left for that job's own updates (its output is bounded at 64 KiB characters). Room comes first
+   * from settled job snapshots (finished, confirmed — never the new one, an uncertain or an unfinished one), oldest
+   * first; then from replay ids past ID_KEEP_MS with no snapshot. False when even that does not make room.
+   */
+  private fitBytes(newId: string): boolean {
+    const budget = MAX_STORE_BYTES - BYTE_HEADROOM, actual = () => Buffer.byteLength(JSON.stringify(this.data));
+    const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+    // Each removal subtracts what that member actually occupied (key, colon, value, comma; a usedAt member only when it
+    // exists). The estimate only paces the loop: whenever it says "fits", the real size is measured and, if still over,
+    // eviction goes on from the remaining candidates (#2945 R2: legacy ids without usedAt were over-counted).
+    let size = actual();
+    const fitted = (): boolean => { if (size > budget) return false; size = actual(); return size <= budget; };
+    if (fitted()) return true;
+    const jobs = Object.values(this.data.jobs).filter(row => row.task.id !== newId && row.task.finishedAt && !row.uncertain && row.task.outcomeConfirmed !== false)
+      .sort((a, b) => a.task.startedAt - b.task.startedAt);
+    for (const row of jobs) {
+      size -= bytes(row.task.id) + 1 + bytes(row) + 1;
+      delete this.data.jobs[row.task.id];
+      if (fitted()) return true;
+    }
+    const now = this.now(), at = this.data.usedAt ?? {};
+    const old = Object.keys(this.data.used).filter(id => !this.data.jobs[id] && now - (at[id] ?? 0) > ID_KEEP_MS).sort((a, b) => (at[a] ?? 0) - (at[b] ?? 0));
+    for (const id of old) {
+      size -= bytes(id) + 1 + bytes(this.data.used[id]) + 1 + (Object.hasOwn(at, id) ? bytes(id) + 1 + bytes(at[id]) + 1 : 0);
+      delete this.data.used[id]; delete at[id];
+      if (fitted()) return true;
+    }
+    return actual() <= budget;
+  }
+  /** Oldest first; only past ID_KEEP_MS and with no job snapshot. An id from an older ledger (no time) counts as oldest. */
+  private evictTombstones(): void {
+    const now = this.now(), at = this.data.usedAt ?? {};
+    const old = Object.keys(this.data.used).filter(id => !this.data.jobs[id] && now - (at[id] ?? 0) > ID_KEEP_MS)
+      .sort((a, b) => (at[a] ?? 0) - (at[b] ?? 0));
+    for (const id of old.slice(0, Object.keys(this.data.used).length - MAX_IDS + 1)) { delete this.data.used[id]; delete at[id]; }
+  }
   get(id: string): RuntimeStoredJob | null { const row = this.data.jobs[id]; return row ? structuredClone(row) : null; }
   list(): RuntimeStoredJob[] { return Object.values(this.data.jobs).map(job => structuredClone(job)); }
   blocked(): boolean { return Object.values(this.data.jobs).some(job => job.uncertain || !job.task.finishedAt); }
@@ -92,16 +139,18 @@ export class RuntimeClientStore {
       return { duplicate: true, job: old };
     }
     if (this.blocked()) throw new Error("Runtime already has an active or unconfirmed execution");
-    if (Object.keys(this.data.used).length >= MAX_IDS) throw new Error("Runtime execution identity limit reached");
+    if (Object.keys(this.data.used).length >= MAX_IDS) this.evictTombstones();
+    if (Object.keys(this.data.used).length >= MAX_IDS) throw new Error("Runtime execution identity limit reached: every remembered execution is younger than 30 days");
     const before = structuredClone(this.data);
     const job: RuntimeStoredJob = { digest, seq: 1, task: { ...task, output: task.output.slice(-65_536) }, uncertain: false };
-    this.data.jobs[task.id] = job; this.data.used[task.id] = digest;
+    this.data.jobs[task.id] = job; this.data.used[task.id] = digest; (this.data.usedAt ??= {})[task.id] = this.now();
     while (Object.keys(this.data.jobs).length > MAX_JOBS) {
       const oldest = Object.values(this.data.jobs).filter(row => row.task.id !== task.id && row.task.finishedAt && !row.uncertain)
         .sort((a, b) => a.task.startedAt - b.task.startedAt)[0];
       if (!oldest) { this.data = before; throw new Error("Runtime snapshot capacity reached"); }
       delete this.data.jobs[oldest.task.id];
     }
+    if (!this.fitBytes(task.id)) { this.data = before; throw new Error("Runtime state limit reached: every retained execution is unsettled or younger than 30 days"); }
     try { this.save(); } catch (error) { this.data = before; throw error; }
     return { duplicate: false, job: structuredClone(job) };
   }
