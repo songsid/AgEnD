@@ -23,6 +23,7 @@ import { performance } from "node:perf_hooks";
 import { transcriptDeltaDeliveryMarker } from "./delivery-reconciliation.js";
 import type { ConsumedVia } from "./delivery-outbox.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
+import type { TranscriptLook } from "./transcript-delta-reader.js";
 
 export const CONSUMED_WATCH = {
   /** Watches alive at once across the fleet. */
@@ -43,18 +44,20 @@ export const CONSUMED_WATCH = {
   lifetimeMs: 30 * 60_000,
 };
 
-export interface ConsumedWatchTarget {
+interface ConsumedWatchCommon {
   deliveryId: string;
   attemptNo: number;
   backend: string;
-  path: string;
-  offset: number;
   /** False once the attempt's CLI is no longer the one we wrote to (stop, pause, respawn): the watch ends quietly. */
   current(): boolean;
   /** The hit: record it (the outbox decides what it changes). */
   consumed(via: ConsumedVia, evidence: string): void;
   logger?: { info(obj: unknown, msg?: string): void; warn(obj: unknown, msg?: string): void; debug?(obj: unknown, msg?: string): void };
 }
+export type ConsumedWatchTarget = ConsumedWatchCommon & (
+  | { path: string; offset: number; reader?: never }
+  | { path?: never; offset?: never; reader: { look(): Promise<TranscriptLook>; readonly readPosition: number; close?(): void } }
+);
 
 type Ended = "consumed" | "fenced" | "unavailable" | "expired" | "stopped";
 
@@ -71,7 +74,7 @@ export class ConsumedWatch {
   private ended = false;
 
   constructor(private readonly target: ConsumedWatchTarget, private readonly onEnd: (why: Ended) => void) {
-    this.offset = target.offset;
+    this.offset = target.offset ?? target.reader!.readPosition;
   }
 
   start(): void { this.schedule(CONSUMED_WATCH.tickMs); }
@@ -96,6 +99,7 @@ export class ConsumedWatch {
     this.ended = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.target.reader?.close?.();
     this.onEnd(why);
   }
 
@@ -115,6 +119,21 @@ export class ConsumedWatch {
     if (this.ended) return;
     try {
       if (!this.stillLive()) return;
+      if (this.target.reader) {
+        const before = this.offset, found = await this.target.reader.look();
+        if (!this.stillLive()) return;
+        this.offset = this.target.reader.readPosition;
+        if (found === "user" || found === "absorbed") {
+          this.target.consumed(found === "user" ? "turn" : "mid_turn", found === "user" ? "transcript-consumed:user-entry" : "transcript-consumed:absorbed-mid-turn");
+          return this.end("consumed");
+        }
+        if (found === "unavailable") return this.end("unavailable");
+        if (this.offset > before) { this.idleLooks = 0; return this.schedule(CONSUMED_WATCH.catchUpMs); }
+        if (++this.idleLooks >= CONSUMED_WATCH.idleLooksBeforeBackoff) {
+          this.idleLooks = 0; this.interval = Math.min(this.interval * 2, CONSUMED_WATCH.maxTickMs);
+        }
+        return this.schedule(this.interval);
+      }
       let size: number;
       try { size = (await stat(this.target.path)).size; } catch { return this.end("unavailable"); }
       if (!this.stillLive()) return;
