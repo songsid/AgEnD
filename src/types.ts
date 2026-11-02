@@ -100,6 +100,8 @@ export function resolveDeliveryWorkerMode(
 export interface InstanceConfig {
   /** Execution host. Unset preserves the existing Linux/WSL runtime. */
   runtime?: "wsl" | "windows";
+  /** Paired execution machine. Unset keeps the existing local runtime and provider session. */
+  machine_id?: string;
   /** Stable native conversation/profile identity; set only for Windows instances. */
   native_agent_id?: string;
   /** Native CLI permission selection; independent of Linux terminal permissions. */

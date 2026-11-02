@@ -352,6 +352,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
     ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
+    ${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",inst.machine_name || inst.machine_id)}>${inst.machine_name || inst.machine_id}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => supportsInstanceFeature(inst,"commands") ? pick("model") : navigate(sectionPath("agents"))}>${modelText(inst)}</button>` : null}
     ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
@@ -681,7 +682,8 @@ function Composer({ name, inst, label = name, lease, busy }) {
   const app = useStore(appStore);
   const guestAllowed = guest ? (app.instances.find((i) => i.name === name)?.commands ?? []) : null;
   const attachmentsSupported = supportsInstanceFeature(inst,"attachments"), commandsSupported = supportsInstanceFeature(inst,"commands");
-  const sendingBlocked = inst?.native_blocked || inst?.native_busy || (busy && !supportsInstanceFeature(inst,"send_while_busy"));
+  const machineUnavailable = !!inst?.machine_id && inst.machine_status !== "online";
+  const sendingBlocked = machineUnavailable || inst?.native_blocked || inst?.native_busy || (busy && !supportsInstanceFeature(inst,"send_while_busy"));
   const palette = !commandsSupported || files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
@@ -747,6 +749,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
   };
   const optId = (c) => `cmd-${c.name}`;
   return html`<div class="composer-box">
+    ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",inst.machine_name || inst.machine_id)}</p>` : null}
     ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}

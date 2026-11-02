@@ -15,14 +15,26 @@ export interface WindowsCliTask {
   startedAt: number; finishedAt?: number; output: string; error?: string;
   threadId?: string; outcomeConfirmed?: boolean;
 }
-export interface WindowsRunOptions { resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string }
+export interface WindowsRunOptions { resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; machineId?: string }
+/** The conversation store uses this port for both the existing local worker and paired runtimes. */
+export interface WindowsCliExecutor {
+  probe(options?: {force?: boolean; machineId?: string}): Promise<WindowsCliProbe>;
+  prepareWorkspace(agentId: string, authorized?: () => boolean, machineId?: string): Promise<string>;
+  start(value: unknown, authorized?: () => boolean, options?: WindowsRunOptions): WindowsCliTask;
+  get(id: string): WindowsCliTask | null;
+  list(): WindowsCliTask[];
+  hasActiveTask(machineId?: string): boolean;
+  cancel(id: string): WindowsCliTask;
+  releaseUnknown(id: string): void;
+  close(): void;
+}
 export interface WindowsTransport { executable: string; args: string[] }
 export type WindowsLauncher = () => Promise<WindowsTransport>;
 const MAX_TASKS = 20;
 const TEXT_LIMIT = 64 * 1024;
 export const WINDOWS_CLI_PROBE_TTL_MS = 60_000;
 
-export function windowsCliEnabled(): boolean { return process.env.AGEND_WINDOWS_CLI === "1"; }
+export function windowsCliEnabled(): boolean { return process.env.AGEND_WINDOWS_CLI === "1" || process.env.AGEND_REMOTE_RUNTIME === "1"; }
 export async function nativeWindowsTransport(): Promise<WindowsTransport> {
   const worker = join(dirname(fileURLToPath(import.meta.url)), "windows-cli-worker.js");
   if (process.platform === "win32") return { executable: process.execPath, args: [worker] };
@@ -43,6 +55,8 @@ export class WindowsCliBridge {
   private active: string | null = null;
   private pendingProbe: Promise<WindowsCliProbe> | null = null;
   private cachedProbe: { value: WindowsCliProbe; expiresAt: number } | null = null;
+  private workerGeneration = 0;
+  private readonly pendingWorkers = new Map<ChildProcess, () => void>();
   constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport) {}
 
   list(): WindowsCliTask[] { return [...this.tasks.values()].map(v => ({ ...v.task })).reverse(); }
@@ -75,16 +89,19 @@ export class WindowsCliBridge {
   }
   private async workerResult(request: { op: "probe" } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
+    const generation = this.workerGeneration;
     const transport = await this.launcher();
+    if (generation !== this.workerGeneration) throw new Error("Windows operation was cancelled");
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
     return new Promise((resolve, reject) => {
       const child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
       let text = "", settled = false;
       const timer = setTimeout(() => { child.kill(); finish(new Error(`Windows CLI ${request.op} timed out`)); }, timeoutMs);
       const finish = (error?: Error, value?: Record<string, unknown>): void => {
-        if (settled) return; settled = true; clearTimeout(timer);
+        if (settled) return; settled = true; clearTimeout(timer); this.pendingWorkers.delete(child);
         if (error) reject(error); else resolve(value!);
       };
+      this.pendingWorkers.set(child, () => { child.kill(); finish(new Error(`Windows CLI ${request.op} was cancelled`)); });
       child.on("error", e => finish(e));
       child.stdout!.setEncoding("utf8").on("data", (part: string) => {
         text += part;
@@ -134,6 +151,9 @@ export class WindowsCliBridge {
     return { ...task };
   }
   close(): void {
+    this.workerGeneration++;
+    for (const cancel of this.pendingWorkers.values()) cancel();
+    this.pendingWorkers.clear();
     if (this.active) this.cancel(this.active);
     this.child?.stdin?.end();
   }

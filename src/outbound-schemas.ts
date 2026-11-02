@@ -533,6 +533,7 @@ export const ReplaceInstanceArgs = z.object({
 // (profile-derived fields, start_point, …) without the schema stripping them.
 export const CreateInstanceArgs = z.object({
   runtime: z.enum(["wsl", "windows"]).optional().describe("Execution runtime. Defaults to WSL/Linux. Windows uses the fleet's native Windows CLI adapter and the same instance registry."),
+  machineId: z.string().uuid().optional().describe("Paired execution machine ID for a Windows runtime. Omit to use the local machine. The selected machine must be online and offer this CLI."),
   sandbox: z.enum(["read-only", "workspace-write"]).optional().describe("Windows runtime file-access policy. Defaults to read-only; providers without a read-only policy require explicit workspace-write. Not a Linux sandbox override."),
   directory: z.string().optional().describe(
     "Working directory. WSL/Linux accepts an absolute or ~-prefixed path; Windows requires an absolute drive path. Omit to create an independent workspace on the selected runtime.",

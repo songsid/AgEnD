@@ -5,6 +5,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { ChipList, ModelSelect } from "./settings-dialogs.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { useWindowsCliCatalog } from "./windows-cli-catalog.js";
+import { useRuntimeCatalog, instanceMachineId } from "./runtime-catalog.js";
 import { NativeAgendToolsHint, tr } from "./agent-runtime.js";
 register("nativeInstance", {
   "zh-TW": { fixed:"Runtime 與 CLI 隨此對話保留。", workspace:"此 Agent 的對話會沿用這個工作區。" },
@@ -12,8 +13,10 @@ register("nativeInstance", {
 });
 const tn = key => t(`settings.${key}`);
 export function NativeInstanceSettings({ name, inst, ctx, onClose }) {
-  const catalog = useWindowsCliCatalog();
-  const native = catalog.data?.clis?.find(cli => cli.id === inst.backend);
+  const machineId = instanceMachineId(inst);
+  const catalog = useWindowsCliCatalog(!machineId), machines = useRuntimeCatalog(!!machineId);
+  const machine = machines.data?.machines?.find(item => item.id === machineId);
+  const native = (machineId ? machine?.inventory : catalog.data)?.clis?.find(cli => cli.id === inst.backend);
   const [form,setForm] = useState(() => ({display_name:inst.display_name || name,description:inst.description || "",model:inst.model || "",systemPrompt:inst.systemPrompt || "",native_sandbox:inst.native_sandbox || "read-only",tags:Array.isArray(inst.tags) ? [...inst.tags] : []}));
   const set = key => value => setForm(current => ({...current,[key]:value}));
   const ready = !!form.display_name.trim() && !(form.native_sandbox === "read-only" && native?.readOnlySupport === false);
@@ -29,10 +32,10 @@ export function NativeInstanceSettings({ name, inst, ctx, onClose }) {
     onClose();
   };
   return html`<${Dialog} title=${ctx.shortName(name,inst)} onClose=${onClose} wide=${true} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tn("cancel")}</button><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${stage}>${tn("modalDone")}</button>`}>
-    <div class="form native-instance-settings"><p class="note"><${CliProductMark} id=${inst.backend} size=${20} /> Windows · ${cliLabel(inst.backend)} — ${t("nativeInstance.fixed")}</p>
+    <div class="form native-instance-settings"><p class="note"><${CliProductMark} id=${inst.backend} size=${20} /> Windows · ${cliLabel(inst.backend)} — ${t("nativeInstance.fixed")}</p>${machineId ? html`<p class="note runtime-instance-machine">${tr("machine")}: ${machine?.name || inst.machine_name || machineId}</p>` : null}
       <label class="field"><span>${tn("displayName")}</span><input value=${form.display_name} maxLength=${64} onInput=${event => set("display_name")(event.target.value)} /></label>
       <label class="field"><span>${tn("description")}</span><input value=${form.description} maxLength=${512} onInput=${event => set("description")(event.target.value)} /></label>
-      <div class="field"><label for="native-instance-model">${tn("model")}</label><${ModelSelect} id="native-instance-model" value=${form.model} onChange=${set("model")} backend=${inst.backend} instance=${name} runtime="windows" inherit=${tr("model")} /></div>
+      <div class="field"><label for="native-instance-model">${tn("model")}</label><${ModelSelect} id="native-instance-model" value=${form.model} onChange=${set("model")} backend=${inst.backend} instance=${name} runtime="windows" machineId=${machineId} inherit=${tr("model")} /></div>
       <label class="field"><span>${tn("workingDir")}</span><input value=${inst.working_directory || ""} readOnly=${true} aria-readonly="true" /><small>${t("nativeInstance.workspace")}</small></label>
       <label class="field"><span>${tr("access")}</span><select value=${form.native_sandbox} onChange=${event => set("native_sandbox")(event.target.value)}><option value="read-only" disabled=${native?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select></label>
       <${NativeAgendToolsHint} cli=${native} sandbox=${form.native_sandbox} />

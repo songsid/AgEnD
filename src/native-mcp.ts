@@ -83,7 +83,7 @@ export class NativeMcpSessions {
   grant(input:NativeMcpGrant):NativeMcpLease {
     this.prune();
     const config=this.ctx.fleetConfig?.instances[input.instance];
-    if(process.env.AGEND_WINDOWS_CLI!=="1" || config?.runtime!=="windows" || !UUID.test(config.native_agent_id ?? "")
+    if((process.env.AGEND_WINDOWS_CLI!=="1" && process.env.AGEND_REMOTE_RUNTIME!=="1") || config?.runtime!=="windows" || !UUID.test(config.native_agent_id ?? "")
       || !["codex","claude-code"].includes(config.backend ?? "") || !UUID.test(input.requestId)
       || !["read-only","workspace-write"].includes(input.sandbox) || typeof input.stillCurrent!=="function") throw Error("Native MCP requires an active supported Windows instance");
     if(this.sessions.size>=16 || [...this.sessions.values()].some(session=>session.instance===input.instance)) throw Error("A native MCP session is already active or the session limit was reached");
@@ -107,7 +107,7 @@ export class NativeMcpSessions {
   private current(session:Session):boolean {
     const config=this.ctx.fleetConfig?.instances[session.instance];
     let current=false;try{current=session.stillCurrent();}catch{/* a revoked owner is unavailable */}
-    return !session.closed && Date.now()<session.expires && process.env.AGEND_WINDOWS_CLI==="1" && current
+    return !session.closed && Date.now()<session.expires && (process.env.AGEND_WINDOWS_CLI==="1" || process.env.AGEND_REMOTE_RUNTIME==="1") && current
       && config?.runtime==="windows" && config.native_agent_id===session.agentId && config.backend===session.backend;
   }
   private prune():void { for(const session of this.sessions.values())if(!this.current(session))this.closeToken(session.token); }

@@ -15,11 +15,11 @@
 export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
 // #2347: the sections in two groups (You: preferences, look; Fleet: the rest), as the page's (src/ui/shared/app-route.js).
-export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "windows-cli", "agent-defaults", "chat", "web-dashboard", "access", "advanced"] as const;
+export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "runtimes", "agent-defaults", "chat", "web-dashboard", "access", "advanced"] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 /** #2347: the names before the regrouping, still served (the page moves to the new address); where each one went. */
 export const LEGACY_SETTINGS: Readonly<Record<string, SettingsSection>> = Object.freeze({
-  device: "preferences", appearance: "look", general: "agent-defaults", bots: "chat", classic: "chat", web: "access",
+  device: "preferences", appearance: "look", general: "agent-defaults", bots: "chat", classic: "chat", web: "access", "windows-cli": "runtimes",
 });
 
 export type ShellRoute =
@@ -61,7 +61,7 @@ function decodeSegment(segment: string): string | null {
 export function shellRoute(method: string, path: string): ShellMatch {
   if (method !== "GET" && method !== "HEAD") return null;
   if (path === "/ui") return { kind: "shell", route: { panel: "chat", instance: null } };
-  if (path === "/ui/windows-cli") return { kind: "shell", route: { panel: "settings", section: "windows-cli" } };
+  if (path === "/ui/windows-cli") return { kind: "shell", route: { panel: "settings", section: "runtimes" } };
   const windowsAgent = /^\/ui\/windows-agents\/([a-f0-9-]{36})$/i.exec(path);
   if (windowsAgent) return { kind: "shell", route: { panel: "windows-agent", instance: windowsAgent[1] } };
   if (path === "/ui/fleet") return { kind: "shell", route: { panel: "fleet", tab: "tasks" } };

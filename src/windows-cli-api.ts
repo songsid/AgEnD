@@ -72,7 +72,7 @@ export function handleWindowsCliRequest(req: IncomingMessage, res: ServerRespons
         json(res,202,{accepted:true,agent:runtime.get(name)});
       }
       else if (agent?.[2] === "messages") json(res, 202, { task: store.send(agent[1], input, authorized) });
-      else if (agent?.[2] === "recover") json(res, 200, { agent: runtime ? runtime.recover(canonical(agent[1]),input.confirmedStopped) : store.recover(agent[1], input.confirmedStopped) });
+      else if (agent?.[2] === "recover") json(res, 200, { agent: runtime ? runtime.recoverAsync ? await runtime.recoverAsync(canonical(agent[1]),input.confirmedStopped) : runtime.recover(canonical(agent[1]),input.confirmedStopped) : store.recover(agent[1], input.confirmedStopped) });
       else json(res, 404, { error: "Unknown Windows agent operation" });
     })().catch(error => {
       const allowed = authorized();

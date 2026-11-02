@@ -368,6 +368,7 @@ export interface IncidentEventSource {
  *  plus internal-only fields forwarded by deploy_template (profile-derived). */
 export interface LifecycleCreateArgs {
   runtime?: "wsl" | "windows";
+  machineId?: string;
   sandbox?: "read-only" | "workspace-write";
   directory?: string;
   topic_name?: string;
@@ -2326,7 +2327,7 @@ export class InstanceLifecycle {
     const check = (): void => execution?.assert(); check();
     if (args.runtime !== undefined && args.runtime !== "wsl" && args.runtime !== "windows") { respond(null,"Unknown instance runtime"); return; }
     if (args.runtime === "windows") {
-      const accepted = new Set(["runtime","sandbox","directory","topic_name","description","model","backend","systemPrompt","tags"]);
+      const accepted = new Set(["runtime","machineId","sandbox","directory","topic_name","description","model","backend","systemPrompt","tags"]);
       const unsupported = Object.keys(args).find(key => !accepted.has(key) && args[key] !== undefined);
       if (unsupported) { respond(null,`Windows runtime does not support create_instance field: ${unsupported}`); return; }
       if (args.tags !== undefined && (!Array.isArray(args.tags) || args.tags.length > 32 || args.tags.some(tag => typeof tag !== "string" || !tag || tag.length > 64))) { respond(null,"Windows tags must contain at most 32 names of 1–64 characters"); return; }
@@ -2337,13 +2338,14 @@ export class InstanceLifecycle {
         if (!authorized()) throw new Error("Fleet is stopping; Windows creation is unavailable");
         const native = this.ctx.nativeInstanceRuntime?.();
         if (!native) throw new Error("Windows runtime is unavailable");
-        const result = await native.create({name,cli:args.backend || "codex",cwd:args.directory,model:args.model,description:args.description || "",instructions:args.systemPrompt || "",sandbox:args.sandbox || "read-only",...(args.tags ? {tags:args.tags} : {})},authorized,execution);
+        const result = await native.create({name,...(args.machineId ? {machineId:args.machineId} : {}),cli:args.backend || "codex",cwd:args.directory,model:args.model,description:args.description || "",instructions:args.systemPrompt || "",sandbox:args.sandbox || "read-only",...(args.tags ? {tags:args.tags} : {})},authorized,execution);
         // The native adapter owns its final settings mutation and completion under the same execution lease.
         respond(result);
       } catch(error) { respond(null,`Failed to create Windows instance: ${error instanceof Error ? error.message : String(error)}`); }
       return;
     }
     if (args.sandbox !== undefined) { respond(null,"sandbox is supported only by the Windows runtime"); return; }
+    if (args.machineId !== undefined) { respond(null,"machineId currently requires a Windows runtime"); return; }
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
     const topicName = args.topic_name || (directory ? basename(directory) : undefined);

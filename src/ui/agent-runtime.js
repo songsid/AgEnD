@@ -22,6 +22,10 @@ register("runtime", {
   en: { loadingClis:"Loading available CLIs…", directoryHint:"Leave empty for a separate workspace created by AgEnD", nameHint:"For example: General assistant" },
 });
 register("runtime", {
+  en: { computers:"Connected computers", online:"Online", offline:"Offline", pending:"Awaiting approval", revoked:"Revoked", machineLoading:"Loading connected computers…", machineFailed:"Could not update connected computers. Local choices are still available.", machineRetry:"Refresh computers", noRemoteCli:"This computer has not reported a task-capable CLI.", remoteDirectory:"Working directory on {0} (optional)", remoteDraft:"AI-assisted setup is currently available for the local runtime. You can enter this remote agent's settings below.", machine:"Computer", inventoryAt:"CLI inventory updated: {0}", remotePolicy:"Files and CLI permissions belong to the selected computer. Sign-ins remain on that computer.", manage:"Connect or manage computers in Settings → Runtime", noAvailableMachine:"Connect and approve a computer in Settings → Runtime to use its CLIs." },
+  "zh-TW": { computers:"已連接的電腦", online:"在線", offline:"離線", pending:"等待核准", revoked:"已撤銷", machineLoading:"正在載入已連接的電腦…", machineFailed:"無法更新已連接的電腦，仍可使用本機選項。", machineRetry:"更新機器清單", noRemoteCli:"這台電腦尚未回報可派工的 CLI。", remoteDirectory:"{0} 上的工作目錄（選填）", remoteDraft:"AI 協助設定目前適用於本機 Runtime，你可以直接填寫下方遠端 Agent 設定。", machine:"電腦", inventoryAt:"CLI 清單更新：{0}", remotePolicy:"檔案與 CLI 權限屬於所選電腦，登入也保留在該電腦上。", manage:"前往設定 → Runtime 連接或管理電腦", noAvailableMachine:"在設定 → Runtime 連接並核准電腦後，即可使用它的 CLI。" },
+});
+register("runtime", {
   "zh-TW": {
     agendQueries:"AgEnD 工具：唯讀模式可查詢 Agent、任務與派送狀態。",
     agendActions:"AgEnD 工具：可用的查詢、訊息、派工與任務操作，依 Agent 的工具權限決定。",
@@ -39,8 +43,10 @@ export function NativeAgendToolsHint({ cli, sandbox }) {
   if (supported !== true && supported !== false) return null;
   return html`<p class="note native-agend-tools">${tr(!supported ? "agendUnavailable" : sandbox === "read-only" ? "agendQueries" : "agendActions")}</p>`;
 }
-export function RuntimePicker({ value, onChange, windowsEnabled, disabled, legend = tr("choose") }) {
-  return html`<fieldset class="agent-runtime-picker" disabled=${disabled}><legend>${legend}</legend><div>${["wsl","windows"].map(runtime => html`<label key=${runtime} class=${`agent-runtime-choice${value === runtime ? " selected" : ""}`}><input type="radio" name="agent-runtime" value=${runtime} checked=${value === runtime} disabled=${runtime === "windows" && !windowsEnabled} onChange=${() => onChange(runtime)} /><${Icon} name=${runtime === "windows" ? "view" : "code"} size=${22} /><span><strong>${tr(runtime)}</strong><small>${tr(runtime === "windows" && !windowsEnabled ? "disabled" : `${runtime}Hint`)}</small></span></label>`)}</div></fieldset>`;
+export function RuntimePicker({ value, onChange, windowsEnabled, disabled, machineId = "", machines = [], onMachineChange, legend = tr("choose") }) {
+  return html`<fieldset class="agent-runtime-picker" disabled=${disabled}><legend>${legend}</legend><div>${["wsl","windows"].map(runtime => html`<label key=${runtime} class=${`agent-runtime-choice${!machineId && value === runtime ? " selected" : ""}`}><input type="radio" name="agent-runtime" value=${runtime} checked=${!machineId && value === runtime} disabled=${runtime === "windows" && !windowsEnabled} onChange=${() => onChange(runtime)} /><${Icon} name=${runtime === "windows" ? "view" : "code"} size=${22} /><span><strong>${tr(runtime)}</strong><small>${tr(runtime === "windows" && !windowsEnabled ? "disabled" : `${runtime}Hint`)}</small></span></label>`)}</div>
+    ${machines.length ? html`<section class="runtime-remote-targets" aria-label=${tr("computers")}><h4>${tr("computers")}</h4>${machines.filter(machine => machine.status !== "revoked").map(machine => html`<label key=${machine.id} class=${`agent-runtime-choice${machineId === machine.id ? " selected" : ""}`}><input type="radio" name="agent-runtime" value=${`machine:${machine.id}`} checked=${machineId === machine.id} disabled=${machine.status !== "online"} onChange=${() => onMachineChange?.(machine.id)} /><${Icon} name="view" size=${22} /><span><strong>${machine.name}</strong><small>${machine.platform || "Windows"} · ${tr(["online","offline","pending"].includes(machine.status) ? machine.status : "offline")}</small></span></label>`)}</section>` : null}
+  </fieldset>`;
 }
 export function parseAgentDraft(text, runtime) {
   const fenced = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].at(-1)?.[1];

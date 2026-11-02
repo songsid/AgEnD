@@ -6,11 +6,11 @@ export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage
 // #2347: two groups — "You" changes only you or this browser; "Fleet" changes AgEnD for everyone.
 export const SETTINGS_GROUPS = Object.freeze([
   Object.freeze({ id: "you", sections: Object.freeze(["preferences", "look"]) }),
-  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "windows-cli", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]) }),
+  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "runtimes", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]) }),
 ]);
 export const SETTINGS_SECTIONS = Object.freeze(SETTINGS_GROUPS.flatMap((g) => g.sections));
 /** #2347: the sections' names before the regrouping (links and bookmarks keep working) and where each one went. */
-export const LEGACY_SETTINGS = Object.freeze({ device: "preferences", appearance: "look", general: "agent-defaults", bots: "chat", classic: "chat#classicbot", web: "access" });
+export const LEGACY_SETTINGS = Object.freeze({ device: "preferences", appearance: "look", general: "agent-defaults", bots: "chat", classic: "chat#classicbot", web: "access", "windows-cli":"runtimes" });
 const legacySection = (name) => (Object.prototype.hasOwnProperty.call(LEGACY_SETTINGS, name) ? LEGACY_SETTINGS[name] : null);
 const MAX_INSTANCE_NAME = 128;
 const PATH_SEPARATOR_OR_CONTROL = /[/\\\u0000-\u001f\u007f]/;
@@ -28,7 +28,7 @@ export function isSafeInstanceName(name) {
  */
 export function parseRoute(pathname) {
   if (pathname === "/ui") return { panel: "chat", instance: null };
-  if (pathname === "/ui/windows-cli") return { panel: "settings", section: "windows-cli" };
+  if (pathname === "/ui/windows-cli") return { panel: "settings", section: "runtimes" };
   const windowsAgent = /^\/ui\/windows-agents\/([a-f0-9-]{36})$/i.exec(pathname);
   if (windowsAgent) return { panel: "windows-agent", instance: windowsAgent[1] };
   if (pathname === "/ui/fleet") return { panel: "fleet", tab: "tasks" };

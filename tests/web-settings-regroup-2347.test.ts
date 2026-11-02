@@ -20,6 +20,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
   const body = (() => {
     if (path === "/ui/windows-cli/tasks") return { tasks: [] };
     if (path === "/ui/windows-cli/probe") return { clis: [], home: "C:\\Test" };
+    if (path === "/ui/runtimes") return { enabled:false, machines:[] };
     if (method !== "GET") return { ok: true };
     if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
     if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {}, project_roots: ["/srv/projects"] };
@@ -54,16 +55,16 @@ const open = async (section: string) => {
 const has = (sel: string) => !!p.root.querySelector(sel);
 
 describe("#2347: the sections in two groups, and the old addresses", () => {
-  it("offers enabled Windows CLI under Settings, and keeps its old address in that section", async () => {
+  it("offers Runtime under Settings, and keeps the old Windows CLI address as an alias", async () => {
     const { appStore } = await import("/assets/app-store.js");
     appStore.set({ windowsCli: true });
     try {
       await open("windows-cli");
-      expect(p.root.querySelector('.s-nav a[href="/settings/windows-cli"]')?.textContent.trim()).toBe("Windows CLI");
+      expect(p.root.querySelector('.s-nav a[href="/settings/runtimes"]')?.textContent.trim()).toBe("Runtime");
       expect(p.root.querySelector("#windows-cwd")?.value).toBe("C:\\Test");
       expect(p.root.querySelectorAll(".panel-head").length).toBe(1);
-      expect(route.parseRoute("/ui/windows-cli")).toEqual({ panel: "settings", section: "windows-cli" });
-      expect(route.routePath(route.parseRoute("/ui/windows-cli"))).toBe("/settings/windows-cli");
+      expect(route.parseRoute("/ui/windows-cli")).toEqual({ panel: "settings", section: "runtimes" });
+      expect(route.routePath(route.parseRoute("/ui/windows-cli"))).toBe("/settings/runtimes");
     } finally { appStore.set({ windowsCli: false }); }
   });
   it("You: Preferences, Look; Fleet: Agents … Advanced — the nav shows both groups with their names, in that order", async () => {
@@ -71,7 +72,7 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
     const groups = p.root.querySelectorAll(".s-nav .s-nav-group").map((g: any) => [g.querySelector(".s-nav-head").textContent,
       g.querySelectorAll(".seg-item").map((a: any) => a.textContent.trim())]);
     expect(groups).toEqual([["You", ["Preferences", "Look"]],
-      ["Fleet", ["Agents", "Agent defaults", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]]]);
+      ["Fleet", ["Agents", "Runtime", "Agent defaults", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]]]);
     expect(p.root.querySelector(".s-nav .seg-item[aria-current=page]").textContent.trim()).toBe("Agents");
   });
   it("each old address names its new section, on the page and on the server; ClassicBot's carries its place", () => {
@@ -184,7 +185,7 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     const back = p.root.querySelector(".p-settings .panel-body .s-back");
     expect([atList, panel().getAttribute("class"), panel().getAttribute("data-view"), back?.getAttribute("href"), back?.textContent.trim()]).toEqual([
       // #1629: the root's class is the effects producer's, exactly — which view is shown is data-view.
-      ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/agent-defaults", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/advanced"]],
+      ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/runtimes", "/settings/agent-defaults", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/advanced"]],
       "panel p-settings", "section", "/settings", "SettingsAgent defaults"]);
     nav.navigate("/settings");
   });

@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import { windowsAgentsFor, type WindowsAgent, type WindowsAgents } from "./windows-agents.js";
-import { windowsBridgeFor, windowsCliEnabled, type WindowsCliBridge, type WindowsCliTask } from "./windows-cli.js";
+import { windowsBridgeFor, windowsCliEnabled, type WindowsCliExecutor, type WindowsCliTask } from "./windows-cli.js";
 import { isWindowsInstance, nativeAgentId, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, syncWindowsProfile } from "./native-instance-registry.js";
 import { validWindowsAgentId } from "./windows-cli-worker.js";
 import type { NativeHistoryMessage, WebChatHistory } from "./web-chat-history.js";
@@ -20,6 +20,8 @@ export interface FleetWindowsRuntimeHost {
   openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean): NativeMcpLease | null;
   warn?(message: string,error: unknown): void;
   removed?(name: string,config: InstanceConfig): void;
+  machineAvailable?(machineId: string): boolean;
+  validateMachine?(machineId: string, cli: string, sandbox?: unknown): void;
 }
 export interface NativeRuntimeDeliveryOptions {
   stillCurrent?: () => boolean;
@@ -32,14 +34,14 @@ export type NativeExecutionResult = WindowsCliTask & {reportedCorrelationIds?: r
 export class FleetWindowsRuntime {
   private readonly mcpLeases = new Map<string,{requestId:string;lease:NativeMcpLease}>();
   private readonly store: WindowsAgents;
-  private readonly bridge: WindowsCliBridge;
-  constructor(private readonly host: FleetWindowsRuntimeHost, deps: {store?:WindowsAgents;bridge?:WindowsCliBridge} = {}) {
-    this.store = deps.store ?? windowsAgentsFor(host.owner);
+  private readonly bridge: WindowsCliExecutor;
+  constructor(private readonly host: FleetWindowsRuntimeHost, deps: {store?:WindowsAgents;bridge?:WindowsCliExecutor} = {}) {
     this.bridge = deps.bridge ?? windowsBridgeFor(host.owner);
+    this.store = deps.store ?? windowsAgentsFor(host.owner,this.bridge);
   }
   private config(name: string): InstanceConfig | null { return this.host.fleet()?.instances[name] ?? null; }
   has(name: string): boolean { return isWindowsInstance(this.config(name)); }
-  busy(): boolean { return this.bridge.hasActiveTask(); }
+  busy(name?: string): boolean { return this.bridge.hasActiveTask(name ? this.config(name)?.machine_id : undefined); }
   private id(name: string): string {
     const id = nativeAgentId(this.config(name));
     if (!id) throw new Error("Instance does not name a valid Windows runtime agent");
@@ -65,6 +67,7 @@ export class FleetWindowsRuntime {
     const config = this.config(name);
     if (!isWindowsInstance(config)) return null;
     const agent = this.store.get(this.id(name));
+    if (config.machine_id !== agent.machineId) throw new Error("The instance machine does not match its saved conversation");
     return {...agent,name:config.display_name ?? agent.name,description:config.description ?? "",instructions:config.systemPrompt ?? "",cwd:config.working_directory,model:config.model || undefined,sandbox:config.native_sandbox ?? agent.sandbox};
   }
   status(name: string): "running"|"paused"|"stopped"|"crashed" {
@@ -82,13 +85,18 @@ export class FleetWindowsRuntime {
     let agent:ReturnType<FleetWindowsRuntime["get"]>;
     try { agent=this.get(name); } catch { return false; }
     return !!agent && windowsCliEnabled() && !this.host.stopping() && !agent.blocked && !agent.paused
-      && !this.bridge.hasActiveTask();
+      && (!agent.machineId || this.host.machineAvailable?.(agent.machineId) === true)
+      && !this.bridge.hasActiveTask(agent.machineId);
   }
   async create(input: Record<string,unknown>, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">): Promise<{name:string;runtime:"windows";agent:WindowsAgent}> {
     this.enabled();
     const fleet = this.host.fleet();
     if (!fleet) throw new Error("Fleet configuration is unavailable");
     const {tags,...profile} = input;
+    if (profile.machineId !== undefined) {
+      if (typeof profile.machineId !== "string" || !this.host.validateMachine) throw new Error("Remote runtime is not enabled");
+      this.host.validateMachine(profile.machineId,String(profile.cli ?? "codex"),profile.sandbox);
+    }
     const agent = await this.store.create(profile,authorized), name = nativeInstanceName(agent.id), before=fleet.instances[name];
     try {
       const persist=()=>{
@@ -155,6 +163,15 @@ export class FleetWindowsRuntime {
   recover(name: string, confirmedStopped: unknown): WindowsAgent & {blocked:boolean} {
     const result=this.store.recover(this.id(name),confirmedStopped);this.changed(name);return result;
   }
+  async recoverAsync(name:string,confirmedStopped:unknown):Promise<WindowsAgent & {blocked:boolean}> {
+    const agent=this.get(name);
+    if(!agent?.machineId)return this.recover(name,confirmedStopped);
+    if(confirmedStopped!==true || !agent.activeId || !agent.blocked)throw new Error("Confirm the remote execution stopped before recovery");
+    const bridge=this.bridge as WindowsCliExecutor & {recoverRemote?(machineId:string,id:string):Promise<WindowsCliTask>};
+    if(!bridge.recoverRemote)throw new Error("Remote recovery is unavailable");
+    await bridge.recoverRemote(agent.machineId,agent.activeId);
+    const result=this.get(name)!;this.changed(name);return result;
+  }
   /** Idempotently bring existing native conversations into shared chat history and search. */
   importHistory(): void {
     if (!this.host.history) return;
@@ -177,6 +194,7 @@ export class FleetWindowsRuntime {
     const config=this.config(name);
     if (!config || !this.has(name)) throw new Error("Windows instance not found");
     const agent=syncWindowsProfile(config,this.store);
+    if(agent.machineId && this.host.machineAvailable?.(agent.machineId)!==true)throw new Error("This runtime machine is offline. Reconnect it before sending a message.");
     const raw = typeof payload.content === "string" ? payload.content : typeof payload.text === "string" ? payload.text
       : payload.payload && typeof payload.payload === "object" ? (payload.payload as {message?:unknown}).message : undefined;
     if (typeof raw !== "string" || !raw.trim()) throw new Error("Windows delivery needs a text message");
@@ -189,7 +207,8 @@ export class FleetWindowsRuntime {
     if (!existing && nativeProviderMcpSupported(agent.cli) && this.host.openMcp) {
       this.closeMcp(name);
       lease=this.host.openMcp(name,requestId,agent.sandbox,()=>{
-        if (this.host.stopping() || !windowsCliEnabled() || options.stillCurrent?.() === false) return false;
+        if (this.host.stopping() || !windowsCliEnabled() || options.stillCurrent?.() === false
+          || agent.machineId && this.host.machineAvailable?.(agent.machineId) !== true) return false;
         try { const current=this.get(name);return !!current && current.activeId===requestId && !current.paused && !current.blocked; }
         catch { return false; }
       });

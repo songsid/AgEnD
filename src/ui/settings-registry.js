@@ -32,9 +32,7 @@ const ROWS = [
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],
   ["agents.provider-keys", "agents", ".s-provider-keys", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
-  ["windows.cli", "windows-cli", ".windows-cli-cards", null, null, ["windows", "native", "codex", "claude", "login", "executable"], ["Windows", "本機", "登入", "執行檔"], L("Windows CLI", "Windows CLI")],
-  ["windows.directory", "windows-cli", "#windows-cwd", null, null, ["windows", "folder", "project", "directory"], ["Windows", "資料夾", "專案", "目錄"], L("Windows working directory", "Windows 工作目錄")],
-  ["windows.task", "windows-cli", "#windows-prompt", null, null, ["windows", "task", "prompt"], ["Windows", "任務", "派工"], L("Windows task", "Windows 任務內容")],
+  ["runtimes.machines", "runtimes", ".runtime-settings", "settings.sec_runtimes", null, ["runtime", "computer", "machine", "pair", "connect", "windows", "linux", "CLI"], ["執行環境", "電腦", "機器", "配對", "連接", "Windows", "CLI"]],
   ["defaults.tips", "agent-defaults", "#g-tips", "settings.dailyTips", "defaults.tips", ["daily tips", "notices"], ["每日提示"]],
   ["web.notify-login", "access", "#webNotifyLogin", "settings.webNotifyLogin", "web.notify_login", ["sign in", "login", "notices"], ["登入通知"]],
   // Fleet · Agent defaults

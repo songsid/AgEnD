@@ -39,7 +39,7 @@ import {
 } from "./settings-dialogs.js";
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
-import { WindowsCliPanel } from "./panel-windows-cli.js";
+import { RuntimesPanel } from "./panel-runtimes.js";
 import { NativeInstanceSettings } from "./native-instance-settings.js";
 import { FirstRunCard, takeWizardRequest } from "./first-run.js";
 import { takeAgentRequest } from "./settings-request.js";
@@ -62,7 +62,7 @@ const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
-const ICONS = { preferences: "user", look: "palette", agents: "bot", "windows-cli": "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
+const ICONS = { preferences: "user", look: "palette", agents: "bot", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
@@ -154,7 +154,7 @@ export function SettingsPanel({ route, navKey }) {
     drafts.current = saved ? new Map([...drafts.current].filter(([k, v]) => !saved.has(k) || !sameValue(v, saved.get(k)))) : new Map();
     setDraftEpoch((n) => n + 1);
   };
-  const { settingsOp: op, pendingChanges, windowsCli } = useStore(appStore);
+  const { settingsOp: op, pendingChanges } = useStore(appStore);
   const gen = useRef(0);
 
   useEffect(() => { setTitle(`${tn("title")} · ${tn(`sec_${section}`)}`); }, [section, navKey]);
@@ -381,7 +381,7 @@ export function SettingsPanel({ route, navKey }) {
   // defaults, Web) is one form with one draft, shown a part at a time.
   const sectionBody = section === "preferences" ? html`<${DeviceSection} key=${you.key} /><${AppearanceSection} ...${you} part="device" />`
     : section === "look" ? html`<${AppearanceSection} ...${you} part="look" />`
-    : section === "windows-cli" ? html`<${WindowsCliPanel} navKey=${navKey} embedded=${true} />`
+    : section === "runtimes" ? html`<${RuntimesPanel} navKey=${navKey} />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`
@@ -468,7 +468,7 @@ export function SettingsPanel({ route, navKey }) {
     </${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
-      ${g.sections.filter(k => k !== "windows-cli" || windowsCli).map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
+      ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
     <div data-trust="panel-content" class="panel-body"><div class="col">
       <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>

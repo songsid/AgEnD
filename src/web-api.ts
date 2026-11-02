@@ -76,6 +76,8 @@ import { createNativeInstance, handleNativeInstanceRequest } from "./native-inst
 import { isWindowsInstance } from "./native-instance-registry.js";
 import { handleNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
+import { handleRuntimeRequest } from "./runtime-api.js";
+import type { RuntimeCoordinator } from "./runtime-coordinator.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -349,6 +351,7 @@ export const SSE_HEARTBEAT_MS = 10_000;
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
   nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
+  runtimeCoordinator?(): RuntimeCoordinator;
   readonly webToken: string | null;
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
@@ -368,7 +371,7 @@ export interface WebApiContext {
     health_port?: number;
     web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
-    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; runtime?: "wsl" | "windows"; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
+    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; runtime?: "wsl" | "windows"; machine_id?: string; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
@@ -1641,6 +1644,7 @@ export function handleWebRequest(
 
   if (handleNativeInstanceRequest(req, res, url, ctx)) return true;
   if (handleWindowsCliRequest(req, res, url, ctx)) return true;
+  if (handleRuntimeRequest(req, res, url, ctx)) return true;
 
   // #1408: the app shell, for exactly the paths the classifier names (src/web-shell-routes.ts). One page for every
   // route; the client router mounts the panel. A malformed instance name is a 400, an unknown one is the shell (the
@@ -1690,6 +1694,8 @@ export function handleWebRequest(
     const instance = url.searchParams.get("instance");
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(backend) || (instance !== null && (instance.length < 1 || instance.length > 256))) { json(res, 400, { error: "backend (and optional instance) required" }); return true; }
     const runtime = url.searchParams.get("runtime"), refresh = url.searchParams.get("refresh");
+    const machineId = url.searchParams.get("machineId");
+    if (machineId !== null && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(machineId) || runtime === "wsl")) { json(res,400,{error:"Invalid model runtime machine"});return true; }
     if ((runtime !== null && runtime !== "wsl" && runtime !== "windows") || (refresh !== null && refresh !== "1")) { json(res, 400, { error: "Invalid model catalog options" }); return true; }
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
     const models = ctx.modelCatalogFor?.(backend, instance) ?? [];

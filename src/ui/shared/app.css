@@ -2800,6 +2800,44 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .windows-agent-composer > div, .windows-agent-composer > p { max-width: 900px; margin-left: auto; margin-right: auto; }
 .windows-agent-input { padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 .windows-agent-input > textarea { display: block; width: 100%; border: 0; resize: vertical; padding: 4px; background: transparent; color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); min-height: 60px; max-height: 180px; }
+.runtime-settings { max-width: 1080px; }
+.runtime-heading, .runtime-heading > div:last-child, .runtime-machine > header, .runtime-machine-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.runtime-heading { justify-content: space-between; margin-bottom: 20px; }
+.runtime-heading h2, .runtime-machine h3 { margin: 0; }
+.runtime-local, .runtime-machine, .runtime-pairing { padding: 18px; margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.runtime-local h3 { display: flex; align-items: center; gap: 8px; }
+.runtime-machine > header > div { flex: 1; min-width: 140px; }
+.runtime-machine > header p, .runtime-machine .note { margin: 7px 0; font-size: var(--fs-sm); color: var(--text-3); }
+.runtime-machine-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; background: var(--bg); }
+.runtime-status { padding: 4px 10px; border: 1px solid var(--border); border-radius: 20px; font-size: var(--fs-sm); }
+.runtime-status.is-online { color: var(--ok); }
+.runtime-status.is-pending { color: var(--warn); }
+.runtime-status.is-offline, .runtime-status.is-revoked { color: var(--text-3); }
+.runtime-machine-id { display: block; margin: 8px 0; overflow-wrap: anywhere; }
+.runtime-cli-list { padding: 0; margin: 14px 0; list-style: none; }
+.runtime-cli-list li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.runtime-cli-list li > span:nth-child(2) { flex: 1; }
+.runtime-cli-list small { display: block; color: var(--text-3); font-size: var(--fs-sm); }
+.runtime-machine-actions { margin-top: 14px; }
+.runtime-pairing label, .runtime-rename label { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; }
+.runtime-pairing input, .runtime-rename input { width: 100%; min-width: 0; font-family: var(--font-ui); font-size: var(--fs-md); }
+.runtime-pair-code { letter-spacing: .14em; }
+.runtime-error { border: 1px solid var(--danger); padding: 12px; border-radius: 10px; overflow-wrap: anywhere; }
+.runtime-local-diagnostics { margin-top: 22px; }
+.runtime-local-diagnostics > summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
+.runtime-remote-targets { display: grid; gap: 8px; margin-top: 16px; }
+.runtime-remote-targets h4 { margin: 0 0 4px; font-size: var(--fs-md); }
+.runtime-remote-targets .agent-runtime-choice { min-width: 0; width: 100%; }
+.runtime-manage-link { display: inline-block; margin-top: 12px; }
+.inst-machine { display: flex; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-3); }
+.inst-machine.offline, .runtime-machine-offline { color: var(--warn); }
+.runtime-machine-tag { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) {
+  .runtime-heading > div:last-child { width: 100%; }
+  .runtime-machine, .runtime-pairing, .runtime-local { padding: 14px; }
+  .runtime-cli-list li { flex-wrap: wrap; }
+  .runtime-cli-list li > .note { width: 100%; }
+}
 .windows-agent-input > div { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
 .windows-agent-composer > .note { margin-top: 8px; font-size: 10px; }
 .p-windows-agent .error, .agent-draft-assistant .error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }

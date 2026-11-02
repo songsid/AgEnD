@@ -70,7 +70,7 @@ const saveButton = () => (p.root.querySelector("[role=region]")?.querySelectorAl
 describe("Settings → Web, as rendered", () => {
   it("#2347: its parts are where each belongs — Access & security, Chat & connections (web echo), Web dashboard; none in Agent defaults", async () => {
     const { SETTINGS_SECTIONS } = await import("/assets/app-route.js");
-    expect(SETTINGS_SECTIONS).toEqual(["preferences", "look", "agents", "windows-cli", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]);
+    expect(SETTINGS_SECTIONS).toEqual(["preferences", "look", "agents", "runtimes", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]);
     const ids = ["webEchoToChannel", "publicWebLink", "webSessionAbsolute", "webTerminalEnabled", "webLogTab", "webUsagePublic"];
     const where: Record<string, boolean[]> = {};
     for (const section of ["access", "chat", "web-dashboard", "agent-defaults"]) { const w = await open({}, section); where[section] = ids.map((id) => !!w.$(id)); }

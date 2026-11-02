@@ -218,7 +218,9 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge } from "./windows-cli.js";
-import { FleetWindowsRuntime } from "./fleet-windows-runtime.js";
+import { RuntimeCoordinator } from "./runtime-coordinator.js";
+import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
+import { FleetWindowsRuntime, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { isWindowsInstance } from "./native-instance-registry.js";
@@ -1167,6 +1169,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fleetConfig: FleetConfig | null = null;
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
+  private runtimeHub: RuntimeCoordinator | null = null;
+  private runtimeExecutor: RuntimeWindowsBridge | null = null;
+  private runtimeStatusScheduled = false;
+  private readonly reconciledRemoteResults = new Set<string>();
+  /** Machine credentials are separate from dashboard sessions and per-turn agent capabilities. */
+  runtimeCoordinator(): RuntimeCoordinator {
+    if (process.env.AGEND_REMOTE_RUNTIME !== "1") throw new Error("Remote runtimes are not enabled");
+    return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
+      handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
+      changed:event=>{
+        if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {
+          for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId)this.nativeMcpStore?.closeInstance(name);
+        }
+        if(this.runtimeStatusScheduled || this.shuttingDown)return;
+        this.runtimeStatusScheduled=true;
+        queueMicrotask(()=>{
+          this.runtimeStatusScheduled=false;if(this.shuttingDown)return;
+          try {
+            this.fleetWindowsRuntime?.importHistory();
+            for(const snapshot of this.runtimeHub?.tasks() ?? [])this.reconcileRemoteDelivery(snapshot.machineId,snapshot.task);
+            this.emitSseEvent("status",this.getUiStatus());this.scheduleDeliveryOutboxPump();
+          }
+          catch(error){this.logger.warn({err:error},"Runtime status reconciliation failed");}
+        });
+      },
+    });
+  }
+  private runtimeWindowsExecutor(): RuntimeWindowsBridge {
+    return this.runtimeExecutor ??= new RuntimeWindowsBridge(this,()=>process.env.AGEND_REMOTE_RUNTIME==="1" ? this.runtimeCoordinator() : null);
+  }
   /** Per-turn capabilities for native MCP, separate from browser and Linux-agent credentials. */
   nativeMcpSessions(): NativeMcpSessions {
     return this.nativeMcpStore ??= new NativeMcpSessions(this as unknown as AgentEndpointContext);
@@ -1179,11 +1211,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
+      machineAvailable:id=>process.env.AGEND_REMOTE_RUNTIME==="1" && this.runtimeCoordinator().machine(id)?.status==="online",
+      validateMachine:(id,cli,sandbox)=>{
+        const machine=this.runtimeCoordinator().machine(id);
+        const provider=machine?.inventory?.clis.find(row=>row.id===cli && row.runnable && row.supports.resume);
+        if(!machine || machine.status!=="online" || machine.platform!=="win32" || !provider)throw new Error("Choose an online runtime and an available CLI");
+        if(sandbox==="read-only" && !provider.readOnlySupport)throw new Error("This runtime CLI cannot enforce read-only execution");
+      },
       emit:(event,data)=>{
         this.emitSseEvent(event,event === "status" ? this.getUiStatus() : data);
         if (event === "activity") this.scheduleDeliveryOutboxPump();
       },
-    });
+    },{bridge:this.runtimeWindowsExecutor()});
   }
   /** An unavailable opt-in runtime must not prevent the Linux fleet from starting or restoring its own history. */
   private initializeNativeInstances(history = false): void {
@@ -1195,9 +1234,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** Native CLIs are headless: the manager owns the durable delivery generation instead of a tmux daemon. */
   private deliveryBootId(name: string): string | null {
-    return isWindowsInstance(this.fleetConfig?.instances[name])
-      ? this.nativeInstanceRuntime().available(name) ? this.managerBootId : null
-      : this.daemons.get(name)?.bootId ?? null;
+    const config=this.fleetConfig?.instances[name];
+    if(isWindowsInstance(config)){
+      if(!this.nativeInstanceRuntime().available(name))return null;
+      const machine=config.machine_id ? this.runtimeCoordinator().machine(config.machine_id) : null;
+      return machine ? `runtime:${machine.id}:${machine.bootId ?? machine.generation}` : this.managerBootId;
+    }
+    return this.daemons.get(name)?.bootId ?? null;
   }
   private rawFleetConfig: RawFleetConfig = {};
   private rawFleetDocument: ReturnType<typeof parseDocument> | null = null;
@@ -3179,6 +3222,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       else outbox.retryBeforeBegin(deliveryId,targetDaemonBootId,attemptNo,reason,5000);
       this.logger.warn({target,deliveryId,err:reason},"Windows durable delivery did not complete");
     }
+  }
+
+  /** A runtime's persisted completion can outlive this manager. Resolve its original delivery fence, never send
+   * the prompt again, and reconstruct a missing peer report using the same durable operation ID. */
+  private reconcileRemoteDelivery(machineId:string,task:NativeExecutionResult):void {
+    const outbox=this.deliveryOutbox;
+    if(!outbox?.isOpen || !task.finishedAt || task.outcomeConfirmed!==true || !["completed","failed","cancelled"].includes(task.status))return;
+    const key=`${task.id}:${task.finishedAt}:${task.status}`;
+    if(this.reconciledRemoteResults.has(key))return;
+    const row=outbox.get(task.id);
+    if(!row || !isWindowsInstance(this.fleetConfig?.instances[row.targetInstance]) || this.fleetConfig?.instances[row.targetInstance]?.machine_id!==machineId
+      || !row.targetDaemonBootId || this.activeDurableTargets.has(row.targetInstance))return;
+    if(row.state==="submission_started" || row.state==="reconciliation_pending") {
+      if(!outbox.complete(row.deliveryId,row.targetDaemonBootId,row.attemptNo,task.status==="completed"?"delivered":"failed",task.error || "Runtime completion recovered after reconnect"))return;
+    } else if(row.state==="uncertain" && task.status==="completed") {
+      if(outbox.markConsumed(row.deliveryId,row.targetDaemonBootId,row.attemptNo,"turn","Paired runtime journal confirmed this exact execution completed")==="ignored")return;
+    } else if(row.state!=="delivered" && row.state!=="failed")return;
+    const meta=row.payload.meta && typeof row.payload.meta==="object" ? row.payload.meta as Record<string,unknown> : {};
+    if(meta.requires_reply!=="true" || !row.correlationId || !this.fleetConfig?.instances[row.sourceInstance]){this.reconciledRemoteResults.add(key);return;}
+    const reports=outbox.queryStatusForInstance(row.targetInstance,{correlationId:row.correlationId,limit:100}).items;
+    if(reports.some(report=>report.source_instance===row.targetInstance && report.target_instance===row.sourceInstance
+      && report.kind==="report" && !["failed","cancelled"].includes(report.state))){this.reconciledRemoteResults.add(key);return;}
+    const text=(task.status==="completed"?task.output:`Windows task ${task.status}: ${task.error || task.output}`).slice(0,8000);
+    outbox.admit({sourceKey:`native-result:${row.deliveryId}`,operationId:`native-result:${row.deliveryId}`,sourceInstance:row.targetInstance,sourceDaemonBootId:this.managerBootId,
+      targetInstance:row.sourceInstance,kind:"fleet_inbound",correlationId:row.correlationId,
+      payload:{type:"fleet_inbound",content:text || "Windows task completed without text output",meta:{from_instance:row.targetInstance,correlation_id:row.correlationId,requires_reply:"false",source:"native_runtime"}}});
+    this.reconciledRemoteResults.add(key);
   }
 
   private async waitForDurableLaneRelease(claimed: ClaimedOutboxDelivery): Promise<void> {
@@ -21505,6 +21575,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   stopAll(): Promise<void> {
     this.nativeMcpStore?.closeAll();
+    this.runtimeExecutor?.close();this.runtimeExecutor=null;
+    this.runtimeHub?.close();this.runtimeHub=null;
     closeWindowsBridge(this);
     this.stopAllInFlight ??= this.doStopAll().finally(() => {
       // #1956: after the stop's own tmux work; anything later goes direct. A later startAll starts it again.
@@ -23879,6 +23951,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
+      if(process.env.AGEND_REMOTE_RUNTIME==="1" && !gatewayRequestContext(req)
+        && this.runtimeCoordinator().handlePublicRequest(req,res,new URL(req.url ?? "/",`http://localhost:${port}`)))return;
 
       // Branding is public, after Host admission: automatic favicon requests
       // must not become noisy web-token 401s in the browser console.
@@ -24237,6 +24311,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
     const server = createServer((req, res) => this.dispatchWebHttp(req, res, port, drain.closing));
+    server.on("upgrade",(req,socket,head)=>{
+      if(!this.shuttingDown && process.env.AGEND_REMOTE_RUNTIME==="1" && isHostAllowed(req.headers.host,allowedHostNames(this.fleetConfig))
+        && this.runtimeCoordinator().handleUpgrade(req,socket,head))return;
+      socket.destroy();
+    });
     // #1937: Node's default (300 s to receive a request) would cut a large upload on a slow link. The listener allows
     // more; the upload route keeps its own clocks (no byte for a minute, or 30 minutes in all), and every other request
     // keeps the old 300 s (limitRequestReceive in dispatchWebHttp).
@@ -24457,8 +24536,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         const backend=nativeConfig.backend || agent?.cli || "codex";
         return {name,display_name,description:nativeConfig.description || undefined,tags:nativeConfig.tags || [],
           teams:instanceTeams(this.fleetConfig?.teams,name),runtime:"windows",native_agent_id:nativeConfig.native_agent_id,
+          ...(nativeConfig.machine_id ? {machine_id:nativeConfig.machine_id,machine_name:this.runtimeHub?.machine(nativeConfig.machine_id)?.name,
+            machine_status:this.runtimeHub?.machine(nativeConfig.machine_id)?.status ?? "offline"} : {}),
           native_blocked:!agent || agent.blocked === true,
-          native_busy:runtime?.busy() ?? false,
+          native_busy:runtime?.busy(name) ?? false,
           backend,
           model:nativeConfig.model || "default",model_source:nativeConfig.model ? "instance" : "cli-default",
           status:agent && runtime ? runtime.status(name) : "crashed",state:agent && runtime ? runtime.execution(name) : null,execution_state:agent && runtime ? runtime.execution(name) : null,
@@ -24550,7 +24631,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
       // #1519 P7: how many chat connections are configured — 0 is a web-only fleet, which gets the first-run card.
       connections: (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).length,
-      windows_cli: windowsCliEnabled(),
+      windows_cli: process.env.AGEND_WINDOWS_CLI === "1",
       // #1665: the host preferences' revision — a page that has another re-reads /ui/prefs (no values in this frame).
       prefs_rev: this.webPrefs.rev(),
       // #1629: the themes' revision — the page re-reads GET /ui/themes when it moves.

@@ -6,7 +6,8 @@
   "bin": {
     "agend": "./launcher/agend",
     "agend-agent": "./launcher/agend-agent",
-    "agend-install": "./launcher/agend-install.cjs"
+    "agend-install": "./launcher/agend-install.cjs",
+    "agend-runtime": "./dist/runtime-cli.js"
   },
   "exports": {
     ".": "./dist/cli.js",
@@ -29,7 +30,8 @@
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
     "prepublishOnly": "npm run build",
     "preinstall": "node scripts/preinstall-guard.cjs",
-    "postinstall": "node launcher/postinstall.cjs"
+    "postinstall": "node launcher/postinstall.cjs",
+    "build:runtime": "node scripts/build-runtime.mjs"
   },
   "engines": {
     "node": "^22.14.0 || ^23.6.0 || >=24"
@@ -75,7 +77,8 @@
     "smol-toml": "1.9.0",
     "undici": "6.29.1",
     "yaml": "^2.9.0",
-    "zod": "^4.6.6"
+    "zod": "^4.6.6",
+    "ws": "8.22.0"
   },
   "optionalDependencies": {
     "@songsid/agend-node-darwin-arm64": "22.23.4",
@@ -91,6 +94,7 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "vitest": "^4.1.12"
+    "vitest": "^4.1.12",
+    "@types/ws": "8.18.1"
   }
 }

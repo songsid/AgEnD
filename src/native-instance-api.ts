@@ -12,6 +12,7 @@ const Provider = z.enum(["codex","claude-code","antigravity","grok","kiro-cli","
 const Tags = z.array(z.string().min(1).max(64)).max(32);
 const Create = z.object({
   runtime:z.literal("windows"), topic_name:z.string().max(64).optional(),
+  machineId:z.string().uuid().optional(),
   directory:z.string().max(1024).optional(), backend:Provider.default("codex"),
   model:z.string().max(160).optional(), description:z.string().max(512).optional(),
   systemPrompt:z.string().max(8000).optional(), sandbox:z.enum(["read-only","workspace-write"]).default("read-only"), tags:Tags.optional(),
@@ -42,6 +43,7 @@ export async function createNativeInstance(req:IncomingMessage,res:ServerRespons
     const name=input.topic_name?.trim() || input.directory?.trim().replace(/[\\/]+$/,"").split(/[\\/]/).pop() || "";
     if(!name)throw new Error("Enter an agent name");
     const profile={name,cli:input.backend,...(input.directory?.trim()?{cwd:input.directory.trim()}:{}),
+      ...(input.machineId ? {machineId:input.machineId} : {}),
       model:input.model,description:input.description ?? "",instructions:input.systemPrompt ?? "",sandbox:input.sandbox,...(input.tags?{tags:input.tags}:{})};
     const runtime=ctx.nativeInstanceRuntime!(),execution=settingsRequestExecution(req);
     const result=execution ? await runtime.create(profile,allowed,execution) : await runtime.create(profile,allowed);
@@ -90,7 +92,7 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
       z.object({}).strict().parse(body);const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
     }
     if(method==="POST" && operation==="recover"){
-      const input=z.object({confirmedStopped:z.literal(true)}).strict().parse(body);json(res,200,{agent:service.recover(name,input.confirmedStopped)});return;
+      const input=z.object({confirmedStopped:z.literal(true)}).strict().parse(body);json(res,200,{agent:service.recoverAsync ? await service.recoverAsync(name,input.confirmedStopped) : service.recover(name,input.confirmedStopped)});return;
     }
     json(res,405,{error:"Unsupported instance operation"});
   })().catch(error=>json(res,allowed()?400:403,{error:allowed()?(error instanceof Error?error.message:"Instance operation failed"):"Authorization expired"}));
