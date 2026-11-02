@@ -32,6 +32,13 @@ const SHORT = "Weaver → rd1-web-dev-claude-t695268:\nreceived, thanks";
 const at = (min: number) => new Date(Date.now() - min * 60000).toISOString();
 fm.emitSseEvent("message", { instance: CHAT, sender: "agend-weaver", role: "status", text: LONG, ts: at(3) });
 fm.emitSseEvent("message", { instance: CHAT, sender: "agend-weaver", role: "status", text: SHORT, ts: at(2) });
+// #2933 review (Prism): two lines whose second wraps at the drawn width — 80 CJK characters (wraps on a phone and a
+// desk) and 40 (fits a desk, wraps on a phone); and a CRLF message.
+const CJK80 = "Weaver → worker:\n" + "這是一段沒有換行的中文說明文字，用來檢查兩行的訊息在窄的畫面上會不會超過兩行而且沒有展開的按鈕可以按。".repeat(2).slice(0, 80);
+const CJK40 = "Weaver → worker:\n" + "這是一段沒有換行的中文說明，桌面放得下但手機放不下的長度，剛好四十個字。".slice(0, 40);
+fm.emitSseEvent("message", { instance: CHAT, sender: "agend-weaver", role: "status", text: CJK80, ts: at(1.8) });
+fm.emitSseEvent("message", { instance: CHAT, sender: "agend-weaver", role: "status", text: CJK40, ts: at(1.6) });
+fm.emitSseEvent("message", { instance: CHAT, sender: "agend-weaver", role: "status", text: "Weaver → worker:\r\nfirst\r\nsecond\r\nthird", ts: at(1.4) });
 fm.emitSseEvent("message", { instance: CHAT, sender: CHAT, role: "agent", text: "OK — I'll check the callers against that list.", ts: at(1) });
 
 const CASES = [
@@ -72,7 +79,7 @@ for (const c of CASES) {
   need(g.btnWhole, `its label whole, not flush with the message's edge (${g.btnGeo})`);
   need(g.label === (zh ? "全部 8 行" : "All 8 lines") && g.aria === (zh ? "展開全部 8 行" : "Show all 8 lines") && g.expanded === "false", `label ${g.label} / ${g.aria} / ${g.expanded}`);
   const short = p.page.locator(".msg.status-line").nth(1);
-  need(!(await short.evaluate((m: Element) => m.classList.contains("folded"))) && (await short.locator(".st-more").count()) === 0, "a two-line message stays open");
+  need(!(await short.evaluate((m: Element) => m.classList.contains("overflows"))) && !(await short.locator(".st-more").isVisible()), "a two-line message that fits has no control");
   // The button opens it, and folds it again.
   const btn = long.locator(".st-more");
   if (c.device === "phone") await btn.tap(); else await btn.click();
@@ -94,6 +101,33 @@ for (const c of CASES) {
   await btn.focus(); await p.page.keyboard.press("Enter"); await p.page.waitForTimeout(200);
   need(!(await geo()).folded, "Enter on the focused button opens it");
   if (c.device === "phone") need(await p.page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "no horizontal scroll");
+  // #2933 review: 80 CJK characters on line 2 — two rows and its control, phone and desk alike.
+  const cjk80 = p.page.locator(".msg.status-line").nth(2);
+  const fit = (loc: any) => loc.evaluate((m: Element) => { const t = m.querySelector(".st-text")!, b = m.querySelector(".st-more") as HTMLElement;
+    const lh = parseFloat(getComputedStyle(m.querySelector(".st-ln")!).lineHeight) || 20;
+    return { rows: Math.round(t.getBoundingClientRect().height / lh), control: !!b && b.offsetParent !== null, overflows: m.classList.contains("overflows") }; });
+  const f80 = await fit(cjk80);
+  need(f80.rows === 2 && f80.control, `80 CJK characters: ${f80.rows} rows, control ${f80.control}`);
+  await cjk80.screenshot({ path: shotPath(SMOKE, c as any, `${MODE}-cjk80`) });
+  // 40 CJK characters: a desk fits them (no control); narrowed to a phone they are clipped (control); widened again, none.
+  const cjk40 = p.page.locator(".msg.status-line").nth(3);
+  if (c.device === "desk") {
+    const wide = await fit(cjk40);
+    await p.page.setViewportSize({ width: 390, height: 844 }); await p.page.waitForTimeout(400);
+    const narrow = await fit(cjk40);
+    await p.page.setViewportSize({ width: 1366, height: 900 }); await p.page.waitForTimeout(400);
+    const back = await fit(cjk40);
+    need(wide.rows === 2 && !wide.control && narrow.rows === 2 && narrow.control && !back.control, `resize: desk ${JSON.stringify(wide)} → 390 ${JSON.stringify(narrow)} → desk ${JSON.stringify(back)}`);
+  } else {
+    const ph = await fit(cjk40);
+    need(ph.rows === 2 && ph.control, `40 CJK characters on a phone: ${JSON.stringify(ph)}`);
+  }
+  // A CRLF message: four rows of text, no doubled line breaks.
+  const crlf = await p.page.locator(".msg.status-line").nth(4).evaluate((m: Element) => ({ rows: [...m.querySelectorAll(".st-ln")].map(r => r.textContent), cr: m.querySelector(".st-text")!.textContent!.includes("\r") }));
+  need(JSON.stringify(crlf.rows) === JSON.stringify(["Weaver → worker:", "first", "second", "third"]) && !crlf.cr, `CRLF rows ${JSON.stringify(crlf)}`);
+  // A two-line message that fits is plain (no control).
+  const plain = await fit(p.page.locator(".msg.status-line").nth(1));
+  need(!plain.control && plain.rows === 2, `two short lines plain: ${JSON.stringify(plain)}`);
   need(p.errors.length === 0, `no page error: ${p.errors.slice(0, 2).join(" / ")}`);
   results.push({ name: `${c.device}-${c.theme}-${c.lang}`, ok: !failed.length, failed });
   await p.ctx.close();
