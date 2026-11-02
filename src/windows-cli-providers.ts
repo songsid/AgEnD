@@ -54,7 +54,7 @@ const PROVIDERS: Record<NativeProviderId, NativeProviderDescriptor> = {
   "claude-code": {
     id: "claude-code", name: "Claude Code", company: "Anthropic", binaryNames: ["claude.exe"],
     supports: { execution: true, resume: true, model: true, mcp: true }, readOnlySupport: true,
-    permission: "read-tools", permissionNote: "Read-only exposes Read, Glob and Grep only, with MCP disabled; it is a tool restriction, not an OS sandbox. Permission requests are denied in headless mode.",
+    permission: "read-tools", permissionNote: "Read-only exposes Read, Glob and Grep only, with MCP disabled; it is a tool restriction, not an OS sandbox. Workspace accepts file edits inside the working directory only. Every other permission request (shell, network, other folders) is denied in headless mode unless Claude Code's own settings already allow it.",
     promptTransport: "stdin-text", authProbe: ["auth", "status"], modelProbe: null,
   },
   antigravity: {
@@ -184,6 +184,12 @@ export function buildNativeInvocation(task: NativeProviderTask, options: NativeI
         // No allowedTools flag: that would override the user's approval policy for the listed tools.
         args.push("--permission-mode", "plan", "--tools", "Read,Glob,Grep", "--strict-mcp-config");
         if (!options.mcp) args.push("--mcp-config", '{"mcpServers":{}}');
+      } else {
+        // S-30 (leader decision): "workspace" means what it says. File edits inside the agent's working directory are
+        // accepted without a prompt; no --add-dir, so anything outside it still needs an approval, and headless has none
+        // (--permission-prompts none): denied. Shell commands and network still need approval too, so they are denied
+        // unless the user's own Claude Code settings already allow them. This also overrides a looser defaultMode.
+        args.push("--permission-mode", "acceptEdits");
       }
       if (options.mcp) args.push("--mcp-config",options.mcp.configPath,"--allowedTools",options.mcp.tools.map(tool=>`mcp__${options.mcp!.serverName ?? NATIVE_MCP_SERVER}__${tool}`).join(","));
       if (resume) args.push("--resume", resume);

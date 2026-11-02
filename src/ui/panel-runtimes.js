@@ -81,7 +81,7 @@ function MachineCard({ machine, busy, action }) {
   const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name);
   const clis = (machine.inventory?.clis || []).filter(cli => cli.path);
   return html`<article class="runtime-machine" data-machine-id=${machine.id}>
-    <header><span class="runtime-machine-icon"><${Icon} name="view" size=${22} /></span><div><h3>${machine.name}</h3><p>${machine.platform || machineText("unknown")} · ${machine.version || machineText("unknown")}</p></div><span class=${`runtime-status is-${machine.status}`}>${machineText(["online","offline","pending","revoked"].includes(machine.status) ? machine.status : "unknown")}</span></header>
+    <header><span class="runtime-machine-icon"><${Icon} name="view" size=${22} /></span><div><h3>${machine.name}</h3><p>${[machine.platform || machineText("unknown"), machine.hostname, machine.version].filter(Boolean).join(" · ")}</p></div><span class=${`runtime-status is-${machine.status}`}>${machineText(["online","offline","pending","revoked"].includes(machine.status) ? machine.status : "unknown")}</span></header>
     <p class="note">${machineText("lastSeen",machineTime(machine.lastSeenAt))}</p><p class="note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("noInventory")}</p>
     <details><summary>${machineText("identity")}</summary><code class="runtime-machine-id">${machine.id}</code></details>
     ${machine.status === "pending" ? html`<p class="note">${machineText("approvalHint")}</p>` : null}
@@ -218,7 +218,7 @@ export function RuntimesPanel({navKey}) {
   const command=runtimeConnectCommand(server);
   const download=()=>html`<a class="btn btn-sm runtime-bundle-download" href="/ui/runtimes/download/windows" download><${Icon} name="download" size=${15} />${machineText("download")}</a>`;
   return html`<section class="runtime-settings">
-    <header class="runtime-heading"><div><h2>${machineText("title")}</h2><p class="note">${machineText("lead")}</p></div><div>${state.data?.enabled === true ? download() : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button></div></header>
+    <header class="runtime-heading"><div><h2>${machineText("title")}</h2><p class="note">${machineText("lead")}</p></div><div>${state.data?.enabled === true && !pairing ? download() : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button></div></header>
     <${RuntimeSwitches} lease=${lease} onChanged=${state.refresh} />
     ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
     ${state.loading && !state.data ? html`<p role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${machineText("loading")}</p>` : null}
