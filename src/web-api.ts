@@ -401,8 +401,8 @@ export interface WebApiContext {
   /** #2305: `copies`, the copies' own message ids, so a reaction to the web message is put on them too. */
   webMessageInChannel?(instance: string, messageId: string, copies?: readonly import("./web-reactions.js").WebEchoCopy[]): void;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
-  deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
-  deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
+  deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
+  deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
   getUiStatus(): unknown;
   /** Current owned pane reader shared with status; absent means context is unavailable. */
   getPaneContextSource?(name: string): PaneContextSource | null;
@@ -3406,9 +3406,15 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // Recheck the same admission all the way through a wake, before the facade's actual IPC handoff.
       const requestUrl = new URL(req.url ?? "/", "http://localhost");
       const admission = admissionOf(req, requestUrl, ctx);
-      const stillCurrent = () => !res.destroyed && admission !== null && admissionOf(req, requestUrl, ctx) === admission
+      // The sender's authority, without the request's own lifetime: the same admission, the same guest still allowed, the
+      // instance still registered (a Windows one still Windows). A Windows turn is journaled before /ui/send answers and its
+      // process starts after, so the bridge rechecks this one (a revoke in between still stops it); never res, which a
+      // finished response marks destroyed (S-30: every web-chat turn to a Windows agent was refused).
+      const authorityCurrent = () => admission !== null && admissionOf(req, requestUrl, ctx) === admission
         && (!guest || (guest.current() && !guestChatRefusal(guest, instance)))
-        && (registered ? registeredChatInstance(ctx, instance) : ctx.instanceIpcClients.has(instance));
+        && (native ? isWindowsInstance(ctx.fleetConfig?.instances[instance]) && nativeCliAuthorization(req, requestUrl, ctx)
+          : registered ? registeredChatInstance(ctx, instance) : ctx.instanceIpcClients.has(instance));
+      const stillCurrent = () => !res.destroyed && authorityCurrent();
       const message = typed;
       // #1939 S1: what the receipt records about who authorized it (observe only: agents still read web as recognition).
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx, instance));
@@ -3471,8 +3477,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       let delivered: boolean | void;
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
-          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority), typed, { stillCurrent })
-          : ctx.deliverToInstance(name, payload, { stillCurrent });
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+          : ctx.deliverToInstance(name, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
         delivered = await deliver(instance, {
           type: "fleet_inbound",
           content: delivery.text,
