@@ -12,6 +12,7 @@ import type { TranscriptNeedle } from "./transcript-needles.js";
 import type { RuntimePaneLaunch, RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 export interface NativePaneAcquisition { pane: Pane; source: TranscriptSource; disposition: "reattached" | "resumed" | "fresh" }
 export interface NativePaneLifecycle {
+  bindDaemon?(daemon: import("./daemon.js").Daemon): void;
   readonly host: PaneHost;
   readonly observation: PaneObservation;
   readonly backend: CliBackend;
@@ -34,6 +35,7 @@ export interface NativePaneLifecycleOptions {
   exited(snapshot: RuntimePaneSnapshot): void;
   mcpProof(): "alive" | "dead" | "unknown";
   releaseAuthority(): void;
+  bindDaemon?(daemon: import("./daemon.js").Daemon): void;
 }
 export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
   readonly port: RuntimePanePort;
@@ -54,6 +56,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.backend = createNativePaneBackend(options.launch.cli, () => ({ sessionId: this.port.ownedSnapshot()?.sessionId ?? null,
       contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }));
   }
+  bindDaemon(daemon: import("./daemon.js").Daemon): void { this.options.bindDaemon?.(daemon); }
   current(reference?: RuntimeTranscriptReference): boolean {
     if (this.detached || !this.options.endpoint.online()) return false;
     if (reference) return this.port.isTranscriptObservationCurrent(reference);

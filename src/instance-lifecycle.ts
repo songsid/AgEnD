@@ -42,7 +42,7 @@ import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import type { DeliveryOutbox } from "./delivery-outbox.js";
-import { WINDOWS_CREATE_REFUSED } from "./native-instance-registry.js";
+import { WINDOWS_CREATE_REFUSED, isNativePaneInstance } from "./native-instance-registry.js";
 import {
   capturePendingTargetReconciliation,
   finishTargetReconciliation,
@@ -176,6 +176,10 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * FleetManager implements this.
  */
 export interface LifecycleContext {
+  /** Prepared native ownership replaces local launch files/configuration, never a failed-local fallback. */
+  nativePaneFor?(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle>;
+  reconcileNativePaneBeforeStart?(name: string, daemon: Daemon): Promise<boolean>;
+  closeRetainedNativePane?(name: string): Promise<void>;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
@@ -1761,7 +1765,12 @@ export class InstanceLifecycle {
       return;
     }
 
-    if (!existsSync(config.working_directory)) {
+    const native = isNativePaneInstance(config) ? await this.ctx.nativePaneFor?.(name, config, check) : undefined;
+    check();
+    if (isNativePaneInstance(config) && !native) throw Error("Native pane ownership is unavailable; no local CLI was started");
+    if (native) config = { ...config, agent_mode: "mcp" };
+
+    if (!native && !existsSync(config.working_directory)) {
       this.ctx.logger.info({ name, working_directory: config.working_directory }, "Working directory does not exist — creating it");
       mkdirSync(config.working_directory, { recursive: true });
     }
@@ -1789,7 +1798,7 @@ export class InstanceLifecycle {
 
     // Verify backend binary is in PATH before spawning
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (installation && !checkBinaryInstalled(installation.binary)) {
+    if (!native && installation && !checkBinaryInstalled(installation.binary)) {
       this.ctx.logger.error(
         { binary: installation.binary, backend: backendName, instance: name },
         `Backend binary "${installation.binary}" not found in PATH`,
@@ -1798,14 +1807,14 @@ export class InstanceLifecycle {
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
     // Unless IS_SANDBOX=1 is set (recognized sandbox environment)
-    if (process.getuid?.() === 0 && backendName === "claude-code" && !process.env.IS_SANDBOX) {
+    if (!native && process.getuid?.() === 0 && backendName === "claude-code" && !process.env.IS_SANDBOX) {
       const msg = `⚠️ claude-code cannot run with --dangerously-skip-permissions as root. Set IS_SANDBOX=1 or use a non-root user.`;
       this.ctx.logger.error({ name, backend: backendName }, msg);
       this.ctx.notifyInstanceTopic(name, t("inst.root_skip_perms"));
       return;
     }
 
-    const backend = createBackend(backendName, instanceDir);
+    const backend = native?.backend ?? createBackend(backendName, instanceDir);
     const daemon = new Daemon(
       name,
       config,
@@ -1823,6 +1832,7 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
@@ -1873,7 +1883,9 @@ export class InstanceLifecycle {
       if (recovered.queued || recovered.reconciliationPending) {
         this.ctx.logger.warn({ name, ...recovered }, "Preparing durable outbox rows before target generation start");
       }
-      const reconciled = await reconcileTargetBeforeStart(
+      const reconciled = native
+        ? { uncertain: 0, safeToStart: await this.ctx.reconcileNativePaneBeforeStart?.(name, daemon) === true }
+        : await reconcileTargetBeforeStart(
         this.ctx.deliveryOutbox,
         name,
         instanceDir,
@@ -1900,7 +1912,7 @@ export class InstanceLifecycle {
     // before the handlers below exist and before this daemon is registered;
     // hold it and deliver it once both are true.
     (daemon as IncidentEventSource).holdStartupIncidents?.();
-    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger, execution ? check : undefined);
+    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger, execution || native ? check : undefined);
     // Publication fence (Phase 2a): the spawn cannot be cancelled, so a stop or
     // restart requested meanwhile has been waiting behind this transition. A
     // superseded start must not register, signal ready, or keep its window.
@@ -2119,7 +2131,7 @@ export class InstanceLifecycle {
         const drained = await daemon.waitForDeliveryWritesToDrain(RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS);
         if (!drained) this.ctx.logger.warn({ name }, "Pane write did not drain before durable reconciliation capture; relying on the Enter write-ahead fence");
         this.ctx.deliveryOutbox.markTargetReconciliationPending(name, daemon.bootId);
-        captured = await capturePendingTargetReconciliation(
+        if (!daemon.usesNativePane?.()) captured = await capturePendingTargetReconciliation(
           this.ctx.deliveryOutbox,
           name,
           this.ctx.getInstanceDir(name),
@@ -2129,7 +2141,8 @@ export class InstanceLifecycle {
       }
       let stopped = false;
       try {
-        await daemon.stop();
+        if (daemon.usesNativePane?.()) await daemon.stop({ nativePane: "close" });
+        else await daemon.stop();
         stopped = true;
       } finally {
         if (captured && this.ctx.deliveryOutbox) {
@@ -2155,6 +2168,9 @@ export class InstanceLifecycle {
       // registered a FRESH daemon under this name — deleting by name alone
       // would drop it from supervision while its CLI keeps running.
       if (this.daemons.get(name) === daemon) this.daemons.delete(name);
+    } else if (isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) {
+      if (!this.ctx.closeRetainedNativePane) throw Error("Retained native pane owner is unavailable; no local PID was signalled");
+      await this.ctx.closeRetainedNativePane(name);
     } else {
       const instanceDir = this.ctx.getInstanceDir(name);
       const pidPath = join(instanceDir, "daemon.pid");

@@ -104,6 +104,8 @@ export interface InstanceConfig {
   machine_id?: string;
   /** Stable native conversation/profile identity; set only for Windows instances. */
   native_agent_id?: string;
+  /** Persistent terminal opt-in. Unset/exec preserves the per-turn adapter and rollback. */
+  native_adapter?: "exec" | "pane";
   /** Native CLI permission selection; independent of Linux terminal permissions. */
   native_sandbox?: "read-only" | "workspace-write";
   /** Proactive interrupted-work continuation; defaults true, inherited from fleet defaults. */

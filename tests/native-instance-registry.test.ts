@@ -113,3 +113,9 @@ describe("common native instance registry",()=>{
     expect(settled).toHaveBeenCalledWith(expect.objectContaining({status:"failed",error:expect.stringContaining("no conversation id")}));
   });
 });
+it("persistent panes are an explicit Windows-only opt-in and never inferred from provider or global switches",async()=>{
+ const {isNativePaneInstance,isNativeExecInstance}=await import("../src/native-instance-registry.js"),f=fixture(),agent=await f.store.create(input),base=nativeInstanceConfig(agent);
+ expect(isNativeExecInstance(base)).toBe(true);expect(isNativePaneInstance(base)).toBe(false);expect(isNativePaneInstance({...base,native_adapter:"pane"})).toBe(true);expect(isNativeExecInstance({...base,native_adapter:"pane"})).toBe(false);expect(isNativePaneInstance({runtime:"wsl",native_adapter:"pane"})).toBe(false);
+ for(const native_adapter of ["exec","pane"])expect(validateFleetConfig({...f.fleet,instances:{native:{...base,native_adapter}}}).errors).toEqual([]);
+ for(const patch of [{native_adapter:"unknown"},{runtime:"wsl",native_adapter:"pane"},{backend:"grok",native_adapter:"pane"}])expect(validateFleetConfig({...f.fleet,instances:{native:{...base,...patch}}}).valid).toBe(false);
+});
