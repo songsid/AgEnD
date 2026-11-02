@@ -70,7 +70,7 @@ describe("runtime administration API", () => {
     const { ctx, hub } = context(), create = run(ctx, "/ui/runtimes/pairing", "POST"); await vi.waitFor(() => expect(create.res.status).toBe(201));
     const p = JSON.parse(create.res.body), pending = hub.pair({ code: p.code, name: "Desk", platform: "win32" });
     const list = JSON.parse(run(ctx, "/ui/runtimes").res.body); expect(list.machines[0].status).toBe("pending"); expect(JSON.stringify(list)).not.toMatch(/Hash|credential|claimSecret/);
-    for (const [op, body, expected] of [["approve", {}, "offline"], ["rename", { name: "Work PC" }, "Work PC"], ["revoke", {}, "revoked"]] as const) {
+    for (const [op, body, expected] of [["approve", { fingerprint: hub.machine(pending.machineId)?.pairingFingerprint }, "offline"], ["rename", { name: "Work PC" }, "Work PC"], ["revoke", {}, "revoked"]] as const) {
       const result = run(ctx, `/ui/runtimes/machines/${pending.machineId}/${op}`, "POST", body); await vi.waitFor(() => expect(result.res.status).toBe(200)); const machine = JSON.parse(result.res.body).machine; expect(op === "rename" ? machine.name : machine.status).toBe(expected);
     }
   });
@@ -157,7 +157,7 @@ describe("runtime non-browser public pairing endpoints", () => {
     const post = (path: string, body: unknown) => fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const response = await post("/runtime/v1/pair", { code: p.code, name: "Desk", platform: "win32" }); expect(response.status).toBe(201); const paired = await response.json() as { machineId: string; claimSecret: string };
     const body = { machineId: paired.machineId, claimSecret: paired.claimSecret };
-    expect((await post("/runtime/v1/claim", body)).status).toBe(202); hub.approve(paired.machineId);
+    expect((await post("/runtime/v1/claim", body)).status).toBe(202); hub.approve(paired.machineId, hub.machine(paired.machineId)?.pairingFingerprint);
     const claim = await post("/runtime/v1/claim", body); expect(claim.status).toBe(200); const identity = await claim.json() as { credential: string }; expect(identity.credential).toMatch(/^[a-f0-9]{64}$/);
     expect((await post("/runtime/v1/claim", body)).status).toBe(400);
   });

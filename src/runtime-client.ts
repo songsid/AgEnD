@@ -8,6 +8,7 @@ import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, t
 import { validateNativeTask, validWindowsAgentId, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
+import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
 
 export interface RuntimeBridge {
   probe(options?: { force?: boolean }): Promise<WindowsCliProbe>;
@@ -69,6 +70,7 @@ export class RuntimeClient {
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private credentials: RuntimeCredentials | null = null;
+  private startupRotation: Promise<RuntimeCredentials> | null = null;
   private readonly active = new Set<string>();
   private readonly snapshots = new Map<string, string>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -86,11 +88,17 @@ export class RuntimeClient {
   waitUntilStopped(): Promise<void> { return this.stopped && this.closed ? Promise.resolve() : new Promise(done => this.stoppedListeners.add(done)); }
   async start(): Promise<void> {
     if (!this.stopped) return;
-    const credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
+    let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
     this.unlock = this.options.store.lock(this.bootId);
     try {
-      this.options.store.recoverInterrupted(); this.credentials = credentials; this.stopped = false; this.closed = false;
+      this.stopped = false; this.closed = false;
+      if (credentials.pendingCredential) {
+        const rotating = this.startupRotation = rotateRuntimeCredentials({ store: this.options.store });
+        try { credentials = await rotating; } finally { if (this.startupRotation === rotating) this.startupRotation = null; }
+      }
+      if (this.stopped) throw Error("Runtime start was cancelled");
+      this.options.store.recoverInterrupted(); this.credentials = credentials;
       // Connect immediately, then publish the last administrator detection from the private profile.
       // A cached read starts no CLI. Only an explicit probe command with force:true performs detection.
       this.connect();
@@ -320,6 +328,8 @@ export class RuntimeClient {
     this.rejectTools(); this.mcpTokens.clear(); this.bridge.close();
     const socket = this.socket; this.socket = null;
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }
+    // A cancelled start may still finish its durable credential write. Do not release the profile to another writer.
+    await this.startupRotation?.catch(() => {});
     // Keep the profile lock until cancellation is confirmed or the journal is explicitly marked uncertain.
     const deadline = Date.now() + 5000;
     while (this.active.size && Date.now() < deadline) {
@@ -339,8 +349,8 @@ export class RuntimeClient {
   }
 }
 
-async function post(server: URL, path: string, body: unknown, signal?: AbortSignal): Promise<{ status: number; data: Record<string, unknown> }> {
-  const response = await fetch(new URL(path, server), { method: "POST", redirect: "error", headers: { "Content-Type": "application/json" },
+async function post(server: URL, path: string, body: unknown, signal?: AbortSignal, credential?: string): Promise<{ status: number; data: Record<string, unknown> }> {
+  const response = await fetch(new URL(path, server), { method: "POST", redirect: "error", headers: { "Content-Type": "application/json", ...(credential ? { Authorization: `Bearer ${credential}` } : {}) },
     body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000) });
   let text = "", bytes = 0;
   if (response.body) for await (const part of response.body) { bytes += part.byteLength; if (bytes > MAX_TOOL) throw new Error("Runtime pairing response is too large"); text += new TextDecoder().decode(part); }
@@ -348,13 +358,32 @@ async function post(server: URL, path: string, body: unknown, signal?: AbortSign
   if (!object(data)) throw new Error("Invalid runtime pairing response");
   return { status: response.status, data };
 }
+/** Caller holds the profile lock. Persist the candidate before wire; either credential can recover a lost response. */
+export async function rotateRuntimeCredentials(input: { store: RuntimeClientStore; signal?: AbortSignal }): Promise<RuntimeCredentials> {
+  let saved = input.store.credentials(); if (!saved) throw Error("Pair this runtime before rotating its credential");
+  if (!saved.pendingCredential) {
+    saved = { ...saved, pendingCredential: randomBytes(32).toString("hex") };
+    input.store.saveCredentials(saved);
+  }
+  const server = validateRuntimeServer(saved.server), candidate = saved.pendingCredential!;
+  for (const credential of [saved.credential, candidate]) {
+    const response = await post(server, RUNTIME_ROTATE_PATH, { machineId: saved.machineId, credential: candidate }, input.signal, credential);
+    if (response.status === 200 && response.data.status === "rotated" && response.data.machineId === saved.machineId) {
+      const { pendingCredential: _, ...current } = saved;
+      const completed = { ...current, credential: candidate }; input.store.saveCredentials(completed); return completed;
+    }
+    if (response.status !== 401 && response.status !== 429) break;
+  }
+  throw Error("Runtime credential rotation was not confirmed. The saved candidate is retained; retry rotate before connecting.");
+}
 export async function pairRuntime(input: { server: string; code: string; name: string; store: RuntimeClientStore; signal?: AbortSignal; report?: (text: string) => void; pollMs?: number }): Promise<RuntimeCredentials> {
   const server = validateRuntimeServer(input.server);
   if (!input.code.trim() || input.code.length > 256 || /[\x00-\x1f]/.test(input.code) || !input.name.trim() || input.name.length > 100) throw new Error("Enter a valid pairing code and machine name");
   const paired = await post(server, "/runtime/v1/pair", { code: input.code.trim(), name: input.name.trim(), platform: process.platform, hostname: hostname() }, input.signal);
   if (paired.status !== 201 || paired.data.status !== "pending" || typeof paired.data.machineId !== "string" || typeof paired.data.claimSecret !== "string") throw new Error(`Runtime pairing was refused (HTTP ${paired.status})`);
   const deadline = Math.min(Date.now() + 10 * 60_000, typeof paired.data.expiresAt === "number" ? paired.data.expiresAt : Infinity);
-  input.report?.("Pairing requested. Approve this machine in AgEnD Settings → Runtimes; waiting for approval…");
+  const fingerprint = runtimeClaimFingerprint(paired.data.claimSecret);
+  input.report?.(`Pairing fingerprint: ${fingerprint}. Compare it with AgEnD Settings → Runtime before approving this machine; waiting for approval…`);
   while (!input.signal?.aborted && Date.now() < deadline) {
     const claimed = await post(server, "/runtime/v1/claim", { machineId: paired.data.machineId, claimSecret: paired.data.claimSecret }, input.signal);
     if (claimed.status === 200 && claimed.data.status === "approved" && claimed.data.machineId === paired.data.machineId

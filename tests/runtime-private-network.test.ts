@@ -123,7 +123,7 @@ describe("runtime pairing and execution-channel proxy compatibility", () => {
     expect(paired.status).toBe(201); expect(paired.body.status).toBe("pending");
     const claim = { machineId: paired.body.machineId, claimSecret: paired.body.claimSecret };
     expect((await post(origin, "/runtime/v1/claim", claim, certificate?.cert)).status).toBe(202);
-    hub.approve(claim.machineId);
+    hub.approve(claim.machineId, hub.machine(claim.machineId)?.pairingFingerprint);
     const approved = await post(origin, "/runtime/v1/claim", claim, certificate?.cert);
     expect(approved.status).toBe(200); expect(approved.body.status).toBe("approved");
     expect(seen.map(req => [req.method, req.path])).toEqual([["POST", "/runtime/v1/pair"], ["POST", "/runtime/v1/claim"], ["POST", "/runtime/v1/claim"]]);

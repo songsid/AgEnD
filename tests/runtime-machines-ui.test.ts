@@ -7,7 +7,7 @@ const originalFetch=globalThis.fetch;
 const idA="12345678-1234-4321-abcd-123456789012", idB="22345678-1234-4321-abcd-123456789012";
 const requests:Array<{path:string;body:any}>=[];
 const cli=()=>({id:"codex",path:"C:\\tools\\codex.exe",runnable:true,authenticated:true,version:"1.0",readOnlySupport:true,supports:{execution:true,resume:true,mcp:true},models:[]});
-const machine=(id:string,name:string,status="online")=>({id,name,status,platform:"win32",version:"1.0",lastSeenAt:Date.now(),inventoryUpdatedAt:Date.now(),inventory:{home:`C:\\${name}`,clis:[cli(),{id:"muse",path:null,runnable:false}]}});
+const machine=(id:string,name:string,status="online")=>({id,name,status,...(status==="pending"?{pairingFingerprint:"ABCD-1234-5678"}:{}),platform:"win32",version:"1.0",lastSeenAt:Date.now(),inventoryUpdatedAt:Date.now(),inventory:{home:`C:\\${name}`,clis:[cli(),{id:"muse",path:null,runnable:false}]}});
 let machines:any[], enabled:boolean;
 const response=(body:any,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
 const button=(text:string)=>p.root.querySelectorAll("button").find((item:any)=>item.textContent.trim()===text);
@@ -42,8 +42,9 @@ describe("remote machine UI",()=>{
     await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
     expect(p.root.textContent).toContain("Desktop");expect(p.root.textContent).toContain("Awaiting approval");
     expect(p.root.querySelectorAll('[data-cli="codex"]').length).toBe(2);expect(p.root.querySelector('[data-cli="muse"]')).toBeNull();
+    expect(p.root.querySelector(".runtime-pairing-fingerprint").textContent).toBe("ABCD-1234-5678");
     button("Approve computer").click();await settle(8);
-    expect(requests).toContainEqual({path:`/ui/runtimes/machines/${idB}/approve`,body:{}});
+    expect(requests).toContainEqual({path:`/ui/runtimes/machines/${idB}/approve`,body:{fingerprint:"ABCD-1234-5678"}});
     expect(p.root.querySelector(`[data-machine-id="${idB}"]`).textContent).toContain("Online");
   });
   it("creates a transient pairing code with an interactive CLI command, then hides it",async()=>{

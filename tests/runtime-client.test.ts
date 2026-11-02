@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RuntimeClient, pairRuntime, type RuntimeBridge } from "../src/runtime-client.js";
+import { runtimeClaimFingerprint } from "../src/runtime-protocol.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { WindowsCliBridge, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "../src/windows-cli.js";
@@ -40,7 +41,7 @@ class FakeBridge implements RuntimeBridge {
 async function fixture(options: ConstructorParameters<typeof RuntimeCoordinator>[1] = {}) {
   const hubHome = home(), state = { hub: new RuntimeCoordinator(hubHome, options) }; hubs.push(state.hub);
   const pairing = state.hub.createPairing(), pending = state.hub.pair({ code: pairing.code, name: "Fixture Windows", platform: "win32" });
-  state.hub.approve(pending.machineId);
+  state.hub.approve(pending.machineId, state.hub.machine(pending.machineId)?.pairingFingerprint);
   const claim = state.hub.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret }); if (claim.status !== "approved") throw Error("Pairing fixture failed");
   const server = createServer((req, res) => { if (!state.hub.handlePublicRequest(req, res, new URL(req.url ?? "/", "http://localhost"))) { res.writeHead(404); res.end(); } });
   servers.push(server); server.on("upgrade", (req, socket, head) => { if (!state.hub.handleUpgrade(req, socket, head)) socket.destroy(); });
@@ -200,7 +201,10 @@ describe("runtime interactive pairing protocol", () => {
     });
     servers.push(server); server.listen(0, "127.0.0.1"); await once(server, "listening"); const address = server.address(); if (!address || typeof address === "string") throw Error("No fixture port");
     const store = new RuntimeClientStore(home());
-    const paired = await pairRuntime({ server: `http://127.0.0.1:${address.port}`, code: "interactive-code", name: "Fixture", store, pollMs: 1 });
+    const report=vi.fn();
+    const paired = await pairRuntime({ report, server: `http://127.0.0.1:${address.port}`, code: "interactive-code", name: "Fixture", store, pollMs: 1 });
+    expect(report).toHaveBeenCalledWith(expect.stringContaining(runtimeClaimFingerprint("c".repeat(64))));
+    expect(JSON.stringify(report.mock.calls)).not.toContain("c".repeat(64));
     expect(paired.credential).toBe("d".repeat(64)); expect(store.credentials()?.machineId).toBe(machineId); expect(requests).toEqual(["/runtime/v1/pair", "/runtime/v1/claim", "/runtime/v1/claim"]);
     const redirect = createServer((req, res) => { req.resume(); res.writeHead(307, { Location: `http://127.0.0.1:${address.port}/runtime/v1/pair` }); res.end(); }); servers.push(redirect);
     redirect.listen(0, "127.0.0.1"); await once(redirect, "listening"); const other = redirect.address(); if (!other || typeof other === "string") throw Error("No fixture port");

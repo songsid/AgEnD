@@ -1,11 +1,22 @@
 /** Versioned, bounded runtime transport. This module is safe in the standalone Windows client. */
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import type { NativeTaskInput } from "./windows-cli-worker.js";
+import { createHash } from "node:crypto";
 
 export const RUNTIME_PROTOCOL_VERSION = 1;
 export const RUNTIME_CONNECT_PATH = "/runtime/v1/connect";
 export const RUNTIME_PAIR_PATH = "/runtime/v1/pair";
 export const RUNTIME_CLAIM_PATH = "/runtime/v1/claim";
+export const RUNTIME_ROTATE_PATH = "/runtime/v1/rotate";
+/** Public comparison value, not an authentication credential. Also works for pending v1 store records. */
+export function runtimeFingerprintFromHash(digest: string): string {
+  if (!/^[a-f0-9]{64}$/.test(digest)) throw Error("Invalid runtime claim digest");
+  return digest.slice(0, 12).toUpperCase().match(/.{4}/g)!.join("-");
+}
+export function runtimeClaimFingerprint(claim: string): string {
+  if (!/^[a-f0-9]{64}$/.test(claim)) throw Error("Invalid runtime claim");
+  return runtimeFingerprintFromHash(createHash("sha256").update(claim).digest("hex"));
+}
 export const RUNTIME_MAX_FRAME_BYTES = 256 * 1024;
 export type RuntimeOperation = "probe" | "workspace" | "run" | "cancel" | "reconcile" | "recover";
 export interface RuntimeRunPayload {
@@ -28,6 +39,7 @@ export interface RuntimeMachine {
   inventoryUpdatedAt?: number;
   bootId?: string;
   generation: number;
+  pairingFingerprint?: string;
 }
 export interface RuntimePairing { pairingId: string; code: string; expiresAt: number }
 export interface RuntimePairResult { machineId: string; claimSecret: string; status: "pending"; expiresAt: number }

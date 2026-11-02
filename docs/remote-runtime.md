@@ -18,7 +18,7 @@ Enable the coordinator preview with `AGEND_REMOTE_RUNTIME=1` in the environment 
    .\agend-runtime.cmd connect --server https://your-agend-host --name "Windows desktop"
    ```
 
-4. Enter the one-time code interactively. Do not put the code in command arguments or environment variables. Approve the pending machine in AgEnD Settings. Approval is required before a permanent machine credential is issued.
+4. Enter the one-time code interactively. Do not put the code in command arguments or environment variables. Compare the **Pairing fingerprint** printed in the runtime terminal with the fingerprint on the pending machine card, then approve that machine in AgEnD Settings. Do not approve if they differ. Approval is required before a permanent machine credential is issued.
 5. Keep the terminal running. After pairing, `connect` automatically runs the resident client. Press **Ctrl+C** to stop. Later, use `agend-runtime.cmd run` to reconnect the saved profile.
 6. In **New Agent**, select the paired machine, its CLI, then configure the Agent. Working directories are paths on that selected computer; leaving the directory empty creates its managed local workspace.
 
@@ -30,7 +30,7 @@ The download requires an administrator session on the local dashboard and is una
 
 The runtime uses `/runtime/v1/connect` on the same externally reachable AgEnD service as pairing and the dashboard. Remote origins require HTTPS/WSS and a valid certificate. HTTP is accepted only for exact loopback hostnames, for example `http://localhost:19280` through a private SSH forward. The client refuses credential-bearing URLs and redirects.
 
-The existing coordinator listener still binds to loopback. Publishing a new port, changing a firewall or configuring TLS/proxy access is a separate host operation; pairing does not make the listener reachable automatically. A proxy must pass WebSocket upgrades on `/runtime/v1/connect` and POST requests on `/runtime/v1/pair` and `/runtime/v1/claim`. Pairing codes expire after ten minutes and are single-use. The runtime machine credential is unrelated to browser sessions; browser cookies and origins cannot authenticate the runtime channel.
+The existing coordinator listener still binds to loopback. Publishing a new port, changing a firewall or configuring TLS/proxy access is a separate host operation; pairing does not make the listener reachable automatically. A proxy must pass WebSocket upgrades on `/runtime/v1/connect` and POST requests on `/runtime/v1/pair`, `/runtime/v1/claim` and `/runtime/v1/rotate`. Pairing codes expire after ten minutes and are single-use. The runtime machine credential is unrelated to browser sessions; browser cookies and origins cannot authenticate the runtime channel.
 
 This preview does not open a runtime listener for other computers. Its per-turn MCP relay binds an ephemeral port to **127.0.0.1 only**, and requires a separate random capability for the active execution. It relays scoped AgEnD tool calls over the authenticated outbound runtime connection. The CLI never receives the permanent machine credential. Existing local `/agent` restrictions remain in place.
 
@@ -59,7 +59,7 @@ Install and sign in to Tailscale on the coordinator host and the Windows runtime
 
 **Never use `tailscale funnel` for this setup.** Funnel publishes the service to the internet; Serve is intended for access within the tailnet. Tailnet membership and its access rules become part of the trust boundary for the reachable pairing/claim endpoints. Admit only intended devices and users, and retain AgEnD's single-use code, local administrator approval and machine-credential checks. Tailscale identity headers do not replace AgEnD authentication.
 
-Mount the origin at `/`, without rewriting paths. The proxy must preserve both JSON POSTs (`/runtime/v1/pair` and `/runtime/v1/claim`) and the HTTP/1.1 WebSocket upgrade (`/runtime/v1/connect`), including the runtime's Authorization header. Verify a complete pairing/approval/claim and an online Runtime connection through the chosen proxy; loading the dashboard alone does not establish that the WebSocket path works. Record the Tailscale version and confirm that the connection remains online, including a reconnect, when validating an actual tailnet deployment. Automated proxy tests do not by themselves certify a particular Tailscale installation or its access policy.
+Mount the origin at `/`, without rewriting paths. The proxy must preserve both JSON POSTs (`/runtime/v1/pair`, `/runtime/v1/claim` and `/runtime/v1/rotate`) and the HTTP/1.1 WebSocket upgrade (`/runtime/v1/connect`), including the runtime's Authorization header. Verify a complete pairing/approval/claim and an online Runtime connection through the chosen proxy; loading the dashboard alone does not establish that the WebSocket path works. Record the Tailscale version and confirm that the connection remains online, including a reconnect, when validating an actual tailnet deployment. Automated proxy tests do not by themselves certify a particular Tailscale installation or its access policy.
 
 ### SSH local forward
 
@@ -112,3 +112,18 @@ Files are created privately under the user's profile. **The machine credential i
 ```
 
 `status` prints machine identity and job states, without the credential or prompts. Stop the foreground client before `disconnect`; it forgets the local connection. To invalidate a credential centrally, **revoke the machine in AgEnD Settings**. Revoke rejects new runtime connections and closes an existing connection. Local process shutdown remains subject to the explicit completion/cancellation rules above.
+
+## Rotate a machine credential without pairing again
+
+Stop the foreground runtime with **Ctrl+C**, then, in the same extracted Runtime folder and under the same Windows user, run:
+
+```powershell
+.\agend-runtime.cmd rotate
+.\agend-runtime.cmd run
+```
+
+Pass the same `--profile DIRECTORY` to both commands if you use a non-default profile. Rotation refuses while that profile is in use; it never stops an execution automatically. It keeps the machine identity, approval, inventory and job journal. Once the coordinator commits the rotation, the previous credential can no longer connect. Neither credential appears in command arguments or status output.
+
+The replacement is saved privately in `connection.json` before the request. If a response is lost or the final local save fails, keep the profile intact and retry `rotate`, or use `run` to finish the saved rotation before connecting. `status` reports `rotationPending` without the credential. Do not downgrade or delete the saved candidate while rotation is pending. A revoked machine cannot rotate itself back into authorization.
+
+Valid pairing codes, claims and rotations have independent rate-limit buckets even when a proxy or SSH forward makes every connection appear to come from loopback. Invalid traffic has a separate bounded bucket; forwarding headers do not grant identity or bypass limits. The comparison fingerprint is not a password or a replacement for HTTPS and administrator approval.

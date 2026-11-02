@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
-  "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "windows-cli.js", "windows-cli-worker.js",
+  "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "runtime-protocol.js", "windows-cli.js", "windows-cli-worker.js",
   "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js",
 ]);
 const WS_FILES = Object.freeze([
@@ -26,10 +26,11 @@ Requires a supported Windows Node.js version and each coding CLI installed and s
 1. Extract this folder on the Windows computer. No npm install or Linux native packages are needed.
 2. In a Windows terminal run:
    .\\agend-runtime.cmd connect --server https://your-agend-host
-3. Enter the one-time code from AgEnD Settings, then approve the pending machine there.
+3. Enter the one-time code from AgEnD Settings, compare the pairing fingerprint on both screens, then approve the pending machine there.
 4. In Settings -> Runtime, press Refresh CLI inventory for this computer. Only this explicit detection starts the installed CLIs; connecting or opening a page does not.
 5. Keep this terminal running. Ctrl+C stops it; .\\agend-runtime.cmd run reconnects the stored profile.
 
+Stop the runtime before using rotate to replace its machine credential without pairing again, then use run to reconnect. A saved interrupted rotation is completed before run connects.
 Use status to inspect local pairing and journal state. disconnect forgets a stopped local connection; revoke the machine in AgEnD Settings to invalidate its credential centrally.
 The private profile defaults to %USERPROFILE%\\.agend-runtime. Its machine credential is stored as a private file, not encrypted by this preview. Use your Windows user profile and do not share it. CLI login credentials are never uploaded.
 Do not install this preview as SYSTEM: it uses the logged-in user's CLI login, PATH, workspaces and devices.
