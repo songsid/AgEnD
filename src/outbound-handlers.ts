@@ -8,6 +8,7 @@ import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { Logger } from "./logger.js";
 import type { RoutingEngine } from "./routing-engine.js";
 import type { InstanceLifecycle, LifecycleCreateArgs } from "./instance-lifecycle.js";
+import { isWindowsInstance, WINDOWS_CONFIG_REFUSED, WINDOWS_CREATE_REFUSED } from "./native-instance-registry.js";
 import type { EventLog } from "./event-log.js";
 import { deliveryContentDigest, deliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import type { z } from "zod";
@@ -1344,6 +1345,8 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
+  // M-2239 P1-1: a Windows agent's settings belong to the administrator's dashboard, not to another agent.
+  if (isWindowsInstance(ctx.fleetConfig?.instances?.[v.data.name])) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
   applyInstanceConfigPatch(ctx, v.data.name, v.data.config, respond);
 };
 
@@ -1758,6 +1761,8 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
+  // M-2239 P1-1: the same boundary for the Windows runtime — an administrator creates a Windows agent in the web dashboard.
+  if ((rawArgs as any)?.runtime === "windows" || (rawArgs as any)?.sandbox !== undefined) { respond(null, WINDOWS_CREATE_REFUSED); return; }
   const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
   if (!v.ok) { respond(null, v.error); return; }
   // Reject dangerous working directories
@@ -1792,6 +1797,7 @@ const deleteInstance: Handler = async (ctx, rawArgs, respond, meta) => {
 const replaceInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(ReplaceInstanceArgs, rawArgs, "replace_instance");
   if (!v.ok) { respond(null, v.error); return; }
+  if (isWindowsInstance(ctx.fleetConfig?.instances?.[v.data.name])) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
   await ctx.lifecycle.handleReplace(v.data, respond);
 };
 
