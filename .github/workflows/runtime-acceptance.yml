@@ -5,7 +5,10 @@
 # one at boot or login (that is the manual check on a real host).
 # macOS cells (user decision, 2026-10-09): NOT on pull requests — Mac runners queue for 20–40 min and Mac users are few.
 # They run on a release tag (v*), on demand (workflow_dispatch) and weekly; before a release the real-Mac rehearsal
-# covers the Mac. Pull requests run the Linux cells (x64 and arm64).
+# covers the Mac.
+# Pull requests (the user, 2026-11-02: fewer checks): one Linux x64 runner — install-run on the oldest and the newest
+# system Node (16, 22), the hop on 18 (the oldest Node where both of its legs run). The full matrix — arm64, the Macs,
+# every Node — runs on a release tag, weekly and on demand, before anything ships.
 name: Runtime acceptance
 
 on:
@@ -71,10 +74,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest","ubuntu-24.04-arm"]' || '["ubuntu-latest","ubuntu-24.04-arm","macos-latest","macos-15-intel"]') }}
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","ubuntu-24.04-arm","macos-latest","macos-15-intel"]') }}
         # The system Node is never a reason to refuse where a bundled Node applies (#1450, user 2026-10-09): 16 and 18
-        # install and run too — AgEnD runs on the bundled Node, whatever Node runs npm.
-        node: ['16', '18', '20.19.0', '22']
+        # install and run too — AgEnD runs on the bundled Node, whatever Node runs npm. A pull request runs the two
+        # ends: 16 (npm 8, node-gyp) and 22.
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '["16","22"]' || '["16","18","20.19.0","22"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
@@ -113,7 +117,8 @@ jobs:
       matrix:
         os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
         # 2.1.12 itself starts on 18 and 20, so both legs run there; on 16 it cannot start, so only plain npm applies.
-        node: ['16', '18', '20.19.0']
+        # A pull request runs 18: the oldest Node where both legs (the old updater and plain npm) run.
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '["18"]' || '["16","18","20.19.0"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
