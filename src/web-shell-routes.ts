@@ -15,7 +15,7 @@
 export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
 // #2347: the sections in two groups (You: preferences, look; Fleet: the rest), as the page's (src/ui/shared/app-route.js).
-export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"] as const;
+export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "windows-cli", "agent-defaults", "chat", "web-dashboard", "access", "advanced"] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 /** #2347: the names before the regrouping, still served (the page moves to the new address); where each one went. */
 export const LEGACY_SETTINGS: Readonly<Record<string, SettingsSection>> = Object.freeze({
@@ -28,6 +28,7 @@ export type ShellRoute =
   | { panel: "view"; instance: string | null }
   | { panel: "settings"; section: SettingsSection }
   | { panel: "needs" }
+  | { panel: "windows-agent"; instance: string }
   // #2910 D2: a web-only fleet's Notices (/ui/notices).
   | { panel: "notices" }
   // #1523 N2: Details, "the Fleet side of one instance" (/ui/fleet/agent/<name>).
@@ -60,6 +61,9 @@ function decodeSegment(segment: string): string | null {
 export function shellRoute(method: string, path: string): ShellMatch {
   if (method !== "GET" && method !== "HEAD") return null;
   if (path === "/ui") return { kind: "shell", route: { panel: "chat", instance: null } };
+  if (path === "/ui/windows-cli") return { kind: "shell", route: { panel: "settings", section: "windows-cli" } };
+  const windowsAgent = /^\/ui\/windows-agents\/([a-f0-9-]{36})$/i.exec(path);
+  if (windowsAgent) return { kind: "shell", route: { panel: "windows-agent", instance: windowsAgent[1] } };
   if (path === "/ui/fleet") return { kind: "shell", route: { panel: "fleet", tab: "tasks" } };
   // #1386 part (b): the Needs you list. A page, not a read of the list — that arrives only over SSE `needs` and
   // /ui/poll (#1374: no new read for it).

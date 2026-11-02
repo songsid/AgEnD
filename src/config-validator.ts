@@ -14,6 +14,8 @@ import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./p
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { dashboardAccessProblem } from "./dashboard-permissions.js";
+import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
+import { isNativeProviderId, nativeProvider } from "./windows-cli-providers.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -599,6 +601,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
 
   // ── Instances ─────────────────────────────────────────────
   let generalCount = 0;
+  const nativeOwners = new Map<string,string>();
   if (config.instances !== undefined && !isObj(config.instances)) {
     err("instances", "must be a mapping");
   } else if (isObj(config.instances)) {
@@ -620,6 +623,24 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       if (problem) err(`instances.${name}.backend`, problem);
       if (inst.working_directory !== undefined && typeof inst.working_directory !== "string") {
         err(`instances.${name}.working_directory`, "must be a string path");
+      }
+      if (inst.runtime !== undefined && inst.runtime !== "wsl" && inst.runtime !== "windows") err(`instances.${name}.runtime`, "must be wsl or windows");
+      if (inst.runtime === "windows") {
+        if (!validWindowsAgentId(inst.native_agent_id)) err(`instances.${name}.native_agent_id`, "must name an existing Windows agent UUID");
+        else {
+          const id = inst.native_agent_id.toLowerCase(), owner = nativeOwners.get(id);
+          if (owner) err(`instances.${name}.native_agent_id`, `is already used by instance ${owner}`);
+          else nativeOwners.set(id,name);
+        }
+        if (!validWindowsDirectory(inst.working_directory)) err(`instances.${name}.working_directory`, "must be an absolute Windows drive path");
+        if (inst.native_sandbox !== "read-only" && inst.native_sandbox !== "workspace-write") err(`instances.${name}.native_sandbox`, "must be read-only or workspace-write");
+        if (inst.backend !== undefined) {
+          if (!isNativeProviderId(inst.backend) || !nativeProvider(inst.backend).supports.execution) err(`instances.${name}.backend`, "must be a supported native Windows CLI");
+          else if (inst.native_sandbox === "read-only" && !nativeProvider(inst.backend).readOnlySupport) err(`instances.${name}.native_sandbox`, "this Windows CLI does not support read-only execution");
+        }
+      } else {
+        if (inst.native_agent_id !== undefined) err(`instances.${name}.native_agent_id`, "is only valid for a Windows runtime");
+        if (inst.native_sandbox !== undefined) err(`instances.${name}.native_sandbox`, "is only valid for a Windows runtime");
       }
       validateAutoPause(inst.auto_pause_after, `instances.${name}.auto_pause_after`);
       validateDeliveryWorker(inst.delivery_worker, `instances.${name}.delivery_worker`);

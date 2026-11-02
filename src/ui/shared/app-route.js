@@ -6,7 +6,7 @@ export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage
 // #2347: two groups — "You" changes only you or this browser; "Fleet" changes AgEnD for everyone.
 export const SETTINGS_GROUPS = Object.freeze([
   Object.freeze({ id: "you", sections: Object.freeze(["preferences", "look"]) }),
-  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]) }),
+  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "windows-cli", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]) }),
 ]);
 export const SETTINGS_SECTIONS = Object.freeze(SETTINGS_GROUPS.flatMap((g) => g.sections));
 /** #2347: the sections' names before the regrouping (links and bookmarks keep working) and where each one went. */
@@ -28,6 +28,9 @@ export function isSafeInstanceName(name) {
  */
 export function parseRoute(pathname) {
   if (pathname === "/ui") return { panel: "chat", instance: null };
+  if (pathname === "/ui/windows-cli") return { panel: "settings", section: "windows-cli" };
+  const windowsAgent = /^\/ui\/windows-agents\/([a-f0-9-]{36})$/i.exec(pathname);
+  if (windowsAgent) return { panel: "windows-agent", instance: windowsAgent[1] };
   if (pathname === "/ui/fleet") return { panel: "fleet", tab: "tasks" };
   if (pathname === "/ui/needs") return { panel: "needs" };
   if (pathname === NOTICES_PATH) return { panel: "notices" };              // #2910 D2: a web-only fleet's Notices
@@ -108,6 +111,7 @@ export function legacySettingsTarget(pathname) {
 }
 export function routePath(route) {
   if (!route) return "/ui";
+  if (route.panel === "windows-agent") return `/ui/windows-agents/${route.instance}`;
   if (route.panel === "fleet") return fleetPath(route.tab);
   if (route.panel === "settings") return settingsPath(route.section);
   if (route.panel === "needs") return NEEDS_PATH;

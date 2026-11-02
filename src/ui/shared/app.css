@@ -425,6 +425,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* #2072: a model field — the list, and the text box "Other…" opens under it. */
 .model-pick { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
 .model-pick > select, .model-pick > input { width: 100%; }
+.model-catalog-status { display: flex; gap: var(--s-2); align-items: center; justify-content: space-between; }
+.model-catalog-status > .note { line-height: 1.5; }
+.model-catalog-status > button { flex-shrink: 0; }
 .note { font-size: var(--fs-xs); color: var(--text-3); }
 .checks { display: flex; flex-direction: column; gap: var(--s-1); max-height: 180px; overflow-y: auto; }
 .check { display: flex; gap: var(--s-2); align-items: center; font-size: var(--fs-sm); }
@@ -2652,3 +2655,220 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .os-none { margin: 0; }
 .os-form .os-err { grid-column: 1 / -1; margin: 0; padding: var(--s-2) var(--s-3); border: 1px solid var(--danger); border-radius: var(--r-sm); }
 @media (max-width: 480px) { .os-form { grid-template-columns: 1fr; } }
+/* Windows CLI preview: local providers, a task composer and a compact execution history. */
+.p-windows-cli .windows-cli-content { width: 100%; max-width: 1160px; margin: 0 auto; padding: 28px 28px 48px; }
+.p-windows-cli .windows-cli-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.p-windows-cli .windows-cli-eyebrow { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.p-windows-cli .windows-cli-intro h2 { margin-top: 7px; font-size: 26px; font-weight: 600; line-height: 1.3; letter-spacing: -.04em; }
+.p-windows-cli .windows-cli-intro p { margin-top: 7px; font-size: 13px; color: var(--text-2); line-height: 1.7; }
+.p-windows-cli .windows-cli-probe { flex-shrink: 0; min-height: 38px; border-radius: 9px; }
+.p-windows-cli .windows-cli-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.p-windows-cli .windows-cli-provider { min-width: 0; padding: 20px 20px 0; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); }
+.p-windows-cli .windows-cli-provider-head { display: flex; align-items: center; gap: 12px; }
+.p-windows-cli .windows-cli-brand { width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 12px; }
+.p-windows-cli .brand-openai { color: #fff; background: #141413; }
+.p-windows-cli .brand-anthropic { color: #141413; background: #f0e9df; }
+.p-windows-cli .windows-cli-provider-name { flex: 1; min-width: 0; }
+.p-windows-cli .windows-cli-provider-name > span { font-size: 11px; color: var(--text-2); }
+.p-windows-cli .windows-cli-provider-name h3 { font-size: 18px; line-height: 1.4; font-weight: 600; letter-spacing: -.025em; }
+.p-windows-cli .windows-cli-badge { display: inline-flex; align-items: center; flex-shrink: 0; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+.p-windows-cli .tone-ready { color: var(--ok); }
+.p-windows-cli .tone-neutral { color: var(--text-2); }
+.p-windows-cli .tone-failed { color: var(--danger); }
+.p-windows-cli .tone-working { color: var(--accent); }
+.p-windows-cli .windows-cli-badge.tone-ready { background: var(--ok-bg); }
+.p-windows-cli .windows-cli-badge.tone-neutral { background: var(--surface); }
+.p-windows-cli .windows-cli-provider-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 14px; margin: 17px 0 14px; font-size: 12px; }
+.p-windows-cli .windows-cli-auth, .p-windows-cli .windows-cli-readiness, .p-windows-cli .windows-cli-task-state { display: inline-flex; align-items: center; gap: 7px; }
+.p-windows-cli .windows-cli-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.p-windows-cli .windows-cli-version { color: var(--text-3); font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+.p-windows-cli .windows-cli-location { border-top: 1px solid var(--border); }
+.p-windows-cli summary { cursor: pointer; list-style: none; }
+.p-windows-cli summary::-webkit-details-marker { display: none; }
+.p-windows-cli .windows-cli-location summary { display: flex; justify-content: space-between; align-items: center; min-height: 37px; color: var(--text-2); font-size: 11px; }
+.p-windows-cli details[open] > summary > .icon:last-child { transform: rotate(180deg); }
+.p-windows-cli .windows-cli-path { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.7 var(--font-mono); color: var(--text-2); }
+.p-windows-cli .windows-cli-location .windows-cli-path { padding: 0 0 12px; }
+.p-windows-cli .windows-cli-workbench { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; gap: 20px; }
+.p-windows-cli .windows-cli-card { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); }
+.p-windows-cli .windows-cli-composer { padding: 22px; }
+.p-windows-cli .windows-cli-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.p-windows-cli .windows-cli-section-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; background: var(--surface); color: var(--text-2); }
+.p-windows-cli .windows-cli-section-head > div { flex: 1; min-width: 0; }
+.p-windows-cli .windows-cli-section-head h2 { display: flex; align-items: center; gap: 7px; font-size: 15px; line-height: 1.4; font-weight: 600; letter-spacing: -.02em; }
+.p-windows-cli .windows-cli-section-head p { margin-top: 4px; color: var(--text-2); font-size: 11px; line-height: 1.6; }
+.p-windows-cli .windows-cli-field { margin-bottom: 18px; }
+.p-windows-cli .windows-cli-field > label, .p-windows-cli .windows-cli-access > legend { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600; }
+.p-windows-cli .windows-cli-field > input, .p-windows-cli .windows-cli-field > textarea { display: block; width: 100%; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); color: var(--text); font-size: var(--fs-sm); line-height: 1.6; }
+.p-windows-cli .windows-cli-field > input:focus, .p-windows-cli .windows-cli-field > textarea:focus { border-color: var(--focus); outline: none; box-shadow: 0 0 0 3px var(--accent-dim); }
+.p-windows-cli .windows-cli-field > textarea { min-height: 120px; resize: vertical; }
+.p-windows-cli .windows-cli-field .windows-cli-directory { font-family: var(--font-mono); font-size: var(--fs-xs); }
+.p-windows-cli .windows-cli-field > p { margin-top: 6px; font-size: 11px; line-height: 1.6; color: var(--text-3); }
+.p-windows-cli .windows-cli-field ::placeholder { color: var(--text-3); }
+.p-windows-cli .windows-cli-access-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.p-windows-cli .windows-cli-access-option { display: flex; align-items: flex-start; gap: 8px; padding: 11px 10px; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; }
+.p-windows-cli .windows-cli-access-option.selected { background: var(--accent-dim); border-color: var(--focus); }
+.p-windows-cli .windows-cli-access-option input { margin: 3px 0 0; accent-color: var(--accent); width: 13px; height: 13px; flex-shrink: 0; }
+.p-windows-cli .windows-cli-access-option strong { display: flex; align-items: center; gap: 5px; font-size: 12px; line-height: 1.6; font-weight: 600; }
+.p-windows-cli .windows-cli-access-option small { display: block; margin-top: 3px; font-size: 10px; line-height: 1.6; color: var(--text-2); }
+.p-windows-cli .windows-cli-policy { margin-top: 14px; color: var(--text-2); font-size: 11px; }
+.p-windows-cli .windows-cli-policy summary { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.p-windows-cli .windows-cli-policy p { padding: 4px 0 10px; line-height: 1.8; }
+.p-windows-cli .windows-cli-submit { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 16px; margin-top: 10px; border-top: 1px solid var(--border); }
+.p-windows-cli .windows-cli-readiness { font-size: 11px; line-height: 1.6; }
+.p-windows-cli .windows-cli-submit .btn { min-height: 40px; border-radius: 8px; }
+.p-windows-cli .windows-cli-limits { display: flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--text-3); font-size: 10px; line-height: 1.6; }
+.p-windows-cli .windows-cli-history { padding: 22px 20px 0; }
+.p-windows-cli .windows-cli-history .windows-cli-section-head { margin-bottom: 18px; }
+.p-windows-cli .windows-cli-history .icon-btn { width: 30px; height: 30px; }
+.p-windows-cli .windows-cli-count { color: var(--text-2); background: var(--surface); padding: 1px 6px; border-radius: 5px; font-size: 10px; font-weight: 500; }
+.p-windows-cli .windows-cli-task { margin-top: 10px; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.p-windows-cli .windows-cli-task > summary { display: flex; align-items: center; gap: 10px; padding: 12px; font-size: 12px; }
+.p-windows-cli .windows-cli-task > summary:hover { background: var(--surface); }
+.p-windows-cli .windows-cli-task-state { flex: 1; font-weight: 600; }
+.p-windows-cli .windows-cli-task time { font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.p-windows-cli .windows-cli-task-cwd { padding: 0 12px 12px; font-size: 10px; }
+.p-windows-cli .windows-cli-task-detail { padding: 0 12px 12px; }
+.p-windows-cli .windows-cli-output-label { display: flex; align-items: center; gap: 5px; padding: 9px 10px; border-radius: 6px 6px 0 0; background: var(--code-head); color: var(--text-2); font-size: 10px; }
+.p-windows-cli .windows-cli-output { padding: 12px; margin: 0; max-height: 320px; overflow: auto; border-radius: 0 0 6px 6px; background: var(--code-bg); white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.8 var(--font-mono); }
+.p-windows-cli .windows-cli-task-detail > .btn { margin-top: 10px; }
+.p-windows-cli .windows-cli-history-note { margin-top: 18px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--text-3); text-align: center; font-size: 10px; }
+.p-windows-cli .windows-cli-empty { display: flex; flex-direction: column; align-items: center; padding: 42px 16px; text-align: center; }
+.p-windows-cli .windows-cli-empty > span { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 16px; background: var(--surface); color: var(--text-3); margin-bottom: 16px; }
+.p-windows-cli .windows-cli-empty h3 { font-size: 13px; font-weight: 600; }
+.p-windows-cli .windows-cli-empty p { max-width: 220px; margin-top: 7px; font-size: 12px; line-height: 1.8; color: var(--text-3); }
+.p-windows-cli .error { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--danger); font-size: 12px; }
+.p-windows-cli .windows-cli-error { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px; padding: 14px; border-radius: 10px; background: var(--danger-bg); }
+.p-windows-cli .windows-cli-error .icon { margin-top: 2px; }
+.p-windows-cli .windows-cli-spin { animation: windows-cli-rotate 1.4s linear infinite; }
+@keyframes windows-cli-rotate { to { transform: rotate(360deg); } }
+@media (max-width: 1130px) { .p-windows-cli .windows-cli-workbench { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 620px) {
+  .p-windows-cli .windows-cli-content { padding: 20px 16px 32px; }
+  .p-windows-cli .windows-cli-intro { flex-direction: column; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+  .p-windows-cli .windows-cli-intro h2 { font-size: 23px; }
+  .p-windows-cli .windows-cli-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 20px; }
+  .p-windows-cli .windows-cli-provider { padding: 16px 16px 0; }
+  .p-windows-cli .windows-cli-composer, .p-windows-cli .windows-cli-history { padding: 18px 16px; }
+  .p-windows-cli .windows-cli-history { padding-bottom: 0; }
+  .p-windows-cli .windows-cli-field > input, .p-windows-cli .windows-cli-field > textarea { font-size: 16px; }
+  .p-windows-cli .windows-cli-submit { flex-direction: column; align-items: stretch; }
+  .p-windows-cli .windows-cli-access-option { padding: 10px 8px; }
+  .p-windows-cli .windows-cli-access-option strong { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) { .p-windows-cli .windows-cli-spin { animation: none; } }
+.p-windows-cli.windows-cli-settings .windows-cli-content { padding: 0; }
+.p-settings .col:has(> .windows-cli-settings) { max-width: 1160px; }
+.p-settings .windows-cli-settings .windows-cli-workbench { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1500px) { .p-settings .windows-cli-settings .windows-cli-workbench { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); } }
+/* Runtime-first agent creation and native Windows conversations. */
+.agent-runtime-picker > legend, .agent-runtime-fields > legend { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.agent-runtime-picker > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.agent-runtime-choice { display: flex; align-items: center; gap: 9px; padding: 14px 11px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.agent-runtime-choice.selected { border-color: var(--focus); background: var(--accent-dim); }
+.agent-runtime-choice > input { width: 13px; height: 13px; margin: 0; accent-color: var(--accent); flex-shrink: 0; }
+.agent-runtime-choice > span { min-width: 0; }
+.agent-runtime-choice strong { display: block; font-size: 12px; line-height: 1.6; }
+.agent-runtime-choice small { display: block; margin-top: 3px; color: var(--text-2); font-size: 10px; line-height: 1.6; }
+.agent-runtime-fields { border-top: 1px solid var(--border); padding-top: 14px; }
+.agent-draft-assistant { padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.agent-draft-assistant > summary { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.agent-draft-assistant > .note { margin: 10px 0; font-size: 11px; }
+.agent-draft-assistant .btn { margin-top: 10px; }
+.agent-draft-assistant textarea { resize: vertical; }
+.windows-agent-nav { flex-shrink: 0; padding: 8px; border-top: 1px solid var(--border); max-height: 25vh; overflow: auto; }
+.windows-agent-nav h3 { padding: 0 12px 5px; color: var(--text-3); font-size: 11px; font-weight: 500; }
+.windows-agent-nav svg { flex-shrink: 0; }
+.p-windows-agent .windows-agent-conversation { max-width: 960px; }
+.windows-agent-identity { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.windows-agent-identity > span:first-child { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; color: white; background: #141413; flex-shrink: 0; }
+.windows-agent-identity > div { flex: 1; min-width: 0; }
+.windows-agent-identity strong { font-size: 13px; }
+.windows-agent-identity code { display: block; overflow-wrap: anywhere; color: var(--text-2); font: 11px/1.7 var(--font-mono); }
+.windows-agent-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 60px 12px; color: var(--text-2); }
+.windows-agent-empty h2 { margin: 18px 0 8px; color: var(--text); font-size: 20px; }
+.windows-agent-empty p { max-width: 400px; font-size: 13px; line-height: 1.8; }
+.windows-agent-turn { margin-bottom: 26px; }
+.windows-agent-human { padding: 14px 18px; margin-left: 15%; border-radius: 12px; background: var(--surface); }
+.windows-agent-human strong { font-size: 12px; }
+.windows-agent-human p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 6px; }
+.windows-agent-reply { padding: 20px 0 0; }
+.windows-agent-reply > strong { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.windows-agent-reply pre { margin: 14px 0 7px; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.8 var(--font-mono); }
+.windows-agent-reply small { color: var(--text-3); font-size: 11px; }
+.windows-agent-composer { padding: 12px 24px 18px; border-top: 1px solid var(--border); }
+.windows-agent-composer > div, .windows-agent-composer > p { max-width: 900px; margin-left: auto; margin-right: auto; }
+.windows-agent-input { padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.windows-agent-input > textarea { display: block; width: 100%; border: 0; resize: vertical; padding: 4px; background: transparent; color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); min-height: 60px; max-height: 180px; }
+.windows-agent-input > div { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+.windows-agent-composer > .note { margin-top: 8px; font-size: 10px; }
+.p-windows-agent .error, .agent-draft-assistant .error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+.windows-agent-blocked { padding: 16px; background: var(--warn-bg); border-radius: 10px; }
+.windows-agent-blocked p { margin-bottom: 12px; }
+@media (max-width: 620px) {
+  .agent-runtime-choice { flex-wrap: wrap; padding: 12px; }
+  .agent-runtime-choice > span { flex-basis: 100%; }
+  .windows-agent-composer { padding: 10px 12px; }
+  .windows-agent-identity { flex-wrap: wrap; }
+}
+/* Agent creation wizard: one active stage per screen, with persistent navigation actions. */
+.agent-create-wizard { display: flex; flex-direction: column; gap: 24px; }
+.agent-create-steps { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: center; gap: 8px; padding-bottom: 20px; margin: 0; list-style: none; border-bottom: 1px solid var(--border); }
+.agent-create-steps > li { display: flex; align-items: center; gap: 7px; color: var(--text-3); font-size: 12px; min-width: 0; }
+.agent-create-steps > li:not(:last-child)::after { content: ""; width: 28px; height: 1px; background: var(--border); margin: 0 6px; }
+.agent-create-steps > li.current { color: var(--text); font-weight: 600; }
+.agent-create-step-number { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border: 1px solid var(--border-strong); border-radius: 50%; font-size: 11px; }
+.agent-create-steps .current .agent-create-step-number { color: var(--on-accent); background: var(--accent-fill); border-color: var(--accent-fill); }
+.agent-create-steps .complete .agent-create-step-number { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
+.agent-create-stage { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.agent-create-stage > h3 { margin: 0; font-size: 21px; font-weight: 600; line-height: 1.4; letter-spacing: -.025em; }
+.agent-create-stage > h3:focus { outline: none; }
+.agent-create-stage > .note { margin-top: -12px; font-size: 12px; line-height: 1.8; }
+.agent-create-cli { padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.agent-create-cli .field { margin: 0; }
+.agent-create-selection { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.agent-create-selection > div { flex: 1; min-width: 0; }
+.agent-create-selection strong { display: block; font-size: 12px; }
+.agent-create-selection span { display: block; color: var(--text-2); font-size: 11px; overflow-wrap: anywhere; }
+.agent-create-wizard .agent-runtime-fields { padding-top: 0; border-top: 0; }
+.agent-create-success { align-items: center; text-align: center; padding: 18px 0 8px; }
+.agent-create-success-icon { display: grid; place-items: center; width: 64px; height: 64px; color: var(--ok); background: var(--ok-bg); border-radius: 50%; }
+.agent-create-success dl { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 12px 20px; width: 100%; margin: 0; padding: 18px; border: 1px solid var(--border); border-radius: 10px; text-align: left; font-size: 13px; }
+.agent-create-success dt { color: var(--text-2); }
+.agent-create-success dd { margin: 0; overflow-wrap: anywhere; }
+.agent-create-success code { font-family: var(--font-mono); font-size: 12px; }
+@media (max-width: 620px) {
+  .agent-create-steps { gap: 6px; }
+  .agent-create-steps > li { gap: 5px; font-size: 11px; }
+  .agent-create-steps > li:not(:last-child)::after { width: 12px; margin: 0 2px; }
+  .agent-create-selection { gap: 8px; padding: 10px; }
+  .agent-create-selection .btn { padding: 0 8px; }
+  .agent-create-stage > h3 { font-size: 20px; }
+}
+.cli-picker { width: 100%; min-width: 0; }
+.cli-picker-trigger { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.cli-picker-trigger:hover:not(:disabled) { border-color: var(--accent); }
+.cli-picker-trigger:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cli-picker-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.cli-product-mark { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; line-height: 0; }
+.cli-product-mark svg, .cli-product-mark img { display: block; flex-shrink: 0; }
+.cli-picker-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cli-picker-chevron { display: inline-flex; color: var(--text-3); }
+.cli-picker .menu-list { left: 0; right: 0; min-width: 0; max-height: 280px; overflow-y: auto; }
+.cli-picker .menu-list.menu-up { top: auto; bottom: calc(100% + 6px); }
+.cli-picker .menu-list.menu-compact { max-height: 180px; }
+.cli-picker .menu-list.menu-short { max-height: 96px; }
+.cli-picker .menu-item { padding-top: 8px; padding-bottom: 8px; }
+.cli-picker .menu-radio > span:last-child { flex: 1; min-width: 0; }
+.cli-picker-option { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cli-picker-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cli-picker-description { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.4; }
+.cli-discovery-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
+.cli-discovery-status { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); }
+.cli-discovery-status > .out-spin { flex: 0 0 16px; width: 16px; height: 16px; margin-top: 3px; color: var(--accent); }
+.cli-discovery-status > div { min-width: 0; }
+.cli-discovery-status strong { display: block; font-size: var(--fs-sm); line-height: 1.5; }
+.cli-discovery-status p, .cli-discovery-status small { display: block; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; margin: 4px 0 0; overflow-wrap: anywhere; }
+.cli-discovery-status .btn { margin-top: 10px; }
+.cli-discovery-status.is-error { border-color: var(--border-strong); }
+.cli-discovery-status.is-error > svg { flex: 0 0 auto; margin-top: 2px; }

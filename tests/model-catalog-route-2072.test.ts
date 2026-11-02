@@ -6,12 +6,12 @@ import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { handleWebRequest } from "../src/web-api.js";
 
-function get(path: string, modelCatalogFor?: (b: string, i: string | null) => unknown) {
+function get(path: string, modelCatalogFor?: (b: string, i: string | null) => unknown, backendAvailabilityRows?: () => unknown[]) {
   const token = "c".repeat(48);
   const req = Object.assign(new EventEmitter(), { method: "GET", url: path, headers: { host: "127.0.0.1:19280", "x-agend-token": token }, socket: { remoteAddress: "127.0.0.1", destroy() {} } });
   let status = 0, body = "";
   const res = Object.assign(new EventEmitter(), { headersSent: false, setHeader() {}, getHeader() { return undefined; }, writeHead(c: number) { status = c; }, end(t = "") { body = String(t); }, write() { return true; } });
-  handleWebRequest(req as never, res as never, new URL(path, "http://127.0.0.1:19280"), { webToken: token, modelCatalogFor, logger: { info() {}, debug() {}, error() {}, warn() {} } } as never);
+  handleWebRequest(req as never, res as never, new URL(path, "http://127.0.0.1:19280"), { webToken: token, modelCatalogFor, backendAvailabilityRows, logger: { info() {}, debug() {}, error() {}, warn() {} } } as never);
   return { status: () => status, json: () => JSON.parse(body || "null") };
 }
 
@@ -41,6 +41,19 @@ describe("GET /ui/models", () => {
     const r = get("/ui/models?backend=codex");
     await new Promise(r2 => setTimeout(r2, 10));
     expect(r.json()).toEqual({ backend: "codex", models: [] });
+  });
+  it("provides version-compatible documented Claude choices only when its account cache is empty", async () => {
+    const catalog = vi.fn(() => []);
+    const r = get("/ui/models?backend=claude-code", catalog, () => [{ backend: "claude-code", version: "2.1.299" }]);
+    await new Promise(done => setTimeout(done, 10));
+    expect(r.json()).toMatchObject({ backend: "claude-code", source: "official-catalog", models: expect.arrayContaining([{ id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }]) });
+    expect(catalog).toHaveBeenCalledWith("claude-code", null);
+  });
+  it.each(["runtime=other", "refresh=true"])("rejects malformed options %s before requesting models", async query => {
+    const catalog = vi.fn(() => []);
+    const r = get(`/ui/models?backend=codex&${query}`, catalog);
+    await new Promise(done => setTimeout(done, 5));
+    expect(r.status()).toBe(400); expect(catalog).not.toHaveBeenCalled();
   });
 });
 

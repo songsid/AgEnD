@@ -112,7 +112,7 @@ export interface WebChatMessage {
   delivery?: WebDeliveryState;
   id: number;
   instance: string;
-  /** The `message_id` the agent was given for a web user's message — what delivery reports name it by. */
+  /** A live web delivery id, or a native runtime turn's durable history identity. */
   messageId?: string;
   /**
    * Who the server says wrote it (#1306), set by the code path that emitted it — never read from the text or the
@@ -284,6 +284,8 @@ export interface StoredWebChatMessage {
   sender: string;
   text: string;
   ts: string;
+  /** A native runtime turn's durable identity only. Ordinary web delivery ids stay live-only. */
+  messageId?: string;
   attachments?: Array<{ id?: string; path?: string; kind: "photo" | "document"; name: string; size: number; mime: string }>;
   /** The label of a person's button click (what the page shows for it; the buttons themselves are not kept). */
   click?: { label: string };
@@ -321,6 +323,21 @@ export interface WebChatPersistence {
 }
 
 export const WEB_CHAT_TEXT_MAX = 16_000;
+
+/** A native turn id is inert history identity, never a revived web delivery or interactive control. */
+function nativeHistoryMessageId(value: unknown, role: WebChatRole): value is string {
+  if (typeof value !== "string") return false;
+  const match = /^native:[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}:(user|reply)$/.exec(value);
+  return !!match && (match[1] === "user" ? role === "user" : role === "agent" || role === "status");
+}
+
+export interface NativeHistoryMessage {
+  messageId: string;
+  role: WebChatRole;
+  sender: string;
+  text: string;
+  ts: string;
+}
 
 /**
  * The `message_id` a message from the web chat is delivered under. Unique (two sends in one millisecond used
@@ -370,11 +387,12 @@ export class WebChatHistory {
     this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).map((m) => this.stored(m)));
   }
 
-  /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
+  /** #1565: what was said, with no interactive state or web delivery ids; native turn identity is durable. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
       ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}) };
+    if (nativeHistoryMessageId(m.messageId, m.role)) row.messageId = m.messageId;
     const posts = this.posts.get(m);
     if (posts?.length) row.posts = posts.map(p => ({ ...p }));
     if (m.attachments?.length) {
@@ -629,6 +647,52 @@ export class WebChatHistory {
     return undefined;
   }
 
+  /**
+   * Link old native imports to their authoritative turn ids before importing anything missing. Earlier versions
+   * did not keep messageId on disk, so each restart appended the same imports. A repair requires the native
+   * ledger's exact role, sender, timestamp and recorded text; content alone is never enough. The expected ids
+   * form a multiset: two distinct turns with identical visible fields still keep two rows. Keep the earliest
+   * boot/id of each row, and leave unrelated ids or rows carrying other chat metadata alone.
+   */
+  reconcileNativeMessages(instance: string, expected: readonly NativeHistoryMessage[]): boolean {
+    const slot = this.byInstance.get(instance);
+    if (!slot) return false;
+    const fingerprint = (m: Pick<NativeHistoryMessage,"role"|"sender"|"text"|"ts">): string =>
+      JSON.stringify([m.role,m.sender,m.text.slice(0,WEB_CHAT_TEXT_MAX),m.ts]);
+    const groups = new Map<string,NativeHistoryMessage[]>(), seen = new Set<string>();
+    for (const message of expected) {
+      if (!nativeHistoryMessageId(message.messageId,message.role) || seen.has(message.messageId)) continue;
+      seen.add(message.messageId);
+      const key = fingerprint(message), group = groups.get(key) ?? [];
+      group.push(message);groups.set(key,group);
+    }
+    const removed = new Set<WebChatMessage>();
+    let changed = false;
+    for (const [key,group] of groups) {
+      const ids = new Set(group.map(m => m.messageId));
+      const candidates = slot.messages.filter(m => fingerprint(m) === key && (!m.messageId || ids.has(m.messageId))
+        && !m.delivery && !m.attachments?.length && !m.buttons && !m.click && !m.links?.length && !m.channel && !m.from && !m.replyTo
+        && !m.reactions?.length && !m.cards?.length && !this.posts.has(m));
+      const kept = candidates.slice(0,group.length), assigned = new Set<string>();
+      const reserved = new Set(kept.flatMap(m => m.messageId ? [m.messageId] : []));
+      for (const message of kept) {
+        if (message.messageId && !assigned.has(message.messageId)) { assigned.add(message.messageId); continue; }
+        const id = group.find(m => !assigned.has(m.messageId) && !reserved.has(m.messageId))!.messageId;
+        if (message.messageId !== id) { message.messageId=id;changed=true; }
+        assigned.add(id);
+      }
+      for (const message of candidates.slice(group.length)) { removed.add(message);changed=true; }
+    }
+    if (!changed) return false;
+    if (removed.size) {
+      slot.messages = slot.messages.filter(m => !removed.has(m));
+      slot.chars = slot.messages.reduce((chars,m) => chars+m.text.length,0);
+      this.dropFiles(instance,[...removed]);
+    }
+    this.persist(instance);
+    return true;
+  }
+
   /** #1920: a kept reply by its buttons' set id. */
   findByButtons(instance: string, buttonsId: string): WebChatMessage | undefined {
     const messages = this.byInstance.get(instance)?.messages ?? [];
@@ -787,8 +851,9 @@ interface RestoredFile { id?: string; path?: string; kind: "photo" | "document";
 
 /**
  * #1565: one stored row as a restored message (and its files, to serve again), or null when it is not ours in shape.
- * Only what was said comes back: no buttons, no delivery tick, no message id — whatever a row carries of those. #2305:
- * and the instance's reactions (what was answered). With no id, a message from before the restart takes no new one.
+ * Only what was said comes back: no buttons, delivery tick or ordinary web delivery id. A strict native turn id is
+ * inert history identity and survives. #2305: the instance's reactions (what was answered) survive too. Restored
+ * messages keep their original boot/id rather than taking a new cursor in this process.
  */
 function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] } | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -799,6 +864,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // The role as stored — a person's message unless it is one of the three; never upgraded to `agent`.
   const role: WebChatRole = typeof r.role === "string" && ROLES.has(r.role) ? r.role as WebChatRole : "user";
   const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  if (nativeHistoryMessageId(r.messageId,role)) message.messageId=r.messageId;
   // A click comes back as its label only (the link to its buttons belonged to the process that ended).
   const click = role === "user" ? webChatClick(r.click) : undefined;
   if (click) message.click = { label: click.label };

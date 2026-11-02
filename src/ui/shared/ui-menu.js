@@ -1,6 +1,6 @@
 // #1408 §7: the ⋯ menu — a button and a list of actions. Arrow keys move, Enter/Space choose, Esc closes and puts focus
 // back on the button. Esc inside the menu is the menu's: it never reaches the app (e.g. never stops an agent's reply).
-import { html, useEffect, useRef, useState } from "./app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { t } from "./app-i18n.js";
 
@@ -8,34 +8,54 @@ import { t } from "./app-i18n.js";
  * items: [{ key, label, icon?, onSelect, danger?, disabled? }] (falsy entries are skipped). `checked` makes a radio item;
  * `checkbox: true` with `checked` a checkbox item (#2217 hotfix: the chat's card menu), which toggles and keeps the menu
  * open. `active`: the button shows a pressed look (what it controls is on), without changing its role.
+ * Optional `trigger` and `triggerClass` customize the button content and styling; `label` remains its accessible name.
  */
-export function Menu({ items, label, icon = "more", cls = "", active = false }) {
+export function Menu({ items, label, icon = "more", cls = "", active = false, trigger, triggerClass = "icon-btn", disabled = false, fit = false }) {
   const [open, setOpen] = useState(false);
+  const [placement,setPlacement] = useState("");
   const btn = useRef(null), list = useRef(null);
   const shown = (items || []).filter(Boolean);
+  useLayoutEffect(() => {
+    if (!open || !fit || !btn.current?.getBoundingClientRect || !list.current) return;
+    const place = () => {
+      if (!btn.current || !list.current) return;
+      const rect = btn.current.getBoundingClientRect();
+      const boundary = btn.current.closest?.(".dlg-body")?.getBoundingClientRect();
+      const top = Math.max(0,boundary?.top || 0), bottom = Math.min(window.innerHeight,boundary?.bottom || window.innerHeight);
+      const above = rect.top-top-8, below = bottom-rect.bottom-8;
+      const up = below < Math.min(list.current.scrollHeight || 280,280) && above > below;
+      const available = up ? above : below;
+      setPlacement(`${up ? " menu-up" : ""}${available < 180 ? " menu-short" : available < 280 ? " menu-compact" : ""}`);
+    };
+    place();
+    window.addEventListener("resize",place);
+    return () => window.removeEventListener("resize",place);
+  },[open,fit]);
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || disabled) { if (open && disabled) setOpen(false); return undefined; }
     const first = list.current && list.current.querySelector("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])");
     if (first) first.focus();
     const outside = (e) => { if (list.current && !list.current.contains(e.target) && btn.current && !btn.current.contains(e.target)) setOpen(false); };
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
-  }, [open]);
+  }, [open, disabled]);
   function onKey(e) {
     const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])")];
     const i = all.indexOf(document.activeElement);
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus(); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); document.activeElement?.click(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); (all[(i + 1) % all.length] || all[0])?.focus(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); (all[(i - 1 + all.length) % all.length] || all[0])?.focus(); }
     else if (e.key === "Home") { e.preventDefault(); all[0]?.focus(); }
     else if (e.key === "End") { e.preventDefault(); all[all.length - 1]?.focus(); }
     else if (e.key === "Tab") setOpen(false);
   }
-  function choose(item) { setOpen(false); btn.current && btn.current.focus(); item.onSelect(); }
+  function choose(item) { if (disabled || item.disabled) return; setOpen(false); btn.current && btn.current.focus(); item.onSelect(); }
   return html`<div class=${`menu ${cls}`}>
-    <button ref=${btn} type="button" class=${`icon-btn${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"}
-      aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => setOpen(!open)}><${Icon} name=${icon} /></button>
-    ${open ? html`<div data-trust="menu" ref=${list} class="menu-list" role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
+    <button ref=${btn} type="button" class=${`${triggerClass}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} disabled=${disabled}
+      aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => { if (!disabled) setOpen(!open); }}
+      onKeyDown=${(e) => { if (!disabled && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setOpen(true); } }}>${trigger === undefined ? html`<${Icon} name=${icon} />` : trigger}</button>
+    ${open && !disabled ? html`<div data-trust="menu" ref=${list} class=${`menu-list${fit ? placement : ""}`} role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
       ${shown.map(item => item.heading
         ? html`<div key=${item.key} class="menu-heading" role="presentation">${item.label}</div>`
         : item.checkbox

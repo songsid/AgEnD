@@ -79,6 +79,14 @@ export function modelText(it, raw = it && it.model) {
 }
 const BACKEND_LABELS = { "claude-code": "Claude Code", "kiro-cli": "Kiro CLI", codex: "Codex", grok: "Grok Build", antigravity: "Antigravity", opencode: "OpenCode" };
 export function backendLabel(backend) { return BACKEND_LABELS[backend] || backend || "Unknown"; }
+export function runtimeLabel(runtime) { return runtime === "windows" ? "Windows" : runtime === "wsl" ? "WSL / Linux" : runtime || ""; }
+/** Missing capabilities preserve the existing Linux UI; native runtimes expose only implemented controls. */
+export function supportsInstanceFeature(instance, feature) {
+  const key = feature === "view" ? "terminal" : feature;
+  if (typeof instance?.capabilities?.[key] === "boolean") return instance.capabilities[key];
+  if (feature === "log" && typeof instance?.capabilities?.terminal === "boolean") return instance.capabilities.terminal;
+  return instance?.runtime !== "windows" || !["terminal","view","log","details","attachments","commands","effort","send_while_busy"].includes(feature);
+}
 export const KNOWN_BACKENDS = new Set(Object.keys(BACKEND_LABELS));
 export const STATUS_KEYS = { running: "statusRunning", paused: "statusPaused", stopped: "statusStopped", crashed: "statusCrashed" };
 
@@ -97,7 +105,7 @@ export function normalizeFilter(query) { return String(query == null ? "" : quer
 /** Case-insensitive substring on name (incl. display name), model and backend. */
 export function instanceMatchesFilter(it, needle, labelOf) {
   if (!needle) return true;
-  const fields = [nameOf(it), it.display_name, it.model, it.backend, labelOf ? labelOf(it.backend) : null];
+  const fields = [nameOf(it), it.display_name, it.model, it.backend, runtimeLabel(it.runtime), labelOf ? labelOf(it.backend) : null];
   return fields.some((value) => typeof value === "string" && value.toLowerCase().includes(needle));
 }
 /**
@@ -136,6 +144,7 @@ export function instanceTooltip(it) {
   if (it.display_name && it.display_name !== name) lines.push(it.display_name, `(${name})`);
   else lines.push(name);
   lines.push(line("tooltipBackend", backendLabel(it.backend)));
+  if (it.runtime) lines.push(`Runtime: ${runtimeLabel(it.runtime)}`);
   const src = (s) => (s === "instance" || s === "classic" ? tn("srcConfigured") : s === "fleet-default" ? tn("srcFleetDefault") : "");
   lines.push(line("tooltipModel", (modelText(it) || tn("tooltipUnavailable")) + src(it.model_source)));
   lines.push(line("tooltipStatus", status));
@@ -490,9 +499,11 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const [editing, setEditing] = useState(false);
   // Where a row goes: the view the page is in (#1523 §3.1). View → View; Details → Details; everywhere else, a Fleet tab
   // included (#1917: the user's call, replacing Q4 = A), → Chat. The anonymous reader only ever has View.
-  const rowPath = viewOnly || (route && route.panel === "view") ? viewPath
+  const panelPath = viewOnly || (route && route.panel === "view") ? viewPath
     : route && route.panel === "log" ? logPath                                  // #1218: Log → Log
     : route && route.panel === "details" ? detailsPath : chatPath;
+  const rowPath = (name) => byName.get(name)?.runtime === "windows" && ["view", "log", "details"].includes(route?.panel)
+    ? chatPath(name) : panelPath(name);
   const active = route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") ? route.instance : null;
   const own = (map, name) => Object.prototype.hasOwnProperty.call(map, name);
   const byName = new Map(items.map((it) => [nameOf(it), it]));
@@ -589,7 +600,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const row = (name, g, i, count) => {
     const it = byName.get(name);
     // #1722: both names, the preferred one first; one line when there is no other.
-    const { primary: label, secondary } = namesOf(it, names.primary);
+    const preferred = namesOf(it, names.primary);
+    const label = it.runtime === "windows" ? it.display_name || preferred.primary : preferred.primary;
+    const secondary = it.runtime === "windows" ? backendLabel(it.backend) : preferred.secondary;
     const facet = facetOf(name);
     const waiting = own(awaiting, name) ? awaiting[name] : null;
     const on = name === active;
@@ -606,7 +619,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${fav ? {} : dragProps({ type: "instance", name, group: g })}>
       <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
       <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${label}>${label}</span>
-          <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span></span>
+          <span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span></span>
         ${two ? html`<span class="inst-line inst-line2"><span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>
           ${mins != null ? html`<span class=${`inst-when${fade > 0 ? " fresh" : ""}`} title=${tn("replyTitle", { time: new Date(Date.parse(it.last_reply)).toLocaleString() })}>${replyText(mins)}</span>` : null}</span>` : null}
         ${facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}

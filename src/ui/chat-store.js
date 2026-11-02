@@ -68,7 +68,14 @@ export function createChatStore(deps) {
     const r = await deps.fetch(path, o);
     return r.json();
   }
-  const isUser = (x, instance) => x.sender === "web-user" || (!x.sender.startsWith("agend") && x.sender !== instance && x.sender !== "general");
+  // The server supplies the role. Display names can differ from an instance's ID (or change during a chat).
+  // Keep the sender heuristic only for older messages that do not carry a recognized role.
+  const isUser = (x, instance) => {
+    if (x.role === "user") return true;
+    if (x.role === "agent" || x.role === "status") return false;
+    const sender = typeof x.sender === "string" ? x.sender : "";
+    return sender === "web-user" || (!sender.startsWith("agend") && sender !== instance && sender !== "general");
+  };
 
   // ── The turn (#1307): when this page saw the agent start working (its own monotonic clock, so approximate), a Stop
   // on its way, and an instance waiting on a terminal prompt.

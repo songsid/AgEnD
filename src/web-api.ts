@@ -44,6 +44,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream, createWriteStream, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash, randomUUID } from "node:crypto";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArgs } from "./outbound-schemas.js";
 import { scheduleView } from "./web-schedules.js";
@@ -70,6 +71,11 @@ import { resolveTz } from "./tz-utils.js";
 import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
 import { xmsgShown } from "./search/search-docs.js";
 import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
+import { handleWindowsCliRequest, nativeCliAuthorization } from "./windows-cli-api.js";
+import { createNativeInstance, handleNativeInstanceRequest } from "./native-instance-api.js";
+import { isWindowsInstance } from "./native-instance-registry.js";
+import { handleNativeModelCatalog } from "./native-model-catalog.js";
+import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -342,6 +348,7 @@ export const SSE_HEARTBEAT_MS = 10_000;
 
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
+  nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
   readonly webToken: string | null;
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
@@ -361,7 +368,7 @@ export interface WebApiContext {
     health_port?: number;
     web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
-    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
+    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; runtime?: "wsl" | "windows"; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
@@ -1624,6 +1631,17 @@ export function handleWebRequest(
 
   // ── Static files ───────────────────────────────────────
 
+  // Native local tools retain their administrator boundary on the shared chat/read/action routes.
+  const nativePath=/^\/ui\/(?:chat|instance|cancel|stop|start|restart)\/([^/]+)$/.exec(path);
+  let nativeTarget=url.searchParams.get("instance") ?? "";
+  if(nativePath){try{nativeTarget=decodeURIComponent(nativePath[1]);}catch{nativeTarget="";}}
+  if(isWindowsInstance(ctx.fleetConfig?.instances?.[nativeTarget]) && !nativeCliAuthorization(req,url,ctx)){
+    json(res,403,{error:"Windows runtime requires an administrator on the local dashboard"});return true;
+  }
+
+  if (handleNativeInstanceRequest(req, res, url, ctx)) return true;
+  if (handleWindowsCliRequest(req, res, url, ctx)) return true;
+
   // #1408: the app shell, for exactly the paths the classifier names (src/web-shell-routes.ts). One page for every
   // route; the client router mounts the panel. A malformed instance name is a 400, an unknown one is the shell (the
   // panel says "not found"), so the response never tells which names exist.
@@ -1671,7 +1689,14 @@ export function handleWebRequest(
     const backend = url.searchParams.get("backend") ?? "";
     const instance = url.searchParams.get("instance");
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(backend) || (instance !== null && (instance.length < 1 || instance.length > 256))) { json(res, 400, { error: "backend (and optional instance) required" }); return true; }
-    json(res, 200, { backend, models: ctx.modelCatalogFor?.(backend, instance) ?? [] });
+    const runtime = url.searchParams.get("runtime"), refresh = url.searchParams.get("refresh");
+    if ((runtime !== null && runtime !== "wsl" && runtime !== "windows") || (refresh !== null && refresh !== "1")) { json(res, 400, { error: "Invalid model catalog options" }); return true; }
+    if (handleNativeModelCatalog(req, res, url, ctx)) return true;
+    const models = ctx.modelCatalogFor?.(backend, instance) ?? [];
+    if (backend === "claude-code" && !models.length) {
+      const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
+      json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
+    } else json(res, 200, { backend, models });
     return true;
   }
 
@@ -2436,6 +2461,7 @@ export function handleWebRequest(
       const str = (v: unknown, max: number): string | undefined => (typeof v === "string" && v.length <= max ? v : undefined);
       const instance = str(body?.instance, 128), command = str(body?.command, 32);
       if (!instance || !isSafeInstanceName(instance) || !command) { json(res, 400, { error: "instance and command required" }); return; }
+      if(isWindowsInstance(ctx.fleetConfig?.instances[instance])){json(res,400,{error:"This runtime does not support CLI control commands; use Agent settings or Cancel"});return;}
       if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
@@ -2662,6 +2688,7 @@ export function handleWebRequest(
       try {
         const body = await parseBody(req);
         if (!permitWebContinuation(req, res, ctx)) return;
+        if (body?.runtime === "windows") { await createNativeInstance(req,res,url,ctx,body); return; }
         const v = validateArgs(CreateInstanceArgs, body, "create_instance");
         if (!v.ok) { json(res, 400, { error: v.error }); return; }
         let result: unknown = null;
@@ -3313,6 +3340,11 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         return;
       }
       const { instance, message: typed, attachments = [], replyTo, clientId } = parsed.data;
+      const native = isWindowsInstance(ctx.fleetConfig?.instances[instance]);
+      if (native && !nativeCliAuthorization(req,new URL(req.url ?? "/","http://localhost"),ctx)) {
+        json(res,403,{error:"Windows runtime requires an administrator on the local dashboard"});return;
+      }
+      if (native && attachments.length) {json(res,400,{error:"Attachments are not supported by this runtime yet"});return;}
       // #1920 step 2b: a guest writes only to an in-scope instance, while guests may chat, and never a command.
       const guest = guestRequestOf(req);
       const refused = guestChatRefusal(guest, instance);
@@ -3376,7 +3408,19 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx, instance));
       const ts = new Date().toISOString();
       // The id the agent is given, and the one its delivery reports come back under: the page's ticks.
-      const messageId = newWebMessageId();
+      const nativeRequestId = native ? (()=>{
+        if(!clientId)return randomUUID();
+        const hash=createHash("sha256").update(`agend-native-web\0${WebSendDedupe.key(person.key,instance,clientId)}`).digest("hex");
+        return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;
+      })() : undefined;
+      const messageId = nativeRequestId ? `native:${nativeRequestId}:user` : newWebMessageId();
+      if(nativeRequestId && ctx.nativeInstanceRuntime){
+        const previous=ctx.nativeInstanceRuntime().get(instance)?.turns.find(turn=>turn.id===nativeRequestId);
+        if(previous){
+          if(previous.prompt!==delivery.text){json(res,409,{error:"clientId belongs to a different message"});return;}
+          acceptedId=messageId;json(res,200,{sent:true,messageId,repeated:true});return;
+        }
+      }
       // Use real Telegram context so daemon's lastChatId/lastThreadId are set,
       // enabling reply tool even when first message comes from Web UI.
       // Pure Web UI mode (no channel config) leaves these empty; the agent's reply then comes back to the
@@ -3426,6 +3470,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         delivered = await deliver(instance, {
           type: "fleet_inbound",
           content: delivery.text,
+          ...(nativeRequestId ? {requestId:nativeRequestId} : {}),
           targetSession: instance,
           meta: {
             chat_id: groupId ? String(groupId) : "",

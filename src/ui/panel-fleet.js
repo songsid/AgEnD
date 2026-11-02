@@ -11,7 +11,10 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { HeaderTools } from "/assets/header-tools.js";
-import { renavigate } from "/assets/app-nav.js";
+import { navigate, renavigate } from "/assets/app-nav.js";
+import { RuntimePicker, AgentDraftAssistant, tr } from "./agent-runtime.js";
+import { CliPicker, cliLabel as productLabel } from "./cli-picker.js";
+import { useWindowsCliCatalog, WindowsCliDiscoveryStatus, detectionText } from "./windows-cli-catalog.js";
 import { chatPath, fleetPath, FLEET_TABS, rememberFleetTab } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -266,7 +269,7 @@ function Cache({ lease }) {
  * that finishes after that still reports its toast (it may have created something), but never closes or refreshes
  * whatever is on screen now (#1425 review). `ready` false keeps Create off until the form has what it needs.
  */
-export function FormDialog({ title, onClose, submit, children, ready = true }) {
+export function FormDialog({ title, onClose, submit, children, ready = true, renderActions, onCreated, onSubmit, wide = false }) {
   const lease = useLease("form-dialog");
   const [busy, setBusy] = useState(false);
   async function go() {
@@ -287,13 +290,15 @@ export function FormDialog({ title, onClose, submit, children, ready = true }) {
     toast(submit.done);
     if (handedOver || !lease.current()) return;
     setBusy(false);
+    if (onCreated) { onCreated(r); return; }
     onClose();
     if (submit.after) submit.after();
+    if (submit.afterResult) submit.afterResult(r);
   }
-  return html`<${Dialog} title=${title} onClose=${onClose} busy=${busy}
-    actions=${html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${t("fleet.cancel")}</button>
+  return html`<${Dialog} title=${title} onClose=${onClose} busy=${busy} wide=${wide}
+    actions=${renderActions ? renderActions({ busy, go }) : html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${t("fleet.cancel")}</button>
       <button type="button" class="btn btn-primary" onClick=${go} disabled=${busy || !ready}>${busy ? t("fleet.creating") : submit.label || t("fleet.create")}</button>`}>
-    <form class="form" onSubmit=${(e) => { e.preventDefault(); go(); }}><fieldset class="form" disabled=${busy}>${children}</fieldset></form></${Dialog}>`;
+    <form class="form" onSubmit=${(e) => { e.preventDefault(); if (onSubmit) onSubmit({ busy, go }); else go(); }}><fieldset class="form" disabled=${busy}>${children}</fieldset></form></${Dialog}>`;
 }
 const field = (label, input) => html`<label class="field"><span>${label}</span>${input}</label>`;
 
@@ -418,9 +423,21 @@ function CreateTeam({ onClose, onDone, team = null }) {
 export function CreateInstanceDialog({ onClose }) {
   const lease = useLease("create-instance");
   const [backends, setBackends] = useState(null);
+  const { windowsCli } = useStore(appStore);
+  const [runtime,setRuntime] = useState("");
+  const [step,setStep] = useState(1), [created,setCreated] = useState(null);
+  const drafts = useRef({}), draftGoals = useRef({}), heading = useRef(null);
+  const discovery = useWindowsCliCatalog(windowsCli === true);
+  const native = discovery.data;
+  const [assistBusy,setAssistBusy] = useState(false);
+  const windows = runtime === "windows";
   // The backend "fleet default" means (#2098 review P3-3): its models are the ones the model list offers then.
   const [defaultBackend, setDefaultBackend] = useState("claude-code");
   const [f, setF] = useState({ dir: "", topic: "", desc: "", backend: "", model: "", branch: "", tags: "", prompt: "" });
+  useEffect(() => {
+    heading.current?.focus({ preventScroll:true });
+    heading.current?.closest(".dlg-body")?.scrollTo?.({ top:0 });
+  },[step]);
   useEffect(() => {
     (async () => {
       try {
@@ -430,15 +447,39 @@ export function CreateInstanceDialog({ onClose }) {
         const first = list.find(b => b.installed && !b.deprecated) || list.find(b => b.installed);
         if (typeof bd.defaultBackend === "string" && bd.defaultBackend) setDefaultBackend(bd.defaultBackend);
         setBackends(list);
-        setF(x => ({ ...x, backend: first ? first.name : "" }));
+        setF(x => ({ ...x, backend: x.backend || (first ? first.name : "") }));
       } catch {
         // The list could not be read: offer the known backends, and keep the explicit choice "fleet default" selected.
-        if (lease.current()) { setBackends(BACKENDS.map(name => ({ name, installed: true }))); setF(x => ({ ...x, backend: "" })); }
+        if (lease.current()) { setBackends(BACKENDS.map(name => ({ name, installed: true, fallback: true }))); setF(x => ({ ...x, backend: "" })); }
       }
     })();
   }, [lease]);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const submit = { path: "/ui/instances", done: t("fleet.instanceCreated"), collect: () => {
+  const chooseRuntime = value => {
+    if (value === runtime) return;
+    if (runtime) drafts.current[runtime] = { form:{...f}, sandbox };
+    const saved = drafts.current[value];
+    const { sandbox: savedFileAccess } = saved || {};
+    setRuntime(value);
+    setF(saved?.form || {dir:"",topic:"",desc:"",prompt:"",tags:"",branch:"",model:"",backend:value === "windows" ? native?.clis?.find(b => b.path && b.runnable)?.id || "codex" : backends?.find(b => b.installed && !b.deprecated && !b.fallback)?.name || ""});
+    setSandbox(savedFileAccess || "read-only");
+  };
+  const [sandbox,setSandbox] = useState("read-only");
+  const nativeCli = native?.clis?.find(cli => cli.id === f.backend);
+  const nativeChoices = (native?.clis || []).filter(cli => cli.path && cli.supports?.execution !== false && cli.supports?.resume !== false).map(cli => ({value:cli.id,label:productLabel(cli.id),disabled:!cli.runnable,description:cli.authenticated === false ? t("fleet.notSignedIn") : cli.version || "Windows"}));
+  useEffect(() => {
+    if (windows && native && !nativeChoices.some(choice => choice.value === f.backend)) {
+      const first = nativeChoices.find(choice => !choice.disabled) || nativeChoices[0];
+      if (first) setF(current => ({...current,backend:first.value,model:""}));
+    }
+  },[native,runtime]);
+  const submit = { path: "/ui/instances", done: windows ? tr("created") : t("fleet.instanceCreated"),
+    collect: () => {
+    if (windows) {
+      const name = f.topic.trim() || f.dir.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+      if (!name) { toast(tr("required"),false); return null; }
+      return {runtime:"windows",topic_name:name,backend:f.backend,...(f.model.trim() ? {model:f.model.trim()} : {}),...(f.dir.trim() ? {directory:f.dir.trim()} : {}),description:f.desc.trim(),systemPrompt:f.prompt.trim(),sandbox};
+    }
     if (!f.dir.trim() && !f.topic.trim()) { toast(t("fleet.topicRequired"), false); return null; }
     const body = {};
     if (f.dir.trim()) body.directory = f.dir.trim();
@@ -451,18 +492,45 @@ export function CreateInstanceDialog({ onClose }) {
     if (f.prompt.trim()) body.systemPrompt = f.prompt.trim();
     return body;
   } };
-  // Create waits for the backend list: a submission before it would go without a backend, and the list arriving
-  // afterwards would change the shown choice under a request already sent (#1425 review).
-  return html`<${FormDialog} title=${t("fleet.newInstance")} onClose=${onClose} submit=${submit} ready=${backends !== null}>
-    ${field(t("fleet.directory"), html`<input value=${f.dir} onInput=${set("dir")} placeholder=${t("fleet.directoryHint")} />`)}
-    ${field(`${t("fleet.topic")}${f.dir.trim() ? "" : " *"}`, html`<input value=${f.topic} onInput=${set("topic")} placeholder=${t("fleet.topicHint")} />`)}
+  const canNext = !!runtime && (windows ? nativeCli?.runnable === true : backends !== null);
+  const permissionReady = !windows || sandbox !== "read-only" || nativeCli?.readOnlySupport !== false;
+  const canCreate = step === 2 && canNext && permissionReady && !assistBusy && (!windows || !!(f.topic.trim() || f.dir.trim()));
+  const advance = () => { if (canNext && !assistBusy) setStep(2); };
+  const destination = created?.name ? chatPath(created.name) : created?.agent?.id ? `/ui/windows-agents/${created.agent.id}` : null;
+  const createdName = created?.agent?.name || created?.name || f.topic || f.dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+  const runtimeLabel = runtime ? tr(runtime) : "";
+  const cliLabel = productLabel(f.backend) || `${t("fleet.fleetDefault")} (${productLabel(defaultBackend)})`;
+  const backendField = windows ? html`<div class="field"><div class="cli-discovery-heading"><span>${tr("backend")}</span>${native ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${discovery.loading} onClick=${discovery.refresh}><${Icon} name="restart" size=${14} />${detectionText("refresh")}</button>` : null}</div>
+    <div aria-busy=${discovery.loading ? "true" : "false"}>${native ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${nativeChoices} onChange=${value => setF(x => ({...x,backend:value,model:""}))} disabled=${!nativeChoices.length} />` : null}</div>
+    <${WindowsCliDiscoveryStatus} state=${discovery} />
+    ${native && !discovery.loading && !discovery.error ? html`<p class="note">${!nativeChoices.length ? tr("noCli") : tr("nativeHint")}</p>` : null}</div>`
+    : field(tr("backend"),backends ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${[{value:"",label:t("fleet.fleetDefault")},...backends.filter(b => backendState(b) !== "not_installed" && !b.deprecated).map(b => ({value:b.name,label:productLabel(b.name),disabled:backendBlocked(b),description:backendNote(b)}))]} onChange=${value => setF(x => ({...x,backend:value,model:""}))} />` : html`<div role="status" aria-busy="true"><${Skeleton} lines=${1} /><span class="note">${tr("loadingClis")}</span></div>`);
+  const actions = ({busy,go}) => step === 3 ? html`<button type="button" class="btn" onClick=${onClose}>${tr("finish")}</button><button type="button" class="btn btn-primary" onClick=${() => { onClose(); navigate(destination || "/settings/agents"); }}>${tr(destination ? "openChat" : "viewAgents")}<${Icon} name="forward" size=${16} /></button>`
+    : html`<button type="button" class="btn" disabled=${busy || assistBusy} onClick=${step === 1 ? onClose : () => setStep(1)}>${step === 1 ? t("fleet.cancel") : tr("back")}</button>
+      <button type="button" class="btn btn-primary" disabled=${busy || (step === 1 ? !canNext : !canCreate)} onClick=${step === 1 ? advance : go}>${step === 1 ? tr("next") : busy ? t("fleet.creating") : t("fleet.create")}${step === 1 ? html`<${Icon} name="forward" size=${16} />` : null}</button>`;
+  return html`<${FormDialog} title=${tr("title")} onClose=${onClose} submit=${submit} ready=${canCreate} wide=${true} renderActions=${actions}
+    onSubmit=${({busy,go}) => { if (!busy) { if (step === 1) advance(); else if (step === 2) go(); } }}
+    onCreated=${result => { setCreated(result); setStep(3); }}>
+    <div class="agent-create-wizard" data-step=${step}>
+    <ol class="agent-create-steps" aria-label=${tr("progress")}>${["runtimeStep","configureStep","doneStep"].map((label,index) => html`<li key=${label} class=${index+1 === step ? "current" : index+1 < step ? "complete" : ""} aria-current=${index+1 === step ? "step" : undefined}><span class="agent-create-step-number">${index+1 < step ? html`<${Icon} name="check" size=${13} />` : index+1}</span><span>${tr(label)}</span></li>`)}</ol>
+    ${step === 1 ? html`<section class="agent-create-stage"><h3 ref=${heading} tabindex="-1">${tr("where")}</h3><p class="note">${tr("runtimeLead")}</p>
+      <${RuntimePicker} value=${runtime} onChange=${chooseRuntime} windowsEnabled=${windowsCli} legend=${tr("environment")} />
+      ${runtime ? html`<div class="agent-create-cli">${backendField}</div>` : null}
+    </section>` : step === 2 ? html`<section class="agent-create-stage"><h3 ref=${heading} tabindex="-1">${tr("configureStep")}</h3><p class="note">${tr("configureLead")}</p>
+    <div class="agent-create-selection"><${Icon} name=${windows ? "view" : "code"} size=${19} /><div><strong>${runtimeLabel}</strong><span>${cliLabel}</span></div><button type="button" class="btn btn-ghost btn-sm" disabled=${assistBusy} onClick=${() => setStep(1)}>${tr("changeRuntime")}</button></div>
+    ${windowsCli ? html`<${AgentDraftAssistant} key=${runtime} runtime=${runtime} probe=${native} initialGoal=${draftGoals.current[runtime] || ""} onGoalChange=${value => { draftGoals.current[runtime] = value; }} onBusy=${setAssistBusy} onDraft=${draft => setF(x => ({...x,topic:draft.name,dir:draft.cwd,desc:draft.description,prompt:draft.instructions}))} />` : null}
+    <fieldset class="form agent-runtime-fields" disabled=${assistBusy}>
+    ${field(windows ? tr("directory") : t("fleet.directory"), html`<input value=${f.dir} onInput=${set("dir")} placeholder=${windows ? tr("directoryHint") : t("fleet.directoryHint")} />`)}
+    ${field(`${t("fleet.topic")}${f.dir.trim() ? "" : " *"}`, html`<input value=${f.topic} onInput=${set("topic")} placeholder=${windows ? tr("nameHint") : t("fleet.topicHint")} />`)}
     ${field(t("fleet.description"), html`<input value=${f.desc} onInput=${set("desc")} placeholder=${t("fleet.descriptionHint")} />`)}
-    ${field(t("fleet.backend"), backends ? html`<select value=${f.backend} onChange=${set("backend")}><option value="">${t("fleet.fleetDefault")}</option>
-      ${backends.map(b => html`<option key=${b.name} value=${b.name} disabled=${backendBlocked(b)}>${b.name}${b.deprecated ? ` ${t("fleet.deprecated")}` : ""}${backendNote(b)}</option>`)}</select>` : html`<${Skeleton} lines=${1} />`)}
-    ${field(t("fleet.model"), html`<${ModelSelect} value=${f.model} onChange=${(v) => setF(x => ({ ...x, model: v }))} backend=${f.backend || defaultBackend} inherit=${t("fleet.fleetDefault")} />`)}
-    ${field(t("fleet.branch"), html`<input value=${f.branch} onInput=${set("branch")} placeholder=${t("fleet.branchHint")} />`)}
-    ${field(t("fleet.tags"), html`<input value=${f.tags} onInput=${set("tags")} placeholder=${t("fleet.tagsHint")} />`)}
+    ${windows ? html`${field(t("fleet.model"),html`<${ModelSelect} key=${f.backend} value=${f.model} onChange=${value => setF(x => ({...x,model:value}))} backend=${f.backend} runtime="windows" inherit=${tr("model")} />`)}${field(tr("access"),html`<select value=${sandbox} onChange=${e => setSandbox(e.target.value)}><option value="read-only" disabled=${nativeCli?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select>`)}<p class="note">${!permissionReady ? tr("noReadOnly") : sandbox === "workspace-write" ? tr("nativePolicy") : ""}</p>` : html`
+      ${field(t("fleet.model"), html`<${ModelSelect} value=${f.model} onChange=${(v) => setF(x => ({ ...x, model: v }))} backend=${f.backend || defaultBackend} inherit=${t("fleet.fleetDefault")} />`)}
+      ${field(t("fleet.branch"), html`<input value=${f.branch} onInput=${set("branch")} placeholder=${t("fleet.branchHint")} />`)}
+      ${field(t("fleet.tags"), html`<input value=${f.tags} onInput=${set("tags")} placeholder=${t("fleet.tagsHint")} />`)}
+    `}
     ${field(t("fleet.systemPrompt"), html`<textarea rows="3" value=${f.prompt} onInput=${set("prompt")} placeholder=${t("fleet.systemPromptHint")}></textarea>`)}
+    </fieldset></section>` : html`<section class="agent-create-stage agent-create-success"><span class="agent-create-success-icon"><${Icon} name="check" size=${28} /></span><h3 ref=${heading} tabindex="-1">${tr("success")}</h3><p class="note">${tr("successLead")}</p><dl><dt>${t("fleet.topic")}</dt><dd>${createdName}</dd><dt>Runtime</dt><dd>${runtimeLabel} · ${cliLabel}</dd><dt>${t("fleet.directory")}</dt><dd><code>${created?.agent?.cwd || created?.worktree_path || f.dir || tr("autoWorkspace")}</code></dd></dl></section>`}
+    </div>
   </${FormDialog}>`;
 }
 

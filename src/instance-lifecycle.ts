@@ -5,7 +5,7 @@ import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statS
 import { ensureInstanceDir } from "./private-dir.js";
 import { assertNoSessionOomStop } from "./session-oom-stop.js";
 import { execFileSync } from "node:child_process";
-import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
+import { join, basename, dirname, resolve, win32, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
@@ -42,6 +42,7 @@ import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import type { DeliveryOutbox } from "./delivery-outbox.js";
+import type { FleetWindowsRuntime } from "./fleet-windows-runtime.js";
 import {
   capturePendingTargetReconciliation,
   finishTargetReconciliation,
@@ -191,6 +192,8 @@ export interface LifecycleContext {
   readonly backendOutage?: BackendOutageTracker;
   /** Same-process durable delivery store, shared directly with each Daemon. */
   readonly deliveryOutbox?: DeliveryOutbox | null;
+  /** Native execution uses the same instance registry without entering the Linux filesystem or tmux lifecycle. */
+  nativeInstanceRuntime?(): Pick<FleetWindowsRuntime, "create">;
 
   getInstanceDir(name: string): string;
   /** Fleet-level (General topic) notification, throttled per message text. */
@@ -364,6 +367,8 @@ export interface IncidentEventSource {
 /** Arguments accepted by handleCreate — mirrors CreateInstanceArgs in outbound-schemas.ts
  *  plus internal-only fields forwarded by deploy_template (profile-derived). */
 export interface LifecycleCreateArgs {
+  runtime?: "wsl" | "windows";
+  sandbox?: "read-only" | "workspace-write";
   directory?: string;
   topic_name?: string;
   description?: string;
@@ -2319,6 +2324,26 @@ export class InstanceLifecycle {
     execution?: SettingsExecution,
   ): Promise<void> {
     const check = (): void => execution?.assert(); check();
+    if (args.runtime !== undefined && args.runtime !== "wsl" && args.runtime !== "windows") { respond(null,"Unknown instance runtime"); return; }
+    if (args.runtime === "windows") {
+      const accepted = new Set(["runtime","sandbox","directory","topic_name","description","model","backend","systemPrompt","tags"]);
+      const unsupported = Object.keys(args).find(key => !accepted.has(key) && args[key] !== undefined);
+      if (unsupported) { respond(null,`Windows runtime does not support create_instance field: ${unsupported}`); return; }
+      if (args.tags !== undefined && (!Array.isArray(args.tags) || args.tags.length > 32 || args.tags.some(tag => typeof tag !== "string" || !tag || tag.length > 64))) { respond(null,"Windows tags must contain at most 32 names of 1–64 characters"); return; }
+      const name = args.topic_name || (typeof args.directory === "string" && args.directory.trim() ? win32.basename(args.directory.trim()) : undefined);
+      if (!name) { respond(null,"topic_name is required when directory is not specified"); return; }
+      try {
+        const authorized = (): boolean => { check(); return !this.ctx.isPlannedRestart(); };
+        if (!authorized()) throw new Error("Fleet is stopping; Windows creation is unavailable");
+        const native = this.ctx.nativeInstanceRuntime?.();
+        if (!native) throw new Error("Windows runtime is unavailable");
+        const result = await native.create({name,cli:args.backend || "codex",cwd:args.directory,model:args.model,description:args.description || "",instructions:args.systemPrompt || "",sandbox:args.sandbox || "read-only",...(args.tags ? {tags:args.tags} : {})},authorized,execution);
+        // The native adapter owns its final settings mutation and completion under the same execution lease.
+        respond(result);
+      } catch(error) { respond(null,`Failed to create Windows instance: ${error instanceof Error ? error.message : String(error)}`); }
+      return;
+    }
+    if (args.sandbox !== undefined) { respond(null,"sandbox is supported only by the Windows runtime"); return; }
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
     const topicName = args.topic_name || (directory ? basename(directory) : undefined);

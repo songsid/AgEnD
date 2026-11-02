@@ -39,6 +39,8 @@ import {
 } from "./settings-dialogs.js";
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
+import { WindowsCliPanel } from "./panel-windows-cli.js";
+import { NativeInstanceSettings } from "./native-instance-settings.js";
 import { FirstRunCard, takeWizardRequest } from "./first-run.js";
 import { takeAgentRequest } from "./settings-request.js";
 // #1604: This device — the preview opt-in (one path: the app's confirm, then preview.js) and the tour, from the chat.
@@ -60,7 +62,7 @@ const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
-const ICONS = { preferences: "user", look: "palette", agents: "bot", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
+const ICONS = { preferences: "user", look: "palette", agents: "bot", "windows-cli": "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
@@ -103,7 +105,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const live = {}, classicLive = {};
   if (f.ok && f.body && Array.isArray(f.body.instances)) for (const i of f.body.instances) {
-    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported };
+    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported, runtime:i.runtime, capabilities:i.capabilities };
     if (i.classic) classicLive[i.name] = { status: i.status, state: i.state };
   }
   // /api/fleet carries live state for ClassicBot rooms; the profiles are the fallback for one not listed there yet.
@@ -152,7 +154,7 @@ export function SettingsPanel({ route, navKey }) {
     drafts.current = saved ? new Map([...drafts.current].filter(([k, v]) => !saved.has(k) || !sameValue(v, saved.get(k)))) : new Map();
     setDraftEpoch((n) => n + 1);
   };
-  const { settingsOp: op, pendingChanges } = useStore(appStore);
+  const { settingsOp: op, pendingChanges, windowsCli } = useStore(appStore);
   const gen = useRef(0);
 
   useEffect(() => { setTitle(`${tn("title")} · ${tn(`sec_${section}`)}`); }, [section, navKey]);
@@ -379,6 +381,7 @@ export function SettingsPanel({ route, navKey }) {
   // defaults, Web) is one form with one draft, shown a part at a time.
   const sectionBody = section === "preferences" ? html`<${DeviceSection} key=${you.key} /><${AppearanceSection} ...${you} part="device" />`
     : section === "look" ? html`<${AppearanceSection} ...${you} part="look" />`
+    : section === "windows-cli" ? html`<${WindowsCliPanel} navKey=${navKey} embedded=${true} />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`
@@ -465,7 +468,7 @@ export function SettingsPanel({ route, navKey }) {
     </${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
-      ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
+      ${g.sections.filter(k => k !== "windows-cli" || windowsCli).map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
     <div data-trust="panel-content" class="panel-body"><div class="col">
       <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>
@@ -667,7 +670,7 @@ const opBusy = (op) => !!op && (["writing", "posting", "watching"].includes(op.p
 function dropSecrets(staged) { for (const c of staged.values()) if (c.connectionSecret) c.connectionSecret.secret = ""; }
 
 function renderDialog(d, ctx, close) {
-  if (d.kind === "agent") return html`<${AgentDialog} name=${d.name} inst=${d.inst} ctx=${ctx} onClose=${close} />`;
+  if (d.kind === "agent") return d.inst.runtime === "windows" ? html`<${NativeInstanceSettings} name=${d.name} inst=${d.inst} ctx=${ctx} onClose=${close} />` : html`<${AgentDialog} name=${d.name} inst=${d.inst} ctx=${ctx} onClose=${close} />`;
   if (d.kind === "bot") return html`<${BotDialog} key=${d.id} id=${d.id} ctx=${ctx} onClose=${close} />`;
   if (d.kind === "newBot") return html`<${NewBotDialog} ctx=${ctx} onClose=${close} />`;
   if (d.kind === "classic") return html`<${ClassicDialog} room=${d.room} ctx=${ctx} onClose=${close} />`;
@@ -701,16 +704,17 @@ function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive, extra
       });
       stage(`agent:${name}`, {
         label: tn("updateAgent", shortName(name, { ...inst, ...patch })),
-        impact: batchImpact(schema, Object.keys(patch), (k) => impactOf(schema, `instance.${k}`)),
-        request: { method: "PATCH", url: `/api/settings/fleet/instances/${encodeURIComponent(name)}`, body: patch },
+        impact: inst.runtime === "windows" ? "now" : batchImpact(schema, Object.keys(patch), (k) => impactOf(schema, `instance.${k}`)),
+        request: { method: "PATCH", url: inst.runtime === "windows" ? `/ui/instances/${encodeURIComponent(name)}` : `/api/settings/fleet/instances/${encodeURIComponent(name)}`, body: patch },
       });
     },
     async deleteAgent(name) {
       if (!(await ask(tn("deleteAgent", name), { confirmLabel: tn("deleteAgentMenu"), danger: true }))) return;
       if (!alive()) return;                          // the panel went while it asked: nothing staged, nothing said
+      const native = fleet.instances?.[name]?.runtime === "windows";
       edit((d) => { delete d.fleet.instances[name]; });
-      stage(`agent:${name}`, { label: tn("deleteAgentLabel", name), impact: impactOf(schema, "instance.delete"),
-        request: { method: "DELETE", url: `/api/settings/fleet/instances/${encodeURIComponent(name)}` } });
+      stage(`agent:${name}`, { label: tn("deleteAgentLabel", name), impact: native ? "now" : impactOf(schema, "instance.delete"),
+        request: { method: "DELETE", url: native ? `/ui/instances/${encodeURIComponent(name)}` : `/api/settings/fleet/instances/${encodeURIComponent(name)}` } });
     },
     stageChannels(key, nextChannels, meta) {
       edit((d) => { d.fleet.channels = nextChannels; delete d.fleet.channel; });
@@ -791,12 +795,14 @@ function Agents({ ctx, search, openDialog }) {
         return html`<div key=${name} class="s-row">
           <span class=${dotClass(st)} title=${tn(STATUS_KEY[st] || "stStopped")} aria-hidden="true"></span>
           <span class="s-name" title=${name}>${shortName(name, inst)}</span>
+          ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
           <span class="s-meta" title=${sum.backend}>${sum.model}</span>
           <span class="s-br" aria-hidden="true"></span>
-          <span class="tag">${tn("effortTag", sum.effort)}</span>
+          ${inst.runtime !== "windows" || ctx.live[name]?.capabilities?.effort === true ? html`<span class="tag">${tn("effortTag", sum.effort)}</span>` : null}
           ${ch ? html`<span class=${`tag${ch.includes("persona") ? " persona" : ""}`}>${ch}</span>` : null}
           <span class="sr-only">${tn(STATUS_KEY[st] || "stStopped")}</span>
           <span class="s-actions">
+            ${inst.runtime === "windows" ? html`<a class="btn btn-sm" href=${chatPath(name)}>${t("app.chat")}</a>` : null}
             <button type="button" class="btn btn-sm" disabled=${working} onClick=${() => openDialog({ kind: "agent", name, inst })}>${tn("settingsButton")}</button>
             ${st === "running" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "pause", () => ctx.pauseWake(name, "pause"))}>${label("pause", tn("pause"))}</button>` : null}
             ${st === "paused" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "wake", () => ctx.pauseWake(name, "wake"))}>${label("wake", tn("wake"))}</button>` : null}

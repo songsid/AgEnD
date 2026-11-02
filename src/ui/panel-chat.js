@@ -11,9 +11,9 @@ import { lang, t } from "/assets/app-i18n.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
-import { modelText, namesOf, namesStore, navStore as instanceNavStore } from "/assets/instance-nav.js";
+import { modelText, namesOf, namesStore, navStore as instanceNavStore, supportsInstanceFeature } from "/assets/instance-nav.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
-import { detailsPath, textLinkSegments } from "/assets/app-route.js";
+import { detailsPath, textLinkSegments, sectionPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { navigate, navStore } from "/assets/app-nav.js";
@@ -29,7 +29,6 @@ import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeM
 import { colorMenuItem } from "/assets/identity-color.js";
 import { brokenPictures, cardFoldable, IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
-
 // #1629 r4 §1: the identity card under the chat's header — hidden by default; shown or not is this device's choice.
 // #2217 (the user, 2026-10-19): no row of its own; its picture and bio can be folded away (the banner stays) — this
 // device's choice too, kept the same way. The user (2026-10-20): no control on the card — one card button in the header
@@ -214,7 +213,7 @@ export function ChatPanel({ route, navKey }) {
     store.setCurrent(name && inst ? name : null);
     return () => store.setCurrent(null);
   }, [name, !!inst]);
-  useEffect(() => { setTitle(name || t("app.chat")); }, [name, navKey]);
+  useEffect(() => { setTitle(inst?.runtime === "windows" ? inst.display_name || name : name || t("app.chat")); }, [name, navKey, inst?.runtime, inst?.display_name]);
   if (!name) {
     // #1854 (rank 7): one instruction — pick an agent, or with none at all, the one way to make one. Connecting a chat
     // app (the first-run card, #1519 P7) is offered in Settings, not here: it competed with the first agent.
@@ -259,6 +258,7 @@ function useResolvedMode(lease) {
 }
 
 function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
+  const attachmentsSupported = supportsInstanceFeature(inst,"attachments");
   const names = useStore(namesStore);   // #1722: which name leads (the title)
   // #1629: this agent's theme, on this surface only; redrawn when the themes, the viewer's switch or the mode move.
   useStore(themesStore);
@@ -267,6 +267,17 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const themeKey = JSON.stringify(theme);
   const card = useCard(name, inst.card_v);
   const [dialog, setDialog] = useState(null);       // "delete" | null
+  const [recovering,setRecovering] = useState(false);
+  const recoverNative = async () => {
+    if (recovering) return;
+    setRecovering(true);
+    try {
+      const response = await lease.fetch(`/ui/instances/${encodeURIComponent(name)}/recover`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmedStopped:true})});
+      const result = await response.json();
+      if (lease.current() && (!response.ok || result.error)) toast(result.error || t("chat.disconnected"),false);
+    } catch(error) { if (lease.current()) toast(error.message || t("chat.disconnected"),false); }
+    finally { if (lease.current()) setRecovering(false); }
+  };
   const [wrap, setWrap] = useState(codeWrap);
   const wide = useStore(chatWide).on;
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
@@ -289,12 +300,14 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     const el = view.current; if (!el) return undefined;
     let depth = 0;
     const hasFiles = (e) => !!(e.dataTransfer && [...e.dataTransfer.types].includes("Files"));
-    lease.on(el, "dragenter", (e) => { if (hasFiles(e)) { depth++; el.classList.add("dragging"); } });
-    lease.on(el, "dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
-    lease.on(el, "dragleave", (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; el.classList.remove("dragging"); } });
-    lease.on(el, "drop", (e) => { depth = 0; el.classList.remove("dragging"); if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); store.addFiles(name, e.dataTransfer.files); } });
-    return undefined;
-  }, [lease]);
+    const offs = [
+      lease.on(el, "dragenter", (e) => { if (attachmentsSupported && hasFiles(e)) { depth++; el.classList.add("dragging"); } }),
+      lease.on(el, "dragover", (e) => { if (hasFiles(e)) e.preventDefault(); }),
+      lease.on(el, "dragleave", (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; el.classList.remove("dragging"); } }),
+      lease.on(el, "drop", (e) => { depth = 0; el.classList.remove("dragging"); if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); if (attachmentsSupported) store.addFiles(name, e.dataTransfer.files); else toast(t("chat.runtimeNoAttachments"),false); } }),
+    ];
+    return () => offs.forEach(off => off());
+  }, [lease,attachmentsSupported]);
   // Esc stops the agent's reply (as Esc in its terminal would): from the chat, while it works, and only when nothing
   // else that Esc would close is open (a dialog, a menu, the Session menu).
   useEffect(() => lease.hold(onPanelKey((e) => {
@@ -317,10 +330,11 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   };
   const items = [
     // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
-    { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) },
-    running ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
-    running ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
-    running ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
+    supportsInstanceFeature(inst,"details") ? { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) } : null,
+    inst.runtime === "windows" ? {key:"settings",label:t("app.settings"),icon:"settings",onSelect:() => navigate(sectionPath("agents"))} : null,
+    running || !supportsInstanceFeature(inst,"lifecycle") ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
+    running && supportsInstanceFeature(inst,"lifecycle") ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
+    running && supportsInstanceFeature(inst,"lifecycle") ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
     // #1958: its identity colour and where it shows (the public link too, as profile edits).
     colorMenuItem(name, inst),
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
@@ -337,10 +351,11 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   // #1269 quick actions: the model and effort it runs, each a way to /model or /effort (the same pick list).
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
-    ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
-    ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
+    ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
+    ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => supportsInstanceFeature(inst,"commands") ? pick("model") : navigate(sectionPath("agents"))}>${modelText(inst)}</button>` : null}
+    ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
@@ -348,7 +363,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
         ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}
         <${ChatAmbient} name=${name} surface=${effectSurface} part="layer" />
         <${AmbientMotionNote} name=${name} />
-        <${Thread} name=${name} th=${thread} />
+        ${inst.native_blocked ? html`<div class="windows-agent-blocked" role="alert"><p>${t("chat.nativeBlocked")}</p><button type="button" class="btn" disabled=${recovering} onClick=${recoverNative}>${t("chat.nativeRecover")}</button></div>` : null}
+        <${Thread} name=${name} label=${inst.runtime === "windows" ? inst.display_name || name : name} th=${thread} />
         <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${theme ? theme.workingLabel : undefined} />
         <${ChatAmbient} name=${name} surface=${effectSurface} part="front" />
       </div>
@@ -356,8 +372,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
         keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setPreviewOptIn(true, commit)} />
     </div>
     <${LightboxHost} />
-    <div data-trust="drop" class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
-    ${dialog === "delete" ? html`<${DeleteDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
+    ${attachmentsSupported ? html`<div data-trust="drop" class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>` : null}
+    ${dialog === "delete" ? html`<${DeleteDialog} name=${name} inst=${inst} onClose=${() => setDialog(null)} />` : null}
   </div>`;
 }
 
@@ -467,10 +483,11 @@ function follow(name, thread) {
 }
 
 /** The thread's view: Preact owns the scroller and the jump pill; the kept list (chat-thread.js) is put inside it. */
-function Thread({ name, th }) {
+function Thread({ name, label = name, th }) {
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
+  useLayoutEffect(() => { keptThreads.get(name)?.list.setAttribute("aria-label",t("chat.conversationWith",label)); },[name,label]);
   useLayoutEffect(() => {
     const doc = host.current.ownerDocument;
     let e = keptThreads.get(name);
@@ -484,6 +501,7 @@ function Thread({ name, th }) {
     if (kept) trimKept(name);
     const shownAt = now();
     const thread = e.thread, sc = scroller.current, ls = e.list;
+    ls.setAttribute("aria-label",t("chat.conversationWith",label));
     e.sink = { setJump, setEmpty };
     host.current.append(ls);
     thread.attach(sc);
@@ -544,9 +562,9 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
-    <${Composer} name=${name} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
+    <${Composer} name=${name} inst=${inst} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
     <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
-      class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t(touchScreen() ? "chat.composerHintTouch" : "chat.composerHint")}</span></div>
+      class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>
   </div></div>`;
 }
 
@@ -641,7 +659,7 @@ function replySnippet(r) {
   return text || (r.media === "photo" ? t("chat.replyPhoto") : r.media === "document" ? t("chat.replyFile") : "");
 }
 
-function Composer({ name, label = name, lease, busy }) {
+function Composer({ name, inst, label = name, lease, busy }) {
   const s = store.state;
   const input = useRef(null), fileIn = useRef(null);
   const [, tick] = useState(0);
@@ -662,7 +680,9 @@ function Composer({ name, label = name, lease, busy }) {
   const guest = guestPage();
   const app = useStore(appStore);
   const guestAllowed = guest ? (app.instances.find((i) => i.name === name)?.commands ?? []) : null;
-  const palette = files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
+  const attachmentsSupported = supportsInstanceFeature(inst,"attachments"), commandsSupported = supportsInstanceFeature(inst,"commands");
+  const sendingBlocked = inst?.native_blocked || inst?.native_busy || (busy && !supportsInstanceFeature(inst,"send_while_busy"));
+  const palette = !commandsSupported || files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
   // (#2478 — a long name's placeholder made the box two lines tall).
@@ -684,6 +704,9 @@ function Composer({ name, label = name, lease, busy }) {
   // #2342: a completion is a step Ctrl+Z goes back from (to what was typed); a command that runs consumes the line.
   const complete = (c) => { recordEdit(input.current); setValue(`/${c.name}${c.arg ? " " : ""}`); };
   const submit = () => {
+    if (sendingBlocked) return;
+    if (!attachmentsSupported && files.length) { toast(t("chat.runtimeNoAttachments"),false); return; }
+    if (!commandsSupported && parseCommandLine(value)) { toast(t("chat.runtimeNoCommands"),false); return; }
     if (pick) {
       if (value === `/${pick.name}` && !needsArgument(pick.name)) runLine({ command: pick.name, args: "" });
       else complete(pick);
@@ -719,11 +742,12 @@ function Composer({ name, label = name, lease, busy }) {
   const onPaste = (e) => {
     const list = e.clipboardData && e.clipboardData.files;
     const text = e.clipboardData ? e.clipboardData.getData("text") : "";
-    if (list && list.length) { store.addFiles(name, list); if (!text) e.preventDefault(); return; }
-    if (R().isLongPaste(text) && store.attachPastedText(name, text)) e.preventDefault();
+    if (list && list.length) { if (!attachmentsSupported) { if (!text) e.preventDefault(); toast(t("chat.runtimeNoAttachments"),false); return; } store.addFiles(name, list); if (!text) e.preventDefault(); return; }
+    if (attachmentsSupported && R().isLongPaste(text) && store.attachPastedText(name, text)) e.preventDefault();
   };
   const optId = (c) => `cmd-${c.name}`;
   return html`<div class="composer-box">
+    ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
           class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>
@@ -737,9 +761,9 @@ function Composer({ name, label = name, lease, busy }) {
     </div>` : null}
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
     <div class="composer">
-      <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
+      ${attachmentsSupported ? html`<button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
-        onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
+        onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />` : null}
       ${/* #2478: the placeholder is drawn beside the box, one line ending in "…" — a textarea's own placeholder is clipped,
           never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. Its own
           placeholder is one space: :placeholder-shown hides the drawn one (app.css) the moment the box holds text, an
@@ -751,7 +775,7 @@ function Composer({ name, label = name, lease, busy }) {
         placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span></span>
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
         disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
-      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content}
+      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content || sendingBlocked}
         onMouseDown=${(e) => e.preventDefault()}
         aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;
@@ -775,7 +799,7 @@ function FileChip({ f, i, name }) {
 
 // ── Dialogs ──
 
-function DeleteDialog({ name, onClose }) {
+function DeleteDialog({ name, inst, onClose }) {
   // The dialog's own lease: it ends when the dialog goes (closed, or the chat left for another page). The delete
   // may still finish on the server, and says so, but a dialog that is gone never closes or navigates the page the
   // person is on now (#1425 review).
@@ -791,7 +815,7 @@ function DeleteDialog({ name, onClose }) {
     // follows the request. From then on the dialog is done: the decision is said in a toast, and it never closes or
     // navigates anything (the person may be anywhere by then).
     try {
-      const res = await confirmedWrite(`/ui/instances/${encodeURIComponent(name)}/delete`, { method: "POST", body: { confirm: typed }, label: t("chat.deleteTitle", name),
+      const res = await confirmedWrite(inst?.runtime === "windows" ? `/ui/instances/${encodeURIComponent(name)}` : `/ui/instances/${encodeURIComponent(name)}/delete`, { method: inst?.runtime === "windows" ? "DELETE" : "POST", body: inst?.runtime === "windows" ? {} : { confirm: typed }, label: t("chat.deleteTitle", name),
         onPending: (_id, view) => { handedOver = true; toast(t(selfConfirmed(view) ? "app.pendingSelfSent" : "app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
       r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
     } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
