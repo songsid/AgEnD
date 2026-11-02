@@ -108,6 +108,10 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "web.experimental.canvas_worker": "now",
   "web.echo_to_channel": "now",
   "web.log_tab": "now",
+  // M-2255: applied when saved (the fleet's observeRuntimeSwitches), no restart.
+  "runtimes.windows_cli": "now",
+  "runtimes.remote_runtime": "now",
+  "runtimes.max_agents_per_machine": "now",
   "web.usage_report_on_public_link": "now",
   "web.office_levels": "now",
   "web.preview_cdn": "now",

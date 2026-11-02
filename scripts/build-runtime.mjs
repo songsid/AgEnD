@@ -8,7 +8,7 @@ const output = resolve(root, process.argv[2] || '.artifacts/runtime-bundle');
 const compiled = process.argv[3] ? resolve(process.argv[3]) : join(root, 'dist');
 if (output === root || root.startsWith(output + '/') || root.startsWith(output + '\\')) throw new Error('Choose a dedicated runtime bundle directory');
 const files = ['runtime-cli.js', 'runtime-client.js', 'runtime-client-store.js', 'windows-cli.js', 'windows-cli-worker.js',
-  'windows-cli-providers.js', 'child-process.js', 'windows-native-mcp.js', 'model-catalog-defaults.js', 'atomic-write.js'];
+  'windows-cli-providers.js', 'child-process.js', 'windows-native-mcp.js', 'model-catalog-defaults.js', 'atomic-write.js', 'runtime-switches.js'];
 await mkdir(join(output, 'dist'), { recursive: true });
 await copyFile(join(root, 'LICENSE'), join(output, 'LICENSE'));
 for (const file of files) await copyFile(join(compiled, file), join(output, 'dist', file));

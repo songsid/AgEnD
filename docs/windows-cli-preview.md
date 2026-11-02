@@ -8,8 +8,17 @@ delivery use the shared Fleet system. The coordinator itself still runs in WSL.
 ## Enable
 
 Install Windows Node.js and make `node.exe` available on Windows PATH. Install
-and sign in to a supported native Windows CLI. Restart AgEnD after adding this to
-the AgEnD home's `.env`:
+and sign in to a supported native Windows CLI. Then turn on **Use this PC's
+Windows CLIs** in **Settings → Runtime** (fleet.yaml `runtimes.windows_cli: true`;
+off by default). Turning it on asks a fleet admin to confirm, like other access
+settings, and applies without a restart. Turning it off applies at once: a Windows
+agent turn in progress on this PC stops, and these agents stay stopped until the
+switch is on again.
+
+The environment variable `AGEND_WINDOWS_CLI` still overrides the setting, for
+example in the AgEnD home's `.env`: `1` forces it on and `0` forces it off
+(Settings then shows "Set by the environment"). Any other value, or none, leaves
+it to Settings.
 
 ```dotenv
 AGEND_WINDOWS_CLI=1

@@ -1,4 +1,5 @@
 /** Local administrator API for pairing and managing execution computers. */
+import { remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
 import { nativeCliAuthorization, type WindowsCliApiContext } from "./windows-cli-api.js";
@@ -14,7 +15,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   if (url.pathname !== "/ui/runtimes" && !url.pathname.startsWith("/ui/runtimes/")) return false;
   const method = req.method ?? "GET";
   if (!nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Runtime settings require a local dashboard administrator" }); return true; }
-  const enabled = process.env.AGEND_REMOTE_RUNTIME === "1" && !!ctx.runtimeCoordinator;
+  const enabled = remoteRuntimeEnabled() && !!ctx.runtimeCoordinator;
   if (!enabled) { json(res, method === "GET" && url.pathname === "/ui/runtimes" ? 200 : 404, { enabled: false, machines: [] }); return true; }
   if ((method === "GET" || method === "HEAD") && url.pathname === "/ui/runtimes/download/windows") {
     if (url.search) { json(res,400,{error:"Runtime downloads do not accept file paths or options"});return true; }
