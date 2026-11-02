@@ -5228,7 +5228,10 @@ export class Daemon extends EventEmitter {
         if (!current() || !input || input.text !== "" || input.collapsedPastes !== 0 || input.queued
           || !this.paneAuthoritativelyIdle(pane) || this.inputTransientInPane(pane)
           || this.backend?.backgroundWorkRunning?.(pane) === true) return;
-        if (await tmux.getPaneInputMode?.() !== "raw" || !current()) return;
+        if (this.nativePaneLifecycle ? !this.nativePaneLifecycle.current() || this.nativePaneLifecycle.mcpProof() !== "alive"
+          || !!this.backend?.isDeliveryInputReadyPane && !this.backend.isDeliveryInputReadyPane(pane)
+          : await tmux.getPaneInputMode?.() !== "raw") return;
+        if (!current()) return;
         const evidence = await this.durableAttemptEvidence(tmux.getWindowId(), false, false);
         if (!current()) return;
         const signature = this.submissionSignature(content), baseline = this.paneEvidence(pane, signature);
@@ -9019,9 +9022,15 @@ export class Daemon extends EventEmitter {
     const check = this.backend?.isDeliveryInputReadyPane;
     if (!check || !this.tmux) return !check;
     try {
-      const mode = await this.tmux.getPaneInputMode?.();
-      if (mode !== "raw") { this.resetFooterFallback(); return false; }
-      return this.deliveryInputReadyPane(await this.tmux.capturePane());
+      const inputActive = this.nativePaneLifecycle
+        ? this.nativePaneLifecycle.current() && this.nativePaneLifecycle.mcpProof() === "alive"
+        : await this.tmux.getPaneInputMode?.() === "raw";
+      // ConPTY has no POSIX termios mode. Its closed launch plus current helper handshake is the input barrier;
+      // the same strict composer detector below is still required. Never grant native unknown-layout fallback.
+      if (!inputActive) { this.resetFooterFallback(); return false; }
+      const pane = await this.tmux.capturePane();
+      if (this.nativePaneLifecycle && (!this.nativePaneLifecycle.current() || this.nativePaneLifecycle.mcpProof() !== "alive")) return false;
+      return this.deliveryInputReadyPane(pane);
     } catch {
       this.resetFooterFallback();
       return false;
@@ -10935,6 +10944,7 @@ export class Daemon extends EventEmitter {
   }
 
   private getWindowId(): string | undefined {
+    if (this.nativePaneLifecycle) return this.nativePaneLifecycle.current() ? this.tmux?.getWindowId() : undefined;
     try {
       return readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim() || undefined;
     } catch {

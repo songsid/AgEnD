@@ -65,7 +65,33 @@ try {
   }
  }
  if (-not $seen.Contains('agend-runtime/dist/runtime-pane-stdio.js')) { throw 'Pane relay module is missing' }
- if (-not $exists) { [IO.File]::WriteAllText((Join-Path $temporary 'bundle.sha256'),$Sha256,[Text.Encoding]::ASCII); [IO.Directory]::Move($temporary,$destination) }
+ # Verify the complete tree before executing it: unlisted package.json or JS can change Node resolution.
+ $base = if ($exists) { $destination } else { $temporary }
+ $allowedDirectories = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+ foreach ($name in $seen) {
+  for ($relative = [IO.Path]::GetDirectoryName($name.Replace('/','\')); $relative; $relative = [IO.Path]::GetDirectoryName($relative)) { [void]$allowedDirectories.Add($relative) }
+ }
+ $pending = [Collections.Generic.Stack[string]]::new(); $pending.Push($base)
+ while ($pending.Count -gt 0) {
+  $directory = $pending.Pop()
+  foreach ($item in Get-ChildItem -LiteralPath $directory -Force) {
+   $relative = $item.FullName.Substring($base.Length + 1)
+   if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Staged pane code contains an unexpected link' }
+   if ($item.PSIsContainer) {
+    if (-not $allowedDirectories.Contains($relative)) { throw 'Staged pane code contains an unexpected directory' }
+    $pending.Push($item.FullName)
+   } elseif (-not $seen.Contains($relative.Replace('\','/')) -and -not ($exists -and $relative -ceq 'bundle.sha256')) { throw 'Staged pane code contains an unexpected file' }
+  }
+ }
+ if (-not $exists) {
+  [IO.File]::WriteAllText((Join-Path $temporary 'bundle.sha256'),$Sha256,[Text.Encoding]::ASCII)
+  # Antivirus may briefly retain handles to freshly written native prebuilds. Never overwrite a live stage.
+  $deadline = [DateTime]::UtcNow.AddSeconds(15)
+  for (;;) {
+   try { [IO.Directory]::Move($temporary,$destination); break }
+   catch { if ((Test-Path -LiteralPath $destination) -or [DateTime]::UtcNow -ge $deadline) { throw 'Pane code staging could not be committed; retry after the pending file operation finishes' }; Start-Sleep -Milliseconds 200 }
+  }
+ }
  $relay = Join-Path $destination 'agend-runtime\dist\runtime-pane-stdio.js'
  $node = (Get-Command node.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
  [Console]::Write((@{relay=$relay;node=$node} | ConvertTo-Json -Compress))

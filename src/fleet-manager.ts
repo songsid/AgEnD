@@ -19949,6 +19949,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     });
 
     const fleetInstance = this.fleetConfig?.instances[instanceName];
+    if (isWindowsInstance(fleetInstance)) return fleetInstance.model?.trim() ? done(fleetInstance.model.trim(), "instance") : done("default", "unresolved", "this CLI does not report a default");
     if (fleetInstance) {
       if (fleetInstance.model?.trim()) return done(fleetInstance.model.trim(), "instance");
       const fleetDefault = this.fleetConfig?.defaults?.model;
@@ -20076,6 +20077,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     instanceName: string,
     opts: { refresh?: boolean; refreshVendorCatalog?: boolean; onLiveProbe?: () => void } = {},
   ): Promise<{ models: import("./backend/types.js").ModelOption[]; source: "live" | "cache" }> {
+    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { models: (await this.listModelCatalog({instanceName})).models, source: "cache" };
     const backendName = this.backendNameForInstance(instanceName);
     const profile = this.catalogProfile(backendName, instanceName);
     const cached = this.readCliEnv(backendName, profile);
@@ -20820,6 +20822,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** The instance's backend's effort metadata; agy's levels are its model's (#1825), the one the instance runs. */
   private instanceEffortMetadata(instanceName: string) {
+    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { strategy: "unsupported" as const, levels: [] as string[] };
     const backend = this.backendNameForInstance(instanceName);
     let model: string | null = null;
     if (backend === "antigravity") {
@@ -20831,6 +20834,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Configured effort for an instance: per-instance, else fleet default, else none. */
   resolveInstanceEffort(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" } {
+    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { effort: null, source: "unset" };
     const own = (this.fleetConfig?.instances[instanceName] as { effort?: string } | undefined)?.effort;
     if (own) return { effort: own, source: "instance" };
     const fallback = (this.fleetConfig?.defaults as { effort?: string } | undefined)?.effort;
@@ -20865,6 +20869,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * instance respawns.
    */
   async applyEffort(instanceName: string, requested: string): Promise<string> {
+    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return t("effort.unsupported", this.backendNameForInstance(instanceName));
     const level = requested.trim().toLowerCase();
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" | "unsupported" = "unsupported";
@@ -24717,8 +24722,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             : agent.blocked ? {runtime_error:"Windows process outcome is unknown; verify it stopped before recovery"} : {})};
       }
       // #1956: read once for this instance; its cost, context and model come from it.
-      const statusline = readStatuslineJson(this.dataDir, name) as { cost?: { total_cost_usd?: unknown } } | undefined;
-      const cost = (statusline?.cost?.total_cost_usd as number | undefined) ?? 0;
+      const statusline = isNativePaneInstance(nativeConfig) ? undefined : readStatuslineJson(this.dataDir, name) as { cost?: { total_cost_usd?: unknown } } | undefined;
+      const cost = isNativePaneInstance(nativeConfig) ? null : (statusline?.cost?.total_cost_usd as number | undefined) ?? 0;
       // Align with /ctx: statusline for claude-code, pane scrape for kiro/grok/codex.
       const classic = classicOnly.includes(name);
       const backend = classic
@@ -24726,7 +24731,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         : (this.fleetConfig?.instances[name]?.backend
           ?? this.fleetConfig?.defaults?.backend
           ?? "claude-code");
-      const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name), statusline });
+      const { context } = isNativePaneInstance(nativeConfig) ? { context: null } : resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name), statusline });
       // context_pct: null when unavailable, not 0
       const context_pct = context ?? null;
       // Model: Only Claude Code has live statusline; others use the effective resolver.

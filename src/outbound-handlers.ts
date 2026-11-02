@@ -1364,6 +1364,7 @@ export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>[
  */
 export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, patch: InstanceConfigPatch, respond: Respond): void {
   const inst = ctx.fleetConfig?.instances[name];
+  if (isWindowsInstance(inst)) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
   if (!inst) {
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
       .some(channel => channel.instanceName === name);

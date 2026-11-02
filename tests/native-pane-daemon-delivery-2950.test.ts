@@ -6,7 +6,7 @@ function fixture(){
  const dir=mkdtempSync(join(tmpdir(),'agend-native-daemon-delivery-'));roots.push(dir);const ref:RuntimeTranscriptReference={version:1,machineId:randomUUID(),hostBootId:randomUUID(),paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),provider:'codex',cursor:{sessionId:randomUUID(),fileId:null,offset:0,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR}};
  const backend=createNativePaneBackend('codex',()=>({sessionId:ref.cursor.sessionId,contextPercentage:null,statusLineItems:['context-remaining'],resumes:false}));
  const daemon:any=new Daemon('native-agent',{working_directory:'C:\\private-native-cwd',backend:'codex',runtime:'windows',log_level:'silent'}as never,dir,true,backend,undefined,pino({level:'silent'})as never);
- const reader={look:vi.fn(async()=> 'user' as const),readPosition:0,close:vi.fn()},current=vi.fn(()=>true),native={backend,host:{executionHost:'remote'},observation:{},current,proofReader:vi.fn(()=>reader)};daemon.setNativePaneLifecycle(native as never);
+ const reader={look:vi.fn(async()=> 'user' as const),readPosition:0,close:vi.fn()},current=vi.fn(()=>true),native={mcpProof:vi.fn(()=>"unknown"),backend,host:{executionHost:'remote'},observation:{},current,proofReader:vi.fn(()=>reader)};daemon.setNativePaneLifecycle(native as never);
  const monitor={reconciliationRuntimeCheckpoint:vi.fn(async()=>ref),reconciliationCheckpoint:vi.fn(async()=>{throw Error('coordinator-local path must never be used');})};daemon.transcriptMonitor=monitor;
  return{dir,daemon,ref,native,reader,monitor};
 }
@@ -36,4 +36,18 @@ it('native consumed watches use the runtime reader and no local transcript fallb
  const f=fixture(),start=vi.spyOn(consumedWatches,'start').mockReturnValue(true);f.daemon.deliveryOutbox={markConsumed:vi.fn()};
  f.daemon.startConsumedWatch({deliveryId:'delivery',attemptNo:1},{transcriptCheckpoint:{backend:'codex',runtime:f.ref},submissionMode:'steer'});expect(start).toHaveBeenCalledWith(expect.objectContaining({reader:f.reader,backend:'codex'}));expect(start.mock.calls[0][0]).not.toHaveProperty('path');
  start.mockClear();f.daemon.startConsumedWatch({deliveryId:'delivery',attemptNo:1},{transcriptCheckpoint:{backend:'codex',path:'/never-read',offset:0},submissionMode:'steer'});expect(start).not.toHaveBeenCalled();
+});
+
+it('native window identity comes from its current bound pane, never a missing tmux file',()=>{
+ const f=fixture();f.daemon.tmux={getWindowId:()=>f.ref.paneId};expect(f.daemon.getWindowId()).toBe(f.ref.paneId);f.native.current.mockReturnValue(false);expect(f.daemon.getWindowId()).toBeUndefined();
+});
+it.each(['alive','unknown','dead'])('native Codex requires a current helper (%s) plus the strict composer, without claiming POSIX raw mode',async proof=>{
+ const f=fixture();f.daemon.inputTransientGuardGeneration=f.daemon.spawnGeneration;const check=vi.spyOn(f.daemon.backend,'isDeliveryInputReadyPane').mockReturnValue(true);f.native.mcpProof=vi.fn(()=>proof) as never;
+ const mode=vi.fn(()=>{throw Error('ConPTY has no POSIX termios');});f.daemon.tmux={capturePane:vi.fn(async()=> 'synthetic known-ready pane'),getPaneInputMode:mode};
+ expect(await f.daemon.hasPositiveDeliveryInput()).toBe(proof==='alive');expect(mode).not.toHaveBeenCalled();
+ if(proof==='alive'){check.mockReturnValue(false);expect(await f.daemon.hasPositiveDeliveryInput()).toBe(false);}
+});
+it('a native helper observation cannot authorize input after the capture retires its owner',async()=>{
+ const f=fixture();f.daemon.inputTransientGuardGeneration=f.daemon.spawnGeneration;f.native.mcpProof=vi.fn(()=> 'alive') as never;vi.spyOn(f.daemon.backend,'isDeliveryInputReadyPane').mockReturnValue(true);
+ f.daemon.tmux={capturePane:vi.fn(async()=>{f.native.current.mockReturnValue(false);return 'known-ready';})};expect(await f.daemon.hasPositiveDeliveryInput()).toBe(false);
 });

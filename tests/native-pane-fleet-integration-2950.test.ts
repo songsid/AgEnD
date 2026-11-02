@@ -61,3 +61,21 @@ it('native model calls cannot request a coordinator account through an explicit 
  const answer:any=await f.fleet.paneManager.handle(f.config.machine_id,{op:'pane-mcp',owner:f.owner(),helperId:randomUUID(),method:'tools/call',callId:'e'.repeat(64),params:{name:'list_models',arguments:{instance_name:'local'}}},()=>true);
  expect(answer.result.isError).toBe(true);expect(outbound).not.toHaveBeenCalled();
 });
+it('the ordinary Fleet delivery facade reaches a published native daemon and arms its reply guard',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native');
+ const deliver=vi.spyOn(daemon,'deliverMessage').mockResolvedValue(true),push=vi.spyOn(daemon,'pushChannelMessage');
+ expect(await f.fleet.deliverToInstance('native',{type:'fleet_inbound',content:'minimal',meta:{source:'user',user:'person',chat_id:'private',thread_id:'native',message_id:randomUUID()}})).toBe(true);
+ await vi.waitFor(()=>expect(push).toHaveBeenCalledOnce());await vi.waitFor(()=>expect(deliver).toHaveBeenCalledOnce());
+ expect(daemon.turnReplyGuard.snapshot()).not.toBeNull();expect(f.exec).not.toHaveBeenCalled();
+});
+it('native model/effort presentation and menus never read coordinator configuration or inherit its account defaults',async()=>{
+ const f=await fixture();f.models.mockRestore();f.fleet.fleetConfig.defaults={model:'coordinator-model',effort:'max'};
+ const local=vi.spyOn(f.fleet,'readCliEnv').mockImplementation(()=>{throw Error('No coordinator CLI account');});
+ const probe=vi.spyOn(f.fleet,'probeBackendBounded').mockImplementation(()=>{throw Error('No coordinator provider probe');});
+ expect(f.fleet.resolveInstanceModel('native')).toMatchObject({model:'default',source:'unresolved'});
+ expect(f.fleet.effortStrategyFor('native')).toBe('unsupported');expect(f.fleet.effortLevelsFor('native')).toEqual([]);expect(f.fleet.resolveInstanceEffort('native')).toEqual({effort:null,source:'unset'});
+ const save=vi.spyOn(f.fleet,'saveFleetConfig').mockImplementation(()=>{throw Error('No ignored setting write');}),restart=vi.spyOn(f.fleet,'restartSingleInstance').mockImplementation(()=>{throw Error('No ignored setting restart');});
+ await f.fleet.applyEffort('native','high');expect(f.config).not.toHaveProperty('effort');expect(save).not.toHaveBeenCalled();expect(restart).not.toHaveBeenCalled();
+ f.hub.machine=()=>({status:'online',platform:'win32',inventory:{clis:[{id:'claude-code',runnable:true,version:'Claude Code 2.1.316',models:[{id:'native-only'}]}],probedAt:123}});
+ expect(await f.fleet.getModelOptionsWithSource('native',{refresh:true})).toMatchObject({source:'cache',models:[{id:'native-only'}]});expect(local).not.toHaveBeenCalled();expect(probe).not.toHaveBeenCalled();
+});
