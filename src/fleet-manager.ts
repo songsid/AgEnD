@@ -1197,7 +1197,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
   private runtimeWindowsExecutor(): RuntimeWindowsBridge {
-    return this.runtimeExecutor ??= new RuntimeWindowsBridge(this,()=>process.env.AGEND_REMOTE_RUNTIME==="1" ? this.runtimeCoordinator() : null);
+    return this.runtimeExecutor ??= new RuntimeWindowsBridge(this,()=>process.env.AGEND_REMOTE_RUNTIME==="1" && !this.shuttingDown ? this.runtimeCoordinator() : null);
   }
   /** Per-turn capabilities for native MCP, separate from browser and Linux-agent credentials. */
   nativeMcpSessions(): NativeMcpSessions {
@@ -21576,6 +21576,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   stopAll(): Promise<void> {
     this.nativeMcpStore?.closeAll();
     this.runtimeExecutor?.close();this.runtimeExecutor=null;
+    this.fleetWindowsRuntime=null;
     this.runtimeHub?.close();this.runtimeHub=null;
     closeWindowsBridge(this);
     this.stopAllInFlight ??= this.doStopAll().finally(() => {

@@ -16,6 +16,7 @@ describe("standalone Windows runtime bundle", () => {
       const help = execFileSync(process.execPath, [join(bundle, "dist/runtime-cli.js"), "--help"], { cwd: directory, encoding: "utf8", timeout: 10_000 });
       expect(help).toContain("agend-runtime connect --server"); expect(help).toContain("foreground");
       expect(readdirSync(join(bundle, "node_modules"))).toEqual(["ws"]);
+      expect(readFileSync(join(bundle,"LICENSE"),"utf8")).toContain("MIT License");
       const pkg = JSON.parse(readFileSync(join(bundle, "package.json"), "utf8")); expect(pkg.dependencies).toEqual({ ws: "8.22.0" });
       const manifest = JSON.parse(readFileSync(join(bundle, "bundle-manifest.json"), "utf8")); expect(manifest.nativeDependencies).toEqual([]);
       expect(manifest.modules).toContain("model-catalog-defaults.js");

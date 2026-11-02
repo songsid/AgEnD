@@ -10,6 +10,7 @@ if (output === root || root.startsWith(output + '/') || root.startsWith(output +
 const files = ['runtime-cli.js', 'runtime-client.js', 'runtime-client-store.js', 'windows-cli.js', 'windows-cli-worker.js',
   'windows-cli-providers.js', 'child-process.js', 'windows-native-mcp.js', 'model-catalog-defaults.js', 'atomic-write.js'];
 await mkdir(join(output, 'dist'), { recursive: true });
+await copyFile(join(root, 'LICENSE'), join(output, 'LICENSE'));
 for (const file of files) await copyFile(join(compiled, file), join(output, 'dist', file));
 const wsRoot = join(root, 'node_modules/ws');
 const ws = JSON.parse(await readFile(join(wsRoot, 'package.json'), 'utf8'));
