@@ -285,13 +285,13 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .panel-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); min-height: calc(var(--header-h) - 2 * var(--s-1)); }
 .panel-title h1 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; outline: none; }
 .panel-sub { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
-/* S-30: on a phone the chat's status and chips (status, Windows, computer, model…) gave way to nothing, and the agent's
-   name was cut to two letters. The name keeps at least ~10 characters; the chip row is what clips. */
+/* S-30: on a phone the chat's state and chips (Windows, computer, model…) left the agent's name two letters. There the
+   header keeps the name (at least ~10 characters) and the state ("idle", "閒置"); the chips are on the sidebar row and
+   in Details. */
 @media (max-width: 479px) {
   .p-chat .panel-title h1 { flex: 0 1 auto; min-width: min(10ch, 45%); }
-  .p-chat .panel-sub { flex: 1 1 0; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: var(--s-2); }
-  .p-chat .panel-sub > .status { flex: none; }               /* the state ("idle", "閒置") stays whole … */
-  .p-chat .panel-sub > :not(.status) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* … chips give way */
+  .p-chat .panel-sub { flex: 0 0 auto; }
+  .p-chat .panel-sub > :not(.status) { display: none; }
 }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 /* #2015: the largest processes, after the host memory chip's text. */
