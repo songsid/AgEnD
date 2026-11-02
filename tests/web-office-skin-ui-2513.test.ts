@@ -209,7 +209,7 @@ describe("the Office view with packs", () => {
     withPack();
     await office();
     const style = p.root.querySelectorAll(".oo-bar select")[1];
-    expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy", "Clinic"]);
+    expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy", "Guild", "School", "Clinic"]);
     style.value = "clinic-sample"; fire(style, "change"); await settle(8);
     expect(localStorage.getItem("agend_org_office_skin")).toBe("clinic-sample");
     expect(p.root.querySelector(".oo-note")).toBeNull();
@@ -287,7 +287,7 @@ describe("the Office view with packs", () => {
     auth(true); await office();
     p.root.querySelector(".oo-edit").click(); await settle(4);
     const style = p.root.querySelector(".oe-style");
-    expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy", "Clinic"]);
+    expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy", "Guild", "School", "Clinic"]);
     expect(p.root.querySelectorAll(".oe-pack").map((li: any) => li.getAttribute("data-pack"))).toEqual(["clinic-sample"]);
     expect(p.root.querySelectorAll(".oe-upload input").length).toBe(2);
     p.root.querySelector("#oeSave").click(); await settle(6);

@@ -37,7 +37,7 @@ describe("the share page's static files (#2636)", () => {
     expect(files.length).toBe(shared.length + own.length);
     expect(Object.keys(SHARE_ASSETS).filter(n => n.endsWith(".js")).sort()).toEqual(shared);
     expect([...SHARE_MODULES].sort()).toEqual(own);
-    expect(Object.keys(SHARE_ASSETS).filter(n => !n.endsWith(".js")).sort()).toEqual(["app.css", "inter.woff2", "office-cozy.png", "tokens.css"]);
+    expect(Object.keys(SHARE_ASSETS).filter(n => !n.endsWith(".js")).sort()).toEqual(["app.css", "inter.woff2", "office-cozy.png", "office-guild.png", "office-school.png", "tokens.css"]);
   });
 
   it("are served by name (the bytes on disk), and nothing else", () => {
