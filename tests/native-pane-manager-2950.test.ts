@@ -59,3 +59,7 @@ it("a failed open with no positive native observation cannot be reported closed 
 it("an endpoint for another machine is refused before host discovery or profile reservation",async()=>{
  const f=await fixture();f.endpoint.machineId=randomUUID();await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("machine scope differs");expect(f.endpoint.call).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).activeId).toBeUndefined();
 });
+it("hot display metadata and updated bundled instructions retain the running exact pane; cold role/model edits still require close",async()=>{
+ const f=await fixture();f.options.instructions=(_name,config)=>`name=${config.display_name}`;const first=await f.manager.prepare("native",f.config,()=>{});await first.acquire(()=>{});const id=first.port.ownedSnapshot()?.launchId;await first.release("detach");f.config.display_name="New name";f.options.instructions=()=>"updated bundled instruction text";
+ const next=await f.manager.prepare("native",f.config,()=>{});await next.acquire(()=>{});expect(next.port.ownedSnapshot()?.launchId).toBe(id);expect(f.spawn).toHaveBeenCalledOnce();await next.release("detach");f.config.systemPrompt="Different cold role";await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("settings differ");
+});

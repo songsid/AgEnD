@@ -132,3 +132,8 @@ describe("shared native instance authorization boundary",()=>{
     await finish(res,403);expect(f.service.update).not.toHaveBeenCalled();
   });
 });
+it("native pane compatibility Cancel/Delete routes through the ordinary Fleet lifecycle rather than the exec worker",async()=>{
+ const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const cancel=vi.fn(()=>true),remove=vi.fn(async()=>{});Object.assign(f.ctx,{cancelInstance:cancel,removeInstance:remove});
+ const req=request("POST",{},url("/cancel")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/cancel"),f.context);await finish(res,202);expect(cancel).toHaveBeenCalledExactlyOnceWith(name);expect(f.service.cancel).not.toHaveBeenCalled();
+ const del=request("DELETE",{},url()),delRes=new Response(del);handleNativeInstanceRequest(del,delRes,url(),f.context);await finish(delRes,200);expect(remove).toHaveBeenCalledWith(name,expect.objectContaining({source:"dashboard-confirmed"}),undefined);expect(f.service.remove).not.toHaveBeenCalled();
+});

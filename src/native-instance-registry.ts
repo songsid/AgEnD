@@ -18,10 +18,10 @@ export function nativeInstanceName(agentId: string): string {
 export function isWindowsInstance(config: Partial<InstanceConfig> | null | undefined): config is InstanceConfig & {runtime:"windows"} {
   return config?.runtime === "windows";
 }
-export function isNativePaneInstance(config: Partial<InstanceConfig> | null | undefined): boolean {
+export function isNativePaneInstance(config: Partial<InstanceConfig> | null | undefined): config is InstanceConfig & {runtime:"windows";native_adapter:"pane"} {
   return isWindowsInstance(config) && config.native_adapter === "pane";
 }
-export function isNativeExecInstance(config: Partial<InstanceConfig> | null | undefined): boolean {
+export function isNativeExecInstance(config: Partial<InstanceConfig> | null | undefined): config is InstanceConfig & {runtime:"windows";native_adapter?:"exec"} {
   return isWindowsInstance(config) && config.native_adapter !== "pane";
 }
 export function nativeAgentId(config: Partial<InstanceConfig> | null | undefined): string | null {

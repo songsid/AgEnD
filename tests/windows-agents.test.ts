@@ -188,6 +188,7 @@ import{randomUUID}from'node:crypto';import type{RuntimePaneSnapshot}from'../src/
 it('reserves a profile before pane launch and keeps exec-only rollback blocked by activeId',async()=>{
  const f=fixture(),agent=await f.store.create(input),launchId=randomUUID();f.store.reservePane(agent.id,launchId);
  expect(f.store.get(agent.id)).toMatchObject({activeId:launchId,paneLaunchId:launchId,blocked:true});
+ expect(()=>f.store.cancel(agent.id)).toThrow("Fleet daemon");
  expect(()=>new WindowsAgents(f.dir,f.bridge).send(agent.id,{requestId:first,prompt:'must not launch'},()=>true)).toThrow('persistent pane');
  const file=join(f.dir,'windows-agents.json'),raw=JSON.parse(readFileSync(file,'utf8'));delete raw.agents[0].paneLaunchId;writeFileSync(file,JSON.stringify(raw));
  expect(()=>new WindowsAgents(f.dir,f.bridge).send(agent.id,{requestId:first,prompt:'old reader must hold'},()=>true)).toThrow('unlock');expect(f.start).not.toHaveBeenCalled();

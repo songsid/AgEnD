@@ -168,6 +168,7 @@ export class WindowsAgents {
   }
   cancel(id: string): WindowsCliTask | null {
     const agent = this.find(id);
+    if (agent.paneLaunchId) throw new Error("Persistent panes are cancelled through the Fleet daemon, never the exec worker");
     return agent.activeId ? this.bridge.cancel(agent.activeId) : null;
   }
   async create(input: unknown, authorized: () => boolean = () => true): Promise<WindowsAgent> {

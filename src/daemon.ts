@@ -1,3 +1,4 @@
+import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
 import { sendPackSources } from "./web-office-pack-read.js";
@@ -74,6 +75,7 @@ import { CLAUDE_CREDIT_BALANCE_LOW, CLAUDE_MODEL_USAGE_LIMIT, CLAUDE_USAGE_LIMIT
 import { t } from "./locale.js";
 import { claudeResetTime, quotaPausedLine } from "./quota-notice.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
+import { reconcileNativePaneTarget } from "./native-pane-reconciliation.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
@@ -2214,6 +2216,12 @@ export class Daemon extends EventEmitter {
   private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+  nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
+  async reconcileNativeDeliveries(outbox: import("./delivery-outbox.js").DeliveryOutbox, current: () => boolean): Promise<boolean> {
+    if (!this.nativePaneLifecycle) return false;
+    return reconcileNativePaneTarget(outbox, this.name, this.nativePaneLifecycle, current);
+  }
+
 
   /** Same-process transport for the owned native daemon; never exposed as a runner RPC. */
   setNativeFleetBridge(bridge: { current(): boolean; send(message: Record<string, unknown>): void }): void {
@@ -5491,6 +5499,29 @@ export class Daemon extends EventEmitter {
   /** Why the deferred pause was requested; what its marker records (Phase 2a). */
   private pendingPauseReason: PauseReason = "auth";
 
+  private nativePauseProof: (() => boolean) | null = null;
+  /** Consume the exact idle proof synchronously after the lifecycle's await, before fencing and closing. */
+  nativePauseStillReady(): boolean {
+    const proof = this.nativePauseProof; this.nativePauseProof = null;
+    if (proof?.()) return true;
+    this.pauseRequested = false; return false;
+  }
+  /** Native lifecycle pause uses the ordinary idle/background/admission proof before closing its owned Job. */
+  async nativePauseReady(admission?: CapacityNudgePauseGuard): Promise<boolean> {
+    this.nativePauseProof = null;
+    const native = this.nativePaneLifecycle, pane = this.tmux, owner = this.interactionOwner();
+    const allowStuck = this.pauseAllowStuck; this.pauseAllowStuck = false;
+    const ready = () => !!native && native === this.nativePaneLifecycle && native.current() && this.tmux === pane
+      && sameInteractionOwner(owner, this.interactionOwner()) && !this.runtimeMonitorsFrozen && !this.spawning
+      && this.processStatus === "running" && this.pasteQueueDepth === 0
+      && (this.instanceState === "idle" || allowStuck && this.instanceState === "stuck") && (!admission || admission.current());
+    if (!pane || !ready()) { this.pauseRequested = false; return false; }
+    let text: string; try { text = await pane.capturePane(); } catch { this.pauseRequested = false; return false; }
+    if (!ready() || admission && !admission.accepts(text) || this.backend?.backgroundWorkRunning?.(text)
+      || !allowStuck && !this.paneAuthoritativelyIdle(text)) { this.pauseRequested = false; return false; }
+    this.nativePauseProof = ready; return true;
+  }
+
   async pause(reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
     if (this.nativePaneLifecycle) throw Error("Native pause is owned by its Fleet lifecycle transition");
     if (admission && !admission.current()) return;
@@ -5926,7 +5957,7 @@ export class Daemon extends EventEmitter {
     // during the continuation boots clean instead of chaining resumes.
     // #2544: a reply that settled before this arm already answered the person —
     // writing a marker would re-inject a continuation for a finished turn.
-    if (!meta.resumedContinuationOf && !armed.completionDelivered) {
+    if (!this.nativePaneLifecycle && !meta.resumedContinuationOf && !armed.completionDelivered) {
       const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
       const resumeCwd = this.config.working_directory ?? "";
       writeInFlightTurnMarker(this.instanceDir, {
@@ -10935,6 +10966,8 @@ export class Daemon extends EventEmitter {
    */
   /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
   handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string }> {
+    const refusal = nativePaneToolRefusal(input.tool, input.args);
+    if (refusal) return Promise.resolve({ result: null, error: refusal });
     if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
     const fence = this.launchFenceEpoch;
     const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
@@ -12299,6 +12332,7 @@ export class Daemon extends EventEmitter {
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */
   private async killProcessTree(signal: NodeJS.Signals = "SIGTERM", reason = "unspecified"): Promise<void> {
+    if (this.nativePaneLifecycle) throw Error("Native processes can only be closed through their owned runtime pane");
     const windowId = this.tmux?.getWindowId();
     // Before createWindow succeeds there is no pane owned by this daemon.
     // tmux interprets an empty selector as the session's active window.

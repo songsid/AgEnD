@@ -4,7 +4,8 @@ import { z } from "zod";
 import { readBoundedWebBody } from "./web-body.js";
 import { nativeCliAuthorization } from "./windows-cli-api.js";
 import { windowsCliEnabled } from "./windows-cli.js";
-import { isWindowsInstance } from "./native-instance-registry.js";
+import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
+import { isWindowsInstance, isNativePaneInstance } from "./native-instance-registry.js";
 import type { WebApiContext } from "./web-api.js";
 import { settingsRequestExecution } from "./settings-request-capability.js";
 import { parseNativeInstanceCreate } from "./native-instance-input.js";
@@ -61,7 +62,9 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,result);return;
     }
     if(method==="DELETE" && !operation){
-      z.object({}).strict().parse(body);await service.remove(name,allowed);
+      z.object({}).strict().parse(body);
+      if (isNativePaneInstance(ctx.fleetConfig?.instances[name])) await ctx.removeInstance(name,authorizeExplicitInstanceRemoval("dashboard-confirmed"),settingsRequestExecution(req));
+      else await service.remove(name,allowed);
       if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,{deleted:name});return;
     }
@@ -79,7 +82,12 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
       json(res,202,{accepted:true,agent:service.get(name)});return;
     }
     if(method==="POST" && operation==="cancel"){
-      z.object({}).strict().parse(body);const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
+      z.object({}).strict().parse(body);
+      if (isNativePaneInstance(ctx.fleetConfig?.instances[name])) {
+        if (!ctx.cancelInstance || !ctx.cancelInstance(name)) throw Error("The native pane is not running");
+        json(res,202,{agent:service.get(name),task:null});return;
+      }
+      const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
     }
     if(method==="POST" && operation==="recover"){
       const input=z.object({confirmedStopped:z.literal(true)}).strict().parse(body);json(res,200,{agent:service.recoverAsync ? await service.recoverAsync(name,input.confirmedStopped) : service.recover(name,input.confirmedStopped)});return;

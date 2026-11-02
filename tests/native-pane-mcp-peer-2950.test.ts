@@ -35,3 +35,12 @@ it('accepts a written ACK only while its exact daemon lease is current',()=>{
  f.daemon.paneToolResponseWritten(operationId,()=>true);expect(written).toHaveBeenCalledExactlyOnceWith({operationId,daemonBootId:f.daemon.bootId});
  f.daemon['deliveryWritesStopping']=true;f.daemon.paneToolResponseWritten(operationId,()=>true);expect(written).toHaveBeenCalledOnce();
 });
+it.each(['checkout_repo','release_repo','get_usage','download_attachment','set_web_theme_asset','preview_web_appearance','preview_emojis','preview_stickers','office_pack_check','office_pack_upload'])('native %s refuses before local or Fleet dispatch',async tool=>{
+ const f=fixture(),dispatch=vi.fn(),checkout=vi.spyOn(f.daemon as any,'handleCheckoutRepo'),release=vi.spyOn(f.daemon as any,'handleReleaseRepo');
+ const answer=await f.daemon.handlePaneToolCall({tool,args:{source:'/must-not-be-read',force:true}},{current:()=>true,allowed:()=>true,dispatch});expect(answer.error).toContain('unavailable');expect(dispatch).not.toHaveBeenCalled();expect(checkout).not.toHaveBeenCalled();expect(release).not.toHaveBeenCalled();expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it('native replies cannot send coordinator-local files but text-only replies remain routable',async()=>{
+ const f=fixture();const answer=await f.daemon.handlePaneToolCall({tool:'reply',args:{text:'file',files:['/coordinator/secret']}},{current:()=>true,allowed:()=>true});expect(answer.error).toContain('file transfer');expect(f.broadcast).not.toHaveBeenCalled();
+ const pending=f.daemon.handlePaneToolCall({tool:'reply',args:{text:'text only',files:[]}},{current:()=>true,allowed:()=>true});const out=f.broadcast.mock.calls.at(-1)![0];f.daemon['pendingIpcRequests'].get(out.fleetRequestId)({result:{messageId:'posted'}});expect((await pending).error).toBeUndefined();
+});

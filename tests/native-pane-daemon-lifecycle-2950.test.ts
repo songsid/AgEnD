@@ -30,3 +30,15 @@ it('native health reports a positive exit once, never probes local PIDs or runs 
  const f=fixture();f.daemon.config.restart_policy.health_check_interval_ms=1000;vi.useFakeTimers();await f.daemon.start();const ended=vi.fn();f.daemon.on('native_pane_exited',ended);f.pane.getPaneStatus.mockResolvedValue({alive:false});
  await vi.advanceTimersByTimeAsync(2100);expect(ended).toHaveBeenCalledExactlyOnceWith({name:'native-agent',exitCode:undefined});expect(f.forbidden).not.toHaveBeenCalled();expect(f.native.acquire).toHaveBeenCalledOnce();await f.daemon.stop();
 });
+it('native pause rechecks idle, paste queue and pane owner after its capture, and never signals anything',async()=>{
+ const f=fixture();await f.daemon.start();f.daemon.instanceState='working';expect(await f.daemon.nativePauseReady()).toBe(false);f.daemon.instanceState='idle';vi.spyOn(f.daemon,'paneAuthoritativelyIdle').mockReturnValue(true);expect(await f.daemon.nativePauseReady()).toBe(true);
+ let release!:(value:string)=>void;f.pane.capturePane.mockImplementationOnce(()=>new Promise(done=>{release=done;}));const pending=f.daemon.nativePauseReady();f.daemon.pasteQueueDepth=1;release('idle');expect(await pending).toBe(false);expect(f.forbidden).not.toHaveBeenCalled();await f.daemon.stop();
+});
+it('native person turns arm the reply guard without scanning any coordinator provider store',()=>{
+ const f=fixture(),roots=vi.spyOn(f.daemon,'resumeRoots').mockImplementation(()=>{throw Error('No coordinator session lookup');});
+ f.daemon.markTurnStarted({chat_id:'person-chat'},'a person needs an answer');
+ expect(f.daemon.turnReplyGuard.snapshot()).toMatchObject({phase:'awaiting',completionDelivered:false});expect(roots).not.toHaveBeenCalled();expect(existsSync(join(f.dir,'in-flight-turn.json'))).toBe(false);
+});
+it('even a stale concrete window id cannot make native cleanup resolve or signal a coordinator PID',async()=>{
+ const f=fixture();f.daemon.tmux=f.pane;await expect(f.daemon.killProcessTree('SIGTERM','test')).rejects.toThrow('owned runtime pane');expect(f.forbidden).not.toHaveBeenCalled();
+});

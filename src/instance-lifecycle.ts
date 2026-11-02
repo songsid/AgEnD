@@ -180,6 +180,7 @@ export interface LifecycleContext {
   nativePaneFor?(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle>;
   reconcileNativePaneBeforeStart?(name: string, daemon: Daemon): Promise<boolean>;
   closeRetainedNativePane?(name: string): Promise<void>;
+  setNativePanePaused?(name: string, paused: boolean): void;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
@@ -344,6 +345,8 @@ export function peerWorkingDirectories(fleetConfig: FleetConfig | null, name: st
 
 /** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
 export interface IncidentEventSource {
+  usesNativePane?(): boolean;
+  confirmAuthFailure?(): void;
   on(event: string, handler: (...args: any[]) => void): unknown;
   requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean; reason?: PauseReason }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
@@ -1337,6 +1340,17 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
+      if (daemon.usesNativePane?.()) {
+        // Native credentials and quotas belong to its runner. Never probe a Linux login or group its peers with it.
+        if (this.daemons.get(name) !== daemon) return;
+        this.notifyIncident(name, data.type, data.notice ?? data.message);
+        if (data.action === "pause") {
+          if (data.type === "auth_error") { daemon.confirmAuthFailure?.(); daemon.requestPauseWhenIdle({ reconfirmAuth: true, reason: "auth" }); }
+          else daemon.requestPauseWhenIdle({ reason: "error" });
+        }
+        return;
+      }
+
       // Antigravity's account-level cap is visible ONLY here: the quota summary
       // API keeps reporting its buckets as barely used while the CLI is blocked
       // (verified live — 0% used and "Individual quota reached" in the same
@@ -1984,6 +1998,19 @@ export class InstanceLifecycle {
     if (isGeneralInstance(this.ctx.fleetConfig, name)) {
       throw new Error(GENERAL_PAUSE_ERROR);
     }
+    const nativeDaemon = this.daemons.get(name);
+    if (nativeDaemon?.usesNativePane?.()) {
+      if (admission && !admission.current()) return;
+      await this.runTransition(name, async () => {
+        if (this.daemons.get(name) !== nativeDaemon || admission && !admission.current()) return;
+        if (!await nativeDaemon.nativePauseReady(admission) || this.daemons.get(name) !== nativeDaemon || !nativeDaemon.nativePauseStillReady()) return;
+        await this.stopInTransition(name);
+        this.ctx.setNativePanePaused?.(name, true);
+        writePausedMarker(this.ctx.getInstanceDir(name), Date.now(), reason);
+        this.ctx.onAttentionChanged?.(name);
+      });
+      return;
+    }
     // B1: cancel any pending capacity backoff — a user-initiated pause should
     // not be undone by a queued restart 30–120s later.
     const pendingBackoff = this.capacityBackoffTimers.get(name);
@@ -2060,15 +2087,17 @@ export class InstanceLifecycle {
       clearPausedMarker(instanceDir);
       this.markActivitySeedNow(name);
       try {
+        if (isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) this.ctx.setNativePanePaused?.(name, false);
         await this.ctx.startPersistedPausedInstance(name, transition);
       } catch (err) {
         this.clearActivitySeedNow(name);
         writePausedMarker(instanceDir, pausedAt, reason);
+        if (isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) this.ctx.setNativePanePaused?.(name, true);
         throw err;
       }
     }
     this.noteWokeForWork(name);
-    this.ctx.startStatuslineWatcher(name);
+    if (!isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) this.ctx.startStatuslineWatcher(name);
   }
 
   /**

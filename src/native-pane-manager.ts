@@ -13,7 +13,7 @@ import type {WindowsAgent,WindowsAgents} from "./windows-agents.js";
 import type {InstanceConfig} from "./types.js";
 import type {Daemon} from "./daemon.js";
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-interface Manifest {version:1;machineId:string;launch:RuntimePaneLaunch;exited?:RuntimePaneSnapshot}
+interface Manifest {version:1;machineId:string;configuration:string;launch:RuntimePaneLaunch;exited?:RuntimePaneSnapshot}
 export interface NativeMachineEndpoint extends PaneEndpoint {epoch():string|null; version(provider:string):string|null}
 export interface NativePaneManagerOptions {
  home:string;
@@ -25,7 +25,7 @@ export interface NativePaneManagerOptions {
  menu(name:string):Array<{name:string;[key:string]:unknown}>;
  allowed(name:string,tool:string,args:Record<string,unknown>):boolean;
  published(name:string,daemon:Daemon):boolean;
- invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean):Promise<{result:unknown;error?:string}>;
+ invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean,name:string):Promise<{result:unknown;error?:string}>;
 }
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
 export class NativePaneManager {
@@ -42,7 +42,7 @@ export class NativePaneManager {
  private load(file:string):Manifest|null {
   try{const stat=lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>128*1024||process.getuid&&(stat.uid!==process.getuid()||!!(stat.mode&0o077)))throw Error("Unsafe native launch manifest");
    const value=JSON.parse(readFileSync(file,"utf8")) as Manifest;
-   if(value?.version!==1||Object.keys(value).some(key=>!["version","machineId","launch","exited"].includes(key))||value.machineId!=="local"&&!UUID.test(value.machineId))throw Error("Invalid native launch manifest");validateRuntimePaneLaunch(value.launch);if(!value.launch.launchId||!UUID.test(value.launch.launchId))throw Error("Native launch identity is missing");
+   if(value?.version!==1||!/^([a-f0-9]{64})$/.test(value.configuration)||Object.keys(value).some(key=>!["version","machineId","configuration","launch","exited"].includes(key))||value.machineId!=="local"&&!UUID.test(value.machineId))throw Error("Invalid native launch manifest");validateRuntimePaneLaunch(value.launch);if(!value.launch.launchId||!UUID.test(value.launch.launchId))throw Error("Native launch identity is missing");
    if(value.exited){const exit=validateRuntimePaneSnapshot(value.exited);if(exit.state!=="exited"||exit.agentId!==value.launch.agentId||exit.instance!==value.launch.instance||exit.paneId!==value.launch.paneId||exit.launchId!==value.launch.launchId)throw Error("Native exit manifest scope differs");}
    return value;
   }catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return null;throw error;}
@@ -54,6 +54,7 @@ export class NativePaneManager {
   this.preparing.add(id);try{return await this.prepareOwned(name,config,assertCurrent);}finally{this.preparing.delete(id);}
  }
  private async prepareOwned(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
+  config=structuredClone(config);
   assertCurrent();this.options.admit(name,config);
   const id=config.native_agent_id;if(!id||!UUID.test(id))throw Error("Native pane profile is missing");
   let agent=this.options.store.get(id);if(agent.fleet_instance!==name||agent.machineId!==config.machine_id||agent.cli!==config.backend||agent.cwd!==config.working_directory)throw Error("Native pane profile scope differs");
@@ -77,20 +78,22 @@ export class NativePaneManager {
   }
   const instructions=this.options.instructions(name,config);
   const configuration={cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,instructions,...(config.model?{model:config.model}:{})};
+  // Hot identity metadata and bundled instruction-template edits do not retire a live pane on coordinator update.
+  const configurationHash=runtimeJobDigest({cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,model:config.model||"",prompt:config.systemPrompt||"",workflow:config.workflow??null});
   if(manifest){
    const old=manifest.launch;
-   if(runtimeJobDigest({cli:old.cli,cwd:old.cwd,sandbox:old.sandbox,instructions:old.instructions,...(old.model?{model:old.model}:{})})!==runtimeJobDigest(configuration))throw Error("Retained native launch settings differ; close its owned pane before applying changes");
+   if(manifest.configuration!==configurationHash)throw Error("Retained native launch settings differ; close its owned pane before applying changes");
    if(agent.activeId&&agent.paneLaunchId!==old.launchId)throw Error("Native profile has a different active owner");
   }else{
    if(agent.activeId)throw Error("Native profile outcome is unknown; no replacement was started");
    const launch=validateRuntimePaneLaunch({...configuration,agentId:id,instance:name,paneId:randomUUID(),launchId:randomUUID(),columns:120,rows:40,...(agent.threadId?{sessionId:agent.threadId}:{}),mcpTools:this.options.menu(name).map(tool=>tool.name)});
-   manifest={version:1,machineId:endpoint.machineId,launch};this.save(file,manifest);
+   manifest={version:1,machineId:endpoint.machineId,configuration:configurationHash,launch};this.save(file,manifest);
   }
   const retained=manifest,launch=retained.launch;
   let daemon:Daemon|undefined,binding:Binding,closed=false;
   const current=():boolean=>{
    if(closed||!endpoint.online()||this.bindings.get(id)!==binding)return false;
-   try{assertCurrent();this.options.admit(name,config);const now=this.options.config(name),profile=this.options.store.get(id);
+   try{if(!daemon||!this.options.published(name,daemon))assertCurrent();this.options.admit(name,config);const now=this.options.config(name),profile=this.options.store.get(id);
     return !!now&&now.native_adapter==="pane"&&now.native_agent_id===id&&now.machine_id===agent.machineId&&now.backend===launch.cli&&now.working_directory===launch.cwd&&(now.model||undefined)===launch.model&&now.native_sandbox===launch.sandbox
      &&profile.paneLaunchId===launch.launchId&&profile.activeId===launch.launchId&&!profile.paused;
    }catch{return false;}
@@ -99,7 +102,7 @@ export class NativePaneManager {
   const lease=new PaneMcpAuthorityLease(join(directory,`${launch.launchId}.mcp.json`),{
    machineId:endpoint.machineId,owner:{hostBootId,paneId:launch.paneId,launchId:launch.launchId!,agentId:id,instance:name},current,transportEpoch:()=>endpoint.epoch(),
    menu:()=>this.options.menu(name),allowed:(tool,args)=>current()&&this.options.allowed(name,tool,args),
-   invoke:(input,proof)=>{if(!owned()||!proof())throw Error("Native daemon is not published");return this.options.invoke(daemon!,input,()=>owned()&&proof());},
+   invoke:(input,proof)=>{if(!owned()||!proof())throw Error("Native daemon is not published");return this.options.invoke(daemon!,input,()=>owned()&&proof(),name);},
    responseWritten:operationId=>daemon?.paneToolResponseWritten(operationId,owned),
   });
   const native=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),

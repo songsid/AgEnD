@@ -1,3 +1,6 @@
+import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-tools.js";
+import { windowsAgentsFor } from "./windows-agents.js";
+import { buildFleetInstructions } from "./instructions.js";
 import { supportsVerifiedKiroMigration, getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
 import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identity.js";
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
@@ -111,7 +114,7 @@ import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient, type InstanceClient } from "./channel/ipc-bridge.js";
 import { NativeDaemonClient } from "./native-daemon-client.js";
-import { usesChannelAddress } from "./channel/mcp-tools.js";
+import { usesChannelAddress, TOOLS } from "./channel/mcp-tools.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, SentMessage, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
 import { formatFleetTime } from "./tz-utils.js";
@@ -219,13 +222,13 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge } from "./windows-cli.js";
-import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches } from "./runtime-switches.js";
+import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
-import { isWindowsInstance } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
@@ -1176,6 +1179,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fleetConfig: FleetConfig | null = null;
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
   private nativeMcpStore: NativeMcpSessions | null = null;
+  private paneManager: import("./native-pane-manager.js").NativePaneManager | null = null;
   private runtimeHub: RuntimeCoordinator | null = null;
   private runtimeExecutor: RuntimeWindowsBridge | null = null;
   private runtimeStatusScheduled = false;
@@ -1185,6 +1189,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!remoteRuntimeEnabled()) throw new Error("Remote runtimes are not enabled");
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
+      handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
       changed:event=>{
         if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {
           for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId)this.nativeMcpStore?.closeInstance(name);
@@ -1218,6 +1223,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
+      paneCurrent:name=>this.daemons.get(name)?.nativePaneCurrent?.() === true,
       machineAvailable:id=>remoteRuntimeEnabled() && this.runtimeCoordinator().machine(id)?.status==="online",
       validateMachine:(id,cli,sandbox)=>{
         const machine=this.runtimeCoordinator().machine(id);
@@ -1230,6 +1236,73 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event === "activity") this.scheduleDeliveryOutboxPump();
       },
     },{bridge:this.runtimeWindowsExecutor()});
+  }
+  /** Persistent ownership is independent of the exec worker's per-turn capabilities. */
+  private async nativePanes(): Promise<import("./native-pane-manager.js").NativePaneManager> {
+    if (this.paneManager) return this.paneManager;
+    const { NativePaneManager } = await import("./native-pane-manager.js");
+    if (this.paneManager) return this.paneManager;
+    const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
+    const allowed = (name: string, tool: string): boolean => nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
+      && !dashboardRefusalIn(this.fleetConfig, name, tool);
+    return this.paneManager = new NativePaneManager({
+      home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
+      admit: (name, config) => {
+        const now = this.fleetConfig?.instances[name];
+        if (this.shuttingDown || !isNativePaneInstance(now) || now?.native_agent_id !== config.native_agent_id
+          || now?.machine_id !== config.machine_id || now?.working_directory !== config.working_directory || now?.backend !== config.backend
+          || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow)
+          throw Error("Native pane configuration or lifetime changed");
+        if (config.machine_id ? !remoteRuntimeEnabled() : !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
+      },
+      endpoint: async agent => {
+        if (!agent.machineId) throw Error("Local persistent-pane transport is not available yet; exec remains the default");
+        const hub = this.runtimeCoordinator(), machineId = agent.machineId;
+        return { machineId, online: () => !this.shuttingDown && remoteRuntimeEnabled() && this.runtimeHub === hub && hub.machine(machineId)?.status === "online",
+          call: request => hub.callPane(machineId, request, maxAgentsPerMachine()), subscribe: listener => hub.subscribe(listener),
+          epoch: () => hub.paneTransportEpoch(machineId), version: provider => hub.machine(machineId)?.inventory?.clis.find(row => row.id === provider && row.runnable)?.version ?? null };
+      },
+      instructions: (name, config) => buildFleetInstructions({ instanceName: name, workingDirectory: config.working_directory,
+        displayName: config.display_name, description: config.description, customPrompt: config.systemPrompt,
+        workflow: config.workflow, taskBoard: !dashboardRefusalIn(this.fleetConfig, name, "task"),
+        runtimeIdentity: { kind: "fleet-topic", backend: config.backend ?? "codex", model: config.model || "default" } }),
+      menu: name => TOOLS.filter(tool => allowed(name, tool.name)).map(tool => ({ ...tool })),
+      allowed: (name, tool, args) => allowed(name, tool) && !nativePaneToolRefusal(tool, args), published: (name, daemon) => this.daemons.get(name) === daemon,
+      invoke: async (daemon, input, current, name) => {
+        if (input.tool === "list_models") {
+          const { ListModelsArgs } = await import("./outbound-schemas.js");
+          const parsed = ListModelsArgs.safeParse(input.args);
+          if (!parsed.success || !current()) return { result: null, error: "Invalid native model request or expired owner" };
+          const target = parsed.data.instance_name ?? name;
+          if (!isWindowsInstance(this.fleetConfig?.instances[target])) return { result: null, error: "Native panes can only read Windows runtime model inventories" };
+          return { result: await this.listModelCatalog({ instanceName: target }) };
+        }
+        const ops: Record<string, string> = { list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
+          delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
+        const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
+        const { dispatchAgentOperation } = await import("./agent-endpoint.js");
+        return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool),
+          dispatch: (tool, args) => ops[tool] ? dispatchAgentOperation(nativeAgentAdmissionContext(this, {
+            instance: name, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
+          }), name, ops[tool], args, input.operationId) : undefined });
+      },
+    });
+  }
+  async nativePaneFor(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle> {
+    return (await this.nativePanes()).prepare(name, config, assertCurrent);
+  }
+  setNativePanePaused(name: string, paused: boolean): void {
+    const id = this.fleetConfig?.instances[name]?.native_agent_id; if (!id) throw Error("Native profile is missing");
+    windowsAgentsFor(this, this.runtimeWindowsExecutor()).setPaused(id, paused);
+  }
+  async closeRetainedNativePane(name: string): Promise<void> {
+    const config = this.fleetConfig?.instances[name]; if (!config) throw Error("Native instance configuration is missing");
+    await (await this.nativePanes()).closeRetained(name, config, () => { if (this.shuttingDown) throw Error("Fleet is stopping"); });
+  }
+  async reconcileNativePaneBeforeStart(name: string, daemon: Daemon): Promise<boolean> {
+    const outbox = this.deliveryOutbox; if (!outbox) return true;
+    const epoch = this.lifecycle.epochOf(name);
+    return daemon.reconcileNativeDeliveries(outbox, () => !this.shuttingDown && this.lifecycle.epochOf(name) === epoch);
   }
   /** M-2255: the Windows runtimes' switches the fleet's own state reflects (null until the start-up has applied them). */
   private runtimeEffects: { windows_cli: boolean; remote_runtime: boolean } | null = null;
@@ -1283,7 +1356,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Native CLIs are headless: the manager owns the durable delivery generation instead of a tmux daemon. */
   private deliveryBootId(name: string): string | null {
     const config=this.fleetConfig?.instances[name];
-    if(isWindowsInstance(config)){
+    if(isNativeExecInstance(config)){
       if(!this.nativeInstanceRuntime().available(name))return null;
       const machine=config.machine_id ? this.runtimeCoordinator().machine(config.machine_id) : null;
       return machine ? `runtime:${machine.id}:${machine.bootId ?? machine.generation}` : this.managerBootId;
@@ -2898,7 +2971,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   getDaemonBootId(instanceName: string): string | undefined {
-    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) {
+    if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       return !this.shuttingDown && windowsCliEnabled() && this.nativeMcpStore?.hasActive(instanceName) ? this.managerBootId : undefined;
     }
     return this.daemons.get(instanceName)?.bootId;
@@ -3039,7 +3112,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Native workers have no resident daemon to wake. Pending durable work resumes their logical instance;
       // the Windows bridge still owns the single physical execution slot.
       for (const target of new Set(outbox.listPending().map(row=>row.targetInstance))) {
-        if (isWindowsInstance(this.fleetConfig?.instances[target])) {
+        if (isNativeExecInstance(this.fleetConfig?.instances[target])) {
           const runtime=this.nativeInstanceRuntime(), agent=runtime.get(target);
           if (agent?.paused && !agent.blocked) runtime.setPaused(target,false);
         }
@@ -3160,7 +3233,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<void> {
     const outbox = this.deliveryOutbox;
     if (!outbox) return;
-    if (isWindowsInstance(this.fleetConfig?.instances[claimed.targetInstance])) {
+    if (isNativeExecInstance(this.fleetConfig?.instances[claimed.targetInstance])) {
       await this.dispatchNativeDurableDelivery(claimed);
       return;
     }
@@ -3280,7 +3353,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const key=`${task.id}:${task.finishedAt}:${task.status}`;
     if(this.reconciledRemoteResults.has(key))return;
     const row=outbox.get(task.id);
-    if(!row || !isWindowsInstance(this.fleetConfig?.instances[row.targetInstance]) || this.fleetConfig?.instances[row.targetInstance]?.machine_id!==machineId
+    if(!row || !isNativeExecInstance(this.fleetConfig?.instances[row.targetInstance]) || this.fleetConfig?.instances[row.targetInstance]?.machine_id!==machineId
       || !row.targetDaemonBootId || this.activeDurableTargets.has(row.targetInstance))return;
     if(row.state==="submission_started" || row.state==="reconciliation_pending") {
       if(!outbox.complete(row.deliveryId,row.targetDaemonBootId,row.attemptNo,task.status==="completed"?"delivered":"failed",task.error || "Runtime completion recovered after reconnect"))return;
@@ -4191,7 +4264,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Get the adapter bound to an instance, falling back to primary adapter */
   getAdapterForInstance(name: string): ChannelAdapter | null {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) return null;
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) return null;
     const worldId = this.getInstanceAdapterId(name);
     if (worldId) return this.worlds.get(worldId)?.adapter ?? this.adapter;
     return this.adapter;
@@ -4253,7 +4326,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Get the group_id for an instance's bound adapter */
   getGroupIdForInstance(name: string): string {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) return "";
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) return "";
     const adapterId = this.getInstanceAdapterId(name);
     const world = adapterId ? this.worlds.get(adapterId) : undefined;
     return world?.groupId ?? String(this.getChannelConfig(adapterId)?.group_id ?? "");
@@ -4291,7 +4364,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   getInstanceAdapterId(name: string): string | undefined {
     const cfg = this.fleetConfig?.instances[name];
-    if (isWindowsInstance(cfg)) return undefined;
+    if (isNativeExecInstance(cfg)) return undefined;
     if (cfg) return cfg.channel_id ?? this.getPrimaryAdapterId();
 
     if (this.classicChannels?.getChannelIdByInstance(name) !== undefined) {
@@ -4321,7 +4394,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed" {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) {try{return this.nativeInstanceRuntime().status(name);}catch{return "crashed";}}
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) {try{return this.nativeInstanceRuntime().status(name);}catch{return "crashed";}}
     if (this.lifecycle.isPaused(name)) return "paused";
     const daemon = this.lifecycle.daemons.get(name) as { getProcessStatus?: () => "running" | "crashed" | "stopped" } | undefined;
     const processStatus = this.instanceProcessStatus.get(name);
@@ -4351,7 +4424,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   getInstanceExecutionState(name: string): InstanceState | null {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) {try{return this.nativeInstanceRuntime().execution(name);}catch{return null;}}
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) {try{return this.nativeInstanceRuntime().execution(name);}catch{return null;}}
     if (this.lifecycle.isPaused(name)) return null;
     // Process status wins over a stale pane snapshot. A dead remain-on-exit pane
     // can still contain the old ready marker and must never surface as Idle.
@@ -4361,7 +4434,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Pure read of the single daemon-owned observation; no probe/capture or second tracker. */
   getInstanceInteraction(name: string): InteractionSnapshot | null {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) return null;
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) return null;
     if (this.lifecycle.isPaused(name) || this.instanceProcessStatus.has(name)) return null;
     const daemon = this.lifecycle.daemons.get(name);
     if (daemon?.getProcessStatus?.() !== "running") return null;
@@ -5051,7 +5124,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * id is no platform message, and the echo is the fleet's own post. The web send calls this on the echo's lane.
    */
   startWebChatProgress(instanceName: string): Promise<void> {
-    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return Promise.resolve();
+    if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) return Promise.resolve();
     if (this.shuttingDown) return Promise.resolve();
     return this.sendCancelButton(instanceName);
   }
@@ -5276,7 +5349,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     options: DeliveryOptions = {},
   ): Promise<boolean | void> {
-    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) {
+    if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       return this.nativeInstanceRuntime().deliver(instanceName,payload,{stillCurrent:options.stillCurrent,
         ...(options.authorityCurrent ? {authorityCurrent:options.authorityCurrent} : {})});
     }
@@ -5791,7 +5864,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * slot admission and joins any wake already in flight for the target.
    */
   async explicitWake(name: string, timeoutMs = 30_000, retryStoppedSession = false): Promise<void> {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) { this.nativeInstanceRuntime().setPaused(name,false); return; }
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) { this.nativeInstanceRuntime().setPaused(name,false); return; }
     if (this.sessionOomStopped(name)) {
       if (!retryStoppedSession) throw new SessionOomStoppedError(false, readSessionOomStop(this.getInstanceDir(name)));
       return this.restartSingleInstance(name, { explicit: true });
@@ -5816,7 +5889,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle"> {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) { this.nativeInstanceRuntime().setPaused(name,action === "pause");return action === "pause" ? "paused" : "awake"; }
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) { this.nativeInstanceRuntime().setPaused(name,action === "pause");return action === "pause" ? "paused" : "awake"; }
     if (action === "wake") {
       await this.explicitWake(name, 30_000, true);
       this.enforceWarmCap(name); // manual wake still respects the fleet warm cap
@@ -6005,7 +6078,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     execution?: SettingsExecution,
     kiroMigration?: symbol,
   ): Promise<void> {
-    if (isWindowsInstance(config)) {
+    if (isNativeExecInstance(config)) {
       execution?.assert();
       if (!windowsCliEnabled()) throw new Error("Windows runtime is disabled");
       if (resumePaused) this.nativeInstanceRuntime().setPaused(name,false);
@@ -6057,9 +6130,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // reconcile starts keep the persisted last-inbound seed (Phase 2a).
       if (resumePaused) this.lifecycle.markActivitySeedNow(name);
       const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-      if (config.general_topic) {
+      if (!isWindowsInstance(config) && config.general_topic) {
         this.ensureGeneralInstructions(config.working_directory, backend, name);
-      } else if (kind === "fleet-topic") {
+      } else if (!isWindowsInstance(config) && kind === "fleet-topic") {
         // Workers get only role-eligible on-demand skills. Classic instances are
         // deliberately excluded: their workspace and conversation lifecycle are
         // managed independently from fleet-topic workers.
@@ -6072,7 +6145,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // fleet outage.
           this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
         }
-      } else if (kind === "classic") {
+      } else if (!isWindowsInstance(config) && kind === "classic") {
         // #2163: a Classic bot gets only the skills marked `classic` (its own look, the dashboard) — never the fleet's
         // coordination playbooks (#557 kept those out of end-user bots) — and only into a workspace AgEnD manages: the
         // room's own folder under <AGEND_HOME>/workspaces/. Anywhere else, nothing is written; `agend-agent skill <name>`
@@ -6086,7 +6159,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
       }
       const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
-      const identity = { kind, backend, model: this.resolveInstanceModel(name).display };
+      const identity = { kind, backend, model: isWindowsInstance(config) ? config.model || "default" : this.resolveInstanceModel(name).display };
       if (receipt) {
         await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
           // Only this transition's actual publication can acquire its replacement.
@@ -6159,7 +6232,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // them before grouping/staggering: startInstance() retains its own guard as
     // a final backstop, but putting a no-op entry in this queue still consumes a
     // full stagger slot for every distinct working directory.
-    const runnableEntries = entries.filter(([name,config]) => !isWindowsInstance(config) && !this.lifecycle.isPaused(name));
+    const runnableEntries = entries.filter(([name,config]) => !isNativeExecInstance(config) && !this.lifecycle.isPaused(name));
     // ClassicBot rooms queue with the fleet instances, at the same pressure pacing (#2642 follow-up): they used to start
     // only after the whole fleet, the chat connections, topics and icons. A name the fleet also configures is the fleet's.
     const fleetNames = new Set(entries.map(([name]) => name));
@@ -6607,7 +6680,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private configuredStartupInstanceNames(fleet: FleetConfig, includeClassic: boolean): string[] {
-    const names = new Set(Object.entries(fleet.instances).filter(([,config])=>!isWindowsInstance(config)).map(([name])=>name));
+    const names = new Set(Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config)).map(([name])=>name));
     if (includeClassic) {
       for (const channel of this.classicChannels?.getAll() ?? []) names.add(channel.instanceName);
     }
@@ -6662,7 +6735,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
 
   async stopInstance(name: string, transition?: TransitionHandle): Promise<{ backgroundWorkEnded: boolean }> {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) { this.nativeInstanceRuntime().setPaused(name,true);return {backgroundWorkEnded:false}; }
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) { this.nativeInstanceRuntime().setPaused(name,true);return {backgroundWorkEnded:false}; }
     this.explicitStopGeneration.set(name, (this.explicitStopGeneration.get(name) ?? 0) + 1);
     this.cancelStartupRetry(name);
     this.failoverActive.delete(name);
@@ -6698,7 +6771,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
-    if (isWindowsInstance(this.fleetConfig?.instances[name])) {
+    if (isNativeExecInstance(this.fleetConfig?.instances[name])) {
       const runtime=this.nativeInstanceRuntime();
       if (runtime.get(name)?.blocked) throw new Error("Verify the disconnected Windows process stopped and recover this agent before restarting");
       runtime.cancel(name);runtime.setPaused(name,false);return;
@@ -8683,7 +8756,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Phase 1: Start general instances first and wait for them
-    const allEntries = Object.entries(fleet.instances).filter(([,config])=>!isWindowsInstance(config));
+    const allEntries = Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config));
     const generals = allEntries.filter(([_, cfg]) => cfg.general_topic);
     const others = allEntries.filter(([_, cfg]) => !cfg.general_topic);
     const startupProgress = new RestartProgress(
@@ -13047,6 +13120,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async removeInstance(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void> {
     if (isWindowsInstance(this.fleetConfig?.instances[name])) {
       execution?.assert();assertExplicitInstanceRemoval(authorization);
+      if (isNativePaneInstance(this.fleetConfig?.instances[name])) { await this.stopInstance(name); execution?.assert(); }
       this.nativeInstanceRuntime().remove(name,()=>!this.shuttingDown && (!execution || execution.current()),execution);return;
     }
     if (execution) return this.lifecycle.runTransition(name, transition => this.removeInstanceOwned(name, authorization, execution, transition));
@@ -14557,7 +14631,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * would have to make this async and change every caller.
    */
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): boolean {
-    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) {
+    if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});return true;
     }
     // #2910 D2: a web-only fleet has no topics: what the agent's topic would have been told is a Notice about it.
@@ -17041,7 +17115,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async sendCancelButton(instanceName: string, correlationId?: string, preserveProgress = false): Promise<void> {
-    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return;
+    if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) return;
     // Post first, retire after (see the tail of this method). Retiring up front
     // meant that from the delete until the new message came back — a chat API
     // round trip, and every reply goes through here — the instance had NO live
@@ -17608,7 +17682,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Interrupt an instance's current generation (cancel button / /cancel). */
   cancelInstance(instanceName: string): boolean {
-    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) {
+    if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       this.cancelPendingDeliveries(instanceName);
       const cancelled=this.nativeInstanceRuntime().cancel(instanceName);
       this.lastInboundMsg.delete(instanceName);
@@ -20043,6 +20117,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   async listModelCatalog(opts: { backend?: string; instanceName?: string } = {}): Promise<ModelCatalog> {
     const { instanceName } = opts;
+    if (instanceName && isWindowsInstance(this.fleetConfig?.instances[instanceName])) {
+      const config = this.fleetConfig!.instances[instanceName], backend = config.backend ?? "codex";
+      // Detection is admin-owned. A read never launches a provider or falls back to this host's account.
+      let inventory: import("./windows-cli.js").WindowsCliProbe | null = null;
+      try { inventory = await this.runtimeWindowsExecutor().probe({ force: false, machineId: config.machine_id }); } catch { /* offline remains unavailable */ }
+      const row = inventory?.clis.find(value => value.id === backend);
+      return { backend, scope: "instance", instance: instanceName, current_model: config.model || null,
+        models: (row?.models ?? []).map(value => ({ id: value.id, label: value.name ?? value.id, ...(value.description ? { description: value.description } : {}) })),
+        source: row?.models?.length ? "cache" : "fallback",
+        ...(inventory?.probedAt ? { probed_at: new Date(inventory.probedAt).toISOString() } : {}),
+        note: "Windows runtime's last detected inventory; no coordinator account or live probe is used." };
+    }
     if (instanceName) {
       const backend = this.backendNameForInstance(instanceName);
       const resolved = this.resolveInstanceModel(instanceName);
@@ -20081,6 +20167,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Ask a backend for its catalog using ONE instance's real config. Never throws. */
   private async instanceScopedModels(instanceName: string, backend: string): Promise<import("./backend/types.js").ModelOption[]> {
+    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return [];
     try {
       const inst = this.fleetConfig?.instances?.[instanceName];
       const instanceDir = this.getInstanceDir(instanceName);
@@ -23596,7 +23683,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     );
 
     // Phase 1: generals first
-    const restartEntries = Object.entries(fleet.instances).filter(([,config])=>!isWindowsInstance(config));
+    const restartEntries = Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config));
     const restartGenerals = restartEntries.filter(([_, cfg]) => cfg.general_topic);
     const restartOthers = restartEntries.filter(([_, cfg]) => !cfg.general_topic);
     for (const [name, cfg] of restartGenerals) {
@@ -24587,7 +24674,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const instances = names.map(name => {
       const nativeConfig=this.fleetConfig?.instances[name];
-      if (isWindowsInstance(nativeConfig)) {
+      if (isNativeExecInstance(nativeConfig)) {
         let runtime:FleetWindowsRuntime|null=null;
         let agent:ReturnType<FleetWindowsRuntime["get"]>=null;
         try { runtime=this.nativeInstanceRuntime();agent=runtime.get(name); } catch { /* A damaged native profile is a crashed native row, never a Linux spawn. */ }
@@ -24645,6 +24732,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
         name,
+        ...(isNativePaneInstance(nativeConfig) ? { runtime: "windows", native_adapter: "pane", native_agent_id: nativeConfig.native_agent_id,
+          ...(nativeConfig.machine_id ? { machine_id: nativeConfig.machine_id, machine_name: this.runtimeHub?.machine(nativeConfig.machine_id)?.name,
+            machine_status: this.runtimeHub?.machine(nativeConfig.machine_id)?.status ?? "offline" } : {}) } : {}),
         display_name: identity.display_name || undefined,
         avatar: image.avatar,
         ...(image.accent ? { accent: image.accent } : {}),

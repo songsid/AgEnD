@@ -26,7 +26,7 @@ it.each(["codex","claude-code"] as const)("%s starts through the native factory 
  await f.fleet.lifecycle.stop("native");expect(f.native.release).toHaveBeenCalledExactlyOnceWith("close");expect(f.fleet.daemons.has("native")).toBe(false);expect(f.forbidden).not.toHaveBeenCalled();
 });
 it("a missing native factory holds without creating the Windows cwd on the coordinator",async()=>{
- const f=fixture();delete f.fleet.nativePaneFor;await expect(f.fleet.lifecycle.start("native",f.config,true)).rejects.toThrow("no local CLI");expect(existsSync(f.cwd)).toBe(false);expect(f.fleet.daemons.size).toBe(0);expect(factory.createBackend).not.toHaveBeenCalled();
+ const f=fixture();f.fleet.nativePaneFor=undefined;await expect(f.fleet.lifecycle.start("native",f.config,true)).rejects.toThrow("no local CLI");expect(existsSync(f.cwd)).toBe(false);expect(f.fleet.daemons.size).toBe(0);expect(factory.createBackend).not.toHaveBeenCalled();
 });
 it("native outbox reconciliation needs its own proof and never retires saved local windows",async()=>{
  const f=fixture(),instance=f.fleet.getInstanceDir("native");mkdirSync(instance,{recursive:true});writeFileSync(join(instance,"window-id"),"%OFF_LIMITS");

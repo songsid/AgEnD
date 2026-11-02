@@ -7,7 +7,7 @@ import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches
 
 /** M-2255: the switch for where this agent runs — this PC's Windows CLIs, or the other Windows computers. */
 const switchedOn = (agent: { machineId?: string }): boolean => agent.machineId ? remoteRuntimeEnabled() : localWindowsCliEnabled();
-import { isWindowsInstance, nativeAgentId, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, syncWindowsProfile } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativeExecInstance, nativeAgentId, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, syncWindowsProfile } from "./native-instance-registry.js";
 import { validWindowsAgentId } from "./windows-cli-worker.js";
 import type { NativeHistoryMessage, WebChatHistory } from "./web-chat-history.js";
 import type { SettingsExecution } from "./settings-transaction.js";
@@ -25,6 +25,7 @@ export interface FleetWindowsRuntimeHost {
   warn?(message: string,error: unknown): void;
   removed?(name: string,config: InstanceConfig): void;
   machineAvailable?(machineId: string): boolean;
+  paneCurrent?(name: string): boolean;
   validateMachine?(machineId: string, cli: string, sandbox?: unknown): void;
 }
 export interface NativeRuntimeDeliveryOptions {
@@ -79,7 +80,8 @@ export class FleetWindowsRuntime {
     if (!isWindowsInstance(config)) return null;
     const agent = this.store.get(this.id(name));
     if (config.machine_id !== agent.machineId) throw new Error("The instance machine does not match its saved conversation");
-    return {...agent,name:config.display_name ?? agent.name,description:config.description ?? "",instructions:config.systemPrompt ?? "",cwd:config.working_directory,model:config.model || undefined,sandbox:config.native_sandbox ?? agent.sandbox};
+    const blocked = config.native_adapter === "pane" && agent.paneLaunchId ? this.host.paneCurrent?.(name) !== true : agent.blocked;
+    return {...agent,blocked,name:config.display_name ?? agent.name,description:config.description ?? "",instructions:config.systemPrompt ?? "",cwd:config.working_directory,model:config.model || undefined,sandbox:config.native_sandbox ?? agent.sandbox};
   }
   status(name: string): "running"|"paused"|"stopped"|"crashed" {
     let agent:ReturnType<FleetWindowsRuntime["get"]>;
@@ -204,6 +206,7 @@ export class FleetWindowsRuntime {
     if (this.host.stopping() || options.stillCurrent?.() === false) throw new Error("Windows delivery is no longer current");
     const config=this.config(name);
     if (!config || !this.has(name)) throw new Error("Windows instance not found");
+    if (!isNativeExecInstance(config)) throw new Error("Persistent native panes use the ordinary daemon delivery path");
     const agent=syncWindowsProfile(config,this.store);
     if(!switchedOn(agent))throw new Error(agent.machineId ? "Other Windows computers are turned off. Turn them on in Settings → Runtime." : LOCAL_WINDOWS_CLI_OFF);
     if(agent.machineId && this.host.machineAvailable?.(agent.machineId)!==true)throw new Error("This runtime machine is offline. Reconnect it before sending a message.");
