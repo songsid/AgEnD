@@ -139,6 +139,16 @@ describe("Windows CLI detection (M-2239 P1-2: only on an explicit refresh)", () 
     const retry = service.probe({ force: true }); await complete(recovered,"2.0");
     expect((await retry).clis[0]!.version).toBe("2.0"); expect(spawn).toHaveBeenCalledTimes(3);
   });
+  it("#2937 review: a forced detection whose authority is revoked during the transport lookup starts nothing", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof launcher>>) => void, allowed = true;
+    const service = new WindowsCliBridge(() => new Promise(resolve => { finish = resolve; }));
+    const pending = service.probe({ force: true }, () => allowed);
+    allowed = false; finish(await launcher());
+    await expect(pending).rejects.toThrow(/Authorization expired/);
+    expect(spawn).not.toHaveBeenCalled();
+    expect(await service.probe()).toEqual({ clis: [], home: "", probedAt: null });
+  });
+
   it("a task starts no detection: it runs only a CLI the last detection found runnable", async () => {
     const none = new WindowsCliBridge(launcher);
     expect(() => none.start(input)).toThrow(/Detect the Windows CLIs first/);

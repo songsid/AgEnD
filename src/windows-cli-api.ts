@@ -96,7 +96,7 @@ export function handleWindowsCliRequest(req: IncomingMessage, res: ServerRespons
     const input = raw.length ? JSON.parse(raw.toString("utf8")) : {};
     if (path === "/ui/windows-cli/probe") {
       if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => key !== "force") || (input.force !== undefined && typeof input.force !== "boolean")) throw new Error("Probe accepts only an optional boolean force field");
-      const result = await service.probe(input);
+      const result = await service.probe(input, authorized);
       if (!authorized()) { json(res, 403, { error: "Authorization expired" }); return; }
       json(res, 200, result);
     } else if (cancel) json(res, 202, service.cancel(cancel[1]));
