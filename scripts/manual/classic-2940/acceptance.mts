@@ -42,7 +42,7 @@ for (const [id, botId] of Object.entries(BOTS)) {
   fm.adapters.set(id, a);
   // The production wiring (FleetManager's adapter setup): messages to the shared handler; deletes to the chat-log backstop.
   a.on("message", (m: unknown) => void fm.handleInboundMessage(m));
-  a.on("message_deleted", (e: { messageId?: string }) => fm.onPlatformMessageDeleted?.(e?.messageId));   // (main before #2940: none)
+  a.on("message_deleted", (e: { messageId?: string; channelId?: string }) => fm.onPlatformMessageDeleted?.(e));   // (main before #2940: none)
 }
 fm.adapter = adapters.alpha;
 const classic = new ClassicChannelManager(home, fm.logger);

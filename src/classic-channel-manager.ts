@@ -944,10 +944,14 @@ export class ClassicChannelManager {
     return join(getAgendHome(), "workspaces", instanceName, "chat-logs");
   }
 
-  /** #2940: the lines written per platform message id — what a deleted message, or one of our status bubbles, takes out. */
+  /** #2940: the lines written per message key — what a deleted message, or one of our status bubbles, takes out. */
   static readonly loggedLines = new ChatLogLines();
 
-  static logMessage(instanceName: string, username: string, text: string, timestamp: Date, replyToText?: string, messageId?: string): void {
+  /**
+   * `messageKey` (#2940): the message's platform-and-place identity (chat-log-ids.ts discordMessageKey), when it is one
+   * whose line may be taken out again; the line's exact place is then recorded (only when this append is provably it).
+   */
+  static logMessage(instanceName: string, username: string, text: string, timestamp: Date, replyToText?: string, messageKey?: string): void {
     const logDir = ClassicChannelManager.chatLogDir(instanceName);
     mkdirSync(logDir, { recursive: true, mode: 0o700 });
     const tz = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -956,8 +960,16 @@ export class ClassicChannelManager {
     const logFile = join(logDir, `${dateStr}.log`);
     const replyPrefix = replyToText ? `[reply: ${replyToText.slice(0, 100)}] ` : "";
     const line = `[${localStr}] <${username}> ${replyPrefix}${text}\n`;
+    let before = 0;
+    try { before = statSync(logFile).size; } catch { /* a new file */ }
     appendFileSync(logFile, line);
-    if (messageId) ClassicChannelManager.loggedLines.record(messageId, logFile, line);
+    if (messageKey) {
+      // Its place: where the file ended before this append — only when the file grew by exactly this line.
+      try {
+        const after = statSync(logFile);
+        if (after.size === before + Buffer.byteLength(line, "utf8")) ClassicChannelManager.loggedLines.record(messageKey, logFile, after.ino, before, line);
+      } catch { /* not recorded: it simply cannot be taken out later */ }
+    }
   }
 
   /** Delete chat log files older than retentionDays. Dates parsed as local to avoid UTC off-by-one. */

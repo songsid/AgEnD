@@ -9,11 +9,11 @@
  * Real files under a scratch AGEND_HOME; the real collab path (handleClassicChannelMessage) and sendCancelButton.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 vi.mock("../src/logger.js", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child() { return this; } }) }));
-import { ChatLogLines, CHAT_LOG_ID_MAX, CHAT_LOG_ID_TTL_MS, OwnStatusMessages } from "../src/chat-log-ids.js";
+import { ChatLogLines, CHAT_LOG_ID_MAX, CHAT_LOG_ID_TTL_MS, CHAT_LOG_OCCURRENCES_MAX, CHAT_LOG_OCCURRENCES_PER_ID, OwnStatusMessages, discordMessageKey } from "../src/chat-log-ids.js";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
@@ -34,21 +34,71 @@ describe("#2940 the id registry and the line index", () => {
     for (let i = 0; i <= CHAT_LOG_ID_MAX; i++) own.addStatus(`x${i}`);
     expect([own.excluded("x0"), own.excluded(`x${CHAT_LOG_ID_MAX}`)]).toEqual([false, true]);
   });
-  it("removes exactly the line recorded for an id (the last such line, whole lines only), keeps the file's modified time, once", () => {
-    const dir = temp("agend-2940-lines-"), file = join(dir, "2026-11-02.log");
-    const a = "[2026-11-02T20:51:30] <BotB> 👀 處理中…\n", human = "[2026-11-02T20:51:31] <ann> 處理中 means processing\n";
-    writeFileSync(file, a + human + a + "x" + a);     // the last copy is glued to "x": not a whole line
-    utimesSync(file, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
-    const lines = new ChatLogLines();
-    lines.record("s1", file, a);
+  // #2943 review (Prism): an occurrence is the bytes written at their recorded place in that very file — never "the same
+  // text somewhere": a same-second duplicate, or a person quoting the status line, is not it.
+  const writeLog = (dir: string, name: string, lines: Array<[string | null, string]>, lines2 = new ChatLogLines()) => {
+    const file = join(dir, name);
+    writeFileSync(file, "");
+    for (const [key, line] of lines) {
+      const before = statSync(file).size;
+      writeFileSync(file, readFileSync(file, "utf8") + line);
+      if (key) lines2.record(key, file, statSync(file).ino, before, line);
+    }
+    return { file, lines: lines2 };
+  };
+  it("removes the recorded occurrence: of two identical same-second lines, the one recorded; the order of the rest is kept", () => {
+    const dir = temp("agend-2943-dup-");
+    const yes = "[2026-11-02T20:51:30] <Ann> yes\n", bob = "[2026-11-02T20:51:30] <Bob> ship it?\n";
+    const { file, lines } = writeLog(dir, "a.log", [["old", yes], [null, bob], ["new", yes]]);
+    expect(lines.remove("old")).toBe(1);
+    expect(readFileSync(file, "utf8")).toBe(bob + yes);
+    expect(lines.remove("new")).toBe(1);                       // its recorded place moved up by the removed bytes
+    expect(readFileSync(file, "utf8")).toBe(bob);
+  });
+  it("a person quoting the formatted status line keeps their message; the status line itself goes (multi-byte text before it)", () => {
+    const dir = temp("agend-2943-quote-");
+    const status = "[2026-11-02T20:51:30] <BotB> 👀 處理中…\n";
+    const quote = `[2026-11-02T20:51:31] <ann> 這個是什麼？\n${status}`;
+    const { file, lines } = writeLog(dir, "q.log", [[null, quote], ["s1", status]]);
     expect(lines.remove("s1")).toBe(1);
-    expect(readFileSync(file, "utf8")).toBe(a + human + "x" + a);      // the last whole one went
-    expect(statSync(file).mtimeMs).toBe(1_700_000_000_000);
-    // Once: the same words written again later (another message) are not taken out by a second removal of s1.
-    writeFileSync(file, readFileSync(file, "utf8") + a);
-    expect([lines.remove("s1"), lines.remove("never"), readFileSync(file, "utf8").endsWith("x" + a + a)]).toEqual([0, 0, true]);
-    lines.record("gone", join(dir, "rotated-away.log"), a);
-    expect(lines.remove("gone")).toBe(0);                 // the file is gone: nothing, no throw
+    expect(readFileSync(file, "utf8")).toBe(quote);
+  });
+  it("fails closed when the place is not proven: another file at the path (rotated, rewritten), or other bytes there", () => {
+    const dir = temp("agend-2943-proof-");
+    const line = "[2026-11-02T20:51:30] <BotB> ⚡ 處理中…\n";
+    const { file, lines } = writeLog(dir, "p.log", [["s1", line], ["s2", line]]);
+    const other = join(dir, "other.log");
+    writeFileSync(other, line + line); renameSync(other, file);          // a new file (inode) with the same bytes
+    expect([lines.remove("s1"), readFileSync(file, "utf8")]).toEqual([0, line + line]);
+    const g = writeLog(dir, "g.log", [["s3", line]]);
+    writeFileSync(g.file, "[2026-11-02T20:51:30] <ann> something else\n", { flag: "r+" });
+    expect(g.lines.remove("s3")).toBe(0);
+    lines.record("gone", join(dir, "rotated-away.log"), 1, 0, line);
+    expect(lines.remove("gone")).toBe(0);
+  });
+  it("replaced atomically, its mode and modified time kept; a write that fails leaves the file whole and the occurrence recorded", () => {
+    const dir = temp("agend-2943-atomic-");
+    const status = "[2026-11-02T20:51:30] <BotB> 👀 處理中…\n", q = "[2026-11-02T20:51:31] <ann> can you check?\n";
+    let fail = true;
+    const io = { replace: (file: string, data: string, mode: number) => { if (fail) throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" }); writeFileSync(file + ".t", data, { mode }); renameSync(file + ".t", file); } };
+    const { file, lines } = writeLog(dir, "w.log", [["s1", status], [null, q]], new ChatLogLines(Date.now, io));
+    chmodSync(file, 0o600); utimesSync(file, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
+    expect([lines.remove("s1"), readFileSync(file, "utf8")]).toEqual([0, status + q]);   // nothing lost
+    fail = false;
+    expect([lines.remove("s1"), readFileSync(file, "utf8"), (statSync(file).mode & 0o777).toString(8), statSync(file).mtimeMs]).toEqual([1, q, "600", 1_700_000_000_000]);
+    expect(lines.remove("s1")).toBe(0);                                                    // once
+  });
+  it("bounded: occurrences per key and in all (not only distinct keys); the same occurrence twice is one", () => {
+    const lines = new ChatLogLines();
+    for (let i = 0; i < CHAT_LOG_OCCURRENCES_PER_ID + 5; i++) lines.record("k", "/f", 1, i * 10, "x\n");
+    lines.record("k", "/f", 1, (CHAT_LOG_OCCURRENCES_PER_ID + 4) * 10, "x\n");
+    expect((lines as any).byKey.get("k").length).toBe(CHAT_LOG_OCCURRENCES_PER_ID);
+    for (let i = 0; i < CHAT_LOG_OCCURRENCES_MAX + 10; i++) lines.record(`id${i}`, "/f", 1, i, "y\n");
+    expect((lines as any).total).toBeLessThanOrEqual(CHAT_LOG_OCCURRENCES_MAX);
+  });
+  it("discordMessageKey: Discord only, scoped by channel", () => {
+    expect([discordMessageKey("c1", "42"), discordMessageKey("c2", "42") === discordMessageKey("c1", "42"), discordMessageKey(undefined, "42"), discordMessageKey("c1", undefined)])
+      .toEqual(["discord:c1:42", false, undefined, undefined]);
   });
 });
 
@@ -70,7 +120,7 @@ function fleet() {
   const answers: Array<(v: unknown) => void> = [];
   const notifyAlert = vi.fn((..._a: unknown[]) => new Promise(resolve => answers.push(resolve)));
   (fm as any).fleetConfig = { defaults: {}, channel: { type: "discord", group_id: "g1" }, instances: { beta: { working_directory: home, topic_id: "123" } } };
-  (fm as any).adapter = { notifyAlert, deleteMessage: vi.fn().mockResolvedValue(undefined), editAlert: vi.fn() };
+  (fm as any).adapter = { type: "discord", notifyAlert, deleteMessage: vi.fn().mockResolvedValue(undefined), editAlert: vi.fn() };
   const say = (room: string, messageId: string, username: string, text: string, isBotMessage = true) =>
     x.handleClassicChannelMessage(room, { source: "discord", adapterId: "bot-a", chatId: "guild", threadId: "room-1", messageId, userId: `${username}-id`, username, text, isBotMessage, timestamp: new Date() });
   const log = (room: string) => {
@@ -110,8 +160,9 @@ describe("#2940 a ClassicBot room with several bots", () => {
   it("a delete event takes a recorded line out (any bot's log); one deleted before it arrives is never logged; the others stay", async () => {
     const f = fleet();
     for (const room of ["alpha", "gamma"]) { await f.say(room, "m-1", "ann", "oops wrong channel", false); await f.say(room, "m-2", "ann", "real question", false); }
-    f.fm.onPlatformMessageDeleted("m-1");
-    f.fm.onPlatformMessageDeleted("m-3");                         // deleted before its event reached the fleet
+    f.fm.onPlatformMessageDeleted({ messageId: "m-1", channelId: "room-1" });
+    f.fm.onPlatformMessageDeleted({ messageId: "m-3", channelId: "room-1" });   // deleted before its event reached the fleet
+    f.fm.onPlatformMessageDeleted({ messageId: "m-2", channelId: "another-room" });  // the same id in another channel: not this one
     await f.say("alpha", "m-3", "BotB", "📒 處理中…");
     for (const room of ["alpha", "gamma"]) expect([f.log(room).includes("oops wrong channel"), f.log(room).includes("real question"), f.log(room).includes("📒")], room).toEqual([false, true, false]);
   });
@@ -124,6 +175,21 @@ describe("#2940 a ClassicBot room with several bots", () => {
     const block = (f.fm as any).getRecentChatLog("alpha", 10) as string;
     expect([block.includes("can someone check the build?"), block.includes("處理中")]).toEqual([true, false]);
   });
+});
+
+// #2943 review (Prism): Telegram message ids are per chat — two groups both have a "42". Nothing is tracked there (our bots
+// never see each other's posts on Telegram, and it never says a message was deleted): a status bubble "42" in group A never
+// touches a person's "42" in group B, whichever arrives first.
+describe("#2943 review: Telegram ids are not Discord's", () => {
+  for (const order of ["status first", "person first"] as const) {
+    it(`a person's message 42 in group B is logged and stays, with our status bubble 42 posted in group A (${order})`, async () => {
+      const f = fleet();
+      (f.fm as any).adapter.type = "telegram";
+      const person = () => f.x.handleClassicChannelMessage("alpha", { source: "telegram", adapterId: "tg", chatId: "-100B", messageId: "42", userId: "u", username: "ann", text: "a real question", isBotMessage: false, timestamp: new Date() });
+      if (order === "person first") { await person(); await f.post("42"); } else { await f.post("42"); await person(); }
+      expect(f.log("alpha")).toContain("<ann> a real question");
+    });
+  }
 });
 
 describe("#2940 the Discord adapter says a message was deleted", () => {
@@ -142,6 +208,6 @@ describe("#2940 the Discord adapter says a message was deleted", () => {
   });
   it("the fleet listens for it on every adapter (primary and each bot's)", () => {
     const src = readFileSync(join(process.cwd(), "src", "fleet-manager.ts"), "utf8");
-    expect(src.match(/adapter\.on\("message_deleted", \(e: \{ messageId\?: string \}\) => \{ if \(isCurrentAdapter\(\)\) this\.onPlatformMessageDeleted\(e\?\.messageId\); \}\);/g)?.length).toBe(2);
+    expect(src.match(/adapter\.on\("message_deleted", \(e: \{ messageId\?: string; channelId\?: string \}\) => \{ if \(isCurrentAdapter\(\)\) this\.onPlatformMessageDeleted\(e\); \}\);/g)?.length).toBe(2);
   });
 });
