@@ -36,9 +36,9 @@ it('a stop during an ordered native batch suppresses every later event',async()=
 it('native checkpoints stay typed and never invoke the local statusline/path resolver',async()=>{
  const root=mkdtempSync(join(tmpdir(),'agend-runtime-checkpoint-'));roots.push(root);
  const ref:RuntimeTranscriptReference={version:1,machineId:randomUUID(),hostBootId:randomUUID(),paneId:randomUUID(),agentId:randomUUID(),launchId:randomUUID(),provider:'codex',cursor:{sessionId:randomUUID(),offset:0,fileId:null,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR}};
- let resolve:((value:RuntimeTranscriptReference)=>void)|undefined,hold=false;
- const source:TranscriptSource={poll:async()=>({toolUses:[],toolResults:[],assistantTexts:[]}),reset(){},checkpoint:async()=>null,runtimeCheckpoint:async()=>hold?new Promise(done=>{resolve=done;}):ref};
+ let resolve:((value:RuntimeTranscriptReference)=>void)|undefined,hold=false;const turns=[{kind:'start' as const,turnId:'checkpoint-start'}];
+ const source:TranscriptSource={poll:async()=>({toolUses:[],toolResults:[],assistantTexts:[]}),reset(){},checkpoint:async()=>null,runtimeCheckpoint:async()=>hold?new Promise(done=>{resolve=done;}):ref,takeTurns:()=>turns.splice(0)};
  const monitor=new TranscriptMonitor(root,pino({level:'silent'})as never,source),local=vi.spyOn(monitor,'resolveTranscriptPath').mockImplementation(async()=>{throw Error('No local provider path may be read');});
- expect(await monitor.reconciliationRuntimeCheckpoint()).toEqual(ref);expect(await monitor.reconciliationCheckpoint()).toBeNull();expect(monitor.currentPath()).toBeNull();expect(local).not.toHaveBeenCalled();
+ const seen=vi.fn();monitor.on('turns',seen);expect(await monitor.reconciliationRuntimeCheckpoint()).toEqual(ref);expect(seen).toHaveBeenCalledExactlyOnceWith([{kind:'start',turnId:'checkpoint-start'}]);expect(await monitor.reconciliationCheckpoint()).toBeNull();expect(monitor.currentPath()).toBeNull();expect(local).not.toHaveBeenCalled();
  hold=true;const pending=monitor.reconciliationRuntimeCheckpoint();monitor.stop();resolve!(ref);expect(await pending).toBeNull();
 });

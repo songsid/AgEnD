@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeClient } from "../src/runtime-client.js";
@@ -13,6 +13,11 @@ import { RuntimePaneHost, type RuntimePaneProcess, type RuntimePaneHostOptions }
 import type { RuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
 import { NativePaneTranscriptReader } from "../src/runtime-pane-transcript.js";
 import { PANE_TRANSCRIPT_EMPTY_ANCHOR, validatePaneTranscriptWireBatch } from "../src/runtime-pane-transcript-protocol.js";
+import { RuntimePanePort } from "../src/runtime-pane-port.js";
+import { RuntimeTranscriptSource } from "../src/runtime-transcript-source.js";
+import { RuntimeTranscriptDeltaReader } from "../src/runtime-transcript-delta-reader.js";
+import { TranscriptMonitor } from "../src/transcript-monitor.js";
+import pino from "pino";
 
 const roots: string[] = [], clients: RuntimeClient[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [];
 function directory() { const path = mkdtempSync(join(tmpdir(), "agend-pane-transport-")); roots.push(path); return path; }
@@ -45,7 +50,9 @@ async function fixture(overrides: Partial<RuntimePaneHostOptions> = {}) {
   const launch = () => ({ paneId: randomUUID(), agentId: randomUUID(), instance: "pane-agent", cli: "codex" as const, cwd: "C:\\fixture", sandbox: "read-only" as const, columns: 80, rows: 24 });
   const transcript = (id: string, cwd = "C:\\fixture", content = "owned canary") => {
     const dir = join(home, "codex", "sessions", "2026", "11", "03"); mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `rollout-test-${id}.jsonl`), JSON.stringify({ type: "session_meta", payload: { id, cwd } }) + "\n" + JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ text: content }] } }) + "\n");
+    const path = join(dir, `rollout-test-${id}.jsonl`);
+    writeFileSync(path, JSON.stringify({ type: "session_meta", payload: { id, cwd } }) + "\n" + JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: content }] } }) + "\n");
+    return path;
   };
   return { store, client, processes, machineId: claim.machineId, launch,
     hub: () => hub, restart: () => { hub.close(); hub = new RuntimeCoordinator(home, { requestTimeoutMs: 250 }); hubs.push(hub); }, home, transcript };
@@ -124,4 +131,16 @@ it("lost reply and coordinator reconnect never replay Enter or open a second pro
   expect(resumed.commandSequence).toBe(1);
   expect(f.processes).toHaveLength(1);
   expect(f.processes[0].write).toHaveBeenCalledOnce();
+});
+it('feeds the ordinary monitor and positive delivery proof through the authenticated runtime channel',async()=>{
+ const f=await fixture(),id=randomUUID(),launch={...f.launch(),sessionId:id};
+ const port=new RuntimePanePort({machineId:f.machineId,online:()=>f.hub().machine(f.machineId)?.status==='online',call:request=>f.hub().callPane(f.machineId,request),subscribe:listener=>f.hub().subscribe(listener)},join(f.home,'coordinator-pane.json'),launch);
+ await port.open();const path=f.transcript(id),source=new RuntimeTranscriptSource(port,port.runtimeTranscriptReference(cursor(id)));await source.initialize();
+ const monitor=new TranscriptMonitor(f.home,pino({level:'silent'})as never,source),use=vi.fn(),text=vi.fn(),turns=vi.fn();monitor.on('tool_use',use);monitor.on('assistant_text',text);monitor.on('turns',turns);
+ try{
+  const checkpoint=await monitor.reconciliationRuntimeCheckpoint();expect(checkpoint).not.toBeNull();const delivery=randomUUID(),reader=new RuntimeTranscriptDeltaReader(port,checkpoint!,delivery);
+  const records=[{type:'event_msg',payload:{type:'task_started',turn_id:'owned'}},{type:'response_item',timestamp:'2026-11-03T00:00:00Z',payload:{type:'message',role:'user',content:[{type:'input_text',text:`[agend-delivery-id:${delivery}] task`}]}},{type:'response_item',payload:{type:'function_call',name:'read',arguments:'{"path":"canary"}'}},{type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'done'}]}},{type:'event_msg',payload:{type:'task_complete',turn_id:'owned',last_agent_message:'done'}}];
+  appendFileSync(path,records.map(record=>JSON.stringify(record)+'\n').join(''));expect(await reader.look()).toBe('user');await monitor.pollIncrement();
+  expect(use).toHaveBeenCalledExactlyOnceWith('read',{path:'canary'});expect(text).toHaveBeenCalledExactlyOnceWith('done');expect(turns).toHaveBeenCalledOnce();expect(turns.mock.calls[0][0].map((event:any)=>event.kind)).toEqual(['start','user','end']);expect(monitor.currentPath()).toBeNull();expect(f.processes[0].write).not.toHaveBeenCalled();
+ }finally{monitor.stop();}
 });

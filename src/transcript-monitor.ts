@@ -97,6 +97,8 @@ export class TranscriptMonitor extends EventEmitter {
     if (!this.source?.runtimeCheckpoint) return null;
     const generation = this.generation;
     const checkpoint = await this.source.runtimeCheckpoint();
+    const turns = this.source.takeTurns?.() ?? [];
+    if (turns.length && generation === this.generation) this.emit("turns", turns);
     if (generation !== this.generation || !checkpoint) return null;
     return validateRuntimeTranscriptReference(checkpoint);
   }
