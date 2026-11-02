@@ -2,7 +2,7 @@
 // signed in, new enough: /ui/backends) and the model catalog of that backend for that instance's account (/ui/models).
 // Both answers are the server's cached ones; nothing here makes the server probe. A page asks once and reuses the answer
 // for a short while, so opening several dialogs costs one request each.
-import { useEffect, useState } from "/assets/app-html.js";
+import { useEffect, useRef, useState } from "/assets/app-html.js";
 
 const TTL_MS = 30_000;
 const cache = new Map();   // url → { at, value, pending }
@@ -13,10 +13,10 @@ async function getJson(url) {
   return res.json();
 }
 /** The answer for `url`, shared by every field on the page while it is fresh; null when it cannot be read. */
-function cached(url) {
+function cached(url, force = false) {
   const hit = cache.get(url), now = performance.now();
-  if (hit && (hit.pending || now - hit.at < TTL_MS)) return hit.pending ?? Promise.resolve(hit.value);
-  const pending = getJson(url).then((value) => { cache.set(url, { at: performance.now(), value, pending: null }); return value; })
+  if (hit && (hit.pending || !force && now - hit.at < TTL_MS)) return hit.pending ?? Promise.resolve(hit.value);
+  const pending = getJson(force ? `${url}&refresh=1` : url).then((value) => { cache.set(url, { at: performance.now(), value, pending: null }); return value; })
     .catch(() => { cache.delete(url); return null; });
   cache.set(url, { at: now, value: null, pending });
   return pending;
@@ -45,12 +45,39 @@ export function useBackendRows() {
   return answer && Array.isArray(answer.backends) ? answer.backends : answer === undefined ? undefined : null;
 }
 
-/** The model catalog of `backend` for `instance` (its account) — [] when none is cached; undefined while loading. */
-export function useModelCatalog(backend, instance) {
-  const url = backend ? `/ui/models?backend=${encodeURIComponent(backend)}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}` : null;
-  const answer = useAnswer(url);
-  if (answer === undefined) return undefined;
-  return answer && Array.isArray(answer.models) ? answer.models : [];
+/** Runtime and account are part of the key: Windows never borrows a WSL catalog. */
+export function useModelCatalogState(backend, instance, runtime) {
+  const url = backend ? `/ui/models?backend=${encodeURIComponent(backend)}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}${runtime === "windows" ? "&runtime=windows" : ""}` : null;
+  const [state, setState] = useState({ url:null, answer:null, loading:false });
+  const generation = useRef(0), active = useRef(url);
+  active.current = url;
+  const load = (force = false) => {
+    if (!url) return;
+    const mine = ++generation.current;
+    setState(old => ({ url, answer:old.url === url ? old.answer : null, loading:true }));
+    cached(url, force).then(answer => {
+      if (active.current === url && generation.current === mine) setState({ url, answer, loading:false });
+    });
+  };
+  useEffect(() => {
+    if (url) load();
+    return () => { generation.current++; };
+  }, [url]);
+  const current = state.url === url ? state : { answer:null, loading:!!url };
+  const valid = current.answer && Array.isArray(current.answer.models);
+  return {
+    models: valid ? current.answer.models : [],
+    loading: !!url && current.loading,
+    error: !!url && !current.loading && !valid,
+    source: valid ? current.answer.source : null,
+    refresh: () => load(true),
+  };
+}
+
+/** Compatibility for callers that only need the model list. */
+export function useModelCatalog(backend, instance, runtime) {
+  const state = useModelCatalogState(backend, instance, runtime);
+  return state.loading && !state.models.length ? undefined : state.models;
 }
 
 /** A state that keeps a backend from being chosen (shown, disabled, with why); "unknown" never does. */

@@ -38,3 +38,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## CLI provider marks
+
+The CLI panel and selectors use product marks from these official sources,
+retrieved on 2026-11-02:
+
+- OpenAI Blossom: https://openai.com/brand/ (official website's inline vector).
+- Claude: https://claude.com/icon.svg (original vector path and orange fill).
+- Antigravity: https://antigravity.google/favicon.svg (original complete SVG).
+- Kiro: https://kiro.dev/icon.svg (original complete SVG).
+- Grok: https://apps.apple.com/us/app/grok/id6670324846 (official product app
+  icon, linked from https://x.ai/legal/brand-guidelines). The 100 x 100 JPEG
+  artwork is retrieved from the listing's `artworkUrl100` field in Apple's
+  https://itunes.apple.com/lookup?id=6670324846 response and bundled unchanged.
+
+The compact Anthropic company mark (https://www.anthropic.com/) remains available
+separately as `anthropic`; Claude Code uses the `claude` product mark, not the
+company mark. Complete SVGs are isolated as data images to preserve their
+original colours, masks, and filters without conflicting element ids.
+These marks identify the corresponding installed software or its publisher.
+Their respective owners retain ownership of these marks; no affiliation or
+endorsement is implied. Generic code symbols are used for products without a
+verified bundled brand asset.
+Vector paths and image data are bundled in `src/ui/provider-marks.js`; no remote image
+requests are made by the dashboard.

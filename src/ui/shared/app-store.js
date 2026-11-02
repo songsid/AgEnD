@@ -56,6 +56,7 @@ export function applyStatus(d) {
   appStore.set({ ready: true, instances: d.instances, uptime: d.uptime ?? 0, exec, awaiting,
     startup: d.startup?.phase === "starting" ? d.startup : null,
     connections: typeof d.connections === "number" ? d.connections : null,
+    windowsCli: d.windows_cli === true,
     // #1665: the host preferences' revision (app-prefs.js re-reads them when it moves).
     prefsRev: typeof d.prefs_rev === "number" ? d.prefs_rev : null,
     // #1629: the agents' themes' revision (app-themes.js re-reads them when it moves).

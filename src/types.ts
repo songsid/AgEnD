@@ -98,6 +98,12 @@ export function resolveDeliveryWorkerMode(
 }
 
 export interface InstanceConfig {
+  /** Execution host. Unset preserves the existing Linux/WSL runtime. */
+  runtime?: "wsl" | "windows";
+  /** Stable native conversation/profile identity; set only for Windows instances. */
+  native_agent_id?: string;
+  /** Native CLI permission selection; independent of Linux terminal permissions. */
+  native_sandbox?: "read-only" | "workspace-write";
   /** Proactive interrupted-work continuation; defaults true, inherited from fleet defaults. */
   resume_interrupted_work?: boolean;
   working_directory: string;

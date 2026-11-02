@@ -85,6 +85,8 @@ if (mode === "full") {
   let chatLoads = 0;
   panels.set("chat", { load: () => (chatLoads++ === 0 ? chatBoot : loadChat()).then((m) => m.ChatPanel) });
   if (!guest) {
+    const loadWindowsAgent = retryable((a) => import(retryUrl("/ui/js/panel-windows-agent.js", a)));
+    panels.set("windows-agent", { load: () => loadWindowsAgent().then((m) => m.WindowsAgentPanel) });
     panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
     panels.set("settings", { load: () => loadSettings().then((m) => m.SettingsPanel) });
     // #2347: the restart banner's Restart now, in any panel — the Settings runner (behind the session) does it.

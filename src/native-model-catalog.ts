@@ -1,0 +1,39 @@
+/** Model discovery for the native runtime, behind the shared Settings surface. */
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { WebApiContext } from "./web-api.js";
+import { nativeCliAuthorization } from "./windows-cli-api.js";
+import { windowsBridgeFor, windowsCliEnabled, type WindowsCliBridge } from "./windows-cli.js";
+import { isNativeProviderId } from "./windows-cli-providers.js";
+import { isWindowsInstance } from "./native-instance-registry.js";
+
+function json(res: ServerResponse, status: number, body: unknown): void {
+  if (res.destroyed || res.writableEnded) return;
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(body));
+}
+
+/** Caller validates the ordinary dashboard gate and the query shape first. */
+export function handleNativeModelCatalog(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, bridge?: WindowsCliBridge): boolean {
+  const instance = url.searchParams.get("instance");
+  const config = instance ? ctx.fleetConfig?.instances[instance] : undefined;
+  if (url.searchParams.get("runtime") !== "windows" && !isWindowsInstance(config)) return false;
+  if (!windowsCliEnabled()) { json(res, 404, { error: "Windows runtime is not enabled" }); return true; }
+  const allowed = (): boolean => nativeCliAuthorization(req, url, ctx);
+  if (!allowed()) { json(res, 403, { error: "Windows model discovery requires an administrator on the local dashboard" }); return true; }
+  const backend = url.searchParams.get("backend") ?? "";
+  if (!isNativeProviderId(backend)) { json(res, 400, { error: "Unknown Windows CLI provider" }); return true; }
+  if (url.searchParams.get("runtime") === "wsl" || instance && (!isWindowsInstance(config) || config?.backend !== backend)) {
+    json(res, 400, { error: "The selected runtime and CLI do not match this instance" }); return true;
+  }
+  void (async () => {
+    const catalog = await (bridge ?? windowsBridgeFor(ctx)).probe({ force: url.searchParams.get("refresh") === "1" });
+    if (!allowed()) { json(res, 403, { error: "Authorization expired" }); return; }
+    const cli = catalog.clis.find(row => row.id === backend);
+    json(res, 200, {
+      backend, runtime: "windows",
+      models: (cli?.models ?? []).map(model => ({ id: model.id, label: model.name ?? model.id, ...(model.description ? { description: model.description } : {}) })),
+      source: cli?.modelsSource ?? (cli?.models.length ? "cli-list" : "unavailable"),
+    });
+  })().catch(() => json(res, allowed() ? 503 : 403, { error: allowed() ? "Windows model discovery failed. Retry the CLI inventory." : "Authorization expired" }));
+  return true;
+}

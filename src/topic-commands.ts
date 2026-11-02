@@ -1914,6 +1914,8 @@ export class TopicCommands {
     let configChanged = false;
     const channels = this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
     for (const [name, config] of Object.entries(this.ctx.fleetConfig.instances)) {
+      // Native headless runtimes currently publish through shared web chat, not an external channel binding.
+      if (config.runtime === "windows") continue;
       if (config.topic_id != null) continue;
 
       // #1549 review: the agent's own connection decides — its channel_id, else the first. A topic is made, or a

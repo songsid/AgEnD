@@ -18,6 +18,8 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
   const method = init.method ?? "GET";
   sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
   const body = (() => {
+    if (path === "/ui/windows-cli/tasks") return { tasks: [] };
+    if (path === "/ui/windows-cli/probe") return { clis: [], home: "C:\\Test" };
     if (method !== "GET") return { ok: true };
     if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
     if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {}, project_roots: ["/srv/projects"] };
@@ -52,6 +54,18 @@ const open = async (section: string) => {
 const has = (sel: string) => !!p.root.querySelector(sel);
 
 describe("#2347: the sections in two groups, and the old addresses", () => {
+  it("offers enabled Windows CLI under Settings, and keeps its old address in that section", async () => {
+    const { appStore } = await import("/assets/app-store.js");
+    appStore.set({ windowsCli: true });
+    try {
+      await open("windows-cli");
+      expect(p.root.querySelector('.s-nav a[href="/settings/windows-cli"]')?.textContent.trim()).toBe("Windows CLI");
+      expect(p.root.querySelector("#windows-cwd")?.value).toBe("C:\\Test");
+      expect(p.root.querySelectorAll(".panel-head").length).toBe(1);
+      expect(route.parseRoute("/ui/windows-cli")).toEqual({ panel: "settings", section: "windows-cli" });
+      expect(route.routePath(route.parseRoute("/ui/windows-cli"))).toBe("/settings/windows-cli");
+    } finally { appStore.set({ windowsCli: false }); }
+  });
   it("You: Preferences, Look; Fleet: Agents … Advanced — the nav shows both groups with their names, in that order", async () => {
     await open("agents");
     const groups = p.root.querySelectorAll(".s-nav .s-nav-group").map((g: any) => [g.querySelector(".s-nav-head").textContent,

@@ -18,6 +18,7 @@ class CaptureRes extends ServerResponse {
   }
   end(chunk?: unknown): this {
     if (chunk) this.body += String(chunk);
+    this.emit("capture:end");
     return this;
   }
 }
@@ -87,12 +88,12 @@ async function callAndWait(
   Object.assign(req.headers, headers);
   const res = new CaptureRes(req);
   const urlObj = new URL(url, "http://localhost");
-  handleWebRequest(req, res, urlObj, ctx);
-  // Let the async handler resolve (parseBody reads from the stream).
-  for (let i = 0; i < 20; i++) {
-    if (res.status !== 0) break;
-    await new Promise((r) => setTimeout(r, 5));
-  }
+  // Wait for the actual response, not a 100ms race with bounded asynchronous backend probes.
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Handler did not finish: ${method} ${url}`)), 5000);
+    res.once("capture:end", () => { clearTimeout(timer); resolve(); });
+    handleWebRequest(req, res, urlObj, ctx);
+  });
   return res;
 }
 

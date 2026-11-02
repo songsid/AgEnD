@@ -521,9 +521,10 @@ describe("3b. the list stays while it refreshes, and a form's late success is it
 });
 
 describe("4. New instance waits for the backend list", () => {
-  const openDialog = async () => { await p.mount(h(fleet.CreateInstanceDialog, { onClose() {} })); await settle(); };
+  const openDialog = async () => { await p.mount(h(fleet.CreateInstanceDialog, { onClose() {} })); await settle(); const runtime = p.root.querySelectorAll(".agent-runtime-picker input").find((i: any) => i.value === "wsl"); runtime.checked = true; fire(runtime,"change"); await settle(); };
   const createBtn = () => [...p.root.querySelectorAll("dialog .btn")].find((b: any) => b.textContent === "Create") as any;
-  const setTopic = async (v: string) => { const i = p.root.querySelectorAll("dialog input")[1]; i.value = v; fire(i, "input"); await settle(); };
+  const nextBtn = () => [...p.root.querySelectorAll("dialog .btn")].find((b: any) => b.textContent.trim() === "Next") as any;
+  const setTopic = async (v: string) => { const i = p.root.querySelectorAll("dialog .agent-runtime-fields input")[1]; i.value = v; fire(i, "input"); await settle(); };
 
   it("slow list: Create is off and sends nothing; once the list is in, the shown backend is the one sent", async () => {
     const list = gate();
@@ -532,13 +533,16 @@ describe("4. New instance waits for the backend list", () => {
       return { ok: true };
     };
     await openDialog();
-    await setTopic("demo");
-    expect(createBtn().disabled).toBe(true);
-    createBtn().click(); await settle();
+    expect(nextBtn().disabled).toBe(true);
+    expect(p.root.querySelector(".agent-runtime-fields")).toBeNull();
+    nextBtn().click(); await settle();
     expect(requests.filter(r => r.startsWith("POST /ui/instances"))).toEqual([]);
     list.open(); await settle(6);
+    expect(nextBtn().disabled).toBe(false);
+    expect(p.root.querySelector("dialog .cli-picker-trigger").textContent).toContain("Codex");
+    nextBtn().click(); await settle(4);
+    await setTopic("demo");
     expect(createBtn().disabled).toBe(false);
-    expect(p.root.querySelector("dialog select").value).toBe("codex");
     createBtn().click(); await settle(4);
     const post = requests.find(r => r.startsWith("POST /ui/instances"))!;
     expect(JSON.parse(post.slice(post.indexOf("{")))).toMatchObject({ topic_name: "demo", backend: "codex" });
@@ -548,9 +552,10 @@ describe("4. New instance waits for the backend list", () => {
     handler = async (path) => { if (path === "/ui/backends") throw new Error("down"); return { ok: true }; };
     await openDialog();
     await settle(4);
+    expect(p.root.querySelector("dialog .cli-picker-trigger").textContent).toContain("fleet default");
+    nextBtn().click(); await settle(4);
     await setTopic("demo");
     expect(createBtn().disabled).toBe(false);
-    expect(p.root.querySelector("dialog select").value).toBe("");
     createBtn().click(); await settle(4);
     const post = requests.find(r => r.startsWith("POST /ui/instances"))!;
     expect(JSON.parse(post.slice(post.indexOf("{")))).toEqual({ topic_name: "demo" });
@@ -597,11 +602,12 @@ describe("6. #1423: a write waiting for a fleet admin's confirmation", () => {
       return {};
     };
     let closed = 0;
-    await p.mount(h(fleet.CreateInstanceDialog, { onClose() { closed++; } })); await settle(4);
-    const topic = p.root.querySelectorAll("dialog input")[1]; topic.value = "demo"; fire(topic, "input"); await settle();
+    await p.mount(h(fleet.CreateInstanceDialog, { onClose() { closed++; } })); await settle(4); const runtime = p.root.querySelectorAll(".agent-runtime-picker input").find((i: any) => i.value === "wsl"); runtime.checked = true; fire(runtime,"change"); await settle();
+    p.root.querySelectorAll("dialog button").find((b: any) => b.textContent.trim() === "Next").click(); await settle(4);
+    const topic = p.root.querySelectorAll("dialog .agent-runtime-fields input")[1]; topic.value = "demo"; fire(topic, "input"); await settle();
     [...p.root.querySelectorAll("dialog .btn")].find((b: any) => b.textContent === "Create")!.click(); await settle(4);
     expect(closed).toBe(1);
-    expect(app.appStore.get().pendingChanges.map((x: any) => [x.id, x.state, x.label])).toEqual([[ID, "pending", "New instance"]]);
+    expect(app.appStore.get().pendingChanges.map((x: any) => [x.id, x.state, x.label])).toEqual([[ID, "pending", "New agent"]]);
     decided = "applied";
     await vi.waitFor(() => expect(app.appStore.get().pendingChanges[0]?.state).toBe("applied"), { timeout: 5000 });
     expect(closed).toBe(1);                                    // a dialog that went is never closed again
@@ -683,8 +689,9 @@ describe("#2072 (#2098 review P3-3): the model list with \"fleet default\" is th
       return { ok: true };
     };
     requests.length = 0;
-    await p.mount(h(fleet.CreateInstanceDialog, { onClose() {} })); await settle(8);
-    expect(p.root.querySelector("dialog select").value).toBe("");                 // "fleet default"
+    await p.mount(h(fleet.CreateInstanceDialog, { onClose() {} })); await settle(8); const runtime = p.root.querySelectorAll(".agent-runtime-picker input").find((i: any) => i.value === "wsl"); runtime.checked = true; fire(runtime,"change"); await settle();
+    expect(p.root.querySelector("dialog .cli-picker-trigger").textContent).toContain("fleet default");
+    p.root.querySelectorAll("dialog button").find((b: any) => b.textContent.trim() === "Next").click(); await settle(4);
     expect(requests).toContain("GET /ui/models?backend=codex");
     const options = [...p.root.querySelectorAll("dialog .model-pick option")].map((o: any) => o.value);
     expect(options).toContain("gpt-5.5");

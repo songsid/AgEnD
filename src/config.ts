@@ -237,6 +237,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
       overrides,
     ) as Partial<InstanceConfig>;
 
+    if (!merged.working_directory && merged.runtime === "windows") throw new Error(`Windows instance ${name} requires its native working_directory`);
     if (!merged.working_directory) {
       ensureAgendHome(getAgendHome());
       const defaultDir = join(getAgendHome(), "workspaces", name);

@@ -18,7 +18,7 @@ import { goToTarget } from "./settings-registry.js";
 import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
-import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalog } from "./settings-catalog.js";
+import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalogState } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
@@ -60,16 +60,23 @@ export function BackendSelect({ value, onChange, disabled, id }) {
  * the current value in it: choosing "Other…" alone changes nothing — emptying the box is what inherits, #2098 review).
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
-export function ModelSelect({ value, onChange, disabled, id, backend, instance, inherit }) {
-  const catalog = useModelCatalog(backend, instance);
+export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, inherit, catalogOverride }) {
+  const state = useModelCatalogState(catalogOverride === undefined ? backend : null, instance, runtime);
+  const catalog = catalogOverride === undefined ? state.models : catalogOverride;
   const [typing, setTyping] = useState(false);
+  useEffect(() => { setTyping(false); }, [backend, instance, runtime]);
   const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
+  const managed = catalogOverride === undefined && !!backend;
+  const note = state.loading ? "modelCatalogLoading" : state.error ? "modelCatalogFailed" : !catalog?.length ? "modelCatalogEmpty"
+    : ["documented", "official-catalog", "cli-alias"].includes(state.source) ? "modelCatalogSuggested" : "modelCatalogListed";
   return html`<div class="model-pick">
-    <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled}
+    <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled} aria-busy=${managed && state.loading ? "true" : undefined}
       onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>
       ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
     ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
-      value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}</div>`;
+      value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}
+    ${managed ? html`<div class="model-catalog-status"><span class="note" role=${state.error ? "alert" : "status"} aria-live="polite">${state.loading ? html`<span class="out-spin" aria-hidden="true"></span> ` : null}${tn(note)}</span><button type="button" class="btn btn-ghost btn-sm" disabled=${disabled || state.loading} onClick=${state.refresh}>${tn(state.error || !catalog?.length ? "modelCatalogRetry" : "modelCatalogRefresh")}</button></div>` : null}
+  </div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark }) {

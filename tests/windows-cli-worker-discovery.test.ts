@@ -1,0 +1,148 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
+
+afterEach(() => vi.unstubAllEnvs());
+const workspaces: string[]=[];
+afterEach(()=>{for(const path of workspaces.splice(0)){if(!resolve(path).startsWith(resolve(tmpdir())+ (process.platform==="win32" ? "\\" : "/")))throw Error("Unsafe scratch directory");rmSync(path,{recursive:true,force:true});}});
+const scratchHome=()=>{const path=mkdtempSync(join(tmpdir(),"agend-native-workspace-"));workspaces.push(path);return path;};
+describe("managed native workspace directories",()=>{
+  const id="12345678-1234-4321-abcd-123456789012";
+  it("creates an agent-specific native directory once and preserves its content on later preparations",()=>{
+    const home=scratchHome(), cwd=prepareNativeWorkspace(id,home);
+    expect(cwd).toBe(join(home,".agend","workspaces",id));expect(statSync(cwd).isDirectory()).toBe(true);
+    writeFileSync(join(cwd,"keep.txt"),"context");
+    expect(prepareNativeWorkspace(id,home)).toBe(cwd);expect(readFileSync(join(cwd,"keep.txt"),"utf8")).toBe("context");
+  });
+  it.each([undefined,null,"",[],"../escape","C:\\elsewhere","12345678-1234-4321-abcd-123456789012/child"])("rejects an invalid agent id %j before creating directories",value=>{
+    const home=scratchHome();expect(()=>prepareNativeWorkspace(value,home)).toThrow(/agent id/);expect(existsSync(join(home,".agend"))).toBe(false);
+  });
+  it("refuses a file in the managed parent chain without overwriting it",()=>{
+    const home=scratchHome();writeFileSync(join(home,".agend"),"keep");
+    expect(()=>prepareNativeWorkspace(id,home)).toThrow(/real directory/);expect(readFileSync(join(home,".agend"),"utf8")).toBe("keep");
+  });
+  it.each(["parent","agent"])("refuses %s junctions or symbolic links that redirect managed creation",which=>{
+    const home=scratchHome(), outside=join(home,"outside");mkdirSync(outside);
+    const link=which==="parent" ? join(home,".agend") : prepareNativeWorkspace(id,home);
+    if(which==="agent")rmdirSync(link);
+    symlinkSync(outside,link,process.platform==="win32"?"junction":"dir");
+    expect(()=>prepareNativeWorkspace(id,home)).toThrow(/real directory/);
+    expect(existsSync(join(outside,"workspaces"))).toBe(false);
+  });
+});
+const executable = (id: NativeCliId): NativeCliExecutable => ({ path: `C:\\CLI\\${id}.exe`, command: `C:\\CLI\\${id}.exe`, args: [] });
+const help = "--json --sandbox --print --input-format text stream-json --output-format streaming-json --conversation --resume --resume-id --permission-prompts --tools --strict-mcp-config --mcp-config --format json --session --session-id --dir --prompt-file --no-interactive";
+
+describe("native Windows CLI discovery", () => {
+  it("starts discovery of all providers concurrently, including missing native installations", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(done => { release = done; });
+    const started = new Set<NativeCliId>();
+    const pending = probeNativeClis({ find: async id => { started.add(id); await gate; return null; } });
+    expect([...started]).toEqual([...NATIVE_CLI_IDS]);
+    release();
+    const result = await pending;
+    expect(result.clis).toHaveLength(7);
+    expect(result.clis.every(row => row.path === null && !row.runnable && row.authenticated === null && /not installed/.test(row.reason ?? ""))).toBe(true);
+  });
+
+  it("distinguishes signed out from unknown authentication and never probes unsupported auth commands", async () => {
+    const calls: string[] = [];
+    const result = await probeNativeClis({
+      find: async id => ["codex", "claude-code", "antigravity"].includes(id) ? executable(id) : null,
+      run: async (entry, args) => {
+        const id = entry.path.split("\\").at(-1)!.replace(/\.exe$/, "");
+        calls.push(`${id}:${args.join(" ")}`);
+        if (args.includes("--help")) return { ok: true, text: help };
+        if (args.includes("--version")) return { ok: true, text: "1.2.3" };
+        if (args.join(" ") === "login status") return { ok: false, text: "Not logged in" };
+        if (args.join(" ") === "auth status") return { ok: false, text: "unsupported status response" };
+        return { ok: true, text: "gemini-3.1-pro-high  Gemini 3.1 Pro (High)" };
+      },
+    });
+    expect(result.clis.find(row => row.id === "codex")).toMatchObject({ authenticated: false, runnable: false });
+    expect(result.clis.find(row => row.id === "claude-code")).toMatchObject({ authenticated: null, runnable: true, readOnlySupport: true });
+    expect(result.clis.find(row => row.id === "antigravity")).toMatchObject({ authenticated: null, runnable: true, readOnlySupport: false, models: [{ id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)" }] });
+    expect(calls.filter(call => call.startsWith("antigravity:")).sort()).toEqual(["antigravity:--help", "antigravity:--version", "antigravity:models"].sort());
+  });
+
+  it("does not mark an outdated CLI ready merely because its executable and version exist", async () => {
+    const result = await probeNativeClis({
+      find: async id => id === "grok" ? executable(id) : null,
+      run: async (_entry, args) => ({ ok: true, text: args.includes("--version") ? "1.0.0" : "Usage: grok --help --model" }),
+    });
+    expect(result.clis.find(row => row.id === "grok")).toMatchObject({ runnable: false, supports: { execution: false }, reason: expect.stringContaining("required headless JSON") });
+  });
+
+  it("serializes one binary's probes and retries an empty successful capture without treating it as an old CLI", async () => {
+    let active = 0, maxActive = 0, versions = 0;
+    const result = await probeNativeClis({
+      find: async id => id === "grok" ? executable(id) : null,
+      run: async (_entry, args) => {
+        active++; maxActive = Math.max(active, maxActive);
+        await new Promise(done => setTimeout(done, 1));
+        active--;
+        if (args.includes("--version")) return { ok: true, text: ++versions === 1 ? "" : "grok 1.0.46" };
+        return { ok: true, text: help };
+      },
+    });
+    expect(maxActive).toBe(1);
+    expect(versions).toBe(2);
+    expect(result.clis.find(row => row.id === "grok")).toMatchObject({ version: "grok 1.0.46", runnable: true });
+  });
+
+  it("keeps persistently empty help output unavailable with a capture failure reason", async () => {
+    const result = await probeNativeClis({
+      find: async id => id === "grok" ? executable(id) : null,
+      run: async (_entry, args) => ({ ok: true, text: args.includes("--version") ? "grok 1.0.46" : "" }),
+    });
+    expect(result.clis.find(row => row.id === "grok")).toMatchObject({ runnable: false, reason: "The Windows CLI help check returned no usable output" });
+  });
+
+  it("withholds read-only capability when Claude cannot disable configured MCP tools", async () => {
+    const result = await probeNativeClis({
+      find: async id => id === "claude-code" ? executable(id) : null,
+      run: async (_entry, args) => ({ ok: true, text: args.includes("--help") ? "--print --output-format --input-format --permission-prompts --tools" : args.includes("--version") ? "2.1.299" : '{"loggedIn":true}' }),
+    });
+    expect(result.clis.find(row => row.id === "claude-code")).toMatchObject({ runnable: true, readOnlySupport: false });
+  });
+});
+
+describe("native Node shims and environment", () => {
+  it("recognizes known npm script targets without treating arbitrary batch launchers or the Kiro IDE as a coding CLI", () => {
+    const shim = '@ECHO off\nSET "_prog=node"\n"%_prog%" "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*';
+    expect(npmCliShimTarget("codex", shim)).toBe("node_modules/@openai/codex/bin/codex.js");
+    expect(npmCliShimTarget("codex", shim.replace("@openai\\codex", "unknown\\codex"))).toBeNull();
+    expect(npmCliShimTarget("codex", shim.replace("node_modules", "..\\node_modules"))).toBeNull();
+    expect(npmCliShimTarget("kiro-cli", 'SET ELECTRON_RUN_AS_NODE=1\n"%dp0%\\..\\Kiro.exe" cli.js %*')).toBeNull();
+    expect(npmCliShimTarget("grok", shim)).toBeNull();
+  });
+
+  it("drops inherited Linux instance paths and Node injection while keeping Windows login configuration", () => {
+    vi.stubEnv("CODEX_HOME", "/home/linux/.codex");
+    vi.stubEnv("KIRO_HOME", "/home/linux/.kiro");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "C:\\Users\\Windows\\.claude");
+    vi.stubEnv("NODE_OPTIONS", "--require unexpected.js");
+    vi.stubEnv("ANTIGRAVITY_CONVERSATION_ID", "unrelated-conversation");
+    vi.stubEnv("AGEND_INSTANCE_NAME", "linux-instance");
+    vi.stubEnv("AGEND_API_TOKEN", "test-daemon-token");
+    vi.stubEnv("Agend_Custom_Parameter", "test-instance-parameter");
+    const env = nativeCliEnvironment();
+    expect(env.CODEX_HOME).toBeUndefined();
+    expect(env.KIRO_HOME).toBeUndefined();
+    expect(env.NODE_OPTIONS).toBeUndefined();
+    expect(env.ANTIGRAVITY_CONVERSATION_ID).toBeUndefined();
+    expect(Object.keys(env).filter(key => /^AGEND_/i.test(key))).toEqual([]);
+    expect(env.CLAUDE_CONFIG_DIR).toBe("C:\\Users\\Windows\\.claude");
+  });
+
+  it("accepts literal model selection and rejects providers that cannot enforce the requested policy", () => {
+    const task = { requestId: "windows-task-12345678", cli: "antigravity", cwd: "J:\\Project\\Game", prompt: "Inspect the project", sandbox: "workspace-write", model: "gemini-3.1-pro-high" };
+    expect(validateNativeTask(task)).toEqual(task);
+    expect(() => validateNativeTask({ ...task, sandbox: "read-only" })).toThrow(/read-only/);
+    expect(() => validateNativeTask({ ...task, cli: "kiro-cli" })).toThrow();
+    expect(() => validateNativeTask({ ...task, model: "good; powershell evil" })).toThrow(/model/i);
+  });
+});

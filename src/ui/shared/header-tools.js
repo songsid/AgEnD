@@ -7,7 +7,7 @@
 // Fleet read (#1300: no style attribute). View's terminal multiplies its fitted size by VIEW_SCALE, as its density did.
 import { html, useEffect, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
-import { createStore, useStore } from "./app-store.js";
+import { appStore, createStore, useStore } from "./app-store.js";
 import { Icon } from "./ui-icons.js";
 import { UsageBody, UsageCompactToggle, UsageDialog } from "./usage-dialog.js";
 
@@ -124,7 +124,9 @@ export function useRailWidth() {
 export function UsageRail({ route }) {
   const wide = useRailWidth();
   const { open } = useStore(usageRailStore);
-  if (!wide || !open || !route || !RAIL_PANELS.includes(route.panel) || !usageOffered()) return null;
+  const { instances = [] } = useStore(appStore);
+  const instance = instances.find(item => item.name === route?.instance);
+  if (!wide || !open || !route || !RAIL_PANELS.includes(route.panel) || !usageOffered() || instance?.capabilities?.usage === false) return null;
   return html`<aside data-trust="usage" class="u-rail" aria-label=${t("view.usage.title_plain")}>
     <div class="u-rail-head"><h2>${t("view.usage.title")}</h2><${UsageCompactToggle} />
       <button type="button" class="icon-btn" onClick=${() => setUsageRail(false)} aria-label=${t("app.usageHide")} title=${t("app.usageHide")}><${Icon} name="close" size=${16} /></button></div>
@@ -154,8 +156,8 @@ export function UsageButton({ navKey }) {
 }
 
 /** The shared controls, in the one order every page uses. `navKey`: the page's navigation (the usage dialog's owner). */
-export function HeaderTools({ view = false, navKey }) {
-  return html`<${TextSizeButton} view=${view} /><${UsageButton} navKey=${navKey} />`;
+export function HeaderTools({ view = false, navKey, usage = true }) {
+  return html`<${TextSizeButton} view=${view} />${usage ? html`<${UsageButton} navKey=${navKey} />` : null}`;
 }
 /** Where a page with no control of its own after the shared ones (Log) keeps the room Chat's ⋯ takes: the same box on every tab. */
 export function HeaderSlot() {
