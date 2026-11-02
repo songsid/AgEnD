@@ -1,7 +1,7 @@
 /** Protocol acceptance through a private reverse proxy; this fixture is not a Tailscale installation test. */
-import { execFileSync } from "node:child_process";
+import { generateKeyPairSync, sign, X509Certificate } from "node:crypto";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createServer as createTlsServer, request as tlsRequest } from "node:https";
 import { connect } from "node:net";
@@ -25,13 +25,36 @@ async function listen(server: Server): Promise<number> {
   return address.port;
 }
 function tlsFixture() {
-  const dir = home(), key = join(dir, "test-only.key"), cert = join(dir, "test-only.crt");
-  // Existing TLS suites require OpenSSL too. Git for Windows also ships it, without requiring a PATH edit.
-  const gitOpenSsl = join(process.env.ProgramFiles ?? "C:/Program Files", "Git/usr/bin/openssl.exe");
-  const openssl = process.platform === "win32" && existsSync(gitOpenSsl) ? gitOpenSsl : "openssl";
-  execFileSync(openssl, ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert,
-    "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1"], { stdio: "ignore", timeout: 10_000 });
-  return { key: readFileSync(key), cert: readFileSync(cert) };
+  // Fixture-only X.509 structure (RFC 5280 §4.1). Node generates the key and signs the certificate in memory;
+  // no external executable, static private key, filesystem key material or system trust changes are needed.
+  const der = (tag: number, ...parts: Buffer[]): Buffer => {
+    const value = Buffer.concat(parts), hex = value.length.toString(16).padStart(Math.ceil(value.length.toString(16).length / 2) * 2, "0");
+    const wide = Buffer.from(hex, "hex"), length = value.length < 128 ? Buffer.from([value.length]) : Buffer.concat([Buffer.from([0x80 | wide.length]), wide]);
+    return Buffer.concat([Buffer.from([tag]), length, value]);
+  };
+  const seq = (...parts: Buffer[]) => der(0x30, ...parts);
+  const oid = (hex: string) => der(0x06, Buffer.from(hex, "hex"));
+  const time = (value: number) => {
+    const date = new Date(value), text = date.toISOString().replace(/[-:]/g, "").replace("T", "").slice(0, 14) + "Z";
+    return date.getUTCFullYear() >= 1950 && date.getUTCFullYear() < 2050 ? der(0x17, Buffer.from(text.slice(2))) : der(0x18, Buffer.from(text));
+  };
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const algorithm = seq(oid("2a864886f70d01010b"), der(0x05)); // sha256WithRSAEncryption
+  const name = seq(der(0x31, seq(oid("550403"), der(0x0c, Buffer.from("localhost")))));
+  const san = seq(der(0x82, Buffer.from("localhost")), der(0x87, Buffer.from([127, 0, 0, 1])));
+  const extensions = der(0xa3, seq(
+    seq(oid("551d13"), der(0x01, Buffer.from([0xff])), der(0x04, seq(der(0x01, Buffer.from([0xff]))))), // CA: true
+    seq(oid("551d11"), der(0x04, san)),
+  ));
+  const now = Date.now();
+  const tbs = seq(der(0xa0, der(0x02, Buffer.from([2]))), der(0x02, Buffer.from([1])), algorithm, name,
+    seq(time(now - 60_000), time(now + 24 * 60 * 60_000)), name, publicKey.export({ type: "spki", format: "der" }), extensions);
+  const bytes = seq(tbs, algorithm, der(0x03, Buffer.from([0]), sign("sha256", tbs, privateKey)));
+  const cert = Buffer.from(`-----BEGIN CERTIFICATE-----\n${bytes.toString("base64").match(/.{1,64}/g)!.join("\n")}\n-----END CERTIFICATE-----\n`);
+  const parsed = new X509Certificate(cert);
+  expect(parsed.verify(publicKey)).toBe(true); expect(parsed.ca).toBe(true);
+  expect(parsed.checkHost("localhost")).toBe("localhost"); expect(parsed.checkIP("127.0.0.1")).toBe("127.0.0.1");
+  return { key: privateKey.export({ type: "pkcs8", format: "pem" }), cert };
 }
 function post(origin: string, path: string, value: unknown, ca?: Buffer): Promise<{ status: number; body: any }> {
   return new Promise((accept, reject) => {
