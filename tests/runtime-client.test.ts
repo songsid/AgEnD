@@ -152,6 +152,28 @@ createInterface({input:process.stdin}).once('line',line=>{
     });
     expect(f.store.get(task.requestId)?.task.status).toBe("completed");
   }, 20_000);
+  it("#2945 CI: a worker that exits well after its finished line leaves the run completed and the machine online", async () => {
+    const f = await fixture(); await f.client.stop();
+    const worker = join(home(), "slow-exit-runtime-worker.mjs");
+    writeFileSync(worker, `import {createInterface} from 'node:readline';
+const emit=value=>process.stdout.write(JSON.stringify(value)+'\\n');
+createInterface({input:process.stdin}).once('line',line=>{
+ const request=JSON.parse(line);
+ if(request.op==='probe'){emit({type:'probe',home:'C:\\\\Users\\\\fixture',clis:[{id:'codex',path:'C:\\\\fixture\\\\codex.exe',version:'fixture',authenticated:true,runnable:true,readOnlySupport:true,supports:{execution:true,resume:true,model:true,mcp:true},permissionNote:'Isolated fixture',models:[]}]});setTimeout(()=>process.exit(0),20);return;}
+ emit({type:'started'});
+ const events=[{type:'thread.started',thread_id:'12345678-1234-4321-abcd-123456789012'},{type:'item.completed',item:{type:'agent_message',text:'slow exit'}},{type:'turn.completed'}];
+ emit({type:'stdout',text:events.map(JSON.stringify).join('\\n')+'\\n'});emit({type:'finished',code:0});
+ setTimeout(()=>process.exit(0),400);   // the client polls every 10 ms in between
+});`);
+    const bridge = new WindowsCliBridge(async () => ({ executable: process.execPath, args: [worker] }));
+    const client = new RuntimeClient({ store: f.store, bridge, pollMs: 10 }); clients.push(client); await client.start();
+    await vi.waitFor(() => expect(client.online()).toBe(true));
+    await f.state.hub.call(f.machineId, "probe", { force: true });
+    const task = input(); await f.state.hub.call(f.machineId, "run", { task });
+    await vi.waitFor(() => expect(f.state.hub.task(task.requestId)).toMatchObject({ status: "completed", outcomeConfirmed: true, output: "slow exit\n" }), { timeout: 10_000 });
+    expect(client.online()).toBe(true);
+    expect(f.state.hub.machine(f.machineId)?.status).toBe("online");
+  }, 20_000);
   it("relays scoped MCP over the machine channel without exposing machine credentials to the CLI", async () => {
     const handler = vi.fn(async () => ({ content: [{ type: "text", text: "isolated task list" }] }));
     const f = await fixture({ handleMcp: handler }), task = input(); await f.state.hub.call(f.machineId, "run", { task, mcp: { tools: ["task"] } });

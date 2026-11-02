@@ -67,9 +67,9 @@ export class WindowsCliBridge {
     this.cachedProbe = inventoryFile ? readInventory(inventoryFile) : null;
   }
 
-  list(): WindowsCliTask[] { return [...this.tasks.values()].map(v => ({ ...v.task })).reverse(); }
+  list(): WindowsCliTask[] { return [...this.tasks.values()].map(v => visible(v.task)).reverse(); }
   hasActiveTask(): boolean { return this.active !== null; }
-  get(id: string): WindowsCliTask | null { const task = this.tasks.get(id)?.task; return task ? { ...task } : null; }
+  get(id: string): WindowsCliTask | null { const task = this.tasks.get(id)?.task; return task ? visible(task) : null; }
   /**
    * M-2239 P1-2: the last detection, as it was — starting nothing. Only `force` (an administrator's explicit "Detect
    * again") starts the Windows CLIs, once each, with their own "do not update" switches. Never on a timer or a read.
@@ -140,7 +140,7 @@ export class WindowsCliBridge {
     const old = this.tasks.get(input.requestId);
     if (old) {
       if (JSON.stringify(old.input) !== JSON.stringify(input)) throw new Error("requestId already belongs to another task");
-      return { ...old.task };
+      return visible(old.task);
     }
     if (this.submitted.has(input.requestId)) throw new Error("This requestId was already used; its task history has expired");
     // M-2239 P1-2: a task starts no probe; the administrator's last detection says whether this CLI can run here.
@@ -158,17 +158,18 @@ export class WindowsCliBridge {
     this.tasks.set(task.id, { input, task });
     if (this.tasks.size > MAX_TASKS) this.tasks.delete(this.tasks.keys().next().value!);
     void this.run(input, task, authorized, options);
-    return { ...task };
+    return visible(task);
   }
   cancel(id: string): WindowsCliTask {
     const task = this.tasks.get(id)?.task;
     if (!task) throw new Error("Task not found");
     if (this.active === id) {
-      task.status = "cancelling";
+      // #2945 CI: an outcome the worker already reported (it closes next) is not overwritten; the cancel is still sent.
+      if (!SETTLED.includes(task.status)) task.status = "cancelling";
       this.child?.stdin?.write('{"cancel":true}\n');
       // The reservation is kept until the physical worker closes.
     }
-    return { ...task };
+    return visible(task);
   }
   close(): void {
     this.workerGeneration++;
@@ -251,6 +252,16 @@ export class WindowsCliBridge {
     } catch (e) { task.error = e instanceof Error ? e.message : "Windows CLI launch failed"; task.status = "failed"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; }
     finally { try { options.onSettled?.({ ...task }); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }
   }
+}
+
+const SETTLED: readonly WindowsCliTask["status"][] = ["completed", "failed", "cancelled"];
+/**
+ * #2945 CI: the worker's "finished" line (or a failure) decides the outcome before its process closes, and finishedAt is
+ * set only on close. Until then a snapshot reports the task as still running: a settled status without finishedAt is
+ * one the coordinator refuses — it dropped the machine, which then cancelled the run that had just finished.
+ */
+function visible(task: WindowsCliTask): WindowsCliTask {
+  return !task.finishedAt && SETTLED.includes(task.status) ? { ...task, status: "running" } : { ...task };
 }
 
 const bridges = new WeakMap<object, WindowsCliBridge>();
