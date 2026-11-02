@@ -31,7 +31,7 @@ describe("CLI product picker", () => {
     expect(radios()[0].getAttribute("aria-checked")).toBe("true");
     expect(radios()[1].textContent).toContain("Windows · signed in");
     expect(radios()[1].querySelector('[data-cli="claude-code"] svg').getAttribute("fill")).toBe("#D97757");
-    expect(radios()[3].querySelector('[data-cli="antigravity"] img').getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
+    expect(radios()[3].querySelector('[data-cli="antigravity"] img').getAttribute("src")).toMatch(/^data:image\/svg\+xml;base64,/);
   });
 
   it("opens by keyboard, skips disabled choices and selects with Enter while preserving the field label", async () => {
