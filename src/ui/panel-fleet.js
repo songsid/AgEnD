@@ -12,7 +12,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { navigate, renavigate } from "/assets/app-nav.js";
-import { RuntimePicker, AgentDraftAssistant, tr } from "./agent-runtime.js";
+import { RuntimePicker, AgentDraftAssistant, NativeAgendToolsHint, tr } from "./agent-runtime.js";
 import { CliPicker, cliLabel as productLabel } from "./cli-picker.js";
 import { useWindowsCliCatalog, WindowsCliDiscoveryStatus, detectionText } from "./windows-cli-catalog.js";
 import { chatPath, fleetPath, FLEET_TABS, rememberFleetTab } from "/assets/app-route.js";
@@ -523,7 +523,7 @@ export function CreateInstanceDialog({ onClose }) {
     ${field(windows ? tr("directory") : t("fleet.directory"), html`<input value=${f.dir} onInput=${set("dir")} placeholder=${windows ? tr("directoryHint") : t("fleet.directoryHint")} />`)}
     ${field(`${t("fleet.topic")}${f.dir.trim() ? "" : " *"}`, html`<input value=${f.topic} onInput=${set("topic")} placeholder=${windows ? tr("nameHint") : t("fleet.topicHint")} />`)}
     ${field(t("fleet.description"), html`<input value=${f.desc} onInput=${set("desc")} placeholder=${t("fleet.descriptionHint")} />`)}
-    ${windows ? html`${field(t("fleet.model"),html`<${ModelSelect} key=${f.backend} value=${f.model} onChange=${value => setF(x => ({...x,model:value}))} backend=${f.backend} runtime="windows" inherit=${tr("model")} />`)}${field(tr("access"),html`<select value=${sandbox} onChange=${e => setSandbox(e.target.value)}><option value="read-only" disabled=${nativeCli?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select>`)}<p class="note">${!permissionReady ? tr("noReadOnly") : sandbox === "workspace-write" ? tr("nativePolicy") : ""}</p>` : html`
+    ${windows ? html`${field(t("fleet.model"),html`<${ModelSelect} key=${f.backend} value=${f.model} onChange=${value => setF(x => ({...x,model:value}))} backend=${f.backend} runtime="windows" inherit=${tr("model")} />`)}${field(tr("access"),html`<select value=${sandbox} onChange=${e => setSandbox(e.target.value)}><option value="read-only" disabled=${nativeCli?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select>`)}<p class="note">${!permissionReady ? tr("noReadOnly") : sandbox === "workspace-write" ? tr("nativePolicy") : ""}</p><${NativeAgendToolsHint} cli=${nativeCli} sandbox=${sandbox} />` : html`
       ${field(t("fleet.model"), html`<${ModelSelect} value=${f.model} onChange=${(v) => setF(x => ({ ...x, model: v }))} backend=${f.backend || defaultBackend} inherit=${t("fleet.fleetDefault")} />`)}
       ${field(t("fleet.branch"), html`<input value=${f.branch} onInput=${set("branch")} placeholder=${t("fleet.branchHint")} />`)}
       ${field(t("fleet.tags"), html`<input value=${f.tags} onInput=${set("tags")} placeholder=${t("fleet.tagsHint")} />`)}

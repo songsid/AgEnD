@@ -219,6 +219,8 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge } from "./windows-cli.js";
 import { FleetWindowsRuntime } from "./fleet-windows-runtime.js";
+import { NativeMcpSessions } from "./native-mcp.js";
+import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { isWindowsInstance } from "./native-instance-registry.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
@@ -1164,10 +1166,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
   private fleetWindowsRuntime: FleetWindowsRuntime | null = null;
+  private nativeMcpStore: NativeMcpSessions | null = null;
+  /** Per-turn capabilities for native MCP, separate from browser and Linux-agent credentials. */
+  nativeMcpSessions(): NativeMcpSessions {
+    return this.nativeMcpStore ??= new NativeMcpSessions(this as unknown as AgentEndpointContext);
+  }
   /** The same instance registry and delivery entry point, with a native Windows execution adapter. */
   nativeInstanceRuntime(): FleetWindowsRuntime {
     return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
       owner:this,fleet:()=>this.fleetConfig,save:()=>this.saveFleetConfig(),stopping:()=>this.shuttingDown,history:this.webChatHistory,
+      openMcp:(instance,requestId,sandbox,stillCurrent)=>this.healthServerListening
+        ? this.nativeMcpSessions().grant({instance,requestId,sandbox,stillCurrent,endpoint:`http://127.0.0.1:${this.fleetConfig?.health_port ?? 19280}/agent`}) : null,
       warn:(message,error)=>this.logger.warn({err:error},message),
       removed:name=>this.nativeInstanceRemoved(name),
       emit:(event,data)=>{
@@ -2733,9 +2742,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }): { deliveryId: string; state: string; duplicate: boolean; kind: string } {
     const outbox = this.deliveryOutbox;
     if (!outbox) throw new Error("Durable delivery store is unavailable");
-    const source = this.daemons.get(input.sourceInstance);
-    const sourceDaemonBootId = input.sourceDaemonBootId ?? source?.bootId;
-    if (!source || !sourceDaemonBootId || source.bootId !== sourceDaemonBootId) {
+    const currentSourceBootId = this.getDaemonBootId(input.sourceInstance);
+    const sourceDaemonBootId = input.sourceDaemonBootId ?? currentSourceBootId;
+    if (!currentSourceBootId || !sourceDaemonBootId || currentSourceBootId !== sourceDaemonBootId) {
       throw new Error("Source daemon generation is no longer current; outcome is unknown");
     }
     const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
@@ -2798,6 +2807,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   getDaemonBootId(instanceName: string): string | undefined {
+    if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) {
+      return !this.shuttingDown && windowsCliEnabled() && this.nativeMcpStore?.hasActive(instanceName) ? this.managerBootId : undefined;
+    }
     return this.daemons.get(instanceName)?.bootId;
   }
 
@@ -3153,9 +3165,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
       const outcome=task.outcomeConfirmed === false ? "uncertain" : task.status === "completed" ? "delivered" : "failed";
       outbox.complete(deliveryId,targetDaemonBootId,attemptNo,outcome,task.error || task.status);
-      // A native provider cannot call the Linux-only MCP transport. The adapter returns a requested peer report
-      // through the same durable outbox and correlation id, once, so a Linux dispatcher receives its result.
-      if (meta.requires_reply === "true" && claimed.correlationId && this.fleetConfig?.instances[claimed.sourceInstance]) {
+      // Return a requested peer report when the provider did not explicitly report it through scoped MCP.
+      if (meta.requires_reply === "true" && claimed.correlationId && !task.reportedCorrelationIds?.includes(claimed.correlationId) && this.fleetConfig?.instances[claimed.sourceInstance]) {
         const text=(task.status === "completed" ? task.output : `Windows task ${task.status}: ${task.error || task.output}`).slice(0,8000);
         outbox.admit({sourceKey:`native-result:${deliveryId}`,operationId:`native-result:${deliveryId}`,sourceInstance:target,sourceDaemonBootId:this.managerBootId,
           targetInstance:claimed.sourceInstance,kind:"fleet_inbound",correlationId:claimed.correlationId,
@@ -21493,6 +21504,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * settles, so a later genuine stop (after a restart) still does the work.
    */
   stopAll(): Promise<void> {
+    this.nativeMcpStore?.closeAll();
     closeWindowsBridge(this);
     this.stopAllInFlight ??= this.doStopAll().finally(() => {
       // #1956: after the stop's own tmux work; anything later goes direct. A later startAll starts it again.
@@ -24442,17 +24454,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         let agent:ReturnType<FleetWindowsRuntime["get"]>=null;
         try { runtime=this.nativeInstanceRuntime();agent=runtime.get(name); } catch { /* A damaged native profile is a crashed native row, never a Linux spawn. */ }
         const display_name=nativeConfig.display_name || agent?.name || name;
+        const backend=nativeConfig.backend || agent?.cli || "codex";
         return {name,display_name,description:nativeConfig.description || undefined,tags:nativeConfig.tags || [],
           teams:instanceTeams(this.fleetConfig?.teams,name),runtime:"windows",native_agent_id:nativeConfig.native_agent_id,
           native_blocked:!agent || agent.blocked === true,
           native_busy:runtime?.busy() ?? false,
-          backend:nativeConfig.backend || agent?.cli || "codex",
+          backend,
           model:nativeConfig.model || "default",model_source:nativeConfig.model ? "instance" : "cli-default",
           status:agent && runtime ? runtime.status(name) : "crashed",state:agent && runtime ? runtime.execution(name) : null,execution_state:agent && runtime ? runtime.execution(name) : null,
           interaction:null,interaction_summary:null,context_pct:null,cost:null,
           last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,
           avatar:avatarFor({name,displayName:display_name}),
-          capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:false,channels:false,terminal:false,attachments:false,usage:false,send_while_busy:false},
+          capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:nativeProviderMcpSupported(backend),channels:false,terminal:false,attachments:false,usage:false,send_while_busy:false},
           ...(!agent ? {runtime_error:"Windows profile is missing or invalid; restore its saved conversation before using this instance"}
             : agent.blocked ? {runtime_error:"Windows process outcome is unknown; verify it stopped before recovery"} : {})};
       }

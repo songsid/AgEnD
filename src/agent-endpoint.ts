@@ -95,6 +95,8 @@ const OP_MAP: Record<string, string> = {
 type CrudHandler = (ctx: OutboundContext, instance: string, args: Record<string, unknown>) => Promise<unknown>;
 
 export interface AgentEndpointContext extends OutboundContext {
+  /** Native Windows MCP children hold per-turn capabilities, separate from disk-based Linux instance tokens. */
+  nativeMcpSessions?(): { handleRequest(req: IncomingMessage, res: ServerResponse): boolean };
   /** #2305: an instance's reaction to a web chat message (FleetManager.reactToWebMessage). */
   reactToWebMessage?(instance: string, messageId: string, emoji: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }>;
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
@@ -137,6 +139,8 @@ function verifyInstanceToken(
   instance: string,
   provided: string | undefined,
 ): boolean {
+  // A Windows identity is admitted only by its active native MCP capability. A stale token file is not a fallback.
+  if (ctx.fleetConfig?.instances[instance]?.runtime === "windows") return false;
   if (!provided) return false;
   // instance name must be a safe filename component (allow Unicode, block traversal)
   if (!instance || instance.includes("/") || instance.includes("\\") || instance.includes("..")) return false;
@@ -178,6 +182,11 @@ export function handleAgentRequest(
   if (req.method !== "POST") {
     res.writeHead(405);
     res.end(JSON.stringify({ error: "Method not allowed" }));
+    return;
+  }
+
+  if (req.headers["x-agend-native-token"] !== undefined) {
+    if (!ctx.nativeMcpSessions?.().handleRequest(req, res)) refuseEarly(req, res, 401, "Native MCP capability is unavailable");
     return;
   }
 

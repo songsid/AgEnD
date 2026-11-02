@@ -3,6 +3,7 @@ import {
   NATIVE_PROVIDER_IDS, buildNativeInvocation, isNativeProviderId, nativeProvider,
   parseNativeAuthResult, parseNativeModels, parseNativeProviderEvent,
   validateNativeModel, validNativeSessionId, type NativeProviderId,
+  nativeMcpServerConfig, nativeProviderMcpSupported, type NativeMcpLaunch,
 } from "../src/windows-cli-providers.js";
 
 const sessionId = "12345678-1234-4321-abcd-123456789012";
@@ -10,6 +11,34 @@ const cwd = "J:\\Project\\Game";
 const prompt = '閱讀中文檔案，不執行：$(whoami) & "quoted"\nsecond line';
 const task = { cli: "codex", cwd, prompt, sandbox: "read-only" } as const;
 const parse = (cli: NativeProviderId, event: unknown) => parseNativeProviderEvent(cli, JSON.stringify(event));
+const mcp:NativeMcpLaunch={nodePath:"C:\\Node\\node.exe",helperPath:"\\\\wsl.localhost\\Ubuntu\\agend\\windows-native-mcp.js",connectionPath:"C:\\Temp\\private\\connection.json",configPath:"C:\\Temp\\private\\mcp.json",tools:["query_task"],serverName:"agend_native_aabbccddeeff"};
+
+describe("scoped per-run native MCP configuration",()=>{
+  it.each([undefined,sessionId])("adds Codex MCP root overrides before exec for resume %s without changing user config",resumeSessionId=>{
+    const plan=buildNativeInvocation(task,{mcp,resumeSessionId});
+    const exec=plan.args.indexOf("exec");
+    expect(plan.args.slice(0,exec)).toEqual(expect.arrayContaining(["-c",`mcp_servers.${mcp.serverName}.command=${JSON.stringify(mcp.nodePath)}`,`mcp_servers.${mcp.serverName}.args=${JSON.stringify([mcp.helperPath,"--connection-file",mcp.connectionPath])}`]));
+    expect(plan.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+    expect(plan.stdin).toBe(prompt);
+    expect(plan.args).toContain("read-only");if(resumeSessionId)expect(plan.args).toContain(resumeSessionId);
+  });
+  it("keeps Claude read-only builtins and only preapproves this private namespace's exact scoped tools",()=>{
+    const plan=buildNativeInvocation({...task,cli:"claude-code"},{mcp,resumeSessionId:sessionId});
+    expect(plan.args).toEqual(expect.arrayContaining(["--tools","Read,Glob,Grep","--strict-mcp-config","--mcp-config",mcp.configPath,"--allowedTools",`mcp__${mcp.serverName}__query_task`,"--resume",sessionId]));
+    expect(plan.args.join(" ")).not.toMatch(/bypass|dangerously|mcp__\*|Bash/);
+    const native=buildNativeInvocation({...task,cli:"claude-code",sandbox:"workspace-write"},{mcp});
+    expect(native.args).not.toContain("--strict-mcp-config");expect(native.args).not.toContain("--tools");
+    expect(nativeMcpServerConfig(mcp)).toEqual({mcpServers:{[mcp.serverName!]:{command:mcp.nodePath,args:[mcp.helperPath,"--connection-file",mcp.connectionPath]}}});
+  });
+  it("does not alter unsupported providers' global or project MCP configs",()=>{
+    for(const cli of NATIVE_PROVIDER_IDS){
+      expect(nativeProviderMcpSupported(cli)).toBe(cli==="codex"||cli==="claude-code");
+      if(!nativeProviderMcpSupported(cli))expect(()=>buildNativeInvocation({...task,cli,sandbox:"workspace-write"},{mcp,promptFile:"C:\\Temp\\prompt.txt"})).toThrow();
+    }
+    expect(()=>buildNativeInvocation(task,{mcp:{...mcp,helperPath:"C:\\Temp\\user-supplied.js"}})).toThrow(/MCP launch/);
+    expect(()=>buildNativeInvocation(task,{mcp:{...mcp,serverName:"evil.env"}})).toThrow(/MCP launch/);
+  });
+});
 
 describe("Windows native provider capabilities", () => {
   it("has the WSL provider scope and distinguishes native CLI from IDE launchers", () => {

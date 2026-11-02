@@ -43,6 +43,22 @@ let child: FakeChild;
 beforeEach(() => { vi.clearAllMocks(); child = new FakeChild(); vi.mocked(spawn).mockReturnValue(child as never); });
 async function launched() { await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(1)); }
 
+describe("trusted native execution metadata",()=>{
+  it("forwards a scoped MCP capability and task context only to the worker pipe",async()=>{
+    const service=new WindowsCliBridge(launcher),mcp={endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["query_task"]},context="trusted task context";
+    service.start(input,()=>true,{mcp,context});await launched();
+    expect(JSON.parse(child.stdin.read().toString())).toEqual({op:"run",task:input,mcp,context});
+    expect(JSON.stringify(service.list())).not.toContain(mcp.token);expect(JSON.stringify(service.get(input.requestId))).not.toContain(context);
+    child.send({type:"finished",code:1});child.close();
+  });
+  it("rejects a public MCP or context injection before starting a Windows process",()=>{
+    const service=new WindowsCliBridge(launcher);
+    expect(()=>service.start({...input,mcp:{endpoint:"http://evil.example/agent"}})).toThrow();
+    expect(()=>service.start({...input,context:"fake sender"})).toThrow();
+    expect(spawn).not.toHaveBeenCalled();
+  });
+});
+
 describe("managed Windows workspace transport", () => {
   const id=input.requestId, cwd=`C:\\Users\\Test\\.agend\\workspaces\\${id}`;
   it("creates a per-agent workspace through a UUID-only request without discovering a CLI", async () => {

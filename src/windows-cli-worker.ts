@@ -6,11 +6,12 @@ import { execFile, spawn } from "./child-process.js";
 import type { ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve, win32 } from "node:path";
+import { dirname, join, resolve, win32 } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeModel, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
+import { randomBytes } from "node:crypto";
+import { boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeMcpServerConfig, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeMcpConnection, validateNativeModel, type NativeMcpLaunch, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 
 const exec = promisify(execFile);
@@ -213,7 +214,7 @@ function readNativeModels(id: NativeCliId, version: string | null): NativeModelO
 async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, includeModels: boolean): Promise<{ row: NativeCliRow; executable: NativeCliExecutable | null }> {
   const provider = nativeProvider(id);
   const executable = await (options.find ?? findCli)(id);
-  const base = { id, supports: { ...provider.supports }, readOnlySupport: provider.readOnlySupport, permissionNote: provider.permissionNote, models: [] as NativeModelOption[] };
+  const base = { id, supports: { ...provider.supports,mcp:false }, readOnlySupport: provider.readOnlySupport, permissionNote: provider.permissionNote, models: [] as NativeModelOption[] };
   if (!executable) return { executable, row: { ...base, path: null, version: null, authenticated: null, runnable: false, reason: `${provider.name} CLI is not installed on Windows` } };
   const run = options.run ?? ((entry: NativeCliExecutable, args: string[]) => output(entry.command, [...entry.args, ...args]));
   const helpProbe = HELP_PROBES[id];
@@ -238,7 +239,8 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
     : !provider.supports.execution ? provider.reason : authenticated === false ? "Sign in to this Windows CLI before running a task" : undefined;
   const row: NativeCliRow = {
     ...base, path: executable.path, version: versionText,
-    authenticated, readOnlySupport, supports: { ...base.supports, execution: base.supports.execution && compatible && versionAvailable },
+    authenticated, readOnlySupport, supports: { ...base.supports, execution: base.supports.execution && compatible && versionAvailable,
+      mcp:provider.supports.mcp === true && compatible && versionAvailable && (id === "codex" ? help.text.includes("--config") : ["--mcp-config","--strict-mcp-config","--allowedTools"].every(flag => help.text.includes(flag))) },
     models, modelsSource: models.length ? id === "codex" ? "cli-cache" : id === "claude-code" ? "official-catalog" : "cli-list" : "unavailable",
     runnable: versionAvailable && compatible && provider.supports.execution && authenticated !== false,
     ...(reason ? { reason } : {}),
@@ -283,20 +285,36 @@ async function workerMain(): Promise<void> {
       }
       if (request.op !== "run") throw new Error("Unknown Windows worker operation");
       const input = validateNativeTask(request.task);
+      const mcp = request.mcp === undefined ? undefined : validateNativeMcpConnection(request.mcp);
+      if (request.context !== undefined && (typeof request.context !== "string" || request.context.length > 2000 || request.context.includes("\0"))) throw new Error("Invalid native task context");
       if (!existsSync(input.cwd) || !statSync(input.cwd).isDirectory()) throw new Error("Windows working directory does not exist");
       const { row, executable } = await probeNativeCli(input.cli, {}, false);
       if (!executable || !row.runnable) throw new Error(row.reason || "Windows CLI is not available");
+      if (mcp && !row.supports.mcp) throw new Error("Update this Windows CLI to use scoped AgEnD MCP tools");
       if (input.sandbox === "read-only" && !row.readOnlySupport) throw new Error("The installed Windows CLI cannot enforce the selected read-only policy");
       if (disconnected || stopping) { completed = true; finish({ type: "finished", code: null, cancelled: true }, 1); return; }
-      let tempDirectory: string | undefined, promptFile: string | undefined;
+      let tempDirectory: string | undefined, promptFile: string | undefined, connectionFile: string | undefined, mcpConfigFile: string | undefined;
+      const createdFiles:string[]=[];
       let code: number | null = null;
+      const prompt = request.context ? `${input.prompt}\n\nAgEnD task context:\n${request.context}` : input.prompt;
       try {
+        if (nativeProvider(input.cli).promptTransport === "file" || mcp) tempDirectory = mkdtempSync(join(tmpdir(), "agend-windows-cli-"));
         if (nativeProvider(input.cli).promptTransport === "file") {
-          tempDirectory = mkdtempSync(join(tmpdir(), "agend-windows-cli-"));
-          promptFile = join(tempDirectory, "prompt.txt");
-          writeFileSync(promptFile, input.prompt, { encoding: "utf8", mode: 0o600, flag: "wx" });
+          promptFile = join(tempDirectory!, "prompt.txt");
+          writeFileSync(promptFile, prompt, { encoding: "utf8", mode: 0o600, flag: "wx" });
+          createdFiles.push(promptFile);
         }
-        const invocation = buildNativeInvocation(input, { resumeSessionId: request.resumeSessionId, promptFile });
+        let launch:NativeMcpLaunch|undefined;
+        if (mcp) {
+          connectionFile = join(tempDirectory!,"connection.json");
+          mcpConfigFile = join(tempDirectory!,"mcp.json");
+          launch = {nodePath:process.execPath,helperPath:join(dirname(fileURLToPath(import.meta.url)),"windows-native-mcp.js"),connectionPath:connectionFile,configPath:mcpConfigFile,tools:mcp.tools,serverName:`agend_native_${randomBytes(6).toString("hex")}`};
+          writeFileSync(connectionFile,JSON.stringify(mcp),{encoding:"utf8",mode:0o600,flag:"wx"});
+          createdFiles.push(connectionFile);
+          writeFileSync(mcpConfigFile,JSON.stringify(nativeMcpServerConfig(launch)),{encoding:"utf8",mode:0o600,flag:"wx"});
+          createdFiles.push(mcpConfigFile);
+        }
+        const invocation = buildNativeInvocation({...input,prompt}, { resumeSessionId: request.resumeSessionId, promptFile,mcp:launch });
         child = spawn(executable.command, [...executable.args, ...invocation.args], { cwd: input.cwd, env: { ...nativeCliEnvironment(), ...invocation.env }, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
         child.stdin!.on("error", () => stop());
         child.stdout!.on("error", () => stop());
@@ -315,7 +333,7 @@ async function workerMain(): Promise<void> {
         code = await closed;
       } finally {
         // Only our exact prompt and empty directory; never recursively remove CLI-created files.
-        if (promptFile) { try { unlinkSync(promptFile); } catch { /* already removed or locked */ } }
+        for(const path of createdFiles) { try { unlinkSync(path); } catch { /* already removed or locked */ } }
         if (tempDirectory) { try { rmdirSync(tempDirectory); } catch { /* leave unexpected files intact */ } }
       }
       finish({ type: "finished", code, cancelled: stopping }, code === 0 && !stopping ? 0 : 1);

@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { getAgendHome } from "./paths.js";
 import { validWindowsDirectory } from "./windows-cli-worker.js";
 import { windowsBridgeFor, type WindowsCliBridge, type WindowsCliTask } from "./windows-cli.js";
-import { isNativeProviderId, nativeProvider, validateNativeModel, type NativeProviderId } from "./windows-cli-providers.js";
+import { isNativeProviderId, nativeProvider, validateNativeModel, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 export interface WindowsTurn { id: string; prompt: string; output: string; status: string; startedAt: number; finishedAt?: number; error?: string }
 export interface WindowsAgent {
@@ -18,7 +18,7 @@ export interface WindowsAgent {
   fleet_instance?: string;
 }
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
-export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void }
+export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string }
 interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string }> }
 const idPattern = /^[a-f0-9-]{36}$/i;
 const shortText = (value: unknown, limit: number): value is string => typeof value === "string" && value.length <= limit && !value.includes("\0");
@@ -182,6 +182,7 @@ export class WindowsAgents {
       return this.bridge.start({ requestId, cli: agent.cli, ...(agent.model ? { model: agent.model } : {}), cwd: agent.cwd, sandbox: agent.sandbox,
         prompt: agent.instructions ? `Agent instructions:\n${agent.instructions}\n\nUser task:\n${prompt}` : prompt }, authorized, {
         resumeSessionId: agent.threadId,
+        ...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),
         onSettled: task => { try { this.change(() => {
           const current = this.find(id), turn = current.turns.find(t => t.id === requestId)!;
           Object.assign(turn, { output: task.output, status: task.status, finishedAt: task.finishedAt, error: task.error });

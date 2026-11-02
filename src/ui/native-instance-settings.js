@@ -5,7 +5,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { ChipList, ModelSelect } from "./settings-dialogs.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { useWindowsCliCatalog } from "./windows-cli-catalog.js";
-import { tr } from "./agent-runtime.js";
+import { NativeAgendToolsHint, tr } from "./agent-runtime.js";
 register("nativeInstance", {
   "zh-TW": { fixed:"Runtime 與 CLI 隨此對話保留。", workspace:"此 Agent 的對話會沿用這個工作區。" },
   en: { fixed:"This conversation keeps its runtime and CLI.", workspace:"This agent's conversation keeps this workspace." },
@@ -35,6 +35,7 @@ export function NativeInstanceSettings({ name, inst, ctx, onClose }) {
       <div class="field"><label for="native-instance-model">${tn("model")}</label><${ModelSelect} id="native-instance-model" value=${form.model} onChange=${set("model")} backend=${inst.backend} instance=${name} runtime="windows" inherit=${tr("model")} /></div>
       <label class="field"><span>${tn("workingDir")}</span><input value=${inst.working_directory || ""} readOnly=${true} aria-readonly="true" /><small>${t("nativeInstance.workspace")}</small></label>
       <label class="field"><span>${tr("access")}</span><select value=${form.native_sandbox} onChange=${event => set("native_sandbox")(event.target.value)}><option value="read-only" disabled=${native?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select></label>
+      <${NativeAgendToolsHint} cli=${native} sandbox=${form.native_sandbox} />
       ${!ready && form.native_sandbox === "read-only" && native?.readOnlySupport === false ? html`<p class="note">${tr("noReadOnly")}</p>` : null}
       <label class="field"><span>${tn("systemPrompt")}</span><textarea rows="5" maxLength=${8000} value=${form.systemPrompt} onInput=${event => set("systemPrompt")(event.target.value)} /></label>
       <div class="field"><span>${tn("tags")}</span><${ChipList} items=${form.tags} onChange=${set("tags")} placeholder=${tn("tagPlaceholder")} label=${tn("tags")} /></div>

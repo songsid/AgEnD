@@ -38,7 +38,8 @@ One-off tasks in the Windows CLI settings section use an existing Windows
 directory, such as `C:\Projects\example`. Registered agents may leave their
 working directory empty, as described below.
 Read-only is the default where available: Codex uses its native sandbox, while
-Claude exposes only Read, Glob and Grep and disables MCP. Claude's restriction
+Claude exposes Read, Glob and Grep and, for registered agents, scoped AgEnD
+query tools. Other MCP servers are disabled in Claude's read-only mode. Claude's restriction
 is a tool policy, not an OS sandbox. Other CLIs require an explicit choice to
 use native CLI permissions; plan mode is not treated as proof of read-only access.
 No adapter adds a permission/sandbox bypass. The CLI retains its own approval policy
@@ -102,8 +103,9 @@ agent is blocked until the operator verifies Windows processes have stopped and
 explicitly unlocks it. Windows instances can join teams and be assigned tasks,
 schedules and incoming delegation through Fleet's durable delivery outbox.
 Completion is based on provider terminal events, and requested peer results
-return through the same correlation ID. Native agents do not yet receive an
-outbound AgEnD MCP tool transport. Attachments, terminal View/Log, raw terminal
+return through the same correlation ID. Compatible Codex and Claude Code agents
+also receive scoped AgEnD MCP tools for each execution, as described below.
+Attachments, terminal View/Log, raw terminal
 input and CLI control commands are unavailable and hidden in the shared UI.
 External channel binding is also unavailable; migration never creates topics or
 binds native agents to an existing bot's General channel.
@@ -118,15 +120,15 @@ and errors are shown without preventing the rest of the form from being filled
 in; Retry and Refresh models request the list again. Changing a CLI does not
 reuse a late response from the previous CLI.
 
-| Native CLI | Task and conversation adapter | Model choices |
-| --- | --- | --- |
-| Codex | Available; native read-only and workspace-write policies | The native account's `models_cache.json`; no credential file is read for this list |
-| Claude Code | Available; read-tool restriction or native CLI policy | Documented Claude choices, gated by installed CLI version |
-| Antigravity | Available; native CLI policy | The CLI's `models` listing |
-| Grok | Available; native CLI policy | The CLI's model listing, with auto-update disabled during the probe |
-| OpenCode | Available; native CLI policy | The CLI's `models` listing |
-| Muse | Available; native CLI policy | CLI default or a custom model ID; no machine-readable catalog is assumed |
-| Kiro CLI | Detection only; terminal JSON completion/resume protocol remains unverified | Hidden from the task-capable CLI picker; installing Kiro IDE does not install Kiro CLI |
+| Native CLI | Task and conversation adapter | AgEnD tool calls | Model choices |
+| --- | --- | --- | --- |
+| Codex | Available; native read-only and workspace-write policies | Per-turn scope, when the installed CLI supports launch configuration | The native account's `models_cache.json`; no credential file is read for this list |
+| Claude Code | Available; read-tool restriction or native CLI policy | Per-turn scope, when the installed CLI supports MCP configuration and tool filtering | Documented Claude choices, gated by installed CLI version |
+| Antigravity | Available; native CLI policy | Not provided | The CLI's `models` listing |
+| Grok | Available; native CLI policy | Not provided | The CLI's model listing, with auto-update disabled during the probe |
+| OpenCode | Available; native CLI policy | Not provided | The CLI's `models` listing |
+| Muse | Available; native CLI policy | Not provided | CLI default or a custom model ID; no machine-readable catalog is assumed |
+| Kiro CLI | Detection only; terminal JSON completion/resume protocol remains unverified | Not provided | Hidden from the task-capable CLI picker; installing Kiro IDE does not install Kiro CLI |
 
 An available adapter still requires an installed CLI with the expected headless
 protocol and a working account. The picker omits missing and unsupported CLIs;
@@ -146,6 +148,53 @@ The page shares model answers for 30 seconds. Native discovery uses the bridge's
 bypasses that native inventory cache. The WSL model endpoint remains a read of
 the coordinator's cached account catalog. Listing models does not send a model
 inference request or modify an agent's settings.
+
+## AgEnD tools for registered Windows agents
+
+Compatible Windows Codex and Claude Code agents can call AgEnD through an MCP
+adapter during their current execution. Discovery reports this separately from
+ordinary task support. The create and settings forms explain the available
+scope only after the installed CLI confirms MCP support; an older inventory
+without that capability does not imply support. Other native CLIs can still
+receive Fleet tasks and return results through the existing delivery flow.
+One-off tasks and the AI configuration draft helper do not receive an AgEnD
+MCP capability.
+
+The existing file-access selection also sets the maximum AgEnD tool scope:
+
+- **Read only:** `list_instances`, `describe_instance`, `delivery_status`, and
+  `task` with `list`, `get`, `mine` or `projects`. Task mutations and messages to
+  other agents are refused.
+- **Use native CLI permissions:** may additionally use `send_to_instance`,
+  `delegate_task`, `request_information`, `report_result` and task mutations.
+  The agent's existing tool profile and dashboard permissions still filter the
+  actual menu and every call. Selecting this mode does not grant all Fleet tools
+  or bypass the CLI's own approval policy.
+
+The scope belongs to one registered instance, native profile, CLI and execution
+request. The coordinator rechecks it for each tool call. Completion,
+cancellation, pause, removal or fleet shutdown closes the capability; a change
+that invalidates its instance/profile/CLI also refuses further calls. It expires
+after at most six minutes. Tightening file access or tool permissions takes
+effect during the turn; broadening file access does not broaden an already
+issued read-only capability.
+
+The Windows stdio adapter sends requests only to the coordinator's loopback
+agent endpoint, using a dedicated per-turn credential. It does not use the
+dashboard cookie, browser token or public gateway. Connection details live in a
+temporary per-turn file that the worker removes when the execution ends; user
+and project CLI configuration files are not rewritten, and the credential is
+not placed in command arguments or environment variables.
+
+Codex retains separately configured user MCP servers under its normal CLI
+policy; the AgEnD query limit applies to this AgEnD adapter. Claude's read-only
+launch loads only the scoped AgEnD server and its read tools. In native-permission
+mode, Claude can retain its separately configured MCP servers under its own
+policy.
+
+The shared native execution slot still permits one task at a time. A Windows
+agent that queues work for another Windows agent should finish its own turn so
+the recipient can run; the native tool set has no blocking wait-for-peer tool.
 
 ## Execution and limits
 
@@ -171,9 +220,9 @@ One-off task status/output is held in memory (the newest 20 tasks); it is separa
 from Fleet's durable instance deliveries. Restarting AgEnD loses one-off task
 history; registered agents retain their runtime state and shared chat history.
 This runtime has no device leases, serial-port broker, GUI automation or
-automatic recovery of interrupted tasks. Incoming Fleet delegation is supported,
-but a native CLI cannot initiate AgEnD tool calls until an outbound AgEnD MCP
-transport is provided.
+automatic recovery of interrupted tasks. Incoming Fleet delegation is supported;
+outbound AgEnD tool calls are limited to the compatible Codex and Claude Code
+adapters and the scopes described above.
 Tasks can use tools the native CLI can already access, within its own policy.
 Only administrator dashboard sessions or the local operator header credential
 can use the endpoints. Guest/read sessions and the managed public gateway are
@@ -190,7 +239,7 @@ restarts. For example:
 ```sh
 npx tsc --noEmit
 npm run typecheck:tests
-npx vitest run tests/windows-cli.test.ts tests/windows-cli-api.test.ts tests/windows-agents.test.ts tests/windows-agent-ui.test.ts tests/native-instance-api.test.ts tests/native-runtime-web-integration.test.ts tests/fleet-windows-runtime.test.ts tests/native-model-catalog.test.ts tests/runtime-model-picker.test.ts tests/unified-runtime-ui.test.ts tests/native-chat-history.test.ts
+npx vitest run tests/windows-cli.test.ts tests/windows-cli-api.test.ts tests/windows-agents.test.ts tests/windows-agent-ui.test.ts tests/native-instance-api.test.ts tests/native-runtime-web-integration.test.ts tests/fleet-windows-runtime.test.ts tests/native-model-catalog.test.ts tests/runtime-model-picker.test.ts tests/unified-runtime-ui.test.ts tests/native-chat-history.test.ts tests/native-mcp-ui.test.ts
 ```
 
 On a Windows host using Node 24's experimental global navigator, set

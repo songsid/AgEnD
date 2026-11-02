@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
-import { parseNativeProviderEvent, type NativeProviderId } from "./windows-cli-providers.js";
+import { parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 const exec = promisify(execFile);
 export interface WindowsCliProbe { clis: NativeCliRow[]; home: string }
@@ -15,7 +15,7 @@ export interface WindowsCliTask {
   startedAt: number; finishedAt?: number; output: string; error?: string;
   threadId?: string; outcomeConfirmed?: boolean;
 }
-export interface WindowsRunOptions { resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void }
+export interface WindowsRunOptions { resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string }
 export interface WindowsTransport { executable: string; args: string[] }
 export type WindowsLauncher = () => Promise<WindowsTransport>;
 const MAX_TASKS = 20;
@@ -104,6 +104,8 @@ export class WindowsCliBridge {
   }
   start(value: unknown, authorized: () => boolean = () => true, options: WindowsRunOptions = {}): WindowsCliTask {
     const input = validateNativeTask(value);
+    if (options.mcp) options = {...options,mcp:validateNativeMcpConnection(options.mcp)};
+    if (options.context !== undefined && (typeof options.context !== "string" || options.context.length > 2000 || options.context.includes("\0"))) throw new Error("Invalid native task context");
     const old = this.tasks.get(input.requestId);
     if (old) {
       if (JSON.stringify(old.input) !== JSON.stringify(input)) throw new Error("requestId already belongs to another task");
@@ -204,7 +206,7 @@ export class WindowsCliBridge {
           if (finished) this.active = null;
           resolve();
         });
-        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}) })}\n`);
+        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}) })}\n`);
       });
     } catch (e) { task.error = e instanceof Error ? e.message : "Windows CLI launch failed"; task.status = "failed"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; }
     finally { try { options.onSettled?.({ ...task }); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }

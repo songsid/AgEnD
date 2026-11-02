@@ -21,6 +21,24 @@ register("runtime", {
   "zh-TW": { loadingClis:"正在載入可用的 CLI…", directoryHint:"留空時，AgEnD 會自動建立獨立工作區", nameHint:"例如：通用助手" },
   en: { loadingClis:"Loading available CLIs…", directoryHint:"Leave empty for a separate workspace created by AgEnD", nameHint:"For example: General assistant" },
 });
+register("runtime", {
+  "zh-TW": {
+    agendQueries:"AgEnD 工具：唯讀模式可查詢 Agent、任務與派送狀態。",
+    agendActions:"AgEnD 工具：可用的查詢、訊息、派工與任務操作，依 Agent 的工具權限決定。",
+    agendUnavailable:"此 CLI 尚未支援呼叫 AgEnD 工具，仍可接收 Fleet 派工。",
+  },
+  en: {
+    agendQueries:"AgEnD tools: read-only mode can query agents, tasks and delivery status.",
+    agendActions:"AgEnD tools: queries, messaging, delegation and task actions depend on this agent's tool permissions.",
+    agendUnavailable:"This CLI cannot call AgEnD tools yet. It can still receive Fleet tasks.",
+  },
+});
+/** Only advertise the capability confirmed by the installed CLI, not its product name. */
+export function NativeAgendToolsHint({ cli, sandbox }) {
+  const supported = cli?.supports?.mcp;
+  if (supported !== true && supported !== false) return null;
+  return html`<p class="note native-agend-tools">${tr(!supported ? "agendUnavailable" : sandbox === "read-only" ? "agendQueries" : "agendActions")}</p>`;
+}
 export function RuntimePicker({ value, onChange, windowsEnabled, disabled, legend = tr("choose") }) {
   return html`<fieldset class="agent-runtime-picker" disabled=${disabled}><legend>${legend}</legend><div>${["wsl","windows"].map(runtime => html`<label key=${runtime} class=${`agent-runtime-choice${value === runtime ? " selected" : ""}`}><input type="radio" name="agent-runtime" value=${runtime} checked=${value === runtime} disabled=${runtime === "windows" && !windowsEnabled} onChange=${() => onChange(runtime)} /><${Icon} name=${runtime === "windows" ? "view" : "code"} size=${22} /><span><strong>${tr(runtime)}</strong><small>${tr(runtime === "windows" && !windowsEnabled ? "disabled" : `${runtime}Hint`)}</small></span></label>`)}</div></fieldset>`;
 }

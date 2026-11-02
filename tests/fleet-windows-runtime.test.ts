@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FleetWindowsRuntime } from "../src/fleet-windows-runtime.js";
+import { FleetWindowsRuntime, type FleetWindowsRuntimeHost } from "../src/fleet-windows-runtime.js";
 import { WindowsAgents } from "../src/windows-agents.js";
 import { nativeInstanceName } from "../src/native-instance-registry.js";
 import { WebChatHistory } from "../src/web-chat-history.js";
@@ -17,7 +17,7 @@ const roots:string[]=[];
 const id="12345678-1234-4321-abcd-123456789012", thread="12345678-1234-4321-abcd-123456789013";
 beforeEach(()=>vi.stubEnv("AGEND_WINDOWS_CLI","1"));
 afterEach(()=>{vi.unstubAllEnvs();for(const dir of roots.splice(0)){if(!resolve(dir).startsWith(resolve(tmpdir())))throw Error("Unsafe scratch path");rmSync(dir,{recursive:true,force:true});}});
-function fixture() {
+function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
   const home=mkdtempSync(join(tmpdir(),"agend-native-runtime-"));roots.push(home);
   const tasks=new Map<string,WindowsCliTask>(), callbacks=new Map<string,WindowsRunOptions>();let active=false;
   const start=vi.fn((input:NativeTaskInput,_auth:()=>boolean,options:WindowsRunOptions)=>{
@@ -31,7 +31,7 @@ function fixture() {
   const fleet={defaults:{},instances:{linux:{working_directory:"/tmp/linux"}},teams:{}} as unknown as FleetConfig;
   const events:Array<{event:string;data:any}>=[];
   const save=vi.fn(), warn=vi.fn(), removed=vi.fn();let stopping=false;
-  const runtime=new FleetWindowsRuntime({owner:{dataDir:home},fleet:()=>fleet,save,warn,removed,stopping:()=>stopping,history,emit:(event,data)=>{
+  const runtime=new FleetWindowsRuntime({owner:{dataDir:home},fleet:()=>fleet,save,warn,removed,openMcp,stopping:()=>stopping,history,emit:(event,data)=>{
     events.push({event,data});if(event==="message")history.record(data as any);
   }},{store,bridge});
   const create=()=>runtime.create({name:"Windows helper",cli:"codex",sandbox:"read-only",instructions:"Use native tools",tags:["tools"]},()=>true);
@@ -40,6 +40,30 @@ function fixture() {
 }
 
 describe("Fleet Windows runtime adapter",()=>{
+  it("grants trusted per-turn MCP without persisting it, keeps retries on the original lease, and revokes on completion",async()=>{
+    const close=vi.fn(),connection={endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["task"]};
+    let current:()=>boolean=()=>false;
+    const openMcp=vi.fn((_name:string,_id:string,_sandbox:string,valid:()=>boolean)=>{current=valid;return {connection,close,reportedCorrelations:()=>["peer-correlation"]};});
+    const f=fixture(openMcp),{name,agent}=await f.create();
+    const pending=f.runtime.execute(name,{requestId:id,content:"Question",meta:{source:"web",from_instance:"linux",correlation_id:"peer-correlation",requires_reply:"true"}});
+    expect(current()).toBe(true);expect(openMcp).toHaveBeenCalledTimes(1);
+    expect(f.start.mock.calls[0][2]).toMatchObject({mcp:connection,context:expect.stringContaining("peer-correlation")});
+    expect(JSON.stringify(f.store.get(agent.id))).not.toContain(connection.token);
+    expect(f.store.get(agent.id).turns[0].prompt).toBe("Question");
+    await f.runtime.deliver(name,{requestId:id,content:"Question",meta:{source:"web"}});
+    expect(openMcp).toHaveBeenCalledTimes(1);expect(close).not.toHaveBeenCalled();
+    f.settle();await expect(pending).resolves.toMatchObject({reportedCorrelationIds:["peer-correlation"]});
+    expect(close).toHaveBeenCalledTimes(1);expect(current()).toBe(false);
+  });
+  it("revokes a native MCP lease immediately on cancel and closes a grant if launch fails",async()=>{
+    const close=vi.fn(),openMcp=vi.fn(()=>({connection:{endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["task"]},close,reportedCorrelations:()=>[]}));
+    const f=fixture(openMcp),{name}=await f.create();
+    await f.runtime.deliver(name,{requestId:id,content:"Question",meta:{source:"web"}});
+    f.runtime.cancel(name);expect(close).toHaveBeenCalledTimes(1);f.settle();
+    f.start.mockImplementationOnce(()=>{throw Error("Launch failed");});
+    await expect(f.runtime.deliver(name,{requestId:thread,content:"Another question",meta:{source:"web"}})).rejects.toThrow("Launch failed");
+    expect(close).toHaveBeenCalledTimes(3);
+  });
   it("creates an ordinary runtime-tagged Fleet instance and rolls both identity stores back when config save fails",async()=>{
     const f=fixture();f.save.mockImplementationOnce(()=>expect(f.store.list()[0].fleet_instance).toBeUndefined());
     const made=await f.create();
@@ -162,6 +186,18 @@ describe("Fleet native routing and durable lane",()=>{
   it("uses the manager generation only while the shared native slot can claim work",()=>{
     const {fm,native}=manager();expect(fm.deliveryBootId("win")).toBe("manager-boot");native.available.mockReturnValue(false);expect(fm.deliveryBootId("win")).toBeNull();
   });
+  it("admits native outbound deliveries only from a live MCP generation, while keeping Linux generation checks",()=>{
+    const {fm,outbox}=manager(),hasActive=vi.fn(()=>true);fm.nativeMcpStore={hasActive};
+    outbox.admit.mockReturnValue({inserted:false,delivery:{deliveryId:id,state:"queued",kind:"fleet_inbound"}});
+    const input={operationId:id,sourceInstance:"win",targetInstance:"linux",kind:"fleet_inbound",correlationId:"cid",payload:{content:"Work"}};
+    expect(fm.getDaemonBootId("win")).toBe("manager-boot");
+    expect(fm.admitDurableDelivery(input).deliveryId).toBe(id);
+    expect(outbox.admit).toHaveBeenCalledWith(expect.objectContaining({sourceDaemonBootId:"manager-boot"}));
+    hasActive.mockReturnValue(false);expect(()=>fm.admitDurableDelivery(input)).toThrow("no longer current");
+    fm.daemons.set("linux",{bootId:"linux-boot"});
+    expect(fm.getDaemonBootId("linux")).toBe("linux-boot");
+    expect(()=>fm.admitDurableDelivery({...input,sourceInstance:"linux",sourceDaemonBootId:"old-linux-boot"})).toThrow("no longer current");
+  });
   it("never inherits an external chat channel or Linux status watcher for native agents",async()=>{
     const {fm}=manager(), send=vi.fn();fm.adapter={sendText:send};fm.emitSseEvent=vi.fn();
     expect(fm.getAdapterForInstance("win")).toBeNull();expect(fm.getGroupIdForInstance("win")).toBe("");expect(fm.getInstanceAdapterId("win")).toBeUndefined();
@@ -223,6 +259,12 @@ describe("Fleet native routing and durable lane",()=>{
     expect(outbox.complete).toHaveBeenCalledWith(id,"manager-boot",1,"delivered","completed");
     expect(outbox.admit).toHaveBeenCalledWith(expect.objectContaining({sourceInstance:"win",targetInstance:"linux",correlationId:"peer-request",payload:expect.objectContaining({content:"native result",meta:expect.objectContaining({requires_reply:"false"})})}));
     expect(fm.scheduleDeliveryOutboxPump).toHaveBeenCalled();
+  });
+  it("does not emit a second peer result after the native agent has explicitly reported through MCP",async()=>{
+    const {fm,native,outbox}=manager();
+    native.execute.mockImplementationOnce(async(_name:any,_payload:any,opts:any)=>{opts.beforeStart();return {status:"completed",output:"Already reported",outcomeConfirmed:true,reportedCorrelationIds:["peer-request"]};});
+    await fm.dispatchDurableDelivery({deliveryId:id,targetDaemonBootId:"manager-boot",attemptNo:1,targetInstance:"win",sourceInstance:"linux",kind:"fleet_inbound",correlationId:"peer-request",payload:{content:"question",meta:{requires_reply:"true"}}});
+    expect(outbox.complete).toHaveBeenCalledWith(id,"manager-boot",1,"delivered","completed");expect(outbox.admit).not.toHaveBeenCalled();
   });
   it("fails unsupported terminal jobs without launching a native process, and keeps uncertain results non-retriable",async()=>{
     const {fm,native,outbox}=manager(), row={deliveryId:id,targetDaemonBootId:"manager-boot",attemptNo:1,targetInstance:"win",sourceInstance:"linux",kind:"raw_paste",payload:{content:"raw"}};
