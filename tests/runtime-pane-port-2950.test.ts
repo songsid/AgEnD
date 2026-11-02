@@ -41,7 +41,7 @@ it('keeps edits closed and pasteText submits exactly once without Enter retry',a
 it('observation is blind offline and rejects output from another launch',async()=>{
  const f=await fixture(),owned=f.port.ownedSnapshot()!,observation=new RuntimePaneObservation(f.endpoint,()=>f.port.ownedSnapshot(),0);clean.push(()=>observation.stop());observation.start();await observation.registerWindow(owned.paneId);
  f.emit({type:'pane',machineId:f.endpoint.machineId,pane:{...owned,launchId:randomUUID()}});expect(observation.isIdle(owned.paneId)).toBe(false);
- f.emit({type:'pane',machineId:f.endpoint.machineId,pane:owned});expect(observation.isIdle(owned.paneId)).toBe(true);f.offline();expect(observation.isIdle(owned.paneId)).toBe(false);expect(observation.getLastOutputAt(owned.paneId)).toBeUndefined();
+ f.emit({type:'pane',machineId:f.endpoint.machineId,pane:owned});expect(observation.isIdle(owned.paneId)).toBe(true);f.emit({type:'machine',machineId:f.endpoint.machineId});expect(observation.isIdle(owned.paneId)).toBe(true);f.offline();expect(observation.isIdle(owned.paneId)).toBe(false);expect(observation.getLastOutputAt(owned.paneId)).toBeUndefined();
 });
 
 it('host facade retains handle identity and exposes no remote PID as a local signal target',async()=>{

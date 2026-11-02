@@ -70,3 +70,14 @@ it('queued input rechecks the client fence after pending parser work',async()=>{
  let current=true;let checks=0;const pending=host.request({action:'key',paneId:pane.paneId,launchId:pane.launchId,key:'Enter',sequence:1,operationId:randomUUID()},()=>{checks++;return current;});
  await vi.waitFor(()=>expect(checks).toBeGreaterThanOrEqual(2));current=false;release();await expect(pending).rejects.toThrow();expect(p.write).not.toHaveBeenCalled();
 });
+it('an upstream reconnect epoch cancels an old queued write on the same local host connection',async()=>{
+ const f=await setup();let epoch=randomUUID();
+ const client=await RuntimePaneLink.attach(f.service.descriptor,{online:()=>true,maxAgents:()=>4,epoch:()=>epoch});cleanup.push(()=>client.stop());
+ const pane=await client.request({action:'open',launch:f.launch(),operationId:randomUUID()})as RuntimePaneSnapshot;
+ let release!:()=>void;const parser=new Promise<void>(done=>{release=done;});vi.spyOn(RuntimePaneScreen.prototype,'write').mockImplementationOnce(()=>parser);
+ f.processes[0].emit('held output');const called=vi.spyOn(RuntimePaneHost.prototype,'request');
+ const pending=client.request({action:'key',paneId:pane.paneId,launchId:pane.launchId,key:'Enter',sequence:1,operationId:randomUUID()});
+ await vi.waitFor(()=>expect(called).toHaveBeenCalled());epoch=randomUUID();client.connectionChanged();
+ // The list reply proves the newer lease frame has crossed the ordered socket before we release the parser.
+ await client.request({action:'list'});release();await expect(pending).rejects.toThrow('refused');expect(f.processes[0].write).not.toHaveBeenCalled();
+});

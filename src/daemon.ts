@@ -10815,10 +10815,10 @@ export class Daemon extends EventEmitter {
    * Routes to the channel adapter via MessageBus.
    */
   /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
-  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string): boolean }): Promise<{ result: unknown; error?: string }> {
-    if (!lease.current() || !lease.allowed(input.tool) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string }> {
+    if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
     const fence = this.launchFenceEpoch;
-    const current = (): boolean => lease.current() && lease.allowed(input.tool) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
+    const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
     return new Promise(resolve => {
       let settled = false;
       const finish = (value: { result: unknown; error?: string }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
@@ -10826,14 +10826,22 @@ export class Daemon extends EventEmitter {
       timer.unref?.();
       try {
         this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
-          current, // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
+          current,
+          dispatch: (tool, args, respond) => {
+            if (!current()) { respond(null, "Pane tool permission was revoked before dispatch"); return true; }
+            const dispatched = lease.dispatch?.(tool, args);
+            if (!dispatched) return false;
+            void dispatched.then(result => respond(result), () => respond(null, "Pane tool operation was refused"));
+            return true;
+          },
+          // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
           send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}) }); return false; },
         });
       } catch { finish({ result: null, error: "Pane tool operation failed" }); }
     });
   }
 
-  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean }): void {
+  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }): void {
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
@@ -10906,6 +10914,9 @@ export class Daemon extends EventEmitter {
         this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
       }
     };
+
+    // Native Fleet/task operations carry their lease to the existing dispatcher mutation admission points.
+    if (peer?.dispatch?.(tool, args, respond)) return;
 
     // Repo checkout — handled locally in daemon (no fleet-manager)
     if (tool === "checkout_repo") {

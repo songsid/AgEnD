@@ -146,8 +146,8 @@ export class RuntimePaneHost {
       return structuredClone(record.snapshot);
     }
     if (request.sequence !== record.snapshot.commandSequence + 1) throw Error("Pane input sequence is stale or has a gap");
-    if (record.lastCommand?.state === "prepared") throw Error("Previous pane input outcome is unknown");
-    if (record.snapshot.state !== "running") throw Error("Pane process is not confirmed running");
+    if (record.lastCommand?.state === "prepared" && request.action !== "close") throw Error("Previous pane input outcome is unknown");
+    if (record.snapshot.state !== "running" && request.action !== "close") throw Error("Pane process is not confirmed running");
     record.snapshot.commandSequence = request.sequence;
     record.lastCommand = { id: request.operationId, digest, state: "prepared" };
     // Durable before input: a crash after this write must hold, never duplicate Enter.

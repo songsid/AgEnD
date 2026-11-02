@@ -67,7 +67,7 @@ export class RuntimePanePort implements Pane {
     return this.serialize(async () => {
       try {
         if (!this.endpoint.online() || !this.record.snapshot || this.record.pending) throw Error("Pane input needs reconciliation");
-        const request = make(this.record.snapshot);
+        const request = validateRuntimePaneRequest(make(this.record.snapshot));
         if (!("operationId" in request) || !("sequence" in request) || !("paneId" in request)) throw Error("Expected pane mutation");
         this.record.pending = { action: "reconcile", paneId: request.paneId, launchId: request.launchId,
           operationId: request.operationId, sequence: request.sequence, digest: runtimeJobDigest(request) }; this.save();
@@ -139,12 +139,18 @@ export class RuntimePaneObservation extends EventEmitter implements PaneObservat
   private resetAt = Date.now();
   private last = new Map<string, number>();
   private windows = new Set<string>();
+  private wasOnline = false;
   constructor(private endpoint: PaneEndpoint, private owned: (id: string) => RuntimePaneSnapshot | null, private idleMs = 300) { super(); }
   start(): void {
     if (this.remove) return;
+    this.wasOnline = this.endpoint.online();
     this.remove = this.endpoint.subscribe(event => {
       if (event.machineId !== this.endpoint.machineId) return;
-      if (event.type === "machine") { this.resetAt = Date.now(); this.last.clear(); return; }
+      if (event.type === "machine") {
+        const online = this.endpoint.online();
+        if (online !== this.wasOnline) { this.wasOnline = online; this.resetAt = Date.now(); this.last.clear(); }
+        return;
+      }
       if (event.type !== "pane" || !event.pane || !this.windows.has(event.pane.paneId)) return;
       const expected = this.owned(event.pane.paneId);
       if (!expected || expected.launchId !== event.pane.launchId || expected.hostBootId !== event.pane.hostBootId || expected.agentId !== event.pane.agentId) return;
