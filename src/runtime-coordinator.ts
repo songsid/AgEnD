@@ -287,7 +287,12 @@ export class RuntimeCoordinator {
       if (!record(value.task) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1) throw Error("Invalid runtime task event");
       const taskValue = value.task;
       const command = this.state.commands.find(command => command.id === taskValue.id && command.machineId === connection.machineId && command.operation === "run");
-      if (!command) throw Error("Runtime task does not belong to this machine");
+      if (!command) {
+        // #2945 review: a reconnecting runtime republishes what it retained; a run already settled and compacted here
+        // is acknowledged by its tombstone and changes nothing. An unknown id, or another machine's, still closes.
+        if (this.tombstoned(connection.machineId, taskValue.id)) return;
+        throw Error("Runtime task does not belong to this machine");
+      }
       const task = this.validateTask(command, value.task);
       if ((value.seq as number) <= command.seq) return;
       if (command.task && terminal(command.task) && !terminal(task)) throw Error("Runtime task cannot restart");
@@ -296,7 +301,10 @@ export class RuntimeCoordinator {
     if (value.type === "response") {
       if (!text(value.id, 128) || typeof value.ok !== "boolean") throw Error("Invalid runtime response");
       const pending = this.pending.get(value.id), command = this.state.commands.find(command => command.id === value.id);
-      if (!command || command.machineId !== connection.machineId) throw Error("Runtime response does not belong to this machine");
+      if (!command || command.machineId !== connection.machineId) {
+        if (!command && this.tombstoned(connection.machineId, value.id)) return;
+        throw Error("Runtime response does not belong to this machine");
+      }
       if (!pending || pending.generation !== connection.generation) return;
       this.pending.delete(value.id); clearTimeout(pending.timer);
       try {
@@ -336,6 +344,9 @@ export class RuntimeCoordinator {
     }
     throw Error("Unknown runtime message");
   }
+  private tombstoned(machineId: string, id: unknown): boolean {
+    return typeof id === "string" && this.state.tombstones!.some(row => row.id === id && row.machineId === machineId);
+  }
   /** M-2239 P2-1: settled commands to tombstones (see COMMAND_KEEP_MS); never a pending, uncertain or unconfirmed one. */
   private compact(): void {
     const now = this.now();
@@ -345,15 +356,19 @@ export class RuntimeCoordinator {
     const excess = this.state.commands.length - drop.size - COMMAND_SOFT_CAP;
     if (excess > 0) for (const command of this.state.commands.filter(command => settled(command) && !drop.has(command)).sort((a, b) => a.createdAt - b.createdAt).slice(0, excess)) drop.add(command);
     if (!drop.size) return;
+    // Room for new tombstones without passing TOMBSTONE_CAP (what the constructor reads back, #2945 review): old ones
+    // past TOMBSTONE_KEEP_MS give way, oldest first; a younger one never does. Commands beyond that room stay as they
+    // are — still refused by id from the journal — until room frees up.
     const tombstones = this.state.tombstones!;
-    for (const command of drop) tombstones.push({ id: command.id, machineId: command.machineId, digest: command.digest, at: now });
-    this.state.commands = this.state.commands.filter(command => !drop.has(command));
-    if (tombstones.length > TOMBSTONE_CAP) {
-      // Oldest first, and only those past TOMBSTONE_KEEP_MS: a younger tombstone is never given up for space.
-      const evictable = tombstones.filter(row => now - row.at > TOMBSTONE_KEEP_MS).sort((a, b) => a.at - b.at).slice(0, tombstones.length - TOMBSTONE_CAP);
-      const gone = new Set(evictable);
-      this.state.tombstones = tombstones.filter(row => !gone.has(row));
-    }
+    const evictable = tombstones.filter(row => now - row.at > TOMBSTONE_KEEP_MS).sort((a, b) => a.at - b.at);
+    const room = TOMBSTONE_CAP - tombstones.length + evictable.length;
+    const moved = [...drop].sort((a, b) => a.createdAt - b.createdAt).slice(0, Math.max(0, room));
+    if (!moved.length) return;
+    const gone = new Set(evictable.slice(0, Math.max(0, tombstones.length + moved.length - TOMBSTONE_CAP)));
+    const movedSet = new Set(moved);
+    this.state.tombstones = [...tombstones.filter(row => !gone.has(row)),
+      ...moved.map(command => ({ id: command.id, machineId: command.machineId, digest: command.digest, at: now }))];
+    this.state.commands = this.state.commands.filter(command => !movedSet.has(command));
     this.save();
   }
   task(id: string): WindowsCliTask | null { const task = this.state.commands.find(command => command.id === id && command.operation === "run")?.task; return task ? structuredClone(task) : null; }

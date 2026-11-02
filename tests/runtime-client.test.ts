@@ -84,6 +84,27 @@ describe("outbound runtime with the real coordinator protocol", () => {
     await vi.waitFor(() => expect(f.state.hub.task(task.requestId)?.output).toBe("after reconnect"));
     expect(f.bridge.launches).toBe(1);
   });
+  it("M-2239 P2-1 (#2945 review): a client that reconnects with the snapshot of a run since compacted stays connected and reruns nothing", async () => {
+    let now = Date.now();
+    const f = await fixture({ now: () => now }), task = input();
+    await f.state.hub.call(f.machineId, "run", { task });
+    f.bridge.complete(task.requestId);
+    await vi.waitFor(() => expect(f.state.hub.task(task.requestId)?.status).toBe("completed"));
+    now += 8 * 24 * 3_600_000;
+    await f.state.hub.call(f.machineId, "probe", { force: true });          // compacts the settled run
+    expect(f.state.hub.task(task.requestId)).toBeNull();
+    // The runtime restarts with its retained store and republishes the completed job on welcome.
+    await f.client.stop();
+    const again = new RuntimeClient({ store: new RuntimeClientStore(f.store.directory), bridge: f.bridge, reconnectMs: 25, disconnectGraceMs: 500, pollMs: 10 });
+    clients.push(again); await again.start();
+    await vi.waitFor(() => expect(again.online()).toBe(true));
+    await new Promise(done => setTimeout(done, 300));
+    expect(again.online()).toBe(true);
+    expect(f.state.hub.machine(f.machineId)?.status).toBe("online");
+    expect(f.bridge.launches).toBe(1);
+    // Still refused, by its tombstone, if asked to run again.
+    await expect(f.state.hub.call(f.machineId, "run", { task })).rejects.toThrow(/compacted/);
+  });
   it("cancels only the named active execution and confirms the terminal snapshot", async () => {
     const f = await fixture(), task = input(); await f.state.hub.call(f.machineId, "run", { task });
     expect(await f.state.hub.call(f.machineId, "cancel", { runId: task.requestId })).toMatchObject({ id: task.requestId, status: "cancelled", outcomeConfirmed: true });

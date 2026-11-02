@@ -13,6 +13,8 @@ const MAX_JOBS = 128;
  */
 const MAX_IDS = 65_536;
 const ID_KEEP_MS = 30 * 24 * 3_600_000;
+/** Kept free below MAX_STORE_BYTES when a job is accepted: its own later updates (≤ 64 KiB characters of output, UTF-8). */
+const BYTE_HEADROOM = 512 * 1024;
 const MAX_STORE_BYTES = 12 * 1024 * 1024;
 const ID = /^[A-Za-z0-9-]{16,80}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -87,6 +89,34 @@ export class RuntimeClientStore {
     return raw as unknown as Ledger;
   }
   private save(): void { atomic(this.file, this.data); }
+  /**
+   * #2945 review: the byte budget, not only the id count. Before a new job is saved the ledger must fit MAX_STORE_BYTES
+   * with BYTE_HEADROOM left for that job's own updates (its output is bounded at 64 KiB characters). Room comes first
+   * from settled job snapshots (finished, confirmed — never the new one, an uncertain or an unfinished one), oldest
+   * first; then from replay ids past ID_KEEP_MS with no snapshot. False when even that does not make room.
+   */
+  private fitBytes(newId: string): boolean {
+    const budget = MAX_STORE_BYTES - BYTE_HEADROOM;
+    let size = Buffer.byteLength(JSON.stringify(this.data));
+    if (size <= budget) return true;
+    const jobs = Object.values(this.data.jobs).filter(row => row.task.id !== newId && row.task.finishedAt && !row.uncertain && row.task.outcomeConfirmed !== false)
+      .sort((a, b) => a.task.startedAt - b.task.startedAt);
+    for (const row of jobs) {
+      if (size <= budget) break;
+      size -= Buffer.byteLength(JSON.stringify(row)) + Buffer.byteLength(JSON.stringify(row.task.id)) + 2;
+      delete this.data.jobs[row.task.id];
+    }
+    if (size > budget) {
+      const now = this.now(), at = this.data.usedAt ?? {};
+      const old = Object.keys(this.data.used).filter(id => !this.data.jobs[id] && now - (at[id] ?? 0) > ID_KEEP_MS).sort((a, b) => (at[a] ?? 0) - (at[b] ?? 0));
+      for (const id of old) {
+        if (size <= budget) break;
+        size -= Buffer.byteLength(JSON.stringify(id)) * 2 + 64 + 2 + (at[id] !== undefined ? String(at[id]).length + 2 : 0);
+        delete this.data.used[id]; delete at[id];
+      }
+    }
+    return Buffer.byteLength(JSON.stringify(this.data)) <= budget;
+  }
   /** Oldest first; only past ID_KEEP_MS and with no job snapshot. An id from an older ledger (no time) counts as oldest. */
   private evictTombstones(): void {
     const now = this.now(), at = this.data.usedAt ?? {};
@@ -117,6 +147,7 @@ export class RuntimeClientStore {
       if (!oldest) { this.data = before; throw new Error("Runtime snapshot capacity reached"); }
       delete this.data.jobs[oldest.task.id];
     }
+    if (!this.fitBytes(task.id)) { this.data = before; throw new Error("Runtime state limit reached: every retained execution is unsettled or younger than 30 days"); }
     try { this.save(); } catch (error) { this.data = before; throw error; }
     return { duplicate: false, job: structuredClone(job) };
   }
