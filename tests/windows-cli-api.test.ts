@@ -113,7 +113,7 @@ describe("Windows CLI discovery refresh API", () => {
   });
   it("#2937 review: hands discovery the request's live authorization check", async () => {
     const req = request("POST",{force:true}), res = response(req), ctx: WindowsCliApiContext = {webToken:token}; req.url = probeUrl.pathname;
-    const bridge = new WindowsCliBridge(async () => { throw new Error("tests never reach Windows"); }); let check!: () => boolean;
+    const bridge = new WindowsCliBridge(noWindows); let check!: () => boolean;
     vi.spyOn(bridge,"probe").mockImplementation(async (_options, authorized) => { check = authorized!; return value; });
     handleWindowsCliRequest(req,res,probeUrl,ctx,bridge);
     await vi.waitFor(() => expect(res.status).toBe(200));
