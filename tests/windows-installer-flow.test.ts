@@ -17,6 +17,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { registerExecutableFixture } from "./support/process-guard.js";
 
 const ROOT = join(import.meta.dirname, "..");
 const FIX = join(ROOT, "tests", "fixtures", "installer-flow");
@@ -49,6 +50,7 @@ function flow(): Flow {
   for (const d of ["state", "home", "lad", "pd", "appdata", "stubs", "bin"]) mkdirSync(join(dir, d));
   cpSync(join(FIX, "linux"), join(dir, "stubs"), { recursive: true });
   cpSync(join(FIX, "fake-wsl.sh"), join(dir, "bin", "wsl.exe"));          // the name the installer calls
+  registerExecutableFixture(join(dir, "bin", "wsl.exe"));                 // M-2239 P2-5: a private stand-in, never Windows' own
   const ctr = "agend-flow-" + process.pid + "-" + Math.random().toString(36).slice(2, 8);
   const yaml = realpathSync(join(ROOT, "node_modules", "js-yaml"));
   execFileSync("docker", ["run", "-d", "--rm", "--name", ctr, "--network", "none", "-v", `${dir}/stubs:/opt/stubs:ro`, "-v", `${yaml}:/opt/js-yaml:ro`, "-v", `${dir}:${dir}`, IMAGE, "sleep", "infinity"], { stdio: "ignore" });
