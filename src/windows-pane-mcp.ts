@@ -31,8 +31,13 @@ export function paneMcpHttp(connection: PaneMcpConnection, body: PaneMcpBody): P
 export class PaneMcpSession {
   readonly helperId = randomUUID();
   private readonly receipts = new Map<string, string>();
+  private initializeId: string | number | undefined;
+  private ready = false;
+  private closed = false;
+  private pinging = false;
   constructor(private connection: PaneMcpConnection, private http: (body: PaneMcpBody) => Promise<unknown> = body => paneMcpHttp(connection, body)) {}
   async rpc(input: unknown): Promise<Record<string, unknown> | null> {
+    if (this.closed) throw Error("Pane MCP helper has closed");
     const transport = async (request: NativeMcpRequest): Promise<unknown> => {
       if (this.receipts.size >= 64) throw Error("Pane MCP response backlog is full");
       const body = validatePaneMcpBody({ ...request, op: "pane-mcp", owner: this.connection.owner, helperId: this.helperId });
@@ -40,11 +45,22 @@ export class PaneMcpSession {
       if (body.method === "tools/call" && typeof response?.responseId === "string" && /^[a-f0-9]{64}$/.test(response.responseId)) this.receipts.set(body.callId, response.responseId);
       return response?.result;
     };
-    return nativeMcpRpc(input, this.connection, transport, { clientSessionId: this.helperId, instructions: "AgEnD tools belong to this persistent agent and its current configured permissions." });
+    const response = await nativeMcpRpc(input, this.connection, transport, { clientSessionId: this.helperId, instructions: "AgEnD tools belong to this persistent agent and its current configured permissions." });
+    if (input && typeof input === "object" && !Array.isArray(input) && (input as any).method === "initialize"
+      && response && Object.hasOwn(response, "result") && (typeof response.id === "string" || typeof response.id === "number")) this.initializeId = response.id;
+    return response;
+  }
+  close(): void { this.closed = true; this.ready = false; }
+  async heartbeat(): Promise<void> {
+    if (this.closed || !this.ready || this.pinging) return;
+    this.pinging = true;
+    try { await this.http({ op: "pane-mcp", owner: this.connection.owner, helperId: this.helperId, method: "presence", params: {} }); }
+    finally { this.pinging = false; }
   }
   async responseWritten(value: Record<string, unknown>): Promise<void> {
     const id = value.id;
     if (!Object.hasOwn(value, "result") || typeof id !== "string" && typeof id !== "number") return;
+    if (id === this.initializeId) { this.initializeId = undefined; this.ready = true; await this.heartbeat(); }
     const callId = nativeMcpCallId(this.connection.token, id, this.helperId), responseId = this.receipts.get(callId);
     if (!responseId) return;
     this.receipts.delete(callId);
@@ -53,6 +69,8 @@ export class PaneMcpSession {
 }
 export async function paneMcpMain(connection: PaneMcpConnection): Promise<void> {
   const session = new PaneMcpSession(connection);
+  const presence = setInterval(() => { void session.heartbeat().catch(() => {}); }, 5_000); presence.unref();
+  process.stdin.once("close", () => { clearInterval(presence); session.close(); });
   let buffer = "", pending = 0, failed = false;
   process.stdout.on("error", () => { failed = true; process.stdin.destroy(); });
   const send = (value: Record<string, unknown>): void => {

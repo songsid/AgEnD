@@ -25,3 +25,13 @@ it('closed pane identities and method shapes refuse foreign or arbitrary fields'
  expect(()=>validatePaneMcpOwner({...owner(),machine:'arbitrary'})).toThrow();expect(()=>validatePaneMcpBody({...body,command:'whoami'})).toThrow();
  expect(()=>validatePaneMcpBody({...body,method:'response-written',callId:'x',responseId:'b'.repeat(64)})).toThrow();
 });
+it('helper presence starts only after its initialize response is written and stops with the helper',async()=>{
+ const http=vi.fn(async(_body:PaneMcpBody)=>({result:{ok:true}})),session=new PaneMcpSession(connection(),http);
+ await session.heartbeat();expect(http).not.toHaveBeenCalled();const initialized=(await session.rpc({jsonrpc:'2.0',id:9,method:'initialize',params:{protocolVersion:'2025-06-18'}}))!;
+ await session.heartbeat();expect(http).not.toHaveBeenCalled();await session.responseWritten(initialized);expect(http).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({method:'presence',helperId:session.helperId,params:{}}));session.close();await session.heartbeat();expect(http).toHaveBeenCalledOnce();
+});
+it('a held presence request never fans out into overlapping requests',async()=>{
+ const releases:Array<(value:unknown)=>void>=[];const http=vi.fn((_body:PaneMcpBody)=>new Promise(done=>{releases.push(done);})),session=new PaneMcpSession(connection(),http);
+ const initialized=(await session.rpc({jsonrpc:'2.0',id:9,method:'initialize'}))!,pending=[session.responseWritten(initialized),session.heartbeat(),session.heartbeat()];
+ try{expect(http).toHaveBeenCalledOnce();}finally{for(const release of releases)release({result:{ok:true}});await Promise.all(pending);session.close();}
+});

@@ -17,6 +17,8 @@ export interface PaneMcpAuthority {
   allowed(tool: string, args: Record<string, unknown>): boolean;
   invoke(input: { tool: string; args: Record<string, unknown>; operationId: string }, current: () => boolean): Promise<{ result: unknown; error?: string }>;
   responseWritten(operationId: string): void;
+  /** Stable authenticated connection generation, distinct from one RPC's short-lived current() fence. */
+  transportEpoch?(): string | null;
 }
 const errorResult = (text: string): Record<string, unknown> => ({ content: [{ type: "text", text }], isError: true });
 /** One ledger per exact pane launch; no plaintext arguments, result, provider credential or user input is persisted. */
@@ -25,6 +27,7 @@ export class PaneMcpAuthorityLease {
   private closed = false;
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private readonly results = new Map<string, unknown>();
+  private presence: { at: number; epoch: string } | undefined;
   constructor(private file: string, readonly authority: PaneMcpAuthority) {
     validatePaneMcpOwner(authority.owner);
     this.ledger = { version: 1, machineId: authority.machineId, owner: { ...authority.owner }, calls: {} };
@@ -39,7 +42,13 @@ export class PaneMcpAuthorityLease {
       this.ledger = raw;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
-  close(): void { this.closed = true; this.results.clear(); }
+  close(): void { this.closed = true; this.results.clear(); this.presence = undefined; }
+  /** A retained helper must re-prove itself on the current transport after reconnect. No PID guessing. */
+  serving(): boolean {
+    const presence = this.presence;
+    return !!presence && performance.now() - presence.at < 15_000 && !this.closed && this.authority.current()
+      && this.authority.transportEpoch?.() === presence.epoch;
+  }
   private current(transport: () => boolean): boolean { return !this.closed && transport() && this.authority.current(); }
   private save(): void { atomicWriteFileSync(this.file, JSON.stringify(this.ledger), { mode: 0o600 }); }
   private key(body: Extract<PaneMcpBody, { method: "tools/call" | "response-written" }>): string {
@@ -49,6 +58,10 @@ export class PaneMcpAuthorityLease {
     const body = validatePaneMcpBody(raw);
     const current = (): boolean => this.current(transport);
     if (machineId !== this.authority.machineId || !samePaneMcpOwner(body.owner, this.authority.owner) || !current()) throw Error("Pane tool owner is no longer current");
+    if (body.method === "presence") {
+      const epoch = this.authority.transportEpoch?.(); if (!epoch) throw Error("Pane helper transport identity is unavailable");
+      this.presence = { at: performance.now(), epoch }; return { result: { ok: true } };
+    }
     if (body.method === "tools/list") return { result: { tools: this.authority.menu() } };
     const key = this.key(body), previous = this.ledger.calls[key];
     if (body.method === "response-written") {

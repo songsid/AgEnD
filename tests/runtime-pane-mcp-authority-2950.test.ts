@@ -54,3 +54,15 @@ it('foreign machine, agent, host boot or launch cannot use or acknowledge a scop
 it('acknowledged calls clear the bounded response backlog so a long-lived agent exceeds 64 calls',async()=>{
  const f=rig();for(let index=0;index<70;index++){const callId=index.toString(16).padStart(64,'0');const response=await f.call({...f.body,callId})as any;await f.call({op:'pane-mcp',method:'response-written',owner:f.owner,helperId:f.body.helperId,callId,responseId:response.responseId});}expect(f.invoke).toHaveBeenCalledTimes(70);expect(f.written).toHaveBeenCalledTimes(70);
 });
+it('helper presence is bound to the stable connection generation, not the lifetime of one completed RPC',async()=>{
+ const f=rig();let epoch:string|null='connection-1',rpc=true;f.authority.transportEpoch=()=>epoch;
+ const presence={op:'pane-mcp',owner:f.owner,helperId:f.body.helperId,method:'presence',params:{}};expect(f.lease.serving()).toBe(false);
+ await f.call(presence,()=>rpc);rpc=false;expect(f.lease.serving()).toBe(true);expect(f.invoke).not.toHaveBeenCalled();epoch=null;expect(f.lease.serving()).toBe(false);epoch='connection-2';expect(f.lease.serving()).toBe(false);
+ await f.call(presence);expect(f.lease.serving()).toBe(true);f.inactive();expect(f.lease.serving()).toBe(false);
+});
+it('presence expires monotonically and unknown or foreign transports never prove a live helper',async()=>{
+ const f=rig(),presence={op:'pane-mcp',owner:f.owner,helperId:f.body.helperId,method:'presence',params:{}};
+ await expect(f.call(presence)).rejects.toThrow('transport identity');expect(f.lease.serving()).toBe(false);f.authority.transportEpoch=()=> 'current';
+ await expect(f.call({...presence,owner:{...f.owner,launchId:randomUUID()}})).rejects.toThrow('owner');expect(f.lease.serving()).toBe(false);await f.call(presence);expect(f.lease.serving()).toBe(true);
+ vi.spyOn(performance,'now').mockReturnValue(performance.now()+15000);expect(f.lease.serving()).toBe(false);f.lease.close();expect(f.lease.serving()).toBe(false);
+});

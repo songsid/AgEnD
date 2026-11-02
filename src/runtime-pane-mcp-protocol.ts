@@ -3,6 +3,7 @@ import { validWindowsAgentId } from "./windows-cli-worker.js";
 export interface PaneMcpOwner { hostBootId: string; paneId: string; launchId: string; agentId: string; instance: string }
 export type PaneMcpBody = { op: "pane-mcp"; owner: PaneMcpOwner; helperId: string } & (
   | { method: "tools/list"; params: Record<string, never> }
+  | { method: "presence"; params: Record<string, never> }
   | { method: "tools/call"; callId: string; params: { name: string; arguments: Record<string, unknown> } }
   | { method: "response-written"; callId: string; responseId: string }
 );
@@ -18,7 +19,7 @@ export function validatePaneMcpBody(value: unknown): PaneMcpBody {
     || Buffer.byteLength(JSON.stringify(value)) > 64 * 1024) throw Error("Invalid pane MCP request");
   validatePaneMcpOwner(value.owner);
   const common = ["op", "owner", "helperId", "method"];
-  if (value.method === "tools/list") {
+  if (value.method === "tools/list" || value.method === "presence") {
     if (Object.keys(value).some(key => ![...common, "params"].includes(key)) || !object(value.params) || Object.keys(value.params).length) throw Error("Invalid pane MCP menu request");
   } else if (value.method === "tools/call") {
     if (Object.keys(value).some(key => ![...common, "callId", "params"].includes(key)) || typeof value.callId !== "string" || !/^[a-f0-9]{64}$/.test(value.callId)

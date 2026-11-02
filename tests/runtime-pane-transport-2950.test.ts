@@ -88,9 +88,10 @@ it("refuses ambiguous status cards and a correct filename with another workspace
 });
 it("retains the same pin and cursor across a coordinator reconnect without repeating input", async () => {
   const f = await fixture(), id = randomUUID(), launch = { ...f.launch(), sessionId: id }, operationId = randomUUID();
+  const epoch=f.hub().paneTransportEpoch(f.machineId);expect(epoch).not.toBeNull();
   const pane = await f.hub().callPane(f.machineId, { action: "open", operationId, launch }) as RuntimePaneSnapshot; f.transcript(id);
   const request = { action: "transcript" as const, paneId: pane.paneId, launchId: pane.launchId, cursor: cursor(id) }, first = validatePaneTranscriptWireBatch(await f.hub().callPane(f.machineId, request), id);
-  f.restart(); await vi.waitFor(() => expect(f.hub().machine(f.machineId)?.status).toBe("online"));
+  f.restart(); await vi.waitFor(() => expect(f.hub().machine(f.machineId)?.status).toBe("online"));expect(f.hub().paneTransportEpoch(f.machineId)).not.toBe(epoch);
   expect(await f.hub().callPane(f.machineId, { action: "open", operationId, launch })).toMatchObject({ launchId: pane.launchId, sessionId: id });
   const next = validatePaneTranscriptWireBatch(await f.hub().callPane(f.machineId, { ...request, cursor: first.cursor }), id); expect(next.data).toBe(""); expect(next.cursor).toEqual(first.cursor); expect(f.processes).toHaveLength(1); expect(f.processes[0].write).not.toHaveBeenCalled();
 });

@@ -86,6 +86,7 @@ export interface RuntimeCoordinatorOptions {
 export type { RuntimeMachine } from "./runtime-protocol.js";
 
 export class RuntimeCoordinator {
+  private readonly paneEpoch = randomUUID();
   private readonly path: string;
   private state: State;
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: RUNTIME_MAX_FRAME_BYTES, perMessageDeflate: false });
@@ -476,6 +477,10 @@ export class RuntimeCoordinator {
   task(id: string): WindowsCliTask | null { const task = this.state.commands.find(command => command.id === id && command.operation === "run")?.task; return task ? structuredClone(task) : null; }
   tasks(): Array<{ machineId: string; task: WindowsCliTask }> { return this.state.commands.flatMap(command => command.operation === "run" && command.task ? [{ machineId: command.machineId, task: structuredClone(command.task) }] : []); }
   hasActiveTask(machineId: string): boolean { return this.state.commands.some(command => command.machineId === machineId && command.operation === "run" && command.state !== "failed" && (!command.task || !terminal(command.task) || command.task.outcomeConfirmed === false)); }
+  paneTransportEpoch(machineId: string): string | null {
+    const connection = this.connections.get(machineId);
+    return connection?.ready && connection.ws.readyState === WebSocket.OPEN && this.current(connection) ? `${this.paneEpoch}:${machineId}:${connection.generation}` : null;
+  }
   /** Pane input replay/sequence authority lives in its pane ledger; reads never fill the exec-task journal. */
   async callPane(machineId: string, raw: RuntimePaneRequest, maxAgents = 4): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
