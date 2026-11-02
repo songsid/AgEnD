@@ -1,11 +1,12 @@
 /** Native sources feed the ordinary record grammar without loading a local provider store. */
 import { afterEach, expect, it, vi } from 'vitest';
-import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';import { tmpdir } from 'node:os';import { join } from 'node:path';
 import pino from 'pino';
 import { TranscriptMonitor } from '../src/transcript-monitor.js';
 import { claudeTranscriptRecord, codexToolRecord, codexTurnRecord, type CodexRecordState, type TranscriptRecordEvent } from '../src/transcript-records.js';
 import type { TranscriptEvents, TranscriptSource } from '../src/transcript-sources.js';
+import { PANE_TRANSCRIPT_EMPTY_ANCHOR, type RuntimeTranscriptReference } from '../src/runtime-pane-transcript-protocol.js';
 const roots:string[]=[];afterEach(()=>{for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});vi.restoreAllMocks();});
 it('keeps Claude informational, prompt, error, tool and text events ordered through a supplied source',async()=>{
  const records:TranscriptRecordEvent[]=[],emit=(...event:TranscriptRecordEvent)=>{records.push(event);};
@@ -31,4 +32,13 @@ it('Codex boundary state keeps a steer in its open turn and leaves returned outp
 it('a stop during an ordered native batch suppresses every later event',async()=>{
  const root=mkdtempSync(join(tmpdir(),'agend-transcript-records-'));roots.push(root);const records:TranscriptRecordEvent[]=[['user_prompt'],['assistant_text','late']];
  const monitor=new TranscriptMonitor(root,pino({level:'silent'})as never,{poll:async()=>({toolUses:[],toolResults:[],assistantTexts:[],records}),reset(){}});const late=vi.fn();monitor.on('user_prompt',()=>monitor.stop());monitor.on('assistant_text',late);await monitor.pollIncrement();expect(late).not.toHaveBeenCalled();
+});
+it('native checkpoints stay typed and never invoke the local statusline/path resolver',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'agend-runtime-checkpoint-'));roots.push(root);
+ const ref:RuntimeTranscriptReference={version:1,machineId:randomUUID(),hostBootId:randomUUID(),paneId:randomUUID(),agentId:randomUUID(),launchId:randomUUID(),provider:'codex',cursor:{sessionId:randomUUID(),offset:0,fileId:null,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR}};
+ let resolve:((value:RuntimeTranscriptReference)=>void)|undefined,hold=false;
+ const source:TranscriptSource={poll:async()=>({toolUses:[],toolResults:[],assistantTexts:[]}),reset(){},checkpoint:async()=>null,runtimeCheckpoint:async()=>hold?new Promise(done=>{resolve=done;}):ref};
+ const monitor=new TranscriptMonitor(root,pino({level:'silent'})as never,source),local=vi.spyOn(monitor,'resolveTranscriptPath').mockImplementation(async()=>{throw Error('No local provider path may be read');});
+ expect(await monitor.reconciliationRuntimeCheckpoint()).toEqual(ref);expect(await monitor.reconciliationCheckpoint()).toBeNull();expect(monitor.currentPath()).toBeNull();expect(local).not.toHaveBeenCalled();
+ hold=true;const pending=monitor.reconciliationRuntimeCheckpoint();monitor.stop();resolve!(ref);expect(await pending).toBeNull();
 });

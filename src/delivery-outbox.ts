@@ -8,6 +8,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
+import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { WorkingStateJournal, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
 import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
   type HumanOrigin, type HumanReceiptRow, type HumanReceiptProof } from "./human-delivery-receipts.js";
@@ -253,6 +254,8 @@ export interface DeliveryAttemptEvidence {
   transcriptPath: string | null;
   transcriptOffset: number | null;
   transcriptSessionId: string | null;
+  /** Native runner identity. Its local path remains null so older readers hold rather than open a remote path. */
+  runtimeTranscript?: RuntimeTranscriptReference | null;
   submissionMode: DurableSubmissionMode;
   queueResumePolicy?: QueueResumePolicy;
   /** sha256 of the text the target daemon received, before formatting (#856). */
@@ -271,10 +274,27 @@ export interface DeliveryReconciliationCandidate extends OutboxDelivery {
     transcriptPath: string | null;
     transcriptOffset: number | null;
     transcriptSessionId: string | null;
+    runtimeTranscript?: RuntimeTranscriptReference | null;
+    runtimeTranscriptInvalid?: boolean;
     submissionMode: DurableSubmissionMode | null;
     queueResumePolicy: QueueResumePolicy | null;
     enterStartedAt: string | null;
   };
+}
+
+type RuntimeAttemptScope = Pick<DeliveryAttemptEvidence, "windowId" | "transcriptPath" | "transcriptOffset" | "transcriptSessionId"> & { backend: string | null };
+function runtimeAttemptReference(value: unknown, evidence: RuntimeAttemptScope): RuntimeTranscriptReference {
+  const ref = validateRuntimeTranscriptReference(value);
+  if (evidence.transcriptPath !== null || evidence.backend !== ref.provider || evidence.windowId !== ref.paneId
+    || evidence.transcriptOffset !== ref.cursor.offset || evidence.transcriptSessionId !== ref.cursor.sessionId) throw Error("Runtime transcript evidence differs from its delivery attempt");
+  return ref;
+}
+function readRuntimeAttemptReference(text: string | null, evidence: RuntimeAttemptScope): Pick<DeliveryReconciliationCandidate["attempt"], "runtimeTranscript" | "runtimeTranscriptInvalid"> {
+  if (text == null) return {};
+  try {
+    if (typeof text !== "string" || Buffer.byteLength(text) > 4096) throw Error();
+    return { runtimeTranscript: runtimeAttemptReference(JSON.parse(text), evidence) };
+  } catch { return { runtimeTranscript: null, runtimeTranscriptInvalid: true }; }
 }
 
 /**
@@ -793,6 +813,7 @@ export class DeliveryOutbox extends EventEmitter {
     this.ensureColumn("delivery_attempts", "transcript_path", "TEXT");
     this.ensureColumn("delivery_attempts", "transcript_offset", "INTEGER");
     this.ensureColumn("delivery_attempts", "transcript_session_id", "TEXT");
+    this.ensureColumn("delivery_attempts", "runtime_transcript_json", "TEXT");
     this.ensureColumn("delivery_attempts", "submission_mode", "TEXT");
     this.ensureColumn("delivery_attempts", "backend_version", "TEXT");
     this.ensureColumn("delivery_attempts", "queue_resume_policy", "TEXT");
@@ -1425,6 +1446,7 @@ export class DeliveryOutbox extends EventEmitter {
   /** Idempotent begin permit, committed immediately before the pane side effect. */
   begin(deliveryId: string, targetBootId: string, attemptNo: number, evidence?: DeliveryAttemptEvidence): "begun" | "duplicate" | "stale" {
     const now = new Date().toISOString();
+    const runtimeTranscript = evidence?.runtimeTranscript == null ? null : JSON.stringify(runtimeAttemptReference(evidence.runtimeTranscript, evidence));
     const transaction = this.db.transaction((): { outcome: "begun" | "duplicate" | "stale"; failed: boolean; mismatch?: boolean } => {
       const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
       if (!row || row.target_daemon_boot_id !== targetBootId || row.attempt_no !== attemptNo) {
@@ -1456,8 +1478,8 @@ export class DeliveryOutbox extends EventEmitter {
         INSERT INTO delivery_attempts(
           delivery_id,target_daemon_boot_id,attempt_no,state,begin_ack_at,
           backend,window_id,transcript_path,transcript_offset,transcript_session_id,submission_mode,
-          backend_version,queue_resume_policy,pasted_content_sha256,pasted_bytes_sha256,content_digest_mismatch
-        ) VALUES (?,?,?,'begun',?,?,?,?,?,?,?,?,?,?,?,?)
+          backend_version,queue_resume_policy,pasted_content_sha256,pasted_bytes_sha256,content_digest_mismatch,runtime_transcript_json
+        ) VALUES (?,?,?,'begun',?,?,?,?,?,?,?,?,?,?,?,?,?)
       `).run(
         deliveryId, targetBootId, attemptNo, now,
         evidence?.backend ?? null,
@@ -1471,6 +1493,7 @@ export class DeliveryOutbox extends EventEmitter {
         evidence?.pastedContentSha256 ?? null,
         evidence?.pastedBytesSha256 ?? null,
         mismatch ? 1 : 0,
+        runtimeTranscript,
       );
       this.db.prepare(`
         UPDATE deliveries SET state='submission_started', submitted_at=?, updated_at=?
@@ -1823,6 +1846,7 @@ export class DeliveryOutbox extends EventEmitter {
         a.window_id AS attempt_window_id, a.transcript_path AS attempt_transcript_path,
         a.transcript_offset AS attempt_transcript_offset,
         a.transcript_session_id AS attempt_transcript_session_id,
+        a.runtime_transcript_json AS attempt_runtime_transcript_json,
         a.submission_mode AS attempt_submission_mode, a.backend_version AS attempt_backend_version,
         a.queue_resume_policy AS attempt_queue_resume_policy,
         a.enter_started_at AS attempt_enter_started_at
@@ -1834,6 +1858,7 @@ export class DeliveryOutbox extends EventEmitter {
       attempt_target_boot_id: string; attempt_attempt_no: number; attempt_backend: string | null;
       attempt_window_id: string | null; attempt_transcript_path: string | null;
       attempt_transcript_offset: number | null; attempt_transcript_session_id: string | null;
+      attempt_runtime_transcript_json: string | null;
       attempt_submission_mode: DurableSubmissionMode | null; attempt_backend_version: string | null;
       attempt_queue_resume_policy: QueueResumePolicy | null; attempt_enter_started_at: string | null;
     }>;
@@ -1845,9 +1870,14 @@ export class DeliveryOutbox extends EventEmitter {
         backend: row.attempt_backend,
         backendVersion: row.attempt_backend_version,
         windowId: row.attempt_window_id,
-        transcriptPath: row.attempt_transcript_path,
+        // Even a corrupt native reference must not be interpreted as coordinator-local filesystem evidence.
+        transcriptPath: row.attempt_runtime_transcript_json == null ? row.attempt_transcript_path : null,
         transcriptOffset: row.attempt_transcript_offset,
         transcriptSessionId: row.attempt_transcript_session_id,
+        ...readRuntimeAttemptReference(row.attempt_runtime_transcript_json, {
+          backend: row.attempt_backend, windowId: row.attempt_window_id, transcriptPath: row.attempt_transcript_path,
+          transcriptOffset: row.attempt_transcript_offset, transcriptSessionId: row.attempt_transcript_session_id,
+        }),
         submissionMode: row.attempt_submission_mode,
         queueResumePolicy: row.attempt_queue_resume_policy,
         enterStartedAt: row.attempt_enter_started_at,

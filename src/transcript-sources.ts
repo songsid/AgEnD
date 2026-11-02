@@ -72,6 +72,8 @@ export interface TranscriptSource {
   reset(): void;
   /** Optional durable-delivery checkpoint taken immediately before pane paste. */
   checkpoint?(): Promise<TranscriptCheckpoint | null>;
+  /** Native runner checkpoint: scoped identities only; never encoded as a coordinator-local path. */
+  runtimeCheckpoint?(): Promise<import("./runtime-pane-transcript-protocol.js").RuntimeTranscriptReference | null>;
   /** Release anything held between polls; the next poll may acquire it again. */
   close?(): void;
   /**

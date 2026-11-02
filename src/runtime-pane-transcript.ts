@@ -8,10 +8,9 @@ import { dirname, join, normalize, parse, resolve, win32 } from "node:path";
 import { createHash } from "node:crypto";
 import { validNativeSessionId } from "./windows-cli-providers.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
-
-export type PaneTranscriptProvider = "codex" | "claude-code";
-/** A wire reference deliberately has no filesystem path. The pane/launch scope is added by its transport. */
-export interface PaneTranscriptCursor { sessionId: string; offset: number; fileId: string | null; anchor: string }
+import { PANE_TRANSCRIPT_EMPTY_ANCHOR as EMPTY, PANE_TRANSCRIPT_MAX_FILE_BYTES as MAX_FILE, validatePaneTranscriptCursor,
+  type PaneTranscriptCursor, type PaneTranscriptProvider } from "./runtime-pane-transcript-protocol.js";
+export { validatePaneTranscriptCursor, type PaneTranscriptCursor, type PaneTranscriptProvider } from "./runtime-pane-transcript-protocol.js";
 export interface PaneTranscriptBatch {
   state: "pending" | "ready";
   cursor: PaneTranscriptCursor;
@@ -20,8 +19,7 @@ export interface PaneTranscriptBatch {
   complete: boolean;
 }
 export interface PaneTranscriptRoots { codex: string; claude: string }
-const CHUNK = 256 * 1024, META = 64 * 1024, ANCHOR = 4096, MAX_FILE = 128 * 1024 * 1024;
-const EMPTY = createHash("sha256").update("").digest("hex");
+const CHUNK = 256 * 1024, META = 64 * 1024, ANCHOR = 4096;
 const hash = (value: string | Buffer): string => createHash("sha256").update(value).digest("hex");
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "ENOENT";
 const comparable = (path: string): string => /^[a-z]:[\\/]/i.test(path)
@@ -79,18 +77,6 @@ function metadata(lines: string[], provider: PaneTranscriptProvider, sessionId: 
   }
   if (!proved) throw Error("Pane transcript has no exact session and workspace proof yet");
 }
-export function validatePaneTranscriptCursor(value: unknown, expectedSessionId?: string): PaneTranscriptCursor {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid pane transcript cursor");
-  const v = value as Record<string, unknown>;
-  if (Object.keys(v).some(key => !["sessionId", "offset", "fileId", "anchor"].includes(key)) || typeof v.sessionId !== "string"
-    || !validNativeSessionId("codex", v.sessionId) || expectedSessionId !== undefined && v.sessionId !== expectedSessionId
-    || !Number.isSafeInteger(v.offset) || (v.offset as number) < 0 || (v.offset as number) > MAX_FILE
-    || v.fileId !== null && (typeof v.fileId !== "string" || !/^[a-f0-9]{64}$/.test(v.fileId))
-    || typeof v.anchor !== "string" || !/^[a-f0-9]{64}$/.test(v.anchor)
-    || v.fileId === null && (v.offset !== 0 || v.anchor !== EMPTY)) throw Error("Invalid pane transcript cursor");
-  return v as unknown as PaneTranscriptCursor;
-}
-
 export class NativePaneTranscriptReader {
   private busy = false;
   private pinnedFile: string | undefined;

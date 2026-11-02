@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
+import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, lastLineBoundary, readNewLines, resolveLongLines } from "./transcript-jsonl.js";
 
 /**
@@ -92,6 +93,15 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   /** Snapshot the active durable conversation before an outbox pane write. */
+  async reconciliationRuntimeCheckpoint(): Promise<RuntimeTranscriptReference | null> {
+    if (!this.source?.runtimeCheckpoint) return null;
+    const generation = this.generation;
+    const checkpoint = await this.source.runtimeCheckpoint();
+    if (generation !== this.generation || !checkpoint) return null;
+    return validateRuntimeTranscriptReference(checkpoint);
+  }
+
+  /** Local checkpoint only. Native sources implement this as null and supply runtimeCheckpoint separately. */
   async reconciliationCheckpoint(): Promise<TranscriptCheckpoint | null> {
     if (this.source?.checkpoint) {
       const generation = this.generation;

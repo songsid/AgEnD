@@ -8,7 +8,7 @@ export const RUNTIME_PANE_ASSETS = [
     ...["win32-x64", "win32-arm64"].flatMap(platform => ["conpty.node", "conpty_console_list.node", "conpty/OpenConsole.exe", "conpty/conpty.dll"].map(file => `prebuilds/${platform}/${file}`)),
   ] },
 ] as const;
-export const RUNTIME_PANE_MODULES = ["runtime-pane-protocol.js", "runtime-pane-mcp-protocol.js", "runtime-pane-mcp-relay.js", "windows-pane-mcp.js", "runtime-pane-link.js", "runtime-pane-private.js", "runtime-pane-private.ps1", "runtime-pane-service.js", "runtime-pane-assets.js", "runtime-pane-host.js", "runtime-pane-screen.js", "runtime-pane-store.js", "runtime-pane-native.js", "runtime-pane-config.js", "runtime-pane-transcript.js", "transcript-records.js", "transcript-needles.js", "transcript-turns.js", "runtime-pane-process.js", "runtime-pane-worker.js", "runtime-pane-job-owner.js", "runtime-pane-job.ps1"] as const;
+export const RUNTIME_PANE_MODULES = ["runtime-pane-protocol.js", "runtime-pane-mcp-protocol.js", "runtime-pane-mcp-relay.js", "windows-pane-mcp.js", "runtime-pane-link.js", "runtime-pane-private.js", "runtime-pane-private.ps1", "runtime-pane-service.js", "runtime-pane-assets.js", "runtime-pane-host.js", "runtime-pane-screen.js", "runtime-pane-store.js", "runtime-pane-native.js", "runtime-pane-config.js", "runtime-pane-transcript.js", "runtime-pane-transcript-protocol.js", "transcript-records.js", "transcript-needles.js", "transcript-turns.js", "runtime-pane-process.js", "runtime-pane-worker.js", "runtime-pane-job-owner.js", "runtime-pane-job.ps1"] as const;
 
 /** node-pty@1.1.0 npm prebuilds (lockfile integrity), bundled ConPTY 1.23.251008001. */
 export const PANE_NATIVE_SHA256: Readonly<Record<string, string>> = {
