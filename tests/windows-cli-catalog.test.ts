@@ -116,6 +116,23 @@ describe("page-lived Windows CLI inventory",()=>{
     expect(fetcher.mock.calls[0][1].signal.aborted).toBe(true);
   });
 
+  it("M-2239 P1-2: before any detection it offers Detect, and only that press asks for one",async()=>{
+    const refresh=vi.fn();
+    await p.mount(h(DiscoveryStatus,{state:{loading:false,data:{clis:[],home:"",probedAt:null},error:"",startedAt:0,refresh}}));
+    await settle(4);
+    const status=p.root.querySelector('[role="status"]');
+    expect(status.textContent).toContain("have not been detected yet");
+    expect(refresh).not.toHaveBeenCalled();
+    status.querySelector("button").click();
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("shows nothing once a detection exists",async()=>{
+    await p.mount(h(DiscoveryStatus,{state:{loading:false,data:{...inventory(),probedAt:1},error:"",startedAt:0,refresh(){}}}));
+    await settle(4);
+    expect(p.root.querySelector('[role="status"]')).toBeNull();
+  });
+
   it("keeps explaining progress when a cold probe takes longer than eight seconds",async()=>{
     await p.mount(h(DiscoveryStatus,{state:{loading:true,data:null,error:"",startedAt:Date.now()-12_000,refresh(){}}}));
     await settle(4);

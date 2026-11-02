@@ -33,14 +33,16 @@ export function handleNativeModelCatalog(req: IncomingMessage, res: ServerRespon
     json(res,400,{error:"The selected machine does not own this conversation"});return true;
   }
   void (async () => {
+    // M-2239 P1-2: a GET reads the administrator's last detection, including remote machines.
+    // Detection is an explicit administrator POST; a model-list `refresh` never launches a CLI.
     let catalog;
     if(machineId){
       if(process.env.AGEND_REMOTE_RUNTIME!=="1" || !ctx.runtimeCoordinator)throw new Error("Remote runtimes are not enabled");
       const hub=ctx.runtimeCoordinator(), machine=hub.machine(machineId);
       if(!machine || machine.status==="pending" || machine.status==="revoked")throw new Error("Unknown runtime machine");
-      catalog=url.searchParams.get("refresh")==="1" ? await hub.call(machineId,"probe",{}) as import("./windows-cli.js").WindowsCliProbe : machine.inventory;
+      catalog=machine.inventory;
       if(!catalog)throw new Error("Runtime inventory is not ready");
-    } else catalog = await (bridge ?? windowsBridgeFor(ctx)).probe({ force: url.searchParams.get("refresh") === "1" });
+    } else catalog = await (bridge ?? windowsBridgeFor(ctx)).probe();
     if (!allowed()) { json(res, 403, { error: "Authorization expired" }); return; }
     const cli = catalog.clis.find(row => row.id === backend);
     json(res, 200, {

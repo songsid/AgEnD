@@ -81,7 +81,13 @@ Enter the pairing code and approve the machine as above. This HTTP origin meets 
 
 ## Inventory and models
 
-The runtime connects before discovery finishes, so the coordinator can show a connected machine and a loading status. An incomplete discovery never overwrites the coordinator's last successful inventory. Discovery reports versions, login availability and model list provenance, without reading/uploading CLI login tokens. Manual refresh is supported; an online idle runtime refreshes its inventory in the background every five minutes.
+Pairing and reconnecting establish the runtime connection without launching CLI discovery. After approving a newly paired computer, open **Settings → Runtime** and click that computer's **Refresh CLI inventory** button to run detection explicitly. Until a successful detection has been saved, the computer can be online while its CLI list is empty. Local Windows CLI detection likewise requires an explicit administrator action in the local diagnostics.
+
+Agent creation, CLI selectors and native model selectors read the last successful saved inventory. Opening those screens, refreshing a model selector through a GET request, connecting or reconnecting a runtime, and starting a task do not run CLI discovery. There is no periodic background detection. Use **Refresh CLI inventory** after installing, removing, updating or signing in to a CLI; refreshing the machine list only reloads the coordinator's saved machine information.
+
+Successful detection saves the CLI inventory and its update time for subsequent reads and reconnects. A failed or incomplete detection retains the previous successful inventory. Detection reports versions, login availability and model list provenance, without reading or uploading CLI login tokens.
+
+The Runtime's private inventory file is the local execution gate. If that file is removed or corrupted, the Runtime reports an empty, never-detected inventory and requires a new explicit detection; it does not restore runnable capabilities from an older central snapshot. The machine card's inventory update timestamp records the latest central synchronization. The inventory's `probedAt` records when detection actually ran, so reconnecting and republishing a cached list is not a new detection.
 
 Only installed, execution-compatible CLIs are selectable. Each CLI retains its normal approval and sandbox policy. No `--yolo`, blanket approval or sandbox bypass is added. A provider that cannot enforce read-only execution must use its explicitly selected native permission mode. Installing a runtime does not make every local tool safe or available without the CLI's normal permissions.
 

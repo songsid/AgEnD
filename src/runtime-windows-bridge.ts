@@ -53,8 +53,8 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
   async probe(options: {force?:boolean;machineId?:string} = {}): Promise<WindowsCliProbe> {
     if (!options.machineId) return this.local.probe(options);
     const remote=this.machine(options.machineId), machine=remote.machine(options.machineId)!;
-    if (!options.force && machine.inventory) return structuredClone(machine.inventory);
-    return await remote.call(options.machineId,"probe",{}) as WindowsCliProbe;
+    if (!options.force) return structuredClone(machine.inventory ?? {clis:[],home:"",probedAt:null});
+    return await remote.call(options.machineId,"probe",{force:true}) as WindowsCliProbe;
   }
   async prepareWorkspace(agentId: string, authorized: ()=>boolean = ()=>true, machineId?:string): Promise<string> {
     if (!machineId) return this.local.prepareWorkspace(agentId,authorized);

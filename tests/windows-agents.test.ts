@@ -119,7 +119,7 @@ describe("native Windows agents", () => {
   });
   it("resumes a specified UUID through argv while retaining the selected sandbox", () => {
     const args=codexTaskArgs({requestId:first,cli:"codex",cwd:"J:\\Game",prompt:"next",sandbox:"read-only"},second);
-    expect(args).toEqual(["-C","J:\\Game","--sandbox","read-only","exec","resume","--json","--skip-git-repo-check",second,"-"]);
+    expect(args).toEqual(["-c","check_for_update_on_startup=false","-C","J:\\Game","--sandbox","read-only","exec","resume","--json","--skip-git-repo-check",second,"-"]);
     expect(() => codexTaskArgs({requestId:first,cli:"codex",cwd:"J:\\Game",prompt:"next",sandbox:"read-only"},"--last")).toThrow(/conversation/);
   });
   it.each([

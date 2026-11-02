@@ -17,7 +17,7 @@ class FakeBridge implements RuntimeBridge {
   readonly tasks = new Map<string, WindowsCliTask>();
   readonly options = new Map<string, WindowsRunOptions>();
   launches = 0;
-  readonly probe = vi.fn(async (): Promise<WindowsCliProbe> => ({ home: "C:\\Users\\fixture", clis: [] }));
+  readonly probe = vi.fn(async (): Promise<WindowsCliProbe> => ({ home: "C:\\Users\\fixture", clis: [], probedAt: 1 }));
   readonly prepareWorkspace = vi.fn(async (agentId: string) => `C:\\Users\\fixture\\.agend\\workspaces\\${agentId}`);
   start(raw: unknown, _authorized?: () => boolean, options: WindowsRunOptions = {}): WindowsCliTask {
     const task = raw as ReturnType<typeof input>;
@@ -62,7 +62,7 @@ describe("outbound runtime with the real coordinator protocol", () => {
   it("authenticates, updates inventory, creates workspaces and returns structured results", async () => {
     const f = await fixture(), agentId = randomUUID();
     expect(f.state.hub.machine(f.machineId)?.status).toBe("online");
-    expect(await f.state.hub.call(f.machineId, "probe", {})).toEqual({ home: "C:\\Users\\fixture", clis: [] });
+    expect(await f.state.hub.call(f.machineId, "probe", {})).toEqual({ home: "C:\\Users\\fixture", clis: [], probedAt: 1 });
     expect(await f.state.hub.call(f.machineId, "workspace", { agentId })).toEqual({ agentId, cwd: `C:\\Users\\fixture\\.agend\\workspaces\\${agentId}` });
     expect(f.bridge.prepareWorkspace).toHaveBeenCalledExactlyOnceWith(agentId);
   });
@@ -110,7 +110,7 @@ const emit=value=>process.stdout.write(JSON.stringify(value)+'\\n');
 const finish=value=>process.stdout.write(JSON.stringify(value)+'\\n',()=>process.exit(0));
 createInterface({input:process.stdin}).once('line',line=>{
  const request=JSON.parse(line);
- if(request.op==='probe'){finish({type:'probe',home:'C:\\\\Users\\\\fixture',clis:[]});return;}
+ if(request.op==='probe'){finish({type:'probe',home:'C:\\\\Users\\\\fixture',clis:[{id:'codex',path:'C:\\\\fixture\\\\codex.exe',version:'fixture',authenticated:true,runnable:true,readOnlySupport:true,supports:{execution:true,resume:true,model:true,mcp:true},permissionNote:'Isolated fixture',models:[]}]});return;}
  if(request.op==='run'){
   emit({type:'started'});
   const events=[{type:'thread.started',thread_id:'12345678-1234-4321-abcd-123456789012'},{type:'item.completed',item:{type:'agent_message',text:'fake provider completed'}},{type:'turn.completed'}];
@@ -120,6 +120,8 @@ createInterface({input:process.stdin}).once('line',line=>{
     const bridge = new WindowsCliBridge(async () => ({ executable: process.execPath, args: [worker] }));
     const client = new RuntimeClient({ store: f.store, bridge, pollMs: 10 }); clients.push(client); await client.start();
     await vi.waitFor(() => expect(client.online()).toBe(true));
+    // Match the explicit administrator detection required before any real bridge task, without a real CLI.
+    await f.state.hub.call(f.machineId, "probe", {force:true});
     const task = input(); await f.state.hub.call(f.machineId, "run", { task });
     await vi.waitFor(() => {
       const result = f.state.hub.task(task.requestId); if (result?.status === "failed") throw Error(result.error);

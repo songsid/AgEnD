@@ -3,7 +3,8 @@ import WebSocket from "ws";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { hostname } from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
-import { WindowsCliBridge, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
+import { join } from "node:path";
+import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
 import { validateNativeTask, validWindowsAgentId, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
@@ -67,7 +68,6 @@ export class RuntimeClient {
   private reconnectAttempt = 0;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private inventoryTimer: ReturnType<typeof setInterval> | null = null;
   private credentials: RuntimeCredentials | null = null;
   private readonly active = new Set<string>();
   private readonly snapshots = new Map<string, string>();
@@ -78,7 +78,9 @@ export class RuntimeClient {
   private mcpPort = 0;
   private inventory: WindowsCliProbe | null = null;
   private readonly stoppedListeners = new Set<() => void>();
-  constructor(private readonly options: RuntimeClientOptions) { this.bridge = options.bridge ?? new WindowsCliBridge(); }
+  constructor(private readonly options: RuntimeClientOptions) {
+    this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
+  }
   private report(text: string): void { this.options.report?.(text); }
   online(): boolean { return this.welcomed && this.socket?.readyState === WebSocket.OPEN; }
   waitUntilStopped(): Promise<void> { return this.stopped && this.closed ? Promise.resolve() : new Promise(done => this.stoppedListeners.add(done)); }
@@ -89,14 +91,12 @@ export class RuntimeClient {
     this.unlock = this.options.store.lock(this.bootId);
     try {
       this.options.store.recoverInterrupted(); this.credentials = credentials; this.stopped = false; this.closed = false;
-      // Connect immediately. Discovery can be slow; send an explicit inventory update when it completes.
+      // Connect immediately, then publish the last administrator detection from the private profile.
+      // A cached read starts no CLI. Only an explicit probe command with force:true performs detection.
       this.connect();
       // A foreground runtime must remain alive while an idle connection is down. Promises and unref'ed retry
       // timers do not keep Node running after the last socket closes; stop() owns and clears this liveness ref.
       this.pollTimer = setInterval(() => this.poll(), this.options.pollMs ?? 250);
-      this.inventoryTimer = setInterval(() => {
-        if (this.online() && !this.active.size) void this.refreshInventory(true).catch(() => this.report("Background CLI discovery failed; the last successful inventory is retained."));
-      }, 5 * 60_000); this.inventoryTimer.unref?.();
       void this.refreshInventory().catch(() => this.report("CLI discovery failed; refresh it from AgEnD after checking the local installation."));
     } catch (error) { this.stopped = true; this.unlock?.(); this.unlock = null; throw error; }
   }
@@ -316,8 +316,7 @@ export class RuntimeClient {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.graceTimer) clearTimeout(this.graceTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
-    if (this.inventoryTimer) clearInterval(this.inventoryTimer);
-    this.reconnectTimer = null; this.graceTimer = null; this.pollTimer = null; this.inventoryTimer = null;
+    this.reconnectTimer = null; this.graceTimer = null; this.pollTimer = null;
     this.rejectTools(); this.mcpTokens.clear(); this.bridge.close();
     const socket = this.socket; this.socket = null;
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }

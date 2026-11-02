@@ -73,8 +73,8 @@ describe("Windows native provider capabilities", () => {
 
 describe("native argv and prompt boundaries", () => {
   it("preserves Codex's original fresh and resumed argv", () => {
-    expect(buildNativeInvocation(task)).toEqual({ args: ["exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "-C", cwd, "-"], stdin: prompt });
-    expect(buildNativeInvocation(task, { resumeSessionId: sessionId }).args).toEqual(["-C", cwd, "--sandbox", "read-only", "exec", "resume", "--json", "--skip-git-repo-check", sessionId, "-"]);
+    expect(buildNativeInvocation(task)).toEqual({ args: ["-c", "check_for_update_on_startup=false", "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "-C", cwd, "-"], stdin: prompt });
+    expect(buildNativeInvocation(task, { resumeSessionId: sessionId }).args).toEqual(["-c", "check_for_update_on_startup=false", "-C", cwd, "--sandbox", "read-only", "exec", "resume", "--json", "--skip-git-repo-check", sessionId, "-"]);
     expect(buildNativeInvocation({ ...task, model: "gpt-5.4" }).args.slice(-3)).toEqual(["--model", "gpt-5.4", "-"]);
   });
   it("keeps Claude prompts on stdin, restricts read tools and denies approval requests", () => {

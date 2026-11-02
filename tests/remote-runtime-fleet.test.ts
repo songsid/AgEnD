@@ -24,7 +24,7 @@ class FixtureBridge implements RuntimeBridge, WindowsCliExecutor {
   readonly sessionId = randomUUID();
   uncertainCancellation = false;
   constructor(readonly label: string, readonly drive = "C") {}
-  probe = vi.fn(async (): Promise<WindowsCliProbe> => ({ home: `${this.drive}:\\Users\\${this.label}`, clis: [{ id: "codex", path: `${this.drive}:\\cli\\codex.exe`, version: "fixture-1", authenticated: true, runnable: true,
+  probe = vi.fn(async (): Promise<WindowsCliProbe> => ({ home: `${this.drive}:\\Users\\${this.label}`, probedAt: 1, clis: [{ id: "codex", path: `${this.drive}:\\cli\\codex.exe`, version: "fixture-1", authenticated: true, runnable: true,
     supports: { execution: true, resume: true, model: true, mcp: true }, readOnlySupport: true, permissionNote: "Fixture only", models: [{ id: `${this.label}-model`, name: `${this.label} model` }], modelsSource: "cli-list" }] }));
   prepareWorkspace = vi.fn(async (agentId: string) => `${this.drive}:\\Users\\${this.label}\\.agend\\workspaces\\${agentId}`);
   start(raw: unknown, authorized: () => boolean = () => true, options: WindowsRunOptions = {}): WindowsCliTask {

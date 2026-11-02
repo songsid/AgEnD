@@ -107,7 +107,7 @@ describe("runtime pairing and execution-channel proxy compatibility", () => {
 
     const store = new RuntimeClientStore(home());
     store.saveCredentials({ server: origin, machineId: claim.machineId, credential: approved.body.credential, name: "Private Windows" });
-    const bridge: RuntimeBridge = { probe: vi.fn(async () => ({ home: "C:\\fixture", clis: [] })),
+    const bridge: RuntimeBridge = { probe: vi.fn(async () => ({ home: "C:\\fixture", clis: [], probedAt: 1 })),
       prepareWorkspace: vi.fn(async id => `C:\\fixture\\${id}`), start: vi.fn(() => { throw Error("No CLI may run in this test"); }),
       get: () => null, cancel: () => { throw Error("No CLI may run in this test"); }, close() {}, releaseUnknown() {} };
     const client = new RuntimeClient({ store, bridge, pollMs: 20, ...(certificate ? {
@@ -117,7 +117,7 @@ describe("runtime pairing and execution-channel proxy compatibility", () => {
     clients.push(client); await client.start();
     await vi.waitFor(() => expect(client.online()).toBe(true));
     expect(hub.machine(claim.machineId)?.status).toBe("online");
-    expect(await hub.call(claim.machineId, "probe", { force: true })).toEqual({ home: "C:\\fixture", clis: [] });
+    expect(await hub.call(claim.machineId, "probe", { force: true })).toEqual({ home: "C:\\fixture", clis: [], probedAt: 1 });
     const upgrade = seen.find(req => req.path === "/runtime/v1/connect");
     expect(upgrade).toMatchObject({ method: "GET", upgrade: "websocket", authorization: `Bearer ${approved.body.credential}` });
     expect(seen.every(req => req.origin === undefined && req.cookie === undefined)).toBe(true);

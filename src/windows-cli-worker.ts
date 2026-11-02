@@ -11,7 +11,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { randomBytes } from "node:crypto";
-import { boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeMcpServerConfig, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeMcpConnection, validateNativeModel, type NativeMcpLaunch, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
+import { nativeUpdateGuard, boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeMcpServerConfig, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeMcpConnection, validateNativeModel, type NativeMcpLaunch, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 
 const exec = promisify(execFile);
@@ -91,6 +91,11 @@ export function nativeCliEnvironment(): NodeJS.ProcessEnv {
     if (env[key]?.startsWith("/")) delete env[key];
   for (const key of Object.keys(env)) if (/^AGEND_/i.test(key)) delete env[key];
   for (const key of ["CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "ANTIGRAVITY_CONVERSATION_ID", "MUSE_SESSION_ID", "MUSE_THREAD_ID", "NODE_OPTIONS", "NODE_PATH"]) delete env[key];
+  // M-2239 P1-2: every CLI's own "do not update" switch, on every run (the Linux backends' NO_UPDATE_ENV, plus kiro and
+  // muse's). codex and grok take theirs as argv (nativeUpdateGuard).
+  env.DISABLE_AUTOUPDATER = "1";
+  env.OPENCODE_DISABLE_AUTOUPDATE = "1";
+  env.NO_UPDATE_NOTIFIER = "1";
   env.KIRO_NO_AUTO_UPDATE = "1";
   env.MUSE_UPDATE_INTERVAL_SECONDS = "31536000";
   return env;
@@ -170,7 +175,7 @@ const HELP_PROBES: Record<NativeCliId, { args: string[]; required: string[] }> =
   codex: { args: ["exec", "--help"], required: ["--json", "--sandbox"] },
   "claude-code": { args: ["--help"], required: ["--print", "--output-format", "--input-format", "--permission-prompts"] },
   antigravity: { args: ["--help"], required: ["--input-format", "stream-json", "--output-format", "--conversation"] },
-  grok: { args: ["--no-auto-update", "--help"], required: ["--prompt-file", "--output-format", "streaming-json", "--resume"] },
+  grok: { args: ["--help"], required: ["--prompt-file", "--output-format", "streaming-json", "--resume"] },
   "kiro-cli": { args: ["chat", "--help"], required: ["--no-interactive", "--output-format", "stream-json", "--resume-id"] },
   opencode: { args: ["run", "--help"], required: ["--format", "json", "--session", "--dir"] },
   muse: { args: ["exec", "--help"], required: ["--json", "--prompt-file", "--session-id"] },
@@ -211,6 +216,13 @@ function readNativeModels(id: NativeCliId, version: string | null): NativeModelO
   if (id === "claude-code") return claudeDocumentedModels(version).map(({ id, label, description }) => ({ id, name: label, ...(description ? { description } : {}) }));
   return [];
 }
+/** #2078: muse's launcher writes its version beside itself (`.muse-version`); read it, never start muse to ask. */
+function staticMuseVersion(launcher: string): string | null {
+  try {
+    const text = readFileSync(join(dirname(launcher), ".muse-version"), "utf8").trim();
+    return /^[0-9][0-9A-Za-z.+-]{0,40}$/.test(text) ? text : null;
+  } catch { return null; }
+}
 async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, includeModels: boolean): Promise<{ row: NativeCliRow; executable: NativeCliExecutable | null }> {
   const provider = nativeProvider(id);
   const executable = await (options.find ?? findCli)(id);
@@ -221,11 +233,21 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
   // Separate providers are discovered concurrently. Calls to the same native binary
   // must be sequential: concurrent Windows startup/status calls can exit zero with
   // empty redirected streams (observed with Codex, agy and Grok).
-  const nonempty = async (args: string[]): Promise<NativeCommandOutput> => {
+  // Every probe argv carries the CLI's own "do not update" switch (M-2239 P1-2).
+  const nonempty = async (rest: string[]): Promise<NativeCommandOutput> => {
+    const args = [...nativeUpdateGuard(id), ...rest];
     const result = await run(executable, args);
     return result.ok && !result.text.trim() ? run(executable, args) : result;
   };
-  const version = await nonempty(id === "grok" ? ["--no-auto-update", "--version"] : ["--version"]);
+  // #2078: muse is never started for a probe — `muse --version` once updated its own launcher. Its version is read from
+  // the file beside the launcher; its headless protocol is taken on trust (a task that fails says so).
+  if (id === "muse") {
+    const version = staticMuseVersion(executable.path);
+    return { executable, row: { ...base, path: executable.path, version, authenticated: null, runnable: provider.supports.execution,
+      supports: { ...base.supports }, models: [], modelsSource: "unavailable",
+      ...(version ? {} : { reason: "Muse is never started for detection; its version file was not found" }) } };
+  }
+  const version = await nonempty(["--version"]);
   const help = await nonempty(helpProbe.args);
   const auth = provider.authProbe ? await nonempty([...provider.authProbe]) : null;
   const listing = includeModels && provider.modelProbe ? await nonempty([...provider.modelProbe]) : null;
@@ -288,10 +310,10 @@ async function workerMain(): Promise<void> {
       const mcp = request.mcp === undefined ? undefined : validateNativeMcpConnection(request.mcp);
       if (request.context !== undefined && (typeof request.context !== "string" || request.context.length > 2000 || request.context.includes("\0"))) throw new Error("Invalid native task context");
       if (!existsSync(input.cwd) || !statSync(input.cwd).isDirectory()) throw new Error("Windows working directory does not exist");
-      const { row, executable } = await probeNativeCli(input.cli, {}, false);
-      if (!executable || !row.runnable) throw new Error(row.reason || "Windows CLI is not available");
-      if (mcp && !row.supports.mcp) throw new Error("Update this Windows CLI to use scoped AgEnD MCP tools");
-      if (input.sandbox === "read-only" && !row.readOnlySupport) throw new Error("The installed Windows CLI cannot enforce the selected read-only policy");
+      // M-2239 P1-2: a task starts no probe (no --version, --help, sign-in or model listing): AgEnD's bridge already
+      // checked this CLI against the administrator's last detection. Here only: the CLI is still installed.
+      const executable = await findCli(input.cli);
+      if (!executable) throw new Error(`${nativeProvider(input.cli).name} CLI is not installed on Windows`);
       if (disconnected || stopping) { completed = true; finish({ type: "finished", code: null, cancelled: true }, 1); return; }
       let tempDirectory: string | undefined, promptFile: string | undefined, connectionFile: string | undefined, mcpConfigFile: string | undefined;
       const createdFiles:string[]=[];

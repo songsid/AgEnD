@@ -27,7 +27,8 @@ Requires a supported Windows Node.js version and each coding CLI installed and s
 2. In a Windows terminal run:
    .\\agend-runtime.cmd connect --server https://your-agend-host
 3. Enter the one-time code from AgEnD Settings, then approve the pending machine there.
-4. Keep this terminal running. Ctrl+C stops it; .\\agend-runtime.cmd run reconnects the stored profile.
+4. In Settings -> Runtime, press Refresh CLI inventory for this computer. Only this explicit detection starts the installed CLIs; connecting or opening a page does not.
+5. Keep this terminal running. Ctrl+C stops it; .\\agend-runtime.cmd run reconnects the stored profile.
 
 Use status to inspect local pairing and journal state. disconnect forgets a stopped local connection; revoke the machine in AgEnD Settings to invalidate its credential centrally.
 The private profile defaults to %USERPROFILE%\\.agend-runtime. Its machine credential is stored as a private file, not encrypted by this preview. Use your Windows user profile and do not share it. CLI login credentials are never uploaded.
