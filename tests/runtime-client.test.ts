@@ -124,7 +124,9 @@ createInterface({input:process.stdin}).once('line',line=>{
     await vi.waitFor(() => {
       const result = f.state.hub.task(task.requestId); if (result?.status === "failed") throw Error(result.error);
       expect(result).toMatchObject({ status: "completed", outcomeConfirmed: true, output: "fake provider completed\n", threadId: "12345678-1234-4321-abcd-123456789012" });
-    }, { timeout: 10_000 });
+    }, { timeout: 10_000 }).catch(error => {
+      throw Error(`${error instanceof Error ? error.message : error}\nBridge: ${JSON.stringify(bridge.get(task.requestId))}\nJournal: ${JSON.stringify(f.store.get(task.requestId))}\nOnline: ${client.online()}`);
+    });
     expect(f.store.get(task.requestId)?.task.status).toBe("completed");
   }, 20_000);
   it("relays scoped MCP over the machine channel without exposing machine credentials to the CLI", async () => {
