@@ -328,7 +328,7 @@ export const OfficePackRestoreArgs = z.object({
 export const OfficePackListArgs = z.object({}).strict();
 export const OfficeSetStyleArgs = z.object({
   office: z.string().min(1).max(40).describe("A stored office's id"),
-  pack: z.string().min(1).max(40).describe("A pack the fleet keeps, or a built-in style (pixel, studio, cozy)"),
+  pack: z.string().min(1).max(40).describe("A pack the fleet keeps, or a built-in style (pixel, studio, cozy, guild, school)"),
 }).strict();
 
 export const SetDescriptionArgs = z.object({

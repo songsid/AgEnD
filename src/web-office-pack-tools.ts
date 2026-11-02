@@ -53,7 +53,7 @@ export type OfficePackApproval = typeof OFFICE_PACK_APPROVALS[number];
 /** Until an admin chooses: every change waits for a yes. */
 export const OFFICE_PACK_APPROVAL_DEFAULT: OfficePackApproval = "approve";
 /** The built-in styles an office may be drawn in besides a kept pack (fleet-office-skin.js BUILT_IN_SKINS). */
-export const BUILT_IN_STYLES = ["pixel", "studio", "cozy"] as const;
+export const BUILT_IN_STYLES = ["pixel", "studio", "cozy", "guild", "school"] as const;
 export const OFFICE_PACK_TOOLS = ["office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style"] as const;
 
 export type OfficePackAnswer = Record<string, unknown>;

@@ -16,7 +16,7 @@ const UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "ui");
 const JS = "text/javascript; charset=utf-8";
 
 /** `/assets/<name>` → src/ui/shared/<name>: the share page's closure there, its stylesheets, the font they name and the
- * Cozy style's picture (#2631). */
+ * pictures of the built-in Cozy (#2631), Guild and School (#2947) styles. */
 export const SHARE_ASSETS: Readonly<Record<string, string>> = {
   ...Object.fromEntries([
     "app-ctx.js", "app-html.js", "app-i18n.js", "app-nav.js", "app-prefs.js", "app-route.js", "app-store.js", "app-themes.js", "header-tools.js",
@@ -25,9 +25,13 @@ export const SHARE_ASSETS: Readonly<Record<string, string>> = {
     "view-roster-store.js", "view-strings.js",
   ].map(name => [name, JS])),
   "tokens.css": "text/css; charset=utf-8", "app.css": "text/css; charset=utf-8", "inter.woff2": "font/woff2", "office-cozy.png": "image/png",
+  "office-guild.png": "image/png", "office-school.png": "image/png",
 };
 /** An asset kept below src/ui/shared/ rather than in it, by name. */
-export const SHARE_ASSET_FILES: Readonly<Record<string, string>> = { "inter.woff2": join("fonts", "inter.woff2"), "office-cozy.png": join("office", "cozy.png") };
+export const SHARE_ASSET_FILES: Readonly<Record<string, string>> = {
+  "inter.woff2": join("fonts", "inter.woff2"), "office-cozy.png": join("office", "cozy.png"),
+  "office-guild.png": join("office", "guild.png"), "office-school.png": join("office", "school.png"),
+};
 /** `/ui/js/<name>` → src/ui/<name>: the share page's own module and the Office's. */
 export const SHARE_MODULES: readonly string[] = [
   "office-share-page.js", "fleet-office.js", "fleet-office-model.js", "fleet-office-skin.js", "fleet-office-zones.js", "fleet-office-store.js",

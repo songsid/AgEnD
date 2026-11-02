@@ -64,7 +64,7 @@ import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
-import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, bubbleBox, loadCozySkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
+import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf } from "./fleet-office-levels.js";
@@ -86,7 +86,7 @@ register("orgo", {
     people: "People", peopleN: "People ({0})", findPerson: "Find a person", everyone: "Show everyone", nobody: "No one here matches this filter.",
     unseated: "{0} without a seat", skinUnknown: "Its style “{0}” is not available here: drawn as Desks.", closed: "Closed", desks: "Desks", tapAgain: "Tap again to open the chat",
     capWorking: "Typing away", capIdle: "Tea break", capPaused: "Asleep", capNeeds: "Calling for you", capAway: "Desk empty", capStarting: "Just arriving", capQueued: "Waiting to start",
-    styleLabel: "Style", style_pixel: "Desks", style_studio: "Studio", style_cozy: "Cozy", cozyNotice: "Add your skin", area_desks: "Work", area_lounge: "Lounge", area_alert: "Help desk", area_nap: "Nap corner",
+    styleLabel: "Style", style_pixel: "Desks", style_studio: "Studio", style_cozy: "Cozy", style_guild: "Guild", style_school: "School", cozyNotice: "Add your skin", area_desks: "Work", area_lounge: "Lounge", area_alert: "Help desk", area_nap: "Nap corner",
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
@@ -104,7 +104,7 @@ register("orgo", {
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
     unseated: "{0} 位沒有座位", skinUnknown: "這裡沒有它的風格「{0}」：以辦公桌顯示。", closed: "休息中", desks: "桌子", tapAgain: "再點一下開啟聊天",
     capWorking: "埋頭打字中", capIdle: "喝茶休息", capPaused: "睡著了", capNeeds: "在呼叫你", capAway: "空位", capStarting: "剛到座位", capQueued: "等待啟動",
-    styleLabel: "風格", style_pixel: "辦公桌", style_studio: "工作室", style_cozy: "溫馨", cozyNotice: "換上你的外觀包", area_desks: "工作區", area_lounge: "休息區", area_alert: "求救區", area_nap: "午睡角",
+    styleLabel: "風格", style_pixel: "辦公桌", style_studio: "工作室", style_cozy: "溫馨", style_guild: "冒險者公會", style_school: "學校", cozyNotice: "換上你的外觀包", area_desks: "工作區", area_lounge: "休息區", area_alert: "求救區", area_nap: "午睡角",
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
     b_crashed: "糟糕，當掉了|救命！", b_stuck: "嗯，卡住了？|還在想…",
@@ -615,7 +615,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [lobbyOn, setLobbyOn] = useState(() => store.lobbyTile());       // #2554: All offices' lobby tile
   const [packs, setPacks] = useState([]);                             // the skin packs the host keeps: [{ id, name, sha }]
   const [packSkins, setPackSkins] = useState(() => new Map());        // id@sha → a loaded skin, or null (not a pack)
-  const [cozyRev, setCozyRev] = useState(0);                          // #2631: the cozy's picture came in (skinFor has it)
+  const [cozyRev, setCozyRev] = useState(0);                          // #2631/#2947: a built-in's picture came in (skinFor has it)
   // Edit layout's session while it is open: { id, officeId, skin, pack (the style's identity), base (the pack as kept),
   // start, draft, rev, list (the offices and rev read when it opened — what Save sends) }; null when closed.
   const [layout, setLayout] = useState(null);
@@ -801,14 +801,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   }, [neededKey]);
   const loading = !!packInfo && !packSkins.has(packKey);
   const baseSkin = packInfo ? packSkins.get(packKey) || skinFor("pixel") : skinFor(STYLES.includes(wanted) ? wanted : custom ? wanted : "pixel");
-  // #2631: the cozy's picture, once, when this office (or a tile, or the lobby tile) is drawn in it; until then its bare floors.
-  const cozyWanted = (overview ? [...stored.map((o) => o.skin), ...(lobbyOn ? [style] : [])] : [wanted]).includes("cozy");
+  // #2631/#2947: a picture-backed built-in's picture (cozy, guild, school), once, when this office (or a tile, or the lobby
+  // tile) is drawn in it and no kept pack has its id; until then its bare floors.
+  const picturesWanted = [...new Set((overview ? [...stored.map((o) => o.skin), ...(lobbyOn ? [style] : [])] : [wanted])
+    .filter((id) => PICTURE_SKINS.includes(id) && !packOf(id)))].sort().join(",");
   useEffect(() => {
-    if (!cozyWanted) return undefined;
+    if (!picturesWanted) return undefined;
     let live = true;
-    loadCozySkin().then((sk) => { if (live && sk && sk !== baseSkin) setCozyRev((n) => n + 1); });
+    for (const id of picturesWanted.split(",")) loadBuiltInSkin(id).then((sk) => { if (live && sk) setCozyRev((n) => n + 1); });
     return () => { live = false; };
-  }, [cozyWanted]);
+  }, [picturesWanted]);
   const zones = !!(baseSkin.pack && baseSkin.pack.stateZones);
   /** The style's identity: a pack's id and sha (a pack replaced is another), or the built-in skin's id. */
   const styleKey = packKey || baseSkin.id;
