@@ -61,6 +61,7 @@ export default defineConfig({
       "tests/mcp-slot-collision.test.ts",
       "tests/cli-env-probe-guard.test.ts",
       "tests/tmux-manager.test.ts",
+      "tests/pane-port-native-2950.test.ts",
       "tests/tmux-control-native-1401.test.ts",
       "tests/tmux-kill-window-confirmed.test.ts",
       "tests/view-api.test.ts",

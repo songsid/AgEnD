@@ -24,7 +24,7 @@ import { assertNoSessionOomStop, readSessionOomStop, writeSessionOomStop, Sessio
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
-import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
+import { resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource, type TranscriptSource } from "./transcript-sources.js";
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
@@ -54,7 +54,8 @@ import { HangDetector } from "./hang-detector.js";
 import { writeSecretFile } from "./secret-file.js";
 import { PaneWriteLock } from "./pane-write-lock.js";
 import { answerRemoteCard, type RemoteCardAction, type RemoteCardOutcome } from "./remote-card-answer.js";
-import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
+import type { Pane, PaneHost, PaneObservation, PaneOutputEvent, PaneOutputEventName } from "./pane-port.js";
+import { tmuxPaneHost } from "./tmux-pane-host.js";
 import { buildFleetInstructions } from "./instructions.js";
 import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, BTW_INBOUND_PREFIX,
   humanBodyHash, humanOwnerObjectId, type HumanReceiptAttempt, type HumanWriteMode, type HumanPositiveTag } from "./human-delivery-receipts.js";
@@ -1355,7 +1356,7 @@ export class Daemon extends EventEmitter {
   private deliveryOutbox?: DaemonDeliveryPort;
   private logger: Logger;
   private tmuxSessionName: string;
-  private tmux: TmuxManager | null = null;
+  private tmux: Pane | null = null;
   private ipcServer: IpcServer | null = null;
   private messageBus: MessageBus;
   private transcriptMonitor: TranscriptMonitor | null = null;
@@ -1411,7 +1412,7 @@ export class Daemon extends EventEmitter {
   // injected by FleetManager below.
   private healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private crashCount = 0;
-  private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: TmuxManager } | null = null;
+  private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: Pane } | null = null;
   private consecutiveOoms: SessionOomCount | null = null;
   private collateralOomRecovery = false;
   private unclearOomStopped = false;
@@ -1646,8 +1647,8 @@ export class Daemon extends EventEmitter {
   private unknownLayoutStableSince = 0;
   private unknownLayoutWarned = false;
   private instanceStateStuckTimer: ReturnType<typeof setTimeout> | null = null;
-  private instanceStateOutputListener: ((event: TmuxPaneOutputEvent) => void) | null = null;
-  private instanceStateOutputEventName: string | null = null;
+  private instanceStateOutputListener: ((event: PaneOutputEvent) => void) | null = null;
+  private instanceStateOutputEventName: PaneOutputEventName | null = null;
   private instanceStateSafetyListener: (() => void) | null = null;
   private instanceStateLastOutputAt = 0;
   private instanceStateIdleDebounceMs = DEFAULT_STATE_IDLE_DEBOUNCE_MS;
@@ -2201,19 +2202,23 @@ export class Daemon extends EventEmitter {
     this.activeErrorPatternKey = null;
   }
 
+  /** Lazy default also preserves bare-prototype diagnostic/test construction. */
+  private get paneHost(): PaneHost { return this.paneTransport ?? tmuxPaneHost; }
+
   constructor(
     private name: string,
     private config: InstanceConfig,
     private instanceDir: string,
     private topicMode = false,
     private backend?: CliBackend,
-    private controlClient?: TmuxControlClient,
+    private controlClient?: PaneObservation,
     rootLogger?: Logger,
     private runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
     private spawnGate?: SpawnGate,
     private stormWindow?: StormWindow,
     /** Fleet-level "is this CLI's backend down?" memory — see backend-outage.ts. */
     private backendOutage?: BackendOutageView,
+    private paneTransport?: PaneHost,
   ) {
     super();
     // The live process owns its adopted configuration. Fleet defaults may be re-resolved in place after a save;
@@ -2748,8 +2753,8 @@ export class Daemon extends EventEmitter {
     });
 
     // 2. Tmux — ensure session, create window if not alive
-    await TmuxManager.ensureSession(this.tmuxSessionName); this.startupAdmission?.();
-    this.tmux = new TmuxManager(
+    await this.paneHost.ensureSession(this.tmuxSessionName); this.startupAdmission?.();
+    this.tmux = this.paneHost.bind(
       this.tmuxSessionName,
       "",
       resolveTmuxLogicalSize(this.config.terminal),
@@ -2762,7 +2767,7 @@ export class Daemon extends EventEmitter {
     if (existsSync(windowIdFile)) {
       const savedId = readFileSync(windowIdFile, "utf-8").trim();
       if (savedId) {
-        const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
+        const oldTmux = this.paneHost.bind(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
           this.startupAdmission?.();
           await this.checkpointSessionId(); this.startupAdmission?.();
@@ -3456,12 +3461,12 @@ export class Daemon extends EventEmitter {
           let inWindowLossBurst = false;
           let nullReason: string | undefined;
           if (!paneStatus) {
-            const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
+            const serverAlive = await this.paneHost.sessionExists(this.tmuxSessionName);
             if (discardStaleHealth()) return;
             // A server may have already restarted before this daemon's health
             // tick. The new PID is the durable generation boundary: treat it as
             // a fleet storm even though `has-session` is true again.
-            const serverPid = serverAlive ? await TmuxManager.getServerPid(this.tmuxSessionName) : null;
+            const serverPid = serverAlive ? await this.paneHost.getServerPid(this.tmuxSessionName) : null;
             if (discardStaleHealth()) return;
             const generationChanged = serverAlive && this.stormWindow?.observeServerAlive(serverPid) === true;
             if (generationChanged) this.emit("tmux_server_crash", this.name);
@@ -3484,7 +3489,7 @@ export class Daemon extends EventEmitter {
               // the window truly no longer exists vs a transient query glitch.
               nullReason = "no_window";
               try {
-                const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName, this.controlClient);
+                const windows = await this.paneHost.listWindowsStrict(this.tmuxSessionName, this.controlClient);
                 if (discardStaleHealth()) return;
                 this.windowQueryFailureTicks = 0;
                 const currentWindowId = this.tmux.getWindowId();
@@ -3731,10 +3736,10 @@ export class Daemon extends EventEmitter {
             // Wrapped in try-catch: if tmux server is dead, listWindows throws —
             // must not block spawnClaudeWindow (which calls ensureSession).
             try {
-              const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+              const windows = await this.paneHost.listWindows(this.tmuxSessionName);
               for (const w of windows) {
                 if (w.name === this.name) {
-                  const tm = new TmuxManager(this.tmuxSessionName, w.id);
+                  const tm = this.paneHost.bind(this.tmuxSessionName, w.id);
                   await tm.killWindow();
                 }
               }
@@ -6810,7 +6815,7 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  private handleInstancePaneOutput(event: TmuxPaneOutputEvent): void {
+  private handleInstancePaneOutput(event: PaneOutputEvent): void {
     if (!this.instanceStateMonitorActive || this.runtimeMonitorsFrozen) return;
     const windowId = this.tmux?.getWindowId();
     if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
@@ -8814,7 +8819,7 @@ export class Daemon extends EventEmitter {
    * await. Null when unreadable, late or no longer this write's: never evidence of an empty or a full box. The pane
    * comes back with the mode, so what follows judges the same capture.
    */
-  private async steerComposerWithin(tmux: TmuxManager, deadline: number, current: () => boolean): Promise<{ mode: SteerComposerMode; pane: string } | null> {
+  private async steerComposerWithin(tmux: Pane, deadline: number, current: () => boolean): Promise<{ mode: SteerComposerMode; pane: string } | null> {
     const read = this.backend?.readSteerComposer;
     const left = deadline - performance.now();
     if (!read || left <= 0 || !current()) return null;
@@ -10704,11 +10709,11 @@ export class Daemon extends EventEmitter {
       && sameInteractionOwner(recoveryOwner, this.interactionOwner());
     const previousWindowId = this.tmux?.getWindowId();
     try {
-      const windows = await TmuxManager.listWindows(this.tmuxSessionName, this.controlClient);
+      const windows = await this.paneHost.listWindows(this.tmuxSessionName, this.controlClient);
       if (!recoveryCurrent() || this.tmux !== previousTmux) return undefined;
       const match = windows.find(w => w.name === this.name);
       if (!match) return undefined;
-      this.tmux = new TmuxManager(
+      this.tmux = this.paneHost.bind(
         this.tmuxSessionName,
         match.id,
         resolveTmuxLogicalSize(this.config.terminal),
@@ -12136,7 +12141,7 @@ export class Daemon extends EventEmitter {
     // tmux interprets an empty selector as the session's active window.
     if (!windowId?.trim()) return;
     try {
-      const pid = await TmuxManager.getPanePid(this.tmuxSessionName, windowId);
+      const pid = await this.paneHost.getPanePid(this.tmuxSessionName, windowId);
       if (pid) {
         this.noteStopRequest(signal, reason);
         process.kill(-pid, signal);
@@ -12459,8 +12464,8 @@ export class Daemon extends EventEmitter {
     }
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
-    await TmuxManager.ensureSession(this.tmuxSessionName);
-    if (this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName))) {
+    await this.paneHost.ensureSession(this.tmuxSessionName);
+    if (this.stormWindow?.observeServerAlive(await this.paneHost.getServerPid(this.tmuxSessionName))) {
       this.emit("tmux_server_crash", this.name);
     }
     this.startupAdmission?.();
