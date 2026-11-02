@@ -1,3 +1,4 @@
+import { claudeTranscriptRecord, claudeTranscriptLongHead } from "./transcript-records.js";
 import { EventEmitter } from "node:events";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -147,6 +148,7 @@ export class TranscriptMonitor extends EventEmitter {
     try {
       const events = await this.source!.poll();
       if (generation !== this.generation) return;
+      for (const record of events.records ?? []) { if (generation !== this.generation) return; this.emit(record[0], ...record.slice(1)); }
       for (const use of events.toolUses) { if (generation !== this.generation) return; this.emit("tool_use", use.name, use.input); }
       for (const result of events.toolResults) { if (generation !== this.generation) return; this.emit("tool_result", result.name, undefined); }
       for (const text of events.assistantTexts) { if (generation !== this.generation) return; this.emit("assistant_text", text); }
@@ -231,53 +233,11 @@ export class TranscriptMonitor extends EventEmitter {
    * the results it carries (by tool_use_id) and the tools it calls (by name), so the bubble does not lose the step.
    */
   private processLongHead(head: string): void {
-    if (head.includes('"type":"tool_result"')) {
-      for (const m of head.matchAll(/"tool_use_id":"([^"]{1,200})"/g)) this.emit("tool_result", m[1], undefined);
-    }
-    for (const m of head.matchAll(/"type":"tool_use"/g)) {
-      const name = /"name":"([^"]{1,200})"/.exec(head.slice(m.index, m.index + 400));
-      if (name) this.emit("tool_use", name[1], {});
-    }
+    claudeTranscriptLongHead(head, (...event) => { this.emit(event[0], ...event.slice(1)); });
   }
 
   private processEntry(entry: any): void {
-    // #2834: Claude's own status notes (e.g. its usage-limit auto-continue) — a system record, not model output.
-    if (entry.type === "system" && entry.subtype === "informational" && typeof entry.content === "string") {
-      this.emit("system_informational", entry.content);
-      return;
-    }
-    const msg = entry.message;
-    if (!msg?.role || !msg?.content) return;
-    // #2822: Claude records a failed API call as an assistant record of its own (`isApiErrorMessage`) — the CLI's own
-    // error, not model output: told as "api_error", never as "assistant_text".
-    if (entry.type === "assistant" && entry.isApiErrorMessage === true) {
-      const text = Array.isArray(msg.content)
-        ? msg.content.map((b: any) => (b?.type === "text" && typeof b.text === "string" ? b.text : "")).join("")
-        : String(msg.content);
-      const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
-      this.emit("api_error", text, typeof entry.apiErrorStatus === "number" ? entry.apiErrorStatus : null, Number.isFinite(at) ? at : null,
-        typeof entry.error === "string" ? entry.error : null);
-      return;
-    }
-
-    // #2822: a prompt (a person's message, a system notice; a string, or text/image blocks) — never a meta record or a
-    // tool result. The point a later API error is judged against.
-    if (entry.type === "user" && entry.isMeta !== true && (typeof msg.content === "string"
-      ? msg.content.trim() !== ""
-      : Array.isArray(msg.content) && msg.content.length > 0 && msg.content.every((b: any) => b?.type === "text" || b?.type === "image"))) {
-      this.emit("user_prompt");
-    }
-    const contents = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: msg.content }];
-
-    for (const block of contents) {
-      if (block.type === "tool_use") {
-        this.emit("tool_use", block.name ?? "unknown", block.input ?? {});
-      } else if (block.type === "tool_result") {
-        this.emit("tool_result", block.tool_use_id ?? "unknown", block.content);
-      } else if (block.type === "text" && msg.role === "assistant" && block.text?.trim()) {
-        this.emit("assistant_text", block.text);
-      }
-    }
+    claudeTranscriptRecord(entry, (...event) => { this.emit(event[0], ...event.slice(1)); });
   }
 
   startPolling(intervalMs = 2000): void {
