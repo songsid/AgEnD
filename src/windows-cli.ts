@@ -59,10 +59,12 @@ export class WindowsCliBridge {
   /**
    * M-2239 P1-2: the last detection, as it was — starting nothing. Only `force` (an administrator's explicit "Detect
    * again") starts the Windows CLIs, once each, with their own "do not update" switches. Never on a timer or a read.
+   * `authorized` (the requester's live check) is asked again after the Windows transport is found and before the worker
+   * starts, as for a workspace or a task (#2937 review): authority revoked meanwhile starts nothing.
    */
-  async probe(options: { force?: boolean } = {}): Promise<WindowsCliProbe> {
+  async probe(options: { force?: boolean } = {}, authorized: () => boolean = () => true): Promise<WindowsCliProbe> {
     if (!options.force) return structuredClone(this.pendingProbe ? await this.pendingProbe : this.cachedProbe ?? NEVER_PROBED);
-    this.pendingProbe ??= this.doProbe().then(value => {
+    this.pendingProbe ??= this.doProbe(authorized).then(value => {
       this.cachedProbe = structuredClone(value);
       if (this.inventoryFile) writeInventory(this.inventoryFile, value);
       return value;
@@ -80,8 +82,8 @@ export class WindowsCliBridge {
     if (!authorized()) throw new Error("Authorization expired while creating the Windows workspace");
     return value.cwd;
   }
-  private async doProbe(): Promise<WindowsCliProbe> {
-    const value = await this.workerResult({ op: "probe" }, 60_000);
+  private async doProbe(authorized: () => boolean): Promise<WindowsCliProbe> {
+    const value = await this.workerResult({ op: "probe" }, 60_000, authorized);
     if (value.type !== "probe" || !Array.isArray(value.clis) || typeof value.home !== "string") throw new Error(String(value.message || "Windows CLI probe failed"));
     return { clis: value.clis, home: value.home, probedAt: Date.now() };
   }

@@ -109,14 +109,24 @@ describe("Windows CLI discovery refresh API", () => {
     const probe = vi.spyOn(bridge,"probe").mockResolvedValue(value);
     handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
     await vi.waitFor(() => expect(res.status).toBe(200));
-    expect(probe).toHaveBeenCalledWith(body); expect(JSON.parse(res.body)).toEqual(value);
+    expect(probe).toHaveBeenCalledWith(body, expect.any(Function)); expect(JSON.parse(res.body)).toEqual(value);
+  });
+  it("#2937 review: hands discovery the request's live authorization check", async () => {
+    const req = request("POST",{force:true}), res = response(req), ctx: WindowsCliApiContext = {webToken:token}; req.url = probeUrl.pathname;
+    const bridge = new WindowsCliBridge(noWindows); let check!: () => boolean;
+    vi.spyOn(bridge,"probe").mockImplementation(async (_options, authorized) => { check = authorized!; return value; });
+    handleWindowsCliRequest(req,res,probeUrl,ctx,bridge);
+    await vi.waitFor(() => expect(res.status).toBe(200));
+    expect(check()).toBe(true);
+    (ctx as {webToken:string|null}).webToken = null;
+    expect(check()).toBe(false);
   });
   it("accepts an empty POST body as ordinary cached discovery", async () => {
     const req = Readable.from([]) as unknown as IncomingMessage;
     req.method = "POST"; req.url = probeUrl.pathname; req.headers = {host:"localhost","x-agend-token":token};
     const res = response(req), bridge = new WindowsCliBridge(noWindows), probe = vi.spyOn(bridge,"probe").mockResolvedValue(value);
     handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
-    await vi.waitFor(() => expect(res.status).toBe(200)); expect(probe).toHaveBeenCalledWith({});
+    await vi.waitFor(() => expect(res.status).toBe(200)); expect(probe).toHaveBeenCalledWith({}, expect.any(Function));
   });
   it.each([null, [], "force", {force:"true"}, {force:1}, {force:true,unexpected:true}])("rejects malformed refresh options %j before discovery", async body => {
     const req = request("POST",body), res = response(req), bridge = new WindowsCliBridge(noWindows); req.url = probeUrl.pathname;
