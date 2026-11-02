@@ -253,33 +253,57 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
       expect([msg.classList.contains("status-line"), msg.classList.contains("status"), msg.classList.contains("user"), msg.classList.contains("agent")], "status-line, never the header badge class status").toEqual([true, false, false, false]);
       expect(list.querySelector(".st-text").textContent).toBe("alice → w:\n**bold** <i>raw</i>\n```html\n<b>card</b>\n```");
       for (const sel of [".html-card", ".md", "strong", "i", "b", "pre", ".codeblock", ".rb-row"]) expect(list.querySelector(sel), sel).toBeNull();
-      expect(list.querySelector(".st-more")).toBeNull();
+      expect(msg.classList.contains("folded")).toBe(true);                     // five lines: folded to two (hmsg-d6ac6dfb)
     } finally { dom.restore(); }
   });
 
-  it("a long one is folded: many lines → Show all N lines; one long line → Show more; the toggle opens and closes it", () => {
+  // The user (hmsg-d6ac6dfb): folded, a status line is two lines — the header and the first line, each one row.
+  it("folds past two lines, or a line long enough to wrap; two short lines stay open", () => {
     const { dom, list, th } = thread();
     try {
-      const lines = Array.from({ length: 9 }, (_, i) => `line ${i}`).join("\n");
-      th.render([status(1, lines), status(2, "y".repeat(700)), status(3, "short")]);
-      const msgs = [...list.querySelectorAll(".msg.status-line")] as any[];
-      expect(msgs.map(m => m.classList.contains("folded"))).toEqual([true, true, false]);
-      const [many, wide] = msgs.map(m => m.querySelector(".st-more"));
-      expect([many.textContent, wide.textContent]).toEqual(["Show all 9 lines", "Show more"]);
-      th.onClick({ target: many });
-      expect([msgs[0].classList.contains("folded"), many.textContent]).toEqual([false, "Show less"]);
-      th.onClick({ target: many });
-      expect([msgs[0].classList.contains("folded"), many.textContent]).toEqual([true, "Show all 9 lines"]);
-      th.onClick({ target: wide }); th.onClick({ target: wide });
-      expect([msgs[1].classList.contains("folded"), wide.textContent]).toEqual([true, "Show more"]);
+      th.render([status(1, "a → w:\none\ntwo"), status(2, "a → w:\n" + "y".repeat(120)), status(3, "a → w:\nshort"), status(4, "short")]);
+      expect([...list.querySelectorAll(".msg.status-line")].map((m: any) => m.classList.contains("folded"))).toEqual([true, true, false, false]);
+    } finally { dom.restore(); }
+  });
+  it("each line its own row (the text and its line breaks unchanged); folded, the button's label is short with its full name for a screen reader", () => {
+    const { dom, list, th } = thread();
+    try {
+      const text = "Weaver → w:\nfirst line\n\nthird\nfourth\nfifth\nsixth\nseventh";
+      th.render([status(1, text), status(2, "a → w:\n" + "y".repeat(120))]);
+      const [many, wide] = [...list.querySelectorAll(".msg.status-line")] as any[];
+      expect([many.querySelector(".st-text").textContent, many.querySelectorAll(".st-ln").length]).toEqual([text, 8]);
+      const [m, w] = [many.querySelector(".st-more"), wide.querySelector(".st-more")];
+      expect([m.textContent, m.getAttribute("aria-label"), m.getAttribute("aria-expanded"), w.textContent, w.getAttribute("aria-label")])
+        .toEqual(["All 8 lines", "Show all 8 lines", "false", "More", "Show more"]);
+    } finally { dom.restore(); }
+  });
+  it("one click opens it (its button, or its text — not a link in it); Show less folds it again", () => {
+    const { dom, list, th } = thread();
+    try {
+      th.render([status(1, Array.from({ length: 9 }, (_, i) => `line ${i}`).join("\n"))]);
+      const msg = list.querySelector(".msg.status-line") as any, more = msg.querySelector(".st-more");
+      th.onClick({ target: more });
+      expect([msg.classList.contains("folded"), more.textContent, more.getAttribute("aria-expanded"), more.getAttribute("aria-label")]).toEqual([false, "Show less", "true", "Show less"]);
+      th.onClick({ target: more });
+      expect([msg.classList.contains("folded"), more.textContent, more.getAttribute("aria-label")]).toEqual([true, "All 9 lines", "Show all 9 lines"]);
+      th.onClick({ target: msg.querySelectorAll(".st-ln")[1] });                      // the text itself
+      expect(msg.classList.contains("folded")).toBe(false);
+      th.onClick({ target: more });                                                       // folded again
+      // A link in it is a link: it does not open the line.
+      th.render([{ ...status(2, "w → x:\nsee\nmore\nlines"), links: [{ offset: 0, length: 1, url: "/ui/chat/w" }] }]);
+      const second = [...list.querySelectorAll(".msg.status-line")].at(-1) as any;
+      const link = second.querySelector("a.st-link");
+      expect(link?.textContent).toBe("w");
+      th.onClick({ target: link });
+      expect(second.classList.contains("folded")).toBe(true);
     } finally { dom.restore(); }
   });
 
   it("the fold reads in English and in zh-TW", () => {
     try {
-      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9)]).toEqual(["Show more", "Show less", "Show all 9 lines"]);
+      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9), t("chat.showAllShort", 9), t("chat.showMoreShort")]).toEqual(["Show more", "Show less", "Show all 9 lines", "All 9 lines", "More"]);
       setLang("zh-TW");
-      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9)]).toEqual(["顯示更多", "收合", "展開全部 9 行"]);
+      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9), t("chat.showAllShort", 9), t("chat.showMoreShort")]).toEqual(["顯示更多", "收合", "展開全部 9 行", "全部 9 行", "更多"]);
     } finally { setLang("en"); }
   });
 });
