@@ -276,8 +276,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(ok).toBe(false);
     expect(h.paste).toHaveBeenCalledOnce();
     expect(h.events).not.toContain("message_confirmed");
-    expect(h.enter).not.toHaveBeenCalled();
-    expect(h.events).not.toContain("message_failed"); // The paste is held, with no blind submit.
+    expect(h.events).not.toContain("message_failed");
   });
 
   it("does not report a false failure while a submitted 0.156 message appears after the first proof window", async () => {

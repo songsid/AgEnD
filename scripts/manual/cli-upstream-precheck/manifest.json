@@ -897,7 +897,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/daemon.ts",
-     "line": 1166,
+     "line": 1169,
      "symbol": "detectMalformedClaudeToolCall.closingTags"
     },
     {
@@ -1885,7 +1885,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1893,7 +1893,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1901,7 +1901,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1909,7 +1909,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 4975,
+     "line": 4978,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2041,7 +2041,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2049,7 +2049,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2057,7 +2057,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2065,7 +2065,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12912,
+     "line": 12994,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2073,7 +2073,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12913,
+     "line": 12995,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2081,7 +2081,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12913,
+     "line": 12995,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2089,7 +2089,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12913,
+     "line": 12995,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2097,7 +2097,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12913,
+     "line": 12995,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2105,7 +2105,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12913,
+     "line": 12995,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2113,7 +2113,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12913,
+     "line": 12995,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2121,7 +2121,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12914,
+     "line": 12996,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2129,7 +2129,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13007,
+     "line": 13089,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2137,7 +2137,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13129,
+     "line": 13211,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2145,7 +2145,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13129,
+     "line": 13211,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -3449,7 +3449,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3457,7 +3457,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3465,7 +3465,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3741,7 +3741,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3749,7 +3749,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3757,7 +3757,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3929,7 +3929,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3937,7 +3937,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3945,7 +3945,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 805,
+     "line": 808,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {

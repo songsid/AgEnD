@@ -42,6 +42,8 @@ function gateDaemon(screen: string, mode: "codex" | "native") {
   const daemon: any = new Daemon("s35", { working_directory: root, backend: "codex", log_level: "silent" } as never, root, true, backend, undefined, logger as never);
   daemon.tmux = { getWindowId: () => "@owned", capturePane: vi.fn(async () => screen), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
   daemon.deliveryOutbox = { markEnterStarted: () => true };
+  // S-36: the composer gate is the NATIVE pane's (main's beta.5 removed it for tmux panes, decision f57474aa).
+  if (mode === "native") daemon.nativePaneLifecycle = {};
   return daemon;
 }
 const enter = async (screen: string, mode: "codex" | "native") => {
@@ -80,8 +82,8 @@ describe("S-35 negatives stay refused", () => {
   ])("%s is never owned, for Enter or delivery readiness", async (_name, screen) => {
     expect(conpty.ownsComposerRows(screen)).toBe(false);
     expect(unix.ownsComposerRows(screen)).toBe(false);
-    expect(await enter(screen, "codex")).toEqual({ sent: false, keys: 0 });
     expect(await enter(screen, "native")).toEqual({ sent: false, keys: 0 });
+    expect(await enter(screen, "codex")).toEqual({ sent: true, keys: 1 });   // a tmux pane: main's beta.5, no proof
   });
 
   it.each(["codex", "native"] as const)("no runtime dialog matches the real S-35 screens, so stale /status or tool-call text cannot veto Enter (%s)", mode => {
@@ -91,8 +93,8 @@ describe("S-35 negatives stay refused", () => {
       expect(hits).toEqual([]);
     }
   });
-  it("a live dialog vetoes Enter even over a real composer", async () => {
-    const daemon = gateDaemon(postTurn, "codex");
+  it("a live dialog vetoes Enter even over a real composer (native pane)", async () => {
+    const daemon = gateDaemon(postTurn, "native");
     vi.spyOn(daemon, "runtimeDialogs").mockReturnValue([{ pattern: /Pane check 2/, keys: [], description: "fixture dialog", holdOnly: true, blocksDelivery: true }]);
     expect(await daemon.sendDeliveryEnter("initial-submit", undefined, { deliveryId: "s35-delivery", attemptNo: 1 })).toBe(false);
     expect(daemon.tmux.sendSpecialKey).not.toHaveBeenCalled();

@@ -278,7 +278,7 @@ describe("DeliveryOutbox", () => {
       `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
       `const instanceDir = root + "/instances/worker"; mkdirSync(instanceDir, { recursive: true }); writeFileSync(instanceDir + "/window-id", "@worker");`,
       `target.wake = async () => {}; target.waitForInputTransientToClear = async () => true; target.getWindowId = () => "@worker";`,
-      `target.backend = { ...target.backend, getReadyPattern: () => /❯/ }; target.tmux = { getWindowId: () => "@worker", capturePane: async () => "❯", pasteBuffer: async () => true, sendSpecialKey: async () => { process.stdout.write("raw-enter-accepted\\n"); return new Promise(() => {}); }, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+      `target.tmux = { getWindowId: () => "@worker", capturePane: async () => "❯", pasteBuffer: async () => true, sendSpecialKey: async () => { process.stdout.write("raw-enter-accepted\\n"); return new Promise(() => {}); }, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
       `target.queueRawPaste("/compact", 0, false, { deliveryId: row.deliveryId, attemptNo: claimed.attemptNo, submissionMode: "raw_paste" });`,
       `setInterval(() => {}, 1000);`,
     ].join("\n");
@@ -360,7 +360,7 @@ describe("DeliveryOutbox", () => {
       `target.hasPositiveDeliveryInput = async () => true;`,
       `target.waitForInputTransientToClear = async () => true;`,
       `target.capturePaneEvidence = async () => ({ captured: true });`,
-      `target.backend = { ...target.backend, getReadyPattern: () => /❯/ }; target.tmux = { getWindowId: () => "@old", capturePane: async () => "❯", pasteBuffer: async () => true, sendSpecialKey: async () => { process.stdout.write("tmux-enter-accepted\\n"); return new Promise(() => {}); }, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+      `target.tmux = { getWindowId: () => "@old", capturePane: async () => "", pasteBuffer: async () => true, sendSpecialKey: async () => { process.stdout.write("tmux-enter-accepted\\n"); return new Promise(() => {}); }, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
       `target.pushChannelMessage("hello", { delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "same-correlation", user: "instance:source", user_id: "instance:source", message_id: "message-native-queue-crash", chat_id: "", thread_id: "", ts: new Date().toISOString() });`,
       `setInterval(() => {}, 1000);`,
     ].join("\n");

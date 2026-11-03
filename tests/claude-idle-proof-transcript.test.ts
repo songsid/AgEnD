@@ -68,8 +68,6 @@ afterEach(() => {
 });
 
 interface Run {
-  /** A dialog can replace the composer after the paste, before its delayed submit. */
-  afterPaste?: string;
   /** What the pane shows for the n-th capture after the Enter (1-based). */
   afterEnter: (n: number) => string;
   /** Whether Claude writes its transcript entry at the Enter: this delivery's own, another's, or none. */
@@ -111,7 +109,7 @@ async function deliverToIdleClaude(run: Run) {
   }).delivery;
   const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
   const s = { pasted: false, enters: 0, after: 0 };
-  const screen = () => (!s.pasted ? IDLE : s.enters === 0 ? run.afterPaste ?? PASTED : run.afterEnter(++s.after));
+  const screen = () => (!s.pasted ? IDLE : s.enters === 0 ? PASTED : run.afterEnter(++s.after));
   daemon.tmux = {
     capturePane: vi.fn(async () => screen()),
     capturePaneWithHistory: vi.fn(async () => screen()),
@@ -156,14 +154,6 @@ async function deliverToIdleClaude(run: Run) {
 const painting = (frames: number, then: string) => (n: number) => (n <= frames ? PAINTING : then);
 
 describe("the 13:53 sequence: submit → the box paints the paste a moment longer → the reply pushes the echo away", () => {
-  it("a permission card between paste and Enter holds the durable attempt without approving or re-pasting", async () => {
-    const permission = readFileSync(join(FIX, "claude-2.1.316-bash-permission-prompt.pane.txt"), "utf8");
-    const r = await deliverToIdleClaude({ afterPaste: permission, afterEnter: () => permission, transcript: "none", noCheckpoint: true });
-    expect(r.s.enters).toBe(0);
-    expect(r.tmux.pasteBuffer).toHaveBeenCalledOnce();
-    expect(r.state).toBe("uncertain");
-    expect(r.evidence).toBe("submit-enter:input-not-verified");
-  });
   it("the transcript has this delivery's user entry: delivered, no ⚠️, one paste, one Enter, no wait for the prompt", async () => {
     // The pane never shows the echo at all here — painting, then flooded — so only the transcript can prove it.
     const r = await deliverToIdleClaude({ afterEnter: painting(20, FLOODED), transcript: "own" });

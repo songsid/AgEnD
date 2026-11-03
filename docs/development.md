@@ -290,7 +290,7 @@ A release is a pushed tag. `publish.yml`:
    | Tag | npm dist-tag |
    |---|---|
    | `vX.Y.Z` | `latest` |
-   | `vX.Y.Z-beta.N` | `beta` |
+   | `vX.Y.Z-beta.N` | `rc` (a release candidate; see below) |
    | `vX.Y.Z-alpha.N` | `alpha` |
    | anything else (`-rc.1`, `-beta`, leading zeros…) | the job fails |
 
@@ -317,6 +317,32 @@ publishes nothing; re-run it or push its tag again.
 
 The workflow does not create a GitHub Release, and there is no separate
 Discord plugin package to build: Discord is built into the main package.
+
+### Promoting a candidate to beta (#2987)
+
+A `vX.Y.Z-beta.N` tag publishes to `rc`, never to `beta`: a beta user's
+`agend update` and update notice follow `@beta`, so nobody installs a
+candidate that has not run anywhere. The release steps:
+
+1. Push the tag. `publish.yml` publishes `X.Y.Z-beta.N` to `@rc`.
+2. On the test host: `agend update --rc`, then run it.
+3. Promote: Actions → **Promote beta** (`promote-beta.yml`) → Run workflow
+   with `version` = `X.Y.Z-beta.N`. `dry_run` is on by default and only
+   prints what would happen; run it again with `dry_run` off.
+
+The workflow checks that the version is on the registry, that it is a
+`X.Y.Z-beta.N` and that `beta` would not move backwards
+([`scripts/release/promote-beta.mjs`](../scripts/release/promote-beta.mjs)),
+warns when `@rc` points at a newer candidate, runs
+`npm dist-tag add @songsid/agend@X.Y.Z-beta.N beta`, and then waits for
+`@beta` to answer with that version. Nothing is rebuilt or republished: the
+tarball that was tested is the one beta users get. It shares the
+`npm-publish` concurrency group with `publish.yml`.
+
+npm trusted publishing (OIDC) covers `npm publish` only, so moving a dist-tag
+needs a token: a granular npm access token with read and write access to
+`@songsid/agend`, in the repository secret `NPM_TOKEN`. Without it a real run
+stops before moving anything.
 
 ### Publishing the runtime packages
 
@@ -351,13 +377,15 @@ After that, a new pinned Node publishes through OIDC alone.
 | Channel | Tag | Install |
 |---|---|---|
 | Stable | `vX.Y.Z` | `npm install -g @songsid/agend` |
-| Beta | `vX.Y.Z-beta.N` | `npm install -g @songsid/agend@beta` |
+| Beta | `vX.Y.Z-beta.N`, once promoted | `npm install -g @songsid/agend@beta` |
+| Release candidate | `vX.Y.Z-beta.N` | `npm install -g @songsid/agend@rc` |
 | Alpha | `vX.Y.Z-alpha.N` | `npm install -g @songsid/agend@alpha` |
 
 `agend update` stays on the channel of the installed version: an alpha follows
 `@alpha`, any other prerelease `@beta`, a release `@latest`
 (`installedChannel` in `src/update-check.ts`). `--alpha`, `--beta` and
-`--stable` switch channels; an update that would go back to an older version
+`--stable` switch channels; `--rc` installs the current candidate, and the
+install follows `@beta` afterwards; an update that would go back to an older version
 is refused unless asked for.
 
 ## Release notes style

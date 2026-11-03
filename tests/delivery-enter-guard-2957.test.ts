@@ -1,4 +1,8 @@
-/** The last delivery Enter gate; no account, CLI, fleet or service is started. */
+/**
+ * The last delivery Enter gate on a NATIVE Windows pane; no account, CLI, fleet or service is started.
+ * Alpha only (S-36): main's beta.5 reverted #2958's composer proof for tmux panes (decision f57474aa); the alpha keeps it
+ * for native panes, where #2957 was found. The fixture is a native pane unless a case says otherwise.
+ */
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +23,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function fixture(screen = permission) {
+function fixture(screen = permission, native = true) {
   const root = mkdtempSync(join(tmpdir(), "agend-enter-guard-"));
   roots.push(root);
   const backend = new ClaudeCodeBackend(root);
@@ -35,6 +39,7 @@ function fixture(screen = permission) {
     getLastSendSpecialKeyError: () => null,
   };
   daemon.tmux = tmux;
+  if (native) daemon.nativePaneLifecycle = {};
   const mark = vi.fn(() => { order.push("durable"); return true; });
   daemon.deliveryOutbox = { markEnterStarted: mark };
   const attempt = { deliveryId: "private-delivery", attemptNo: 1 };
@@ -59,7 +64,7 @@ it.each(["", "CLI still painting its input"])("unknown input %j never receives E
 });
 it("a failed last capture is held before the durable Enter boundary", async () => {
   const f = fixture(pasted);
-  f.tmux.capturePane.mockRejectedValueOnce(Error("unreadable"));
+  f.tmux.capturePane.mockRejectedValue(Error("unreadable"));               // a native read is retried; it never settles
   expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(false);
   expect(f.mark).not.toHaveBeenCalled();
   expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
@@ -69,7 +74,7 @@ it("the real visible composer sends exactly one key, after capture and durable c
   expect(f.backend.readInputRow(pasted)).not.toBeNull();
   expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(true);
   expect(f.order).toEqual(["capture", "durable", "Enter"]);
-  expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce(); expect(f.tmux.sendSpecialKey.mock.calls[0]![0]).toBe("Enter");
 });
 it("a readable busy composer remains usable; this gate does not require idle", async () => {
   const f = fixture(pasted);
@@ -135,7 +140,7 @@ it("explicit human card answers still walk the verified cursor and confirm the c
   expect(f.mark).not.toHaveBeenCalled();
 });
 
-it.each(["delivery", "system"])("%s paste replacement cannot receive the old pane's Enter", async kind => {
+it.each(["delivery", "system"])("%s paste replacement cannot receive the old pane's Enter (native pane; Prism #2989 P2)", async kind => {
   const f = fixture(pasted);
   const replacement = { ...f.tmux, sendSpecialKey: vi.fn(async () => true) };
   Object.assign(f.tmux, {
@@ -156,7 +161,7 @@ it("Grok's own boxed numbered draft remains a composer, not a permission card", 
   f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
   expect(f.daemon.backend.isDeliveryComposerPane(numbered)).toBe(true);
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
-  expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce(); expect(f.tmux.sendSpecialKey.mock.calls[0]![0]).toBe("Enter");
 });
 it("Grok's actual approval card cannot borrow the boxed-composer tie-breaker", async () => {
   const approval = pane("grok-1.0.70-audit/1.0.70-approval/20-approval");
@@ -172,7 +177,7 @@ it.each(["antigravity", "opencode"])("%s still submits a numbered draft in its o
   const f = fixture(backend === "antigravity" ? agy : oc);
   f.daemon.backend = backend === "antigravity" ? new AntigravityBackend(f.daemon.config.working_directory) : new OpenCodeBackend(f.daemon.config.working_directory);
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
-  expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce(); expect(f.tmux.sendSpecialKey.mock.calls[0]![0]).toBe("Enter");
 });
 
 it("an automatically resolved runtime dialog never borrows a delivery's Enter", async () => {
@@ -198,7 +203,7 @@ it.each(["ordinary multi-line draft", "numbered multi-line draft"])("Grok submit
   const f = fixture(draft);
   f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
-  expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce(); expect(f.tmux.sendSpecialKey.mock.calls[0]![0]).toBe("Enter");
 });
 
 it("S-35: on a native pane, a capture refused while output is still arriving is read again (never typed), then Enter is sent once", async () => {
@@ -220,9 +225,9 @@ it("S-35: a native capture that never settles still holds — bounded reads, no 
   expect(warns.some(([fields]) => (fields as { reason?: string }).reason === "capture_failed")).toBe(true);
 });
 
-it("S-35: a tmux (non-native) capture failure holds at once, as before — no retry loop on Linux panes", async () => {
-  const f = fixture(idle);
-  f.tmux.capturePane.mockImplementation(async () => { f.order.push("capture"); throw Error("tmux gone"); });
-  expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(false);
-  expect(f.order).toEqual(["capture"]);
+it("S-36: a tmux (non-native) pane follows main's beta.5 — no capture, no composer proof; the Enter goes after the durable mark", async () => {
+  const f = fixture(permission, false);
+  expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(true);
+  expect(f.order).toEqual(["durable", "Enter"]);
+  expect(f.tmux.capturePane).not.toHaveBeenCalled();
 });

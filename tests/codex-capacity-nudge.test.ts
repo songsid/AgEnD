@@ -457,14 +457,14 @@ describe("the daemon's continue nudge", () => {
       expect(r.enters.count).toBe(0);
     });
 
-    it("one pre-paste capture decides the baseline/expected screen/idle; Enter rechecks the composer", async () => {
+    it("ONE capture decides: it is the baseline, the expected-screen check and the idle check (no second picture before the paste)", async () => {
       let holdAt = 0;
       const r = await dueWith(x => { holdAt = x.screen.reads + 2; x.screen.holdRead = holdAt; });
       r.screen.release?.();
       await r.poll(700);                                     // the paste and the Enter (after its 500 ms settle) complete; no poll is due yet
       expect(r.sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
       expect(r.enters.count).toBe(1);
-      expect(r.screen.reads).toBe(holdAt + 1);               // one baseline before paste, one fresh composer before Enter
+      expect(r.screen.reads).toBe(holdAt);                   // the primitive's capture was the only picture it took
     });
 
     it("the RETRY Enter (the first one was not seen to submit) is guarded too", async () => {
@@ -483,8 +483,6 @@ describe("the daemon's continue nudge", () => {
     it("…and so is the defensive retry of a CLI whose input row cannot be read", async () => {
       const r = rig();
       r.d.backend.isDeliveryInputReadyPane = undefined;
-      r.d.backend.getBottomReadyPattern = () => null;
-      r.d.backend.getReadyPattern = () => /^› Ask Codex to do anything/m;
       r.d.systemPasteOptions = () => ({ retryEnter: true });
       r.d.confirmSubmitted = async () => "unverifiable";
       await r.poll(5_100);
