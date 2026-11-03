@@ -629,6 +629,9 @@ export interface CliBackend {
    */
   isDeliveryInputReadyPane?(pane: string): boolean;
 
+  /** Positive own-box evidence for legacy composers, including numbered drafts; not a submission-evidence reader. */
+  isDeliveryComposerPane?(pane: string): boolean;
+
   /**
    * #2682: whether this screen positively shows the CLI's own idle input box, asked before an idle delivery. False
    * (another program owns the pane, a frame it cannot read) makes the delivery wait. Absent: not asked.
