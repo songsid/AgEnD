@@ -74,6 +74,18 @@ it("explicit remote switch-off refuses live work, then shuts an empty host and a
   const next = await f.hub().callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: f.launch() }) as RuntimePaneSnapshot;
   expect(next.state).toBe("running"); expect(next.launchId).not.toBe(first.launchId); expect(f.processes).toHaveLength(2);
 });
+it("a lost shutdown response cannot leave a closed host cached for the next enabled start", async () => {
+  const f = await fixture(), inventory = await f.hub().callPane(f.machineId, { action: "list" }) as any;
+  const client:any=f.client, send=client.send.bind(client);
+  const dropped=vi.spyOn(client,"send").mockImplementation((frame:any)=>{
+    if(frame.type==="pane.response"&&frame.ok&&frame.result?.shutdown===true)return;
+    send(frame);
+  });
+  await expect(f.hub().callPane(f.machineId,{action:"shutdown",hostBootId:inventory.hostBootId})).rejects.toThrow("timed out");
+  dropped.mockRestore();
+  expect(await f.hub().callPane(f.machineId,{action:"open",operationId:randomUUID(),launch:f.launch()})).toMatchObject({state:"running",reattached:false});
+  expect(f.processes).toHaveLength(1);
+});
 it("binds only a unique owned status id, reads its exact native transcript, and keeps paths out of the wire", async () => {
   const f = await fixture(), sessionId = randomUUID(), pane = await f.hub().callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: f.launch() }) as RuntimePaneSnapshot;
   const target = { paneId: pane.paneId, launchId: pane.launchId };

@@ -217,13 +217,15 @@ export class RuntimeClient {
       this.machinePaneLimit = value.maxAgents as number;
       const epoch = this.paneEpoch;
       try {
-        const result = await (await this.panes()).request(request, () => epoch === this.paneEpoch && this.online());
-        if(request.action==="shutdown")validateRuntimePaneShutdown(result,request.hostBootId);
-        this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
+        const host = await this.panes();
+        const result = await host.request(request, () => epoch === this.paneEpoch && this.online());
         if(request.action==="shutdown"){
+          validateRuntimePaneShutdown(result,request.hostBootId);
           // Explicit coordinator disable, not a disconnect: the next enabled request discovers a new host boot.
-          const old=this.paneHost;this.paneHost=null;this.paneOpening=null;await old?.stop();
+          // Retire this cache before sending the reply, including when that reply is lost under backpressure.
+          if(this.paneHost===host){this.paneHost=null;this.paneOpening=null;}await host.stop();
         }
+        this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
       return;
     }
