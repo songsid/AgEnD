@@ -7,7 +7,6 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
-import { selectionCard } from "../selection-card.js";
 import { quotaLine, quotaPausedLine } from "../quota-notice.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
@@ -263,23 +262,6 @@ export class GrokBackend implements CliBackend {
         appendWithMarker(join(config.workingDirectory, "AGENTS.md"), config.instanceName, config.instructions);
       } catch { /* best effort */ }
     }
-  }
-
-  /** Numbered multi-line input shares the menu cursor glyph; require the actual bottom composer box and footer. */
-  isDeliveryComposerPane(pane: string): boolean {
-    const rows = pane.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\r/g, "").split("\n").map(row => row.trimEnd());
-    const trim = () => { while (rows.length && !rows.at(-1)!.trim()) rows.pop(); };
-    trim();
-    const footer = rows.pop() ?? "";
-    if (!/^\s*(?:Logged in\b.*|Shift\+Tab:mode\s*│\s*Ctrl\+x:shortcuts)\s*$/.test(footer)) return false;
-    trim();
-    if (!/^\s*╰─{10,}.*╯$/.test(rows.pop() ?? "")) return false;
-    const input: string[] = [];
-    while (/^\s*│.*│$/.test(rows.at(-1) ?? "")) input.unshift(rows.pop()!);
-    if (!/^\s*╭─{10,}╮$/.test(rows.pop() ?? "")) return false;
-    // The highlighted numbered row itself must be in the composer, never a card above an empty input box.
-    return input.length > 0 && /^\s*│\s*❯(?:\s|│)/.test(input[0]!)
-      && (!selectionCard(pane, "Grok") || /^\s*│\s*❯\s*\d{1,2}[.)]\s+\S/.test(input[0]!));
   }
 
   getReadyPattern(): RegExp {

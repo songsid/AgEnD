@@ -41,11 +41,11 @@ function daemon() {
 describe("#1423 real lifecycle and nested startup boundaries", () => {
   it.each(["delay", "lock", "capture", "paste", "settle", "transient"])("startup snapshot revocation during %s adds no subsequent paste or Enter", async stage => {
     vi.useFakeTimers(); const h = daemon(), pending = hold<any>();
-    h.d.buildSnapshotPrompt = vi.fn(() => "approved context"); h.d.backend = { getReadyPattern: () => /^❯/ };
+    h.d.buildSnapshotPrompt = vi.fn(() => "approved context"); h.d.backend = {};
     h.d.capturePaneEvidence = vi.fn(() => stage === "capture" ? pending.promise : Promise.resolve(null));
     h.d.confirmSubmitted = vi.fn(async () => "submitted");
     h.d.waitForInputTransientToClear = vi.fn(() => stage === "transient" ? pending.promise : Promise.resolve(true));
-    h.d.tmux = { getWindowId: () => "@1", capturePane: vi.fn(async () => "❯ ordinary context"), pasteBuffer: vi.fn(() => stage === "paste" ? pending.promise : Promise.resolve(true)), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
+    h.d.tmux = { pasteBuffer: vi.fn(() => stage === "paste" ? pending.promise : Promise.resolve(true)), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
     const event = vi.fn(); h.d.on("snapshot_injected", event);
     const blocked = stage === "lock" ? h.d.paneWriteLock.run(() => pending.promise) : Promise.resolve();
     const injecting = h.d.injectSnapshotMessage(h.d.startupAdmission).catch((error: Error) => error);
@@ -57,9 +57,9 @@ describe("#1423 real lifecycle and nested startup boundaries", () => {
   });
   it("ordinary runtime snapshot injection remains available without a startup capability", async () => {
     vi.useFakeTimers(); const h = daemon(); h.revoke(); h.d.buildSnapshotPrompt = vi.fn(() => "ordinary runtime context");
-    h.d.backend = { getReadyPattern: () => /^❯/ }; h.d.capturePaneEvidence = vi.fn(async () => null); h.d.confirmSubmitted = vi.fn(async () => "submitted");
+    h.d.backend = {}; h.d.capturePaneEvidence = vi.fn(async () => null); h.d.confirmSubmitted = vi.fn(async () => "submitted");
     h.d.waitForInputTransientToClear = vi.fn(async () => true);
-    h.d.tmux = { getWindowId: () => "@1", capturePane: vi.fn(async () => "❯ ordinary context"), pasteBuffer: vi.fn(async () => true), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
+    h.d.tmux = { pasteBuffer: vi.fn(async () => true), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
     const injecting = h.d.injectSnapshotMessage(); await vi.advanceTimersByTimeAsync(1600); await injecting;
     expect(h.d.tmux.pasteBuffer).toHaveBeenCalledOnce(); expect(h.d.tmux.sendSpecialKey).toHaveBeenCalledOnce();
   });
