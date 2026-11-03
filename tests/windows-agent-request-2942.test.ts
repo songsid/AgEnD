@@ -266,6 +266,34 @@ describe("#2942: an agent's Windows settings change is only ever a pending reque
       const entry = await card(r); await click(r, entry, "confirm", "ab-F");
       await vi.waitFor(() => expect(fenceAfterRevoke).toBe(false));
     });
+    // #2973 review (Prism P2): the real updateNativePaneConfig, its lifecycle turn held, the stop intercepted.
+    async function heldUpdate(rebind: boolean) {
+      const r = rig(), name = await paneOnB(r);
+      (r.fm.fleetConfig as any).channels.push({ id: "c", type: "telegram", mode: "topic", group_id: "-100333", access: { mode: "open", allowed_users: ["c-F"] } });
+      let release!: () => void; const held = new Promise<void>(done => { release = done; });
+      const realTransition = r.fm.lifecycle.runTransition.bind(r.fm.lifecycle);
+      vi.spyOn(r.fm.lifecycle, "runTransition").mockImplementation(async (n: string, fn: any) => { await held; return realTransition(n, fn); });
+      r.any.daemons.set(name, Object.assign(new EventEmitter(), { nativePaneHasExited: () => true }));
+      // As the real stop does: a stop moves the explicit-stop generation on.
+      const stop = vi.spyOn(r.fm, "stopInstance").mockImplementation(async (n: string) => { r.any.explicitStopGeneration.set(n, (r.any.explicitStopGeneration.get(n) ?? 0) + 1); });
+      vi.spyOn(r.runtime, "previewUpdate").mockImplementation(() => undefined as never);
+      vi.spyOn(r.runtime, "update").mockImplementation(() => ({}) as never);
+      vi.spyOn(r.fm, "startInstance").mockResolvedValue(undefined as never);
+      const out = await mcp("update_instance_config", r, { name, config: { model: "gpt-6.2" } });
+      const entry = await card(r); const clicked = click(r, entry, "confirm", "ab-F");
+      await vi.waitFor(() => expect(r.fm.lifecycle.runTransition).toHaveBeenCalled());
+      if (rebind) r.fm.fleetConfig!.instances[name]!.channel_id = "c";     // B → C while the update waits its turn
+      release(); await clicked; await vi.waitFor(() => expect(r.store.get(pendingIdOf(out.result), SESSION)!.state).not.toMatch(/pending|applying/));
+      return { r, stop, state: r.store.get(pendingIdOf(out.result), SESSION)!.state };
+    }
+    it("a rebind (B → C) while the update waits its lifecycle turn: the old A+B approval stops nothing on C", async () => {
+      const { stop, state } = await heldUpdate(true);
+      expect(stop).not.toHaveBeenCalled(); expect(state).not.toBe("applied");
+    });
+    it("the same target held the same way: the approved update stops the old pane and applies", async () => {
+      const { stop, state } = await heldUpdate(false);
+      expect(stop).toHaveBeenCalledOnce(); expect(state).toBe("applied");
+    });
     it("a binding that names no single configured connection is refused before anything is requested (fail closed)", async () => {
       const r = rig(), name = await paneOnB(r);
       r.fm.fleetConfig!.instances[name]!.channel_id = "gone";

@@ -2495,7 +2495,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     return this.proposeAgentWindowsChange({ requester, key: `${name}:${settingsFingerprint(edit)}`, fingerprint: settingsFingerprint([name, edit]),
       summary, machineId, bytes: JSON.stringify(edit).length, authority: { connections, primaryGeneral: true, unknown: false },
-      apply: (allowed, execution) => updateNativeWindowsInstance(this, name, edit, allowed, execution) });
+      // #2973 review (Prism P2): the update may wait for its lifecycle turn; if the agent is rebound meanwhile (B → C), the
+      // approval for B must not stop or change it on C. Pin the approved target and require the execution's snapshot to be
+      // unchanged before every pre-commit effect; the post-commit restart keeps its own (refreshed) checks.
+      apply: (allowed, execution) => {
+        const pinned = { channel: inst.channel_id, machine: inst.machine_id, adapter: inst.native_adapter, runtime: inst.runtime };
+        const sameTarget = (): boolean => { const now = this.fleetConfig?.instances[name];
+          return !!now && now.channel_id === pinned.channel && now.machine_id === pinned.machine && now.native_adapter === pinned.adapter && now.runtime === pinned.runtime; };
+        return updateNativeWindowsInstance(this, name, edit, () => allowed() && sameTarget() && execution.current(), execution);
+      } });
   }
 
   private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
