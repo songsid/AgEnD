@@ -27,10 +27,10 @@ const node = execFileSync('wslpath', ['-u', nodePath], { encoding: 'utf8' }).tri
 const worker = win32.join(nativeRoot, 'upgrade-worker.mjs');
 let hub, server, runner, reader, endpoint, manager, native, machine = 'local', hostDirectory, phase = 'prepare', failed;
 const receipt = { sourceHead, oldHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: oldRoot, encoding: 'utf8' }).trim(), mode, scratchCwd: nativeRoot,
- passed: false, turns: 0, archived: [] }, threads = new Set(), mutations = [], configs = new Map();
+ passed: false, turns: 0, archived: [] }, threads = new Set(), hostPids = new Set(), mutations = [], configs = new Map();
 const delay = ms => new Promise(done => setTimeout(done, ms));
 const until = async (check, label, timeout = 120000) => { const end = performance.now() + timeout; while (!await check()) { if (workerFailure) throw Error('Scratch worker: ' + JSON.stringify(workerFailure)); assert(performance.now() < end, 'Deadline: ' + label); await delay(200); } };
-const inspect = action => JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'inspect', action, hostDirectory], { encoding: 'utf8', timeout: 45000, maxBuffer: 8192 }));
+const inspect = action => { const value = JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'inspect', action, hostDirectory], { encoding: 'utf8', timeout: 45000, maxBuffer: 8192 })); if (value.pid) hostPids.add(value.pid); return value; };
 const bridge = { get: () => null, prepareWorkspace() { throw Error('No exec'); }, start() { throw Error('No exec'); } };
 const store = new WindowsAgents(scratch, bridge);
 let program = 'old', workerFailure;
@@ -114,7 +114,10 @@ try {
  await assert.rejects(() => manager.prepare(owner.name, owner.config, () => {}), e => e.recovery?.kind === 'exit-unconfirmed');
  assert.equal(await hashLedger(), ledgerHash); assert.equal(mutations.length, afterKillWrites); receipt.oldLedgerUnchangedWhileHeld = true;
  // A held old launch must not poison the transport or prevent an unrelated new create on this computer.
- phase = 'independent-create'; const fresh = await create('Independent pane'); await acquire(fresh); await native.release('close'); receipt.newCreateWhileOldHeld = true;
+ phase = 'independent-create'; const fresh = await create('Independent pane'); await acquire(fresh); const freshPin = store.get(fresh.agent.id).threadId, freshMarker = marker + '_NEW';
+ assert(await native.port.pasteText('Read-only scratch proof. No tools. Reply exactly ' + freshMarker));
+ await until(async () => (await count(freshPin, freshMarker)).assistant === 1, 'independent create response'); receipt.turns++;
+ await native.release('close'); receipt.newCreateWhileOldHeld = true;
  phase = 'admin-recovery'; manager = new NativePaneManager(options); await manager.recover(owner.name, owner.config, before.launchId, true, () => {});
  assert.equal(store.get(owner.agent.id).activeId, undefined); assert.equal(await hashLedger(), ledgerHash);
  const resumed = await acquire(owner); assert.equal(resumed.sessionId, pin); assert.notEqual(resumed.launchId, before.launchId);
@@ -132,14 +135,16 @@ try {
 } finally {
  try { await stopTransport(); } catch { receipt.transportCleanupUnconfirmed = true; }
  try { if (hostDirectory && inspect('state').alive) inspect('kill-owned'); } catch (e) { if (!String(e).includes('ENOENT')) receipt.hostCleanupNeedsInspection = true; }
+ try { await until(() => { const value = JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'pids', JSON.stringify([...hostPids])], { encoding: 'utf8', timeout: 15000, maxBuffer: 4096 })); return value.alive.length === 0; }, 'owned host exit', 20000); } catch { receipt.hostCleanupNeedsInspection = true; }
  hub?.close(); if (server) { server.closeAllConnections(); await new Promise(done => server.close(done)); }
+ try { const found = JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'sessions'], { encoding: 'utf8', timeout: 15000, maxBuffer: 16384 })); for (const id of found.ids) threads.add(id); } catch { receipt.sessionEnumerationUnconfirmed = true; }
  // UUIDs were bound by the real lifecycle /status plus scratch cwd and the one owned prompt above.
  for (const id of threads) {
   try { const output = execFileSync('/mnt/c/Users/changhansung/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe', ['-c', 'check_for_update_on_startup=false', 'archive', id],
    { cwd: root, encoding: 'utf8', timeout: 30000, maxBuffer: 8192, input: '' });
   assert(output.includes('Archived session ' + id + '.')); receipt.archived.push(id); } catch { receipt.archiveFailed = [...(receipt.archiveFailed || []), id]; }
  }
- if (!receipt.hostCleanupNeedsInspection && !receipt.transportCleanupUnconfirmed && !receipt.archiveFailed) { await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); await rm(scratch, { recursive: true, force: true }); receipt.scratchRemoved = true; }
+ if (!receipt.hostCleanupNeedsInspection && !receipt.transportCleanupUnconfirmed && !receipt.archiveFailed && !receipt.sessionEnumerationUnconfirmed) { await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); await rm(scratch, { recursive: true, force: true }); receipt.scratchRemoved = true; }
  await writeFile('.artifacts/pane-upgrade-' + mode + '-receipt.json', JSON.stringify(receipt, null, 2) + '\n'); process.stdout.write(JSON.stringify(receipt) + '\n');
 }
 if (failed || !receipt.passed || !receipt.scratchRemoved) process.exitCode = 1;

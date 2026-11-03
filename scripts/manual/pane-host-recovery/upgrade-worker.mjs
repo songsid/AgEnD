@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { join, win32 } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir, open } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createInterface } from 'node:readline';
@@ -12,14 +12,29 @@ const [bundle, root, mode, action, arg] = process.argv.slice(2);
 assert(process.platform === 'win32' && win32.normalize(root).toLowerCase().startsWith('c:\\users\\changhansung\\agend-adapter-proto\\upgrade-'));
 const load = name => import(pathToFileURL(join(bundle, 'dist', name + '.js')).href);
 phase = 'imports';
-if (mode === 'local') {
+if (mode === 'pids') {
+ const pids = JSON.parse(action); assert(Array.isArray(pids) && pids.length <= 16 && pids.every(pid => Number.isSafeInteger(pid) && pid > 0));
+ const alive = pids.filter(pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } });
+ process.stdout.write(JSON.stringify({ alive }) + '\n');
+} else if (mode === 'sessions') {
+ const directory = join(process.env.USERPROFILE, '.codex', 'sessions', new Date().toISOString().slice(0, 10).replaceAll('-', '/'));
+ const ids = [];
+ for (const file of await readdir(directory)) {
+  if (!/^rollout-.*\.jsonl$/.test(file)) continue;
+  const handle = await open(join(directory, file), 'r'); let header;
+  try { const bytes = Buffer.alloc(16384), count = (await handle.read(bytes, 0, bytes.length, 0)).bytesRead; const end = bytes.subarray(0, count).indexOf(10); if (end < 0) continue; header = JSON.parse(bytes.subarray(0, end).toString('utf8')); } finally { await handle.close(); }
+  if (header.type === 'session_meta' && win32.normalize(String(header.payload?.cwd)).toLowerCase() === win32.normalize(root).toLowerCase() && /^[a-f0-9-]{36}$/i.test(header.payload?.id)) ids.push(header.payload.id);
+ }
+ process.stdout.write(JSON.stringify({ ids }) + '\n');
+} else if (mode === 'local') {
  process.env.LOCALAPPDATA = join(root, 'localdata');
  const { serveLocalPaneRelay } = await load('runtime-pane-stdio');
  serveLocalPaneRelay(process.stdin, process.stdout); // Real default open, deliberately no injected factory.
 } else if (mode === 'inspect') {
  const directory = arg;
  assert(win32.normalize(directory).toLowerCase().startsWith(win32.normalize(root).toLowerCase() + '\\'));
- const descriptor = JSON.parse(await readFile(join(directory, 'host.json'), 'utf8'));
+ let descriptor;
+ try { descriptor = JSON.parse(await readFile(join(directory, 'host.json'), 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; process.stdout.write(JSON.stringify({ absent: true, alive: false, processesAlive: 0 }) + '\n'); process.exit(0); }
  const rows = JSON.parse(await readFile(join(directory, 'state', 'panes.json'), 'utf8')).panes;
  const panes = Array.isArray(rows) ? rows : Object.values(rows);
  const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { if (e.code === 'ESRCH') return false; throw e; } };
@@ -35,7 +50,7 @@ if (mode === 'local') {
    await new Promise(done => setTimeout(done, 100));
   }
  }
- process.stdout.write(JSON.stringify({ boot: descriptor.hostBootId, alive: alive(descriptor.pid), processesAlive: panes.filter(p => p.pid && alive(p.pid)).length,
+ process.stdout.write(JSON.stringify({ boot: descriptor.hostBootId, pid: descriptor.pid, alive: alive(descriptor.pid), processesAlive: panes.filter(p => p.pid && alive(p.pid)).length,
   systemBootProof: !!descriptor.systemBootId }) + '\n');
 } else if (mode === 'paired') {
  const [{ RuntimeClient, pairRuntime }, { RuntimeClientStore }] = await Promise.all(['runtime-client', 'runtime-client-store'].map(load));
