@@ -68,3 +68,5 @@ Private staging verifies an immutable bundle before launch and uses bounded retr
 See [local Windows setup](windows-cli-preview.md) and [paired runtimes](remote-runtime.md). Manual acceptance harnesses and their privacy constraints are documented in `scripts/manual/windows-pane-adapter/README.md`.
 
 A busy repaint can positively refuse an Enter before any input was sent. Only that exact zero-input acknowledgement permits a fresh observation and another Enter: at most five attempts within two seconds after the first refusal, preserving the same owned launch. Each attempt checks recognised runtime dialogs and carries a fresh output-sequence proof. Composer-only callers and stepwise identity-bound human answers keep their separate checks. No paste is repeated; an unknown/lost acknowledgement is never retried. Exhaustion leaves the delivery uncertain in Needs-you.
+
+Before constructing any unproved input mutation, a refused capture may be read again up to five times within two seconds. This repeats observations only: the paste RPC is sent once, and a lost paste acknowledgement keeps its pending receipt without replay.

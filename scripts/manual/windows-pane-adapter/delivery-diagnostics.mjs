@@ -4,6 +4,7 @@ const portErrors = new Map([
   ['Pane input withheld: the intended composer or dialog is not verified', 'unverified-input'],
   ['Pane changed after observation; input was not sent', 'changed-after-observation'],
   ['Pane input outcome is unconfirmed; reconnect and inspect before retrying', 'outcome-unconfirmed'],
+  ['Pane observation unavailable; no input was sent', 'observation-unavailable'],
 ]);
 export function traceNativeDelivery(daemon, name, diagnostics) {
   const events = diagnostics.deliveryTrace ??= [];

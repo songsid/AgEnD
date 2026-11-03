@@ -191,3 +191,28 @@ it('an internal delivery can use an empty captured layout but an unproved caller
  expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen})).toBe(true);
  expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');
 });
+it('refused pre-input captures re-observe before exactly one paste RPC, never replaying bytes',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let reads=0,inputs=0;
+ f.endpoint.call=async request=>{if(request.action==='capture'&&++reads<3)throw Error('painting');if(request.action==='input')inputs++;return call(request);};
+ expect(await f.port.pasteBuffer('single paste')).toBe(true);expect(reads).toBe(3);expect(inputs).toBe(1);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~single paste\x1b[201~');
+});
+it('pre-input observation has a five-read bound and retains no ambiguous mutation',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let reads=0,inputs=0;
+ f.endpoint.call=async request=>{if(request.action==='capture'){reads++;throw Error('still painting');}if(request.action==='input')inputs++;return call(request);};
+ expect(await f.port.pasteBuffer('not sent')).toBe(false);expect(reads).toBe(5);expect(inputs).toBe(0);expect(f.write).not.toHaveBeenCalled();
+ expect(f.port.lastInputWasNotSent()).toBe(true);expect(f.port.getLastPasteError()).toBe('Pane observation unavailable; no input was sent');
+ expect(readFileSync(f.file,'utf8')).not.toContain('pending');
+});
+it('a pre-input capture arriving after its deadline cannot authorise a paste',async()=>{
+ const f=await fixture(),call=f.endpoint.call;const original=performance.now.bind(performance);let offset=0;
+ vi.spyOn(performance,'now').mockImplementation(()=>original()+offset);
+ f.endpoint.call=async request=>{const result=await call(request);if(request.action==='capture')offset=2500;return result;};
+ expect(await f.port.pasteBuffer('late')).toBe(false);expect(f.write).not.toHaveBeenCalled();expect(f.port.lastInputWasNotSent()).toBe(true);
+});
+it('a lost paste ACK after re-observation remains uncertain and is never replayed',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let reads=0,inputs=0;
+ f.endpoint.call=async request=>{if(request.action==='capture'&&++reads===1)throw Error('painting');const result=await call(request);if(request.action==='input'){inputs++;throw Error('lost write ACK');}return result;};
+ expect(await f.port.pasteBuffer('uncertain once')).toBe(false);expect(inputs).toBe(1);expect(f.port.lastInputWasNotSent()).toBe(false);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~uncertain once\x1b[201~');expect(readFileSync(f.file,'utf8')).toContain('pending');
+});

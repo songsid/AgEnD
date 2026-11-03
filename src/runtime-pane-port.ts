@@ -153,13 +153,25 @@ export class RuntimePanePort implements Pane {
           // Internal delivery proof comes from the daemon's recognised runtime-dialog veto (#2990 policy).
           // Human dialog proof remains identity/cursor-bound. Composer-only and unproved callers keep the reader check.
           // Every policy still needs the exact last capture and carries its output seq to the host.
-          const capture = proof ? this.inputCapture : await this.captureCurrent();
+          let capture = proof ? this.inputCapture : undefined;
+          if (!proof) {
+            // A read refused during repaint precedes every mutation identity/write. Retry READS only, never input.
+            const deadline = performance.now() + 2000;
+            for (let attempt = 0; attempt < 5; attempt++) {
+              if (!this.endpoint.online() || this.closing || this.record.pendingClose || this.record.snapshot?.state !== "running") break;
+              try { capture = await this.captureCurrent(); } catch { /* No input request has been built or sent. */ }
+              if (performance.now() >= deadline) { capture = undefined; break; }
+              if (capture) break;
+              if (attempt < 4) await new Promise(done => setTimeout(done, 100));
+            }
+            if (!capture) { this.inputNotSent = true; this.error = "Pane observation unavailable; no input was sent"; return false; }
+          }
           if (!capture || (!capture.text.trim() && proof?.kind !== "delivery") || proof && capture.text !== proof.screen
             || (proof?.kind !== "dialog" && proof?.kind !== "delivery" && !this.inputIsComposer(capture.text))) {
             this.inputNotSent = true; this.error = "Pane input withheld: the intended composer or dialog is not verified"; return false;
           }
           expectedSeq = capture.snapshot.seq;
-          if (!this.endpoint.online() || this.closing || this.record.pendingClose) return false;
+          if (!this.endpoint.online() || this.closing || this.record.pendingClose || this.record.snapshot?.state !== "running") return false;
         }
         const request = validateRuntimePaneRequest(make(this.record.snapshot, expectedSeq));
         if (proof?.kind === "delivery" && (request.action !== "key" || request.key !== "Enter")) throw Error("Delivery proof is only valid for Enter");
