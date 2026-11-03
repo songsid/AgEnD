@@ -202,6 +202,7 @@ describe("#1699 part 2: the chat surfaces carry the profile", () => {
   const routed = (installed: boolean) => {
     const f: any = Object.create(FleetManager.prototype);
     f.isCliInstalled = () => installed;
+    f.isCliInstalledOffLoop = async () => installed;
     f.startInstallSession = vi.fn(async () => "installing");
     f.launchSignIn = vi.fn(async () => "signing in");
     f.recordLoginFlow = () => {};

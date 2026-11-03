@@ -3,7 +3,7 @@
 // changes it walks (along the pack's waypoints) to the new area. Pure — fleet-office.js draws it. Also here: what a
 // character says in its speech bubble, and which furniture is active.
 import { LOGICAL, own } from "./fleet-office-pack.js";
-import { FLIGHT, nameHash, pathLength, along, routeVia } from "./fleet-office-model.js";
+import { flightMs, nameHash, pathLength, along, routeVia } from "./fleet-office-model.js";
 import { hue } from "./fleet-traffic.js";
 
 /** The area for a state: the pack's own, else its "default", else its first area. */
@@ -281,7 +281,7 @@ export function createMail({ max = MAIL.MAX } = {}) {
         if (!drop) continue;                                          // nowhere off the seats: not delivered here
         const pts = [{ x: L.door.x, y: L.door.y }, drop];
         letters.push({ id: it.id, from: it.from, to: it.to, kind: it.kind, hue: hue(it.kind), start: now, drop, pts,
-          ms: Math.min(FLIGHT.MAX_MS, Math.max(FLIGHT.MIN_MS, pathLength(pts) / FLIGHT.SPEED)) });
+          ms: flightMs(pathLength(pts)) });
         started++;
       }
       if (letters.length > max) letters = letters.slice(letters.length - max);

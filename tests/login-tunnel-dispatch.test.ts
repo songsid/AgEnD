@@ -32,6 +32,7 @@ describe("login confirmation buttons → controller options", () => {
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);    // Sign-in paths under test: the CLIs count as installed whatever this host
     // has on PATH (CI has none — /login would install first, #1131).
     vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
+    vi.spyOn(fm, "isCliInstalledOffLoop").mockResolvedValue(true);
     const start = vi.spyOn((fm as unknown as { webLogin: { start: (...a: unknown[]) => Promise<string | null> } }).webLogin, "start").mockResolvedValue(null);
     const chat = { adapter, adapterId: "discord", chatId: "chat", threadId: "topic", userId: "admin" };
     return { fm, adapter, notifyAlert, start, chat };

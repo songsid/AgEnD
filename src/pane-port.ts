@@ -16,6 +16,8 @@ export interface Pane {
   getPaneStatus(): Promise<PaneStatus | null>;
   getWindowGeometry(): Promise<PaneSize & { mode: string }>;
   getPaneInputMode(): Promise<"raw" | "cooked" | "unknown">;
+  /** M-2267: a tmux pane in copy-mode would take the Enter. Optional: a native pane has no tmux mode (absent = not in one). */
+  paneInMode?(timeoutMs?: number): Promise<boolean | null>;
   sendKeys(text: string, proof?: PaneInputProof): Promise<boolean>;
   sendKeySequence(keys: readonly string[]): Promise<boolean>;
   sendSpecialKey(key: PaneKey, timeoutMs?: number, proof?: PaneInputProof): Promise<boolean>;

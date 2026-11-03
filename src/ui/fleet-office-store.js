@@ -19,6 +19,8 @@ import { levelsOk } from "./fleet-office-levels.js";
 const CHOICE_KEY = "agend_org_office", FILTER_KEY = "agend_org_office_filter", SKIN_KEY = "agend_org_office_skin", ASLEEP_KEY = "agend_org_office_hide_asleep", NIGHT_KEY = "agend_org_office_night";
 /** #2554: "0" when All offices leaves the lobby tile out (default: shown). */
 const LOBBY_KEY = "agend_org_office_lobby";
+/** #2946: whether the key to the items in the air is open here (default: folded). */
+const KEY_OPEN_KEY = "agend_org_office_key";
 /** #2540: { "<office>@<style>": [k, cx, cy] (and a 1 after them: a fit) } — the last VIEWS_MAX views, the most recent last. */
 const VIEW_KEY = "agend_org_office_view", VIEWS_MAX = 32;
 /** #2540: { "<office>@<style>": "cover" } — the offices whose fit fills the panel (the rest: "contain"), the last VIEWS_MAX. */
@@ -195,6 +197,9 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
     saveNightOn: (v) => write(NIGHT_KEY, v ? "1" : "0"),
     /** #2554: whether All offices shows the lobby tile (the instances in no stored office) here (default: shown). */
     lobbyTile: () => read(LOBBY_KEY) !== "0",
+    /** #2946: whether the key to the items carried between desks is open here (default: folded). */
+    keyOpen: () => read(KEY_OPEN_KEY) === "1",
+    saveKeyOpen: (v) => write(KEY_OPEN_KEY, v ? "1" : "0"),
     saveLobbyTile: (v) => write(LOBBY_KEY, v ? "1" : "0"),
     /** The view kept for `key` (an office and its style): { k, cx, cy } (fleet-office-view.js savedOf), or null. */
     view: (key) => {

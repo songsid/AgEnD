@@ -27,21 +27,22 @@ function maskKeyBody(line: string): string {
   return m && /[0-9+/]/.test(line) && /[A-Za-z]/.test(line) ? `${m[1]}[REDACTED]` : line;
 }
 
-export function dialogScreenText(pane: string | null | undefined): string {
+/** M-2281: the same cleaning with other bounds (the live install view keeps fewer lines, under a chat message's size). */
+export function dialogScreenText(pane: string | null | undefined, limits: { lines: number; bytes: number } = { lines: SCREEN_MAX_LINES, bytes: SCREEN_MAX_BYTES }): string {
   if (!pane) return "";
   const stripped = pane.replace(ANSI, "").replace(/\r\n?/g, "\n").replace(CONTROLS, "");
   // #2967 review: mask the WHOLE capture before keeping its bottom — a private key whose BEGIN line sits above the cut
   // would otherwise leave its body and END below it, where no rule can tell them apart from text any more.
   const lines = maskSecrets(stripped).split("\n").map(l => maskKeyBody(l.replace(/\s+$/, "")));
   while (lines.length && lines[lines.length - 1] === "") lines.pop();
-  const tail = lines.slice(-SCREEN_MAX_LINES);
+  const tail = lines.slice(-limits.lines);
   while (tail.length && tail[0] === "") tail.shift();
   let text = tail.join("\n");
   // The byte cap keeps the bottom (the dialog and its options), cut at a whole line, then a whole character.
-  while (Buffer.byteLength(text, "utf8") > SCREEN_MAX_BYTES && text.includes("\n")) text = text.slice(text.indexOf("\n") + 1);
-  if (Buffer.byteLength(text, "utf8") > SCREEN_MAX_BYTES) {
+  while (Buffer.byteLength(text, "utf8") > limits.bytes && text.includes("\n")) text = text.slice(text.indexOf("\n") + 1);
+  if (Buffer.byteLength(text, "utf8") > limits.bytes) {
     const chars = [...text];
-    while (chars.length && Buffer.byteLength(chars.join(""), "utf8") > SCREEN_MAX_BYTES) chars.shift();
+    while (chars.length && Buffer.byteLength(chars.join(""), "utf8") > limits.bytes) chars.shift();
     text = chars.join("");
   }
   return text;
