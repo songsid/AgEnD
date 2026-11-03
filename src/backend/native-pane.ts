@@ -53,7 +53,10 @@ export function createNativePaneBackend(provider: "codex" | "claude-code", snaps
       // Windows uses a PowerShell permission shape distinct from the audited four-choice Unix Bash card. Never
       // auto-answer it: expose its actual numbered choices through the ordinary stepwise human-card path.
       pattern: /^[ \t]*Do you want to proceed\?[ \t]*$/m, isActive: (pane: string) => shellCard(pane) !== null,
-      remoteCard: shellCard, interactionKind: "permission" as const, keys: [], holdOnly: true, blocksDelivery: true,
+      // The request's own identity (as the Linux Bash card's is), not the whole pane: a repainted status row is the same
+      // request, so its episode and parked clock are not restarted by every capture.
+      remoteCard: shellCard, requestIdentity: (pane: string) => shellCard(pane)?.identity ?? null,
+      interactionKind: "permission" as const, keys: [], holdOnly: true, blocksDelivery: true,
       inputBlocked: true, description: "Claude Windows shell permission — waiting for a human choice, never auto-approving",
     }] : [])],
   });

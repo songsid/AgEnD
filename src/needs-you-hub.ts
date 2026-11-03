@@ -73,6 +73,8 @@ export interface NeedsYouHubContext {
   taskRoute?(code: string): { lane?: string } | null;
   /** An instance's own thread/topic id, for its link. */
   instanceTopic(instance: string): string | undefined;
+  /** An instance's display name for the chat's lines (its raw name when it has none). */
+  instanceName?(instance: string): string;
   isFleetAdmin(userId: string, world: string): boolean;
   fleetAdmins(world: string): string[];
   emitSse(event: string, data: unknown): void;
@@ -381,6 +383,7 @@ export class NeedsYouHub {
         const lines = mine.map(item => ({
           item, title: this.lineTitle(item),
           link: item.promptAt ? messageLink(world.place, item.promptAt) : instanceLink(world.place, ctx.instanceTopic(item.instance)),
+          ...(item.instance && ctx.instanceName ? { name: ctx.instanceName(item.instance) } : {}),
         }));
         const rendered = renderLiveMessage(lines, ctx.now(), (k, ...a) => ctx.t(k, ...a), lane ? "needs.live_header_lane" : "needs.live_header");
         return { empty: mine.length === 0, ...rendered };

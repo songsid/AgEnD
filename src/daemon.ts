@@ -4517,7 +4517,18 @@ export class Daemon extends EventEmitter {
    */
   async sendEscape(): Promise<void> {
     const cancelKey = this.backend?.getCancelKey() ?? "Escape";
-    await this.tmux?.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
+    const tmux = this.tmux;
+    if (!tmux) return;
+    if (this.nativePaneLifecycle) {
+      // A native pane's composer proof cannot see a permission dialog, so an unproved key is withheld there. The cancel
+      // is the person's own interrupt, keyed on the screen read just before (as the dialog answer path is): what Esc
+      // does on Linux's tmux pane, on the same screen, with the same key.
+      const screen = await tmux.capturePane().catch(() => null);
+      if (screen === null) return;
+      await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c", undefined, { kind: "dialog", screen });
+      return;
+    }
+    await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
   }
 
   /**
