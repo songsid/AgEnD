@@ -54,3 +54,9 @@ it('a lost fixed status input response never repeats that command or sends Enter
  f.options.endpoint.call=async request=>{const result=await call(request);if(request.action==='input'&&!lost){lost=true;throw Error('lost input ACK');}return result;};
  const native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('status input');expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status']);expect(f.options.pin).not.toHaveBeenCalled();
 });
+
+it('transient capture failures during startup and status repaint retry only reads, never the actual input',async()=>{
+ const f=await fixture(),call=f.options.endpoint.call;let initial=false,paint=false;
+ f.options.endpoint.call=async request=>{if(request.action==='capture'&&(!initial||f.write.mock.calls.some(row=>row[0]==='/status')&&!paint)){if(!initial)initial=true;else paint=true;throw Error('output arrived during capture');}return call(request);};
+ const native=f.make();await native.acquire(()=>{});expect(initial&&paint).toBe(true);expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(f.options.pin).toHaveBeenCalledWith(f.launch.launchId,f.actual);
+});

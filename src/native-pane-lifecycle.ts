@@ -83,9 +83,19 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     const expected = this.port.ownedSnapshot()?.sessionId;
     // A reattached live pane may be busy. Its durable pin is already tied to that same launch: never type /status into it.
     if (reattached && expected) return;
+    // Output can invalidate a capture while the VT parser is settling. Retrying a read cannot replay input;
+    // admission, the exact pane owner and the original wall-clock deadline still apply to every attempt.
+    const observe = async (deadline: number, history = false): Promise<string> => {
+      for (;;) {
+        assertCurrent(); this.options.admit();
+        try { const text = history ? await this.port.capturePaneJoined(200) : await this.port.capturePane(); assertCurrent(); return text; }
+        catch (error) { assertCurrent(); this.options.admit(); if (!this.current() || performance.now() >= deadline) throw error; }
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    };
     let text = "", until = performance.now() + 120_000;
     while (true) {
-      assertCurrent(); this.options.admit(); text = await this.port.capturePane(); assertCurrent();
+      text = await observe(until);
       if (this.ready(text)) break;
       if (performance.now() >= until) throw Error("Native Codex composer needs attention before conversation verification");
       await new Promise(resolve => setTimeout(resolve, 250));
@@ -111,19 +121,19 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
       await send(() => this.port.sendKeys("/status"), "Native status input is unconfirmed");
       await new Promise(resolve => setTimeout(resolve, 500)); assertCurrent(); this.options.admit();
       await send(async () => {
-        const screen = await this.port.capturePane(); assertCurrent(); this.options.admit();
+        const screen = await observe(performance.now() + 15_000); assertCurrent(); this.options.admit();
         if (!this.ready(screen) || !/^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) throw Error("Native status composer changed; no Enter was sent");
         return this.port.sendSpecialKey("Enter", undefined, { kind: "composer", screen });
       }, "Native status submission is unconfirmed");
       until = performance.now() + 15_000;
       while (true) {
-        assertCurrent(); text = await this.port.capturePaneJoined(200); assertCurrent(); id = readId(text);
+        text = await observe(until, true); id = readId(text);
         if (id && this.ready(text)) break;
         if (performance.now() >= until) throw Error("Native session status identity was not confirmed; no second Enter was sent");
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     } else {
-      id = readId(await this.port.capturePaneJoined(200)); assertCurrent();
+      id = readId(await observe(performance.now() + 15_000, true)); assertCurrent();
       if (!id) throw Error("Native session status request is retained; inspect its outcome before another input");
     }
     if (expected && id !== expected) throw Error("Native resume displayed a different conversation; its original pin is retained");
