@@ -446,7 +446,7 @@ describe("the backend: command and files per plan", () => {
   it("a kiro-cli without --agent / --resume-id: today's command and one warning", () => {
     const backend = new KiroBackend(join(root, "agend", "instances", "worker"), { ...COMPAT, supportsInstanceAgent: false });
     const cmd = launch(backend);
-    expect(cmd).toMatch(/--trust-all-tools --resume$/);
+    expect(cmd).toMatch(/--trust-all-tools --resume '!:'$/);
     expect(cmd).not.toContain("--agent ");
     expect(backend.consumeLaunchWarning()).toContain("--resume-id");
     expect(backend.agentSwitch()).toBeNull();

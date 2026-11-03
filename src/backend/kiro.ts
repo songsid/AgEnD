@@ -33,6 +33,7 @@ import { KIRO_CLASSIC_LINKS_NOT_PREPARED, type KiroClassicLinks } from "./kiro-c
 import { decideKiroModelError, readKiroKnownModels, readKiroModelRecords, readKiroV1SavedModel, readKiroV2SavedModel, writeKiroModelRecords, KIRO_FALLBACK_MODEL, type KiroModelErrorVerdict, type KiroModelRecords, type KiroModelSwitch } from "./kiro-retired-model.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
+import { KIRO_RESUME_SUMMARY_OVERRIDE } from "../kiro-resume-summary.js";
 import type { KiroLogLaunch } from "../kiro-log-gate.js";
 import type { KiroTranscriptLaunch } from "../transcript-sources.js";
 
@@ -1677,21 +1678,23 @@ export class KiroBackend implements CliBackend {
     this.activeUi = plan.flags.includes("--legacy-ui") ? "legacy" : ui === "v3" ? "v3" : "tui";
     this.activeTrustAll = config.skipPermissions !== false;
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
+    let resumeLaunch = false;
     if (lp.mode !== "legacy") {
       // Its own agent: on a fresh start it takes effect at once; on a resume kiro brings back the conversation's saved
       // agent instead (E6), and the daemon switches it on screen (agentSwitch).
       cmd += ` --agent ${shellQuote(lp.agent!)}`;
-      if (lp.mode === "resume") cmd += ` --resume-id ${shellQuote(lp.id!)}`;
+      if (lp.mode === "resume") { cmd += ` --resume-id ${shellQuote(lp.id!)}`; resumeLaunch = true; }
     } else if (ui === "v3") {
       // Legacy mode, V3: it resumes only the session it owns, by id (kiro-v3-identity.ts) — its `--resume` would take
       // the newest conversation in the directory from ANY engine and convert a classic one into a new V3 copy.
       const id = resolveKiroV3Resume(config.instanceName, config.workingDirectory, credentialProfile, { skipResume: config.skipResume });
-      if (id) cmd += ` --resume-id ${shellQuote(id)}`;
+      if (id) { cmd += ` --resume-id ${shellQuote(id)}`; resumeLaunch = true; }
     } else if (!config.skipResume && ui === "legacy") {
       // Legacy mode, classic: the boolean form — kiro resumes the directory's newest conversation. Not isolated
       // between instances sharing the directory (#1410); an instance launches like this only without the
       // per-instance plan (an old kiro-cli, or a conversation store AgEnD could not read on adoption).
       cmd += " --resume";
+      resumeLaunch = true;
     } else if (!config.skipResume && ui === "tui") {
       // #2598 B3: never the boolean form under the TUI — it takes the directory's newest conversation from EITHER
       // engine, and on a classic one makes a TUI fork of it (the wrong conversation, possibly another instance's). A
@@ -1722,6 +1725,11 @@ export class KiroBackend implements CliBackend {
         console.warn(`[agend] kiro-cli ${detected} does not support the --effort launch flag (requires >= ${KIRO_EFFORT_FLAG_MIN}); configured effort "${effort}" was not applied`);
       }
     }
+    // kiro-cli-chat injects "In a few words, summarize our conversation so far." as the first
+    // user turn on resume of a non-empty conversation. AgEnD does not consume that summary;
+    // the agent then reply()s it to the channel. A positional INPUT replaces the default
+    // without a model turn (kiro-resume-summary.ts). Fresh launches are unchanged.
+    if (resumeLaunch) cmd += ` ${shellQuote(KIRO_RESUME_SUMMARY_OVERRIDE)}`;
     // Deliberately NOT `--require-mcp-startup` (#1111). Kiro has no per-server
     // "required": the flag exits 3 when ANY enabled MCP server fails, and that
     // includes the user's own servers from ~/.kiro/settings/mcp.json. One
