@@ -16,13 +16,27 @@ export const SCREEN_MAX_BYTES = 2048;
 const ANSI = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
 const CONTROLS = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 
+/**
+ * A line that is only base64 (16+ characters, PEM wraps at 64 — or shorter when rewrapped): the body of a key or
+ * certificate whose BEGIN line may not even be on screen (scrolled off the top of the capture itself), so the
+ * whole-capture mask above cannot see it. A dialog never needs such a line; it is masked whatever it is.
+ */
+const KEY_BODY = /^(\s*)[A-Za-z0-9+/]{16,}={0,2}\s*$/;
+function maskKeyBody(line: string): string {
+  const m = KEY_BODY.exec(line);
+  return m && /[0-9+/]/.test(line) && /[A-Za-z]/.test(line) ? `${m[1]}[REDACTED]` : line;
+}
+
 export function dialogScreenText(pane: string | null | undefined): string {
   if (!pane) return "";
-  const lines = pane.replace(ANSI, "").replace(/\r\n?/g, "\n").replace(CONTROLS, "").split("\n").map(l => l.replace(/\s+$/, ""));
+  const stripped = pane.replace(ANSI, "").replace(/\r\n?/g, "\n").replace(CONTROLS, "");
+  // #2967 review: mask the WHOLE capture before keeping its bottom — a private key whose BEGIN line sits above the cut
+  // would otherwise leave its body and END below it, where no rule can tell them apart from text any more.
+  const lines = maskSecrets(stripped).split("\n").map(l => maskKeyBody(l.replace(/\s+$/, "")));
   while (lines.length && lines[lines.length - 1] === "") lines.pop();
-  let tail = lines.slice(-SCREEN_MAX_LINES);
+  const tail = lines.slice(-SCREEN_MAX_LINES);
   while (tail.length && tail[0] === "") tail.shift();
-  let text = maskSecrets(tail.join("\n"));
+  let text = tail.join("\n");
   // The byte cap keeps the bottom (the dialog and its options), cut at a whole line, then a whole character.
   while (Buffer.byteLength(text, "utf8") > SCREEN_MAX_BYTES && text.includes("\n")) text = text.slice(text.indexOf("\n") + 1);
   if (Buffer.byteLength(text, "utf8") > SCREEN_MAX_BYTES) {

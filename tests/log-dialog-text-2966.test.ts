@@ -6,6 +6,7 @@
  * logged twice, and nothing about delivery, answering or Needs you changes.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,9 @@ import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { SCREEN_MAX_BYTES, SCREEN_MAX_LINES, dialogScreenText } from "../src/dialog-screen-text.js";
 import { InstanceLifecycle } from "../src/instance-lifecycle.js";
 import { LogService } from "../src/log-service.js";
+
+/** A PEM armour line, built at run time so no key-shaped literal sits in the source (gitleaks). */
+const armour = (edge: "BEGIN" | "END", kind = "") => ["-----", edge, " ", kind, "PRIVATE KEY", "-----"].join("");
 
 /** A shape the claude backend holds (not answered) and reports after its minute — with colour, and a secret on screen. */
 const RESUME_VARIANT = [
@@ -91,6 +95,38 @@ describe("M-2269 dialogScreenText", () => {
     expect(t).toMatch(/\[REDACTED\]/);
   });
 
+  it("#2967 review: a private key whose BEGIN is above the 30-line cut, or off the capture altogether, leaves nothing of its body", () => {
+    const body = (n: number, w: number) => Array.from({ length: n }, (_, i) => ("MIIEow" + "IBAAKCAQEAx9" + String(i).padStart(4, "0") + "Zq3+/8kLmN").repeat(4).slice(0, w));
+    // A 40-line PEM: BEGIN at the top, far above the window the dialog keeps.
+    const pem = [armour("BEGIN", "RSA "), ...body(38, 64), armour("END", "RSA ")];
+    const screen = ["$ cat id_rsa", ...pem, "", " Do you want to proceed?", " ❯ 1. Yes", "   2. No"].join("\n");
+    const t = dialogScreenText(screen);
+    for (const l of body(38, 64)) expect(t, "no key body line").not.toContain(l.slice(0, 24));
+    expect(t).toContain("Do you want to proceed?");
+    // The same key rewrapped into 16-character lines.
+    const short = [armour("BEGIN"), ...body(60, 16), armour("END"), " Allow? (y/n)"].join("\n");
+    for (const l of body(60, 16)) expect(dialogScreenText(short)).not.toContain(l);
+    // BEGIN scrolled off the capture itself: only body lines and END are on screen.
+    const tailOnly = [...body(20, 64), armour("END", "RSA "), " Do you want to proceed?"].join("\n");
+    for (const l of body(20, 64)) expect(dialogScreenText(tailOnly)).not.toContain(l.slice(0, 24));
+    // Ordinary dialog text and long plain words stay.
+    expect(dialogScreenText(" Bash command\n bash -c 'rm -rf \"$(echo /tmp/agend-safe-probe)\"/*'\n ❯ 1. Yes")).toContain("rm -rf");
+    expect(dialogScreenText(" ────────────────────────────────\n Allow?")).toContain("────────");
+  });
+
+  it("#2967 review: a real (generated, disposable) RSA key, at 64 and rewrapped at 16 characters, BEGIN above the cut", () => {
+    const pem = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs1", format: "pem" }).toString().trim();
+    const body = pem.split("\n").slice(1, -1).join("");
+    for (const width of [64, 16]) {
+      const lines = body.match(new RegExp(`.{1,${width}}`, "g"))!;
+      const screen = [armour("BEGIN", "RSA "), ...lines, armour("END", "RSA "), " Do you want to proceed?", " ❯ 1. Yes", "   2. No"].join("\n");
+      const t = dialogScreenText(screen);
+      expect(t).toContain("Do you want to proceed?");
+      // No piece of the key long enough to matter survives (the last line of a key may be a few characters).
+      for (const l of lines.filter(x => x.length >= 12)) expect(t, `width ${width}`).not.toContain(l);
+    }
+  });
+
   it("at most 30 lines (the bottom ones) and 2 KB, cut at whole lines, never inside a character", () => {
     const tall = Array.from({ length: 80 }, (_, i) => `line ${i}`).join("\n") + "\n\n\n";
     const t = dialogScreenText(tall).split("\n");
@@ -152,6 +188,17 @@ describe("M-2269 the event log and the Log", () => {
     expect(lc.screenForLog("w", "Another dialog")).toEqual({ screen: "Another dialog" });
     expect(lc.screenForLog("w", "")).toEqual({});
     expect(lc.screenForLog("w", undefined)).toEqual({});
+  });
+
+  it("#2967 review: through storage and read-back, a key whose BEGIN was above the window is not in the Log", () => {
+    const body = Array.from({ length: 38 }, (_, i) => `MIIEowIBAAKCAQEAx9${String(i).padStart(4, "0")}Zq3+/8kLmNpQrStUvWxYz0123456789ABCDEFabcdef+/`);
+    const pane = [armour("BEGIN", "RSA "), ...body, armour("END", "RSA "), " Do you want to proceed?"].join("\n");
+    const { lc } = lifecycle();
+    const stored = lc.screenForLog("w", dialogScreenText(pane));
+    const svc = new LogService({ events: () => [{ id: 1, created_at: "2026-11-03 03:00:00", event_type: "dialog_parked", payload: { description: "d", holdOnly: true, ...stored } }] } as any) as any;
+    const screen = svc.eventsFor("w", undefined).events[0].screen as string;
+    expect(screen).toContain("Do you want to proceed?");
+    for (const l of body) expect(screen).not.toContain(l.slice(0, 30));
   });
 
   it("the Log's events: the screen as its own field (masked again), never folded into the detail JSON", async () => {
