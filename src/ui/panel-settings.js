@@ -461,7 +461,11 @@ export function SettingsPanel({ route, navKey }) {
     let el = null;
     try { el = document.getElementById(decodeURIComponent(id)); } catch { el = null; }
     if (!el) return;
-    const show = () => { if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" }); };
+    const show = () => {
+      // Hash links, like settings-search targets, must reveal every enclosing disclosure before scrolling.
+      for (let d = el.closest && el.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
+      if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+    };
     if (revealSettingsTarget(el)) { const timer = setTimeout(show, 0); return () => clearTimeout(timer); }
     show();
   }, [section, navKey, !!data]);

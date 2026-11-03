@@ -86,6 +86,24 @@ describe("the real Settings forms across page tabs", () => {
     expect(writes).toEqual([]);
   });
 
+  it("expands disclosures for a direct hash target while preserving the existing Access draft", async () => {
+    await open("access");
+    const session = byId("webSessionAbsolute"), token = byId("publicTunnelToken");
+    const disclosure = token.closest("details");
+    expect(disclosure.open, "the credentials editor starts collapsed").toBe(false);
+    expect(byId("access-panel-sharing").hasAttribute("hidden")).toBe(true);
+    await type("webSessionAbsolute", "24");
+
+    // A URL hash, not registry.goToTarget: the hash-reveal path owns this navigation.
+    await open("access", "#publicTunnelToken");
+    expect(byId("access-panel-sharing").hasAttribute("hidden")).toBe(false);
+    expect(disclosure.open, "a revealed tab must also reveal the field's disclosure").toBe(true);
+    for (let d = token.closest("details"); d; d = d.parentElement?.closest("details")) expect(d.open).toBe(true);
+    expect([byId("publicTunnelToken") === token, byId("webSessionAbsolute") === session, session.value])
+      .toEqual([true, true, "24"]);
+    expect(writes).toEqual([]);
+  });
+
   it("lets the Save bar reveal an invalid field hidden in another Access tab", async () => {
     await open("access");
     await click("access-tab-sharing");
