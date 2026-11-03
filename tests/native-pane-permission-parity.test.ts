@@ -167,7 +167,7 @@ describe("a held native permission reaches the parked notice (topic and General)
     const showParkedNotice = vi.fn();
     const { daemon } = daemonWithPane(true, () => repainted(Math.floor(Date.now() / 5_000) % 50));
     const ctx = {
-      fleetConfig: { defaults: {}, instances: { general: { general_topic: true }, "windows-agent": {} } },
+      fleetConfig: { defaults: {}, instances: { general: { general_topic: true }, "windows-agent": { display_name: "Build Bot" } } },
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       dataDir, getInstanceDir: (name: string) => join(dataDir, name),
       eventLog: { insert: vi.fn() }, isPlannedRestart: () => false, isClassicInstance: () => false,
@@ -182,7 +182,9 @@ describe("a held native permission reaches the parked notice (topic and General)
       const [name, topicText, generalText] = showParkedNotice.mock.calls[0]!;
       expect(name).toBe("windows-agent");
       expect(String(topicText)).toContain("Claude");
-      expect(String(generalText)).toContain("windows-agent");
+      // S-35: people read the display name; the instance name stays only inside the topic link reference.
+      expect(String(topicText)).toContain("Build Bot"); expect(String(topicText)).not.toContain("windows-agent");
+      expect(String(generalText)).toContain("Build Bot");
     } finally {
       clearInterval(daemon.errorMonitorTimer);
       vi.useRealTimers();
