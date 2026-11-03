@@ -75,3 +75,21 @@ describe("runtime profile boundary", () => {
     const unlockTwo = store.lock("boot-two"); unlock(); expect(() => store.lock("boot-three")).toThrow(/Another runtime/); unlockTwo();
   });
 });
+
+it("only a positive different Windows boot can supersede a reused live PID in a private lock",()=>{
+ const directory=home(),store=new RuntimeClientStore(directory),first=store.lock("old-host","a".repeat(64));
+ expect(()=>store.lock("same-boot","a".repeat(64))).toThrow("Another runtime");
+ expect(()=>store.lock("unknown-boot")).toThrow("Another runtime");
+ const second=store.lock("new-host","b".repeat(64));first();
+ expect(JSON.parse(readFileSync(join(directory,"runtime.lock"),"utf8"))).toMatchObject({pid:process.pid,bootId:"new-host",systemBootId:"b".repeat(64)});
+ expect(()=>store.lock("same-new-boot","b".repeat(64))).toThrow("Another runtime");second();
+ const legacy=store.lock("legacy");expect(()=>store.lock("new-boot","c".repeat(64))).toThrow("Another runtime");legacy();
+});
+it("malformed boot proof cannot clear a held runtime lock",()=>{
+ const directory=home(),store=new RuntimeClientStore(directory);const file=join(directory,"runtime.lock");
+ writeFileSync(file,JSON.stringify({pid:process.pid,bootId:"old",systemBootId:"bad"}),{mode:0o600});
+ expect(()=>store.lock("new","a".repeat(64))).toThrow("Invalid runtime boot proof");
+ expect(()=>store.lock("new","bad")).toThrow("Invalid Windows boot proof");
+ expect(()=>store.lock("new",["a".repeat(64)] as never)).toThrow("Invalid Windows boot proof");
+ expect(JSON.parse(readFileSync(file,"utf8")).bootId).toBe("old");
+});

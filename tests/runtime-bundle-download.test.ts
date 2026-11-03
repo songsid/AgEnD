@@ -63,6 +63,7 @@ describe("Windows runtime download archive",()=>{
     expect([...files.keys()].filter(name=>name.startsWith("agend-runtime/dist/"))).toEqual(RUNTIME_BUNDLE_MODULES.map(name=>"agend-runtime/dist/"+name));
     expect(files.get("agend-runtime/agend-runtime.cmd")?.toString()).toBe('@echo off\r\nnode.exe "%~dp0dist\\runtime-cli.js" %*\r\n');
     const pkg=JSON.parse(files.get("agend-runtime/package.json")!.toString());expect(pkg.dependencies).toEqual({ws:version,"node-pty":"1.1.0","@xterm/headless":"6.0.0","@xterm/addon-serialize":"0.14.0"});expect(pkg.type).toBe("module");
+    expect(files.has("agend-runtime/dist/runtime-pane-boot.js")).toBe(true);
     expect(JSON.parse(files.get("agend-runtime/bundle-manifest.json")!.toString())).toMatchObject({nativeDependencies:[{name:"node-pty",version:"1.1.0",platforms:["win32-x64","win32-arm64"],backend:"ConPTY"}],modules:RUNTIME_BUNDLE_MODULES});
     expect(files.get("agend-runtime/README.txt")!.toString()).toContain("one-time code");expect(files.get("agend-runtime/LICENSE")!.toString()).toContain("MIT License");
     expect(files.get("agend-runtime/node_modules/ws/LICENSE")!.toString()).toContain("Permission is hereby granted");

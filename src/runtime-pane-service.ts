@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import WebSocket, { WebSocketServer } from "ws";
 import { RuntimePaneHost, type RuntimePaneHostOptions } from "./runtime-pane-host.js";
+import { readPaneSystemBootId } from "./runtime-pane-boot.js";
 import { RuntimePaneStore } from "./runtime-pane-store.js";
 import { RuntimeClientStore } from "./runtime-client-store.js";
 import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
@@ -20,12 +21,13 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   if (!/^[a-f0-9]{64}$/.test(options.scope)) throw Error("Invalid pane enrollment scope");
   await protectPaneDirectory(options.directory);
   const bootId = randomUUID(), token = randomBytes(32).toString("hex");
-  const unlock = new RuntimeClientStore(options.directory).lock(bootId);
+  const systemBootId = await readPaneSystemBootId();
+  const unlock = new RuntimeClientStore(options.directory).lock(bootId, systemBootId);
   let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false, leaseEpoch = "";
-  const store = new RuntimePaneStore(join(options.directory, "state")); store.recoverInterrupted();
+  const store = new RuntimePaneStore(join(options.directory, "state")); store.recoverInterrupted(systemBootId);
   const output = new Map<string, RuntimePaneSnapshot>();
   let relay!: PaneMcpRelay;
-  const hostOptions: RuntimePaneHostOptions = { store, bootId, online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
+  const hostOptions: RuntimePaneHostOptions = { store, bootId, ...(systemBootId ? { systemBootId } : {}), online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
     maxAgents: () => limit, mcpConnection: (owner, tools) => relay.connection(owner, tools), output: snapshot => { output.set(snapshot.paneId, snapshot); } };
   const host = options.createHost?.(hostOptions) ?? new RuntimePaneHost(hostOptions);
   const mcpPending = new Map<string, { epoch: string; socket: WebSocket; accept(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
@@ -122,7 +124,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     await new Promise<void>((accept, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.removeListener("error", reject); accept(); }); });
     const address = server.address(); if (!address || typeof address === "string") throw Error("Pane host listen failed");
     port = address.port;
-    descriptor = { version: 1, scope: options.scope, hostBootId: bootId, pid: process.pid, port: address.port, token };
+    descriptor = { version: 1, scope: options.scope, hostBootId: bootId, ...(systemBootId ? { systemBootId } : {}), pid: process.pid, port: address.port, token };
     savePaneHostDescriptor(options.directory, descriptor);
     return { descriptor, close: closeService };
   } catch (error) { clearInterval(flush); server.close(); wss.close(); unlock(); throw error; }

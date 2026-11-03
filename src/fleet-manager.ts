@@ -1,3 +1,4 @@
+import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-tools.js";
 import { windowsAgentsFor } from "./windows-agents.js";
 import { buildFleetInstructions } from "./instructions.js";
@@ -1383,6 +1384,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   async nativePaneFor(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle> {
     return (await this.nativePanes()).prepare(name, config, assertCurrent);
+  }
+  async recoverNativePane(name:string,launchId:string,authorized:()=>boolean):Promise<void>{
+    const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config))throw Error("Persistent Windows pane is not configured");
+    const generation=this.explicitStopGeneration.get(name)??0;
+    await this.lifecycle.runTransition(name,async transition=>{
+      const current=()=>{if(!authorized()||this.shuttingDown||this.fleetConfig?.instances[name]!==config||(this.explicitStopGeneration.get(name)??0)!==generation)throw Error(t("native_pane.authority_expired"));};
+      current();if(this.daemons.get(name)?.nativePaneCurrent())throw Error(t("native_pane.still_running"));
+      this.cancelStartupRetry(name);this.lifecycle.cancelNativeRecovery(name);
+      await (await this.nativePanes()).recover(name,config,launchId,true,current);current();
+      // The host supplied a positive exit before ordinary lifecycle cleanup. No signal or input is required.
+      await this.lifecycle.stop(name,transition);current();
+      this.instanceProcessStatus.set(name,"stopped");
+      this.eventLog?.insert(name,"native_pane_recovered",{launchId,confirmedStopped:true});
+      this.logger.info({name,launchId},"Windows saved pane recovered by an administrator; waiting for Start");
+      this.emitSseEvent("status",this.getUiStatus());
+    });
+  }
+  private holdNativePaneRecovery(name:string,error:unknown):boolean{
+    if(!(error instanceof NativePaneRecoveryError))return false;
+    this.instanceProcessStatus.set(name,"stopped");
+    this.logger.warn({name,recovery:error.recovery},error.message);
+    this.eventLog?.insert(name,"native_pane_recovery_needed",{...error.recovery});
+    this.emitSseEvent("status",this.getUiStatus());return true;
   }
   nativePanePinnedSession(name:string):string|null{
     const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
@@ -6516,6 +6540,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // outcome. Retrying would start an instance the operator just stopped.
       if (err instanceof SupersededStartError) return false;
       if (err instanceof SessionOomStoppedError) await this.notifySessionOomStop(name);
+      if (this.holdNativePaneRecovery(name,err)) return false;
       if (this.stopOnUnsupportedCli(name, err, what)) return false;
       this.logger.error({ err, name }, `Failed to start ${what}`);
       this.scheduleStartupRetry(name, 0);
@@ -6647,6 +6672,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Superseded by a stop/restart: that transition owns the outcome.
       if (err instanceof SupersededStartError) return;
       // An earlier attempt could not tell (unknown probe); this one could.
+      if (this.holdNativePaneRecovery(name,err)) return;
       if (this.stopOnUnsupportedCli(name, err, "instance")) return;
       this.logger.error({ err, name, attempt: attempt + 1 }, "Automatic startup retry failed");
       this.scheduleStartupRetry(name, attempt + 1);
@@ -25023,6 +25049,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return {
         name,
         ...(isNativePaneInstance(nativeConfig) ? { runtime: "windows", native_adapter: "pane", native_agent_id: nativeConfig.native_agent_id,
+          ...(() => {try {
+            const profile=this.nativeInstanceRuntime().get(name),bound=this.daemons.get(name);
+            return {native_recovery:profile?.paneRecovery ?? (profile?.paneLaunchId && bound?.usesNativePane?.() && !bound.nativePaneCurrent()
+              ? {kind:"exit-unconfirmed",launchId:profile.paneLaunchId} : null)};
+          }catch{return {native_recovery:null};}})(),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:true,
             commands:true,effort:false,log:true,details:true,channels:false,terminal:false,attachments:false,usage:false,send_while_busy:true},
           ...(nativeConfig.machine_id ? { machine_id: nativeConfig.machine_id, machine_name: this.runtimeHub?.machine(nativeConfig.machine_id)?.name,

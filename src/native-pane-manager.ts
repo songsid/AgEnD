@@ -1,3 +1,5 @@
+import { t } from "./locale.js";
+import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 /** Fleet-owned native launch registry. No process IDs, credentials or provider paths cross this boundary. */
 import {lstatSync,readFileSync,mkdirSync} from "node:fs";
 import {join} from "node:path";
@@ -52,7 +54,7 @@ export class NativePaneManager {
  /** Prepare metadata and helper authority first; acquire() alone may reserve and spawn. */
  async prepare(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
   const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation already has an owner or lacks an identity");
-  this.preparing.add(id);try{return await this.prepareOwned(name,config,assertCurrent);}finally{this.preparing.delete(id);}
+  this.preparing.add(id);try{return await this.prepareOwned(name,config,assertCurrent);}catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}finally{this.preparing.delete(id);}
  }
  private async prepareOwned(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
   config=structuredClone(config);
@@ -70,23 +72,35 @@ export class NativePaneManager {
   const latest=this.options.store.get(id);
   if(runtimeJobDigest({id:latest.id,cli:latest.cli,cwd:latest.cwd,machineId:latest.machineId,activeId:latest.activeId,paneLaunchId:latest.paneLaunchId,threadId:latest.threadId,paused:latest.paused})!==runtimeJobDigest({id:agent.id,cli:agent.cli,cwd:agent.cwd,machineId:agent.machineId,activeId:agent.activeId,paneLaunchId:agent.paneLaunchId,threadId:agent.threadId,paused:agent.paused}))throw Error("Native profile changed during host observation");
   const hostBootId=(inventory as any).hostBootId as string,panes=((inventory as any).panes as unknown[]).map(validateRuntimePaneSnapshot);
+  if ((inventory as any).capabilities?.openDisposition !== true) throw new NativePaneRecoveryError({kind:"host-upgrade",...(manifest?{launchId:manifest.launch.launchId}: {})});
   const sameAgent=panes.filter(row=>row.agentId===id&&row.state!=="exited");
   if(sameAgent.length>1||sameAgent.some(row=>!manifest||row.paneId!==manifest.launch.paneId||row.launchId!==manifest.launch.launchId||row.instance!==name))throw Error("Another live or unknown native pane must be reconciled first");
+  if(manifest&&!manifest.exited&&!agent.activeId&&!panes.some(row=>row.paneId===manifest!.launch.paneId)){
+   // Factory metadata alone is not an open: reserve() and the pane receipt precede every RPC which may spawn.
+   try{lstatSync(join(directory,`${manifest.launch.launchId}.pane.json`));}
+   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;manifest=null;}
+  }
   if(manifest&&!manifest.exited){
    const matches=panes.filter(row=>row.paneId===manifest!.launch.paneId);
    if(matches.length>1)throw Error("Native host returned duplicate retained panes");
    const ended=matches[0],old=manifest.launch;
    if(ended?.state==="exited"){
-    const session=agent.threadId??old.sessionId??(old.cli==="claude-code"?old.launchId:undefined);
+    const session=agent.threadId??old.sessionId??ended.sessionId??(old.cli==="claude-code"?old.launchId:undefined);
     if(ended.agentId!==id||ended.instance!==name||ended.launchId!==old.launchId||session!==undefined&&ended.sessionId!==session)throw Error("Native retained exit scope differs");
     // The host reconciles exact helper exits before listing. Persist its positive evidence before releasing the slot.
     manifest={...manifest,exited:ended};this.save(file,manifest);
+   } else if (!ended || ended.state === "unknown" || ended.hostBootId !== hostBootId) {
+    throw new NativePaneRecoveryError({kind:"exit-unconfirmed",launchId:old.launchId,...(ended?{hostBootId:ended.hostBootId}:{})});
    }
   }
   if(manifest?.exited){
+   if(!manifest.exited.noLaunch&&!manifest.exited.sessionId){
+    throw new NativePaneRecoveryError({kind:"exit-unconfirmed",launchId:manifest.launch.launchId,hostBootId:manifest.exited.hostBootId});
+   }
    if(!manifest.exited.noLaunch&&manifest.exited.sessionId&&!agent.threadId&&agent.activeId){
     this.options.store.pinPaneSession(id,manifest.exited.launchId,manifest.exited.sessionId);agent=this.options.store.get(id);
    }
+   if(!manifest.exited.noLaunch&&!agent.threadId)throw new NativePaneRecoveryError({kind:"exit-unconfirmed",launchId:manifest.launch.launchId,hostBootId:manifest.exited.hostBootId});
    if(agent.activeId){this.options.store.releasePane(id,manifest.exited);agent=this.options.store.get(id);}
    manifest=null;
   }
@@ -107,6 +121,7 @@ export class NativePaneManager {
   let daemon:Daemon|undefined,binding:Binding,closed=false;
   const current=():boolean=>{
    if(closed||!endpoint.online()||this.bindings.get(id)!==binding)return false;
+   const observed=binding.native.snapshot();if(observed?.state==="unknown"||observed?.state==="exited")return false;
    try{if(!daemon||!this.options.published(name,daemon))assertCurrent();this.options.admit(name,config);const now=this.options.config(name),profile=this.options.store.get(id);
     return !!now&&now.native_adapter==="pane"&&now.native_agent_id===id&&now.machine_id===agent.machineId&&now.backend===launch.cli&&now.working_directory===launch.cwd&&(now.model||undefined)===launch.model&&now.native_sandbox===launch.sandbox
      &&profile.paneLaunchId===launch.launchId&&profile.activeId===launch.launchId&&!profile.paused;
@@ -122,13 +137,46 @@ export class NativePaneManager {
   const native=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),
    admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>this.options.store.pinPaneSession(id,launchId,sessionId),
    exited:snapshot=>{this.save(file,{...retained,exited:snapshot});this.options.store.releasePane(id,snapshot);},mcpProof:()=>lease.serving()?"alive":"unknown",
-   bindDaemon:value=>binding.bind(value),
+   bindDaemon:value=>binding.bind(value),acquired:()=>this.options.store.setPaneRecovery(id,undefined),
    releaseAuthority:()=>{closed=true;lease.close();if(this.bindings.get(id)===binding)this.bindings.delete(id);},
   });
   const snapshot=native.port.ownedSnapshot();
   if(agent.threadId&&snapshot?.sessionId!==agent.threadId&&launch.sessionId!==agent.threadId)throw Error("Native profile conversation pin differs from its launch receipt");
   binding={native,lease,bind:value=>{if(daemon&&daemon!==value)throw Error("Native daemon binding changed");daemon=value;}};this.bindings.set(id,binding);
   return native;
+ }
+ /** Explicit admin attestation, bound to the held launch; no keys, tool calls or process signals. */
+ async recover(name:string,config:InstanceConfig,launchId:string,confirmedStopped:boolean,assertCurrent:()=>void):Promise<void>{
+  const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation is in flight");
+  this.preparing.add(id);
+  try {
+   assertCurrent();this.options.admit(name,config);
+   const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
+   if(confirmedStopped!==true||!manifest||manifest.launch.launchId!==launchId||agent.activeId!==launchId||agent.paneLaunchId!==launchId
+    ||manifest.launch.agentId!==id||manifest.launch.instance!==name||manifest.machineId!==(agent.machineId??"local")||agent.fleet_instance!==name)throw Error(t("native_pane.changed"));
+   const pin=agent.threadId??manifest.launch.sessionId??(manifest.launch.cli==="claude-code"?manifest.launch.launchId:undefined);
+   if(!pin)throw Error(t("native_pane.no_pin"));
+   const bound=this.bindings.get(id)?.native.port.ownedSnapshot();
+   if(bound&&bound.launchId!==launchId)throw Error("Native recovery has another coordinator owner");
+   const endpoint=await this.options.endpoint(agent);assertCurrent();this.options.admit(name,config);
+   if(endpoint.machineId!==manifest.machineId)throw Error("Native recovery machine differs");
+   const raw=await endpoint.call({action:"list"});assertCurrent();this.options.admit(name,config);
+   if(!raw||typeof raw!=="object"||!Array.isArray((raw as any).panes)||(raw as any).capabilities?.recovery!==true)throw new NativePaneRecoveryError({kind:"host-upgrade",launchId});
+   const rows=((raw as any).panes as unknown[]).map(validateRuntimePaneSnapshot),pane=rows.find(row=>row.paneId===manifest.launch.paneId);
+   if(rows.filter(row=>row.paneId===manifest.launch.paneId).length!==1||!pane||pane.launchId!==launchId||pane.agentId!==id||pane.instance!==name
+    ||pane.sessionId!==pin||rows.some(row=>row.agentId===id&&row.paneId!==pane.paneId&&row.state!=="exited"))throw Error(t("native_pane.scope"));
+   const ended=validateRuntimePaneSnapshot(await endpoint.call({action:"recover",paneId:pane.paneId,launchId,hostBootId:pane.hostBootId,confirmedStopped:true}));
+   assertCurrent();this.options.admit(name,config);
+   if(ended.state!=="exited"||ended.paneId!==pane.paneId||ended.launchId!==launchId||ended.agentId!==id||ended.instance!==name||ended.hostBootId!==pane.hostBootId
+    ||pane.sessionId!==ended.sessionId)throw Error("Native recovery exit scope differs");
+   const binding=this.bindings.get(id);
+   if(binding)await binding.native.port.recordConfirmedExit(ended,assertCurrent);
+   assertCurrent();this.options.admit(name,config);
+   this.save(file,{...manifest,exited:ended});
+   if(!agent.threadId)this.options.store.pinPaneSession(id,launchId,pin);
+   if(!this.bindings.has(id))this.options.store.releasePane(id,ended);
+   this.options.store.setPaneRecovery(id,undefined);
+  } finally {this.preparing.delete(id);}
  }
  /** Close only the retained exact launch. Offline, missing, or unknown exit remains reserved. */
  async closeRetained(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<void>{

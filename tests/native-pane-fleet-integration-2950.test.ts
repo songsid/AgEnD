@@ -18,11 +18,11 @@ async function fixture(delayFrame=false){
  const store=windowsAgentsFor(fleet,{start:exec,get:()=>null,prepareWorkspace:async()=>"C:\\scratch"} as never),agent=await store.create({name:"Native",cwd:"C:\\scratch",cli:"claude-code",sandbox:"read-only",machineId});store.bindInstance(agent.id,"native");
  const config={...nativeInstanceConfig(agent),native_adapter:"pane",log_level:"silent"};fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true},instances:{native:config}};
  let owner:PaneMcpOwner|undefined,exit=(value:any)=>{},paint=()=>{};const cli={pid:12345,write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(fn:(data:string)=>void)=>{paint=()=>fn("─".repeat(40)+"\r\n❯ \r\n"+"─".repeat(40)+"\r\n");if(!delayFrame)queueMicrotask(paint);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
- const spawn=vi.fn(async()=>cli),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,"runner")),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,mcpConnection:(value,tools)=>{owner=value;return{endpoint:"http://127.0.0.1:1/agent",token:"a".repeat(64),owner:value,tools};},transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:"pending" as const,cursor,data:"",lines:[],complete:false,gap:false};},close:async()=>{}})});clean.push(()=>host.stop());
+ const spawn=vi.fn(async()=>cli),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,"runner")),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,mcpConnection:(value,tools)=>{owner=value;return{endpoint:"http://127.0.0.1:1/agent",token:"a".repeat(64),owner:value,tools};},transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:"pending" as const,cursor,data:"",lines:[],complete:false,gap:false};},close:async()=>{}})});let hostAbandoned=false;clean.push(()=>hostAbandoned?Promise.resolve():host.stop());
  const hub={machine:()=>({status:"online",platform:"win32",inventory:{clis:[{id:"claude-code",runnable:true,version:"Claude Code 2.1.316"}]}}),callPane:vi.fn((_id:string,request:any)=>host.request(request)),subscribe:()=>()=>{},paneTransportEpoch:()=>"private-epoch",task:()=>null,tasks:()=>[],hasActiveTask:()=>false};fleet.runtimeHub=hub;
  if(fleet.memoryPressure)vi.spyOn(fleet.memoryPressure,"start").mockImplementation(()=>{});
  const skills=vi.spyOn(fleet,"syncRoleSkills").mockImplementation(()=>{throw Error("No Linux skills in Windows cwd");}),models=vi.spyOn(fleet,"resolveInstanceModel").mockImplementation(()=>{throw Error("No Linux model state for native start");});
- clean.push(async()=>{for(const daemon of fleet.daemons.values())await daemon.abortStartup();for(const channel of fleet.instanceIpcClients.values())await channel.close();fleet.memoryPressure?.stop();});return{root,fleet,config,store,agent,spawn,cli,hub,exec,skills,models,owner:()=>owner!,paint:()=>paint()};
+ clean.push(async()=>{for(const daemon of fleet.daemons.values())await daemon.abortStartup();for(const channel of fleet.instanceIpcClients.values())await channel.close();fleet.memoryPressure?.stop();});return{root,fleet,config,store,agent,spawn,cli,hub,exec,skills,models,abandon:()=>{hostAbandoned=true;},owner:()=>owner!,paint:()=>paint()};
 }
 it("opt-in starts a resident daemon, receives ordinary delivery, publishes progress and closes only its owned pane",async()=>{
  const f=await fixture();await f.fleet.startInstance("native",f.config,true);const daemon=f.fleet.daemons.get("native");expect(daemon?.usesNativePane()).toBe(true);expect(f.spawn).toHaveBeenCalledOnce();expect(f.exec).not.toHaveBeenCalled();expect(f.skills).not.toHaveBeenCalled();expect(f.models).not.toHaveBeenCalled();expect(existsSync(join(f.fleet.getInstanceDir("native"),"channel.sock"))).toBe(false);expect(f.fleet.getInstanceStatus("native")).toBe("running");
@@ -203,4 +203,36 @@ it('a real fresh daemon cannot release startup while its native Claude terminal 
  const f=await fixture(true);let started=false;const start=f.fleet.startInstance('native',f.config,true).then(()=>{started=true;});
  await vi.waitFor(()=>expect(f.spawn).toHaveBeenCalledOnce());await new Promise(resolve=>setTimeout(resolve,20));expect(started).toBe(false);
  f.paint();await start;expect(started).toBe(true);const daemon=f.fleet.daemons.get('native');expect(daemon.backend.readInputRow(await daemon.tmux.capturePane())).not.toBeNull();expect(f.cli.write).not.toHaveBeenCalled();
+});
+it('a newer explicit Stop supersedes queued admin pane recovery before any host RPC',async()=>{
+ const f=await fixture();let release!:()=>void;
+ const barrier=f.fleet.lifecycle.runTransition('native',()=>new Promise<void>(done=>{release=done;}));
+ await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+ const recovery=f.fleet.recoverNativePane('native',randomUUID(),()=>true),held=expect(recovery).rejects.toThrow('authority expired');
+ const stopping=f.fleet.stopInstance('native');release();await barrier;await held;await stopping;
+ expect(f.hub.callPane).not.toHaveBeenCalled();expect(f.spawn).not.toHaveBeenCalled();expect(f.cli.kill).not.toHaveBeenCalled();
+});
+it('an old-host compatibility hold is visible once and does not schedule automatic start retries',async()=>{
+ const f=await fixture(),call=f.hub.callPane.getMockImplementation()!;f.models.mockRestore();
+ f.hub.callPane.mockImplementationOnce(async(machine,request)=>{const result:any=await call(machine,request);delete result.capabilities;return result;});
+ const schedule=vi.spyOn(f.fleet,'scheduleStartupRetry');
+ await expect(f.fleet.startInstanceUnattended('native',f.config,true,'instance')).resolves.toBe(false);
+ expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe('host-upgrade');expect(schedule).not.toHaveBeenCalled();expect(f.spawn).not.toHaveBeenCalled();
+ expect(f.fleet.getUiStatus().instances.find((row:any)=>row.name==='native').native_recovery?.kind).toBe('host-upgrade');
+});
+
+it('the real admin pane recovery retires only the orphan and ordinary Start resumes its same session',async()=>{
+ const f=await fixture();f.models.mockRestore();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native'),pin=f.store.get(f.agent.id).threadId,old=daemon.nativePaneLifecycle.snapshot();
+ f.abandon();const state=new RuntimePaneStore(join(f.root,'runner'));state.recoverInterrupted();
+ let exit=(value:any)=>{};const replacement={...f.cli,kill:vi.fn(()=>exit({exitCode:0})),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};},onData:(fn:(data:string)=>void)=>{queueMicrotask(()=>fn('─'.repeat(40)+'\r\n❯ \r\n'+'─'.repeat(40)+'\r\n'));return{dispose(){}};}};
+ f.spawn.mockResolvedValue(replacement);const host=new RuntimePaneHost({store:state,bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn:f.spawn,mcpConnection:(owner,tools)=>({endpoint:'http://127.0.0.1:1/agent',token:'a'.repeat(64),owner,tools})});clean.push(()=>host.stop());
+ f.hub.callPane.mockImplementation((_machine,request)=>host.request(request));
+ await daemon.nativePaneLifecycle.port.getPaneStatus();expect(daemon.nativePaneCurrent()).toBe(false);
+ // A dead local relay stays dead on the old binding even though recovery discovers a fresh endpoint.
+ daemon.nativePaneLifecycle.options.endpoint.online=()=>false;
+ expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();
+ expect(f.fleet.getUiStatus().instances.find((row:any)=>row.name==='native').native_recovery).toMatchObject({kind:'exit-unconfirmed',launchId:old.launchId});
+ await f.fleet.recoverNativePane('native',old.launchId,()=>true);
+ expect(f.fleet.daemons.has('native')).toBe(false);expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.cli.kill).not.toHaveBeenCalled();expect(replacement.kill).not.toHaveBeenCalled();
+ await f.fleet.startInstance('native',f.config,true);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.fleet.daemons.get('native').nativePaneLifecycle.snapshot().launchId).not.toBe(old.launchId);expect(f.spawn).toHaveBeenCalledTimes(2);await f.fleet.stopInstance('native');
 });

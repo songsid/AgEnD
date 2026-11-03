@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { execFile } from "./child-process.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
-export interface PaneHostDescriptor { version: 1; scope: string; hostBootId: string; pid: number; port: number; token: string }
+export interface PaneHostDescriptor { version: 1; scope: string; hostBootId: string; pid: number; port: number; token: string; systemBootId?: string }
 export async function protectPaneDirectory(directory: string): Promise<void> {
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const stat = lstatSync(directory);
@@ -24,6 +24,7 @@ export function readPaneHostDescriptor(directory: string, scope: string): PaneHo
     const value = JSON.parse(readFileSync(path, "utf8"));
     if (value?.version !== 1 || value.scope !== scope || !/^[a-f0-9-]{36}$/i.test(value.hostBootId)
       || !Number.isSafeInteger(value.pid) || value.pid < 1 || !Number.isSafeInteger(value.port) || value.port < 1 || value.port > 65535
+      || value.systemBootId !== undefined && (typeof value.systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(value.systemBootId))
       || typeof value.token !== "string" || !/^[a-f0-9]{64}$/.test(value.token)) throw Error("Pane host descriptor scope is invalid");
     return value;
   } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }

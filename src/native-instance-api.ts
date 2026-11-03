@@ -1,3 +1,4 @@
+import { t } from "./locale.js";
 /** Windows runtime adapter behind the shared Instance HTTP surface. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
@@ -62,7 +63,7 @@ export async function createNativeInstance(req:IncomingMessage,res:ServerRespons
 
 /** Common CRUD/message routes. The old native URLs remain compatibility aliases. */
 export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiContext):boolean {
-  const match=/^\/ui\/instances\/([^/]+)(?:\/(messages|cancel|recover))?$/.exec(url.pathname);
+  const match=/^\/ui\/instances\/([^/]+)(?:\/(messages|cancel|recover|recover-pane))?$/.exec(url.pathname);
   if(!match)return false;
   let name:string;try{name=decodeURIComponent(match[1]);}catch{return false;}
   if(!isWindowsInstance(ctx.fleetConfig?.instances[name]))return false;
@@ -107,6 +108,13 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
         json(res,202,{agent:service.get(name),task:null});return;
       }
       const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
+    }
+    if(method==="POST" && operation==="recover-pane"){
+      if(!isNativePaneInstance(ctx.fleetConfig?.instances[name])||!ctx.recoverNativePane)throw Error(t("native_pane.unavailable"));
+      const input=z.object({confirmedStopped:z.literal(true),launchId:z.string().uuid()}).strict().parse(body);
+      await ctx.recoverNativePane(name,input.launchId,allowed);
+      if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
+      ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,{agent:service.get(name)});return;
     }
     if(method==="POST" && operation==="recover"){
       if(isNativePaneInstance(ctx.fleetConfig?.instances[name]))throw Error("Use the shared Start or Restart control to reconcile the retained pane");

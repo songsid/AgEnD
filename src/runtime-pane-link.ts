@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { spawn } from "./child-process.js";
+import { readPaneSystemBootId } from "./runtime-pane-boot.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
 import { protectPaneDirectory, readPaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
@@ -18,6 +19,8 @@ export interface PaneLinkOptions {
   maxAgents(): number;
   epoch?(): string;
   output?(snapshot: RuntimePaneSnapshot): void;
+  /** Transport loss only; retained CLI/process ownership is unchanged. */
+  disconnected?(): void;
   mcp?(body: PaneMcpBody, current: () => boolean): Promise<unknown>;
 }
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
@@ -28,15 +31,16 @@ export class RuntimePaneLink {
   private closed = false;
   private cleanupOnly=false;
   private readonly clientEpoch = randomUUID();
-  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp">) {}
+  private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">) {}
   static async open(options: PaneLinkOptions): Promise<RuntimePaneLink> {
     if (process.platform !== "win32") throw Error("Persistent pane host requires Windows Node");
     const directory = join(options.directory, "pane-host");
     await protectPaneDirectory(directory);
     const scope = runtimeJobDigest({ server: options.server, machineId: options.machineId });
     let descriptor = readPaneHostDescriptor(directory, scope);
+    const systemBootId = await readPaneSystemBootId();
     let live = false;
-    if (descriptor) {
+    if (descriptor && !(descriptor.systemBootId && systemBootId && descriptor.systemBootId !== systemBootId)) {
       live = true;
       try { process.kill(descriptor.pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") live = false; }
     }
@@ -60,7 +64,7 @@ export class RuntimePaneLink {
     return this.attach(descriptor, options);
   }
   /** Authenticated discovery seam; fixtures bind only private loopback services. */
-  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp">): Promise<RuntimePaneLink> {
+  static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">): Promise<RuntimePaneLink> {
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(`ws://127.0.0.1:${descriptor.port}/pane/v1`, { headers: { Authorization: `Bearer ${descriptor.token}` },
         handshakeTimeout: 10_000, maxPayload: 256 * 1024, followRedirects: false, perMessageDeflate: false });
@@ -131,10 +135,13 @@ export class RuntimePaneLink {
       });
     });
   }
+  connected(): boolean { return !this.closed && this.socket.readyState === WebSocket.OPEN; }
   private closePending(): void {
+    if (this.closed) return;
     this.closed = true; clearInterval(this.timer);
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(Error("Pane connection closed; terminal ownership is retained")); }
     this.pending.clear();
+    try { this.options.disconnected?.(); } catch { /* cleanup observers cannot change retained ownership */ }
   }
   /** An authenticated explicit machine revocation retires only this enrollment's owned panes. A disconnect never does. */
   async retireOwned():Promise<void>{

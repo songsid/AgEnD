@@ -119,6 +119,34 @@ describe("one fleet UI across runtimes",()=>{
     expect(recover).toBeTruthy();recover.click();await settle(6);
     expect(sent.find(item=>item.path===`/ui/instances/${nativeName}/recover`)?.body).toEqual({confirmedStopped:true});
   });
+  it("requires an explicit stopped-process check for pane recovery and never sends a chat or exec unlock",async()=>{
+    const launchId="12345678-1234-4321-abcd-123456789099";
+    const status={instances:[{...nativeRow(),native_adapter:"pane",status:"stopped",native_recovery:{kind:"exit-unconfirmed",launchId}}],windows_cli:true};app.applyStatus(status);emit("status",status);
+    await mountNative();p.root.querySelectorAll("button").find((button:any)=>button.textContent==="Recover saved session").click();await settle();
+    const submit=()=>p.root.querySelectorAll("dialog button").find((button:any)=>button.textContent==="Processes stopped — recover session");
+    expect(submit().disabled).toBe(true);expect(sent.some(item=>item.path.endsWith('/recover-pane'))).toBe(false);
+    const checkbox=p.root.querySelector('dialog input[type="checkbox"]');checkbox.checked=true;fire(checkbox,"change");await settle();
+    submit().click();submit().click();await settle(6);
+    expect(sent.filter(item=>item.path===`/ui/instances/${nativeName}/recover-pane`)).toEqual([{path:`/ui/instances/${nativeName}/recover-pane`,method:"POST",body:{confirmedStopped:true,launchId}}]);
+    expect(sent.some(item=>item.path==="/ui/send"||item.path.endsWith('/recover'))).toBe(false);
+  });
+  it("does not let a checked old dialog authorize a replacement pane launch",async()=>{
+    const first="12345678-1234-4321-abcd-123456789099",next="12345678-1234-4321-abcd-123456789098";
+    const status=(launchId:string)=>({instances:[{...nativeRow(),native_adapter:"pane",status:"stopped",native_recovery:{kind:"exit-unconfirmed",launchId}}],windows_cli:true});
+    app.applyStatus(status(first));emit("status",status(first));await mountNative();
+    p.root.querySelectorAll("button").find((button:any)=>button.textContent==="Recover saved session").click();await settle();
+    const checkbox=p.root.querySelector('dialog input[type="checkbox"]');checkbox.checked=true;fire(checkbox,"change");await settle();
+    app.applyStatus(status(next));emit("status",status(next));
+    const submit=p.root.querySelectorAll("dialog button").find((button:any)=>button.textContent==="Processes stopped — recover session");submit?.click();await settle(6);
+    expect(sent.filter(item=>item.path.endsWith('/recover-pane')).every(item=>item.body.launchId===first)).toBe(true);
+  });
+  it("shows the old-host restart path and Start without trying to unlock or type into it",async()=>{
+    const status={instances:[{...nativeRow(),native_adapter:"pane",status:"stopped",native_recovery:{kind:"host-upgrade"}}],windows_cli:true};app.applyStatus(status);emit("status",status);
+    await mountNative();expect(p.root.textContent).toContain("restart Windows");
+    expect(p.root.querySelectorAll("button").some((button:any)=>button.textContent==="Recover saved session")).toBe(false);
+    p.root.querySelectorAll(".windows-agent-blocked button").find((button:any)=>button.textContent==="Start instance").click();await settle(6);
+    expect(sent.some(item=>item.path===`/ui/start/${nativeName}`)).toBe(true);expect(sent.some(item=>item.path==="/ui/send")).toBe(false);
+  });
   it("keeps unsupported CLI commands as drafts instead of sending them to Linux controls",async()=>{
     await mountNative();const input=p.root.querySelector("#msgIn");input.value="/clear";fire(input,"input");await settle();
     expect(p.root.querySelector("#cmdPalette")).toBeNull();p.root.querySelector("#sendBtn").click();await settle();

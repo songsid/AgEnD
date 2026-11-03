@@ -147,3 +147,24 @@ describe('persistent pane adapters use shared lifecycle rather than per-turn com
   handleNativeInstanceRequest(req,res,url('/'+operation),f.context);await finish(res,400);expect(f.ctx.deliverToInstance).not.toHaveBeenCalled();expect(f.service.recover).not.toHaveBeenCalled();expect(f.service.cancel).not.toHaveBeenCalled();
  });
 });
+
+describe("explicit persistent-pane recovery boundary",()=>{
+ const launchId="12345678-1234-4321-abcd-123456789099";
+ it("routes only exact stopped-process confirmation through the pane lifecycle, never exec recovery",async()=>{
+  const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const recover=vi.fn(async(_name:string,_launchId:string,_current:()=>boolean)=>{});f.context.recoverNativePane=recover;
+  const req=request("POST",{confirmedStopped:true,launchId},url("/recover-pane")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/recover-pane"),f.context);await finish(res,200);
+  expect(recover).toHaveBeenCalledWith(name,launchId,expect.any(Function));expect(recover.mock.calls[0][2]()).toBe(true);expect(f.service.recover).not.toHaveBeenCalled();
+ });
+ it.each([{}, {confirmedStopped:false,launchId}, {confirmedStopped:true,launchId:"wrong"}, {confirmedStopped:true,launchId,force:true}])("rejects an unconfirmed or unscoped body %j",async body=>{
+  const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const recover=vi.fn(async(_name:string,_launchId:string,_current:()=>boolean)=>{});f.context.recoverNativePane=recover;
+  const req=request("POST",body,url("/recover-pane")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/recover-pane"),f.context);await finish(res,400);expect(recover).not.toHaveBeenCalled();
+ });
+ it.each(["guest","gateway","missing"])("refuses %s authority before any recovery",async kind=>{
+  const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const recover=vi.fn(async(_name:string,_launchId:string,_current:()=>boolean)=>{});f.context.recoverNativePane=recover;
+  const req=request("POST",{confirmedStopped:true,launchId},url("/recover-pane")),res=new Response(req);
+  if(kind==="gateway")bindGatewayRequest(req,{kind:"edge-public",gatewayId:"test"} as never);
+  else if(kind==="missing")delete req.headers["x-agend-token"];
+  else {const sessions=new WebSessionStore(),session=sessions.create({tier:"guest",surface:"local",label:"test",tokenEpoch:tokenEpoch(token),owner:{adapterId:"tg",userId:"1"}});Object.assign(f.context,{webSessions:sessions});delete req.headers["x-agend-token"];req.headers.cookie=`${WEB_SESSION_COOKIE}=${session.sessionId}`;req.headers.origin="http://localhost";req.headers["x-agend-csrf"]=csrfTokenFor(session.sessionId);}
+  handleNativeInstanceRequest(req,res,url("/recover-pane"),f.context);await finish(res,403);expect(recover).not.toHaveBeenCalled();
+ });
+});

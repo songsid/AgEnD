@@ -30,3 +30,16 @@ Native Codex runs with `--no-daemon`. Each pane therefore owns its own app-serve
 Windows bounds apply to the entire escaped command line, including the CLI launcher, paths and MCP arguments. The worker refuses commands over 30,000 UTF-16 units before starting the CLI. It never truncates role instructions or switches to a shared-file fallback. Claude uses a private launch-local append-instructions file.
 
 These probes complement focused lifecycle/security tests and real private-tmux parity. Their receipts do not claim a physical Windows reboot, a real ARM64 host, every provider sandbox/network policy, or real Discord/Telegram delivery. The combined PR requires clean exact-head evidence before review; the final whole-alpha user-story acceptance remains a separate run. The exec adapter remains the default.
+
+### Older-alpha upgrade and host-loss recovery (#2976)
+
+With explicit signed-in Windows approval and an exclusive Codex window, build both the pre-#2975 source at `9268bc304` and this head, then run `scripts/build-runtime.mjs .artifacts/runtime-bundle` in each worktree. From the clean current worktree:
+
+```
+node scripts/manual/pane-host-recovery/upgrade-acceptance.mjs ../pane-upgrade-before paired
+node scripts/manual/pane-host-recovery/upgrade-acceptance.mjs ../pane-upgrade-before local
+```
+
+The controller creates a fresh approved scratch folder/profile and loopback coordinator, uses the real default relay/link and the old/new compiled managers, and submits one read-only Codex canary. It preserves the profile while upgrading the client, verifies the old-host hold, then force-ends **only its freshly created, path-verified scratch host tree** to reproduce abrupt loss. It checks independent create, exact admin recovery, unchanged old MCP ledger, same-session resume and no canary replay. A second abrupt loss keeps the manager/lifecycle binding alive and proves that a fresh endpoint’s exact exit retires the permanently dead old local relay before resuming again. It never touches another acceptance rig. Provider records/captures stay in memory. Each owned UUID is archived with the supported Windows `codex archive` command after its processes stop; archive results and scratch cwd are included in the metadata receipt. No separate CODEX_HOME is used. A failed cleanup/archive retains the owned scratch for inspection. This is a host-tree-loss proof, **not** a physical Windows reboot; OS-boot proof changes and conservative missing-proof holds are covered offline.
+
+A displayed Codex UUID can be ephemeral until its first turn: `codex archive` then returns a refusal because neither a rollout nor an index row exists. The controller checks only the exact UUID against bounded provider filenames/index metadata after its process exits and records such IDs as `unmaterialized`, never as archived. It does not create a turn merely to make an empty UUID archivable, and never removes provider files by hand. Exact scratch-cwd headers identify any written test sessions omitted from a failed startup's receipt.

@@ -36,7 +36,7 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
   return new Promise((resolve,reject)=>{
    if(!child.stdin||!child.stdout){reject(Error("Local pane relay streams are unavailable"));return;}
    const framer=new PaneStdioFramer();let ready=false;const timer=setTimeout(()=>{reject(Error("Local pane relay startup unconfirmed"));this.stop();},125_000);timer.unref();
-   const lost=()=>{clearTimeout(timer);if(!ready)reject(Error("Local pane relay startup unconfirmed"));this.stop();};child.once("error",lost);child.once("exit",lost);child.stdout?.once("end",lost);child.stdin?.on("error",lost);
+   const lost=()=>{clearTimeout(timer);if(!ready)reject(Error("Local pane relay startup unconfirmed"));this.stop();};child.once("error",lost);child.once("exit",lost);child.stdout?.once("end",lost);child.stdout?.once("close",lost);child.stdin?.on("error",lost);
    let told=0;child.stderr?.setEncoding?.("utf8");child.stderr?.on("data",(part:string|Buffer)=>{if(told>=8_192||!this.options.diagnostic)return;const text=String(part).replace(/[\p{Cc}\p{Cf}]+/gu," ").trim().slice(0,8_192-told);told+=text.length;if(text)try{this.options.diagnostic(text);}catch{/* a diagnostic never affects the relay */}});
    child.stdout?.on("data",(bytes:Buffer)=>{try{framer.feed(bytes,raw=>{
     const value=paneStdioOutput(raw);if(value.epoch!==this.attachment)throw Error("Local pane relay epoch differs");

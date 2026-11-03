@@ -1,10 +1,11 @@
 /** Real private loopback channel, inert processes. Connection replacement cannot replay input or replace a CLI. */
 import { afterEach, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, symlinkSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
+import * as bootProof from "../src/runtime-pane-boot.js";
 import { startPaneService } from "../src/runtime-pane-service.js";
 import { RuntimePaneLink } from "../src/runtime-pane-link.js";
 import { RuntimePaneScreen } from "../src/runtime-pane-screen.js";
@@ -105,4 +106,14 @@ it('a stalled retirement is bounded and sends no replacement command after its d
 it('retirement keeps positive exited history from an older host without trying to retire it again',async()=>{
  const f=await setup(),client=await f.connect(),{reattached,...pane}=await client.request({action:'open',launch:f.launch(),operationId:randomUUID()}) as any,original=client.request.bind(client);
  vi.spyOn(client,'request').mockImplementation(async(raw:any)=>{const result:any=await original(raw);return raw.action==='list'?{...result,panes:[...result.panes,{...pane,paneId:randomUUID(),launchId:randomUUID(),hostBootId:randomUUID(),state:'exited',exitCode:0}]}:result;});await client.retireOwned();expect(f.processes[0].kill).toHaveBeenCalledOnce();
+});
+
+
+it('binds the host lock and descriptor to the same OS proof before recovering a reused PID',async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'agend-pane-boot-lock-'));cleanup.push(()=>rmSync(directory,{recursive:true,force:true}));
+ writeFileSync(join(directory,'runtime.lock'),JSON.stringify({pid:process.pid,bootId:randomUUID(),systemBootId:'a'.repeat(64)}),{mode:0o600});
+ vi.spyOn(bootProof,'readPaneSystemBootId').mockResolvedValue('b'.repeat(64));
+ const service=await startPaneService({directory,scope:'a'.repeat(64),createHost:options=>new RuntimePaneHost({...options,spawn:async()=>{throw Error('No CLI');}})});cleanup.push(()=>service.close());
+ expect(service.descriptor.systemBootId).toBe('b'.repeat(64));
+ expect(JSON.parse(readFileSync(join(directory,'runtime.lock'),'utf8'))).toMatchObject({pid:process.pid,systemBootId:'b'.repeat(64)});
 });
