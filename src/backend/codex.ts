@@ -69,6 +69,13 @@ const CODEX_CONTEXT_STATUS_ITEMS = new Set(["context-remaining", "context-used",
  * 45초.`) is recognised by its leading word alone, so it also survives being set off by a single space.
  * ONE grammar for the legacy Context-first footer and for the configured status_line footer.
  */
+/** M-2286: the warnings chip alone on the footer row (codex-cli 0.164, before the Context meter has a value). */
+const CODEX_WARNINGS_CHIP = String.raw`⚠\s+\d+\s+warnings?\s+·\s+f2 to view`;
+const CODEX_WARNINGS_CHIP_FOOTER = new RegExp(String.raw`^\s*${CODEX_WARNINGS_CHIP}\s*$`, "u");
+/** M-2286: the footer while a turn runs: `tab to queue message`, then optionally `N% context left` and the chip. */
+const CODEX_BUSY_QUEUE_FOOTER = new RegExp(String.raw`^\s*tab to queue message(?:\s{2,}\d+% context (?:left|used))?(?:\s{2,}${CODEX_WARNINGS_CHIP})?\s*$`, "iu");
+/** M-2286: how far up the input box (a wrapped paste) may reach from its footer. */
+const CODEX_COMPOSER_MAX_ROWS = 40;
 const CODEX_NATIVE_FOOTER_FIELDS = String.raw`(?:[ \t]{2,}(?![›>•■❯])|[ \t]+(?=Goal\b))\S[^\r\n]*`;
 
 function isCodexContextFooter(row: string): boolean {
@@ -1887,6 +1894,45 @@ export class CodexBackend implements CliBackend {
   /** Any footer that proves the Context meter owns the bottom row. */
   private isAnyContextFooter(row: string): boolean {
     return isCodexContextFooter(row) || this.isConfiguredContextFooter(row);
+  }
+
+  /**
+   * M-2286 (#2958 follow-up): positive evidence that the bottom of the pane is Codex's own input box — asked by the
+   * daemon right before a delivery's Enter, AFTER the paste, and after its dialog probe. isDeliveryInputReadyPane is an
+   * idle-readiness test: it needs the idle Context footer (or, on the #978 fallback, an EMPTY composer), so it cannot
+   * prove a composer that now holds our paste under any other footer. Codex shows other footers all the time (live
+   * captures on codex-cli 0.164, private tmux):
+   *   - right after `codex resume`, before the first turn: no Context meter — a blank footer, or only the
+   *     `⚠ N warnings · f2 to view` chip;
+   *   - while a turn runs: `tab to queue message … N% context left`.
+   * Shape, from the bottom: an optional KNOWN footer row, then the box — continuation rows (two-space indent, which is
+   * how Codex wraps a paste and shows `[Pasted Content N chars]`) and blank rows — up to the LAST `›` row, which must
+   * carry text (the paste, or Codex's placeholder). Anything else holds: a numbered option row (`› 1. …`, a selection
+   * card), a live-status or transcript bullet (`•`, `◦`, `■`, `└`), an app-server-disconnected pane, an unknown footer.
+   */
+  isDeliveryComposerPane(pane: string): boolean {
+    if (codexAppServerDisconnected(pane)) return false;
+    const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/⋆/gu, ""));
+    while (rows.length && !rows[rows.length - 1]!.trim()) rows.pop();
+    let i = rows.length - 1;
+    if (i < 0) return false;
+    if (this.isComposerFooterRow(rows[i]!)) i--;
+    for (let seen = 0; i >= 0 && seen < CODEX_COMPOSER_MAX_ROWS; i--, seen++) {
+      const row = rows[i]!;
+      if (/^[>›]\s*\d+\.(?:\s|$)/.test(row)) return false;
+      if (/^[>›](?:\s|$)/.test(row)) return /^[>›]\s+\S/.test(row);
+      if (!row.trim()) continue;
+      // A wrapped or collapsed paste row; a tool-output branch (`└`) is transcript, not the box.
+      if (/^ {2,}\S/.test(row) && !/^\s*└/.test(row)) continue;
+      return false;
+    }
+    return false;
+  }
+
+  /** A footer row Codex paints under its input box (M-2286); an unknown row is not one. */
+  private isComposerFooterRow(row: string): boolean {
+    return this.isAnyContextFooter(row) || this.isConfiguredStatusLineFooter(row) || CODEX_BUSY_QUEUE_FOOTER.test(row)
+      || CODEX_WARNINGS_CHIP_FOOTER.test(row);
   }
 
   /**

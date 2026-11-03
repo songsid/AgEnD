@@ -9620,7 +9620,9 @@ export class Daemon extends EventEmitter {
         if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
         if (backend?.readInputRow) composer = backend.readInputRow(pane) != null;
         else if (backend?.inputDraft) composer = backend.inputDraft(pane) != null;
-        else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane);
+        // M-2286: the idle-readiness proof, or — once the paste is in, under a footer that proof does not know (a resumed
+        // Codex before its first turn, a running turn's `tab to queue message`) — the backend's own-box proof.
+        else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane) || backend.isDeliveryComposerPane?.(pane) === true;
         else if (backend?.readSteerComposer?.(pane) != null) composer = true;
         else if (backend) {
           // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
