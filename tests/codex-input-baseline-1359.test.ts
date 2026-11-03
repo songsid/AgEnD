@@ -54,18 +54,18 @@ describe("fresh structured-input proof after the system retry delay", () => {
     const { daemon } = makeDaemon();
     let pane: string = before;
     let enters = 0;
-    const paste = vi.fn(async () => { pane = first; return true; });
-    const enter = vi.fn(async () => { if (++enters === 2) pane = SUBMITTED; return true; });
+    const paste = vi.fn(async () => { pane = OLDER; return true; });
+    const enter = vi.fn(async () => { pane = ++enters === 1 ? first : SUBMITTED; return true; });
     const capture = vi.fn(async () => pane);
-    daemon["tmux"] = standingIn<TmuxManager>({ capturePane: capture, pasteBuffer: paste,
+    daemon["tmux"] = standingIn<TmuxManager>({ getWindowId: () => "@baseline1359", capturePane: capture, pasteBuffer: paste,
       sendSpecialKey: enter, getLastSendSpecialKeyError: () => null });
     const done = daemon["submitSystemPaste"](TEXT, "retry-proof-control");
     setTimeout(() => { pane = later; }, 750);
     await vi.advanceTimersByTimeAsync(3_000);
     expect(await done).toBe(ok);
     expect(enter).toHaveBeenCalledTimes(keys);
-    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT);
-    expect(capture).toHaveBeenCalledTimes(keys === 2 ? 4 : 3);
+    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT, { guard: expect.any(Function) });
+    expect(capture).toHaveBeenCalledTimes(keys === 2 ? 6 : 4);
   });
   it.each([OLDER, SUBMITTED])("revocation during the fresh capture refuses even a late owned/positive result", async later => {
     vi.useFakeTimers();
@@ -74,13 +74,13 @@ describe("fresh structured-input proof after the system retry delay", () => {
     let captures = 0;
     let release!: (pane: string) => void;
     const held = new Promise<string>(resolve => { release = resolve; });
-    const capture = vi.fn(async () => ++captures === 1 ? IDLE : captures === 2 ? WARNING : held);
+    const capture = vi.fn(async () => ++captures === 1 ? IDLE : captures === 2 ? OLDER : captures === 3 ? WARNING : held);
     const enter = vi.fn(async () => true);
-    daemon["tmux"] = standingIn<TmuxManager>({ capturePane: capture, pasteBuffer: vi.fn(async () => true),
+    daemon["tmux"] = standingIn<TmuxManager>({ getWindowId: () => "@baseline1359", capturePane: capture, pasteBuffer: vi.fn(async () => true),
       sendSpecialKey: enter, getLastSendSpecialKeyError: () => null });
     const done = daemon["submitSystemPaste"](TEXT, "revoked-fresh-proof", { current: () => live, accept: () => true });
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(captures).toBe(3);
+    expect(captures).toBe(4);
     live = false;
     release(later);
     expect(await done).toBe(false);
@@ -91,32 +91,32 @@ describe("fresh structured-input proof after the system retry delay", () => {
     const { daemon } = makeDaemon();
     let captures = 0;
     const capture = vi.fn(async () => {
-      if (++captures === 3) throw new Error("inert capture unavailable");
+      if (++captures === 4) throw new Error("inert capture unavailable");
       return captures === 1 ? IDLE : OLDER;
     });
     const enter = vi.fn(async () => true);
-    daemon["tmux"] = standingIn<TmuxManager>({ capturePane: capture, pasteBuffer: vi.fn(async () => true),
+    daemon["tmux"] = standingIn<TmuxManager>({ getWindowId: () => "@baseline1359", capturePane: capture, pasteBuffer: vi.fn(async () => true),
       sendSpecialKey: enter, getLastSendSpecialKeyError: () => null });
     const done = daemon["submitSystemPaste"](TEXT, "failed-fresh-proof");
     await vi.advanceTimersByTimeAsync(3_000);
     expect(await done).toBe(false);
-    expect(capture).toHaveBeenCalledTimes(3);
+    expect(capture).toHaveBeenCalledTimes(4);
     expect(enter).toHaveBeenCalledExactlyOnceWith("Enter");
   });
-  it("row-only backends keep their ordinary retry and capture counts", async () => {
+  it("row-only backends retain the retry with fresh composer checks", async () => {
     vi.useFakeTimers();
     const { daemon } = makeDaemon();
-    daemon["backend"] = standingIn<CliBackend>({ getBottomReadyPattern: () => /^❯\s*/ });
+    daemon["backend"] = standingIn<CliBackend>({ getReadyPattern: () => /^❯/, getBottomReadyPattern: () => /^❯\s*/ });
     let enters = 0;
-    const capture = vi.fn(async () => enters < 2 ? "redraw" : `${TEXT}\n❯ `);
+    const capture = vi.fn(async () => enters < 2 ? "❯ " : `${TEXT}\n❯ `);
     const enter = vi.fn(async () => { enters++; return true; });
-    daemon["tmux"] = standingIn<TmuxManager>({ capturePane: capture, pasteBuffer: vi.fn(async () => true),
+    daemon["tmux"] = standingIn<TmuxManager>({ getWindowId: () => "@baseline1359", capturePane: capture, pasteBuffer: vi.fn(async () => true),
       sendSpecialKey: enter, getLastSendSpecialKeyError: () => null });
     const done = daemon["submitSystemPaste"](TEXT, "row-only-legacy");
     await vi.advanceTimersByTimeAsync(3_000);
     expect(await done).toBe(true);
     expect(enter).toHaveBeenCalledTimes(2);
-    expect(capture).toHaveBeenCalledTimes(3);
+    expect(capture).toHaveBeenCalledTimes(5);
   });
 });
 function makeDaemon() {
@@ -161,7 +161,7 @@ describe("system recovery ownership at the real Enter availability boundary", ()
       }
       return true; // first Enter is swallowed; no extra readiness wait is stubbed out
     });
-    daemon["tmux"] = standingIn<TmuxManager>({ capturePane: capture, pasteBuffer: paste,
+    daemon["tmux"] = standingIn<TmuxManager>({ getWindowId: () => "@baseline1359", capturePane: capture, pasteBuffer: paste,
       sendSpecialKey: enter, getLastSendSpecialKeyError: () => null });
     const realWait = daemon["waitForInputTransientToClear"].bind(daemon);
     let recoveryWaits = 0;
@@ -181,7 +181,7 @@ describe("system recovery ownership at the real Enter availability boundary", ()
     expect(result).toBe(ok);
     expect(captures).toContainEqual({ at: 1_000, pane: RESUMING });
     expect(captures).toContainEqual({ at: 1_250, pane: afterWait });
-    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT);
+    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT, { guard: expect.any(Function) });
     expect(enter).toHaveBeenCalledTimes(keys);
     expect(keyTimes).toEqual(keys === 2 ? [500, 1_250] : [500]);
     expect(wait).toHaveBeenCalledTimes(2);
@@ -206,16 +206,16 @@ describe("Codex baseline ownership (#1359), native 0.160.0 frames", () => {
     let entered = false;
     const paste = vi.fn(async () => true); // native warning viewer accepted the tmux paste ACK, ignored its bytes
     const enter = vi.fn(async () => { entered = true; return true; });
-    daemon["tmux"] = standingIn<TmuxManager>({ capturePane: vi.fn(async () => entered ? OLDER : WARNING), pasteBuffer: paste,
+    daemon["tmux"] = standingIn<TmuxManager>({ getWindowId: () => "@baseline1359", capturePane: vi.fn(async () => entered ? OLDER : WARNING), pasteBuffer: paste,
       sendSpecialKey: enter, getLastSendSpecialKeyError: () => null });
     const promise = daemon["submitSystemPaste"](TEXT, "instruction-reload-notice");
     await vi.advanceTimersByTimeAsync(3_000);
     expect(await promise).toBe(false);
-    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT);
-    expect(enter).toHaveBeenCalledExactlyOnceWith("Enter");
-    expect(warns.some(args => args.includes("Codex system paste could not be verified"))).toBe(true);
+    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT, { guard: expect.any(Function) });
+    expect(enter).not.toHaveBeenCalled();
+    expect(warns.some(args => args.includes("Delivery input is not a verified composer; Enter withheld"))).toBe(true);
   });
-  it("viewer recovery after the first confirmation but before retry cannot submit the old draft", async () => {
+  it("viewer recovery after an initial unknown frame cannot revive the held system paste", async () => {
     vi.useFakeTimers(); vi.setSystemTime(0);
     const { daemon } = makeDaemon();
     let pane = WARNING;
@@ -226,7 +226,7 @@ describe("Codex baseline ownership (#1359), native 0.160.0 frames", () => {
       if (pane === OLDER) { oldDraftSubmissions++; pane = HIDDEN_ECHO; }
       return true;
     });
-    daemon["tmux"] = standingIn<TmuxManager>({
+    daemon["tmux"] = standingIn<TmuxManager>({ getWindowId: () => "@baseline1359",
       capturePane: vi.fn(async () => { captures.push({ at: Date.now(), pane }); return pane; }),
       pasteBuffer: paste, sendSpecialKey: enter, getLastSendSpecialKeyError: () => null,
     });
@@ -236,8 +236,8 @@ describe("Codex baseline ownership (#1359), native 0.160.0 frames", () => {
     expect(await done).toBe(false);
     expect(captures).toContainEqual({ at: 500, pane: WARNING });
     expect(oldDraftSubmissions).toBe(0);
-    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT);
-    expect(enter).toHaveBeenCalledExactlyOnceWith("Enter");
+    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT, { guard: expect.any(Function) });
+    expect(enter).not.toHaveBeenCalled();
   });
   it("a readable empty baseline still attributes a newly stranded body", () => {
     const { daemon } = makeDaemon();
@@ -271,7 +271,7 @@ describe("Codex baseline ownership (#1359), native 0.160.0 frames", () => {
   });
   it("ordinary row-only backends retain their existing attribution", () => {
     const { daemon } = makeDaemon();
-    daemon["backend"] = standingIn<CliBackend>({ getBottomReadyPattern: () => /^❯\s*/ });
+    daemon["backend"] = standingIn<CliBackend>({ getReadyPattern: () => /^❯/, getBottomReadyPattern: () => /^❯\s*/ });
     const after = `❯ ${TEXT}`;
     expect(daemon["judgeSubmission"](after, signature, daemon["paneEvidence"]("redraw", signature))).toBe("stranded");
   });
