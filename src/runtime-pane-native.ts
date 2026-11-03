@@ -3,6 +3,12 @@ import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneConfig } from "./runtime-pane-config.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { nativeUpdateGuard } from "./windows-cli-providers.js";
+/** Cache admission and the owned worker's final pre-spawn check share the same audited release set. */
+export function assertAuditedNativePaneVersion(provider:string,line:string|null):void{
+ const expected=provider==="codex"?"0.165.0":provider==="claude-code"?"2.1.316":null;
+ const versions=typeof line==="string"&&line.length<=4096?line.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/g):null;
+ if(!expected||versions?.length!==1||versions[0]!==expected)throw Error("This native CLI version has not passed persistent-pane acceptance");
+}
 export interface NativePaneOwner { directory: string; launchId: string; mcp?: PaneMcpConnection }
 export type NativePaneCommand = { type: "start"; launch: RuntimePaneLaunch; owner: NativePaneOwner }
   | { type: "input"; data: string } | { type: "resize"; columns: number; rows: number }

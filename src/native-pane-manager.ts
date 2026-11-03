@@ -5,6 +5,7 @@ import {randomUUID} from "node:crypto";
 import {atomicWriteFileSync} from "./atomic-write.js";
 import {runtimeJobDigest} from "./runtime-client-store.js";
 import {RuntimeNativePaneLifecycle} from "./native-pane-lifecycle.js";
+import {assertAuditedNativePaneVersion} from "./runtime-pane-native.js";
 import {PaneMcpAuthorityLease} from "./runtime-pane-mcp.js";
 import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
 import {validatePaneMcpBody,type PaneMcpBody} from "./runtime-pane-mcp-protocol.js";
@@ -63,8 +64,7 @@ export class NativePaneManager {
   if(this.bindings.has(id))throw Error("Native pane still has a coordinator owner");
   const endpoint=await this.options.endpoint(agent);assertCurrent();this.options.admit(name,config);
   if(endpoint.machineId!==(agent.machineId??"local"))throw Error("Native endpoint machine scope differs");
-  const version=endpoint.version(agent.cli),expected=agent.cli==="codex"?"0.165.0":agent.cli==="claude-code"?"2.1.316":null;
-  if(!expected||!version||version.match(/\b\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\b/)?.[0]!==expected)throw Error("This native CLI version has not passed persistent-pane acceptance");
+  assertAuditedNativePaneVersion(agent.cli,endpoint.version(agent.cli));
   const inventory=await endpoint.call({action:"list"});assertCurrent();this.options.admit(name,config);
   if(!inventory||typeof inventory!=="object"||!UUID.test((inventory as any).hostBootId)||!Array.isArray((inventory as any).panes)||(inventory as any).panes.length>4096)throw Error("Native host identity is unconfirmed");
   const latest=this.options.store.get(id);

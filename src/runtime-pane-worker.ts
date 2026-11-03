@@ -1,4 +1,6 @@
 /** One ConPTY per owned helper process. Natural CLI exit must also retire node-pty's native pipe workers. */
+import { promisify } from "node:util";
+import { execFile } from "./child-process.js";
 import { createInterface } from "node:readline";
 import { dirname, join, resolve } from "node:path";
 import { realpathSync, statSync } from "node:fs";
@@ -12,8 +14,8 @@ import { findCli, nativeCliEnvironment, validWindowsDirectory, validWindowsAgent
 import { validateRuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { prepareNativePaneConfig, type NativePaneConfig } from "./runtime-pane-config.js";
 import { validatePaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
-import { validateNativeMcpConnection } from "./windows-cli-providers.js";
-import { assertNativePaneCommandLine, persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
+import { validateNativeMcpConnection, nativeUpdateGuard } from "./windows-cli-providers.js";
+import { assertAuditedNativePaneVersion, assertNativePaneCommandLine, persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
 
 export async function nativePaneWorker(): Promise<void> {
   if (process.platform !== "win32") throw Error("ConPTY helper requires native Windows Node");
@@ -61,6 +63,13 @@ export async function nativePaneWorker(): Promise<void> {
         // The bundled ConPTY DLL owns a stable process HANDLE; it avoids the OS-backend's late PID enumeration.
         const args = [...executable.args, ...persistentNativeArguments(launch, config)];
         assertNativePaneCommandLine(executable.command, args);
+        // This is a bounded version-only check inside the owned Job, not inventory/auth/model discovery.
+        // An out-of-band CLI update must not run newer terminal layouts under a stale cached inventory.
+        const version=await promisify(execFile)(executable.command,[...executable.args,...nativeUpdateGuard(launch.cli),"--version"],{
+          cwd:actual,env:{...nativeCliEnvironment(),NO_COLOR:"1"},timeout:30_000,maxBuffer:4096,encoding:"utf8",windowsHide:true,shell:false,
+        });
+        assertAuditedNativePaneVersion(launch.cli,String(version.stdout));
+        if(disconnected||finished)throw Error("Pane helper was disconnected before version verification");
         pty = binding.spawn(executable.command, args, {
           cwd: actual, cols: launch.columns, rows: launch.rows, name: "xterm-256color", useConpty: true, useConptyDll: true,
           env: { ...nativeCliEnvironment(), TERM: "xterm-256color", COLORTERM: "truecolor" },

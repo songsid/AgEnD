@@ -3,7 +3,7 @@ import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';import { join } from 'node:path';import { randomUUID } from 'node:crypto';
 import { prepareNativePaneConfig } from '../src/runtime-pane-config.js';
-import { persistentNativeArguments, nativeDeveloperInstructions, nativePaneCommandLineLength, assertNativePaneCommandLine, type NativePaneOwner } from '../src/runtime-pane-native.js';
+import { assertAuditedNativePaneVersion, persistentNativeArguments, nativeDeveloperInstructions, nativePaneCommandLineLength, assertNativePaneCommandLine, type NativePaneOwner } from '../src/runtime-pane-native.js';
 import { parse } from 'smol-toml'; import { createRequire } from 'node:module';
 import { validateRuntimePaneLaunch, type RuntimePaneLaunch } from '../src/runtime-pane-protocol.js';
 const roots:string[]=[];afterEach(()=>{for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
@@ -68,4 +68,9 @@ it('Codex trusts only its exact configured AgEnD helper menu while preserving sh
  const approved=args.filter(arg=>arg.includes('default_tools_approval_mode='));expect(approved).toEqual([`mcp_servers.${config.mcp!.serverName}.default_tools_approval_mode="approve"`]);
  expect(args.slice(args.indexOf('--ask-for-approval'),args.indexOf('--ask-for-approval')+2)).toEqual(['--ask-for-approval','on-request']);expect(args.slice(args.indexOf('--sandbox'),args.indexOf('--sandbox')+2)).toEqual(['--sandbox','read-only']);expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
  expect(persistentNativeArguments(f.launch).some(arg=>arg.includes('default_tools_approval_mode='))).toBe(false);config.cleanup();
+});
+
+it('cache and final launch version gates accept real lines and refuse stale or ambiguous releases',()=>{
+ expect(()=>assertAuditedNativePaneVersion('codex','codex-cli 0.165.0')).not.toThrow();expect(()=>assertAuditedNativePaneVersion('claude-code','2.1.316 (Claude Code)')).not.toThrow();
+ for(const line of ['codex-cli 0.166.0','codex-cli 0.165.0-beta','0.165.0 0.166.0','0.165.0+changed','unknown'])expect(()=>assertAuditedNativePaneVersion('codex',line)).toThrow('not passed');expect(()=>assertAuditedNativePaneVersion('kiro-cli','0.165.0')).toThrow();
 });

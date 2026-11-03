@@ -18,7 +18,8 @@ const {persistentNativeArguments,nativePaneCommandLineLength}=await import(pathT
 const root=await mkdtemp(join(scratch,'stage2-'));
 const bin=join(root,'bin'), script=join(bin,'node_modules','@openai','codex','bin','codex.js');
 await mkdir(dirname(script),{recursive:true});
-await writeFile(script,`process.getBuiltinModule('node:fs').writeFileSync(process.getBuiltinModule('node:path').join(process.cwd(),'.inert-started'),'started');
+await writeFile(script,`if(process.argv.includes('--version')){const fs=process.getBuiltinModule('node:fs'),file=process.argv[1]+'.version';process.stdout.write(fs.existsSync(file)?fs.readFileSync(file,'utf8'):'codex-cli 0.165.0');process.exit(0);}
+process.getBuiltinModule('node:fs').writeFileSync(process.getBuiltinModule('node:path').join(process.cwd(),'.inert-started'),'started');
 const role=process.argv.slice(2).find(a=>a.startsWith('developer_instructions=')),instructions=role?JSON.parse(role.slice('developer_instructions='.length)):'',label=/Agent (one|two) only/.exec(instructions)?.[1]||process.cwd().split(/[/\\\\]/).pop();
 process.stdin.setRawMode(true);process.stdout.write('\\x1b[?2004h\\x1b[2J\\x1b[HREADY '+label+' 中文 😀\\r\\n');
 if(role)process.stdout.write('ROLE '+process.getBuiltinModule('node:crypto').createHash('sha256').update(instructions).digest('hex')+'\\r\\n');
@@ -58,6 +59,10 @@ try{
  await assert.rejects(()=>host.request({action:'open',operationId:randomUUID(),launch:oversized}));
  await until(()=>host.list().find(p=>p.paneId===oversized.paneId)?.state==='exited');
  await assert.rejects(()=>access(join(oversizedCwd,'.inert-started'))); // Failed before even the inert CLI began.
+ const changedCwd=join(root,'changed-version');await mkdir(changedCwd);await writeFile(script+'.version','codex-cli 0.166.0');
+ const changed={paneId:randomUUID(),agentId:randomUUID(),instance:'fixture-changed-version',cli:'codex',cwd:changedCwd,sandbox:'read-only',columns:100,rows:24};
+ await assert.rejects(()=>host.request({action:'open',operationId:randomUUID(),launch:changed}));
+ await until(()=>host.list().find(p=>p.paneId===changed.paneId)?.state==='exited');await assert.rejects(()=>access(join(changedCwd,'.inert-started')));await rm(script+'.version');
  const service=await startPaneService({directory:join(root,'private-host'),scope:'a'.repeat(64)});
  try {
   const clientScript=join(root,'inert-client.mjs'),clientCwd=join(root,'client-crash');await mkdir(clientCwd);
@@ -95,7 +100,7 @@ process.stdout.write(JSON.stringify(pane)+String.fromCharCode(10));setInterval((
  const resumed=await resumedHost.request({action:'open',operationId:randomUUID(),launch:{...crashLaunch,paneId:randomUUID(),sessionId:randomUUID()}});
  await resumedHost.request({action:'close',paneId:resumed.paneId,launchId:resumed.launchId,operationId:randomUUID(),sequence:1});await resumedHost.stop();
  receipt={passed:true,stage:2,kind:'production host+worker; inert CLI-shaped fixtures, no coding CLI/account',platform:process.platform,node:process.version,
-  panes:2,launchMs,launchMeasurement:"first+second inert CLI opens, no cache flush or AV changes",unicode:true,perAgentInstructions:true,sameCwdRoleIsolation:true,commandLineLimitBeforeCli:true,bracketedPaste:true,independentScreens:true,resize:true,naturalExit:true,ownedCancellation:true,positiveHelperExit:true,explicitEnrollmentRetirement:true,connectionClientCrashReattach:true,sameHostAndCliAfterClientCrash:true,privateCurrentUserAcl:true,runnerDeathExitReceipt:true,restartAdmissionFromExitProof:true};
+  panes:2,launchMs,launchMeasurement:"first+second inert CLI opens, no cache flush or AV changes",unicode:true,perAgentInstructions:true,sameCwdRoleIsolation:true,commandLineLimitBeforeCli:true,actualInstalledVersionGuard:true,bracketedPaste:true,independentScreens:true,resize:true,naturalExit:true,ownedCancellation:true,positiveHelperExit:true,explicitEnrollmentRetirement:true,connectionClientCrashReattach:true,sameHostAndCliAfterClientCrash:true,privateCurrentUserAcl:true,runnerDeathExitReceipt:true,restartAdmissionFromExitProof:true};
 }finally{
  await host.stop();
  for(const child of runners)if(child.exitCode===null&&child.signalCode===null){const closed=once(child,'close');child.kill();await closed;}
