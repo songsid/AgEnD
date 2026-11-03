@@ -25,6 +25,7 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 const enMessages = {
   "native_pane.session_unconfirmed": "Windows Claude's saved conversation could not be checked. This agent is stopped; an administrator can start a new conversation.",
   "native_pane.refresh_for_session": "This agent needs a new-conversation decision. Refresh this page to choose Start a new conversation.",
+  "native_pane.saved_available": "The saved conversation is available again. Choose Start to resume it.",
   "native_pane.fresh_started": "Windows Claude had no saved conversation for this agent (its first turn never finished), so a new conversation was started.",
   "native_pane.host_upgrade": "The Windows pane host uses an older adapter. Stop its Windows agents, restart Windows, then choose Start. Saved conversations are kept.",
   "native_pane.exit_unconfirmed": "The previous Windows pane exit is unconfirmed. Stop its Windows processes, then use the administrator recovery action. The saved conversation is kept; no input was replayed.",
@@ -1518,6 +1519,7 @@ const enMessages = {
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
   "native_pane.session_unconfirmed": "無法確認 Windows Claude 已儲存的對話。這個代理已停止，管理員可以開始新對話。",
   "native_pane.refresh_for_session": "這個代理需要由你決定是否開始新對話。請重新整理頁面，再按「開始新對話」。",
+  "native_pane.saved_available": "已儲存的對話現在可以使用了。請選擇「啟動」繼續原對話。",
   "native_pane.fresh_started": "Windows Claude 沒有這個代理已儲存的對話（第一輪還沒完成就中斷），所以開了新對話。",
   "native_pane.host_upgrade": "Windows 終端主機仍使用舊版轉接器。請先停止這台電腦的 Windows 代理，重新啟動 Windows，再按「啟動」。已儲存的對話會保留。",
   "native_pane.exit_unconfirmed": "無法確認上一個 Windows 終端是否已結束。請先停止這個代理的 Windows 程序，再由管理員復原。已儲存的對話會保留，也不會重送舊輸入。",

@@ -41,7 +41,8 @@ export function nativeClaudeProjectKey(cwd: string): string {
   return `${safe.slice(0, 200)}-${Math.abs(n).toString(36)}`;
 }
 export type NativeClaudeSessionState = "absent" | "saved" | "unknown";
-/** Positive absence is a read-only runner proof, never inferred from a failed resume or pending transcript read. */
+/** Positive absence is a read-only runner proof, never inferred from a failed resume or pending transcript read.
+ * Key derivation is tied to the audited Claude launch version; re-check it with each Claude version audit. */
 export async function nativeClaudeSessionState(cwd: string, sessionId: string, current: () => boolean = () => true,
   roots = nativePaneTranscriptRoots()): Promise<NativeClaudeSessionState> {
   if (!validNativeSessionId("claude-code", sessionId)) return "unknown";

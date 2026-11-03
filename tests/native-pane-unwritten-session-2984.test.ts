@@ -26,7 +26,7 @@ async function fixture() {
   const proof = vi.fn(async (): Promise<"absent"|"saved"|"unknown"> => "unknown");
   const notice = vi.fn();
   const baseline = vi.fn(async (cursor: any) => ({ state: "pending" as const, cursor, complete: false, turnKnown: false, openTurn: null }));
-  const spawn = vi.fn(async () => {
+  const spawn = vi.fn(async (_launch: unknown, _owner: unknown) => {
     let onExit = (_event: { exitCode: number }) => {};
     return { pid: 10101, write: vi.fn(), resize() {}, pause() {}, resume() {},
       kill: () => onExit({ exitCode: 1 }), onData: () => ({ dispose() {} }),
@@ -115,7 +115,7 @@ it("admin fresh-start is bound to the held launch and session, refuses stale aut
 
 it("a changed endpoint epoch during absence proof never resets the pin or opens a replacement", async () => {
   const f=await fixture();f.proof.mockImplementation(async()=>{f.endpoint.epoch=()=>"changed";return"absent";});
-  await expect(f.start()).rejects.toBeInstanceOf(NativePaneRecoveryError);expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe("session-unconfirmed");expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledOnce();
+  await expect(f.start()).rejects.toThrow("transport changed");expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledOnce();
 });
 it("a session proof for another owner cannot reset this pin even when it claims absence",async()=>{
  const f=await fixture();f.proof.mockResolvedValue("absent");const call=f.endpoint.call.getMockImplementation()!;
@@ -151,4 +151,94 @@ it("the session proof request cannot name another profile, session or path, and 
  expect(validateRuntimePaneRequest(request)).toEqual(request);
  for(const extra of [{path:"C:\\elsewhere"},{sessionId:randomUUID()},{cwd:"C:\\other"},{profile:"other"}])expect(()=>validateRuntimePaneRequest({...request,...extra})).toThrow();
  expect(()=>validateRuntimePaneSessionProof({state:["absent"],snapshot:{}})).toThrow();
+});
+
+
+it.each(["endpoint","list","proof-rpc","offline"])("a transient %s failure stays retryable and later resumes the same saved pin",async stage=>{
+ const f=await fixture(),endpoint=f.options.endpoint,call=f.endpoint.call.getMockImplementation()!,online=f.endpoint.online;
+ f.proof.mockResolvedValue("saved");
+ if(stage==="endpoint")f.options.endpoint=async()=>{throw Error("starting host");};
+ else if(stage==="offline")f.proof.mockImplementation(async()=>{f.endpoint.online=()=>false;return"saved";});
+ else f.endpoint.call.mockImplementation(request=>request.action===(stage==="list"?"list":"session-proof")?Promise.reject(Error("host request timed out")):call(request));
+ let caught:unknown;try{await f.start();}catch(error){caught=error;}
+ expect(caught).toBeInstanceOf(Error);expect(caught).not.toBeInstanceOf(NativePaneRecoveryError);
+ expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledOnce();
+ f.options.endpoint=endpoint;f.endpoint.call.mockImplementation(call);f.endpoint.online=online;f.proof.mockResolvedValue("saved");
+ const next=await f.make().prepare("unwritten",f.config,()=>{});await next.acquire(()=>{});
+ expect(next.snapshot()?.sessionId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.notice).not.toHaveBeenCalled();await next.release("close");
+});
+it("a reachable older host without the proof capability holds without interpreting a failed RPC as absence",async()=>{
+ const f=await fixture(),call=f.endpoint.call.getMockImplementation()!;f.proof.mockResolvedValue("saved");
+ f.endpoint.call.mockImplementation(async request=>{const result:any=await call(request);if(request.action==="list")delete result.capabilities.claudeSessionProof;return result;});
+ await expect(f.start()).rejects.toBeInstanceOf(NativePaneRecoveryError);
+ expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe("host-upgrade");
+ expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.proof).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();
+});
+it.each(["model","sandbox","prompt","workflow"])("a proven absent pin builds its replacement from the current %s settings",async change=>{
+ const f=await fixture();f.proof.mockResolvedValue("absent");
+ if(change==="model")f.config.model="changed-model";
+ if(change==="sandbox")f.config.native_sandbox="workspace-write";
+ if(change==="prompt")f.config.systemPrompt="current prompt";
+ if(change==="workflow")f.config.workflow="current-workflow";
+ f.options.instructions=()=>"current role";f.options.menu=()=>[{name:"reply"},{name:"task"}];
+ const next=await f.make().prepare("unwritten",f.config,()=>{});await next.acquire(()=>{});
+ const launch:any=f.spawn.mock.calls[1][0];expect(launch).toMatchObject({cwd:f.config.working_directory,sandbox:f.config.native_sandbox,instructions:"current role",mcpTools:["reply","task"]});
+ expect(launch.model).toBe(f.config.model||undefined);expect(launch.sessionId).toBeUndefined();expect(f.notice).toHaveBeenCalledOnce();await next.release("close");
+});
+it("an unlaunched fresh intent follows later cold settings without changing its chosen UUID",async()=>{
+ const f=await fixture();f.proof.mockResolvedValue("absent");vi.spyOn(f.store,"replacePaneSession").mockImplementationOnce(()=>{throw Error("pin save interrupted");});
+ await expect(f.start()).rejects.toThrow("pin save interrupted");
+ const file=join(f.root,"native-panes",f.agent.id,"active.json"),intent=JSON.parse(readFileSync(file,"utf8"));
+ f.config.model="newer-model";f.options.instructions=()=>"newer role";f.options.menu=()=>[{name:"task"}];
+ const next=await f.make().prepare("unwritten",f.config,()=>{});await next.acquire(()=>{});
+ expect(next.snapshot()?.sessionId).toBe(intent.launch.launchId);expect(f.spawn.mock.calls[1][0]).toMatchObject({model:"newer-model",instructions:"newer role",mcpTools:["task"]});
+ expect(f.notice).toHaveBeenCalledOnce();expect(f.proof).toHaveBeenCalledOnce();await next.release("close");
+});
+it("an explicit fresh decision on a held pin uses the current launch settings",async()=>{
+ const f=await fixture();await expect(f.start()).rejects.toBeInstanceOf(NativePaneRecoveryError);const hold=f.store.get(f.agent.id).paneRecovery!;
+ f.config.model="current-admin-model";f.config.systemPrompt="current admin role";f.options.instructions=()=>"current admin role";
+ const manager=f.make();await manager.startFresh("unwritten",f.config,hold.launchId!,f.pin,()=>{});
+ const next=await manager.prepare("unwritten",f.config,()=>{});await next.acquire(()=>{});
+ expect(f.spawn.mock.calls[1][0]).toMatchObject({model:"current-admin-model",instructions:"current admin role"});await next.release("close");
+});
+it("a saved transcript appearing before the admin decision keeps the pin and clears its stale hold",async()=>{
+ const f=await fixture();await expect(f.start()).rejects.toBeInstanceOf(NativePaneRecoveryError);const hold=f.store.get(f.agent.id).paneRecovery!;
+ f.proof.mockResolvedValue("saved");const manager=f.make(),file=join(f.root,"native-panes",f.agent.id,"active.json"),before=readFileSync(file,"utf8");
+ await expect(manager.startFresh("unwritten",f.config,hold.launchId!,f.pin,()=>{})).rejects.toThrow("The saved conversation is available again. Choose Start to resume it.");
+ expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();expect(readFileSync(file,"utf8")).toBe(before);expect(f.spawn).toHaveBeenCalledOnce();
+ const next=await manager.prepare("unwritten",f.config,()=>{});await next.acquire(()=>{});expect(next.snapshot()?.sessionId).toBe(f.pin);expect(f.notice).not.toHaveBeenCalled();await next.release("close");
+});
+
+it('an exited receipt saved before releasing the profile survives a host outage and a missing inventory version',async()=>{
+ const f=await fixture();
+ // Restore only the original exact reservation: simulate a coordinator dying after it saved the exit manifest.
+ f.store.reservePane(f.agent.id,f.pin);const endpoint=f.options.endpoint;
+ f.options.endpoint=async()=>{throw Error('offline');};await expect(f.start()).rejects.toThrow('offline');
+ expect(f.store.get(f.agent.id)).toMatchObject({activeId:f.pin,paneLaunchId:f.pin,threadId:f.pin});expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();
+ f.options.endpoint=endpoint;const version=f.endpoint.version;f.endpoint.version=()=>null as any;
+ await expect(f.start()).rejects.toThrow();expect(f.store.get(f.agent.id).activeId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();
+ f.endpoint.version=version;f.proof.mockResolvedValue('saved');const next=await f.make().prepare('unwritten',f.config,()=>{});await next.acquire(()=>{});
+ expect(next.snapshot()?.sessionId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledTimes(2);await next.release('close');
+});
+
+it("changing only the configured cwd refuses before any fresh intent or pin change",async()=>{
+ const f=await fixture();f.proof.mockResolvedValue("absent");const file=join(f.root,"native-panes",f.agent.id,"active.json"),before=readFileSync(file,"utf8");
+ f.config.working_directory="C:\\scratch\\other";
+ await expect(f.start()).rejects.toThrow("profile scope differs");expect(readFileSync(file,"utf8")).toBe(before);expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledOnce();
+ expect(()=>f.store.update(f.agent.id,{cwd:f.config.working_directory})).toThrow("Start a new conversation before changing");
+});
+it("a saved transcript cancels an unopened interrupted admin intent before changing its original pin",async()=>{
+ const f=await fixture();await expect(f.start()).rejects.toBeInstanceOf(NativePaneRecoveryError);const hold=f.store.get(f.agent.id).paneRecovery!,manager=f.make();
+ vi.spyOn(f.store,"replacePaneSession").mockImplementationOnce(()=>{throw Error("interrupted profile save");});
+ await expect(manager.startFresh("unwritten",f.config,hold.launchId!,f.pin,()=>{})).rejects.toThrow("interrupted profile save");
+ f.proof.mockResolvedValue("saved");await expect(manager.startFresh("unwritten",f.config,hold.launchId!,f.pin,()=>{})).rejects.toThrow("saved conversation is available again");
+ expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();
+ const next=await manager.prepare("unwritten",f.config,()=>{});await next.acquire(()=>{});expect(next.snapshot()?.sessionId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.notice).not.toHaveBeenCalled();await next.release("close");
+});
+
+it.each(['epoch','authority'])('the admin proof recheck keeps its %s fence before changing the pin',async fence=>{
+ const f=await fixture();await expect(f.start()).rejects.toBeInstanceOf(NativePaneRecoveryError);const held=f.store.get(f.agent.id).paneRecovery!;let current=true;
+ f.proof.mockImplementation(async()=>{if(fence==='epoch')f.endpoint.epoch=()=> 'new epoch';else current=false;return 'absent';});
+ await expect(f.make().startFresh('unwritten',f.config,held.launchId!,f.pin,()=>{if(!current)throw Error('revoked');})).rejects.toThrow(fence==='epoch'?'transport changed':'revoked');
+ expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).paneRecovery).toEqual(held);
 });

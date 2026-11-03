@@ -17,13 +17,13 @@ const [{NativePaneManager},{RuntimePaneHost},{RuntimePaneStore},{WindowsAgents},
 const {chromium}=await import(pathToFileURL(resolve(process.env.AGEND_PLAYWRIGHT||'.artifacts/browser-deps/node_modules/playwright/index.mjs')).href);
 const root=await mkdtemp(join(project,'.artifacts/stale-tab-')), token=randomUUID();
 setConfiguredRuntimeSwitches({windows_cli:true});setLocale('en');
-let browser, server, upgraded=false, lifecycle, opens=0, actions=0;
+let browser, server, upgraded=false, lifecycle, opens=0, actions=0, proofState="unknown";
 const store=new WindowsAgents(root,{get:()=>null,start(){throw Error('No exec permitted');}});
 const agent=await store.create({name:'Unwritten',cli:'claude-code',cwd:'C:\\scratch\\stale-tab',sandbox:'read-only'});
 const name='stale-proof';store.bindInstance(agent.id,name);
 const config={...nativeInstanceConfig(agent),native_adapter:'pane'};
 const host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,
- sessionProof:async()=> 'unknown',
+ sessionProof:async()=> proofState,
  spawn:async()=>{opens++;let onExit=()=>{};return {pid:12121,write(){},resize(){},pause(){},resume(){},
   kill(){onExit({exitCode:1});},onData:()=>({dispose(){}}),onExit:callback=>{onExit=callback;return {dispose(){}};}};},
  mcpConnection:(owner,tools)=>({owner,tools,endpoint:'http://127.0.0.1:1/agent',token:'a'.repeat(64)})});
@@ -82,7 +82,17 @@ try{
  // The already-open JS cannot bypass the new server policy. A real reload loads the new action.
  await page.reload();await page.getByRole('button',{name:'Start a new conversation',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Start a new conversation',exact:true}).count(),1);
- await page.getByRole('button',{name:'Start a new conversation',exact:true}).click();
+ // The hold was real, but the runner can now read the conversation. A stale decision cannot discard it.
+ await page.getByRole('button',{name:'Start a new conversation',exact:true}).click();proofState='saved';
+ const recovered=page.waitForResponse(response=>response.url().endsWith('/new-conversation'));
+ await page.getByRole('dialog').getByRole('button',{name:'Start a new conversation',exact:true}).click();
+ const kept=await recovered;assert.equal(kept.status(),400);
+ assert.equal((await kept.json()).error,'The saved conversation is available again. Choose Start to resume it.');
+ assert.equal(store.get(agent.id).threadId,pin);assert.equal(store.get(agent.id).paneRecovery,undefined);assert.equal(actions,0);assert.equal(opens,1);
+ await page.evaluate(()=>window.refreshStatus());await page.getByRole('button',{name:'Start instance',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Start a new conversation',exact:true}).count(),0);
+ proofState='unknown';await assert.rejects(manager.prepare(name,config,()=>{}),error=>error.name==='NativePaneRecoveryError');
+ await page.evaluate(()=>window.refreshStatus());await page.getByRole('button',{name:'Start a new conversation',exact:true}).click();
  const request=page.waitForRequest(request=>request.url().endsWith('/new-conversation'));
  const accepted=page.waitForResponse(response=>response.url().endsWith('/new-conversation'));
  await page.getByRole('dialog').getByRole('button',{name:'Start a new conversation',exact:true}).click();
@@ -92,7 +102,7 @@ try{
  assert.deepEqual(errors,[]);
  const receipt={...sourceReceipt(),kind:'real-browser-stale-session-tab',browser:await browser.version(),
   oldTabOpenedBeforeUpgrade:true,oldRecoveryRefused:true,pinUnchangedOnRefusal:true,
-  reloadShowsOneNewConversationAction:true,exactLaunchAndSessionConfirmed:true,adminIntentCommitted:true,
+  reloadShowsOneNewConversationAction:true,recoveredSavedSessionRefused:true,staleHoldClearedToStart:true,exactLaunchAndSessionConfirmed:true,adminIntentCommitted:true,
   noFleetOrAccountCalls:true};
  await writeFile(join(project,'.artifacts/stale-session-tab-receipt.json'),JSON.stringify(receipt,null,2)+'\n');
  process.stdout.write(JSON.stringify(receipt)+'\n');

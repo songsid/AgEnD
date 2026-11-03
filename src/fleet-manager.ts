@@ -1411,7 +1411,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.emitSseEvent("status",this.getUiStatus());
     });
   }
-  private holdNativePaneRecovery(name:string,error:unknown):boolean{
+  holdNativePaneRecovery(name:string,error:unknown):boolean{
     if(!(error instanceof NativePaneRecoveryError))return false;
     this.instanceProcessStatus.set(name,"stopped");
     this.logger.warn({name,recovery:error.recovery},error.message);
@@ -1429,7 +1429,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if(this.daemons.get(name)?.nativePaneCurrent())throw Error(t("native_pane.still_running"));
       this.cancelStartupRetry(name);this.lifecycle.cancelNativeRecovery(name);
       await this.lifecycle.stop(name,transition);current();
-      await (await this.nativePanes()).startFresh(name,config,launchId,sessionId,current);current();
+      try{await (await this.nativePanes()).startFresh(name,config,launchId,sessionId,current);current();}
+      catch(error){current();this.needsYou?.poke();this.emitSseEvent("status",this.getUiStatus());throw error;}
       this.eventLog?.insert(name,"native_pane_new_conversation",{launchId,sessionId});
       await this.startInstance(name,config,true,"fleet-topic",true,transition);current();
       this.needsYou?.poke();this.emitSseEvent("status",this.getUiStatus());
@@ -1440,7 +1441,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const agent=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id);
     return agent.fleet_instance===name&&agent.machineId===config.machine_id?agent.threadId??null:null;
   }
-  onNativePaneRecoverySettled(name:string):void{this.onAttentionChanged(name);this.scheduleDeliveryOutboxPump();}
+  onNativePaneRecoverySettled(name:string):void{
+    if(this.daemons.get(name)?.nativePaneCurrent())this.instanceProcessStatus.delete(name);
+    this.onAttentionChanged(name);this.scheduleDeliveryOutboxPump();
+  }
   setNativePanePaused(name: string, paused: boolean): void {
     const id = this.fleetConfig?.instances[name]?.native_agent_id; if (!id) throw Error("Native profile is missing");
     windowsAgentsFor(this, this.runtimeWindowsExecutor()).setPaused(id, paused);

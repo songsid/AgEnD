@@ -62,7 +62,7 @@ export class RuntimePaneHost {
   }
   async request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true }, panes: this.list() };
+    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true, claudeSessionProof: true }, panes: this.list() };
     if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
     if (request.action === "shutdown") {
       // No await between the inventory, admission fence and reply. An accepted/queued launch or an unknown

@@ -200,6 +200,7 @@ export interface LifecycleContext {
   closeRetainedNativePane?(name: string): Promise<void>;
   nativePanePinnedSession?(name:string):string|null;
   onNativePaneRecoverySettled?(name:string):void;
+  holdNativePaneRecovery?(name:string,error:unknown):boolean;
   setNativePanePaused?(name: string, paused: boolean): void;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
@@ -1006,7 +1007,7 @@ export class InstanceLifecycle {
             await this.startInTransition(name,config,true,{kind:"fleet-topic",backend:config.backend??"codex",model:config.model||"default"});
             if(this.nativeExitOwners.get(name)!==run||this.epochOf(name)!==epoch+1||this.ctx.isPlannedRestart())return;
             await this.ctx.connectIpcToInstance(name);
-          }).catch(error=>{if(this.nativeExitOwners.get(name)===run&&!this.ctx.isPlannedRestart()){this.ctx.logger.error({name,err:error},"Native conversation resume failed; its pin was retained");this.notifyIncident(name,"supervision_ended",t("inst.respawn_paused",name));}})
+          }).catch(error=>{if(this.nativeExitOwners.get(name)===run&&!this.ctx.isPlannedRestart()){if(this.ctx.holdNativePaneRecovery?.(name,error))return;this.ctx.logger.error({name,err:error},"Native conversation resume failed; its pin was retained");this.notifyIncident(name,"supervision_ended",t("inst.respawn_paused",name));}})
             .finally(()=>{this.cancelNativeRecovery(name,token);this.ctx.onNativePaneRecoverySettled?.(name);});
         },decision.delay);timer.unref?.();run.timer=timer;
       });
