@@ -88,6 +88,7 @@ describe("the real Settings forms across page tabs", () => {
 
   it("expands disclosures for a direct hash target while preserving the existing Access draft", async () => {
     await open("access");
+    await click("access-tab-login");
     const session = byId("webSessionAbsolute"), token = byId("publicTunnelToken");
     const disclosure = token.closest("details");
     expect(disclosure.open, "the credentials editor starts collapsed").toBe(false);
