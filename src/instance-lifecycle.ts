@@ -607,6 +607,19 @@ export class InstanceLifecycle {
 
   constructor(private ctx: LifecycleContext) {}
 
+  /** M-2269: the last dialog text logged per instance — the same screen seen again on later scans is not logged again. */
+  private readonly lastLoggedScreen = new Map<string, string>();
+  /**
+   * M-2269: `{ screen }` for a dialog/prompt event's Log row (the daemon already stripped, masked and capped it), or
+   * nothing when there is none or it is the same text this instance's Log already has. Bookkeeping only.
+   */
+  private screenForLog(name: string, screen: string | undefined): { screen?: string } {
+    if (typeof screen !== "string" || !screen) return {};
+    if (this.lastLoggedScreen.get(name) === screen) return {};
+    this.lastLoggedScreen.set(name, screen);
+    return { screen };
+  }
+
   /** Seed only the Codex daemon replacing a scheduled capacity retry. */
   private applyCapacityBackoffBaseline(name: string, backendName: string, daemon: Daemon): void {
     if (backendName !== "codex") return;
@@ -1314,7 +1327,7 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
-    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null; advice?: "claude-resume" }) => {
+    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null; advice?: "claude-resume"; screen?: string }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
       // here on purpose: the General "Confirm" assist sends Enter, and Enter is
       // exactly the destructive default for Claude's resume prompt. The text
@@ -1322,7 +1335,7 @@ export class InstanceLifecycle {
       // position, so the human must LOOK and pick the option explicitly — no
       // fixed key sequence; a known dialog whose auto-dismiss did not take gets
       // the keys we would have pressed.
-      this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly });
+      this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly, ...this.screenForLog(name, data.screen) });
       this.ctx.logger.warn({ name, description: data.description, holdOnly: data.holdOnly }, "Instance is parked on a CLI dialog — not auto-answering");
       if (this.ctx.isPlannedRestart()) return;
       // kind === "dialog" is the default bucket for dialogs without a specific
@@ -1369,8 +1382,8 @@ export class InstanceLifecycle {
     // #2822: a usage-limit hold began or ended — Needs you lists it while it lasts.
     daemon.on("usage_hold", () => this.ctx.onAttentionChanged?.(name));
 
-    daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
-      this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
+    daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string; screen?: string }) => {
+      this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind, ...this.screenForLog(name, data.screen) });
       this.ctx.logger.warn({ name, kind: data.kind, prompt: data.prompt }, "Instance is waiting for interactive terminal input");
       if (this.ctx.isPlannedRestart()) {
         this.ctx.logger.info({ name }, "Interactive prompt notification suppressed — planned restart in progress");

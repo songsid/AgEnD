@@ -311,7 +311,7 @@ tools are not in your list), you can publish them yourself instead of asking a p
   refused and you send the change again (#2695).
 - `office_pack_restore { id }` brings back the previous version (the replaced one becomes the previous);
   `office_pack_delete { id, keep_previous? }`; `office_set_style { office, pack }` points a stored office at a pack or a
-  built-in style (pixel, studio, cozy).
+  built-in style (pixel, studio, cozy, guild, school).
 - Every change is logged with each picture's sha256 and told to the fleet's admins. At most **20 batches and 200 MiB an
   hour**: one call is one batch (up to 16 packs), so send a whole set of fixes in one `packs: [...]`.
 - `office_pack_check` has its own allowance: at most **60 checks and 1 GiB (as sent) an hour**. Every check counts,

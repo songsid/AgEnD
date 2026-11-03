@@ -933,10 +933,14 @@ Each Codex instance resumes **its own** conversation. At launch AgEnD reads Code
 | Situation | Launch |
 |---|---|
 | A session exists for this exact directory | `codex resume <id>` |
+| No session for this directory in the database, but a CLI rollout of exactly this directory with a turn is still in `sessions` (Codex's list lost it) | `codex resume <id>` of the newest such rollout, plus a notice; a note when it is large (Codex may compact it) (#2963) |
+| That resume did not take (Codex refused the id) | the next launch starts a new conversation once, with a notice; that conversation is not picked automatically again |
 | No session for this directory (e.g. a new instance in a shared repo) | a new conversation |
 | Session database unreadable, another Codex instance shares the git repo | a new conversation, plus a notice in the instance's topic |
 | No session database yet (Codex never ran on this machine) and no Codex history in the directory | a new conversation, no notice (#2743) |
 | Session database unreadable, no other Codex instance in the repo | `codex resume --last`, plus a notice |
+
+**Resume a chosen conversation (#2963).** `restart_instance { name, resume_session_id }` (an orchestration tool: General, coordinators) restarts a Codex instance into that conversation, for that launch only. The id must be a rollout in the instance's sessions, for exactly its working directory, started by the CLI; otherwise nothing is restarted and the reason is returned. Later restarts plan as usual.
 
 AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared Codex home (`$CODEX_HOME`, default: `~/.codex`), so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
 

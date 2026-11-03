@@ -1,9 +1,10 @@
 // The Office view's art (fleet-office.js draws with it on a <canvas>). A skin draws a layout that fleet-office-model.js
-// (desks) or fleet-office-zones.js (zones) made. Three skins are built in. Two draw everything procedurally — little
+// (desks) or fleet-office-zones.js (zones) made. Five skins are built in. Two draw everything procedurally — little
 // pixel people, desks, lamps: "pixel" (the desks layout: a room per team, a desk per instance) and "studio" (the zones
 // layout: work desks, a lounge, an alert corner and a nap corner; people walk to the area for their state). The third,
 // "cozy" (#2631), is the zones layout on one picture shipped with the page (a warm pixel-art office), the same built-in
-// people in it. Every drawing call goes through the OfficeSkin interface below, so a skin pack (pictures from an artist,
+// people in it; "guild" and "school" (#2947) are two more such pictures on the cozy's arrangement. Every drawing call
+// goes through the OfficeSkin interface below, so a skin pack (pictures from an artist,
 // format v1 in fleet-office-pack.js) can replace any part; a part a pack does not supply falls back to the built-in
 // drawing. An admin uploads a pack (#2513, the host keeps it: src/web-office-skins.ts); loadPackSkin() reads it back —
 // its manifest checked here again (checkSkinPack), its pictures by their content ids — and spriteSkin() draws it.
@@ -645,28 +646,112 @@ export const COZY_PACK = {
   stateZones: { working: "desks", idle: "lounge", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" },
   characters: {}, byInstance: {}, props: {}, bubbles: {},
 };
-/** Until its picture is in (loadCozySkin): the studio's floors under the cozy's areas. */
-const cozyBare = spriteSkin(COZY_PACK, new Map(), studioSkin);
-let cozyJob = null;
+// The cozy's zones on every picture-backed built-in: work, lounge, the alert corner, the nap corner.
+const PICTURE_ZONES = { working: "desks", idle: "lounge", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" };
+const wps = (list) => list.map(([id, x, y]) => ({ id, x, y }));
+
+// ── #2947: two more on the cozy's arrangement — work top-left, the lounge top-right, the nap corner bottom-left, the
+// alert corner bottom-right, one straight aisle up the middle from a bottom-centre door ──
+
+/** The guild: a fantasy adventurers' guild hall (src/ui/shared/office/guild.png). */
+export const GUILD_BACKGROUND = "/assets/office-guild.png";
+// Seats: the chairs at the six map desks, the tavern bench, the stools round the table, the bar; the inn beds (a sleeper's
+// middle); in front of the quest board.
+const GUILD_AREAS = {
+  desks: { name: "desks", rect: { x: 130, y: 190, w: 400, h: 160 }, seats: pts([180, 200], [320, 200], [450, 200], [180, 315], [320, 315], [450, 315]) },
+  lounge: { name: "lounge", rect: { x: 780, y: 190, w: 440, h: 150 }, seats: pts([840, 200], [900, 200], [810, 290], [935, 290], [870, 325], [1040, 300]) },
+  alert: { name: "alert", rect: { x: 860, y: 560, w: 260, h: 50 }, seats: pts([900, 590], [1000, 590], [1090, 590]) },
+  nap: { name: "nap", rect: { x: 110, y: 540, w: 380, h: 80 }, seats: pts([160, 560], [285, 560], [405, 560]) },
+};
+const GUILD_WAYPOINTS = wps([
+  ["door", 640, 650], ["low", 640, 615], ["hall", 640, 345], ["top", 640, 130],
+  // the desks: the aisle under the second row (y 345), the one between the rows (y 225), the column beside them (x 540)
+  ["d-east", 540, 345], ["d2-3", 450, 345], ["d2-2", 320, 345], ["d2-1", 180, 345],
+  ["d-up", 540, 225], ["d1-3", 450, 225], ["d1-2", 320, 225], ["d1-1", 180, 225],
+  // the beds and the quest board: the aisle along the bottom (y 615)
+  ["n-x", 500, 615], ["n-3", 405, 615], ["n-2", 285, 615], ["n-1", 160, 615],
+  ["a-1", 900, 615], ["a-2", 1000, 615], ["a-3", 1090, 615],
+  // the tavern: under the round table (y 345), up the bench's west end (x 770) to in front of it (y 215)
+  ["l-hall", 770, 345], ["l-tw", 810, 345], ["l-ts", 870, 345], ["l-te", 935, 345], ["l-bar", 1040, 345],
+  ["l-up", 770, 215], ["l-b1", 840, 215], ["l-b2", 900, 215],
+]);
+const GUILD_EDGES = [
+  ["door", "low"], ["low", "hall"], ["hall", "top"],
+  ["hall", "d-east"], ["d-east", "d2-3"], ["d2-3", "d2-2"], ["d2-2", "d2-1"], ["d-east", "d-up"], ["d-up", "d1-3"], ["d1-3", "d1-2"], ["d1-2", "d1-1"],
+  ["low", "n-x"], ["n-x", "n-3"], ["n-3", "n-2"], ["n-2", "n-1"], ["low", "a-1"], ["a-1", "a-2"], ["a-2", "a-3"],
+  ["hall", "l-hall"], ["l-hall", "l-tw"], ["l-tw", "l-ts"], ["l-ts", "l-te"], ["l-te", "l-bar"], ["l-hall", "l-up"], ["l-up", "l-b1"], ["l-b1", "l-b2"],
+];
+export const GUILD_PACK = {
+  format: 1, id: "guild", scale: 1, background: GUILD_BACKGROUND, areas: GUILD_AREAS, door: { x: 640, y: 690 },
+  waypoints: GUILD_WAYPOINTS, edges: GUILD_EDGES, straight: true, furniture: [], stateZones: PICTURE_ZONES,
+  characters: {}, byInstance: {}, props: {}, bubbles: {},
+};
+
+/** The school: a classroom (src/ui/shared/office/school.png). */
+export const SCHOOL_BACKGROUND = "/assets/office-school.png";
+// Seats: the chairs at the six student desks; the sofa, the two stools, the vending machine; the nurse's beds; in front
+// of the chalkboard.
+const SCHOOL_AREAS = {
+  desks: { name: "desks", rect: { x: 130, y: 205, w: 400, h: 140 }, seats: pts([190, 215], [325, 215], [455, 215], [170, 320], [315, 320], [450, 320]) },
+  lounge: { name: "lounge", rect: { x: 770, y: 125, w: 420, h: 110 }, seats: pts([850, 135], [925, 135], [1000, 135], [810, 225], [1035, 225], [1145, 185]) },
+  alert: { name: "alert", rect: { x: 840, y: 560, w: 260, h: 50 }, seats: pts([880, 590], [965, 590], [1050, 590]) },
+  nap: { name: "nap", rect: { x: 110, y: 540, w: 380, h: 80 }, seats: pts([160, 555], [295, 555], [400, 555]) },
+};
+const SCHOOL_WAYPOINTS = wps([
+  ["door", 640, 660], ["low", 640, 625], ["hall", 640, 335], ["mid", 640, 280], ["top", 640, 100],
+  // the desks: the aisle under the second row (y 335), the one between the rows (y 232), the column beside them (x 540)
+  ["d-east", 540, 335], ["d2-3", 450, 335], ["d2-2", 315, 335], ["d2-1", 170, 335],
+  ["d-up", 540, 232], ["d1-3", 455, 232], ["d1-2", 325, 232], ["d1-1", 190, 232],
+  // the beds and the chalkboard: the aisle along the bottom (y 625)
+  ["n-x", 520, 625], ["n-3", 400, 625], ["n-2", 295, 625], ["n-1", 160, 625],
+  ["a-1", 880, 625], ["a-2", 965, 625], ["a-3", 1050, 625],
+  // the lounge: under the rug (y 280) to the stools and the machine, up its west edge (x 760) to in front of the sofa (y 150)
+  ["l-hall", 760, 280], ["l-w", 810, 280], ["l-e", 1035, 280], ["l-vend", 1145, 280],
+  ["l-up", 760, 150], ["l-s1", 850, 150], ["l-s2", 925, 150], ["l-s3", 1000, 150],
+]);
+const SCHOOL_EDGES = [
+  ["door", "low"], ["low", "hall"], ["hall", "mid"], ["mid", "top"],
+  ["hall", "d-east"], ["d-east", "d2-3"], ["d2-3", "d2-2"], ["d2-2", "d2-1"], ["d-east", "d-up"], ["d-up", "d1-3"], ["d1-3", "d1-2"], ["d1-2", "d1-1"],
+  ["low", "n-x"], ["n-x", "n-3"], ["n-3", "n-2"], ["n-2", "n-1"], ["low", "a-1"], ["a-1", "a-2"], ["a-2", "a-3"],
+  ["mid", "l-hall"], ["l-hall", "l-w"], ["l-w", "l-e"], ["l-e", "l-vend"], ["l-hall", "l-up"], ["l-up", "l-s1"], ["l-s1", "l-s2"], ["l-s2", "l-s3"],
+];
+export const SCHOOL_PACK = {
+  format: 1, id: "school", scale: 1, background: SCHOOL_BACKGROUND, areas: SCHOOL_AREAS, door: { x: 640, y: 700 },
+  waypoints: SCHOOL_WAYPOINTS, edges: SCHOOL_EDGES, straight: true, furniture: [], stateZones: PICTURE_ZONES,
+  characters: {}, byInstance: {}, props: {}, bubbles: {},
+};
+
+/**
+ * The built-ins drawn from one picture shipped with the page (#2631 cozy, #2947 guild and school): each one's pack, and
+ * until its picture is in, the studio's floors under its areas (the bare skin); `job` is the picture's load in flight.
+ */
+const PICTURES = new Map([COZY_PACK, GUILD_PACK, SCHOOL_PACK].map((pack) => [pack.id, { pack, bare: spriteSkin(pack, new Map(), studioSkin), job: null }]));
+/** Their ids: a style naming one loads its picture (loadBuiltInSkin). */
+export const PICTURE_SKINS = [...PICTURES.keys()];
 
 /** The skins built into this page; an uploaded pack is loaded by loadPackSkin. */
-export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ["cozy", cozyBare]]);
-export const BUILT_IN_SKINS = ["pixel", "studio", "cozy"];
+export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ...[...PICTURES].map(([id, p]) => [id, p.bare])]);
+export const BUILT_IN_SKINS = ["pixel", "studio", ...PICTURE_SKINS];
 /**
- * #2631: the cozy's picture, loaded once; the skin drawn from it then takes the cozy's place in SKINS (skinFor). The
- * skin, or null while it cannot load (the bare one stays; tried again next time).
+ * #2631/#2947: a picture-backed built-in's picture, loaded once; the skin drawn from it then takes the bare one's place
+ * in SKINS (skinFor). The skin, or null while it cannot load (the bare one stays; tried again next time); null for an id
+ * that is not one of them.
  */
-export function loadCozySkin({ image = defaultImage } = {}) {
-  if (SKINS.get("cozy") !== cozyBare) return Promise.resolve(SKINS.get("cozy"));
-  cozyJob ??= image(COZY_BACKGROUND).then((im) => {
-    cozyJob = null;
+export function loadBuiltInSkin(id, { image = defaultImage } = {}) {
+  const p = PICTURES.get(id);
+  if (!p) return Promise.resolve(null);
+  if (SKINS.get(id) !== p.bare) return Promise.resolve(SKINS.get(id));
+  p.job ??= image(p.pack.background).then((im) => {
+    p.job = null;
     if (!im) return null;
-    const sk = spriteSkin(COZY_PACK, new Map([[COZY_BACKGROUND, im]]), studioSkin);
-    SKINS.set("cozy", sk);
+    const sk = spriteSkin(p.pack, new Map([[p.pack.background, im]]), studioSkin);
+    SKINS.set(id, sk);
     return sk;
-  }, () => { cozyJob = null; return null; });
-  return cozyJob;
+  }, () => { p.job = null; return null; });
+  return p.job;
 }
+/** #2631: the cozy's picture (loadBuiltInSkin for "cozy"). */
+export const loadCozySkin = (opts = {}) => loadBuiltInSkin("cozy", opts);
 /** A skin by id: a built-in one, else a pack loaded here (`packs`: id → skin), else the default (pixel). */
 export const skinFor = (id, packs = null) => SKINS.get(id) || (packs && packs.get(id)) || pixelSkin;
 

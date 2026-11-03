@@ -381,3 +381,91 @@ export function planCodexResume(lookup: ExactCwdSession, siblings: () => Sibling
     warning: `Codex session database unreadable (${lookup.reason}); no other Codex instance shares this repository, falling back to \`resume --last\`.`,
   };
 }
+
+// ── M-2266: resuming a conversation by its rollout (the user, 2026-11-03: 「全自動接回」) ─────────────────────────
+
+/** A rollout codex can resume by id: `codex resume <id>` reads the file even when its database has no row for it. */
+export interface ResumableRollout { id: string; path: string; bytes: number }
+
+/**
+ * The directory codex itself records as a session's cwd: its process cwd, which the kernel reports resolved. A
+ * rollout whose cwd differs from it makes `codex resume <id>` ask "Use session directory / Use current directory" —
+ * a picker an unattended launch must never land on — so only an exact match is resumable.
+ */
+export function codexProcessCwd(workingDirectory: string): string {
+  try { return realpathSync(workingDirectory); } catch { return resolve(workingDirectory); }
+}
+
+/** Every rollout file under `sessionsDir` (codex nests them year/month/day), newest first. */
+function listRollouts(sessionsDir: string): Array<{ path: string; name: string; mtimeMs: number; bytes: number }> {
+  const files: Array<{ path: string; name: string; mtimeMs: number; bytes: number }> = [];
+  const walk = (dir: string, depth: number): void => {
+    let entries: string[];
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e);
+      try {
+        const st = statSync(p);
+        if (st.isDirectory() && depth < 4) walk(p, depth + 1);
+        else if (st.isFile() && e.startsWith("rollout-") && e.endsWith(".jsonl")) files.push({ path: p, name: e, mtimeMs: st.mtimeMs, bytes: st.size });
+      } catch { /* raced with deletion */ }
+    }
+  };
+  walk(sessionsDir, 0);
+  return files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+/**
+ * M-2266: the newest rollout codex can be told to resume for this directory when its database has no usable row for
+ * it: exactly this directory (codexProcessCwd), started by the CLI (`source` cli), still under `sessions` (archived
+ * ones move to archived_sessions), and with at least one user turn. Null when there is none.
+ */
+export function newestResumableRollout(
+  sessionsDir: string,
+  workingDirectory: string,
+  rolloutHasTurn: (path: string) => boolean = rolloutRecordsTurn,
+  skip: ReadonlySet<string> = new Set(),
+): ResumableRollout | null {
+  const cwd = codexProcessCwd(workingDirectory);
+  for (const f of listRollouts(sessionsDir)) {
+    const meta = rolloutSessionMeta(f.path);
+    if (!meta || meta.cwd !== cwd || meta.source !== "cli" || skip.has(meta.id)) continue;
+    if (rolloutHasTurn(f.path)) return { id: meta.id, path: f.path, bytes: f.bytes };
+  }
+  return null;
+}
+
+export type ResumeIdCheck =
+  | { ok: true; rollout: ResumableRollout }
+  | { ok: false; reason: "bad-id" | "not-found" | "other-cwd" | "not-cli" };
+
+/**
+ * M-2266: whether `id` is a conversation this instance may be resumed into: a rollout of that id in its sessions,
+ * for exactly its directory, started by the CLI. A turn is not required (the person chose it).
+ */
+export function checkResumeId(sessionsDir: string, workingDirectory: string, id: string): ResumeIdCheck {
+  if (!SESSION_ID_RE.test(id)) return { ok: false, reason: "bad-id" };
+  const want = id.toLowerCase();
+  const file = listRollouts(sessionsDir).find(f => f.name.toLowerCase().endsWith(`-${want}.jsonl`));
+  const meta = file ? rolloutSessionMeta(file.path) : null;
+  if (!file || !meta || meta.id.toLowerCase() !== want) return { ok: false, reason: "not-found" };
+  if (meta.cwd !== codexProcessCwd(workingDirectory)) return { ok: false, reason: "other-cwd" };
+  if (meta.source !== "cli") return { ok: false, reason: "not-cli" };
+  return { ok: true, rollout: { id: meta.id, path: file.path, bytes: file.bytes } };
+}
+
+/**
+ * M-2266: whether codex's database has a thread row for `id` — what a resume that took leaves behind (codex records
+ * the thread as it opens it). Null when the database cannot be read: that proves nothing either way.
+ */
+export function codexThreadRowExists(stateDbPath: string, id: string, open: (path: string) => Database.Database = openCodexStateReadonly): boolean | null {
+  let db: Database.Database | null = null;
+  try {
+    db = open(stateDbPath);
+    return db.prepare("SELECT 1 FROM threads WHERE id = ? LIMIT 1").get(id) !== undefined;
+  } catch {
+    return null;
+  } finally {
+    try { db?.close(); } catch { /* closed */ }
+  }
+}

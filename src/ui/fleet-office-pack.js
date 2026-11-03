@@ -154,10 +154,11 @@ const SET_STRIPS = [...POSES, "prop"];
 const WALKS = ["walk", "walkDown", "walkUp", "walkSide"];
 const BUILT_IN = new Set(["pixel", "studio"]);
 /**
- * Ids built in after packs could be uploaded under them (#2631: "cozy"): a new upload is refused, but a pack the host
- * kept under one before (`kept`) is still read back, listed and deletable, and wins the id for the offices that name it.
+ * Ids built in after packs could be uploaded under them (#2631: "cozy"; #2947: "guild", "school"): a new upload is
+ * refused, but a pack the host kept under one before (`kept`) is still read back, listed and deletable, and wins the id
+ * for the offices that name it.
  */
-const RESERVED = new Set(["cozy"]);
+const RESERVED = new Set(["cozy", "guild", "school"]);
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const SRC = /^[A-Za-z0-9._/-]{1,200}$/;
 const HEX = /^#[0-9a-f]{6}$/i;

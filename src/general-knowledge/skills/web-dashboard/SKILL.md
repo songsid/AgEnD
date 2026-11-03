@@ -291,8 +291,9 @@ buttons in General); every change is logged and told in General. **Style** (per 
 **Studio** (one scene — Work, Lounge, Help desk, Nap corner — where each instance walks to the area for its state),
 **Cozy** (#2631: the same in a warm pixel-art office drawn as one picture; its notice board says a skin pack can
 restyle it; the default for a browser that has not picked a style and for a new office — a saved office keeps its
-own) or an uploaded pack; one the page cannot load is drawn as Desks with a note. On a stored office in Studio,
-Cozy or a pack,
+own), **Guild** and **School** (#2947: two more pictures on the Cozy's arrangement — an adventurers' guild hall and a
+classroom) or an uploaded pack; one the page cannot load is drawn as Desks with a note. On a stored office in Studio,
+Cozy, Guild, School or a pack,
 **Edit layout** (admin only) shows a 1280×720 coordinate grid and lets you drag seats, furniture, the door, the mail drop
 (an envelope: where letters from other offices land; dashed on a pack without a `mailDrop`, #2736) and
 waypoints (or Tab to one and use the arrow keys, Shift for 10), add or remove waypoints and join or unjoin

@@ -14,6 +14,7 @@
  */
 import { stat } from "node:fs/promises";
 import { ClaudeStepParser, CodexStepParser, bounded, readTailRecords, type LogStep } from "./log-steps.js";
+import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
 
 export const LOG_STEPS_LIMIT = 200;
@@ -53,7 +54,9 @@ export interface LogServiceDeps {
 export interface LogQuery { after?: number; before?: number; key?: string; skip?: boolean; limit?: number; watch?: boolean; ev?: number }
 
 /** A fleet event as the page shows it: its type (the page words it) and its details, masked. */
-export interface LogEvent { id: number; ts: number; type: string; detail?: string }
+export interface LogEvent { id: number; ts: number; type: string; detail?: string;
+  /** M-2269: the dialog or prompt as it was on screen (dialog_parked, interactive_prompt), masked; shown folded. */
+  screen?: string }
 
 /** The event types a Log shows: what changed for the instance itself, not bookkeeping (tips, cost snapshots). */
 export const LOG_EVENT_TYPES: ReadonlySet<string> = new Set([
@@ -188,16 +191,19 @@ export class LogService {
     const events = rows
       .filter(r => (after === undefined || r.id > after) && LOG_EVENT_TYPES.has(r.event_type))
       .map(r => {
+        // M-2269: a dialog's screen text is its own field, masked again here, never folded into the JSON detail.
+        const rawScreen = r.payload && typeof r.payload === "object" ? (r.payload as Record<string, unknown>).screen : undefined;
+        const screen = typeof rawScreen === "string" && rawScreen ? bounded(rawScreen, SCREEN_MAX_BYTES).text : undefined;
         const detail = r.payload && typeof r.payload === "object"
           ? (() => {
-            const p = r.payload as Record<string, unknown>;
+            const { screen: _screen, ...p } = r.payload as Record<string, unknown>;
             // When the payload is only (or includes) a `message`, show that text rather than raw JSON.
             if (typeof p.message === "string" && p.message) return bounded(p.message, 300).text;
             const keys = Object.keys(p);
-            return keys.length ? bounded(JSON.stringify(r.payload), 300).text : undefined;
+            return keys.length ? bounded(JSON.stringify(p), 300).text : undefined;
           })()
           : undefined;
-        return { id: r.id, ts: dbTime(r.created_at), type: r.event_type, ...(detail ? { detail } : {}) };
+        return { id: r.id, ts: dbTime(r.created_at), type: r.event_type, ...(detail ? { detail } : {}), ...(screen ? { screen } : {}) };
       })
       .reverse();
     return { events, ev };
