@@ -15,7 +15,7 @@ import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-de
 import { SettingsBaselines } from "./settings-baseline.js";
 import { prepareSettingsEffect } from "./settings-effect.js";
 import { settingsDisplay } from "./settings-change.js";
-import { SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
+import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
@@ -2307,6 +2307,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const store: SettingsConfirmationStore = new SettingsConfirmationStore({
       audit: (event, fields) => this.logger.info({ event: `settings_confirmation.${event}`, ...fields }, "Settings confirmation audit"),
       notify: view => view.state === "pending" ? this.promptSettingsChange(store, view) : Promise.resolve(),
+      // alpha.2 (M-2300): an agent's request came, was decided or ran out — the open pages read the list again (a ping
+      // with nothing in it: only a web-only fleet's verified owner may read it, GET /ui/agent-proposals).
+      changed: view => {
+        if (view.source !== "agent_request") return;
+        this.agentProposalsRev++;
+        broadcastSseEvent(this.sseClients, "agent_proposals", {}, err => this.logger.debug({ err }, "agent_proposals event failed"));
+        // …and a status frame with the new revision: a tab from before the upgrade (its stream knows no `agent_proposals`)
+        // applies status frames, and a polling page reads the same frame at its next /ui/poll.
+        this.emitSseEvent("status", this.getUiStatus());
+      },
     });
     const gate = new SettingsHttpConfirmation(store, {
       principal: req => {
@@ -2389,6 +2399,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       current: () => !!verified() && chat.admin(actor.user_id) && this.settingsNoticeGenerals(affected, chat.platform).length > 0,
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
+  }
+
+  /**
+   * alpha.2 (M-2300; #2973's agent requests, junsion's §6): on a fleet with no chat connection there is no General to
+   * post an agent's Windows request in — it waited for `agend settings confirm` on the host. Its owner (decision
+   * 28c2d3a3: the `agend web --code` session on this computer, web-verified) now sees and decides it from the web's
+   * Needs you. The authority is asked from the request each time, and again at execution by the store (`current`):
+   * still that owner now (this computer, not revoked, signed out or run out), still a fleet with no chat connection,
+   * never over the public link. Anyone else — a guest, a LAN or public-link session, a chat-connected fleet's admin —
+   * gets nothing (a chat fleet keeps General's card as its way).
+   */
+  /**
+   * #2997 review (Prism P2): how many times an agent's request came or was decided — in a web-only fleet's status frame,
+   * so a page that never hears the stream's ping (one polling /ui/poll, one reconnecting, a tab from before the upgrade)
+   * reads the list again when it moves. A count, nothing more.
+   */
+  private agentProposalsRev = 0;
+  private agentProposalOwner(req: IncomingMessage): { label: string; current(): boolean } | null {
+    if (!this.isWebOnlyFleet() || gatewayRequestContext(req)) return null;
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok") return null;
+    // Each check twice over: here, and in the authority itself (it refuses the public link and a chat fleet's session).
+    // #2997 review (Prism P2): asked of the LIVE session each time — the request's own cookie authenticated again, the
+    // same handle — never a record captured at the click: a sign-out, an expiry or a revocation while the request is
+    // being applied fences it.
+    const handle = auth.session.handle, peer = webPeerOf(req), gateway = !!gatewayRequestContext(req);
+    const owner = (): boolean => {
+      if (!this.isWebOnlyFleet()) return false;
+      const live = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (live.kind !== "ok" || live.session.handle !== handle) return false;
+      const now = this.webAuthority({ session: live.session, gateway, peer });
+      const a = now.authority.kind === "web-verified" && now.authority.session?.handle === handle ? now.authority.actor : null;
+      return !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId;
+    };
+    return owner() ? { label: t("settings_confirm.host_operator_label"), current: owner } : null;
+  }
+
+  /** alpha.2: the agents' requests waiting for this web-only fleet's owner, or null when the reader is not that owner. */
+  webAgentProposals(req: IncomingMessage): SettingsPendingView[] | null {
+    if (!this.agentProposalOwner(req)) return null;
+    return this.settingsGate().store.listBySource("agent_request");
+  }
+
+  /**
+   * alpha.2: the owner's Approve or Reject of an agent's request. The store claims it before its first await (a second
+   * click, from here or the host, finds it no longer pending) and asks the owner, the request (its fleet generation and
+   * Windows switch) and the target machine again before and while it runs the same creation code the web uses. The
+   * answer is always the request as it now stands: applied (with the new agent's name), rejected, expired, stale or
+   * failed (with its reason), or already decided.
+   */
+  async webDecideAgentProposal(req: IncomingMessage, id: string, decision: "confirm" | "reject"): Promise<{ status: number; body: Record<string, unknown> }> {
+    const owner = this.agentProposalOwner(req);
+    if (!owner) return { status: 403, body: { error: "owner_required", message: t("settings_confirm.web_owner_required") } };
+    const store = this.settingsGate().store, before = store.inspect(id);
+    if (!before || before.source !== "agent_request") return { status: 404, body: { error: "not_found", message: t("settings_confirm.no_longer_pending") } };
+    try {
+      const view = await store.decide(id, decision, { ...owner, via: "web" });
+      this.logger.info({ id, decision, state: view.state }, "Agent request decided from the web by this computer's admin");
+      return { status: 200, body: { view, agent: agentNameOf(view) } };
+    } catch (err) {
+      const code = err instanceof SettingsConfirmationError ? err.code : "decide_failed";
+      const status = err instanceof SettingsConfirmationError ? err.status : 500;
+      // Already decided (a double click, the host's command), run out or withdrawn: say what it is now.
+      return { status, body: { error: code, message: t(code === "admin_required" ? "settings_confirm.web_owner_required" : "settings_confirm.no_longer_pending"), view: store.inspect(id) } };
+    }
   }
 
   /** #2170: the Generals a chat card could be posted in (promptSettingsChange's rule): connected, on the platform, unaffected. */
@@ -25145,6 +25220,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       host_memory: this.hostMemoryIndicator(),
       // #2910 D2: a web-only fleet's newest Notice — a polling page (no SSE `notice`) reads the list again when it moves.
       ...(this.webOnlyPromptPlace() ? { notices_newest: this.webNoticeStore()?.newest() ?? 0 } : {}),
+      // alpha.2 (M-2300, #2997 review): agents' requests changed — the owner's page reads GET /ui/agent-proposals again.
+      ...(this.isWebOnlyFleet() ? { agent_proposals_rev: this.agentProposalsRev } : {}),
       // #2015: the largest processes while it lasts (name, pid, RSS, and whose: an instance, the fleet or tmux).
       ...(this.hostMemoryIndicator() && this.memoryTop ? { host_memory_top: this.memoryTop.processes } : {}),
     };
@@ -25588,3 +25665,11 @@ load();
 </script>
 </body>
 </html>`;
+
+/** alpha.2 (M-2300): the agent an applied Windows request created (its name, for the page's "Open chat"), or null. */
+export function agentNameOf(view: SettingsPendingView): string | null {
+  const r = view.state === "applied" ? view.outcome?.result : null;
+  if (!r || typeof r !== "object") return null;
+  const o = r as Record<string, unknown>, name = o.name ?? o.instance_name ?? (o.agent && typeof o.agent === "object" ? (o.agent as Record<string, unknown>).name : undefined);
+  return typeof name === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name) ? name : null;
+}

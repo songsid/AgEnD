@@ -122,6 +122,8 @@ if (mode === "full") {
     startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
     // #2233: a backend sign-in running anywhere is shown on every admin page (the module lives behind the session gate).
     import("/ui/js/backend-signin.js").then((m) => m.installSignIn(), () => {});
+    // alpha.2 (M-2300): an agent's Windows request waiting for a web-only fleet's owner — counted in Needs you everywhere.
+    import("/ui/js/agent-proposals.js").then((m) => m.installProposals(), () => {});
   }
   // #1665: this device's first upload of its own choices (once), then another device's changes at each status frame.
   // A guest's page (#2855) uploads and saves only its own keys (prefsWritable(key)); another device's changes reach it at

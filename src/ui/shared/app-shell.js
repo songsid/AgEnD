@@ -331,7 +331,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const navLink = (panel, href, icon, label, count = 0, countText = "app.needsCount") => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
     aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t(countText, count)})` : undefined} onClick=${closeDrawer}>
     <${Icon} name=${icon} /><span class="grow">${label}</span>${count ? html`<span class="nav-count" aria-hidden="true">${count}</span>` : null}</a>`;
-  const needsCount = Array.isArray(app.needs) ? app.needs.length : 0;
+  // alpha.2 (M-2300): an agent's request waiting for this web-only fleet's owner counts too (only the owner's page has any).
+  const needsCount = (Array.isArray(app.needs) ? app.needs.length : 0) + (Array.isArray(app.proposals) ? app.proposals.length : 0);
   // View-only (an anonymous reader, #1408 §3): View and a way to sign in — nothing that needs a session is rendered.
   if (viewOnly) {
     return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
@@ -502,7 +503,7 @@ function BottomTabs({ route, viewOnly }) {
   // last tab), Settings.
   return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
     ${tab(chatHref, "chat", t("app.chat"), !!open || (!!route && route.panel === "chat"), anyAwaiting)}
-    ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length, t("app.needsCount", (app.needs || []).length))}
+    ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length + (app.proposals || []).length, t("app.needsCount", (app.needs || []).length + (app.proposals || []).length))}
     ${tab(fleetEntryPath(route), "fleet", t("app.fleet"), route && route.panel === "fleet")}
     ${tab(settingsPath(), "settings", t("app.settings"), route && route.panel === "settings")}
   </nav>`;

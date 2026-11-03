@@ -518,6 +518,9 @@ export interface WebApiContext {
   setWebPersonName?(owner: WebAccount | undefined, raw: unknown): { ok: true; person: WebPerson } | { ok: false; status: number; error: string };
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
+  /** alpha.2 (M-2300): agents' requests waiting for a web-only fleet's verified owner; null: not that owner. */
+  webAgentProposals?(req: IncomingMessage): import("./settings-confirmation.js").SettingsPendingView[] | null;
+  webDecideAgentProposal?(req: IncomingMessage, id: string, decision: "confirm" | "reject"): Promise<{ status: number; body: Record<string, unknown> }>;
   /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -2399,6 +2402,33 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Notices mark-read failed");
       try { json(res, 500, { error: "Mark read failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // ── alpha.2 (M-2300): an agent's Windows request, decided by a web-only fleet's owner in Needs you ──
+  // The list is the owner's only: anyone else (a guest, a LAN or public-link session, a chat fleet's admin) reads an
+  // empty one, so nothing actionable ever reaches them. The stream's `agent_proposals` event carries nothing.
+  if (method === "GET" && path === "/ui/agent-proposals") {
+    const list = ctx.webAgentProposals?.(req) ?? null;
+    json(res, 200, { owner: list !== null, proposals: list ?? [] });
+    return true;
+  }
+  const proposalMatch = method === "POST" ? /^\/ui\/agent-proposals\/([0-9a-f]{32})$/.exec(path) : null;
+  if (proposalMatch) {
+    if (!ctx.webDecideAgentProposal) { json(res, 404, { error: "not_found" }); return true; }
+    const decide = ctx.webDecideAgentProposal.bind(ctx), id = proposalMatch[1]!;
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const decision = body && typeof body === "object" ? body.decision : undefined;
+      if (decision !== "confirm" && decision !== "reject") { json(res, 400, { error: "decision must be confirm or reject" }); return; }
+      const r = await decide(req, id, decision);
+      if (!res.headersSent && !res.destroyed) json(res, r.status, r.body);
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Agent request decision failed");
+      try { json(res, 500, { error: "decide_failed" }); } catch { /* already answered */ }
     });
     return true;
   }

@@ -38,6 +38,8 @@ beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/needs", storage: { agend_tour_done: "1" } });
   (globalThis as any).fetch = fetchFake;
   app = await import("/assets/app-store.js");
+  // A current page: app.js installed the agents' requests list (alpha.2, M-2300) — the panel reads nothing itself.
+  app.appStore.set({ proposals: [] });
   shell = await import("/assets/app-shell.js");
   nav = await import("/assets/app-nav.js");
   ctx = await import("/assets/app-ctx.js");
