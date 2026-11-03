@@ -3,6 +3,7 @@ import { CodexPaneDetectors } from "./codex.js";
 import { win32 } from "node:path";
 import { ClaudePaneDetectors, claudeTrustDialogState } from "./claude-code.js";
 import type { CliBackend, CliBackendConfig, StartupDialog } from "./types.js";
+import { selectionCard } from "../selection-card.js";
 export interface NativePaneBackendState {
   sessionId: string | null;
   contextPercentage: number | null;
@@ -28,6 +29,15 @@ export function createNativePaneBackend(provider: "codex" | "claude-code", snaps
       ? !!dialog.isActive?.(pane) || (claudeTrustDialogState(pane).active && !matchesCwd(pane))
       : matchesCwd(pane) && !!dialog.isActive?.(pane) };
   };
+  const shellCard = (pane: string) => {
+    if (provider !== "claude-code" || (detectors as ClaudePaneDetectors).readInputRow(pane) !== null
+      || !/^[ \t]*(?:PowerShell|Bash) command[ \t]*$/m.test(pane)
+      || !/^[ \t]*Do you want to proceed\?[ \t]*$/m.test(pane)
+      || !/^[ \t]*Esc to cancel\b/m.test(pane)) return null;
+    const card = selectionCard(pane, "Claude Code");
+    return card && card.options.some(option => /^Yes\b/.test(option.title))
+      && card.options.some(option => /^No\b/.test(option.title)) ? card : null;
+  };
   const backend = Object.assign(detectors, {
     buildCommand: (_config: CliBackendConfig): string => forbidden(),
     writeConfig: (_config: CliBackendConfig): void => forbidden(),
@@ -40,7 +50,13 @@ export function createNativePaneBackend(provider: "codex" | "claude-code", snaps
       }
       return trustScope(dialog);
     }),
-    getRuntimeDialogs: () => originalRuntime().map(trustScope),
+    getRuntimeDialogs: () => [...originalRuntime().map(trustScope), ...(provider === "claude-code" ? [{
+      // Windows uses a PowerShell permission shape distinct from the audited four-choice Unix Bash card. Never
+      // auto-answer it: expose its actual numbered choices through the ordinary stepwise human-card path.
+      pattern: /^[ \t]*Do you want to proceed\?[ \t]*$/m, isActive: (pane: string) => shellCard(pane) !== null,
+      remoteCard: shellCard, interactionKind: "permission" as const, keys: [], holdOnly: true, blocksDelivery: true,
+      inputBlocked: true, description: "Claude Windows shell permission — waiting for a human choice, never auto-approving",
+    }] : [])],
   });
   return backend;
 }
