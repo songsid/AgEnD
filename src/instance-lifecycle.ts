@@ -1349,19 +1349,22 @@ export class InstanceLifecycle {
       // labels, summaries and every exhaustive match for one picker's text.)
       // #1691: a prompt no table knows — what it asks (one sanitised, bounded line from the daemon, never the pane), and
       // that AgEnD will not press anything.
+      // S-35: a Windows agent's instance name is windows-<uuid>; people know it by its display name.
+      const label = this.ctx.fleetConfig?.instances[name]?.display_name?.trim() || name;
+      const place = placeRef({ kind: "instance", name }, label);
       if (data.unrecognised) {
         // #1990: the question is a pane line — it may not name a place of its own.
         const asked = data.question ? t("inst.unrecognised_prompt_question", noPlaceMarkers(data.question)) : "";
-        this.notifyParked(name, "dialog_parked", t("inst.unrecognised_prompt", name, asked), t("fleet.unrecognised_prompt", instancePlace(name), asked));
+        this.notifyParked(name, "dialog_parked", t("inst.unrecognised_prompt", label, asked), t("fleet.unrecognised_prompt", place, asked));
         return;
       }
       const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
-      const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
+      const text = category ? t("inst.interaction_parked", label, category) : data.holdOnly
         // #2872: the Claude session-resume advice only for that prompt (it read as nonsense under a grok or kiro dialog).
-        ? t("inst.dialog_parked_hold", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_hold_claude_resume") : "")
-        : t("inst.dialog_parked_stuck", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_stuck_claude_resume") : "");
+        ? t("inst.dialog_parked_hold", label, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_hold_claude_resume") : "")
+        : t("inst.dialog_parked_stuck", label, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_stuck_claude_resume") : "");
       // #1990: in General, the instance's name links to its topic.
-      this.notifyParked(name, "dialog_parked", text, category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
+      this.notifyParked(name, "dialog_parked", text, category ? t("fleet.interaction_parked", place, category) : t("fleet.dialog_parked", place, data.description));
     }, this.ctx.logger, `daemon.dialog_parked[${name}]`));
 
     // #2897: the held dialog is gone (closed, answered, auto-answered) — its notices go with it.

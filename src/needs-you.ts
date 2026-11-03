@@ -296,6 +296,8 @@ export interface LiveLine {
   item: NeedsYouItem;
   title: string;
   link?: string;
+  /** The instance's display name for the line (its raw name when absent): the chat shows what the person named it. */
+  name?: string;
 }
 
 export const LIVE_MAX_LINES = 10;
@@ -318,7 +320,8 @@ export function renderLiveMessage(
   const shown = lines.slice(0, LIVE_MAX_LINES);
   const body = shown.map(l => {
     const age = ageLabel(l.item.since, nowMs);
-    const head = `• ${l.item.instance ? `${l.item.instance} — ` : ""}${l.title} (${age})`;
+    const who = l.name ?? l.item.instance;
+    const head = `• ${l.item.instance ? `${who} — ` : ""}${l.title} (${age})`;
     return l.link ? `${head} · ${l.link}` : head;
   });
   if (lines.length > shown.length) body.push(t("needs.live_more", lines.length - shown.length));

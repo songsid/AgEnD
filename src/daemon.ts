@@ -4517,7 +4517,18 @@ export class Daemon extends EventEmitter {
    */
   async sendEscape(): Promise<void> {
     const cancelKey = this.backend?.getCancelKey() ?? "Escape";
-    await this.tmux?.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
+    const tmux = this.tmux;
+    if (!tmux) return;
+    if (this.nativePaneLifecycle) {
+      // A native pane's composer proof cannot see a permission dialog, so an unproved key is withheld there. The cancel
+      // is the person's own interrupt, keyed on the screen read just before (as the dialog answer path is): what Esc
+      // does on Linux's tmux pane, on the same screen, with the same key.
+      const screen = await tmux.capturePane().catch(() => null);
+      if (screen === null) return;
+      await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c", undefined, { kind: "dialog", screen });
+      return;
+    }
+    await tmux.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
   }
 
   /**
@@ -9743,21 +9754,34 @@ export class Daemon extends EventEmitter {
     if (!current()) return false;
     // A paste-settle wait or retry can outlive the composer it saw. Passive startup-transient checks do not prove
     // that a permission card has not replaced it. Read this exact pane again, without resolving any dialog.
-    const hold = () => {
+    // S-35: say which check withheld Enter — a Windows Codex pane's 2nd message stuck here with no way to tell.
+    const hold = (reason: "capture_failed" | "dialog" | "not_composer" | "check_failed") => {
       onInputHeld?.();
-      this.logger.warn({ phase }, "Delivery input is not a verified composer; Enter withheld");
+      this.logger.warn({ phase, reason }, "Delivery input is not a verified composer; Enter withheld");
       return false;
     };
     let pane: string;
-    try { pane = await tmux!.capturePane(); }
-    catch { return current() ? hold() : false; }
+    // S-35: a native pane's capture refuses while output is still arriving ("Pane changed during capture; observe it
+    // again"). Right after a turn the CLI repaints for a moment; one refused read left the message unsent for ever. Read
+    // again a few times — reading types nothing — and still hold if it never settles.
+    let captured: string | undefined;
+    for (let attempt = 0; captured === undefined; attempt++) {
+      try { captured = await tmux!.capturePane(); }
+      catch {
+        if (!current()) return false;
+        if (!this.nativePaneLifecycle || attempt >= 4) return hold("capture_failed");
+        await new Promise(done => setTimeout(done, 150 * (attempt + 1)));
+        if (!current()) return false;
+      }
+    }
+    pane = captured;
     if (!current()) return false;
     let composer = false;
     try {
-      if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
+      if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold("dialog");
       if (backend?.readInputRow) composer = backend.readInputRow(pane) != null;
       else if (backend?.inputDraft) composer = backend.inputDraft(pane) != null;
-      else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane);
+      else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane) || backend.ownsComposerRows?.(pane) === true;
       else if (backend?.readSteerComposer?.(pane) != null) composer = true;
       else if (backend) {
         // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
@@ -9771,8 +9795,8 @@ export class Daemon extends EventEmitter {
             : ready.test(pane.trimEnd().split("\n").slice(-COMPOSER_TAIL_ROWS).join("\n")));
         }
       }
-    } catch { return hold(); }
-    if (!composer) return hold();
+    } catch { return hold("check_failed"); }
+    if (!composer) return hold("not_composer");
     if (!current()) return false;
     // W1: persist the "Enter may have happened" boundary before tmux receives
     // the key. A crash after this commit is never auto-replayed without a

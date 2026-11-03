@@ -63,6 +63,7 @@ function rig() {
     ackThrows: false,
     settings: { liveMessage: true, dm: false },
     groupA: "111111",
+    displayNames: {} as Record<string, string>,
     sse: [] as Array<{ event: string; data: any }>,
   };
   const ctx: NeedsYouHubContext = {
@@ -80,6 +81,7 @@ function rig() {
     ],
     noticeTarget: w => (w === "dcA" ? { chatId: "111111", threadId: "900001" } : { chatId: "222222", threadId: "900002" }),
     instanceTopic: i => (i === "alpha" ? "700001" : i === "beta" ? "700002" : undefined),
+    instanceName: i => state.displayNames[i] ?? i,
     isFleetAdmin: (u, w) => (state.admins[w] ?? []).includes(u),
     fleetAdmins: w => state.admins[w] ?? [],
     emitSse: (event, data) => state.sse.push({ event, data }),
@@ -328,6 +330,17 @@ describe("§5.5 DMs (opt-in): the owning world's admins, new items only, rate-li
     r.hub.recompute();
     await r.advance(0);
     expect(r.A.calls.filter(c => c.startsWith("dm"))).toEqual(["dm 100 needs.dm_header(1) | • alpha — needs.reason.permission · https://discord.com/channels/111111/700001"]);
+  });
+
+  it("a live line names the instance by its display name, as the web does (the raw id stays on the ack/link side)", async () => {
+    const r = rig();
+    r.state.displayNames = { alpha: "Alpha Display" };
+    r.state.deliveries = [delivery("d9", "alpha")];
+    r.hub.start();
+    await r.advance(0);
+    expect(r.A.calls.some(c => c.includes("• Alpha Display — needs.reason.delivery_uncertain"))).toBe(true);
+    expect(r.A.calls.some(c => c.includes("• alpha —"))).toBe(false);
+    expect(r.hub.webItems().map(i => i.instance)).toEqual(["alpha"]);
   });
 
   it("off by default", async () => {

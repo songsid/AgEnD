@@ -121,7 +121,12 @@ export class SettingsHttpConfirmation {
           try { if (!next(replay, collector, new URL(payload.url, "http://localhost"))) no(new Error("unsupported_apply")); }
           catch (err) { no(err); }
         });
-        if (response.status >= 400) throw new Error("apply_rejected");
+        // S-35: keep the handler's own reason (e.g. "Local pane relay startup unconfirmed"); the store bounds and sanitizes it.
+        if (response.status >= 400) {
+          const why = response.body && typeof response.body === "object" && typeof (response.body as { error?: unknown }).error === "string"
+            ? (response.body as { error: string }).error : "";
+          throw new Error(why ? `apply_rejected: ${why}` : "apply_rejected");
+        }
         if (response.body.job_id && (!this.options.job || !await this.options.job(response.body.job_id))) throw new Error("apply_job_failed");
         await this.options.applied?.(url.pathname, response.body, execution);
         return response.body;

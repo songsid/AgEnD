@@ -26,6 +26,47 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     expect(done.outcome?.result).toEqual({ ok: true, job_id: "apply-job" }); expect(p.discard).toHaveBeenCalledTimes(1);
     await expect(store.decide(view.id, "confirm", admin())).rejects.toThrow("confirmation_not_pending");
   });
+  it("S-35: Save pressed again on the same change (a fresh idempotency key) returns the request already pending, not another", async () => {
+    const first = store.propose(proposal({ key: "save-1" }));
+    const again = proposal({ key: "save-2" }); const second = store.propose(again);
+    expect(second.reused).toBe(true); expect(second.view.id).toBe(first.view.id); expect(again.discard).toHaveBeenCalledTimes(1);
+    expect(store.propose(proposal({ key: "save-2" })).view.id).toBe(first.view.id);   // the new key now names it too
+    // A different change, or the same change from another session, is its own request.
+    expect(store.propose(proposal({ key: "other-change", fingerprint: "another-operation" })).view.id).not.toBe(first.view.id);
+    expect(store.propose(proposal({ key: "save-3", session: "another-session" })).view.id).not.toBe(first.view.id);
+    // Once decided, the same change can be requested anew.
+    expect((await store.decide(first.view.id, "confirm", admin())).state).toBe("applied");
+    expect(store.propose(proposal({ key: "save-4" })).view.id).not.toBe(first.view.id);
+  });
+  it("#2972 review: the repeated-Save dedupe joins only a request still pending, never one already applying", async () => {
+    let release!: () => void; const gate = new Promise<void>(done => { release = done; });
+    const first = store.propose(proposal({ key: "applying-1", apply: vi.fn(async () => { await gate; return { ok: true }; }) }));
+    const deciding = store.decide(first.view.id, "confirm", admin()); await Promise.resolve();
+    expect(store.get(first.view.id, "authenticated-session")?.state).toBe("applying");
+    const again = store.propose(proposal({ key: "applying-2" }));
+    expect(again.reused).toBe(false); expect(again.view.id).not.toBe(first.view.id);
+    release(); expect((await deciding).state).toBe("applied");
+  });
+  it("#2972 review: a removed request takes every idempotency key that named it", async () => {
+    const first = store.propose(proposal({ key: "keys-1" })); store.propose(proposal({ key: "keys-2" }));
+    expect((store as any).keys.size).toBe(2);
+    expect((await store.decide(first.view.id, "confirm", admin())).state).toBe("applied");
+    now += 24 * 3_600_000; store.propose(proposal({ key: "after", fingerprint: "unrelated" }));   // prune runs on propose
+    expect([...(store as any).keys.values()]).not.toContain(first.view.id);
+  });
+  it("S-35: a failed apply keeps its localized message and says why — bounded, control characters removed, audited", async () => {
+    const p = proposal({ apply: vi.fn(async () => { throw new Error("apply_rejected: Local pane relay startup unconfirmed\u0007\n" + "x".repeat(400)); }) });
+    const { view } = store.propose(p);
+    const done = await store.decide(view.id, "confirm", admin());
+    expect(done.state).toBe("failed"); expect(done.outcome?.reason_code).toBe("apply_failed");
+    expect(done.outcome?.message).toBe("Change could not be applied. Review the configuration and try again.");
+    expect(done.outcome?.detail?.startsWith("apply_rejected: Local pane relay startup unconfirmed x")).toBe(true);
+    expect(done.outcome?.detail).toHaveLength(300); expect(done.outcome?.detail).not.toMatch(/[\u0000-\u001f]/);
+    expect(audit).toHaveBeenCalledWith("failed", expect.objectContaining({ id: view.id, detail: done.outcome?.detail }));
+    // A success never carries a detail.
+    const ok = proposal({ key: "ok-key" }); const okView = store.propose(ok).view;
+    expect((await store.decide(okView.id, "confirm", admin())).outcome?.detail).toBeUndefined();
+  });
   it("an unauthorised click leaves the pending operation available for the real admin", async () => {
     const p = proposal(); const { view } = store.propose(p);
     const refused = await store.decide(view.id, "confirm", { label: "user", current: () => false }).catch(error => error);
@@ -99,8 +140,8 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     expect(store.get(view.id, "authenticated-session")?.state).toBe("expired");
   });
   it("limits pending count/bytes and never evicts live approvals to make room", () => {
-    for (let i = 0; i < 8; i++) store.propose(proposal({ key: String(i) }));
-    expect(() => store.propose(proposal({ key: "ninth" }))).toThrow("too_many_pending_changes");
+    for (let i = 0; i < 8; i++) store.propose(proposal({ key: String(i), fingerprint: `change-${i}` }));   // eight different changes
+    expect(() => store.propose(proposal({ key: "ninth", fingerprint: "change-9" }))).toThrow("too_many_pending_changes");
     expect(store.list("authenticated-session")).toHaveLength(8);
     expect(() => store.propose(proposal({ session: "other", bytes: 5 * 1024 * 1024 }))).toThrow("too_many_pending_changes");
   });

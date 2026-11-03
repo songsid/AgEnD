@@ -13,12 +13,20 @@ const MAX_RECORDS = 128;
 
 export type SettingsChangeSection = "access" | "secret" | "channel";
 export type SettingsChangeState = "pending" | "applying" | "applied" | "rejected" | "expired" | "stale" | "failed";
+/** S-35: a failed apply's reason for the person and the audit — one line, bounded, control characters removed. */
+export function applyErrorDetail(error: unknown): string | undefined {
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const text = raw.replace(/[\p{Cc}\p{Cf}]+/gu, " ").replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, 300) : undefined;
+}
 export interface SettingsChangeOutcome {
   state: SettingsChangeState;
   decided_at: number;
   decided_by_label?: string;
   reason_code: string;
   message: string;
+  /** S-35: why an apply failed — the handler's own words (bounded, control characters removed); never shown as success. */
+  detail?: string;
   result?: unknown;
 }
 export interface SettingsPendingView {
@@ -127,8 +135,8 @@ export class SettingsConfirmationStore {
   private remove(entry: RecordEntry): void {
     clearTimeout(entry.timer);
     this.records.delete(entry.view.id);
-    const index = this.index(entry.session, entry.key);
-    if (this.keys.get(index) === entry.view.id) this.keys.delete(index);
+    // S-35: a repeated Save maps its own key to the same request; drop every key that names it.
+    for (const [index, id] of this.keys) if (id === entry.view.id) this.keys.delete(index);
   }
   private expire(entry: RecordEntry): void {
     if (entry.view.state === "pending" && this.now() >= entry.deadline) this.finish(entry, "expired", "expired", t("settings_confirm.result.expired"));
@@ -150,6 +158,10 @@ export class SettingsConfirmationStore {
       return { view: this.snapshot(previous), reused: true };
     }
     const live = [...this.records.values()].filter(entry => entry.proposal);
+    // S-35: each Save sends a fresh idempotency key, so pressing Save again on the same change stacked another identical
+    // request. The same session's identical operation (same immutable fingerprint) that is still pending is that request.
+    const same = live.find(entry => entry.view.state === "pending" && entry.session === proposal.session && entry.fingerprint === proposal.fingerprint);
+    if (same) { this.keys.set(index, same.view.id); proposal.discard?.(); return { view: this.snapshot(same), reused: true }; }
     if (live.length >= MAX_PENDING || live.filter(entry => entry.session === proposal.session).length >= MAX_PER_SESSION
       || live.reduce((sum, entry) => sum + (entry.proposal?.bytes ?? 0), 0) + proposal.bytes > MAX_BYTES)
       throw new SettingsConfirmationError(429, "too_many_pending_changes");
@@ -233,18 +245,21 @@ export class SettingsConfirmationStore {
           this.finish(entry, "applied", "applied", t("settings_confirm.result.applied"), actor.label, result);
         } finally { execution.close(); entry.execution = undefined; }
       }
-    } catch {
-      if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", t("settings_confirm.result.apply_failed"), actor.label);
+    } catch (error) {
+      // S-35: the real reason (a Windows relay that did not start, an agent limit, a startup race…) was swallowed here and the
+      // person only ever read "could not be applied". Keep the localized message; carry the reason beside it and in the audit.
+      const detail = applyErrorDetail(error);
+      if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", t("settings_confirm.result.apply_failed"), actor.label, undefined, detail);
     }
     return this.snapshot(entry);
   }
-  private finish(entry: RecordEntry, state: SettingsChangeState, reason: string, message: string, actor?: string, result?: unknown): void {
+  private finish(entry: RecordEntry, state: SettingsChangeState, reason: string, message: string, actor?: string, result?: unknown, detail?: string): void {
     clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
     entry.view.state = state; entry.finishedAt = this.now();
     entry.view.outcome = { state, reason_code: reason, message, decided_at: this.wall(), ...(actor ? { decided_by_label: this.display(actor) } : {}),
-      ...(result !== undefined ? { result } : {}) };
+      ...(detail ? { detail } : {}), ...(result !== undefined ? { result } : {}) };
     entry.proposal?.discard?.(); entry.proposal = undefined;
-    this.audit(state === "rejected" && reason === "withdrawn" ? "withdrawn" : state, entry);
+    this.audit(state === "rejected" && reason === "withdrawn" ? "withdrawn" : state, entry, detail ? { detail } : {});
   }
   close(): void {
     this.closed = true;
