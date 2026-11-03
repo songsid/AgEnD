@@ -276,7 +276,8 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
   };
   // `reading`: the text shown while reading (the scrollback, or the screen as it was when the person left the bottom);
   // `latest`: the newest screen read; `history`: whether what is shown has the scrollback in it.
-  const screenAt = useRef({ reading: null, latest: null, history: false });
+  // `drawn` (#2969 review P3): the text actually on the page now — what reading starts from, never a newer read not drawn.
+  const screenAt = useRef({ reading: null, latest: null, history: false, drawn: null });
   // #2969 review (Prism P2): when the person last moved the terminal themselves (wheel, touch, key, pointer).
   const gestureAt = useRef(-Infinity);
   const recentGesture = () => performance.now() - gestureAt.current < GESTURE_MS;
@@ -311,6 +312,7 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
   const draw = (text) => {
     pre.current.innerHTML = ansiToHtml(text);           // escaped by construction: markup only from ansiToHtml's own spans
     paintAnsi(pre.current);
+    screenAt.current.drawn = text;
   };
   useEffect(() => { grid.current.key = ""; fit(); }, [density]);
   const atBottom = () => { const box = term.current; return !box || box.scrollHeight - box.scrollTop - box.clientHeight <= 2; };
@@ -349,7 +351,8 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
         if (modeRef.current !== "follow") { if (modeRef.current === "reading") setNewBelow(!sameScreen(screenAt.current.reading, text)); return; }
         // #2969 review (Prism P2): the person is moving a screen taller than its box away from the bottom right now —
         // this is them leaving it, not the latest to follow: read on, nothing redrawn.
-        if (recentGesture() && !atBottom()) { startReading(screenAt.current.latest, false); return; }
+        // Reading starts from what is drawn; this newer read (not drawn) is then the new output below.
+        if (recentGesture() && !atBottom()) { startReading(screenAt.current.drawn, false); setNewBelow(!sameScreen(screenAt.current.drawn, text)); return; }
         grid1(r);
         draw(text);
         fit();
@@ -443,7 +446,7 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
         if (modeRef.current === "reading") { if (atBottom()) follow.current(); return; }
         // #2969 review (Prism P2): a screen taller than its box (a larger Aa), moved up from the bottom by the person:
         // reading what is on it — the refresh no longer pulls them back down.
-        if (modeRef.current === "follow" && recentGesture() && !atBottom()) startReading(screenAt.current.latest, false);
+        if (modeRef.current === "follow" && recentGesture() && !atBottom()) startReading(screenAt.current.drawn, false);
       }, { passive: true });
     }
   }, [lease, name]);

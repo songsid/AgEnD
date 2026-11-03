@@ -151,6 +151,17 @@ describe("#2969 review: a screen taller than its box, a failed read, new output 
     await tick();
     expect([pre().textContent, term().scrollTop, term().className.includes("is-reading")]).toEqual(["SCREEN 1", 700, true]);
   });
+  it("#2969 review P3: reading started by a refresh mid-gesture starts from what is drawn — the newer read is new output below, then and after", async () => {
+    await mount();
+    layout(1000); term().scrollTop = 700;
+    fire(term(), "keydown", { key: "ArrowUp" });                               // the person moves the tall screen up…
+    screen = "SCREEN 2";                                                        // …while the next read brings new output
+    await tick();
+    expect([pre().textContent, term().className.includes("is-reading")]).toEqual(["SCREEN 1", true]);
+    expect(button(".v-term-latest")!.textContent).toContain("New output below");
+    await tick();
+    expect(button(".v-term-latest")!.textContent).toContain("New output below");   // and still, on the same SCREEN 2 read
+  });
   it("a scrollback read that failed (503) or answered without its facts changes nothing shown: still following, the screen as it was", async () => {
     for (const [status, noHeaders] of [[503, false], [200, true]] as const) {
       historyStatus = status; historyNoHeaders = noHeaders;
