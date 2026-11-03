@@ -617,6 +617,20 @@ function codexWorkspaceLimitPromptVisible(pane: string): boolean {
   return false;
 }
 
+/**
+ * The composer's own `›` row above the footer, or -1. Walking up from the footer, only blank rows and indented rows (the
+ * composer's wrapped text, however many lines a long paste takes) may come before it. The first column-zero row decides:
+ * a `›` there is the composer; a numbered `›` row is a selection card; any other column-zero row (`•`/`■`/`⚠` output, a
+ * status line) means a `›` above it is transcript history, never the composer.
+ */
+function ownedComposerRow(rows: readonly string[]): number {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (!rows[i].trim() || /^[ \t]/.test(rows[i])) continue;
+    return /^[>›][ \t]+\S/.test(rows[i]) && !/^[>›][ \t]+\d+\./.test(rows[i]) ? i : -1;
+  }
+  return -1;
+}
+
 /** Unknown pickers own stdin too; never type or press Enter into one. */
 function codexUnknownSelectionVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -1020,8 +1034,42 @@ export class CodexPaneDetectors {
 
   /** Observed on real Codex 0.156.0: the live input row precedes its footer. */
   isDeliveryInputReadyPane(pane: string): boolean {
+    const frame = this.composerFrame(pane);
+    if (!frame) return false;
+    const { rows, contextFooter } = frame;
+    if (!contextFooter) {
+      if (this.getBusyPattern().test(pane)) return false;
+      let liveComposer = rows.length - 1;
+      while (liveComposer >= 0 && (/^[ \t⋆]*$/.test(rows[liveComposer]))) liveComposer--;
+      return liveComposer >= 0 && /^[>›]\s*Ask Codex to do anything\s*$/.test(rows[liveComposer]);
+    }
+    // Pasted text may wrap over several continuation rows before the footer.
+    // Search only its immediate tail, not a historical transcript prompt.
+    for (let i = rows.length - 1; i >= Math.max(0, rows.length - 8); i--) {
+      if (/^[>›]\s+\d+\./.test(rows[i])) return false;
+      if (/^[>›]\s+\S/.test(rows[i])) return true;
+      if (/^[•■⚠]/.test(rows[i])) return false;
+    }
+    return false;
+  }
+
+  /**
+   * Complete ownership of a long pasted envelope: the `›` composer row and every wrapped row down to a context footer are
+   * proven by ownedComposerRow, however many rows they take. The Enter gate accepts this as well as isDeliveryInputReadyPane,
+   * never instead of the dialog, busy and expected-seq checks.
+   */
+  ownsComposerRows(pane: string): boolean {
+    const frame = this.composerFrame(pane);
+    return !!frame?.contextFooter && ownedComposerRow(frame.rows) >= 0;
+  }
+
+  /**
+   * The screen above Codex's footer, shared by both readers: null when the footer is not a Codex footer at all or the
+   * app server behind the composer is gone (#1099). `rows` excludes the footer.
+   */
+  private composerFrame(pane: string): { rows: string[]; contextFooter: boolean } | null {
     // A composer with no app-server behind it accepts text and never submits it (#1099).
-    if (codexAppServerDisconnected(pane)) return false;
+    if (codexAppServerDisconnected(pane)) return null;
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
     if (this.paneDetectorContext?.windowsConpty && /^[ \t]*\? for shortcuts[ \t]*$/.test(rows.at(-1) ?? "")) {
@@ -1037,21 +1085,8 @@ export class CodexPaneDetectors {
     // list after Codex's exact empty live-composer row. An arbitrary non-empty
     // footer or a recent transcript echo is not a readiness signal; that was
     // the false-ready hole in the old Layer 2 deny-list attempt (#931/#947).
-    if (!contextFooter && !this.isConfiguredStatusLineFooter(footer)) return false;
-    if (!contextFooter) {
-      if (this.getBusyPattern().test(pane)) return false;
-      let liveComposer = rows.length - 1;
-      while (liveComposer >= 0 && (/^[ \t⋆]*$/.test(rows[liveComposer]))) liveComposer--;
-      return liveComposer >= 0 && /^[>›]\s*Ask Codex to do anything\s*$/.test(rows[liveComposer]);
-    }
-    // Pasted text may wrap over several continuation rows before the footer.
-    // Search only its immediate tail, not a historical transcript prompt.
-    for (let i = rows.length - 1; i >= Math.max(0, rows.length - 8); i--) {
-      if (/^[>›]\s+\d+\./.test(rows[i])) return false;
-      if (/^[>›]\s+\S/.test(rows[i])) return true;
-      if (/^[•■⚠]/.test(rows[i])) return false;
-    }
-    return false;
+    if (!contextFooter && !this.isConfiguredStatusLineFooter(footer)) return null;
+    return { rows, contextFooter };
   }
 
   /**
