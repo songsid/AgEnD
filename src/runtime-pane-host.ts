@@ -9,7 +9,7 @@ import { spawnNativePane } from "./runtime-pane-process.js";
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
-import { NativePaneTranscriptReader, nativeClaudeSessionState, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
+import { NativePaneTranscriptReader, nativeClaudeSessionState, nativeCodexSessionState, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
 import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
@@ -62,7 +62,7 @@ export class RuntimePaneHost {
   }
   async request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true, claudeSessionProof: true }, panes: this.list() };
+    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true, claudeSessionProof: true, codexSessionProof: true }, panes: this.list() };
     if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
     if (request.action === "shutdown") {
       // No await between the inventory, admission fence and reply. An accepted/queued launch or an unknown
@@ -189,12 +189,12 @@ export class RuntimePaneHost {
     if (request.action === "snapshot") return structuredClone(live?.record.snapshot ?? stored.snapshot);
     if (request.action === "session-proof") {
       const { launch, snapshot } = live?.record ?? stored;
-      if (launch.cli !== "claude-code" || snapshot.state !== "exited" || snapshot.noLaunch || !snapshot.sessionId) throw Error("Session proof requires an exited Claude pane");
+      if (!["claude-code", "codex"].includes(launch.cli) || snapshot.state !== "exited" || snapshot.noLaunch || !snapshot.sessionId) throw Error("Session proof requires an exited supported pane");
       let settled = false, timer: ReturnType<typeof setTimeout> | undefined;
       const lease = () => !settled && !this.closing && this.options.online() && current();
       const read = this.options.sessionProof
         ? this.options.sessionProof(launch, snapshot.sessionId, lease)
-        : nativeClaudeSessionState(launch.cwd, snapshot.sessionId, lease);
+        : (launch.cli === "codex" ? nativeCodexSessionState : nativeClaudeSessionState)(launch.cwd, snapshot.sessionId, lease);
       try {
         const state = await Promise.race([read, new Promise<"unknown">(done => { timer = setTimeout(() => done("unknown"), 1500); })]);
         return { snapshot: structuredClone(snapshot), state: lease() && ["absent", "saved", "unknown"].includes(state) ? state : "unknown" };

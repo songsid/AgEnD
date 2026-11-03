@@ -2,6 +2,7 @@
 import { codexTurnRecord, type CodexRecordState } from "./transcript-records.js";
 import type { PaneTranscriptBaseline } from "./runtime-pane-transcript-protocol.js";
 import { constants } from "node:fs";
+import { codexIndexHasNoThread } from "./runtime-pane-codex-index.js";
 import { lstat, open, opendir, realpath } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import type { Stats } from "node:fs";
@@ -72,6 +73,59 @@ export async function nativeClaudeSessionState(cwd: string, sessionId: string, c
     return current() && proof.state === "ready" ? "saved" : "unknown";
   } catch { return "unknown"; }
   finally { await reader?.close(); }
+}
+/** Complete, bounded absence proof, distinct from the transcript reader's incremental "pending" result.
+ * A matching archive, stale metadata, incomplete walk, WAL, unsafe file or lost lease is unknown, never absence. */
+export async function nativeCodexSessionState(cwd: string, sessionId: string, current: () => boolean = () => true,
+  roots = nativePaneTranscriptRoots()): Promise<NativeClaudeSessionState> {
+  if (!validNativeSessionId("codex", sessionId)) return "unknown";
+  const deadline=performance.now()+1250,live=()=>current()&&performance.now()<deadline;
+  const observed=new Map<string,Stats|null>(),matches:string[]=[];
+  const same=(a:Stats,b:Stats)=>sameFile(a,b)&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+  const inspect=async(path:string):Promise<Stats|null>=>{if(!live())throw Error("Expired proof");try{const st=await lstat(path);observed.set(path,st);return st;}catch(error){if(!missing(error))throw error;observed.set(path,null);return null;}};
+  const unchanged=async()=>{for(const[path,before]of observed){if(!live())return false;let after:Stats|null;try{after=await lstat(path);}catch(error){if(!missing(error))return false;after=null;}if(before?(!after||!same(before,after)):after)return false;}return live();};
+  let entries=0,dirs=0;
+  try {
+    const canonical=await realpath(cwd);if(!live()||comparable(canonical)!==comparable(cwd))return "unknown";
+    await realDirectory(roots.codex);await inspect(roots.codex);
+    const walk=async(folder:string,depth:number,archive:boolean):Promise<void>=>{
+      if(++dirs>1024)throw Error("Proof scan bound");const stat=await inspect(folder);if(!stat)return;
+      await realDirectory(folder);const dir=await opendir(folder);
+      for await(const entry of dir){if(!live()||++entries>16384)throw Error("Proof scan bound");
+        const path=join(folder,entry.name);
+        if(entry.isSymbolicLink())throw Error("Unsafe proof entry");
+        if(entry.name.endsWith(`-${sessionId}.jsonl`)){
+          if(archive||!entry.isFile()||entry.isSymbolicLink())throw Error("Archived or unsafe exact match");
+          const st=await inspect(path);if(!st)throw Error("Match changed");regular(st);if(!st.size)throw Error("Incomplete match");matches.push(path);
+        }else if(depth<3&&/^\d{2,4}$/.test(entry.name)){
+          if(!entry.isDirectory()||entry.isSymbolicLink())throw Error("Unsafe date directory");await walk(path,depth+1,archive);
+        }else if(entry.isDirectory())throw Error("Unknown proof layout");
+      }
+    };
+    await walk(join(roots.codex,"sessions"),0,false);await walk(join(roots.codex,"archived_sessions"),0,true);
+    if(matches.length>1)return "unknown";
+    if(matches.length===1){
+      const reader=new NativePaneTranscriptReader("codex",canonical,sessionId,roots);
+      try{let proof:PaneTranscriptBaseline;do{proof=await reader.baseline(undefined,live);}while(live()&&proof.state==="pending");
+        return proof.state==="ready"&&await unchanged()?"saved":"unknown";
+      }finally{await reader.close();}
+    }
+    // No rollouts is not sufficient if Codex retains metadata for that ID. Never open its DB in normal WAL mode.
+    const index=join(roots.codex,"session_index.jsonl"),indexStat=await inspect(index);
+    if(indexStat){regular(indexStat);if(indexStat.size>16*1024*1024)return "unknown";const handle=await open(index,constants.O_RDONLY|(constants.O_NOFOLLOW??0));
+      try{if(!same(indexStat,await handle.stat()))return "unknown";const text=decode(await bytes(handle,0,indexStat.size));
+        for(const line of text.split(/\r?\n/)){if(!live())return "unknown";if(line){const entry=record(line);if(typeof entry.id!=="string"||!validNativeSessionId("codex",entry.id)||entry.id===sessionId)return "unknown";}}
+      }finally{await handle.close();}}
+    const profile=await opendir(roots.codex);
+    for await(const entry of profile){if(!live()||++entries>16384)return "unknown";
+      if(/^state_.*\.sqlite(?:-wal|-shm)?$/.test(entry.name)&&!/^state_5\.sqlite(?:-wal|-shm)?$/.test(entry.name))return "unknown";}
+    const dbPath=join(roots.codex,"state_5.sqlite"),db=await inspect(dbPath),wal=await inspect(dbPath+"-wal");
+    if(wal){regular(wal);if(wal.size)return "unknown";}
+    if(db){regular(db);if(!db.size||db.size>128*1024*1024)return "unknown";
+      if(!await codexIndexHasNoThread(dbPath,sessionId,live))return "unknown";}
+    await realDirectory(roots.codex);
+    return await unchanged()?"absent":"unknown";
+  }catch{return "unknown";}
 }
 /** Reject directory links/junctions, including an ancestor swapped outside a configured provider root. */
 async function realDirectory(path: string): Promise<void> {
