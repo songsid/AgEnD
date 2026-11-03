@@ -23,6 +23,7 @@ function makeFleet(installed: string[]) {
   const have = new Set(installed);
   vi.spyOn(fm, "probeInstalledBackends").mockReturnValue(have);
   vi.spyOn(fm, "isCliInstalled").mockImplementation((b: unknown) => have.has(b as string));
+  vi.spyOn(fm, "isCliInstalledOffLoop").mockImplementation(async (b: unknown) => have.has(b as string));
   const install = vi.spyOn(fm, "startInstallSession").mockImplementation(async (b: unknown) => `installing:${b}`);
   const signIn = vi.spyOn(fm, "launchSignIn").mockImplementation(async (b: unknown) => `signing-in:${b}`);
   return { fm, adapter, notifyAlert, sendText, install, signIn };
