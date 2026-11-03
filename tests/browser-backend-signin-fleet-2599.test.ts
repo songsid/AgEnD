@@ -15,7 +15,7 @@ function rig() {
   const fm = new FleetManager(dir) as any; fm.fleetConfig = { defaults: {}, instances: {} }; rigs.push({ fm, dir });
   const sessions = new WebSessionStore({}); fm.webSessions = sessions; Object.defineProperty(fm, "webToken", { get: () => "scratch-token" });
   const owner = sessions.create({ tier: "admin", surface: "local", label: "Scratch browser", tokenEpoch: tokenEpoch("scratch-token") }).record;
-  vi.spyOn(fm, "isCliInstalled").mockReturnValue(true); const notice = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+  vi.spyOn(fm, "isCliInstalled").mockReturnValue(true); vi.spyOn(fm, "isCliInstalledOffLoop").mockResolvedValue(true); const notice = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
   const recovery = vi.spyOn(fm, "recoverBackendInstances").mockResolvedValue({ woken: [], restarted: [], pending: [] });
   const availability = vi.spyOn(fm.backendAvailability, "refresh").mockResolvedValue(undefined);
   const state = { auth: "invalid" as "valid" | "invalid", alive: true };
