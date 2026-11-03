@@ -25,7 +25,10 @@ const socket = getTmuxSocketName(), session = getTmuxSession();
 if (!socket) throw new Error("the fixture's home must give a private tmux socket");
 const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket, ...args], { encoding: "utf8" });
 const names = Object.keys(fm.fleetConfig.instances).filter((n: string) => !fm.fleetConfig.instances[n].general_topic);
-const [live, full] = [names[0]!, names[1]!];
+// The live pane's agent is a CLI that keeps scrollback; the full-screen pane's is Claude Code (its Log reads its transcript).
+const live = names.find((n: string) => fm.fleetConfig.instances[n].backend !== "claude-code")!;
+const full = names.find((n: string) => fm.fleetConfig.instances[n].backend === "claude-code")!;
+if (!live || !full) throw new Error("the fixture needs a Claude Code agent and another");
 const script = join(fx.dir, "live.py");
 writeFileSync(script, "import sys,time\nn=0\nwhile True:\n  n+=1\n  sys.stdout.write('\\x1b[3%dmline %d\\x1b[0m the agent says something useful here\\n' % (n % 6 + 1, n)); sys.stdout.flush(); time.sleep(0.1)\n");
 tmux("new-session", "-d", "-s", session, "-x", "110", "-y", "30", "-n", "live", `python3 ${script}`);
@@ -40,6 +43,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
 const T = { en: { earlier: "Earlier output", newBelow: "New output below", latest: "Jump to latest", none: "redraws its whole screen" },
   "zh-TW": { earlier: "較早的輸出", newBelow: "下方有新的輸出", latest: "跳到最新", none: "重繪整個畫面" } } as const;
+const LOG = { en: { on: "Earlier output is in the Log tab", off: "the Log tab is off" }, "zh-TW": { on: "較早的輸出在「紀錄」分頁", off: "「紀錄」分頁目前關閉" } } as const;
 
 for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }] as const) {
   const failed: string[] = [];
@@ -95,14 +99,30 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     await sleep(1200);
     need(!(await state()).reading, "scrolling to the bottom follows again");
     need((await state()).overflow <= 0, "no horizontal page overflow");
-    // The full-screen pane.
-    await page.goto(`${p.base}/view/${encodeURIComponent(full)}`);
-    await page.waitForFunction(() => /full-screen CLI/.test(document.querySelector(".v-pre")?.textContent || ""), null, { timeout: 15000 });
-    await page.locator(".v-term-earlier").click();
-    await sleep(1200);
+    // The full-screen pane (Claude Code): the top control links to its Log; the wheel says why, and reads nothing.
+    const fullView = async (logTab: boolean) => {
+      fm.fleetConfig.web = { ...fm.fleetConfig.web, log_tab: logTab };
+      await page.goto(`${p.base}/view/${encodeURIComponent(full)}`);
+      await page.waitForFunction(() => /full-screen CLI/.test(document.querySelector(".v-pre")?.textContent || ""), null, { timeout: 15000 });
+      return page.locator("a.v-term-log");
+    };
+    const link = await fullView(true);
+    need((await link.innerText()).includes(LOG[c.lang].on) && (await link.getAttribute("href")) === `/ui/log/${encodeURIComponent(full)}`, `the Log link (${await link.innerText().catch(() => "none")})`);
+    const histories = { n: 0 };
+    page.on("request", (r: any) => { if (r.url().includes("?history=1")) histories.n++; });
+    const fb = (await page.locator(".v-term").boundingBox())!;
+    if (c.device === "desk") { await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2); await page.mouse.wheel(0, -400); }
+    else await page.locator(".v-term").focus().then(() => page.keyboard.press("PageUp"));
+    await sleep(800);
     const s5 = await state();
-    need(!s5.reading && s5.note.includes(t.none), `a full-screen CLI: no scrollback, said, still following (${s5.note})`);
+    need(!s5.reading && s5.note.includes(t.none) && histories.n === 0, `the wheel: said why, nothing read (${s5.note}; reads ${histories.n})`);
     await page.screenshot({ path: shotPath(SMOKE, c as any, "full-screen") });
+    await link.click();
+    await page.waitForURL(`**/ui/log/${encodeURIComponent(full)}`, { timeout: 10000 }).catch(() => {});
+    need(page.url().endsWith(`/ui/log/${encodeURIComponent(full)}`), `the link opens its Log (${page.url()})`);
+    const off = await fullView(false);
+    need((await off.innerText()).includes(LOG[c.lang].off) && (await off.getAttribute("href")) === "/settings/web-dashboard", `the Log tab off: says so, links to Settings (${await off.innerText().catch(() => "none")})`);
+    await page.screenshot({ path: shotPath(SMOKE, c as any, "full-screen-log-off") });
     need(p.errors.length === 0, `no page error or CSP violation: ${p.errors.slice(0, 2).join(" / ")}`);
   } catch (e) { failed.push(`threw: ${String(e).slice(0, 300)}`); }
   await p.ctx.close();

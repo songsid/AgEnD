@@ -26,7 +26,7 @@ import { viewStore } from "./view-roster-store.js";
 /** #1580: the app's stream says the fleet is not answering (a restart): the View's polls skip their turn until it is. */
 const fleetUnreachable = () => appStore.get().connection === "reconnecting";
 import { navigate } from "./app-nav.js";
-import { viewPath } from "./app-route.js";
+import { logPath, sectionPath, viewPath } from "./app-route.js";
 import { Dialog } from "./ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "./ui-states.js";
 import { Icon } from "./ui-icons.js";
@@ -198,8 +198,8 @@ export function ViewPanel({ route, navKey }) {
   else if (!it) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${tn("notFound", { name })} hint=${tn("notFoundHint")} /></div>`;
   else if (guest && !trusted) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="view" title=${tn("guestNeedsTrusted")} hint=${tn("guestNeedsTrustedHint")} /></div>`;
   else if (guest) body = html`<p data-trust="panel-content" class="v-watching" role="note">${tn("guestWatching")}</p>
-    <${Terminal} key=${name} name=${name} lease=${lease} density=${density} every=${GUEST_PANE_MS} backend=${it.backend || ""} />`;
-  else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} backend=${it.backend || ""} />
+    <${Terminal} key=${name} name=${name} lease=${lease} density=${density} every=${GUEST_PANE_MS} backend=${it.backend || ""} signedIn=${false} />`;
+  else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} backend=${it.backend || ""} signedIn=${!viewOnly} />
     <${ViewIdentity} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
 
   return html`<div data-effect-panel="view" class="panel p-view">
@@ -228,7 +228,21 @@ const GUEST_PANE_MS = 1000;
 const NOTE_MS = 6000;
 /** M-2262 survey: CLIs that redraw their whole window (no tmux scrollback even outside the alternate screen). */
 const REDRAWS_IN_PLACE = new Set(["grok"]);
-function Terminal({ name, lease, density, every = 800, backend = "" }) {
+/** M-2262 survey: the full-screen CLIs (the alternate screen, or redrawn in place) — tmux keeps nothing above their screen. */
+const FULL_SCREEN = new Set(["claude-code", "opencode", "grok"]);   // agy: its chat UI unverified — found by the read
+/** The full-screen CLIs whose earlier output the Log tab shows (it reads their transcript: log-service.ts). */
+const LOG_HAS_HISTORY = new Set(["claude-code"]);
+/**
+ * M-2267 option (2), the leader's safe default: where a full-screen CLI's earlier output is — its Log tab (or that the
+ * Log tab is off, and where to turn it on). Only for whom the Log tab is (a signed-in session on the full app; never a
+ * guest or a View-only reader: they get the plain words), and only for a CLI the Log tab reads.
+ */
+function logLinkFor(name, backend, signedIn) {
+  if (!signedIn || !LOG_HAS_HISTORY.has(backend)) return null;
+  const on = typeof document !== "undefined" && document.body?.dataset?.logTab === "1";
+  return on ? { href: logPath(name), text: tn("earlierInLog") } : { href: sectionPath("web-dashboard"), text: tn("logTabOff") };
+}
+function Terminal({ name, lease, density, every = 800, backend = "", signedIn = false }) {
   const term = useRef(null), pre = useRef(null);
   const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "" });
   const [problem, setProblem] = useState(null);
@@ -239,8 +253,9 @@ function Terminal({ name, lease, density, every = 800, backend = "" }) {
   const [newBelow, setNewBelow] = useState(false);
   const [historyNote, setHistoryNoteState] = useState(null);
   // A CLI found to keep no scrollback (full screen): nothing is offered or read again for it; the note says why, briefly.
-  const [noScrollback, setNoScrollback] = useState(false);
-  const noScrollbackRef = useRef(false);
+  const [noScrollback, setNoScrollback] = useState(FULL_SCREEN.has(backend));
+  const noScrollbackRef = useRef(FULL_SCREEN.has(backend));
+  const logLink = logLinkFor(name, backend, signedIn);
   const noteTimer = useRef(null);
   const setHistoryNote = (note, brief = false) => {
     lease.clear(noteTimer.current); noteTimer.current = null;
@@ -388,7 +403,9 @@ function Terminal({ name, lease, density, every = 800, backend = "" }) {
     }
   }, [lease, name]);
   const reading = mode === "reading";
+  // A full-screen CLI's Log link is a bar above the terminal, not over it: its first row is never covered.
   return html`<div class="v-term-box">
+    ${noScrollback && logLink ? html`<p class="v-term-logbar"><a class="v-term-log" href=${logLink.href}>${logLink.text}<${Icon} name="forward" size=${14} /></a></p>` : null}
     <div data-trust="panel-content" class=${`v-term${reading ? " is-reading" : ""}`} ref=${term} tabindex="0" aria-label=${tn(reading ? "readingEarlier" : "earlierHint")}>${problem ? html`<p class="v-term-note" role="status">${problem}</p>` : null}<pre ref=${pre} class="v-pre"></pre></div>
     ${historyNote ? html`<p class="v-term-history-note" role="status">${historyNote}</p>` : null}
     ${mode === "follow" && !noScrollback ? html`<button type="button" class="v-term-earlier btn btn-sm" title=${tn("earlierHint")} onClick=${() => loadEarlier.current && loadEarlier.current()}><${Icon} name="up" size=${14} />${tn("earlier")}</button>` : null}

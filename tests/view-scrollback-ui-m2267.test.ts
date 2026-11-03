@@ -168,6 +168,53 @@ describe("when there is nothing to read", () => {
   });
 });
 
+describe("a full-screen CLI's earlier output: the Log tab (option 2, the leader's safe default)", () => {
+  const as = async (backend: string, opts: { logTab?: boolean; viewOnly?: boolean } = {}) => {
+    ROSTER[0]!.backend = backend;
+    p.document.body.setAttribute("data-log-tab", opts.logTab === false ? "0" : "1");
+    const { appStore } = await import("/assets/app-store.js") as any;
+    appStore.set({ viewOnly: !!opts.viewOnly });
+    await mount();
+  };
+  afterEach(async () => { ROSTER[0]!.backend = "codex"; p.document.body.removeAttribute("data-log-tab"); const { appStore } = await import("/assets/app-store.js") as any; appStore.set({ viewOnly: false }); });
+  it("Claude Code, signed in, the Log tab on: the top control is the link to its Log; nothing is read, nothing offered", async () => {
+    await as("claude-code");
+    const link = p.root.querySelector("a.v-term-log")!;
+    expect([link.textContent, link.getAttribute("href")]).toEqual(["Earlier output is in the Log tab", "/ui/log/alpha"]);
+    expect(p.root.querySelector("button.v-term-earlier")).toBeNull();
+    fire(term(), "wheel", { deltaY: -120 }); await settle(10);
+    expect(historyReads()).toBe(0);                                             // known full screen: no read at all
+    expect(p.root.querySelector(".v-term-history-note")!.textContent).toContain("redraws its whole screen");
+  });
+  it("the Log tab off: says so, and links to where it is turned on (Settings → Web dashboard)", async () => {
+    await as("claude-code", { logTab: false });
+    const link = p.root.querySelector("a.v-term-log")!;
+    expect([link.textContent, link.getAttribute("href")]).toEqual(["Earlier output: the Log tab is off. Turn it on in Settings", "/settings/web-dashboard"]);
+  });
+  it("a reader who cannot open the Log (View-only) gets the plain words only, no link", async () => {
+    await as("claude-code", { viewOnly: true });
+    expect([p.root.querySelector("a.v-term-log"), p.root.querySelector("button.v-term-earlier")]).toEqual([null, null]);
+    fire(term(), "wheel", { deltaY: -120 }); await settle(10);
+    expect(p.root.querySelector(".v-term-history-note")!.textContent).toContain("redraws its whole screen");
+  });
+  it("a full-screen CLI the Log does not read (Grok, OpenCode): no link — the Log would not have it either", async () => {
+    for (const backend of ["grok", "opencode"]) {
+      await as(backend);
+      expect([p.root.querySelector("a.v-term-log"), p.root.querySelector("button.v-term-earlier")], backend).toEqual([null, null]);
+      await p.unmount();
+    }
+  });
+  it("a CLI that keeps scrollback (Codex) is unchanged: Earlier output, no Log link", async () => {
+    await as("codex");
+    expect([!!p.root.querySelector("button.v-term-earlier"), p.root.querySelector("a.v-term-log")]).toEqual([true, null]);
+  });
+  it("zh-TW", async () => {
+    i18n.setLang("zh-TW", { store: false });
+    await as("claude-code");
+    expect(p.root.querySelector("a.v-term-log")!.textContent).toBe("較早的輸出在「紀錄」分頁");
+  });
+});
+
 describe("words", () => {
   it("zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });

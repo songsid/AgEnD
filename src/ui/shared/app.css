@@ -1341,6 +1341,9 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .v-term-earlier, .v-term-latest { position: absolute; right: var(--s-4); z-index: 2; display: inline-flex; align-items: center; gap: 4px; opacity: .88; }
 .v-term-earlier { top: var(--s-2); }
 .v-term-latest { bottom: var(--s-3); opacity: 1; }
+.v-term-logbar { flex-shrink: 0; margin: 0; padding: var(--s-2) var(--s-4); background: #111111; border-bottom: 1px solid #2a2a2a; text-align: right; font-size: var(--fs-sm); }
+.v-term-logbar a { display: inline-flex; align-items: center; gap: 4px; color: #9cc8ff; text-decoration: underline; text-underline-offset: 2px; min-height: 28px; }
+@media (pointer: coarse) { .v-term-logbar a { min-height: 44px; } }
 .v-term-latest.has-new { background: var(--accent-fill); border-color: transparent; color: var(--on-accent); }
 .v-term-earlier:hover, .v-term-earlier:focus-visible { opacity: 1; }
 .v-term-history-note { position: absolute; left: var(--s-3); right: var(--s-3); bottom: var(--s-3); z-index: 2; margin: 0; padding: var(--s-1) var(--s-3); border-radius: var(--r-sm); background: rgba(20, 20, 20, .92); border: 1px solid #3a3a3a; color: #e0e0e0; font-size: var(--fs-sm); }
