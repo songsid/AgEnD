@@ -50,7 +50,7 @@ export async function finishPermission(state,{fleet,agents,until,diagnostics,rep
  const send=async(row,content)=>assert(await fleet.deliverToInstance(row.name,{type:'fleet_inbound',content,meta:{source:'user',adapter_id:'private-acceptance',chat_id:'private-chat',thread_id:row.name,message_id:randomUUID(),user:'private-person',runtime:'native-proof'}}));
  diagnostics.safety??={};
  await until(()=>daemon.nativePauseReady(),'Claude idle before shell permission check',30000);state.cards.delete(claude.name);
- const beforeOther=other?.nativePaneLifecycle.snapshot().commandSequence;
+ const beforeOther=other?.nativePaneLifecycle.snapshot().commandSequence,replyBefore=replies.filter(row=>row.name===claude.name).length,keyStart=diagnostics.keys.length;
  const command=`node -e "require('fs').writeFileSync('permission-must-not-exist.txt','MUST_NOT_RUN')"`;
  await send(claude,`Permission acceptance. Use your native shell tool exactly once to request this command in your current workspace: ${command}. Stop at its permission dialog for the person. Do not approve it, use another tool, or retry. After the person rejects it, use the AgEnD reply tool once with exactly NATIVE_CLAUDE_FLEET_OK and finish.`);
  await until(async()=>{
@@ -65,15 +65,27 @@ export async function finishPermission(state,{fleet,agents,until,diagnostics,rep
   }).join('\n');
   const card=state.cards.get(claude.name);diagnostics.permissionCard={seen:!!card,kind:card?.kind??null,optionNumbers:card?.options?.map(row=>row.n)??[],refusalLabel:card?.options?.find(row=>/^(?:no|deny\b|reject\b|cancel\b|(?:type here to )?tell Claude\b)/i.test(row.title))?.title??null,sentinelInQuestion:card?.question?.includes('permission-must-not-exist.txt')??false};if(card?.question?.includes('permission-must-not-exist.txt')){diagnostics.permissionCard.thirdOptionLabel=card.options.find(row=>row.n===3)?.title??null;if(!diagnostics.permissionCard.refusalLabel)throw Error('Unrecognised refusal label; inspect synthetic permission receipt');}return card?.kind==='question'&&card.question.includes('permission-must-not-exist.txt')&&card.options.some(option=>/^(?:no|deny\b|reject\b|cancel\b|(?:type here to )?tell Claude\b)/i.test(option.title));
  },'ordinary native shell permission card',120000);
- const card=state.cards.get(claude.name),deny=card.options.find(option=>/^(?:no|deny\b|reject\b|cancel\b|(?:type here to )?tell Claude\b)/i.test(option.title));assert(deny);
- // Ordinary server-side button handler after its existing local-admin HTTP gate; the daemon verifies each cursor step.
- await until(()=>[...fleet.pendingNonceButtons.values()].some(entry=>entry.instanceName===claude.name&&entry.remoteCard?.identity===card.identity&&entry.web),'ordinary Needs-you permission prompt',15000);
- const entry=[...fleet.pendingNonceButtons.values()].find(entry=>entry.instanceName===claude.name&&entry.remoteCard?.identity===card.identity&&entry.web),action='opt-'+deny.n;assert(entry.web.actions.some(value=>value.id===action));
- assert.equal((await fleet.clickWebPrompt(claude.name,entry.nonce,action)).status,200);
- const afterClick=daemon.nativePaneLifecycle.snapshot().commandSequence;assert(afterClick>0);
- assert.equal((await fleet.clickWebPrompt(claude.name,entry.nonce,action)).status,409);assert.equal(daemon.nativePaneLifecycle.snapshot().commandSequence,afterClick);
- assert.equal(other?.nativePaneLifecycle.snapshot().commandSequence,beforeOther,'Permission answer touched the other pane');
- await until(async()=>{const pane=await daemon.tmux.capturePane();return !daemon.backend.getRuntimeDialogs().some(dialog=>dialog.remoteCard?.(pane)?.identity===card.identity);},'permission dialog closed after deny',15000);
+
+ const currentCard=async()=>{let pane;try{pane=await daemon.tmux.capturePane();}catch{return undefined;}
+  for(const dialog of daemon.backend.getRuntimeDialogs()){if(dialog.pattern.test(pane)&&(!dialog.isActive||dialog.isActive(pane))){const card=dialog.remoteCard?.(pane);if(card)return card;}}
+  return daemon.backend.readInputRow(pane)!==null?null:undefined;
+ };
+ let card=state.cards.get(claude.name),closed=false,approvals=0;const used=new Set();
+ for(;approvals<3&&!closed;approvals++){
+  assert(card?.question.includes('permission-must-not-exist.txt'),'The fresh approval is no longer for our synthetic command');
+  const deny=card.options.find(option=>/^(?:no|deny\b|reject\b|cancel\b|(?:type here to )?tell Claude\b)/i.test(option.title));assert(deny);
+  // Each changed card needs its own fresh person action; a stopped old action never continues automatically.
+  await until(()=>[...fleet.pendingNonceButtons.values()].some(entry=>entry.instanceName===claude.name&&entry.remoteCard?.identity===card.identity&&entry.web&&!used.has(entry.nonce)),'fresh Needs-you permission approval',15000);
+  const entry=[...fleet.pendingNonceButtons.values()].find(entry=>entry.instanceName===claude.name&&entry.remoteCard?.identity===card.identity&&entry.web&&!used.has(entry.nonce)),action='opt-'+deny.n;assert(entry.web.actions.some(value=>value.id===action));used.add(entry.nonce);
+  assert.equal((await fleet.clickWebPrompt(claude.name,entry.nonce,action)).status,200);const afterClick=daemon.nativePaneLifecycle.snapshot().commandSequence;
+  assert.equal((await fleet.clickWebPrompt(claude.name,entry.nonce,action)).status,409);assert.equal(daemon.nativePaneLifecycle.snapshot().commandSequence,afterClick);
+  assert.equal(other?.nativePaneLifecycle.snapshot().commandSequence,beforeOther,'Permission answer touched the other pane');
+  let next;await until(async()=>{assert(await absent(join(state.root,'workspace','permission-must-not-exist.txt')),'Shell sentinel appeared while answering');next=await currentCard();return next===null||next!==undefined&&next.identity!==card.identity;},'permission answer or changed card',15000);
+  if(next===null)closed=true;else card=next;
+ }
+ assert(closed,'Permission stayed held after bounded fresh approvals');
+ const finalEnter=diagnostics.keys.slice(keyStart).filter(row=>row.key==='Enter'&&row.onCard).at(-1);assert(finalEnter&&finalEnter.targetSentinel&&finalEnter.cursor>=2,'No verified submit on the actual refusal row');
+ await until(()=>replies.filter(row=>row.name===claude.name).length>replyBefore,'reply after actual permission rejection',120000);
  assert(await absent(join(state.root,'workspace','permission-must-not-exist.txt')),'Denied shell command ran');
- Object.assign(diagnostics.safety,{ordinaryNeedsYouCard:true,verifiedDenyButton:true,duplicateButtonRejected:true,otherPaneUntouched:true,noRawCaptureSaved:true});return diagnostics.safety;
+ Object.assign(diagnostics.safety,{ordinaryNeedsYouCard:true,verifiedDenyButton:true,freshApprovalCount:approvals,changedCardNeedsFreshApproval:approvals>1,duplicateButtonRejected:true,otherPaneUntouched:true,actualRefusalEnter:true,replyAfterRejection:true,noRawCaptureSaved:true});return diagnostics.safety;
 }
