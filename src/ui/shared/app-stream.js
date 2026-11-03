@@ -87,9 +87,10 @@ export function createStream(opts) {
   // frames, each a whole snapshot, each redrawing the page (seconds of work before the newest message shows). A status
   // that comes after a quiet moment is delivered at once, as before; more statuses before the next turn of the page's
   // task loop replace the waiting one, delivered then — or before any other event, so the order of events never changes.
+  // The next turn is a 0 ms timer: in a hidden tab the browser may run it late (a minute when throttled) — a status
+  // then waits that long while nobody looks (Needs you, the title's count and notifications ride `needs`, never held).
   let pendingStatus = null, statusBurst = false;
-  const Channel = env.MessageChannel || globalThis.MessageChannel;
-  const turn = typeof Channel === "function" ? (() => { const c = new Channel(); c.port1.onmessage = endBurst; c.port1.unref?.(); return () => c.port2.postMessage(0); })() : () => env.setTimeout(endBurst, 0);
+  const turn = () => env.setTimeout(endBurst, 0);
   function endBurst() { statusBurst = false; flushStatus(); }
   function flushStatus() { const d = pendingStatus; pendingStatus = null; if (d !== null) live("status", d, null); }
   function liveStatus(data) {
