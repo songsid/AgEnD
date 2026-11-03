@@ -60,8 +60,10 @@ export async function deliverStates({ fleet, row, replies, until, resumed = fals
     // Its terminal-only continuation supplies genuine ongoing work for the busy-delivery probe.
     await until(() => replies.slice(before).some(reply => reply.name === row.name && reply.text === expected + '_IDLE'), 'idle reply before busy probe ' + row.agent.cli, 180000);
     await until(async () => {
-      const pane = await daemon.tmux.capturePane();
-      return daemon.backend.getBusyPattern?.()?.test(pane) === true;
+      try {
+        const pane = await daemon.tmux.capturePane();
+        return daemon.backend.getBusyPattern?.()?.test(pane) === true;
+      } catch { return false; } // Native repaint refuses a capture; it is not positive busy evidence. Poll within the same bound.
     }, 'real busy screen ' + row.agent.cli, 45000);
     await deliver('while-busy');
   }
