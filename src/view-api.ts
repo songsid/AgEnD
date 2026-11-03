@@ -331,8 +331,9 @@ function sendPane(res: ServerResponse, { text, size, scrollback }: { text: strin
   const bytes = Buffer.from(text, "utf8");
   res.writeHead(200, headers);
   // Over the cap: its end, from the first whole line in it (never mid-character or mid-escape sequence).
-  const tail = bytes.length > maxBytes ? bytes.subarray(bytes.length - maxBytes) : bytes;
-  const line = tail === bytes ? -1 : tail.indexOf(0x0a);
+  if (bytes.length <= maxBytes) { res.end(text); return; }                    // whole: the text, as before
+  const tail = bytes.subarray(bytes.length - maxBytes);
+  const line = tail.indexOf(0x0a);
   res.end(line >= 0 ? tail.subarray(line + 1) : tail);
 }
 function paneFailed(ctx: ViewApiContext, res: ServerResponse, name: string, err: unknown): void {
