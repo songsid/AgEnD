@@ -43,9 +43,10 @@ export async function deliverStates({ fleet, row, replies, until, resumed = fals
   const before = count(), daemon = fleet.daemons.get(row.name);
   await until(() => daemon.nativePauseReady(), 'idle composer ' + row.agent.cli, 45000);
   const deliver = async suffix => {
+    const canary=expected+'_'+suffix.toUpperCase().replaceAll('-','_');
     const accepted = await fleet.deliverToInstance(row.name, {
       type: 'fleet_inbound',
-      content: `Acceptance ${suffix}: use the AgEnD reply tool once with exactly ${expected}. Do not run commands or edit files. Then finish.`,
+      content: `Acceptance ${suffix}: this is a separate request with its own reply. Use the AgEnD reply tool once with exactly ${canary}. If the earlier request is still in flight, finish its separate reply first. Do not run commands or edit files. Then finish.`,
       meta: { source: 'user', adapter_id: 'private-acceptance', chat_id: 'private-chat', thread_id: row.name,
         message_id: randomUUID(), user: 'private-person', runtime: 'native-proof' },
     });
@@ -59,6 +60,8 @@ export async function deliverStates({ fleet, row, replies, until, resumed = fals
     }, 'real busy screen ' + row.agent.cli, 45000);
     await deliver('while-busy');
   }
-  await until(() => count() === before + (resumed ? 1 : 2), 'scoped MCP reply states ' + row.agent.cli, 180000);
+  const expectedReplies=(resumed?['JUST_RESUMED']:['IDLE','WHILE_BUSY']).map(state=>expected+'_'+state);
+  await until(() => expectedReplies.every(text=>replies.filter(reply=>reply.name===row.name).slice(before).some(reply=>reply.text===text)), 'scoped MCP reply states ' + row.agent.cli, 180000);
+  assert.equal(count(),before+(resumed?1:2),'Each state replies exactly once');
   await until(() => daemon.nativePauseReady(), 'settled composer ' + row.agent.cli, 45000);
 }
