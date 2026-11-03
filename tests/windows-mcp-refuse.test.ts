@@ -1,6 +1,7 @@
 /**
- * M-2239 P1-1: a Windows agent is created and configured only by an administrator in the web dashboard. No MCP path
- * reaches it: create_instance refuses `runtime: "windows"` and `sandbox`, the schema does not offer them, handleCreate
+ * M-2239 P1-1: a Windows agent is created and configured only by an administrator. Without the pending request path
+ * (#2942: an agent's request held for a General confirmation, in windows-agent-request-2942.test.ts) no MCP path reaches
+ * it: create_instance refuses `runtime: "windows"` and `sandbox`, handleCreate
  * (deploy_template's path too) refuses the runtime, and update_instance_config / replace_instance refuse a Windows
  * target. Messages to a Windows agent (send_to_instance) are untouched.
  */

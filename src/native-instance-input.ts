@@ -13,6 +13,17 @@ export const NativeInstanceCreateArgs = z.object({
   if(value.native_adapter==="pane"&&!['codex','claude-code'].includes(value.backend))ctx.addIssue({code:"custom",message:"Persistent Windows panes support Codex and Claude Code only"});
   if(value.channel_id&&value.native_adapter!=="pane")ctx.addIssue({code:"custom",message:"Only persistent panes allocate topics"});
 });
+/** The web editor's Windows settings patch (PATCH /ui/instances/:name). The one parser for it: the web and #2942's pending MCP update. */
+export const NativeInstancePatch = z.object({
+  display_name:z.string().min(1).max(64).optional(), description:z.string().max(512).optional(),
+  working_directory:z.string().min(1).max(1024).optional(), model:z.string().max(160).optional(),
+  systemPrompt:z.string().max(8000).optional(), native_sandbox:z.enum(["read-only","workspace-write"]).optional(),
+  tags:z.array(z.string().min(1).max(64)).max(32).optional(),
+}).strict().refine(value=>Object.keys(value).length>0,"Choose a setting to update");
+/** The Windows settings an agent may ask to change (#2942): the web editor's fields the MCP schema offers, nothing more. */
+export const NativeInstanceConfigEdit = z.object({
+  display_name:z.string().min(1).max(64).optional(), description:z.string().max(512).optional(), model:z.string().max(160).optional(),
+}).strict().refine(value=>Object.keys(value).length>0,"Choose a setting to update");
 /** Resolve before approval, then recheck this exact connection rather than substituting another world. */
 export function nativePaneTopicTarget(config:FleetConfig|null,requested?:string){
   const channels=config?.channels??(config?.channel?[config.channel]:[]);
@@ -34,3 +45,4 @@ export function parseNativeInstanceCreate(body: unknown) {
     ...(input.tags ? { tags: input.tags } : {}) };
   return { input, profile };
 }
+export type NativeInstanceCreateInput = ReturnType<typeof parseNativeInstanceCreate>;

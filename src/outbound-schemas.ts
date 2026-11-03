@@ -570,6 +570,21 @@ export const CreateInstanceArgs = z.object({
   ),
 }).passthrough();
 
+/**
+ * #2942: what an agent is shown for create_instance — the fields above plus the Windows request. Validation of the
+ * ordinary create is still CreateInstanceArgs; a `runtime: "windows"` request is validated by parseNativeInstanceCreate
+ * and held for a fleet admin's General confirmation (nothing is created by the call).
+ */
+export const CreateInstanceToolArgs = CreateInstanceArgs.extend({
+  runtime: z.literal("windows").optional().describe(
+    "Windows runtime: the agent runs on the Windows computer. It is only created after a fleet admin confirms the request on its General card; the call returns pending until then.",
+  ),
+  sandbox: z.enum(["read-only", "workspace-write"]).optional().describe("Windows runtime only: the sandbox mode (default read-only)."),
+  native_adapter: z.enum(["exec", "pane"]).optional().describe("Windows runtime only: exec (default) or a persistent pane with a chat topic."),
+  channel_id: z.string().min(1).max(160).optional().describe("Windows runtime, persistent pane only: the chat connection to create its topic on."),
+  machineId: z.string().uuid().optional().describe("Windows runtime only: the remote Windows computer to run it on (omit for this computer)."),
+});
+
 // ── Cross-instance communication ────────────────────────────────────────
 
 const ForwardMessageIds = z.array(z.string().min(1).max(256).regex(/^[^\s\u0000-\u001f\u007f]+$/))

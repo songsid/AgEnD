@@ -8,14 +8,9 @@ import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import { isWindowsInstance, isNativePaneInstance } from "./native-instance-registry.js";
 import type { WebApiContext } from "./web-api.js";
 import { settingsRequestExecution } from "./settings-request-capability.js";
-import { parseNativeInstanceCreate } from "./native-instance-input.js";
+import { NativeInstancePatch, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
+import type { SettingsExecution } from "./settings-transaction.js";
 
-const Tags = z.array(z.string().min(1).max(64)).max(32);
-const Patch = z.object({
-  display_name:z.string().min(1).max(64).optional(), description:z.string().max(512).optional(),
-  working_directory:z.string().min(1).max(1024).optional(), model:z.string().max(160).optional(),
-  systemPrompt:z.string().max(8000).optional(), native_sandbox:z.enum(["read-only","workspace-write"]).optional(), tags:Tags.optional(),
-}).strict().refine(value=>Object.keys(value).length>0,"Choose a setting to update");
 const Message = z.object({requestId:z.string().uuid(),prompt:z.string().min(1).max(8000)}).strict();
 function json(res:ServerResponse,status:number,value:unknown):void {
   if(res.destroyed || res.writableEnded)return;
@@ -29,15 +24,29 @@ function admission(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiCont
   return allowed;
 }
 
+/** The Windows creation both paths run: the web's confirmed/direct request and #2942's confirmed agent request. */
+export function createNativeWindowsInstance(host:NativeWindowsHost,parsed:NativeInstanceCreateInput,allowed:()=>boolean,execution?:SettingsExecution):Promise<unknown> {
+  const {profile,input}=parsed;
+  return input.native_adapter==="pane"
+    ? (()=>{if(!execution||!host.createNativePaneInstance)throw Error("Persistent pane creation requires its approved Settings operation");return host.createNativePaneInstance(profile,input.channel_id,allowed,execution);})()
+    : (async()=>{const runtime=host.nativeInstanceRuntime!();return execution ? runtime.create(profile,allowed,execution) : runtime.create(profile,allowed);})();
+}
+/** The Windows settings write both paths run (the web editor's PATCH and #2942's confirmed agent update). */
+export function updateNativeWindowsInstance(host:NativeWindowsHost,name:string,patch:Record<string,unknown>,allowed:()=>boolean,execution?:SettingsExecution):Promise<unknown> {
+  const pane=isNativePaneInstance(host.fleetConfig?.instances[name]);
+  if(pane&&!host.updateNativePaneConfig)throw Error("Persistent pane settings are unavailable");
+  // The web's own calls keep their arguments exactly; only a settings execution adds its transaction.
+  if(pane) return execution ? host.updateNativePaneConfig!(name,patch,allowed,execution) : host.updateNativePaneConfig!(name,patch,allowed);
+  return (async()=>execution ? host.nativeInstanceRuntime!().update(name,patch as never,allowed,execution) : host.nativeInstanceRuntime!().update(name,patch as never,allowed))();
+}
+export type NativeWindowsHost=Pick<WebApiContext,"fleetConfig"|"nativeInstanceRuntime"|"createNativePaneInstance"|"updateNativePaneConfig">;
+
 /** The shared creation route has already read the body; Linux creation continues through its existing lifecycle. */
 export async function createNativeInstance(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiContext,body:unknown):Promise<void> {
   const allowed=admission(req,res,url,ctx);if(!allowed)return;
   try {
-    const {profile,input}=parseNativeInstanceCreate(body);
-    const runtime=ctx.nativeInstanceRuntime!(),execution=settingsRequestExecution(req);
-    const result=input.native_adapter==="pane"
-      ? await (()=>{if(!execution||!ctx.createNativePaneInstance)throw Error("Persistent pane creation requires its approved Settings operation");return ctx.createNativePaneInstance(profile,input.channel_id,allowed,execution);})()
-      : execution ? await runtime.create(profile,allowed,execution) : await runtime.create(profile,allowed);
+    const parsed=parseNativeInstanceCreate(body),execution=settingsRequestExecution(req);
+    const result=await createNativeWindowsInstance(ctx,parsed,allowed,execution);
     // A committed settings execution has already checked authority and persisted the identity. Its capability
     // cannot authorize another write, but the completed operation must still return its success receipt.
     if(!execution?.completed && !allowed()){json(res,403,{error:"Authorization expired"});return;}
@@ -65,10 +74,8 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
     if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
     const body=raw.length?JSON.parse(raw.toString("utf8")):{};
     if(method==="PATCH" && !operation){
-      const patch=Patch.parse(body);
-      const result=isNativePaneInstance(ctx.fleetConfig?.instances[name])
-        ? await (()=>{if(!ctx.updateNativePaneConfig)throw Error("Persistent pane settings are unavailable");return ctx.updateNativePaneConfig(name,patch,allowed);})()
-        : await service.update(name,patch,allowed);
+      const patch=NativeInstancePatch.parse(body);
+      const result=await updateNativeWindowsInstance(ctx,name,patch,allowed);
       if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,result);return;
     }
