@@ -77,7 +77,7 @@ const count = async (pin, marker) => {
  for (let page = 0; page < 128; page++) {
   const batch = await native.port.readTranscript(cursor); assert(!batch.gap, 'Transcript gap'); if (batch.state !== 'ready') break;
   const records = Buffer.from(batch.data, 'base64').toString('utf8').split('\n').filter(Boolean).map(JSON.parse);
-  for (const record of records) if (record.type === 'response_item' && JSON.stringify(record.payload?.content).includes(marker)) {
+  for (const record of records) if (record.type === 'response_item' && (JSON.stringify(record.payload?.content) || '').includes(marker)) {
    if (record.payload.role === 'user') user++; if (record.payload.role === 'assistant') assistant++;
   }
   if (batch.complete || batch.cursor.offset === cursor.offset) break; cursor = batch.cursor;
