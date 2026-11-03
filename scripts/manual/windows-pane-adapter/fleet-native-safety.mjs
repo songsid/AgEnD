@@ -42,6 +42,13 @@ export async function finishSafety(state,{fleet,agents,until,diagnostics,replies
  assert(await absent(join(state.root,'outside','must-not-exist.txt')),'Sibling write escaped the workspace');
  assert(await absent(join(state.root,'parent-must-not-exist.txt')),'Parent write escaped the workspace');
  diagnostics.safety={readOnlyWriteBlocked:!!codex,readOnlyShellAttempt:!!codex,workspaceWriteObserved:true,siblingWriteRefused:true,parentWriteRefused:true,localWideningSettingsIgnored:true,toolTargets:state.toolTargets??[]};
+ return finishPermission(state,{fleet,agents,until,diagnostics,replies});
+}
+export async function finishPermission(state,{fleet,agents,until,diagnostics,replies}){
+ const absent=async path=>{try{await access(path);return false;}catch(error){if(error.code==='ENOENT')return true;throw error;}};
+ const claude=agents.find(row=>row.agent.cli==='claude-code'),codex=agents.find(row=>row.agent.cli==='codex'),daemon=fleet.daemons.get(claude.name),other=codex?fleet.daemons.get(codex.name):null;
+ const send=async(row,content)=>assert(await fleet.deliverToInstance(row.name,{type:'fleet_inbound',content,meta:{source:'user',adapter_id:'private-acceptance',chat_id:'private-chat',thread_id:row.name,message_id:randomUUID(),user:'private-person',runtime:'native-proof'}}));
+ diagnostics.safety??={};
  await until(()=>daemon.nativePauseReady(),'Claude idle before shell permission check',30000);state.cards.delete(claude.name);
  const beforeOther=other?.nativePaneLifecycle.snapshot().commandSequence;
  const command=`node -e "require('fs').writeFileSync('permission-must-not-exist.txt','MUST_NOT_RUN')"`;
@@ -49,6 +56,13 @@ export async function finishSafety(state,{fleet,agents,until,diagnostics,replies
  await until(async()=>{
   assert(await absent(join(state.root,'workspace','permission-must-not-exist.txt')),'Shell sentinel appeared before permission answer');
   const screen=await daemon.tmux.capturePane().catch(()=>'');diagnostics.permissionShape={powershell:/^[ \t]*PowerShell command[ \t]*$/m.test(screen),bash:/^[ \t]*Bash command[ \t]*$/m.test(screen),proceed:/^[ \t]*Do you want to proceed\?[ \t]*$/m.test(screen),cancel:/^[ \t]*Esc to cancel\b/m.test(screen),numbers:[...screen.matchAll(/^[ \t]*[❯›]?[ \t]*(\d)\.[ \t]+(?:Yes|No)\b/gm)].map(row=>Number(row[1])),cursorNumbers:[...screen.matchAll(/^[ \t]*[❯›][ \t]*(\d)\.[ \t]+/gm)].map(row=>Number(row[1]))};
+  // Keep only this synthetic permission layout; all command/body/unknown footer text is replaced before storage.
+  const rows=screen.replace(/\r/g,'').split('\n'),head=rows.findLastIndex(row=>/^[ \t]*(?:PowerShell|Bash) command[ \t]*$/.test(row));
+  if(head>=0)diagnostics.safePermissionFrame=rows.slice(head).map(row=>{
+   if(!row.trim()||/^[ \t]*(?:PowerShell command|Bash command|Do you want to proceed\?)[ \t]*$/.test(row)||/^[ \t]*[─━═╌┄┈\-]{8,}[ \t]*$/.test(row))return row;
+   const option=/^([ \t]*[❯›]?[ \t]*\d[.)][ \t]+)(.*)$/.exec(row);if(option)return option[1]+(/^(Yes|No)\b/.exec(option[2])?.[1]??'[option]')+( /^(?:Yes|No)$/.test(option[2])?'':' [redacted option detail]');
+   const footer=/^([ \t]*)(Esc to cancel|Enter to select|Tab to amend|ctrl\+[a-z]+|Ctrl\+[a-z]+)/.exec(row);return footer?footer[1]+footer[2]+' [redacted footer detail]':(/^[ \t]*/.exec(row)?.[0]??'')+'[redacted detail]';
+  }).join('\n');
   const card=state.cards.get(claude.name);diagnostics.permissionCard={seen:!!card,kind:card?.kind??null,optionNumbers:card?.options?.map(row=>row.n)??[],sentinelInQuestion:card?.question?.includes('permission-must-not-exist.txt')??false};return card?.kind==='question'&&card.question.includes('permission-must-not-exist.txt')&&card.options.some(option=>/^(?:no\b|deny\b|reject\b|cancel\b)/i.test(option.title));
  },'ordinary native shell permission card',120000);
  const card=state.cards.get(claude.name),deny=card.options.find(option=>/^(?:no\b|deny\b|reject\b|cancel\b)/i.test(option.title));assert(deny);
