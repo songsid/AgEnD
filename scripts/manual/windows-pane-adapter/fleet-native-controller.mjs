@@ -62,11 +62,11 @@ try{
  if(agents.length===2){lastPhase='close-one';await fleet.stopInstance(agents[0].name);assert(!store.get(agents[0].agent.id).activeId);assert(fleet.daemons.get(agents[1].name)?.nativePaneCurrent());assert(store.get(agents[1].agent.id).activeId);
   await fleet.stopInstance(agents[1].name);assert(agents.every(row=>!store.get(row.agent.id).activeId));
   lastPhase='exec-rollback';process.stdout.write('phase:'+lastPhase+'\n');
-  const {WindowsCliBridge}=await load('windows-cli.js'),{WindowsAgentStore}=await load('windows-agents.js');
+  const {WindowsCliBridge}=await load('windows-cli.js'),{WindowsAgents}=await load('windows-agents.js');
   const inventoryFile=join(coordinator,'rollback-inventory.json');await writeFile(inventoryFile,JSON.stringify({home:nativeRoot,probedAt:Date.now(),clis:providers.map(id=>({id,version:observedVersions[id],runnable:true,readOnlySupport:true}))}));
   // Same persisted profile and existing production exec worker; no fallback while any pane is alive.
   execBridge=new WindowsCliBridge(async()=>({executable:node,args:[win32.join(windowsCode,'windows-cli-worker.js')]}),inventoryFile);
-  const execStore=new WindowsAgentStore(coordinator,execBridge);
+  const execStore=new WindowsAgents(coordinator,execBridge);
   for(const row of agents){const before=store.get(row.agent.id).threadId,expected='ROLLBACK_'+(row.agent.cli==='codex'?'CODEX':'CLAUDE')+'_OK';let result=null;
    execStore.send(row.agent.id,{requestId:randomUUID(),prompt:`Continue the existing conversation. Reply with exactly ${expected}. Do not use tools, run commands or edit files.`},()=>true,{onSettled:value=>{result=value;}});
    await until(()=>!!result,'exec rollback completion '+row.agent.cli,315000);
