@@ -15503,6 +15503,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const target = this.fleetNoticeTarget(world);
         return target ? { chatId: target.chatId, ...(target.opts.threadId !== undefined ? { threadId: String(target.opts.threadId) } : {}) } : null;
       },
+      // The name the web page shows for the instance (its View alias, else its own name), never the raw id alone.
+      instanceName: instance => resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[instance], profile: profileIdentities(this.dataDir).get(instance) }).display_name || instance,
       instanceTopic: instance => {
         const topic = this.fleetConfig?.instances[instance]?.topic_id;
         if (topic != null) return String(topic);
