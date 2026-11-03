@@ -178,7 +178,8 @@ describe("Retry after a failed first load of the chat", () => {
     ]);
     s.retry();
     await vi.waitFor(() => expect(s.polls()).toBe(1));
-    for (let i = 0; i < 1000; i++) s.send("status", STATUS);
+    // Any live events but status: a burst of statuses is one (M-2260, each a whole snapshot — the newest is kept).
+    for (let i = 0; i < 1000; i++) s.send("deliveries", []);
     s.send("prompt", prompt(P3, "posted meanwhile"));               // event 1,001: more than can be held
     h.open();
     await vi.waitFor(() => expect(s.conn()).toBe("Loading what is open now…"));

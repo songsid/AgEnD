@@ -54,7 +54,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
+import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
 import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
@@ -1739,7 +1739,12 @@ export function handleWebRequest(
     json(res, 200, {
       status: ctx.getUiStatus(),
       // #2341 review: over the public link, without a summary line that names a card hidden there.
-      messages: history ? visibleMessages(ctx, !!gatewayRequestContext(req), fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
+      // M-2260: the newest within the catch-up budget; `truncated` when older ones were left out (the page re-reads its
+      // chats' newest history, as a reload would) — never megabytes that a slow link cannot bring in time.
+      ...(() => {
+        const w = catchUpWindow(history ? visibleMessages(ctx, !!gatewayRequestContext(req), fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : []);
+        return w.truncated ? { messages: w.messages, truncated: true } : { messages: w.messages };
+      })(),
       // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
       // activity; this poll does not (isPassiveWebRead).
       deliveries: history ? history.deliveries() : [],
