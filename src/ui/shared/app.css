@@ -1678,6 +1678,28 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .signin-list { margin-top: var(--s-4); }
 .signin-list code { font-size: var(--fs-xs); word-break: break-all; }
 .signin-list .s-meta { white-space: normal; max-width: none; overflow: visible; }
+/* The setup widget also lives in dashboard dialogs, outside Settings. Keep these styles local to its host. */
+.signin-browser { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+.signin-browser h2 { font-size: var(--fs-md); font-weight: var(--fw-semibold); line-height: var(--lh-md); }
+.signin-browser p { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65; overflow-wrap: anywhere; }
+.signin-browser > section { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); min-width: 0; padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.signin-browser > section > :is(h3, p, label, code) { flex-basis: 100%; min-width: 0; }
+.signin-browser h3 { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.signin-browser :is(button, a) { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; max-width: 100%; padding: var(--s-2) var(--s-4); border: 1px solid var(--border-strong); border-radius: var(--r-full); background: var(--bg); color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: var(--lh-md); text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+.signin-browser :is(button, a):hover:not(:disabled) { background: var(--surface-2); }
+.signin-browser button:disabled { opacity: 0.45; cursor: default; }
+.signin-browser > button { align-self: flex-start; }
+.signin-browser section > a { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
+.signin-browser section > a:hover { background: var(--accent-fill); opacity: 0.88; }
+.signin-browser label { display: flex; flex-direction: column; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.signin-browser input { width: 100%; min-width: 0; min-height: 40px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); }
+.signin-browser code { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--bg); font-family: var(--font-mono); overflow-wrap: anywhere; user-select: all; }
+.signin-browser [role="alert"] { padding: var(--s-3); border: 1px solid var(--danger-line); border-radius: var(--r-sm); background: var(--danger-bg); color: var(--danger); }
+.signin-browser-actions { display: flex; flex: 1; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); min-width: 0; }
+.signin-browser-actions .btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+@media (pointer: coarse), (max-width: 899px) {
+  .signin-browser :is(button, a), .signin-browser-actions .btn { min-height: var(--tap); }
+}
 @media (max-width: 899px) {
   .grid2 { grid-template-columns: minmax(0, 1fr); }
   .se-row { grid-template-columns: minmax(0, 1fr) auto auto; }

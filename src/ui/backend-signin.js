@@ -232,11 +232,12 @@ export function BrowserSignInDialog({ backend, backends, onClose }) {
     if (!result.ok) { toast(tn("failed")); return; }
     showDialog(SignInDialog, { backend: chosen });
   };
-  return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", backend)} onClose=${close}>
-    <div ref=${root}></div>
+  const actions = html`<div class="signin-browser-actions">
     ${backends ? backends.filter(b => b !== "antigravity").map(b => html`<button type="button" class="btn" onClick=${() => fallback(b)}>${b} · ${tn("consoleFallback")}</button>`) : null}
-    <div class="s-actions">${backend ? html`<button type="button" class="btn" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button>` : null}
-    <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>
+    ${backend ? html`<button type="button" class="btn" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button>` : null}
+    <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>`;
+  return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", cliLabel(backend))} onClose=${close} actions=${actions}>
+    <div class="signin-browser" ref=${root}></div>
   </${Dialog}>`;
 }
 
