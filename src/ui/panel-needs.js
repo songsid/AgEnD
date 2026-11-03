@@ -254,7 +254,9 @@ export function proposalLines(summary) {
   const lines = (Array.isArray(summary) ? summary : []).map(unescape);
   const create = lines.some((l) => /^POST \/ui\/instances$/.test(l));
   const out = [], label = (k) => { const key = `f_${k}`, s = tn(key); return s === `needs.${key}` ? k : s; };
-  const value = (k, v) => (k === "sandbox" ? (v === "read-only" ? tn("sb_read_only") : v === "workspace-write" ? tn("sb_workspace_write") : v) : v);
+  // The access field's values, in words (matched by value: the two the request's schema allows).
+  const ACCESS = { "read-only": "sb_read_only", "workspace-write": "sb_workspace_write" };
+  const value = (_k, v) => (Object.hasOwn(ACCESS, v) ? tn(ACCESS[v]) : v);
   let machine = false;
   for (const l of lines) {
     if (/^POST \/ui\/instances$/.test(l)) continue;
