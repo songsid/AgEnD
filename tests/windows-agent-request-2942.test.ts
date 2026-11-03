@@ -47,7 +47,8 @@ function afterProfile(hook: () => void): void {
 function rig(options: { prepareHook?: () => void } = {}) {
   vi.stubEnv("AGEND_WINDOWS_CLI", "1");
   const dir = mkdtempSync(join(tmpdir(), "agend-windows-request-")), fm = new FleetManager(dir), any = fm as any;
-  const channels = [{ id: "a", type: "telegram", mode: "topic", group_id: "-100111", access: { mode: "open", allowed_users: ["a-F"] } }];
+  const channels = [{ id: "a", type: "telegram", mode: "topic", group_id: "-100111", access: { mode: "open", allowed_users: ["a-F", "ab-F"] } },
+    { id: "b", type: "telegram", mode: "topic", group_id: "-100222", access: { mode: "open", allowed_users: ["b-F", "ab-F"] } }];
   fm.fleetConfig = { defaults: { backend: "codex" }, channels, instances: {
     general_a: { working_directory: dir, general_topic: true, channel_id: "a", topic_id: 1 },
     dev: { working_directory: dir, channel_id: "a", topic_id: 2 } } } as any;
@@ -56,6 +57,10 @@ function rig(options: { prepareHook?: () => void } = {}) {
     editMessageRemoveButtons: vi.fn(async () => {}), sendText: vi.fn(async () => ({ chatId: "-100111", messageId: "reply" })) });
   fm.adapter = adapter as any; fm.adapters.set("a", adapter as any);
   fm.worlds.set("a", { id: "a", adapter, groupId: "-100111", channelConfig: channels[0], accessManager: new AccessManager(channels[0]!.access as any, join(dir, "a.json")) } as any);
+  const adapterB = Object.assign(new EventEmitter(), { id: "b", type: "telegram", notifyAlert: vi.fn(async () => ({ chatId: "-100222", messageId: "b-prompt" })),
+    editMessageRemoveButtons: vi.fn(async () => {}), sendText: vi.fn(async () => ({ chatId: "-100222", messageId: "reply" })) });
+  fm.adapters.set("b", adapterB as any);
+  fm.worlds.set("b", { id: "b", adapter: adapterB, groupId: "-100222", channelConfig: channels[1], accessManager: new AccessManager(channels[1]!.access as any, join(dir, "b.json")) } as any);
   any.daemons.set("general_a", new EventEmitter()); any.daemons.set("dev", new EventEmitter()); any.adapterState.set("a", { status: "connected", retryCount: 0 });
   if (options.prepareHook) afterProfile(options.prepareHook);
   const bridge = { prepareWorkspace: vi.fn(async () => "C:\\Users\\Test\\Managed\\workspace"),
@@ -228,6 +233,46 @@ describe("#2942: an agent's Windows settings change is only ever a pending reque
     expect([after.working_directory, after.native_sandbox, after.backend]).toEqual([before!.working_directory, before!.native_sandbox, before!.backend]);
   });
 
+  describe("#2973 review (Prism P1): a persistent pane bound to connection b needs b's admins as well as the primary General's", () => {
+    async function paneOnB(r: ReturnType<typeof rig>) {
+      const name = await createConfirmed(r);
+      Object.assign(r.fm.fleetConfig!.instances[name]!, { native_adapter: "pane", channel_id: "b", topic_id: 7 });
+      r.any.adapterState.set("b", { status: "connected", retryCount: 0 });
+      return name;
+    }
+    it("an admin of the primary General's connection alone (A-only) cannot confirm: nothing is changed", async () => {
+      const r = rig(), name = await paneOnB(r);
+      const paneUpdate = vi.spyOn(r.fm, "updateNativePaneConfig").mockResolvedValue({} as never);
+      const out = await mcp("update_instance_config", r, { name, config: { model: "gpt-6.2" } }); expect(out.result.state).toBe("pending");
+      const entry = await card(r); await click(r, entry, "confirm", "a-F");
+      expect(paneUpdate).not.toHaveBeenCalled(); expect(r.store.get(pendingIdOf(out.result), SESSION)!.state).toBe("pending");
+    });
+    it("an admin of both connections confirms and the pane change is applied once", async () => {
+      const r = rig(), name = await paneOnB(r);
+      const paneUpdate = vi.spyOn(r.fm, "updateNativePaneConfig").mockResolvedValue({} as never);
+      const out = await mcp("update_instance_config", r, { name, config: { model: "gpt-6.2" } });
+      const entry = await card(r); await click(r, entry, "confirm", "ab-F");
+      await vi.waitFor(() => expect(paneUpdate).toHaveBeenCalledOnce()); expect(paneUpdate.mock.calls[0]![1]).toEqual({ model: "gpt-6.2" });
+      expect(r.store.get(pendingIdOf(out.result), SESSION)!.state).toBe("applied");
+    });
+    it("the target connection's admin revoked during the apply: its authority fence turns false before the write", async () => {
+      const r = rig(), name = await paneOnB(r); let fenceAfterRevoke: boolean | undefined;
+      vi.spyOn(r.fm, "updateNativePaneConfig").mockImplementation(async (_n, _p, allowed) => {
+        (r.fm.fleetConfig as any).channels[1].access.allowed_users = ["b-F"];
+        r.any.worlds.get("b").accessManager = new AccessManager((r.fm.fleetConfig as any).channels[1].access, join(r.dir, "b2.json"));
+        fenceAfterRevoke = allowed(); if (!fenceAfterRevoke) throw Error("Authorization expired"); return {} as never;
+      });
+      await mcp("update_instance_config", r, { name, config: { model: "gpt-6.2" } });
+      const entry = await card(r); await click(r, entry, "confirm", "ab-F");
+      await vi.waitFor(() => expect(fenceAfterRevoke).toBe(false));
+    });
+    it("a binding that names no single configured connection is refused before anything is requested (fail closed)", async () => {
+      const r = rig(), name = await paneOnB(r);
+      r.fm.fleetConfig!.instances[name]!.channel_id = "gone";
+      const out = await mcp("update_instance_config", r, { name, config: { model: "gpt-6.2" } });
+      expect(out.error).toMatch(/chat connection cannot be resolved/); expect(r.any.pendingNonceButtons.size).toBe(0);
+    });
+  });
   it("(h2) fields the web editor does not allow are refused before anything is requested", async () => {
     const r = rig(), name = await createConfirmed(r);
     for (const config of [{ backend: "grok" }, { working_directory: "D:\\Elsewhere" }, { auto_pause_after: 5 }, { display_name: "x", backend_options: { codex: {} } }]) {

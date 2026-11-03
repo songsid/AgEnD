@@ -2483,8 +2483,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!changed.length) throw new Error("Nothing to change: these settings already have these values");
     const summary = changed.map(key => `${name} ${key}: ${settingsDisplay(before[key])} → ${settingsDisplay(edit[key])}`);
     const machineId = typeof inst.machine_id === "string" ? inst.machine_id : undefined;
+    // #2973 review (Prism P1): a persistent pane is bound to a chat connection; changing it (a model change restarts it)
+    // needs that connection's admins as well as the primary General's, exactly as its creation did. An instance whose
+    // binding names no single configured connection is refused (fail closed), never confirmed by the General alone.
+    const connections: string[] = [];
+    if (isNativePaneInstance(inst) || inst.channel_id !== undefined) {
+      const bound = inst.channel_id, channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+      if (typeof bound !== "string" || channels.filter(ch => (ch.id ?? ch.type) === bound).length !== 1)
+        throw new Error("This Windows agent's chat connection cannot be resolved; change its settings in the web dashboard");
+      connections.push(bound);
+    }
     return this.proposeAgentWindowsChange({ requester, key: `${name}:${settingsFingerprint(edit)}`, fingerprint: settingsFingerprint([name, edit]),
-      summary, machineId, bytes: JSON.stringify(edit).length, authority: { connections: [], primaryGeneral: true, unknown: false },
+      summary, machineId, bytes: JSON.stringify(edit).length, authority: { connections, primaryGeneral: true, unknown: false },
       apply: (allowed, execution) => updateNativeWindowsInstance(this, name, edit, allowed, execution) });
   }
 
