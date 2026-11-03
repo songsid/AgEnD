@@ -9584,15 +9584,10 @@ export class Daemon extends EventEmitter {
     durableAttempt?: DurableDeliveryAttempt,
     onInputHeld?: () => void,
   ): Promise<boolean> {
-    // A recovery Enter may have waited for a transient while cancel or spawn
-    // replaced the delivery. Check at the last point before the tmux write.
+    // A recovery Enter may have waited for a transient while cancel or spawn replaced the delivery: check here, and
+    // again after every wait below, at the last point before the tmux write.
     const tmux = this.tmux;
-    const generation = this.spawnGeneration;
-    const fence = this.launchFenceEpoch;
-    const windowId = tmux?.getWindowId();
-    const current = () => !!tmux && !!windowId && this.tmux === tmux
-      && this.spawnGeneration === generation && this.launchFenceEpoch === fence && tmux.getWindowId() === windowId
-      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    const current = () => this.tmux === tmux && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
     if (!current()) return false;
     // The pasted text may still be in the box: the caller keeps it uncertain (no false failure, no second paste).
     const hold = () => {

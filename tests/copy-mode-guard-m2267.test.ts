@@ -186,6 +186,8 @@ describe("a delivery to a pane left in copy-mode", () => {
     expect(r.s.keysInMode).toBe(0);
     expect(r.s.enters).toBe(0);
     expect(r.state).not.toBe("delivered");
+    // beta.5: the pasted text may still be in the box — kept uncertain, never a failure that a retry re-pastes.
+    expect([r.state, r.failed.mock.calls.length, r.s.pasted]).toEqual(["uncertain", 0, 1]);
   }, 30_000);
 });
 
