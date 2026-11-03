@@ -41,6 +41,44 @@ function tn(key, values = {}) {
   for (const [k, v] of Object.entries(values)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }
+/**
+ * v2.3.4-beta.4 P1 (hmsg-985db235, hmsg-5ab1997d): this module is loaded on first use, so a tab opened before an upgrade
+ * runs the new View with the stylesheet and the View's words it loaded at its start. Without the View's layout rules
+ * (.v-term-box) the terminal box grew with its text: the text shrank every second (fit() measured the box its own text
+ * sized), a normal-buffer CLI's View showed its whole history from the top, and new words showed as raw keys. Each is
+ * found by a mark the current files carry — VIEW_REV in app.css (the --v-term-rev property) and view-strings.js (the
+ * view.rev word) — and a stale one is read again, once per page: the stylesheet re-linked after the one in force, the
+ * words imported again (register() replaces them). The query only makes it a new request: /assets/ serves the file.
+ */
+export const VIEW_REV = "2";
+const healed = { css: false, words: false };
+export function healStalePage(doc = typeof document !== "undefined" ? document : null, load = (u) => import(u), onWords = () => {}) {
+  if (!doc) return { css: false, words: false };
+  const out = { css: false, words: false };
+  try {
+    const box = doc.querySelector && doc.querySelector(".v-term-box");
+    // Only a page that has the stylesheet linked (the app; never a test's page without one) and an older one in force.
+    const linked = [...(doc.querySelectorAll ? doc.querySelectorAll('link[rel="stylesheet"]') : [])]
+      .some((l) => String(l.getAttribute("href") || "").split("?")[0] === "/assets/app.css");
+    if (box && linked && !healed.css) {
+      const cs = typeof getComputedStyle === "function" ? getComputedStyle(box) : null;
+      const rev = cs && typeof cs.getPropertyValue === "function" ? String(cs.getPropertyValue("--v-term-rev")).trim().replace(/^"|"$/g, "") : VIEW_REV;
+      if (rev !== VIEW_REV) {
+        healed.css = true; out.css = true;
+        const link = doc.createElement("link");
+        link.setAttribute("rel", "stylesheet"); link.setAttribute("href", `/assets/app.css?rev=${VIEW_REV}-${Date.now().toString(36)}`);
+        doc.head.appendChild(link);
+      }
+    }
+  } catch { /* never in the View's way */ }
+  if (t("view.rev") !== VIEW_REV && !healed.words) {
+    healed.words = true; out.words = true;
+    Promise.resolve(load(`./view-strings.js?rev=${VIEW_REV}-${Date.now().toString(36)}`)).then(() => onWords(), () => {});
+  }
+  return out;
+}
+/** For tests: as on a fresh page. */
+export function resetHealed() { healed.css = false; healed.words = false; }
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this page only */ } };
 
@@ -256,8 +294,9 @@ function logLinkFor(name, backend, signedIn) {
 }
 function Terminal({ name, lease, density, every = 800, backend = "", signedIn = false }) {
   const term = useRef(null), pre = useRef(null);
-  const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "" });
+  const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "", last: null, follows: false });
   const [problem, setProblem] = useState(null);
+  const [, setWordsRev] = useState(0);
   // "follow" | "loading" | "reading"; the screen's text when reading began, the newest read since; a note about history.
   const [mode, setModeState] = useState("follow");
   const modeRef = useRef("follow");
@@ -295,15 +334,26 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     const innerH = Math.max(1, box.clientHeight - (parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) || 0));
     const key = `${g.cols}x${g.rows}@${Math.round(innerW)}x${Math.round(innerH)}/${density}`;
     if (key === g.key) return;
+    // v2.3.4-beta.4 P1: the box's height is a limit only while it is the box's own. One that changed right after this
+    // set a new size, by the same factor — the grid, the width and the choice as they were — is following its text (a
+    // stale stylesheet, or any container that grows with its content): measured again it would shrink the text 0.5% each
+    // time, for ever. From then on the text is fitted to the width only, so fit() converges. (Any other height change —
+    // a phone's address bar — is not in proportion to the text, and stays a limit.)
+    const was = g.last;
+    if (was && was.ratio && was.cols === g.cols && was.rows === g.rows && was.w === Math.round(innerW) && was.density === density
+      && was.h > 0 && Math.round(innerH) !== was.h && Math.abs(innerH / was.h - was.ratio) < 0.05 * was.ratio) g.follows = true;
     const pcs = getComputedStyle(p);
     const lh = parseFloat(pcs.lineHeight) / parseFloat(pcs.fontSize);
     const lineH = Number.isFinite(lh) && lh > 0 ? lh : 1.2;
-    let size = Math.min(innerW / (g.cols * glyphRatio(p)), innerH / (g.rows * lineH)) * 0.995;
+    const byW = innerW / (g.cols * glyphRatio(p)), byH = innerH / (g.rows * lineH);
+    let size = (g.follows ? byW : Math.min(byW, byH)) * 0.995;
     if (density === "fit") size = Math.max(FIT_FLOOR_PX, Math.min(size, MAX_PX));
     else size = Math.max(8, Math.min(Math.max(MIN_PX, Math.min(size, MAX_PX)) * (VIEW_SCALE[density] || 1), 32));
     g.key = key;
+    g.last = { cols: g.cols, rows: g.rows, w: Math.round(innerW), h: Math.round(innerH), density, ratio: 0 };
     // A small change is skipped only when growing (the size applied still fits); a smaller box always shrinks it.
     if (size >= g.applied && size - g.applied < 0.75) return;
+    if (g.applied > 0 && size !== g.applied) g.last.ratio = size / g.applied;
     g.applied = size;
     p.style.fontSize = `${size.toFixed(2)}px`;          // CSSOM, never a style attribute (#1300)
   };
@@ -314,7 +364,12 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     paintAnsi(pre.current);
     screenAt.current.drawn = text;
   };
-  useEffect(() => { grid.current.key = ""; fit(); }, [density]);
+  useEffect(() => { grid.current.key = ""; grid.current.follows = false; grid.current.last = null; fit(); }, [density]);
+  // A tab opened before an upgrade: its stylesheet and the View's words read again (healStalePage), then fitted anew.
+  useEffect(() => {
+    const h = healStalePage(document, (u) => import(u), () => { setWordsRev((n) => n + 1); });
+    if (h.css) lease.timeout(() => { grid.current.key = ""; grid.current.follows = false; grid.current.last = null; fit(); }, 300);
+  }, []);
   const atBottom = () => { const box = term.current; return !box || box.scrollHeight - box.scrollTop - box.clientHeight <= 2; };
   /** Reading what is shown now (`text`, with or without the scrollback): the refresh only says whether there is more. */
   const startReading = (text, history) => {

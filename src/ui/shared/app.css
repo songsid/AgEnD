@@ -1336,7 +1336,8 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .hd-docs .hd-ext { color: var(--text-3); }
 .v-term { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; background: #000000; position: relative; }
 /* M-2262: the terminal's box — the scrolling terminal, and its scrollback controls over it (they never scroll with it). */
-.v-term-box { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+/* --v-term-rev: the View's mark (panel-view.js VIEW_REV): a tab still on an older stylesheet reads this one again. */
+.v-term-box { --v-term-rev: 2; flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .v-term:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .v-term-earlier, .v-term-latest { position: absolute; right: var(--s-4); z-index: 2; display: inline-flex; align-items: center; gap: 4px; opacity: .88; }
 .v-term-earlier { top: var(--s-2); }
