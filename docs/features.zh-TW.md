@@ -900,10 +900,14 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 | 情況 | 啟動方式 |
 |---|---|
 | 這個目錄有 session | `codex resume <id>` |
+| 資料庫裡沒有這個目錄的 session，但 `sessions` 裡還有這個目錄、由 CLI 開始、有對話內容的 rollout（Codex 的清單遺失了它） | 對最新那個執行 `codex resume <id>`，並發通知；很大時另外說明 Codex 可能會先壓縮（#2963） |
+| 那次接回沒有成功（Codex 拒絕了這個 id） | 下一次啟動開一次新對話並發通知；之後不會再自動挑這段對話 |
 | 這個目錄沒有 session（例如共用 repo 裡新建的 instance） | 新對話 |
 | 讀不到 session 資料庫，且同一個 git repo 裡有其他 Codex instance | 新對話，並在該 instance 的 topic 發通知 |
 | 還沒有 session 資料庫（這台機器從未執行過 Codex），且這個目錄沒有 Codex 歷史 | 開新對話，不發通知（#2743） |
 | 讀不到 session 資料庫，且 repo 裡沒有其他 Codex instance | `codex resume --last`，並發通知 |
+
+**接回指定的對話（#2963）。** `restart_instance { name, resume_session_id }`（編排工具：General、coordinator）會讓 Codex instance 在這次重啟時接回那段對話，只限這一次。這個 id 必須是該 instance 的 sessions 裡、工作目錄完全相同、由 CLI 開始的 rollout；不符合就不會重啟，並回覆原因。之後的重啟照常。
 
 AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 Codex home（`$CODEX_HOME`，預設值：`~/.codex`），所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
 

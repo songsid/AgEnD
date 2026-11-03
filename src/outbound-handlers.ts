@@ -1014,13 +1014,57 @@ const restartInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(RestartInstanceArgs, rawArgs, "restart_instance");
   if (!v.ok) { respond(null, v.error); return; }
   const targetName = v.data.name;
+  // M-2266: a codex instance may be told which conversation to resume, for this restart only. Checked here, before
+  // anything restarts: a bad id restarts nothing. The launch checks it again and consumes it (codex.ts).
+  const resumeId = v.data.resume_session_id;
+  if (resumeId !== undefined) {
+    const refused = await armCodexResume(ctx, targetName, resumeId);
+    if (refused) { respond(null, refused); return; }
+  }
   try {
     await ctx.restartSingleInstance(targetName, { explicit: true });
     respond({ success: true, status: "restarted" });
   } catch (err) {
+    // #2964 review: the one-shot is for this restart only — a restart that failed does not leave it armed.
+    if (resumeId !== undefined) await disarmCodexResume(ctx, targetName);
     respond(null, `Failed to restart instance '${targetName}': ${sanitizeError(err, ctx, `restart_instance(${targetName})`)}`);
   }
 };
+
+/**
+ * M-2266: validate `id` for `name` (a codex instance of this fleet: a rollout in its sessions, for its working
+ * directory, started by the CLI) and write the one-shot its next launch consumes. Returns why not, or null.
+ */
+async function armCodexResume(ctx: OutboundContext, name: string, id: string): Promise<string | null> {
+  const inst = ctx.fleetConfig?.instances?.[name];
+  if (!inst) return `Instance '${name}' is not a fleet instance; resume_session_id applies to fleet instances only.`;
+  if (effectiveBackendForTarget(ctx, name) !== "codex") return `resume_session_id applies to codex instances only; '${name}' is not one.`;
+  const { join } = await import("node:path");
+  const { existsSync, writeFileSync } = await import("node:fs");
+  const { CodexBackend, CODEX_RESUME_NEXT_FILE } = await import("./backend/codex.js");
+  const { checkResumeId } = await import("./backend/codex-session-lookup.js");
+  const instanceDir = join(ctx.dataDir, "instances", name);
+  // The sessions this instance's codex reads: its home's (normally a link to the shared ones), else the shared ones.
+  const homes = [join(instanceDir, "codex-home"), CodexBackend.shortHomeFor(instanceDir), process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")];
+  const sessionsDir = homes.map(h => join(h, "sessions")).find(p => existsSync(p));
+  if (!sessionsDir) return `No codex sessions found for '${name}'.`;
+  const check = checkResumeId(sessionsDir, inst.working_directory, id);
+  if (!check.ok) {
+    const why = { "bad-id": "not a codex session id", "not-found": "no rollout with that id in the instance's sessions", "other-cwd": "that conversation belongs to another working directory", "not-cli": "that conversation was not started by the codex CLI" }[check.reason];
+    return `Cannot resume ${id} on '${name}': ${why}. Nothing was restarted.`;
+  }
+  try { writeFileSync(join(instanceDir, CODEX_RESUME_NEXT_FILE), JSON.stringify({ id: check.rollout.id, at: new Date().toISOString() }), { mode: 0o600 }); }
+  catch (err) { return `Cannot resume ${id} on '${name}': ${(err as Error).message}. Nothing was restarted.`; }
+  return null;
+}
+
+/** M-2266: remove a one-shot armCodexResume wrote (its restart failed). */
+async function disarmCodexResume(ctx: OutboundContext, name: string): Promise<void> {
+  const { join } = await import("node:path");
+  const { rmSync } = await import("node:fs");
+  const { CODEX_RESUME_NEXT_FILE } = await import("./backend/codex.js");
+  try { rmSync(join(ctx.dataDir, "instances", name, CODEX_RESUME_NEXT_FILE), { force: true }); } catch { /* already gone */ }
+}
 
 const pauseInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(PauseInstanceArgs, rawArgs, "pause_instance");

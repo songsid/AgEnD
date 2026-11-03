@@ -35,7 +35,7 @@ import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels,
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
-import { type CodexResumePlan, type ExactCwdSession, codexSiblingState, codexStateDbAbsent, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
+import { type CodexResumePlan, type ExactCwdSession, checkResumeId, codexSiblingState, codexStateDbAbsent, codexThreadRowExists, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestResumableRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
 import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
@@ -958,6 +958,22 @@ function codexUnboxedResumeLoading(rows: string[]): boolean {
   return after.slice(composer + 1).every(row => row === "");
 }
 
+/**
+ * M-2266: a one-shot "resume this conversation" for the next launch, written by the fleet (restart_instance with
+ * resume_session_id, validated there) into the instance directory and consumed by that launch.
+ */
+export const CODEX_RESUME_NEXT_FILE = "codex-resume-next.json";
+/**
+ * M-2266: the conversation the last launch was told to resume (auto or one-shot). The next launch asks codex's
+ * database whether that resume took (codex records the thread as it opens it); if it did not, that launch starts
+ * fresh once and says so — never the same failing resume again.
+ */
+export const CODEX_RESUME_ATTEMPT_FILE = "codex-resume-attempt.json";
+/** M-2266: conversations an auto-resume could not open (codex refused the id); skipped by later auto-resumes. */
+export const CODEX_RESUME_FAILED_FILE = "codex-resume-failed.json";
+/** Above this, a resumed rollout carries a note that codex may compact it first. */
+export const CODEX_RESUME_LARGE_BYTES = 20 * 1024 * 1024;
+
 export class CodexBackend implements CliBackend {
   /**
    * #1510: the reply-completion guard covers codex, its turn end read from the rollout (task_complete /
@@ -1243,21 +1259,36 @@ export class CodexBackend implements CliBackend {
     if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
-      const plan = this.planResume(config);
-      this.lastLaunchResumes = plan.mode === "resume" || plan.mode === "last";
-      if (plan.mode === "resume") cmd = `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
-      else if (plan.mode === "last") cmd = `${this.binaryPath} resume --last ${approvalFlag}`;
-      else cmd = `${this.binaryPath} ${approvalFlag}`;
-      if (plan.mode === "last") this.launchWarning = t("codex.resume_db_unreadable_last", plan.cause);
-      else if (plan.mode === "fresh" && plan.reason === "unreadable-with-siblings") {
-        this.launchWarning = t("codex.resume_db_unreadable_fresh", plan.cause);
-      } else if (plan.mode === "fresh") {
-        // #1053: "none" is also what a lookup that missed looks like (#1028
-        // was a silent new session per restart). A workspace that never had
-        // a conversation stays quiet; one whose rollout shows a turn is told
-        // which conversation to resume by hand.
-        const missed = newestMissedCwdRollout(join(this.isolatedCodexHome, "sessions"), config.workingDirectory);
-        if (missed) this.launchWarning = t("codex.resume_none_but_history", config.workingDirectory, missed.id);
+      const resumeBy = (id: string, why: string, bytes: number | null): string => {
+        this.lastLaunchResumes = true;
+        this.writeResumeAttempt(id);
+        const large = bytes !== null && bytes > CODEX_RESUME_LARGE_BYTES ? ` ${t("codex.resume_large", String(Math.round(bytes / (1024 * 1024))))}` : "";
+        this.launchWarning = why + large;
+        return `${this.binaryPath} resume ${shellQuote(id)} ${approvalFlag}`;
+      };
+      const sessionsDir = join(this.isolatedCodexHome, "sessions");
+      // M-2266: the previous launch was told to resume a conversation by id. Codex records a thread as it opens it,
+      // so a resume that did not take (codex exited with "No saved session found…") left no row: this launch starts
+      // fresh, once, and says so. A database that cannot be read proves nothing, and planning goes on as usual.
+      // A new one-shot ask comes first: it is the person's explicit choice for this launch.
+      const oneShot = this.takeResumeNext();
+      const attempt = this.takeResumeAttempt();
+      const failed = !oneShot && attempt !== null && codexThreadRowExists(this.stateDbPath(), attempt) === false;
+      if (failed) {
+        // Remembered, so the auto-resume never picks this conversation again on a later launch.
+        this.rememberFailedResume(attempt!);
+        cmd = `${this.binaryPath} ${approvalFlag}`;
+        this.launchWarning = t("codex.resume_failed", config.workingDirectory, attempt!);
+      } else if (oneShot) {
+        // M-2266: validated when it was asked for (restart_instance); checked again now, as the rollout may have moved.
+        const check = checkResumeId(sessionsDir, config.workingDirectory, oneShot);
+        if (check.ok) cmd = resumeBy(check.rollout.id, t("codex.resume_oneshot", config.workingDirectory, check.rollout.id), check.rollout.bytes);
+        else {
+          cmd = this.plannedCommand(config, approvalFlag, sessionsDir, resumeBy);
+          this.launchWarning = [t("codex.resume_oneshot_invalid", config.workingDirectory, oneShot, check.reason), this.launchWarning].filter(Boolean).join("\n");
+        }
+      } else {
+        cmd = this.plannedCommand(config, approvalFlag, sessionsDir, resumeBy);
       }
     }
     if (config.model) {
@@ -2337,6 +2368,65 @@ export class CodexBackend implements CliBackend {
     // The resumed thread is chosen per launch from Codex's own state DB
     // (planResume); AgEnD persists no session id of its own (#913 was reverted).
     return null;
+  }
+
+  /** The launch as the database plans it — and, when it has no conversation for this directory, an auto-resume (M-2266). */
+  private plannedCommand(config: CliBackendConfig, approvalFlag: string, sessionsDir: string,
+    resumeBy: (id: string, why: string, bytes: number | null) => string): string {
+    const plan = this.planResume(config);
+    this.lastLaunchResumes = plan.mode === "resume" || plan.mode === "last";
+    if (plan.mode === "resume") return `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
+    if (plan.mode === "last") {
+      this.launchWarning = t("codex.resume_db_unreadable_last", plan.cause);
+      return `${this.binaryPath} resume --last ${approvalFlag}`;
+    }
+    if (plan.reason === "unreadable-with-siblings") {
+      this.launchWarning = t("codex.resume_db_unreadable_fresh", plan.cause);
+      return `${this.binaryPath} ${approvalFlag}`;
+    }
+    // #1053 found these and only told the person; M-2266 (the user's choice) resumes it: codex's database has no
+    // conversation for this directory, but its newest CLI rollout of exactly this directory, with a turn, is still
+    // there — `codex resume <id>` reads it.
+    const found = newestResumableRollout(sessionsDir, config.workingDirectory, undefined, this.failedResumes());
+    if (found) return resumeBy(found.id, t("codex.resume_auto", config.workingDirectory, found.id), found.bytes);
+    return `${this.binaryPath} ${approvalFlag}`;
+  }
+
+  /** The database this instance's codex writes (see planResume). */
+  private stateDbPath(): string {
+    const instanceDb = join(this.isolatedCodexHome, "state_5.sqlite");
+    const sharedDb = join(this.sharedCodexHome, "state_5.sqlite");
+    return existsSync(instanceDb) || sharedDb === instanceDb ? instanceDb : sharedDb;
+  }
+
+  /** M-2266: read and remove a JSON `{ id }` file in the instance directory; the id, or null. */
+  private takeIdFile(name: string): string | null {
+    const path = join(this.instanceDir, name);
+    let id: string | null = null;
+    try {
+      const v = JSON.parse(readFileSync(path, "utf-8")) as { id?: unknown };
+      if (typeof v.id === "string" && /^[0-9a-f-]{36}$/i.test(v.id)) id = v.id;
+    } catch { /* absent or unreadable */ }
+    try { unlinkSync(path); } catch { /* absent */ }
+    return id;
+  }
+  private takeResumeAttempt(): string | null { return this.takeIdFile(CODEX_RESUME_ATTEMPT_FILE); }
+  private takeResumeNext(): string | null { return this.takeIdFile(CODEX_RESUME_NEXT_FILE); }
+  /** M-2266: conversations an auto-resume tried and codex could not open; never auto-picked again. */
+  private failedResumes(): Set<string> {
+    try {
+      const v = JSON.parse(readFileSync(join(this.instanceDir, CODEX_RESUME_FAILED_FILE), "utf-8")) as { ids?: unknown };
+      return new Set(Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === "string") : []);
+    } catch { return new Set(); }
+  }
+  private rememberFailedResume(id: string): void {
+    const ids = [...this.failedResumes(), id].slice(-50);
+    try { writeFileSync(join(this.instanceDir, CODEX_RESUME_FAILED_FILE), JSON.stringify({ ids: [...new Set(ids)] }), { mode: 0o600 }); }
+    catch { /* best effort: then the next launch may try it once more, and fall back again */ }
+  }
+  private writeResumeAttempt(id: string): void {
+    try { writeFileSync(join(this.instanceDir, CODEX_RESUME_ATTEMPT_FILE), JSON.stringify({ id, at: new Date().toISOString() }), { mode: 0o600 }); }
+    catch { /* without it a failed resume is only retried, as any failed launch is */ }
   }
 
   /** Which Codex session this launch resumes (#984). Reads, never writes, Codex state. */
