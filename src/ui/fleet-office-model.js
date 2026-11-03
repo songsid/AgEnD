@@ -332,40 +332,48 @@ export const FLIGHT = { SPEED: 0.35, MIN_MS: 2500, MAX_MS: 4500, STAGGER_MS: 200
 const MAX_SEEN = 2000;
 /** A trip's time in the air for a path `len` px long. */
 export const flightMs = (len) => Math.min(FLIGHT.MAX_MS, Math.max(FLIGHT.MIN_MS, len / FLIGHT.SPEED));
+/** How many new items may wait for their first frame (a frame not drawn for a while: the newest kept). */
+const MAX_WAITING = 200;
 /**
- * #2946: the new items a sync starts trips for — each seen once (`seen`, bounded); none when `still` (reduced motion)
- * or for a stale delegation; and of the rest, only the newest that fit in `room` (the store lists the oldest first).
+ * The trips' lifecycle, on whatever `pathOf(on, from, to)` routes them through (`on`: what `frame` is given — a layout,
+ * or All offices' tiles; null: not drawn there). `sync(items, now, still)`: each new item is seen once (`seen`,
+ * bounded: never flown again) and waits for the next frame — none when `still` (reduced motion) or for a stale
+ * delegation. `frame(now, on)`: first the waiting are admitted, #2946 — only those with a path here (all controllers
+ * get the whole fleet's traffic: the rest are not this one's to fly, and never take a place), and of those the newest
+ * that fit in `max` with the trips already up, each batch's staggered from when it came; then the trips under way
+ * { id, hue, kind, from, x, y, t }, finished ones dropped, one whose path is gone (a re-layout) dropped. A trip under way
+ * is never cut short to make room. `size()`: trips up or waiting.
  */
-export function admitTrips(items, seen, still, room) {
-  const fresh = [];
-  for (const it of items || []) {
-    if (seen.has(it.id)) continue;
-    seen.add(it.id);
-    if (seen.size > MAX_SEEN) seen.delete(seen.values().next().value);
-    if (!still && it.phase !== "stale") fresh.push(it);
-  }
-  return room > 0 ? fresh.slice(-room) : [];
-}
-/**
- * The items in the air. `sync(items, now, still)` takes fleet-traffic.js's store items: each new one (a message, a
- * delegation's work, its report coming back) starts one trip from its sender's desk to its receiver's; a delegation with
- * no report (stale) and anything seen before start none; `still` (reduced motion) starts none; at most `max` at once
- * (admitTrips). `frame(now, L)` the trips under way on layout L: { id, hue, kind, from, x, y, t } (from: who sent it — a
- * pack can draw it as theirs), finished ones dropped; a trip whose desks are not drawn goes.
- */
-export function createFlights({ max = FLIGHT.MAX } = {}) {
+export function createTrips(pathOf, { max = FLIGHT.MAX } = {}) {
   const seen = new Set();
-  let trips = [];
+  let trips = [], waiting = [];
+  const route = (f, on) => { f.on = on; f.pts = pathOf(on, f.from, f.to); f.ms = f.pts ? flightMs(pathLength(f.pts)) : 0; };
   return {
     sync(items, now, still = false) {
-      const add = admitTrips(items, seen, still, max - trips.length);
-      add.forEach((it, k) => trips.push({ id: it.id, from: it.from, to: it.to, kind: it.kind, hue: hue(it.kind), start: now + k * FLIGHT.STAGGER_MS, L: null, pts: null, ms: 0 }));
-      return add.length;
+      let fresh = 0;
+      for (const it of items || []) {
+        if (seen.has(it.id)) continue;
+        seen.add(it.id);
+        if (seen.size > MAX_SEEN) seen.delete(seen.values().next().value);
+        if (still || it.phase === "stale") continue;
+        waiting.push({ id: it.id, from: it.from, to: it.to, kind: it.kind, hue: hue(it.kind), at: now });
+        fresh++;
+      }
+      if (waiting.length > MAX_WAITING) waiting = waiting.slice(-MAX_WAITING);
+      return fresh;
     },
-    frame(now, L) {
+    frame(now, on) {
+      if (waiting.length) {
+        const ok = [];
+        for (const w of waiting) { const f = { ...w, start: w.at }; route(f, on); if (f.pts) ok.push(f); }
+        waiting = [];
+        const room = max - trips.length, add = room > 0 ? ok.slice(-room) : [];      // never slice(-0): that is all of them
+        const k = new Map();
+        for (const f of add) { const n = k.get(f.at) || 0; k.set(f.at, n + 1); f.start = f.at + n * FLIGHT.STAGGER_MS; trips.push(f); }
+      }
       const out = [];
       trips = trips.filter((f) => {
-        if (f.L !== L) { f.L = L; f.pts = walkPath(L, f.from, f.to); f.ms = f.pts ? flightMs(pathLength(f.pts)) : 0; }
+        if (f.on !== on) route(f, on);
         if (!f.pts) return false;
         const t = (now - f.start) / f.ms;
         if (t >= 1) return false;
@@ -374,9 +382,15 @@ export function createFlights({ max = FLIGHT.MAX } = {}) {
       });
       return out;
     },
-    size: () => trips.length,
+    size: () => trips.length + waiting.length,
   };
 }
+/**
+ * The items in the air in one office: each new one (a message, a delegation's work, its report coming back) carried from
+ * its sender's desk to its receiver's along layout L's corridors (createTrips; `frame(now, L)`; `from`: who sent it — a
+ * pack can draw it as theirs). A trip whose desks are not drawn on L is not this office's.
+ */
+export const createFlights = (opts = {}) => createTrips((L, from, to) => (L ? walkPath(L, from, to) : null), opts);
 
 /** How many delegations each instance is working on now (the folders on its desk). */
 export function workOn(items) {

@@ -22,7 +22,7 @@ const STORE = { ready: true, instances: INSTANCES, exec: {}, awaiting: {}, needs
 const id16 = (n: number) => n.toString(16).padStart(16, "0");
 
 let p: AppPage;
-let M: any, O: any, K: any, F: any, I: any, app: any, nav: any, fleet: any;
+let M: any, O: any, K: any, F: any, I: any, Z: any, app: any, nav: any, fleet: any;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/fleet/org" });
   (globalThis as any).fetch = async (url: string) => ({ ok: true, status: 200,
@@ -37,6 +37,7 @@ beforeAll(async () => {
   O = await import("/ui/js/fleet-office-overview.js");
   K = await import("/ui/js/fleet-office-skin.js");
   F = await import("/ui/js/fleet-office.js");
+  Z = await import("/ui/js/fleet-office-zones.js");
 });
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => { await p.unmount(); p.storage.clear(); nav.navigate("/ui/fleet/org"); app.appStore.set(STORE); });
@@ -61,9 +62,10 @@ describe("slower: at least 2.5 s in the air", () => {
 });
 
 describe("a burst never becomes a backlog", () => {
-  it("a burst of 30: the newest MAX fly, each within (MAX − 1) × STAGGER of now; the rest are dropped, never queued", () => {
+  it("a burst of 30: the newest MAX fly, each within (MAX − 1) × STAGGER of when it came; the rest are dropped, never queued", () => {
     const f = M.createFlights(), l = L();
-    expect(f.sync(Array.from({ length: 30 }, (_, k) => item(k + 1)), 1000)).toBe(M.FLIGHT.MAX);
+    expect(f.sync(Array.from({ length: 30 }, (_, k) => item(k + 1)), 1000)).toBe(30);   // seen, waiting for a frame
+    expect(f.frame(1000, l).map((x: any) => x.id)).toEqual([id16(30 - M.FLIGHT.MAX + 1)]);   // admitted at the first frame
     expect(f.size()).toBe(M.FLIGHT.MAX);
     const latest = 1000 + (M.FLIGHT.MAX - 1) * M.FLIGHT.STAGGER_MS;
     expect(latest - 1000).toBeLessThanOrEqual(2500);                              // the last starts within 2.5 s of the event
@@ -79,18 +81,48 @@ describe("a burst never becomes a backlog", () => {
     f.sync([item(1), item(2), item(3)], 0);
     const first = f.frame(1000, l).map((x: any) => x.id);
     expect(first).toEqual([id16(1), id16(2), id16(3)]);
-    expect(f.sync([item(4), item(5)], 1000)).toBe(0);                            // no room: dropped, not queued
-    expect(f.frame(1500, l).map((x: any) => x.id)).toEqual(first);                 // the three keep flying
+    expect(f.sync([item(4), item(5)], 1000)).toBe(2);
+    expect(f.frame(1500, l).map((x: any) => x.id)).toEqual(first);                 // no room: the three keep flying…
+    expect(f.size()).toBe(3);                                                      // …and the two were dropped, not queued
     const landed = M.FLIGHT.MIN_MS + 2 * M.FLIGHT.STAGGER_MS + 1;
     expect(f.frame(landed, l)).toEqual([]);
     expect(f.sync([item(6)], landed)).toBe(1);
     expect(f.frame(landed, l).map((x: any) => x.id)).toEqual([id16(6)]);
   });
-  it("between tiles (All offices): the same cap and the same minimum", () => {
+  it("#2977 review: only items with a path here take a place — 12 newer ones elsewhere never crowd out this office's", () => {
+    // Every controller gets the whole fleet's traffic: one item between two desks drawn here, then 12 newer between
+    // two people this layout does not draw.
+    const f = M.createFlights(), l = L();
+    const away = Array.from({ length: 12 }, (_, k) => item(100 + k, { from: "far", to: "away" }));
+    f.sync([item(1), ...away], 0);
+    expect(f.frame(0, l).map((x: any) => x.id)).toEqual([id16(1)]);
+    expect(f.size()).toBe(1);
+    // And newer ones here beyond the cap: the newest of those with a path.
+    const g = M.createFlights({ max: 2 });
+    g.sync([item(1), item(2), item(3), ...away], 0);
+    expect(g.frame(1000, l).map((x: any) => x.id)).toEqual([id16(2), id16(3)]);
+  });
+  const tiles = () => {
+    const nodes = (names: string[]) => names.map((name) => ({ name, state: "idle", i: { name } }));
+    const zl = (names: string[]) => Z.zonesLayout(K.STUDIO_PACK, nodes(names));
+    const lay = O.arrangeTiles([0, 1].map((i) => ({ key: `z${i}`, w: 1280, h: 720 })), 2584);
+    return [{ tile: lay.tiles[0], L: zl(["atlas"]) }, { tile: lay.tiles[1], L: zl(["quill", "sage"]) }];
+  };
+  it("between tiles (All offices): the same cap and the same minimum; a crossing is never crowded out by a tile's own (#2977 review)", () => {
+    const parts = tiles();
     const f = O.createCrossFlights();
-    expect(f.sync(Array.from({ length: 30 }, (_, k) => item(k + 1)), 0)).toBe(M.FLIGHT.MAX);
+    expect(f.sync(Array.from({ length: 30 }, (_, k) => item(k + 1)), 0)).toBe(30);
+    expect(f.frame(0, parts)).toHaveLength(1);
     expect(f.size()).toBe(M.FLIGHT.MAX);
-    expect(f.sync([item(99)], 10)).toBe(0);
+    f.sync([item(99)], 10);
+    f.frame(10, parts);
+    expect(f.size()).toBe(M.FLIGHT.MAX);                                            // full: dropped
+    expect(f.frame(M.FLIGHT.MIN_MS - 1, parts).length).toBeGreaterThan(0);          // the first still up just before 2.5 s
+    // One crossing (atlas → quill), then 12 newer within the lab's own tile (quill → sage): the crossing flies.
+    const g = O.createCrossFlights();
+    g.sync([item(1), ...Array.from({ length: 12 }, (_, k) => item(200 + k, { from: "quill", to: "sage" }))], 0);
+    expect(g.frame(0, parts).map((x: any) => x.id)).toEqual([id16(1)]);
+    expect(g.size()).toBe(1);
   });
   it("reduced motion: nothing flies (and what was seen is not flown later)", () => {
     const f = M.createFlights();
