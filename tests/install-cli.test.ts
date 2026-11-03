@@ -72,9 +72,10 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
 const installedBinaries = new Set<string>();
 vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/instance-lifecycle.js")>();
-  return { ...real, checkBinaryInstalled: (binary: string) => installedBinaries.has(binary) };
+  return { ...real, checkBinaryInstalled: (binary: string) => installedBinaries.has(binary), checkBinaryInstalledAsync: async (binary: string) => installedBinaries.has(binary) };
 });
 
+import { unattendedInstallCommand } from "../src/unattended-install.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale, t } from "../src/locale.js";
 import { TmuxManager } from "../src/tmux-manager.js";
@@ -124,7 +125,8 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     expect(started).toBe(t("install.started", "codex"));
     expect(fakeSessions).toHaveLength(1);
     // Nobody types into the install window: codex's install.sh must not ask "Start Codex now?" on /dev/tty.
-    expect(fakeSessions[0].flow.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh");
+    // M-2281: wrapped so no prompt can wait at all (no tty, stdin /dev/null) — the codex variable stays inside.
+    expect(fakeSessions[0].flow.command).toBe(unattendedInstallCommand("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh"));
     expect(fakeSessions[0].started).toBe(true);
 
     // The installed CLI is on PATH now: the sign-in that follows is a login.
@@ -264,6 +266,56 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     await fm.startLoginSession("grok", chat);
     expect(await fm.cancelLoginSession()).toBe(t("install.cancelled", "grok"));
     expect(fakeSessions[0].cancelled).toBe(true);
+  });
+
+  it("M-2281: the installer's output goes to the chat as one message edited in place, then the final frame", async () => {
+    const { fm, adapter, sendText, chat } = setup();
+    adapter.editMessage = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
+    vi.spyOn(fm as any, "launchSignIn").mockResolvedValue(null);
+    await fm.startLoginSession("codex", chat);
+    const events = fakeSessions[0]!.events;
+    events.onProgress("==> Downloading Codex\nOPENAI_API_KEY=sk-" + "q7Rt".repeat(12) + "\n");
+    await vi.waitFor(() => expect(adapter.editMessage).toHaveBeenCalled());
+    expect(sendText.mock.calls.at(-1)![1]).toBe(t("install.stream_running", "codex"));
+    const first = adapter.editMessage.mock.calls[0];
+    expect(first[1]).toBe("m1");
+    expect(first[2]).toContain("==> Downloading Codex");
+    expect(first[2]).not.toContain("q7Rt");
+    expect(first[4]).toEqual({ format: "markdown" });            // Discord: a fenced block
+    await events.onDone({ ok: true, detail: "clean exit" });
+    const last = adapter.editMessage.mock.calls.at(-1);
+    expect(String(last[2]).startsWith(t("install.stream_ok", "codex"))).toBe(true);
+    // The final frame is written before the result line that follows it.
+    const successIndex = sendText.mock.calls.findIndex((c: unknown[]) => String(c[1]).includes("verified"));
+    expect(successIndex).toBeGreaterThan(-1);
+    expect(adapter.editMessage.mock.invocationCallOrder.at(-1)!).toBeLessThan(sendText.mock.invocationCallOrder[successIndex]!);
+  }, 15_000);
+
+  it("M-2281: a Telegram chat gets the frame as its own <pre> HTML", async () => {
+    const { fm, adapter, chat } = setup();
+    adapter.type = "telegram";
+    adapter.editMessage = vi.fn().mockResolvedValue(undefined);
+    await fm.startLoginSession("codex", chat);
+    fakeSessions[0]!.events.onProgress("a < b\n");
+    await vi.waitFor(() => expect(adapter.editMessage).toHaveBeenCalled());
+    expect(adapter.editMessage.mock.calls[0][2]).toContain("<pre>a &lt; b</pre>");
+    expect(adapter.editMessage.mock.calls[0][4]).toEqual({ format: "html" });
+  });
+
+  it("M-2281: a timeout says the install was stopped after the window's time, with what to do", async () => {
+    const { fm, sendText, chat } = setup();
+    await fm.startLoginSession("codex", chat);
+    await fakeSessions[0]!.events.onDone({ ok: false, detail: "timeout" });
+    expect(sendText.mock.calls.at(-1)![1]).toBe(t("install.timeout", "codex", "10"));
+    expect(fakeSessions[0]!.flow.timeoutMs).toBe(10 * 60 * 1000);
+  });
+
+  it("M-2281: /login's install routing asks for the binary off the fleet loop (no synchronous `which`)", async () => {
+    const { fm, chat } = setup();
+    const sync = vi.spyOn(fm, "isCliInstalled").mockImplementation(() => { throw new Error("synchronous which on a chat click"); });
+    expect(await fm.startLoginSession("codex", chat)).toBe(t("install.started", "codex"));
+    expect(sync).not.toHaveBeenCalled();
   });
 });
 

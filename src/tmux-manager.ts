@@ -481,6 +481,20 @@ export class TmuxManager implements Pane {
     }
   }
 
+  /**
+   * M-2267 (the user, hmsg-b8a170c0): whether the pane is in a tmux mode — copy-mode, a person scrolling it from an
+   * attached client. Its keys then go to the mode, not the CLI: tmux takes the delivery's Enter (the paste itself still
+   * reaches the CLI), so the message would sit unsent while delivery believed it submitted. A read only. null: unknown.
+   */
+  async paneInMode(timeoutMs = 2_000): Promise<boolean | null> {
+    if (!this.windowId) return null;
+    try {
+      const { stdout } = await execBounded(TmuxManager.tmuxArgs(["display-message", "-p", "-t", tmuxWindowTarget(this.sessionName, this.windowId), "#{pane_in_mode}"]), timeoutMs);
+      const v = String(stdout).trim();
+      return v === "1" ? true : v === "0" ? false : null;
+    } catch { return null; }
+  }
+
   async sendKeys(text: string): Promise<boolean> {
     try {
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-l", "-t", tmuxWindowTarget(this.sessionName, this.windowId), text]));

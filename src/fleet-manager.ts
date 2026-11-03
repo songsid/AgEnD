@@ -33,6 +33,8 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
+import { unattendedInstallCommand } from "./unattended-install.js";
+import { InstallStream } from "./install-stream.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
@@ -156,6 +158,7 @@ import {
   BACKEND_INSTALLATION_INFO,
   type BackendInstallationInfo,
   checkBinaryInstalled,
+  checkBinaryInstalledAsync,
   type LifecycleContext,
 } from "./instance-lifecycle.js";
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
@@ -628,6 +631,8 @@ const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
 const PROGRESS_UPDATE_INTERVAL_MS = 60_000;
 /** Floor between tool-progress-driven bubble edits (Telegram flood safety). */
 const TOOL_PROGRESS_EDIT_MIN_MS = 4_000;
+/** M-2281: how long `/login`'s install window may run before it is stopped. */
+const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 /** Elapsed time is only shown once work has clearly outlasted a quick answer. */
 /**
  * Default delay before the button starts showing elapsed time. Configurable via
@@ -18402,7 +18407,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if ("refusal" in admitted) return admitted.refusal;
       opts = { ...opts, profile: admitted.profile };
     }
-    if (BACKEND_INSTALLATION_INFO[wanted] && !this.isCliInstalled(wanted)) {
+    // M-2281: asked off the fleet loop — this runs on a chat click.
+    if (BACKEND_INSTALLATION_INFO[wanted] && !(await this.isCliInstalledOffLoop(wanted))) {
       const flow = LOGIN_FLOWS[wanted];
       this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
       return opts.profile !== undefined
@@ -18650,6 +18656,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     backend: string;
     chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
   } | null = null;
+  /** M-2281: how long `/login`'s install window may run (a field so a smoke can shorten it). */
+  installTimeoutMs = INSTALL_TIMEOUT_MS;
   /** An install that succeeded, between its success line and the sign-in it hands over to (#1131). */
   private installHandoff: { backend: string; cancelled: boolean } | null = null;
 
@@ -18660,10 +18668,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
-    if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
     // Reserve the fleet-wide window before the first await (shared with web
     // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
+    if (claim && await checkBinaryInstalledAsync(info.binary)) { this.loginWindow.release(claim); return t("install.already", backend, info.binary); }
     if (!claim) return this.loginWindow.busyMessage();
 
     let tmux: TmuxManager;
@@ -18679,16 +18687,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A synthetic flow: success is decided by the installer's exit code
     // (LoginSession treats a clean exit as success), never by pane text. The
     // session only judges that verdict; it does not read the output for URLs or prompts.
+    // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
+    // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
     const flow: LoginFlow = {
       backend,
-      command: info.unattended ?? info.install,
+      command: unattendedInstallCommand(info.unattended ?? info.install),
       successPattern: /$^/,
-      timeoutMs: 10 * 60 * 1000,
+      timeoutMs: this.installTimeoutMs,
     };
+    // M-2281: the installer's output, live, in the chat that asked — no page shows this window.
+    // Telegram gets its own <pre> (its markdown conversion keeps a fence as literal backticks); others a fenced block.
+    const frameStyle = chat.adapter.type === "telegram" ? "html" as const : "markdown" as const;
+    const stream = new InstallStream({
+      send: text => chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId, allowedMentions: { parse: [] } }),
+      edit: (messageId, text) => chat.adapter.editMessage(chat.chatId, messageId, text, chat.threadId, { format: frameStyle }),
+      warn: (message, err) => this.logger.debug({ backend, err: (err as Error)?.message ?? String(err) }, message),
+    }, t("install.stream_running", backend), undefined, undefined, frameStyle);
+    const minutes = String(Math.max(1, Math.round(this.installTimeoutMs / 60_000)));
     const session = new LoginSession(flow, tmux, {
+      onProgress: pane => stream.update(pane),
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
         this.loginWindow.release(claim);
+        // Between the install ending and the sign-in starting there is no
+        // session to cancel; this hand-off is what `/login cancel` stops — armed
+        // before the first await here, so a cancel during any of them counts.
+        const handoff = ok ? { backend, cancelled: false } : null;
+        if (handoff) this.installHandoff = handoff;
+        // The live view's last frame first, so the result line below follows the output it is about.
+        await stream.finish(ok ? t("install.stream_ok", backend)
+          : detail === "timeout" ? t("install.stream_timeout", backend, minutes)
+          : detail === "cancelled" ? t("install.stream_cancelled", backend)
+          : t("install.stream_failed", backend)).catch(() => {});
         if (cleanupFailed) {
           await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
         }
@@ -18696,16 +18726,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // A cancel is user-initiated — the cancel command's own reply already
           // said so; a second message here would be a duplicate.
           if (detail !== "cancelled") {
-            await chat.adapter.sendText(chat.chatId, t("install.failed", backend, detail),
+            await chat.adapter.sendText(chat.chatId, detail === "timeout" ? t("install.timeout", backend, minutes) : t("install.failed", backend, detail),
               { threadId: chat.threadId }).catch(() => {});
           }
           return;
         }
-        // Between the install ending and the sign-in starting there is no
-        // session to cancel; this hand-off is what `/login cancel` stops — from
-        // here on, as the login-shell lookup below is an await.
-        const handoff = { backend, cancelled: false };
-        this.installHandoff = handoff;
+        if (!handoff || handoff.cancelled || this.installHandoff !== handoff) return;
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
         const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? this.locateInInstallerBinDirs(info);
@@ -18781,6 +18807,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   isCliInstalled(backend: string): boolean {
     const info = BACKEND_INSTALLATION_INFO[backend];
     return !!info && checkBinaryInstalled(info.binary);
+  }
+
+  /** M-2281: isCliInstalled without holding the fleet loop (a chat click's path: `which` on a slow PATH can take seconds). */
+  async isCliInstalledOffLoop(backend: string): Promise<boolean> {
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    return !!info && await checkBinaryInstalledAsync(info.binary);
   }
 
   /** Abort the active install (`/login cancel`) and remove its window. */

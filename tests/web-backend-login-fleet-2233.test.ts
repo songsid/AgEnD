@@ -21,6 +21,7 @@ function makeFleet(installed: string[]) {
   fm.fleetConfig = { defaults: {}, instances: {} };
   const have = new Set(installed);
   vi.spyOn(fm, "isCliInstalled").mockImplementation((b: unknown) => have.has(b as string));
+  vi.spyOn(fm, "isCliInstalledOffLoop").mockImplementation(async (b: unknown) => have.has(b as string));
   const start = vi.fn(async (b: string) => `started:${b}`);
   fm.loginController = { start, webAccessToken: vi.fn(), isActiveFor: vi.fn(() => false), isActive: () => false };
   const sessions = new WebSessionStore({});
@@ -55,6 +56,7 @@ describe("#2233 FleetManager: a dashboard sign-in", () => {
     expect(await fm.startWebDashboardLogin("gemini-cli", chat, {})).toMatch(/gemini-cli was removed/);
     expect(start).not.toHaveBeenCalled();
     vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
+    vi.spyOn(fm, "isCliInstalledOffLoop").mockResolvedValue(true);
     expect(await fm.startWebDashboardLogin("claude", chat, { skipAuthCheck: true })).toBe("started:claude");
     expect(start).toHaveBeenCalledWith("claude", chat, { skipAuthCheck: true });
   });

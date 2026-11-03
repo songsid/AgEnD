@@ -202,6 +202,7 @@ describe("traffic: items carried desk to desk", () => {
     expect(f.frame(10, shown)).toEqual([]);
     expect(f.size()).toBe(0);
     f.sync([1, 2, 3, 4, 5].map((n) => item(10 + n)), 0);
+    f.frame(0, L());                                                             // admitted at the first frame (#2946)
     expect(f.size()).toBe(3);
   });
 });

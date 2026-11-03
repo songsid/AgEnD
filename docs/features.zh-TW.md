@@ -779,6 +779,8 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 - **瀏覽器終端機** — `claude-code` 和 `kiro-cli`：AgEnD 會開一個一次性的網頁終端機，執行登入指令，你在那裡完成登入（必要時把代碼貼回去）。這個連結預設只在這台機器上有效（可透過 SSH 轉發、tailscale 或你自己的 proxy 連過去）。
 - **只安裝** — `opencode` 和 `muse` 在這裡沒有登入流程。`antigravity` 不支援遠端登入，因為 `agy` 沒有獨立的登入指令。
 
+**先安裝（#2980）。** 安裝程式在沒有終端機可提問的環境下執行（stdin 來自 `/dev/null`，有 `setsid` 時也會用），以較低的 CPU 與磁碟優先權執行，並以你帳號的登入 shell 作為 `$SHELL`，讓 PATH 設定寫進你終端機會讀的 rc 檔。它要問的問題（sudo 密碼、「要取代嗎？」）會立刻失敗，並回報最後幾行。發起安裝的聊天會收到一則訊息，每隔幾秒更新為安裝程式的最後 15 行（去除 ANSI、遮蔽機密），結束時顯示最終狀態：完成、失敗或 10 分鐘後停止。取消、逾時和 fleet 停止都會結束整個安裝。安裝成功後立刻就在 fleet 的 PATH 上，不必重啟。
+
 **公開連結。** 如果手機連不到這台機器，`claude-code` 或 `kiro-cli` 的登入可以透過 Cloudflare Quick Tunnel 提供一個暫時的公開 https 連結：確認訊息上有 **I understand (temporary public link)**、**I understand (local network)** 和 **Cancel** 三個按鈕，按下第一個就代表同意，每次登入問一次。`PATH` 上有 `cloudflared` 就用它；沒有的話，AgEnD 會把 Cloudflare 的版本下載到 `~/.agend/bin/`，只下載一次，版本固定，並以隨附的 SHA256 驗證。連結和存取權杖會分成兩則私訊傳給你，絕不貼在頻道裡；登入不論以何種方式結束，tunnel 都會關閉。TLS 在 Cloudflare 端解開，所以 Cloudflare 看得到那個終端機。設定 `web_terminal.tunnel.allow_public: false` 可以在這台主機上關閉這個選項。詳見 [configuration](configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
 
 **從網頁 dashboard 登入（2.3，#2233）。** 在這台機器或它的網路上登入 dashboard 的 fleet 管理員（不是透過公開連結，也不是訪客）不需要任何聊天連線也能做同樣的事：**設定 → Agent → 登入** 列出每個 backend 的登入，以及代理使用的每個憑證設定檔，附 **登入** 按鈕；網頁的 `/backend` 選單在未登入的 backend 旁提供 **登入 <backend>**；**需要你** 在因登入而暫停的代理上提供 **登入**。對話框跑的是同一個流程：裝置碼直接顯示在對話框；瀏覽器終端機登入會顯示 **開啟登入終端機** 和一次性存取碼，只給這個瀏覽器工作階段（不經過私訊，所以只用網頁的 fleet 不需要 bot）。檢查、次數限制和 10 分鐘的時限都相同，公開連結仍是每次登入自行選擇；進行中時每個管理員頁面都會顯示，附 **開啟**（啟動它的瀏覽器看得到連結和代碼，其他人只看得到是誰、在哪裡，並可取消）。啟動它的瀏覽器工作階段結束時，登入會被取消。這裡不會安裝尚未安裝的 CLI：對話框會給出安裝指令。預設的 Kiro、Claude Code 與 Codex 帳號則改用具名的瀏覽器登入控制項（#2599；[詳細說明](configuration.zh-TW.md#首次設定時從瀏覽器登入後端)），首次設定時略過的後端，即使還沒有 agent 使用，也會列在 **Needs you**。
