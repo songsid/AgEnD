@@ -226,7 +226,9 @@ describe("true daemon runtime scanner and delivery hold", () => {
     expect(h.daemon.isInputBlocked()).toBe(true);
     expect((await h.daemon.probeBlockingDialog()).dialog.holdOnly).toBe(true);
     expect(parked).toHaveLength(1);
-    expect(JSON.stringify(parked)).not.toContain("In this mode, Kiro will execute");
+    // #849 A: no pane text in what the event says (its description, kind, …). #2966: the screen it carries for the
+    // web Log's folded row is masked and goes to the event log only — never into a notice (log-dialog-text-2966).
+    expect(JSON.stringify(parked.map(({ screen: _screen, ...rest }) => rest))).not.toContain("In this mode, Kiro will execute");
   });
 
   it("a persistent choice appearing between capture and lock never gets Enter", async () => {
