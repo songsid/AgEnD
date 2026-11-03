@@ -46,3 +46,18 @@ it('even a stale concrete window id cannot make native cleanup resolve or signal
 it('starting or unknown observations never become positive native exit evidence',async()=>{
  const f=fixture();f.daemon.config.restart_policy.health_check_interval_ms=1000;vi.useFakeTimers();await f.daemon.start();const ended=vi.fn();f.daemon.on('native_pane_exited',ended);f.pane.getPaneStatus.mockResolvedValue({alive:false});f.native.snapshot.mockReturnValue({state:'starting'});await vi.advanceTimersByTimeAsync(1100);f.native.snapshot.mockReturnValue({state:'unknown'});await vi.advanceTimersByTimeAsync(1100);expect(ended).not.toHaveBeenCalled();expect(f.native.acquire).toHaveBeenCalledOnce();await f.daemon.stop();
 });
+
+it.each(['fresh','resumed'] as const)('native %s startup holds delivery until the bounded startup scan settles',async disposition=>{
+ const f=fixture();f.native.acquire.mockResolvedValueOnce({pane:f.pane,source:f.source,disposition} as never);
+ let finish!:(value:boolean)=>void;const scan=vi.spyOn(f.daemon,'finishStartupScan').mockImplementation(()=>new Promise(resolve=>{finish=resolve as typeof finish;}));
+ const start=f.daemon.start();await vi.waitFor(()=>expect(scan).toHaveBeenCalledWith(120_000));expect(f.daemon.spawning).toBe(true);
+ let settled=false;void f.daemon.waitForSpawnToSettle().then(()=>{settled=true;});await Promise.resolve();expect(settled).toBe(false);
+ finish(true);await start;expect(f.daemon.spawning).toBe(false);expect(f.native.acquire).toHaveBeenCalledOnce();expect(f.forbidden).not.toHaveBeenCalled();
+});
+it('reattaching a busy native process never runs startup dialog keys',async()=>{
+ const f=fixture();const scan=vi.spyOn(f.daemon,'finishStartupScan').mockImplementation(()=>{throw Error('Must not scan a running turn');});await f.daemon.start();expect(scan).not.toHaveBeenCalled();expect(f.forbidden).not.toHaveBeenCalled();
+});
+it('a positively dead native startup retains its session and never retries fresh',async()=>{
+ const f=fixture();f.native.acquire.mockResolvedValueOnce({pane:f.pane,source:f.source,disposition:'resumed'} as never);vi.spyOn(f.daemon,'finishStartupScan').mockResolvedValue(false);
+ await expect(f.daemon.start()).rejects.toThrow('retained session was not replaced');expect(f.native.acquire).toHaveBeenCalledOnce();expect(f.daemon.spawning).toBe(false);expect(f.forbidden).not.toHaveBeenCalled();
+});

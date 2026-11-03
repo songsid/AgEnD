@@ -2811,6 +2811,14 @@ export class Daemon extends EventEmitter {
         this.tmux = acquired.pane; this.nativeTranscriptSource = acquired.source; nativeDisposition = acquired.disposition;
         this.lastSpawnAt = Date.now(); this.setProcessStatus("running");
         this.bindInstanceStateOutputListener(this.tmux.getWindowId()); this.saveSessionId();
+        // New/resumed native processes can still be painting their first frame. Keep deliveries behind the same
+        // bounded dialog/readiness scan as local startup. An already-running reattachment may be busy: do not
+        // wait for that work to finish or inject a startup key into it.
+        if (acquired.disposition !== "reattached") {
+          if (!await this.finishStartupScan(120_000)) throw Error("Native CLI exited during startup; retained session was not replaced");
+          this.startupAdmission?.();
+          if (this.startupAborted || this.deliveryWritesStopping || !this.nativePaneLifecycle.current()) throw Error("Native launch was superseded");
+        }
       } finally { this.endSpawn(); }
     } else {
     // 2. Tmux — ensure session, create window if not alive
@@ -13029,7 +13037,8 @@ export class Daemon extends EventEmitter {
             // Wait for next screen to render — bounded by what is left of the budget.
             const renderWait = Math.max(0, Math.min(10_000, remaining()));
             if (this.controlClient) {
-              const wid = readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim();
+              const wid = this.nativePaneLifecycle ? ownerTmux!.getWindowId()
+                : readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim();
               await this.controlClient.waitForIdle(wid, renderWait);
             } else {
               await new Promise(r => setTimeout(r, Math.min(3_000, renderWait)));
@@ -13062,7 +13071,9 @@ export class Daemon extends EventEmitter {
         // scan parked on the old limit text.
         const codexReady = this.backend!.binaryName !== "codex"
           || this.isCodexLivePaneSnapshot(pane);
-        if (readyPatternMatches && codexReady) {
+        const nativeComposerReady = !this.nativePaneLifecycle || (this.backend?.readInputRow
+          ? this.backend.readInputRow(pane) !== null : this.backend?.isDeliveryInputReadyPane?.(pane) === true);
+        if (readyPatternMatches && codexReady && nativeComposerReady) {
           cleanReadyPolls++;
           if (cleanReadyPolls >= 2 || remaining() <= 0) {
             // A real ready prompt (with no fatal dialog on screen — those are

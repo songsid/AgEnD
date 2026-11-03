@@ -12,17 +12,17 @@ import {RuntimePaneHost} from "../src/runtime-pane-host.js";
 import {RuntimePaneStore} from "../src/runtime-pane-store.js";
 import type {PaneMcpOwner} from "../src/runtime-pane-mcp-protocol.js";
 const clean:Array<()=>unknown>=[];afterEach(async()=>{for(const f of clean.splice(0).reverse())await f();setConfiguredRuntimeSwitches({});vi.restoreAllMocks();});
-async function fixture(){
+async function fixture(delayFrame=false){
  const root=mkdtempSync(join(tmpdir(),"agend-native-fleet-integrated-"));clean.push(()=>rmSync(root,{recursive:true,force:true}));setConfiguredRuntimeSwitches({remote_runtime:true});
  const fleet:any=new FleetManager(root),machineId=randomUUID(),exec=vi.fn(()=>{throw Error("No per-turn exec");});
  const store=windowsAgentsFor(fleet,{start:exec,get:()=>null,prepareWorkspace:async()=>"C:\\scratch"} as never),agent=await store.create({name:"Native",cwd:"C:\\scratch",cli:"claude-code",sandbox:"read-only",machineId});store.bindInstance(agent.id,"native");
  const config={...nativeInstanceConfig(agent),native_adapter:"pane",log_level:"silent"};fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true},instances:{native:config}};
- let owner:PaneMcpOwner|undefined,exit=(value:any)=>{};const cli={pid:12345,write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:()=>({dispose(){}}),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
+ let owner:PaneMcpOwner|undefined,exit=(value:any)=>{},paint=()=>{};const cli={pid:12345,write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(fn:(data:string)=>void)=>{paint=()=>fn("─".repeat(40)+"\r\n❯ \r\n"+"─".repeat(40)+"\r\n");if(!delayFrame)queueMicrotask(paint);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
  const spawn=vi.fn(async()=>cli),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,"runner")),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,mcpConnection:(value,tools)=>{owner=value;return{endpoint:"http://127.0.0.1:1/agent",token:"a".repeat(64),owner:value,tools};},transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:"pending" as const,cursor,data:"",lines:[],complete:false,gap:false};},close:async()=>{}})});clean.push(()=>host.stop());
  const hub={machine:()=>({status:"online",platform:"win32",inventory:{clis:[{id:"claude-code",runnable:true,version:"Claude Code 2.1.316"}]}}),callPane:vi.fn((_id:string,request:any)=>host.request(request)),subscribe:()=>()=>{},paneTransportEpoch:()=>"private-epoch",task:()=>null,tasks:()=>[],hasActiveTask:()=>false};fleet.runtimeHub=hub;
  if(fleet.memoryPressure)vi.spyOn(fleet.memoryPressure,"start").mockImplementation(()=>{});
  const skills=vi.spyOn(fleet,"syncRoleSkills").mockImplementation(()=>{throw Error("No Linux skills in Windows cwd");}),models=vi.spyOn(fleet,"resolveInstanceModel").mockImplementation(()=>{throw Error("No Linux model state for native start");});
- clean.push(async()=>{for(const daemon of fleet.daemons.values())await daemon.abortStartup();for(const channel of fleet.instanceIpcClients.values())await channel.close();fleet.memoryPressure?.stop();});return{root,fleet,config,store,agent,spawn,cli,hub,exec,skills,models,owner:()=>owner!};
+ clean.push(async()=>{for(const daemon of fleet.daemons.values())await daemon.abortStartup();for(const channel of fleet.instanceIpcClients.values())await channel.close();fleet.memoryPressure?.stop();});return{root,fleet,config,store,agent,spawn,cli,hub,exec,skills,models,owner:()=>owner!,paint:()=>paint()};
 }
 it("opt-in starts a resident daemon, receives ordinary delivery, publishes progress and closes only its owned pane",async()=>{
  const f=await fixture();await f.fleet.startInstance("native",f.config,true);const daemon=f.fleet.daemons.get("native");expect(daemon?.usesNativePane()).toBe(true);expect(f.spawn).toHaveBeenCalledOnce();expect(f.exec).not.toHaveBeenCalled();expect(f.skills).not.toHaveBeenCalled();expect(f.models).not.toHaveBeenCalled();expect(existsSync(join(f.fleet.getInstanceDir("native"),"channel.sock"))).toBe(false);expect(f.fleet.getInstanceStatus("native")).toBe("running");
@@ -37,7 +37,7 @@ it("the retained helper uses ordinary reply routing and waits for its own stdout
  expect(response.result.isError).not.toBe(true);expect(f.fleet.handleOutboundFromInstance).toHaveBeenCalledOnce();expect(operation).not.toHaveBeenCalled();await f.fleet.paneManager.handle(f.config.machine_id,{...common,method:"response-written",callId:"c".repeat(64),responseId:response.responseId},()=>true);expect(operation).toHaveBeenCalledOnce();
 });
 it("a native pause refuses a working pane and uses positive close plus pause metadata only after idle proof",async()=>{
- const f=await fixture();await f.fleet.startInstance("native",f.config,true);const daemon=f.fleet.daemons.get("native");await f.fleet.lifecycle.pause("native");expect(f.cli.kill).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).paused).not.toBe(true);
+ const f=await fixture();await f.fleet.startInstance("native",f.config,true);const daemon=f.fleet.daemons.get("native");daemon.instanceState="working";await f.fleet.lifecycle.pause("native");expect(f.cli.kill).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).paused).not.toBe(true);
  vi.spyOn(daemon,"nativePauseReady").mockResolvedValue(true);vi.spyOn(daemon,"nativePauseStillReady").mockReturnValue(true);await f.fleet.lifecycle.pause("native");expect(f.cli.kill).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).paused).toBe(true);expect(f.fleet.lifecycle.isPaused("native")).toBe(true);
 });
 it.each(["auth_error","quota"])("native %s never probes or changes the coordinator's login/quota",async type=>{
@@ -197,4 +197,10 @@ it('offline switch cleanup retains the reservation and never manufactures an exi
 
 it('a disconnected native pane is held and never reports a live process from stale metadata; switch-off shows stopped',async()=>{
  const f=await fixture();await f.fleet.startInstance('native',f.config,true);expect(f.fleet.getInstanceStatus('native')).toBe('running');const online=f.hub.machine();f.hub.machine=()=>({...online,status:'offline'});expect(f.fleet.getInstanceStatus('native')).toBe('crashed');setConfiguredRuntimeSwitches({});expect(f.fleet.getInstanceStatus('native')).toBe('stopped');expect(f.cli.kill).not.toHaveBeenCalled();expect(f.store.get(f.agent.id).activeId).toBeTruthy();
+});
+
+it('a real fresh daemon cannot release startup while its native Claude terminal is blank',async()=>{
+ const f=await fixture(true);let started=false;const start=f.fleet.startInstance('native',f.config,true).then(()=>{started=true;});
+ await vi.waitFor(()=>expect(f.spawn).toHaveBeenCalledOnce());await new Promise(resolve=>setTimeout(resolve,20));expect(started).toBe(false);
+ f.paint();await start;expect(started).toBe(true);const daemon=f.fleet.daemons.get('native');expect(daemon.backend.readInputRow(await daemon.tmux.capturePane())).not.toBeNull();expect(f.cli.write).not.toHaveBeenCalled();
 });
