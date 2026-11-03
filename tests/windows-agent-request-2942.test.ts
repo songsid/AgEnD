@@ -275,7 +275,7 @@ describe("#2942: an agent's Windows settings change is only ever a pending reque
       vi.spyOn(r.fm.lifecycle, "runTransition").mockImplementation(async (n: string, fn: any) => { await held; return realTransition(n, fn); });
       r.any.daemons.set(name, Object.assign(new EventEmitter(), { nativePaneHasExited: () => true }));
       // As the real stop does: a stop moves the explicit-stop generation on.
-      const stop = vi.spyOn(r.fm, "stopInstance").mockImplementation(async (n: string) => { r.any.explicitStopGeneration.set(n, (r.any.explicitStopGeneration.get(n) ?? 0) + 1); });
+      const stop = vi.spyOn(r.fm, "stopInstance").mockImplementation(async (n: string) => { r.any.explicitStopGeneration.set(n, (r.any.explicitStopGeneration.get(n) ?? 0) + 1); return { backgroundWorkEnded: true }; });
       vi.spyOn(r.runtime, "previewUpdate").mockImplementation(() => undefined as never);
       vi.spyOn(r.runtime, "update").mockImplementation(() => ({}) as never);
       vi.spyOn(r.fm, "startInstance").mockResolvedValue(undefined as never);
