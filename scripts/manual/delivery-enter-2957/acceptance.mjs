@@ -78,11 +78,14 @@ try {
     daemon.tmux = pane;
     if (kind === "card") {
       assert.equal(backend.readInputRow(await pane.capturePane()), null);
+      const submissions = [];
       for (const phase of ["initial-submit", "idle-to-busy-retry"]) {
-        assert.equal(await daemon.sendDeliveryEnter(phase), false);
+        submissions.push(await daemon.sendDeliveryEnter(phase));
       }
       await delay(150);
-      assert.equal((await recorded(record)).includes("ENTER"), false);
+      // Check actual bytes received by the mock before the return values: the old path must reproduce approval.
+      assert.equal((await recorded(record)).includes("ENTER"), false, "Permission card received Enter");
+      assert.deepEqual(submissions, [false, false]);
       cases.push({ kind, pasteCount: 1, permissionCursor: 0, enters: 0, bothSubmitPathsHeld: true });
     } else {
       assert.equal(await daemon.sendDeliveryEnter("initial-submit"), true);
