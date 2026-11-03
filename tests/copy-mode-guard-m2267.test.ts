@@ -181,6 +181,22 @@ describe("a delivery to a pane left in copy-mode", () => {
     expect([r.s.keysInMode, r.s.enters]).toEqual([0, 0]);
     expect(r.state).not.toBe("delivered");
   });
+  // M-2290 (#2985 review, Fable): a respawn or relaunch reuses the same tmux object and window, so only the daemon's
+  // spawn generation / launch fence tell the CLI that took the paste from its successor.
+  it.each([
+    ["a respawn (spawnGeneration)", (d: any) => { d.spawnGeneration++; }],
+    ["a relaunch (launchFenceEpoch)", (d: any) => { d.launchFenceEpoch++; }],
+  ])("%s while the Enter waits for the mode: no Enter for the new CLI when the mode ends", async (_n, bump) => {
+    let daemonRef: any = null, since = -1;
+    const r = await deliver(claude, (s) => {
+      if (!s.pasted) return false;
+      if (since < 0) since = s.modeReads;
+      if (s.modeReads - since === 4 && daemonRef) bump(daemonRef);
+      return s.modeReads - since < 10;
+    }, 60_000, (d) => { daemonRef = d; });
+    expect([r.s.keysInMode, r.s.enters]).toEqual([0, 0]);
+    expect(r.state).not.toBe("delivered");
+  });
   it("still in a mode when the Enter's wait runs out: the Enter is withheld — never reported delivered", async () => {
     const r = await deliver(claude, (s) => s.pasted > 0, 12 * 60_000);
     expect(r.s.keysInMode).toBe(0);

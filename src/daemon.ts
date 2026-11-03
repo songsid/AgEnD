@@ -9586,8 +9586,14 @@ export class Daemon extends EventEmitter {
   ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn replaced the delivery: check here, and
     // again after every wait below, at the last point before the tmux write.
+    // M-2290 (#2985 review, Fable): the mode wait can last up to 10 minutes, and a respawn or relaunch reuses the same
+    // tmux object and window — so the spawn generation and launch fence are part of the fence too: an Enter meant for
+    // the CLI this paste went to is never sent to its successor.
     const tmux = this.tmux;
-    const current = () => this.tmux === tmux && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    const generation = this.spawnGeneration;
+    const fence = this.launchFenceEpoch;
+    const current = () => this.tmux === tmux && this.spawnGeneration === generation && this.launchFenceEpoch === fence
+      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
     if (!current()) return false;
     // The pasted text may still be in the box: the caller keeps it uncertain (no false failure, no second paste).
     const hold = () => {
