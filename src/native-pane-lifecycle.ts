@@ -60,7 +60,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.host = new RuntimePaneHostPort(this.port, options.endpoint);
     this.observation = new RuntimePaneObservation(options.endpoint, () => this.port.ownedSnapshot());
     this.backend = createNativePaneBackend(options.launch.cli, () => ({ sessionId: this.port.ownedSnapshot()?.sessionId ?? null,
-      contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }));
+      cwd: options.launch.cwd, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }));
   }
   bindDaemon(daemon: import("./daemon.js").Daemon): void { this.options.bindDaemon?.(daemon); }
   current(reference?: RuntimeTranscriptReference): boolean {

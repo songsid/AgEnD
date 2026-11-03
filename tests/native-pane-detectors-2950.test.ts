@@ -55,3 +55,16 @@ describe('native detector extraction preserves local pane behavior',()=>{
   expect(dialog.keys).toEqual([]);expect(dialog.holdOnly).toBe(true);expect(dialog.blocksDelivery).toBe(true);
  });
 });
+
+it.each(['startup','runtime'] as const)('native Claude %s trust keys require the one exact configured Windows cwd',phase=>{
+ const cwd='C:\\Users\\changhansung\\agend-adapter-proto\\child',backend=createNativePaneBackend('claude-code',()=>({...state(),cwd}));
+ const fixture=readFileSync('tests/fixtures/claude-2.1.314-trust-dialog.pane.txt','utf8');
+ const pane=fixture.replace('/home/han/.cache/cc314-audit/w/k314',cwd);
+ const dialogs=phase==='startup'?backend.getStartupDialogs!():backend.getRuntimeDialogs!();
+ const active=(screen:string)=>dialogs.filter(dialog=>dialog.pattern.test(screen)&&(!dialog.isActive||dialog.isActive(screen)));
+ expect(active(pane).some(dialog=>!dialog.holdOnly&&dialog.keys.includes('Down'))).toBe(true);
+ for(const wrong of [pane.replace(cwd,'C:\\another-workspace'),pane.replace(cwd,''),pane.replace(cwd,cwd+'\nC:\\ambiguous'),pane.replace(cwd,'C:\\Users\\changhansung\\\nagend-adapter-proto\\child')]){
+  expect(active(wrong).some(dialog=>dialog.keys.length>0)).toBe(false);expect(active(wrong).some(dialog=>dialog.holdOnly)).toBe(true);
+ }
+ expect(active(pane.replace(cwd,cwd.replaceAll('\\','/').toUpperCase())).some(dialog=>!dialog.holdOnly&&dialog.keys.includes('Down'))).toBe(true);
+});

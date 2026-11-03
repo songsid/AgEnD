@@ -43,7 +43,7 @@ try{
  for(const row of [...agents].reverse()){lastPhase='turn-'+row.name;const expected='NATIVE_'+(row.name.includes('codex')?'CODEX':'CLAUDE')+'_FLEET_OK',daemon=fleet.daemons.get(row.name),messageId=randomUUID();
   process.stdout.write('phase:'+lastPhase+'\n');const accepted=await fleet.deliverToInstance(row.name,{type:'fleet_inbound',content:safety?safetyPrompt(safety,row.agent.cli,expected):`Use the AgEnD reply tool once with exactly ${expected}. Do not run shell commands or edit files. Then finish.`,meta:{source:'user',adapter_id:'private-acceptance',chat_id:'private-chat',thread_id:row.name,message_id:messageId,user:'private-person',runtime:'native-proof'}});assert(accepted);await until(()=>replies.some(value=>value.name===row.name),'scoped MCP reply '+row.name);await until(()=>proofs.includes(row.name),'provider stdout receipt '+row.name);await until(()=>guardProofs.has(row.name),'reply guard '+row.name);}
  await until(()=>progress.length>0,'ordinary progress bridge',15000);
- if(safety){lastPhase='safety';process.stdout.write('phase:safety\n');await finishSafety(safety,{fleet,agents,until,diagnostics});}
+ if(safety){lastPhase='safety';process.stdout.write('phase:safety\n');await finishSafety(safety,{fleet,agents,until,diagnostics,replies});}
  if(agents.length===2){
   lastPhase='reattach';process.stdout.write('phase:'+lastPhase+'\n');
   for(const row of agents)await until(()=>fleet.daemons.get(row.name)?.nativePauseReady(),'native idle before reattachment '+row.name,30000);
