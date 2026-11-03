@@ -353,13 +353,26 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     // text — a stale stylesheet, or any container that grows with its content: measured next time it would shrink the
     // text 0.5% each refresh, for ever. Then the width alone decides, at once and from then on (until the choice or the
     // stylesheet changes). Cause and effect within this one call: a resize between calls (#2991 review: the box made
-    // shorter step by step, where a height-limited size moves in proportion too) never counts.
+    // shorter step by step, where a height-limited size moves in proportion too) never counts. The move must match the
+    // expected one closely for its size (#2991 review r2: not ±5% of the whole), and a second probe in the same call —
+    // 10% smaller, then back, before any frame is painted — must move it in proportion again: a one-off fixed drop (a
+    // scrollbar coming) never does.
     if (!g.follows && was > 0 && before > 0) {
-      const after = box.clientHeight - padH, ratio = size / was;
-      if (after !== before && Math.abs(after / before - ratio) < 0.05 * ratio) {
-        g.follows = true;
-        const byWidth = sizeFor(byW);
-        if (byWidth !== size) apply(byWidth);
+      const height = () => box.clientHeight - padH;
+      const moves = (from, to, ratio) => {
+        const expect = from * (ratio - 1), got = to - from;
+        return got !== 0 && Math.sign(got) === Math.sign(expect) && Math.abs(got - expect) <= Math.max(1.5, 0.25 * Math.abs(expect));
+      };
+      const after = height();
+      if (moves(before, after, size / was)) {
+        p.style.fontSize = `${(size * 0.9).toFixed(2)}px`;
+        const probed = height();
+        p.style.fontSize = `${size.toFixed(2)}px`;
+        if (moves(after, probed, 0.9)) {
+          g.follows = true;
+          const byWidth = sizeFor(byW);
+          if (byWidth !== size) apply(byWidth);
+        }
       }
     }
   };

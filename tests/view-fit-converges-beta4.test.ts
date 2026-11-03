@@ -129,6 +129,21 @@ describe("fit() converges", () => {
     t.clientHeight = 310; await refit();
     expect(px()).toBeCloseTo((300 / 36) * 0.995, 2);                                // still the height's fit
   });
+  // #2991 review r2: the same with a small step (610 → 600, the text 1.7% smaller, the box 15 px), and a fixed drop that
+  // matches the expected move exactly (10 px): the second probe in the same call sees no move, so neither counts.
+  it.each([[600, 15], [600, 10]])("#2991 review r2: a fixed %i-px box losing %i px once on the next size still limits (the second probe sees no move)", async (h0, drop) => {
+    await mount();
+    const t = term() as any, st = (pre() as any).style;
+    t.clientWidth = 1012; t.clientHeight = 610;
+    await refit();
+    expect(px()).toBeCloseTo(16.58, 2);
+    let fs = st.fontSize, once = true;
+    Object.defineProperty(st, "fontSize", { configurable: true, get: () => fs, set: (v: string) => { fs = v; if (once) { once = false; t.clientHeight -= drop; } } });
+    t.clientHeight = h0; await refit();
+    expect(px()).toBeCloseTo(((h0 - 10) / 36) * 0.995, 2);                        // the height's fit, the probe put back
+    t.clientHeight = 310; await refit();
+    expect(px()).toBeCloseTo((300 / 36) * 0.995, 2);
+  });
   it("#2991 review: a box of its own made shorter step by step (each size then in proportion) keeps limiting — and so does a later change", async () => {
     await mount();
     const t = term() as any;
