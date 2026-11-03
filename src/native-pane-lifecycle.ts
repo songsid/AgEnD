@@ -53,7 +53,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.port = new RuntimePanePort(options.endpoint, options.receiptFile, options.launch, screen => {
       const backend = this.backend;
       if ([...(backend.getStartupDialogs?.() ?? []), ...(backend.getRuntimeDialogs?.() ?? [])].some(dialog => dialog.pattern.test(screen) && (!dialog.isActive || dialog.isActive(screen)))) return false;
-      // The Enter proof mirrors the daemon's gate: the tail-window reader, or complete ownership of a long envelope.
+      // Composer-only callers retain the structural reader. Daemon delivery and explicit human answers carry separate proofs.
       return backend.readInputRow ? backend.readInputRow(screen) != null
         : backend.isDeliveryInputReadyPane?.(screen) === true || backend.ownsComposerRows?.(screen) === true;
     });

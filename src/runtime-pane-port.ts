@@ -150,17 +150,19 @@ export class RuntimePanePort implements Pane {
         if (!this.endpoint.online() || this.closing || this.record.snapshot?.state !== "running" || this.record.pending || this.record.pendingClose) throw Error("Pane input needs reconciliation");
         let expectedSeq = this.record.snapshot.seq;
         if (input) {
-          // An explicit dialog answer is bound to the exact screen verified by its identity/cursor reader.
-          // Other callers get no implicit permission to type through a dialog: prove a current composer instead.
+          // Internal delivery proof comes from the daemon's recognised runtime-dialog veto (#2990 policy).
+          // Human dialog proof remains identity/cursor-bound. Composer-only and unproved callers keep the reader check.
+          // Every policy still needs the exact last capture and carries its output seq to the host.
           const capture = proof ? this.inputCapture : await this.captureCurrent();
-          if (!capture || !capture.text.trim() || proof && capture.text !== proof.screen
-            || (proof?.kind !== "dialog" && !this.inputIsComposer(capture.text))) {
+          if (!capture || (!capture.text.trim() && proof?.kind !== "delivery") || proof && capture.text !== proof.screen
+            || (proof?.kind !== "dialog" && proof?.kind !== "delivery" && !this.inputIsComposer(capture.text))) {
             this.inputNotSent = true; this.error = "Pane input withheld: the intended composer or dialog is not verified"; return false;
           }
           expectedSeq = capture.snapshot.seq;
           if (!this.endpoint.online() || this.closing || this.record.pendingClose) return false;
         }
         const request = validateRuntimePaneRequest(make(this.record.snapshot, expectedSeq));
+        if (proof?.kind === "delivery" && (request.action !== "key" || request.key !== "Enter")) throw Error("Delivery proof is only valid for Enter");
         if (!("operationId" in request) || !("sequence" in request) || !("paneId" in request)) throw Error("Expected pane mutation");
         this.record.pending = { action: "reconcile", paneId: request.paneId, launchId: request.launchId,
           operationId: request.operationId, sequence: request.sequence, digest: runtimeJobDigest(request) }; this.save();

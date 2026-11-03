@@ -161,3 +161,33 @@ it('ordinary native delivery retries only the positively refused Enter with new 
  expect(operations.filter(action=>action==='key')).toHaveLength(2);expect(operations.filter(action=>action==='input')).toHaveLength(0);
  expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');expect(mark).toHaveBeenCalledOnce();
 });
+
+it('internal daemon delivery proof bypasses only composer checking; ordinary and card callers keep their contracts',async()=>{
+ const f=await fixture();repaint(f,'a busy screen without composer chrome');let screen=await f.port.capturePane();
+ expect(await f.port.sendSpecialKey('Enter')).toBe(false);
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'composer',screen})).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen})).toBe(true);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');f.write.mockClear();
+ expect(await f.port.sendKeys('not a delivery key',{kind:'delivery',screen})).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+ repaint(f,nativeApproval);screen=await f.port.capturePane();
+ expect(await f.port.sendSpecialKey('Down',undefined,{kind:'dialog',screen})).toBe(true);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[B');
+});
+it('daemon delivery proof still requires the exact current capture and host sequence',async()=>{
+ const f=await fixture(),screen=await f.port.capturePane(),call=f.endpoint.call;let raced=false;
+ f.endpoint.call=async request=>{if(request.action==='key'&&!raced){raced=true;repaint(f,nativeApproval);}return call(request);};
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen})).toBe(false);
+ expect(f.port.lastInputWasNotSent()).toBe(true);expect(f.write).not.toHaveBeenCalled();
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen:'different screen'})).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+});
+it('an internal delivery can use an empty captured layout but an unproved caller cannot',async()=>{
+ const f=await fixture();repaint(f,'');const screen=await f.port.capturePane();expect(screen.trim()).toBe('');
+ expect(await f.port.sendSpecialKey('Enter')).toBe(false);
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'not-authorised',screen} as any)).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen})).toBe(true);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');
+});

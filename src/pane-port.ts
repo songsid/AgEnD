@@ -1,7 +1,9 @@
 /** Terminal operations used by the daemon. A handle's object identity fences in-flight work. */
 export interface PaneSize { columns: number; rows: number }
 export type PaneKey = "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q";
-export interface PaneInputProof { kind: "composer" | "dialog"; screen: string }
+/** Internal only, never a runtime wire field: delivery means the daemon checked its backend's runtime dialogs;
+ * composer callers and explicit identity-bound human card answers retain their separate policies. */
+export interface PaneInputProof { kind: "composer" | "delivery" | "dialog"; screen: string }
 export interface PaneStatus { alive: boolean; exitCode?: number; pid?: number }
 export interface PaneOutputEvent { paneId: string; windowId?: string; at: number }
 export type PaneOutputEventName = `output:${string}`;

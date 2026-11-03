@@ -43,6 +43,7 @@ export function traceNativeDelivery(daemon, name, diagnostics) {
   }
   const warnings = new Map([
     ['Delivery input is not a verified composer; Enter withheld', 'enter-withheld'],
+    ['Native delivery Enter withheld by its safety check', 'enter-withheld'],
     ['The pane stayed in a tmux mode; Enter withheld', 'pane-mode-held'],
     ['pasteBuffer failed — recovering window and backing off', 'paste-retry'],
     ['pasteBuffer failed — non-retryable tmux error', 'paste-refused'],
