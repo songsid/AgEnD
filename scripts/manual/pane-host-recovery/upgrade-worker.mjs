@@ -43,6 +43,11 @@ if (mode === 'local') {
  phase = 'initial-frame';
  const initial = await new Promise(done => lines.once('line', line => done(JSON.parse(line))));
  const store = new RuntimeClientStore(join(root, 'profile'));
+ phase = 'loopback-ready';
+ for (let attempt = 0; ; attempt++) {
+  try { await fetch(new URL('/scratch-ready', initial.server), { signal: AbortSignal.timeout(1000) }); break; }
+  catch (error) { if (attempt >= 99) throw error; await new Promise(done => setTimeout(done, 100)); }
+ }
  phase = 'pairing';
  if (initial.code) {
   await pairRuntime({ ...initial, store, name: 'scratch-upgrade-proof', pollMs: 100,
