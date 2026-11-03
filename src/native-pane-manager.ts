@@ -168,6 +168,9 @@ export class NativePaneManager {
    assertCurrent();this.options.admit(name,config);
    if(ended.state!=="exited"||ended.paneId!==pane.paneId||ended.launchId!==launchId||ended.agentId!==id||ended.instance!==name||ended.hostBootId!==pane.hostBootId
     ||pane.sessionId!==ended.sessionId)throw Error("Native recovery exit scope differs");
+   const binding=this.bindings.get(id);
+   if(binding)await binding.native.port.recordConfirmedExit(ended,assertCurrent);
+   assertCurrent();this.options.admit(name,config);
    this.save(file,{...manifest,exited:ended});
    if(!agent.threadId)this.options.store.pinPaneSession(id,launchId,pin);
    if(!this.bindings.has(id))this.options.store.releasePane(id,ended);

@@ -7,7 +7,7 @@ import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
 export function NativePaneRecovery({ name, inst, lease }) {
   const [dialog, setDialog] = useState(false), [checked, setChecked] = useState(false), [busy, setBusy] = useState(false);
-  const inFlight = useRef(false), recovery = inst.native_recovery;
+  const confirmation = useRef(null), inFlight = useRef(false), recovery = inst.native_recovery;
   useEffect(() => { setDialog(false); setChecked(false); }, [recovery?.launchId, recovery?.kind]);
   const act = async (path, body) => {
     if (inFlight.current || !lease.current()) return;
@@ -25,12 +25,12 @@ export function NativePaneRecovery({ name, inst, lease }) {
   if (!recovery) return ["stopped", "crashed"].includes(inst.status)
     ? html`<div class="windows-agent-blocked"><button type="button" class="btn" disabled=${busy} onClick=${() => act(`/ui/start/${encodeURIComponent(name)}`)}>${t("chat.start")}</button></div>` : null;
   return html`<div class="windows-agent-blocked" role="alert"><p>${t(recovery.kind === "host-upgrade" ? "chat.paneHostUpgrade" : "chat.paneRecoveryNeeded")}</p>
-    ${recovery.kind === "host-upgrade" ? html`<button type="button" class="btn" disabled=${busy} onClick=${() => act(`/ui/stop/${encodeURIComponent(name)}`)}>${t("chat.stopInstance")}</button>` : recovery.launchId ? html`<button type="button" class="btn" disabled=${busy} onClick=${() => setDialog(true)}>${t("chat.paneRecover")}</button>` : null}
+    ${recovery.kind === "host-upgrade" ? html`<button type="button" class="btn" disabled=${busy} onClick=${() => act(`/ui/stop/${encodeURIComponent(name)}`)}>${t("chat.stopInstance")}</button>` : recovery.launchId ? html`<button type="button" class="btn" disabled=${busy} onClick=${() => { confirmation.current = {name,launchId:recovery.launchId}; setChecked(false); setDialog(true); }}>${t("chat.paneRecover")}</button>` : null}
     <button type="button" class="btn" disabled=${busy} onClick=${() => act(`/ui/start/${encodeURIComponent(name)}`)}>${t("chat.start")}</button>
     ${dialog ? html`<${Dialog} title=${t("chat.paneRecover")} onClose=${() => { if (!busy) setDialog(false); }}>
       <p>${t("chat.paneRecoverConfirm", inst.display_name || name)}</p>
       <label><input type="checkbox" checked=${checked} disabled=${busy} onChange=${event => setChecked(event.target.checked)} />${t("chat.paneProcessesStopped")}</label>
-      <button type="button" class="btn" disabled=${!checked || busy} onClick=${() => act(`/ui/instances/${encodeURIComponent(name)}/recover-pane`, { confirmedStopped: true, launchId: recovery.launchId })}>${t("chat.paneRecoverConfirmed")}</button>
+      <button type="button" class="btn" disabled=${!checked || busy || confirmation.current?.name !== name || confirmation.current?.launchId !== recovery.launchId} onClick=${() => { if (checked && confirmation.current?.name === name && confirmation.current?.launchId === recovery.launchId) act(`/ui/instances/${encodeURIComponent(name)}/recover-pane`, { confirmedStopped: true, launchId: confirmation.current.launchId }); }}>${t("chat.paneRecoverConfirmed")}</button>
     </${Dialog}>` : null}
   </div>`;
 }

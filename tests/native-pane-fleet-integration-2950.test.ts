@@ -227,6 +227,10 @@ it('the real admin pane recovery retires only the orphan and ordinary Start resu
  let exit=(value:any)=>{};const replacement={...f.cli,kill:vi.fn(()=>exit({exitCode:0})),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};},onData:(fn:(data:string)=>void)=>{queueMicrotask(()=>fn('─'.repeat(40)+'\r\n❯ \r\n'+'─'.repeat(40)+'\r\n'));return{dispose(){}};}};
  f.spawn.mockResolvedValue(replacement);const host=new RuntimePaneHost({store:state,bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn:f.spawn,mcpConnection:(owner,tools)=>({endpoint:'http://127.0.0.1:1/agent',token:'a'.repeat(64),owner,tools})});clean.push(()=>host.stop());
  f.hub.callPane.mockImplementation((_machine,request)=>host.request(request));vi.spyOn(daemon,'nativePaneCurrent').mockReturnValue(false);
+ // A dead local relay stays dead on the old binding even though recovery discovers a fresh endpoint.
+ daemon.nativePaneLifecycle.options.endpoint.online=()=>false;
+ expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();
+ expect(f.fleet.getUiStatus().instances.find((row:any)=>row.name==='native').native_recovery).toMatchObject({kind:'exit-unconfirmed',launchId:old.launchId});
  await f.fleet.recoverNativePane('native',old.launchId,()=>true);
  expect(f.fleet.daemons.has('native')).toBe(false);expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.cli.kill).not.toHaveBeenCalled();expect(replacement.kill).not.toHaveBeenCalled();
  await f.fleet.startInstance('native',f.config,true);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.fleet.daemons.get('native').nativePaneLifecycle.snapshot().launchId).not.toBe(old.launchId);expect(f.spawn).toHaveBeenCalledTimes(2);await f.fleet.stopInstance('native');

@@ -191,7 +191,7 @@ export class RuntimeClientStore {
   }
   forgetCredentials(): void { const file = join(this.directory, "connection.json"); if (existsSync(file)) unlinkSync(file); }
   lock(bootId: string, systemBootId?: string): () => void {
-    if (systemBootId !== undefined && !/^[a-f0-9]{64}$/.test(systemBootId)) throw Error("Invalid Windows boot proof");
+    if (systemBootId !== undefined && (typeof systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(systemBootId))) throw Error("Invalid Windows boot proof");
     const path = join(this.directory, "runtime.lock");
     if (existsSync(path)) {
       const old = readPrivate(path);

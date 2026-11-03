@@ -128,7 +128,15 @@ try {
  const resumed = await acquire(owner); assert.equal(resumed.sessionId, pin); assert.notEqual(resumed.launchId, before.launchId);
  assert.deepEqual(await count(pin, marker), { user: 1, assistant: 1 }); receipt.sameSessionNoInputReplay = true; receipt.oldLedgerUnchangedAfterRecovery = true;
  const bootState = inspect('state'); receipt.newHostBootProof = bootState.systemBootProof; receipt.hostLockBootProof = bootState.hostLockBootProof; assert(receipt.newHostBootProof && receipt.hostLockBootProof);
- await native.release('close'); phase = 'cleanup';
+ phase = 'bound-endpoint-host-loss'; const boundManager = manager, boundNative = native, boundLaunch = resumed.launchId;
+ const killedAgain = inspect('kill-owned'); assert(!killedAgain.alive && killedAgain.processesAlive === 0);
+ if (mode === 'local') { await until(() => !endpoint.online(), 'bound relay offline'); await startTransport(); }
+ else { await delay(1000); await endpoint.call({ action: 'list' }); }
+ await boundManager.recover(owner.name, owner.config, boundLaunch, true, () => {});
+ await boundNative.release('close'); assert.equal(store.get(owner.agent.id).activeId, undefined);
+ const afterBound = await acquire(owner); assert.equal(afterBound.sessionId, pin); assert.deepEqual(await count(pin, marker), { user: 1, assistant: 1 });
+ receipt.boundDeadEndpointRecovery = true; assert.equal(await hashLedger(), ledgerHash);
+ inspect('state'); await native.release('close'); phase = 'cleanup';
  const inventory = await endpoint.call({ action: 'list' }); assert(inventory.panes.every(p => p.state === 'exited'));
  await endpoint.call({ action: 'shutdown', hostBootId: inventory.hostBootId }); await stopTransport(); receipt.passed = true;
 } catch (error) {

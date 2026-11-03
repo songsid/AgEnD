@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { paneSystemBootId } from "../src/runtime-pane-boot.js";
 import { RuntimePaneStore, type RuntimePaneRecord } from "../src/runtime-pane-store.js";
+import { RuntimePanePort } from "../src/runtime-pane-port.js";
 import { RuntimePaneHost } from "../src/runtime-pane-host.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
 const roots: string[] = [];
@@ -58,4 +59,26 @@ it("recovery RPC is closed and exit proofs cannot be attached to live states", (
  const f = fixture(), request = { action: "recover", paneId: f.record.launch.paneId, launchId: f.record.snapshot.launchId, hostBootId: f.record.bootId, confirmedStopped: true };
  expect(() => validateRuntimePaneRequest({ ...request, command: "never" })).toThrow();
  expect(() => validateRuntimePaneSnapshot({ ...f.record.snapshot, exitProof: "admin-confirmed" })).toThrow();
+});
+
+
+it.each([{value:["a".repeat(64)]},{value:null},{value:{}},{value:123}])("rejects malformed persisted boot proof %j before recovery",({value})=>{
+ const f=fixture();expect(new RuntimePaneStore(f.root).get(f.record.launch.paneId)).toEqual(f.record);f.record.systemBootId=value as never;f.store.put(f.record);
+ expect(()=>new RuntimePaneStore(f.root)).toThrow("Invalid pane record");
+});
+it.each([{value:["a".repeat(64)]},{value:null},{value:{}},{value:123}])("rejects malformed current boot proof %j without changing a reservation",({value})=>{
+ const f=fixture();expect(()=>f.store.recoverInterrupted(value as never)).toThrow("Invalid current Windows boot proof");
+ expect(f.store.get(f.record.launch.paneId)?.snapshot.state).toBe("running");
+});
+it("only positive exact current-authority exit can retire an already-dead bound endpoint",async()=>{
+ const f=fixture();let online=true;const call=vi.fn(async()=>({...f.record.snapshot,reattached:false}));
+ const port=new RuntimePanePort({machineId:"local",online:()=>online,subscribe:()=>()=>{},call},join(f.root,"receipt.json"),f.record.launch,()=>true);
+ await port.open();online=false;const before=call.mock.calls.length;
+ await expect(port.recordConfirmedExit({...f.record.snapshot,state:"exited",hostBootId:randomUUID()},()=>{})).rejects.toThrow("ownership");
+ await expect(port.recordConfirmedExit(f.record.snapshot,()=>{})).rejects.toThrow("not positive");
+ await expect(port.recordConfirmedExit({...f.record.snapshot,state:"exited"},()=>{throw Error("superseded");})).rejects.toThrow("superseded");
+ expect(port.ownedSnapshot()?.state).toBe("running");
+ await port.recordConfirmedExit({...f.record.snapshot,state:"exited",exitProof:"admin-confirmed"},()=>{});
+ expect(await port.killWindowConfirmed()).toBe(true);expect(call.mock.calls.length).toBe(before);
+ expect(port.ownedSnapshot()?.sessionId).toBe(f.record.launch.sessionId);
 });

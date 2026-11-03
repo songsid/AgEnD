@@ -25049,7 +25049,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return {
         name,
         ...(isNativePaneInstance(nativeConfig) ? { runtime: "windows", native_adapter: "pane", native_agent_id: nativeConfig.native_agent_id,
-          ...(() => {try {return {native_recovery:this.nativeInstanceRuntime().get(name)?.paneRecovery??null};}catch{return {native_recovery:null};}})(),
+          ...(() => {try {
+            const profile=this.nativeInstanceRuntime().get(name),bound=this.daemons.get(name);
+            return {native_recovery:profile?.paneRecovery ?? (profile?.paneLaunchId && bound?.usesNativePane?.() && !bound.nativePaneCurrent()
+              ? {kind:"exit-unconfirmed",launchId:profile.paneLaunchId} : null)};
+          }catch{return {native_recovery:null};}})(),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:true,
             commands:true,effort:false,log:true,details:true,channels:false,terminal:false,attachments:false,usage:false,send_while_busy:true},
           ...(nativeConfig.machine_id ? { machine_id: nativeConfig.machine_id, machine_name: this.runtimeHub?.machine(nativeConfig.machine_id)?.name,

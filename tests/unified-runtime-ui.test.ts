@@ -130,6 +130,16 @@ describe("one fleet UI across runtimes",()=>{
     expect(sent.filter(item=>item.path===`/ui/instances/${nativeName}/recover-pane`)).toEqual([{path:`/ui/instances/${nativeName}/recover-pane`,method:"POST",body:{confirmedStopped:true,launchId}}]);
     expect(sent.some(item=>item.path==="/ui/send"||item.path.endsWith('/recover'))).toBe(false);
   });
+  it("does not let a checked old dialog authorize a replacement pane launch",async()=>{
+    const first="12345678-1234-4321-abcd-123456789099",next="12345678-1234-4321-abcd-123456789098";
+    const status=(launchId:string)=>({instances:[{...nativeRow(),native_adapter:"pane",status:"stopped",native_recovery:{kind:"exit-unconfirmed",launchId}}],windows_cli:true});
+    app.applyStatus(status(first));emit("status",status(first));await mountNative();
+    p.root.querySelectorAll("button").find((button:any)=>button.textContent==="Recover saved session").click();await settle();
+    const checkbox=p.root.querySelector('dialog input[type="checkbox"]');checkbox.checked=true;fire(checkbox,"change");await settle();
+    app.applyStatus(status(next));emit("status",status(next));
+    const submit=p.root.querySelectorAll("dialog button").find((button:any)=>button.textContent==="Processes stopped — recover session");submit?.click();await settle(6);
+    expect(sent.filter(item=>item.path.endsWith('/recover-pane')).every(item=>item.body.launchId===first)).toBe(true);
+  });
   it("shows the old-host restart path and Start without trying to unlock or type into it",async()=>{
     const status={instances:[{...nativeRow(),native_adapter:"pane",status:"stopped",native_recovery:{kind:"host-upgrade"}}],windows_cli:true};app.applyStatus(status);emit("status",status);
     await mountNative();expect(p.root.textContent).toContain("restart Windows");

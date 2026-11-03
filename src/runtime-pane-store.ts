@@ -65,7 +65,7 @@ export class RuntimePaneStore {
           || !["starting", "running", "exited", "unknown"].includes(row.snapshot.state)
           || !Number.isSafeInteger(row.snapshot.commandSequence) || row.snapshot.commandSequence < 0
           || !/^[a-f0-9]{64}$/.test(row.openDigest) || !/^[a-f0-9-]{36}$/i.test(row.openOperationId)
-          || row.systemBootId !== undefined && !/^[a-f0-9]{64}$/.test(row.systemBootId)
+          || row.systemBootId !== undefined && (typeof row.systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(row.systemBootId))
           || typeof row.bootId !== "string" || (row.pid !== undefined && (!Number.isSafeInteger(row.pid) || row.pid < 1))
           || row.snapshot.noLaunch && (row.pid !== undefined || row.lastCommand !== undefined)
           || (row.lastCommand && (!/^[a-f0-9-]{36}$/i.test(row.lastCommand.id) || !/^[a-f0-9]{64}$/.test(row.lastCommand.digest)
@@ -98,7 +98,7 @@ export class RuntimePaneStore {
   }
   /** Called under the profile lock. A lost runner never replays an open or assumes a PID is gone. */
   recoverInterrupted(systemBootId?: string): void {
-    if (systemBootId !== undefined && !/^[a-f0-9]{64}$/.test(systemBootId)) throw Error("Invalid current Windows boot proof");
+    if (systemBootId !== undefined && (typeof systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(systemBootId))) throw Error("Invalid current Windows boot proof");
     for (const record of this.list()) if (record.snapshot.state !== "exited") {
       if (systemBootId && record.systemBootId && systemBootId !== record.systemBootId) {
         record.snapshot.state = "exited"; record.snapshot.exitProof = "system-reboot";

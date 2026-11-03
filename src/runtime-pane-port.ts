@@ -276,6 +276,14 @@ export class RuntimePanePort implements Pane {
   capturePaneWithHistory(lines = 50): Promise<string> { return this.capture({ history: lines }); }
   capturePaneJoined(lines = 0): Promise<string> { return this.capture({ history: lines, joined: true }); }
   getWindowId(): string { return this.record.snapshot?.paneId ?? ""; }
+  /** A fresh authenticated endpoint proved the exact retained exit; retire an obsolete local relay without IO. */
+  async recordConfirmedExit(raw: RuntimePaneSnapshot, current: () => void): Promise<void> {
+    await this.serialize(async () => {
+      current(); const snapshot = this.accept(raw);
+      if (snapshot.state !== "exited") throw Error("Native exit evidence is not positive");
+      this.record.snapshot = snapshot; this.lastObservation = snapshot; this.save();
+    });
+  }
   observedSnapshot(): RuntimePaneSnapshot | null { return this.lastObservation ? structuredClone(this.lastObservation) : this.ownedSnapshot(); }
   ownedSnapshot(): RuntimePaneSnapshot | null { return this.record.snapshot ? structuredClone(this.record.snapshot) : null; }
 }

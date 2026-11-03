@@ -90,5 +90,6 @@ it("malformed boot proof cannot clear a held runtime lock",()=>{
  writeFileSync(file,JSON.stringify({pid:process.pid,bootId:"old",systemBootId:"bad"}),{mode:0o600});
  expect(()=>store.lock("new","a".repeat(64))).toThrow("Invalid runtime boot proof");
  expect(()=>store.lock("new","bad")).toThrow("Invalid Windows boot proof");
+ expect(()=>store.lock("new",["a".repeat(64)] as never)).toThrow("Invalid Windows boot proof");
  expect(JSON.parse(readFileSync(file,"utf8")).bootId).toBe("old");
 });
