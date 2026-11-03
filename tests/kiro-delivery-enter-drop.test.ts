@@ -218,7 +218,7 @@ describe("kiro delivery: the gate FAILS CLOSED on screens without the prompt (so
 });
 
 describe("kiro delivery: I/O failures never become success (sol review, M2)", () => {
-  it("F2: capture fails after the paste → not confirmed, retry path, then ❌ — never a false ✅", async () => {
+  it("F2: capture fails after the paste → no Enter or false confirmation; hold the attempt", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.state.outputSince = true;           // the old output-only signal would have said ✅
     h.paste.mockImplementation(async () => { h.capture.mockRejectedValue(new Error("tmux gone")); return true; });
@@ -226,7 +226,8 @@ describe("kiro delivery: I/O failures never become success (sol review, M2)", ()
     const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}));
 
     expect(ok).toBe(false);
-    expect(h.events).toContain("message_failed");
+    expect(h.events).not.toContain("message_failed");
+    expect(h.enter).not.toHaveBeenCalled();
     expect(h.events).not.toContain("message_confirmed");
   });
 
@@ -466,7 +467,7 @@ describe("kiro delivery: submission verification (F2)", () => {
     expect(h.events).not.toContain("message_confirmed");
   });
 
-  it("still fails when the pane stays unreadable after the paste", async () => {
+  it("holds without sending Enter when the pane stays unreadable after the paste", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.paste.mockImplementation(async () => {
       h.capture.mockRejectedValue(new Error("pane unreadable"));
@@ -474,7 +475,8 @@ describe("kiro delivery: submission verification (F2)", () => {
     });
 
     expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 50_000)).toBe(false);
-    expect(h.events).toContain("message_failed");
+    expect(h.events).not.toContain("message_failed");
+    expect(h.enter).not.toHaveBeenCalled();
     expect(h.events).not.toContain("message_confirmed");
   });
 
