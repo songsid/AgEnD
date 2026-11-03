@@ -134,7 +134,7 @@ export class FleetWindowsRuntime {
     this.enabled();const before=this.config(name);if(!before||!this.has(name))throw Error("Windows instance not found");
     return previewWindowsProfile({...before,...patch},this.store);
   }
-  update(name: string, patch: Partial<NativeRuntimePatch>, authorized: () => boolean): {name:string;agent:WindowsAgent} {
+  update(name: string, patch: Partial<NativeRuntimePatch>, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">): {name:string;agent:WindowsAgent} {
     this.enabled();
     const fleet = this.host.fleet(), before = this.config(name);
     if (!fleet || !before || !this.has(name)) throw new Error("Windows instance not found");
@@ -145,12 +145,15 @@ export class FleetWindowsRuntime {
     const fields={display_name:"name",description:"description",systemPrompt:"instructions",model:"model",working_directory:"cwd",native_sandbox:"sandbox"} as const;
     for(const field of Object.keys(fields) as Array<keyof typeof fields>)if(Object.hasOwn(patch,field))(next as Record<string,unknown>)[field]=checked[fields[field]]??"";
     const updated = syncWindowsProfile(next,this.store,authorized);
-    try { if (!authorized()) throw new Error("Authorization expired"); fleet.instances[name] = next; this.host.save(); }
+    // #2942: a settings execution (an agent's confirmed request) writes through its transaction, like create does.
+    const write=()=>{ if (!authorized()) throw new Error("Authorization expired"); fleet.instances[name] = next; this.host.save(); };
+    try { if (transaction) transaction.mutate(write); else write(); }
     catch(error) {
       fleet.instances[name] = before;
       this.store.update(id,{name:old.name,cwd:old.cwd,description:old.description,instructions:old.instructions,model:old.model ?? "",cli:old.cli,sandbox:old.sandbox});
       throw error;
     }
+    transaction?.complete();
     this.changed(name); return {name,agent:updated};
   }
   remove(name: string, authorized: () => boolean, transaction?:Pick<SettingsExecution,"mutate"|"complete">): void {

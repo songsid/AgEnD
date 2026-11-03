@@ -29,7 +29,7 @@ export interface SettingsPendingView {
   requested_by: string;
   expires_at: number;
   remaining_ms: number;
-  source: "web_session" | "public_link" | "setup_session";
+  source: "web_session" | "public_link" | "setup_session" | "agent_request";
   execution?: { phase: "queued" | "running" | "cleanup"; job_id?: string; reason_code?: string };
   summary: readonly string[];
   /**
@@ -228,7 +228,8 @@ export class SettingsConfirmationStore {
           now: () => this.now(), expectedFingerprint: entry.snapshotFingerprint, progress: (phase, reason_code) => { entry.view.execution = { phase, ...(reason_code ? { reason_code } : {}) }; } });
         entry.execution = execution;
         try {
-          const result = await proposal.apply(() => execution.current(), execution);
+          // #2942: the same actor-aware fence the store checks (admin, session, state), not only the execution's snapshot.
+          const result = await proposal.apply(current, execution);
           if (!execution.completed) execution.complete();
           this.finish(entry, "applied", "applied", t("settings_confirm.result.applied"), actor.label, result);
         } finally { execution.close(); entry.execution = undefined; }
