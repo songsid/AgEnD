@@ -49,7 +49,7 @@ export interface NeedsYouItem {
 export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
-  | "auth_paused" | "crashed" | "usage_limit"                       // instance
+  | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback";                                 // task
 
@@ -84,6 +84,7 @@ export interface InstanceInput {
   signIn?: { backend: string; profile?: string } | null;
   /** #2822: on a usage-limit hold (no known reset time): the model, and since when. */
   usageHold?: { model: string; since: number } | null;
+  paneRecovery?: { key: string; detail: string; since: number } | null;
 }
 
 export interface DeliveryInput {
@@ -167,6 +168,8 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   }
 
   for (const inst of inputs.instances) {
+    if (inst.paneRecovery) items.push({id:`pane:${inst.name}:${inst.paneRecovery.key}`,type:"instance",instance:inst.name,
+      reason:"native_pane_hold",detail:oneLine(inst.paneRecovery.detail),since:inst.paneRecovery.since});
     // §3.2 awaiting_input — folded into an interactive-assist prompt only when it was raised for this same wait.
     if (inst.state === "awaiting_input" && inst.interaction) {
       const episode = inst.interaction.episode ?? null;

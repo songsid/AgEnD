@@ -9,14 +9,16 @@ import {runtimeJobDigest} from "./runtime-client-store.js";
 import {RuntimeNativePaneLifecycle} from "./native-pane-lifecycle.js";
 import {assertAuditedNativePaneVersion} from "./runtime-pane-native.js";
 import {PaneMcpAuthorityLease} from "./runtime-pane-mcp.js";
-import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
+import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,validateRuntimePaneSessionProof,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
 import {validatePaneMcpBody,type PaneMcpBody} from "./runtime-pane-mcp-protocol.js";
 import type {PaneEndpoint} from "./runtime-pane-port.js";
 import type {WindowsAgent,WindowsAgents} from "./windows-agents.js";
 import type {InstanceConfig} from "./types.js";
 import type {Daemon} from "./daemon.js";
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-interface Manifest {version:1;machineId:string;configuration:string;launch:RuntimePaneLaunch;exited?:RuntimePaneSnapshot}
+interface Manifest {version:1;machineId:string;configuration:string;launch:RuntimePaneLaunch;exited?:RuntimePaneSnapshot;
+ /** Committed before replacing the pin; retained until this replacement has a real saved transcript. */
+ fresh?:{previous:RuntimePaneSnapshot;automatic:boolean;announced?:true}}
 export interface NativeMachineEndpoint extends PaneEndpoint {epoch():string|null; version(provider:string):string|null}
 export interface NativePaneManagerOptions {
  home:string;
@@ -28,6 +30,7 @@ export interface NativePaneManagerOptions {
  menu(name:string):Array<{name:string;[key:string]:unknown}>;
  allowed(name:string,tool:string,args:Record<string,unknown>):boolean;
  published(name:string,daemon:Daemon):boolean;
+ freshNotice?(name:string):Promise<void>|void;
  invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean,name:string):Promise<{result:unknown;error?:string}>;
 }
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
@@ -45,12 +48,23 @@ export class NativePaneManager {
  private load(file:string):Manifest|null {
   try{const stat=lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>128*1024||process.getuid&&(stat.uid!==process.getuid()||!!(stat.mode&0o077)))throw Error("Unsafe native launch manifest");
    const value=JSON.parse(readFileSync(file,"utf8")) as Manifest;
-   if(value?.version!==1||!/^([a-f0-9]{64})$/.test(value.configuration)||Object.keys(value).some(key=>!["version","machineId","configuration","launch","exited"].includes(key))||value.machineId!=="local"&&!UUID.test(value.machineId))throw Error("Invalid native launch manifest");validateRuntimePaneLaunch(value.launch);if(!value.launch.launchId||!UUID.test(value.launch.launchId))throw Error("Native launch identity is missing");
+   if(value?.version!==1||!/^([a-f0-9]{64})$/.test(value.configuration)||Object.keys(value).some(key=>!["version","machineId","configuration","launch","exited","fresh"].includes(key))||value.machineId!=="local"&&!UUID.test(value.machineId))throw Error("Invalid native launch manifest");validateRuntimePaneLaunch(value.launch);if(!value.launch.launchId||!UUID.test(value.launch.launchId))throw Error("Native launch identity is missing");
    if(value.exited){const exit=validateRuntimePaneSnapshot(value.exited);if(exit.state!=="exited"||exit.agentId!==value.launch.agentId||exit.instance!==value.launch.instance||exit.paneId!==value.launch.paneId||exit.launchId!==value.launch.launchId)throw Error("Native exit manifest scope differs");}
+   if(value.fresh){const fresh=value.fresh,previous=validateRuntimePaneSnapshot(fresh.previous);
+    if(Object.keys(fresh).some(key=>!["previous","automatic","announced"].includes(key))||typeof fresh.automatic!=="boolean"||fresh.announced!==undefined&&fresh.announced!==true
+     ||value.launch.cli!=="claude-code"||value.launch.sessionId!==undefined||previous.state!=="exited"||previous.noLaunch||!previous.sessionId
+     ||previous.agentId!==value.launch.agentId||previous.instance!==value.launch.instance||previous.launchId===value.launch.launchId||previous.sessionId===value.launch.launchId)throw Error("Invalid fresh pane intent");}
    return value;
   }catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return null;throw error;}
  }
  private save(file:string,value:Manifest):void{atomicWriteFileSync(file,JSON.stringify(value),{mode:0o600});}
+ private freshIntent(file:string,manifest:Manifest,automatic:boolean):Manifest{
+  if(!manifest.exited?.sessionId||manifest.launch.cli!=="claude-code")throw Error("A fresh conversation requires its previous positive exit");
+  const {sessionId:_session,...old}=manifest.launch;
+  const next:Manifest={version:1,machineId:manifest.machineId,configuration:manifest.configuration,
+   launch:{...old,paneId:randomUUID(),launchId:randomUUID()},fresh:{previous:manifest.exited,automatic}};
+  this.save(file,next);return next;
+ }
  /** Prepare metadata and helper authority first; acquire() alone may reserve and spawn. */
  async prepare(name:string,config:InstanceConfig,assertCurrent:()=>void):Promise<RuntimeNativePaneLifecycle> {
   const id=config.native_agent_id;if(!id||!UUID.test(id)||this.preparing.has(id))throw Error("Native pane preparation already has an owner or lacks an identity");
@@ -64,10 +78,14 @@ export class NativePaneManager {
   const directory=this.directory(id),file=join(directory,"active.json");let manifest=this.load(file);
   if(manifest&&(manifest.launch.agentId!==id||manifest.launch.instance!==name||manifest.machineId!==(agent.machineId??"local")))throw Error("Native launch manifest scope differs");
   if(this.bindings.has(id))throw Error("Native pane still has a coordinator owner");
-  const endpoint=await this.options.endpoint(agent);assertCurrent();this.options.admit(name,config);
+  const missingSession=()=>new NativePaneRecoveryError({kind:"session-unconfirmed",launchId:manifest!.launch.launchId,sessionId:agent.threadId});
+  let endpoint:NativeMachineEndpoint;
+  try{endpoint=await this.options.endpoint(agent);}catch(error){if(manifest?.exited&&agent.cli==="claude-code"&&!manifest.exited.noLaunch)throw missingSession();throw error;}
+  assertCurrent();this.options.admit(name,config);
   if(endpoint.machineId!==(agent.machineId??"local"))throw Error("Native endpoint machine scope differs");
   assertAuditedNativePaneVersion(agent.cli,endpoint.version(agent.cli));
-  const inventory=await endpoint.call({action:"list"});assertCurrent();this.options.admit(name,config);
+  let inventory:unknown;try{inventory=await endpoint.call({action:"list"});}catch(error){if(manifest?.exited&&agent.cli==="claude-code"&&!manifest.exited.noLaunch)throw missingSession();throw error;}
+  assertCurrent();this.options.admit(name,config);
   if(!inventory||typeof inventory!=="object"||!UUID.test((inventory as any).hostBootId)||!Array.isArray((inventory as any).panes)||(inventory as any).panes.length>4096)throw Error("Native host identity is unconfirmed");
   const latest=this.options.store.get(id);
   if(runtimeJobDigest({id:latest.id,cli:latest.cli,cwd:latest.cwd,machineId:latest.machineId,activeId:latest.activeId,paneLaunchId:latest.paneLaunchId,threadId:latest.threadId,paused:latest.paused})!==runtimeJobDigest({id:agent.id,cli:agent.cli,cwd:agent.cwd,machineId:agent.machineId,activeId:agent.activeId,paneLaunchId:agent.paneLaunchId,threadId:agent.threadId,paused:agent.paused}))throw Error("Native profile changed during host observation");
@@ -75,12 +93,13 @@ export class NativePaneManager {
   if ((inventory as any).capabilities?.openDisposition !== true) throw new NativePaneRecoveryError({kind:"host-upgrade",...(manifest?{launchId:manifest.launch.launchId}: {})});
   const sameAgent=panes.filter(row=>row.agentId===id&&row.state!=="exited");
   if(sameAgent.length>1||sameAgent.some(row=>!manifest||row.paneId!==manifest.launch.paneId||row.launchId!==manifest.launch.launchId||row.instance!==name))throw Error("Another live or unknown native pane must be reconciled first");
+  let preparedFresh=false;
   if(manifest&&!manifest.exited&&!agent.activeId&&!panes.some(row=>row.paneId===manifest!.launch.paneId)){
    // Factory metadata alone is not an open: reserve() and the pane receipt precede every RPC which may spawn.
    try{lstatSync(join(directory,`${manifest.launch.launchId}.pane.json`));}
-   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;manifest=null;}
+   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;if(manifest.fresh)preparedFresh=true;else manifest=null;}
   }
-  if(manifest&&!manifest.exited){
+  if(manifest&&!manifest.exited&&!preparedFresh){
    const matches=panes.filter(row=>row.paneId===manifest!.launch.paneId);
    if(matches.length>1)throw Error("Native host returned duplicate retained panes");
    const ended=matches[0],old=manifest.launch;
@@ -102,8 +121,19 @@ export class NativePaneManager {
    }
    if(!manifest.exited.noLaunch&&!agent.threadId)throw new NativePaneRecoveryError({kind:"exit-unconfirmed",launchId:manifest.launch.launchId,hostBootId:manifest.exited.hostBootId});
    if(agent.activeId){this.options.store.releasePane(id,manifest.exited);agent=this.options.store.get(id);}
-   manifest=null;
+   if(agent.cli==="claude-code"&&!manifest.exited.noLaunch){
+    let state:"absent"|"saved"|"unknown"="unknown";const epoch=endpoint.epoch(),before=runtimeJobDigest(agent);
+    try{const proof=validateRuntimePaneSessionProof(await endpoint.call({action:"session-proof",paneId:manifest.launch.paneId,launchId:manifest.launch.launchId!}));
+     if(runtimeJobDigest(proof.snapshot)===runtimeJobDigest(manifest.exited))state=proof.state;
+    }catch{/* An old/offline/unreadable runner never supplies absence proof. */}
+    assertCurrent();this.options.admit(name,config);
+    if(!endpoint.online()||endpoint.epoch()!==epoch||runtimeJobDigest(this.options.store.get(id))!==before)throw missingSession();
+    if(state==="absent"&&!manifest.fresh){manifest=this.freshIntent(file,manifest,true);preparedFresh=true;}
+    else if(state!=="saved")throw missingSession();
+    else manifest=null;
+   }else if(manifest.fresh)throw missingSession();else manifest=null;
   }
+  if(preparedFresh&&manifest?.fresh){this.options.store.replacePaneSession(id,manifest.fresh.previous,manifest.launch.launchId!);agent=this.options.store.get(id);}
   const instructions=this.options.instructions(name,config);
   const configuration={cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,instructions,...(config.model?{model:config.model}:{})};
   // Hot identity metadata and bundled instruction-template edits do not retire a live pane on coordinator update.
@@ -117,7 +147,7 @@ export class NativePaneManager {
    const launch=validateRuntimePaneLaunch({...configuration,agentId:id,instance:name,paneId:randomUUID(),launchId:randomUUID(),columns:120,rows:40,...(agent.threadId?{sessionId:agent.threadId}:{}),mcpTools:this.options.menu(name).map(tool=>tool.name)});
    manifest={version:1,machineId:endpoint.machineId,configuration:configurationHash,launch};this.save(file,manifest);
   }
-  const retained=manifest,launch=retained.launch;
+  let retained=manifest;const launch=retained.launch;
   let daemon:Daemon|undefined,binding:Binding,closed=false;
   const current=():boolean=>{
    if(closed||!endpoint.online()||this.bindings.get(id)!==binding)return false;
@@ -137,13 +167,46 @@ export class NativePaneManager {
   const native=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),
    admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>this.options.store.pinPaneSession(id,launchId,sessionId),
    exited:snapshot=>{this.save(file,{...retained,exited:snapshot});this.options.store.releasePane(id,snapshot);},mcpProof:()=>lease.serving()?"alive":"unknown",
-   bindDaemon:value=>binding.bind(value),acquired:()=>this.options.store.setPaneRecovery(id,undefined),
+   bindDaemon:value=>binding.bind(value),acquired:async()=>{
+    this.options.store.setPaneRecovery(id,undefined);
+    if(retained.fresh&&!retained.fresh.announced){retained={...retained,fresh:{...retained.fresh,announced:true}};this.save(file,retained);if(retained.fresh!.automatic)await this.options.freshNotice?.(name);}
+   },
    releaseAuthority:()=>{closed=true;lease.close();if(this.bindings.get(id)===binding)this.bindings.delete(id);},
   });
   const snapshot=native.port.ownedSnapshot();
-  if(agent.threadId&&snapshot?.sessionId!==agent.threadId&&launch.sessionId!==agent.threadId)throw Error("Native profile conversation pin differs from its launch receipt");
+  if(agent.threadId&&snapshot?.sessionId!==agent.threadId&&launch.sessionId!==agent.threadId
+   &&!(retained.fresh&&launch.launchId===agent.threadId))throw Error("Native profile conversation pin differs from its launch receipt");
   binding={native,lease,bind:value=>{if(daemon&&daemon!==value)throw Error("Native daemon binding changed");daemon=value;}};this.bindings.set(id,binding);
   return native;
+ }
+ /** Administrator chooses a new conversation for this exact stopped, held pin. No provider files are changed. */
+ async startFresh(name:string,config:InstanceConfig,launchId:string,sessionId:string,assertCurrent:()=>void):Promise<void>{
+  config=structuredClone(config);
+  const id=config.native_agent_id;if(!id||this.preparing.has(id)||this.bindings.has(id))throw Error("Native pane preparation still has an owner");
+  this.preparing.add(id);try{
+   assertCurrent();this.options.admit(name,config);const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
+   // If the private intent committed but the profile save failed, repeat only that same decision, not a new UUID.
+   if(manifest?.fresh&&!manifest.exited&&!manifest.fresh.announced&&manifest.fresh.previous.launchId===launchId&&manifest.fresh.previous.sessionId===sessionId
+    &&agent.paneRecovery?.kind==="session-unconfirmed"&&agent.paneRecovery.launchId===launchId&&agent.paneRecovery.sessionId===sessionId
+    &&agent.threadId===sessionId&&!agent.activeId&&!agent.paneLaunchId&&manifest.launch.agentId===id&&manifest.launch.instance===name
+    &&agent.fleet_instance===name&&manifest.machineId===(agent.machineId??"local")&&agent.machineId===config.machine_id&&agent.cwd===config.working_directory&&agent.cli===config.backend){
+     try{lstatSync(join(this.directory(id),`${manifest.launch.launchId}.pane.json`));throw Error("Fresh pane launch outcome is unconfirmed");}
+     catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;}
+     this.options.store.replacePaneSession(id,manifest.fresh.previous,manifest.launch.launchId!);return;
+   }
+   if(!manifest?.exited||manifest.launch.cli!=="claude-code"||manifest.launch.launchId!==launchId||manifest.exited.sessionId!==sessionId||agent.threadId!==sessionId
+    ||agent.activeId||agent.paneLaunchId||agent.fleet_instance!==name||agent.cwd!==config.working_directory||agent.cli!==config.backend||agent.machineId!==config.machine_id
+    ||manifest.machineId!==(agent.machineId??"local")||manifest.launch.instance!==name||manifest.launch.agentId!==id
+    ||agent.paneRecovery?.kind!=="session-unconfirmed"||agent.paneRecovery.launchId!==launchId||agent.paneRecovery.sessionId!==sessionId)throw Error(t("native_pane.changed"));
+   const endpoint=await this.options.endpoint(agent);assertCurrent();this.options.admit(name,config);
+   if(endpoint.machineId!==manifest.machineId)throw Error("Native fresh-session machine differs");
+   assertAuditedNativePaneVersion(agent.cli,endpoint.version(agent.cli));const epoch=endpoint.epoch();
+   const raw=await endpoint.call({action:"list"});assertCurrent();this.options.admit(name,config);
+   if(!endpoint.online()||endpoint.epoch()!==epoch)throw Error("Native fresh-session transport changed");
+   if(!raw||typeof raw!=="object"||!Array.isArray((raw as any).panes)||(raw as any).panes.map(validateRuntimePaneSnapshot).some((row:RuntimePaneSnapshot)=>row.agentId===id&&row.state!=="exited"))throw Error("A native process exit is still unconfirmed");
+   if(runtimeJobDigest(this.options.store.get(id))!==runtimeJobDigest(agent))throw Error(t("native_pane.changed"));
+   const next=this.freshIntent(file,manifest,false);this.options.store.replacePaneSession(id,manifest.exited,next.launch.launchId!);
+  }finally{this.preparing.delete(id);}
  }
  /** Explicit admin attestation, bound to the held launch; no keys, tool calls or process signals. */
  async recover(name:string,config:InstanceConfig,launchId:string,confirmedStopped:boolean,assertCurrent:()=>void):Promise<void>{
@@ -152,6 +215,7 @@ export class NativePaneManager {
   try {
    assertCurrent();this.options.admit(name,config);
    const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
+   if(agent.paneRecovery?.kind==="session-unconfirmed")throw Error(t("native_pane.refresh_for_session"));
    if(confirmedStopped!==true||!manifest||manifest.launch.launchId!==launchId||agent.activeId!==launchId||agent.paneLaunchId!==launchId
     ||manifest.launch.agentId!==id||manifest.launch.instance!==name||manifest.machineId!==(agent.machineId??"local")||agent.fleet_instance!==name)throw Error(t("native_pane.changed"));
    const pin=agent.threadId??manifest.launch.sessionId??(manifest.launch.cli==="claude-code"?manifest.launch.launchId:undefined);

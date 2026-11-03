@@ -1,8 +1,8 @@
 /** No provider launch or user store: exact-session fixtures under a private scratch tree. */
 import { afterEach, expect, it } from "vitest";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path"; import { tmpdir } from "node:os"; import { randomUUID, createHash } from "node:crypto";
-import { NativePaneTranscriptReader, nativeClaudeProjectKey, validatePaneTranscriptCursor } from "../src/runtime-pane-transcript.js";
+import { NativePaneTranscriptReader, nativeClaudeProjectKey, nativeClaudeSessionState, validatePaneTranscriptCursor } from "../src/runtime-pane-transcript.js";
 import { claudeProjectKey } from "../src/backend/claude-code.js";
 import { validatePaneTranscriptWireBatch } from "../src/runtime-pane-transcript-protocol.js";
 const roots: string[] = []; afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -16,6 +16,38 @@ function rig(provider: "codex" | "claude-code" = "codex") {
  const reader = () => new NativePaneTranscriptReader(provider, cwd, sessionId, { codex, claude });
  return { root, cwd, codex, claude, sessionId, folder, path, meta, line, reader };
 }
+it("only a positive absent exact Claude file admits fresh; valid owned bytes prove saved", async () => {
+ const f=rig("claude-code"),root={codex:f.codex,claude:f.claude};
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,root)).toBe("absent");
+ writeFileSync(f.path,f.line(f.meta));expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,root)).toBe("saved");
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>false,root)).toBe("unknown");
+});
+it.each(["empty","malformed","wrong-cwd","wrong-session","sidechain"])("%s Claude file is unknown, never absent",async kind=>{
+ const f=rig("claude-code"),entry={...f.meta,...(kind==="wrong-cwd"?{cwd:f.root}:kind==="wrong-session"?{sessionId:randomUUID()}:kind==="sidechain"?{isSidechain:true}:{})};
+ writeFileSync(f.path,kind==="empty"?"":kind==="malformed"?"{\n":f.line(entry));
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,{codex:f.codex,claude:f.claude})).toBe("unknown");
+});
+it("an absent project folder is positive absence but a profile junction is unknown",async()=>{
+ const f=rig("claude-code");rmSync(f.folder,{recursive:true});
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,{codex:f.codex,claude:f.claude})).toBe("absent");
+ const link=join(f.root,"linked-profile");symlinkSync(f.claude,link,"dir");
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,{codex:f.codex,claude:link})).toBe("unknown");
+});
+it("a matching file symlink or an invalid profile path cannot manufacture absence",async()=>{
+ const f=rig("claude-code"),target=join(f.root,"outside.jsonl");writeFileSync(target,f.line(f.meta));symlinkSync(target,f.path);
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,{codex:f.codex,claude:f.claude})).toBe("unknown");
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,{codex:f.codex,claude:target})).toBe("unknown");
+});
+it("a lease revoked during the final absence check is unknown",async()=>{
+ const f=rig("claude-code");let checks=0;
+ expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>++checks<2,{codex:f.codex,claude:f.claude})).toBe("unknown");
+ expect(checks).toBe(2);
+});
+it.skipIf(typeof process.getuid!=="function"||process.getuid()===0)("EACCES while checking a private profile is unknown, never absent",async()=>{
+ const f=rig("claude-code");chmodSync(f.claude,0);
+ try{expect(await nativeClaudeSessionState(f.cwd,f.sessionId,()=>true,{codex:f.codex,claude:f.claude})).toBe("unknown");}
+ finally{chmodSync(f.claude,0o700);}
+});
 it("pins a fresh session while its deferred transcript is absent, then reads only that exact id", async () => {
  const f = rig(), reader = f.reader();
  writeFileSync(join(f.folder, `rollout-newer-${randomUUID()}.jsonl`), f.line({ ...f.meta, payload: { id: randomUUID(), cwd: f.cwd } }));

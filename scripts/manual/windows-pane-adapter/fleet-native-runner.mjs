@@ -7,11 +7,17 @@ import{RuntimePaneLink}from'../../../dist/runtime-pane-link.js';
 import{readPaneHostDescriptor}from'../../../dist/runtime-pane-private.js';
 import{runtimeJobDigest}from'../../../dist/runtime-client-store.js';
 import{existsSync}from'node:fs';
-const[mode,root,scope,codeRoot]=process.argv.slice(2),approved='c:\\users\\changhansung\\agend-adapter-proto';
-if(process.platform!=='win32'||!['host','relay','versions','detached-empty'].includes(mode)||!win32.normalize(root||'').toLowerCase().startsWith(approved+'\\')||!/^[a-f0-9]{64}$/.test(scope||''))throw Error('Explicit approved native scratch scope required');
+const[mode,root,scope,codeRoot,sessionId]=process.argv.slice(2),approved='c:\\users\\changhansung\\agend-adapter-proto';
+if(process.platform!=='win32'||!['host','relay','versions','detached-empty','archive'].includes(mode)||!win32.normalize(root||'').toLowerCase().startsWith(approved+'\\')||!/^[a-f0-9]{64}$/.test(scope||''))throw Error('Explicit approved native scratch scope required');
 const directory=join(root,'LocalData','AgEnD','pane-adapter',scope.slice(0,16),'state','pane-host');
 if(mode==='versions'){
  const versions={};for(const provider of ['codex','claude-code']){const cli=await findCli(provider);if(!cli)throw Error('Expected native CLI is unavailable');const result=await promisify(execFile)(cli.command,[...cli.args,'--version'],{cwd:root,env:nativeCliEnvironment(),timeout:10000,maxBuffer:4096,windowsHide:true,shell:false});const version=result.stdout.match(/\b\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\b/)?.[0];if(!version)throw Error('Native version not recognized');versions[provider]=version;}const codexModels=readNativeCodexModels().map(row=>row.id).filter(id=>/^gpt-[0-9][a-z0-9.-]{0,80}$/i.test(id)).slice(0,64);process.stdout.write(JSON.stringify({...versions,codexModels})+'\n');
+}else if(mode==='archive'){
+ if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(sessionId||''))throw Error('Expected exact scratch session id');
+ const cli=await findCli('codex');if(!cli)throw Error('Native Codex unavailable');
+ const result=await promisify(execFile)(cli.command,[...cli.args,'-c','check_for_update_on_startup=false','archive',sessionId],{cwd:root,env:nativeCliEnvironment(),timeout:25000,maxBuffer:4096,windowsHide:true,shell:false});
+ if(!result.stdout.includes('Archived session '+sessionId+'.'))throw Error('Scratch session archive unconfirmed');
+ process.stdout.write(JSON.stringify({id:sessionId,archived:true})+'\n');
 }else if(mode==='detached-empty'){
  // No CLI is opened. This proves the actual detached production host launch/reconnect in a unique private scope.
  if(!codeRoot||!win32.normalize(codeRoot).toLowerCase().startsWith(win32.normalize(root).toLowerCase()+'\\'))throw Error('Expected immutable scratch code scope missing');

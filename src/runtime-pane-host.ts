@@ -9,7 +9,7 @@ import { spawnNativePane } from "./runtime-pane-process.js";
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
-import { NativePaneTranscriptReader } from "./runtime-pane-transcript.js";
+import { NativePaneTranscriptReader, nativeClaudeSessionState, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
 import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
@@ -27,6 +27,7 @@ export interface RuntimePaneHostOptions {
   mcpConnection?(owner: PaneMcpOwner, tools: string[]): PaneMcpConnection;
   /** Internal runner seam. A remote request never provides roots or a path. */
   transcript?(launch: RuntimePaneLaunch, sessionId: string): (Pick<NativePaneTranscriptReader, "read" | "close"> & Partial<Pick<NativePaneTranscriptReader, "baseline">>);
+  sessionProof?(launch: RuntimePaneLaunch, sessionId: string, current: () => boolean): Promise<NativeClaudeSessionState>;
   output?(snapshot: RuntimePaneSnapshot): void;
 }
 interface LivePane {
@@ -186,6 +187,20 @@ export class RuntimePaneHost {
     const stored = this.options.store.get(request.paneId);
     if (!stored || stored.snapshot.launchId !== request.launchId) throw Error("Pane launch identity is stale");
     if (request.action === "snapshot") return structuredClone(live?.record.snapshot ?? stored.snapshot);
+    if (request.action === "session-proof") {
+      const { launch, snapshot } = live?.record ?? stored;
+      if (launch.cli !== "claude-code" || snapshot.state !== "exited" || snapshot.noLaunch || !snapshot.sessionId) throw Error("Session proof requires an exited Claude pane");
+      let settled = false, timer: ReturnType<typeof setTimeout> | undefined;
+      const lease = () => !settled && !this.closing && this.options.online() && current();
+      const read = this.options.sessionProof
+        ? this.options.sessionProof(launch, snapshot.sessionId, lease)
+        : nativeClaudeSessionState(launch.cwd, snapshot.sessionId, lease);
+      try {
+        const state = await Promise.race([read, new Promise<"unknown">(done => { timer = setTimeout(() => done("unknown"), 1500); })]);
+        return { snapshot: structuredClone(snapshot), state: lease() && ["absent", "saved", "unknown"].includes(state) ? state : "unknown" };
+      } catch { return { snapshot: structuredClone(snapshot), state: "unknown" }; }
+      finally { settled = true; clearTimeout(timer); void read.catch(() => {}); }
+    }
     if (!live && request.action === "capture" && stored.snapshot.state === "exited") return { snapshot: structuredClone(stored.snapshot), text: "" };
     if (!live) throw Error("Pane process is not owned by this runner; its reservation is retained");
     const record = live.record;

@@ -44,6 +44,7 @@ export interface RuntimePaneSnapshot extends PaneSize {
 export type RuntimePaneOpenResult = RuntimePaneSnapshot & { reattached: boolean };
 export interface RuntimePaneShutdown { hostBootId: string; shutdown: true }
 export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: string }
+export interface RuntimePaneSessionProof { snapshot: RuntimePaneSnapshot; state: "absent" | "saved" | "unknown" }
 export type RuntimePaneRequest =
   | { action: "list" }
   | { action: "shutdown"; hostBootId: string }
@@ -51,6 +52,7 @@ export type RuntimePaneRequest =
   | { action: "open"; operationId: string; launch: RuntimePaneLaunch }
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
   | { action: "snapshot"; paneId: string; launchId: string }
+  | { action: "session-proof"; paneId: string; launchId: string }
   | { action: "output"; paneId: string; launchId: string; offset: number }
   | { action: "bind-session"; paneId: string; launchId: string; sessionId: string }
   | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
@@ -92,6 +94,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
     case "list": closed(value, ["action"]); break;
     case "shutdown": closed(value, ["action", "hostBootId"]); id(value.hostBootId); return value as unknown as RuntimePaneRequest;
     case "open": closed(value, ["action", "operationId", "launch"]); id(value.operationId); return { action: "open", operationId: value.operationId, launch: validateRuntimePaneLaunch(value.launch) };
+    case "session-proof": closed(value, ["action", "paneId", "launchId"]); break;
     case "capture":
       closed(value, ["action", "paneId", "launchId", "history", "joined", "ansi"]);
       if (value.history !== undefined) dimension(value.history, 0, 2000);
@@ -139,7 +142,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
   if (value.action !== "list") {
     if (["input", "key", "edit"].includes(value.action)) dimension(value.expectedSeq, 0, Number.MAX_SAFE_INTEGER);
     id(value.paneId); id(value.launchId);
-    if (!["capture", "snapshot", "output", "transcript", "transcript-baseline", "bind-session", "recover"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
+    if (!["capture", "snapshot", "session-proof", "output", "transcript", "transcript-baseline", "bind-session", "recover"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
   }
   return value as unknown as RuntimePaneRequest;
 }
@@ -158,6 +161,14 @@ export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot
   if (value.exitProof !== undefined && (value.state !== "exited" || !["system-reboot", "admin-confirmed"].includes(String(value.exitProof)))) throw Error("Invalid pane exit proof");
   if (value.sessionId !== undefined && !validNativeSessionId("codex", value.sessionId)) throw Error("Invalid pane conversation identity");
   return value as unknown as RuntimePaneSnapshot;
+}
+
+export function validateRuntimePaneSessionProof(value: unknown): RuntimePaneSessionProof {
+  closed(value, ["snapshot", "state"]);
+  if (value.state !== "absent" && value.state !== "saved" && value.state !== "unknown") throw Error("Invalid pane session proof");
+  const snapshot = validateRuntimePaneSnapshot(value.snapshot);
+  if (snapshot.state !== "exited" || snapshot.noLaunch || !snapshot.sessionId) throw Error("Session proof requires a positively exited conversation");
+  return { snapshot, state: value.state };
 }
 
 export function validateRuntimePaneOpenResult(value: unknown): RuntimePaneOpenResult {
