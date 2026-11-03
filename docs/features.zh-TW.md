@@ -1272,6 +1272,7 @@ instances:
 agend update            # 留在已安裝的頻道：alpha 從 @alpha、beta 從 @beta、穩定版從 @latest 更新
 agend update --alpha    # 從 @alpha npm dist-tag 安裝
 agend update --beta     # 從 @beta npm dist-tag 安裝
+agend update --rc       # 安裝目前的候選版（@rc），在它升為 @beta 之前
 agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 alpha
 ```
 
@@ -1279,7 +1280,7 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 要求更新的聊天會收到一則訊息，一路跟著更新與重啟。套件裝好時會寫「正在重啟 fleet」（沒有 ✅）。Agent 起來時顯示「啟動中… N/M」。只有新 fleet 已 READY 才會改成「✅ 更新完成 — vX · N/M 個 Agent 已就緒」（#2476）。在 Telegram 上這則訊息至多每 6 秒編輯一次（一個群組每分鐘大約只允許 bot 發 20 則訊息，所有 topic 也與 fleet 啟動時的其他訊息共用這個額度）。最後一步若在啟動期間無法送達（遇到限流時段、連線尚未就緒，或網路中斷），啟動會繼續進行，最後一步則在 30 分鐘內持續重試：就地編輯，舊訊息無法編輯時改發一則新訊息（#2175、#2213）。任何啟動或重啟的「Fleet ready」訊息也一樣，小型 fleet 的也包括在內。在 AgEnD 這端逾時的送出可能其實已經送達，所以在它有結果之前不會再送任何東西：你不會收到兩次。
 
-發版就是推送一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@beta`、`vX.Y.Z-alpha.N` → `@alpha`。其他任何 tag（`-rc.N`、打錯字）都會在建置任何東西之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本轉為穩定版時（2.2.0），也要把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：之後 alpha 安裝的 `/update` 會直接裝上它，通知也會請你執行 `/update`。
+發版就是推送一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@rc`（候選版）、`vX.Y.Z-alpha.N` → `@alpha`。候選版只有在被升級後才會進入 `@beta`（#2987）：先在測試主機上跑過（`agend update --rc`），再由 `Promote beta` workflow 把 `@beta` 指向那個版本，所以 beta 使用者絕不會裝到還沒試過的版本。候選版的版本號就是 beta 版本號，所以從 `@rc` 安裝之後會跟著 `@beta`。其他任何 tag（`-rc.N`、打錯字）都會在建置任何東西之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本轉為穩定版時（2.2.0），也要把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：之後 alpha 安裝的 `/update` 會直接裝上它，通知也會請你執行 `/update`。
 
 ## PSS 記憶體報告 (PSS memory reporting)
 

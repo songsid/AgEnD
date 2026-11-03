@@ -173,7 +173,9 @@ and the tag comment, and leave the pin guard green.
 
 ### Publish workflows
 
-`publish.yml` publishes `@songsid/agend` only on a `v*` tag push.
+`publish.yml` publishes `@songsid/agend` only on a `v*` tag push (a beta to
+`@rc`). `promote-beta.yml` (dispatch only, `dry_run` on by default) moves `@beta`
+to a published candidate; it needs the `NPM_TOKEN` secret, since OIDC cannot move a dist-tag.
 `workflow_dispatch` is validation-only: checkout, `npm ci`, typecheck and
 build; it never runs `npm publish`. `publish-runtime.yml` defaults
 `dry_run: true` and runs `npm publish --dry-run`. Leave `dry_run` true except
