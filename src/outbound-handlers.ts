@@ -1820,7 +1820,7 @@ const WINDOWS_MCP_EDITABLE = new Set(["display_name", "description", "model"]);
 /** #2942: what the agent hears about its request — held for General, or the state it already reached (a repeat). */
 function windowsRequestAnswer(view: { id: string; state: string }): Record<string, unknown> {
   return view.state === "pending"
-    ? { pending_id: view.id, state: "pending", message: "pending — waiting for a fleet admin to confirm in General. Nothing is changed until then." }
+    ? { pending_id: view.id, state: "pending", message: "pending — waiting for a fleet admin to confirm (in General; on a fleet with no chat connection, the owner in the web dashboard's Needs you). Nothing is changed until then." }
     : { pending_id: view.id, state: view.state, message: `This request is already ${view.state}.` };
 }
 

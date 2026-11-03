@@ -106,7 +106,10 @@ export class SettingsConfirmationStore {
     wallNow?: () => number;
     audit(event: string, fields: Record<string, unknown>): void;
     notify?(view: SettingsPendingView): void | Promise<void>;
+    /** alpha.2 (M-2300): a request was made, decided or ran out — no details (a page that may see them reads them). */
+    changed?(view: SettingsPendingView): void;
   }) {}
+  private changed(entry: RecordEntry): void { try { this.options.changed?.(this.snapshot(entry)); } catch { /* a listener never breaks the store */ } }
   private now(): number { return this.options.now?.() ?? performance.now(); }
   private wall(): number { return this.options.wallNow?.() ?? Date.now(); }
   private audit(event: string, entry: RecordEntry, extra: Record<string, unknown> = {}): void {
@@ -175,7 +178,7 @@ export class SettingsConfirmationStore {
       deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
         requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
         source: proposal.source, summary: [...proposal.summary], confirmation: { kind: this.options.notify ? "posting" : "host_cli", code: id }, outcome: null } };
-    this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry);
+    this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry); this.changed(entry);
     // Notification may fail or arrive late. Neither admits a configuration write. Once it is over, a request no General
     // card attached to says so: the host's command is then the way (still pending: a decided one keeps its own kind).
     void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).catch(() => this.audit("notification_failed", entry))
@@ -202,6 +205,16 @@ export class SettingsConfirmationStore {
     this.prune(); const entry = this.records.get(id);
     return entry?.session === session ? this.snapshot(entry) : null;
   }
+  /**
+   * alpha.2 (M-2300): every request from one source still waiting or being applied, whoever's session — for the one
+   * surface that may confirm another session's request (a web-only fleet's verified owner, agents' requests).
+   */
+  listBySource(source: SettingsPendingView["source"]): SettingsPendingView[] {
+    this.prune(); return [...this.records.values()].filter(entry => entry.view.source === source
+      && (entry.view.state === "pending" || entry.view.state === "applying")).map(entry => this.snapshot(entry));
+  }
+  /** alpha.2: a request's view by id (any state still retained), whoever's session — its caller decides who may see it. */
+  inspect(id: string): SettingsPendingView | null { this.prune(); const entry = this.records.get(id); return entry ? this.snapshot(entry) : null; }
   list(session: string): SettingsPendingView[] {
     this.prune(); return [...this.records.values()].filter(entry => entry.session === session
       && (entry.view.state === "pending" || entry.view.state === "applying")).map(entry => this.snapshot(entry));
@@ -229,6 +242,7 @@ export class SettingsConfirmationStore {
     // Both surfaces claim before the first await, so neither can execute twice.
     entry.view.state = "applying"; clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
     if (actor.via === "web") entry.view.confirmation = { kind: "web" };
+    this.changed(entry);
     this.audit("confirmed", entry, { decided_by: this.display(actor.label) });
     const current = (): boolean => !this.closed && entry.view.state === "applying"
       && this.now() < entry.deadline && actor.current() && proposal.current();
@@ -261,6 +275,7 @@ export class SettingsConfirmationStore {
       ...(detail ? { detail } : {}), ...(result !== undefined ? { result } : {}) };
     entry.proposal?.discard?.(); entry.proposal = undefined;
     this.audit(state === "rejected" && reason === "withdrawn" ? "withdrawn" : state, entry, detail ? { detail } : {});
+    this.changed(entry);
   }
   close(): void {
     this.closed = true;

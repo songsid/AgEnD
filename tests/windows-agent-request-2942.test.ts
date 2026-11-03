@@ -105,7 +105,8 @@ describe("#2942: an agent's Windows create is only ever a pending request", () =
     const out = await mcp("create_instance", r, CREATE);
     expect(out.error).toBeFalsy();
     expect(out.result.state).toBe("pending");
-    expect(out.result.message).toContain("waiting for a fleet admin to confirm in General");
+    expect(out.result.message).toContain("waiting for a fleet admin to confirm (in General");
+    expect(out.result.message).toContain("Needs you");                       // alpha.2: a web-only fleet's owner decides it there
     const [view] = r.store.list(SESSION);
     expect(view).toMatchObject({ state: "pending", source: "agent_request", requested_by: "dev", section: "channel" });
     expect(r.fm.fleetConfig).toEqual(before);

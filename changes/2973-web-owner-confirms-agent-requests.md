@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **A fleet with no Discord or Telegram: approve an agent's Windows request in the web (2.3.5-alpha.2).** When an agent asks for a Windows agent (create one, or change its settings), the request now appears in **Needs you** for the fleet's owner, the person signed in with `agend web --code` on the AgEnD computer. Before, it could only be confirmed with `agend settings confirm` on the host. The card shows who asked, what the agent would be (the machine, CLI, model, folder and access) and when the request runs out. **Approve** creates the agent exactly once. When you approve, AgEnD checks again that you are still the owner, the request is still valid and the machine is still available. **Reject**, a second click, an expired request and a revoked sign-in each say what happened. Nobody else sees these requests: not other sign-ins, not the public link, not guests. A fleet connected to Discord or Telegram keeps General's confirmation card.

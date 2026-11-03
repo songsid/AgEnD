@@ -9,6 +9,9 @@
 // - Acknowledge on a delivery (POST /ui/needs/ack), which clears it everywhere;
 // - Open: that instance's chat.
 // Something resolved anywhere (Discord, Telegram, the web) leaves the list by itself.
+// alpha.2 (M-2300): an agent's Windows request waiting for a web-only fleet's owner is the app store's `proposals`, read
+// by agent-proposals.js (owner only, on the stream's `agent_proposals` ping) — Approve / Reject POST its decision. Only
+// on a tab opened before an upgrade (app.js never installed it) does this panel install it, once.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
@@ -21,6 +24,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
+import { decideProposal, installProposals } from "./agent-proposals.js";
 
 register("needs", {
   en: {
@@ -35,6 +39,12 @@ register("needs", {
     notifyInsecure: "Notifications need a secure address (localhost or the HTTPS public link), not a plain-HTTP LAN address.",
     notifyUnsupported: "This browser cannot show notifications.", turnOn: "Turn on", turnOff: "Turn off",
     typePrompt: "Fleet prompt", typeAwaiting: "At its terminal", typeInstance: "Instance", typeDelivery: "Delivery",
+    proposals: "Agent requests", proposalFrom: "Request from {0}", proposalHint: "Nothing is created or changed until you approve. When you do, AgEnD checks the request, the target machine and your sign-in again, then runs it once.",
+    approve: "Approve", reject: "Reject", deciding: "Working…", expiresIn: "expires in {0} min", expiresSoon: "expires in under a minute",
+    applying: "Being applied…", openAgent: "Open the new agent's chat", decided: "Decided here", failedReason: "Reason: {0}",
+    f_runtime: "Runs on", f_machine: "Machine", f_thisPc: "This PC (Windows)", f_topic_name: "Name", f_backend: "CLI", f_model: "Model", f_directory: "Folder",
+    f_sandbox: "Access", f_description: "Description", f_display_name: "Display name", f_tags: "Tags", sb_read_only: "read-only", sb_workspace_write: "can write in its folder",
+    createWindows: "Create a Windows agent", changeAgent: "Change {0}",
   },
   "zh-TW": {
     title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
@@ -48,6 +58,12 @@ register("needs", {
     notifyInsecure: "通知需要安全的網址（localhost 或 HTTPS 公開連結），區網的一般 HTTP 網址不行。",
     notifyUnsupported: "這個瀏覽器無法顯示通知。", turnOn: "開啟", turnOff: "關閉",
     typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Instance", typeDelivery: "傳送",
+    proposals: "代理人的請求", proposalFrom: "{0} 的請求", proposalHint: "在你核准之前，不會建立或修改任何東西。核准時，AgEnD 會再次檢查這個請求、目標電腦和你的登入，然後只執行一次。",
+    approve: "核准", reject: "拒絕", deciding: "處理中…", expiresIn: "{0} 分鐘後過期", expiresSoon: "不到一分鐘後過期",
+    applying: "正在套用…", openAgent: "開啟新 agent 的聊天", decided: "已在這裡決定", failedReason: "原因：{0}",
+    f_runtime: "執行於", f_machine: "電腦", f_thisPc: "這台電腦（Windows）", f_topic_name: "名稱", f_backend: "CLI", f_model: "模型", f_directory: "資料夾",
+    f_sandbox: "存取權限", f_description: "說明", f_display_name: "顯示名稱", f_tags: "標籤", sb_read_only: "唯讀", sb_workspace_write: "可寫入它的資料夾",
+    createWindows: "建立 Windows agent", changeAgent: "修改 {0}",
   },
 });
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
@@ -123,9 +139,21 @@ export function groupNeeds(items) {
   return [...groups.values()];
 }
 
+/**
+ * alpha.2 (M-2300): what this page decided, kept for the life of the page — the request's id → "busy" while its POST is
+ * out, then the server's answer ({ view, agent, message }): it stays shown after the list drops the request.
+ */
+export const decisions = createStore({});
+
 export function NeedsPanel({ navKey }) {
   const lease = useLease(navKey);
-  const { needs, chatOwner: owner, instances, connections } = useStore(appStore);
+  const { needs, chatOwner: owner, instances, connections, proposals } = useStore(appStore);
+  // A tab opened before an upgrade has this panel but not the app.js that installs the list (it never set `proposals`):
+  // install it here then. On a current page app.js already did, and this panel reads nothing itself (#1374).
+  useEffect(() => { if (appStore.get().proposals === undefined) installProposals(); }, []);
+  const asks = Array.isArray(proposals) ? proposals : [];
+  const done = useStore(decisions);
+  const decidedHere = Object.entries(done).filter(([id, d]) => d && d !== "busy" && !asks.some((p) => p.id === id));
   // #1854: a fleet with no chat connection (web only, or not known yet) has no General to point at.
   const chatApp = connections > 0;
   const names = useStore(namesStore);
@@ -141,9 +169,14 @@ export function NeedsPanel({ navKey }) {
   const groups = groupNeeds(items);
   const nowMs = Date.now();
   return html`<div data-effect-panel="needs" class="panel p-needs">
-    <${PanelHeader} title=${tn("title")} sub=${items.length ? t("app.needsCount", items.length) : null} />
+    <${PanelHeader} title=${tn("title")} sub=${items.length + asks.length ? t("app.needsCount", items.length + asks.length) : null} />
     <div data-trust="panel-content" class="panel-body"><div class="col">
-      ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
+      ${asks.length || decidedHere.length ? html`<section class="n-group n-proposals" aria-label=${tn("proposals")}>
+        <h2 class="n-group-head">${tn("proposals")}</h2>
+        ${asks.map((p) => html`<${ProposalItem} key=${p.id} proposal=${p} nowMs=${nowMs} />`)}
+        ${decidedHere.map(([id, d]) => html`<${ProposalResult} key=${id} result=${d} />`)}
+      </section>` : null}
+      ${!items.length && !asks.length && !decidedHere.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config"])} class="n-group" aria-label=${g.instance}>
           <h2 class="n-group-head">${g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
@@ -206,6 +239,77 @@ function NeedsItem({ item, nowMs, owner }) {
         ${item.type === "task" && item.card ? html`<a class="btn btn-sm" href=${`/ui/fleet?card=${encodeURIComponent(item.card.code)}`}>${tn("openCard")}</a>` : null}
         ${item.instance ? html`<a class="btn btn-sm btn-ghost" href=${chatPath(item.instance)}>${tn("open")}</a>` : null}
       </div>
+    </div>
+  </article>`;
+}
+
+/**
+ * alpha.2 (M-2300): the request's summary as the owner reads it (junsion's §6: the machine, the CLI, the model, the
+ * folder, the access). The server's lines are the settings diff, escaped for a chat's markdown ("new\_instance.directory:
+ * absent → C:\\work"): here, unescaped and named — a create's fields as "Folder: C:\work", "Machine: This PC" when it
+ * names none; a change's as "Model: a → b"; any other line as it is. Text only (rendered as text, never markup).
+ */
+export function proposalLines(summary) {
+  const unescape = (s) => String(s).replace(/\\([\\`*_~[\]()<>|])/g, "$1").replace(/\[at\]/g, "@");
+  const lines = (Array.isArray(summary) ? summary : []).map(unescape);
+  const create = lines.some((l) => /^POST \/ui\/instances$/.test(l));
+  const out = [], label = (k) => { const key = `f_${k}`, s = tn(key); return s === `needs.${key}` ? k : s; };
+  const value = (k, v) => (k === "sandbox" ? (v === "read-only" ? tn("sb_read_only") : v === "workspace-write" ? tn("sb_workspace_write") : v) : v);
+  let machine = false;
+  for (const l of lines) {
+    if (/^POST \/ui\/instances$/.test(l)) continue;
+    const m = /^new_instance\.([A-Za-z_]+): absent → (.*)$/.exec(l);
+    if (m) { if (m[1] === "machineId") machine = true; out.push(`${label(m[1] === "machineId" ? "machine" : m[1])}: ${value(m[1], m[2])}`); continue; }
+    const ch = /^(\S+) ([A-Za-z_]+): (.*) → (.*)$/.exec(l);
+    if (ch) { out.push(`${tn("changeAgent", ch[1])} · ${label(ch[2])}: ${ch[3]} → ${ch[4]}`); continue; }
+    out.push(l);
+  }
+  if (create && !machine) out.splice(1, 0, `${label("machine")}: ${tn("f_thisPc")}`);
+  return create ? [tn("createWindows"), ...out] : out;
+}
+
+/**
+ * alpha.2 (M-2300): one agent's request waiting for this web-only fleet's owner — what it would do (the server's own
+ * summary: the machine, the CLI, the model, the folder, the access), when it runs out, and Approve / Reject. One click
+ * per request on this page (claimed before the POST); the answer is the server's: applied, rejected, run out, already
+ * decided elsewhere, or failed with its reason.
+ */
+function ProposalItem({ proposal: p, nowMs }) {
+  const d = useStore(decisions)[p.id];
+  const busy = d === "busy" || p.state === "applying";
+  const decide = async (decision) => {
+    if (decisions.get()[p.id]) return;
+    decisions.set((s) => ({ ...s, [p.id]: "busy" }));
+    const r = await decideProposal(p.id, decision);
+    decisions.set((s) => ({ ...s, [p.id]: { ...r, decision } }));
+    toast(r.view && r.view.outcome ? r.view.outcome.message : (r.message || t("app.failed")), !!(r.ok && r.view && r.view.state === "applied"));
+  };
+  const minutes = Math.floor((p.remaining_ms || 0) / 60_000);
+  return html`<article data-trust="permission" class="n-item">
+    <span class="n-icon"><${Icon} name="alert" size=${18} /></span>
+    <div class="n-body">
+      <div class="n-title"><strong>${tn("proposalFrom", p.requested_by)}</strong><span class="n-age">${age(p.requested_at, nowMs)} · ${minutes >= 1 ? tn("expiresIn", minutes) : tn("expiresSoon")}</span></div>
+      <ul class="n-detail">${proposalLines(p.summary).map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>
+      <p class="note">${tn("proposalHint")}</p>
+      <div class="n-actions">
+        <button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${() => decide("confirm")}>${busy ? (p.state === "applying" ? tn("applying") : tn("deciding")) : tn("approve")}</button>
+        <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => decide("reject")}>${tn("reject")}</button>
+      </div>
+    </div>
+  </article>`;
+}
+
+/** A request decided on this page: the server's outcome (and its reason), and the new agent's chat when one was created. */
+function ProposalResult({ result: r }) {
+  const v = r.view, outcome = v && v.outcome;
+  const ok = !!(v && v.state === "applied");
+  return html`<article data-trust="permission" class=${`n-item${ok || (v && v.state === "rejected") ? "" : " bad"}`}>
+    <span class="n-icon"><${Icon} name=${ok ? "check" : "alert"} size=${18} /></span>
+    <div class="n-body">
+      <div class="n-title"><strong>${outcome ? outcome.message : (r.message || t("app.failed"))}</strong><span class="n-age">${tn("decided")}</span></div>
+      ${v ? html`<ul class="n-detail">${proposalLines(v.summary).map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
+      ${outcome && outcome.detail ? html`<p class="note">${tn("failedReason", outcome.detail)}</p>` : null}
+      ${ok && r.agent ? html`<div class="n-actions"><a class="btn btn-sm btn-primary" href=${chatPath(r.agent)} title=${r.agent}>${tn("openAgent")}</a></div>` : null}
     </div>
   </article>`;
 }
