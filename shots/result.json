@@ -1,0 +1,142 @@
+[
+  {
+    "name": "desk",
+    "ok": true,
+    "failed": [],
+    "info": {
+      "pending": {
+        "id": "0de75f8e081c3ccfc2bed89b6fc4cbe5",
+        "state": "pending",
+        "summary": [
+          "POST /ui/instances",
+          "new\\_instance.runtime: absent → windows",
+          "new\\_instance.topic\\_name: absent → builder-desk",
+          "new\\_instance.directory: absent → C:\\\\agend-m2300-e2e\\\\builder-desk",
+          "new\\_instance.backend: absent → codex",
+          "new\\_instance.sandbox: absent → read-only"
+        ]
+      },
+      "lines": [
+        "Create a Windows agent",
+        "Runs on: windows",
+        "Machine: This PC (Windows)",
+        "Name: builder-desk",
+        "Folder: C:\\agend-m2300-e2e\\builder-desk",
+        "CLI: codex",
+        "Access: read-only"
+      ],
+      "created": 1,
+      "result": "Change applied.",
+      "again": {
+        "status": 409,
+        "error": "confirmation_not_pending",
+        "state": "applied"
+      }
+    }
+  },
+  {
+    "name": "desk-stale",
+    "ok": true,
+    "failed": [],
+    "info": {
+      "pending": {
+        "id": "a94f78651b1cb94336d9b6d792fc93b7",
+        "state": "pending",
+        "summary": [
+          "POST /ui/instances",
+          "new\\_instance.runtime: absent → windows",
+          "new\\_instance.topic\\_name: absent → builder-desk-stale",
+          "new\\_instance.directory: absent → C:\\\\agend-m2300-e2e\\\\builder-desk-stale",
+          "new\\_instance.backend: absent → codex",
+          "new\\_instance.sandbox: absent → read-only"
+        ]
+      },
+      "lines": [
+        "Create a Windows agent",
+        "Runs on: windows",
+        "Machine: This PC (Windows)",
+        "Name: builder-desk-stale",
+        "Folder: C:\\agend-m2300-e2e\\builder-desk-stale",
+        "CLI: codex",
+        "Access: read-only"
+      ],
+      "created": 1,
+      "result": "Change applied.",
+      "again": {
+        "status": 409,
+        "error": "confirmation_not_pending",
+        "state": "applied"
+      }
+    }
+  },
+  {
+    "name": "phone",
+    "ok": true,
+    "failed": [],
+    "info": {
+      "pending": {
+        "id": "d51d4d554da763645a8d4e2d9ad7a9c9",
+        "state": "pending",
+        "summary": [
+          "POST /ui/instances",
+          "new\\_instance.runtime: absent → windows",
+          "new\\_instance.topic\\_name: absent → builder-phone",
+          "new\\_instance.directory: absent → C:\\\\agend-m2300-e2e\\\\builder-phone",
+          "new\\_instance.backend: absent → codex",
+          "new\\_instance.sandbox: absent → read-only"
+        ]
+      },
+      "lines": [
+        "Create a Windows agent",
+        "Runs on: windows",
+        "Machine: This PC (Windows)",
+        "Name: builder-phone",
+        "Folder: C:\\agend-m2300-e2e\\builder-phone",
+        "CLI: codex",
+        "Access: read-only"
+      ],
+      "created": 1,
+      "result": "Change applied.",
+      "again": {
+        "status": 409,
+        "error": "confirmation_not_pending",
+        "state": "applied"
+      }
+    }
+  },
+  {
+    "name": "phone-stale",
+    "ok": true,
+    "failed": [],
+    "info": {
+      "pending": {
+        "id": "45fc9dbb1c9f89d1fc068f4e34073183",
+        "state": "pending",
+        "summary": [
+          "POST /ui/instances",
+          "new\\_instance.runtime: absent → windows",
+          "new\\_instance.topic\\_name: absent → builder-phone-stale",
+          "new\\_instance.directory: absent → C:\\\\agend-m2300-e2e\\\\builder-phone-stale",
+          "new\\_instance.backend: absent → codex",
+          "new\\_instance.sandbox: absent → read-only"
+        ]
+      },
+      "lines": [
+        "Create a Windows agent",
+        "Runs on: windows",
+        "Machine: This PC (Windows)",
+        "Name: builder-phone-stale",
+        "Folder: C:\\agend-m2300-e2e\\builder-phone-stale",
+        "CLI: codex",
+        "Access: read-only"
+      ],
+      "created": 1,
+      "result": "Change applied.",
+      "again": {
+        "status": 409,
+        "error": "confirmation_not_pending",
+        "state": "applied"
+      }
+    }
+  }
+]
