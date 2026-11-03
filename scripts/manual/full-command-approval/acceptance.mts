@@ -47,7 +47,7 @@ writeFileSync(runner, `const{spawn}=require('node:child_process');const fs=requi
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket, ...args], { encoding: "utf8", env: { ...process.env, TMUX: "", NOTIFY_SOCKET: "" } });
 const capture = () => tmux("capture-pane", "-p", "-t", session);
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const until = async (check: (pane: string) => boolean, label: string) => {
   const end = performance.now() + 60_000;
   while (performance.now() < end) { const pane = capture(); if (check(pane)) return pane; await sleep(200); }

@@ -10,7 +10,7 @@ const output = resolve(process.argv[2] ?? ".artifacts/mock-tmux"); mkdirSync(out
 rmSync(join(output, "receipt.json"), { force: true });
 const root = mkdtempSync(join(output, "private-")), socket = `agend-test-command-swap-${process.pid}`;
 const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket, ...args], { encoding: "utf8", env: { ...process.env, TMUX: "", NOTIFY_SOCKET: "" } });
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const results: unknown[] = [];
 try {
