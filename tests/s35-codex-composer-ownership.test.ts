@@ -84,6 +84,13 @@ describe("S-35 negatives stay refused", () => {
     expect(await enter(screen, "native")).toEqual({ sent: false, keys: 0 });
   });
 
+  it.each(["codex", "native"] as const)("no runtime dialog matches the real S-35 screens, so stale /status or tool-call text cannot veto Enter (%s)", mode => {
+    for (const screen of [postTurn, fixture("s35-codex-first-turn-composer.json")]) {
+      const daemon = gateDaemon(screen, mode);
+      const hits = daemon.runtimeDialogs().filter((dialog: any) => (Daemon as any).dialogMatches(dialog, screen)).map((dialog: any) => dialog.description);
+      expect(hits).toEqual([]);
+    }
+  });
   it("a live dialog vetoes Enter even over a real composer", async () => {
     const daemon = gateDaemon(postTurn, "codex");
     vi.spyOn(daemon, "runtimeDialogs").mockReturnValue([{ pattern: /Pane check 2/, keys: [], description: "fixture dialog", holdOnly: true, blocksDelivery: true }]);
