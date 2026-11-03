@@ -108,6 +108,27 @@ describe("a burst never becomes a backlog", () => {
     const lay = O.arrangeTiles([0, 1].map((i) => ({ key: `z${i}`, w: 1280, h: 720 })), 2584);
     return [{ tile: lay.tiles[0], L: zl(["atlas"]) }, { tile: lay.tiles[1], L: zl(["quill", "sage"]) }];
   };
+  it("#2977 review r2: after a gap with no frame (a hidden tab), landed trips never hold a place; one queued past its flight time never flies late", () => {
+    const f = M.createFlights(), l = L();
+    f.sync(Array.from({ length: M.FLIGHT.MAX }, (_, k) => item(k + 1)), 0);
+    expect(f.frame(0, l)).toHaveLength(1);                                         // a full sky
+    expect(f.size()).toBe(M.FLIGHT.MAX);
+    // Nothing drawn for 10 s; then a new one.
+    f.sync([item(50)], 10_000);
+    expect(f.frame(10_000, l).map((x: any) => x.id)).toEqual([id16(50)]);         // the landed twelve were pruned first
+    expect(f.size()).toBe(1);
+    // Queued, but its first frame comes only after its own flight time: stale, never flown late (nor holding a place).
+    const g = M.createFlights();
+    g.sync([item(60)], 0);
+    expect(g.frame(10_000, l)).toEqual([]);
+    expect(g.size()).toBe(0);
+    // Between tiles, the same boundary.
+    const parts = tiles(), c = O.createCrossFlights();
+    c.sync(Array.from({ length: M.FLIGHT.MAX }, (_, k) => item(k + 1)), 0);
+    c.frame(0, parts);
+    c.sync([item(70)], 10_000);
+    expect(c.frame(10_000, parts).map((x: any) => x.id)).toEqual([id16(70)]);
+  });
   it("between tiles (All offices): the same cap and the same minimum; a crossing is never crowded out by a tile's own (#2977 review)", () => {
     const parts = tiles();
     const f = O.createCrossFlights();

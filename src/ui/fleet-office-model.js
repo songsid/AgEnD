@@ -340,8 +340,9 @@ const MAX_WAITING = 200;
  * bounded: never flown again) and waits for the next frame — none when `still` (reduced motion) or for a stale
  * delegation. `frame(now, on)`: first the waiting are admitted, #2946 — only those with a path here (all controllers
  * get the whole fleet's traffic: the rest are not this one's to fly, and never take a place), and of those the newest
- * that fit in `max` with the trips already up, each batch's staggered from when it came; then the trips under way
- * { id, hue, kind, from, x, y, t }, finished ones dropped, one whose path is gone (a re-layout) dropped. A trip under way
+ * that fit in `max` beside the trips still up (landed ones and those with no path any more pruned first), each batch
+ * staggered from when it came, one already past its flight time never flown late; then the trips under way
+ * { id, hue, kind, from, x, y, t }. A trip under way
  * is never cut short to make room. `size()`: trips up or waiting.
  */
 export function createTrips(pathOf, { max = FLIGHT.MAX } = {}) {
@@ -363,23 +364,27 @@ export function createTrips(pathOf, { max = FLIGHT.MAX } = {}) {
       return fresh;
     },
     frame(now, on) {
+      // First the trips up: routed again on a new layout, the ones with no path or landed dropped — so the room below is
+      // what is really free (#2977 review: after a gap with no frame, a hidden tab, landed trips held every place).
+      trips = trips.filter((f) => {
+        if (f.on !== on) route(f, on);
+        return !!f.pts && (now - f.start) / f.ms < 1;
+      });
       if (waiting.length) {
+        // Then the waiting with a path here and still due (one whose own flight time has passed since it came is stale:
+        // never flown late), the newest that fit, each batch staggered from when it came.
         const ok = [];
-        for (const w of waiting) { const f = { ...w, start: w.at }; route(f, on); if (f.pts) ok.push(f); }
+        for (const w of waiting) { const f = { ...w, start: w.at }; route(f, on); if (f.pts && now - w.at < f.ms) ok.push(f); }
         waiting = [];
         const room = max - trips.length, add = room > 0 ? ok.slice(-room) : [];      // never slice(-0): that is all of them
         const k = new Map();
         for (const f of add) { const n = k.get(f.at) || 0; k.set(f.at, n + 1); f.start = f.at + n * FLIGHT.STAGGER_MS; trips.push(f); }
       }
       const out = [];
-      trips = trips.filter((f) => {
-        if (f.on !== on) route(f, on);
-        if (!f.pts) return false;
+      for (const f of trips) {
         const t = (now - f.start) / f.ms;
-        if (t >= 1) return false;
-        if (t >= 0) { const p = along(f.pts, t); out.push({ id: f.id, hue: f.hue, kind: f.kind, from: f.from, x: p.x, y: p.y, t }); }
-        return true;
-      });
+        if (t >= 0 && t < 1) { const p = along(f.pts, t); out.push({ id: f.id, hue: f.hue, kind: f.kind, from: f.from, x: p.x, y: p.y, t }); }
+      }
       return out;
     },
     size: () => trips.length + waiting.length,
