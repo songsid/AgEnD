@@ -87,6 +87,8 @@ describe("#2965 full-command human approval", () => {
     expect(card.question).toContain("printf FIRST-REQUEST");
     expect(card.identity).not.toBe(selectionCard(prefix + command.replace("FIRST", "OTHER") + options, "Codex")!.identity);
     expect(selectionCard(command + options, "Codex")).toBeNull();
+    expect(selectionCard(prefix + rule + "\n" + command + options, "Codex")).toBeNull();
+    expect(selectionCard(prefix + " $ echo first\n… +30 lines (ctrl+o to expand)\necho tail\n\n" + options, "Codex")).toBeNull();
     const program = "  $ python - <<'PY'\n  if True:\n      print('inside')\n  PY\n\n";
     expect(selectionCard(prefix + program + options, "Codex")!.question).toContain("$ python - <<'PY'\nif True:\n    print('inside')\nPY");
   });

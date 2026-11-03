@@ -121,6 +121,7 @@ export function selectionCard(pane: string, title: string): RemoteQuestionCard |
     if (i === commandHeader) break;
   }
   rawBody.reverse();
+  if (codexCommand && !CODEX_COMMAND_TITLE.test(rawBody.find(r => r.trim()) ?? "")) return null;
   const shell = rawBody.some(r => SHELL_TITLE.test(r));
   if ((shell || title === "Claude Code" && rawBody.some(r => /^[ \t]*Do you want to proceed\?[ \t]*$/.test(r)))
     && (border < 0 || !SHELL_TITLE.test(rawBody.find(r => r.trim()) ?? ""))) return null;
@@ -147,7 +148,7 @@ export function selectionCard(pane: string, title: string): RemoteQuestionCard |
   const codeRow = (index: number) => sourceRows[bodyStart + index]!.replace(/^[ \t]*[│┃][ \t]?/, "");
   const commandRows = shell || codexCode >= 0
     ? rawBody.map((_, index) => codeRow(index)).slice(shell ? commandStart + 1 : codexCode, shell ? commandEnd : undefined) : [];
-  if (shell && commandRows.some(r => /^[ \t]*(?:…|\.\.\.)[ \t]*\+?\d+[ \t]+lines?\b.*(?:ctrl|expand)/i.test(r))) return null;
+  if ((shell || codexCommand) && commandRows.some(r => /^[ \t]*(?:…|\.\.\.)[ \t]*\+?\d+[ \t]+lines?\b.*(?:ctrl|expand)/i.test(r))) return null;
   const padding = commandRows
     .reduce((min, row) => row.trim() ? Math.min(min, indentOf(row)) : min, Infinity);
   const body: string[] = [];
