@@ -281,6 +281,7 @@ export class RuntimePaneObservation extends EventEmitter implements PaneObservat
   private last = new Map<string, number>();
   private windows = new Set<string>();
   private wasOnline = false;
+  private sweep: ReturnType<typeof setInterval> | undefined;
   constructor(private endpoint: PaneEndpoint, private owned: (id: string) => RuntimePaneSnapshot | null, private idleMs = 300) { super(); }
   start(): void {
     if (this.remove) return;
@@ -298,8 +299,13 @@ export class RuntimePaneObservation extends EventEmitter implements PaneObservat
       const at = Date.now(); this.last.set(event.pane.paneId, at);
       this.emit(`output:${event.pane.paneId}`, { paneId: event.pane.paneId, windowId: event.pane.paneId, at } satisfies PaneOutputEvent);
     });
+    // The ordinary daemon needs a second quiet capture (and recovery after a transient failed capture), even if
+    // the CLI emits no further output. Like the tmux control client's sweep, this requests reads only: it is not
+    // output or positive idle evidence, and a disconnected endpoint must remain blind.
+    this.sweep = setInterval(() => { if (!this.isObservationBlind()) this.emit("safety_sweep"); }, 5_000);
+    this.sweep.unref?.();
   }
-  stop(): void { this.remove?.(); this.remove = undefined; this.last.clear(); this.windows.clear(); }
+  stop(): void { if (this.sweep) clearInterval(this.sweep); this.sweep = undefined; this.remove?.(); this.remove = undefined; this.last.clear(); this.windows.clear(); }
   async registerWindow(id: string): Promise<void> { this.windows.add(id); this.resetAt = Date.now(); }
   unregisterWindow(id: string): void { this.windows.delete(id); this.last.delete(id); }
   getObservationResetAt(): number { return this.resetAt; }

@@ -139,3 +139,11 @@ it('a capture that races output cannot create native input proof',async()=>{
  const f=await fixture(),capture=RuntimePaneScreen.prototype.capture;vi.spyOn(RuntimePaneScreen.prototype,'capture').mockImplementationOnce(async function(this:RuntimePaneScreen,options){const screen=await capture.call(this,options);repaint(f,nativeApproval);return screen;});
  await expect(f.port.capturePane()).rejects.toThrow('changed during capture');expect(f.write).not.toHaveBeenCalled();expect(await f.port.sendSpecialKey('Enter')).toBe(false);expect(f.write).not.toHaveBeenCalled();
 });
+
+it('quiet native panes still receive safety captures; offline and detached observations never do',async()=>{
+ const f=await fixture(),observation=new RuntimePaneObservation(f.endpoint,()=>f.port.ownedSnapshot()),sweep=vi.fn(),output=vi.fn();clean.push(()=>observation.stop());
+ vi.useFakeTimers();try{observation.on('safety_sweep',sweep);observation.on(`output:${f.port.getWindowId()}`,output);observation.start();observation.start();await observation.registerWindow(f.port.getWindowId());
+  await vi.advanceTimersByTimeAsync(5000);expect(sweep).toHaveBeenCalledOnce();expect(output).not.toHaveBeenCalled();expect(observation.isIdle(f.port.getWindowId())).toBe(false);expect(observation.getLastOutputAt(f.port.getWindowId())).toBeUndefined();
+  f.offline();await vi.advanceTimersByTimeAsync(5000);expect(sweep).toHaveBeenCalledOnce();observation.stop();await vi.advanceTimersByTimeAsync(10000);expect(sweep).toHaveBeenCalledOnce();
+ }finally{vi.useRealTimers();}
+});
