@@ -27,7 +27,7 @@ try{
  for(const row of panes)await until(async()=>(await capture(row)).text.includes('MCP_CANARY_DONE'));
  await until(()=>toolCalls===2&&writtenReceipts===2);
  await assert.rejects(()=>hub.callPane(machine,{action:'open',operationId:randomUUID(),launch:launch()},2));
- const row=panes[0],input={action:'input',paneId:row.pane.paneId,launchId:row.pane.launchId,operationId:randomUUID(),sequence:1,expectedSeq:row.pane.seq,kind:'literal',text:'inert-once'};
+ const row=panes[0],input={action:'input',paneId:row.pane.paneId,launchId:row.pane.launchId,operationId:randomUUID(),sequence:1,expectedSeq:(await capture(row)).snapshot.seq,kind:'literal',text:'inert-once'};
  await hub.callPane(machine,input,2);await until(async()=>(await capture(row)).text.includes('WRITES 1'));
  phase='coordinator-reconnect';const before=hub.paneTransportEpoch(machine);hub.close();hub=new RuntimeCoordinator(home,hubOptions());await until(()=>hub.machine(machine)?.status==='online'&&hub.paneTransportEpoch(machine)!==before);
  for(const row of panes){const same=await hub.callPane(machine,row.command,2);assert.equal(same.launchId,row.pane.launchId);assert.equal(same.hostBootId,row.pane.hostBootId);}

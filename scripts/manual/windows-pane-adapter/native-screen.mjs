@@ -32,7 +32,12 @@ const executable=await findCli('codex');assert.equal(executable?.path.toLowerCas
 const store=new RuntimePaneStore(join(root,'profile'));
 const host=new RuntimePaneHost({store,bootId:randomUUID(),online:()=>true,maxAgents:()=>4});
 const until=async check=>{const end=performance.now()+20000;while(!await check()){if(performance.now()>end)throw Error('Native fixture deadline');await new Promise(r=>setTimeout(r,25));}};
-const call=(pane,action,fields={})=>host.request({action,paneId:pane.paneId,launchId:pane.launchId,...fields});
+const call=async(pane,action,fields={})=>{
+ const target={paneId:pane.paneId,launchId:pane.launchId};
+ const observed=['input','key','edit'].includes(action)?await host.request({action:'capture',...target}):null;
+ const result=await host.request({action,...target,...fields,...(observed?{expectedSeq:observed.snapshot.seq}:{})});
+ assert(!result.inputRefused,'Inert fixture changed before its intended input');return result;
+};
 let receipt;const runners=[];
 try{
  const panes=[],launchMs=[];
