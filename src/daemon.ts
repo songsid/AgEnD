@@ -676,6 +676,9 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 /** Bottom-ready re-poll cadence for Enter-dropping TUIs once the pane is quiet. */
 const BOTTOM_READY_POLL_MS = 250;
+/** M-2267: how often a pane left in a tmux mode is looked at again, and how long the delivery Enter waits for it to end. */
+const PANE_MODE_POLL_MS = 500;
+const PANE_MODE_ENTER_WAIT_MS = 10 * 60_000;
 /** Consecutive unreadable pane probes tolerated by the delivery gate before the delivery is failed (≈10s at the poll cadence). */
 const DIALOG_PROBE_UNKNOWN_MAX = 40;
 /** Startup dialog scan: poll cadence and wall-clock budget (keys and waits included). */
@@ -7881,6 +7884,8 @@ export class Daemon extends EventEmitter {
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
         // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
         if (written === "handoff-box-unread") return "dialog";
+        // M-2267: the pane is in a tmux mode: nothing written — wait for readiness (it holds while the mode lasts), retry.
+        if (written === "pane-in-mode") return "dialog";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });
@@ -9047,6 +9052,13 @@ export class Daemon extends EventEmitter {
       const idle = stop ? await this.waitForPaneIdleForDelivery(windowId, remaining, stop)
         : await this.waitForPaneIdleForDelivery(windowId, remaining);
       if (idle !== true) return idle;
+      // M-2267: a person left the pane in a tmux mode (copy-mode): its keys would go to the mode. Hold — never take the
+      // pane out of it — and look again; the delivery goes once the mode ends (or this wait's own deadline).
+      if (await this.paneInTmuxMode("readiness")) {
+        if (stop && await stop()) return "stopped";
+        await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
+        continue;
+      }
       // The idle wait just resolved, so re-reading the silence gate would only
       // add a stale-cache race; ask the pane the remaining questions directly.
       const transient = await this.probeInputTransient();
@@ -9539,6 +9551,33 @@ export class Daemon extends EventEmitter {
     return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt, onInputHeld);
   }
 
+  /**
+   * M-2267 (hmsg-b8a170c0): is the pane in a tmux mode (a person left it in copy-mode)? Logged once per stretch. Unknown
+   * (unreadable) is not a mode: the delivery's own reads decide then, as before.
+   */
+  private paneModeSince = 0;
+  private async paneInTmuxMode(phase: string): Promise<boolean> {
+    const inMode = await this.tmux?.paneInMode?.();
+    if (inMode !== true) { this.paneModeSince = 0; return false; }
+    if (!this.paneModeSince) {
+      this.paneModeSince = performance.now();
+      this.logger.warn({ phase }, "The pane is in a tmux mode (copy-mode) — delivery waits for it to end; no key is sent to it");
+    }
+    return true;
+  }
+  /** M-2267: wait while the pane is in a tmux mode, up to PANE_MODE_ENTER_WAIT_MS — "clear", "stale" (fenced), "held". */
+  private async waitWhilePaneInMode(phase: string, current: () => boolean): Promise<"clear" | "stale" | "held"> {
+    const deadline = performance.now() + PANE_MODE_ENTER_WAIT_MS;
+    for (;;) {
+      const inMode = await this.paneInTmuxMode(phase);
+      if (!current()) return "stale";
+      if (!inMode) return "clear";
+      if (performance.now() >= deadline) return "held";
+      await new Promise(r => setTimeout(r, PANE_MODE_POLL_MS));
+      if (!current()) return "stale";
+    }
+  }
+
   /** Write half only: callers must finish the availability wait before any final recovery ownership proof. */
   private async sendDeliveryEnterAfterAvailability(
     phase: string,
@@ -9590,6 +9629,11 @@ export class Daemon extends EventEmitter {
     } catch { return hold(); }
     if (!composer) return hold();
     if (!current()) return false;
+    // M-2267: a pane in a tmux mode would take this Enter (the text it submits is already in the CLI's box): wait for
+    // the mode to end — the person's, never ended for them — then send; still in it at the bound, the Enter is withheld.
+    const mode = await this.waitWhilePaneInMode(phase, current);
+    if (mode === "stale") return false;
+    if (mode === "held") return hold();
     // W1: persist the "Enter may have happened" boundary before tmux receives
     // the key. A crash after this commit is never auto-replayed without a
     // positive transcript marker, even if the stale pane still shows composer.
@@ -9629,7 +9673,7 @@ export class Daemon extends EventEmitter {
     // Board 907c7899: awaited each attempt after its last capture, begin and fence; the fence is asked again after it.
     lookBeforePaste?: () => Promise<void>,
     // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
-  ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
+  ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread" | "pane-in-mode"> {
     const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     const humanAttempt = verdict.humanReceipt;
@@ -9666,6 +9710,9 @@ export class Daemon extends EventEmitter {
       // Every attempt, retries included: a stop or respawn during a recovery wait ends it unwritten.
       // After a durable begin, the caller's abort path owns the row; only an attempt with no begin may be redone.
       if (stillCurrent && !stillCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
+      // M-2267: the pane went into a tmux mode after the readiness wait. Nothing begun or written: the caller waits for
+      // readiness (which holds while it lasts) and tries again — as for a dialog that appeared before the write.
+      if (!verdict.durableBeginCommitted && await this.paneInTmuxMode("paste")) return "pane-in-mode";
       // A hand-off pastes and presses Enter into a busy pane: the box must still be readable on this, the last capture
       // before the write (#1169 review) — a modal that appeared after the under-lock check would take that Enter. Before
       // the durable begin the caller waits for readiness outside the lock and tries again; after it (a paste retry),

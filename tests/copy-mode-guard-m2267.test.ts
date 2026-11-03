@@ -1,0 +1,183 @@
+/**
+ * M-2267 (the user, hmsg-b8a170c0; leader xmsg-1793679613589): a pane a person left in tmux copy-mode (scrolling it from
+ * an attached client) must never take a delivery's keys. Reproduced first in a private tmux with delivery's exact
+ * sequence: the paste reaches the CLI, but copy-mode takes the Enter — the message sits unsent while delivery believes it
+ * submitted. Now, with `#{pane_in_mode}` read before every delivery key:
+ *  - the readiness wait holds while the pane is in a mode (and never takes it out of it);
+ *  - a pane that went into a mode before the paste: nothing begun or written — wait for readiness, try again;
+ *  - a pane in a mode at the Enter (the text already in the box): the Enter waits for the mode to end, then goes, once;
+ *    still in it at the bound: withheld — never reported delivered;
+ *  - TmuxManager.paneInMode against a real tmux (the isolated private socket).
+ * Real Daemon and DeliveryOutbox, stub tmux serving Claude captures; nothing starts a CLI or a fleet.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Daemon } from "../src/daemon.js";
+import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { TmuxManager } from "../src/tmux-manager.js";
+import { getTmuxSocketName } from "../src/paths.js";
+
+const pane = (name: string) => readFileSync(join(__dirname, "fixtures", `claude-2.1.293-${name}.pane.txt`), "utf8");
+const BUSY_EMPTY = pane("busy-empty"), BUSY_PASTED = pane("long-busy-pasted"), BUSY_QUEUED = pane("long-busy-queued");
+
+interface Screen { pasted: number; enters: number; inMode: boolean; waited: number; modeReads: number; keysInMode: number }
+const roots: string[] = [];
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
+
+function makeDaemon(root: string, screen: (s: Screen) => string, modeAt: (s: Screen) => boolean) {
+  const instanceDir = join(root, "instances", "worker");
+  mkdirSync(instanceDir, { recursive: true });
+  writeFileSync(join(instanceDir, "window-id"), "@worker");
+  const s: Screen = { pasted: 0, enters: 0, inMode: false, waited: 0, modeReads: 0, keysInMode: 0 };
+  const control = { getObservationResetAt: () => 0, getLastOutputAt: () => undefined, isIdle: () => false, hasOutputSince: () => true, waitUntilIdle: vi.fn(async () => true) };
+  const backend = new ClaudeCodeBackend(instanceDir);
+  const daemon: any = new Daemon("worker", {
+    working_directory: root, log_level: "error", backend: "claude-code",
+    restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
+    context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
+  }, instanceDir, false, backend as any, control as any, logger);
+  const tmux = {
+    capturePane: vi.fn(async () => screen(s)),
+    capturePaneWithHistory: vi.fn(async () => screen(s)),
+    // A key or a paste while the pane is in a mode is what this guard exists to prevent: counted.
+    pasteBuffer: vi.fn(async () => { if (s.inMode) s.keysInMode++; s.pasted++; return true; }),
+    sendSpecialKey: vi.fn(async (key: string) => { if (s.inMode) { s.keysInMode++; return true; } if (key === "Enter") s.enters++; return true; }),
+    paneInMode: vi.fn(async () => { s.modeReads++; s.inMode = modeAt(s); return s.inMode; }),
+    getLastPasteError: vi.fn(), isLastPasteFailureRecoverable: vi.fn(() => true), getLastSendSpecialKeyError: vi.fn(),
+    getWindowId: () => "@worker",
+  };
+  daemon.tmux = tmux;
+  vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
+  vi.spyOn(daemon, "waitForInputTransientToClear").mockResolvedValue(true);
+  vi.spyOn(daemon, "paneReadinessForDelivery").mockResolvedValue("busy");
+  vi.spyOn(daemon, "waitForPaneReadyForDelivery").mockImplementation(async () => { s.waited++; return true; });
+  vi.spyOn(daemon, "probeBlockingDialog").mockResolvedValue({ state: "clear" });
+  return { daemon, tmux, s };
+}
+
+async function deliver(screen: (s: Screen) => string, modeAt: (s: Screen) => boolean, runMs = 120_000, withDaemon?: (d: any) => void) {
+  vi.useFakeTimers();
+  const root = mkdtempSync(join(tmpdir(), "agend-copy-mode-")); roots.push(root);
+  const outbox = new DeliveryOutbox(join(root, "delivery-outbox.db"), "manager-test");
+  const { daemon, tmux, s } = makeDaemon(root, screen, modeAt);
+  daemon.setDeliveryOutboxPort(outbox);
+  withDaemon?.(daemon);
+  const row = outbox.admit({
+    operationId: "op", sourceKey: "s:op:w:fleet_inbound", sourceInstance: "source", sourceDaemonBootId: "sb",
+    targetInstance: "worker", kind: "fleet_inbound", payload: { type: "fleet_inbound", content: "hello", meta: {} },
+  }).delivery;
+  const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
+  const failed = vi.fn(); daemon.on("message_failed", failed);
+  daemon.pushChannelMessage("hello", {
+    delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
+    user: "instance:source", user_id: "instance:source", message_id: "xmsg-copy-mode", chat_id: "chat", thread_id: "", ts: new Date().toISOString(),
+  });
+  const final = () => ["delivered", "failed", "retry_wait", "uncertain", "aborted"].includes(String(outbox.get(row.deliveryId)?.state));
+  for (let t = 0; t < runMs && !final(); t += 1_000) await vi.advanceTimersByTimeAsync(1_000);
+  await vi.advanceTimersByTimeAsync(3_000);
+  return { state: outbox.get(row.deliveryId)?.state, tmux, failed, s };
+}
+// The screen as delivery sees it: the box, then our paste in it, then Claude's queue taking it (after the Enter).
+const claude = (s: Screen) => (!s.pasted ? BUSY_EMPTY : s.enters === 0 ? BUSY_PASTED : BUSY_QUEUED);
+
+describe("a delivery to a pane left in copy-mode", () => {
+  it("in a mode at the Enter (the text in the box): no key while it lasts; once it ends, one Enter — delivered", async () => {
+    let since = -1;
+    const r = await deliver(claude, (s) => {
+      if (!s.pasted) return false;                                   // the person scrolls up right after the paste…
+      if (since < 0) since = s.modeReads;
+      return s.modeReads - since < 20;                               // …for ~10 s (20 reads, 500 ms apart), then leaves it
+    });
+    expect(r.state).toBe("delivered");
+    expect([r.s.keysInMode, r.s.pasted, r.s.enters]).toEqual([0, 1, 1]);
+    expect(r.s.modeReads).toBeGreaterThanOrEqual(20);
+    expect(r.failed).not.toHaveBeenCalled();
+  });
+  it("in a mode before the paste: nothing pasted while it lasts; the delivery waits for readiness and tries again", async () => {
+    // In the mode until the second readiness wait (the real wait holds while it lasts: this one is a stub).
+    const r = await deliver(claude, (s) => s.waited < 2);
+    expect(r.state).toBe("delivered");
+    expect([r.s.keysInMode, r.s.pasted, r.s.enters]).toEqual([0, 1, 1]);
+    expect(r.s.waited).toBeGreaterThanOrEqual(2);
+  });
+  it("a mode that outlasts every retry round before the paste: nothing written, and not delivered — tried again later", async () => {
+    const r = await deliver(claude, () => true);
+    expect([r.s.keysInMode, r.s.pasted, r.s.enters]).toEqual([0, 0, 0]);
+    expect(r.state).not.toBe("delivered");
+  });
+  it("never in a mode: exactly as before (one paste, one Enter, delivered)", async () => {
+    const r = await deliver(claude, () => false);
+    expect([r.state, r.s.pasted, r.s.enters, r.s.keysInMode]).toEqual(["delivered", 1, 1, 0]);
+  });
+  it("an unreadable mode (tmux did not answer) is not a mode: the delivery's own reads decide, as before", async () => {
+    const r = await deliver(claude, () => false);
+    expect(r.state).toBe("delivered");
+  });
+  it("stopped while the Enter waits for the mode (a cancel, a pause, a respawn): no Enter when the mode ends", async () => {
+    let daemonRef: any = null, since = -1;
+    const r = await deliver(claude, (s) => {
+      if (!s.pasted) return false;
+      if (since < 0) since = s.modeReads;
+      if (s.modeReads - since === 4 && daemonRef) daemonRef.deliveryWritesStopping = true;   // the delivery's writes stop
+      return s.modeReads - since < 10;
+    }, 60_000, (d) => { daemonRef = d; });
+    expect([r.s.keysInMode, r.s.enters]).toEqual([0, 0]);
+    expect(r.state).not.toBe("delivered");
+  });
+  it("still in a mode when the Enter's wait runs out: the Enter is withheld — never reported delivered", async () => {
+    const r = await deliver(claude, (s) => s.pasted > 0, 12 * 60_000);
+    expect(r.s.keysInMode).toBe(0);
+    expect(r.s.enters).toBe(0);
+    expect(r.state).not.toBe("delivered");
+  }, 30_000);
+});
+
+describe("the readiness wait holds while the pane is in a mode", () => {
+  it("held while in it, ready once it ends — the pane never taken out of it", async () => {
+    vi.useFakeTimers();
+    const root = mkdtempSync(join(tmpdir(), "agend-copy-mode-ready-")); roots.push(root);
+    let reads = 0;
+    const { daemon, tmux } = makeDaemon(root, () => BUSY_EMPTY, () => ++reads <= 6);
+    (daemon.waitForPaneReadyForDelivery as any).mockRestore();
+    vi.spyOn(daemon, "waitForPaneIdleForDelivery").mockResolvedValue(true);
+    vi.spyOn(daemon, "probeInputTransient").mockResolvedValue({ state: "none" });
+    vi.spyOn(daemon, "isPaneReadyForDelivery").mockResolvedValue(true);
+    const ready = daemon.waitForPaneReadyForDelivery("@worker", 60_000);
+    let settled: unknown = "pending"; ready.then((v: unknown) => { settled = v; });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(settled).toBe("pending");
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(settled).toBe(true);
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(tmux.pasteBuffer).not.toHaveBeenCalled();
+  });
+});
+
+describe("TmuxManager.paneInMode, against a real tmux", () => {
+  it("1 in copy-mode, 0 out of it; a read only (the mode is the person's)", () => {
+    const socket = getTmuxSocketName();
+    expect(socket).toBeTruthy();
+    TmuxManager.setSocketName(socket);                                // never the live server
+    try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }
+    const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf8" });
+    try {
+      tmux("new-session", "-d", "-s", "cm", "-x", "80", "-y", "10", "cat");
+      const wid = tmux("list-windows", "-t", "cm", "-F", "#{window_id}").trim();
+      const m = new TmuxManager("cm", wid);
+      return (async () => {
+        expect(await m.paneInMode()).toBe(false);
+        tmux("copy-mode", "-t", "cm");
+        expect(await m.paneInMode()).toBe(true);
+        expect(tmux("display-message", "-p", "-t", "cm", "#{pane_in_mode}").trim()).toBe("1");   // still the person's
+        tmux("send-keys", "-t", "cm", "-X", "cancel");
+        expect(await m.paneInMode()).toBe(false);
+        expect(await new TmuxManager("cm", "").paneInMode()).toBeNull();
+      })().finally(() => { TmuxManager.setSocketName(null); try { tmux("kill-server"); } catch { /* gone */ } });
+    } catch (e) { try { tmux("kill-server"); } catch { /* gone */ } throw e; }
+  });
+});
