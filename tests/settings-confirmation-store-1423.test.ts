@@ -26,6 +26,18 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     expect(done.outcome?.result).toEqual({ ok: true, job_id: "apply-job" }); expect(p.discard).toHaveBeenCalledTimes(1);
     await expect(store.decide(view.id, "confirm", admin())).rejects.toThrow("confirmation_not_pending");
   });
+  it("S-35: Save pressed again on the same change (a fresh idempotency key) returns the request already pending, not another", async () => {
+    const first = store.propose(proposal({ key: "save-1" }));
+    const again = proposal({ key: "save-2" }); const second = store.propose(again);
+    expect(second.reused).toBe(true); expect(second.view.id).toBe(first.view.id); expect(again.discard).toHaveBeenCalledTimes(1);
+    expect(store.propose(proposal({ key: "save-2" })).view.id).toBe(first.view.id);   // the new key now names it too
+    // A different change, or the same change from another session, is its own request.
+    expect(store.propose(proposal({ key: "other-change", fingerprint: "another-operation" })).view.id).not.toBe(first.view.id);
+    expect(store.propose(proposal({ key: "save-3", session: "another-session" })).view.id).not.toBe(first.view.id);
+    // Once decided, the same change can be requested anew.
+    expect((await store.decide(first.view.id, "confirm", admin())).state).toBe("applied");
+    expect(store.propose(proposal({ key: "save-4" })).view.id).not.toBe(first.view.id);
+  });
   it("S-35: a failed apply keeps its localized message and says why — bounded, control characters removed, audited", async () => {
     const p = proposal({ apply: vi.fn(async () => { throw new Error("apply_rejected: Local pane relay startup unconfirmed\u0007\n" + "x".repeat(400)); }) });
     const { view } = store.propose(p);
@@ -112,8 +124,8 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     expect(store.get(view.id, "authenticated-session")?.state).toBe("expired");
   });
   it("limits pending count/bytes and never evicts live approvals to make room", () => {
-    for (let i = 0; i < 8; i++) store.propose(proposal({ key: String(i) }));
-    expect(() => store.propose(proposal({ key: "ninth" }))).toThrow("too_many_pending_changes");
+    for (let i = 0; i < 8; i++) store.propose(proposal({ key: String(i), fingerprint: `change-${i}` }));   // eight different changes
+    expect(() => store.propose(proposal({ key: "ninth", fingerprint: "change-9" }))).toThrow("too_many_pending_changes");
     expect(store.list("authenticated-session")).toHaveLength(8);
     expect(() => store.propose(proposal({ session: "other", bytes: 5 * 1024 * 1024 }))).toThrow("too_many_pending_changes");
   });

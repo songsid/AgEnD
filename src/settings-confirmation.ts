@@ -135,8 +135,8 @@ export class SettingsConfirmationStore {
   private remove(entry: RecordEntry): void {
     clearTimeout(entry.timer);
     this.records.delete(entry.view.id);
-    const index = this.index(entry.session, entry.key);
-    if (this.keys.get(index) === entry.view.id) this.keys.delete(index);
+    // S-35: a repeated Save maps its own key to the same request; drop every key that names it.
+    for (const [index, id] of this.keys) if (id === entry.view.id) this.keys.delete(index);
   }
   private expire(entry: RecordEntry): void {
     if (entry.view.state === "pending" && this.now() >= entry.deadline) this.finish(entry, "expired", "expired", t("settings_confirm.result.expired"));
@@ -158,6 +158,10 @@ export class SettingsConfirmationStore {
       return { view: this.snapshot(previous), reused: true };
     }
     const live = [...this.records.values()].filter(entry => entry.proposal);
+    // S-35: each Save sends a fresh idempotency key, so pressing Save again on the same change stacked another identical
+    // request. The same session's identical operation (same immutable fingerprint) that is still pending is that request.
+    const same = live.find(entry => entry.view.state === "pending" && entry.session === proposal.session && entry.fingerprint === proposal.fingerprint);
+    if (same) { this.keys.set(index, same.view.id); proposal.discard?.(); return { view: this.snapshot(same), reused: true }; }
     if (live.length >= MAX_PENDING || live.filter(entry => entry.session === proposal.session).length >= MAX_PER_SESSION
       || live.reduce((sum, entry) => sum + (entry.proposal?.bytes ?? 0), 0) + proposal.bytes > MAX_BYTES)
       throw new SettingsConfirmationError(429, "too_many_pending_changes");
