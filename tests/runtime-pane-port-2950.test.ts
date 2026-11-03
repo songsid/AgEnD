@@ -147,3 +147,17 @@ it('quiet native panes still receive safety captures; offline and detached obser
   f.offline();await vi.advanceTimersByTimeAsync(5000);expect(sweep).toHaveBeenCalledOnce();observation.stop();await vi.advanceTimersByTimeAsync(10000);expect(sweep).toHaveBeenCalledOnce();
  }finally{vi.useRealTimers();}
 });
+
+import {Daemon} from '../src/daemon.js';
+import {ClaudeCodeBackend} from '../src/backend/claude-code.js';
+it('ordinary native delivery retries only the positively refused Enter with new proof and no paste',async()=>{
+ const f=await fixture(),root=join(f.file,'..'),backend=new ClaudeCodeBackend(root);
+ const logger={info(){},warn(){},error(){},debug(){},child(){return this;}};
+ const daemon:any=new Daemon('private-proof',{working_directory:root,backend:'claude-code',log_level:'silent'}as never,root,true,backend,undefined,logger as never);
+ daemon.tmux=f.port;daemon.nativePaneLifecycle={};daemon.backend=new CodexPaneDetectors({statusLineItems:()=>['context-remaining'],launchMayResume:()=>false});
+ const mark=vi.fn(()=>true);daemon.deliveryOutbox={markEnterStarted:mark};const call=f.endpoint.call;let raced=false;const operations:string[]=[];
+ f.endpoint.call=async request=>{operations.push(request.action);if(request.action==='key'&&!raced){raced=true;f.output('\x1b[2J\x1b[H› Ask Codex to do anything\r\n\r\nContext 100% left\r\n');}return call(request);};
+ expect(await daemon.sendDeliveryEnter('initial-submit',undefined,{deliveryId:'private-delivery',attemptNo:1})).toBe(true);
+ expect(operations.filter(action=>action==='key')).toHaveLength(2);expect(operations.filter(action=>action==='input')).toHaveLength(0);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');expect(mark).toHaveBeenCalledOnce();
+});

@@ -23,6 +23,8 @@ export interface Pane {
   sendSpecialKey(key: PaneKey, timeoutMs?: number, proof?: PaneInputProof): Promise<boolean>;
   deleteBackward(count: number, timeoutMs?: number): Promise<boolean>;
   getLastSendSpecialKeyError(): string | null;
+  /** Native host positively acknowledged zero input; an unknown/lost ACK is never true. */
+  lastInputWasNotSent?(): boolean;
   getLastPasteError(): string | null;
   isLastPasteFailureRecoverable(): boolean;
   pasteText(text: string, opts?: { retryEnter?: boolean }): Promise<boolean>;

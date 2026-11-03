@@ -2221,6 +2221,14 @@ export class Daemon extends EventEmitter {
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
+  private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
+  /** Per-launch attention for a pasted delivery whose bounded Enter attempts exhausted, including non-outbox input. */
+  nativeDeliveryHold(): { key: string; since: number } | null {
+    const hold = this.nativeEnterHold;
+    return hold && this.nativePaneLifecycle && !this.deliveryWritesStopping && hold.spawn === this.spawnGeneration && hold.fence === this.launchFenceEpoch
+      ? { key: hold.key, since: hold.since } : null;
+  }
+
   nativePaneHasExited():boolean{
     const snapshot=this.nativePaneLifecycle?.snapshot?.();return snapshot?.state==="exited"&&snapshot.instance===this.name&&this.tmux?.getWindowId()===snapshot.paneId;
   }
@@ -9740,7 +9748,7 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: () => void,
+    onInputHeld?: (reason: string) => void,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
     return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt, onInputHeld);
@@ -9777,7 +9785,7 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: () => void,
+    onInputHeld?: (reason: string) => void,
   ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn replaced the delivery: check here, and
     // again after every wait below, at the last point before the tmux write.
@@ -9794,8 +9802,11 @@ export class Daemon extends EventEmitter {
     if (!current()) return false;
     // The pasted text may still be in the box: the caller keeps it uncertain (no false failure, no second paste).
     // S-35: say which check withheld Enter.
-    const hold = (reason: "capture_failed" | "dialog" | "not_composer" | "check_failed" | "pane_mode") => {
-      onInputHeld?.();
+    const hold = (reason: "capture_failed" | "dialog" | "not_composer" | "check_failed" | "pane_mode" | "output_changed") => {
+      onInputHeld?.(reason);
+      if (reason === "output_changed" && current() && !this.nativeDeliveryHold()) this.nativeEnterHold = {
+        key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence,
+      };
       if (reason === "pane_mode") this.logger.warn({ phase, reason }, "The pane stayed in a tmux mode; Enter withheld");
       else this.logger.warn({ phase, reason }, "Delivery input is not a verified composer; Enter withheld");
       return false;
@@ -9809,9 +9820,18 @@ export class Daemon extends EventEmitter {
     // proof — no dialog in the composer's place, the CLI's own composer shown — and the Enter carries that screen as its
     // proof; a tmux pane follows main (no proof).
     const modeDeadline = performance.now() + PANE_MODE_ENTER_WAIT_MS;
-    let pane: string | undefined;
+    let pane: string | undefined, originalInput: string | null = null;
+    let positiveRefusals = 0, enterMarked = false, positiveRetryDeadline = Infinity;
+    const inputIdentity = (screen: string): string | null => {
+      const input = this.inputRegion(screen);
+      if (input) return JSON.stringify(input);
+      // Long Codex drafts can exceed the short ready reader's tail; its complete composer reader still owns them.
+      const prompt = backend?.getBottomReadyPattern?.();
+      const text = prompt && backend?.ownsComposerRows?.(screen) ? inputAreaText(screen, prompt) : null;
+      return text == null ? null : JSON.stringify({ text, collapsedPastes: 0 });
+    };
     for (;;) {
-      const mode = await this.waitWhilePaneInMode(phase, current, modeDeadline);
+      const mode = await this.waitWhilePaneInMode(phase, current, Math.min(modeDeadline, positiveRetryDeadline));
       if (mode === "stale") return false;
       if (mode === "held") return hold("pane_mode");
       if (native) {
@@ -9852,6 +9872,9 @@ export class Daemon extends EventEmitter {
           }
         } catch { return hold("check_failed"); }
         if (!composer) return hold("not_composer");
+        const observedInput = inputIdentity(screen);
+        if (positiveRefusals && (observedInput === null || observedInput !== originalInput)) return hold("not_composer");
+        if (!positiveRefusals) originalInput = observedInput;
         if (!current()) return false;
       }
       if (await this.paneInTmuxMode(phase)) {
@@ -9862,25 +9885,40 @@ export class Daemon extends EventEmitter {
         continue;
       }
       if (!current()) return false;
-      break;
+      if (positiveRefusals && performance.now() >= positiveRetryDeadline) return hold("output_changed");
+      // W1: persist the "Enter may have happened" boundary before tmux receives
+      // the key. A crash after this commit is never auto-replayed without a
+      // positive transcript marker, even if the stale pane still shows composer.
+      if (!enterMarked && durableAttempt && !this.deliveryOutbox?.markEnterStarted(
+        durableAttempt.deliveryId, this.bootId, durableAttempt.attemptNo,
+      )) {
+        this.logger.error({ phase, deliveryId: durableAttempt.deliveryId }, "Could not commit durable Enter write-ahead fence");
+        return false;
+      }
+      enterMarked = true;
+      const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "composer", screen: pane }) : tmux!.sendSpecialKey("Enter"));
+      // A busy renderer can change seq after our capture. Only a positive zero-input ACK admits a NEW proof/key;
+      // never re-paste, retry an uncertain write, reuse the stale proof, or re-commit the durable Enter boundary.
+      if (!sent && native && originalInput !== null && tmux!.lastInputWasNotSent?.() === true
+        && tmux!.getLastSendSpecialKeyError() === "Pane changed after observation; input was not sent"
+        && current()) {
+        if (!positiveRefusals) positiveRetryDeadline = Math.min(modeDeadline, performance.now() + 2000);
+        if (positiveRefusals >= 4 || performance.now() >= positiveRetryDeadline) return hold("output_changed");
+        positiveRefusals++;
+        await new Promise(done => setTimeout(done, 100));
+        if (!current()) return false;
+        if (performance.now() >= positiveRetryDeadline) return hold("output_changed");
+        continue;
+      }
+      if (!sent) {
+        this.logger.error({
+          phase,
+          tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure",
+        }, "tmux send-keys Enter failed during message delivery");
+      }
+      if (sent && native && current()) this.nativeEnterHold = null;
+      return sent;
     }
-    // W1: persist the "Enter may have happened" boundary before tmux receives
-    // the key. A crash after this commit is never auto-replayed without a
-    // positive transcript marker, even if the stale pane still shows composer.
-    if (durableAttempt && !this.deliveryOutbox?.markEnterStarted(
-      durableAttempt.deliveryId, this.bootId, durableAttempt.attemptNo,
-    )) {
-      this.logger.error({ phase, deliveryId: durableAttempt.deliveryId }, "Could not commit durable Enter write-ahead fence");
-      return false;
-    }
-    const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "composer", screen: pane }) : tmux!.sendSpecialKey("Enter"));
-    if (!sent) {
-      this.logger.error({
-        phase,
-        tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure",
-      }, "tmux send-keys Enter failed during message delivery");
-    }
-    return sent;
   }
 
   private async writeMessageToPane(
@@ -10136,12 +10174,12 @@ export class Daemon extends EventEmitter {
       let enterAt = Date.now();
       const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
-      let inputHeld = false;
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof || nativeOwner ? steerEnterCurrent : undefined, durableAttempt, () => { inputHeld = true; }))) {
+      let inputHeld = "";
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof || nativeOwner ? steerEnterCurrent : undefined, durableAttempt, reason => { inputHeld = reason; }))) {
         if (inputHeld) {
           // #2971: held in a tmux mode past the bound. The paste may still be in the CLI: keep it uncertain, never re-paste.
           verdict.phase = "submit-enter";
-          verdict.proof = "pane-in-mode-held";
+          verdict.proof = inputHeld === "pane_mode" ? "pane-in-mode-held" : `native-input-${inputHeld}`;
           return false;
         }
         if ((steerComposerProof || nativeOwner) && !steerCurrent()) {

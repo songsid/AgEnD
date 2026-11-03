@@ -15603,6 +15603,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
+        nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
         paneRecovery: (()=>{const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
           try{const profile=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id);return profile.paneRecovery?{key:`${profile.paneRecovery.kind}:${profile.paneRecovery.launchId??"-"}`,detail:new NativePaneRecoveryError(profile.paneRecovery).message,since:profile.paneRecoveryAt??profile.createdAt}:null;}catch{return null;}})(),
       });

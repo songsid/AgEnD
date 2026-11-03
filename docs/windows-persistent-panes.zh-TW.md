@@ -67,3 +67,5 @@ Runtime 附有固定版本 node-pty ConPTY 的 Windows x64／ARM64 預編譯檔�
 私人暫存位置會先核對不可變套件，防毒／檔案鎖干擾有有限次重試。啟動過慢有期限並保留結果，不另開無法追蹤的 CLI。暫存測試包含一般防毒行為，未修改 Defender 或清快取；測量不是其他電腦的速度保證。
 
 參閱[本機 Windows 設定](windows-cli-preview.md)與[配對 Runtime](remote-runtime.md)（英文）。手動驗證程式及隱私限制記錄於 `scripts/manual/windows-pane-adapter/README.md`。
+
+忙碌畫面重繪可能讓執行端明確拒絕尚未送出的 Enter。只有這種肯定未輸入的回覆，才允許重新觀察並再送 Enter：第一次拒絕後兩秒內最多五次，輸入及啟動身分都須相同，每次仍檢查對話框、輸入框與輸出序號。不重貼訊息，不重試未知或遺失的回覆；達到限制後，傳送會保留為未確認並出現在「等你處理」。

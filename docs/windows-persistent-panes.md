@@ -66,3 +66,5 @@ The runtime ships pinned node-pty ConPTY prebuilds for Windows x64 and ARM64 wit
 Private staging verifies an immutable bundle before launch and uses bounded retries for antivirus/file-lock interference. Slow startup has a deadline and a retained outcome, not a second untracked CLI. Measured scratch launches include normal antivirus behavior without changing Defender or flushing caches; they are not a guarantee for another machine.
 
 See [local Windows setup](windows-cli-preview.md) and [paired runtimes](remote-runtime.md). Manual acceptance harnesses and their privacy constraints are documented in `scripts/manual/windows-pane-adapter/README.md`.
+
+A busy repaint can positively refuse an Enter before any input was sent. Only that exact zero-input acknowledgement permits a fresh observation and another Enter: at most five attempts within two seconds after the first refusal, preserving the same input and launch. Each attempt keeps the dialog/composer and output-sequence checks. No paste is repeated; an unknown/lost acknowledgement is never retried. Exhaustion leaves the delivery uncertain in Needs-you.

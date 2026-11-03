@@ -85,6 +85,7 @@ export interface InstanceInput {
   /** #2822: on a usage-limit hold (no known reset time): the model, and since when. */
   usageHold?: { model: string; since: number } | null;
   paneRecovery?: { key: string; detail: string; since: number } | null;
+  nativeDeliveryHold?: { key: string; since: number } | null;
 }
 
 export interface DeliveryInput {
@@ -168,6 +169,8 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   }
 
   for (const inst of inputs.instances) {
+    if (inst.nativeDeliveryHold && !inputs.deliveries.some(d => d.target === inst.name && d.state === "uncertain")) items.push({id:`native-delivery:${inst.name}:${inst.nativeDeliveryHold.key}`,type:"instance",instance:inst.name,
+      reason:"delivery_uncertain",detail:"",since:inst.nativeDeliveryHold.since});
     if (inst.paneRecovery) items.push({id:`pane:${inst.name}:${inst.paneRecovery.key}`,type:"instance",instance:inst.name,
       reason:"native_pane_hold",detail:oneLine(inst.paneRecovery.detail),since:inst.paneRecovery.since});
     // §3.2 awaiting_input — folded into an interactive-assist prompt only when it was raised for this same wait.
