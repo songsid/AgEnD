@@ -58,6 +58,8 @@ import { SignInList } from "./backend-signin.js";
 import { ProviderMark } from "./provider-marks.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { SettingsPageHead, SettingsTabs, SettingsTabPanel, useSettingsTabs, revealSettingsTarget, layoutText } from "./settings-layout.js";
+import { AgentFilters, agentFilterText, agentRuntime, agentRuntimeOffline, agentStatus, filterAgentGroups } from "./settings-agent-filters.js";
+import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
@@ -108,7 +110,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const live = {}, classicLive = {};
   if (f.ok && f.body && Array.isArray(f.body.instances)) for (const i of f.body.instances) {
-    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported, runtime:i.runtime, capabilities:i.capabilities };
+    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported, runtime:i.runtime, capabilities:i.capabilities, machine_id:i.machine_id, machine_name:i.machine_name, machine_status:i.machine_status };
     if (i.classic) classicLive[i.name] = { status: i.status, state: i.state };
   }
   // /api/fleet carries live state for ClassicBot rooms; the profiles are the fallback for one not listed there yet.
@@ -387,7 +389,7 @@ export function SettingsPanel({ route, navKey }) {
     : section === "runtimes" ? html`<${RuntimesPanel} navKey=${navKey} />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
-    : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
+    : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
         <div class="s-auth-scope"><${Icon} name="view" size=${18} /><div><strong>${layoutText("aiHostScope")}</strong><p>${layoutText("aiAccountsHint")}</p><a href=${settingsPath("runtimes")}>${layoutText("aiWindowsLink")}<span aria-hidden="true">→</span></a></div></div>
         <${SignInList} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
       </div></details>`
@@ -638,6 +640,7 @@ export function DeviceSection() {
     <section class="card s-device s-local s-pref-help"><h3>${tn("prefsHelpGroup")}</h3>
       <div class="s-pref-help-row"><div><strong>${t("chat.tour")}</strong><p class="sub">${tn("prefsTourHint")}</p></div>
         <button type="button" id="tourBtn" class="btn" title=${t("chat.tourBtnTitle")} onClick=${replay}><${Icon} name="info" size=${16} />${tn("prefsReplayTour")}</button></div>
+      <${ShortcutsHelpRow} />
     </section>
     <a class="s-pref-look-link" href=${settingsPath("look")}>${tn("prefsLookHint")}<${Icon} name="chevron" size=${16} /></a>
   </div>`;
@@ -789,40 +792,43 @@ function agentChannelLabel(inst, chs) {
   return idx >= 0 ? `${chs[idx].type} (${chLabel(idx)})` : inst.channel_id;
 }
 
-function Agents({ ctx, search, openDialog }) {
+function Agents({ ctx, search, clearSearch, openDialog }) {
   const insts = ctx.fleet.instances || {};
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [busy, setBusy] = useState(() => new Map());     // name → the action under way
+  const [runtime, setRuntime] = useState("");
+  const [status, setStatus] = useState("");
   const chs = channelsOf(ctx.fleet);
   // #2172: the sidebar's grouping — an agent in a team under its team, else under its first tag.
   const teamsOf = (name) => Object.keys(ctx.fleet.teams || {}).filter((t) => Array.isArray(ctx.fleet.teams[t]?.members) && ctx.fleet.teams[t].members.includes(name));
-  const groups = groupAgents(insts, ctx.live, search, (name) => navGroupOf({ tags: insts[name]?.tags, teams: teamsOf(name) }), groupLabel);
+  const groups = filterAgentGroups(groupAgents(insts, ctx.live, search, (name) => navGroupOf({ tags: insts[name]?.tags, teams: teamsOf(name) }), groupLabel), insts, ctx.live, { runtime, status });
+  const active = !!(runtime || status || search.trim());
   // One action per agent at a time: the whole row is off (Settings and ⋯ too), and the pressed button says it is working.
   const run = async (name, action, work) => {
     if (busy.has(name)) return;
     setBusy((b) => new Map(b).set(name, action));
     try { await work(); } finally { setBusy((b) => { const n = new Map(b); n.delete(name); return n; }); }
   };
-  const head = html`<div class="list-head s-list-toolbar s-agent-count"><span>${Object.keys(insts).length === 1 ? tn("countAgent") : tn("countAgents", Object.keys(insts).length)}</span></div>`;
+  const head = html`<${AgentFilters} instances=${insts} live=${ctx.live} runtime=${runtime} status=${status} active=${active}
+    matched=${groups.reduce((count, group) => count + group.names.length, 0)} total=${Object.keys(insts).length} onRuntime=${setRuntime} onStatus=${setStatus}
+    onClear=${() => { setRuntime(""); setStatus(""); clearSearch(); }} />`;
   if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />`;
-  if (!groups.length) return html`${head}<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />`;
+  if (!groups.length) return html`${head}<${Empty} icon="search" title=${agentFilterText("noMatch")} hint=${agentFilterText("noMatchHint")} />`;
   return html`${head}<div class="s-list s-agents-list">
     <div class="s-list-columns s-agent-columns" aria-hidden="true"><span>${tn("uiAgentColumnName")}</span><span>Runtime</span><span>${tn("uiAgentColumnCli")}</span><span>${tn("uiListColumnState")}</span><span>${tn("uiListColumnActions")}</span></div>${groups.map(({ group, names }) => {
-    const folded = collapsed.has(group) && !search.trim();      // searching opens every group
+    const folded = collapsed.has(group) && !active;      // searching/filtering opens every matching group
     return html`<section key=${group} class="s-group">
       <button type="button" class="s-group-head" aria-expanded=${folded ? "false" : "true"}
         onClick=${() => setCollapsed((c) => { const n = new Set(c); n.has(group) ? n.delete(group) : n.add(group); return n; })}>
         <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><${GroupMark} group=${group} /><span class="grow">${groupLabel(group)}</span><span class="count">${names.length}</span></button>
       ${folded ? null : names.map((name) => {
         const inst = insts[name];
-        const st = (ctx.live[name] && ctx.live[name].status) || "stopped";
+        const st = agentStatus(ctx.live[name]);
         const sum = effectiveSummary(ctx.live[name] || {}, inst, ctx.fleet.defaults || {});
         const ch = agentChannelLabel(inst, chs);
         const working = busy.has(name), doing = busy.get(name);
         const label = (action, text) => (doing === action ? tn("working") : text);
-        const runtimeLabel = inst.runtime === "windows"
-          ? inst.machine_name || (inst.machine_id || inst.machineId ? tn("uiRuntimeWindowsRemote") : tn("uiRuntimeWindowsLocal"))
-          : "WSL / Linux";
+        const runtimeLabel = agentRuntime(inst, ctx.live[name]).label;
         return html`<div key=${name} class="s-row s-agent-row">
           <div class="s-agent-identity"><span class="s-name" title=${name}>${shortName(name, inst)}</span>
             <div class="s-agent-context">${inst.runtime !== "windows" || ctx.live[name]?.capabilities?.effort === true ? html`<span class="tag">${tn("effortTag", sum.effort)}</span>` : null}
@@ -830,13 +836,13 @@ function Agents({ ctx, search, openDialog }) {
           </div>
           <div class="s-agent-runtime"><span class="tag">${runtimeLabel}</span></div>
           <div class="s-agent-cli"><${CliProductMark} id=${sum.backend} size=${20} /><span><strong>${cliLabel(sum.backend)}</strong><span class="s-meta" title=${sum.model}>${sum.model}</span></span></div>
-          <span class="s-agent-status"><span class=${dotClass(st)} aria-hidden="true"></span><span>${tn(STATUS_KEY[st] || "stStopped")}</span></span>
+          <span class="s-agent-status"><span class=${dotClass(agentStatus(ctx.live[name]))} aria-hidden="true"></span><span>${agentFilterText(agentStatus(ctx.live[name]))}${agentRuntimeOffline(inst, ctx.live[name]) ? html`<small class="s-agent-runtime-state">${agentFilterText("offline")}</small>` : null}</span></span>
           <span class="s-actions">
             ${inst.runtime === "windows" ? html`<a class="btn btn-sm" href=${chatPath(name)}>${t("app.chat")}</a>` : null}
             <button type="button" class="btn btn-sm" disabled=${working} onClick=${() => openDialog({ kind: "agent", name, inst })}>${tn("settingsButton")}</button>
             ${st === "running" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "pause", () => ctx.pauseWake(name, "pause"))}>${label("pause", tn("pause"))}</button>` : null}
             ${st === "paused" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "wake", () => ctx.pauseWake(name, "wake"))}>${label("wake", tn("wake"))}</button>` : null}
-            ${st !== "paused" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "startStop", () => ctx.startStop(name, st === "running"))}>${label("startStop", st === "running" ? tn("stop") : tn("start"))}</button>` : null}
+            ${["running", "stopped", "crashed"].includes(st) ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "startStop", () => ctx.startStop(name, st === "running"))}>${label("startStop", st === "running" ? tn("stop") : tn("start"))}</button>` : null}
             <${Menu} cls="s-agent-menu" fit=${true} label=${t("app.more")} items=${[{ key: "delete", label: tn("deleteAgentMenu"), icon: "trash", danger: true, disabled: working, onSelect: () => ctx.deleteAgent(name) }]} />
           </span>
         </div>`;

@@ -3100,6 +3100,16 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-pref-help-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .p-settings .s-pref-help-row > div { flex: 1 1 240px; min-width: 0; }
 .p-settings .s-pref-help-row strong { display: block; font-size: var(--fs-sm); margin-bottom: 4px; }
+.p-settings .s-pref-shortcuts-row { padding-top: 18px; border-top: 1px solid var(--border); }
+.settings-shortcuts { display: grid; gap: 20px; }
+.settings-shortcuts > p { margin: 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.65; }
+.settings-shortcuts > section { min-width: 0; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.settings-shortcuts h3 { margin: 0 0 12px; font-size: var(--fs-md); }
+.settings-shortcuts section > p { margin: 10px 0 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.65; }
+.settings-shortcut-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; margin-top: 8px; font-size: var(--fs-sm); }
+.settings-shortcut-keys { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; color: var(--text-3); }
+.settings-shortcuts kbd { padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--surface-2); color: var(--text); font-family: var(--font-mono); font-size: var(--fs-xs); }
+@media (max-width: 599px) { .settings-shortcut-row { grid-template-columns: 140px minmax(0, 1fr); } }
 .p-settings .s-pref-look-link { display: inline-flex; align-items: center; gap: 8px; justify-self: start; font-size: var(--fs-sm); color: var(--text-2); }
 .p-settings .s-pref-look-link svg { transform: rotate(-90deg); flex: none; }
 
@@ -3112,6 +3122,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-look-display .prefs.labelled .pref { flex-wrap: wrap; row-gap: 8px; }
 .p-settings .s-look-display .prefs.labelled .pref-label { min-width: 9em; }
 .p-settings .s-look-display .prefs.labelled select { flex: 0 1 20rem; min-width: 0; max-width: 100%; height: 40px; font-size: var(--fs-sm); }
+.p-settings .s-settings-content-width { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 200px); align-items: center; gap: 10px 20px; padding-top: 18px; border-top: 1px solid var(--border); min-width: 0; }
+.p-settings .s-settings-content-width > label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.p-settings .s-settings-content-width > select { width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-sm); }
+.p-settings .s-settings-content-width > .sub { grid-column: 1 / -1; }
+@container settings-page (max-width: 600px) {
+  .p-settings .s-settings-content-width { grid-template-columns: minmax(0, 1fr); }
+}
 .p-settings .s-look-main .sub, .p-settings .s-look-preview .sub { color: var(--text-3); font-size: var(--fs-sm); margin: 0; }
 .p-settings .s-look-identity-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; }
 .p-settings .s-look-identity-controls > .card, .p-settings .s-look-motion > .card { padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; min-width: 0; }
@@ -3162,6 +3179,18 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* Settings UX: agents. */
 /* Agent, ClassicBot and connection lists use the same row rhythm; settings-page is the shared content container. */
+.p-settings .s-agent-filters { display: grid; gap: 12px; margin-bottom: 14px; min-width: 0; }
+.p-settings .s-agent-filter-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; min-width: 0; }
+.p-settings .s-agent-filter-controls > label { display: grid; gap: 6px; flex: 0 1 240px; min-width: 0; font-size: var(--fs-xs); color: var(--text-2); }
+.p-settings .s-agent-filter-controls > label:nth-child(2) { flex-basis: 200px; }
+.p-settings .s-agent-filter-controls select { width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-sm); }
+.p-settings .s-agent-filter-clear { min-height: 40px; }
+.p-settings .s-agent-filter-count { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
+.p-settings .s-agent-runtime-state { display: block; margin-top: 3px; color: var(--text-3); font-size: var(--fs-xs); }
+@container settings-page (max-width: 600px) {
+  .p-settings .s-agent-filter-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .p-settings .s-agent-filter-clear { grid-column: 1 / -1; justify-self: start; }
+}
 .p-settings .s-list-toolbar { margin: 0 0 14px; min-height: 36px; }
 .p-settings :is(.s-agents-list, .s-classic-list, .s-connections-list) { gap: 0; margin: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
 .p-settings .s-agents-list { overflow: visible; }

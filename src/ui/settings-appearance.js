@@ -5,6 +5,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
+import { DEFAULT_SETTINGS_CONTENT_WIDTH, SETTINGS_CONTENT_WIDTHS, settingsContentWidthStore, setSettingsContentWidth } from "/assets/app-shell.js";
 import { ModsCard } from "./settings-mods.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
@@ -22,6 +23,22 @@ import { CardTitle } from "./settings-learn.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
+register("settingsContentWidth", {
+  en: {
+    label: "Settings content width",
+    device: "This device · saves immediately",
+    hint: "Sets the maximum content width in Settings. Narrower forms and windows still fit their available space.",
+    option: "{0} px",
+    defaultOption: "{0} px (default)",
+  },
+  "zh-TW": {
+    label: "設定頁內容寬度",
+    device: "此裝置・立即儲存",
+    hint: "只調整設定頁內容的最大寬度；較窄的表單與視窗仍會配合可用空間。",
+    option: "{0} px",
+    defaultOption: "{0} px（預設）",
+  },
+});
 /** #2390: a refusal's detail in the page's language when the host named it (detail_key), else its English as sent. */
 export function appIconDetail(body) {
   const key = body && typeof body.detail_key === "string" ? `appIconDetail_${body.detail_key}` : null;
@@ -103,8 +120,21 @@ function ThemeModeCard({ publicLink = false }) {
         <span class="s-theme-choice-label">${t(`app.${key}`)}</span>
       </label>`)}
     </div></fieldset>
+    <${SettingsContentWidth} />
     ${publicLink ? html`<p class="sub">${tn("syncedPublicLink")}</p>` : null}
   </section>`;
+}
+
+/** This device's layout choice is independent of the Settings Save/Discard bar. */
+function SettingsContentWidth() {
+  const { width } = useStore(settingsContentWidthStore);
+  return html`<div class="s-settings-content-width">
+    <label for="settings-content-width">${t("settingsContentWidth.label")}<span class="s-scope">${t("settingsContentWidth.device")}</span></label>
+    <select id="settings-content-width" value=${width} aria-describedby="settings-content-width-hint" onChange=${(event) => setSettingsContentWidth(Number(event.currentTarget.value))}>
+      ${SETTINGS_CONTENT_WIDTHS.map((value) => html`<option key=${value} value=${value}>${t(`settingsContentWidth.${value === DEFAULT_SETTINGS_CONTENT_WIDTH ? "defaultOption" : "option"}`, value)}</option>`)}
+    </select>
+    <p id="settings-content-width-hint" class="sub">${t("settingsContentWidth.hint")}</p>
+  </div>`;
 }
 
 /** The panels stay mounted inside native details, so drafts, CSS trials and deep links survive disclosure changes. */
