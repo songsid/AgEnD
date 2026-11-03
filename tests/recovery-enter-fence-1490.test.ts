@@ -13,10 +13,6 @@ import { Daemon } from "../src/daemon.js";
  * recoverWindow would. No tmux, no fleet.
  */
 
-const INPUT_BACKEND = {
-  getReadyPattern: () => /^❯/,
-  isDeliveryInputReadyPane: (pane: string) => pane === "❯ x",
-};
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
@@ -26,7 +22,7 @@ function fakeTmux(windowId: string) {
     sendSpecialKey: vi.fn(async () => true),
     getWindowId: () => windowId,
     getLastSendSpecialKeyError: () => null,
-    capturePane: vi.fn(async () => "❯ x"),
+    capturePane: vi.fn(async () => ""),
   };
 }
 
@@ -41,7 +37,7 @@ function makeDaemon() {
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
     hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
     log_level: "silent",
-  } as any, dir, false, INPUT_BACKEND as any, undefined, { child: () => logger } as any) as any;
+  } as any, dir, false, undefined, undefined, { child: () => logger } as any) as any;
   const original = fakeTmux("@7");
   const recovered = fakeTmux("@8");
   daemon.tmux = original;
@@ -67,7 +63,7 @@ describe("a recovery Enter after a wait goes only to the window it was for (#149
       const h = makeDaemon();
       h.daemon.canProveSubmission = () => true;
       h.daemon.structuredInputEvidence = () => path === "structured";
-      h.daemon.backend = INPUT_BACKEND;
+      h.daemon.backend = undefined;
       h.daemon.waitForPaneReadyForDelivery = async () => { h.recover(); return true; };
       const proofsBefore = h.proofsOn.length;
 
@@ -81,7 +77,7 @@ describe("a recovery Enter after a wait goes only to the window it was for (#149
       const h = makeDaemon();
       h.daemon.canProveSubmission = () => true;
       h.daemon.structuredInputEvidence = () => path === "structured";
-      h.daemon.backend = INPUT_BACKEND;
+      h.daemon.backend = undefined;
       h.daemon.waitForPaneReadyForDelivery = async () => true;
       let proofs = 0;
       h.daemon.confirmSubmitted = async () => (++proofs > 2 ? "submitted" : "stranded");
@@ -97,7 +93,7 @@ describe("a recovery Enter after a wait goes only to the window it was for (#149
       const h = makeDaemon();
       h.daemon.canProveSubmission = () => true;
       h.daemon.structuredInputEvidence = () => path === "structured";
-      h.daemon.backend = INPUT_BACKEND;
+      h.daemon.backend = undefined;
       h.daemon.waitForPaneReadyForDelivery = async () => true;
       h.daemon.waitForInputTransientToClear = async () => { h.recover(); return true; };
       expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(false);
@@ -110,7 +106,7 @@ describe("a recovery Enter after a wait goes only to the window it was for (#149
       const h = makeDaemon();
       h.daemon.canProveSubmission = () => true;
       h.daemon.structuredInputEvidence = () => path === "structured";
-      h.daemon.backend = INPUT_BACKEND;
+      h.daemon.backend = undefined;
       h.daemon.waitForPaneReadyForDelivery = async () => true;
       h.original.sendSpecialKey.mockImplementation(async () => { h.recover(); return true; });   // recovered right after the key
       const before = h.proofsOn.length;
@@ -142,7 +138,7 @@ describe("a recovery Enter after a wait goes only to the window it was for (#149
     const h = makeDaemon();
     h.daemon.canProveSubmission = () => true;
     h.daemon.structuredInputEvidence = () => false;
-    h.daemon.backend = INPUT_BACKEND;
+    h.daemon.backend = undefined;
     h.daemon.waitForPaneReadyForDelivery = async () => { h.daemon.spawnGeneration++; return true; };
     expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(false);
     expect(enters(h)).toBe(0);
@@ -165,7 +161,7 @@ describe("a proof is owned by its window too (#1514 review)", () => {
       const h = makeDaemon();
       h.daemon.canProveSubmission = () => true;
       h.daemon.structuredInputEvidence = () => path === "structured";
-      h.daemon.backend = INPUT_BACKEND;
+      h.daemon.backend = undefined;
       h.daemon.waitForPaneReadyForDelivery = async () => true;
       // First look: stranded. After the recovery Enter: the capture is held, the window replaced, and it reads submitted.
       heldProof(h, [{ answer: "stranded" }, { answer: "stranded" }, { answer: "submitted", recoverDuring: true }]);
@@ -176,7 +172,7 @@ describe("a proof is owned by its window too (#1514 review)", () => {
       const h = makeDaemon();
       h.daemon.canProveSubmission = () => true;
       h.daemon.structuredInputEvidence = () => path === "structured";
-      h.daemon.backend = INPUT_BACKEND;
+      h.daemon.backend = undefined;
       h.daemon.waitForPaneReadyForDelivery = async () => true;
       heldProof(h, [{ answer: "stranded" }, { answer: "stranded" }, { answer: "submitted" }]);
       expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(true);
@@ -187,7 +183,7 @@ describe("a proof is owned by its window too (#1514 review)", () => {
     const h = makeDaemon();
     h.daemon.canProveSubmission = () => true;
     h.daemon.structuredInputEvidence = () => true;
-    h.daemon.backend = INPUT_BACKEND;
+    h.daemon.backend = undefined;
     heldProof(h, [{ answer: "unproven", recoverDuring: true }, { answer: "submitted" }]);
     expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(false);
   });

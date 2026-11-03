@@ -35,7 +35,7 @@ function makeHarness(controlClient?: object) {
     },
     instanceDir,
     false,
-    { getReadyPattern: () => /❯/ } as any,
+    undefined,
     controlClient as any,
     rootLogger as any,
   );
@@ -54,7 +54,6 @@ function makeHarness(controlClient?: object) {
   const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
   const pasteBuffer = vi.fn().mockResolvedValue(true);
   const tmux = {
-    getWindowId: () => "@worker",
     capturePane: vi.fn().mockResolvedValue("❯"),
     pasteBuffer,
     sendSpecialKey: vi.fn().mockResolvedValue(true),
@@ -77,7 +76,7 @@ function makeRawControlClient() {
 
 function prepareRawControlDelivery(h: ReturnType<typeof makeHarness>, backend: Record<string, unknown>, readiness: "ready" | "busy" = "ready") {
   const daemon = h.daemon as any;
-  daemon.backend = { getReadyPattern: () => /❯/, ...backend };
+  daemon.backend = backend;
   vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
   vi.spyOn(daemon, "waitForInputTransientToClear").mockResolvedValue(true);
   vi.spyOn(daemon, "paneReadinessForDelivery").mockResolvedValue(readiness);

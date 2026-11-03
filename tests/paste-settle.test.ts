@@ -192,8 +192,6 @@ describe("writeMessageToPane settle routing", () => {
     const { daemon, instanceDir } = makeDaemon(control);
     const enters: number[] = [];
     (daemon as any).tmux = {
-      getWindowId: () => "@1",
-      capturePane: async () => "❯ hello world",
       pasteBuffer: async () => true,
       sendSpecialKey: async (key: string) => { if (key === "Enter") enters.push(Date.now()); return true; },
     };
@@ -234,7 +232,6 @@ describe("writeMessageToPane settle routing", () => {
     // pasted text only after the paste, which is what proves it was submitted.
     let pasted = false;
     (daemon as any).tmux = {
-      getWindowId: () => "@1",
       pasteBuffer: async () => { pasted = true; return true; },
       sendSpecialKey: async (key: string) => { if (key === "Enter") enters.push(Date.now()); return true; },
       capturePane: async () => (pasted ? "❯ hello world from the queue" : "❯"),
@@ -268,11 +265,10 @@ describe("writeMessageToPane settle routing", () => {
     const failed = vi.fn();
     daemon.on("message_failed", failed);
     (daemon as any).tmux = {
-      getWindowId: () => "@1",
-      capturePane: async () => "❯ hello world",
       pasteBuffer: async () => true,
       sendSpecialKey: async () => false,
       getLastSendSpecialKeyError: () => "client is read-only",
+      capturePane: async () => "",
     };
     try {
       const pending = (daemon as any).writeMessageToPane(
