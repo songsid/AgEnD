@@ -102,6 +102,10 @@ export interface OutboundContext {
   } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean, kind?: "fleet-topic" | "classic", resumePaused?: boolean): Promise<void>;
+  /** #2942: a Windows create an agent asked for — held as a pending settings change for a fleet admin's General card. */
+  requestWindowsCreate?(requester: string, rawArgs: Record<string, unknown>): Promise<{ id: string; state: string }>;
+  /** #2942: a Windows agent's settings (display_name, description, model) an agent asked to change — held the same way. */
+  requestWindowsConfig?(requester: string, name: string, patch: Record<string, unknown>): Promise<{ id: string; state: string }>;
   restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean; carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null } }): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
@@ -1379,7 +1383,7 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
   return after.errors.filter(issue => !had.has(`${issue.path}\u0000${issue.message}`));
 }
 
-const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
+const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
   // Privilege boundary (#804/#814): tool_set must be set via Settings or
   // fleet.yaml, not through the MCP tool. Check the raw args before Zod
   // strips unknown fields, so the field is never silently ignored.
@@ -1390,7 +1394,20 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
   // M-2239 P1-1: a Windows agent's settings belong to the administrator's dashboard, not to another agent.
-  if (isWindowsInstance(ctx.fleetConfig?.instances?.[v.data.name])) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
+  if (isWindowsInstance(ctx.fleetConfig?.instances?.[v.data.name])) {
+    // #2942: only the web editor's settings (display_name, description, model), and only as a request an admin confirms
+    // in General. Anything else, or a requester the fleet cannot attribute, stays refused.
+    // The raw keys decide: the schema strips what it does not know (working_directory among them), so judging the parsed
+    // config alone would let an unknown field through as an empty request.
+    const rawConfig = ((rawArgs as any)?.config ?? {}) as Record<string, unknown>;
+    const rawFields = Object.keys(rawConfig).filter(key => rawConfig[key] !== undefined);
+    if (!ctx.requestWindowsConfig || !meta?.instanceName || !rawFields.length || rawFields.some(key => !WINDOWS_MCP_EDITABLE.has(key))) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
+    try {
+      const view = await ctx.requestWindowsConfig(meta.instanceName, v.data.name, Object.fromEntries(rawFields.map(key => [key, rawConfig[key]])));
+      respond(windowsRequestAnswer(view));
+    } catch (err) { respond(null, err instanceof Error ? err.message : WINDOWS_CONFIG_REFUSED); }
+    return;
+  }
   applyInstanceConfigPatch(ctx, v.data.name, v.data.config, respond);
 };
 
@@ -1798,6 +1815,15 @@ const reportResult = wrapAsSend(
   },
 );
 
+/** #2942: the settings an agent may ask to change on a Windows agent — the web editor's, of those the MCP schema offers. */
+const WINDOWS_MCP_EDITABLE = new Set(["display_name", "description", "model"]);
+/** #2942: what the agent hears about its request — held for General, or the state it already reached (a repeat). */
+function windowsRequestAnswer(view: { id: string; state: string }): Record<string, unknown> {
+  return view.state === "pending"
+    ? { pending_id: view.id, state: "pending", message: "pending — waiting for a fleet admin to confirm in General. Nothing is changed until then." }
+    : { pending_id: view.id, state: view.state, message: `This request is already ${view.state}.` };
+}
+
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // Privilege boundary (#804/#814): tool_set and skipPermissions must be set
   // via Settings or fleet.yaml, not through the MCP tool. Check raw args before
@@ -1806,8 +1832,15 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
     return;
   }
-  // M-2239 P1-1: the same boundary for the Windows runtime — an administrator creates a Windows agent in the web dashboard.
-  if ((rawArgs as any)?.runtime === "windows" || (rawArgs as any)?.sandbox !== undefined) { respond(null, WINDOWS_CREATE_REFUSED); return; }
+  // #2942: a Windows agent from an agent's request is only ever held as a pending change for a fleet admin's General card.
+  if ((rawArgs as any)?.runtime === "windows") {
+    if (!ctx.requestWindowsCreate || !meta?.instanceName) { respond(null, WINDOWS_CREATE_REFUSED); return; }
+    try { respond(windowsRequestAnswer(await ctx.requestWindowsCreate(meta.instanceName, rawArgs as Record<string, unknown>))); }
+    catch (err) { respond(null, err instanceof Error ? err.message : WINDOWS_CREATE_REFUSED); }
+    return;
+  }
+  // M-2239 P1-1: sandbox is the Windows runtime's alone; without that runtime it is refused as before.
+  if ((rawArgs as any)?.sandbox !== undefined) { respond(null, WINDOWS_CREATE_REFUSED); return; }
   const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
   if (!v.ok) { respond(null, v.error); return; }
   // Reject dangerous working directories

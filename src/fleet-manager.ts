@@ -12,10 +12,12 @@ import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecovery
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
+import { prepareSettingsEffect } from "./settings-effect.js";
+import { settingsDisplay } from "./settings-change.js";
 import { SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
-import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
+import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -221,7 +223,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   return tasks;
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
-import { windowsCliEnabled, closeWindowsBridge } from "./windows-cli.js";
+import { windowsCliEnabled, closeWindowsBridge, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
@@ -229,6 +231,8 @@ import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResul
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED } from "./native-instance-registry.js";
+import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
+import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
@@ -290,6 +294,7 @@ import { createStructuredSignInTransport } from "./structured-signin-transport.j
 import { ONBOARDING_BACKENDS, readPendingBackendSignIns } from "./backend-signin-pending.js";
 import { structuredSignInSupported } from "./structured-signin.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
+import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteCardPrompt, REMOTE_CARD_TEXT_MAX } from "./remote-card-prompt.js";
 import { recentChatContext } from "./log-tail.js";
@@ -1270,7 +1275,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     },profile,channelId,()=>!this.shuttingDown&&authorized(),execution);
   }
   /** Admin-only settings path: validate first, then close the exact old launch before changing cold fields. */
-  async updateNativePaneConfig(name: string, patch: Partial<NativeRuntimePatch>, authorized: () => boolean): Promise<ReturnType<FleetWindowsRuntime["update"]>> {
+  async updateNativePaneConfig(name: string, patch: Partial<NativeRuntimePatch>, authorized: () => boolean, transaction?: Pick<SettingsExecution, "mutate" | "complete">): Promise<ReturnType<FleetWindowsRuntime["update"]>> {
     return this.lifecycle.runTransition(name,async transition=>{
       const before=this.fleetConfig?.instances[name];
       if(!isNativePaneInstance(before))throw Error("Persistent Windows instance not found");
@@ -1290,7 +1295,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(!current())throw Error("Native settings authority expired after closing its old pane");
         if(runtime.get(name)?.activeId)throw Error("Native pane exit is unconfirmed; its settings were not changed");
       }
-      const result=runtime.update(name,patch,current),next=this.fleetConfig!.instances[name];
+      const result=runtime.update(name,patch,current,transaction),next=this.fleetConfig!.instances[name];
       if(cold&&running){
         if(!authorized()||this.shuttingDown||this.fleetConfig?.instances[name]!==next||(this.explicitStopGeneration.get(name)??0)!==expectedGeneration)throw Error("Native settings saved; restart authority expired");
         await this.startInstance(name,next,true,"fleet-topic",false,transition);
@@ -2208,6 +2213,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * authorizing revoked links and cookies until the fleet restarted.
    */
   private settingsGeneration = 0;
+  /** #2942: the settings baseline the agent-requested Windows changes are checked against (set with the gate). */
+  private settingsBaselineReader: SettingsBaselines | null = null;
   private settingsRuntimeRevision = 0;
   private settingsConfirmation: SettingsHttpConfirmation | null = null;
   private settingsControl: SettingsControlServer | null = null;
@@ -2250,7 +2257,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.settingsConfirmation) return this.settingsConfirmation;
     const generation = this.settingsGeneration;
     const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
-    const baselines = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
+    const baselines = this.settingsBaselineReader = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       proof: (kind, target, id, binding, key) => {
         const map = kind === "provider" ? this.providerSecretChallenges : kind === "binding" ? this.connectionBindingChallenges : this.connectionSecretChallenges;
@@ -2414,6 +2421,93 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && (!primaryGeneral || selectPrimary()?.name === primaryGeneral.name && selectPrimary()?.owner === primaryGeneral.owner);
     return { platform, current, admin: userId => current() && !!userId
       && identities.every(owner => this.isFleetAdmin(userId, owner.id)) };
+  }
+
+  /**
+   * #2942: a Windows create or settings change an AGENT asked for. Nothing is created or written here: it becomes a
+   * pending settings change whose General card a fleet admin must confirm (promptSettingsChange — the same admin rule
+   * as every card). Its apply runs the same creation/patch code the web uses, inside the store's SettingsExecution, with
+   * the confirming admin, the Windows switch and the target machine asked again at that moment.
+   */
+  private async proposeAgentWindowsChange(input: { requester: string; key: string; fingerprint: string; summary: readonly string[];
+    machineId?: string; authority: SettingsChangeAuthority; bytes: number;
+    apply(allowed: () => boolean, execution: SettingsExecution): Promise<unknown> }): Promise<SettingsPendingView> {
+    const gate = this.settingsGate(), baselines = this.settingsBaselineReader;
+    if (!baselines || !this.fleetConfig) throw new Error("Fleet configuration is unavailable");
+    const generation = this.settingsGeneration, machineId = input.machineId;
+    const switchOn = (): boolean => machineId ? remoteRuntimeEnabled() : localWindowsCliEnabled();
+    const online = (): boolean => !machineId || (remoteRuntimeEnabled() && this.runtimeCoordinator().machine(machineId)?.status === "online");
+    if (!switchOn()) throw new Error(machineId ? "Remote runtime is not enabled" : LOCAL_WINDOWS_CLI_OFF);
+    const baseline = await baselines.read(), snapshot = settingsFingerprint(baselines.snapshot());
+    const { view } = gate.store.propose({ session: `agent:${input.requester}`, key: `agent-windows:${input.key}`,
+      requestFingerprint: input.fingerprint, fingerprint: input.fingerprint, section: "channel", requestedBy: input.requester,
+      source: "agent_request", summary: input.summary, bytes: input.bytes, authority: input.authority, affectedConnections: [],
+      current: () => !this.shuttingDown && this.settingsGeneration === generation && switchOn(),
+      snapshot: () => baselines.snapshot(),
+      unchanged: async () => (await baselines.read()).fingerprint === baseline.fingerprint && settingsFingerprint(baselines.snapshot()) === snapshot,
+      // The store's own fence (this confirming admin, the session, the state) plus the switch and machine now.
+      apply: async (actorCurrent, execution) => {
+        execution.assert();
+        return input.apply(() => actorCurrent() && online(), execution);
+      } });
+    return view;
+  }
+
+  /** #2942: create_instance with runtime "windows" from an agent: validated like the web, then held for General. */
+  async requestWindowsCreate(requester: string, rawArgs: Record<string, unknown>): Promise<SettingsPendingView> {
+    const cfg = this.fleetConfig;
+    if (!cfg) throw new Error("Fleet configuration is unavailable");
+    let parsed: NativeInstanceCreateInput;
+    try { parsed = parseNativeInstanceCreate(rawArgs); }
+    catch { throw new Error("Invalid Windows agent request: check the directory, sandbox, backend and model"); }
+    // The web's own projection: the same validation, topic target and diff the admin's dashboard confirmation shows.
+    let diff;
+    try { diff = prepareSettingsEffect("POST", "/ui/instances", rawArgs, { config: cfg, classic: {} }).diff; }
+    catch { throw new Error("Invalid Windows agent request: its topic connection is not one this fleet can use"); }
+    if (!diff) throw new Error("Invalid Windows agent request");
+    return this.proposeAgentWindowsChange({ requester, key: diff.fingerprint, fingerprint: diff.fingerprint, summary: diff.summary,
+      machineId: parsed.input.machineId, bytes: JSON.stringify(rawArgs).length,
+      // The General card is the confirmation for an agent's request, whatever the requested connection (a topic or none).
+      authority: { connections: diff.authority?.connections ?? [], primaryGeneral: true, unknown: false },
+      apply: (allowed, execution) => createNativeWindowsInstance(this, parsed, allowed, execution) });
+  }
+
+  /** #2942: update_instance_config on a Windows agent: only the fields the web editor allows, held for General. */
+  async requestWindowsConfig(requester: string, name: string, patch: Record<string, unknown>): Promise<SettingsPendingView> {
+    const inst = this.fleetConfig?.instances[name];
+    if (!isWindowsInstance(inst)) throw new Error("Windows agent not found");
+    let edit: Record<string, unknown>;
+    try { edit = NativeInstanceConfigEdit.parse(patch); }
+    catch { throw new Error("Invalid Windows agent settings: display_name, description and model only"); }
+    const before: Record<string, unknown> = { display_name: inst.display_name ?? "", description: inst.description ?? "", model: inst.model ?? "" };
+    const changed = Object.keys(edit).filter(key => edit[key] !== before[key]);
+    if (!changed.length) throw new Error("Nothing to change: these settings already have these values");
+    const summary = changed.map(key => `${name} ${key}: ${settingsDisplay(before[key])} → ${settingsDisplay(edit[key])}`);
+    const machineId = typeof inst.machine_id === "string" ? inst.machine_id : undefined;
+    // #2973 review (Prism P1): a persistent pane is bound to a chat connection; changing it (a model change restarts it)
+    // needs that connection's admins as well as the primary General's, exactly as its creation did. An instance whose
+    // binding names no single configured connection is refused (fail closed), never confirmed by the General alone.
+    const connections: string[] = [];
+    if (isNativePaneInstance(inst) || inst.channel_id !== undefined) {
+      const bound = inst.channel_id, channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+      if (typeof bound !== "string" || channels.filter(ch => (ch.id ?? ch.type) === bound).length !== 1)
+        throw new Error("This Windows agent's chat connection cannot be resolved; change its settings in the web dashboard");
+      connections.push(bound);
+    }
+    return this.proposeAgentWindowsChange({ requester, key: `${name}:${settingsFingerprint(edit)}`, fingerprint: settingsFingerprint([name, edit]),
+      summary, machineId, bytes: JSON.stringify(edit).length, authority: { connections, primaryGeneral: true, unknown: false },
+      // #2973 review (Prism P2): the update may wait for its lifecycle turn; if the agent is rebound meanwhile (B → C), the
+      // approval for B must not stop or change it on C. Pin the approved target and require the execution's snapshot to be
+      // unchanged before every pre-commit effect; the post-commit restart keeps its own (refreshed) checks.
+      apply: (allowed, execution) => {
+        const pinned = { channel: inst.channel_id, machine: inst.machine_id, adapter: inst.native_adapter, runtime: inst.runtime };
+        const sameTarget = (): boolean => { const now = this.fleetConfig?.instances[name];
+          return !!now && now.channel_id === pinned.channel && now.machine_id === pinned.machine && now.native_adapter === pinned.adapter && now.runtime === pinned.runtime; };
+        // Before the commit: the exact target and an unchanged snapshot. After runtime.update completes the transaction,
+        // current() is false by design; the committed operation's restart receipt then needs the same actor, target and
+        // switch checks plus `completed` — a completed execution can never authorize another write (mutate refuses).
+        return updateNativeWindowsInstance(this, name, edit, () => allowed() && sameTarget() && (execution.completed || execution.current()), execution);
+      } });
   }
 
   private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
