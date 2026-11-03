@@ -23,8 +23,6 @@ import { getTmuxSocketName } from "../src/paths.js";
 
 const pane = (name: string) => readFileSync(join(__dirname, "fixtures", `claude-2.1.293-${name}.pane.txt`), "utf8");
 const BUSY_EMPTY = pane("busy-empty"), BUSY_PASTED = pane("long-busy-pasted"), BUSY_QUEUED = pane("long-busy-queued");
-/** A Claude permission modal (no input box under it): a dialog that appeared while the pane was in copy-mode. */
-const MODAL = readFileSync(join(__dirname, "fixtures", "claude-2.1.291-bypass-dangerous-rm-prompt.pane.txt"), "utf8");
 
 interface Screen { pasted: number; enters: number; inMode: boolean; waited: number; modeReads: number; keysInMode: number; pasteAttempts: number; modeEnded: boolean }
 const roots: string[] = [];
@@ -127,18 +125,9 @@ describe("a delivery to a pane left in copy-mode", () => {
     const r = await deliver(claude, () => false);
     expect(r.state).toBe("delivered");
   });
-  it("#2971 review: a dialog that appeared during the Enter's wait is never answered — the composer is proven again after it", async () => {
-    let since = -1;
-    // The box with our paste until the mode ends; then a permission modal in its place (no box under it).
-    const r = await deliver((s) => (!s.pasted ? BUSY_EMPTY : s.modeEnded ? MODAL : BUSY_PASTED), (s) => {
-      if (!s.pasted) return false;
-      if (since < 0) since = s.modeReads;
-      return s.modeReads - since < 2;                                // two looks in copy-mode, then out — onto the modal
-    }, 60_000);
-    expect([r.s.keysInMode, r.s.enters]).toEqual([0, 0]);             // no Enter for the modal
-    expect(r.state).not.toBe("delivered");
-  });
-  it("#2971 review: the pane went into a mode while the composer was being proven: wait again, prove again, then one Enter", async () => {
+  // beta.5 (decision f57474aa): "a dialog that appeared during the Enter's wait is never answered" relied on #2958's
+  // composer proof, which is reverted; #2957 is open again and its redesign brings that case back.
+  it("#2971 review: the pane went back into a mode at the second look: wait again, look again, then one Enter", async () => {
     let since = -1;
     const r = await deliver(claude, (s) => {
       if (!s.pasted) return false;
@@ -165,7 +154,7 @@ describe("a delivery to a pane left in copy-mode", () => {
     expect([r.s.keysInMode, r.s.pasted, r.s.enters]).toEqual([0, 0, 0]);
     expect(r.state).not.toBe("delivered");
   }, 30_000);
-  it("#2971 re-review: a pane flickering in and out of a mode around every proof is held at the deadline — never past it, never an Enter", async () => {
+  it("#2971 re-review: a pane flickering in and out of a mode at every look is held at the deadline — never past it, never an Enter", async () => {
     let since = -1, heldAt = -1, startedAt = -1;
     const r = await deliver(claude, (s) => {
       if (!s.pasted) return false;
@@ -197,6 +186,8 @@ describe("a delivery to a pane left in copy-mode", () => {
     expect(r.s.keysInMode).toBe(0);
     expect(r.s.enters).toBe(0);
     expect(r.state).not.toBe("delivered");
+    // beta.5: the pasted text may still be in the box — kept uncertain, never a failure that a retry re-pastes.
+    expect([r.state, r.failed.mock.calls.length, r.s.pasted]).toEqual(["uncertain", 0, 1]);
   }, 30_000);
 });
 

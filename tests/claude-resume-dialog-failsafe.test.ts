@@ -49,7 +49,7 @@ const QUOTED_MENU = [
   "   2. Resume full session as-is",
   " Enter to confirm · Esc to cancel",
   "",
-  READY,
+  "❯",
 ].join("\n");
 
 const startupDialogs = ClaudeCodeBackend.prototype.getStartupDialogs.call(null);

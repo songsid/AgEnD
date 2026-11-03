@@ -14,6 +14,11 @@ export interface UpdateVersionOptions {
   /** The alpha channel (`@alpha`, the next minor's previews, #1259). */
   alpha?: boolean;
   beta?: boolean;
+  /**
+   * #2987: the release candidate (`@rc`): a `vX.Y.Z-beta.N` before it is promoted to `@beta`. Only ever asked for — a
+   * candidate's version is a beta's, so the install then follows `@beta` again, and never goes back (#1259).
+   */
+  rc?: boolean;
   /** Back to the stable line (`@latest`), even from a beta install — may go back a version. */
   stable?: boolean;
   force?: boolean;
@@ -83,7 +88,8 @@ export type UpdateChannel = "latest" | "beta" | "alpha";
 
 /**
  * The npm dist-tag an install follows (#1259): an alpha (`x.y.z-alpha.N`) is on
- * `@alpha`, any other prerelease (beta, rc…) on `@beta`, a release on `@latest`.
+ * `@alpha`, any other prerelease (beta, rc…) on `@beta`, a release on `@latest`. A release candidate
+ * (`@rc`, #2987) is a beta's version too, so an install from it follows `@beta` afterwards.
  * Mirrors what publish.yml publishes each tag to (scripts/npm-dist-tag.mjs).
  */
 export function installedChannel(version: string): UpdateChannel {
@@ -94,7 +100,7 @@ export function installedChannel(version: string): UpdateChannel {
 
 /**
  * The npm selector `agend update` installs from. An explicit choice wins
- * (`--version`, then `--alpha`, `--beta`, `--stable`); with none, the line the
+ * (`--version`, then `--alpha`, `--rc`, `--beta`, `--stable`); with none, the line the
  * installed version is on — an alpha stays on `@alpha`, a beta on `@beta`, so
  * nobody is moved to another channel without asking. `installedVersion` is the
  * version of the package being replaced (the CLI's own package.json), never
@@ -103,6 +109,7 @@ export function installedChannel(version: string): UpdateChannel {
 export function getUpdateSelector(opts: UpdateVersionOptions, installedVersion: string): string {
   if (opts.version) return opts.version;
   if (opts.alpha) return "alpha";
+  if (opts.rc) return "rc";
   if (opts.beta) return "beta";
   if (opts.stable) return "latest";
   return installedChannel(installedVersion);

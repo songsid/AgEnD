@@ -37,7 +37,6 @@ function makeDaemon() {
   let pane = "› Ask Codex to do anything\n  Context 100% left";
   const paste = vi.fn(async (text: string) => { pane = text; return true; });
   daemon.tmux = {
-    getWindowId: () => "@snapshot",
     pasteBuffer: paste,
     sendSpecialKey: vi.fn(async () => true),
     capturePane: async () => pane,
