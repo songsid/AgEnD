@@ -86,8 +86,12 @@ describe("Agent list view filters", () => {
   it("shows an empty intersection and clears search and both filters without creating a draft", async () => {
     await search("shared"); await pick(0, "windows-remote"); await pick(1, "stopped");
     expect(names()).toEqual([]);
-    expect(p.root.querySelector(".empty-title").textContent).toBe("No matching Agents");
+    expect(p.root.querySelector(".empty-title").textContent).toBe('No agents match "shared".');
     expect(p.root.querySelector(".s-agent-filter-count").textContent).toBe("Showing 0 of 8 Agents");
+    await search("");
+    expect(names()).toEqual([]);
+    expect(p.root.querySelector(".empty-title").textContent).toBe("No matching Agents");
+    expect([control(0).value, control(1).value]).toEqual(["windows-remote", "stopped"]);
     p.root.querySelector(".s-agent-filter-clear").click(); await settle(4);
     expect(names()).toEqual(Object.keys(instances).sort());
     expect([control(0).value, control(1).value, p.root.querySelector(".s-toolbar input").value]).toEqual(["", "", ""]);

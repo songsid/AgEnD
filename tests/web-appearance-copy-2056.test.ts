@@ -1,6 +1,6 @@
 /**
  * #2056 B: Settings → Web appearance in plain words.
- * - The cards sit under five plain headings, in both languages.
+ * - The cards and advanced disclosures have plain headings, in both languages.
  * - Each card's title carries a small "?" that opens its section of docs/web-dashboard(.zh-TW).md on GitHub (a new tab,
  *   no opener); every anchor is a heading that exists in that file, so the link lands on the explanation.
  * - Each card keeps at most one short hint line per control: no paragraph on the page runs long.
@@ -39,7 +39,19 @@ async function mount(lang: "en" | "zh-TW", part: "look" | "dashboard" = "look") 
   await settle(3);
   return pg.root;
 }
-const titles = (root: any) => [...root.querySelectorAll("h2.s-ap-group, h3.s-ap-title > span")].map((e: any) => `${e.tagName === "H2" ? "# " : ""}${e.textContent}`);
+const titles = (root: any) => [...root.querySelectorAll("h3.s-ap-title > span")].map((e: any) => e.textContent);
+const heading = (node: any) => {
+  const title = [...node.children].find((child: any) => child.tagName === "H3");
+  return title?.querySelector("span")?.textContent ?? title?.textContent;
+};
+const lookOutline = (root: any) => [
+  ...[...root.querySelectorAll(".s-look-main > section")].map((group: any) => ({
+    title: heading(group), cards: titles(group),
+  })),
+  ...[...root.querySelectorAll(".s-look-advanced > details")].map((group: any) => ({
+    title: group.querySelector("summary > span")?.textContent, cards: titles(group),
+  })),
+];
 
 /** GitHub's heading anchor: lower-cased, punctuation dropped (letters of any script kept), each space a hyphen. */
 function slugs(md: string) {
@@ -56,12 +68,26 @@ function slugs(md: string) {
 }
 
 describe("Settings → Web appearance in plain words", () => {
-  it("four plain headings in Look, each over its cards, in both languages; the host-wide cards in Web dashboard (#2347)", async () => {
-    expect(titles(await mount("en"))).toEqual(["# Look", "Agents' themes", "Identity colours", "Identity cards", "# Your layout", "Your sidebar widget",
-      "# Styles you write", "Custom CSS (yours only)", "# Add-ons", "Mods", "Restore defaults"]);
+  it("plain Look groups and advanced disclosures each own their cards, in both languages; host-wide cards stay in Web dashboard (#2347)", async () => {
+    expect(lookOutline(await mount("en"))).toEqual([
+      { title: "Display and layout", cards: [] },
+      { title: "Agent identity", cards: ["Identity cards", "Identity colours"] },
+      { title: "Themes and motion", cards: ["Themes and motion"] },
+      { title: "Your sidebar widget", cards: ["Your sidebar widget"] },
+      { title: "Custom CSS (yours only)", cards: ["Custom CSS (yours only)"] },
+      { title: "Mods", cards: ["Mods"] },
+      { title: "Restore defaults", cards: ["Restore defaults"] },
+    ]);
     await pg!.unmount(); pg!.restore(); pg = null;
-    const zh = titles(await mount("zh-TW"));
-    expect(zh.filter((t) => t.startsWith("# "))).toEqual(["# 外觀", "# 你的版面", "# 自己寫的樣式", "# 擴充"]);
+    expect(lookOutline(await mount("zh-TW"))).toEqual([
+      { title: "顯示與版面", cards: [] },
+      { title: "Agent 識別", cards: ["身分卡", "識別色"] },
+      { title: "主題與動態效果", cards: ["主題與動態效果"] },
+      { title: "你的側邊欄小工具", cards: ["你的側邊欄小工具"] },
+      { title: "自訂 CSS（只套用在你自己）", cards: ["自訂 CSS（只套用在你自己）"] },
+      { title: "Mod", cards: ["Mod"] },
+      { title: "還原預設值", cards: ["還原預設值"] },
+    ]);
     await pg!.unmount(); pg!.restore(); pg = null;
     expect(titles(await mount("en", "dashboard"))).toEqual(["App icon", "Identity card upload limits"]);
   });

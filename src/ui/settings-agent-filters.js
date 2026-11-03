@@ -6,13 +6,13 @@ import { instanceMachineId } from "./runtime-catalog.js";
 register("agentFilters", {
   en: {
     title: "Filter Agents", runtime: "Runtime", status: "Status", allRuntimes: "All Runtimes", allStatuses: "All statuses",
-    local: "Windows local", remote: "Windows remote", machine: "Windows remote · {0}", unknownRuntime: "Unknown Runtime",
+    wsl: "WSL / Linux", local: "Windows local", remote: "Windows remote", machine: "Windows remote · {0}", unknownRuntime: "Unknown Runtime",
     running: "Running", paused: "Paused", stopped: "Stopped", crashed: "Crashed", unknown: "Unknown status", offline: "Runtime offline",
     results: "Showing {0} of {1} Agents", clear: "Clear filters", noMatch: "No matching Agents", noMatchHint: "Try a different search, Runtime, or status.",
   },
   "zh-TW": {
     title: "篩選 Agent", runtime: "Runtime", status: "狀態", allRuntimes: "所有 Runtime", allStatuses: "所有狀態",
-    local: "Windows 本機", remote: "Windows 遠端", machine: "Windows 遠端 · {0}", unknownRuntime: "未知 Runtime",
+    wsl: "WSL / Linux", local: "Windows 本機", remote: "Windows 遠端", machine: "Windows 遠端 · {0}", unknownRuntime: "未知 Runtime",
     running: "執行中", paused: "已暫停", stopped: "已停止", crashed: "已當掉", unknown: "未知狀態", offline: "Runtime 離線",
     results: "顯示 {0} / {1} 個 Agent", clear: "清除篩選", noMatch: "沒有符合條件的 Agent", noMatchHint: "請調整搜尋、Runtime 或狀態。",
   },
@@ -22,7 +22,7 @@ const STATUSES = ["running", "paused", "stopped", "crashed"];
 
 /** Missing runtime is the configured WSL default; invalid explicit values are not WSL. */
 export function agentRuntime(inst, live) {
-  if (inst?.runtime === undefined || inst?.runtime === "wsl") return { kind: "wsl", machineId: "", label: "WSL / Linux" };
+  if (inst?.runtime === undefined || inst?.runtime === "wsl") return { kind: "wsl", machineId: "", label: agentFilterText("wsl") };
   if (inst?.runtime !== "windows") return { kind: "unknown", machineId: "", label: agentFilterText("unknownRuntime") };
   const id = instanceMachineId(inst);
   if (id && typeof id !== "string") return { kind: "unknown", machineId: "", label: agentFilterText("unknownRuntime") };
@@ -61,7 +61,7 @@ export function AgentFilters({ instances, live, runtime, status, matched, total,
   return html`<div class="s-agent-filters" role="group" aria-label=${agentFilterText("title")}>
     <div class="s-agent-filter-controls">
       <label><span>${agentFilterText("runtime")}</span><select value=${runtime} onChange=${(event) => onRuntime(event.target.value)}>
-        <option value="">${agentFilterText("allRuntimes")}</option><option value="wsl">WSL / Linux</option><option value="windows-local">${agentFilterText("local")}</option><option value="windows-remote">${agentFilterText("remote")}</option>
+        <option value="">${agentFilterText("allRuntimes")}</option><option value="wsl">${agentFilterText("wsl")}</option><option value="windows-local">${agentFilterText("local")}</option><option value="windows-remote">${agentFilterText("remote")}</option>
         ${[...machines].sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => html`<option key=${id} value=${`machine:${id}`}>${label}</option>`)}
         ${unknownRuntime ? html`<option value="unknown">${agentFilterText("unknownRuntime")}</option>` : null}
       </select></label>

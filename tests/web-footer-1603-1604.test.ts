@@ -1,7 +1,7 @@
 /**
  * #1603: polling is a working transport — no strip for it; the reconnecting countdown (#1581) and a failed catch-up
  * still show. #1604: the sidebar footer is one row (Settings + Session); this browser's choices (theme, language, HTML
- * previews, the tour) are Settings → This device; the anonymous View reader keeps theme and language in a popover
+ * previews, the tour) are Settings → Preferences / Look; the anonymous View reader keeps theme and language in a popover
  * beside Sign in. The real Shell, store, router and Settings panel in the mini DOM.
  */
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,7 +14,7 @@ const mounted: AppPage[] = [];
 const realFetch = g.fetch;
 afterEach(async () => {
   for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
-  g.fetch = realFetch; delete g.AgendTheme; delete g.AgendPreview;
+  g.fetch = realFetch; delete g.AgendTheme; delete g.AgendPreview; delete g.confirm;
   const { appStore } = await import("/assets/app-store.js");
   appStore.set({ connection: "connecting", hydration: "none", retryAt: undefined });
   const i18n = await import("/assets/app-i18n.js"); i18n.setLang("en");
@@ -85,7 +85,7 @@ describe("#1604: the sidebar footer is one row", () => {
   });
 });
 
-describe("#1604: Settings → This device", () => {
+describe("#1604: Settings → Preferences and Look", () => {
   it("is a Settings section of its own, first (#2347: Preferences); the page and the server route it, and the old /settings/device", async () => {
     const { SETTINGS_SECTIONS, parseRoute } = await import("/assets/app-route.js");
     expect(SETTINGS_SECTIONS[0]).toBe("preferences");
@@ -94,7 +94,7 @@ describe("#1604: Settings → This device", () => {
       expect(shellRoute("GET", path)).toEqual({ kind: "shell", route: { panel: "settings", section: "preferences" } });
     }
   });
-  it("theme, language, HTML previews (through the app's confirm) and the tour — shown without waiting for the configuration", async () => {
+  it("Preferences' language, HTML previews and tour, and Look's theme — shown without waiting for the configuration", async () => {
     const pg = page({ url: "http://127.0.0.1:19280/settings/device", storage: { agend_tour_done: "1" } });
     mounted.push(pg);
     g.fetch = () => new Promise(() => {});                              // the configuration never answers
@@ -106,21 +106,28 @@ describe("#1604: Settings → This device", () => {
     const S = await import("../src/ui/panel-settings.js");      // (its chat import brings the real preview.js)
     await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: "settings:device|1|en" }));
     await settle(4);
-    const sec = pg.root.querySelector(".s-device.s-synced") as any;    // #1827: the profile card comes first
+    const sec = pg.root.querySelector(".s-device.s-synced") as any;    // the account's language/content group
     expect(sec, "drawn while the configuration is still loading").toBeTruthy();
     expect(pg.root.querySelector(".seg-item.active")?.textContent?.trim()).toBe("Preferences");   // #1665: synced across devices, and what stays on this one
-    const theme = sec.querySelector('select[aria-label="Theme"]');
-    theme.value = "light"; fire(theme, "change"); await settle();
-    expect(themes).toEqual(["light"]);
-    const box = sec.querySelector('label.check input[type="checkbox"]');
-    expect(sec.querySelector("label.check").textContent.trim()).toBe("Allow HTML previews");
+    expect(sec.querySelector('select[aria-label="Language"]')).toBeTruthy();
+    expect(pg.root.querySelector("#pref-theme"), "theme moved to Look, linked from Preferences").toBeNull();
+    expect(pg.root.querySelector('a.s-pref-look-link[href="/settings/look"]')?.textContent).toBe("Theme, appearance and effects are in Look");
+    const box = sec.querySelector("#pref-previews");
+    expect(sec.querySelector("label.check > span").textContent.trim()).toBe("Allow HTML previews");
     box.checked = true; fire(box, "change"); await settle(6);
     expect([asked.length, pg.storage.get("agend_html_preview")]).toEqual([1, "on"]);   // asked once (the same question), then allowed — the device's own key
     expect(asked[0]).toMatch(/Allow HTML previews\?\n\nThis applies on every device where you are signed in\./);
-    expect(pg.root.querySelector(".s-local #tourBtn")?.textContent?.trim()).toBe("Chat tour");   // #1665: the tour is this device's (#1854: "Chat tour")
+    expect(pg.root.querySelector(".s-local #tourBtn")?.textContent?.trim()).toBe("Replay tour");   // #1665: replay is still this device's action
+    await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "look" }, navKey: "settings:look|1|en" }));
+    await settle(4);
+    expect(pg.root.querySelector(".seg-item.active")?.textContent?.trim()).toBe("Look");
+    const theme = [...pg.root.querySelectorAll('#pref-theme input[type="radio"]')].find((input: any) => input.value === "light") as any;
+    expect(theme, "Look's theme control also draws while the configuration is still loading").toBeTruthy();
+    theme.checked = true; fire(theme, "change"); await settle();
+    expect(themes).toEqual(["light"]);
     delete g.confirm;
   });
-  it("#1665: two cards — what is synced across devices (saying so), and what stays on this one; the public link says its changes stay here", async () => {
+  it("#1665: personal details, account content and local guidance keep their owners; public preferences and Look say changes stay here", async () => {
     for (const publicLink of [false, true]) {
       const pg = page({ url: "http://127.0.0.1:19280/settings/device" });
       mounted.push(pg);
@@ -130,13 +137,28 @@ describe("#1604: Settings → This device", () => {
       const S = await import("../src/ui/panel-settings.js");
       await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: `settings:device|${publicLink}|en` }));
       await settle(4);
-      // #1827: the person's name card leads (its own test: web-display-name-1827); then these two.
-      expect(pg.root.querySelector(".s-device.s-profile h3")?.textContent).toBe("Your name");
-      const cards = [...pg.root.querySelectorAll(".s-device:not(.s-profile)")] as any[];
-      expect(cards.map((c) => [c.querySelector("h3").textContent, c.querySelector(".sub").textContent, !!c.querySelector('select[aria-label="Theme"]')]), String(publicLink)).toEqual([
-        ["Synced across your devices", publicLink ? "On the public link these are read-only: a change here stays in this browser." : "Changes here apply on every device where you are signed in.", true],
-        ["This device only", "The tour, text size, view fit, the sidebar shown or hidden, panel widths and desktop notifications stay on each device.", false],
+      // #1827: the name form now lives inside Personal details; it still leads the page.
+      const cards = [...pg.root.querySelectorAll(".s-device")] as any[];
+      expect(cards.map((c) => c.querySelector("h3").textContent), String(publicLink)).toEqual(["Personal details", "Language and content", "Help and guidance"]);
+      expect(cards[0].querySelector(".s-profile #profile-name")).toBeTruthy();
+      const account = pg.root.querySelector(".s-device.s-synced") as any;
+      const local = pg.root.querySelector(".s-device.s-local") as any;
+      const scope = account.querySelector(".s-scope");
+      const publicNote = "On the public link these are read-only: a change here stays in this browser.";
+      expect([scope.textContent, scope.getAttribute("title")], String(publicLink)).toEqual([
+        "Your account", publicLink ? publicNote : "Changes here apply on every device where you are signed in.",
       ]);
+      expect(account.querySelector("p.sub")?.textContent ?? null).toBe(publicLink ? publicNote : null);
+      expect(account.querySelector("#pref-lang")).toBeTruthy();
+      expect(local.querySelector("#tourBtn")?.textContent).toBe("Replay tour");
+      expect(local.querySelector("#pref-lang, #pref-previews, #profile-name"), "account controls stay out of local guidance").toBeNull();
+      await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "look" }, navKey: `settings:look|${publicLink}|en` }));
+      await settle(4);
+      const theme = pg.root.querySelector("#pref-theme") as any;
+      expect(theme.querySelector("legend")?.textContent, String(publicLink)).toBe("Theme");
+      expect([...theme.querySelectorAll('input[type="radio"]')].map((input: any) => input.value)).toEqual(["light", "dark", "system"]);
+      const lookHints = [...pg.root.querySelectorAll(".s-look-display p.sub")].map((p: any) => p.textContent);
+      expect(lookHints.includes(publicNote), "public Look retains the browser-only scope warning").toBe(publicLink);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
   });

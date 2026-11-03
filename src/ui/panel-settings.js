@@ -817,9 +817,9 @@ function Agents({ ctx, search, clearSearch, openDialog }) {
     matched=${groups.reduce((count, group) => count + group.names.length, 0)} total=${Object.keys(insts).length} onRuntime=${setRuntime} onStatus=${setStatus}
     onClear=${() => { setRuntime(""); setStatus(""); clearSearch(); }} />`;
   if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />`;
-  if (!groups.length) return html`${head}<${Empty} icon="search" title=${agentFilterText("noMatch")} hint=${agentFilterText("noMatchHint")} />`;
+  if (!groups.length) return html`${head}<${Empty} icon="search" title=${search.trim() ? tn("noAgentMatch", search.trim()) : agentFilterText("noMatch")} hint=${agentFilterText("noMatchHint")} />`;
   return html`${head}<div class="s-list s-agents-list">
-    <div class="s-list-columns s-agent-columns" aria-hidden="true"><span>${tn("uiAgentColumnName")}</span><span>Runtime</span><span>${tn("uiAgentColumnCli")}</span><span>${tn("uiListColumnState")}</span><span>${tn("uiListColumnActions")}</span></div>${groups.map(({ group, names }) => {
+    <div class="s-list-columns s-agent-columns" aria-hidden="true"><span>${tn("uiAgentColumnName")}</span><span>${agentFilterText("runtime")}</span><span>${tn("uiAgentColumnCli")}</span><span>${tn("uiListColumnState")}</span><span>${tn("uiListColumnActions")}</span></div>${groups.map(({ group, names }) => {
     const folded = collapsed.has(group) && !active;      // searching/filtering opens every matching group
     return html`<section key=${group} class="s-group">
       <button type="button" class="s-group-head" aria-expanded=${folded ? "false" : "true"}
