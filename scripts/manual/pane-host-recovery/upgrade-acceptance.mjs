@@ -63,7 +63,7 @@ const stopTransport = async () => {
  else if (runner && runner.exitCode === null) { runner.stdin.write('{}\n'); await Promise.race([once(runner, 'exit'), delay(15000).then(() => { throw Error('Runner did not exit'); })]); reader.close(); }
 };
 const options = { home: scratch, store, config: name => configs.get(name), endpoint: async () => endpoint, admit() {}, instructions: () => 'Read-only isolated acceptance. Never use tools or modify files.',
- menu: () => [{ name: 'reply' }], allowed: () => true, published: () => true, invoke: async () => ({ result: 'Scratch acknowledgement' }) };
+ menu: () => [{ name: 'reply', description: 'Scratch acknowledgement', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }], allowed: () => true, published: () => true, invoke: async () => ({ result: 'Scratch acknowledgement' }) };
 const create = async label => {
  const agent = await store.create({ name: label, cwd: nativeRoot, cli: 'codex', sandbox: 'read-only', model: 'gpt-6-luna', ...(mode === 'paired' ? { machineId: machine } : {}) });
  const name = 'upgrade-' + agent.id; store.bindInstance(agent.id, name); const config = { ...nativeInstanceConfig(agent), native_adapter: 'pane' }; configs.set(name, config); return { agent, name, config };
@@ -125,9 +125,9 @@ try {
  await endpoint.call({ action: 'shutdown', hostBootId: inventory.hostBootId }); await stopTransport(); receipt.passed = true;
 } catch (error) {
  failed = error;
- try { const screen = await native?.port.capturePane(); if (screen !== undefined) receipt.screen = { bytes: Buffer.byteLength(screen),
+ try { const screen = await native?.port.capturePaneJoined(200); if (screen) for (const match of screen.matchAll(/\bSession:\s*([a-f0-9-]{36})\b/gi)) threads.add(match[1]); if (screen !== undefined) receipt.screen = { bytes: Buffer.byteLength(screen),
   clues: ['trust', 'login', 'sign in', 'update', 'error', 'model', 'permission', 'welcome', 'OpenAI Codex', 'Context', 'shortcuts'].filter(word => screen.toLowerCase().includes(word.toLowerCase())),
-  composer: native.backend.readSteerComposer?.(screen), dialogs: [...native.backend.getStartupDialogs(), ...native.backend.getRuntimeDialogs()].filter(d => d.pattern.test(screen) && (!d.isActive || d.isActive(screen))).map(d => d.type || d.description || 'detected') }; } catch {}
+  composer: native.backend.readSteerComposer?.(screen), sessionLines: screen.split('\n').filter(line => /session|\/status/i.test(line)).map(line => line.replace(/[a-f0-9]{8}-[a-f0-9-]{27}/gi, '<session-uuid>').slice(0, 160)), dialogs: [...native.backend.getStartupDialogs(), ...native.backend.getRuntimeDialogs()].filter(d => d.pattern.test(screen) && (!d.isActive || d.isActive(screen))).map(d => d.type || d.description || 'detected') }; } catch {}
  receipt.phase = phase; receipt.error = error?.name; receipt.reason = String(error?.message).slice(0, 200);
 } finally {
  try { await stopTransport(); } catch { receipt.transportCleanupUnconfirmed = true; }

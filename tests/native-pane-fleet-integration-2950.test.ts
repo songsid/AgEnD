@@ -218,7 +218,7 @@ it('an old-host compatibility hold is visible once and does not schedule automat
  const schedule=vi.spyOn(f.fleet,'scheduleStartupRetry');
  await expect(f.fleet.startInstanceUnattended('native',f.config,true,'instance')).resolves.toBe(false);
  expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe('host-upgrade');expect(schedule).not.toHaveBeenCalled();expect(f.spawn).not.toHaveBeenCalled();
- expect(f.fleet.getUiStatus().instances.find(row=>row.name==='native').native_recovery?.kind).toBe('host-upgrade');
+ expect(f.fleet.getUiStatus().instances.find((row:any)=>row.name==='native').native_recovery?.kind).toBe('host-upgrade');
 });
 
 it('the real admin pane recovery retires only the orphan and ordinary Start resumes its same session',async()=>{
