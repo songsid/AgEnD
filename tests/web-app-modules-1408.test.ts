@@ -454,7 +454,8 @@ describe("catching up (#1425 review r3)", () => {
     s.on("hydration", (x: string) => states.push(x));
     s.start();
     const done = s.catchUp();                                  // read A, held
-    for (let i = 0; i < 1000; i++) h.sources[0].listeners.status({ data: "{}" });
+    // Any live events but status: a burst of statuses is one (M-2260, each a whole snapshot — the newest is kept).
+    for (let i = 0; i < 1000; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
     h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P3" }) });   // event 1,001: dropped
     h.reads[0]!.open(snap({ prompts: [] }));                  // A's snapshot predates P3
     await vi.waitFor(() => expect(h.reads).toHaveLength(2));   // recovery read B
@@ -483,7 +484,7 @@ describe("catching up (#1425 review r3)", () => {
     const done = s.catchUp();
     for (let r = 0; r < 4; r++) {
       await vi.waitFor(() => expect(h.reads).toHaveLength(r + 1));
-      for (let i = 0; i < 1001; i++) h.sources[0].listeners.status({ data: "{}" });
+      for (let i = 0; i < 1001; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
       h.reads[r]!.open(snap());
     }
     await expect(done).resolves.toBe(false);
@@ -500,7 +501,7 @@ describe("catching up (#1425 review r3)", () => {
     s.start();
     await vi.advanceTimersByTimeAsync(15_000);                 // a silent stream: fallback read A, held
     expect(h.reads).toHaveLength(1);
-    for (let i = 0; i < 1001; i++) h.sources[0].listeners.status({ data: "{}" });
+    for (let i = 0; i < 1001; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
     h.reads[0]!.open(snap());
     await vi.waitFor(() => expect(h.reads).toHaveLength(2));
     expect(s.hydration()).toBe("catching");

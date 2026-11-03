@@ -835,6 +835,26 @@ function drawnSize(a: { width?: unknown; height?: unknown }): { width?: number; 
 }
 
 /** `Last-Event-ID` as `<boot>-<id>`, or null when absent or not that shape. */
+/**
+ * M-2260 (the user, hmsg-16c13410): a page left open for half a day caught up by reading every message it missed in ONE
+ * /ui/poll answer — up to replayMax across every agent, megabytes of replies — which a slow link (WSL's relay, a tunnel)
+ * could not bring within the page's poll limit; the answer was dropped and asked for again from the same cursor, so the
+ * chat stayed where it was ("Loading what is open now…") while F5 showed the newest at once. A catch-up now carries
+ * only the newest messages within this budget (at least one), and says when it left older ones out (`truncated`): the
+ * page then reads its chats' newest history as a reload would. A quiet page's empty cursor (#1577's "fresh" read: all
+ * that is retained) is bounded the same way.
+ */
+export const CATCH_UP_MAX = { messages: 100, bytes: 128 * 1024 } as const;
+export function catchUpWindow<T>(messages: readonly T[], max: { messages: number; bytes: number } = CATCH_UP_MAX): { messages: T[]; truncated: boolean } {
+  let bytes = 0, from = messages.length;
+  while (from > 0 && messages.length - from < max.messages) {
+    const size = Buffer.byteLength(JSON.stringify(messages[from - 1]));
+    if (from < messages.length && bytes + size > max.bytes) break;
+    bytes += size; from--;
+  }
+  return from === 0 ? { messages: [...messages], truncated: false } : { messages: messages.slice(from), truncated: true };
+}
+
 export function parseLastEventId(header: string | string[] | undefined): { boot: string; id: number } | null {
   const raw = (Array.isArray(header) ? header[0] : header)?.trim();
   const m = raw === undefined ? null : /^([0-9a-f]{1,32})-(\d{1,15})$/.exec(raw);

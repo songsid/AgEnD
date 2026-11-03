@@ -16,6 +16,7 @@
  */
 import { shellRoute } from "./web-shell-routes.js";
 import type { WebChatButtons, WebChatHistory, WebChatMessage, WebDeliveryState } from "./web-chat-history.js";
+import { catchUpWindow } from "./web-chat-history.js";
 
 export type GuestRouteState = "on" | "later";
 export interface GuestRoute {
@@ -297,9 +298,12 @@ export function guestHistory(history: WebChatHistory, instance: string, limit: n
 export function guestPollBody(status: unknown, scope: ReadonlySet<string>, now: number, guest?: GuestRequest, after?: string | null, replay?: (after: string | null) => readonly WebChatMessage[]): Record<string, unknown> {
   const history = guest?.history?.() ?? null;
   if (!guest || !history || !replay) return { status: guestStatus(status, scope), messages: [], deliveries: [], reply_buttons: [], reactions: [], prompts: [], needs: [], cursor: null, now };
+  // M-2260: a guest's catch-up within the same budget as anyone's, measured on what it may see.
+  const window = catchUpWindow(guestMessages(replay(after ?? null), guest, scope));
   return {
     status: guestStatus(status, scope),
-    messages: guestMessages(replay(after ?? null), guest, scope),
+    messages: window.messages,
+    ...(window.truncated ? { truncated: true } : {}),
     deliveries: guestDeliveries(history, guest, scope),
     reply_buttons: guestButtonStates(history, guest, scope),
     reactions: history.reactionStates().filter((r) => { const row = history.find(r.instance, r.boot, r.id); return !!row && guestSeesMessage(row, guest, scope); }),
