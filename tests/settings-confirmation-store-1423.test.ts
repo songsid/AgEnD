@@ -38,6 +38,22 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     expect((await store.decide(first.view.id, "confirm", admin())).state).toBe("applied");
     expect(store.propose(proposal({ key: "save-4" })).view.id).not.toBe(first.view.id);
   });
+  it("#2972 review: the repeated-Save dedupe joins only a request still pending, never one already applying", async () => {
+    let release!: () => void; const gate = new Promise<void>(done => { release = done; });
+    const first = store.propose(proposal({ key: "applying-1", apply: vi.fn(async () => { await gate; return { ok: true }; }) }));
+    const deciding = store.decide(first.view.id, "confirm", admin()); await Promise.resolve();
+    expect(store.get(first.view.id, "authenticated-session")?.state).toBe("applying");
+    const again = store.propose(proposal({ key: "applying-2" }));
+    expect(again.reused).toBe(false); expect(again.view.id).not.toBe(first.view.id);
+    release(); expect((await deciding).state).toBe("applied");
+  });
+  it("#2972 review: a removed request takes every idempotency key that named it", async () => {
+    const first = store.propose(proposal({ key: "keys-1" })); store.propose(proposal({ key: "keys-2" }));
+    expect((store as any).keys.size).toBe(2);
+    expect((await store.decide(first.view.id, "confirm", admin())).state).toBe("applied");
+    now += 24 * 3_600_000; store.propose(proposal({ key: "after", fingerprint: "unrelated" }));   // prune runs on propose
+    expect([...(store as any).keys.values()]).not.toContain(first.view.id);
+  });
   it("S-35: a failed apply keeps its localized message and says why — bounded, control characters removed, audited", async () => {
     const p = proposal({ apply: vi.fn(async () => { throw new Error("apply_rejected: Local pane relay startup unconfirmed\u0007\n" + "x".repeat(400)); }) });
     const { view } = store.propose(p);
