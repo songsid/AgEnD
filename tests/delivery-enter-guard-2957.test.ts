@@ -154,7 +154,7 @@ it("Grok's own boxed numbered draft remains a composer, not a permission card", 
   const numbered = ready.replace(/^  │ ❯.*│$/m, "  │ ❯ 1. fix the build │\n  │   2. run the tests │\n  │   3. push │");
   const f = fixture(numbered);
   f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
-  expect(f.daemon.backend.selectionIsInComposer(numbered)).toBe(true);
+  expect(f.daemon.backend.isDeliveryComposerPane(numbered)).toBe(true);
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
   expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
 });
@@ -162,7 +162,7 @@ it("Grok's actual approval card cannot borrow the boxed-composer tie-breaker", a
   const approval = pane("grok-1.0.70-audit/1.0.70-approval/20-approval");
   const f = fixture(approval);
   f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
-  expect(f.daemon.backend.selectionIsInComposer(approval)).toBe(false);
+  expect(f.daemon.backend.isDeliveryComposerPane(approval)).toBe(false);
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
   expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
 });
@@ -189,4 +189,14 @@ it("Antigravity's real trust card remains held", async () => {
   f.daemon.backend = new AntigravityBackend(f.daemon.config.working_directory);
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
   expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+});
+
+it.each(["ordinary multi-line draft", "numbered multi-line draft"])("Grok submits a long %s without borrowing a historical ready glyph", async kind => {
+  const ready = pane("grok-1.0.70-audit/1.0.70-120/02-ready");
+  const rows = Array.from({ length: 8 }, (_, i) => `  │ ${i === 0 ? "❯" : " "} ${kind === "numbered multi-line draft" ? `${i + 1}. ` : ""}item ${i} │`).join("\n");
+  const draft = ready.replace(/^  │ ❯.*│$/m, rows);
+  const f = fixture(draft);
+  f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
 });

@@ -9572,7 +9572,7 @@ export class Daemon extends EventEmitter {
       else if (backend) {
         // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
         const shape = unrecognisedPromptShape(pane);
-        const ownComposer = backend.selectionIsInComposer?.(pane) === true;
+        const ownComposer = backend.isDeliveryComposerPane?.(pane) === true;
         if ((!selectionCard(pane, "CLI") || ownComposer) && (!shape || ownComposer || this.cliComposerShowing(pane, shape))) {
           const bottom = backend.getBottomReadyPattern?.();
           const ready = backend.getReadyPattern();
