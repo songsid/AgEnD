@@ -76,8 +76,8 @@ describe("fit() converges", () => {
     const changes = seen.slice(1).filter((v, i) => v !== seen[i]).length;
     expect(changes, seen.join(" → ")).toBeLessThanOrEqual(1);
     expect(seen.at(-1)).toBe(seen.at(-2));
-    // Then the width decides: within one 0.5% step of 1000 / (100 × 0.6) × 0.995 = 16.58 (a box of its own's size).
-    expect(Math.abs(seen.at(-1)! - 16.58)).toBeLessThan(0.1);
+    // Found following at once (within the call that moved it), the width decides: 1000 / (100 × 0.6) × 0.995 = 16.58.
+    expect(seen.at(-1)).toBeCloseTo(16.58, 2);
   });
   it("the same over the 800 ms refresh (no resize at all): the text keeps its size", async () => {
     await mount();
@@ -100,6 +100,49 @@ describe("fit() converges", () => {
     t.clientHeight = 310;
     await refit();
     expect(px()).toBeCloseTo((300 / 36) * 0.995, 2);
+  });
+  it("following its text is forgotten when the person picks another size (Aa): back on Fit, the height limits again", async () => {
+    const HT = await import("/assets/header-tools.js");
+    await mount();
+    boxFollowsText();
+    await refit(); await refit();
+    expect(px()).toBeCloseTo(16.58, 2);                                            // following: the width decides
+    // The box is its own again (the stylesheet read anew), and the person goes S, then back to Fit.
+    const t = term() as any, st = (pre() as any).style;
+    let fs = st.fontSize;
+    Object.defineProperty(st, "fontSize", { configurable: true, get: () => fs, set: (v: string) => { fs = v; } });
+    t.clientHeight = 310;
+    HT.setTextSize("s", { view: true }); await settle(4); await wait();
+    HT.setViewFit(); await settle(4); await wait();
+    expect(px()).toBeCloseTo((300 / 36) * 0.995, 2);
+  });
+  it("a box that loses a fixed few pixels when the text resizes (a scrollbar coming) is not following its text: it keeps limiting", async () => {
+    await mount();
+    const t = term() as any, st = (pre() as any).style;
+    t.clientWidth = 1012; t.clientHeight = 610;
+    await refit();
+    expect(px()).toBeCloseTo(16.58, 2);
+    // A scrollbar appears with the next size: 15 px off the box, not in proportion to the text.
+    let fs = st.fontSize, once = true;
+    Object.defineProperty(st, "fontSize", { configurable: true, get: () => fs, set: (v: string) => { fs = v; if (once) { once = false; t.clientHeight -= 15; } } });
+    t.clientHeight = 500; await refit();
+    t.clientHeight = 310; await refit();
+    expect(px()).toBeCloseTo((300 / 36) * 0.995, 2);                                // still the height's fit
+  });
+  it("#2991 review: a box of its own made shorter step by step (each size then in proportion) keeps limiting — and so does a later change", async () => {
+    await mount();
+    const t = term() as any;
+    t.clientWidth = 1012;
+    const seen: number[] = [];
+    for (const hgt of [610, 600, 590, 310]) { t.clientHeight = hgt; await refit(); seen.push(px()); }
+    // Each the height's fit: (h − 10) / (30 × 1.2) × 0.995, never fixed by the width.
+    expect(seen.map((v) => Math.round(v * 100) / 100)).toEqual([600, 590, 580, 300].map((h) => Math.round((h / 36) * 0.995 * 100) / 100));
+    expect(seen.at(-1)).toBeCloseTo(8.29, 2);
+    // Later, independent changes: taller again (the width limits), then shorter (the height limits again).
+    t.clientHeight = 1010; await refit();
+    expect(px()).toBeCloseTo(16.58, 2);
+    t.clientHeight = 410; await refit();
+    expect(px()).toBeCloseTo(11.06, 2);
   });
 });
 

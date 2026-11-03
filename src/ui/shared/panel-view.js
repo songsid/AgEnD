@@ -294,7 +294,7 @@ function logLinkFor(name, backend, signedIn) {
 }
 function Terminal({ name, lease, density, every = 800, backend = "", signedIn = false }) {
   const term = useRef(null), pre = useRef(null);
-  const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "", last: null, follows: false });
+  const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "", follows: false });
   const [problem, setProblem] = useState(null);
   const [, setWordsRev] = useState(0);
   // "follow" | "loading" | "reading"; the screen's text when reading began, the newest read since; a note about history.
@@ -334,28 +334,34 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     const innerH = Math.max(1, box.clientHeight - (parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) || 0));
     const key = `${g.cols}x${g.rows}@${Math.round(innerW)}x${Math.round(innerH)}/${density}`;
     if (key === g.key) return;
-    // v2.3.4-beta.4 P1: the box's height is a limit only while it is the box's own. One that changed right after this
-    // set a new size, by the same factor — the grid, the width and the choice as they were — is following its text (a
-    // stale stylesheet, or any container that grows with its content): measured again it would shrink the text 0.5% each
-    // time, for ever. From then on the text is fitted to the width only, so fit() converges. (Any other height change —
-    // a phone's address bar — is not in proportion to the text, and stays a limit.)
-    const was = g.last;
-    if (was && was.ratio && was.cols === g.cols && was.rows === g.rows && was.w === Math.round(innerW) && was.density === density
-      && was.h > 0 && Math.round(innerH) !== was.h && Math.abs(innerH / was.h - was.ratio) < 0.05 * was.ratio) g.follows = true;
     const pcs = getComputedStyle(p);
     const lh = parseFloat(pcs.lineHeight) / parseFloat(pcs.fontSize);
     const lineH = Number.isFinite(lh) && lh > 0 ? lh : 1.2;
     const byW = innerW / (g.cols * glyphRatio(p)), byH = innerH / (g.rows * lineH);
-    let size = (g.follows ? byW : Math.min(byW, byH)) * 0.995;
-    if (density === "fit") size = Math.max(FIT_FLOOR_PX, Math.min(size, MAX_PX));
-    else size = Math.max(8, Math.min(Math.max(MIN_PX, Math.min(size, MAX_PX)) * (VIEW_SCALE[density] || 1), 32));
+    const sizeFor = (limit) => (density === "fit" ? Math.max(FIT_FLOOR_PX, Math.min(limit * 0.995, MAX_PX))
+      : Math.max(8, Math.min(Math.max(MIN_PX, Math.min(limit * 0.995, MAX_PX)) * (VIEW_SCALE[density] || 1), 32)));
+    const size = sizeFor(g.follows ? byW : Math.min(byW, byH));
     g.key = key;
-    g.last = { cols: g.cols, rows: g.rows, w: Math.round(innerW), h: Math.round(innerH), density, ratio: 0 };
     // A small change is skipped only when growing (the size applied still fits); a smaller box always shrinks it.
     if (size >= g.applied && size - g.applied < 0.75) return;
-    if (g.applied > 0 && size !== g.applied) g.last.ratio = size / g.applied;
-    g.applied = size;
-    p.style.fontSize = `${size.toFixed(2)}px`;          // CSSOM, never a style attribute (#1300)
+    const padH = (parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)) || 0;
+    const was = g.applied || parseFloat(pcs.fontSize) || 0, before = box.clientHeight - padH;
+    const apply = (px) => { g.applied = px; p.style.fontSize = `${px.toFixed(2)}px`; };   // CSSOM, never a style attribute (#1300)
+    apply(size);
+    // v2.3.4-beta.4 P1: the box's height is a limit only while it is the box's own. Read again right after the text took
+    // its new size (the read lays the page out), a box whose height moved with it, by the same factor, is following its
+    // text — a stale stylesheet, or any container that grows with its content: measured next time it would shrink the
+    // text 0.5% each refresh, for ever. Then the width alone decides, at once and from then on (until the choice or the
+    // stylesheet changes). Cause and effect within this one call: a resize between calls (#2991 review: the box made
+    // shorter step by step, where a height-limited size moves in proportion too) never counts.
+    if (!g.follows && was > 0 && before > 0) {
+      const after = box.clientHeight - padH, ratio = size / was;
+      if (after !== before && Math.abs(after / before - ratio) < 0.05 * ratio) {
+        g.follows = true;
+        const byWidth = sizeFor(byW);
+        if (byWidth !== size) apply(byWidth);
+      }
+    }
   };
   /** Keep a following view on the newest line (a grid taller than the box at the larger sizes scrolls). */
   const toBottom = () => { const box = term.current; if (box) box.scrollTop = box.scrollHeight; };
@@ -364,11 +370,11 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     paintAnsi(pre.current);
     screenAt.current.drawn = text;
   };
-  useEffect(() => { grid.current.key = ""; grid.current.follows = false; grid.current.last = null; fit(); }, [density]);
+  useEffect(() => { grid.current.key = ""; grid.current.follows = false; fit(); }, [density]);
   // A tab opened before an upgrade: its stylesheet and the View's words read again (healStalePage), then fitted anew.
   useEffect(() => {
     const h = healStalePage(document, (u) => import(u), () => { setWordsRev((n) => n + 1); });
-    if (h.css) lease.timeout(() => { grid.current.key = ""; grid.current.follows = false; grid.current.last = null; fit(); }, 300);
+    if (h.css) lease.timeout(() => { grid.current.key = ""; grid.current.follows = false; fit(); }, 300);
   }, []);
   const atBottom = () => { const box = term.current; return !box || box.scrollHeight - box.scrollTop - box.clientHeight <= 2; };
   /** Reading what is shown now (`text`, with or without the scrollback): the refresh only says whether there is more. */
