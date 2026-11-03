@@ -367,6 +367,9 @@ export const StartInstanceArgs = z.object({
 
 export const RestartInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to restart"),
+  // M-2266: a one-shot for the next launch only; codex instances only.
+  resume_session_id: z.string().regex(/^[0-9a-fA-F-]{36}$/).optional()
+    .describe("Codex only: resume this conversation (its session id) on this restart only. It must be a rollout in the instance's own sessions, for its working directory, started by the CLI; otherwise nothing is restarted and the reason is returned."),
 });
 
 export const PauseInstanceArgs = z.object({

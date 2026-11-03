@@ -116,15 +116,15 @@ describe("newestMissedCwdRollout: this directory's conversation the lookup did n
 });
 
 describe("a fresh Codex launch says so when this workspace had a conversation (#1053)", () => {
-  it("the #1028 shape: lookup finds nothing, the rollout shows a turn → a new conversation, and the notice names the old one", () => {
+  it("the #1028 shape: lookup finds nothing, the rollout shows a turn → M-2266 resumes it (the user's choice over #1053's hint), and says so", () => {
     const ws = join(root, "ws"); mkdirSync(ws);
     emptyStateDb();
     rollout(OLD, ws);
     const { cmd, warning } = launch(ws);
-    expect(cmd).not.toContain(" resume");
+    expect(cmd).toContain(` resume '${OLD}' `);
     expect(warning).toContain(ws);
-    expect(warning).toContain(`codex resume ${OLD}`);
-    expect(warning).toMatch(/NEW one/);
+    expect(warning).toContain(OLD);
+    expect(warning).toMatch(/^Resumed the earlier Codex conversation/);
   });
 
   it("a workspace that never had a conversation starts fresh quietly", () => {
