@@ -9637,8 +9637,16 @@ export class Daemon extends EventEmitter {
       } catch { return hold(); }
       if (!composer) return hold();
       if (!current()) return false;
-      // The proof stands only if the pane did not go into a mode while it was made: else wait, and prove again.
-      if (await this.paneInTmuxMode(phase)) { if (!current()) return false; continue; }
+      // The proof stands only if the pane did not go into a mode while it was made: else wait, and prove again — within
+      // the same deadline (#2971 re-review, Prism P2: a pane flickering in and out of a mode must not hold the write lock
+      // past it), and never spinning: one poll interval before the next look.
+      if (await this.paneInTmuxMode(phase)) {
+        if (!current()) return false;
+        if (performance.now() >= modeDeadline) return hold();
+        await new Promise(r => setTimeout(r, PANE_MODE_POLL_MS));
+        if (!current()) return false;
+        continue;
+      }
       if (!current()) return false;
       break;
     }

@@ -165,6 +165,22 @@ describe("a delivery to a pane left in copy-mode", () => {
     expect([r.s.keysInMode, r.s.pasted, r.s.enters]).toEqual([0, 0, 0]);
     expect(r.state).not.toBe("delivered");
   }, 30_000);
+  it("#2971 re-review: a pane flickering in and out of a mode around every proof is held at the deadline — never past it, never an Enter", async () => {
+    let since = -1, heldAt = -1, startedAt = -1;
+    const r = await deliver(claude, (s) => {
+      if (!s.pasted) return false;
+      if (since < 0) { since = s.modeReads; startedAt = performance.now(); }
+      return (s.modeReads - since) % 2 === 1;                        // clear at the wait's look, in a mode at the post-proof look
+    }, 14 * 60_000, (d) => {
+      const warn = d.logger.warn.bind(d.logger);
+      d.logger = { ...d.logger, warn: (o: any, m?: string) => { if (heldAt < 0 && /Enter withheld/.test(String(m))) heldAt = performance.now(); return warn(o, m); } };
+    });
+    expect([r.s.keysInMode, r.s.enters]).toEqual([0, 0]);
+    expect(r.state).not.toBe("delivered");
+    expect(heldAt).toBeGreaterThan(0);                                 // the loop ended: held…
+    expect(heldAt - startedAt).toBeLessThan(10 * 60_000 + 5_000);      // …at the 10-min bound, not past it
+    expect(heldAt - startedAt).toBeGreaterThanOrEqual(10 * 60_000 - 5_000);
+  }, 60_000);
   it("stopped while the Enter waits for the mode (a cancel, a pause, a respawn): no Enter when the mode ends", async () => {
     let daemonRef: any = null, since = -1;
     const r = await deliver(claude, (s) => {
