@@ -44,3 +44,18 @@ it('switch cleanup keeps only snapshot/close alive while refusing every input an
  void f.settings.mcp!(body,()=>true).catch(()=>{});await new Promise(resolve=>setTimeout(resolve,20));expect(f.mcp).not.toHaveBeenCalled();
  expect(f.request.mock.calls.map(([value])=>(value as any).action)).toEqual(['snapshot','close']);expect(f.child.kill).not.toHaveBeenCalled();
 });
+it('S-35 P1: with no injected open, the relay calls RuntimePaneLink.open bound to its class (its own this.attach), so a default local pane starts',async()=>{
+ // RuntimePaneLink.open ends with `return this.attach(descriptor, options)`. Passed unbound as a default parameter it ran with
+ // this === undefined: the relay exited 0 with no output on every real Windows host (S-35). The stand-in does exactly that tail.
+ const {RuntimePaneLink:Link}=await import('../src/runtime-pane-link.js');const hostBootId=randomUUID(),request=vi.fn(async()=>({hostBootId,panes:[]})),stop=vi.fn(async()=>{});
+ const attach=vi.spyOn(Link as unknown as {attach:(...a:unknown[])=>unknown},'attach').mockImplementation(async()=>({hostBootId,request,stop,connectionChanged:vi.fn()}) as never);
+ let seenThis:unknown='unset';
+ const open=vi.spyOn(Link,'open').mockImplementation(async function(this:unknown,options:PaneLinkOptions){seenThis=this;return (this as {attach:(d:unknown,o:PaneLinkOptions)=>Promise<RuntimePaneLink>}).attach({},options);});
+ try{
+  const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()});
+  stops.push(serveLocalPaneRelay(input,output));
+  const endpoint=await LocalPaneEndpoint.open({scope:'b'.repeat(64),admit:()=>{},maxAgents:()=>4,version:()=>'Codex 0.165.0',launch:async()=>child as never,mcp:vi.fn(async()=>({tools:[]}))});stops.push(()=>endpoint.stop());
+  expect(open).toHaveBeenCalledOnce();expect(seenThis).toBe(Link);expect(attach).toHaveBeenCalledOnce();expect(endpoint.online()).toBe(true);
+  await expect(endpoint.call({action:'list'})).resolves.toHaveProperty('panes',[]);
+ }finally{open.mockRestore();attach.mockRestore();}
+});

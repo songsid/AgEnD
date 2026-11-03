@@ -180,3 +180,13 @@ it('persistent pane creation replays its original local administrator once with 
  const result=await h.store.decide(pending.body.pending_change.id,'confirm',{label:'Host administrator',current:()=>true});expect(result.state).toBe('applied');expect(pane).toHaveBeenCalledOnce();expect(pane.mock.calls[0][0]).not.toHaveProperty('native_adapter');expect(pane.mock.calls[0][3]).toBeInstanceOf(SettingsExecution);
  const replay=await h.request(body);expect(replay.body.pending_change.state).toBe('applied');expect(pane).toHaveBeenCalledOnce();
 });
+it('S-35: a persistent pane creation that fails after confirmation reports the real cause, never "Authorization expired"',async()=>{
+ const h=harness();h.cfg.channels=[{id:'pane-world',type:'telegram',group_id:-100123}];
+ // The real failures were a relay that never started, a /status startup race and the per-PC agent limit; the execution
+ // ends with the failure, so the old catch answered "Authorization expired" and the confirmer read only "could not be applied".
+ const pane=vi.fn(async(_p:any,_c:any,allowed:any,execution:any)=>{execution.cancel();expect(allowed()).toBe(false);throw Error('Local pane relay startup unconfirmed');});Object.assign(h.context,{createNativePaneInstance:pane});
+ const pending=await h.request({...BODY,native_adapter:'pane'});expect(pending.status).toBe(202);
+ const result=await h.store.decide(pending.body.pending_change.id,'confirm',{label:'Host administrator',current:()=>true});
+ expect(result.state).toBe('failed');expect(pane).toHaveBeenCalledOnce();
+ expect(result.outcome?.detail).toBe('apply_rejected: Local pane relay startup unconfirmed');expect(result.outcome?.detail).not.toContain('Authorization expired');
+});

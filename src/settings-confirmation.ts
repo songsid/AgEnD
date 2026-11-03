@@ -13,12 +13,20 @@ const MAX_RECORDS = 128;
 
 export type SettingsChangeSection = "access" | "secret" | "channel";
 export type SettingsChangeState = "pending" | "applying" | "applied" | "rejected" | "expired" | "stale" | "failed";
+/** S-35: a failed apply's reason for the person and the audit — one line, bounded, control characters removed. */
+export function applyErrorDetail(error: unknown): string | undefined {
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const text = raw.replace(/[\p{Cc}\p{Cf}]+/gu, " ").replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, 300) : undefined;
+}
 export interface SettingsChangeOutcome {
   state: SettingsChangeState;
   decided_at: number;
   decided_by_label?: string;
   reason_code: string;
   message: string;
+  /** S-35: why an apply failed — the handler's own words (bounded, control characters removed); never shown as success. */
+  detail?: string;
   result?: unknown;
 }
 export interface SettingsPendingView {
@@ -233,18 +241,21 @@ export class SettingsConfirmationStore {
           this.finish(entry, "applied", "applied", t("settings_confirm.result.applied"), actor.label, result);
         } finally { execution.close(); entry.execution = undefined; }
       }
-    } catch {
-      if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", t("settings_confirm.result.apply_failed"), actor.label);
+    } catch (error) {
+      // S-35: the real reason (a Windows relay that did not start, an agent limit, a startup race…) was swallowed here and the
+      // person only ever read "could not be applied". Keep the localized message; carry the reason beside it and in the audit.
+      const detail = applyErrorDetail(error);
+      if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", t("settings_confirm.result.apply_failed"), actor.label, undefined, detail);
     }
     return this.snapshot(entry);
   }
-  private finish(entry: RecordEntry, state: SettingsChangeState, reason: string, message: string, actor?: string, result?: unknown): void {
+  private finish(entry: RecordEntry, state: SettingsChangeState, reason: string, message: string, actor?: string, result?: unknown, detail?: string): void {
     clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
     entry.view.state = state; entry.finishedAt = this.now();
     entry.view.outcome = { state, reason_code: reason, message, decided_at: this.wall(), ...(actor ? { decided_by_label: this.display(actor) } : {}),
-      ...(result !== undefined ? { result } : {}) };
+      ...(detail ? { detail } : {}), ...(result !== undefined ? { result } : {}) };
     entry.proposal?.discard?.(); entry.proposal = undefined;
-    this.audit(state === "rejected" && reason === "withdrawn" ? "withdrawn" : state, entry);
+    this.audit(state === "rejected" && reason === "withdrawn" ? "withdrawn" : state, entry, detail ? { detail } : {});
   }
   close(): void {
     this.closed = true;

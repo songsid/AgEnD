@@ -26,6 +26,19 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     expect(done.outcome?.result).toEqual({ ok: true, job_id: "apply-job" }); expect(p.discard).toHaveBeenCalledTimes(1);
     await expect(store.decide(view.id, "confirm", admin())).rejects.toThrow("confirmation_not_pending");
   });
+  it("S-35: a failed apply keeps its localized message and says why — bounded, control characters removed, audited", async () => {
+    const p = proposal({ apply: vi.fn(async () => { throw new Error("apply_rejected: Local pane relay startup unconfirmed\u0007\n" + "x".repeat(400)); }) });
+    const { view } = store.propose(p);
+    const done = await store.decide(view.id, "confirm", admin());
+    expect(done.state).toBe("failed"); expect(done.outcome?.reason_code).toBe("apply_failed");
+    expect(done.outcome?.message).toBe("Change could not be applied. Review the configuration and try again.");
+    expect(done.outcome?.detail?.startsWith("apply_rejected: Local pane relay startup unconfirmed x")).toBe(true);
+    expect(done.outcome?.detail).toHaveLength(300); expect(done.outcome?.detail).not.toMatch(/[\u0000-\u001f]/);
+    expect(audit).toHaveBeenCalledWith("failed", expect.objectContaining({ id: view.id, detail: done.outcome?.detail }));
+    // A success never carries a detail.
+    const ok = proposal({ key: "ok-key" }); const okView = store.propose(ok).view;
+    expect((await store.decide(okView.id, "confirm", admin())).outcome?.detail).toBeUndefined();
+  });
   it("an unauthorised click leaves the pending operation available for the real admin", async () => {
     const p = proposal(); const { view } = store.propose(p);
     const refused = await store.decide(view.id, "confirm", { label: "user", current: () => false }).catch(error => error);
