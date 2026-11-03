@@ -35,3 +35,4 @@ it("a revoked page lease and guest page cannot start a fresh conversation",async
  await p.unmount();p.document.body.dataset.tier="guest";await p.mount(h(Recovery,{name:"native",inst:{native_adapter:"pane",native_recovery:first},lease}));
  expect(p.root.textContent).toBe("");
 });
+it("Codex unknown evidence names the correct provider and keeps the existing exact admin action",async()=>{const fetch=vi.fn(),lease={current:()=>true,fetch};await p.mount(h(Recovery,{name:"codex-native",inst:{native_adapter:"pane",native_recovery:{...first,provider:"codex"}},lease}));expect(p.root.textContent).toContain("Windows Codex's saved conversation");expect(p.root.textContent).not.toContain("Windows Claude");expect(buttons().filter(b=>b.textContent==="Start a new conversation")).toHaveLength(1);});

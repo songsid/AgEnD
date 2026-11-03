@@ -26,7 +26,7 @@ export function NativePaneRecovery({ name, inst, lease }) {
   if (!recovery) return ["stopped", "crashed"].includes(inst.status)
     ? html`<div class="windows-agent-blocked"><button type="button" class="btn" disabled=${busy} onClick=${() => act(`/ui/start/${encodeURIComponent(name)}`)}>${t("chat.start")}</button></div>` : null;
   if (recovery.kind === "session-unconfirmed") return html`<div class="windows-agent-blocked" role="alert">
-    <p>${t("chat.paneSessionUnconfirmed")}</p>
+    <p>${t(recovery.provider === "codex" ? "chat.paneCodexSessionUnconfirmed" : "chat.paneSessionUnconfirmed")}</p>
     <button type="button" class="btn" disabled=${busy || !recovery.launchId || !recovery.sessionId} onClick=${() => { confirmation.current = {name,launchId:recovery.launchId,sessionId:recovery.sessionId}; setDialog(true); }}>${t("chat.paneNewConversation")}</button>
     ${dialog ? html`<${Dialog} title=${t("chat.paneNewConversation")} onClose=${() => { if (!busy) setDialog(false); }}>
       <p>${t("chat.paneNewConversationConfirm",inst.display_name || name)}</p>

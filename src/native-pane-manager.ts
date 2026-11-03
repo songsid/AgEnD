@@ -18,7 +18,7 @@ import type {Daemon} from "./daemon.js";
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 interface Manifest {version:1;machineId:string;configuration:string;launch:RuntimePaneLaunch;exited?:RuntimePaneSnapshot;
  /** Committed before replacing the pin; retained until this replacement has a real saved transcript. */
- fresh?:{previous:RuntimePaneSnapshot;automatic:boolean;announced?:true}}
+ fresh?:{previous:RuntimePaneSnapshot;automatic:boolean;announced?:true;previousLaunch?:RuntimePaneLaunch;sessionId?:string;decisionLaunchId?:string}}
 export interface NativeMachineEndpoint extends PaneEndpoint {epoch():string|null; version(provider:string):string|null}
 export interface NativePaneManagerOptions {
  home:string;
@@ -30,7 +30,7 @@ export interface NativePaneManagerOptions {
  menu(name:string):Array<{name:string;[key:string]:unknown}>;
  allowed(name:string,tool:string,args:Record<string,unknown>):boolean;
  published(name:string,daemon:Daemon):boolean;
- freshNotice?(name:string):Promise<void>|void;
+ freshNotice?(name:string,provider?:"codex"|"claude-code"):Promise<void>|void;
  invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean,name:string):Promise<{result:unknown;error?:string}>;
 }
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
@@ -51,9 +51,15 @@ export class NativePaneManager {
    if(value?.version!==1||!/^([a-f0-9]{64})$/.test(value.configuration)||Object.keys(value).some(key=>!["version","machineId","configuration","launch","exited","fresh"].includes(key))||value.machineId!=="local"&&!UUID.test(value.machineId))throw Error("Invalid native launch manifest");validateRuntimePaneLaunch(value.launch);if(!value.launch.launchId||!UUID.test(value.launch.launchId))throw Error("Native launch identity is missing");
    if(value.exited){const exit=validateRuntimePaneSnapshot(value.exited);if(exit.state!=="exited"||exit.agentId!==value.launch.agentId||exit.instance!==value.launch.instance||exit.paneId!==value.launch.paneId||exit.launchId!==value.launch.launchId)throw Error("Native exit manifest scope differs");}
    if(value.fresh){const fresh=value.fresh,previous=validateRuntimePaneSnapshot(fresh.previous);
-    if(Object.keys(fresh).some(key=>!["previous","automatic","announced"].includes(key))||typeof fresh.automatic!=="boolean"||fresh.announced!==undefined&&fresh.announced!==true
-     ||value.launch.cli!=="claude-code"||value.launch.sessionId!==undefined||previous.state!=="exited"||previous.noLaunch||!previous.sessionId
-     ||previous.agentId!==value.launch.agentId||previous.instance!==value.launch.instance||previous.launchId===value.launch.launchId||previous.sessionId===value.launch.launchId)throw Error("Invalid fresh pane intent");}
+    if(Object.keys(fresh).some(key=>!["previous","automatic","announced","previousLaunch","sessionId","decisionLaunchId"].includes(key))||typeof fresh.automatic!=="boolean"||fresh.announced!==undefined&&fresh.announced!==true
+     ||!["claude-code","codex"].includes(value.launch.cli)||value.launch.sessionId!==undefined||previous.state!=="exited"||previous.noLaunch||!previous.sessionId
+     ||previous.agentId!==value.launch.agentId||previous.instance!==value.launch.instance||previous.launchId===value.launch.launchId||previous.sessionId===value.launch.launchId)throw Error("Invalid fresh pane intent");
+    if(value.launch.cli==="codex"){
+     const old=validateRuntimePaneLaunch(fresh.previousLaunch);
+     if(old.cli!=="codex"||old.agentId!==previous.agentId||old.instance!==previous.instance||old.paneId!==previous.paneId||old.launchId!==previous.launchId
+       ||(typeof fresh.decisionLaunchId!=="string"||!UUID.test(fresh.decisionLaunchId)||fresh.decisionLaunchId===value.launch.launchId)
+       ||fresh.sessionId!==undefined&&(typeof fresh.sessionId!=="string"||!UUID.test(fresh.sessionId)||fresh.sessionId===previous.sessionId))throw Error("Invalid fresh Codex binding");
+    }else if(fresh.previousLaunch!==undefined||fresh.sessionId!==undefined||fresh.decisionLaunchId!==undefined)throw Error("Unexpected Claude fresh binding");}
    return value;
   }catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return null;throw error;}
  }
@@ -68,10 +74,31 @@ export class NativePaneManager {
   return {version:1,machineId,configuration:this.configurationHash(agent,config),launch};
  }
  private freshIntent(file:string,manifest:Manifest,automatic:boolean,config:InstanceConfig,agent:WindowsAgent):Manifest{
-  if(!manifest.exited?.sessionId||manifest.launch.cli!=="claude-code")throw Error("A fresh conversation requires its previous positive exit");
+  const previous=manifest.exited?.sessionId?manifest.exited:manifest.launch.cli==="codex"?manifest.fresh?.previous:undefined;
+  const previousLaunch=manifest.exited?.sessionId?manifest.launch:manifest.fresh?.previousLaunch;
+  if(!previous?.sessionId||!manifest.exited||!["claude-code","codex"].includes(manifest.launch.cli))throw Error("A fresh conversation requires its previous positive exit");
   // The previous launch can have obsolete cold settings; only its positive exit is carried into this decision.
-  const next:Manifest={...this.newManifest(manifest.launch.instance,config,agent,manifest.machineId,false),fresh:{previous:manifest.exited,automatic}};
+  const next:Manifest={...this.newManifest(manifest.launch.instance,config,agent,manifest.machineId,false),fresh:{previous,automatic,...(agent.cli==="codex"?{previousLaunch,decisionLaunchId:manifest.launch.launchId}: {})}};
   this.save(file,next);return next;
+ }
+ private bindFreshCodex(file:string,manifest:Manifest,observed:RuntimePaneSnapshot):Manifest{
+  const fresh=manifest.fresh,launch=manifest.launch;
+  if(launch.cli!=="codex"||!fresh||!observed.sessionId||observed.sessionId===fresh.previous.sessionId
+    ||observed.launchId!==launch.launchId||observed.paneId!==launch.paneId||observed.agentId!==launch.agentId||observed.instance!==launch.instance
+    ||fresh.sessionId!==undefined&&fresh.sessionId!==observed.sessionId)throw Error("Fresh Codex observed identity differs");
+  const next={...manifest,fresh:{...fresh,sessionId:observed.sessionId}};this.save(file,next);
+  this.options.store.pinFreshCodexSession(launch.agentId,fresh.previous,observed);return next;
+ }
+ private recordExit(file:string,manifest:Manifest,snapshot:RuntimePaneSnapshot):Manifest{
+  let next=manifest;
+  if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
+    &&this.options.store.get(snapshot.agentId).threadId!==snapshot.sessionId)next=this.bindFreshCodex(file,manifest,snapshot);
+  next={...next,exited:snapshot};this.save(file,next);
+  if(this.options.store.get(snapshot.agentId).activeId){
+   if(next.launch.cli==="codex"&&next.fresh&&!snapshot.sessionId)this.options.store.releaseUnpinnedCodexPane(snapshot.agentId,next.fresh.previous,snapshot);
+   else this.options.store.releasePane(snapshot.agentId,snapshot);
+  }
+  return next;
  }
  private async sessionState(endpoint:NativeMachineEndpoint,previous:RuntimePaneSnapshot,supported:boolean):Promise<"absent"|"saved"|"unknown">{
   if(!supported)throw new NativePaneRecoveryError({kind:"host-upgrade",launchId:previous.launchId}); // Use the existing host-upgrade recovery, never a conversation decision.
@@ -93,7 +120,7 @@ export class NativePaneManager {
   const directory=this.directory(id),file=join(directory,"active.json");let manifest=this.load(file);
   if(manifest&&(manifest.launch.agentId!==id||manifest.launch.instance!==name||manifest.machineId!==(agent.machineId??"local")))throw Error("Native launch manifest scope differs");
   if(this.bindings.has(id))throw Error("Native pane still has a coordinator owner");
-  const missingSession=()=>new NativePaneRecoveryError({kind:"session-unconfirmed",launchId:manifest!.launch.launchId,sessionId:agent.threadId});
+  const missingSession=()=>new NativePaneRecoveryError({kind:"session-unconfirmed",launchId:manifest!.launch.launchId,sessionId:agent.threadId,...(agent.cli==="codex"?{provider:"codex" as const}:{})});
   const endpoint=await this.options.endpoint(agent);
   assertCurrent();this.options.admit(name,config);
   if(endpoint.machineId!==(agent.machineId??"local"))throw Error("Native endpoint machine scope differs");
@@ -119,7 +146,11 @@ export class NativePaneManager {
    const ended=matches[0],old=manifest.launch;
    if(ended?.state==="exited"){
     const session=agent.threadId??old.sessionId??ended.sessionId??(old.cli==="claude-code"?old.launchId:undefined);
-    if(ended.agentId!==id||ended.instance!==name||ended.launchId!==old.launchId||session!==undefined&&ended.sessionId!==session)throw Error("Native retained exit scope differs");
+    if(manifest.fresh&&agent.cli==="codex"&&ended.sessionId&&ended.sessionId!==manifest.fresh.previous.sessionId){
+     manifest=this.bindFreshCodex(file,manifest,ended);agent=this.options.store.get(id);
+    }
+    const pendingCodex=agent.cli==="codex"&&manifest.fresh&&!manifest.fresh.sessionId&&agent.threadId===manifest.fresh.previous.sessionId&&!ended.sessionId;
+    if(ended.agentId!==id||ended.instance!==name||ended.launchId!==old.launchId||session!==undefined&&ended.sessionId!==session&&!pendingCodex&&agent.threadId!==ended.sessionId)throw Error("Native retained exit scope differs");
     // The host reconciles exact helper exits before listing. Persist its positive evidence before releasing the slot.
     manifest={...manifest,exited:ended};this.save(file,manifest);
    } else if (!ended || ended.state === "unknown" || ended.hostBootId !== hostBootId) {
@@ -128,6 +159,10 @@ export class NativePaneManager {
   }
   if(manifest?.exited){
    if(!manifest.exited.noLaunch&&!manifest.exited.sessionId){
+    if(agent.cli==="codex"&&manifest.fresh){
+     if(agent.activeId)this.options.store.releaseUnpinnedCodexPane(id,manifest.fresh.previous,manifest.exited);
+     throw missingSession();
+    }
     throw new NativePaneRecoveryError({kind:"exit-unconfirmed",launchId:manifest.launch.launchId,hostBootId:manifest.exited.hostBootId});
    }
    if(!manifest.exited.noLaunch&&manifest.exited.sessionId&&!agent.threadId&&agent.activeId){
@@ -135,10 +170,10 @@ export class NativePaneManager {
    }
    if(!manifest.exited.noLaunch&&!agent.threadId)throw new NativePaneRecoveryError({kind:"exit-unconfirmed",launchId:manifest.launch.launchId,hostBootId:manifest.exited.hostBootId});
    if(agent.activeId){this.options.store.releasePane(id,manifest.exited);agent=this.options.store.get(id);}
-   if(agent.cli==="claude-code"&&!manifest.exited.noLaunch){
+   if(!manifest.exited.noLaunch){
     const epoch=endpoint.epoch(),before=runtimeJobDigest(agent);
     // RPC failures stay retryable; only a reachable result can hold the session. Older hosts use the upgrade hold.
-    const state=await this.sessionState(endpoint,manifest.exited,(inventory as any).capabilities?.claudeSessionProof===true);
+    const state=await this.sessionState(endpoint,manifest.exited,(inventory as any).capabilities?.[agent.cli==="codex"?"codexSessionProof":"claudeSessionProof"]===true);
     assertCurrent();this.options.admit(name,config);
     if(!endpoint.online()||endpoint.epoch()!==epoch||runtimeJobDigest(this.options.store.get(id))!==before)throw Error("Native profile or transport changed during session proof");
     if(state==="absent"&&!manifest.fresh){manifest=this.freshIntent(file,manifest,true,config,agent);preparedFresh=true;}
@@ -151,7 +186,7 @@ export class NativePaneManager {
    const current=this.newManifest(name,config,agent,manifest.machineId,false,manifest.launch);
    const refreshed={...manifest,configuration:current.configuration,launch:current.launch};
    if(runtimeJobDigest(refreshed)!==runtimeJobDigest(manifest))this.save(file,refreshed);
-   manifest=refreshed;this.options.store.replacePaneSession(id,manifest.fresh!.previous,manifest.launch.launchId!);agent=this.options.store.get(id);
+   manifest=refreshed;if(agent.cli==="claude-code")this.options.store.replacePaneSession(id,manifest.fresh!.previous,manifest.launch.launchId!);agent=this.options.store.get(id);
   }
   // Hot identity metadata and bundled instruction-template edits do not retire a live pane on coordinator update.
   const configurationHash=this.configurationHash(agent,config);
@@ -180,18 +215,21 @@ export class NativePaneManager {
    invoke:(input,proof)=>{if(!owned()||!proof())throw Error("Native daemon is not published");return this.options.invoke(daemon!,input,()=>owned()&&proof(),name);},
    responseWritten:operationId=>daemon?.paneToolResponseWritten(operationId,owned),
   });
-  const native=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),
-   admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>this.options.store.pinPaneSession(id,launchId,sessionId),
-   exited:snapshot=>{this.save(file,{...retained,exited:snapshot});this.options.store.releasePane(id,snapshot);},mcpProof:()=>lease.serving()?"alive":"unknown",
+  const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),...(launch.cli==="codex"&&retained.fresh?{freshPrevious:retained.fresh.previous}:{}),
+   admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>{
+    if(launch.cli==="codex"&&retained.fresh){const observed=native.port.ownedSnapshot();if(!observed||observed.launchId!==launchId||observed.sessionId!==sessionId)throw Error("Fresh Codex observation differs");retained=this.bindFreshCodex(file,retained,observed);}
+    else this.options.store.pinPaneSession(id,launchId,sessionId);
+   },
+   exited:snapshot=>{retained=this.recordExit(file,retained,snapshot);},mcpProof:()=>lease.serving()?"alive":"unknown",
    bindDaemon:value=>binding.bind(value),acquired:async()=>{
     this.options.store.setPaneRecovery(id,undefined);
-    if(retained.fresh&&!retained.fresh.announced){retained={...retained,fresh:{...retained.fresh,announced:true}};this.save(file,retained);if(retained.fresh!.automatic)await this.options.freshNotice?.(name);}
+    if(retained.fresh&&!retained.fresh.announced){retained={...retained,fresh:{...retained.fresh,announced:true}};this.save(file,retained);if(retained.fresh!.automatic)await this.options.freshNotice?.(name,launch.cli);}
    },
    releaseAuthority:()=>{closed=true;lease.close();if(this.bindings.get(id)===binding)this.bindings.delete(id);},
   });
   const snapshot=native.port.ownedSnapshot();
   if(agent.threadId&&snapshot?.sessionId!==agent.threadId&&launch.sessionId!==agent.threadId
-   &&!(retained.fresh&&launch.launchId===agent.threadId))throw Error("Native profile conversation pin differs from its launch receipt");
+   &&!(retained.fresh&&(launch.cli==="codex"?retained.fresh.previous.sessionId===agent.threadId:launch.launchId===agent.threadId)))throw Error("Native profile conversation pin differs from its launch receipt");
   binding={native,lease,bind:value=>{if(daemon&&daemon!==value)throw Error("Native daemon binding changed");daemon=value;}};this.bindings.set(id,binding);
   return native;
  }
@@ -202,9 +240,10 @@ export class NativePaneManager {
   this.preparing.add(id);try{
    assertCurrent();this.options.admit(name,config);const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
    // A replay consumes its already-committed UUID only after the original decision's proof is rechecked.
-   const replay=!!(manifest?.fresh&&!manifest.exited&&!manifest.fresh.announced&&manifest.fresh.previous.launchId===launchId&&manifest.fresh.previous.sessionId===sessionId);
-   const previous=replay?manifest!.fresh!.previous:manifest?.exited;
-   if(!manifest||!previous||manifest.launch.cli!=="claude-code"||previous.launchId!==launchId||previous.sessionId!==sessionId||agent.threadId!==sessionId
+   const replay=!!(manifest?.fresh&&!manifest.exited&&!manifest.fresh.announced&&(manifest.fresh.decisionLaunchId??manifest.fresh.previous.launchId)===launchId&&manifest.fresh.previous.sessionId===sessionId);
+   const previous=replay?manifest!.fresh!.previous:manifest?.exited?.sessionId?manifest.exited:manifest?.fresh?.previous;
+   const targetLaunchId=replay?(manifest!.fresh!.decisionLaunchId??previous?.launchId):manifest?.exited?.launchId;
+   if(!manifest||!previous||!["claude-code","codex"].includes(manifest.launch.cli)||targetLaunchId!==launchId||previous.sessionId!==sessionId||agent.threadId!==sessionId
     ||agent.activeId||agent.paneLaunchId||agent.fleet_instance!==name||agent.cwd!==config.working_directory||agent.cli!==config.backend||agent.machineId!==config.machine_id
     ||manifest.machineId!==(agent.machineId??"local")||manifest.launch.instance!==name||manifest.launch.agentId!==id
     ||agent.paneRecovery?.kind!=="session-unconfirmed"||agent.paneRecovery.launchId!==launchId||agent.paneRecovery.sessionId!==sessionId)throw Error(t("native_pane.changed"));
@@ -216,21 +255,22 @@ export class NativePaneManager {
    const raw=await endpoint.call({action:"list"});assertCurrent();this.options.admit(name,config);
    if(!endpoint.online()||endpoint.epoch()!==epoch)throw Error("Native fresh-session transport changed");
    if(!raw||typeof raw!=="object"||!Array.isArray((raw as any).panes)||(raw as any).panes.map(validateRuntimePaneSnapshot).some((row:RuntimePaneSnapshot)=>row.agentId===id&&row.state!=="exited"))throw Error("A native process exit is still unconfirmed");
-   const state=await this.sessionState(endpoint,previous,(raw as any).capabilities?.claudeSessionProof===true);
+   const state=await this.sessionState(endpoint,previous,(raw as any).capabilities?.[agent.cli==="codex"?"codexSessionProof":"claudeSessionProof"]===true);
    assertCurrent();this.options.admit(name,config);unopened();
    if(!endpoint.online()||endpoint.epoch()!==epoch)throw Error("Native fresh-session transport changed");
    if(runtimeJobDigest(this.options.store.get(id))!==runtimeJobDigest(agent))throw Error(t("native_pane.changed"));
    if(state==="saved"){
-    if(replay){
+    if(replay||previous!==manifest.exited){
      // The unused intent never opened. Return to its exact positive exit; the original per-launch receipt is untouched.
      const prior=this.newManifest(name,config,agent,manifest.machineId,true,previous);
+     if(agent.cli==="codex"&&manifest.fresh?.previousLaunch)prior.launch=manifest.fresh.previousLaunch;
      this.save(file,{...prior,exited:previous});
     }
     this.options.store.setPaneRecovery(id,undefined);throw Error(t("native_pane.saved_available"));
    }
    const next=replay?{...manifest,...this.newManifest(name,config,agent,manifest.machineId,false,manifest.launch),fresh:manifest.fresh}
     :this.freshIntent(file,manifest,false,config,agent);
-   if(replay)this.save(file,next);this.options.store.replacePaneSession(id,previous,next.launch.launchId!);
+   if(replay)this.save(file,next);if(agent.cli==="claude-code")this.options.store.replacePaneSession(id,previous,next.launch.launchId!);
   }catch(error){if(error instanceof NativePaneRecoveryError){assertCurrent();this.options.store.setPaneRecovery(id,error.recovery);}throw error;}
   finally{this.preparing.delete(id);}
  }
@@ -254,7 +294,7 @@ export class NativePaneManager {
    if(!raw||typeof raw!=="object"||!Array.isArray((raw as any).panes)||(raw as any).capabilities?.recovery!==true)throw new NativePaneRecoveryError({kind:"host-upgrade",launchId});
    const rows=((raw as any).panes as unknown[]).map(validateRuntimePaneSnapshot),pane=rows.find(row=>row.paneId===manifest.launch.paneId);
    if(rows.filter(row=>row.paneId===manifest.launch.paneId).length!==1||!pane||pane.launchId!==launchId||pane.agentId!==id||pane.instance!==name
-    ||pane.sessionId!==pin||rows.some(row=>row.agentId===id&&row.paneId!==pane.paneId&&row.state!=="exited"))throw Error(t("native_pane.scope"));
+    ||(pane.sessionId!==pin&&!(manifest.launch.cli==="codex"&&manifest.fresh&&!manifest.fresh.sessionId&&!pane.sessionId&&manifest.fresh.previous.sessionId===pin))||rows.some(row=>row.agentId===id&&row.paneId!==pane.paneId&&row.state!=="exited"))throw Error(t("native_pane.scope"));
    const ended=validateRuntimePaneSnapshot(await endpoint.call({action:"recover",paneId:pane.paneId,launchId,hostBootId:pane.hostBootId,confirmedStopped:true}));
    assertCurrent();this.options.admit(name,config);
    if(ended.state!=="exited"||ended.paneId!==pane.paneId||ended.launchId!==launchId||ended.agentId!==id||ended.instance!==name||ended.hostBootId!==pane.hostBootId
@@ -264,8 +304,8 @@ export class NativePaneManager {
    assertCurrent();this.options.admit(name,config);
    this.save(file,{...manifest,exited:ended});
    if(!agent.threadId)this.options.store.pinPaneSession(id,launchId,pin);
-   if(!this.bindings.has(id))this.options.store.releasePane(id,ended);
-   this.options.store.setPaneRecovery(id,undefined);
+   if(!this.bindings.has(id))this.recordExit(file,manifest,ended);
+   this.options.store.setPaneRecovery(id,manifest.launch.cli==="codex"&&manifest.fresh&&!ended.sessionId?{kind:"session-unconfirmed",provider:"codex",launchId,sessionId:pin}:undefined);
   } finally {this.preparing.delete(id);}
  }
  /** Close only the retained exact launch. Offline, missing, or unknown exit remains reserved. */
@@ -276,15 +316,15 @@ export class NativePaneManager {
   const bound=this.bindings.get(id);if(bound){await bound.native.release("close");return;}
   if(!manifest){if(agent.activeId)throw Error("Native close intent is unconfirmed");return;}
   if(manifest.machineId!==(agent.machineId??"local")||manifest.launch.instance!==name||manifest.launch.agentId!==id)throw Error("Native close manifest scope differs");
-  if(manifest.exited){if(agent.activeId)this.options.store.releasePane(id,manifest.exited);return;}
+  if(manifest.exited){if(agent.activeId)this.recordExit(file,manifest,manifest.exited);return;}
   const receiptFile=join(directory,`${manifest.launch.launchId}.pane.json`);
   // No open intent or reservation was ever committed: this prepared factory cannot have started a process.
   try{lstatSync(receiptFile);}catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;if(!agent.activeId)return;throw Error("Native open intent is missing; its process outcome is unknown");}
   const endpoint=await this.options.endpoint(agent,true);assertCurrent();
   if(endpoint.machineId!==manifest.machineId)throw Error("Native close endpoint differs");
-  const native=new RuntimeNativePaneLifecycle({endpoint,launch:manifest.launch,receiptFile,
+  const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch:manifest.launch,receiptFile,
    admit:assertCurrent,reserve:()=>{throw Error("Close never reserves a new launch");},pin:()=>{},mcpProof:()=>"unknown",releaseAuthority:()=>{},
-   exited:snapshot=>{this.save(file,{...manifest,exited:snapshot});this.options.store.releasePane(id,snapshot);},
+   exited:snapshot=>{this.recordExit(file,manifest,snapshot);},
   });
   await native.release("close");
  }

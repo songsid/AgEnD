@@ -1337,8 +1337,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
-      freshNotice: async name => {
-        const message=t("native_pane.fresh_started");
+      freshNotice: async (name,provider) => {
+        const message=t(provider === "codex" ? "native_pane.codex_fresh_started" : "native_pane.fresh_started");
         this.eventLog?.insert(name,"native_pane_fresh_started",{});this.logger.info({name},message);
         await this.notifyInstanceTopic(name,message);
       },
