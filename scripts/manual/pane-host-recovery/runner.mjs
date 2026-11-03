@@ -18,7 +18,8 @@ const versionText = (await promisify(execFile)(executable.command, [...executabl
 })).stdout;
 const version = /\b\d+\.\d+\.\d+\b/.exec(versionText)?.[0]; assert(version);
 const directory = join(root, 'profile'), store = new RuntimeClientStore(directory), abort = new AbortController();
-let client, credentials, closing = false;
+let client, credentials, closing = false, step = 'pair';
+const progress = value => { step = value; send({ kind: 'progress', step }); };
 const descriptors = new Map();
 const remember = () => {
   if (!credentials) return null;
@@ -66,20 +67,20 @@ try {
         const alive = [...descriptors.values()].filter(pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } }).length;
         send({ kind: 'state', descriptorPresent: !!descriptor, hostsAlive: alive });
       } else if (command.action === 'exit-offline') {
-        const descriptor = remember(); assert(descriptor); await client.stop();
+        progress('offline-stop'); const descriptor = remember(); assert(descriptor); await client.stop(); progress('offline-attach');
         const link = await RuntimePaneLink.attach(descriptor, { online: () => true, maxAgents: () => 4 });
         try {
-          const inventory = await link.request({ action: 'list' });
+          progress('offline-list'); const inventory = await link.request({ action: 'list' });
           for (const pane of inventory.panes) if (pane.state !== 'exited') {
             assert(pane.instance.startsWith('recovery-') && pane.hostBootId === descriptor.hostBootId);
-            const result = await link.request({ action: 'close', paneId: pane.paneId, launchId: pane.launchId, operationId: crypto.randomUUID(), sequence: pane.commandSequence + 1 });
+            progress('offline-close'); const result = await link.request({ action: 'close', paneId: pane.paneId, launchId: pane.launchId, operationId: crypto.randomUUID(), sequence: pane.commandSequence + 1 });
             assert(result.state === 'exited');
           }
         } finally { await link.stop(); }
-        await start(); send({ kind: 'offline-exit' });
+        progress('offline-restart'); await start(); progress('offline-done'); send({ kind: 'offline-exit' });
       } else if (command.action === 'close') await close();
       else throw Error('Unknown scratch control');
-    }).catch(async () => { send({ kind: 'failed' }); process.exitCode = 1; try { await close(); } catch { process.stdin.destroy(); lines.close(); } });
+    }).catch(async () => { send({ kind: 'failed', step }); process.exitCode = 1; try { await close(); } catch { process.stdin.destroy(); lines.close(); } });
   });
   lines.once('close', () => { if (!closing) void close().catch(() => { process.exitCode = 1; }); });
-} catch { send({ kind: 'failed' }); process.exitCode = 1; try { await close(); } catch { process.stdin.destroy(); lines.close(); } }
+} catch { send({ kind: 'failed', step }); process.exitCode = 1; try { await close(); } catch { process.stdin.destroy(); lines.close(); } }

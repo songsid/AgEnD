@@ -134,7 +134,7 @@ try {
   await hub.shutdownPaneHosts(); await control('close', 'closed'); await until(() => closed, 'runner exit');
   receipt.passed = true;
 } catch (error) {
-  receipt.phase = phase; receipt.failureClass = error?.name;
+  receipt.phase = phase; receipt.runnerStep = messages.filter(row => row.kind === 'progress' || row.kind === 'failed').at(-1)?.step; receipt.failureClass = error?.name;
   receipt.failureAt = [...String(error?.stack).matchAll(/acceptance\.mjs:(\d+):(\d+)/g)].map(match => `${match[1]}:${match[2]}`);
 }
 finally {
