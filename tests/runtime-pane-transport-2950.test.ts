@@ -65,6 +65,15 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const cursor = (sessionId: string) => ({ sessionId, offset: 0, fileId: null, anchor: PANE_TRANSCRIPT_EMPTY_ANCHOR });
+it("explicit remote switch-off refuses live work, then shuts an empty host and allows a new host on switch-on", async () => {
+  const f = await fixture(), first = await f.hub().callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: f.launch() }) as RuntimePaneSnapshot;
+  await expect(f.hub().shutdownPaneHosts()).rejects.toThrow("shutdown");
+  expect(f.processes[0].kill).not.toHaveBeenCalled(); expect(f.processes[0].write).not.toHaveBeenCalled();
+  await f.hub().callPane(f.machineId, { action: "close", paneId: first.paneId, launchId: first.launchId, sequence: 1, operationId: randomUUID() });
+  await f.hub().shutdownPaneHosts();
+  const next = await f.hub().callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: f.launch() }) as RuntimePaneSnapshot;
+  expect(next.state).toBe("running"); expect(next.launchId).not.toBe(first.launchId); expect(f.processes).toHaveLength(2);
+});
 it("binds only a unique owned status id, reads its exact native transcript, and keeps paths out of the wire", async () => {
   const f = await fixture(), sessionId = randomUUID(), pane = await f.hub().callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: f.launch() }) as RuntimePaneSnapshot;
   const target = { paneId: pane.paneId, launchId: pane.launchId };

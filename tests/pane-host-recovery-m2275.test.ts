@@ -51,6 +51,13 @@ it("missing host disposition fails closed, even if the local receipt looks fresh
   await expect(new RuntimePanePort(f.endpoint, join(f.root, "receipt.json"), config).open()).rejects.toThrow("disposition");
   expect(f.processes[0].write).not.toHaveBeenCalled();
 });
+it("a retained coordinator snapshot cannot be presented as a fresh host launch", async () => {
+  const f = fixture(), config = launch(), file = join(f.root, "receipt.json");
+  await new RuntimePanePort(f.endpoint, file, config).open(); const call = f.endpoint.call;
+  f.endpoint.call = async request => { const value = await call(request); return request.action === "open" ? { ...value as object, reattached: false } : value; };
+  await expect(new RuntimePanePort(f.endpoint, file, config).open()).rejects.toThrow("not reattached");
+  expect(f.spawn).toHaveBeenCalledOnce(); expect(f.processes[0].write).not.toHaveBeenCalled();
+});
 it("a durable no-launch receipt survives a lost ACK and capacity changes without ever launching its old identity", async () => {
   const f = fixture(1), admitted = await f.open(), config = launch(), operationId = randomUUID();
   const refused = await f.open(config, operationId);

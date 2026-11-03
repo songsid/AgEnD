@@ -10,7 +10,7 @@ import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-pr
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
-import { validateRuntimePaneRequest } from "./runtime-pane-protocol.js";
+import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
 import type { RuntimePaneLink } from "./runtime-pane-link.js";
 import type { RuntimePaneHost } from "./runtime-pane-host.js";
@@ -218,7 +218,12 @@ export class RuntimeClient {
       const epoch = this.paneEpoch;
       try {
         const result = await (await this.panes()).request(request, () => epoch === this.paneEpoch && this.online());
+        if(request.action==="shutdown")validateRuntimePaneShutdown(result,request.hostBootId);
         this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
+        if(request.action==="shutdown"){
+          // Explicit coordinator disable, not a disconnect: the next enabled request discovers a new host boot.
+          const old=this.paneHost;this.paneHost=null;this.paneOpening=null;await old?.stop();
+        }
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
       return;
     }

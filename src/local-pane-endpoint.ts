@@ -4,7 +4,7 @@ import type { ChildProcess } from "node:child_process";
 import type { NativeMachineEndpoint } from "./native-pane-manager.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 import { PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT,type PaneStdioInput } from "./runtime-pane-stdio-protocol.js";
-import type { RuntimePaneRequest } from "./runtime-pane-protocol.js";
+import { validateRuntimePaneShutdown, type RuntimePaneRequest } from "./runtime-pane-protocol.js";
 import type { PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 interface Pending {resolve(value:unknown):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}
 export interface LocalPaneOptions {
@@ -14,6 +14,7 @@ export interface LocalPaneOptions {
 export class LocalPaneEndpoint implements NativeMachineEndpoint {
  readonly machineId="local";private readonly attachment=randomUUID();private child:ChildProcess|undefined;private connected=false;private stopped=false;private mcpPending=0;private cleanupOnly=false;private lastLease=0;
  private pending=new Map<string,Pending>();private listeners=new Set<(event:RuntimeCoordinatorEvent)=>void>();private interval:ReturnType<typeof setInterval>|undefined;
+ private hostBootId:string|undefined;
  private constructor(private options:LocalPaneOptions){}
  static async open(options:LocalPaneOptions):Promise<LocalPaneEndpoint>{
   const endpoint=new LocalPaneEndpoint(options);options.admit();const child=await options.launch();endpoint.child=child;
@@ -36,7 +37,7 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
    const lost=()=>{clearTimeout(timer);if(!ready)reject(Error("Local pane relay startup unconfirmed"));this.stop();};child.once("error",lost);child.once("exit",lost);child.stdout?.once("end",lost);child.stdin?.on("error",lost);child.stderr?.resume();
    child.stdout?.on("data",(bytes:Buffer)=>{try{framer.feed(bytes,raw=>{
     const value=paneStdioOutput(raw);if(value.epoch!==this.attachment)throw Error("Local pane relay epoch differs");
-    if(!ready){if(value.type!=="hello")throw Error("Local pane relay not ready");ready=true;clearTimeout(timer);this.connected=true;this.lastLease=performance.now();this.lease();this.interval=setInterval(()=>this.lease(),5000);this.interval.unref();resolve();return;}
+    if(!ready){if(value.type!=="hello")throw Error("Local pane relay not ready");this.hostBootId=value.hostBootId;ready=true;clearTimeout(timer);this.connected=true;this.lastLease=performance.now();this.lease();this.interval=setInterval(()=>this.lease(),5000);this.interval.unref();resolve();return;}
     if(value.type==="hello")throw Error("Duplicate local pane hello");
     if(value.type==="output"){for(const listener of this.listeners)listener({type:"pane",machineId:"local",pane:value.snapshot});return;}
     if(value.type==="response"){const row=this.pending.get(value.id);if(!row)return;this.pending.delete(value.id);clearTimeout(row.timer);if(value.ok)row.resolve(value.result);else row.reject(Error("Local pane operation unconfirmed; inspect its owned receipt"));return;}
@@ -49,9 +50,14 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
  }
  private lease():void{if(this.stopped)return;if(!this.online()){this.stop();return;}this.lastLease=performance.now();try{this.send({type:"lease",epoch:this.attachment,online:this.online(),maxAgents:this.options.maxAgents()});}catch{this.stop();}}
  call(request:RuntimePaneRequest):Promise<unknown>{
-  if(this.cleanupOnly&&request.action!=="snapshot"&&request.action!=="close")return Promise.reject(Error("Local pane relay only permits owned cleanup"));
+  if(this.cleanupOnly&&!["snapshot","close","list","shutdown"].includes(request.action))return Promise.reject(Error("Local pane relay only permits owned cleanup"));
   if(!this.online()||this.pending.size>=64)return Promise.reject(Error("Local pane relay unavailable or busy"));
   return new Promise((resolve,reject)=>{const id=randomUUID(),timer=setTimeout(()=>{this.pending.delete(id);reject(Error("Local pane result unconfirmed; input was not replayed"));},125_000);timer.unref();this.pending.set(id,{resolve,reject,timer});try{this.send({type:"request",epoch:this.attachment,id,request});}catch(error){clearTimeout(timer);this.pending.delete(id);reject(error);}});
+ }
+ /** Explicit switch-off only. The host independently refuses while any launch or outcome remains unconfirmed. */
+ async shutdownHost():Promise<void>{
+  if(!this.cleanupOnly||!this.hostBootId)throw Error("Local pane host shutdown lacks a cleanup owner");
+  validateRuntimePaneShutdown(await this.call({action:"shutdown",hostBootId:this.hostBootId}),this.hostBootId);
  }
  /** Only close stdio; never signal a Windows process or close a terminal here. */
  stop():void{if(this.stopped)return;this.stopped=true;this.connected=false;clearInterval(this.interval);this.child?.stdin?.end();this.child?.stdout?.destroy();this.child?.stderr?.destroy();for(const row of this.pending.values()){clearTimeout(row.timer);row.reject(Error("Local pane relay detached; process state is retained"));}this.pending.clear();for(const listener of this.listeners)listener({type:"machine",machineId:"local"});this.listeners.clear();}

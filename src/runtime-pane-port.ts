@@ -69,6 +69,7 @@ export class RuntimePanePort implements Pane {
       if (this.closing || this.record.pendingClose) throw Error("Pane close outcome is retained; inspect its exit before starting again");
       this.save(); // The open identity exists before the runtime may spawn.
       const { reattached, ...raw } = validateRuntimePaneOpenResult(await this.endpoint.call({ action: "open", operationId: this.record.openId, launch: this.record.launch }));
+      if (this.record.snapshot && !reattached) throw Error("Retained pane was not reattached by its host");
       const snapshot = this.accept(raw);
       this.record.snapshot = snapshot; this.save();
       // Exit/no-launch proof settles even an interrupted input or close. It is never permission to replay either.

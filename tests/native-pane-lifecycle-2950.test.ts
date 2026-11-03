@@ -19,6 +19,17 @@ it('coordinator reconnect reattaches a busy pinned pane without typing, respawni
  const f=await fixture(),first=f.make();await first.acquire(()=>{});await first.release('detach');f.output('\x1b[2J\x1b[HWorking on the existing task...\r\n');
  const next=f.make(),acquisition=await next.acquire(()=>{});expect(acquisition.disposition).toBe('reattached');expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);expect(f.process.kill).not.toHaveBeenCalled();await expect(first.release('close')).rejects.toThrow('detached');expect(f.process.kill).not.toHaveBeenCalled();await next.release('detach');
 });
+it.each([true,false])('lost initial open ACK uses host reattach proof and never types startup keys (pinned=%s)',async pinned=>{
+ const f=await fixture('codex',pinned?randomUUID():undefined),call=f.options.endpoint.call,first=f.make();
+ f.options.endpoint.call=async request=>{const result=await call(request);if(request.action==='open')throw Error('open ACK lost');return result;};
+ await expect(first.acquire(()=>{})).rejects.toThrow('ACK lost');await first.release('detach');
+ f.options.endpoint.call=call;
+ f.output(pinned?'\x1b[2J\x1b[HWorking on the existing task...\r\n':'\x1b[2J\x1b[H› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n');
+ const next=f.make();
+ if(pinned)expect((await next.acquire(()=>{})).disposition).toBe('reattached');
+ else await expect(next.acquire(()=>{})).rejects.toThrow('no startup input');
+ expect(f.write).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();await next.release('detach');
+});
 it('a resumed pane that displays another id is held without any model prompt or fresh fallback',async()=>{
  const f=await fixture('codex',randomUUID()),native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('different conversation');expect(f.options.pin).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);await native.release('detach');expect(f.process.kill).not.toHaveBeenCalled();
 });
