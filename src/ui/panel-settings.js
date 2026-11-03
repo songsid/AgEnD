@@ -1206,12 +1206,7 @@ function General({ ctx, part = "all" }) {
       <section class="card"><h3>${tn("accessTitle")}</h3>
         <p class="note">${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</p></section>
     </${Drawer}>` : null}
-  </div>
-    ${fleetPart ? html`<nav class="s-defaults-index" aria-label=${layoutText("pageContents")}><h3>${layoutText("pageContents")}</h3>
-      <a href="#g-be">${tn("uiDefaultsModelsTitle")}</a><a href="#g-auto">${tn("uiDefaultsWorkTitle")}</a>
-      <a href="#g-vis">${tn("uiDefaultsCollaborationTitle")}</a><a href="#g-dash">${layoutText("defaultsAccessWorkspace")}</a>
-    </nav>` : null}
-  </div>`;
+  </div></div>`;
 }
 
 /**

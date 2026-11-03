@@ -3235,7 +3235,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings [data-section="agent-defaults"] .s-general > .drawer { padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .p-settings [data-section="agent-defaults"] .s-general > .drawer > summary { padding: 16px 20px; font-weight: var(--fw-semibold); }
 .p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body { display: flex; flex-direction: column; padding: 0 20px 20px; gap: 20px; }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer .card { padding: 16px 0 0; margin: 0; border-radius: 0; border-top: 1px solid var(--border); background: transparent; }
+.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body > .card { padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body > .card + .card { padding-top: 20px; border-top: 1px solid var(--border); }
 .p-settings .s-classic-defaults-card { margin: 0; }
 @container settings-page (min-width: 620px) {
   .p-settings .s-agent-runtime { grid-column: 1; }
@@ -3531,7 +3532,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-app-icon-help > summary { cursor: pointer; }
 .p-settings .s-app-icon-help[open] > summary { margin-bottom: 8px; }
 
-/* Defaults use the proposal's main form and existing-anchor contents rail. */
+/* Defaults share the content width, with collaboration controls in a single column. */
 .p-settings .s-defaults-layout { width: 100%; margin: 0 auto; min-width: 0; }
 .p-settings .s-defaults-layout > .s-general { gap: 16px; }
 .p-settings .s-defaults-layout > .s-general > .card { gap: 12px; padding: 20px; }
@@ -3539,8 +3540,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-defaults-model .grid2 > .field:first-child { grid-column: 1; grid-row: 1; }
 .p-settings .s-defaults-model .grid2 > .field:nth-child(2) { grid-column: 2; grid-row: 1 / span 2; }
 .p-settings .s-defaults-model .grid2 > .field:nth-child(3) { grid-column: 1; grid-row: 2; }
-.p-settings .s-defaults-index { display: none; }
-.p-settings .s-defaults-collaboration .grid2 { grid-template-columns: minmax(0, 1fr); }
+.p-settings .s-defaults-layout .s-defaults-collaboration > .grid2 { grid-template-columns: minmax(0, 1fr); }
 .p-settings .s-defaults-collaboration .grid2 > .field { grid-column: 1; }
 .p-settings .s-defaults-collaboration .grid2 > .field:first-child { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 6px 16px; align-items: center; }
 .p-settings .s-defaults-collaboration .grid2 > .field:first-child > .note { grid-column: 2; }
@@ -3566,12 +3566,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-chat-classic .s-list-toolbar { margin-bottom: 10px; }
 @container settings-page (min-width: 1040px) {
   .p-settings .s-look-basics { grid-template-columns: minmax(0, 1fr) 280px; }
-  .p-settings .s-defaults-layout { display: grid; grid-template-columns: minmax(0, 1fr) 156px; gap: 24px; align-items: start; }
-  .p-settings .s-defaults-layout > .s-general { max-width: none; margin: 0; }
-  .p-settings .s-defaults-index { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; padding: 0 0 0 18px; border-left: 1px solid var(--border); font-size: var(--fs-sm); }
-  .p-settings .s-defaults-index > h3 { margin: 0 0 2px; font-size: var(--fs-sm); color: var(--text-2); }
-  .p-settings .s-defaults-index > a { color: var(--text-3); text-decoration: none; line-height: 1.5; }
-  .p-settings .s-defaults-index > a:hover, .p-settings .s-defaults-index > a:focus-visible { color: var(--accent); }
 }
 @container settings-page (max-width: 600px) {
   .p-settings .s-pref-profile-fields > .s-pref-profile-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }

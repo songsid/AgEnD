@@ -111,7 +111,7 @@ describe("#2347: every card where it belongs", () => {
   it.each([
     ["preferences", ["#profile-name", "#pref-lang", "#pref-names", "#tourBtn", ".s-synced"], ["#pref-theme", "#fx-follow-reduced-motion", "#css-off-here", ".s-colors-off", "#g-locale"]],
     ["look", ["#pref-theme", "#fx-follow-reduced-motion", "#css-off-here", ".s-colors-off", ".s-owner-css"], ["#pref-lang", "#pref-names", ".s-app-icon"]],
-    ["agents", [".list-head", ".s-key"], [".s-conn", "#g-locale"]],           // the provider API keys moved here
+    ["agents", [".s-agent-filters", ".s-key"], [".s-conn", "#g-locale"]],     // the provider API keys moved here
     ["agent-defaults", ["#g-locale", "#g-ll"], ["#g-cbe", "#webEchoToChannel"]],
     ["chat", [".s-conn", "#webEchoToChannel", "#classicbot", "#g-cbe"], ["#g-locale", ".s-key", "#webSessionAbsolute"]],
     ["web-dashboard", ["#webLogTab", "#webUsagePublic"], ["#webSessionAbsolute", "#webEchoToChannel"]],
