@@ -52,7 +52,9 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.port = new RuntimePanePort(options.endpoint, options.receiptFile, options.launch, screen => {
       const backend = this.backend;
       if ([...(backend.getStartupDialogs?.() ?? []), ...(backend.getRuntimeDialogs?.() ?? [])].some(dialog => dialog.pattern.test(screen) && (!dialog.isActive || dialog.isActive(screen)))) return false;
-      return backend.readInputRow ? backend.readInputRow(screen) != null : backend.isDeliveryInputReadyPane?.(screen) === true;
+      // The Enter proof mirrors the daemon's gate: the tail-window reader, or complete ownership of a long envelope.
+      return backend.readInputRow ? backend.readInputRow(screen) != null
+        : backend.isDeliveryInputReadyPane?.(screen) === true || backend.ownsComposerRows?.(screen) === true;
     });
     this.transcriptPort = { isTranscriptObservationCurrent: reference => this.current(reference),
       readTranscriptBaseline: (cursor, current) => this.port.readTranscriptBaseline(cursor, () => !this.detached && (current?.() ?? true)),
@@ -121,9 +123,17 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
       await send(() => this.port.sendKeys("/status"), "Native status input is unconfirmed");
       await new Promise(resolve => setTimeout(resolve, 500)); assertCurrent(); this.options.admit();
       await send(async () => {
-        const screen = await observe(performance.now() + 15_000); assertCurrent(); this.options.admit();
-        if (!this.ready(screen) || !/^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) throw Error("Native status composer changed; no Enter was sent");
-        return this.port.sendSpecialKey("Enter", undefined, { kind: "composer", screen });
+        // The typed /status may still be painting: re-read the same pane (typing nothing) until it shows the exact
+        // composer or the bound expires. Only a positively verified screen reaches Enter.
+        const deadline = performance.now() + 15_000;
+        for (;;) {
+          const screen = await observe(deadline); assertCurrent(); this.options.admit();
+          if (this.ready(screen) && /^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) {
+            return this.port.sendSpecialKey("Enter", undefined, { kind: "composer", screen });
+          }
+          if (performance.now() >= deadline) throw Error("Native status composer changed; no Enter was sent");
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
       }, "Native status submission is unconfirmed");
       until = performance.now() + 15_000;
       while (true) {

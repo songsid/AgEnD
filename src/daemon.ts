@@ -9757,7 +9757,7 @@ export class Daemon extends EventEmitter {
       if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
       if (backend?.readInputRow) composer = backend.readInputRow(pane) != null;
       else if (backend?.inputDraft) composer = backend.inputDraft(pane) != null;
-      else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane);
+      else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane) || backend.ownsComposerRows?.(pane) === true;
       else if (backend?.readSteerComposer?.(pane) != null) composer = true;
       else if (backend) {
         // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
