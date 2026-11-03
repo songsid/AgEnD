@@ -27,14 +27,14 @@ register("settingsContentWidth", {
   en: {
     label: "Settings content width",
     device: "This device · saves immediately",
-    hint: "Sets the maximum content width in Settings. Narrower forms and windows still fit their available space.",
+    hint: "Sets the maximum content width on every Settings page. Narrow windows fit the available space; fields and help columns keep their readable sizes.",
     option: "{0} px",
     defaultOption: "{0} px (default)",
   },
   "zh-TW": {
     label: "設定頁內容寬度",
     device: "此裝置・立即儲存",
-    hint: "只調整設定頁內容的最大寬度；較窄的表單與視窗仍會配合可用空間。",
+    hint: "調整所有設定頁內容的最大寬度；窄視窗會配合可用空間，欄位與輔助欄保留合適尺寸。",
     option: "{0} px",
     defaultOption: "{0} px（預設）",
   },

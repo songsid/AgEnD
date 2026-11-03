@@ -502,8 +502,6 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* Settings share the available management workspace, independently of the chat's reading width.
    Keep fieldsets as real boxes so disabled forms and their confirmation boundaries stay intact. */
 .p-settings > .panel-body > .col { width: 100%; max-width: var(--settings-width); min-width: 0; margin: 0 auto; container: settings-page / inline-size; }
-.p-settings > .panel-body > .col[data-settings-section="preferences"] { max-width: min(var(--settings-width), 920px); }
-.p-settings > .panel-body > .col[data-settings-section="agent-defaults"] { max-width: min(var(--settings-width), 960px); }
 .s-page-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 0 0 24px; }
 .s-page-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .s-page-head h2 { margin: 0; color: var(--text); font-size: 24px; font-weight: var(--fw-semibold); line-height: 1.35; letter-spacing: -0.02em; }
@@ -3024,7 +3022,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Access, dashboard and the configuration editor: presentation only, existing controls stay mounted. */
 .p-settings .s-web.s-part-access { display: flex; flex-direction: column; gap: var(--s-4); }
 .p-settings .s-web.s-part-access > .s-tab-panel { min-width: 0; }
-.p-settings .s-access-stack { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-5); max-width: 920px; }
+.p-settings .s-access-stack { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-5); }
 .p-settings .s-access-stack > .s-web-fields, .p-settings .s-access-stack > .card { margin: 0; }
 .p-settings .s-web.s-part-access .s-web-fields { display: block; min-width: 0; }
 .p-settings .s-web.s-part-access .s-web-fields > .card { margin: 0; }
@@ -3083,7 +3081,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Settings UX: preferences. */
 /* Preferences: a readable form, keeping immediate profile writes apart from staged preferences. */
 .p-settings .s-section-layout[data-section="preferences"], .p-settings .s-section-layout[data-section="look"] { display: block; }
-.p-settings .s-pref-stack { display: grid; gap: 24px; width: 100%; max-width: 880px; margin-inline: auto; min-width: 0; }
+.p-settings .s-pref-stack { display: grid; gap: 24px; width: 100%; margin-inline: auto; min-width: 0; }
 .p-settings .s-pref-stack > .card { margin: 0; padding: 24px; gap: 18px; }
 .p-settings .s-pref-stack h3 { font-size: var(--fs-lg); line-height: var(--lh-lg); letter-spacing: 0; text-transform: none; color: var(--text); }
 .p-settings .s-pref-group-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
@@ -3164,7 +3162,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-settings .s-look-preview { display: flex; }
   .p-settings .s-look-identity-controls { grid-template-columns: minmax(0, 1fr) 180px; }
   .p-settings .s-look-main .s-colors-sample { display: none; }
-  .p-settings .s-look-public { grid-template-columns: minmax(0, 880px); }
 }
 @media (max-width: 600px) {
   .p-settings .s-pref-stack { gap: 18px; }
@@ -3227,7 +3224,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-provider-keys { margin: 0; }
 .p-settings .s-provider-keys .s-key { padding: 16px 0; border-bottom: 1px solid var(--border); }
 .p-settings .s-provider-keys .s-key:last-child { padding-bottom: 0; border-bottom: 0; }
-.p-settings [data-section="agent-defaults"] .s-general { width: 100%; max-width: 880px; margin: 0 auto; }
+.p-settings [data-section="agent-defaults"] .s-general { width: 100%; margin: 0 auto; }
 .p-settings [data-section="agent-defaults"] .s-general > .card { margin: 0; }
 .p-settings :is([data-section="agent-defaults"], [data-section="chat"]) .s-general .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .p-settings .s-defaults-collaboration .grid2 > .field:first-child { grid-column: 1 / -1; }
@@ -3239,7 +3236,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings [data-section="agent-defaults"] .s-general > .drawer > summary { padding: 16px 20px; font-weight: var(--fw-semibold); }
 .p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body { display: flex; flex-direction: column; padding: 0 20px 20px; gap: 20px; }
 .p-settings [data-section="agent-defaults"] .s-general > .drawer .card { padding: 16px 0 0; margin: 0; border-radius: 0; border-top: 1px solid var(--border); background: transparent; }
-.p-settings .s-classic-defaults-card { max-width: 880px; margin: 0; }
+.p-settings .s-classic-defaults-card { margin: 0; }
 @container settings-page (min-width: 620px) {
   .p-settings .s-agent-runtime { grid-column: 1; }
   .p-settings .s-agent-cli { grid-column: 2; }
@@ -3535,9 +3532,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-app-icon-help[open] > summary { margin-bottom: 8px; }
 
 /* Defaults use the proposal's main form and existing-anchor contents rail. */
-.p-settings > .panel-body > .col[data-settings-section="agent-defaults"] { max-width: var(--settings-width); }
-.p-settings .col[data-settings-section="agent-defaults"] > .s-page-head { max-width: 1080px; margin-inline: auto; }
-.p-settings .s-defaults-layout { width: 100%; max-width: 1080px; margin: 0 auto; min-width: 0; }
+.p-settings .s-defaults-layout { width: 100%; margin: 0 auto; min-width: 0; }
 .p-settings .s-defaults-layout > .s-general { gap: 16px; }
 .p-settings .s-defaults-layout > .s-general > .card { gap: 12px; padding: 20px; }
 .p-settings .s-defaults-layout .grid2 { gap: 12px 16px; align-items: start; }
