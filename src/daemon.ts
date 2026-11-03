@@ -9565,9 +9565,8 @@ export class Daemon extends EventEmitter {
     }
     return true;
   }
-  /** M-2267: wait while the pane is in a tmux mode, up to PANE_MODE_ENTER_WAIT_MS — "clear", "stale" (fenced), "held". */
-  private async waitWhilePaneInMode(phase: string, current: () => boolean): Promise<"clear" | "stale" | "held"> {
-    const deadline = performance.now() + PANE_MODE_ENTER_WAIT_MS;
+  /** M-2267: wait while the pane is in a tmux mode, until `deadline` (PANE_MODE_ENTER_WAIT_MS) — "clear", "stale" (fenced), "held". */
+  private async waitWhilePaneInMode(phase: string, current: () => boolean, deadline = performance.now() + PANE_MODE_ENTER_WAIT_MS): Promise<"clear" | "stale" | "held"> {
     for (;;) {
       const inMode = await this.paneInTmuxMode(phase);
       if (!current()) return "stale";
@@ -9603,37 +9602,46 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ phase }, "Delivery input is not a verified composer; Enter withheld");
       return false;
     };
-    let pane: string;
-    try { pane = await tmux!.capturePane(); }
-    catch { return current() ? hold() : false; }
-    if (!current()) return false;
-    let composer = false;
-    try {
-      if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
-      if (backend?.readInputRow) composer = backend.readInputRow(pane) != null;
-      else if (backend?.inputDraft) composer = backend.inputDraft(pane) != null;
-      else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane);
-      else if (backend?.readSteerComposer?.(pane) != null) composer = true;
-      else if (backend) {
-        // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
-        const shape = unrecognisedPromptShape(pane);
-        const ownComposer = backend.isDeliveryComposerPane?.(pane) === true;
-        if ((!selectionCard(pane, "CLI") || ownComposer) && (!shape || ownComposer || this.cliComposerShowing(pane, shape))) {
-          const bottom = backend.getBottomReadyPattern?.();
-          const ready = backend.getReadyPattern();
-          ready.lastIndex = 0;
-          composer = ownComposer || (bottom ? bottomRowIsReady(pane, bottom)
-            : ready.test(pane.trimEnd().split("\n").slice(-COMPOSER_TAIL_ROWS).join("\n")));
+    // M-2267 (#2971 review, Prism P2): a pane in a tmux mode would take this Enter. Wait for the mode to end FIRST, then
+    // prove the composer (and that no dialog took its place) on a capture taken after it — and again whenever the pane
+    // went back into a mode meanwhile: the Enter only ever goes on a proof newer than the last mode. Never ended for the
+    // person, never answering a dialog that appeared during the wait (hold() then, as for any).
+    const modeDeadline = performance.now() + PANE_MODE_ENTER_WAIT_MS;
+    for (;;) {
+      const mode = await this.waitWhilePaneInMode(phase, current, modeDeadline);
+      if (mode === "stale") return false;
+      if (mode === "held") return hold();
+      let pane: string;
+      try { pane = await tmux!.capturePane(); }
+      catch { return current() ? hold() : false; }
+      if (!current()) return false;
+      let composer = false;
+      try {
+        if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
+        if (backend?.readInputRow) composer = backend.readInputRow(pane) != null;
+        else if (backend?.inputDraft) composer = backend.inputDraft(pane) != null;
+        else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane);
+        else if (backend?.readSteerComposer?.(pane) != null) composer = true;
+        else if (backend) {
+          // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
+          const shape = unrecognisedPromptShape(pane);
+          const ownComposer = backend.isDeliveryComposerPane?.(pane) === true;
+          if ((!selectionCard(pane, "CLI") || ownComposer) && (!shape || ownComposer || this.cliComposerShowing(pane, shape))) {
+            const bottom = backend.getBottomReadyPattern?.();
+            const ready = backend.getReadyPattern();
+            ready.lastIndex = 0;
+            composer = ownComposer || (bottom ? bottomRowIsReady(pane, bottom)
+              : ready.test(pane.trimEnd().split("\n").slice(-COMPOSER_TAIL_ROWS).join("\n")));
+          }
         }
-      }
-    } catch { return hold(); }
-    if (!composer) return hold();
-    if (!current()) return false;
-    // M-2267: a pane in a tmux mode would take this Enter (the text it submits is already in the CLI's box): wait for
-    // the mode to end — the person's, never ended for them — then send; still in it at the bound, the Enter is withheld.
-    const mode = await this.waitWhilePaneInMode(phase, current);
-    if (mode === "stale") return false;
-    if (mode === "held") return hold();
+      } catch { return hold(); }
+      if (!composer) return hold();
+      if (!current()) return false;
+      // The proof stands only if the pane did not go into a mode while it was made: else wait, and prove again.
+      if (await this.paneInTmuxMode(phase)) { if (!current()) return false; continue; }
+      if (!current()) return false;
+      break;
+    }
     // W1: persist the "Enter may have happened" boundary before tmux receives
     // the key. A crash after this commit is never auto-replayed without a
     // positive transcript marker, even if the stale pane still shows composer.
@@ -9808,6 +9816,16 @@ export class Daemon extends EventEmitter {
       // failed/throwing write as uncertain rather than retrying bytes into the
       // same pane; the write-ahead Enter marker later separates safe pre-Enter
       // recovery from a possibly executed command.
+      // M-2267 (#2971 review, Prism P2): EVERY paste attempt — a retry after a failed paste, a first paste whose durable
+      // begin already went — asks too. Before the begin: nothing begun, the caller waits for readiness and tries again.
+      // After it: this attempt waits here, keeping its durable attempt; a mode outlasting the wait fails it unwritten.
+      if (!verdict.durableBeginCommitted) {
+        if (await this.paneInTmuxMode("paste")) return "pane-in-mode";
+      } else {
+        const mode = await this.waitWhilePaneInMode("paste", () => (!stillCurrent || stillCurrent()) && !this.deliveryWritesStopping);
+        if (mode === "stale") { verdict.fenced = false; return false; }
+        if (mode === "held") return this.failDelivery(verdict, status, "paste", "pane-in-tmux-mode");
+      }
       const pasteGeneration = this.spawnGeneration;
       beforePaste?.();
       const pasted = await this.tmux!.pasteBuffer(formatted);
