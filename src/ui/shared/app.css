@@ -1335,6 +1335,21 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 /* #1844 Fleet overview → Docs: the arrow says "opens a new tab". */
 .hd-docs .hd-ext { color: var(--text-3); }
 .v-term { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; background: #000000; position: relative; }
+/* M-2262: the terminal's box — the scrolling terminal, and its scrollback controls over it (they never scroll with it). */
+/* --v-term-rev: the View's mark (panel-view.js VIEW_REV): a tab still on an older stylesheet reads this one again. */
+.v-term-box { --v-term-rev: 2; flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.v-term:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.v-term-earlier, .v-term-latest { position: absolute; right: var(--s-4); z-index: 2; display: inline-flex; align-items: center; gap: 4px; opacity: .88; }
+.v-term-earlier { top: var(--s-2); }
+.v-term-latest { bottom: var(--s-3); opacity: 1; }
+.v-term-logbar { flex-shrink: 0; margin: 0; padding: var(--s-2) var(--s-4); background: #111111; border-bottom: 1px solid #2a2a2a; text-align: right; font-size: var(--fs-sm); }
+.v-term-logbar a { display: inline-flex; align-items: center; gap: 4px; color: #9cc8ff; text-decoration: underline; text-underline-offset: 2px; min-height: 28px; }
+@media (pointer: coarse) { .v-term-logbar a { min-height: 44px; } }
+.v-term-latest.has-new { background: var(--accent-fill); border-color: transparent; color: var(--on-accent); }
+.v-term-earlier:hover, .v-term-earlier:focus-visible { opacity: 1; }
+.v-term-history-note { position: absolute; left: var(--s-3); right: var(--s-3); bottom: var(--s-3); z-index: 2; margin: 0; padding: var(--s-1) var(--s-3); border-radius: var(--r-sm); background: rgba(20, 20, 20, .92); border: 1px solid #3a3a3a; color: #e0e0e0; font-size: var(--fs-sm); }
+@media (max-width: 600px) { .v-term-history-note { left: var(--s-4); right: var(--s-4); } }
+@media (pointer: coarse) { .v-term-earlier, .v-term-latest { min-height: 44px; padding-left: var(--s-3); padding-right: var(--s-3); } }
 .v-pre { margin: 0; min-width: 100%; min-height: 100%; font-family: var(--font-mono); line-height: 1.2; white-space: pre; color: #d0d0d0; }
 .v-pre .ansi[data-b] { font-weight: var(--fw-bold); }
 /* #1582: faint text (SGR 2) — a CLI's suggestion or placeholder, never input — stays faint here. */
@@ -2304,7 +2319,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-fleet > .seg, .p-settings > .seg,
 .p-fleet > .panel-body, .p-needs > .panel-body, .p-notices > .panel-body, .p-settings > .panel-body,
 .p-log > .panel-body, .p-details > .panel-body, .p-view > .panel-body,
-.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-watching { position: relative; z-index: 1; }
+.p-log > .log-bar, .p-view > .v-term-box, .p-view > .v-id, .p-view > .v-watching { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
 .p-settings > .s-pending { z-index: 1; }
 
