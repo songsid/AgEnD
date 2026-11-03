@@ -26,7 +26,7 @@ async function rig(handle:RuntimeCoordinatorOptions['handlePaneMcp']){
  let hostOptions!:RuntimePaneHostOptions;
  const service=await startPaneService({directory:dir(),scope:'a'.repeat(64),createHost:opts=>{hostOptions=opts;return new RuntimePaneHost({...opts,spawn:async()=>fakeProcess()});}});clean.push(()=>service.close());
  const store=new RuntimeClientStore(dir());store.saveCredentials({server:`http://127.0.0.1:${(server.address()as any).port}`,name:'MCP fixture',machineId:claim.machineId,credential:claim.credential});
- const client=new RuntimeClient({store,reconnectMs:10,bridge:{probe:async()=>({home:'C:\\fixture',clis:[]}),prepareWorkspace:async()=>{throw Error('unused');},start:()=>{throw Error('no exec');},get:()=>null,cancel:()=>{throw Error('unused');},close(){},releaseUnknown(){}},
+ const client=new RuntimeClient({store,reconnectMs:10,bridge:{probe:async()=>({home:'C:\\fixture',clis:[],probedAt:Date.now()}),prepareWorkspace:async()=>{throw Error('unused');},start:()=>{throw Error('no exec');},get:()=>null,cancel:()=>{throw Error('unused');},close(){},releaseUnknown(){}},
  openPaneLink:opts=>RuntimePaneLink.attach(service.descriptor,opts)});clean.push(()=>client.stop());await client.start();await vi.waitFor(()=>expect(client.online()).toBe(true));
  const launch={paneId:randomUUID(),agentId:randomUUID(),instance:'pane-agent',cli:'codex'as const,cwd:'C:\\fixture',sandbox:'read-only'as const,columns:80,rows:24};
  const pane=await hub.callPane(claim.machineId,{action:'open',operationId:randomUUID(),launch})as RuntimePaneSnapshot;

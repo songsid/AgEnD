@@ -9,7 +9,7 @@ describe("agent CLI reply context", () => {
     ["send", { instance_name: "worker", message: "hello" }],
     ["broadcast", { targets: ["worker"], message: "hello" }],
     ["send", { instance_name: "worker", message: "stable native identity" }, "12345678-1234-4234-8234-123456789abc"],
-  ])("assigns a durable operation_id for HTTP %s ingress without MCP metadata", async (op, args, trustedOperationId) => {
+  ])("assigns a durable operation_id for HTTP %s ingress without MCP metadata", async (op, args, trustedOperationId?: string) => {
     const admitDurableDelivery = vi.fn(input => ({ deliveryId: "delivery-http", state: "queued", duplicate: false }));
     const ctx = {
       fleetConfig: { defaults: {}, instances: { agy: { tool_set: "worker" }, worker: {} } },

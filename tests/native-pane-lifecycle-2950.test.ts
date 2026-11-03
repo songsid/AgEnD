@@ -5,9 +5,9 @@ const clean:Array<()=>unknown>=[];afterEach(async()=>{for(const f of clean.splic
 async function fixture(cli:'codex'|'claude-code'='codex',expected?:string){
  const root=mkdtempSync(join(tmpdir(),'agend-native-lifecycle-'));clean.push(()=>rmSync(root,{recursive:true,force:true}));const actual=randomUUID(),launch:RuntimePaneLaunch={paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:'native-agent',cli,cwd:'C:\\scratch',sandbox:'read-only',columns:100,rows:30,...(expected?{sessionId:expected}:{})};
  let output:(text:string)=>void=()=>{},exit:(value:{exitCode:number})=>void=()=>{};const idle='› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n';
- const write=vi.fn((text:string)=>{if(text==='\r')output(`\x1b[2J\x1b[HSession: ${actual}\r\n${idle}`);});
+ const write=vi.fn((text:string)=>{if(text==='/status')output('\x1b[2J\x1b[H› /status\r\n\r\n  Context 100% left\r\n');if(text==='\r')output(`\x1b[2J\x1b[HSession: ${actual}\r\n${idle}`);});
  const process={pid:12345,write,resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(fn:typeof output)=>{output=fn;setTimeout(()=>output(cli==='codex'?idle:'Accessing workspace:\r\nC:\\scratch\r\nYes, I trust this folder\r\n❯ No, exit\r\n'),0);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
- const spawn=vi.fn(async()=>process),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,transcript:()=>({read:async cursor=>({state:'pending',cursor,data:'',lines:[],complete:false,gap:false}),close:async()=>{}})});clean.push(()=>host.stop());
+ const spawn=vi.fn(async()=>process),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:'pending' as const,cursor,data:'',lines:[],complete:false,gap:false};},close:async()=>{}})});clean.push(()=>host.stop());
  const options:NativePaneLifecycleOptions={endpoint:{machineId:randomUUID(),online:()=>true,call:request=>host.request(request),subscribe:()=>()=>{}},receiptFile:join(root,'receipt.json'),launch,admit:vi.fn(),reserve:vi.fn(),pin:vi.fn(),exited:vi.fn(),mcpProof:()=> 'unknown',releaseAuthority:vi.fn()};const make=()=>new RuntimeNativePaneLifecycle(options);
  return{root,actual,launch,options,host,spawn,process,write,make,output:(text:string)=>output(text)};
 }
@@ -42,4 +42,15 @@ it('failed pre-admission never reserves a profile or starts a process',async()=>
 });
 it('a profile reservation storage failure precedes every pane side effect',async()=>{
  const f=await fixture(),native=f.make();f.options.reserve=()=>{throw Error('reservation disk full');};await expect(native.acquire(()=>{})).rejects.toThrow('reservation disk full');expect(f.spawn).not.toHaveBeenCalled();expect(f.write).not.toHaveBeenCalled();
+});
+
+it('a startup repaint positively refusing the fixed status input retries only that unsent command',async()=>{
+ const f=await fixture(),call=f.options.endpoint.call;let refused=false;
+ f.options.endpoint.call=async request=>{if(request.action==='input'&&!refused){refused=true;f.output('queued MCP registration output\r\n› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n');}return call(request);};
+ const native=f.make();await native.acquire(()=>{});expect(refused).toBe(true);expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(f.options.pin).toHaveBeenCalledWith(f.launch.launchId,f.actual);
+});
+it('a lost fixed status input response never repeats that command or sends Enter',async()=>{
+ const f=await fixture(),call=f.options.endpoint.call;let lost=false;
+ f.options.endpoint.call=async request=>{const result=await call(request);if(request.action==='input'&&!lost){lost=true;throw Error('lost input ACK');}return result;};
+ const native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('status input');expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status']);expect(f.options.pin).not.toHaveBeenCalled();
 });

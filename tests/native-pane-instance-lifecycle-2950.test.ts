@@ -1,3 +1,4 @@
+import type { NativePaneLifecycle } from "../src/native-pane-lifecycle.js";
 /** Full InstanceLifecycle/Daemon flow with an inert native runner; every local process/window boundary throws. */
 import {afterEach,expect,it,vi} from "vitest";
 import {EventEmitter} from "node:events";
@@ -17,7 +18,7 @@ function fixture(provider:"codex"|"claude-code"="codex"){
  const forbidden=vi.fn(()=>{throw Error("No coordinator process/window operation");}),pane={getWindowId:()=>paneId,getPaneStatus:vi.fn(async()=>({alive:true})),capturePane:vi.fn(async()=>""),capturePaneWithHistory:vi.fn(async()=>""),pipeOutput:vi.fn(async()=>{}),killWindow:forbidden,sendSpecialKey:forbidden};
  const observation=Object.assign(new EventEmitter(),{start:vi.fn(),stop:vi.fn(),registerWindow:vi.fn(async()=>{}),unregisterWindow:vi.fn(),getObservationResetAt:()=>Date.now(),isObservationBlind:()=>false,isIdle:()=>true,getLastOutputAt:()=>undefined,hasOutputSince:()=>false});
  const backend=createNativePaneBackend(provider,()=>({sessionId,contextPercentage:null,statusLineItems:[],resumes:true})),source={initialize:vi.fn(async()=>{}),poll:vi.fn(async()=>({toolUses:[],toolResults:[],assistantTexts:[]})),close:vi.fn(),reset:vi.fn(),currentPath:()=>null,following:()=>true,turnStateKnown:()=>true};
- const native={backend,host:{executionHost:"remote",bind:forbidden,ensureSession:forbidden,getPanePid:forbidden},observation,acquire:vi.fn(async(check:()=>void)=>{check();return{pane,source,disposition:"reattached"};}),release:vi.fn(async()=>{}),checkpointSession:vi.fn(),mcpProof:()=>"unknown",current:()=>true};
+ const native={backend,host:{executionHost:"remote",bind:forbidden,ensureSession:forbidden,getPanePid:forbidden},observation,acquire:vi.fn(async(check:()=>void)=>{check();return{pane,source,disposition:"reattached"};}),release:vi.fn<NativePaneLifecycle["release"]>(async()=>{}),checkpointSession:vi.fn(),mcpProof:()=>"unknown",current:()=>true};
  fleet.nativePaneFor=vi.fn(async(_name:any,_config:any,check:()=>void)=>{check();return native;});vi.spyOn(factory,"createBackend").mockImplementation(()=>{throw Error("Local backend configuration is forbidden");});
  clean.push(async()=>{for(const daemon of fleet.daemons.values())await daemon.abortStartup();for(const channel of fleet.instanceIpcClients.values())await channel.close();});return{fleet,config,native,pane,forbidden,dir,cwd};
 }

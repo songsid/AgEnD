@@ -26,6 +26,7 @@ export class RuntimePanePort implements Pane {
   private outputLog: NativePaneOutputLog | undefined;
   private lastObservation: RuntimePaneSnapshot | undefined;
   private inputCapture: RuntimePaneCapture | undefined;
+  private inputNotSent = false;
   constructor(private endpoint: PaneEndpoint, private file: string, launch: RuntimePaneLaunch, private inputIsComposer: (screen: string) => boolean = () => false) {
     this.record = { version: 1, machineId: endpoint.machineId, launch, openId: randomUUID() };
     try {
@@ -138,6 +139,7 @@ export class RuntimePanePort implements Pane {
   }
   private async mutate(make: (snapshot: RuntimePaneSnapshot, expectedSeq: number) => RuntimePaneRequest, proof?: PaneInputProof, input = true): Promise<boolean> {
     return this.serialize(async () => {
+      this.inputNotSent = false;
       try {
         if (!this.endpoint.online() || this.closing || this.record.snapshot?.state !== "running" || this.record.pending || this.record.pendingClose) throw Error("Pane input needs reconciliation");
         let expectedSeq = this.record.snapshot.seq;
@@ -147,7 +149,7 @@ export class RuntimePanePort implements Pane {
           const capture = proof ? this.inputCapture : await this.captureCurrent();
           if (!capture || !capture.text.trim() || proof && capture.text !== proof.screen
             || (proof?.kind !== "dialog" && !this.inputIsComposer(capture.text))) {
-            this.error = "Pane input withheld: the intended composer or dialog is not verified"; return false;
+            this.inputNotSent = true; this.error = "Pane input withheld: the intended composer or dialog is not verified"; return false;
           }
           expectedSeq = capture.snapshot.seq;
           if (!this.endpoint.online() || this.closing || this.record.pendingClose) return false;
@@ -158,7 +160,7 @@ export class RuntimePanePort implements Pane {
           operationId: request.operationId, sequence: request.sequence, digest: runtimeJobDigest(request) }; this.save();
         const snapshot = this.accept(await this.endpoint.call(request));
         this.record.snapshot = snapshot; delete this.record.pending; this.save(); this.error = null;
-        if (snapshot.inputRefused) { this.error = "Pane changed after observation; input was not sent"; return false; }
+        if (snapshot.inputRefused) { this.inputNotSent = true; this.error = "Pane changed after observation; input was not sent"; return false; }
         return true;
       } catch { this.error = "Pane input outcome is unconfirmed; reconnect and inspect before retrying"; return false; }
     });
@@ -222,6 +224,7 @@ export class RuntimePanePort implements Pane {
     if (count > 8192) return false;
     return this.mutate((snapshot, expectedSeq) => ({ action: "edit", ...this.target(snapshot), expectedSeq, keys: ["BSpace"], repeat: count }));
   }
+  lastInputWasNotSent(): boolean { return this.inputNotSent && !this.record.pending; }
   getLastSendSpecialKeyError(): string | null { return this.error; }
   getLastPasteError(): string | null { return this.error; }
   isLastPasteFailureRecoverable(): boolean { return false; }

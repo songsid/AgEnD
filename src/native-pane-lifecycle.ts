@@ -97,12 +97,24 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     let id: string | null = null;
     if (await this.port.beginStatusRequest()) {
       assertCurrent();
-      // This is an owned CLI command, not user pasted content. Codex treats bracketed slash-command pastes as
-      // literal prompt text; type this fixed, newline-free command only on the composer proved above.
-      assertCurrent(); this.options.admit();
-      if (!this.current() || !await this.port.sendKeys("/status")) throw Error("Native status input is unconfirmed");
+      // This fixed CLI command must be typed: a bracketed slash-command paste is literal prompt text in Codex.
+      // Only a positive zero-input refusal admits another attempt; a lost response keeps the durable one-shot hold.
+      const send = async (write: () => Promise<boolean>, message: string): Promise<void> => {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          assertCurrent(); this.options.admit();
+          if (!this.current()) throw Error(message);
+          if (await write()) return;
+          if (!this.port.lastInputWasNotSent() || attempt === 3) throw Error(message);
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+      };
+      await send(() => this.port.sendKeys("/status"), "Native status input is unconfirmed");
       await new Promise(resolve => setTimeout(resolve, 500)); assertCurrent(); this.options.admit();
-      if (!await this.port.sendSpecialKey("Enter")) throw Error("Native status submission is unconfirmed");
+      await send(async () => {
+        const screen = await this.port.capturePane(); assertCurrent(); this.options.admit();
+        if (!this.ready(screen) || !/^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) throw Error("Native status composer changed; no Enter was sent");
+        return this.port.sendSpecialKey("Enter", undefined, { kind: "composer", screen });
+      }, "Native status submission is unconfirmed");
       until = performance.now() + 15_000;
       while (true) {
         assertCurrent(); text = await this.port.capturePaneJoined(200); assertCurrent(); id = readId(text);

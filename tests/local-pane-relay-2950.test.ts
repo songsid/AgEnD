@@ -1,9 +1,9 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import {PassThrough} from 'node:stream';import {EventEmitter} from 'node:events';import {randomUUID} from 'node:crypto';
-import {LocalPaneEndpoint} from '../src/local-pane-endpoint.js';import {serveLocalPaneRelay} from '../src/runtime-pane-stdio.js';import {PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT} from '../src/runtime-pane-stdio-protocol.js';import type {PaneLinkOptions} from '../src/runtime-pane-link.js';
+import {LocalPaneEndpoint} from '../src/local-pane-endpoint.js';import {serveLocalPaneRelay} from '../src/runtime-pane-stdio.js';import {PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT} from '../src/runtime-pane-stdio-protocol.js';import type {PaneLinkOptions, RuntimePaneLink} from '../src/runtime-pane-link.js';
 const stops:Array<()=>unknown>=[];afterEach(()=>{for(const f of stops.splice(0).reverse())f();vi.useRealTimers();});
 async function fixture(){
- const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()}),request=vi.fn(async()=>({hostBootId,panes:[]})),stop=vi.fn(async()=>{}),changed=vi.fn();let settings!:PaneLinkOptions,allowed=true,limit=4;const hostBootId=randomUUID();
+ const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()}),request=vi.fn<RuntimePaneLink["request"]>(async()=>({hostBootId,panes:[]})),stop=vi.fn(async()=>{}),changed=vi.fn();let settings!:PaneLinkOptions,allowed=true,limit=4;const hostBootId=randomUUID();
  const detach=serveLocalPaneRelay(input,output,async options=>{settings=options;return{hostBootId,request,stop,connectionChanged:changed} as never;});stops.push(detach);const mcp=vi.fn(async()=>({tools:[]}));
  const options={scope:'a'.repeat(64),admit:()=>{if(!allowed)throw Error('off');},maxAgents:()=>limit,version:()=> 'Codex 0.165.0',launch:async()=>child as never,mcp};const endpoint=await LocalPaneEndpoint.open(options);stops.push(()=>endpoint.stop());return{endpoint,settings,options,input,output,child,request,stop,changed,mcp,setAllowed:(value:boolean)=>{allowed=value;},setLimit:(value:number)=>{limit=value;}};
 }
@@ -24,7 +24,7 @@ it('switch-off during launcher resolution sends no init and signals nothing',asy
  const pending=LocalPaneEndpoint.open({scope:'b'.repeat(64),admit:()=>{if(!allowed)throw Error('off');},maxAgents:()=>4,version:()=>null,mcp:async()=>null,launch:()=>new Promise(resolve=>{release=resolve;})});allowed=false;release(child);await expect(pending).rejects.toThrow('off');expect(bytes).toEqual([]);expect(child.kill).not.toHaveBeenCalled();
 });
 it('lost reply becomes unconfirmed without replay or a process signal',async()=>{
- const f=await fixture();let finish!:(value:unknown)=>void;f.request.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const request=f.endpoint.call({action:'list'});const caught=expect(request).rejects.toThrow('retained');await Promise.resolve();f.endpoint.stop();await caught;finish({panes:[]});await Promise.resolve();expect(f.request).toHaveBeenCalledOnce();expect(f.child.kill).not.toHaveBeenCalled();
+ const f=await fixture();let finish!:(value:unknown)=>void;f.request.mockImplementationOnce(()=>new Promise<unknown>(resolve=>{finish=resolve;}));const request=f.endpoint.call({action:'list'});const caught=expect(request).rejects.toThrow('retained');await Promise.resolve();f.endpoint.stop();await caught;finish({panes:[]});await Promise.resolve();expect(f.request).toHaveBeenCalledOnce();expect(f.child.kill).not.toHaveBeenCalled();
 });
 it('a stale frame cannot renew an attachment or dispatch work',async()=>{
  const f=await fixture();f.output.write(JSON.stringify({type:'response',epoch:randomUUID(),id:randomUUID(),ok:true,result:{}})+'\n');await Promise.resolve();expect(f.endpoint.online()).toBe(false);expect(f.request).not.toHaveBeenCalled();expect(f.child.kill).not.toHaveBeenCalled();

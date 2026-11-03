@@ -7,7 +7,8 @@ const request={jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'report_resul
 it('restarted helpers do not reuse a tool identity for JSON-RPC id 1',async()=>{
  const http=vi.fn(async(_body:PaneMcpBody)=>({result:{content:[{type:'text',text:'ok'}]},responseId:'b'.repeat(64)})),conn=connection();
  const first=new PaneMcpSession(conn,http),second=new PaneMcpSession(conn,http);await first.rpc(request);await first.rpc(request);await second.rpc(request);
- expect(http.mock.calls[0][0].callId).toBe(http.mock.calls[1][0].callId);expect(http.mock.calls[2][0].callId).not.toBe(http.mock.calls[0][0].callId);
+ const calls=http.mock.calls.map(([body])=>{if(body.method!=="tools/call")throw Error("Expected tool call");return body;});
+ expect(calls[0].callId).toBe(calls[1].callId);expect(calls[2].callId).not.toBe(calls[0].callId);
  expect(JSON.stringify(http.mock.calls)).not.toContain(conn.token);
 });
 it('acknowledges a result once, only when its stdio response has been written',async()=>{

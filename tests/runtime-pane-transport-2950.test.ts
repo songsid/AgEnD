@@ -41,7 +41,7 @@ async function fixture(overrides: Partial<RuntimePaneHostOptions> = {}) {
   store.saveCredentials({ server: `http://127.0.0.1:${address.port}`, name: "Pane fixture", machineId: claim.machineId, credential: claim.credential });
   const processes: ReturnType<typeof fakeProcess>[] = [];
   const client = new RuntimeClient({ store, reconnectMs: 10, pollMs: 10,
-    bridge: { probe: async () => ({ home: "C:\\fixture", clis: [] }), prepareWorkspace: async () => { throw Error("unused"); },
+    bridge: { probe: async () => ({ home: "C:\\fixture", clis: [], probedAt: Date.now() }), prepareWorkspace: async () => { throw Error("unused"); },
       start: () => { throw Error("no exec launch"); }, get: () => null, cancel: () => { throw Error("unused"); }, close() {}, releaseUnknown() {} },
     createPaneHost: options => new RuntimePaneHost({ ...options, transcript: (launch, id) => new NativePaneTranscriptReader(launch.cli, launch.cwd, id, { codex: join(home, "codex"), claude: join(home, "claude") }),
       spawn: async () => { const process = fakeProcess(); processes.push(process); return process as RuntimePaneProcess; }, ...overrides }),
@@ -75,7 +75,7 @@ it("binds only a unique owned status id, reads its exact native transcript, and 
   expect(result).toMatchObject({ state: "ready", gap: false, complete: true }); expect(Buffer.from(result.data, "base64").toString()).toContain("owned canary"); expect(JSON.stringify(result)).not.toContain(f.home);
   await expect(f.hub().callPane(f.machineId, { action: "bind-session", ...target, sessionId: randomUUID() })).rejects.toThrow("pinned elsewhere");
   await expect(f.hub().callPane(f.machineId, { action: "transcript", ...target, cursor: cursor(randomUUID()) })).rejects.toThrow("differs from its owned pane");
-  await expect(f.hub().callPane(f.machineId, { action: "transcript", ...target, cursor: cursor(sessionId), path: "/tmp/unowned" })).rejects.toThrow();
+  await expect(f.hub().callPane(f.machineId, { action: "transcript", ...target, cursor: cursor(sessionId), path: "/tmp/unowned" } as never)).rejects.toThrow();
   expect(f.processes[0].write).not.toHaveBeenCalled(); expect(JSON.parse(readFileSync(join(f.home, "runtime-machines.json"), "utf8")).commands).toHaveLength(0);
 });
 it("refuses ambiguous status cards and a correct filename with another workspace's metadata", async () => {

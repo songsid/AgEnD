@@ -5,7 +5,7 @@ const line=(entry:unknown)=>JSON.stringify(entry)+'\n';
 function rig(provider:'codex'|'claude-code'='codex'){
  let data='',online=true,present=true;const reference:RuntimeTranscriptReference={version:1,machineId:randomUUID(),hostBootId:randomUUID(),paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),provider,cursor:{sessionId:randomUUID(),offset:0,fileId:null,anchor:PANE_TRANSCRIPT_EMPTY_ANCHOR}};
  const batch=(cursor:PaneTranscriptCursor)=>{const text=data.slice(cursor.offset);return{state:'ready' as const,cursor:{...cursor,fileId:'a'.repeat(64),offset:Buffer.byteLength(data),anchor:createHash('sha256').update(data.slice(-4096)).digest('hex')},data:Buffer.from(text).toString('base64'),gap:false,complete:true};};
- const port:RuntimeTranscriptPort={isTranscriptObservationCurrent:()=>online,readTranscript:vi.fn(async cursor=>present?batch(cursor):{state:'pending',cursor,data:'',gap:false,complete:false})};
+ const port:RuntimeTranscriptPort={isTranscriptObservationCurrent:()=>online,readTranscript:vi.fn<RuntimeTranscriptPort['readTranscript']>(async cursor=>present?batch(cursor):{state:'pending',cursor,data:'',gap:false,complete:false})};
  const add=(...entries:unknown[])=>{data+=entries.map(line).join('');};
  return{reference,port,batch,add,offline:()=>{online=false;},absent:()=>{present=false;},appear:()=>{present=true;},source:(fresh=false)=>new RuntimeTranscriptSource(port,reference,fresh)};
 }
