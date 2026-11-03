@@ -371,9 +371,13 @@ describe("Daemon backend-native input queue delivery", () => {
     // judges by what the pane GAINED rather than by what it already held.
     let pasted = false;
     const tmux = {
+      getWindowId: () => "@queued",
       pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
       sendSpecialKey: vi.fn().mockResolvedValue(true),
-      capturePane: vi.fn(async () => (paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane)),
+      capturePane: vi.fn(async () => {
+        const screen = paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane;
+        return backendName === "grok" ? `${screen}\n❯` : screen;
+      }),
       // How a paste failure is read back off TmuxManager. A healthy paste
       // reports no error; the cases that need one reassign these.
       getLastPasteError: vi.fn((): string | null => null),
@@ -537,7 +541,8 @@ describe("Daemon backend-native input queue delivery", () => {
       });
 
       expect(result).toBe(false);
-      expect(control.waitUntilIdle).toHaveBeenCalledOnce();
+      expect(control.waitUntilIdle).not.toHaveBeenCalled();
+      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
       expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
       expect(confirmed).not.toHaveBeenCalled();
       expect(failed).not.toHaveBeenCalled();
@@ -562,7 +567,8 @@ describe("Daemon backend-native input queue delivery", () => {
       expect(result).toBe(false);
       // No signature in the viewport is uncertainty, not permission to paste
       // a duplicate or tell the sender a definitive ❌.
-      expect(control.waitUntilIdle).toHaveBeenCalled();
+      expect(control.waitUntilIdle).not.toHaveBeenCalled();
+      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
       expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
       expect(failed).not.toHaveBeenCalled();
     } finally {
@@ -1227,9 +1233,13 @@ describe("Daemon /steer delivery", () => {
     // up after the paste, so the pre-paste frame can serve as the baseline.
     let pasted = false;
     const tmux = {
+      getWindowId: () => "@queued",
       pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
       sendSpecialKey: vi.fn().mockResolvedValue(true),
-      capturePane: vi.fn(async () => (paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane)),
+      capturePane: vi.fn(async () => {
+        const screen = paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane;
+        return backendName === "grok" ? `${screen}\n❯` : screen;
+      }),
       // How a paste failure is read back off TmuxManager. A healthy paste
       // reports no error; the cases that need one reassign these.
       getLastPasteError: vi.fn((): string | null => null),

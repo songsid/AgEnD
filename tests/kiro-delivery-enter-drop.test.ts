@@ -141,7 +141,8 @@ describe("kiro delivery: Enter dropped while busy (F1 bottom-anchored ready gate
     // the generation spinner confirms it.
     h.state.pane = IDLE_BARE;
     let pastes = 0;
-    h.paste.mockImplementation(async () => { pastes++; h.state.pane = GENERATING; return true; });
+    h.paste.mockImplementation(async () => { pastes++; h.state.pane = STRANDED; return true; });
+    h.enter.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
     const ok = await settle(delivery);
 
     expect(ok).toBe(true);
@@ -167,7 +168,8 @@ describe("kiro delivery: the gate FAILS CLOSED on screens without the prompt (so
 
     // The turn ends and the prompt returns at the bottom: now it pastes.
     h.state.pane = IDLE_BARE;
-    h.paste.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+    h.enter.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
     expect(await settle(delivery)).toBe(true);
     expect(h.paste).toHaveBeenCalledTimes(1);
     expect(h.events).toContain("message_confirmed");
@@ -201,7 +203,8 @@ describe("kiro delivery: the gate FAILS CLOSED on screens without the prompt (so
     await vi.advanceTimersByTimeAsync(5_000);
     expect(h.paste).not.toHaveBeenCalled();
     h.state.pane = IDLE_BARE;
-    h.paste.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+    h.enter.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
     expect(await settle(delivery)).toBe(true);
     expect(h.paste).toHaveBeenCalledTimes(1);
   });
@@ -299,7 +302,7 @@ describe("kiro delivery: submission verification (F2)", () => {
   it("does not confirm typeahead exposed between the viewport and history captures", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.state.outputSince = false;
-    h.paste.mockImplementation(async () => { h.state.pane = TOOL_RUNNING; return true; });
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
     const readiness = h.daemon.isPaneReadyForDelivery.bind(h.daemon);
     let exposedTypeahead = false;
     vi.spyOn(h.daemon, "isPaneReadyForDelivery").mockImplementation(async (windowId) => {
@@ -354,7 +357,7 @@ describe("kiro delivery: submission verification (F2)", () => {
   it("does not confirm after cancel during an awaited history capture", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.state.outputSince = false;
-    h.paste.mockImplementation(async () => { h.state.pane = TOOL_RUNNING; return true; });
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
     let releaseHistory!: (pane: string) => void;
     const history = new Promise<string>(resolve => { releaseHistory = resolve; });
     const readHistory = h.daemon.tmux.capturePaneWithHistory as ReturnType<typeof vi.fn>;
@@ -410,7 +413,8 @@ describe("kiro delivery: submission verification (F2)", () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.daemon.beginSpawn();
     h.state.outputSince = false; // control mode missed the output edge
-    h.paste.mockImplementation(async () => {
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+    h.enter.mockImplementation(async () => {
       h.state.pane = "⠇ Thinking about the first request";
       h.state.silent = false;
       return true;
@@ -477,7 +481,8 @@ describe("kiro delivery: submission verification (F2)", () => {
   it("confirms promptly when a historical prompt is followed by the submitted turn and agent output", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.state.outputSince = true;
-    h.paste.mockImplementation(async () => {
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+    h.enter.mockImplementation(async () => {
       h.state.pane = SUBMITTED_WITHOUT_SPINNER;
       h.state.silent = false;
       return true;
@@ -488,7 +493,7 @@ describe("kiro delivery: submission verification (F2)", () => {
     expect(ok).toBe(true);
     expect(h.events).toContain("message_confirmed");
     expect(h.events).not.toContain("message_failed");
-    expect(h.enter).toHaveBeenCalledTimes(2); // initial + queue-less defensive Enter
+    expect(h.enter).toHaveBeenCalledTimes(1); // Already generating: no blind defensive Enter.
   });
 
   it("re-sends Enter once the prompt is back when the first Enters were dropped, and only then confirms", async () => {
@@ -585,14 +590,15 @@ describe("kiro delivery: stranded message from an earlier delivery (F3)", () => 
 });
 
 describe("non-Kiro backends keep the silence-based delivery path", () => {
-  it("does not gate on the pane bottom row and confirms via idle→busy output as before", async () => {
+  it("keeps silence-based admission but requires a visible composer before Enter", async () => {
     const plain = {
       binaryName: "claude",
       getReadyPattern: () => /❯/,
       getBusyPattern: () => null,
     };
     const h = makeHarness(plain); dirs.push(h.dir);
-    h.state.pane = TOOL_RUNNING;      // would block Kiro; must not block others
+    h.state.pane = TOOL_RUNNING;      // would block Kiro; this backend still admits the paste on silence
+    h.paste.mockImplementation(async () => { h.state.pane = "❯ our pasted message"; return true; });
     h.state.silent = true;
     h.state.outputSince = true;
 
@@ -600,9 +606,8 @@ describe("non-Kiro backends keep the silence-based delivery path", () => {
 
     expect(ok).toBe(true);
     expect(h.paste).toHaveBeenCalledTimes(1);
-    // Captures may now happen for every backend (the blocking-dialog probe), but
-    // there is no bottom-row gating: the busy-looking TOOL_RUNNING pane was
-    // pasted into on the silence decision alone, as before.
+    // Admission still uses silence, but the last capture must show this backend
+    // accepts input; a tool frame alone no longer authorizes Enter.
     expect(h.enter).toHaveBeenCalledTimes(1);   // no defensive retry for this backend
     expect(h.events).toContain("message_confirmed");
   });
