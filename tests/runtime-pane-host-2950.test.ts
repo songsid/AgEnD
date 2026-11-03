@@ -29,7 +29,7 @@ function setup(max = 4, overrides: Partial<RuntimePaneHostOptions> = {}) {
   let online = true, limit = max;
   const host = new RuntimePaneHost({ store, bootId: randomUUID(), online: () => online, maxAgents: () => limit, spawn, ...overrides });
   const open = async (config = launch(), operationId = randomUUID()) => await host.request({ action: "open", launch: config, operationId }) as RuntimePaneSnapshot;
-  const key = (snapshot: RuntimePaneSnapshot, sequence: number, operationId = randomUUID()) => ({ action: "key", paneId: snapshot.paneId, launchId: snapshot.launchId, key: "Enter", sequence, operationId });
+  const key = (snapshot: RuntimePaneSnapshot, sequence: number, operationId = randomUUID()) => ({ action: "key", paneId: snapshot.paneId, launchId: snapshot.launchId, key: "Enter", expectedSeq: snapshot.seq, sequence, operationId });
   return { directory, store, host, processes, spawn, open, key, offline: () => { online = false; }, limit: (value: number) => { limit = value; } };
 }
 
@@ -38,7 +38,7 @@ describe("#2950 closed persistent pane protocol", () => {
     expect(() => validateRuntimePaneRequest({ action: "open", operationId: randomUUID(), launch: { ...launch(), [field]: "whoami" } })).toThrow("fields");
   });
   it("refuses terminal escapes in literal input and unbounded/unknown operations", () => {
-    const request = { action: "input", paneId: randomUUID(), launchId: randomUUID(), operationId: randomUUID(), sequence: 1, kind: "paste", text: "\x1b[201~execute" };
+    const request = { action: "input", paneId: randomUUID(), launchId: randomUUID(), operationId: randomUUID(), sequence: 1, expectedSeq: 0, kind: "paste", text: "\x1b[201~execute" };
     expect(() => validateRuntimePaneRequest(request)).toThrow("literal");
     expect(() => validateRuntimePaneRequest({ ...request, text: "x".repeat(65537) })).toThrow("literal");
     expect(() => validateRuntimePaneRequest({ action: "shell", command: "whoami" })).toThrow("Unknown");
@@ -49,7 +49,7 @@ describe("#2950 closed persistent pane protocol", () => {
     expect(persistentNativeArguments({ ...original, sessionId })).toContain("resume");
     expect(persistentNativeArguments({ ...original, sessionId })).toContain(sessionId);
     const args = persistentNativeArguments({ ...original, cli: "claude-code", sessionId });
-    expect(args).toEqual(["--permission-mode", "default", "--tools", "Read,Glob,Grep", "--resume", sessionId]);
+    expect(args).toEqual(expect.arrayContaining(["--setting-sources", "", "--settings", JSON.stringify({permissions:{blockWritesOutsideWorkingDirectories:true}}), "--permission-mode", "default", "--tools", "Read,Glob,Grep", "--resume", sessionId]));
     expect(args).not.toContain("--dangerously-skip-permissions");
   });
 });
@@ -74,9 +74,9 @@ describe("#2950 terminal screen", () => {
     await terminal.write("\x1b[?1049l");
     expect(await terminal.capture()).toContain("history");
   });
-  it("uses bracketed paste only when the CLI requested it and bounds pending parser memory", async () => {
+  it("always brackets paste so a missing mode announcement cannot turn a newline into Enter; bounds parser memory", async () => {
     const terminal = screen();
-    expect(terminal.bracketedPaste("x\ny")).toBe("x\ry");
+    expect(terminal.bracketedPaste("x\ny")).toBe("\x1b[200~x\ry\x1b[201~");
     await terminal.write("\x1b[?2004h");
     expect(terminal.bracketedPaste("x\ny")).toBe("\x1b[200~x\ry\x1b[201~");
     await expect(terminal.write("x".repeat(2 * 1024 * 1024 + 1))).rejects.toThrow("backpressure");
@@ -207,7 +207,7 @@ describe("#2950 persistent pane ownership and replay", () => {
   it("positive exit releases admission and retains session/config metadata without storing input", async () => {
     const fixture = setup(1), snapshot = await fixture.open();
     const secretText = "sensitive task text";
-    await fixture.host.request({ action: "input", paneId: snapshot.paneId, launchId: snapshot.launchId, operationId: randomUUID(), sequence: 1, kind: "paste", text: secretText });
+    await fixture.host.request({ action: "input", paneId: snapshot.paneId, launchId: snapshot.launchId, operationId: randomUUID(), sequence: 1, expectedSeq: 0, kind: "paste", text: secretText });
     expect(readFileSync(join(fixture.directory, "panes.json"), "utf8")).not.toContain(secretText);
     fixture.processes[0].finish(9);
     expect(fixture.host.list()[0]).toMatchObject({ state: "exited", exitCode: 9 });
@@ -265,5 +265,9 @@ it('owned metadata and close remain usable when the terminal parser is unavailab
 });
 
 it('persistent Claude workspace access follows the native acceptEdits policy without a global bypass',()=>{
- const launch={cli:'claude-code',cwd:'C:\\scratch',sandbox:'workspace-write',paneId:randomUUID(),agentId:randomUUID(),instance:'native',columns:120,rows:40} as const;const args=persistentNativeArguments(launch);expect(args).toContain('acceptEdits');expect(args).not.toContain('--dangerously-skip-permissions');expect(args).not.toContain('--add-dir');expect(persistentNativeArguments({...launch,sandbox:'read-only'})).toEqual(['--permission-mode','default','--tools','Read,Glob,Grep']);
+ const launch={cli:'claude-code',cwd:'C:\\scratch',sandbox:'workspace-write',paneId:randomUUID(),agentId:randomUUID(),instance:'native',columns:120,rows:40} as const;const args=persistentNativeArguments(launch);expect(args).toContain('acceptEdits');expect(args).not.toContain('--dangerously-skip-permissions');expect(args).not.toContain('--add-dir');expect(persistentNativeArguments({...launch,sandbox:'read-only'})).toEqual(expect.arrayContaining(['--setting-sources','','--settings',JSON.stringify({permissions:{blockWritesOutsideWorkingDirectories:true}}),'--permission-mode','default','--tools','Read,Glob,Grep']));
+});
+
+it.each([undefined,-1,1.5,NaN])('requires a bounded output-sequence precondition for every native input (%s)',expectedSeq=>{
+ const f=setup(),request={action:'key',paneId:randomUUID(),launchId:randomUUID(),operationId:randomUUID(),sequence:1,key:'Enter',expectedSeq};expect(()=>validateRuntimePaneRequest(request)).toThrow();expect(f.spawn).not.toHaveBeenCalled();
 });

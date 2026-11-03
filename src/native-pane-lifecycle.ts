@@ -49,7 +49,11 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
   private readonly transcriptPort: RuntimeTranscriptPort;
   constructor(private options: NativePaneLifecycleOptions) {
     if (!options.launch.launchId) throw Error("Native daemon requires a reserved launch identity");
-    this.port = new RuntimePanePort(options.endpoint, options.receiptFile, options.launch);
+    this.port = new RuntimePanePort(options.endpoint, options.receiptFile, options.launch, screen => {
+      const backend = this.backend;
+      if ([...(backend.getStartupDialogs?.() ?? []), ...(backend.getRuntimeDialogs?.() ?? [])].some(dialog => dialog.pattern.test(screen) && (!dialog.isActive || dialog.isActive(screen)))) return false;
+      return backend.readInputRow ? backend.readInputRow(screen) != null : backend.isDeliveryInputReadyPane?.(screen) === true;
+    });
     this.transcriptPort = { isTranscriptObservationCurrent: reference => this.current(reference),
       readTranscriptBaseline: (cursor, current) => this.port.readTranscriptBaseline(cursor, () => !this.detached && (current?.() ?? true)),
       readTranscript: (cursor, current) => this.port.readTranscript(cursor, () => !this.detached && (current?.() ?? true)) };

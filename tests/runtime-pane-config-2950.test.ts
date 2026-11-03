@@ -77,7 +77,7 @@ it('cache and final launch version gates accept real lines and refuse stale or a
 
 it.each(['read-only','workspace-write'] as const)('Claude pane %s has a launch-local hard file policy without account or shell permission bypass',sandbox=>{
  const f=rig('claude-code'),config=f.prepare(),args=persistentNativeArguments({...f.launch,sandbox},config),index=args.indexOf('--settings');
- expect(index).toBeGreaterThanOrEqual(0);expect(JSON.parse(args[index+1])).toEqual({permissions:{blockWritesOutsideWorkingDirectories:true}});
+ expect(index).toBeGreaterThanOrEqual(0);expect(JSON.parse(args[index+1])).toEqual({permissions:{blockWritesOutsideWorkingDirectories:true}});expect(args[args.indexOf('--setting-sources')+1]).toBe('');
  expect(args.filter(arg=>arg==='--settings')).toHaveLength(1);expect(args).not.toContain('--add-dir');expect(args).not.toContain('--dangerously-skip-permissions');
  expect(args[args.indexOf('--permission-mode')+1]).toBe(sandbox==='workspace-write'?'acceptEdits':'default');
  config.cleanup();

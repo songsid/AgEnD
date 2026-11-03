@@ -47,10 +47,10 @@ export type RuntimePaneRequest =
   | { action: "bind-session"; paneId: string; launchId: string; sessionId: string }
   | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "transcript-baseline"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
-  | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq?: number; kind: "literal" | "paste"; text: string }
-  | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq?: number; key: PaneKey }
+  | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; kind: "literal" | "paste"; text: string }
+  | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; key: PaneKey }
   | { action: "resize"; paneId: string; launchId: string; operationId: string; sequence: number; columns: number; rows: number }
-  | { action: "edit"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq?: number; keys: PaneEditKey[]; repeat?: number }
+  | { action: "edit"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq: number; keys: PaneEditKey[]; repeat?: number }
   | { action: "reconcile"; paneId: string; launchId: string; operationId: string; sequence: number; digest: string }
   | { action: "close"; paneId: string; launchId: string; operationId: string; sequence: number };
 
@@ -124,7 +124,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
     default: throw Error("Unknown pane operation");
   }
   if (value.action !== "list") {
-    if(value.expectedSeq!==undefined)dimension(value.expectedSeq,0,Number.MAX_SAFE_INTEGER);
+    if (["input", "key", "edit"].includes(value.action)) dimension(value.expectedSeq, 0, Number.MAX_SAFE_INTEGER);
     id(value.paneId); id(value.launchId);
     if (!["capture", "snapshot", "output", "transcript", "transcript-baseline", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
   }

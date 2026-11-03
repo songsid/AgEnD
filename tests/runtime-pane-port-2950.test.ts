@@ -14,7 +14,7 @@ async function fixture(){
  const spawn=vi.fn(async()=>native),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>online,maxAgents:()=>4,spawn});clean.push(()=>host.stop());
  const listeners=new Set<(e:RuntimeCoordinatorEvent)=>void>();const endpoint:PaneEndpoint={machineId:randomUUID(),online:()=>online,call:r=>host.request(r),subscribe:f=>{listeners.add(f);return()=>{listeners.delete(f);};}};
  const launch:RuntimePaneLaunch={paneId:randomUUID(),agentId:randomUUID(),instance:'test-中文',cli:'codex',cwd:'C:\\scratch',sandbox:'read-only',columns:80,rows:24};
- const file=join(root,'receipt.json');const make=()=>new RuntimePanePort(endpoint,file,launch);const port=make();await port.open();
+ const file=join(root,'receipt.json');const make=()=>new RuntimePanePort(endpoint,file,launch, screen => new CodexPaneDetectors({statusLineItems:()=>["context-remaining"],launchMayResume:()=>false}).isDeliveryInputReadyPane(screen));const port=make();await port.open();output("› Ask Codex to do anything\r\n\r\nContext 100% left\r\n");await port.capturePane();
  return{host,spawn,native,write,endpoint,port,make,file,launch,output:(data:string)=>output(data),offline:()=>{online=false;},emit:(e:RuntimeCoordinatorEvent)=>{for(const f of listeners)f(e);}};
 }
 it('feeds ordinary detectors rendered plain cells rather than VT replay control sequences',async()=>{
@@ -26,9 +26,9 @@ it('reconciles a lost response by command digest with no plaintext or second Ent
  const f=await fixture(),call=f.endpoint.call;let lost=false;
  f.endpoint.call=async request=>{const result=await call(request);if(request.action==='input'&&!lost){lost=true;throw Error('lost response');}return result;};
  const secret='PRIVATE_INPUT_CANARY';expect(await f.port.pasteBuffer(secret)).toBe(false);
- expect(readFileSync(f.file,'utf8')).not.toContain(secret);expect(f.write).toHaveBeenCalledExactlyOnceWith(secret);
+ expect(readFileSync(f.file,'utf8')).not.toContain(secret);expect(f.write).toHaveBeenCalledExactlyOnceWith(`\x1b[200~${secret}\x1b[201~`);
  const recovered=f.make();expect((await recovered.open()).reattached).toBe(true);expect(f.spawn).toHaveBeenCalledOnce();expect(f.write).toHaveBeenCalledTimes(1);
- expect(await recovered.sendSpecialKey('Enter')).toBe(true);expect(f.write.mock.calls.map(x=>x[0])).toEqual([secret,'\r']);
+ expect(await recovered.sendSpecialKey('Enter')).toBe(true);expect(f.write.mock.calls.map(x=>x[0])).toEqual([`\x1b[200~${secret}\x1b[201~`,'\r']);
 });
 it('holds a prepared write and never converts uncertainty into a replacement or retry',async()=>{
  const f=await fixture();f.write.mockImplementationOnce(()=>{throw Error('native write outcome unknown');});
@@ -43,12 +43,12 @@ it('exposes no remote PID and disconnect is unknown, never a dead pane',async()=
 it('keeps edits closed and pasteText submits exactly once without Enter retry',async()=>{
  const f=await fixture();expect(await f.port.sendKeySequence(['Enter'])).toBe(false);expect(await f.port.deleteBackward(8193)).toBe(false);
  expect(await f.port.sendKeySequence(['C-a','C-k'])).toBe(true);expect(await f.port.deleteBackward(3)).toBe(true);expect(await f.port.pasteText('message')).toBe(true);
- expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x01\x0b','\x7f\x7f\x7f','message','\r']);
+ expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x01\x0b','\x7f\x7f\x7f','\x1b[200~message\x1b[201~','\r']);
 });
 it('settles the paste before Enter and a disconnect in that interval sends nothing else',async()=>{
  const f=await fixture();vi.useFakeTimers();
  try{
-  const result=f.port.pasteText('settled message');await vi.advanceTimersByTimeAsync(0);expect(f.write.mock.calls.map(x=>x[0])).toEqual(['settled message']);
+  const result=f.port.pasteText('settled message');await vi.advanceTimersByTimeAsync(0);expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x1b[200~settled message\x1b[201~']);
   await vi.advanceTimersByTimeAsync(499);expect(f.write).toHaveBeenCalledTimes(1);f.offline();await vi.advanceTimersByTimeAsync(1);expect(await result).toBe(false);expect(f.write).toHaveBeenCalledTimes(1);
  }finally{vi.useRealTimers();}
 });
@@ -111,4 +111,31 @@ it.each(['starting','unknown'] as const)('%s metadata cannot be reported as a po
 });
 it('a positively observed exact native exit can be finalized after disconnect without another host call',async()=>{
  const f=await fixture();f.native.kill();expect(await f.port.getPaneStatus()).toEqual({alive:false,exitCode:0});f.offline();const call=vi.spyOn(f.endpoint,'call');expect(await f.port.killWindowConfirmed()).toBe(true);expect(call).not.toHaveBeenCalled();expect(f.port.ownedSnapshot()?.state).toBe('exited');expect(f.native.kill).toHaveBeenCalledOnce();
+});
+
+const nativeApproval = readFileSync(join(__dirname,'fixtures/codex-audit-0166/01650/approval.pane.txt'),'utf8');
+function repaint(f:Awaited<ReturnType<typeof fixture>>,text:string){f.output('\x1b[2J\x1b[H'+text.replace(/\r?\n/g,'\r\n'));}
+it('a permission card appearing after paste gets no implicit native Enter or literal/edit key',async()=>{
+ const f=await fixture();expect(await f.port.pasteBuffer('owned prompt')).toBe(true);f.write.mockClear();repaint(f,nativeApproval);
+ expect(await f.port.sendSpecialKey('Enter')).toBe(false);expect(await f.port.sendKeys('yes')).toBe(false);expect(await f.port.sendKeySequence(['C-a'])).toBe(false);expect(await f.port.deleteBackward(1)).toBe(false);expect(await f.port.pasteBuffer('yes')).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();expect(f.port.getLastSendSpecialKeyError()).toContain('withheld');
+});
+it('output arriving between composer proof and key is refused at the owned host without becoming uncertain',async()=>{
+ const f=await fixture(),screen=await f.port.capturePane(),call=f.endpoint.call;let raced=false;
+ f.endpoint.call=async request=>{if(request.action==='key'&&!raced){raced=true;repaint(f,nativeApproval);}return call(request);};
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'composer',screen})).toBe(false);expect(f.write).not.toHaveBeenCalled();expect(f.port.ownedSnapshot()).toMatchObject({commandSequence:1,inputRefused:true});expect(readFileSync(f.file,'utf8')).not.toContain('pending');
+ repaint(f,'› Ask Codex to do anything\n\nContext 100% left\n');expect(await f.port.sendSpecialKey('Enter')).toBe(true);expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');expect(f.port.ownedSnapshot()?.commandSequence).toBe(2);
+});
+it('an ACK lost after positive input refusal reconciles to no input and never replays the refused Enter',async()=>{
+ const f=await fixture(),screen=await f.port.capturePane(),call=f.endpoint.call;let lost=false;
+ f.endpoint.call=async request=>{if(request.action==='key'&&!lost){lost=true;repaint(f,nativeApproval);await call(request);throw Error('lost refusal ACK');}return call(request);};
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'composer',screen})).toBe(false);expect(f.write).not.toHaveBeenCalled();const next=f.make();await next.open();expect(f.write).not.toHaveBeenCalled();expect(next.ownedSnapshot()?.inputRefused).toBe(true);expect(await next.sendSpecialKey('Enter')).toBe(false);expect(f.write).not.toHaveBeenCalled();
+});
+it('only an explicit exact-screen dialog proof can walk the card; its changed-screen answer is refused',async()=>{
+ const f=await fixture();repaint(f,nativeApproval);const screen=await f.port.capturePane();expect(await f.port.sendSpecialKey('Down',undefined,{kind:'dialog',screen})).toBe(true);expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[B');f.write.mockClear();
+ repaint(f,'another question');await f.port.capturePane();expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'dialog',screen})).toBe(false);expect(f.write).not.toHaveBeenCalled();
+});
+it('a capture that races output cannot create native input proof',async()=>{
+ const f=await fixture(),capture=RuntimePaneScreen.prototype.capture;vi.spyOn(RuntimePaneScreen.prototype,'capture').mockImplementationOnce(async function(this:RuntimePaneScreen,options){const screen=await capture.call(this,options);repaint(f,nativeApproval);return screen;});
+ await expect(f.port.capturePane()).rejects.toThrow('changed during capture');expect(f.write).not.toHaveBeenCalled();expect(await f.port.sendSpecialKey('Enter')).toBe(false);expect(f.write).not.toHaveBeenCalled();
 });

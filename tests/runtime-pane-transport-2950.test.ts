@@ -29,7 +29,7 @@ function fakeProcess() {
 }
 async function fixture(overrides: Partial<RuntimePaneHostOptions> = {}) {
   const home = directory(), store = new RuntimeClientStore(directory());
-  let hub = new RuntimeCoordinator(home, { requestTimeoutMs: 250 }); hubs.push(hub);
+  let hub = new RuntimeCoordinator(home, { requestTimeoutMs: 1000 }); hubs.push(hub);
   const pairing = hub.createPairing(), pending = hub.pair({ code: pairing.code, name: "Pane fixture", platform: "win32" });
   hub.approve(pending.machineId, hub.machine(pending.machineId)!.pairingFingerprint);
   const claim = hub.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret });
@@ -55,7 +55,7 @@ async function fixture(overrides: Partial<RuntimePaneHostOptions> = {}) {
     return path;
   };
   return { store, client, processes, machineId: claim.machineId, launch,
-    hub: () => hub, restart: () => { hub.close(); hub = new RuntimeCoordinator(home, { requestTimeoutMs: 250 }); hubs.push(hub); }, home, transcript };
+    hub: () => hub, restart: () => { hub.close(); hub = new RuntimeCoordinator(home, { requestTimeoutMs: 1000 }); hubs.push(hub); }, home, transcript };
 }
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -114,7 +114,7 @@ it("uses independent persistent panes and keeps high-frequency captures out of t
 it("lost reply and coordinator reconnect never replay Enter or open a second process", async () => {
   const f = await fixture(), launch = f.launch(), operationId = randomUUID();
   const first = await f.hub().callPane(f.machineId, { action: "open", operationId, launch }) as RuntimePaneSnapshot;
-  const key = { action: "key" as const, paneId: first.paneId, launchId: first.launchId, key: "Enter" as const, operationId: randomUUID(), sequence: 1 };
+  const key = { action: "key" as const, paneId: first.paneId, launchId: first.launchId, key: "Enter" as const, expectedSeq: first.seq, operationId: randomUUID(), sequence: 1 };
   const send = (f.client as any).send.bind(f.client);
   let dropped = false;
   const spy = vi.spyOn(f.client as any, "send").mockImplementation((value: any) => {

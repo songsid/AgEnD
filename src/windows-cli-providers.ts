@@ -156,11 +156,12 @@ export interface NativeInvocation {
 
 /** Launch-local file policy, supported by the audited native Claude release. No account settings are rewritten.
  * acceptEdits alone can still honor broader ambient allow rules. This hard file-tool check takes precedence over
- * those grants; it is not a sandbox for shell commands, hooks or MCP tools. Managed additional directories remain
- * provider-owned working directories. Both the exec and persistent adapter must use this exact policy.
+ * those grants. User/project/local settings are excluded so inherited additionalDirectories cannot widen the file
+ * boundary. Managed organization policy remains provider-owned. This is not an OS sandbox for shell commands or MCP
+ * tools. Both the exec and persistent adapter must use this exact policy.
  */
 export function nativeClaudeFilePolicyArgs(): string[] {
-  return ["--settings", JSON.stringify({ permissions: { blockWritesOutsideWorkingDirectories: true } })];
+  return ["--setting-sources", "", "--settings", JSON.stringify({ permissions: { blockWritesOutsideWorkingDirectories: true } })];
 }
 
 /** Only an argv plan. The caller supplies cwd to spawn({ shell: false, stdio: ['pipe', ...] }). */

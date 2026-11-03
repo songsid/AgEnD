@@ -12,26 +12,30 @@ async function fixture(cli:'codex'|'claude-code'='codex',expected?:string){
  return{root,actual,launch,options,host,spawn,process,write,make,output:(text:string)=>output(text)};
 }
 it('fresh Codex asks status once after the real idle detector, pins it and exposes only runtime metadata',async()=>{
- const f=await fixture(),native=f.make(),acquisition=await native.acquire(()=>{});expect(acquisition.disposition).toBe('fresh');expect(f.options.reserve).toHaveBeenCalledExactlyOnceWith(f.launch.launchId);expect(f.options.pin).toHaveBeenCalledWith(f.launch.launchId,f.actual);expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);expect(native.backend.getSessionId()).toBe(f.actual);expect(native.host.executionHost).toBe('remote');
+ const f=await fixture(),native=f.make(),acquisition=await native.acquire(()=>{});expect(acquisition.disposition).toBe('fresh');expect(f.options.reserve).toHaveBeenCalledExactlyOnceWith(f.launch.launchId);expect(f.options.pin).toHaveBeenCalledWith(f.launch.launchId,f.actual);expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x1b[200~/status\x1b[201~','\r']);expect(native.backend.getSessionId()).toBe(f.actual);expect(native.host.executionHost).toBe('remote');
  await acquisition.source.initialize?.();expect((await acquisition.source.runtimeCheckpoint?.())?.cursor.sessionId).toBe(f.actual);expect(acquisition.source.currentPath?.()).toBeNull();const ref=await acquisition.source.runtimeCheckpoint?.();const proof=native.proofReader(ref!,randomUUID());await native.release('detach');expect(await proof.look()).toBe('unavailable');expect(f.process.kill).not.toHaveBeenCalled();
 });
 it('coordinator reconnect reattaches a busy pinned pane without typing, respawning or waiting for idle',async()=>{
  const f=await fixture(),first=f.make();await first.acquire(()=>{});await first.release('detach');f.output('\x1b[2J\x1b[HWorking on the existing task...\r\n');
- const next=f.make(),acquisition=await next.acquire(()=>{});expect(acquisition.disposition).toBe('reattached');expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);expect(f.process.kill).not.toHaveBeenCalled();await expect(first.release('close')).rejects.toThrow('detached');expect(f.process.kill).not.toHaveBeenCalled();await next.release('detach');
+ const next=f.make(),acquisition=await next.acquire(()=>{});expect(acquisition.disposition).toBe('reattached');expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x1b[200~/status\x1b[201~','\r']);expect(f.process.kill).not.toHaveBeenCalled();await expect(first.release('close')).rejects.toThrow('detached');expect(f.process.kill).not.toHaveBeenCalled();await next.release('detach');
 });
 it('a resumed pane that displays another id is held without any model prompt or fresh fallback',async()=>{
- const f=await fixture('codex',randomUUID()),native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('different conversation');expect(f.options.pin).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status','\r']);await native.release('detach');expect(f.process.kill).not.toHaveBeenCalled();
+ const f=await fixture('codex',randomUUID()),native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('different conversation');expect(f.options.pin).not.toHaveBeenCalled();expect(f.spawn).toHaveBeenCalledOnce();expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x1b[200~/status\x1b[201~','\r']);await native.release('detach');expect(f.process.kill).not.toHaveBeenCalled();
 });
 it('an interrupted automatic status intent is never typed or submitted a second time',async()=>{
- const f=await fixture(),native=f.make();f.options.admit=()=>{if(f.write.mock.calls.some(call=>call[0]==='/status'))throw Error('admission expired');};
- await expect(native.acquire(()=>{})).rejects.toThrow('admission expired');expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status']);await native.release('detach');f.options.admit=()=>{};
- const next=f.make();await expect(next.acquire(()=>{})).rejects.toThrow('retained');expect(f.write.mock.calls.map(x=>x[0])).toEqual(['/status']);expect(f.spawn).toHaveBeenCalledOnce();await next.release('detach');
+ const f=await fixture(),native=f.make();f.options.admit=()=>{if(f.write.mock.calls.some(call=>call[0]==='\x1b[200~/status\x1b[201~'))throw Error('admission expired');};
+ await expect(native.acquire(()=>{})).rejects.toThrow('admission expired');expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x1b[200~/status\x1b[201~']);await native.release('detach');f.options.admit=()=>{};
+ const next=f.make();await expect(next.acquire(()=>{})).rejects.toThrow('retained');expect(f.write.mock.calls.map(x=>x[0])).toEqual(['\x1b[200~/status\x1b[201~']);expect(f.spawn).toHaveBeenCalledOnce();await next.release('detach');
 });
 it('Claude uses its reserved UUID while a trust dialog stays unanswered for the ordinary Needs-you path',async()=>{
  const f=await fixture('claude-code'),native=f.make(),acquisition=await native.acquire(()=>{});expect(native.backend.getSessionId()).toBe(f.launch.launchId);expect(f.options.pin).toHaveBeenCalledWith(f.launch.launchId,f.launch.launchId);expect(f.write).not.toHaveBeenCalled();expect(acquisition.disposition).toBe('fresh');await native.release('detach');expect(f.process.kill).not.toHaveBeenCalled();
 });
 it('explicit close retires only its owned pane after uncertain input and releases the profile on positive exit',async()=>{
- const f=await fixture('claude-code'),native=f.make();await native.acquire(()=>{});f.write.mockImplementationOnce(()=>{throw Error('uncertain write');});expect(await native.port.sendSpecialKey('Enter')).toBe(false);await native.release('close');expect(f.process.kill).toHaveBeenCalledOnce();expect(f.options.exited).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({launchId:f.launch.launchId,state:'exited'}));expect(f.options.releaseAuthority).toHaveBeenCalledOnce();
+ const f=await fixture('claude-code'),native=f.make();await native.acquire(()=>{});
+ await vi.waitFor(async()=>expect(await native.port.capturePane()).toContain('Yes, I trust this folder'));
+ const screen=await native.port.capturePane();f.write.mockImplementationOnce(()=>{throw Error('uncertain explicit Escape');});
+ expect(await native.port.sendSpecialKey('Escape',undefined,{kind:'dialog',screen})).toBe(false);expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b');
+ await native.release('close');expect(f.process.kill).toHaveBeenCalledOnce();expect(f.options.exited).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({launchId:f.launch.launchId,state:'exited'}));expect(f.options.releaseAuthority).toHaveBeenCalledOnce();
 });
 it('failed pre-admission never reserves a profile or starts a process',async()=>{
  const f=await fixture(),native=f.make();f.options.admit=()=>{throw Error('not admitted');};await expect(native.acquire(()=>{})).rejects.toThrow('not admitted');expect(f.options.reserve).not.toHaveBeenCalled();expect(f.spawn).not.toHaveBeenCalled();

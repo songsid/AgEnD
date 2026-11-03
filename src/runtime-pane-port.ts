@@ -7,7 +7,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
 import { PANE_EDIT_KEYS, validateRuntimePaneRequest, validateRuntimePaneSnapshot, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
-import type { Pane, PaneHost, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
+import type { Pane, PaneHost, PaneInputProof, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 import { validateRuntimeTranscriptReference, validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 export interface PaneEndpoint {
@@ -25,7 +25,8 @@ export class RuntimePanePort implements Pane {
   private closing: Promise<boolean> | undefined;
   private outputLog: NativePaneOutputLog | undefined;
   private lastObservation: RuntimePaneSnapshot | undefined;
-  constructor(private endpoint: PaneEndpoint, private file: string, launch: RuntimePaneLaunch) {
+  private inputCapture: RuntimePaneCapture | undefined;
+  constructor(private endpoint: PaneEndpoint, private file: string, launch: RuntimePaneLaunch, private inputIsComposer: (screen: string) => boolean = () => false) {
     this.record = { version: 1, machineId: endpoint.machineId, launch, openId: randomUUID() };
     try {
       const stat = lstatSync(file);
@@ -135,16 +136,29 @@ export class RuntimePanePort implements Pane {
         && sameRuntimeTranscriptScope(ref, this.runtimeTranscriptReference(ref.cursor));
     } catch { return false; }
   }
-  private async mutate(make: (snapshot: RuntimePaneSnapshot) => RuntimePaneRequest): Promise<boolean> {
+  private async mutate(make: (snapshot: RuntimePaneSnapshot, expectedSeq: number) => RuntimePaneRequest, proof?: PaneInputProof, input = true): Promise<boolean> {
     return this.serialize(async () => {
       try {
         if (!this.endpoint.online() || this.closing || this.record.snapshot?.state !== "running" || this.record.pending || this.record.pendingClose) throw Error("Pane input needs reconciliation");
-        const request = validateRuntimePaneRequest(make(this.record.snapshot));
+        let expectedSeq = this.record.snapshot.seq;
+        if (input) {
+          // An explicit dialog answer is bound to the exact screen verified by its identity/cursor reader.
+          // Other callers get no implicit permission to type through a dialog: prove a current composer instead.
+          const capture = proof ? this.inputCapture : await this.captureCurrent();
+          if (!capture || !capture.text.trim() || proof && capture.text !== proof.screen
+            || (proof?.kind !== "dialog" && !this.inputIsComposer(capture.text))) {
+            this.error = "Pane input withheld: the intended composer or dialog is not verified"; return false;
+          }
+          expectedSeq = capture.snapshot.seq;
+          if (!this.endpoint.online() || this.closing || this.record.pendingClose) return false;
+        }
+        const request = validateRuntimePaneRequest(make(this.record.snapshot, expectedSeq));
         if (!("operationId" in request) || !("sequence" in request) || !("paneId" in request)) throw Error("Expected pane mutation");
         this.record.pending = { action: "reconcile", paneId: request.paneId, launchId: request.launchId,
           operationId: request.operationId, sequence: request.sequence, digest: runtimeJobDigest(request) }; this.save();
         const snapshot = this.accept(await this.endpoint.call(request));
         this.record.snapshot = snapshot; delete this.record.pending; this.save(); this.error = null;
+        if (snapshot.inputRefused) { this.error = "Pane changed after observation; input was not sent"; return false; }
         return true;
       } catch { this.error = "Pane input outcome is unconfirmed; reconnect and inspect before retrying"; return false; }
     });
@@ -197,16 +211,16 @@ export class RuntimePanePort implements Pane {
     await this.capture({}); const snapshot = this.record.snapshot!; return { columns: snapshot.columns, rows: snapshot.rows, mode: "native-pane" };
   }
   async getPaneInputMode(): Promise<"unknown"> { return "unknown"; }
-  sendKeys(text: string): Promise<boolean> { return this.mutate(snapshot => ({ action: "input", ...this.target(snapshot), kind: "literal", text })); }
+  sendKeys(text: string, proof?: PaneInputProof): Promise<boolean> { return this.mutate((snapshot, expectedSeq) => ({ action: "input", ...this.target(snapshot), expectedSeq, kind: "literal", text }), proof); }
   async sendKeySequence(keys: readonly string[]): Promise<boolean> {
     if (!keys.length || keys.length > 64 || keys.some(key => !Object.hasOwn(PANE_EDIT_KEYS, key))) return false;
-    return this.mutate(snapshot => ({ action: "edit", ...this.target(snapshot), keys: [...keys] as PaneEditKey[] }));
+    return this.mutate((snapshot, expectedSeq) => ({ action: "edit", ...this.target(snapshot), expectedSeq, keys: [...keys] as PaneEditKey[] }));
   }
-  sendSpecialKey(key: PaneKey): Promise<boolean> { return this.mutate(snapshot => ({ action: "key", ...this.target(snapshot), key })); }
+  sendSpecialKey(key: PaneKey, _timeoutMs?: number, proof?: PaneInputProof): Promise<boolean> { return this.mutate((snapshot, expectedSeq) => ({ action: "key", ...this.target(snapshot), expectedSeq, key }), proof); }
   async deleteBackward(count: number): Promise<boolean> {
     if (!Number.isInteger(count) || count <= 0) return true;
     if (count > 8192) return false;
-    return this.mutate(snapshot => ({ action: "edit", ...this.target(snapshot), keys: ["BSpace"], repeat: count }));
+    return this.mutate((snapshot, expectedSeq) => ({ action: "edit", ...this.target(snapshot), expectedSeq, keys: ["BSpace"], repeat: count }));
   }
   getLastSendSpecialKeyError(): string | null { return this.error; }
   getLastPasteError(): string | null { return this.error; }
@@ -218,12 +232,12 @@ export class RuntimePanePort implements Pane {
     await new Promise(resolve => setTimeout(resolve, 500));
     return this.sendSpecialKey("Enter");
   }
-  async pasteBuffer(text: string, opts: { guard?: () => boolean } = {}): Promise<boolean> {
+  async pasteBuffer(text: string, opts: { guard?: () => boolean; proof?: PaneInputProof } = {}): Promise<boolean> {
     if (opts.guard && !opts.guard()) return false;
-    return this.mutate(snapshot => {
+    return this.mutate((snapshot, expectedSeq) => {
       if (opts.guard && !opts.guard()) throw Error("Delivery admission expired");
-      return { action: "input", ...this.target(snapshot), kind: "paste", text };
-    });
+      return { action: "input", ...this.target(snapshot), expectedSeq, kind: "paste", text };
+    }, opts.proof);
   }
   async pipeOutput(logPath: string): Promise<void> {
     this.closeOutput(); const snapshot = this.record.snapshot;
@@ -234,14 +248,19 @@ export class RuntimePanePort implements Pane {
     this.outputLog = feed; try { await feed.start(); } catch (error) { this.closeOutput(); throw error; }
   }
   closeOutput(): void { this.outputLog?.stop(); this.outputLog = undefined; }
-  private async capture(options: { history?: number; ansi?: boolean; joined?: boolean }): Promise<string> {
+  private async captureCurrent(options: { history?: number; ansi?: boolean; joined?: boolean } = {}): Promise<RuntimePaneCapture> {
     if (!this.endpoint.online() || !this.record.snapshot) throw Error("Pane observation is disconnected");
     const result = await this.endpoint.call({ action: "capture", paneId: this.record.launch.paneId, launchId: this.record.snapshot.launchId, ...options }) as RuntimePaneCapture;
     const snapshot = this.accept(result?.snapshot);
-    if (typeof result.text !== "string") throw Error("Invalid pane capture");
+    if (!this.endpoint.online() || typeof result.text !== "string") throw Error("Invalid or disconnected pane capture");
     // Capturing while an input awaits its response must never erase that input's durable identity.
     if (!this.record.pending) this.record.snapshot = snapshot;
-    return result.text;
+    const capture = { snapshot, text: result.text };
+    if (!options.history && !options.joined && !options.ansi) this.inputCapture = capture;
+    return capture;
+  }
+  private async capture(options: { history?: number; ansi?: boolean; joined?: boolean }): Promise<string> {
+    return (await this.captureCurrent(options)).text;
   }
   // Match TmuxManager's ordinary capture-pane -p. VT replay serialization is not detector-ready text.
   capturePane(): Promise<string> { return this.capture({}); }

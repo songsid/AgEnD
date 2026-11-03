@@ -4141,11 +4141,13 @@ export class Daemon extends EventEmitter {
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
               if (stale()) return;
+              const keyScreen = this.nativePaneLifecycle ? await pollTmux.capturePane() : currentPane;
+              if (stale() || !Daemon.dialogMatches(dialog, keyScreen)) return;
               let sent = false;
               if (SPECIAL_KEYS.has(key)) {
-                sent = await pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+                sent = await (this.nativePaneLifecycle ? pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left", undefined, { kind: "dialog", screen: keyScreen }) : pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left"));
               } else if (dialog.literalKeys) {
-                sent = await pollTmux.sendKeys(key);                     // typed, no Enter (#2872)
+                sent = await (this.nativePaneLifecycle ? pollTmux.sendKeys(key, { kind: "dialog", screen: keyScreen }) : pollTmux.sendKeys(key)); // typed, no Enter (#2872)
               } else {
                 sent = await pollTmux.pasteText(key, this.systemPasteOptions());
               }
@@ -4733,9 +4735,10 @@ export class Daemon extends EventEmitter {
     /** One key on a dialog re-read under the lock: still the same target, and (when given) the cursor where expected. */
     const press = (target: string, cursor: 1 | 2 | null, key: "Enter" | "Escape" | "Up") => this.paneWriteLock.run(async () => {
       if (this.tmux !== tmux) return false;
-      const now = claudeSwitchDialog(await read());
+      const screen = await read();
+      const now = claudeSwitchDialog(screen);
       if (!now || now.kind !== "model" || now.target !== target || (cursor !== null && now.cursor !== cursor)) return false;
-      return tmux.sendSpecialKey(key);
+      return this.nativePaneLifecycle ? tmux.sendSpecialKey(key, undefined, { kind: "dialog", screen }) : tmux.sendSpecialKey(key);
     });
     const gone = async () => {
       const until = performance.now() + OWN_SWITCH_SETTLE_MS;
@@ -4813,9 +4816,11 @@ export class Daemon extends EventEmitter {
           if (!matches(currentPane)) return false;
           const specialKeys = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
           for (const key of dialog.keys) {
+            const keyScreen = this.nativePaneLifecycle ? await this.tmux!.capturePane() : currentPane;
+            if (!matches(keyScreen)) return false;
             const ok = specialKeys.has(key)
-              ? await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left")
-              : await this.tmux!.sendKeys(key);
+              ? await (this.nativePaneLifecycle ? this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left", undefined, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left"))
+              : await (this.nativePaneLifecycle ? this.tmux!.sendKeys(key, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendKeys(key));
             if (!ok) return false;
             await new Promise(resolve => setTimeout(resolve, 100));
           }
@@ -8782,13 +8787,14 @@ export class Daemon extends EventEmitter {
     if (!tmux || readers.length === 0) return { outcome: "stale" };
     if (this.remoteCardAnswering) return { outcome: "refused", reason: "another answer to this card is being keyed in" };
     this.remoteCardAnswering = true;
+    let answerScreen: string | null = null;
     try {
       const outcome = await answerRemoteCard({
         locked: fn => this.paneWriteLock.run(fn),
         // An unreadable screen (a failed capture, another spawn's pane) is unknown — never "the card closed".
-        read: () => this.tmux === tmux ? tmux.capturePane().catch(() => null) : Promise.resolve(null),
-        key: key => this.tmux !== tmux ? Promise.resolve(false) : key === "Space" ? tmux.sendKeys(" ") : tmux.sendSpecialKey(key),
-        paste: text => this.tmux !== tmux ? Promise.resolve(false) : tmux.pasteBuffer(text),
+        read: async () => answerScreen = this.tmux === tmux ? await tmux.capturePane().catch(() => null) : null,
+        key: key => this.tmux !== tmux || answerScreen === null ? Promise.resolve(false) : key === "Space" ? (this.nativePaneLifecycle ? tmux.sendKeys(" ", { kind: "dialog", screen: answerScreen }) : tmux.sendKeys(" ")) : (this.nativePaneLifecycle ? tmux.sendSpecialKey(key, undefined, { kind: "dialog", screen: answerScreen }) : tmux.sendSpecialKey(key)),
+        paste: text => this.tmux !== tmux || answerScreen === null ? Promise.resolve(false) : this.nativePaneLifecycle ? tmux.pasteBuffer(text, { proof: { kind: "dialog", screen: answerScreen } }) : tmux.pasteBuffer(text),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         now: () => performance.now(),
       }, pane => {
@@ -9763,7 +9769,7 @@ export class Daemon extends EventEmitter {
       this.logger.error({ phase, deliveryId: durableAttempt.deliveryId }, "Could not commit durable Enter write-ahead fence");
       return false;
     }
-    const sent = await tmux!.sendSpecialKey("Enter");
+    const sent = await (this.nativePaneLifecycle ? tmux!.sendSpecialKey("Enter", undefined, { kind: "composer", screen: pane }) : tmux!.sendSpecialKey("Enter"));
     if (!sent) {
       this.logger.error({
         phase,
@@ -13005,10 +13011,12 @@ export class Daemon extends EventEmitter {
                 // Before every key, synchronously: the lock wait, the capture and the gap after the previous key can
                 // each have seen a respawn, pause or stop.
                 if (!owned()) return false;
+                const keyScreen = this.nativePaneLifecycle ? await this.tmux!.capturePane() : answeredPane;
+                if (!owned() || !Daemon.dialogMatches(dialog, keyScreen)) return false;
                 if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
-                  if (!await this.tmux!.sendSpecialKey(key)) return false;
+                  if (!await (this.nativePaneLifecycle ? this.tmux!.sendSpecialKey(key, undefined, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendSpecialKey(key))) return false;
                 } else {
-                  if (!await this.tmux!.sendKeys(key)) return false;
+                  if (!await (this.nativePaneLifecycle ? this.tmux!.sendKeys(key, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendKeys(key))) return false;
                 }
                 await new Promise(r => setTimeout(r, 200));
               }

@@ -125,8 +125,10 @@ export class RuntimePaneHost {
       process.onData(data => {
         if (this.live.get(launch.paneId) !== live) return;
         live.output.append(data);
+        // Invalidate observations when bytes arrive, not later when the VT parser finishes. A queued repaint
+        // already makes an old composer proof unsafe, even while capture or parser completion is awaiting.
+        record.snapshot.seq++; record.snapshot.outputAt = Date.now();
         live.parsed = screen.write(data).then(() => {
-          record.snapshot.seq++; record.snapshot.outputAt = Date.now();
           try { this.options.output?.(structuredClone(record.snapshot)); } catch { /* observer backpressure cannot change process ownership */ }
         }).catch(() => {
           record.snapshot.state = "unknown";
@@ -205,7 +207,7 @@ export class RuntimePaneHost {
     record.snapshot.commandSequence = request.sequence;
     record.lastCommand = { id: request.operationId, digest, state: "prepared" };
     delete record.snapshot.inputRefused;
-    if((request.action==="input"||request.action==="key"||request.action==="edit")&&request.expectedSeq!==undefined&&request.expectedSeq!==record.snapshot.seq){
+    if((request.action==="input"||request.action==="key"||request.action==="edit")&&request.expectedSeq!==record.snapshot.seq){
       // Positively no input. Consume this command identity: a lost refusal ACK must never become a later key.
       record.snapshot.inputRefused=true;record.lastCommand.state="applied";this.options.store.put(record);return structuredClone(record.snapshot);
     }

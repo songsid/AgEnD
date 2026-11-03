@@ -96,7 +96,7 @@ describe("native argv and prompt boundaries", () => {
     expect(read.args).not.toContain("acceptEdits");
     for(const invocation of [read,write]){
       const index=invocation.args.indexOf("--settings");expect(index).toBeGreaterThanOrEqual(0);
-      expect(JSON.parse(invocation.args[index+1])).toEqual({permissions:{blockWritesOutsideWorkingDirectories:true}});
+      expect(JSON.parse(invocation.args[index+1])).toEqual({permissions:{blockWritesOutsideWorkingDirectories:true}});expect(invocation.args[invocation.args.indexOf('--setting-sources')+1]).toBe('');
       expect(invocation.args.filter(arg=>arg==="--settings")).toHaveLength(1);
     }
   });
