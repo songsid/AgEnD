@@ -1,0 +1,173 @@
+{
+  "failed": 1,
+  "results": [
+    {
+      "name": "desk-claude",
+      "ok": true,
+      "failed": [],
+      "open": {
+        "px": [
+          14.91
+        ],
+        "changes": 0,
+        "h": [
+          794
+        ]
+      },
+      "after": {
+        "px": [
+          14.91
+        ],
+        "changes": 0,
+        "h": [
+          794
+        ]
+      },
+      "following": {
+        "px": 14.91,
+        "h": 794,
+        "w": 1091,
+        "bottom": true,
+        "scrolls": false,
+        "reading": false,
+        "raw": null
+      },
+      "jumped": null
+    },
+    {
+      "name": "desk-codex",
+      "ok": true,
+      "failed": [],
+      "open": {
+        "px": [
+          14.91
+        ],
+        "changes": 0,
+        "h": [
+          794
+        ]
+      },
+      "after": {
+        "px": [
+          14.91
+        ],
+        "changes": 0,
+        "h": [
+          794
+        ]
+      },
+      "following": {
+        "px": 14.91,
+        "h": 794,
+        "w": 1091,
+        "bottom": true,
+        "scrolls": false,
+        "reading": false,
+        "raw": null
+      },
+      "jumped": null
+    },
+    {
+      "name": "desk-tall",
+      "ok": false,
+      "failed": [
+        "following: not at the live bottom ({\"px\":12,\"h\":494,\"w\":1091,\"bottom\":false,\"scrolls\":true,\"reading\":false,\"raw\":null})",
+        "not at the live bottom at the end ({\"px\":12,\"h\":494,\"w\":1091,\"bottom\":false,\"scrolls\":true,\"reading\":false,\"raw\":null})"
+      ],
+      "open": {
+        "px": [
+          12
+        ],
+        "changes": 0,
+        "h": [
+          494
+        ]
+      },
+      "after": {
+        "px": [
+          12
+        ],
+        "changes": 0,
+        "h": [
+          494
+        ]
+      },
+      "following": {
+        "px": 12,
+        "h": 494,
+        "w": 1091,
+        "bottom": false,
+        "scrolls": true,
+        "reading": false,
+        "raw": null
+      },
+      "jumped": null
+    },
+    {
+      "name": "phone-claude",
+      "ok": true,
+      "failed": [],
+      "open": {
+        "px": [
+          6
+        ],
+        "changes": 0,
+        "h": [
+          612
+        ]
+      },
+      "after": {
+        "px": [
+          6
+        ],
+        "changes": 0,
+        "h": [
+          612
+        ]
+      },
+      "following": {
+        "px": 6,
+        "h": 612,
+        "w": 390,
+        "bottom": true,
+        "scrolls": false,
+        "reading": false,
+        "raw": null
+      },
+      "jumped": null
+    },
+    {
+      "name": "phone-codex",
+      "ok": true,
+      "failed": [],
+      "open": {
+        "px": [
+          6
+        ],
+        "changes": 0,
+        "h": [
+          612
+        ]
+      },
+      "after": {
+        "px": [
+          6
+        ],
+        "changes": 0,
+        "h": [
+          612
+        ]
+      },
+      "following": {
+        "px": 6,
+        "h": 612,
+        "w": 390,
+        "bottom": true,
+        "scrolls": false,
+        "reading": false,
+        "raw": null
+      },
+      "jumped": null
+    }
+  ]
+}
