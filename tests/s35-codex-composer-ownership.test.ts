@@ -1,4 +1,4 @@
-/** S-35: the Enter gate proves a Codex composer owns its pasted envelope, however many rows it wraps to. No CLI is started. */
+/** S-35 composer readers retain their contract; native delivery uses the approved #2990 recognised-dialog-only policy. No CLI is started. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -42,7 +42,7 @@ function gateDaemon(screen: string, mode: "codex" | "native") {
   const daemon: any = new Daemon("s35", { working_directory: root, backend: "codex", log_level: "silent" } as never, root, true, backend, undefined, logger as never);
   daemon.tmux = { getWindowId: () => "@owned", capturePane: vi.fn(async () => screen), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
   daemon.deliveryOutbox = { markEnterStarted: () => true };
-  // S-36: the composer gate is the NATIVE pane's (main's beta.5 removed it for tmux panes, decision f57474aa).
+  // Native delivery keeps owner/sequence fences and recognised runtime-dialog vetoes; composer readers are independent.
   if (mode === "native") daemon.nativePaneLifecycle = {};
   return daemon;
 }
@@ -66,7 +66,7 @@ describe("S-35 real Windows Codex screen", () => {
   });
 });
 
-describe("S-35 negatives stay refused", () => {
+describe("S-35 composer negatives and recognised-dialog delivery policy", () => {
   const historyAboveOutput = screenWith([...HISTORY_ROWS, "› old echoed prompt", "  wrapped history", "• Called agend.reply",
     "  └ {\"messageId\":\"1\"}", "", FOOTER]);
   const selectionCard = screenWith([...HISTORY_ROWS, "  Would you like to switch the model?", "› 1. Yes, switch now",
@@ -75,14 +75,14 @@ describe("S-35 negatives stay refused", () => {
   const numberedCardAboveFooter = screenWith([...HISTORY_ROWS, "› 1. Yes, switch now", "  2. No, keep current", "", FOOTER]);
 
   it.each([
-    ["a transcript prompt above a • output row", historyAboveOutput],
-    ["a selection card", selectionCard],
-    ["a numbered selection card above a real footer", numberedCardAboveFooter],
-    ["a busy working row", busyRow],
-  ])("%s is never owned, for Enter or delivery readiness", async (_name, screen) => {
+    ["a transcript prompt above a • output row", historyAboveOutput, false],
+    ["a selection card", selectionCard, true],
+    ["a numbered selection card above a real footer", numberedCardAboveFooter, false],
+    ["a busy working row", busyRow, false],
+  ] as const)("%s is not composer-owned; only a recognised dialog blocks delivery", async (_name, screen, recognisedDialog) => {
     expect(conpty.ownsComposerRows(screen)).toBe(false);
     expect(unix.ownsComposerRows(screen)).toBe(false);
-    expect(await enter(screen, "native")).toEqual({ sent: false, keys: 0 });
+    expect(await enter(screen, "native")).toEqual(recognisedDialog ? { sent: false, keys: 0 } : { sent: true, keys: 1 });
     expect(await enter(screen, "codex")).toEqual({ sent: true, keys: 1 });   // a tmux pane: main's beta.5, no proof
   });
 
@@ -95,7 +95,7 @@ describe("S-35 negatives stay refused", () => {
   });
   it("a live dialog vetoes Enter even over a real composer (native pane)", async () => {
     const daemon = gateDaemon(postTurn, "native");
-    vi.spyOn(daemon, "runtimeDialogs").mockReturnValue([{ pattern: /Pane check 2/, keys: [], description: "fixture dialog", holdOnly: true, blocksDelivery: true }]);
+    vi.spyOn(daemon.backend, "getRuntimeDialogs").mockReturnValue([{ pattern: /Pane check 2/, keys: [], description: "fixture dialog", holdOnly: true, blocksDelivery: true }]);
     expect(await daemon.sendDeliveryEnter("initial-submit", undefined, { deliveryId: "s35-delivery", attemptNo: 1 })).toBe(false);
     expect(daemon.tmux.sendSpecialKey).not.toHaveBeenCalled();
   });
