@@ -59,3 +59,11 @@ it('S-35 P1: with no injected open, the relay calls RuntimePaneLink.open bound t
   await expect(endpoint.call({action:'list'})).resolves.toHaveProperty('panes',[]);
  }finally{open.mockRestore();attach.mockRestore();}
 });
+it('S-35: the relay\'s stderr reaches the fleet diagnostic, bounded and with control characters removed (it was discarded)',async()=>{
+ const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()});
+ const seen:string[]=[];
+ const opening=LocalPaneEndpoint.open({scope:'c'.repeat(64),admit:()=>{},maxAgents:()=>4,version:()=>null,launch:async()=>child as never,mcp:vi.fn(async()=>({tools:[]})),diagnostic:text=>seen.push(text)});
+ stderr.write('TypeError: Cannot read properties of undefined (reading \'attach\')\u0007\n');stderr.write('x'.repeat(10_000));output.end();
+ await expect(opening).rejects.toThrow('Local pane relay startup unconfirmed');
+ expect(seen.join('').startsWith("TypeError: Cannot read properties of undefined (reading 'attach') x")).toBe(true);expect(seen.join('').length).toBeLessThanOrEqual(8_192);expect(seen.join('')).not.toMatch(/[\u0000-\u001f]/);
+});

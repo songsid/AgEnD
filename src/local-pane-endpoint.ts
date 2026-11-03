@@ -10,6 +10,8 @@ interface Pending {resolve(value:unknown):void;reject(error:Error):void;timer:Re
 export interface LocalPaneOptions {
  scope:string;admit():void;maxAgents():number;version(provider:string):string|null;
  launch():Promise<ChildProcess>;mcp(body:PaneMcpBody,current:()=>boolean):Promise<unknown>;
+ /** S-35: the relay's own stderr (bounded) — it was discarded, so a relay that exited at once left no trace. */
+ diagnostic?(text:string):void;
 }
 export class LocalPaneEndpoint implements NativeMachineEndpoint {
  readonly machineId="local";private readonly attachment=randomUUID();private child:ChildProcess|undefined;private connected=false;private stopped=false;private mcpPending=0;private cleanupOnly=false;private lastLease=0;
@@ -33,7 +35,8 @@ export class LocalPaneEndpoint implements NativeMachineEndpoint {
   return new Promise((resolve,reject)=>{
    if(!child.stdin||!child.stdout){reject(Error("Local pane relay streams are unavailable"));return;}
    const framer=new PaneStdioFramer();let ready=false;const timer=setTimeout(()=>{reject(Error("Local pane relay startup unconfirmed"));this.stop();},125_000);timer.unref();
-   const lost=()=>{clearTimeout(timer);if(!ready)reject(Error("Local pane relay startup unconfirmed"));this.stop();};child.once("error",lost);child.once("exit",lost);child.stdout?.once("end",lost);child.stdin?.on("error",lost);child.stderr?.resume();
+   const lost=()=>{clearTimeout(timer);if(!ready)reject(Error("Local pane relay startup unconfirmed"));this.stop();};child.once("error",lost);child.once("exit",lost);child.stdout?.once("end",lost);child.stdin?.on("error",lost);
+   let told=0;child.stderr?.setEncoding?.("utf8");child.stderr?.on("data",(part:string|Buffer)=>{if(told>=8_192||!this.options.diagnostic)return;const text=String(part).replace(/[\p{Cc}\p{Cf}]+/gu," ").trim().slice(0,8_192-told);told+=text.length;if(text)try{this.options.diagnostic(text);}catch{/* a diagnostic never affects the relay */}});
    child.stdout?.on("data",(bytes:Buffer)=>{try{framer.feed(bytes,raw=>{
     const value=paneStdioOutput(raw);if(value.epoch!==this.attachment)throw Error("Local pane relay epoch differs");
     if(!ready){if(value.type!=="hello")throw Error("Local pane relay not ready");ready=true;clearTimeout(timer);this.connected=true;this.lastLease=performance.now();this.lease();this.interval=setInterval(()=>this.lease(),5000);this.interval.unref();resolve();return;}
