@@ -86,6 +86,8 @@ describe("native Agent creation through settings confirmation", () => {
     expect(h.create).not.toHaveBeenCalled(); expect(h.save).not.toHaveBeenCalled(); expect(h.cfg.instances).toEqual({});
     const summary = pending.body.pending_change.summary.join("\n");
     expect(summary).toContain("windows"); expect(summary).toContain("read-only"); expect(summary).toContain("CodexTest");
+    // S-35: the CLI and model that will run with the person's sign-in are on the card too.
+    expect(summary).toMatch(/new\\?_instance\.backend: absent → codex/); expect(summary).toMatch(/new\\?_instance\.model: absent → gpt-6\.1-sol/);
     if (remote) expect(summary).toContain(MACHINE_ID);
     const confirmed = await h.store.decide(pending.body.pending_change.id, "confirm", { label: "Host administrator", current: () => true });
     expect(confirmed.state, JSON.stringify({ outcome: confirmed.outcome, calls: h.create.mock.calls.length, saved: h.save.mock.calls.length, instances: Object.keys(h.cfg.instances) })).toBe("applied"); expect(h.create).toHaveBeenCalledOnce(); expect(h.save).toHaveBeenCalledOnce();

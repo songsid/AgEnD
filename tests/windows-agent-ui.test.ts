@@ -222,6 +222,13 @@ describe("runtime-first creation",()=>{
     expect(p.root.textContent).toContain("Uses this CLI's local access and approval settings");
     expect(sent.some(request=>request.path==="/ui/instances" || request.path==="/ui/windows-cli/agents")).toBe(false);
   });
+  it("S-35 (#2953 story 3): with this PC's Windows CLIs switched off, New agent does not offer Native Windows at all",async()=>{
+    app.appStore.set({windowsCli:false});await p.mount(h(Dialog,{onClose(){}}));await settle(8);
+    const runtimes=()=>p.root.querySelectorAll('.agent-runtime-picker input[name="agent-runtime"]').map((i:any)=>i.value);
+    expect(runtimes()).toEqual(["wsl"]);expect(p.root.textContent).not.toContain("Native Windows");
+    await p.unmount();app.appStore.set({windowsCli:true});await p.mount(h(Dialog,{onClose(){}}));await settle(8);
+    expect(runtimes()).toEqual(["wsl","windows"]);
+  });
   it("S-30: Claude Code's native permissions say plainly that writes not allowed in its own settings are denied",async()=>{
     probe=allCliProbe();await openWindows();await chooseCli("claude-code");await next();await setWindowsIdentity("Claude helper");
     await setNativePermissions();
