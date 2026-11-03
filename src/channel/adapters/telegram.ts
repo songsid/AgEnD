@@ -1,6 +1,7 @@
 import { nativeHumanOrigin } from "../../human-delivery-receipts.js";
 import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
+import { inboxTempName } from "../inbox-temp-name.js";
 import { Agent as HttpAgent } from "node:http";
 import { Agent as HttpsAgent } from "node:https";
 import { createReadStream, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
@@ -1512,7 +1513,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const token = (this.bot as unknown as { token: string }).token;
     const url = `${this.apiRoot}/file/bot${token}/${filePath}`;
 
-    const filename = `${Date.now()}-${fileId.slice(-8)}-${filePath.split("/").pop() ?? fileId}`;
+    // #2959: unique per download — the inbox is shared by every bot on the host.
+    const filename = inboxTempName(fileId, filePath.split("/").pop() ?? fileId);
     const localPath = join(this.inboxDir, filename);
 
     // Download using fetch
