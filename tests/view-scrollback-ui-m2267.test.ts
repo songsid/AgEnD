@@ -15,7 +15,7 @@ import { fire } from "./helpers/mini-dom.js";
 
 const ROSTER = [{ instance_name: "alpha", display_name: "Alpha", status: "running", backend: "codex", tags: [], has_avatar: false }];
 let screen = "SCREEN 1", historyText = "old 1\nold 2\nold 3\nSCREEN 1", historyHeaders: Record<string, string> = { "X-Pane-Alternate": "0", "X-Pane-History-Lines": "3" };
-let historyStatus = 200;
+let historyStatus = 200, historyNoHeaders = false, historyGate: Promise<void> | null = null;
 const reads: string[] = [];
 let p: AppPage, view: any, i18n: any;
 const g = globalThis as any;
@@ -27,7 +27,8 @@ beforeAll(async () => {
     if (u.startsWith("/api/pane/")) {
       reads.push(u);
       const history = u.endsWith("?history=1");
-      const headers: Record<string, string> = { "X-Pane-Cols": "80", "X-Pane-Rows": "1", ...(history ? historyHeaders : {}) };
+      if (history && historyGate) await historyGate;
+      const headers: Record<string, string> = { "X-Pane-Cols": "80", "X-Pane-Rows": "1", ...(history && !historyNoHeaders ? historyHeaders : {}) };
       const status = history ? historyStatus : 200;
       return { ok: status === 200, status, headers: { get: (k: string) => headers[k] ?? null }, text: async () => (history ? historyText : screen) };
     }
@@ -42,6 +43,7 @@ afterAll(async () => { await p.unmount(); p.restore(); for (const k of ["fetch",
 afterEach(async () => {
   await p.unmount();
   screen = "SCREEN 1"; historyText = "old 1\nold 2\nold 3\nSCREEN 1"; historyHeaders = { "X-Pane-Alternate": "0", "X-Pane-History-Lines": "3" }; historyStatus = 200;
+  historyNoHeaders = false; historyGate = null;
   reads.length = 0; i18n.setLang("en", { store: false });
 });
 
@@ -124,6 +126,57 @@ describe("scrolling up reads the scrollback once, and nothing yanks the reader",
     fire(term(), "wheel", { deltaY: -120 }); await settle(10);
     await tick();
     expect(button(".v-term-latest")!.textContent).not.toContain("New output below");
+  });
+});
+
+describe("#2969 review: a screen taller than its box, a failed read, new output while loading", () => {
+  it("a screen taller than its box (a larger Aa), moved up from the bottom: reading it — the refresh never pulls the person down", async () => {
+    await mount();
+    layout(1000); term().scrollTop = 800;                                       // following, at the bottom of a tall screen
+    fire(term(), "wheel", { deltaY: -100 });                                    // the person moves it up…
+    term().scrollTop = 600; fire(term(), "scroll"); await settle(5);
+    expect([term().className.includes("is-reading"), historyReads()]).toEqual([true, 0]);
+    screen = "SCREEN 2";
+    await tick();
+    expect([pre().textContent, term().scrollTop]).toEqual(["SCREEN 1", 600]);  // not redrawn, not moved
+    expect(button(".v-term-latest")!.textContent).toContain("New output below");
+    term().scrollTop = 0; fire(term(), "wheel", { deltaY: -100 }); await settle(10);   // …and reaches its top: the scrollback
+    expect([historyReads(), pre().textContent.startsWith("old 1")]).toEqual([1, true]);
+  });
+  it("a refresh landing while the person moves a tall screen up (before its scroll event) does not yank them either", async () => {
+    await mount();
+    layout(1000); term().scrollTop = 700;                                       // not at the bottom, the person just moved it
+    fire(term(), "keydown", { key: "ArrowUp" });
+    screen = "SCREEN 2";
+    await tick();
+    expect([pre().textContent, term().scrollTop, term().className.includes("is-reading")]).toEqual(["SCREEN 1", 700, true]);
+  });
+  it("a scrollback read that failed (503) or answered without its facts changes nothing shown: still following, the screen as it was", async () => {
+    for (const [status, noHeaders] of [[503, false], [200, true]] as const) {
+      historyStatus = status; historyNoHeaders = noHeaders;
+      await mount();
+      fire(term(), "wheel", { deltaY: -120 }); await settle(10);
+      expect([pre().textContent, term().className.includes("is-reading"), p.root.querySelector(".v-term-history-note")!.textContent], `${status}`)
+        .toEqual(["SCREEN 1", false, "Could not load earlier output."]);
+      await p.unmount();
+    }
+  });
+  it("new output while the scrollback was loading is said at once (judged against what is shown, not the newest read)", async () => {
+    let open!: () => void;
+    historyGate = new Promise<void>((r) => { open = r; });
+    await mount();
+    fire(term(), "wheel", { deltaY: -120 }); await settle(5);                  // the scrollback read is out (ends with SCREEN 1)
+    screen = "SCREEN 2"; await tick();                                          // the screen moves on meanwhile
+    open(); await settle(10);
+    expect(pre().textContent).toBe("old 1\nold 2\nold 3\nSCREEN 1");
+    expect(button(".v-term-latest")!.textContent).toContain("New output below");
+    await tick();
+    expect(button(".v-term-latest")!.textContent).toContain("New output below"); // and it stays said on the next reads
+  });
+  it("sameScreen: the shown text ends with the live screen (trailing blank rows aside)", () => {
+    expect(view.sameScreen("old\nA\nB\n\n", "A\nB\n")).toBe(true);
+    expect(view.sameScreen("old\nA\nB", "A\nC")).toBe(false);
+    expect(view.sameScreen("B", "A\nB")).toBe(false);
   });
 });
 

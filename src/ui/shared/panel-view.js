@@ -226,6 +226,18 @@ const GUEST_PANE_MS = 1000;
  */
 /** How long a scrollback note stays (it covers the terminal's bottom rows). */
 const NOTE_MS = 6000;
+/** A scroll this soon after the person's own wheel, touch, key or pointer is theirs (not one this page made). */
+const GESTURE_MS = 1000;
+/**
+ * #2969 review (Prism P3): is `live` (a screen read) still what `shown` ends with — the screen as it was when reading
+ * began (the scrollback's last lines, or the screen itself)? Trailing blank rows are not content.
+ */
+export function sameScreen(shown, live) {
+  if (shown == null || live == null) return shown === live;
+  const trim = (t) => String(t).replace(/\n+$/, "");
+  const s = trim(shown).split("\n"), l = trim(live).split("\n");
+  return s.length >= l.length && s.slice(s.length - l.length).join("\n") === l.join("\n");
+}
 /** M-2262 survey: CLIs that redraw their whole window (no tmux scrollback even outside the alternate screen). */
 const REDRAWS_IN_PLACE = new Set(["grok"]);
 /** M-2262 survey: the full-screen CLIs (the alternate screen, or redrawn in place) — tmux keeps nothing above their screen. */
@@ -262,7 +274,12 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     setHistoryNoteState(note);
     if (note && brief) noteTimer.current = lease.timeout(() => setHistoryNoteState(null), NOTE_MS);
   };
-  const screenAt = useRef({ reading: null, latest: null });
+  // `reading`: the text shown while reading (the scrollback, or the screen as it was when the person left the bottom);
+  // `latest`: the newest screen read; `history`: whether what is shown has the scrollback in it.
+  const screenAt = useRef({ reading: null, latest: null, history: false });
+  // #2969 review (Prism P2): when the person last moved the terminal themselves (wheel, touch, key, pointer).
+  const gestureAt = useRef(-Infinity);
+  const recentGesture = () => performance.now() - gestureAt.current < GESTURE_MS;
   // #1674: the text size as of this render. The pane refresh and the resize handlers below are set up once per mount
   // and keep the fit() of that render; reading the size here, not from that render's props, keeps them on the current
   // choice (they used to put the mount-time size back within one 800 ms refresh).
@@ -296,6 +313,12 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     paintAnsi(pre.current);
   };
   useEffect(() => { grid.current.key = ""; fit(); }, [density]);
+  const atBottom = () => { const box = term.current; return !box || box.scrollHeight - box.scrollTop - box.clientHeight <= 2; };
+  /** Reading what is shown now (`text`, with or without the scrollback): the refresh only says whether there is more. */
+  const startReading = (text, history) => {
+    screenAt.current.reading = text; screenAt.current.history = history;
+    setNewBelow(false); setMode("reading");
+  };
   const grid1 = (r) => {
     const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
     if (c >= 1 && rw >= 1 && (c !== grid.current.cols || rw !== grid.current.rows)) { grid.current.cols = c; grid.current.rows = rw; grid.current.key = ""; }
@@ -323,7 +346,10 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
         setProblem(null);
         screenAt.current.latest = text;
         // Reading earlier output: nothing is redrawn under the person — the read only says whether there is more.
-        if (modeRef.current !== "follow") { if (modeRef.current === "reading" && text !== screenAt.current.reading) setNewBelow(true); return; }
+        if (modeRef.current !== "follow") { if (modeRef.current === "reading") setNewBelow(!sameScreen(screenAt.current.reading, text)); return; }
+        // #2969 review (Prism P2): the person is moving a screen taller than its box away from the bottom right now —
+        // this is them leaving it, not the latest to follow: read on, nothing redrawn.
+        if (recentGesture() && !atBottom()) { startReading(screenAt.current.latest, false); return; }
         grid1(r);
         draw(text);
         fit();
@@ -332,40 +358,51 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
       finally { reads.end(token); }
     };
     loadEarlier.current = async () => {
-      if (modeRef.current !== "follow") return;
+      // From following, or from reading what was on the screen (the person reached its top): never twice, never over it.
+      const from = modeRef.current;
+      if (from !== "follow" && !(from === "reading" && !screenAt.current.history)) return;
       if (noScrollbackRef.current) { setHistoryNote(tn("noEarlier"), true); return; }   // known: nothing to read
+      const box0 = term.current;
+      // Where the person is, measured from the end: the screen's lines stay where they are under the scrollback added.
+      const fromEnd = box0 ? box0.scrollHeight - box0.scrollTop : 0;
+      const back = () => { setMode(from); if (from === "follow") toBottom(); };
       setMode("loading"); setHistoryNote(tn("loadingEarlier"));
       try {
         const r = await lease.fetch(`/api/pane/${encodeURIComponent(name)}?history=1`);
         if (!lease.current() || modeRef.current !== "loading") return;
-        if (!r.ok) { setMode("follow"); setHistoryNote(r.status === 429 ? null : tn("earlierFailed"), true); return; }
+        // #2969 review (Prism P2): a scrollback read that failed — or answered without its facts — changes nothing shown.
+        if (!r.ok || r.headers.get("X-Pane-History-Lines") == null) { back(); setHistoryNote(r.status === 429 ? null : tn("earlierFailed"), true); return; }
         const text = await r.text();
         if (!lease.current() || modeRef.current !== "loading" || !pre.current) return;
         // A full-screen CLI (the alternate screen, or one that redraws its whole window) leaves nothing above its screen;
         // any other with no history yet has simply not scrolled: say which, keep following.
         if (r.headers.get("X-Pane-Alternate") === "1" || REDRAWS_IN_PLACE.has(backend)) {
           noScrollbackRef.current = true; setNoScrollback(true);
-          setMode("follow"); setHistoryNote(tn("noEarlier"), true); return;
+          back(); setHistoryNote(tn("noEarlier"), true); return;
         }
-        if (r.headers.get("X-Pane-History-Lines") === "0") { setMode("follow"); setHistoryNote(tn("nothingEarlier"), true); return; }
+        if (r.headers.get("X-Pane-History-Lines") === "0") { back(); setHistoryNote(tn("nothingEarlier"), true); return; }
         grid1(r);
         const lines = text.split("\n").length, rows = grid.current.rows || 0;
-        screenAt.current.reading = screenAt.current.latest;
-        setNewBelow(false);
+        // #2969 review (Prism P3): new output is judged against what is shown — the scrollback's own last screen — and
+        // a screen read while this one was out already counts.
+        screenAt.current.reading = text; screenAt.current.history = true;
+        setNewBelow(screenAt.current.latest != null && !sameScreen(text, screenAt.current.latest));
         setMode("reading"); setHistoryNote(null);
         draw(text);
         fit();
-        // Where the person was (the screen, at the bottom), a few lines up: the earlier output is right above.
         const box = term.current;
         if (box) {
           const lineH = lines > 0 ? pre.current.scrollHeight / lines : 16;
-          box.scrollTop = Math.max(0, box.scrollHeight - box.clientHeight - lineH * Math.min(3, Math.max(1, lines - rows)));
+          // From following (at the bottom): a few lines up — the earlier output right above. From reading: the same lines.
+          box.scrollTop = from === "follow"
+            ? Math.max(0, box.scrollHeight - box.clientHeight - lineH * Math.min(3, Math.max(1, lines - rows)))
+            : Math.max(0, box.scrollHeight - fromEnd);
         }
-      } catch { if (lease.current()) { setMode("follow"); setHistoryNote(tn("earlierFailed"), true); } }
+      } catch { if (lease.current()) { back(); setHistoryNote(tn("earlierFailed"), true); } }
     };
     follow.current = () => {
       if (modeRef.current === "follow") return;
-      setMode("follow"); setNewBelow(false); setHistoryNote(null);
+      setMode("follow"); setNewBelow(false); setHistoryNote(null); screenAt.current.history = false;
       const latest = screenAt.current.latest;
       if (latest != null && pre.current) { draw(latest); fit(); }
       toBottom();
@@ -384,21 +421,29 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
     // Scrolling up asks for the earlier output; reaching the bottom while reading follows again.
     const box = term.current;
     if (box) {
-      lease.on(box, "wheel", (e) => { if (e.deltaY < 0 && modeRef.current === "follow" && box.scrollTop <= 0) loadEarlier.current(); }, { passive: true });
+      // Asking for the earlier output: from following, or from reading the screen as it was — at the top.
+      const mayLoad = () => (modeRef.current === "follow" || (modeRef.current === "reading" && !screenAt.current.history)) && box.scrollTop <= 0;
+      const gesture = () => { gestureAt.current = performance.now(); };
+      lease.on(box, "wheel", (e) => { gesture(); if (e.deltaY < 0 && mayLoad()) loadEarlier.current(); }, { passive: true });
       let touchY = null;
-      lease.on(box, "touchstart", (e) => { touchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; }, { passive: true });
+      lease.on(box, "touchstart", (e) => { gesture(); touchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; }, { passive: true });
       lease.on(box, "touchmove", (e) => {
+        gesture();
         const y = e.touches && e.touches[0] ? e.touches[0].clientY : null;
         if (touchY == null || y == null) return;
-        if (y - touchY > 24 && modeRef.current === "follow" && box.scrollTop <= 0) { touchY = null; loadEarlier.current(); }
+        if (y - touchY > 24 && mayLoad()) { touchY = null; loadEarlier.current(); }
       }, { passive: true });
+      lease.on(box, "pointerdown", gesture, { passive: true });             // the scrollbar, dragged
       lease.on(box, "keydown", (e) => {
-        if (modeRef.current === "follow" && (e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") && box.scrollTop <= 0) { e.preventDefault(); loadEarlier.current(); }
+        gesture();
+        if ((e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") && mayLoad()) { e.preventDefault(); loadEarlier.current(); }
         else if (modeRef.current === "reading" && e.key === "End") { e.preventDefault(); follow.current(); }
       });
       lease.on(box, "scroll", () => {
-        if (modeRef.current !== "reading") return;
-        if (box.scrollHeight - box.scrollTop - box.clientHeight <= 2) follow.current();
+        if (modeRef.current === "reading") { if (atBottom()) follow.current(); return; }
+        // #2969 review (Prism P2): a screen taller than its box (a larger Aa), moved up from the bottom by the person:
+        // reading what is on it — the refresh no longer pulls them back down.
+        if (modeRef.current === "follow" && recentGesture() && !atBottom()) startReading(screenAt.current.latest, false);
       }, { passive: true });
     }
   }, [lease, name]);

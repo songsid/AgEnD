@@ -8,7 +8,7 @@
  *    a paste — and the pane is left exactly as it was (not in a mode).
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -92,6 +92,20 @@ describe("the scrollback, from a real tmux pane", () => {
     await get("/api/pane/alpha");
     expect(new Set(verbs)).toEqual(new Set(["tmux capture-pane", "tmux display-message"]));
     expect(tmux("display-message", "-p", "-t", wid, "#{pane_in_mode}").trim()).toBe("0");
+  });
+});
+
+describe("#2969 review: a scrollback read that cannot be made says so", () => {
+  it("no pane yet, or a capture that failed: 503 — never the plain read's empty 200 (which the page would draw as history)", async () => {
+    rmSync(join(getAgendHome(), "instances", "alpha", "window-id"), { force: true });
+    const none = await get("/api/pane/alpha?history=1");                     // no window-id: no pane yet
+    expect([none.code, none.body]).toEqual([503, JSON.stringify({ error: "scrollback_unavailable" })]);
+    expect((await get("/api/pane/alpha")).code).toBe(200);                    // the plain read keeps its contract
+    if (!haveTmux) return;
+    pane("sleep 60");
+    vi.spyOn(tmuxExecHelper, "exec").mockImplementation((() => Promise.reject(new Error("tmux went away"))) as any);
+    const failed = await get("/api/pane/alpha?history=1");
+    expect(failed.code).toBe(503);
   });
 });
 

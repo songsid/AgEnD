@@ -295,7 +295,7 @@ function guestPane(ctx: ViewApiContext, name: string, guest: import("./web-guest
   guestPaneReads.record(account);
   agents.set(name, now); guestPaneAgents.set(account, agents);
   // The scrollback (a person scrolled up): one read within the same limits, at most the same bytes (its end).
-  if (history) { historyCapture(ctx, name).then((c) => sendPane(res, c, GUEST_PANE_MAX_BYTES, { "Cache-Control": "private, no-store" }), (err) => paneFailed(ctx, res, name, err)); return; }
+  if (history) { historyCapture(ctx, name).then((c) => sendHistory(res, c, GUEST_PANE_MAX_BYTES, { "Cache-Control": "private, no-store" }), (err) => historyFailed(ctx, res, name, err)); return; }
   let shared = sharedCaptures.get(name);
   if (!shared || now - shared.at >= GUEST_PANE_SHARE_MS) {
     shared = { at: now, capture: capturePane(ctx, name) };
@@ -335,6 +335,18 @@ function sendPane(res: ServerResponse, { text, size, scrollback }: { text: strin
   const tail = bytes.subarray(bytes.length - maxBytes);
   const line = tail.indexOf(0x0a);
   res.end(line >= 0 ? tail.subarray(line + 1) : tail);
+}
+/**
+ * #2969 review (Prism P2): the scrollback says so when it is not there — never the plain read's empty 200, which the
+ * page would draw as the earlier output (blanking the screen it had). No pane yet, or no scrollback facts: 503.
+ */
+function sendHistory(res: ServerResponse, c: { text: string; size: PaneSize | null; scrollback?: PaneScrollback | null }, maxBytes: number, extra: Record<string, string> = {}): void {
+  if (!c.scrollback) { json(res, 503, { error: "scrollback_unavailable" }); return; }
+  sendPane(res, c, maxBytes, extra);
+}
+function historyFailed(ctx: ViewApiContext, res: ServerResponse, name: string, err: unknown): void {
+  ctx.logger.debug({ err, name }, "capture-pane (scrollback) failed");
+  json(res, 503, { error: "scrollback_unavailable" });
 }
 function paneFailed(ctx: ViewApiContext, res: ServerResponse, name: string, err: unknown): void {
   ctx.logger.debug({ err, name }, "capture-pane failed");
@@ -461,8 +473,8 @@ export function handleViewRequest(
     const history = url.searchParams.get("history") === "1";
     const guest = guestRequestOf(req);
     if (guest) { guestPane(ctx, name, guest, res, history); return true; }
-    (history ? historyCapture(ctx, name) : capturePane(ctx, name))
-      .then((c) => sendPane(res, c, history ? VIEW_HISTORY.maxBytes : Number.MAX_SAFE_INTEGER), (err) => paneFailed(ctx, res, name, err));
+    if (history) historyCapture(ctx, name).then((c) => sendHistory(res, c, VIEW_HISTORY.maxBytes), (err) => historyFailed(ctx, res, name, err));
+    else capturePane(ctx, name).then((c) => sendPane(res, c, Number.MAX_SAFE_INTEGER), (err) => paneFailed(ctx, res, name, err));
     return true;
   }
 

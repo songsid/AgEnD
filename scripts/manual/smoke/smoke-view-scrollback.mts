@@ -128,6 +128,55 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
   await p.ctx.close();
   results.push({ name: `${c.device}-${c.theme}-${c.lang}`, ok: !failed.length, failed });
 }
+// #2969 review (Prism P2): a screen taller than its box (the larger Aa: 30 rows no longer fit) —
+// moved up from the bottom by the wheel, it is read where it is: no yank while live output goes on; its top then asks
+// for the scrollback.
+{
+  const failed: string[] = [];
+  const need = (ok: boolean, what: string) => { if (!ok) failed.push(what); };
+  const c = { device: "desk", theme: "dark", lang: "en" } as const;
+  const p = await freshPage(fx, c as any, { account: "operator" });
+  const page = p.page;
+  try {
+    await mounted(page, 30000);
+    await page.setViewportSize({ width: 1366, height: 600 });                // a box its height limits (as on a laptop)
+    await page.goto(`${p.base}/view/${encodeURIComponent(live)}`);
+    await page.waitForFunction(() => /line \d+/.test(document.querySelector(".v-pre")?.textContent || ""), null, { timeout: 15000 });
+    // The larger Aa, as a person picks it (the header's Aa button, round to L): 30 rows no longer fit the box.
+    for (let i = 0; i < 4; i++) {
+      const tall = await page.evaluate(() => { const t = document.querySelector(".v-term")!; return t.scrollHeight - t.clientHeight; });
+      if (tall > 40) break;
+      await page.locator(".hd-text").first().click(); await sleep(600);
+    }
+    await sleep(1500);
+    const st = () => page.evaluate(`(() => { const t = document.querySelector(".v-term"), p = document.querySelector(".v-pre");
+      const nums = [...p.textContent.matchAll(/line (\\d+)/g)].map(m => Number(m[1]));
+      return { reading: t.className.includes("is-reading"), top: t.scrollTop, tall: t.scrollHeight - t.clientHeight, first: nums[0] ?? null, last: nums.at(-1) ?? null,
+        latest: document.querySelector(".v-term-latest")?.textContent || "" }; })()`) as Promise<any>;
+    const s0 = await st();
+    need(s0.tall > 40 && !s0.reading, `the screen is taller than its box, following (${JSON.stringify(s0)})`);
+    const histories = { n: 0 };
+    page.on("request", (r: any) => { if (r.url().includes("?history=1")) histories.n++; });
+    const b = (await page.locator(".v-term").boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.wheel(0, -60);                                       // a little up from the bottom
+    await sleep(500);
+    const s1 = await st();
+    need(s1.reading && histories.n === 0 && s1.top < s0.top, `reading the screen where it is, nothing read yet (${JSON.stringify(s1)})`);
+    await sleep(3000);
+    const s2 = await st();
+    need(Math.abs(s2.top - s1.top) < 2 && s2.last === s1.last, `no yank for 3 s of live output (top ${s1.top}→${s2.top}, last ${s1.last}→${s2.last})`);
+    need(s2.latest.includes("New output below"), `New output below (${s2.latest})`);
+    await page.screenshot({ path: shotPath(SMOKE, "desk-dark-en-tall", "reading") });
+    await page.mouse.wheel(0, -2000); await sleep(400); await page.mouse.wheel(0, -200);   // to its top, and up once more
+    await sleep(1500);
+    const s3 = await st();
+    need(histories.n === 1 && s3.reading && s3.first === 1, `its top asks for the scrollback once: from line 1 (${JSON.stringify(s3)}; reads ${histories.n})`);
+    need(p.errors.length === 0, `no page error: ${p.errors.slice(0, 2).join(" / ")}`);
+  } catch (e) { failed.push(`threw: ${String(e).slice(0, 300)}`); }
+  await p.ctx.close();
+  results.push({ name: "desk-dark-en, a screen taller than its box", ok: !failed.length, failed });
+}
 // The pane itself: never put in a mode, and its output never stopped.
 {
   const failed: string[] = [];
