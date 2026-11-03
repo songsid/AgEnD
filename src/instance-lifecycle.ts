@@ -4,7 +4,8 @@ import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./bac
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
 import { assertNoSessionOomStop } from "./session-oom-stop.js";
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
