@@ -72,6 +72,6 @@ it.each(['startup','runtime'] as const)('native Claude %s trust keys require the
 it('Windows Claude shell choices are held and exposed verbatim, never automatically answered',()=>{
  const backend=createNativePaneBackend('claude-code',state),screen='PowerShell command\nnode -e "scratch sentinel"\nDo you want to proceed?\n❯ 1. Yes\n  2. Yes, allow this command\n  3. No\nEsc to cancel · Tab to amend\n';
  const dialog=backend.getRuntimeDialogs!().find(row=>row.description.startsWith('Claude Windows shell permission'))!;
- expect(dialog.isActive?.(screen)).toBe(true);expect(dialog.keys).toEqual([]);expect(dialog.holdOnly&&dialog.blocksDelivery&&dialog.inputBlocked).toBe(true);expect(dialog.remoteCard?.(screen)).toMatchObject({kind:'question',options:[{n:1,title:'Yes'},{n:2,title:'Yes, allow this command'},{n:3,title:'No'}]});
+ expect(dialog.isActive?.(screen)).toBe(true);expect(dialog.isActive?.(screen.replace('3. No','3. Type here to tell Claude what to do differently'))).toBe(true);expect(dialog.keys).toEqual([]);expect(dialog.holdOnly&&dialog.blocksDelivery&&dialog.inputBlocked).toBe(true);expect(dialog.remoteCard?.(screen)).toMatchObject({kind:'question',options:[{n:1,title:'Yes'},{n:2,title:'Yes, allow this command'},{n:3,title:'No'}]});
  for(const text of [screen+'\n'+'─'.repeat(40)+'\n❯ \n'+'─'.repeat(40),screen.replace('PowerShell command','ordinary quoted text'),screen.replace('❯ 1.','  1.'),screen.replace('Esc to cancel · Tab to amend','unrecognised footer')])expect(dialog.isActive?.(text)).toBe(false);
 });

@@ -35,8 +35,7 @@ export function createNativePaneBackend(provider: "codex" | "claude-code", snaps
       || !/^[ \t]*Do you want to proceed\?[ \t]*$/m.test(pane)
       || !/^[ \t]*Esc to cancel\b/m.test(pane)) return null;
     const card = selectionCard(pane, "Claude Code");
-    return card && card.options.some(option => /^Yes\b/.test(option.title))
-      && card.options.some(option => /^No\b/.test(option.title)) ? card : null;
+    return card && card.options.some(option => /^Yes\b/.test(option.title)) ? card : null;
   };
   const backend = Object.assign(detectors, {
     buildCommand: (_config: CliBackendConfig): string => forbidden(),
