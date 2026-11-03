@@ -180,6 +180,27 @@ describe("M-2269 the event log and the Log", () => {
     const lc = new InstanceLifecycle({ eventLog: { insert: (name: string, type: string, data: unknown) => inserted.push({ name, type, data }) } } as any) as any;
     return { lc, inserted };
   }
+  it("the screen goes to the event log only — never into the parked notice (topic or General) or the daemon log line", async () => {
+    const { EventEmitter } = await import("node:events");
+    const notices: string[] = [], logged: unknown[] = [], inserted: any[] = [];
+    const ctx: any = new Proxy({
+      eventLog: { insert: (_n: string, type: string, data: unknown) => inserted.push({ type, data }) },
+      logger: { warn: (o: unknown) => logged.push(o), info: (o: unknown) => logged.push(o), error() {}, debug() {} },
+      isPlannedRestart: () => false,
+      notifyIncident: (_n: string, _k: string, text: string) => notices.push(text),
+      notifyFleetError: (text: string) => notices.push(text),
+      notifyInstanceTopic: (_n: string, text: string) => notices.push(text),
+    }, { get: (o, k) => (k in o ? (o as any)[k] : undefined) });
+    const lc = new InstanceLifecycle(ctx) as any;
+    const daemon = new EventEmitter();
+    lc.attachIncidentHandlers("w", daemon);
+    daemon.emit("dialog_parked", { name: "w", description: "Claude resume prompt", holdOnly: true, screen: "SCREEN-ONLY-MARKER-text" });
+    await new Promise(r => setTimeout(r, 10));
+    expect(inserted.find(x => x.type === "dialog_parked")?.data.screen).toBe("SCREEN-ONLY-MARKER-text");
+    expect(notices.length, "the notice still goes out").toBeGreaterThan(0);
+    expect(JSON.stringify(notices) + JSON.stringify(logged)).not.toContain("SCREEN-ONLY-MARKER");
+  });
+
   it("dedupe: the same screen re-seen is not stored again; a new one is; per instance", () => {
     const { lc } = lifecycle();
     expect(lc.screenForLog("w", "A dialog")).toEqual({ screen: "A dialog" });
