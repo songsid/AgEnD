@@ -1,4 +1,5 @@
-import { constants, openSync, fstatSync, readSync, closeSync } from "node:fs";
+import { constants } from "node:fs";
+import { open, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ModelOption } from "./types.js";
@@ -14,15 +15,15 @@ const text = (value: unknown, limit: number): string | undefined => typeof value
 /**
  * Grok owns this cache's freshness. It also stores credentials in it: return only
  * the model-map key and explicitly selected display metadata, never whole entries.
- * No CLI, network request or file write is needed to read these choices.
+ * File I/O is asynchronous; no CLI, network request or file write is needed.
  */
-export function readGrokModelCache(home = process.env.GROK_HOME?.trim() || join(homedir(), ".grok")): ModelOption[] {
-  let fd: number | undefined;
+export async function readGrokModelCache(home = process.env.GROK_HOME?.trim() || join(homedir(), ".grok")): Promise<ModelOption[]> {
+  let file: FileHandle | undefined;
   try {
     // Nonblocking avoids waiting on a FIFO before fstat can reject it. Do not follow
     // a symlink on platforms offering O_NOFOLLOW; the opened file must be regular.
-    fd = openSync(join(home, "models_cache.json"), constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (constants.O_NOFOLLOW ?? 0));
-    const stat = fstatSync(fd);
+    file = await open(join(home, "models_cache.json"), constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (constants.O_NOFOLLOW ?? 0));
+    const stat = await file.stat();
     if (!stat.isFile() || stat.size < 1 || stat.size > MAX_CACHE_BYTES) return [];
 
     // The file can grow after fstat. One extra byte distinguishes an exact-cap file
@@ -30,9 +31,9 @@ export function readGrokModelCache(home = process.env.GROK_HOME?.trim() || join(
     const bytes = Buffer.alloc(MAX_CACHE_BYTES + 1);
     let used = 0;
     while (used < bytes.length) {
-      const count = readSync(fd, bytes, used, bytes.length - used, null);
-      if (count === 0) break;
-      used += count;
+      const { bytesRead } = await file.read(bytes, used, bytes.length - used, null);
+      if (bytesRead === 0) break;
+      used += bytesRead;
     }
     if (used > MAX_CACHE_BYTES) return [];
     const cache: unknown = JSON.parse(bytes.subarray(0, used).toString("utf8"));
@@ -50,8 +51,8 @@ export function readGrokModelCache(home = process.env.GROK_HOME?.trim() || join(
   } catch {
     return [];
   } finally {
-    if (fd !== undefined) {
-      try { closeSync(fd); } catch { /* A cache read never escapes as an error. */ }
+    if (file !== undefined) {
+      try { await file.close(); } catch { /* A cache read never escapes as an error. */ }
     }
   }
 }

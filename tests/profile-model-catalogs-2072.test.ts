@@ -28,6 +28,7 @@ afterEach(() => {
   if (realHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = realHome;
   rmSync(home, { recursive: true, force: true }); rmSync(dataDir, { recursive: true, force: true });
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 const profiled = (profile: string) => ({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: profile } } });
@@ -42,27 +43,99 @@ function seed(file: string, env: Record<string, unknown>) {
   writeFileSync(join(home, "cli-env", file), JSON.stringify({ backend: "claude-code", models: [{ id: "opus", label: "opus" }], probedAt: Date.now(), ...env }));
 }
 
+const grokProfileOptions = (profile: unknown) => ({ grok: { credential_profile: profile } });
+const hostGrokModels = [{ id: "grok-host-account-only", label: "Host Grok account" }];
+function seedHostGrokCache(): string {
+  const grokHome = join(home, "grok-cache");
+  mkdirSync(grokHome, { recursive: true });
+  writeFileSync(join(grokHome, "models_cache.json"), JSON.stringify({
+    models: { "grok-host-account-only": { info: { name: "Host Grok account" }, api_key: "fixture-private-key" } },
+  }), { mode: 0o600 });
+  vi.stubEnv("GROK_HOME", grokHome);
+  return grokHome;
+}
+
 describe("a credential profile has its own catalog", () => {
   it("reads Grok's CLI-owned catalog without probing and keeps Windows catalogs separate", async () => {
-    const grokHome = join(home, "grok-cache");
-    mkdirSync(grokHome);
-    writeFileSync(join(grokHome, "models_cache.json"), JSON.stringify({
-      models: { "grok-4.7": { info: { name: "Grok 4.7" }, api_key: "fixture-private-key" } },
-    }));
-    const original = process.env.GROK_HOME;
-    process.env.GROK_HOME = grokHome;
+    seedHostGrokCache();
+    FakeProbeWorker.answer = () => { throw new Error("a cache read must not probe"); };
+    const fm = await makeFleet({ w: { backend: "grok" }, windows: { runtime: "windows", backend: "grok" } });
+    expect(fm.modelCatalogFor("grok", "w")).toEqual([]);
+    expect(await fm.cliModelCatalogFor("grok", "w")).toEqual(hostGrokModels);
+    expect(await fm.cliModelCatalogFor("grok", null)).toEqual(hostGrokModels);
+    expect(await fm.cliModelCatalogFor("grok", "windows")).toEqual([]);
+    expect(await fm.cliModelCatalogFor("codex", "w")).toEqual([]);
+    expect(await fm.cliModelCatalogFor("claude-code", "w")).toEqual([]);
+    expect(await fm.cliModelCatalogFor("grok", "missing")).toEqual([]);
+    expect(await fm.cliModelCatalogFor("grok", "constructor")).toEqual([]);
+    expect(existsSync(join(home, "cli-env", "grok.json"))).toBe(false);
+    expect(FakeProbeWorker.workers).toEqual([]);
+  });
+  it("never fills named, invalid or inherited Grok profiles with the host account's cache", async () => {
+    seedHostGrokCache();
+    const fm = await makeFleet({ w: { backend: "grok" } });
+    expect(await fm.cliModelCatalogFor("grok", "w")).toEqual(hostGrokModels);
+    for (const profile of ["work", "default", "../invalid", " ", 17, {}, true]) {
+      fm.fleetConfig.instances.w.backend_options = grokProfileOptions(profile);
+      // Grok has no modeled profile home: its ordinary helper cannot prove this is the host account.
+      expect(fm.credentialProfileOf("w", "grok")).toBeNull();
+      expect(await fm.cliModelCatalogFor("grok", "w"), JSON.stringify(profile)).toEqual([]);
+    }
+    for (const profile of [undefined, null, ""]) {
+      fm.fleetConfig.instances.w.backend_options = grokProfileOptions(profile);
+      expect(await fm.cliModelCatalogFor("grok", "w")).toEqual(hostGrokModels);
+    }
+    fm.fleetConfig.defaults.backend_options = grokProfileOptions("work");
+    expect(await fm.cliModelCatalogFor("grok", null)).toEqual([]);
+    expect(await fm.cliModelCatalogFor("grok", "w")).toEqual([]);
+    expect(FakeProbeWorker.workers).toEqual([]);
+  });
+  it("respects Classic room overrides, inherited profiles and the running room's own config", async () => {
+    seedHostGrokCache();
+    const fm = await makeFleet({});
+    const room = { instanceName: "room", backend: "grok", backendOptions: grokProfileOptions("work") };
+    fm.classicChannels = { getAll: () => [room] };
+    expect(await fm.cliModelCatalogFor("grok", "room")).toEqual([]);
+    room.backendOptions = grokProfileOptions("");
+    expect(await fm.cliModelCatalogFor("grok", "room")).toEqual(hostGrokModels);
+    fm.fleetConfig.defaults.backend_options = grokProfileOptions("inherited");
+    expect(await fm.cliModelCatalogFor("grok", "room")).toEqual(hostGrokModels); // explicit shared override
+    Reflect.deleteProperty(room.backendOptions.grok, "credential_profile");
+    expect(await fm.cliModelCatalogFor("grok", "room")).toEqual([]);
+    room.backendOptions = grokProfileOptions(null);
+    expect(await fm.cliModelCatalogFor("grok", "room")).toEqual(hostGrokModels);
+    fm.daemons.set("room", { getConfigSnapshot: () => ({ backend: "grok", backend_options: grokProfileOptions("launched-profile") }) });
+    expect(await fm.cliModelCatalogFor("grok", "room")).toEqual([]);
+    fm.daemons.clear();
+    expect(FakeProbeWorker.workers).toEqual([]);
+  });
+  it.each(["profile", "runtime", "config", "removed", "home", "classic-profile", "classic-owner", "daemon-owner"])("discards a held host-cache read after the %s scope changes", async change => {
+    const grokHome = seedHostGrokCache();
+    const fm = await makeFleet({ w: { backend: "grok" } });
+    const room = { instanceName: "room", backend: "grok", backendOptions: grokProfileOptions("") };
+    let rooms = [room];
+    fm.classicChannels = { getAll: () => rooms };
+    const instance = change.startsWith("classic-") || change === "daemon-owner" ? "room" : "w";
+    const cacheReader = await import("../src/backend/grok-model-cache.js");
+    let release!: (models: typeof hostGrokModels) => void;
+    const held = new Promise<typeof hostGrokModels>(resolve => { release = resolve; });
+    const reader = vi.spyOn(cacheReader, "readGrokModelCache").mockReturnValueOnce(held);
     try {
-      FakeProbeWorker.answer = () => { throw new Error("a cache read must not probe"); };
-      const fm = await makeFleet({ w: { backend: "grok" }, windows: { runtime: "windows", backend: "grok" } });
-      expect(fm.modelCatalogFor("grok", "w")).toEqual([]);
-      expect(fm.cliModelCatalogFor("grok", "w")).toEqual([{ id: "grok-4.7", label: "Grok 4.7" }]);
-      expect(fm.cliModelCatalogFor("grok", "windows")).toEqual([]);
-      expect(fm.cliModelCatalogFor("codex", "w")).toEqual([]);
-      expect(fm.cliModelCatalogFor("claude-code", "w")).toEqual([]);
-      expect(existsSync(join(home, "cli-env", "grok.json"))).toBe(false);
+      const pending = fm.cliModelCatalogFor("grok", instance);
+      expect(reader).toHaveBeenCalledWith(grokHome);
+      if (change === "profile") fm.fleetConfig.instances.w.backend_options = grokProfileOptions("new-profile");
+      if (change === "runtime") fm.fleetConfig.instances.w.runtime = "windows";
+      if (change === "config") fm.fleetConfig = structuredClone(fm.fleetConfig);
+      if (change === "removed") delete fm.fleetConfig.instances.w;
+      if (change === "home") process.env.GROK_HOME = join(home, "other-login");
+      if (change === "classic-profile") room.backendOptions = grokProfileOptions("new-profile");
+      if (change === "classic-owner") rooms = [{ ...room }];
+      if (change === "daemon-owner") fm.daemons.set("room", { getConfigSnapshot: () => ({ backend: "grok" }) });
+      release(hostGrokModels);
+      expect(await pending).toEqual([]);
       expect(FakeProbeWorker.workers).toEqual([]);
     } finally {
-      if (original === undefined) delete process.env.GROK_HOME; else process.env.GROK_HOME = original;
+      release([]); reader.mockRestore(); fm.daemons.clear();
     }
   });
   it("probes with the profile's login store and writes the profile's own cache file", async () => {

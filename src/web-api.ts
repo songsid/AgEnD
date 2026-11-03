@@ -361,8 +361,8 @@ export interface WebApiContext {
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
   modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
-  /** Existing CLI-owned model metadata only; must never launch a CLI or refresh a vendor catalog. */
-  cliModelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
+  /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
+  cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
@@ -1707,16 +1707,24 @@ export function handleWebRequest(
     if (machineId !== null && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(machineId) || runtime === "wsl")) { json(res,400,{error:"Invalid model runtime machine"});return true; }
     if ((runtime !== null && runtime !== "wsl" && runtime !== "windows") || (refresh !== null && refresh !== "1")) { json(res, 400, { error: "Invalid model catalog options" }); return true; }
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
-    const cliModels = ctx.cliModelCatalogFor?.(backend, instance) ?? [];
-    if (cliModels.length) {
-      json(res, 200, { backend, models: cliModels, source: "cli-cache" });
-      return true;
-    }
     const models = ctx.modelCatalogFor?.(backend, instance) ?? [];
-    if (backend === "claude-code" && !models.length) {
-      const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
-      json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
-    } else json(res, 200, { backend, models });
+    const answerCatalog = (): void => {
+      if (backend === "claude-code" && !models.length) {
+        const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
+        json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
+      } else json(res, 200, { backend, models });
+    };
+    // The existing catalog belongs to this instance/account and always wins.
+    if (models.length || !ctx.cliModelCatalogFor) { answerCatalog(); return true; }
+    const canAnswer = (): boolean => !res.headersSent && !res.destroyed && !res.writableEnded && stillAuthorized(req, res, url, ctx);
+    void (async () => {
+      const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
+      if (!canAnswer()) return;
+      if (cliModels.length) json(res, 200, { backend, models: cliModels, source: "cli-cache" });
+      else answerCatalog();
+    })().catch(() => {
+      if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
+    });
     return true;
   }
 
