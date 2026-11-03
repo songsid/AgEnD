@@ -20,6 +20,8 @@ export interface Rig {
   capture(): string;
   until(check: (pane: string) => boolean, label: string, ms?: number): Promise<string>;
   launch(args: string[]): void;
+  /** A shell command that runs the CLI with these args in the rig's cwd and env (for a window AgEnD's TmuxManager opens). */
+  runnerCommand(args: string[]): string;
   close(): Promise<void>;
 }
 
@@ -43,7 +45,7 @@ export async function openRig(output: string, reply: (prompt: string, n: number,
   mkdirSync(home); mkdirSync(cwd);
   const config = join(home, ".claude"); mkdirSync(config);
   const fakeKey = `sk-ant-api03-${"test".repeat(22)}-testtestAA`;
-  writeFileSync(join(config, ".claude.json"), JSON.stringify({ hasCompletedOnboarding: true, theme: "dark", customApiKeyResponses: { approved: [fakeKey.slice(-20)], rejected: [] }, projects: { [cwd]: { hasTrustDialogAccepted: true } } }));
+  writeFileSync(join(config, ".claude.json"), JSON.stringify({ hasCompletedOnboarding: true, bypassPermissionsModeAccepted: true, theme: "dark", customApiKeyResponses: { approved: [fakeKey.slice(-20)], rejected: [] }, projects: { [cwd]: { hasTrustDialogAccepted: true } } }));
   const prompts: string[] = [];
   let requests = 0;
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -88,6 +90,12 @@ export async function openRig(output: string, reply: (prompt: string, n: number,
   };
   let runs = 0;
   const pids: number[] = [];
+  const runnerCommand = (args: string[]) => {
+    const runner = join(scratch, `runner-${++runs}.cjs`), pidFile = join(scratch, `child-${runs}.pid`);
+    writeFileSync(runner, `const{spawn}=require('node:child_process');const fs=require('node:fs');const c=spawn(${JSON.stringify(binary)},${JSON.stringify(args)},{cwd:${JSON.stringify(cwd)},env:${JSON.stringify(env)},stdio:'inherit'});fs.writeFileSync(${JSON.stringify(pidFile)},String(c.pid));c.on('exit',code=>process.exit(code??1));`);
+    pids.push(runs);
+    return `${quote(process.execPath)} ${quote(runner)}`;
+  };
   const launch = (args: string[]) => {
     const runner = join(scratch, `runner-${++runs}.cjs`), pidFile = join(scratch, `child-${runs}.pid`);
     writeFileSync(runner, `const{spawn}=require('node:child_process');const fs=require('node:fs');const c=spawn(${JSON.stringify(binary)},${JSON.stringify(args)},{cwd:${JSON.stringify(cwd)},env:${JSON.stringify(env)},stdio:'inherit'});fs.writeFileSync(${JSON.stringify(pidFile)},String(c.pid));c.on('exit',code=>process.exit(code??1));`);
@@ -109,7 +117,7 @@ export async function openRig(output: string, reply: (prompt: string, n: number,
     }
     rmSync(scratch, { recursive: true, force: true });
   };
-  return { scratch, home, cwd, socket, session, prompts, tmux, capture, until, launch, close };
+  return { scratch, home, cwd, socket, session, prompts, tmux, capture, until, launch, runnerCommand, close };
 }
 
 /** Replace the scratch paths in a capture before it is kept as a fixture. */

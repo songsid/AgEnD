@@ -55,7 +55,7 @@ describe("M-2296 Claude 2.1.317 connector file-send card", () => {
   it("a transcript quoting the card, a card that is not at the bottom, and a Bash card are not this card", () => {
     const pane = fx("claude-2.1.317-file-send-card");
     expect(claudeFileSendCardActive(`${pane}\n❯ \n`)).toBe(false);                                   // composer below it
-    expect(claudeFileSendCardActive(pane.replace(" Esc to cancel · Tab to amend", ""))).toBe(false);  // no footer
+    expect(claudeFileSendCardActive(pane.replace(" Esc to cancel · Tab to amend", " some later output"))).toBe(false);  // not the last row
     expect(claudeFileSendCardActive(pane.replace(" Tool use", " Bash command"))).toBe(false);
     expect(claudeFileSendCardActive(pane.replace(' * "/scratch/cwd/report.pdf"', "").replace('* attachments', ' attachments'))).toBe(false);
     expect(claudeFileSendCardActive(pane.replace("   2. No", "   2. Maybe"))).toBe(false);
