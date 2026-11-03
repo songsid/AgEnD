@@ -96,6 +96,10 @@ describe("Telegram codex device button reaches the sign-in", () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = { defaults: {}, instances: {} } as any;
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
+    // The sign-in path under test: codex counts as installed whatever this host has on PATH (CI has none — /login
+    // would install it first, #1131).
+    vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
+    vi.spyOn(fm, "isCliInstalledOffLoop").mockResolvedValue(true);
     const notifyAlert = vi.fn(async (chatId: string) => ({ messageId: "501", chatId, threadId: wire }));
     const sendText = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "-100" });
     const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
