@@ -251,3 +251,54 @@ describe("TmuxManager.paneInMode, against a real tmux", () => {
     } catch (e) { try { tmux("kill-server"); } catch { /* gone */ } throw e; }
   });
 });
+
+describe("M-2290: the pre-Enter dialog check (the simple half of #2957) — unit", () => {
+  const CARD = readFileSync(join(process.cwd(), "tests/fixtures/claude-2.1.316-danger-enter-swallowed.pane.txt"), "utf8");
+  function bare() {
+    const root = mkdtempSync(join(tmpdir(), "agend-pre-enter-2290-")); roots.push(root);
+    const { daemon, tmux } = makeDaemon(root, () => BUSY_EMPTY, () => false);
+    return { daemon, tmux };
+  }
+  it("a recognised card: no Enter, held as `dialog`", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockResolvedValue(CARD);
+    const held: string[] = [];
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, (why: string) => held.push(why))).toBe(false);
+    expect(held).toEqual(["dialog"]);
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+  });
+  it("an unreadable pane still sends (no composer proof)", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockRejectedValue(new Error("capture failed"));
+    const held: string[] = [];
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, (why: string) => held.push(why))).toBe(true);
+    expect(held).toEqual([]);
+    expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+  });
+  it("AgEnD's own unrecognised-prompt guess is not a recognised dialog: it sends", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockResolvedValue(CARD);
+    // Only the backend's own dialogs count: with none, even this card's screen sends (what a backend without it would do).
+    const matching = new ClaudeCodeBackend(join(tmpdir(), "x")).getRuntimeDialogs().find(d => (Daemon as any).dialogMatches(d, CARD));
+    expect(matching).toBeDefined();                                               // the guess WOULD match this screen…
+    daemon.backend.getRuntimeDialogs = () => [];
+    daemon.unrecognisedPromptCurrent = () => ({ active: true });
+    daemon.unrecognisedPromptDialog = matching;
+    expect(daemon.runtimeDialogs()).toContain(matching);                          // …and the scanner's own list has it
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, () => {})).toBe(true);
+    expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+  });
+  it("a caller that cannot hold is never asked: no extra capture, the Enter goes as before", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockResolvedValue(CARD);
+    expect(await daemon.sendDeliveryEnterAfterAvailability("stranded-text-retry")).toBe(true);
+    expect(tmux.capturePane).not.toHaveBeenCalled();
+    expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+  });
+  it("the fence trips during the capture: no Enter", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockImplementation(async () => { daemon.spawnGeneration++; return BUSY_EMPTY; });
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, () => {})).toBe(false);
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+  });
+});

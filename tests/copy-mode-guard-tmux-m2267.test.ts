@@ -15,6 +15,8 @@ import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { MockBackend } from "../src/backend/mock.js";
+import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { readFileSync } from "node:fs";
 import { TmuxManager } from "../src/tmux-manager.js";
 
 const roots: string[] = [];
@@ -33,18 +35,22 @@ const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function until(fn: () => boolean, ms: number) { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return true; await sleep(100); } return fn(); }
 
-function setup() {
+function setup(opts: { afterPaste?: string; dialogs?: "claude" } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-copy-mode-tmux-")); roots.push(root);
   const cli = join(root, "fake-cli.mjs");
+  // M-2290: what the CLI paints the moment a paste lands (a card that "appears between the paste and the Enter").
+  const after = join(root, "after-paste.txt");
+  writeFileSync(after, opts.afterPaste ?? "");
   // As a real CLI does: bracketed paste on, raw input; a pasted text (newlines included) is the box's text, and only a
   // bare Enter outside a paste submits it.
-  writeFileSync(cli, `process.stdin.setRawMode(true); process.stdin.resume();
+  writeFileSync(cli, `import { readFileSync } from "node:fs";
+process.stdin.setRawMode(true); process.stdin.resume();
 process.stdout.write("\\x1b[?2004hMOCK_READY\\n");
 let box = "", inPaste = false, buf = "";
 process.stdin.on("data", (d) => {
   buf += d.toString("utf8");
   for (;;) {
-    if (inPaste) { const end = buf.indexOf("\\x1b[201~"); if (end < 0) { box += buf; buf = ""; break; } box += buf.slice(0, end); buf = buf.slice(end + 6); inPaste = false; continue; }
+    if (inPaste) { const end = buf.indexOf("\\x1b[201~"); if (end < 0) { box += buf; buf = ""; break; } box += buf.slice(0, end); buf = buf.slice(end + 6); inPaste = false; const card = readFileSync(${JSON.stringify("__AFTER__")}, "utf8"); if (card) process.stdout.write("\\n" + card + "\\n"); continue; }
     const start = buf.indexOf("\\x1b[200~"), cr = buf.indexOf("\\r");
     if (start >= 0 && (cr < 0 || start < cr)) { box += buf.slice(0, start); buf = buf.slice(start + 6); inPaste = true; continue; }
     if (cr >= 0) { box += buf.slice(0, cr); buf = buf.slice(cr + 1); process.stdout.write("RECEIVED " + box.replace(/\\s+/g, " ").slice(-60) + "\\nMOCK_READY\\n"); box = ""; continue; }
@@ -52,7 +58,7 @@ process.stdin.on("data", (d) => {
     box += buf; buf = ""; break;
   }
 });
-`);
+`.replace("__AFTER__", after.replace(/\\/g, "\\\\")));
   TmuxManager.setSocketName(socket);
   tmux("new-session", "-d", "-s", "cmg", "-x", "160", "-y", "20", `node ${cli}; echo FAKE-CLI-EXITED $?; sleep 600`);
   const wid = tmux("list-windows", "-t", "cmg", "-F", "#{window_id}").trim();
@@ -65,6 +71,11 @@ process.stdin.on("data", (d) => {
     restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
     context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
   }, instanceDir, false, new MockBackend(instanceDir) as any, control as any, logger);
+  // M-2290: the backend's own runtime dialogs — Claude Code's, for the card cases.
+  if (opts.dialogs === "claude") {
+    const claude = new ClaudeCodeBackend(instanceDir);
+    (daemon.backend as any).getRuntimeDialogs = () => claude.getRuntimeDialogs();
+  }
   const real = new TmuxManager("cmg", wid);
   const writes: string[] = [];
   // The real TmuxManager, every write recorded with whether the pane was in a mode at that moment.
@@ -132,5 +143,29 @@ describe.skipIf(!haveTmux)("a real pane left in copy-mode while a delivery is pe
     expect(await until(() => t.outbox.get(t.last)?.state === "delivered", 10_000)).toBe(true);
     expect(t.writes.filter((w: string) => w.includes("IN MODE"))).toEqual([]);
     expect(t.screen().match(/RECEIVED /g)).toHaveLength(1);
+  }, 40_000);
+});
+
+describe.skipIf(!haveTmux)("M-2290: a dialog that paints between the paste and the delivery's Enter", () => {
+  // A real Claude Code 2.1.316 dangerous-command card (tests/fixtures), the bottom of it as it paints.
+  const CARD = readFileSync(join(process.cwd(), "tests/fixtures/claude-2.1.316-danger-enter-swallowed.pane.txt"), "utf8")
+    .split("\n").filter(l => l.trim()).slice(-12).join("\n");
+  it("a dialog the backend recognises: the Enter is withheld (it would answer the card), the delivery is uncertain → Needs-you", async () => {
+    const t = setup({ afterPaste: CARD, dialogs: "claude" });
+    await until(() => /MOCK_READY/.test(t.screen()), 10_000);
+    t.send("hello while a card paints");
+    expect(await until(() => t.outbox.get(t.last)?.state === "uncertain", 15_000)).toBe(true);
+    await sleep(1_000);
+    expect(t.writes).toEqual(["paste"]);                                       // pasted — and no Enter at all
+    expect(t.screen()).toMatch(/Do you want to proceed\?/);                   // the card is still there, for a person
+    expect(t.screen()).not.toContain("RECEIVED");
+    expect(String(t.outbox.get(t.last)?.lastError ?? "")).toContain("dialog-on-pane");
+  }, 40_000);
+  it("an unknown prompt (no recognised dialog): the Enter goes, exactly as before — no composer proof", async () => {
+    const t = setup({ afterPaste: "Some other tool asks: continue? [y/N]", dialogs: "claude" });
+    await until(() => /MOCK_READY/.test(t.screen()), 10_000);
+    t.send("hello past an unknown prompt");
+    expect(await until(() => /RECEIVED .*xmsg-copy-mode/.test(t.screen()), 15_000)).toBe(true);
+    expect(t.writes).toEqual(["paste", "Enter"]);
   }, 40_000);
 });

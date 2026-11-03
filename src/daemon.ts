@@ -679,6 +679,8 @@ const BOTTOM_READY_POLL_MS = 250;
 /** M-2267: how often a pane left in a tmux mode is looked at again, and how long the delivery Enter waits for it to end. */
 const PANE_MODE_POLL_MS = 500;
 const PANE_MODE_ENTER_WAIT_MS = 10 * 60_000;
+/** Why a delivery's Enter was withheld with the paste possibly in the CLI: a tmux mode past the bound, or a dialog (M-2290). */
+type EnterHeldReason = "pane-in-mode" | "dialog";
 /** Consecutive unreadable pane probes tolerated by the delivery gate before the delivery is failed (≈10s at the poll cadence). */
 const DIALOG_PROBE_UNKNOWN_MAX = 40;
 /** Startup dialog scan: poll cadence and wall-clock budget (keys and waits included). */
@@ -9545,7 +9547,7 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: () => void,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
     return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt, onInputHeld);
@@ -9582,7 +9584,7 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: () => void,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn replaced the delivery: check here, and
     // again after every wait below, at the last point before the tmux write.
@@ -9597,7 +9599,7 @@ export class Daemon extends EventEmitter {
     if (!current()) return false;
     // The pasted text may still be in the box: the caller keeps it uncertain (no false failure, no second paste).
     const hold = () => {
-      onInputHeld?.();
+      onInputHeld?.("pane-in-mode");
       this.logger.warn({ phase }, "The pane stayed in a tmux mode; Enter withheld");
       return false;
     };
@@ -9619,6 +9621,26 @@ export class Daemon extends EventEmitter {
       }
       if (!current()) return false;
       break;
+    }
+    // M-2290 (the simple half of the #2957 redesign, leader xmsg-1793712561468): a dialog the backend RECOGNISES
+    // (runtimeDialogs: a permission card, the dangerous-command card, …) that painted between the paste and this Enter
+    // would take the key as its answer. Read the pane once more: such a dialog withholds the Enter, the caller keeps the
+    // delivery uncertain (Needs-you), and the dialog scanner parks the dialog for a person. Nothing else is judged here
+    // — an unknown or unreadable screen sends, exactly as before: #2958's composer proof (decision f57474aa) is NOT back.
+    // Only a caller that can hold (onInputHeld: the delivery's initial submit, settled uncertain → Needs-you) asks: one
+    // that cannot would read `false` as a failure and paste again. Only the backend's OWN dialogs count — not AgEnD's
+    // unrecognised-prompt guess — so an unknown screen still sends.
+    if (onInputHeld) {
+      let finalPane: string | null = null;
+      try { finalPane = await tmux!.capturePane(); } catch { finalPane = null; }
+      if (!current()) return false;
+      let dialog: string | undefined;
+      try { dialog = finalPane === null ? undefined : (this.backend?.getRuntimeDialogs?.() ?? []).find(d => Daemon.dialogMatches(d, finalPane!))?.description; } catch { dialog = undefined; }
+      if (dialog !== undefined) {
+        onInputHeld?.("dialog");
+        this.logger.warn({ phase, dialog }, "A dialog is on the pane; the delivery's Enter is withheld (it would answer it)");
+        return false;
+      }
     }
     // W1: persist the "Enter may have happened" boundary before tmux receives
     // the key. A crash after this commit is never auto-replayed without a
@@ -9889,12 +9911,13 @@ export class Daemon extends EventEmitter {
       let enterAt = Date.now();
       const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
-      let inputHeld = false;
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt, () => { inputHeld = true; }))) {
+      let inputHeld: EnterHeldReason | null = null;
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt, (why) => { inputHeld = why; }))) {
         if (inputHeld) {
-          // #2971: held in a tmux mode past the bound. The paste may still be in the CLI: keep it uncertain, never re-paste.
+          // #2971: held in a tmux mode past the bound; M-2290: a recognised dialog on the pane. The paste may still be in
+          // the CLI: keep it uncertain (Needs-you), never re-paste, never answer the dialog.
           verdict.phase = "submit-enter";
-          verdict.proof = "pane-in-mode-held";
+          verdict.proof = inputHeld === "dialog" ? "dialog-on-pane" : "pane-in-mode-held";
           return false;
         }
         if (steerComposerProof && !steerCurrent()) {
