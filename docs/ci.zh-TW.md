@@ -114,7 +114,9 @@ guard 保持綠燈。
 
 ### 發布 workflow
 
-`publish.yml` 只在推送 `v*` tag 時發布 `@songsid/agend`。
+`publish.yml` 只在推送 `v*` tag 時發布 `@songsid/agend`（beta 發布到 `@rc`）。
+`promote-beta.yml`（只能手動觸發，預設 `dry_run` 開啟）把 `@beta` 指向已發布的候選版；
+它需要 `NPM_TOKEN` secret，因為 OIDC 無法移動 dist-tag。
 `workflow_dispatch` 只做驗證：checkout、`npm ci`、typecheck 與 build，
 不會跑 `npm publish`。`publish-runtime.yml` 預設 `dry_run: true`，執行
 `npm publish --dry-run`。除了真正發布 runtime 套件，不要把 `dry_run` 設成

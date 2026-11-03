@@ -41,6 +41,7 @@ agend restart <name>            # Restart one instance now; the fleet keeps runn
 agend update                    # Update on the installed channel (an alpha stays on alpha, a beta on beta) and restart
 agend update --alpha            # Install from the alpha channel (previews of the next minor)
 agend update --beta             # Install from the beta channel
+agend update --rc               # Install the current release candidate (@rc), before it is promoted to beta
 agend update --stable           # Install from the stable channel, even from a beta (may go back a version)
 agend update --version 2.1.9    # Install a specific version
 agend update --force            # Force reinstall and restart even when already up to date
