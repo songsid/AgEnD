@@ -9,6 +9,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ClaudeCodeBackend, claudeFileSendCardActive, claudeDangerousCommandPromptState } from "../src/backend/claude-code.js";
 import { selectionCard } from "../src/selection-card.js";
+import { Daemon } from "../src/daemon.js";
+import { DEFAULT_INSTANCE_CONFIG } from "../src/config.js";
+import pino from "pino";
 
 const dir = join(__dirname, "fixtures");
 const fx = (name: string) => readFileSync(join(dir, `${name}.pane.txt`), "utf8");
@@ -73,4 +76,34 @@ describe("M-2296 Claude 2.1.317 connector file-send card", () => {
     expect(selectionCard(pane, "Claude Code")).toBeNull();
     expect(first(pane)!.holdOnly).toBe(true);
   });
+
+  // #2992 review (Prism P2): a narrow pane wraps the question; a wrapped row may even begin "No," like an option.
+  const narrow: Array<[string, string, string]> = [
+    ["unlisted, wrapped before 'No, and no files are sent.'", "claude-2.1.317-file-send-unlisted", "Choose No, and no files are sent."],
+    ["too short, wrapped before 'No.'", "claude-2.1.317-file-send-too-short", "or choose No."],
+    ["proceed question, wrapped", "claude-2.1.317-file-send-card", "Do you want to proceed?"],
+  ];
+  const wrap = (pane: string, phrase: string) => {
+    const cut = phrase.lastIndexOf(" ");
+    return pane.replace(phrase, `${phrase.slice(0, cut)}\n ${phrase.slice(cut + 1)}`);
+  };
+  it.each(narrow)("narrow pane: %s is still the file-send card", (_n, name, phrase) => {
+    const pane = wrap(fx(name), phrase);
+    expect(pane).not.toBe(fx(name));
+    expect(claudeFileSendCardActive(pane)).toBe(true);
+    expect(first(pane)!.description).toBe(FILE_SEND_DESCRIPTION);
+  });
+  it("a default-No menu whose cursor moved to Yes is still the card", () => {
+    const pane = fx("claude-2.1.317-file-send-default-no").replace(" ❯ No", "   No").replace("   Yes", " ❯ Yes");
+    expect(claudeFileSendCardActive(pane)).toBe(true);
+  });
+  it.each([...FILE_SEND.map(n => [n, fx(n)]), ...narrow.map(([, n, p]) => [`${n} (narrow)`, wrap(fx(n), p)])])(
+    "the real Daemon's blocking-dialog probe sees %s as a dialog, never clear", async (_n, pane) => {
+      const daemon = new Daemon("proof", { ...DEFAULT_INSTANCE_CONFIG, backend: "claude-code", working_directory: "/tmp", log_level: "silent" } as never,
+        "/tmp/agend-test-cc2317-nonexistent", true, backend, undefined, pino({ level: "silent" }));
+      (daemon as unknown as { tmux: unknown }).tmux = { capturePane: async () => pane, getWindowId: () => "@1" };
+      const probe = await (daemon as unknown as { probeBlockingDialog(): Promise<{ state: string; dialog?: { description: string } }> }).probeBlockingDialog();
+      expect(probe.state).toBe("dialog");
+      expect(probe.dialog!.description).toBe(FILE_SEND_DESCRIPTION);
+    });
 });
