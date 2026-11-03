@@ -2502,7 +2502,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const pinned = { channel: inst.channel_id, machine: inst.machine_id, adapter: inst.native_adapter, runtime: inst.runtime };
         const sameTarget = (): boolean => { const now = this.fleetConfig?.instances[name];
           return !!now && now.channel_id === pinned.channel && now.machine_id === pinned.machine && now.native_adapter === pinned.adapter && now.runtime === pinned.runtime; };
-        return updateNativeWindowsInstance(this, name, edit, () => allowed() && sameTarget() && execution.current(), execution);
+        // Before the commit: the exact target and an unchanged snapshot. After runtime.update completes the transaction,
+        // current() is false by design; the committed operation's restart receipt then needs the same actor, target and
+        // switch checks plus `completed` — a completed execution can never authorize another write (mutate refuses).
+        return updateNativeWindowsInstance(this, name, edit, () => allowed() && sameTarget() && (execution.completed || execution.current()), execution);
       } });
   }
 
