@@ -225,7 +225,7 @@ agent 可以自己檢查、上傳、取代、刪除與還原外觀包，例如�
 | `office_pack_upload` | 檢查與上限和網頁上傳相同；fleet 已經有的 id 會立刻被 **取代** |
 | `office_pack_restore` | 還原保留的上一版（被換下的那版變成上一版，所以還原也能用同樣方式復原） |
 | `office_pack_delete` | 刪除外觀包，連上一版一起刪，除非 `keep_previous: true` |
-| `office_set_style` | 把已存的辦公室指向某個外觀包或內建風格（`pixel` = 辦公桌、`studio`、`cozy`） |
+| `office_set_style` | 把已存的辦公室指向某個外觀包或內建風格（`pixel` = 辦公桌、`studio`、`cozy`、`guild`、`school`） |
 
 **送出外觀包。** 外觀包可以是一個資料夾（`dir`），裡面有 `manifest.json` 與 manifest 指到的 PNG；也可以是一個 `manifest` 物件加上 `files`（`{ "<它用的名稱>": "<路徑>" }`）。`packs: [...]` 一次送出好幾個，算一批。agent 那一側只讀那些檔案，而且只在它的工作目錄或 fleet 的共用資料夾（`~/.agend/shared`）裡；符號連結會被跟隨，但必須留在裡面。fleet 收到的是檔案內容，從不是路徑。
 
@@ -326,7 +326,7 @@ fleet 管理者也可以在 General 的通知上按 **核准**，核准等待中
 | 欄位 | 必填 | 說明 |
 |---|---|---|
 | `format` | ✅ | `1` |
-| `id` | ✅ | 1–40 個英文字母、數字、`_` 或 `-`。不能是 `pixel`、`studio` 或 `cozy`；只差大小寫的 id 會衝突 |
+| `id` | ✅ | 1–40 個英文字母、數字、`_` 或 `-`。不能是 `pixel`、`studio`、`cozy`、`guild` 或 `school`；只差大小寫的 id 會衝突 |
 | `scale` | ❌ | 每個圖片像素幾個邏輯單位，1–8（預設 2） |
 | `background` | 有 `stateZones` 時 | 場景的圖，16:9 |
 | `foreground` | ❌ | 蓋在場景上的 16:9 圖（只能搭配 `stateZones`） |

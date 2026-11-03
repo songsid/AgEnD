@@ -1349,7 +1349,7 @@ export class ClaudePaneDetectors {
       {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
         isActive: claudeBashPermissionActive,
-        requestIdentity: claudeCommandRequestIdentity,
+        requestIdentity: pane => claudeSelectionCard(pane)?.identity ?? null,
         interactionKind: "permission",
         keys: [],
         holdOnly: true,

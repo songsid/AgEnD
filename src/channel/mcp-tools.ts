@@ -201,7 +201,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["office_pack_list", schemas.OfficePackListArgs,
     "List the skin packs the fleet keeps: each { id, name, files, bytes, version, uploaded_at, by, previous: { version, files, bytes } | null (restorable), offices: [ids drawn in it] }, plus deleted packs whose previous version was kept, the stored offices with their style, the approval mode (\"apply\": at once; \"approve\": an admin's yes first), your pending changes, the limits and your remaining budget. Read it before uploading."],
   ["office_set_style", schemas.OfficeSetStyleArgs,
-    "Point a stored office (office_pack_list lists them) at a skin pack the fleet keeps, or a built-in style (pixel, studio, cozy). Its layout overrides stay (they apply only on the pack they were made on, and must fit it). Logged, told to the admins and held for their yes like an upload; counts as a batch. Returns { applied } or { pending } or { error, message }."],
+    "Point a stored office (office_pack_list lists them) at a skin pack the fleet keeps, or a built-in style (pixel, studio, cozy, guild, school). Its layout overrides stay (they apply only on the pack they were made on, and must fit it). Logged, told to the admins and held for their yes like an upload; counts as a batch. Returns { applied } or { pending } or { error, message }."],
   ["reset_web_theme", schemas.ResetWebThemeArgs,
     "Reset your own web theme to the default (counts as a change for the rate limit)."],
   ["set_description", schemas.SetDescriptionArgs,
