@@ -8,6 +8,8 @@
 # that commit. The run is red when an analysis fails, or when CodeQL alerts on
 # that ref stay open after the upload ("Open alerts" job). Fix or dismiss an
 # alert in code scanning to clear it.
+#
+# .github/codeql/codeql-config.yml leaves test-only code (tests/, e2e/) out of every analysis (user 2026-11-03).
 name: CodeQL
 
 on:
@@ -64,6 +66,8 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: none
+          # Test-only code (tests/, e2e/) is not scanned; see the config's notes.
+          config-file: ./.github/codeql/codeql-config.yml
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: /language:${{ matrix.language }}
