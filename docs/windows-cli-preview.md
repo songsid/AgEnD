@@ -1,5 +1,7 @@
 # Windows CLI task preview
 
+This page describes the default **per-turn exec** adapter. The 2.3.5 alpha line also offers an opt-in [persistent terminal adapter](windows-persistent-panes.md) ([繁體中文](windows-persistent-panes.zh-TW.md)) for audited Codex and Claude Code releases, with ordinary topic, Needs-you, progress and reply-guard integration. Its version-only launch check and lifecycle rules are described there.
+
 This opt-in runtime lets AgEnD running in WSL discover native Windows CLIs and
 run Windows agents in the same Fleet instance registry as Linux agents. Runtime
 selects the execution adapter; identity, configuration, chat, status, teams and
