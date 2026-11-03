@@ -61,16 +61,72 @@ export function AppearanceSection(props = {}) {
   const part = props.part || "look";
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   // #2347 regrouping: Look (the person's own), this device's switches (in Preferences) and the host-wide cards (in Web
-  // dashboard) are drawn where each belongs. None of it is offered over the public link (Look says so).
-  if (publicLink) return part === "look" ? html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>` : null;
+  // dashboard) are drawn where each belongs. Public Look keeps the existing browser-only theme choice; customization stays unavailable there.
+  if (publicLink) return part === "look" ? html`<div class="s-look-workspace s-look-public"><div class="s-look-main">
+    <${ThemeModeCard} publicLink=${true} />
+    <section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>
+  </div></div>` : null;
   if (part === "device") return html`<${MotionCard} ...${props} /><${DeviceCard} ...${props} />`;
-  if (part === "dashboard") return html`<${AppIconCard} /><${CardLimitsCard} />`;
-  const group = (key) => html`<h2 class="s-ap-group">${tn(key)}</h2>`;
-  return html`${group("groupLook")}<${ThemesCard} ...${props} /><${IdentityColorCard} /><${CardSizeCard} />
-    ${group("groupLayout")}<${SidebarWidgetCard} />
-    ${group("groupCss")}<${OwnerCssCard} />
-    ${group("groupMods")}<${ModsCard} />
-    <${RestoreDefaultsCard} ...${props} />`;
+  if (part === "dashboard") return html`<${AppIconCard} /><details class="s-look-disclosure s-dashboard-limits"><summary><${Icon} name="sliders" size=${17} /><span>${tn("cardLimitsTitle")}</span><${Icon} name="chevron" size=${16} /></summary><div class="s-look-disclosure-body"><${CardLimitsCard} /></div></details>`;
+  return html`<div class="s-look-workspace">
+    <div class="s-look-basics">
+    <div class="s-look-main">
+      <${ThemeModeCard} />
+      <section class="card s-appearance s-look-identity"><h3>${tn("lookIdentityGroup")}</h3>
+        <div class="s-look-identity-controls"><${CardSizeCard} /><${IdentityColorCard} /></div>
+      </section>
+      <section class="card s-appearance s-look-motion"><${CardTitle} title=${tn("lookMotionGroup")} topic="themes" />
+        <${ThemesCard} compact=${true} ...${props} /><${MotionCard} compact=${true} ...${props} />
+      </section>
+    </div>
+    <${AppearancePreview} />
+    </div>
+    <div class="s-look-advanced">
+      <${AppearanceDisclosure} title=${tn("widgetTitle")} icon="sliders"><${SidebarWidgetCard} /></${AppearanceDisclosure}>
+      <${AppearanceDisclosure} title=${tn("cssTitle")} icon="code"><${OwnerCssCard} /><${DeviceCard} ...${props} /></${AppearanceDisclosure}>
+      <${AppearanceDisclosure} title=${tn("modsTitle")} icon="plug"><${ModsCard} /></${AppearanceDisclosure}>
+      <${AppearanceDisclosure} title=${tn("restoreTitle")} icon="restart" danger=${true}><${RestoreDefaultsCard} ...${props} /></${AppearanceDisclosure}>
+    </div>
+  </div>`;
+}
+
+/** Theme remains a normal personal preference, including the public dashboard's existing browser-only choice. */
+function ThemeModeCard({ publicLink = false }) {
+  const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
+  useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
+  const choose = (value) => { setTheme(value); if (typeof AgendTheme !== "undefined") AgendTheme.set(value); savePref("theme", value); };
+  return html`<section class="card s-appearance s-look-display"><h3>${tn("lookDisplayGroup")}</h3>
+    <fieldset id="pref-theme" class="s-theme-picker"><legend>${t("app.theme")}</legend><div class="s-theme-options">
+      ${[["light", "themeLight"], ["dark", "themeDark"], ["system", "themeSystem"]].map(([value, key]) => html`<label key=${value} class=${`s-theme-choice${theme === value ? " selected" : ""}`}>
+        <input type="radio" name="pref-theme-choice" value=${value} checked=${theme === value} onChange=${(event) => { if (event.currentTarget.checked) choose(value); }} />
+        <span class=${`s-theme-miniature is-${value}`} aria-hidden="true"><span class="s-theme-mini-side"><i></i><i></i><i></i></span><span class="s-theme-mini-main"><i></i><i></i><i></i></span></span>
+        <span class="s-theme-choice-label">${t(`app.${key}`)}</span>
+      </label>`)}
+    </div></fieldset>
+    ${publicLink ? html`<p class="sub">${tn("syncedPublicLink")}</p>` : null}
+  </section>`;
+}
+
+/** The panels stay mounted inside native details, so drafts, CSS trials and deep links survive disclosure changes. */
+function AppearanceDisclosure({ title, icon, danger = false, children }) {
+  return html`<details class=${`s-look-disclosure${danger ? " is-restore" : ""}`}>
+    <summary><${Icon} name=${icon} size=${17} /><span>${title}</span><${Icon} name="chevron" size=${16} /></summary>
+    <div class="s-look-disclosure-body">${children}</div>
+  </details>`;
+}
+
+/** This preview uses the same live colour and default-size preferences as the existing controls. */
+function AppearancePreview() {
+  useIdentityColors();
+  useStore(cardSizeStore);
+  const size = cardSizeDefault();
+  return html`<aside class="card s-look-preview" aria-labelledby="look-preview-title">
+    <h3 id="look-preview-title">${tn("lookPreview")}</h3>
+    <p class="sub">${tn("lookPreviewHint")}</p>
+    <div class="s-look-sidebar-sample"><${ColorSample} places=${defaultPlaces()} off=${colorsOff()} /></div>
+    <div class=${`s-look-card-sample is-${size}`} aria-hidden="true"><span class="s-look-preview-avatar">A</span>
+      <strong>${tn("colorSample")}</strong><span>${tn("cardSizeTitle")} · ${t(`card.size${size.toUpperCase()}Name`)}</span></div>
+  </aside>`;
 }
 
 /** #2347: the staged keys of this device's own switches (Restore defaults sets them, so their staged change goes). */
@@ -106,17 +162,23 @@ function IdentityColorCard() {
   useIdentityColors();
   const places = defaultPlaces(), off = colorsOff();
   const toggle = (p) => setDefaultPlaces(places.includes(p) ? places.filter((x) => x !== p) : [...places, p]);
-  return html`<section class="card s-appearance s-synced s-colors"><${CardTitle} title=${tn("colorTitle")} topic="colors" />
-    <p class="sub">${tn("colorLead")}</p>
-    <div class="s-colors-row">
-      <fieldset class="idc-places" disabled=${off}><legend>${tn("colorPlaces")}</legend>
-        ${PLACEMENTS.map((p) => html`<label key=${p} class="check"><input type="checkbox" checked=${places.includes(p)} onChange=${() => toggle(p)} /> ${t(`color.place_${p}`)}</label>`)}
-      </fieldset>
-      <${ColorSample} places=${places} off=${off} />
+  return html`<details class="card s-appearance s-synced s-colors"><summary class="s-color-summary">
+    <${CardTitle} title=${tn("colorTitle")} topic="colors" />
+    <span class="s-color-summary-places">${off ? html`<span>${tn("colorOff")}</span>` : places.map((p) => html`<span key=${p}>${t(`color.place_${p}`)}</span>`)}</span>
+    <${Icon} name="chevron" size=${16} />
+    </summary>
+    <div class="s-color-settings">
+      <p class="sub">${tn("colorLead")}</p>
+      <div class="s-colors-row">
+        <fieldset class="idc-places" disabled=${off}><legend>${tn("colorPlaces")}</legend>
+          ${PLACEMENTS.map((p) => html`<label key=${p} class="check"><input type="checkbox" checked=${places.includes(p)} onChange=${() => toggle(p)} /> ${t(`color.place_${p}`)}</label>`)}
+        </fieldset>
+        <${ColorSample} places=${places} off=${off} />
+      </div>
+      <label class="check"><input type="checkbox" class="s-colors-off" checked=${off} onChange=${(e) => setColorsOff(e.target.checked)} /> <span>${tn("colorOff")}</span></label>
+      <p class="sub">${tn("colorOffLead")}</p>
     </div>
-    <label class="check"><input type="checkbox" class="s-colors-off" checked=${off} onChange=${(e) => setColorsOff(e.target.checked)} /> <span>${tn("colorOff")}</span></label>
-    <p class="sub">${tn("colorOffLead")}</p>
-  </section>`;
+  </details>`;
 }
 
 /**
@@ -233,7 +295,7 @@ function AppIconCard() {
     if (auth && auth.canWrite) Promise.resolve(auth.canWrite()).then((v) => setCanWrite(v === true), () => {});
   }, []);
   useEffect(() => () => { if (picked) URL.revokeObjectURL(picked.url); }, [picked]);
-  const title = html`<${CardTitle} title=${tn("appIconTitle")} topic="app-icon" />`;
+  const title = html`<div class="s-app-icon-heading"><h3 class="s-brand-title">${tn("lookBrandGroup")}</h3><${CardTitle} title=${tn("appIconTitle")} topic="app-icon" /></div>`;
   if (!state) return html`<section class="card s-appearance s-app-icon">${title}<p class="sub">…</p></section>`;
   if (state.failed) return html`<section class="card s-appearance s-app-icon">${title}<p class="err">${tn("appIconLoadFailed")}</p></section>`;
 
@@ -290,7 +352,7 @@ function AppIconCard() {
       ${state.custom && !picked ? html`<button type="button" class="btn" disabled=${busy} onClick=${reset}>${tn("appIconReset")}</button>` : null}
     </div>` : html`<p class="sub">${tn("appIconReadOnly")}</p>`}
     <p class="sub">${tn("appIconWho")}</p>
-    <p class="sub">${tn("appIconIos")}</p>
+    <details class="s-app-icon-help"><summary>${tn("lookIconMore")}</summary><p class="sub">${tn("appIconIos")}</p></details>
   </section>`;
 }
 
@@ -335,7 +397,7 @@ function CardLimitsCard() {
     if (r.ok) { setMsg(tn("cardLimitsSaved")); load(); } else setMsg(tn("cardLimitsFailed", (r.body && r.body.error) || r.status));
   };
   const warnings = Array.isArray(view.warnings) ? view.warnings : [];
-  return html`<section class="card s-appearance"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" />
+  return html`<section class="card s-appearance s-card-limits"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" />
     <p class="sub">${tn("cardLimitsLead")}</p>
     <fieldset class="form" disabled=${busy}>
       ${["portrait", "banner", "instance_quota"].map((g) => html`<div key=${g} class="grid3">
@@ -355,8 +417,11 @@ function CardLimitsCard() {
 }
 
 /** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
-function ThemesCard() {
+function ThemesCard({ compact = false } = {}) {
   const s = useStore(themesStore);
+  if (compact) return html`<div class="s-look-toggle-line s-themes"><label for="fx-show-themes">${tn("themesShow")}</label>
+    <input id="fx-show-themes" class="s-ui-toggle" type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
+    <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p></div>`;
   return html`<section class="card s-appearance s-synced s-themes"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
     <label class="check"><input id="fx-show-themes" type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
       <span>${tn("themesShow")}</span></label>
@@ -510,6 +575,9 @@ function MotionCard(props = {}) {
   const [follow, setFollow] = useState(followsReducedMotion);
   useEffect(() => onMotionChange(() => setFollow(followsReducedMotion())), []);
   const setFollowHere = deviceChoice(props, DEVICE_CHOICES[0], tn("themesFollowMotion"), followsReducedMotion, setFollowsReducedMotion);
+  if (props.compact) return html`<div class="s-look-toggle-line s-motion"><label for="fx-follow-reduced-motion">${tn("themesFollowMotion")}<span class="s-scope">${tn("cssDeviceTitle")}</span></label>
+    <input type="checkbox" class="s-ui-toggle" id="fx-follow-reduced-motion" checked=${follow} onChange=${(e) => setFollowHere(e.target.checked)} />
+    <p class="sub">${tn("themesFollowMotionLead")}</p></div>`;
   return html`<section class="card s-appearance s-local s-motion"><h3>${tn("motionTitle")}</h3>
     <label class="check"><input type="checkbox" id="fx-follow-reduced-motion" checked=${follow} onChange=${(e) => setFollowHere(e.target.checked)} />
       <span>${tn("themesFollowMotion")}</span></label>

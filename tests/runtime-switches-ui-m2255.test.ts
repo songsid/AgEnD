@@ -3,7 +3,7 @@
  *  - "Use this PC's Windows CLIs" and "Allow other Windows PCs to pair", each with its plain-language explanation (this
  *    computer stays the fleet; the other PC runs only a small runner), in English and zh-TW;
  *  - the connection guide in the page: Tailscale Serve with this fleet's own local address, an SSH tunnel with its port,
- *    never Funnel, no plain http:// on a LAN; open while pairing is on;
+ *    never Funnel, no plain http:// on a LAN; available on demand without pushing computers below the guide;
  *  - a switch the environment sets is shown as such and cannot be changed;
  *  - on: one PUT (it may wait for a fleet admin, said in the page); off: asked here first, nothing sent on No;
  *  - the per-PC limit: a whole number in its bounds, saved with one PUT;
@@ -67,7 +67,7 @@ describe("what the page says", () => {
     expect(local.getAttribute("aria-describedby")).toBe("runtimeWindowsCliHelp");
     expect(p.root.querySelector("#runtimeWindowsCliHelp").textContent).toContain("Windows Node.js is required");
   });
-  it("the connection guide: Tailscale Serve to this fleet's own address, an SSH tunnel on its port, never Funnel, no plain http on a LAN; closed while pairing is off", async () => {
+  it("keeps the complete connection guide available on demand, including when remote pairing is enabled", async () => {
     await mount();
     const guide = p.root.querySelector(".runtime-guide");
     const isOpen = (el: any) => el.open === true || el.hasAttribute("open");
@@ -85,7 +85,7 @@ describe("what the page says", () => {
     await p.unmount();
     view.switches.remote_runtime = { on: true, configured: true, environment: null };
     await mount();
-    expect(isOpen(p.root.querySelector(".runtime-guide"))).toBe(true);
+    expect(isOpen(p.root.querySelector(".runtime-guide"))).toBe(false);
   });
   it("zh-TW: the same, in plain words", async () => {
     i18n.setLang("zh-TW", { store: false });

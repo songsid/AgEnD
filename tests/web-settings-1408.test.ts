@@ -468,27 +468,48 @@ describe("#1374 and leaks", () => {
     expect(p.root.querySelector(".list-head span").textContent).toBe("1 connection");
   });
 
-  const breaksBeforeTags = (rows: any[]) => {
+  const keepsListMetadataAndActions = (rows: any[], kind: "agent" | "classic") => {
     for (const r of rows) {
-      const kids = [...r.querySelector(".s-meta").parentNode.children];
-      const at = kids.indexOf(r.querySelector(".s-meta"));
-      expect(kids[at + 1].className, "the break follows the model").toBe("s-br");
-      expect(kids[at + 2].className, "…and the effort chip follows the break").toBe("tag");
+      // Grid rows keep the model beside its CLI, and the effort/context with the name.
+      // A forced line-break between model and tags is no longer part of the layout.
+      expect(r.querySelector(`.s-${kind}-cli .s-meta`)?.textContent).toBeTruthy();
+      expect(r.querySelector(`.s-${kind}-cli strong`)?.textContent).toBe("Claude Code");
+      expect(r.querySelector(".s-agent-context")?.textContent).toContain("effort:");
+      expect(r.querySelector(`.s-${kind}-status`)?.textContent).toBeTruthy();
+      expect(btn(r.querySelector(".s-actions"), "Settings")).toBeTruthy();
     }
   };
-  it("alpha.2 sweep: every agent row breaks before its tags in the same place, so the chips wrap alike on a phone", async () => {
+  it("agent list rows retain configured and inherited models, effort and actions in the compact layout", async () => {
+    routes = [r => r.method === "GET" && r.url === "/api/settings/fleet/raw" ? { body: {
+      ...structuredClone(FLEET), defaults: { backend: "claude-code", model: "fleet-model", effort: "medium" },
+      instances: { alpha: { ...FLEET.instances.alpha, model: "alpha-model", effort: "high" }, beta: FLEET.instances.beta },
+    } } : undefined];
     await mount("agents"); await settle(6);
     const rows = [...p.root.querySelectorAll(".s-row")].filter(r => r.querySelector(".s-meta"));
-    expect(rows.length).toBeGreaterThan(1);
-    breaksBeforeTags(rows);
+    expect(rows.map(r => r.querySelector(".s-name").textContent).sort()).toEqual(["alpha", "beta"]);
+    keepsListMetadataAndActions(rows, "agent");
+    for (const r of rows) {
+      const alpha = r.querySelector(".s-name").textContent === "alpha";
+      expect(r.querySelector(".s-meta").textContent).toBe(alpha ? "alpha-model" : "fleet-model");
+      expect(r.querySelector(".s-agent-context").textContent).toContain(alpha ? "effort: high" : "effort: medium");
+      expect(r.querySelector(".s-agent-runtime").textContent).toBe("WSL / Linux");
+    }
   });
-  it("alpha.2 sweep: …and so does every ClassicBot room row", async () => {
+  it("ClassicBot rows retain each room's model, effort, execution state and settings action", async () => {
     routes = [(r) => (r.method === "GET" && r.url === "/api/settings/classic"
-      ? { body: { defaults: {}, channels: { "discord:1": { name: "lobby", instanceName: "classic-lobby" }, "discord:2": { name: "ops", instanceName: "classic-ops" } } } } : undefined)];
+      ? { body: { defaults: { model: "classic-model" }, channels: {
+        "discord:1": { name: "lobby", instanceName: "classic-lobby", model: "lobby-model", effort: "high" },
+        "discord:2": { name: "ops", instanceName: "classic-ops", effort: "low" },
+      } } } : undefined)];
     await mount("classic"); await settle(6);
     const rows = [...p.root.querySelectorAll(".s-row")].filter(r => r.querySelector(".s-meta"));
     expect(rows.map(r => r.querySelector(".s-name").textContent).sort(), "the two room rows").toEqual(["lobby", "ops"]);
-    breaksBeforeTags(rows);
+    keepsListMetadataAndActions(rows, "classic");
+    for (const r of rows) {
+      const lobby = r.querySelector(".s-name").textContent === "lobby";
+      expect(r.querySelector(".s-meta").textContent).toBe(lobby ? "lobby-model" : "classic-model");
+      expect(r.querySelector(".s-agent-context").textContent).toContain(lobby ? "effort: high" : "effort: low");
+    }
   });
 
   it("alpha.2 sweep: a fleet without provider secrets (the schema says so) is not asked for them — no 404 on every load", async () => {

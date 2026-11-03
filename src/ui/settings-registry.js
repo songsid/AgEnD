@@ -14,13 +14,13 @@ const L = (en, zh) => ({ en, "zh-TW": zh });
 const ROWS = [
   // You · Preferences
   ["profile.name", "preferences", "#profile-name", "settings.profileTitle", null, ["name", "display name", "who agents see", "profile"], ["名字", "名稱", "顯示名稱", "個人資料"]],
-  ["prefs.theme", "preferences", "#pref-theme", "app.theme", null, ["theme", "dark", "light", "dark mode", "colour scheme"], ["主題", "深色", "淺色", "外觀"]],
+  ["prefs.theme", "look", "#pref-theme", "app.theme", null, ["theme", "dark", "light", "dark mode", "colour scheme"], ["主題", "深色", "淺色", "外觀"]],
   ["prefs.lang", "preferences", "#pref-lang", "app.language", null, ["language", "dashboard language", "english", "chinese", "locale"], ["語言", "介面語言", "中文", "英文"]],
   ["prefs.names", "preferences", "#pref-names", "app.names", null, ["names", "nickname", "real name", "instance name", "display"], ["名稱", "暱稱", "實名"]],
   ["prefs.previews", "preferences", "#pref-previews", "chat.previews", null, ["html preview", "preview", "iframe"], ["預覽", "HTML 預覽"]],
   ["prefs.tour", "preferences", "#tourBtn", "chat.tour", null, ["tour", "help", "walkthrough", "guide"], ["導覽", "說明", "教學"]],
-  ["device.motion", "preferences", "#fx-follow-reduced-motion", "settings.themesFollowMotion", null, ["reduced motion", "animation", "effects", "accessibility"], ["減少動態", "動畫", "特效", "無障礙"]],
-  ["device.css-off", "preferences", "#css-off-here", "settings.cssDeviceOff", null, ["custom css", "css off", "this device", "safe"], ["自訂 CSS", "關閉 CSS", "這個裝置"]],
+  ["device.motion", "look", "#fx-follow-reduced-motion", "settings.themesFollowMotion", null, ["reduced motion", "animation", "effects", "accessibility"], ["減少動態", "動畫", "特效", "無障礙"]],
+  ["device.css-off", "look", "#css-off-here", "settings.cssDeviceOff", null, ["custom css", "css off", "this device", "safe"], ["自訂 CSS", "關閉 CSS", "這個裝置"]],
   // You · Look
   ["look.themes", "look", "#fx-show-themes", "settings.themesShow", "fx.show", ["agent themes", "themes", "effects", "widgets"], ["主題", "agent 的主題", "特效", "小工具"]],
   ["look.colours", "look", ".s-colors", "settings.colorTitle", "color.show", ["identity colour", "color", "colour", "turn off colours"], ["識別色", "顏色", "關閉顏色"]],

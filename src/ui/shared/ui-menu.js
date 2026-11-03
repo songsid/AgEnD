@@ -34,7 +34,7 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
   useEffect(() => {
     if (!open || disabled) { if (open && disabled) setOpen(false); return undefined; }
     const first = list.current && list.current.querySelector("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])");
-    if (first) first.focus();
+    if (first) first.focus({ preventScroll: true });
     const outside = (e) => { if (list.current && !list.current.contains(e.target) && btn.current && !btn.current.contains(e.target)) setOpen(false); };
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
@@ -42,7 +42,7 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
   function onKey(e) {
     const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])")];
     const i = all.indexOf(document.activeElement);
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus(); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus({ preventScroll: true }); }
     else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); document.activeElement?.click(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); (all[(i + 1) % all.length] || all[0])?.focus(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); (all[(i - 1 + all.length) % all.length] || all[0])?.focus(); }
@@ -50,7 +50,7 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
     else if (e.key === "End") { e.preventDefault(); all[all.length - 1]?.focus(); }
     else if (e.key === "Tab") setOpen(false);
   }
-  function choose(item) { if (disabled || item.disabled) return; setOpen(false); btn.current && btn.current.focus(); item.onSelect(); }
+  function choose(item) { if (disabled || item.disabled) return; setOpen(false); btn.current && btn.current.focus({ preventScroll: true }); item.onSelect(); }
   return html`<div class=${`menu ${cls}`}>
     <button ref=${btn} type="button" class=${`${triggerClass}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} disabled=${disabled}
       aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => { if (!disabled) setOpen(!open); }}

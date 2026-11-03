@@ -61,8 +61,8 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     const { resetOperation } = await import("/ui/js/settings-apply.js");
     resetOperation();
   });
-  // #2347 regrouping: Preferences (with this device's switches), Look, Web dashboard (the Canvas Worker switch); the old
-  // names (device, appearance) still lead there.
+  // Preferences keeps identity/language/content; Look now owns theme and this device's appearance switches.
+  // The old names (device, appearance) still lead to their respective sections.
   const open = async (section: string) => {
     const { SettingsPanel } = await import("/ui/js/panel-settings.js");
     await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}` }));
@@ -71,14 +71,18 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
   const $ = (sel: string) => p.root.querySelector(sel) as any;
   const bar = () => $(".s-pending");
   const button = (label: string, root: any = p.root) => root.querySelectorAll("button").find((b: any) => b.textContent.trim() === label);
-  const pick = async (el: any, v: string) => { el.value = v; fire(el, "change"); await settle(6); };
+  const chooseTheme = async (value: string) => {
+    const choice: any = $("#pref-theme").querySelectorAll("input").find((choice: any) => choice.value === value);
+    choice.checked = true; fire(choice, "change"); await settle(6);
+  };
+  const shownTheme = () => $("#pref-theme").querySelectorAll("input").find((choice: any) => choice.checked)?.value;
   const check = async (el: any, on: boolean) => { el.checked = on; fire(el, "change"); await settle(6); };
   const prefPosts = () => sent.filter((s) => s.method === "POST" && s.path === "/ui/prefs").map((s) => s.body.set);
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  it("Preferences: the theme is shown at once, staged as one change, and saved by Save (no apply job)", async () => {
-    await open("device");
-    await pick($("select[aria-label=Theme]"), "dark");
+  it("Look: the theme is shown at once, staged as one change, and saved by Save (no apply job)", async () => {
+    await open("look");
+    await chooseTheme("dark");
     await wait(450);
     // #2380 review: the cost of one's own choices is the impact table's cheapest kind: Immediately.
     const before = [theme.mock.calls.at(-1), bar()?.textContent.includes("1 unsaved change(s)") && bar()?.textContent.includes("Immediately"), prefPosts()];
@@ -90,9 +94,10 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
   it("over the temporary public link the bar still saves this person's own choices (this browser only, as before)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {
-      await open("device");
+      await open("look");
+      expect($(".s-owner-css")).toBeNull();                         // customization stays unavailable over the public link
       const was = (globalThis as any).AgendTheme.get();
-      await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+      await chooseTheme(was === "dark" ? "light" : "dark");
       const shown = !!bar();
       button("Save", bar()).click(); await settle(12);
       await wait(450);
@@ -102,12 +107,12 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     } finally { p.document.body.removeAttribute("data-public-link"); }
   });
   it("Discard puts the theme back and sends nothing", async () => {
-    await open("device");
+    await open("look");
     const was = (globalThis as any).AgendTheme.get();
-    await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+    await chooseTheme(was === "dark" ? "light" : "dark");
     button("Discard", bar()).click(); await settle(8);
     await wait(450);
-    expect([(globalThis as any).AgendTheme.get(), !!bar(), prefPosts(), $("select[aria-label=Theme]").value]).toEqual([was, false, [], was]);
+    expect([(globalThis as any).AgendTheme.get(), !!bar(), prefPosts(), shownTheme()]).toEqual([was, false, [], was]);
   });
   it("Web appearance: colours off (synced) and following reduced motion (this device) are two unsaved changes; Discard puts both back", async () => {
     const motion = await import("/assets/fx-motion.js");
@@ -115,6 +120,8 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     await open("look");
     await check($(".s-colors-off"), true);
     await open("preferences");
+    expect($("#fx-follow-reduced-motion")).toBeNull();                // moved, while the pending colour edit survives navigation
+    await open("look");
     await check($("#fx-follow-reduced-motion"), true);
     const during = [colors.colorsOff(), motion.followsReducedMotion(), bar()?.textContent.includes("2 unsaved change(s)")];
     button("Discard", bar()).click(); await settle(8);
@@ -135,6 +142,7 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
   it("Restore defaults (a confirmed action) saves at once, Settings open or not: nothing staged", async () => {
     await open("appearance");
     await check($(".s-colors-off"), true);
+    $(".s-restore").closest("details").open = true;
     button("Restore defaults").click(); await settle(12);
     await wait(450); await settle(4);
     expect([!!bar(), prefPosts().some((set) => set["color.off"] === null || set["color.off"] === false)]).toEqual([false, true]);
@@ -142,10 +150,10 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
   const pagehide = () => { const e = new MiniEvent("pagehide", {}); (e as any).eventPhase = 2; (e as any).target = p.window; (p.window as any)._fire(e, false); };
   it("#2380 review: a reload or a closed tab (pagehide) puts back what was not saved — a device switch and a held theme", async () => {
     const motion = await import("/assets/fx-motion.js");
-    await open("preferences");
+    await open("look");
     await check($("#fx-follow-reduced-motion"), true);
     const was = (globalThis as any).AgendTheme.get();
-    await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+    await chooseTheme(was === "dark" ? "light" : "dark");
     const during = [motion.followsReducedMotion(), bar()?.textContent.includes("2 unsaved change(s)")];
     pagehide(); await settle(8);
     await wait(450);
@@ -155,21 +163,21 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     const motion = await import("/assets/fx-motion.js");
     const nav = await import("/assets/app-nav.js");
     nav.startRouter(p.window);
-    nav.navigate("/settings/preferences");
-    await open("preferences");
+    nav.navigate("/settings/look");
+    await open("look");
     await check($("#fx-follow-reduced-motion"), true);
     const during = motion.followsReducedMotion();
     nav.navigate("/ui/fleet"); await settle(8);                       // the harness answers the question: Discard
     expect([during, motion.followsReducedMotion()]).toEqual([true, false]);
-    nav.navigate("/settings/preferences"); await settle(4);
+    nav.navigate("/settings/look"); await settle(4);
   });
   it("#2380 review: a refused preferences write is said even when the same Save carries a fleet change (which goes on)", async () => {
     const T = await import("/assets/ui-toast.js");
     const { SettingsPanel } = await import("/ui/js/panel-settings.js");
-    await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: "settings:device" }), h(T.Toasts, {})));
+    await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "look" }, navKey: "settings:look" }), h(T.Toasts, {})));
     await settle(12);
     const was = (globalThis as any).AgendTheme.get();
-    await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+    await chooseTheme(was === "dark" ? "light" : "dark");
     await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "web-dashboard" }, navKey: "settings:web-dashboard" }), h(T.Toasts, {})));
     await settle(12);
     const box = $("#webOfficeLevels");
@@ -184,10 +192,10 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
   it("leaving Settings with a preference unsaved asks; Discard puts it back", async () => {
     const nav = await import("/assets/app-nav.js");
     nav.startRouter(p.window);
-    nav.navigate("/settings/device");
-    await open("device");
+    nav.navigate("/settings/appearance");
+    await open("appearance");
     const was = (globalThis as any).AgendTheme.get();
-    await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+    await chooseTheme(was === "dark" ? "light" : "dark");
     nav.navigate("/ui/fleet"); await settle(8);
     const dialog = p.root.querySelector("button[data-confirm=yes]") ?? null;
     if (dialog) { dialog.click(); await settle(8); }

@@ -109,8 +109,8 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
 
 describe("#2347: every card where it belongs", () => {
   it.each([
-    ["preferences", ["#fx-follow-reduced-motion", ".s-synced"], [".s-colors-off", "#g-locale"]],
-    ["look", [".s-colors-off", ".s-owner-css"], ["#fx-follow-reduced-motion", ".s-app-icon"]],
+    ["preferences", ["#profile-name", "#pref-lang", "#pref-names", "#tourBtn", ".s-synced"], ["#pref-theme", "#fx-follow-reduced-motion", "#css-off-here", ".s-colors-off", "#g-locale"]],
+    ["look", ["#pref-theme", "#fx-follow-reduced-motion", "#css-off-here", ".s-colors-off", ".s-owner-css"], ["#pref-lang", "#pref-names", ".s-app-icon"]],
     ["agents", [".list-head", ".s-key"], [".s-conn", "#g-locale"]],           // the provider API keys moved here
     ["agent-defaults", ["#g-locale", "#g-ll"], ["#g-cbe", "#webEchoToChannel"]],
     ["chat", [".s-conn", "#webEchoToChannel", "#classicbot", "#g-cbe"], ["#g-locale", ".s-key", "#webSessionAbsolute"]],

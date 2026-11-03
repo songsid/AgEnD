@@ -1331,3 +1331,96 @@ register("settings", {
     help6: "存取、密鑰或連線的變更，要等 fleet 管理員在聊天中確認後才會套用。",
   },
 });
+
+// Settings UX presentation labels.
+register("settings", {
+  "en": {
+    "prefsProfileGroup": "Personal details",
+    "prefsContentGroup": "Language and content",
+    "prefsAccountScope": "Your account",
+    "prefsHelpGroup": "Help and guidance",
+    "prefsTourHint": "Walk through the controls in an Agent conversation.",
+    "prefsReplayTour": "Replay tour",
+    "prefsLookHint": "Theme, appearance and effects are in Look",
+    "prefsNameImmediate": "Save name applies this change immediately, separately from the other preferences.",
+    "prefsSaveName": "Save name",
+    "lookDisplayGroup": "Display and layout",
+    "lookThemeHint": "Choose the theme used on your signed-in devices.",
+    "lookIdentityGroup": "Agent identity",
+    "lookMotionGroup": "Themes and motion",
+    "lookPreview": "Preview",
+    "lookPreviewHint": "A sample of your current colours and default card size."
+  },
+  "zh-TW": {
+    "prefsProfileGroup": "個人資料",
+    "prefsContentGroup": "語言與內容",
+    "prefsAccountScope": "你的帳號",
+    "prefsHelpGroup": "使用說明",
+    "prefsTourHint": "重新了解 Agent 對話中的常用操作。",
+    "prefsReplayTour": "重新播放導覽",
+    "prefsLookHint": "主題、外觀與動態效果請前往「外觀」",
+    "prefsNameImmediate": "「儲存名字」會立即套用，與其他偏好的儲存分開。",
+    "prefsSaveName": "儲存名字",
+    "lookDisplayGroup": "顯示與版面",
+    "lookThemeHint": "選擇你登入的裝置所使用的主題。",
+    "lookIdentityGroup": "Agent 識別",
+    "lookMotionGroup": "主題與動態效果",
+    "lookPreview": "預覽",
+    "lookPreviewHint": "目前識別色與預設身分卡大小的示意。"
+  }
+}
+);
+
+// Settings UX presentation labels.
+register("settings", {
+  "en": {
+    "uiAgentColumnName": "Name",
+    "uiAgentColumnCli": "CLI & model",
+    "uiListColumnState": "Status",
+    "uiListColumnActions": "Actions",
+    "uiRuntimeWindowsLocal": "Local Windows",
+    "uiRuntimeWindowsRemote": "Windows runtime",
+    "uiConnectionColumnService": "Service & connection",
+    "uiConnectionColumnInfo": "Connection details",
+    "uiClassicColumnRoom": "Room",
+    "uiProviderKeyActionHint": "Verify and apply each key separately. These actions do not wait for the page Save button.",
+    "uiDefaultsModelsTitle": "Models & language",
+    "uiDefaultsWorkTitle": "Work behavior",
+    "uiDefaultsCollaborationTitle": "Collaboration & replies",
+    "uiDefaultsCapabilitiesTitle": "Agent capabilities & permissions",
+    "uiDefaultsWorkspaceTitle": "Workspace rules",
+    "uiDefaultsAdvancedTitle": "Advanced execution policies"
+  },
+  "zh-TW": {
+    "uiAgentColumnName": "名稱",
+    "uiAgentColumnCli": "CLI 與模型",
+    "uiListColumnState": "狀態",
+    "uiListColumnActions": "操作",
+    "uiRuntimeWindowsLocal": "Windows 本機",
+    "uiRuntimeWindowsRemote": "Windows Runtime",
+    "uiConnectionColumnService": "服務與連線",
+    "uiConnectionColumnInfo": "連線資訊",
+    "uiClassicColumnRoom": "房間",
+    "uiProviderKeyActionHint": "每組金鑰會分別驗證並套用，不需等待頁面底部的儲存。",
+    "uiDefaultsModelsTitle": "模型與語言",
+    "uiDefaultsWorkTitle": "工作行為",
+    "uiDefaultsCollaborationTitle": "協作與回覆",
+    "uiDefaultsCapabilitiesTitle": "Agent 能力與權限",
+    "uiDefaultsWorkspaceTitle": "工作區規則",
+    "uiDefaultsAdvancedTitle": "進階執行策略"
+  }
+}
+);
+
+register("settings", {
+  "en": {
+    "lookBrandGroup": "Brand",
+    "lookIconMore": "Icon update help",
+    "prefsNameImmediate": "Name changes save immediately."
+  },
+  "zh-TW": {
+    "lookBrandGroup": "品牌",
+    "lookIconMore": "圖示更新說明",
+    "prefsNameImmediate": "名字會立即儲存。"
+  }
+});

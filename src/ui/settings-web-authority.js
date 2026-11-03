@@ -14,6 +14,7 @@ import { DEFAULT_SCHEMA, impactOf, sameValue } from "./settings-model.js";
 import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
+import { layoutText } from "./settings-layout.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 
@@ -64,7 +65,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     syncStage(ctx, "verified_authority", body ? { label: tn("vaTitle"), count: Object.keys(body).length,
       impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.verified_authority"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } } : null);
   }, [f, original, overview]);
-  const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note">${tn("vaHint")}</p>${body}</section>`;
+  const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText("revAuthorityBrief")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
   if (failed) return card(html`<p class="note" role="status">${tn("vaLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`);
   if (!overview || !f) return card(html`<p class="note">${t("app.loading")}</p>`);
 
@@ -86,26 +87,28 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
 
   return card(html`<fieldset class="s-va-fields" disabled=${disabled}>
       ${stuckOff ? html`<p class="note s-va-warn" role="status" id="vaStuckOff">${tn("vaStuckOff")}</p>` : null}
-      <label class=${fc("check", "enabled")}><input id="vaEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${tn("vaEnabled")}</span></label>
-      <p class="note">${tn("vaEnabledHint")}</p>
-      <label class=${fc("check", "loopbackOnly")}><input id="vaLoopbackOnly" type="checkbox" checked=${f.loopbackOnly} onChange=${(e) => set({ loopbackOnly: e.target.checked })} /><span>${tn("vaLoopbackOnly")}</span></label>
-      <p class="note">${tn("vaLoopbackOnlyHint")}</p>
+      <label class=${fc("check", "enabled")}><input class="s-ui-toggle" id="vaEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${layoutText("revAuthorityEnabled")}</span></label>
+      <p class="note">${layoutText("revAuthorityEnabledHint")}</p>
+      <label class=${fc("check", "loopbackOnly")}><input class="s-ui-toggle" id="vaLoopbackOnly" type="checkbox" checked=${f.loopbackOnly} onChange=${(e) => set({ loopbackOnly: e.target.checked })} /><span>${layoutText("revAuthorityLocal")}</span></label>
+      <p class="note">${layoutText("revAuthorityLocalHint")}</p>
       ${warnHosts ? html`<p class="note s-va-warn" role="status" id="vaLanWarning">${tn("vaLanWarning", overview.lanHosts.join(", "))}</p>` : null}
-      ${overview.namedHost || original.namedLink ? html`<label class=${fc("check", "namedLink")}><input id="vaNamedLink" type="checkbox" checked=${f.namedLink} onChange=${(e) => set({ namedLink: e.target.checked })} /><span>${tn("vaNamedLink", overview.namedHost || "—")}</span></label>
-      <p class="note">${tn("vaNamedLinkHint")}</p>` : null}
-      ${/* §0.3: always shown — any fleet can open the temporary public link with /web. */ ""}
-      <label class=${fc("check", "quickLink")}><input id="vaQuickLink" type="checkbox" checked=${f.quickLink} onChange=${(e) => set({ quickLink: e.target.checked })} /><span>${tn("vaQuickLink")}</span></label>
-      <p class="note">${tn("vaQuickLinkHint")}</p>
       <div class=${fc("field", "hours")}><label for="vaHours">${tn("vaHours", overview.hours.min, overview.hours.max)}</label>
         <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any"
           class=${hoursError ? "invalid" : ""} value=${hoursText} onInput=${(e) => set({ hours: onHoursText(e.target.value) })} />
         <${Feedback} error=${hoursError} />
         ${hoursText.trim() === "" ? html`<${InEffect} text=${tn("hoursValue", overview.hours.default)} />` : null}</div>
+      <p class="note s-authority-public-warning">${layoutText("revAuthorityPublicWarning")}</p>
+      <details class="s-authority-links"><summary>${layoutText("revAuthorityLinks")}</summary><div>      ${overview.namedHost || original.namedLink ? html`<label class=${fc("check", "namedLink")}><input class="s-ui-toggle" id="vaNamedLink" type="checkbox" checked=${f.namedLink} onChange=${(e) => set({ namedLink: e.target.checked })} /><span>${tn("vaNamedLink", overview.namedHost || "—")}</span></label>
+      <p class="note">${tn("vaNamedLinkHint")}</p>` : null}
+      ${/* §0.3: always shown — any fleet can open the temporary public link with /web. */ ""}
+      <label class=${fc("check", "quickLink")}><input class="s-ui-toggle" id="vaQuickLink" type="checkbox" checked=${f.quickLink} onChange=${(e) => set({ quickLink: e.target.checked })} /><span>${tn("vaQuickLink")}</span></label>
+      <p class="note">${tn("vaQuickLinkHint")}</p>
+</div></details>
       <h4>${tn("vaSessionsTitle")}</h4>
       ${overview.authorized.length
         ? html`<ul class="s-va-sessions" id="vaSessions">${overview.authorized.map((a) => html`<li key=${a.handle} data-handle=${a.handle}>
             <strong>${a.label}</strong> <span class="note">${a.account}</span>${a.named ? html` <span class="note s-va-named">${tn("vaSessionNamed")}</span>` : null}${a.quick ? html` <span class="note s-va-named s-va-quick">${tn("vaSessionQuick")}</span>` : null}<br /><span class="note">${tn("vaSessionUntil", when(a.authorizedAt), when(a.until))}</span></li>`)}</ul>`
         : html`<p class="note" id="vaSessionsNone">${tn("vaSessionsNone")}</p>`}
     </fieldset>
-    <div class="save-row"><button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled} onClick=${revoke}>${tn("vaRevoke")}</button></div>`);
+    <div class="save-row s-authority-revoke"><button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled} onClick=${revoke}>${tn("vaRevoke")}</button></div>`);
 }

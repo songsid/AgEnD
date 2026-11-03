@@ -46,6 +46,7 @@
 
   /* ── Layout ── */
   --col: 768px;            /* the conversation column */
+  --settings-width: 1200px; /* settings workspace, including its horizontal padding */
   --sidebar-w: 260px;
   --header-h: 52px;
   --tap: 44px;             /* the smallest touch target on a phone */
