@@ -27,13 +27,26 @@ export function refreshProposals() {
   return reading;
 }
 
-/** Once per page: follow the stream's change event, read once. Never on the public link (its pages get nothing here). */
+/**
+ * Once per page: read once, then again on the stream's `agent_proposals` ping (live) and whenever a status frame's
+ * `agent_proposals_rev` moves (#2997 review: a page that polls /ui/poll, one that reconnected, and a tab from before the
+ * upgrade — whose stream knows no `agent_proposals` event — all still apply status frames). Never on the public link.
+ */
 export function installProposals() {
   if (installed) return;
   if (typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1") return;
   installed = true;
   const on = appStore.get().streamOn;
-  if (typeof on === "function") on("agent_proposals", () => { void refreshProposals(); });
+  let rev = null;
+  if (typeof on === "function") {
+    on("agent_proposals", () => { void refreshProposals(); });
+    on("status", (d) => {
+      const next = d && Number.isSafeInteger(d.agent_proposals_rev) ? d.agent_proposals_rev : null;
+      if (next === null || next === rev) return;
+      rev = next;
+      void refreshProposals();                                         // the first frame too: a change before it is not missed
+    });
+  }
   void refreshProposals();
 }
 

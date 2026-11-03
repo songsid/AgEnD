@@ -279,12 +279,22 @@ export function proposalLines(summary) {
 function ProposalItem({ proposal: p, nowMs }) {
   const d = useStore(decisions)[p.id];
   const busy = d === "busy" || p.state === "applying";
+  const [failed, setFailed] = useState(null);
   const decide = async (decision) => {
-    if (decisions.get()[p.id]) return;
+    if (decisions.get()[p.id]) return;                                 // one POST in flight per request on this page
+    setFailed(null);
     decisions.set((s) => ({ ...s, [p.id]: "busy" }));
     const r = await decideProposal(p.id, decision);
+    // #2997 review (Prism P2): nothing decided (the network failed, the owner was refused, a bad answer) and the request
+    // still waits — the claim is released and why is said here, so the next click is taken; a decided one is kept.
+    const decided = r.view && r.view.state !== "pending";
+    if (!decided) {
+      decisions.set((s) => { const next = { ...s }; delete next[p.id]; return next; });
+      setFailed(r.message || t("app.failed"));
+      return;
+    }
     decisions.set((s) => ({ ...s, [p.id]: { ...r, decision } }));
-    toast(r.view && r.view.outcome ? r.view.outcome.message : (r.message || t("app.failed")), !!(r.ok && r.view && r.view.state === "applied"));
+    toast(r.view.outcome ? r.view.outcome.message : (r.message || t("app.failed")), r.view.state === "applied");
   };
   const minutes = Math.floor((p.remaining_ms || 0) / 60_000);
   return html`<article data-trust="permission" class="n-item">
@@ -293,6 +303,7 @@ function ProposalItem({ proposal: p, nowMs }) {
       <div class="n-title"><strong>${tn("proposalFrom", p.requested_by)}</strong><span class="n-age">${age(p.requested_at, nowMs)} · ${minutes >= 1 ? tn("expiresIn", minutes) : tn("expiresSoon")}</span></div>
       <ul class="n-detail">${proposalLines(p.summary).map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>
       <p class="note">${tn("proposalHint")}</p>
+      ${failed ? html`<p class="note n-proposal-error" role="alert">${failed}</p>` : null}
       <div class="n-actions">
         <button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${() => decide("confirm")}>${busy ? (p.state === "applying" ? tn("applying") : tn("deciding")) : tn("approve")}</button>
         <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => decide("reject")}>${tn("reject")}</button>

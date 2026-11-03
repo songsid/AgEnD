@@ -2309,7 +2309,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       notify: view => view.state === "pending" ? this.promptSettingsChange(store, view) : Promise.resolve(),
       // alpha.2 (M-2300): an agent's request came, was decided or ran out — the open pages read the list again (a ping
       // with nothing in it: only a web-only fleet's verified owner may read it, GET /ui/agent-proposals).
-      changed: view => { if (view.source === "agent_request") broadcastSseEvent(this.sseClients, "agent_proposals", {}, err => this.logger.debug({ err }, "agent_proposals event failed")); },
+      changed: view => {
+        if (view.source !== "agent_request") return;
+        this.agentProposalsRev++;
+        broadcastSseEvent(this.sseClients, "agent_proposals", {}, err => this.logger.debug({ err }, "agent_proposals event failed"));
+        // …and a status frame with the new revision: a tab from before the upgrade (its stream knows no `agent_proposals`)
+        // applies status frames, and a polling page reads the same frame at its next /ui/poll.
+        this.emitSseEvent("status", this.getUiStatus());
+      },
     });
     const gate = new SettingsHttpConfirmation(store, {
       principal: req => {
@@ -2403,16 +2410,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * never over the public link. Anyone else — a guest, a LAN or public-link session, a chat-connected fleet's admin —
    * gets nothing (a chat fleet keeps General's card as its way).
    */
+  /**
+   * #2997 review (Prism P2): how many times an agent's request came or was decided — in a web-only fleet's status frame,
+   * so a page that never hears the stream's ping (one polling /ui/poll, one reconnecting, a tab from before the upgrade)
+   * reads the list again when it moves. A count, nothing more.
+   */
+  private agentProposalsRev = 0;
   private agentProposalOwner(req: IncomingMessage): { label: string; current(): boolean } | null {
     if (!this.isWebOnlyFleet() || gatewayRequestContext(req)) return null;
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return null;
     // Each check twice over: here, and in the authority itself (it refuses the public link and a chat fleet's session).
-    const record = auth.session, peer = webPeerOf(req), gateway = !!gatewayRequestContext(req);
+    // #2997 review (Prism P2): asked of the LIVE session each time — the request's own cookie authenticated again, the
+    // same handle — never a record captured at the click: a sign-out, an expiry or a revocation while the request is
+    // being applied fences it.
+    const handle = auth.session.handle, peer = webPeerOf(req), gateway = !!gatewayRequestContext(req);
     const owner = (): boolean => {
       if (!this.isWebOnlyFleet()) return false;
-      const now = this.webAuthority({ session: record, gateway, peer });
-      const a = now.authority.kind === "web-verified" && now.authority.session?.handle === record.handle ? now.authority.actor : null;
+      const live = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (live.kind !== "ok" || live.session.handle !== handle) return false;
+      const now = this.webAuthority({ session: live.session, gateway, peer });
+      const a = now.authority.kind === "web-verified" && now.authority.session?.handle === handle ? now.authority.actor : null;
       return !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId;
     };
     return owner() ? { label: t("settings_confirm.host_operator_label"), current: owner } : null;
@@ -25202,6 +25220,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       host_memory: this.hostMemoryIndicator(),
       // #2910 D2: a web-only fleet's newest Notice — a polling page (no SSE `notice`) reads the list again when it moves.
       ...(this.webOnlyPromptPlace() ? { notices_newest: this.webNoticeStore()?.newest() ?? 0 } : {}),
+      // alpha.2 (M-2300, #2997 review): agents' requests changed — the owner's page reads GET /ui/agent-proposals again.
+      ...(this.isWebOnlyFleet() ? { agent_proposals_rev: this.agentProposalsRev } : {}),
       // #2015: the largest processes while it lasts (name, pid, RSS, and whose: an instance, the fleet or tmux).
       ...(this.hostMemoryIndicator() && this.memoryTop ? { host_memory_top: this.memoryTop.processes } : {}),
     };

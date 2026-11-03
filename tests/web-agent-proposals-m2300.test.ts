@@ -137,6 +137,12 @@ describe("alpha.2 the server: a web-only fleet's owner decides an agent's reques
       const b = h.propose({ unchanged: async () => { h.fm.revokeWebAuthority(); return true; } });
       const stale = await h.decide(s2, b.view.id, "confirm");
       expect([stale.status, stale.body.view.state, b.apply.mock.calls.length]).toEqual([200, "stale", 0]);
+      // #2997 review (Prism P2): the owner signs out (its session removed) while the request is being applied: the live
+      // session is asked, not the record captured at the click — stale, never applied.
+      const s3 = await h.signIn();
+      const c = h.propose({ unchanged: async () => { h.any.webSessions.revokeById(s3.sessionId); return true; } });
+      const signedOut = await h.decide(s3, c.view.id, "confirm");
+      expect([signedOut.status, signedOut.body.view.state, c.apply.mock.calls.length]).toEqual([200, "stale", 0]);
     } finally { await h.stop(); }
   }, 20_000);
   it("nobody else sees or decides it: from another machine, over the public link, a chat fleet's admin, no session", async () => {
@@ -168,6 +174,20 @@ describe("alpha.2 the server: a web-only fleet's owner decides an agent's reques
       expect(a.apply).not.toHaveBeenCalled();
     } finally { await c.stop(); }
   }, 30_000);
+  it("#2997 review: a web-only fleet's status frame carries the requests' revision, moving with each step; a chat fleet's has none", async () => {
+    const h = await startFleet();
+    try {
+      const rev = () => (h.fm.getUiStatus() as any).agent_proposals_rev;
+      const r0 = rev();
+      const s = await h.signIn();
+      const a = h.propose();
+      expect(rev()).toBe(r0 + 1);
+      await h.decide(s, a.view.id, "reject");
+      expect(rev()).toBe(r0 + 2);
+    } finally { await h.stop(); }
+    const c = await startFleet(CHAT);
+    try { expect((c.fm.getUiStatus() as any).agent_proposals_rev).toBeUndefined(); } finally { await c.stop(); }
+  }, 20_000);
   it("a malformed decision or id is refused before anything", async () => {
     const h = await startFleet();
     try {
@@ -262,6 +282,44 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
     I.setLang("zh-TW", { store: false });
     try { expect(N.proposalLines(server).slice(0, 3)).toEqual(["建立 Windows agent", "執行於: windows", "電腦: 這台電腦（Windows）"]); }
     finally { I.setLang("en", { store: false }); }
+  });
+  it("#2997 review: a status frame whose revision moved reads the list again (a polling page, a reconnect, an old tab's stream)", async () => {
+    const handlers: Record<string, Array<(d: unknown) => void>> = {};
+    app.appStore.set({ streamOn: (name: string, fn: (d: unknown) => void) => { (handlers[name] ??= []).push(fn); return () => {}; } });
+    answer = () => ({ owner: true, proposals: [] });
+    AP.installProposals(); await settle(2);
+    const gets = () => reqs.filter(r => r.method === "GET" && r.url === "/ui/agent-proposals").length;
+    expect(gets()).toBe(1);                                                                  // read once
+    for (const fn of handlers.status) fn({ instances: [], agent_proposals_rev: 3 }); await settle(2);
+    expect(gets()).toBe(2);                                                                  // the first frame: read (a change before it is not missed)
+    for (const fn of handlers.status) fn({ instances: [], agent_proposals_rev: 3 }); await settle(2);
+    expect(gets()).toBe(2);                                                                  // the same revision: nothing
+    for (const fn of handlers.status) fn({ instances: [], agent_proposals_rev: 4 }); await settle(2);
+    expect(gets()).toBe(3);
+    for (const fn of handlers.agent_proposals) fn({}); await settle(2);
+    expect(gets()).toBe(4);                                                                  // the live ping too
+    app.appStore.set({ streamOn: undefined });
+  });
+  it("#2997 review: a click whose POST fails (network) while the request still waits: said here, and the next click is taken", async () => {
+    app.appStore.set({ proposals: [PROPOSAL] });
+    await mount();
+    let fail = true;
+    const realFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = async (url: string, init: any = {}) => {
+      if ((init.method || "GET") === "POST" && fail) { reqs.push({ method: "POST", url, body: JSON.parse(init.body) }); throw new Error("network down"); }
+      return realFetch(url, init);
+    };
+    answer = (r) => r.method === "POST" ? { view: { ...PROPOSAL, state: "rejected", outcome: { state: "rejected", message: "Rejected.", reason_code: "rejected", decided_at: 1 } } } : { owner: true, proposals: [PROPOSAL] };
+    try {
+      fire(p.root.querySelectorAll(".n-proposals button")[0], "click"); await settle(6);
+      expect(p.root.querySelector(".n-proposal-error").textContent).toBe(I.t("app.failed"));
+      expect(p.root.querySelectorAll(".n-proposals button")[0].disabled).toBe(false);
+      fail = false;
+      fire(p.root.querySelectorAll(".n-proposals button")[1], "click"); await settle(6);
+      expect(reqs.filter(r => r.method === "POST").map(r => r.body.decision)).toEqual(["confirm", "reject"]);   // the second click was taken
+      app.appStore.set({ proposals: [] }); await settle(4);
+      expect(p.root.querySelector(".n-proposals .n-title strong").textContent).toBe("Rejected.");
+    } finally { (globalThis as any).fetch = realFetch; }
   });
   it("its words in zh-TW", () => {
     I.setLang("zh-TW", { store: false });

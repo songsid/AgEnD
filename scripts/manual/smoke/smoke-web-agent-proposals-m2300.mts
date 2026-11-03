@@ -29,13 +29,16 @@ const hostCode = async () => (await (await fetch(`${fx.base}/auth/issue-code`, {
 const ask = (dir: string) => fm.requestWindowsCreate("planner", { runtime: "windows", topic_name: dir, backend: "codex", directory: `C:\\agend-m2300-e2e\\${dir}`, sandbox: "read-only" });
 
 for (const c of [{ device: "desk", width: 1366, height: 900 }, { device: "phone", width: 390, height: 844 }] as const) {
-  for (const stale of [false, ...(process.env.SKEW ? [true] : [])]) {
-    const name = `${c.device}${stale ? "-stale" : ""}`, failed: string[] = [], info: Record<string, unknown> = {};
+  // live: the stream's ping; stale: a tab from before this change (its app.js, app-shell.js and app-stream.js); poll:
+  // a page whose stream never connects (/ui/events refused), on /ui/poll only (#2997 review). None is reloaded.
+  for (const mode of ["live", "poll", ...(process.env.SKEW ? ["stale"] : [])] as const) {
+    const stale = mode === "stale", name = `${c.device}${mode === "live" ? "" : "-" + mode}`, failed: string[] = [], info: Record<string, unknown> = {};
     const need = (ok: boolean, what: string) => { if (!ok) failed.push(what); };
     const ctx = await fx.browser.newContext({ viewport: { width: c.width, height: c.height }, deviceScaleFactor: Number(process.env.PW_DPR ?? 1), isMobile: c.device === "phone", hasTouch: c.device === "phone" });
     await ctx.addInitScript({ content: `try { localStorage.setItem("agend_tour_done","1"); localStorage.setItem("agend_firstrun_dismissed","1"); localStorage.setItem("agend_lang","en"); } catch {}` });
     const page = await ctx.newPage(), errors: string[] = [];
     page.on("pageerror", (e: any) => errors.push(String(e)));
+    if (mode === "poll") await page.route("**/ui/events*", (r: any) => r.abort());
     if (stale) for (const f of ["app.js", "app-shell.js", "app-stream.js"]) {
       const body = readFileSync(join(process.env.SKEW!, f), "utf8"); let first = true;
       await page.route(`**/assets/${f}*`, (r: any) => { if (!first) return r.continue(); first = false; return r.fulfill({ status: 200, contentType: "text/javascript", body }); });
@@ -50,9 +53,9 @@ for (const c of [{ device: "desk", width: 1366, height: 900 }, { device: "phone"
       info.pending = { id: view.id, state: view.state, summary: view.summary };
       need(view.state === "pending", `the request is pending (${view.state})`);
       need(windowsAgents().length === before, "no agent exists before the owner decides");
-      // The stream's ping (or, on a stale tab, the panel's own read) brings it — no reload on a current page.
-      if (stale) { await page.goto(`${fx.base}/ui/needs`); await page.waitForSelector(".p-needs"); }
-      await page.waitForSelector(".n-proposals .n-item", { timeout: 10000 }).catch(() => failed.push("the request never appeared in Needs you"));
+      // It arrives by itself, never by a reload: the stream's ping (live), the status frame's revision (a stale tab's own
+      // stream), or /ui/poll's status frame (poll: every 5 s).
+      await page.waitForSelector(".n-proposals .n-item", { timeout: 15000 }).catch(() => failed.push("the request never appeared in Needs you (no reload)"));
       const lines = await page.locator(".n-proposals .n-detail li").allTextContents();
       info.lines = lines;
       need(lines.some((l: string) => /agend-m2300-e2e/.test(l)), `its folder is shown (${JSON.stringify(lines)})`);
