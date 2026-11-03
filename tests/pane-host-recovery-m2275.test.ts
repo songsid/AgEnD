@@ -95,6 +95,12 @@ it("shutdown cannot race a queued or in-flight open, including before its native
   await expect(f.host.request({ action: "shutdown", hostBootId: f.bootId })).rejects.toThrow();
   const process = child(); release(process); expect((await opening).state).toBe("running"); process.finish();
 });
+it("shutdown sees an open queued before its reservation reaches the store", async () => {
+  const f = fixture(), opening = f.open().then(value => ({ value }), error => ({ error }));
+  await expect(f.host.request({ action: "shutdown", hostBootId: f.bootId })).rejects.toThrow();
+  const result = await opening; expect(result).toHaveProperty("value.state", "running");
+  expect(f.spawn).toHaveBeenCalledOnce(); f.processes[0].finish();
+});
 it("normal relay detach preserves the host; explicit empty shutdown closes its listener and discovery, then a new boot starts", async () => {
   const f = fixture();
   const directory = join(f.root, "service"), scope = "a".repeat(64);

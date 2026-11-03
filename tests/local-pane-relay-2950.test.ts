@@ -1,6 +1,7 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import {PassThrough} from 'node:stream';import {EventEmitter} from 'node:events';import {randomUUID} from 'node:crypto';
 import {LocalPaneEndpoint} from '../src/local-pane-endpoint.js';import {serveLocalPaneRelay} from '../src/runtime-pane-stdio.js';import {PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT} from '../src/runtime-pane-stdio-protocol.js';import type {PaneLinkOptions, RuntimePaneLink} from '../src/runtime-pane-link.js';
+import {FleetManager} from '../src/fleet-manager.js';
 const stops:Array<()=>unknown>=[];afterEach(()=>{for(const f of stops.splice(0).reverse())f();vi.useRealTimers();});
 async function fixture(){
  const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()}),request=vi.fn<RuntimePaneLink["request"]>(async()=>({hostBootId,panes:[]})),stop=vi.fn(async()=>{}),changed=vi.fn();let settings!:PaneLinkOptions,allowed=true,limit=4;const hostBootId=randomUUID();
@@ -53,4 +54,16 @@ it('explicit host shutdown requires cleanup ownership and a positive exact-boot 
  f.request.mockResolvedValueOnce({hostBootId:f.hostBootId,shutdown:true});await f.endpoint.shutdownHost();
  expect(f.request.mock.calls.map(([value])=>value)).toEqual([{action:'shutdown',hostBootId:f.hostBootId},{action:'shutdown',hostBootId:f.hostBootId}]);
  expect(f.child.kill).not.toHaveBeenCalled();
+});
+it('the actual switch-off drain waits for owned pane closes, shuts the host, then detaches the relay',async()=>{
+ const f=await fixture(),fleet:any=Object.create(FleetManager.prototype),order:string[]=[];
+ Object.defineProperty(fleet,"daemons",{value:new Map()});
+ Object.assign(fleet,{localPaneRelay:f.endpoint,localPaneDrain:null,runtimeHub:null,shuttingDown:true,
+  fleetConfig:{instances:{local:{runtime:'windows',native_adapter:'pane'},remote:{runtime:'windows',native_adapter:'pane',machine_id:randomUUID()}}},
+  lifecycle:{cancelNativeRecovery:vi.fn(),invalidate:vi.fn()},logger:{warn:vi.fn()},emitSseEvent:vi.fn(),getUiStatus:()=>({})});
+ let finished!:()=>void;fleet.stopInstance=vi.fn(async(name:string)=>{expect(name).toBe('local');await new Promise<void>(done=>{finished=done;});order.push('pane-closed');});
+ f.request.mockImplementation(async request=>{expect(request).toEqual({action:'shutdown',hostBootId:f.hostBootId});order.push('host-shutdown');return{hostBootId:f.hostBootId,shutdown:true};});
+ const pending=fleet.drainNativeRuntime(false);await vi.waitFor(()=>expect(fleet.stopInstance).toHaveBeenCalledOnce());expect(f.request).not.toHaveBeenCalled();
+ f.setAllowed(false);finished();await pending;await vi.waitFor(()=>expect(f.stop).toHaveBeenCalledOnce());
+ expect(order).toEqual(['pane-closed','host-shutdown']);expect(f.child.kill).not.toHaveBeenCalled();expect(fleet.localPaneRelay).toBeNull();
 });
