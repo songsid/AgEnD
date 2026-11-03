@@ -124,7 +124,11 @@ try {
  const inventory = await endpoint.call({ action: 'list' }); assert(inventory.panes.every(p => p.state === 'exited'));
  await endpoint.call({ action: 'shutdown', hostBootId: inventory.hostBootId }); await stopTransport(); receipt.passed = true;
 } catch (error) {
- failed = error; receipt.phase = phase; receipt.error = error?.name; receipt.reason = String(error?.message).slice(0, 200);
+ failed = error;
+ try { const screen = await native?.port.capturePane(); if (screen !== undefined) receipt.screen = { bytes: Buffer.byteLength(screen),
+  clues: ['trust', 'login', 'sign in', 'update', 'error', 'model', 'permission', 'welcome', 'OpenAI Codex', 'Context', 'shortcuts'].filter(word => screen.toLowerCase().includes(word.toLowerCase())),
+  composer: native.backend.readSteerComposer?.(screen), dialogs: [...native.backend.getStartupDialogs(), ...native.backend.getRuntimeDialogs()].filter(d => d.pattern.test(screen) && (!d.isActive || d.isActive(screen))).map(d => d.type || d.description || 'detected') }; } catch {}
+ receipt.phase = phase; receipt.error = error?.name; receipt.reason = String(error?.message).slice(0, 200);
 } finally {
  try { await stopTransport(); } catch { receipt.transportCleanupUnconfirmed = true; }
  try { if (hostDirectory && inspect('state').alive) inspect('kill-owned'); } catch (e) { if (!String(e).includes('ENOENT')) receipt.hostCleanupNeedsInspection = true; }
