@@ -77,8 +77,9 @@ try {
             assert(result.state === 'exited');
           }
         } finally { await link.stop(); }
-        progress('offline-restart'); await start(); progress('offline-done'); send({ kind: 'offline-exit' });
-      } else if (command.action === 'close') await close();
+        progress('offline-done'); send({ kind: 'offline-exit' });
+      } else if (command.action === 'resume-client') { await start(); send({ kind: 'resumed' }); }
+      else if (command.action === 'close') await close();
       else throw Error('Unknown scratch control');
     }).catch(async () => { send({ kind: 'failed', step }); process.exitCode = 1; try { await close(); } catch { process.stdin.destroy(); lines.close(); } });
   });

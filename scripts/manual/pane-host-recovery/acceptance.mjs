@@ -111,6 +111,9 @@ try {
   receipt.coordinatorRestartNoReplay = true;
   phase = 'offline-exit'; await native.release('detach'); hub.close();
   await control('exit-offline', 'offline-exit'); hub = new RuntimeCoordinator(home, { requestTimeoutMs: 45000 });
+  // Bring the coordinator back before reconnecting. Connecting to the deliberately closed hub is an
+  // authentication refusal (not a transport outage) and correctly stops the client instead of retrying.
+  await control('resume-client', 'resumed');
   await until(() => endpoint.online(), 'exit reconnect');
   const inventory = await endpoint.call({ action: 'list' }), ended = inventory.panes.find(row => row.paneId === before.paneId);
   assert.equal(ended.launchId, before.launchId); assert.equal(ended.state, 'exited'); assert.equal(ended.sessionId, pin);
