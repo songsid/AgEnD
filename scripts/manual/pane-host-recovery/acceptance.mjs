@@ -42,7 +42,7 @@ try {
   await mkdir(root); await cp(bundle, join(root, 'bundle'), { recursive: true });
   await cp('scripts/manual/pane-host-recovery/runner.mjs', join(root, 'runner.mjs'));
   const ps = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
-  const code = "$ErrorActionPreference='Stop'; [Console]::Write((Get-Command node.exe -CommandType Application | Select-Object -First 1).Source)";
+  const code = "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::Write((Get-Command node.exe -CommandType Application | Select-Object -First 1).Source)";
   const nativeNode = execFileSync(ps, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(code, 'utf16le').toString('base64')], { encoding: 'utf8', timeout: 15000, maxBuffer: 8192 }).trim();
   const node = execFileSync('wslpath', ['-u', nativeNode], { encoding: 'utf8', timeout: 5000 }).trim();
   runner = spawn(node, [win32.join(nativeRoot, 'runner.mjs'), win32.join(nativeRoot, 'bundle'), nativeRoot], { shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -68,11 +68,26 @@ try {
   cursor = { sessionId: pin, offset: 0, fileId: null, anchor: PANE_TRANSCRIPT_EMPTY_ANCHOR };
   assert(await native.port.pasteText('Read-only scratch acceptance. Do not use tools or change files. Reply exactly ' + marker));
   const counts = async () => {
-    const batch = await native.port.readTranscript(cursor);
-    if (batch.state !== 'ready') return { user: 0, assistant: 0 };
-    const records = Buffer.from(batch.data, 'base64').toString('utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
-    const role = name => records.filter(row => row.type === 'response_item' && row.payload?.role === name && JSON.stringify(row.payload.content).includes(marker)).length;
-    return { user: role('user'), assistant: role('assistant') };
+    let current = cursor, user = 0, assistant = 0, recordsRead = 0;
+    for (let page = 0; page < 128; page++) {
+      receipt.lastRead = { state: 'requested', page, user, assistant, recordsRead };
+      const batch = await native.port.readTranscript(current);
+      receipt.lastRead = { state: batch.state, complete: batch.complete, gap: batch.gap, page, user, assistant, recordsRead };
+      assert(!batch.gap, 'Cannot prove turn counts across a transcript gap');
+      if (batch.state !== 'ready') break;
+      const records = Buffer.from(batch.data, 'base64').toString('utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+      recordsRead += records.length;
+      const role = name => records.filter(row => row.type === 'response_item' && row.payload?.role === name && JSON.stringify(row.payload.content).includes(marker)).length;
+      user += role('user'); assistant += role('assistant');
+      receipt.lastRead = { state: batch.state, complete: batch.complete, gap: batch.gap, page, user, assistant, recordsRead };
+      if (batch.complete || batch.cursor.offset === current.offset) break;
+      current = batch.cursor;
+    }
+    const pane = await native.port.capturePane();
+    receipt.lastScreen = { busy: native.backend.getBusyPattern().test(pane),
+      errors: native.backend.getErrorPatterns().filter(row => row.pattern.test(pane)).map(row => row.type),
+      dialog: [...native.backend.getStartupDialogs(), ...native.backend.getRuntimeDialogs()].some(row => row.pattern.test(pane) && (!row.isActive || row.isActive(pane))) };
+    return { user, assistant };
   };
   await until(async () => (await counts()).assistant === 1, 'one real response'); assert.equal((await counts()).user, 1);
   receipt.oneMinimalTurn = true;
@@ -118,7 +133,10 @@ try {
   // No second real turn is needed; unit tests cover no-launch/refusal/unknown boundaries.
   await hub.shutdownPaneHosts(); await control('close', 'closed'); await until(() => closed, 'runner exit');
   receipt.passed = true;
-} catch (error) { receipt.phase = phase; receipt.failureClass = error?.name; }
+} catch (error) {
+  receipt.phase = phase; receipt.failureClass = error?.name;
+  receipt.failureAt = [...String(error?.stack).matchAll(/acceptance\.mjs:(\d+):(\d+)/g)].map(match => `${match[1]}:${match[2]}`);
+}
 finally {
   if (runner && !closed) {
     try { await native?.release('detach'); await control('close', 'closed'); await until(() => closed, 'cleanup runner', 25000); } catch { receipt.ownedScratchRetained = true; }
