@@ -132,6 +132,9 @@ try {
  const killedAgain = inspect('kill-owned'); assert(!killedAgain.alive && killedAgain.processesAlive === 0);
  if (mode === 'local') { await until(() => !endpoint.online(), 'bound relay offline'); await startTransport(); }
  else { await delay(1000); await endpoint.call({ action: 'list' }); }
+ await boundNative.port.getPaneStatus(); assert.equal(boundNative.current(), false);
+ await assert.rejects(() => boundManager.handle(machine, { op: 'pane-mcp', owner: { hostBootId: resumed.hostBootId, paneId: resumed.paneId, launchId: boundLaunch, agentId: owner.agent.id, instance: owner.name }, helperId: randomUUID(), method: 'tools/call', callId: 'f'.repeat(64), params: { name: 'reply', arguments: { text: 'must remain unsent' } } }, () => true));
+ receipt.unknownBoundToolsRefused = true;
  await boundManager.recover(owner.name, owner.config, boundLaunch, true, () => {});
  await boundNative.release('close'); assert.equal(store.get(owner.agent.id).activeId, undefined);
  const afterBound = await acquire(owner); assert.equal(afterBound.sessionId, pin); assert.deepEqual(await count(pin, marker), { user: 1, assistant: 1 });

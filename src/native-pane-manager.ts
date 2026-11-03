@@ -121,6 +121,7 @@ export class NativePaneManager {
   let daemon:Daemon|undefined,binding:Binding,closed=false;
   const current=():boolean=>{
    if(closed||!endpoint.online()||this.bindings.get(id)!==binding)return false;
+   const observed=binding.native.snapshot();if(observed?.state==="unknown"||observed?.state==="exited")return false;
    try{if(!daemon||!this.options.published(name,daemon))assertCurrent();this.options.admit(name,config);const now=this.options.config(name),profile=this.options.store.get(id);
     return !!now&&now.native_adapter==="pane"&&now.native_agent_id===id&&now.machine_id===agent.machineId&&now.backend===launch.cli&&now.working_directory===launch.cwd&&(now.model||undefined)===launch.model&&now.native_sandbox===launch.sandbox
      &&profile.paneLaunchId===launch.launchId&&profile.activeId===launch.launchId&&!profile.paused;

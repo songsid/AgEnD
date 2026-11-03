@@ -226,7 +226,8 @@ it('the real admin pane recovery retires only the orphan and ordinary Start resu
  f.abandon();const state=new RuntimePaneStore(join(f.root,'runner'));state.recoverInterrupted();
  let exit=(value:any)=>{};const replacement={...f.cli,kill:vi.fn(()=>exit({exitCode:0})),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};},onData:(fn:(data:string)=>void)=>{queueMicrotask(()=>fn('─'.repeat(40)+'\r\n❯ \r\n'+'─'.repeat(40)+'\r\n'));return{dispose(){}};}};
  f.spawn.mockResolvedValue(replacement);const host=new RuntimePaneHost({store:state,bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn:f.spawn,mcpConnection:(owner,tools)=>({endpoint:'http://127.0.0.1:1/agent',token:'a'.repeat(64),owner,tools})});clean.push(()=>host.stop());
- f.hub.callPane.mockImplementation((_machine,request)=>host.request(request));vi.spyOn(daemon,'nativePaneCurrent').mockReturnValue(false);
+ f.hub.callPane.mockImplementation((_machine,request)=>host.request(request));
+ await daemon.nativePaneLifecycle.port.getPaneStatus();expect(daemon.nativePaneCurrent()).toBe(false);
  // A dead local relay stays dead on the old binding even though recovery discovers a fresh endpoint.
  daemon.nativePaneLifecycle.options.endpoint.online=()=>false;
  expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();

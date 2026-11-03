@@ -69,7 +69,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
   current(reference?: RuntimeTranscriptReference): boolean {
     if (this.detached || !this.options.endpoint.online()) return false;
     if (reference) return this.port.isTranscriptObservationCurrent(reference);
-    return this.port.ownedSnapshot()?.state === "running";
+    return this.port.observedSnapshot()?.state === "running";
   }
   snapshot(): RuntimePaneSnapshot | null { return this.port.observedSnapshot(); }
   mcpProof(): "alive" | "dead" | "unknown" { return this.current() ? this.options.mcpProof() : "unknown"; }

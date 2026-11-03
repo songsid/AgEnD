@@ -137,3 +137,11 @@ it("a reboot cannot silently replace a previously launched Codex conversation wh
  await expect(new NativePaneManager(f.options).prepare("native",f.config,()=>{})).rejects.toThrow("exit is unconfirmed");
  expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).activeId).toBe(manifest.launch.launchId);expect(f.store.get(f.agent.id).threadId).toBeUndefined();expect(f.process.write).not.toHaveBeenCalled();
 });
+
+it("a positively observed unknown host pane cannot keep its old daemon tool authority",async()=>{
+ const f=await fixture(),native=await f.manager.prepare("native",f.config,()=>{});native.bindDaemon({paneToolResponseWritten:vi.fn()} as never);await native.acquire(()=>{});f.publish();
+ const call=f.endpoint.call.getMockImplementation()!;f.endpoint.call.mockImplementationOnce(async request=>{const result:any=await call(request);return{...result,state:"unknown"};});
+ expect(await native.port.getPaneStatus()).toBeNull();expect(native.current()).toBe(false);
+ await expect(f.manager.handle("local",{op:"pane-mcp",owner:f.owner(),helperId:randomUUID(),method:"tools/call",callId:"e".repeat(64),params:{name:"reply",arguments:{text:"never sent"}}},()=>true)).rejects.toThrow("no longer current");
+ expect(f.invoke).not.toHaveBeenCalled();await native.release("detach");
+});
