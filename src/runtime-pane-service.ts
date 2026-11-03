@@ -21,9 +21,9 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   if (!/^[a-f0-9]{64}$/.test(options.scope)) throw Error("Invalid pane enrollment scope");
   await protectPaneDirectory(options.directory);
   const bootId = randomUUID(), token = randomBytes(32).toString("hex");
-  const unlock = new RuntimeClientStore(options.directory).lock(bootId);
-  let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false, leaseEpoch = "";
   const systemBootId = await readPaneSystemBootId();
+  const unlock = new RuntimeClientStore(options.directory).lock(bootId, systemBootId);
+  let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false, leaseEpoch = "";
   const store = new RuntimePaneStore(join(options.directory, "state")); store.recoverInterrupted(systemBootId);
   const output = new Map<string, RuntimePaneSnapshot>();
   let relay!: PaneMcpRelay;

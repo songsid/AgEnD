@@ -1,5 +1,6 @@
 /** Standalone, outbound-only native runtime. Imports no Fleet, database, bot or Linux native dependency. */
 import WebSocket from "ws";
+import { readPaneSystemBootId } from "./runtime-pane-boot.js";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { hostname } from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -105,9 +106,11 @@ export class RuntimeClient {
     if (!this.stopped) return;
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
-    this.unlock = this.options.store.lock(this.bootId);
+    this.stopped = false; this.closed = false;
     try {
-      this.stopped = false; this.closed = false;
+      const systemBootId = process.platform === "win32" ? await readPaneSystemBootId() : undefined;
+      if (this.stopped) throw Error("Runtime start was cancelled");
+      this.unlock = systemBootId ? this.options.store.lock(this.bootId, systemBootId) : this.options.store.lock(this.bootId);
       if (credentials.pendingCredential) {
         const rotating = this.startupRotation = rotateRuntimeCredentials({ store: this.options.store });
         try { credentials = await rotating; } finally { if (this.startupRotation === rotating) this.startupRotation = null; }

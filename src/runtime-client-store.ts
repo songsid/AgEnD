@@ -190,17 +190,19 @@ export class RuntimeClientStore {
     atomic(join(this.directory, "connection.json"), value);
   }
   forgetCredentials(): void { const file = join(this.directory, "connection.json"); if (existsSync(file)) unlinkSync(file); }
-  lock(bootId: string): () => void {
+  lock(bootId: string, systemBootId?: string): () => void {
+    if (systemBootId !== undefined && !/^[a-f0-9]{64}$/.test(systemBootId)) throw Error("Invalid Windows boot proof");
     const path = join(this.directory, "runtime.lock");
     if (existsSync(path)) {
       const old = readPrivate(path);
       if (!object(old) || !Number.isSafeInteger(old.pid) || (old.pid as number) <= 0) throw new Error("Invalid runtime lock; inspect it before restarting");
-      let alive = true;
-      try { process.kill(old.pid as number, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") alive = false; }
+      if (old.systemBootId !== undefined && (typeof old.systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(old.systemBootId))) throw Error("Invalid runtime boot proof");
+      let alive = !(systemBootId && old.systemBootId && systemBootId !== old.systemBootId);
+      try { if (alive) process.kill(old.pid as number, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") alive = false; }
       if (alive) throw new Error("Another runtime already uses this profile");
       unlinkSync(path);
     }
-    writeFileSync(path, JSON.stringify({ pid: process.pid, bootId }), { flag: "wx", mode: 0o600 });
+    writeFileSync(path, JSON.stringify({ pid: process.pid, bootId, ...(systemBootId ? {systemBootId} : {}) }), { flag: "wx", mode: 0o600 });
     return () => { try { const current = readPrivate(path); if (object(current) && current.bootId === bootId) unlinkSync(path); } catch { /* already released */ } };
   }
 }

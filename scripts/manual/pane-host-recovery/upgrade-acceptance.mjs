@@ -72,6 +72,11 @@ const acquire = async (owner, cls = NativePaneManager) => {
  manager = new cls(options); native = await manager.prepare(owner.name, owner.config, () => {});
  native.bindDaemon({ paneToolResponseWritten() {} }); await native.acquire(() => {}); const pin = store.get(owner.agent.id).threadId; assert(pin); threads.add(pin); return native.snapshot();
 };
+const submit = async text => {
+ const unsentOnly = async send => { for (let attempt = 0; attempt < 8; attempt++) { if (await send()) return; assert(native.port.lastInputWasNotSent(), 'Uncertain input is never retried'); await delay(300); } throw Error('Verified composer did not settle'); };
+ await unsentOnly(() => native.port.pasteBuffer(text)); await delay(600);
+ await unsentOnly(() => native.port.sendSpecialKey('Enter'));
+};
 const count = async (pin, marker) => {
  let cursor = { sessionId: pin, offset: 0, fileId: null, anchor: PANE_TRANSCRIPT_EMPTY_ANCHOR }, user = 0, assistant = 0;
  for (let page = 0; page < 128; page++) {
@@ -93,7 +98,7 @@ try {
   server.on('upgrade', (req, socket, head) => { if (!hub.handleUpgrade(req, socket, head)) socket.destroy(); }); server.listen(0, '127.0.0.1'); await once(server, 'listening');
  }
  phase = 'old-real-turn'; await startTransport(true); const owner = await create('Old pane'); const before = await acquire(owner, OldManager), pin = before.sessionId;
- const marker = 'UPGRADE_' + tag; assert(await native.port.pasteText('Read-only scratch proof. Do not use tools. Reply exactly ' + marker));
+ const marker = 'UPGRADE_' + tag; await submit('Read-only scratch proof. Do not use tools. Reply exactly ' + marker);
  await until(async () => (await count(pin, marker)).assistant === 1, 'one real response'); assert.equal((await count(pin, marker)).user, 1); receipt.turns = 1;
  // Exercise a real coordinator ledger (not a provider mutation) so its old boot identity survives the upgrade.
  await manager.handle(machine, { op: 'pane-mcp', owner: { hostBootId: before.hostBootId, paneId: before.paneId, launchId: before.launchId, agentId: owner.agent.id, instance: owner.name },
@@ -115,7 +120,7 @@ try {
  assert.equal(await hashLedger(), ledgerHash); assert.equal(mutations.length, afterKillWrites); receipt.oldLedgerUnchangedWhileHeld = true;
  // A held old launch must not poison the transport or prevent an unrelated new create on this computer.
  phase = 'independent-create'; const fresh = await create('Independent pane'); await acquire(fresh); const freshPin = store.get(fresh.agent.id).threadId, freshMarker = marker + '_NEW';
- assert(await native.port.pasteText('Read-only scratch proof. No tools. Reply exactly ' + freshMarker));
+ await submit('Read-only scratch proof. No tools. Reply exactly ' + freshMarker);
  await until(async () => (await count(freshPin, freshMarker)).assistant === 1, 'independent create response'); receipt.turns++;
  await native.release('close'); receipt.newCreateWhileOldHeld = true;
  phase = 'admin-recovery'; manager = new NativePaneManager(options); await manager.recover(owner.name, owner.config, before.launchId, true, () => {});
@@ -142,7 +147,11 @@ try {
  for (const id of threads) {
   try { const output = execFileSync('/mnt/c/Users/changhansung/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe', ['-c', 'check_for_update_on_startup=false', 'archive', id],
    { cwd: root, encoding: 'utf8', timeout: 30000, maxBuffer: 8192, input: '' });
-  assert(output.includes('Archived session ' + id + '.')); receipt.archived.push(id); } catch { receipt.archiveFailed = [...(receipt.archiveFailed || []), id]; }
+  assert(output.includes('Archived session ' + id + '.')); receipt.archived.push(id); } catch {
+   try { const state = JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'thread-state', id], { encoding: 'utf8', timeout: 20000, maxBuffer: 4096 }));
+    if (!state.found && !state.indexed) receipt.unmaterialized = [...(receipt.unmaterialized || []), id]; else receipt.archiveFailed = [...(receipt.archiveFailed || []), id];
+   } catch { receipt.archiveFailed = [...(receipt.archiveFailed || []), id]; }
+  }
  }
  if (!receipt.hostCleanupNeedsInspection && !receipt.transportCleanupUnconfirmed && !receipt.archiveFailed && !receipt.sessionEnumerationUnconfirmed) { await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); await rm(scratch, { recursive: true, force: true }); receipt.scratchRemoved = true; }
  await writeFile('.artifacts/pane-upgrade-' + mode + '-receipt.json', JSON.stringify(receipt, null, 2) + '\n'); process.stdout.write(JSON.stringify(receipt) + '\n');
