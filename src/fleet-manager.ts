@@ -17602,8 +17602,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? removedBackendMessage(backend)
         : !installed.has(backend)
         ? (BACKEND_INSTALLATION_INFO[backend] ? t("login.install_by_name", backend) : t("login.install_on_host", backend))
+        // #2981: one short line in the bare /login list — the full refusal (why, and what to run) is `/login <it>`'s;
+        // a bare /login used to post Antigravity's whole paragraph to someone who never asked about it.
         : flow?.remoteLogin === "unsupported"
-        ? t("login.remote_unsupported_agent_cli", backend, flow.command)
+        ? t("login.host_only", flow.command)
         : backend === "opencode" ? t("login.unsupported", backend) : t("login.no_remote_flow", backend)}`).join("\n");
       await chat.adapter.sendText(chat.chatId, guidance, { threadId: chat.threadId })
         .catch(err => this.logger.warn({ err }, "Failed to post unsupported login guidance"));

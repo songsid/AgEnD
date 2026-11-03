@@ -533,6 +533,13 @@ export class LoginController {
           this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null });
           return Promise.resolve();
         }
+        // #2981 (the user's minimal step, hmsg-b2832097): a terminal login (Claude Code, kiro) shows the provider's
+        // sign-in URL and code in the AgEnD terminal the person opens — posting them to chat too was a second link and
+        // code for one sign-in. Only a device flow (codex, grok), which has no terminal link, relays them here.
+        if (!flow.deviceAuth) {
+          this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null, reason: "terminal_shows_it" });
+          return Promise.resolve();
+        }
         return this.sendHint(chat, shown, url, code);
       },
       onDone: async result => {
