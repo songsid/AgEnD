@@ -198,8 +198,8 @@ export function ViewPanel({ route, navKey }) {
   else if (!it) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${tn("notFound", { name })} hint=${tn("notFoundHint")} /></div>`;
   else if (guest && !trusted) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="view" title=${tn("guestNeedsTrusted")} hint=${tn("guestNeedsTrustedHint")} /></div>`;
   else if (guest) body = html`<p data-trust="panel-content" class="v-watching" role="note">${tn("guestWatching")}</p>
-    <${Terminal} key=${name} name=${name} lease=${lease} density=${density} every=${GUEST_PANE_MS} />`;
-  else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} />
+    <${Terminal} key=${name} name=${name} lease=${lease} density=${density} every=${GUEST_PANE_MS} backend=${it.backend || ""} />`;
+  else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} backend=${it.backend || ""} />
     <${ViewIdentity} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
 
   return html`<div data-effect-panel="view" class="panel p-view">
@@ -214,11 +214,40 @@ export function ViewPanel({ route, navKey }) {
 
 /** #2855: how often a guest's View reads the pane (the server allows it two reads a second). */
 const GUEST_PANE_MS = 1000;
-/** The live terminal: the pane every 800 ms (passive), drawn as escaped markup, its font fitted to the pane's grid. */
-function Terminal({ name, lease, density, every = 800 }) {
+/**
+ * The live terminal: the pane every 800 ms (passive), drawn as escaped markup, its font fitted to the pane's grid.
+ *
+ * M-2262 (the user, hmsg-435f6df6): scrolling back. Following (the default), it shows the pane's screen as it is now.
+ * Scrolling up — the wheel, a touch drag, PageUp/↑/Home, or "Earlier output" — reads the pane's scrollback once
+ * (`?history=1`: tmux's history above the screen, bounded) and shows it: reading. While reading, nothing moves the
+ * person: the refresh keeps reading the screen only to say "New output below", and never redraws. "Jump to latest"
+ * (or End), or scrolling to the bottom, follows again. Everything happens in this page, over text tmux was asked to
+ * capture: never copy-mode and never a key to the pane (hmsg-b8a170c0 — scrolling must never affect delivery).
+ */
+/** How long a scrollback note stays (it covers the terminal's bottom rows). */
+const NOTE_MS = 6000;
+/** M-2262 survey: CLIs that redraw their whole window (no tmux scrollback even outside the alternate screen). */
+const REDRAWS_IN_PLACE = new Set(["grok"]);
+function Terminal({ name, lease, density, every = 800, backend = "" }) {
   const term = useRef(null), pre = useRef(null);
   const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "" });
   const [problem, setProblem] = useState(null);
+  // "follow" | "loading" | "reading"; the screen's text when reading began, the newest read since; a note about history.
+  const [mode, setModeState] = useState("follow");
+  const modeRef = useRef("follow");
+  const setMode = (m) => { modeRef.current = m; setModeState(m); };
+  const [newBelow, setNewBelow] = useState(false);
+  const [historyNote, setHistoryNoteState] = useState(null);
+  // A CLI found to keep no scrollback (full screen): nothing is offered or read again for it; the note says why, briefly.
+  const [noScrollback, setNoScrollback] = useState(false);
+  const noScrollbackRef = useRef(false);
+  const noteTimer = useRef(null);
+  const setHistoryNote = (note, brief = false) => {
+    lease.clear(noteTimer.current); noteTimer.current = null;
+    setHistoryNoteState(note);
+    if (note && brief) noteTimer.current = lease.timeout(() => setHistoryNoteState(null), NOTE_MS);
+  };
+  const screenAt = useRef({ reading: null, latest: null });
   // #1674: the text size as of this render. The pane refresh and the resize handlers below are set up once per mount
   // and keep the fit() of that render; reading the size here, not from that render's props, keeps them on the current
   // choice (they used to put the mount-time size back within one 800 ms refresh).
@@ -245,7 +274,20 @@ function Terminal({ name, lease, density, every = 800 }) {
     g.applied = size;
     p.style.fontSize = `${size.toFixed(2)}px`;          // CSSOM, never a style attribute (#1300)
   };
+  /** Keep a following view on the newest line (a grid taller than the box at the larger sizes scrolls). */
+  const toBottom = () => { const box = term.current; if (box) box.scrollTop = box.scrollHeight; };
+  const draw = (text) => {
+    pre.current.innerHTML = ansiToHtml(text);           // escaped by construction: markup only from ansiToHtml's own spans
+    paintAnsi(pre.current);
+  };
   useEffect(() => { grid.current.key = ""; fit(); }, [density]);
+  const grid1 = (r) => {
+    const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
+    if (c >= 1 && rw >= 1 && (c !== grid.current.cols || rw !== grid.current.rows)) { grid.current.cols = c; grid.current.rows = rw; grid.current.key = ""; }
+  };
+  // The person asked for what scrolled off: one bounded read, then reading (or why there is nothing to read).
+  const loadEarlier = useRef(null);
+  const follow = useRef(null);
   useEffect(() => {
     const reads = readStream(lease);
     const refresh = async () => {
@@ -263,14 +305,56 @@ function Terminal({ name, lease, density, every = 800 }) {
         if (!r.ok) { setProblem(r.status === 404 ? tn("paneUnavailable") : r.status === 403 && guestPage() ? tn("guestNeedsTrusted") : tn("paneFailed", { name, status: r.status })); return; }
         const text = await r.text();
         if (!reads.live(token) || !pre.current) return;
-        const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
-        if (c >= 1 && rw >= 1 && (c !== grid.current.cols || rw !== grid.current.rows)) { grid.current.cols = c; grid.current.rows = rw; grid.current.key = ""; }
         setProblem(null);
-        pre.current.innerHTML = ansiToHtml(text);         // escaped by construction: markup only from ansiToHtml's own spans
-        paintAnsi(pre.current);
+        screenAt.current.latest = text;
+        // Reading earlier output: nothing is redrawn under the person — the read only says whether there is more.
+        if (modeRef.current !== "follow") { if (modeRef.current === "reading" && text !== screenAt.current.reading) setNewBelow(true); return; }
+        grid1(r);
+        draw(text);
         fit();
+        toBottom();
       } catch { /* a transient error keeps the last frame */ }
       finally { reads.end(token); }
+    };
+    loadEarlier.current = async () => {
+      if (modeRef.current !== "follow") return;
+      if (noScrollbackRef.current) { setHistoryNote(tn("noEarlier"), true); return; }   // known: nothing to read
+      setMode("loading"); setHistoryNote(tn("loadingEarlier"));
+      try {
+        const r = await lease.fetch(`/api/pane/${encodeURIComponent(name)}?history=1`);
+        if (!lease.current() || modeRef.current !== "loading") return;
+        if (!r.ok) { setMode("follow"); setHistoryNote(r.status === 429 ? null : tn("earlierFailed"), true); return; }
+        const text = await r.text();
+        if (!lease.current() || modeRef.current !== "loading" || !pre.current) return;
+        // A full-screen CLI (the alternate screen, or one that redraws its whole window) leaves nothing above its screen;
+        // any other with no history yet has simply not scrolled: say which, keep following.
+        if (r.headers.get("X-Pane-Alternate") === "1" || REDRAWS_IN_PLACE.has(backend)) {
+          noScrollbackRef.current = true; setNoScrollback(true);
+          setMode("follow"); setHistoryNote(tn("noEarlier"), true); return;
+        }
+        if (r.headers.get("X-Pane-History-Lines") === "0") { setMode("follow"); setHistoryNote(tn("nothingEarlier"), true); return; }
+        grid1(r);
+        const lines = text.split("\n").length, rows = grid.current.rows || 0;
+        screenAt.current.reading = screenAt.current.latest;
+        setNewBelow(false);
+        setMode("reading"); setHistoryNote(null);
+        draw(text);
+        fit();
+        // Where the person was (the screen, at the bottom), a few lines up: the earlier output is right above.
+        const box = term.current;
+        if (box) {
+          const lineH = lines > 0 ? pre.current.scrollHeight / lines : 16;
+          box.scrollTop = Math.max(0, box.scrollHeight - box.clientHeight - lineH * Math.min(3, Math.max(1, lines - rows)));
+        }
+      } catch { if (lease.current()) { setMode("follow"); setHistoryNote(tn("earlierFailed"), true); } }
+    };
+    follow.current = () => {
+      if (modeRef.current === "follow") return;
+      setMode("follow"); setNewBelow(false); setHistoryNote(null);
+      const latest = screenAt.current.latest;
+      if (latest != null && pre.current) { draw(latest); fit(); }
+      toBottom();
+      refresh();
     };
     refresh();
     lease.interval(refresh, every);
@@ -282,8 +366,34 @@ function Terminal({ name, lease, density, every = 800 }) {
       ro.observe(term.current);
       lease.hold(() => ro.disconnect());
     }
+    // Scrolling up asks for the earlier output; reaching the bottom while reading follows again.
+    const box = term.current;
+    if (box) {
+      lease.on(box, "wheel", (e) => { if (e.deltaY < 0 && modeRef.current === "follow" && box.scrollTop <= 0) loadEarlier.current(); }, { passive: true });
+      let touchY = null;
+      lease.on(box, "touchstart", (e) => { touchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; }, { passive: true });
+      lease.on(box, "touchmove", (e) => {
+        const y = e.touches && e.touches[0] ? e.touches[0].clientY : null;
+        if (touchY == null || y == null) return;
+        if (y - touchY > 24 && modeRef.current === "follow" && box.scrollTop <= 0) { touchY = null; loadEarlier.current(); }
+      }, { passive: true });
+      lease.on(box, "keydown", (e) => {
+        if (modeRef.current === "follow" && (e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") && box.scrollTop <= 0) { e.preventDefault(); loadEarlier.current(); }
+        else if (modeRef.current === "reading" && e.key === "End") { e.preventDefault(); follow.current(); }
+      });
+      lease.on(box, "scroll", () => {
+        if (modeRef.current !== "reading") return;
+        if (box.scrollHeight - box.scrollTop - box.clientHeight <= 2) follow.current();
+      }, { passive: true });
+    }
   }, [lease, name]);
-  return html`<div data-trust="panel-content" class="v-term" ref=${term}>${problem ? html`<p class="v-term-note" role="status">${problem}</p>` : null}<pre ref=${pre} class="v-pre"></pre></div>`;
+  const reading = mode === "reading";
+  return html`<div class="v-term-box">
+    <div data-trust="panel-content" class=${`v-term${reading ? " is-reading" : ""}`} ref=${term} tabindex="0" aria-label=${tn(reading ? "readingEarlier" : "earlierHint")}>${problem ? html`<p class="v-term-note" role="status">${problem}</p>` : null}<pre ref=${pre} class="v-pre"></pre></div>
+    ${historyNote ? html`<p class="v-term-history-note" role="status">${historyNote}</p>` : null}
+    ${mode === "follow" && !noScrollback ? html`<button type="button" class="v-term-earlier btn btn-sm" title=${tn("earlierHint")} onClick=${() => loadEarlier.current && loadEarlier.current()}><${Icon} name="up" size=${14} />${tn("earlier")}</button>` : null}
+    ${reading ? html`<button type="button" class=${`v-term-latest btn btn-sm${newBelow ? " has-new" : ""}`} onClick=${() => follow.current && follow.current()}>${newBelow ? html`<span class="v-term-new">${tn("newBelow")} · </span>` : null}${tn("jumpLatest")}<${Icon} name="down" size=${14} /></button>` : null}
+  </div>`;
 }
 
 // The advance of one monospace cell as a fraction of font-size, measured once on this page.
