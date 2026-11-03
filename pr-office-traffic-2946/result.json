@@ -1,0 +1,428 @@
+{
+  "failed": 0,
+  "results": [
+    {
+      "name": "desk-light-en cozy one of each",
+      "ok": true,
+      "checks": {
+        "the style is in use": true,
+        "four items in the air at once": true,
+        "all four kinds drawn": true,
+        "each at least 1.5 × 16 scene px across (the paper 1.5 × 12)": true,
+        "still in the air 2.2 s after it was sent": true,
+        "gone by 6 s": true,
+        "no page errors": true
+      },
+      "kinds": [
+        "broadcast",
+        "report",
+        "send",
+        "task"
+      ],
+      "widthsScenePx": [
+        28,
+        28,
+        21,
+        28
+      ],
+      "widthsCssPx": [
+        24.2,
+        24.2,
+        18.1,
+        24.2
+      ],
+      "framesSeen": 149,
+      "errors": []
+    },
+    {
+      "name": "desk-light-en cozy a burst of 30",
+      "ok": true,
+      "checks": {
+        "something flew": true,
+        "never more than 12 in the air": true,
+        "none left after 8 s (no backlog)": true,
+        "no page errors": true
+      },
+      "most": 7,
+      "lastMs": 3373
+    },
+    {
+      "name": "desk-light-en cozy the Key",
+      "ok": true,
+      "checks": {
+        "the toggle in the case's language": true,
+        "four rows in order": true,
+        "their words": true,
+        "every icon drawn": true,
+        "no horizontal overflow": true,
+        "no page errors": true
+      },
+      "rows": [
+        "Folder: a task",
+        "Envelope: a message",
+        "Paper: a report",
+        "Horn: a broadcast"
+      ],
+      "painted": [
+        2596,
+        2400,
+        2240,
+        1659
+      ]
+    },
+    {
+      "name": "desk-light-en guild one of each",
+      "ok": true,
+      "checks": {
+        "the style is in use": true,
+        "four items in the air at once": true,
+        "all four kinds drawn": true,
+        "each at least 1.5 × 16 scene px across (the paper 1.5 × 12)": true,
+        "still in the air 2.2 s after it was sent": true,
+        "gone by 6 s": true,
+        "no page errors": true
+      },
+      "kinds": [
+        "broadcast",
+        "report",
+        "send",
+        "task"
+      ],
+      "widthsScenePx": [
+        28,
+        28,
+        21,
+        28
+      ],
+      "widthsCssPx": [
+        24.2,
+        24.2,
+        18.1,
+        24.2
+      ],
+      "framesSeen": 151,
+      "errors": []
+    },
+    {
+      "name": "desk-light-en guild a burst of 30",
+      "ok": true,
+      "checks": {
+        "something flew": true,
+        "never more than 12 in the air": true,
+        "none left after 8 s (no backlog)": true,
+        "no page errors": true
+      },
+      "most": 7,
+      "lastMs": 3044
+    },
+    {
+      "name": "desk-light-en guild the Key",
+      "ok": true,
+      "checks": {
+        "the toggle in the case's language": true,
+        "four rows in order": true,
+        "their words": true,
+        "every icon drawn": true,
+        "no horizontal overflow": true,
+        "no page errors": true
+      },
+      "rows": [
+        "Folder: a task",
+        "Envelope: a message",
+        "Paper: a report",
+        "Horn: a broadcast"
+      ],
+      "painted": [
+        2596,
+        2400,
+        2240,
+        1659
+      ]
+    },
+    {
+      "name": "desk-light-en school one of each",
+      "ok": true,
+      "checks": {
+        "the style is in use": true,
+        "four items in the air at once": true,
+        "all four kinds drawn": true,
+        "each at least 1.5 × 16 scene px across (the paper 1.5 × 12)": true,
+        "still in the air 2.2 s after it was sent": true,
+        "gone by 6 s": true,
+        "no page errors": true
+      },
+      "kinds": [
+        "broadcast",
+        "report",
+        "send",
+        "task"
+      ],
+      "widthsScenePx": [
+        28,
+        28,
+        21,
+        28
+      ],
+      "widthsCssPx": [
+        24.2,
+        24.2,
+        18.1,
+        24.2
+      ],
+      "framesSeen": 164,
+      "errors": []
+    },
+    {
+      "name": "desk-light-en school a burst of 30",
+      "ok": true,
+      "checks": {
+        "something flew": true,
+        "never more than 12 in the air": true,
+        "none left after 8 s (no backlog)": true,
+        "no page errors": true
+      },
+      "most": 6,
+      "lastMs": 3396
+    },
+    {
+      "name": "desk-light-en school the Key",
+      "ok": true,
+      "checks": {
+        "the toggle in the case's language": true,
+        "four rows in order": true,
+        "their words": true,
+        "every icon drawn": true,
+        "no horizontal overflow": true,
+        "no page errors": true
+      },
+      "rows": [
+        "Folder: a task",
+        "Envelope: a message",
+        "Paper: a report",
+        "Horn: a broadcast"
+      ],
+      "painted": [
+        2596,
+        2400,
+        2240,
+        1659
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW cozy one of each",
+      "ok": true,
+      "checks": {
+        "the style is in use": true,
+        "four items in the air at once": true,
+        "all four kinds drawn": true,
+        "each at least 1.5 × 16 scene px across (the paper 1.5 × 12)": true,
+        "still in the air 2.2 s after it was sent": true,
+        "gone by 6 s": true,
+        "no page errors": true
+      },
+      "kinds": [
+        "broadcast",
+        "report",
+        "send",
+        "task"
+      ],
+      "widthsScenePx": [
+        28,
+        28,
+        21,
+        28
+      ],
+      "widthsCssPx": [
+        8.5,
+        8.5,
+        6.4,
+        8.5
+      ],
+      "framesSeen": 151,
+      "errors": []
+    },
+    {
+      "name": "phone-dark-zh-TW cozy a burst of 30",
+      "ok": true,
+      "checks": {
+        "something flew": true,
+        "never more than 12 in the air": true,
+        "none left after 8 s (no backlog)": true,
+        "no page errors": true
+      },
+      "most": 7,
+      "lastMs": 3379
+    },
+    {
+      "name": "phone-dark-zh-TW cozy the Key",
+      "ok": true,
+      "checks": {
+        "the toggle in the case's language": true,
+        "four rows in order": true,
+        "their words": true,
+        "every icon drawn": true,
+        "no horizontal overflow": true,
+        "no page errors": true
+      },
+      "rows": [
+        "資料夾：任務",
+        "信封：訊息",
+        "紙張：回報",
+        "喇叭：廣播"
+      ],
+      "painted": [
+        2596,
+        2400,
+        2240,
+        1659
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW guild one of each",
+      "ok": true,
+      "checks": {
+        "the style is in use": true,
+        "four items in the air at once": true,
+        "all four kinds drawn": true,
+        "each at least 1.5 × 16 scene px across (the paper 1.5 × 12)": true,
+        "still in the air 2.2 s after it was sent": true,
+        "gone by 6 s": true,
+        "no page errors": true
+      },
+      "kinds": [
+        "broadcast",
+        "report",
+        "send",
+        "task"
+      ],
+      "widthsScenePx": [
+        28,
+        28,
+        21,
+        28
+      ],
+      "widthsCssPx": [
+        8.5,
+        8.5,
+        6.4,
+        8.5
+      ],
+      "framesSeen": 155,
+      "errors": []
+    },
+    {
+      "name": "phone-dark-zh-TW guild a burst of 30",
+      "ok": true,
+      "checks": {
+        "something flew": true,
+        "never more than 12 in the air": true,
+        "none left after 8 s (no backlog)": true,
+        "no page errors": true
+      },
+      "most": 7,
+      "lastMs": 3043
+    },
+    {
+      "name": "phone-dark-zh-TW guild the Key",
+      "ok": true,
+      "checks": {
+        "the toggle in the case's language": true,
+        "four rows in order": true,
+        "their words": true,
+        "every icon drawn": true,
+        "no horizontal overflow": true,
+        "no page errors": true
+      },
+      "rows": [
+        "資料夾：任務",
+        "信封：訊息",
+        "紙張：回報",
+        "喇叭：廣播"
+      ],
+      "painted": [
+        2596,
+        2400,
+        2240,
+        1659
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW school one of each",
+      "ok": true,
+      "checks": {
+        "the style is in use": true,
+        "four items in the air at once": true,
+        "all four kinds drawn": true,
+        "each at least 1.5 × 16 scene px across (the paper 1.5 × 12)": true,
+        "still in the air 2.2 s after it was sent": true,
+        "gone by 6 s": true,
+        "no page errors": true
+      },
+      "kinds": [
+        "broadcast",
+        "report",
+        "send",
+        "task"
+      ],
+      "widthsScenePx": [
+        28,
+        28,
+        21,
+        28
+      ],
+      "widthsCssPx": [
+        8.5,
+        8.5,
+        6.4,
+        8.5
+      ],
+      "framesSeen": 167,
+      "errors": []
+    },
+    {
+      "name": "phone-dark-zh-TW school a burst of 30",
+      "ok": true,
+      "checks": {
+        "something flew": true,
+        "never more than 12 in the air": true,
+        "none left after 8 s (no backlog)": true,
+        "no page errors": true
+      },
+      "most": 6,
+      "lastMs": 3397
+    },
+    {
+      "name": "phone-dark-zh-TW school the Key",
+      "ok": true,
+      "checks": {
+        "the toggle in the case's language": true,
+        "four rows in order": true,
+        "their words": true,
+        "every icon drawn": true,
+        "no horizontal overflow": true,
+        "no page errors": true
+      },
+      "rows": [
+        "資料夾：任務",
+        "信封：訊息",
+        "紙張：回報",
+        "喇叭：廣播"
+      ],
+      "painted": [
+        2596,
+        2400,
+        2240,
+        1659
+      ]
+    },
+    {
+      "name": "desk-light-en cozy reduced motion",
+      "ok": true,
+      "checks": {
+        "nothing in the air": true,
+        "no page errors": true
+      },
+      "frames": 0
+    }
+  ]
+}
