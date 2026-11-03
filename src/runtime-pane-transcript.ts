@@ -40,6 +40,39 @@ export function nativeClaudeProjectKey(cwd: string): string {
   let n = 0; for (let i = 0; i < cwd.length; i++) n = (Math.imul(31, n) + cwd.charCodeAt(i)) | 0;
   return `${safe.slice(0, 200)}-${Math.abs(n).toString(36)}`;
 }
+export type NativeClaudeSessionState = "absent" | "saved" | "unknown";
+/** Positive absence is a read-only runner proof, never inferred from a failed resume or pending transcript read.
+ * Key derivation is tied to the audited Claude launch version; re-check it with each Claude version audit. */
+export async function nativeClaudeSessionState(cwd: string, sessionId: string, current: () => boolean = () => true,
+  roots = nativePaneTranscriptRoots()): Promise<NativeClaudeSessionState> {
+  if (!validNativeSessionId("claude-code", sessionId)) return "unknown";
+  let reader: NativePaneTranscriptReader | undefined;
+  try {
+    const canonical = await realpath(cwd);
+    if (!current() || comparable(canonical) !== comparable(cwd)) return "unknown";
+    await realDirectory(roots.claude);
+    let parent = roots.claude;
+    // Check every existing directory; a junction/link/access error never becomes ENOENT evidence.
+    for (const name of ["projects", nativeClaudeProjectKey(canonical), `${sessionId}.jsonl`]) {
+      const path = join(parent, name);
+      let stat: Stats;
+      try { stat = await lstat(path); }
+      catch (error) {
+        if (!missing(error)) return "unknown";
+        await realDirectory(parent);
+        try { await lstat(path); return "unknown"; }
+        catch (again) { return missing(again) && current() ? "absent" : "unknown"; }
+      }
+      if (name.endsWith(".jsonl")) { regular(stat); if (stat.size === 0) return "unknown"; }
+      else await realDirectory(path);
+      parent = path;
+    }
+    reader = new NativePaneTranscriptReader("claude-code", cwd, sessionId, roots);
+    const proof = await reader.baseline(undefined, current);
+    return current() && proof.state === "ready" ? "saved" : "unknown";
+  } catch { return "unknown"; }
+  finally { await reader?.close(); }
+}
 /** Reject directory links/junctions, including an ancestor swapped outside a configured provider root. */
 async function realDirectory(path: string): Promise<void> {
   const absolute = resolve(path), root = parse(absolute).root;

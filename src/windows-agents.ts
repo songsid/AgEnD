@@ -21,6 +21,7 @@ export interface WindowsAgent {
   /** Also occupies activeId so an older exec-only coordinator fails closed after rollback. */
   paneLaunchId?: string;
   paneRecovery?: NativePaneRecovery;
+  paneRecoveryAt?: number;
   paused?: boolean;
   /** Once linked, removal from fleet.yaml must not import this provider state again. */
   fleet_instance?: string;
@@ -107,13 +108,22 @@ export class WindowsAgents {
   setPaneRecovery(id: string, recovery: NativePaneRecovery | undefined): void {
     const agent = this.find(id);
     if (JSON.stringify(agent.paneRecovery) === JSON.stringify(recovery)) return;
-    this.change(() => { if (recovery) agent.paneRecovery = structuredClone(recovery); else delete agent.paneRecovery; });
+    this.change(() => { if (recovery) {agent.paneRecovery = structuredClone(recovery);agent.paneRecoveryAt=Date.now();} else {delete agent.paneRecovery;delete agent.paneRecoveryAt;} });
   }
   pinPaneSession(id: string, launchId: string, sessionId: string): void {
     const agent = this.find(id);
     if (agent.activeId !== launchId || agent.paneLaunchId !== launchId || !validNativeSessionId(agent.cli, sessionId)
       || agent.threadId && agent.threadId !== sessionId) throw Error("Windows pane conversation differs from its reserved profile");
     if (agent.threadId !== sessionId) this.change(() => { agent.threadId = sessionId; });
+  }
+  /** Only a durable fresh-session intent plus an exact positive exit can replace a pane pin. No provider data is removed. */
+  replacePaneSession(id: string, raw: RuntimePaneSnapshot, nextSessionId: string): void {
+    const previous = validateRuntimePaneSnapshot(raw), agent = this.find(id);
+    if (agent.cli !== "claude-code" || agent.activeId || agent.paneLaunchId || previous.state !== "exited"
+      || previous.agentId !== id || previous.instance !== agent.fleet_instance || !previous.sessionId
+      || !validNativeSessionId("claude-code", nextSessionId) || previous.sessionId === nextSessionId
+      || agent.threadId !== previous.sessionId && agent.threadId !== nextSessionId) throw Error("Fresh pane conversation scope differs");
+    if (agent.threadId !== nextSessionId) this.change(() => { agent.threadId = nextSessionId; delete agent.paneRecovery;delete agent.paneRecoveryAt; });
   }
   /** Only an exact positive owned-exit snapshot releases the old exec-compatible reservation. */
   releasePane(id: string, raw: RuntimePaneSnapshot): void {

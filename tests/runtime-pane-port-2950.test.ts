@@ -147,3 +147,72 @@ it('quiet native panes still receive safety captures; offline and detached obser
   f.offline();await vi.advanceTimersByTimeAsync(5000);expect(sweep).toHaveBeenCalledOnce();observation.stop();await vi.advanceTimersByTimeAsync(10000);expect(sweep).toHaveBeenCalledOnce();
  }finally{vi.useRealTimers();}
 });
+
+import {Daemon} from '../src/daemon.js';
+import {ClaudeCodeBackend} from '../src/backend/claude-code.js';
+it('ordinary native delivery retries only the positively refused Enter with new proof and no paste',async()=>{
+ const f=await fixture(),root=join(f.file,'..'),backend=new ClaudeCodeBackend(root);
+ const logger={info(){},warn(){},error(){},debug(){},child(){return this;}};
+ const daemon:any=new Daemon('private-proof',{working_directory:root,backend:'claude-code',log_level:'silent'}as never,root,true,backend,undefined,logger as never);
+ daemon.tmux=f.port;daemon.nativePaneLifecycle={};daemon.backend=new CodexPaneDetectors({statusLineItems:()=>['context-remaining'],launchMayResume:()=>false});
+ const mark=vi.fn(()=>true);daemon.deliveryOutbox={markEnterStarted:mark};const call=f.endpoint.call;let raced=false;const operations:string[]=[];
+ f.endpoint.call=async request=>{operations.push(request.action);if(request.action==='key'&&!raced){raced=true;f.output('\x1b[2J\x1b[H› Ask Codex to do anything\r\n\r\nContext 100% left\r\n');}return call(request);};
+ expect(await daemon.sendDeliveryEnter('initial-submit',undefined,{deliveryId:'private-delivery',attemptNo:1})).toBe(true);
+ expect(operations.filter(action=>action==='key')).toHaveLength(2);expect(operations.filter(action=>action==='input')).toHaveLength(0);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');expect(mark).toHaveBeenCalledOnce();
+});
+
+it('internal daemon delivery proof bypasses only composer checking; ordinary and card callers keep their contracts',async()=>{
+ const f=await fixture();repaint(f,'a busy screen without composer chrome');let screen=await f.port.capturePane();
+ expect(await f.port.sendSpecialKey('Enter')).toBe(false);
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'composer',screen})).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen})).toBe(true);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');f.write.mockClear();
+ expect(await f.port.sendKeys('not a delivery key',{kind:'delivery',screen})).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+ repaint(f,nativeApproval);screen=await f.port.capturePane();
+ expect(await f.port.sendSpecialKey('Down',undefined,{kind:'dialog',screen})).toBe(true);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[B');
+});
+it('daemon delivery proof still requires the exact current capture and host sequence',async()=>{
+ const f=await fixture(),screen=await f.port.capturePane(),call=f.endpoint.call;let raced=false;
+ f.endpoint.call=async request=>{if(request.action==='key'&&!raced){raced=true;repaint(f,nativeApproval);}return call(request);};
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen})).toBe(false);
+ expect(f.port.lastInputWasNotSent()).toBe(true);expect(f.write).not.toHaveBeenCalled();
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen:'different screen'})).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+});
+it('an internal delivery can use an empty captured layout but an unproved caller cannot',async()=>{
+ const f=await fixture();repaint(f,'');const screen=await f.port.capturePane();expect(screen.trim()).toBe('');
+ expect(await f.port.sendSpecialKey('Enter')).toBe(false);
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'not-authorised',screen} as any)).toBe(false);
+ expect(f.write).not.toHaveBeenCalled();
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen})).toBe(true);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\r');
+});
+it('refused pre-input captures re-observe before exactly one paste RPC, never replaying bytes',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let reads=0,inputs=0;
+ f.endpoint.call=async request=>{if(request.action==='capture'&&++reads<3)throw Error('painting');if(request.action==='input')inputs++;return call(request);};
+ expect(await f.port.pasteBuffer('single paste')).toBe(true);expect(reads).toBe(3);expect(inputs).toBe(1);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~single paste\x1b[201~');
+});
+it('pre-input observation has a five-read bound and retains no ambiguous mutation',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let reads=0,inputs=0;
+ f.endpoint.call=async request=>{if(request.action==='capture'){reads++;throw Error('still painting');}if(request.action==='input')inputs++;return call(request);};
+ expect(await f.port.pasteBuffer('not sent')).toBe(false);expect(reads).toBe(5);expect(inputs).toBe(0);expect(f.write).not.toHaveBeenCalled();
+ expect(f.port.lastInputWasNotSent()).toBe(true);expect(f.port.getLastPasteError()).toBe('Pane observation unavailable; no input was sent');
+ expect(readFileSync(f.file,'utf8')).not.toContain('pending');
+});
+it('a pre-input capture arriving after its deadline cannot authorise a paste',async()=>{
+ const f=await fixture(),call=f.endpoint.call;const original=performance.now.bind(performance);let offset=0;
+ vi.spyOn(performance,'now').mockImplementation(()=>original()+offset);
+ f.endpoint.call=async request=>{const result=await call(request);if(request.action==='capture')offset=2500;return result;};
+ expect(await f.port.pasteBuffer('late')).toBe(false);expect(f.write).not.toHaveBeenCalled();expect(f.port.lastInputWasNotSent()).toBe(true);
+});
+it('a lost paste ACK after re-observation remains uncertain and is never replayed',async()=>{
+ const f=await fixture(),call=f.endpoint.call;let reads=0,inputs=0;
+ f.endpoint.call=async request=>{if(request.action==='capture'&&++reads===1)throw Error('painting');const result=await call(request);if(request.action==='input'){inputs++;throw Error('lost write ACK');}return result;};
+ expect(await f.port.pasteBuffer('uncertain once')).toBe(false);expect(inputs).toBe(1);expect(f.port.lastInputWasNotSent()).toBe(false);
+ expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~uncertain once\x1b[201~');expect(readFileSync(f.file,'utf8')).toContain('pending');
+});

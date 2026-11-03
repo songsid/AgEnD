@@ -46,7 +46,7 @@ it('explicit close retires only its owned pane after uncertain input and release
  await vi.waitFor(async()=>expect(await native.port.capturePane()).toContain('Yes, I trust this folder'));
  const screen=await native.port.capturePane();f.write.mockImplementationOnce(()=>{throw Error('uncertain explicit Escape');});
  expect(await native.port.sendSpecialKey('Escape',undefined,{kind:'dialog',screen})).toBe(false);expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b');
- await native.release('close');expect(f.process.kill).toHaveBeenCalledOnce();expect(f.options.exited).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({launchId:f.launch.launchId,state:'exited'}));expect(f.options.releaseAuthority).toHaveBeenCalledOnce();
+ await native.release('close');const pins=vi.mocked(f.options.pin).mock.calls.length;native.checkpointSession();expect(f.options.pin).toHaveBeenCalledTimes(pins);expect(f.process.kill).toHaveBeenCalledOnce();expect(f.options.exited).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({launchId:f.launch.launchId,state:'exited'}));expect(f.options.releaseAuthority).toHaveBeenCalledOnce();
 });
 it('failed pre-admission never reserves a profile or starts a process',async()=>{
  const f=await fixture(),native=f.make();f.options.admit=()=>{throw Error('not admitted');};await expect(native.acquire(()=>{})).rejects.toThrow('not admitted');expect(f.options.reserve).not.toHaveBeenCalled();expect(f.spawn).not.toHaveBeenCalled();

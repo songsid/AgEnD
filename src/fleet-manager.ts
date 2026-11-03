@@ -1337,6 +1337,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
+      freshNotice: async name => {
+        const message=t("native_pane.fresh_started");
+        this.eventLog?.insert(name,"native_pane_fresh_started",{});this.logger.info({name},message);
+        await this.notifyInstanceTopic(name,message);
+      },
       admit: (name, config) => {
         const now = this.fleetConfig?.instances[name];
         if (this.shuttingDown || !isNativePaneInstance(now) || now?.native_agent_id !== config.native_agent_id
@@ -1406,19 +1411,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.emitSseEvent("status",this.getUiStatus());
     });
   }
-  private holdNativePaneRecovery(name:string,error:unknown):boolean{
+  holdNativePaneRecovery(name:string,error:unknown):boolean{
     if(!(error instanceof NativePaneRecoveryError))return false;
     this.instanceProcessStatus.set(name,"stopped");
     this.logger.warn({name,recovery:error.recovery},error.message);
     this.eventLog?.insert(name,"native_pane_recovery_needed",{...error.recovery});
+    this.needsYou?.poke();
     this.emitSseEvent("status",this.getUiStatus());return true;
+  }
+  async startFreshNativePane(name:string,launchId:string,sessionId:string,authorized:()=>boolean):Promise<void>{
+    const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config))throw Error("Persistent Windows pane is not configured");
+    const generation=this.explicitStopGeneration.get(name)??0;
+    await this.lifecycle.runTransition(name,async transition=>{
+      const current=()=>{if(!authorized()||this.shuttingDown||this.fleetConfig?.instances[name]!==config||(this.explicitStopGeneration.get(name)??0)!==generation)throw Error(t("native_pane.authority_expired"));};
+      current();const held=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id!).paneRecovery;
+      if(held?.kind!=="session-unconfirmed"||held.launchId!==launchId||held.sessionId!==sessionId)throw Error(t("native_pane.changed"));
+      if(this.daemons.get(name)?.nativePaneCurrent())throw Error(t("native_pane.still_running"));
+      this.cancelStartupRetry(name);this.lifecycle.cancelNativeRecovery(name);
+      await this.lifecycle.stop(name,transition);current();
+      try{await (await this.nativePanes()).startFresh(name,config,launchId,sessionId,current);current();}
+      catch(error){current();this.needsYou?.poke();this.emitSseEvent("status",this.getUiStatus());throw error;}
+      this.eventLog?.insert(name,"native_pane_new_conversation",{launchId,sessionId});
+      await this.startInstance(name,config,true,"fleet-topic",true,transition);current();
+      this.needsYou?.poke();this.emitSseEvent("status",this.getUiStatus());
+    });
   }
   nativePanePinnedSession(name:string):string|null{
     const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
     const agent=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id);
     return agent.fleet_instance===name&&agent.machineId===config.machine_id?agent.threadId??null:null;
   }
-  onNativePaneRecoverySettled(name:string):void{this.onAttentionChanged(name);this.scheduleDeliveryOutboxPump();}
+  onNativePaneRecoverySettled(name:string):void{
+    if(this.daemons.get(name)?.nativePaneCurrent())this.instanceProcessStatus.delete(name);
+    this.onAttentionChanged(name);this.scheduleDeliveryOutboxPump();
+  }
   setNativePanePaused(name: string, paused: boolean): void {
     const id = this.fleetConfig?.instances[name]?.native_agent_id; if (!id) throw Error("Native profile is missing");
     windowsAgentsFor(this, this.runtimeWindowsExecutor()).setPaused(id, paused);
@@ -15652,6 +15678,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
+        nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
+        paneRecovery: (()=>{const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
+          try{const profile=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id);return profile.paneRecovery?{key:`${profile.paneRecovery.kind}:${profile.paneRecovery.launchId??"-"}`,detail:new NativePaneRecoveryError(profile.paneRecovery).message,since:profile.paneRecoveryAt??profile.createdAt}:null;}catch{return null;}})(),
       });
     }
     return out;

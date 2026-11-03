@@ -11,19 +11,46 @@ import {setConfiguredRuntimeSwitches} from "../src/runtime-switches.js";
 import {RuntimePaneHost} from "../src/runtime-pane-host.js";
 import {RuntimePaneStore} from "../src/runtime-pane-store.js";
 import type {PaneMcpOwner} from "../src/runtime-pane-mcp-protocol.js";
+import {deriveNeedsYou} from "../src/needs-you.js";
 const clean:Array<()=>unknown>=[];afterEach(async()=>{for(const f of clean.splice(0).reverse())await f();setConfiguredRuntimeSwitches({});vi.restoreAllMocks();});
 async function fixture(delayFrame=false){
  const root=mkdtempSync(join(tmpdir(),"agend-native-fleet-integrated-"));clean.push(()=>rmSync(root,{recursive:true,force:true}));setConfiguredRuntimeSwitches({remote_runtime:true});
  const fleet:any=new FleetManager(root),machineId=randomUUID(),exec=vi.fn(()=>{throw Error("No per-turn exec");});
  const store=windowsAgentsFor(fleet,{start:exec,get:()=>null,prepareWorkspace:async()=>"C:\\scratch"} as never),agent=await store.create({name:"Native",cwd:"C:\\scratch",cli:"claude-code",sandbox:"read-only",machineId});store.bindInstance(agent.id,"native");
  const config={...nativeInstanceConfig(agent),native_adapter:"pane",log_level:"silent"};fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true},instances:{native:config}};
- let owner:PaneMcpOwner|undefined,exit=(value:any)=>{},paint=()=>{};const cli={pid:12345,write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(fn:(data:string)=>void)=>{paint=()=>fn("─".repeat(40)+"\r\n❯ \r\n"+"─".repeat(40)+"\r\n");if(!delayFrame)queueMicrotask(paint);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
- const spawn=vi.fn(async()=>cli),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,"runner")),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,mcpConnection:(value,tools)=>{owner=value;return{endpoint:"http://127.0.0.1:1/agent",token:"a".repeat(64),owner:value,tools};},transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:"pending" as const,cursor,data:"",lines:[],complete:false,gap:false};},close:async()=>{}})});let hostAbandoned=false;clean.push(()=>hostAbandoned?Promise.resolve():host.stop());
+ let exitCode=0;let owner:PaneMcpOwner|undefined,exit=(value:any)=>{},paint=()=>{};const cli={pid:12345,write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode})),onData:(fn:(data:string)=>void)=>{paint=()=>fn("─".repeat(40)+"\r\n❯ \r\n"+"─".repeat(40)+"\r\n");if(!delayFrame)queueMicrotask(paint);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
+ const spawn=vi.fn(async()=>cli),host=new RuntimePaneHost({sessionProof:async()=>"saved",store:new RuntimePaneStore(join(root,"runner")),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,mcpConnection:(value,tools)=>{owner=value;return{endpoint:"http://127.0.0.1:1/agent",token:"a".repeat(64),owner:value,tools};},transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:"pending" as const,cursor,data:"",lines:[],complete:false,gap:false};},close:async()=>{}})});let hostAbandoned=false;clean.push(()=>hostAbandoned?Promise.resolve():host.stop());
  const hub={machine:()=>({status:"online",platform:"win32",inventory:{clis:[{id:"claude-code",runnable:true,version:"Claude Code 2.1.316"}]}}),callPane:vi.fn((_id:string,request:any)=>host.request(request)),subscribe:()=>()=>{},paneTransportEpoch:()=>"private-epoch",task:()=>null,tasks:()=>[],hasActiveTask:()=>false};fleet.runtimeHub=hub;
  if(fleet.memoryPressure)vi.spyOn(fleet.memoryPressure,"start").mockImplementation(()=>{});
  const skills=vi.spyOn(fleet,"syncRoleSkills").mockImplementation(()=>{throw Error("No Linux skills in Windows cwd");}),models=vi.spyOn(fleet,"resolveInstanceModel").mockImplementation(()=>{throw Error("No Linux model state for native start");});
- clean.push(async()=>{for(const daemon of fleet.daemons.values())await daemon.abortStartup();for(const channel of fleet.instanceIpcClients.values())await channel.close();fleet.memoryPressure?.stop();});return{root,fleet,config,store,agent,spawn,cli,hub,exec,skills,models,abandon:()=>{hostAbandoned=true;},owner:()=>owner!,paint:()=>paint()};
+ clean.push(async()=>{for(const daemon of fleet.daemons.values())await daemon.abortStartup();for(const channel of fleet.instanceIpcClients.values())await channel.close();fleet.memoryPressure?.stop();});return{root,fleet,config,store,agent,spawn,cli,hub,exec,skills,models,setExitCode:(value:number)=>{exitCode=value;},abandon:()=>{hostAbandoned=true;},owner:()=>owner!,paint:()=>paint()};
 }
+it("an unknown saved-session proof holds ordinary Fleet Start in Needs-you; the admin action starts exactly one fresh pane",async()=>{
+ const f=await fixture();await f.fleet.startInstance("native",f.config,true);const old=f.store.get(f.agent.id).threadId;
+ await f.fleet.stopInstance("native");const call=f.hub.callPane.getMockImplementation()!;
+ f.hub.callPane.mockImplementation(async(machine,request)=>{const result:any=await call(machine,request);return request.action==="session-proof"?{...result,state:"unknown"}:result;});
+ await expect(f.fleet.startInstance("native",f.config,true)).rejects.toThrow("saved conversation could not be checked");
+ expect(f.spawn).toHaveBeenCalledOnce();expect(f.fleet.getInstanceStatus("native")).toBe("stopped");
+ const hold=f.store.get(f.agent.id).paneRecovery!;expect(hold.kind).toBe("session-unconfirmed");
+ const needs=deriveNeedsYou({prompts:[],deliveries:[],instances:f.fleet.needsYouInstances(),ownerOf:()=>undefined});
+ expect(needs).toContainEqual(expect.objectContaining({reason:"native_pane_hold",instance:"native",detail:expect.stringContaining("saved conversation could not be checked")}));
+ f.models.mockRestore();
+ const stopping=vi.spyOn(f.fleet.lifecycle,"stop");
+ await expect(f.fleet.startFreshNativePane("native",randomUUID(),old!,()=>true)).rejects.toThrow("changed");expect(stopping).not.toHaveBeenCalled();stopping.mockRestore();
+ await expect(f.fleet.startFreshNativePane("native",hold.launchId!,old!,()=>false)).rejects.toThrow("expired");expect(f.spawn).toHaveBeenCalledOnce();
+ await f.fleet.startFreshNativePane("native",hold.launchId!,old!,()=>true);
+ expect(f.fleet.instanceIpcClients.get("native")?.connected).toBe(true);
+ expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).not.toBe(old);expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();
+ expect(f.fleet.needsYouInstances()[0].paneRecovery).toBeNull();await f.fleet.stopInstance("native");
+});
+it("a runner's positive absence invokes one ordinary topic notice after the fresh pane opens",async()=>{
+ const f=await fixture();await f.fleet.startInstance("native",f.config,true);await f.fleet.stopInstance("native");
+ const call=f.hub.callPane.getMockImplementation()!,notice=vi.spyOn(f.fleet,"notifyInstanceTopic").mockResolvedValue(undefined);
+ f.hub.callPane.mockImplementation(async(machine,request)=>{const result:any=await call(machine,request);return request.action==="session-proof"?{...result,state:"absent"}:result;});
+ await f.fleet.startInstance("native",f.config,true);
+ expect(f.spawn).toHaveBeenCalledTimes(2);expect(notice).toHaveBeenCalledWith("native","Windows Claude had no saved conversation for this agent (its first turn never finished), so a new conversation was started.");
+ expect(notice).toHaveBeenCalledOnce();await f.fleet.stopInstance("native");
+});
 it("opt-in starts a resident daemon, receives ordinary delivery, publishes progress and closes only its owned pane",async()=>{
  const f=await fixture();await f.fleet.startInstance("native",f.config,true);const daemon=f.fleet.daemons.get("native");expect(daemon?.usesNativePane()).toBe(true);expect(f.spawn).toHaveBeenCalledOnce();expect(f.exec).not.toHaveBeenCalled();expect(f.skills).not.toHaveBeenCalled();expect(f.models).not.toHaveBeenCalled();expect(existsSync(join(f.fleet.getInstanceDir("native"),"channel.sock"))).toBe(false);expect(f.fleet.getInstanceStatus("native")).toBe("running");
  const push=vi.spyOn(daemon,"pushChannelMessage").mockImplementation(()=>{});await expect(f.fleet.deliverToInstance("native",{type:"fleet_inbound",content:"normal message",meta:{message_id:"unique"}})).resolves.toBe(true);await Promise.resolve();expect(push).toHaveBeenCalledWith("normal message",expect.objectContaining({message_id:"unique"}),undefined,expect.any(Number));
@@ -125,9 +152,9 @@ it('native status offers pane controls without coordinator cost/context or effor
  const row=f.fleet.getUiStatus().instances.find((value:any)=>value.name==='native');expect(row).toMatchObject({runtime:'windows',native_adapter:'pane',cost:null,context_pct:null,effort:null,capabilities:{commands:true,effort:false,log:true,details:true,attachments:false,terminal:false,send_while_busy:true}});
 });
 async function nativeExit(f:Awaited<ReturnType<typeof fixture>>,code=1){
- const daemon=f.fleet.daemons.get('native');f.cli.kill();await daemon.tmux.getPaneStatus();
+ const daemon=f.fleet.daemons.get('native');f.setExitCode(code);f.cli.kill();await daemon.tmux.getPaneStatus();
  const snapshot={...daemon.nativePaneLifecycle.snapshot(),exitCode:code};
- // The inert host reported zero; replace only this exact private observation for nonzero-exit policy cases.
+ // The private host and observer report the same exact positive exit.
  daemon.nativePaneLifecycle.port.lastObservation=snapshot;daemon.setProcessStatus(code===0?"stopped":"crashed");
  const event={name:'native',snapshot,owner:daemon.getInteractionSnapshot().owner};daemon.emit('native_pane_exited',event);return{daemon,event};
 }
@@ -225,7 +252,7 @@ it('the real admin pane recovery retires only the orphan and ordinary Start resu
  const f=await fixture();f.models.mockRestore();await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native'),pin=f.store.get(f.agent.id).threadId,old=daemon.nativePaneLifecycle.snapshot();
  f.abandon();const state=new RuntimePaneStore(join(f.root,'runner'));state.recoverInterrupted();
  let exit=(value:any)=>{};const replacement={...f.cli,kill:vi.fn(()=>exit({exitCode:0})),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};},onData:(fn:(data:string)=>void)=>{queueMicrotask(()=>fn('─'.repeat(40)+'\r\n❯ \r\n'+'─'.repeat(40)+'\r\n'));return{dispose(){}};}};
- f.spawn.mockResolvedValue(replacement);const host=new RuntimePaneHost({store:state,bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn:f.spawn,mcpConnection:(owner,tools)=>({endpoint:'http://127.0.0.1:1/agent',token:'a'.repeat(64),owner,tools})});clean.push(()=>host.stop());
+ f.spawn.mockResolvedValue(replacement);const host=new RuntimePaneHost({sessionProof:async()=>"saved",store:state,bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn:f.spawn,mcpConnection:(owner,tools)=>({endpoint:'http://127.0.0.1:1/agent',token:'a'.repeat(64),owner,tools})});clean.push(()=>host.stop());
  f.hub.callPane.mockImplementation((_machine,request)=>host.request(request));
  await daemon.nativePaneLifecycle.port.getPaneStatus();expect(daemon.nativePaneCurrent()).toBe(false);
  // A dead local relay stays dead on the old binding even though recovery discovers a fresh endpoint.
@@ -235,4 +262,55 @@ it('the real admin pane recovery retires only the orphan and ordinary Start resu
  await f.fleet.recoverNativePane('native',old.launchId,()=>true);
  expect(f.fleet.daemons.has('native')).toBe(false);expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.cli.kill).not.toHaveBeenCalled();expect(replacement.kill).not.toHaveBeenCalled();
  await f.fleet.startInstance('native',f.config,true);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.fleet.daemons.get('native').nativePaneLifecycle.snapshot().launchId).not.toBe(old.launchId);expect(f.spawn).toHaveBeenCalledTimes(2);await f.fleet.stopInstance('native');
+});
+
+it('automatic Claude recovery publishes an unknown-session hold instead of a false supervision-ended alert',async()=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,reset_after:300000};await f.fleet.startInstance('native',f.config,true);
+ f.models.mockRestore();const call=f.hub.callPane.getMockImplementation()!,events=vi.fn(),incident=vi.spyOn(f.fleet.lifecycle,'notifyIncident').mockReturnValue(true);
+ f.fleet.eventLog={insert:events};f.hub.callPane.mockImplementation(async(machine,request)=>{const value:any=await call(machine,request);return request.action==='session-proof'?{...value,state:'unknown'}:value;});
+ vi.useFakeTimers();try{
+  await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe('session-unconfirmed');expect(f.fleet.instanceProcessStatus.get('native')).toBe('stopped');
+  expect(events).toHaveBeenCalledWith('native','native_pane_recovery_needed',expect.objectContaining({kind:'session-unconfirmed'}));
+  expect(incident).not.toHaveBeenCalledWith('native','supervision_ended',expect.anything());
+  expect(deriveNeedsYou({prompts:[],deliveries:[],instances:f.fleet.needsYouInstances(),ownerOf:()=>undefined})).toContainEqual(expect.objectContaining({instance:'native',reason:'native_pane_hold'}));
+ }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();f.fleet.eventLog=null;}
+});
+it('automatic absence recovery clears stale process state, then a second unwritten crash holds without another launch',async()=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,reset_after:300000};await f.fleet.startInstance('native',f.config,true);const old=f.store.get(f.agent.id).threadId;f.models.mockRestore();
+ const call=f.hub.callPane.getMockImplementation()!;f.hub.callPane.mockImplementation(async(machine,request)=>{const value:any=await call(machine,request);return request.action==='session-proof'?{...value,state:'absent'}:value;});
+ const notice=vi.spyOn(f.fleet,'notifyInstanceTopic').mockResolvedValue(true),incident=vi.spyOn(f.fleet.lifecycle,'notifyIncident').mockReturnValue(true);
+ vi.useFakeTimers();try{
+  await nativeExit(f);f.fleet.instanceProcessStatus.set('native','crashed');await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).not.toBe(old);expect(f.fleet.instanceProcessStatus.has('native')).toBe(false);expect(f.fleet.getInstanceInteraction('native')).not.toBeNull();expect(f.fleet.getInstanceExecutionState('native')).not.toBeNull();
+  const replacement=f.store.get(f.agent.id).threadId;await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).toBe(replacement);expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe('session-unconfirmed');expect(f.fleet.instanceProcessStatus.get('native')).toBe('stopped');
+  expect(notice.mock.calls.filter(([,text])=>String(text).includes('its first turn never finished'))).toHaveLength(1);expect(incident).not.toHaveBeenCalledWith('native','supervision_ended',expect.anything());
+ }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
+});
+it('a host not yet reachable at fleet startup keeps the ordinary startup retry and later resumes the saved pin',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const pin=f.store.get(f.agent.id).threadId;await f.fleet.stopInstance('native');
+ const call=f.hub.callPane.getMockImplementation()!,retry=vi.spyOn(f.fleet,'scheduleStartupRetry').mockImplementation(()=>{});f.hub.callPane.mockImplementation(async(_machine,request)=>{if(request.action==='list')throw Error('host is starting');return call(_machine,request);});
+ await expect(f.fleet.startInstanceUnattended('native',f.config,true,'instance')).resolves.toBe(false);expect(retry).toHaveBeenCalledWith('native',0);expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.spawn).toHaveBeenCalledOnce();
+ f.hub.callPane.mockImplementation(call);await f.fleet.startInstance('native',f.config,true);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.spawn).toHaveBeenCalledTimes(2);await f.fleet.stopInstance('native');
+});
+
+it('an admin decision whose saved transcript recovered publishes the cleared hold and never opens a fresh pane',async()=>{
+ const f=await fixture();await f.fleet.startInstance('native',f.config,true);const pin=f.store.get(f.agent.id).threadId;await f.fleet.stopInstance('native');
+ const call=f.hub.callPane.getMockImplementation()!;let state='unknown';f.hub.callPane.mockImplementation(async(machine,request)=>{const value:any=await call(machine,request);return request.action==='session-proof'?{...value,state}:value;});
+ await expect(f.fleet.startInstance('native',f.config,true)).rejects.toThrow('saved conversation could not be checked');const held=f.store.get(f.agent.id).paneRecovery!;
+ f.models.mockRestore();const emit=vi.spyOn(f.fleet,'emitSseEvent');state='saved';
+ await expect(f.fleet.startFreshNativePane('native',held.launchId!,pin!,()=>true)).rejects.toThrow('The saved conversation is available again. Choose Start to resume it.');
+ expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();expect(f.spawn).toHaveBeenCalledOnce();expect(emit).toHaveBeenCalledWith('status',expect.anything());expect(f.fleet.needsYouInstances()[0].paneRecovery).toBeNull();
+ await f.fleet.startInstance('native',f.config,true);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.spawn).toHaveBeenCalledTimes(2);await f.fleet.stopInstance('native');
+});
+
+it('a lost initial state response cannot leave a recovered native pane masked by its old crashed cache',async()=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,reset_after:300000};await f.fleet.startInstance('native',f.config,true);
+ const {Daemon}=await import('../src/daemon.js'),accept=Daemon.prototype.acceptNativeFleetMessage;let missed=0;
+ vi.spyOn(Daemon.prototype,'acceptNativeFleetMessage').mockImplementation(function(this:InstanceType<typeof Daemon>,message){if(message.type==='query_instance_state'){missed++;return false;}return accept.call(this,message);});
+ vi.useFakeTimers();try{
+  await nativeExit(f);f.fleet.instanceProcessStatus.set('native','crashed');await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  expect(missed).toBeGreaterThan(0);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.fleet.getInstanceStatus('native')).toBe('running');expect(f.fleet.getInstanceInteraction('native')).not.toBeNull();
+ }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
 });

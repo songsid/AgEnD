@@ -1,7 +1,7 @@
 /**
  * The last delivery Enter gate on a NATIVE Windows pane; no account, CLI, fleet or service is started.
- * Alpha only (S-36): main's beta.5 reverted #2958's composer proof for tmux panes (decision f57474aa); the alpha keeps it
- * for native panes, where #2957 was found. The fixture is a native pane unless a case says otherwise.
+ * Native delivery follows main #2990: only recognised runtime dialogs hold; fresh screen/owner/seq fences remain.
+ * Composer-only port callers and explicit human card answers retain their independent contracts.
  */
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -56,11 +56,11 @@ it.each(["initial-submit", "idle-to-busy-retry", "stranded-text-retry"])(
     expect(f.mark).not.toHaveBeenCalled();
   },
 );
-it.each(["", "CLI still painting its input"])("unknown input %j never receives Enter", async screen => {
+it.each(["", "CLI still painting its input"])("an unreadable layout %j without a recognised dialog does not veto delivery", async screen => {
   const f = fixture(screen);
-  expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(false);
-  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
-  expect(f.mark).not.toHaveBeenCalled();
+  expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(true);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+  expect(f.mark).toHaveBeenCalledOnce();
 });
 it("a failed last capture is held before the durable Enter boundary", async () => {
   const f = fixture(pasted);
@@ -82,11 +82,12 @@ it("a readable busy composer remains usable; this gate does not require idle", a
   expect(await f.daemon.sendDeliveryEnter("queue-submit")).toBe(true);
   expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();
 });
-it("a broken structural reader never falls back to a loose ready glyph", async () => {
+it("delivery never consults a structural composer reader", async () => {
   const f = fixture(pasted);
   vi.spyOn(f.backend, "readInputRow").mockImplementation(() => { throw Error("reader failure"); });
-  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
-  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
+  expect(f.backend.readInputRow).not.toHaveBeenCalled();
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();
 });
 it.each(["pane", "window", "spawn", "fence", "stop", "caller"])(
   "a %s change during the final capture retires the Enter", async kind => {
@@ -115,11 +116,11 @@ it("a daemon without a concrete pane cannot authorize Enter", async () => {
   expect(f.tmux.capturePane).not.toHaveBeenCalled();
   expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
 });
-it("legacy ready glyphs cannot identify the cursor on a numbered card as a composer", async () => {
+it("unrecognised numbered-card heuristics do not veto a backend without a recognised dialog", async () => {
   const f = fixture();
   f.daemon.backend = { getRuntimeDialogs: () => [], getReadyPattern: () => /❯/ };
-  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
-  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();
 });
 it("explicit human card answers still walk the verified cursor and confirm the chosen option", async () => {
   const f = fixture();
@@ -163,13 +164,14 @@ it("Grok's own boxed numbered draft remains a composer, not a permission card", 
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
   expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce(); expect(f.tmux.sendSpecialKey.mock.calls[0]![0]).toBe("Enter");
 });
-it("Grok's actual approval card cannot borrow the boxed-composer tie-breaker", async () => {
+it("a non-native backend card without its own recognised runtime dialog has no heuristic veto", async () => {
   const approval = pane("grok-1.0.70-audit/1.0.70-approval/20-approval");
   const f = fixture(approval);
   f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
   expect(f.daemon.backend.isDeliveryComposerPane(approval)).toBe(false);
-  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
-  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+  // Grok is not a supported native provider; this synthetic backend has no recognised runtime dialog for this shape.
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();
 });
 it.each(["antigravity", "opencode"])("%s still submits a numbered draft in its own composer", async backend => {
   const agy = pane("agy-1.3.1-idle-after-reply").replace(/^>$/m, "> 1. fix the build\n  2. run the tests\n  3. push");
@@ -230,4 +232,82 @@ it("S-36: a tmux (non-native) pane follows main's beta.5 — no capture, no comp
   expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(true);
   expect(f.order).toEqual(["durable", "Enter"]);
   expect(f.tmux.capturePane).not.toHaveBeenCalled();
+});
+
+function positiveRefusal(f: ReturnType<typeof fixture>) {
+  Object.assign(f.tmux, {lastInputWasNotSent: () => true,
+    getLastSendSpecialKeyError: () => 'Pane changed after observation; input was not sent'});
+}
+it('native positive zero-input ACK re-observes before a new Enter, without another durable mark', async () => {
+  const f=fixture(pasted);positiveRefusal(f);
+  f.tmux.sendSpecialKey.mockResolvedValueOnce(false);
+  expect(await f.daemon.sendDeliveryEnter('initial-submit',undefined,f.attempt)).toBe(true);
+  expect(f.order).toEqual(['capture','durable','capture','Enter']);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledTimes(2);expect(f.mark).toHaveBeenCalledOnce();
+});
+it.each(['unknown ACK','lost ACK','other refusal'])('native %s never retries Enter',async kind=>{
+  const f=fixture(pasted);positiveRefusal(f);f.tmux.sendSpecialKey.mockResolvedValue(false);
+  if(kind==='unknown ACK')Object.assign(f.tmux,{lastInputWasNotSent:()=>false});
+  if(kind==='lost ACK')Object.assign(f.tmux,{lastInputWasNotSent:()=>false,getLastSendSpecialKeyError:()=> 'Pane input outcome is unconfirmed; reconnect and inspect before retrying'});
+  if(kind==='other refusal')Object.assign(f.tmux,{getLastSendSpecialKeyError:()=> 'Pane input withheld: the intended composer or dialog is not verified'});
+  expect(await f.daemon.sendDeliveryEnter('initial-submit',undefined,f.attempt)).toBe(false);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();expect(f.tmux.capturePane).toHaveBeenCalledOnce();
+});
+it.each(['dialog','launch'])('native positive refusal followed by %s never sends another Enter',async kind=>{
+  const f=fixture(pasted);positiveRefusal(f);
+  f.tmux.sendSpecialKey.mockImplementationOnce(async()=>{
+    if(kind==='launch')f.daemon.launchFenceEpoch++;
+    else f.tmux.capturePane.mockResolvedValue(kind==='dialog'?permission:pasted.replace(/a/g,'z'));
+    return false;
+  });
+  expect(await f.daemon.sendDeliveryEnter('initial-submit',undefined,f.attempt)).toBe(false);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+});
+it('native repeated positive refusals stop after five keys and report an input hold',async()=>{
+  const f=fixture(pasted);positiveRefusal(f);f.tmux.sendSpecialKey.mockResolvedValue(false);const held=vi.fn();
+  expect(await f.daemon.sendDeliveryEnter('initial-submit',undefined,f.attempt,held)).toBe(false);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledTimes(5);expect(f.tmux.capturePane).toHaveBeenCalledTimes(5);
+  expect(f.mark).toHaveBeenCalledOnce();expect(held).toHaveBeenCalledWith('output_changed');
+  expect(deriveNeedsYou({prompts:[],deliveries:[],instances:[{name:'private-proof',nativeDeliveryHold:f.daemon.nativeDeliveryHold()}],ownerOf:()=>undefined})).toContainEqual(expect.objectContaining({reason:'delivery_uncertain',instance:'private-proof'}));
+  f.tmux.sendSpecialKey.mockResolvedValue(true);expect(await f.daemon.sendDeliveryEnter('initial-submit')).toBe(true);
+  expect(f.daemon.nativeDeliveryHold()).toBeNull();
+});
+it('native positive refusal retry has a two-second deadline even when capture is late',async()=>{
+  const f=fixture(pasted);positiveRefusal(f);f.tmux.sendSpecialKey.mockResolvedValueOnce(false);const held=vi.fn();let offset=0;
+  const original=performance.now.bind(performance);vi.spyOn(performance,'now').mockImplementation(()=>original()+offset);
+  f.tmux.capturePane.mockResolvedValueOnce(pasted).mockImplementationOnce(async()=>{offset=2500;return pasted;});
+  expect(await f.daemon.sendDeliveryEnter('initial-submit',undefined,f.attempt,held)).toBe(false);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();expect(held).toHaveBeenCalledWith('output_changed');
+});
+
+import {DeliveryOutbox} from '../src/delivery-outbox.js';
+import {deriveNeedsYou} from '../src/needs-you.js';
+it('exhausted native Enter retries leave a single paste uncertain and visible in Needs-you',async()=>{
+ const f=fixture(pasted),d=f.daemon;positiveRefusal(f);f.tmux.sendSpecialKey.mockResolvedValue(false);
+ const paste=vi.fn(async()=>true);Object.assign(f.tmux,{pasteBuffer:paste});d.firstDeliveryDelay={consume:()=>0};
+ const outbox=new DeliveryOutbox(join(d.config.working_directory,'delivery.db'));
+ try{
+  const row=outbox.admit({operationId:'refusal',sourceKey:'refusal',sourceInstance:'source',sourceDaemonBootId:'source-boot',targetInstance:'private-proof',kind:'fleet_inbound',payload:{type:'fleet_inbound',content:'payload',meta:{}}}).delivery;
+  const attempt=outbox.claimNext('manager',()=>d.bootId,new Set())!;d.setDeliveryOutboxPort(outbox);
+  vi.spyOn(d,'wake').mockResolvedValue(undefined);
+  vi.spyOn(d,'durableAttemptEvidence').mockResolvedValue({backend:'claude-code',windowId:'@owned',transcriptPath:null,transcriptOffset:null,transcriptSessionId:null,submissionMode:'idle_submit'});
+  vi.spyOn(d,'deliverMessage').mockImplementation((formatted,status,opts:any)=>d.writeMessageToPane(formatted,'@owned',false,status,undefined,opts.verdict,opts.durableAttempt));
+  d.pushChannelMessage('payload',{delivery_id:row.deliveryId,delivery_attempt:String(attempt.attemptNo),message_id:'refusal',chat_id:'scratch',thread_id:'scratch',adapter_id:'scratch'});
+  await d.pasteLock;
+  expect(paste).toHaveBeenCalledOnce();expect(f.tmux.sendSpecialKey).toHaveBeenCalledTimes(5);
+  expect(outbox.get(row.deliveryId)).toMatchObject({state:'uncertain',attemptNo:1,lastError:'submit-enter:native-input-output_changed'});
+  const items=deriveNeedsYou({prompts:[],instances:[],deliveries:outbox.needsAttention('2000-01-01T00:00:00Z').map(row=>({...row,source:row.sourceInstance,target:row.targetInstance,finishedAt:Date.parse(row.finishedAt)})),ownerOf:()=>undefined});
+  expect(items).toContainEqual(expect.objectContaining({type:'delivery',reason:'delivery_uncertain',instance:'private-proof'}));
+ }finally{outbox.close();}
+});
+it('a native delivery without its backend has no authority to check runtime dialogs',async()=>{
+ const f=fixture(pasted);f.daemon.backend=null;
+ expect(await f.daemon.sendDeliveryEnter('initial-submit')).toBe(false);
+ expect(f.tmux.capturePane).not.toHaveBeenCalled();expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+});
+it('a lost ACK after one positive refusal ends the retry chain',async()=>{
+ const f=fixture(pasted);let notSent=true;Object.assign(f.tmux,{lastInputWasNotSent:()=>notSent,getLastSendSpecialKeyError:()=>notSent?'Pane changed after observation; input was not sent':'Pane input outcome is unconfirmed; reconnect and inspect before retrying'});
+ f.tmux.sendSpecialKey.mockResolvedValueOnce(false).mockImplementationOnce(async()=>{notSent=false;return false;});
+ expect(await f.daemon.sendDeliveryEnter('initial-submit',undefined,f.attempt)).toBe(false);
+ expect(f.tmux.sendSpecialKey).toHaveBeenCalledTimes(2);expect(f.mark).toHaveBeenCalledOnce();
 });

@@ -1,7 +1,9 @@
 /** Terminal operations used by the daemon. A handle's object identity fences in-flight work. */
 export interface PaneSize { columns: number; rows: number }
 export type PaneKey = "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q";
-export interface PaneInputProof { kind: "composer" | "dialog"; screen: string }
+/** Internal only, never a runtime wire field: delivery means the daemon checked its backend's runtime dialogs;
+ * composer callers and explicit identity-bound human card answers retain their separate policies. */
+export interface PaneInputProof { kind: "composer" | "delivery" | "dialog"; screen: string }
 export interface PaneStatus { alive: boolean; exitCode?: number; pid?: number }
 export interface PaneOutputEvent { paneId: string; windowId?: string; at: number }
 export type PaneOutputEventName = `output:${string}`;
@@ -23,6 +25,8 @@ export interface Pane {
   sendSpecialKey(key: PaneKey, timeoutMs?: number, proof?: PaneInputProof): Promise<boolean>;
   deleteBackward(count: number, timeoutMs?: number): Promise<boolean>;
   getLastSendSpecialKeyError(): string | null;
+  /** Positive zero-input evidence (local pre-write rejection or exact host ACK); a lost mutation ACK is never true. */
+  lastInputWasNotSent?(): boolean;
   getLastPasteError(): string | null;
   isLastPasteFailureRecoverable(): boolean;
   pasteText(text: string, opts?: { retryEnter?: boolean }): Promise<boolean>;
