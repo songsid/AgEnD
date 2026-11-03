@@ -1424,12 +1424,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const generation=this.explicitStopGeneration.get(name)??0;
     await this.lifecycle.runTransition(name,async transition=>{
       const current=()=>{if(!authorized()||this.shuttingDown||this.fleetConfig?.instances[name]!==config||(this.explicitStopGeneration.get(name)??0)!==generation)throw Error(t("native_pane.authority_expired"));};
-      current();if(this.daemons.get(name)?.nativePaneCurrent())throw Error(t("native_pane.still_running"));
+      current();const held=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id!).paneRecovery;
+      if(held?.kind!=="session-unconfirmed"||held.launchId!==launchId||held.sessionId!==sessionId)throw Error(t("native_pane.changed"));
+      if(this.daemons.get(name)?.nativePaneCurrent())throw Error(t("native_pane.still_running"));
       this.cancelStartupRetry(name);this.lifecycle.cancelNativeRecovery(name);
       await this.lifecycle.stop(name,transition);current();
       await (await this.nativePanes()).startFresh(name,config,launchId,sessionId,current);current();
       this.eventLog?.insert(name,"native_pane_new_conversation",{launchId,sessionId});
-      await this.lifecycle.start(name,config,true,undefined,transition);current();
+      await this.startInstance(name,config,true,"fleet-topic",true,transition);current();
       this.needsYou?.poke();this.emitSseEvent("status",this.getUiStatus());
     });
   }

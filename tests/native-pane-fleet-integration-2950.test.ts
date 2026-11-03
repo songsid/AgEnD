@@ -35,8 +35,11 @@ it("an unknown saved-session proof holds ordinary Fleet Start in Needs-you; the 
  const needs=deriveNeedsYou({prompts:[],deliveries:[],instances:f.fleet.needsYouInstances(),ownerOf:()=>undefined});
  expect(needs).toContainEqual(expect.objectContaining({reason:"native_pane_hold",instance:"native",detail:expect.stringContaining("saved conversation could not be checked")}));
  f.models.mockRestore();
+ const stopping=vi.spyOn(f.fleet.lifecycle,"stop");
+ await expect(f.fleet.startFreshNativePane("native",randomUUID(),old!,()=>true)).rejects.toThrow("changed");expect(stopping).not.toHaveBeenCalled();stopping.mockRestore();
  await expect(f.fleet.startFreshNativePane("native",hold.launchId!,old!,()=>false)).rejects.toThrow("expired");expect(f.spawn).toHaveBeenCalledOnce();
  await f.fleet.startFreshNativePane("native",hold.launchId!,old!,()=>true);
+ expect(f.fleet.instanceIpcClients.get("native")?.connected).toBe(true);
  expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).not.toBe(old);expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();
  expect(f.fleet.needsYouInstances()[0].paneRecovery).toBeNull();await f.fleet.stopInstance("native");
 });
