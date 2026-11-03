@@ -140,8 +140,20 @@ it("explicit human card answers still walk the verified cursor and confirm the c
   expect(f.mark).not.toHaveBeenCalled();
 });
 
-// S-36: "%s paste replacement cannot receive the old pane's Enter" tested #2958's paste/system-paste owner fences, which
-// main's beta.5 reverted (they are not part of the native Enter gate the alpha keeps).
+it.each(["delivery", "system"])("%s paste replacement cannot receive the old pane's Enter (native pane; Prism #2989 P2)", async kind => {
+  const f = fixture(pasted);
+  const replacement = { ...f.tmux, sendSpecialKey: vi.fn(async () => true) };
+  Object.assign(f.tmux, {
+    pasteBuffer: vi.fn(async () => { f.daemon.tmux = replacement; return true; }),
+  });
+  const result = kind === "system"
+    ? await f.daemon.submitSystemPaste("[from:private-proof] old pane only", "system-proof")
+    : await f.daemon.writeMessageToPane("[from:private-proof] old pane only", "@owned", false);
+  expect(result).toBe(false);
+  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+  expect(replacement.sendSpecialKey).not.toHaveBeenCalled();
+});
+
 it("Grok's own boxed numbered draft remains a composer, not a permission card", async () => {
   const ready = pane("grok-1.0.70-audit/1.0.70-120/02-ready");
   const numbered = ready.replace(/^  │ ❯.*│$/m, "  │ ❯ 1. fix the build │\n  │   2. run the tests │\n  │   3. push │");

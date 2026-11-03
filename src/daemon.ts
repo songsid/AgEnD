@@ -9928,6 +9928,9 @@ export class Daemon extends EventEmitter {
     const tmuxAtWrite = this.tmux;
     const steerCurrent = () => (!stillCurrent || stillCurrent()) && !this.deliveryWritesStopping
       && this.tmux === tmuxAtWrite && this.spawnGeneration === spawnAtWrite;
+    // Alpha (S-36, Prism #2989 P2): a NATIVE pane keeps #2958's pre-paste owner fence through the initial Enter and every
+    // retry Enter (a pane replaced while the paste awaits never takes this delivery's Enter); a tmux pane follows main.
+    const nativeOwner = this.nativePaneLifecycle ? steerCurrent : undefined;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
     const maxAttempts = 3;
@@ -10134,14 +10137,14 @@ export class Daemon extends EventEmitter {
       const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
       let inputHeld = false;
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt, () => { inputHeld = true; }))) {
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof || nativeOwner ? steerEnterCurrent : undefined, durableAttempt, () => { inputHeld = true; }))) {
         if (inputHeld) {
           // #2971: held in a tmux mode past the bound. The paste may still be in the CLI: keep it uncertain, never re-paste.
           verdict.phase = "submit-enter";
           verdict.proof = "pane-in-mode-held";
           return false;
         }
-        if (steerComposerProof && !steerCurrent()) {
+        if ((steerComposerProof || nativeOwner) && !steerCurrent()) {
           verdict.phase = "submit-enter";
           verdict.proof = "fenced-before-enter";
           return false;
@@ -10170,7 +10173,7 @@ export class Daemon extends EventEmitter {
       if (!rawPaste && !steerComposerProof && this.backend?.requiresDeliveryEnterRetry?.() === true) {
         await new Promise(r => setTimeout(r, 1_000));
         const retryAt = Date.now();
-        if (await this.sendDeliveryEnter("queue-less-defensive-retry")) {
+        if (await this.sendDeliveryEnter("queue-less-defensive-retry", nativeOwner)) {
           enterAt = retryAt;
           enterRetry = true;
           this.logger.debug("Sent defensive Enter retry (queue-less TUI can swallow the first)");
@@ -10298,7 +10301,7 @@ export class Daemon extends EventEmitter {
           // again. The prompt is back now, so an Enter can land.
           this.logger.warn("Message still in the input row after idle — submitting the existing text instead of pasting it again");
           const strandedAt = Date.now();
-          if (!(await this.sendDeliveryEnter("native-queue-stranded-submit"))) {
+          if (!(await this.sendDeliveryEnter("native-queue-stranded-submit", nativeOwner))) {
             return this.failDelivery(verdict, status, "native-queue-submit", "tmux-send-keys-failed");
           }
           // The recovery Enter can be accepted before Codex paints its new
@@ -10354,7 +10357,7 @@ export class Daemon extends EventEmitter {
         }
         await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
         const retryAt = Date.now();
-        if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery"))) {
+        if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery", nativeOwner))) {
           return this.failDelivery(verdict, status, "native-queue-redelivery", "tmux-send-keys-failed");
         }
         if (windowId && this.controlClient) {
@@ -10403,7 +10406,7 @@ export class Daemon extends EventEmitter {
           this.logger.warn("Message not submitted after Enter — waiting for the prompt, then re-sending Enter once");
           const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
           const retryAt = Date.now();
-          if (promptBack && !(await this.sendDeliveryEnter("stranded-text-retry"))) {
+          if (promptBack && !(await this.sendDeliveryEnter("stranded-text-retry", nativeOwner))) {
             return this.failDelivery(verdict, status, "stranded-text-retry", "tmux-send-keys-failed");
           }
           submitted = promptBack && await this.confirmSubmittedAfterEnter(windowId, retryAt, formatted);
@@ -10490,7 +10493,7 @@ export class Daemon extends EventEmitter {
         }
         // No control client to observe output: fall back to the legacy double-Enter.
         await new Promise(r => setTimeout(r, 1000));
-        await this.sendDeliveryEnter("unobserved-defensive-retry");
+        await this.sendDeliveryEnter("unobserved-defensive-retry", nativeOwner);
         if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
       }
       return true;
@@ -10956,7 +10959,14 @@ export class Daemon extends EventEmitter {
    * (the retries included). Without a guard it is exactly the old unconditional path.
    */
   private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }, admission?: () => void): Promise<boolean> {
-    const current = guard || admission ? () => { admission?.(); return guard?.current() ?? true; } : undefined;
+    // Alpha (S-36, Prism #2989 P2): a NATIVE pane's system paste keeps the pane owner from before its first await
+    // (#2958's fence, reverted on main for tmux panes) — a pane replaced while the paste awaits never takes its Enter.
+    const native = !!this.nativePaneLifecycle;
+    const ownerTmux = this.tmux, ownerGeneration = this.spawnGeneration, ownerFence = this.launchFenceEpoch;
+    const ownerWindow = native ? ownerTmux?.getWindowId() : undefined;
+    const owner = () => !native || (!!ownerTmux && !!ownerWindow && this.tmux === ownerTmux && ownerTmux.getWindowId() === ownerWindow
+      && this.spawnGeneration === ownerGeneration && this.launchFenceEpoch === ownerFence && !this.deliveryWritesStopping);
+    const current = guard || admission || native ? () => { admission?.(); return owner() && (guard?.current() ?? true); } : undefined;
     if (current && !current()) return false;
     if (!this.tmux) return false;
     const signature = this.submissionSignature(text);
