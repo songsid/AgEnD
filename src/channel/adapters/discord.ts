@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { CPU_PROFILE_MAX_SECONDS } from "../../cpu-profile.js";
 import { slashLock } from "../../command-table.js";
 import { randomBytes } from "node:crypto";
+import { inboxTempName } from "../inbox-temp-name.js";
 import { t } from "../../locale.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -2141,7 +2142,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     if (!url) throw new Error(`No URL for attachment: ${fileId}`);
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-    const filename = `${Date.now()}-${fileId.slice(-8)}-${url.split("/").pop()?.split("?")[0] ?? "file"}`;
+    // #2959: unique per download — the inbox is shared by every bot on the host.
+    const filename = inboxTempName(fileId, url.split("/").pop()?.split("?")[0] ?? "file");
     const localPath = join(this.inboxDir, filename);
     const dest = createWriteStream(localPath);
     const body = response.body;

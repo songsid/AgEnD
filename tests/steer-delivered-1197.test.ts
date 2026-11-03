@@ -158,7 +158,8 @@ describe("a steer into a busy pane of a CLI whose input row is unreadable", () =
       },
     });
     expect(r.delivery.state).toBe("uncertain");
-    expect(r.attempt.evidence).toBe("best-effort-submission:unverified");
+    expect(r.attempt.evidence).toBe("submit-enter:fenced-before-enter");
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
     r.outbox.close();
   });
 

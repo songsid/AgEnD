@@ -58,7 +58,7 @@ describe("TelegramAdapter.downloadAttachment against the mock Bot API", () => {
     mock.registerFile({ fileId: "AgACAgQAAxkBAAIB", filePath: "photos/file_7.jpg", body: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), contentType: "image/jpeg" });
     const path = await newAdapter().downloadAttachment("AgACAgQAAxkBAAIB");
     expect(dirname(path)).toBe(inbox);
-    expect(basename(path)).toMatch(/^\d+-AxkBAAIB-file_7\.jpg$/);
+    expect(basename(path)).toMatch(/^\d+-[0-9a-f]{8}-AxkBAAIB-file_7\.jpg$/);
     expect([...readFileSync(path)]).toEqual([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
     expect(mock.getFileDownloads()).toEqual(["photos/file_7.jpg"]);
     expect(mock.getCallsFor("getFile")[0].params.file_id).toBe("AgACAgQAAxkBAAIB");
@@ -68,7 +68,7 @@ describe("TelegramAdapter.downloadAttachment against the mock Bot API", () => {
     mock.registerFile({ fileId: "nest0001", filePath: "documents/2026/10/deep/x.txt", body: "payload" });
     const path = await newAdapter().downloadAttachment("nest0001");
     expect(dirname(path)).toBe(inbox);
-    expect(basename(path)).toMatch(/^\d+-nest0001-x\.txt$/);
+    expect(basename(path)).toMatch(/^\d+-[0-9a-f]{8}-nest0001-x\.txt$/);
     expect(readdirSync(inbox)).toEqual([basename(path)]);
     expect(readdirSync(dir).sort()).toEqual(["inbox"]);
   });
