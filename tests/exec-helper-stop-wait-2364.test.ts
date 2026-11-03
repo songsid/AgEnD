@@ -85,7 +85,7 @@ describe("FleetManager.stopAll() resolves after the helper's wait", () => {
     const fm = Object.create(FleetManager.prototype) as FleetManager;
     const latch = () => (fm as unknown as { stopAllInFlight: Promise<void> | null }).stopAllInFlight;
     let stops = 0;
-    Object.assign(fm, { stopAllInFlight: null, tmuxExecHelperTimer: null, doStopAll: async () => { stops++; } });
+    Object.assign(fm, { lifecycle: { cancelNativeRecovery: vi.fn() }, stopAllInFlight: null, tmuxExecHelperTimer: null, doStopAll: async () => { stops++; } });
     const first = fm.stopAll();
     const second = fm.stopAll();
     expect(second).toBe(first);
